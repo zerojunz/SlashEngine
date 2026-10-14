@@ -352,7 +352,17 @@ jobs:
           $output = Get-Content -Raw $out
           $output
           'exit code 0x{0:X8}' -f $game.ExitCode
-          if ($game.ExitCode -ne 0 -or -not ($output -match '"ticks":60')) { exit 1 }
+          if ($game.ExitCode -ne 0 -or -not ($output -match '"ticks":60')) {
+            # Show the headers, and the loader's own account of why the game didn't start.
+            $headers
+            $debuggers = "${env:ProgramFiles(x86)}\Windows Kits\10\Debuggers\x64"
+            & "$debuggers\gflags.exe" /i (Split-Path -Leaf $exe) +sls
+            Push-Location (Split-Path $exe)
+            & "$debuggers\cdb.exe" -g -G -o -c q $exe --headless --ticks 60 2>&1 |
+              Select-String -Pattern 'ERROR|WARNING|fail|0xc0' | Select-Object -First 60
+            Pop-Location
+            exit 1
+          }
 
       - name: Set up QEMU for arm64 (Linux)
         if: runner.os == 'Linux'
