@@ -128,6 +128,7 @@ Every line in the repo is Apache 2.0 or comes from a dependency under a permissi
 | --- | --- | --- |
 | SDL3, SDL_shadercross | Platform layer, GPU API, shader cross-compiling | zlib |
 | EnTT | ECS and runtime type metadata | MIT |
+| yyjson | JSON parsing | MIT |
 | Jolt Physics | 3D physics, soft bodies | MIT |
 | Box2D v3 | 2D physics | MIT |
 | miniaudio | Audio | MIT-0 or public domain |

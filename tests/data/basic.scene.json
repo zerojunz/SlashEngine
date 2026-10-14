@@ -1,0 +1,21 @@
+{
+  "entities": {
+    "camera": {
+      "components": {
+        "Transform3D": {
+          "position": [0.0, 2.0, -5.0]
+        }
+      }
+    },
+    "player": {
+      "components": {
+        "Transform2D": {
+          "position": [64.0, 32.0],
+          "rotation": 0.5
+        }
+      }
+    },
+    "spawn_point": {}
+  },
+  "format": 1
+}
