@@ -64,6 +64,11 @@ private:
 
 } // namespace
 
+std::string environment_variable(const std::string& name) {
+    const char* value = SDL_getenv(name.c_str());
+    return value == nullptr ? std::string() : std::string(value);
+}
+
 Result<ProcessResult> run_process(const std::vector<std::string>& args,
                                   const ProcessOptions& options) {
     if (args.empty()) {
