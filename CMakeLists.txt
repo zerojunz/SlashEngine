@@ -10,7 +10,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-option(SLASH_BUILD_TOOLS "Build slash-cli" ${PROJECT_IS_TOP_LEVEL})
+option(SLASH_BUILD_TOOLS "Build slash-cli and slash-mcp" ${PROJECT_IS_TOP_LEVEL})
 option(SLASH_BUILD_TESTS "Build the unit and smoke tests" ${PROJECT_IS_TOP_LEVEL})
 option(SLASH_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
 
@@ -22,6 +22,9 @@ add_subdirectory(engine)
 
 if(SLASH_BUILD_TOOLS)
     add_subdirectory(tools/slash-cli)
+    add_subdirectory(tools/slash-mcp)
+    include(GNUInstallDirs)
+    install(TARGETS slash-cli slash-mcp RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
 
 if(SLASH_BUILD_TESTS)

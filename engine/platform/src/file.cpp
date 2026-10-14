@@ -26,4 +26,18 @@ Result<void> write_file(std::string_view path, std::string_view contents) {
     return {};
 }
 
+Result<void> create_directories(std::string_view path) {
+    const std::string name(path);
+    if (!SDL_CreateDirectory(name.c_str())) {
+        return make_error(ErrorCode::PlatformFailure,
+                          "could not create the directory \"" + name + "\": " + SDL_GetError());
+    }
+    return {};
+}
+
+bool exists(std::string_view path) {
+    const std::string name(path);
+    return SDL_GetPathInfo(name.c_str(), nullptr);
+}
+
 } // namespace slash::platform

@@ -1,5 +1,7 @@
 #include "slash/core/json_schema.hpp"
 
+#include "slash/core/text.hpp"
+
 #include <algorithm>
 #include <cstddef>
 #include <string_view>
@@ -44,36 +46,13 @@ std::size_t code_points(std::string_view text) {
         text, [](char c) { return (static_cast<unsigned char>(c) & 0xC0U) != 0x80U; }));
 }
 
-std::size_t edit_distance(std::string_view a, std::string_view b) {
-    std::vector<std::size_t> row(b.size() + 1);
-    for (std::size_t j = 0; j <= b.size(); ++j) {
-        row[j] = j;
+std::vector<std::string_view> property_names(const Object& properties) {
+    std::vector<std::string_view> names;
+    names.reserve(properties.size());
+    for (const auto& [name, unused] : properties) {
+        names.emplace_back(name);
     }
-    for (std::size_t i = 1; i <= a.size(); ++i) {
-        std::size_t diagonal = row[0];
-        row[0] = i;
-        for (std::size_t j = 1; j <= b.size(); ++j) {
-            const std::size_t above = row[j];
-            const std::size_t substitute = diagonal + (a[i - 1] == b[j - 1] ? 0 : 1);
-            row[j] = std::min({above + 1, row[j - 1] + 1, substitute});
-            diagonal = above;
-        }
-    }
-    return row[b.size()];
-}
-
-// The closest allowed name to a misspelled one, or "" if nothing is close.
-std::string_view closest_name(std::string_view name, const Object& candidates) {
-    std::string_view best;
-    std::size_t best_distance = std::max<std::size_t>(2, name.size() / 3) + 1;
-    for (const auto& [candidate, unused] : candidates) {
-        const std::size_t distance = edit_distance(name, candidate);
-        if (distance < best_distance) {
-            best = candidate;
-            best_distance = distance;
-        }
-    }
-    return best;
+    return names;
 }
 
 std::string text_of(const Value& value) {
@@ -288,7 +267,8 @@ private:
                 check(member, it->second, path, ref_depth);
             } else if (additional != nullptr && additional->is_bool() && !additional->as_bool()) {
                 std::string message = "unknown property \"" + key + "\"";
-                if (const std::string_view hint = closest_name(key, properties); !hint.empty()) {
+                if (const std::string_view hint = closest_match(key, property_names(properties));
+                    !hint.empty()) {
                     message += "; did you mean \"" + std::string(hint) + "\"?";
                 }
                 fail(path, std::move(message));

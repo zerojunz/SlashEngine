@@ -50,6 +50,9 @@ public:
     // Destroys an entity and all its components. Does nothing for an invalid entity.
     void destroy(entt::entity entity);
 
+    // Destroys every entity. Systems and the tick counter are kept.
+    void clear();
+
     [[nodiscard]] bool valid(entt::entity entity) const;
 
     // The entity with this ID, or entt::null.
