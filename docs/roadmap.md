@@ -22,7 +22,9 @@ Milestones 1 to 3 are done. The engine builds on macOS, Linux and Windows, runs 
 a fixed-timestep loop headless or in an SDL3 window, loads and saves JSON scenes checked against a
 schema it generates from its own components, and serves every engine action as a command over
 MCP, JSON-RPC, a localhost REST API and the command line, including while a game runs. The export
-pipeline (milestone 4) is next. Nothing draws to the screen yet beyond an empty window; rendering
+pipeline (milestone 4) is in progress, in two halves: the first, under review, adds game projects
+and exports to macOS, Windows, Linux and web; the second adds iOS, Android, signing and building
+every platform from one Mac. Nothing draws to the screen yet beyond an empty window; rendering
 arrives with the 2D feature set in milestone 5.
 
 ## The path to launch
@@ -62,16 +64,31 @@ work.
 - [ ] Exit check: Claude Code, Codex and Cursor each open, edit and save a scene over MCP. The
       tools are built and tested; a recorded run with each agent is still to do.
 
-### Milestone 4: Export pipeline (Next)
+### Milestone 4: Export pipeline (In progress)
 
-- [ ] `slash-cli export <platform>` and the `export.run` command
+Built in two halves.
+
+**4a: projects and desktop and web exports (In progress, in review as
+[PR #6](https://github.com/zerojunz/SlashEngine/pull/6))**
+
+- [ ] `project.json`, like Godot's `project.godot`: name, version, main scene, window size and
+      tick rate, with `slash-cli schema project` and `slash-cli project validate`
+- [ ] A game runtime that loads a project's main scene and runs it, headless or in a window
+- [ ] `slash-cli export <platform>` for macOS (universal app bundle), Windows, Linux and web
+- [ ] `--test`, which runs the exported game headless and reports whether it worked
+- [ ] A CI job that exports an empty game for macOS, Windows, Linux and web and runs each one,
+      with Emscripten pinned
+
+**4b: mobile, signing and one-Mac builds (Planned)**
+
+- [ ] iOS and Android exports
 - [ ] `slash-cli toolchain install`: pinned open-source cross toolchains (llvm-mingw, Clang with a
-      Linux sysroot, Android NDK, Emscripten), so one Mac builds every target
+      Linux sysroot, Android NDK), so one Mac builds every target
 - [ ] `export_presets.json`, with signing secrets read from environment variables and a throwaway
       Android debug keystore
+- [ ] The `export.run` command, so agents export over MCP
 - [ ] A GitHub Actions workflow from `slash-cli init` that builds and tests every platform on
       native runners
-- [ ] CI exports to macOS, Windows, Linux, iOS, Android and web
 
 Exit: an empty project exports to all six platforms and passes headless tests on each.
 
@@ -148,7 +165,6 @@ milestone 9 at the latest; when one is scheduled, move it into that milestone ab
 - [ ] Keyframe animation tracks on any reflected property (Launch)
 - [ ] Materials: HLSL shaders plus a JSON material graph agents write directly (Launch)
 - [ ] A license check on every pull request, against a manifest of pinned dependencies (Launch)
-- [ ] Emscripten in the CI matrix (Launch)
 
 ## After launch
 
@@ -216,7 +232,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Localization | Translation tables in text | 8 | Planned |
 | Video playback | AV1 through dav1d | 8 | Planned |
 | Accessibility | AccessKit | 8 | Planned |
-| One-command export | `slash-cli export` to macOS, Windows, Linux, iOS, Android and web | 4 | Next |
+| One-command export | `slash-cli export` to macOS, Windows, Linux, iOS, Android and web | 4 | In progress: desktop and web in review (4a), iOS and Android planned (4b) |
 | Large worlds | Double-precision transforms, world streaming | After launch | After launch |
 | Cinematics | Timeline tracks for cameras and events | After launch | After launch |
 | Procedural generation | FastNoiseLite plus rule graphs agents write | After launch | After launch |
@@ -246,12 +262,12 @@ calls and tokens ([design section 6](design.md#6-cheap-for-agents-to-use)).
 
 | Platform | Engine and tools run there | Games export there |
 | --- | --- | --- |
-| macOS (Apple silicon and Intel) | At launch | Milestone 4 |
-| Windows x64 | After launch (CI already builds and tests the engine there) | Milestone 4 |
-| Linux x64 and arm64 | After launch (CI already builds and tests the engine on x64) | Milestone 4 |
-| iOS | No | Milestone 4 |
-| Android | No | Milestone 4 |
-| Web | No | Milestone 4 |
+| macOS (Apple silicon and Intel) | At launch | Milestone 4a (in review) |
+| Windows x64 | After launch (CI already builds and tests the engine there) | Milestone 4a (in review) |
+| Linux x64 and arm64 | After launch (CI already builds and tests the engine on x64) | Milestone 4a (in review) |
+| iOS | No | Milestone 4b |
+| Android | No | Milestone 4b |
+| Web | No | Milestone 4a (in review) |
 
 ## Open questions
 
