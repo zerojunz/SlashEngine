@@ -1,6 +1,7 @@
 add_library(slash_platform
     src/file.cpp
     src/platform.cpp
+    src/process.cpp
     src/run.cpp)
 add_library(slash::platform ALIAS slash_platform)
 

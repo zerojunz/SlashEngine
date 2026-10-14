@@ -2,12 +2,17 @@
 
 #include "slash/core/log.hpp"
 #include "slash/platform/file.hpp"
+#include "slash/runtime/project.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/scene.hpp"
 #include "slash/world/world.hpp"
 
+#include <array>
+#include <filesystem>
+#include <string>
 #include <string_view>
+#include <system_error>
 #include <utility>
 #include <vector>
 
@@ -53,8 +58,15 @@ The address and token are in `.slash/server.json`, which stays out of git.
 - Errors give the JSON Pointer of the bad value and suggest the right name; fix it and retry.
 - Call `scene_save` when you are done, then `slash-cli scene validate <file>` to double-check.
 
+## Run and export
+
+`slash-game --data .` runs the game the way its exports do. `slash-cli export <platform> --test`
+builds it for macos, windows, linux or web into `build/export/<platform>`, then runs the build
+headless where this machine can. A failed export reports the step and the end of its log.
+
 ## Files
 
+- `project.json`: the game's name, version and main scene. `slash-cli project validate` checks it.
 - `scenes/`: scenes as canonical JSON, keyed by stable entity ID. Run
   `slash-cli scene format <file>` before committing a scene edited outside the engine.
 )";
@@ -87,10 +99,10 @@ Do not edit `.scene.json` files by hand while the server runs: it holds the open
 overwrite the edit on the next save.
 )";
 
-// Engine state that stays on this machine: caches and the running server's token.
-constexpr std::string_view kIgnoredFolder = ".slash/";
+// Folders that stay on this machine: engine caches and the running server's token, and exports.
+constexpr std::array<std::string_view, 2> kIgnoredFolders{".slash/", "build/"};
 constexpr std::string_view kGitignore =
-    "# SlashEngine caches and the running server's token\n.slash/\n";
+    "# SlashEngine caches, the running server's token, and exported builds\n.slash/\nbuild/\n";
 
 bool has_line(std::string_view text, std::string_view line) {
     std::size_t start = 0;
@@ -109,6 +121,21 @@ bool has_line(std::string_view text, std::string_view line) {
         start = end + 1;
     }
     return false;
+}
+
+// The game's name, from its folder: "games/space-pong" becomes "space-pong".
+std::string project_name(const std::string& directory) {
+    std::error_code error;
+    std::filesystem::path path = std::filesystem::absolute(directory, error).lexically_normal();
+    if (path.filename().empty()) {
+        path = path.parent_path();
+    }
+    std::string name = path.filename().string();
+    constexpr std::size_t kMaxName = 100;
+    if (name.size() > kMaxName) {
+        name.resize(kMaxName);
+    }
+    return name.empty() ? std::string("Game") : name;
 }
 
 json::Value server_entry(const InitOptions& options, std::string_view project) {
@@ -144,6 +171,8 @@ std::string empty_scene() {
 Result<json::Value> init_project(const InitOptions& options) {
     // Cursor expands ${workspaceFolder}; Claude Code and Codex start servers in the project.
     const std::vector<std::pair<std::string_view, std::string>> files{
+        {runtime::kProjectFile,
+         json::write(runtime::new_project(project_name(options.directory), kMainScene)) + "\n"},
         {"AGENTS.md", std::string(kAgents)},
         {"CLAUDE.md", "@AGENTS.md\n"},
         {".mcp.json", json_config(options, ".")},
@@ -185,18 +214,26 @@ Result<json::Value> init_project(const InitOptions& options) {
         created.emplace_back(".gitignore");
     } else if (auto text = platform::read_file(gitignore); !text) {
         return text.error();
-    } else if (!has_line(text.value(), kIgnoredFolder)) {
-        std::string contents = text.value();
-        if (!contents.empty() && contents.back() != '\n') {
-            contents += '\n';
-        }
-        contents += std::string(kIgnoredFolder) + "\n";
-        if (auto written = platform::write_file(gitignore, contents); !written) {
-            return written.error();
-        }
-        updated.emplace_back(".gitignore");
     } else {
-        skipped.emplace_back(".gitignore");
+        std::string contents = text.value();
+        bool changed = false;
+        for (const std::string_view folder : kIgnoredFolders) {
+            if (has_line(contents, folder)) {
+                continue;
+            }
+            if (!contents.empty() && contents.back() != '\n') {
+                contents += '\n';
+            }
+            contents += std::string(folder) + "\n";
+            changed = true;
+        }
+        if (!changed) {
+            skipped.emplace_back(".gitignore");
+        } else if (auto written = platform::write_file(gitignore, contents); !written) {
+            return written.error();
+        } else {
+            updated.emplace_back(".gitignore");
+        }
     }
 
     json::Object result;

@@ -20,4 +20,9 @@ namespace slash::platform {
 // True if a file or directory exists at path.
 [[nodiscard]] bool exists(std::string_view path);
 
+// The folder holding the running program's bundled files, ending in a separator: the app
+// bundle's Resources folder on macOS and iOS, the executable's folder on Windows and Linux, and
+// "/" on the web. Empty if the platform can't tell.
+[[nodiscard]] std::string base_path();
+
 } // namespace slash::platform
