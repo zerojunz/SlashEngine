@@ -1,0 +1,11 @@
+{
+  "format": 1,
+  "main_scene": "scenes/main.scene.json",
+  "name": "Test Game",
+  "tick_hz": 50,
+  "version": "1.2.3",
+  "window": {
+    "height": 240,
+    "width": 320
+  }
+}

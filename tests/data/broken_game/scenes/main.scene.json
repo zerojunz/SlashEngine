@@ -1,0 +1,11 @@
+{
+  "entities": {
+    "player": {
+      "components": {
+        "Transform2D": {"position": [1, "two"], "rotaton": 1},
+        "Transfrom3D": {}
+      }
+    }
+  },
+  "format": 2
+}
