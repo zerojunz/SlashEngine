@@ -1,6 +1,7 @@
 // slash-cli: the command-line entry point agents use to drive SlashEngine.
 // Results go to stdout as JSON; logs go to stderr as JSON lines.
 
+#include "export.hpp"
 #include "init.hpp"
 
 #include "slash/command/builtin.hpp"
@@ -13,6 +14,7 @@
 #include "slash/platform/file.hpp"
 #include "slash/platform/platform.hpp"
 #include "slash/platform/run.hpp"
+#include "slash/runtime/project.hpp"
 #include "slash/server/server.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
@@ -62,7 +64,8 @@ Usage:
   slash-cli scene validate <file>    Check a scene against the schema; lists every error
   slash-cli scene format <file>      Rewrite a scene in canonical form
       --check                        Only report whether it is canonical; change nothing
-  slash-cli schema scene             Print the JSON Schema for scene files
+  slash-cli schema scene|project     Print the JSON Schema for scene or project.json files
+  slash-cli project validate [dir]   Check a folder's project.json; lists every error
   slash-cli call <command> [params]  Run one engine command and print its result
                                      params is a JSON object, or - to read it from stdin
       --scene <file>                 Open this scene first (or start a new one saved there)
@@ -79,6 +82,12 @@ Usage:
   slash-cli init [dir]               Set a project up for Claude Code, Codex and Cursor
       --force                        Replace files that already exist
       --mcp-command <cmd>            How agents launch slash-mcp (default "slash-mcp")
+  slash-cli export <platform>        Build the game for macos, windows, linux or web
+      --project <dir>                Game folder with project.json (default ".")
+      --out <dir>                    Output folder (default <project>/build/export/<platform>)
+      --debug                        Debug build instead of Release
+      --test                         Run the exported game headless afterwards, if possible
+      --engine <dir>                 Engine sources (default: SLASH_ENGINE_DIR or built in)
   slash-cli help                     Show this message
 
 call, rpc and serve also take:
@@ -472,12 +481,40 @@ int cmd_scene(const std::vector<std::string>& args) {
 }
 
 int cmd_schema(const std::vector<std::string>& args) {
-    if (args.size() != 1 || args[0] != "scene") {
-        return usage_error("schema takes one argument: scene");
+    if (args.size() != 1 || (args[0] != "scene" && args[0] != "project")) {
+        return usage_error("schema takes one argument: scene or project");
     }
-    const std::string text = json::write(world::scene_schema(make_registry())) + "\n";
+    const json::Value schema = args[0] == "scene" ? world::scene_schema(make_registry())
+                                                  : slash::runtime::project_schema();
+    const std::string text = json::write(schema) + "\n";
     std::fwrite(text.data(), 1, text.size(), stdout);
     return kExitOk;
+}
+
+int cmd_project(const std::vector<std::string>& args) {
+    if (args.empty() || args[0] != "validate" || args.size() > 2) {
+        return usage_error("project takes one subcommand: validate [dir]");
+    }
+    const std::string folder = args.size() == 2 ? args[1] : ".";
+    const std::string path = slash::runtime::join_path(folder, slash::runtime::kProjectFile);
+    auto text = slash::platform::read_file(path);
+    if (!text) {
+        return failure("could not read the project", text.error());
+    }
+    auto parsed = json::parse(text.value());
+    std::vector<json::ValidationError> errors;
+    if (!parsed) {
+        errors.push_back({"", parsed.error().message});
+    } else {
+        errors = slash::runtime::validate_project(parsed.value());
+    }
+    json::Value result;
+    result["valid"] = errors.empty();
+    if (!errors.empty()) {
+        result["errors"] = errors_to_json(errors);
+    }
+    print(result);
+    return errors.empty() ? kExitOk : kExitFailure;
 }
 
 int cmd_call(const std::vector<std::string>& args) {
@@ -620,6 +657,38 @@ int cmd_serve(const std::vector<std::string>& args) {
     return kExitOk;
 }
 
+int cmd_export(const std::vector<std::string>& args) {
+    slash::cli::ExportOptions options;
+    for (std::size_t i = 0; i < args.size(); ++i) {
+        const std::string& arg = args[i];
+        const bool has_value = i + 1 < args.size();
+        if (arg == "--debug") {
+            options.debug = true;
+        } else if (arg == "--test") {
+            options.test = true;
+        } else if (arg == "--project" && has_value) {
+            options.project = args[++i];
+        } else if (arg == "--out" && has_value) {
+            options.output = args[++i];
+        } else if (arg == "--engine" && has_value) {
+            options.engine = args[++i];
+        } else if (options.platform.empty() && !arg.starts_with("--")) {
+            options.platform = arg;
+        } else {
+            return usage_error("unexpected argument for export: " + arg);
+        }
+    }
+    if (options.platform.empty()) {
+        return usage_error("export needs a platform: macos, windows, linux or web");
+    }
+    const slash::cli::ExportResult result = slash::cli::export_game(options);
+    print(result.json);
+    if (const json::Value* error = result.json.find("error"); error != nullptr) {
+        return error->find("step")->as_string() == "options" ? kExitUsage : kExitFailure;
+    }
+    return result.ok ? kExitOk : kExitFailure;
+}
+
 int cmd_init(const std::vector<std::string>& args) {
     slash::cli::InitOptions options;
     bool have_directory = false;
@@ -669,6 +738,9 @@ int main(int argc, char** argv) {
     if (name == "schema") {
         return cmd_schema(args);
     }
+    if (name == "project") {
+        return cmd_project(args);
+    }
     if (name == "call") {
         return cmd_call(args);
     }
@@ -680,6 +752,9 @@ int main(int argc, char** argv) {
     }
     if (name == "init") {
         return cmd_init(args);
+    }
+    if (name == "export") {
+        return cmd_export(args);
     }
     return usage_error("unknown command: " + name);
 }

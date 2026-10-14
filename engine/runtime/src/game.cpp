@@ -1,0 +1,123 @@
+#include "slash/runtime/game.hpp"
+
+#include "slash/core/log.hpp"
+#include "slash/core/text.hpp"
+#include "slash/platform/file.hpp"
+#include "slash/world/components.hpp"
+#include "slash/world/scene.hpp"
+
+#include <array>
+#include <charconv>
+#include <system_error>
+#include <utility>
+
+namespace slash::runtime {
+
+Result<GameOptions> parse_game_args(const std::vector<std::string>& args) {
+    constexpr std::array<std::string_view, 3> kOptions{"--headless", "--ticks", "--data"};
+    GameOptions options;
+    for (std::size_t i = 0; i < args.size(); ++i) {
+        const std::string& arg = args[i];
+        const bool has_value = i + 1 < args.size();
+        if (arg == "--headless") {
+            options.headless = true;
+        } else if (arg == "--ticks" && has_value) {
+            const std::string& value = args[++i];
+            const char* end = value.data() + value.size();
+            const auto [ptr, ec] = std::from_chars(value.data(), end, options.max_ticks);
+            if (ec != std::errc() || ptr != end) {
+                return make_error(ErrorCode::InvalidArgument,
+                                  "--ticks needs a whole number, got \"" + value + "\"");
+            }
+        } else if (arg == "--data" && has_value) {
+            options.data_dir = args[++i];
+        } else if (arg.starts_with("--")) {
+            std::string message = "unknown option or missing value: " + arg;
+            if (const std::string_view hint = closest_match(arg, kOptions); !hint.empty()) {
+                message += "; did you mean \"" + std::string(hint) + "\"?";
+            }
+            return make_error(ErrorCode::InvalidArgument, std::move(message));
+        }
+    }
+    if (options.headless && options.max_ticks == 0) {
+        return make_error(ErrorCode::InvalidArgument, "--headless needs --ticks");
+    }
+    return options;
+}
+
+Result<std::unique_ptr<Game>> Game::start(const GameOptions& options) {
+    const std::string data_dir =
+        options.data_dir.empty() ? platform::base_path() + "data" : options.data_dir;
+    auto project = load_project(data_dir);
+    if (!project) {
+        return project.error();
+    }
+    const std::string scene_path = join_path(data_dir, project.value().main_scene);
+    auto text = platform::read_file(scene_path);
+    if (!text) {
+        return make_error(ErrorCode::NotFound,
+                          "the main scene \"" + project.value().main_scene + "\" is missing");
+    }
+    auto scene = json::parse(text.value());
+    if (!scene) {
+        return make_error(ErrorCode::InvalidArgument,
+                          project.value().main_scene + ": " + scene.error().message);
+    }
+
+    platform::Config config;
+    config.title = project.value().name;
+    config.width = project.value().window_width;
+    config.height = project.value().window_height;
+    config.headless = options.headless;
+    auto platform = platform::Platform::create(config);
+    if (!platform) {
+        return platform.error();
+    }
+
+    auto game =
+        std::unique_ptr<Game>(new Game(std::move(project).value(), std::move(platform).value()));
+    if (auto loaded = world::load_scene(game->world_, scene.value()); !loaded) {
+        return make_error(loaded.error().code,
+                          game->project_.main_scene + ": " + loaded.error().message);
+    }
+    auto loop = platform::Loop::create(
+        game->platform_, {.tick_hz = game->project_.tick_hz, .max_ticks = options.max_ticks});
+    if (!loop) {
+        return loop.error();
+    }
+    game->loop_ = std::make_unique<platform::Loop>(std::move(loop).value());
+    log::info("game started", {{"name", game->project_.name},
+                               {"scene", game->project_.main_scene},
+                               {"entities", game->world_.size()}});
+    return game;
+}
+
+Game::Game(Project project, platform::Platform platform)
+    : project_(std::move(project)), world_(components_), platform_(std::move(platform)) {
+    // The world only keeps a pointer to the registry, so filling it afterwards is fine.
+    world::register_builtin_components(components_);
+}
+
+Game::~Game() = default;
+
+bool Game::frame() {
+    return loop_->frame(
+        [this](std::uint64_t /*tick*/, double tick_seconds) { world_.step(tick_seconds); });
+}
+
+void Game::request_quit() noexcept {
+    loop_->request_quit();
+}
+
+json::Value Game::summary() const {
+    json::Value summary;
+    summary["name"] = project_.name;
+    summary["scene"] = project_.main_scene;
+    summary["entities"] = world_.size();
+    summary["ticks"] = loop_->stats().ticks;
+    summary["quit_requested"] = loop_->stats().quit_requested;
+    summary["headless"] = platform_.headless();
+    return summary;
+}
+
+} // namespace slash::runtime
