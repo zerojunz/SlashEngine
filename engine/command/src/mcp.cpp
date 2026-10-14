@@ -133,16 +133,18 @@ Reply Server::list_tools() const {
     for (const auto& [name, command] : tools_) {
         const bool read_only =
             command->effect == Effect::Read && !has(*command, Capability::Edit) &&
-            !has(*command, Capability::Run) && !has(*command, Capability::Filesystem);
+            !has(*command, Capability::Run) && !has(*command, Capability::Filesystem) &&
+            !has(*command, Capability::Build);
         json::Value tool;
         tool["name"] = name;
         tool["description"] = command->description;
         tool["inputSchema"] = command->params;
         tool["annotations"]["readOnlyHint"] = read_only;
         if (!read_only) {
-            // Edits can be undone; replacing the scene or writing files cannot.
-            tool["annotations"]["destructiveHint"] =
-                command->effect == Effect::Replace || has(*command, Capability::Filesystem);
+            // Edits can be undone; replacing the scene, writing files or building cannot.
+            tool["annotations"]["destructiveHint"] = command->effect == Effect::Replace ||
+                                                     has(*command, Capability::Filesystem) ||
+                                                     has(*command, Capability::Build);
         }
         tool["annotations"]["openWorldHint"] = false;
         tools.push_back(std::move(tool));

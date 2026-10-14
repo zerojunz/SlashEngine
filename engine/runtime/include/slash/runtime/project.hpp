@@ -56,6 +56,10 @@ struct Project {
 // A new project with this name and main scene, written in canonical form.
 [[nodiscard]] json::Value new_project(std::string_view name, std::string_view main_scene);
 
+// Whether path names a file inside a project: relative, separated by '/', with no "." or ".."
+// segments, and no backslash or ':'.
+[[nodiscard]] bool is_project_path(std::string_view path);
+
 // Joins a folder and a project-relative path with '/'.
 [[nodiscard]] std::string join_path(std::string_view folder, std::string_view relative);
 

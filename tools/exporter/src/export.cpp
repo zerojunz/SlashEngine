@@ -1,7 +1,8 @@
-#include "export.hpp"
+#include "slash/exporter/export.hpp"
 
 #include "slash/core/log.hpp"
 #include "slash/core/text.hpp"
+#include "slash/exporter/presets.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/platform/process.hpp"
 #include "slash/runtime/project.hpp"
@@ -23,7 +24,7 @@
 #define SLASH_ENGINE_SOURCE_DIR ""
 #endif
 
-namespace slash::cli {
+namespace slash::exporter {
 namespace {
 
 namespace fs = std::filesystem;
@@ -43,8 +44,8 @@ std::string display(const fs::path& path) {
     return path.lexically_normal().generic_string();
 }
 
-std::string environment(const char* name) {
-    return platform::environment_variable(name);
+std::string environment(std::string_view name) {
+    return platform::environment_variable(std::string(name));
 }
 
 bool host_builds(std::string_view platform) {
@@ -74,22 +75,6 @@ std::string host_name() {
 bool is_engine_dir(const fs::path& path) {
     std::error_code error;
     return !path.empty() && fs::exists(path / "export" / "CMakeLists.txt", error);
-}
-
-std::optional<fs::path> find_engine(const ExportOptions& options) {
-    if (!options.engine.empty()) {
-        return is_engine_dir(options.engine) ? std::optional<fs::path>(options.engine)
-                                             : std::nullopt;
-    }
-    for (const fs::path& candidate :
-         {fs::path(environment("SLASH_ENGINE_DIR")),
-          fs::path(platform::base_path()) / ".." / "share" / "slashengine",
-          fs::path(SLASH_ENGINE_SOURCE_DIR)}) {
-        if (is_engine_dir(candidate)) {
-            return fs::absolute(candidate).lexically_normal();
-        }
-    }
-    return std::nullopt;
 }
 
 // The Emscripten CMake toolchain file from an activated emsdk.
@@ -300,20 +285,20 @@ std::optional<json::Value> find_summary(const std::string& output) {
     return std::nullopt;
 }
 
-json::Value run_test(const ExportOptions& options, const fs::path& output, const fs::path& program,
+json::Value run_test(const std::string& platform, const fs::path& output, const fs::path& program,
                      const fs::path& log_path) {
     json::Value test;
     std::vector<std::string> args;
-    if (options.platform == "web") {
+    if (platform == "web") {
         if (!program_runs("node")) {
             test["skipped"] = "Node.js is not on PATH";
             return test;
         }
         args = {"node", program.string()};
-    } else if (options.platform == host_name()) {
+    } else if (platform == host_name()) {
         args = {program.string()};
     } else {
-        test["skipped"] = "this machine can't run " + options.platform + " games";
+        test["skipped"] = "this machine can't run " + platform + " games";
         return test;
     }
     args.insert(args.end(), {"--headless", "--ticks", std::to_string(kTestTicks)});
@@ -359,55 +344,277 @@ ExportResult fail(const Failure& failure, const fs::path& log_path) {
     return result;
 }
 
+// Validation errors for one file, as {"file", "path", "message"} items.
+json::Array file_errors(std::string_view file, const std::vector<json::ValidationError>& errors) {
+    json::Array items;
+    for (const json::ValidationError& problem : errors) {
+        json::Value item;
+        item["file"] = std::string(file);
+        item["path"] = problem.path;
+        item["message"] = problem.message;
+        items.push_back(std::move(item));
+    }
+    return items;
+}
+
+// Re-reads a file that failed to load, to report every error instead of the first.
+template <typename Validate>
+json::Value describe_errors(const fs::path& project_dir, std::string_view file, Validate validate) {
+    json::Value details;
+    if (auto text = platform::read_file((project_dir / file).string()); text) {
+        if (auto parsed = json::parse(text.value()); parsed) {
+            json::Array errors = file_errors(file, validate(parsed.value()));
+            if (!errors.empty()) {
+                details["errors"] = std::move(errors);
+            }
+        }
+    }
+    return details;
+}
+
+// A program on PATH, or "" if there is none.
+std::string find_on_path(std::string_view name) {
+    const std::string path = environment("PATH");
+#ifdef _WIN32
+    constexpr char kSeparator = ';';
+    const std::string file = std::string(name) + ".exe";
+#else
+    constexpr char kSeparator = ':';
+    const std::string file(name);
+#endif
+    std::size_t start = 0;
+    std::error_code error;
+    while (start <= path.size()) {
+        std::size_t end = path.find(kSeparator, start);
+        if (end == std::string::npos) {
+            end = path.size();
+        }
+        if (end > start) {
+            const fs::path candidate = fs::path(path.substr(start, end - start)) / file;
+            if (fs::is_regular_file(candidate, error)) {
+                return candidate.string();
+            }
+        }
+        start = end + 1;
+    }
+    return {};
+}
+
+// signtool from PATH, or from the newest Windows 10 or 11 SDK.
+std::string find_signtool() {
+    if (std::string found = find_on_path("signtool"); !found.empty()) {
+        return found;
+    }
+    const fs::path kits =
+        fs::path(environment("ProgramFiles(x86)")) / "Windows Kits" / "10" / "bin";
+    std::error_code error;
+    fs::path best;
+    for (auto it = fs::directory_iterator(kits, error); !error && it != fs::directory_iterator();
+         it.increment(error)) {
+        const fs::path candidate = it->path() / "x64" / "signtool.exe";
+        if (fs::is_regular_file(candidate, error) && (best.empty() || candidate > best)) {
+            best = candidate;
+        }
+    }
+    return best.string();
+}
+
+// What signing needs, found before building so a missing tool or secret fails right away.
+struct Signing {
+    std::string signtool;
+    std::string certificate;
+    std::string password;
+    std::string api_key;
+    std::string api_key_id;
+    std::string api_issuer;
+    fs::path entitlements;
+};
+
+bool prepare_signing(const Preset& preset, const fs::path& project_dir, Signing& signing,
+                     Failure& failure) {
+    std::error_code error;
+    if (preset.platform == "macos") {
+        const MacosOptions& macos = preset.macos;
+        if (!macos.entitlements.empty()) {
+            signing.entitlements = fs::absolute(project_dir / macos.entitlements, error);
+            if (!fs::is_regular_file(signing.entitlements, error)) {
+                failure = {"options",
+                           "the entitlements file " + macos.entitlements + " named by preset \"" +
+                               preset.name + "\" does not exist",
+                           {}};
+                return false;
+            }
+        }
+        if (macos.codesign_identity != kAdHocIdentity) {
+            auto identities =
+                platform::run_process({"security", "find-identity", "-v", "-p", "codesigning"});
+            if (!identities ||
+                identities.value().tail.find(macos.codesign_identity) == std::string::npos) {
+                failure = {"options",
+                           "the codesign identity \"" + macos.codesign_identity +
+                               "\" is not in the keychain; \"security find-identity "
+                               "-v -p codesigning\" lists the ones that are",
+                           {}};
+                return false;
+            }
+        }
+        if (macos.notarize) {
+            signing.api_key = environment(kAppleApiKeyPath);
+            signing.api_key_id = environment(kAppleApiKeyId);
+            signing.api_issuer = environment(kAppleApiIssuer);
+            if (signing.api_key.empty() || signing.api_key_id.empty() ||
+                signing.api_issuer.empty()) {
+                failure = {"options",
+                           "notarizing needs an App Store Connect API key: set " +
+                               std::string(kAppleApiKeyPath) + " (the .p8 file), " +
+                               std::string(kAppleApiKeyId) + " and " + std::string(kAppleApiIssuer),
+                           {}};
+                return false;
+            }
+        }
+    } else if (preset.platform == "windows" && preset.windows.sign) {
+        signing.certificate = environment(kWindowsCertificatePath);
+        signing.password = environment(kWindowsCertificatePassword);
+        if (signing.certificate.empty() || !fs::is_regular_file(signing.certificate, error)) {
+            failure = {"options",
+                       "signing needs a .pfx code-signing certificate: set " +
+                           std::string(kWindowsCertificatePath) + " to its path and " +
+                           std::string(kWindowsCertificatePassword) + " to its password",
+                       {}};
+            return false;
+        }
+        signing.signtool = find_signtool();
+        if (signing.signtool.empty()) {
+            failure = {"options",
+                       "signing needs signtool from the Windows SDK; install the SDK with Visual "
+                       "Studio or put signtool.exe on PATH",
+                       {}};
+            return false;
+        }
+    }
+    return true;
+}
+
+// Signs the packaged game in place, before it is published, and records what it signed with in
+// signed_with. Leaves signed_with null when the preset doesn't sign.
+bool sign(const Preset& preset, const Signing& signing, const fs::path& package,
+          const std::string& binary, const fs::path& work, const platform::ProcessOptions& process,
+          json::Value& signed_with, Failure& failure) {
+    std::error_code error;
+    if (preset.platform == "macos") {
+        // Every macOS export is signed, ad hoc by default, so the bundle and its data are
+        // sealed and Apple silicon Macs will run it.
+        const MacosOptions& macos = preset.macos;
+        const std::string app = fs::absolute(package / (binary + ".app"), error).string();
+        std::vector<std::string> args{"codesign", "--force", "--sign", macos.codesign_identity};
+        if (macos.codesign_identity != kAdHocIdentity) {
+            args.insert(args.end(), {"--options", "runtime", "--timestamp"});
+        }
+        if (!signing.entitlements.empty()) {
+            args.insert(args.end(), {"--entitlements", signing.entitlements.string()});
+        }
+        args.push_back(app);
+        if (!step("sign", args, process, failure) ||
+            !step("sign", {"codesign", "--verify", "--strict", app}, process, failure)) {
+            return false;
+        }
+        signed_with["identity"] = macos.codesign_identity;
+        if (macos.notarize) {
+            const std::string archive = fs::absolute(work / "notarize.zip", error).string();
+            if (!step("notarize", {"ditto", "-c", "-k", "--keepParent", app, archive}, process,
+                      failure) ||
+                !step("notarize",
+                      {"xcrun", "notarytool", "submit", archive, "--key", signing.api_key,
+                       "--key-id", signing.api_key_id, "--issuer", signing.api_issuer, "--wait"},
+                      process, failure) ||
+                !step("notarize", {"xcrun", "stapler", "staple", app}, process, failure)) {
+                return false;
+            }
+        }
+        signed_with["notarized"] = macos.notarize;
+    } else if (preset.platform == "windows" && preset.windows.sign) {
+        const std::string exe = fs::absolute(package / (binary + ".exe"), error).string();
+        std::vector<std::string> args{signing.signtool, "sign", "/fd",
+                                      "SHA256",         "/f",   signing.certificate};
+        if (!signing.password.empty()) {
+            args.insert(args.end(), {"/p", signing.password});
+        }
+        if (!preset.windows.timestamp_url.empty()) {
+            args.insert(args.end(), {"/tr", preset.windows.timestamp_url, "/td", "SHA256"});
+        }
+        args.push_back(exe);
+        if (!step("sign", args, process, failure)) {
+            return false;
+        }
+        signed_with["certificate"] = fs::path(signing.certificate).filename().string();
+        signed_with["timestamped"] = !preset.windows.timestamp_url.empty();
+    }
+    return true;
+}
+
 } // namespace
+
+std::optional<std::string> find_engine(const std::string& engine) {
+    std::error_code error;
+    if (!engine.empty()) {
+        return is_engine_dir(engine) ? std::optional<std::string>(
+                                           fs::absolute(engine, error).lexically_normal().string())
+                                     : std::nullopt;
+    }
+    for (const fs::path& candidate :
+         {fs::path(environment("SLASH_ENGINE_DIR")),
+          fs::path(platform::base_path()) / ".." / "share" / "slashengine",
+          fs::path(SLASH_ENGINE_SOURCE_DIR)}) {
+        if (is_engine_dir(candidate)) {
+            return fs::absolute(candidate, error).lexically_normal().string();
+        }
+    }
+    return std::nullopt;
+}
 
 ExportResult export_game(const ExportOptions& options) {
     const auto started = std::chrono::steady_clock::now();
     const fs::path project_dir = options.project;
-    const fs::path work = project_dir / ".slash" / "export" / options.platform;
-    const fs::path output = options.output.empty()
-                                ? project_dir / "build" / "export" / options.platform
-                                : fs::path(options.output);
+
+    auto presets = load_presets(project_dir.string());
+    if (!presets) {
+        return fail({"validate", presets.error().message,
+                     describe_errors(project_dir, kPresetsFile, validate_presets)},
+                    {});
+    }
+    auto found = find_preset(presets.value(), options.target);
+    if (!found) {
+        return fail({"options", found.error().message, {}}, {});
+    }
+    const Preset& preset = found.value();
+    const std::string& platform = preset.platform;
+    const bool debug = options.debug || preset.debug;
+    const fs::path work = project_dir / ".slash" / "export" / preset.name;
+    fs::path output = project_dir / "build" / "export" / preset.name;
+    if (!options.output.empty()) {
+        output = options.output;
+    } else if (!preset.output.empty()) {
+        output = project_dir / preset.output;
+    }
     const fs::path log_path = work / "export.log";
 
-    if (std::ranges::find(kExportPlatforms, options.platform) == kExportPlatforms.end()) {
-        std::string message = "unknown platform \"" + options.platform + "\"";
-        if (const std::string_view hint = closest_match(options.platform, kExportPlatforms);
-            !hint.empty()) {
-            message += "; did you mean \"" + std::string(hint) + "\"?";
-        }
-        return fail({"options", message + " (ios and android are not supported yet)", {}}, {});
-    }
-    if (!host_builds(options.platform)) {
+    if (!host_builds(platform)) {
         return fail({"options",
-                     options.platform + " games can't be built on " + host_name() +
-                         " yet; build them on " + options.platform + " or in CI",
+                     platform + " games can't be built on " + host_name() + " yet; build them on " +
+                         platform + " or in CI",
                      {}},
                     {});
     }
 
     auto project = runtime::load_project(project_dir.string());
     if (!project) {
-        json::Value details;
-        if (auto text = platform::read_file((project_dir / runtime::kProjectFile).string()); text) {
-            if (auto parsed = json::parse(text.value()); parsed) {
-                json::Array errors;
-                for (const auto& problem : runtime::validate_project(parsed.value())) {
-                    json::Value item;
-                    item["file"] = std::string(runtime::kProjectFile);
-                    item["path"] = problem.path;
-                    item["message"] = problem.message;
-                    errors.push_back(std::move(item));
-                }
-                if (!errors.empty()) {
-                    details["errors"] = std::move(errors);
-                }
-            }
-        }
-        return fail({"validate", project.error().message, std::move(details)}, {});
+        return fail(
+            {"validate", project.error().message,
+             describe_errors(project_dir, runtime::kProjectFile, runtime::validate_project)},
+            {});
     }
 
-    const std::optional<fs::path> engine = find_engine(options);
+    const std::optional<std::string> engine = find_engine(options.engine);
     if (!engine) {
         return fail({"options",
                      "could not find the engine sources; pass --engine <folder> or set "
@@ -416,7 +623,7 @@ ExportResult export_game(const ExportOptions& options) {
                     {});
     }
     std::optional<fs::path> toolchain;
-    if (options.platform == "web") {
+    if (platform == "web") {
         toolchain = find_emscripten_toolchain();
         if (!toolchain) {
             return fail({"options",
@@ -429,12 +636,16 @@ ExportResult export_game(const ExportOptions& options) {
     if (!program_runs("cmake")) {
         return fail({"options", "exports need CMake 3.25 or newer on PATH", {}}, {});
     }
+    Failure failure;
+    Signing signing;
+    if (!prepare_signing(preset, project_dir, signing, failure)) {
+        return fail(failure, {});
+    }
 
     std::error_code error;
     fs::create_directories(work, error);
     (void)platform::write_file(log_path.string(), "");
 
-    Failure failure;
     if (!output_writable(output, work / "output.json", failure)) {
         return fail(failure, {});
     }
@@ -444,11 +655,12 @@ ExportResult export_game(const ExportOptions& options) {
         return fail(failure, log_path);
     }
 
-    const std::string config = options.debug ? "Debug" : "Release";
+    const std::string config = debug ? "Debug" : "Release";
     const fs::path build = work / "build";
+    const fs::path engine_dir = engine.value();
     std::vector<std::string> configure{"cmake",
                                        "-S",
-                                       (engine.value() / "export").string(),
+                                       (engine_dir / "export").string(),
                                        "-B",
                                        build.string(),
                                        "-DCMAKE_BUILD_TYPE=" + config,
@@ -460,10 +672,10 @@ ExportResult export_game(const ExportOptions& options) {
     if (!fs::exists(build / "CMakeCache.txt", error) && program_runs("ninja")) {
         configure.insert(configure.begin() + 1, {"-G", "Ninja"});
     }
-    if (options.platform == "macos") {
+    if (platform == "macos") {
         configure.push_back("-DCMAKE_OSX_DEPLOYMENT_TARGET=" + std::string(kMacosDeploymentTarget));
         // Release builds run on Apple silicon and Intel Macs; debug builds only on this one.
-        if (!options.debug) {
+        if (!debug) {
             configure.emplace_back("-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64");
         }
     }
@@ -474,7 +686,7 @@ ExportResult export_game(const ExportOptions& options) {
     platform::ProcessOptions process;
     process.log_path = log_path.string();
     if (environment("CPM_SOURCE_CACHE").empty()) {
-        const fs::path engine_cache = engine.value() / ".cpm-cache";
+        const fs::path engine_cache = engine_dir / ".cpm-cache";
         process.environment.emplace_back(
             "CPM_SOURCE_CACHE",
             fs::exists(engine_cache, error)
@@ -482,7 +694,9 @@ ExportResult export_game(const ExportOptions& options) {
                 : fs::absolute(work / ".." / "cpm-cache", error).lexically_normal().string());
     }
 
+    const std::string binary = project.value().binary_name();
     const fs::path package = work / "package";
+    json::Value signed_with;
     fs::remove_all(package, error);
     if (!step("configure", configure, process, failure) ||
         !step("build", {"cmake", "--build", build.string(), "--config", config, "--parallel"},
@@ -491,20 +705,20 @@ ExportResult export_game(const ExportOptions& options) {
               {"cmake", "--install", build.string(), "--config", config, "--component", "game",
                "--prefix", fs::absolute(package, error).string()},
               process, failure) ||
+        !sign(preset, signing, package, binary, work, process, signed_with, failure) ||
         !publish(package, output, work / "output.json", failure)) {
         return fail(failure, log_path);
     }
 
-    const std::string binary = project.value().binary_name();
     fs::path executable;
     fs::path program;
-    if (options.platform == "macos") {
+    if (platform == "macos") {
         executable = output / (binary + ".app");
         program = executable / "Contents" / "MacOS" / binary;
-    } else if (options.platform == "windows") {
+    } else if (platform == "windows") {
         executable = output / (binary + ".exe");
         program = executable;
-    } else if (options.platform == "linux") {
+    } else if (platform == "linux") {
         executable = output / binary;
         program = executable;
     } else {
@@ -515,14 +729,18 @@ ExportResult export_game(const ExportOptions& options) {
     ExportResult result;
     result.ok = true;
     json::Value& out = result.json;
-    out["platform"] = options.platform;
+    out["preset"] = preset.name;
+    out["platform"] = platform;
     out["output"] = display(output);
     out["executable"] = display(executable);
     out["bytes"] = folder_bytes(output);
     out["log"] = display(log_path);
+    if (!signed_with.is_null()) {
+        out["signed"] = std::move(signed_with);
+    }
     if (options.test) {
         json::Value test =
-            run_test(options, fs::absolute(output, error), fs::absolute(program, error), log_path);
+            run_test(platform, fs::absolute(output, error), fs::absolute(program, error), log_path);
         if (const json::Value* passed = test.find("passed");
             passed != nullptr && !passed->as_bool()) {
             result.ok = false;
@@ -534,4 +752,4 @@ ExportResult export_game(const ExportOptions& options) {
     return result;
 }
 
-} // namespace slash::cli
+} // namespace slash::exporter

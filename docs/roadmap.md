@@ -82,11 +82,14 @@ Built in two halves.
 - [ ] iOS and Android exports
 - [ ] `slash-cli toolchain install`: pinned open-source cross toolchains (llvm-mingw, Clang with a
       Linux sysroot, Android NDK), so one Mac builds every target
-- [ ] `export_presets.json`, with signing secrets read from environment variables and a throwaway
-      Android debug keystore
-- [ ] The `export.run` command, so agents export over MCP
-- [ ] A GitHub Actions workflow from `slash-cli init` that builds and tests every platform on
+- [x] `export_presets.json`, with signing secrets read from environment variables: macOS
+      codesigning (ad hoc by default) and notarization, Windows signtool
+- [ ] A throwaway Android debug keystore, with the Android export
+- [x] The `export.run` command, so agents export over MCP
+- [x] A GitHub Actions workflow from `slash-cli init` that builds and tests every platform on
       native runners
+- [x] Exports pinned to the 2020 minimums: macOS 11, Windows 10 (subsystem version 10.0), Chrome
+      85, Firefox 79 and Safari 15
 
 Exit: an empty project exports to all six platforms and passes headless tests on each.
 
