@@ -45,6 +45,7 @@ SDL3 is the only platform layer: windowing, input, audio, file I/O, threads and 
 - **Headless backend.** A null device that runs the full simulation with no window or GPU. This is how agents and CI run games, tests and replays on a server.
 - **Offscreen capture.** Any backend can render a frame to an image and return it as PNG. This is how an agent sees the game it is building.
 - **Web.** Web export ships at launch. If SDL3's GPU API still has no web backend by then, SlashEngine adds its own WebGPU backend behind the same interface, with WebGL2 as the fallback for browsers without WebGPU.
+- **Refresh rates.** The simulation ticks at a fixed rate while rendering runs at the display's rate and interpolates between ticks, so a 60 Hz simulation looks smooth on a 240 Hz display. As in Godot, a project sets a V-Sync mode (on, off, adaptive or mailbox) and a frame cap, a game's options menu can change both while it runs, and the engine reports the display's refresh rates. Variable refresh rate (G-Sync, FreeSync, Apple's ProMotion) is the display's job; the engine keeps it working by choosing a present mode and fullscreen mode that allow it. Phones render at 120 Hz where supported, and web games follow the browser's frame rate.
 - **Determinism.** Fixed-timestep simulation, seeded RNG per world, and input recorded as events, so a replay file reproduces a run exactly. Agents rely on this to verify fixes.
 
 | Platform | Engine and tools run here | Export from a Mac uses |
@@ -90,6 +91,7 @@ SlashEngine covers nearly every Godot 4 feature area at launch and adds UE5 feat
 | Particles | GPU and CPU particles | Niagara | CPU and GPU particles, particle graphs in text | Launch |
 | Audio | Buses, effects, 3D audio | MetaSounds, spatial audio | miniaudio: buses, effects, 3D spatial audio | Launch |
 | Input | Action maps, gamepads | Enhanced Input | Rebindable action maps over SDL3, injectable by agents | Launch |
+| Refresh rates and frame pacing | V-Sync modes, max FPS | V-Sync, max FPS, frame rate smoothing | V-Sync modes, frame cap, display refresh rates, variable refresh rate, rendering interpolated between fixed ticks | Launch |
 | UI | Control nodes, containers, themes | UMG | Retained UI with flexbox layout and themes, defined in text | Launch |
 | Text and fonts | Font rendering, BiDi | Slate fonts | FreeType, HarfBuzz, MSDF fonts, BiDi | Launch |
 | Navigation | Navigation meshes, avoidance | Nav mesh, AI controllers | Recast and Detour, 2D and 3D, avoidance | Launch |
