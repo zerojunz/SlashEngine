@@ -40,7 +40,8 @@ To change a game while it plays, start it with `slash-cli run --serve` and conne
 claude mcp add slashengine-live -- slash-mcp --live --project .
 ```
 
-Agents working on the engine itself should start with [AGENTS.md](AGENTS.md).
+To contribute, read [CONTRIBUTING.md](CONTRIBUTING.md). Agents working on the engine itself should
+start with [AGENTS.md](AGENTS.md).
 
 ## License
 
