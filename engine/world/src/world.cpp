@@ -43,6 +43,11 @@ void World::destroy(entt::entity entity) {
     }
 }
 
+void World::clear() {
+    registry_.clear();
+    by_id_.clear();
+}
+
 bool World::valid(entt::entity entity) const {
     return registry_.valid(entity);
 }

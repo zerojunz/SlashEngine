@@ -1,0 +1,5 @@
+{"jsonrpc":"2.0","id":1,"method":"entity.create","params":{"id":"a"}}
+{"jsonrpc":"2.0","method":"step","params":{"ticks":2}}
+{"jsonrpc":"2.0","id":2,"method":"world.query"}
+[{"jsonrpc":"2.0","id":3,"method":"undo"},{"jsonrpc":"2.0","id":4,"method":"history.get"}]
+{"jsonrpc":"2.0","id":5,"method":"nope"}

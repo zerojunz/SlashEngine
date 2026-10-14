@@ -64,6 +64,9 @@ public:
     [[nodiscard]] bool has(const World& world, entt::entity entity) const;
     void remove(World& world, entt::entity entity) const;
 
+    // Every field of the entity's component as a JSON object.
+    [[nodiscard]] json::Value get(const World& world, entt::entity entity) const;
+
     // The component's fields as a JSON object, leaving out those equal to their defaults.
     [[nodiscard]] json::Value save(const World& world, entt::entity entity) const;
 

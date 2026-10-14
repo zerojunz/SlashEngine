@@ -24,6 +24,7 @@ $cli version                                   # {"name":"SlashEngine","version"
 $cli run --headless --ticks 120                # no window or GPU
 $cli run --headless --ticks 60 --scene tests/data/basic.scene.json --save build/out.scene.json
 $cli run                                       # opens a window until closed
+$cli call engine.describe                      # components, commands and the open scene
 ```
 
 `slash-cli` prints results to stdout as JSON and logs to stderr as JSON lines. Exit codes: 0
@@ -43,6 +44,36 @@ $cli scene format --check level.scene.json          # exit 1 if not canonical
 ```
 
 Validate after editing a scene by hand, and format before committing one.
+
+## Commands, MCP and JSON-RPC
+
+Every change to a world goes through a command registered in `engine/command`. The same registry
+backs three front ends, so they never drift apart:
+
+```bash
+mcp=./build/dev/tools/slash-mcp/slash-mcp
+$mcp --project . --scene tests/data/basic.scene.json     # MCP over stdio; tools use '_' for '.'
+$cli rpc --project .                                     # JSON-RPC 2.0, one message per line
+$cli call world.query '{"with": ["Transform2D"]}' --scene tests/data/basic.scene.json
+$cli call batch '{"commands": [{"command": "entity.create", "params": {"id": "a"}}]}' \
+    --scene build/out.scene.json --save
+$cli init path/to/game                                   # MCP configs for Claude Code, Codex, Cursor
+```
+
+A session checks each command's capabilities (`--allow read,edit,run,filesystem`), validates its
+params against the command's JSON Schema, runs it, and records an undo step if it changed the
+world. A failed command changes nothing. Paths are relative to `--project` and cannot leave it.
+
+Commands are built for agents, so keep them cheap to call:
+
+- Return only what the caller needs: IDs before full components, changed fields after an edit.
+- Report every error with the JSON Pointer of the bad value and, for a misspelled name, the
+  closest valid one ("did you mean").
+- Keep descriptions short; they are sent to the model as tool definitions.
+
+To add a command, register it in `engine/command/src/builtin.cpp` (or your own registry) with a
+name, description, capabilities, an `Effect` and a params schema with
+`"additionalProperties": false`, then add a test to `tests/test_command.cpp`.
 
 ## Add a component
 
@@ -86,7 +117,8 @@ CI rejects unformatted code and any clang-tidy finding.
   `kPascalCase` constants.
 - Headers live in `engine/<module>/include/slash/<module>/`, sources in `engine/<module>/src/`.
   Modules: `core` (Result, logging, JSON, reflection, math), `platform` (SDL3 window, run loop,
-  files) and `world` (EnTT world, components, scenes).
+  files), `world` (EnTT world, components, scenes) and `command` (commands, sessions with undo,
+  JSON-RPC and MCP).
 - New dependencies go in `cmake/Dependencies.cmake`, pinned to a tag, and in `THIRD_PARTY.md`
   with their license. Only permissive licenses (MIT, BSD, zlib, Apache 2.0, Boost, MIT-0,
   public domain). Never copy code from closed engines.

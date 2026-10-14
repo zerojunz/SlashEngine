@@ -14,4 +14,10 @@ namespace slash::platform {
 // Creates or replaces the file.
 [[nodiscard]] Result<void> write_file(std::string_view path, std::string_view contents);
 
+// Creates a directory and any missing parents. Succeeds if it already exists.
+[[nodiscard]] Result<void> create_directories(std::string_view path);
+
+// True if a file or directory exists at path.
+[[nodiscard]] bool exists(std::string_view path);
+
 } // namespace slash::platform

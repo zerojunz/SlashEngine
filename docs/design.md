@@ -177,7 +177,7 @@ The engine is a stack of five layers, and the command layer is the only way into
 
 ## What AI-first means
 
-AI-first means four concrete things: the whole project is text, the engine describes itself, every action is a command, and an agent can observe the result. If an agent cannot do something through these four, it counts as a bug.
+AI-first means four concrete things: the whole project is text, the engine describes itself, every action is a command, and an agent can observe the result. If an agent cannot do something through these four, it counts as a bug. On top of that, the engine should be cheaper for an agent to use than editing files by hand, measured in calls and tokens (section 6).
 
 ### 1. Text-serializable scenes
 
@@ -209,29 +209,46 @@ Agents get structured JSON logs, a subscribable event stream, frame captures as 
 
 ### 5. Connecting Claude Code, Codex and Cursor
 
-All three agents connect directly, because each one can launch a local MCP server over stdio. Running `slash-cli init` in a game project writes all three configs plus an `AGENTS.md` (read by Codex and Cursor) and a `CLAUDE.md` that points to it, so the agent knows how to build, run and test the game.
+All three agents connect directly, because each one can launch a local MCP server over stdio. Running `slash-cli init` in a game project writes all three configs, an `AGENTS.md` (read by Codex and Cursor), a `CLAUDE.md` that points to it, a Claude Code skill for editing scenes, and an empty `scenes/main.scene.json` that the server opens at startup. The server's MCP `instructions` tell the model to use the engine tools rather than hand-edit scene files, and how to use them cheaply.
 
-Claude Code, from the project folder:
+Claude Code reads `.mcp.json` in the project, or adds the server by hand:
 
 ```bash
 claude mcp add slashengine -- slash-mcp --project .
 ```
 
-Codex, in `~/.codex/config.toml`:
+Codex reads `.codex/config.toml` in a trusted project, or `~/.codex/config.toml`:
 
 ```toml
 [mcp_servers.slashengine]
 command = "slash-mcp"
-args = ["--project", "."]
+args = ["--project", ".", "--scene", "scenes/main.scene.json"]
 ```
 
-Cursor, in `.cursor/mcp.json`:
+Cursor reads `.cursor/mcp.json`:
 
 ```json
-{ "mcpServers": { "slashengine": { "command": "slash-mcp", "args": ["--project", "."] } } }
+{ "mcpServers": { "slashengine": { "command": "slash-mcp", "args": ["--project", "${workspaceFolder}"] } } }
 ```
 
-Any other MCP client works the same way, and agents without MCP can use `slash-cli`, the REST mirror or the JSON-RPC socket directly.
+MCP tool names use underscores (`entity_create` for the `entity.create` command), because some clients reject dots. Any other MCP client works the same way, and agents without MCP can use `slash-cli call`, `slash-cli rpc` (JSON-RPC over stdio), or the REST mirror.
+
+### 6. Cheap for agents to use
+
+Agents can't be forced to prefer a tool, but they reliably use what the project tells them to use and what gets the job done in fewer, cheaper steps. So every command is designed to cost as few calls and tokens as possible:
+
+| Feature | What it saves | Milestone |
+| --- | --- | --- |
+| `batch` runs many commands in one call, all or nothing, as one undo step | A round trip per edit | 3 |
+| Queries return IDs unless asked for components; edits return only changed fields; `omit_defaults` drops default values | Tokens per answer | 3 |
+| `engine.describe` lists components with default values and command names in one short answer; full schemas only on request | Reading source or docs | 3 |
+| Errors carry the JSON Pointer of the bad value and a "did you mean" hint | A docs lookup per mistake | 2 and 3 |
+| `slash-cli init` and the MCP instructions point agents at the tools | Agents falling back to hand edits | 3 |
+| A test command steps the game headless and returns only the checks that failed | Screenshots and log reading | 5 |
+| Frame summaries list what is on screen as data; PNG captures stay available | Image tokens | 5 |
+| A benchmark of standard agent tasks counts calls and tokens on a schedule | Regressions in agent efficiency | 6 |
+
+A custom language for agents is deliberately not on this list: models write C++ and JSON reliably because they have seen so much of both, and MCP tool calls are JSON already. When agents repeat the same sequence of calls, the fix is a new command or prefab.
 
 ## Model-agnostic provider interface
 

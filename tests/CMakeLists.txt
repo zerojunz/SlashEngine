@@ -1,15 +1,19 @@
 add_executable(slash_tests
     test_main.cpp
+    test_command.cpp
     test_fixed_step.cpp
     test_json.cpp
     test_json_schema.cpp
     test_log.cpp
+    test_mcp.cpp
     test_platform.cpp
     test_reflect.cpp
     test_result.cpp
+    test_rpc.cpp
     test_scene.cpp
     test_world.cpp)
-target_link_libraries(slash_tests PRIVATE slash::core slash::platform slash::world doctest::doctest)
+target_link_libraries(slash_tests PRIVATE
+    slash::command slash::core slash::platform slash::world doctest::doctest)
 # doctest forward-declares std::ostream by default, which breaks string_view checks on recent
 # MSVC standard libraries; include the real headers instead.
 target_compile_definitions(slash_tests PRIVATE DOCTEST_CONFIG_USE_STD_HEADERS)
@@ -67,4 +71,64 @@ if(SLASH_BUILD_TOOLS)
         COMMAND ${CMAKE_COMMAND} -E compare_files
             ${scenes}/basic.scene.json ${CMAKE_CURRENT_BINARY_DIR}/roundtrip.scene.json)
     set_tests_properties(cli_run_scene_roundtrip PROPERTIES FIXTURES_REQUIRED roundtrip_scene)
+
+    # One-shot engine commands.
+    add_test(NAME cli_call_describe COMMAND slash-cli call engine.describe)
+    set_tests_properties(cli_call_describe PROPERTIES
+        PASS_REGULAR_EXPRESSION "\"name\":\"SlashEngine\"")
+
+    add_test(NAME cli_call_unknown_command COMMAND slash-cli call world.qurey)
+    set_tests_properties(cli_call_unknown_command PROPERTIES WILL_FAIL TRUE)
+
+    # Create a scene with one batch call, save it, then check the file.
+    set(call_project ${CMAKE_CURRENT_BINARY_DIR}/call_project)
+    add_test(NAME cli_call_clean COMMAND ${CMAKE_COMMAND} -E rm -rf ${call_project})
+    set_tests_properties(cli_call_clean PROPERTIES FIXTURES_SETUP call_clean)
+    add_test(NAME cli_call_batch_save
+        COMMAND slash-cli call batch
+            "{\"commands\":[{\"command\":\"entity.create\",\"params\":{\"id\":\"player\",\"components\":{\"Transform2D\":{\"position\":[64,32]}}}},{\"command\":\"entity.create\",\"params\":{\"id\":\"enemy\"}}]}"
+            --project ${call_project} --scene levels/one.scene.json --save)
+    set_tests_properties(cli_call_batch_save PROPERTIES
+        FIXTURES_REQUIRED call_clean
+        FIXTURES_SETUP call_saved
+        PASS_REGULAR_EXPRESSION "{\"id\":\"enemy\"}")
+    add_test(NAME cli_call_saved_scene_valid
+        COMMAND slash-cli scene validate ${call_project}/levels/one.scene.json)
+    set_tests_properties(cli_call_saved_scene_valid PROPERTIES
+        FIXTURES_REQUIRED call_saved
+        PASS_REGULAR_EXPRESSION "{\"entities\":2,\"valid\":true}")
+
+    # JSON-RPC and MCP over stdio.
+    set(run_stdio ${CMAKE_CURRENT_SOURCE_DIR}/run_stdio.cmake)
+    add_test(NAME cli_rpc_stdio
+        COMMAND ${CMAKE_COMMAND} -DPROGRAM=$<TARGET_FILE:slash-cli> -DARGS=rpc
+            -DINPUT=${scenes}/rpc_session.jsonl -DEXPECT=${scenes}/rpc_session.expected
+            -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}/rpc_project -P ${run_stdio})
+    add_test(NAME mcp_stdio
+        COMMAND ${CMAKE_COMMAND} -DPROGRAM=$<TARGET_FILE:slash-mcp>
+            "-DARGS=--project|.|--scene|main.scene.json"
+            -DINPUT=${scenes}/mcp_session.jsonl -DEXPECT=${scenes}/mcp_session.expected
+            -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}/mcp_project -P ${run_stdio})
+    set_tests_properties(mcp_stdio PROPERTIES FIXTURES_SETUP mcp_saved)
+    add_test(NAME mcp_saved_scene_valid
+        COMMAND slash-cli scene validate ${CMAKE_CURRENT_BINARY_DIR}/mcp_project/main.scene.json)
+    set_tests_properties(mcp_saved_scene_valid PROPERTIES
+        FIXTURES_REQUIRED mcp_saved
+        PASS_REGULAR_EXPRESSION "{\"entities\":1,\"valid\":true}")
+
+    # init writes the agent configs and a valid empty scene, and keeps existing files.
+    set(init_project ${CMAKE_CURRENT_BINARY_DIR}/init_project)
+    add_test(NAME cli_init COMMAND slash-cli init ${init_project} --force)
+    set_tests_properties(cli_init PROPERTIES
+        FIXTURES_SETUP init_project
+        PASS_REGULAR_EXPRESSION "\"\\.codex/config\\.toml\"")
+    add_test(NAME cli_init_keeps_files COMMAND slash-cli init ${init_project})
+    set_tests_properties(cli_init_keeps_files PROPERTIES
+        FIXTURES_REQUIRED init_project
+        PASS_REGULAR_EXPRESSION "\"created\":\\[\\],\"skipped\":\\[\"AGENTS\\.md\"")
+    add_test(NAME cli_init_scene_valid
+        COMMAND slash-cli scene validate ${init_project}/scenes/main.scene.json)
+    set_tests_properties(cli_init_scene_valid PROPERTIES
+        FIXTURES_REQUIRED init_project
+        PASS_REGULAR_EXPRESSION "{\"entities\":0,\"valid\":true}")
 endif()
