@@ -336,4 +336,4 @@ After launch: Windows and Linux hosts for the engine and tools, then the After l
 
 **Open questions**
 
-- [x] Minimum OS versions. Decided by Dan: only versions released in 2020 or later are supported. That means macOS 11, iOS 14, Android 11 (API level 30), Windows 10 version 2004 Linux with glibc 2.31 (Ubuntu 20.04 or newer), and on the web Chrome and Edge 80, Firefox 72 and Safari 15 (Safari 14 lacks WebGL2). SDL3's GPU API needs less on every platform.
+- [x] Minimum OS versions. Decided by Dan: only versions released in 2020 or later are supported. That means macOS 11, iOS 14, Android 11 (API level 30), Windows 10 version 2004, Linux with glibc 2.31 (Ubuntu 20.04 or newer), and on the web Chrome and Edge 85, Firefox 79 and Safari 15, the oldest browsers Emscripten supports (Safari 14 also lacks WebGL2). SDL3's GPU API needs less on every platform.
