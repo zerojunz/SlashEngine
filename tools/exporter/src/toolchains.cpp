@@ -222,7 +222,7 @@ fs::path toolchains_dir() {
 }
 
 std::optional<fs::path> installed_toolchain(const Toolchain& toolchain, const fs::path& dir) {
-    const fs::path folder = dir / (toolchain.name + "-" + toolchain.version);
+    fs::path folder = dir / (toolchain.name + "-" + toolchain.version);
     std::error_code error;
     if (fs::is_regular_file(folder / kMarker, error)) {
         return folder;

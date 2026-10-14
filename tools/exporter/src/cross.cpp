@@ -62,6 +62,11 @@ std::string linux_toolchain(const fs::path& llvm, const fs::path& sysroot,
            std::string(kFindModes);
 }
 
+std::string no_toolchain(const std::string& platform, const std::string& name) {
+    return platform + " games can't be built on this machine yet: there is no " + name +
+           " toolchain for it";
+}
+
 } // namespace
 
 bool prepare_cross(const std::string& platform, const std::string& arch, const fs::path& work,
@@ -77,10 +82,7 @@ bool prepare_cross(const std::string& platform, const std::string& arch, const f
     for (const std::string& name : needed) {
         const auto toolchain = std::ranges::find(available, name, &Toolchain::name);
         if (toolchain == available.end()) {
-            failure = {"options",
-                       platform + " games can't be built on this machine yet: there is no " + name +
-                           " toolchain for it",
-                       {}};
+            failure = {"options", no_toolchain(platform, name), {}};
             return false;
         }
         if (!installed_toolchain(*toolchain, dir)) {
