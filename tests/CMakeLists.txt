@@ -5,6 +5,9 @@ add_executable(slash_tests
     test_platform.cpp
     test_result.cpp)
 target_link_libraries(slash_tests PRIVATE slash::core slash::platform doctest::doctest)
+# doctest forward-declares std::ostream by default, which breaks string_view checks on recent
+# MSVC standard libraries; include the real headers instead.
+target_compile_definitions(slash_tests PRIVATE DOCTEST_CONFIG_USE_STD_HEADERS)
 slash_target_warnings(slash_tests)
 
 add_test(NAME unit COMMAND slash_tests)
