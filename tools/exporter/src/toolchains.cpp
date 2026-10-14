@@ -164,11 +164,11 @@ std::vector<Toolchain> host_toolchains() {
 #if defined(__APPLE__)
     constexpr std::string_view kLlvmMingwHost = "macos-universal";
     constexpr std::string_view kLlvmMingwSha256 =
-        "0000000000000000000000000000000000000000000000000000000000000000";
+        "52e5f5a7b131021d0c39a37a38fa380a1da7885cd04bd61afd0cd4ecfb8bc1f3";
 #else
     constexpr std::string_view kLlvmMingwHost = "ubuntu-22.04-x86_64";
     constexpr std::string_view kLlvmMingwSha256 =
-        "0000000000000000000000000000000000000000000000000000000000000000";
+        "bb7bb7654b33d5aa8712acb837c963b2e0c56352560c76105270a3268c665c21";
 #endif
     const std::string folder =
         "llvm-mingw-" + std::string(kLlvmMingwVersion) + "-ucrt-" + std::string(kLlvmMingwHost);
