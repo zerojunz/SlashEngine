@@ -10,14 +10,17 @@ add_executable(slash_tests
     test_reflect.cpp
     test_result.cpp
     test_rpc.cpp
+    test_runtime.cpp
     test_scene.cpp
     test_server.cpp
     test_world.cpp)
 target_link_libraries(slash_tests PRIVATE
-    slash::command slash::core slash::platform slash::server slash::world doctest::doctest)
+    slash::command slash::core slash::platform slash::runtime slash::server slash::world
+    doctest::doctest SDL3::SDL3-static)
 # doctest forward-declares std::ostream by default, which breaks string_view checks on recent
 # MSVC standard libraries; include the real headers instead.
-target_compile_definitions(slash_tests PRIVATE DOCTEST_CONFIG_USE_STD_HEADERS)
+target_compile_definitions(slash_tests PRIVATE DOCTEST_CONFIG_USE_STD_HEADERS
+    SLASH_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data" SLASH_TEST_CMAKE="${CMAKE_COMMAND}")
 slash_target_warnings(slash_tests)
 
 add_test(NAME unit COMMAND slash_tests WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
@@ -132,6 +135,46 @@ if(SLASH_BUILD_TOOLS)
     add_test(NAME cli_run_port_needs_serve COMMAND slash-cli run --headless --ticks 1 --port 0)
     set_tests_properties(cli_run_port_needs_serve PROPERTIES WILL_FAIL TRUE)
 
+    # Game projects and the game runtime.
+    add_test(NAME cli_schema_project COMMAND slash-cli schema project)
+    set_tests_properties(cli_schema_project PROPERTIES
+        PASS_REGULAR_EXPRESSION "\"title\": \"SlashEngine project\"")
+    add_test(NAME cli_project_validate COMMAND slash-cli project validate ${scenes}/game)
+    set_tests_properties(cli_project_validate PROPERTIES PASS_REGULAR_EXPRESSION "{\"valid\":true}")
+    add_test(NAME game_headless
+        COMMAND slash-game --headless --ticks 30 --data ${scenes}/game)
+    set_tests_properties(game_headless PROPERTIES
+        PASS_REGULAR_EXPRESSION "\"entities\":3,\"headless\":true,.*\"ticks\":30}")
+    add_test(NAME game_headless_needs_ticks COMMAND slash-game --headless --data ${scenes}/game)
+    set_tests_properties(game_headless_needs_ticks PROPERTIES WILL_FAIL TRUE)
+
+    # export checks its arguments and the project before building anything.
+    add_test(NAME cli_export_unknown_platform COMMAND slash-cli export macso)
+    set_tests_properties(cli_export_unknown_platform PROPERTIES
+        PASS_REGULAR_EXPRESSION "did you mean \\\\\"macos\\\\\"")
+    if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin")
+        set(host_platform macos)
+    elseif(CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
+        set(host_platform windows)
+    else()
+        set(host_platform linux)
+    endif()
+    set(broken_game ${CMAKE_CURRENT_BINARY_DIR}/broken_game)
+    add_test(NAME cli_export_copy_broken
+        COMMAND ${CMAKE_COMMAND} -E copy_directory ${scenes}/broken_game ${broken_game})
+    set_tests_properties(cli_export_copy_broken PROPERTIES FIXTURES_SETUP broken_game)
+    add_test(NAME cli_export_invalid_scene
+        COMMAND slash-cli export ${host_platform} --project ${broken_game})
+    set_tests_properties(cli_export_invalid_scene PROPERTIES
+        FIXTURES_REQUIRED broken_game
+        PASS_REGULAR_EXPRESSION "\"file\":\"scenes/main\\.scene\\.json\".*\"step\":\"validate\"")
+    # A folder export didn't make is never replaced.
+    add_test(NAME cli_export_keeps_other_folders
+        COMMAND slash-cli export ${host_platform} --project ${broken_game} --out ${broken_game}/scenes)
+    set_tests_properties(cli_export_keeps_other_folders PROPERTIES
+        FIXTURES_REQUIRED broken_game
+        PASS_REGULAR_EXPRESSION "was not made by slash-cli export")
+
     # init writes the agent configs and a valid empty scene, and keeps existing files.
     set(init_project ${CMAKE_CURRENT_BINARY_DIR}/init_project)
     add_test(NAME cli_init COMMAND slash-cli init ${init_project} --force)
@@ -141,7 +184,7 @@ if(SLASH_BUILD_TOOLS)
     add_test(NAME cli_init_keeps_files COMMAND slash-cli init ${init_project})
     set_tests_properties(cli_init_keeps_files PROPERTIES
         FIXTURES_REQUIRED init_project
-        PASS_REGULAR_EXPRESSION "\"created\":\\[\\],\"skipped\":\\[\"AGENTS\\.md\".*\"\\.gitignore\"\\]")
+        PASS_REGULAR_EXPRESSION "\"created\":\\[\\],\"skipped\":\\[\"project\\.json\",\"AGENTS\\.md\".*\"\\.gitignore\"\\]")
     # An existing .gitignore gains the .slash/ line instead of being replaced.
     add_test(NAME cli_init_gitignore_copy
         COMMAND ${CMAKE_COMMAND} -E copy ${scenes}/existing.gitignore ${init_project}/.gitignore)

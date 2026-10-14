@@ -58,6 +58,10 @@ SDL3 is the only platform layer: windowing, input, audio, file I/O, threads and 
 
 **Exporting.** `slash-cli export <platform>` (or the `export.run` command an agent calls over MCP) builds the game module, packs assets and signs the result. Because gameplay is compiled C++, every export is a real build for that platform, not a template plus scripts.
 
+- **Projects.** A game is a folder with a `project.json`, the equivalent of Godot's `project.godot`: name, identifier, version, main scene, window size and tick rate, checked against a schema the engine publishes.
+- **One entry point.** Every game executable starts in the same `main` built on SDL's main callbacks, so the loop is driven by the host where it must be (the browser, iOS) and by SDL elsewhere. The same executable runs headless with `--headless --ticks N` and prints a JSON summary, which is how exports are tested.
+- **How an export runs.** The project and every scene are validated, staged as the game's data, and built with CMake from the engine sources (`export/CMakeLists.txt`), then laid out for the platform: an app bundle on macOS (universal for release), an executable and `data` folder on Windows and Linux with the C++ runtime linked statically, and `index.html` with WebAssembly on the web. The full build log goes to a file; the caller gets a short JSON result, or the failing step with the end of the log.
+
 - **Toolchains on demand.** `slash-cli toolchain install` downloads and pins the open-source cross toolchains above, so one Mac can produce every build with no manual setup.
 - **CI as a second path.** `slash-cli init` also writes a GitHub Actions workflow that builds and runs headless tests for every platform on native runners, which is how Windows and Linux exports get tested before those hosts are supported.
 - **Signing.** As in Godot, each developer brings their own Apple team ID and certificates, Android keystore and Windows code-signing certificate. Export presets live in a text file (`export_presets.json`) that agents can edit, with secrets read from environment variables. The engine generates a throwaway debug keystore for Android test builds, and the project's own accounts sign only its sample games in CI.
@@ -311,11 +315,14 @@ SlashEngine/
     world/           # ECS, scenes, prefabs, serialization
     command/         # Command registry, undo, JSON-RPC and MCP
     server/          # localhost HTTP: REST mirror, OpenAPI, JSON-RPC and MCP
+    runtime/         # project.json, the game loop and every game's main()
     hotreload/       # loads and swaps the C++ game module, keeps world state
     ai/              # optional: Provider interface and adapters
   tools/
     slash-mcp/       # MCP over stdio, or forwarded to a running game
-    slash-cli/       # run, test, format, validate scenes headless
+    slash-cli/       # run, export, format, validate scenes headless
+    slash-game/      # runs a project the way its exports do
+  export/            # CMake project that builds one game for one platform
   samples/pong/      # smallest complete game, built by an agent end to end
   tests/
 ```
@@ -325,7 +332,7 @@ SlashEngine/
 1. **Skeleton.** CMake presets, CI matrix, SDL3 window on macOS, clang-format and tidy, `AGENTS.md`.
 2. **Core and world.** Reflection macro, EnTT integration, JSON scene load and save with schema validation, headless runner.
 3. **Commands.** Command registry, undo, JSON-RPC server, `slash-mcp`, REST mirror, `slash-cli`. Exit: Claude Code, Codex and Cursor each open, edit and save a scene over MCP.
-4. **Export pipeline.** `slash-cli export` and toolchain install for all six platforms, plus the CI workflow. Exit: an empty project exports and passes headless tests everywhere. It comes this early so every later feature stays exportable.
+4. **Export pipeline.** `slash-cli export` and toolchain install for all six platforms, plus the CI workflow. Exit: an empty project exports and passes headless tests everywhere. It comes this early so every later feature stays exportable. Built in two parts: (a) project files, the game runtime and exports for macOS, Windows, Linux and web on their own hosts, tested in CI; (b) iOS and Android, cross toolchains from a Mac, export presets with signing, and the `export.run` command.
 5. **2D feature set.** Systems, play and pause, event subscriptions, prefabs, asset handles with hot reload and the CI license check first; then the renderer, materials, sprites, keyframe animation, tilemaps, 2D lights, Box2D physics, particles, UI and text, audio, input injection, frame capture, replays and the debug overlay. Exit: an agent builds `samples/pong` and exports it to all six platforms.
 6. **Hot reload, AI and profiling.** Hot-reloadable C++ game module, `ai::Provider` with three adapters and `ReplayProvider`, the job system, Tracy, `perf.stats` and the per-system memory report.
 7. **3D feature set.** Forward+ PBR renderer, shadows, post-processing, GI, sky, decals, LODs, Jolt physics, skeletal animation and blending, navigation, terrain, CSG, glTF and FBX import. Exit: an agent builds a small 3D sample end to end.
