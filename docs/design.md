@@ -326,8 +326,8 @@ SlashEngine/
 2. **Core and world.** Reflection macro, EnTT integration, JSON scene load and save with schema validation, headless runner.
 3. **Commands.** Command registry, undo, JSON-RPC server, `slash-mcp`, REST mirror, `slash-cli`. Exit: Claude Code, Codex and Cursor each open, edit and save a scene over MCP.
 4. **Export pipeline.** `slash-cli export` and toolchain install for all six platforms, plus the CI workflow. Exit: an empty project exports and passes headless tests everywhere. It comes this early so every later feature stays exportable.
-5. **2D feature set.** Sprites, tilemaps, 2D lights, Box2D physics, particles, UI and text, audio, input injection, frame capture, replays. Exit: an agent builds `samples/pong` and exports it to all six platforms.
-6. **Hot reload and AI.** Hot-reloadable C++ game module, `ai::Provider` with three adapters and `ReplayProvider`.
+5. **2D feature set.** Systems, play and pause, event subscriptions, prefabs, asset handles with hot reload and the CI license check first; then the renderer, materials, sprites, keyframe animation, tilemaps, 2D lights, Box2D physics, particles, UI and text, audio, input injection, frame capture, replays and the debug overlay. Exit: an agent builds `samples/pong` and exports it to all six platforms.
+6. **Hot reload, AI and profiling.** Hot-reloadable C++ game module, `ai::Provider` with three adapters and `ReplayProvider`, the job system, Tracy, `perf.stats` and the per-system memory report.
 7. **3D feature set.** Forward+ PBR renderer, shadows, post-processing, GI, sky, decals, LODs, Jolt physics, skeletal animation and blending, navigation, terrain, CSG, glTF and FBX import. Exit: an agent builds a small 3D sample end to end.
 8. **Systems.** Networking, XR, localization, video, accessibility.
 9. **Launch.** Every Launch row of the parity table done, the Mac engine and tools released, exports for all six platforms, reference docs generated from `engine.describe`.
