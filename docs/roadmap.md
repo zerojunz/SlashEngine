@@ -150,6 +150,9 @@ rendering on top.
 - [ ] 2D physics on Box2D v3
 - [ ] Particles
 - [ ] UI with flexbox layout and themes; text with FreeType, HarfBuzz and MSDF fonts
+- [ ] Text input in every language: IME composition for Japanese, Chinese and Korean with the
+      candidate window placed at the text field, on-screen keyboards on phones, and fallback
+      fonts so no language shows missing-glyph boxes
 - [ ] Audio on miniaudio
 - [ ] Rebindable input action maps, and `input.inject` for agents
 - [ ] `frame.capture` (PNG) and replays (`replay.run`)
@@ -248,7 +251,21 @@ Exit: an agent builds a small 3D sample end to end.
 
 - [ ] Networking: ENet transport, replication driven by reflection, WebSocket for web
 - [ ] XR through OpenXR
-- [ ] Localization with translation tables in text
+- [ ] Localization, following Godot ([design](design.md#languages))
+  - [ ] Translation tables as CSV or gettext `.po` files, with plural forms, placeholders and a
+        fallback chain (`es-MX`, then `es`, then the source language)
+  - [ ] Any language as the source: a game can be written in Japanese and translated to English
+  - [ ] A language setting: the player's OS language by default, changeable in a game's options
+        menu while it runs, with per-language fonts and right-to-left layout
+  - [ ] `l10n.extract`: every player-facing string in scenes and C++ (`tr("...")`) collected
+        into the tables, so no text is missed
+  - [ ] `l10n.translate`: draft translations through `ai::Provider`, using the storyboard's
+        glossary and characters so names and tone stay consistent, marked for review
+  - [ ] `l10n.check`: missing or stale keys, placeholders that don't match, text that overflows
+        its UI box in a given font, and glyphs a font lacks; run by the headless test command
+        and CI
+  - [ ] Pseudo-localization: a fake language with longer, accented text that shows untranslated
+        or clipped strings before any real translation exists
 - [ ] Video playback with dav1d (AV1)
 - [ ] Accessibility through AccessKit
 - [ ] Platform services, like Unity's Analytics, Ads and In-App Purchasing: one cross-platform C++
@@ -328,7 +345,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Input | Rebindable action maps over SDL3, injectable by agents | 5 | Planned |
 | Refresh rates and frame pacing | V-Sync modes, frame cap, display refresh rates, variable refresh rate, rendering interpolated between fixed ticks | 5 | Planned |
 | UI | Retained UI with flexbox layout and themes, defined in text | 5 | Planned |
-| Text and fonts | FreeType, HarfBuzz, MSDF fonts, BiDi | 5 | Planned |
+| Text and fonts | FreeType, HarfBuzz, MSDF fonts, BiDi, IME input, fallback fonts | 5 | Planned |
 | Navigation | Recast and Detour, 2D and 3D, avoidance | 7 | Planned |
 | Asset import | glTF 2.0, FBX, OBJ, PNG, JPG, KTX2, WAV, OGG, MP3 | 7 | Planned |
 | Profiling | Tracy, plus `perf.stats` over the command API | 6 | Planned |
@@ -341,7 +358,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Level geometry | CSG and grid-based tile placement | 7 | Planned |
 | LOD and culling | Generated LODs with meshoptimizer, occlusion culling | 7 | Planned |
 | XR | OpenXR | 8 | Planned |
-| Localization | Translation tables in text | 8 | Planned |
+| Localization | CSV and `.po` translation tables, any source language, a runtime language setting, and commands to extract, draft and check translations | 8 | Planned |
 | Video playback | AV1 through dav1d | 8 | Planned |
 | Accessibility | AccessKit | 8 | Planned |
 | Storyboard | Style, world, story, design rules and decisions as typed project files that agents query and checks enforce | 5, 6 | Planned: files, commands and checks in 5, model review and the project map in 6 |
