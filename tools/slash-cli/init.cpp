@@ -64,9 +64,10 @@ The address and token are in `.slash/server.json`, which stays out of git.
 ## Run and export
 
 `slash-game --data .` runs the game the way its exports do. `slash-cli export <platform> --test`
-(or the `export_run` tool) builds it for macos, windows, linux, web or android into
+(or the `export_run` tool) builds it for macos, windows, linux, web, android or ios into
 `build/export/<platform>`, then runs the build headless where this machine can (Android games on
-a connected device or emulator). A failed export reports the step and the end of its log.
+a connected device or emulator, iOS games in the Simulator). A failed export reports the step and
+the end of its log.
 `.github/workflows/export.yml` exports and tests every platform on GitHub Actions.
 
 Presets in `export_presets.json` (`slash-cli schema presets`) name an output folder, a debug build
@@ -151,6 +152,8 @@ jobs:
             os: ubuntu-24.04
           - platform: android
             os: ubuntu-24.04
+          - platform: ios
+            os: macos-14
     steps:
       - uses: actions/checkout@v4
         with:

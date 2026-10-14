@@ -50,7 +50,7 @@ SDL3 is the only platform layer: windowing, input, audio, file I/O, threads and 
 | Platform | Engine and tools run here | Export from a Mac uses |
 | --- | --- | --- |
 | macOS (Apple silicon and Intel) | At launch | Apple's command-line tools (needed for signing) |
-| iOS | No | Apple's command-line tools |
+| iOS | No | Xcode's iOS SDK and command-line tools (no Xcode project) |
 | Windows x64 | After launch | llvm-mingw cross toolchain |
 | Linux x64 and arm64 | After launch | Clang with a Linux sysroot |
 | Android | No | Android NDK |
