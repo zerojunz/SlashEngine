@@ -131,6 +131,12 @@ rendering on top.
       this milestone adds Box2D, miniaudio, FreeType and HarfBuzz
 - [ ] Renderer foundation: `RenderDevice` over SDL3's GPU API, a null backend for headless runs,
       HLSL shaders cross-compiled with SDL_shadercross
+- [ ] Refresh rates and frame pacing, following Godot's settings: the display's modes and
+      refresh rates as data; V-Sync modes (on, off, adaptive, mailbox) and a frame cap (30, 60,
+      120, 240 or unlimited) in `project.json`, changeable while the game runs; rendering
+      interpolated between fixed ticks so high refresh rates look smooth; variable refresh rate
+      (G-Sync, FreeSync, ProMotion) left working by using the right present mode; 120 Hz on
+      phones that support it; frame pacing stats in `perf.stats`
 - [ ] Materials: HLSL shaders plus a JSON material graph agents write directly, starting with
       2D (canvas) materials; milestone 7 adds the PBR inputs
 - [ ] Sprites, sprite sheets and flipbooks
@@ -316,6 +322,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Particles | CPU and GPU particles, particle graphs in text | 5 | Planned |
 | Audio | miniaudio: buses, effects, 3D spatial audio | 5 | Planned |
 | Input | Rebindable action maps over SDL3, injectable by agents | 5 | Planned |
+| Refresh rates and frame pacing | V-Sync modes, frame cap, display refresh rates, variable refresh rate, rendering interpolated between fixed ticks | 5 | Planned |
 | UI | Retained UI with flexbox layout and themes, defined in text | 5 | Planned |
 | Text and fonts | FreeType, HarfBuzz, MSDF fonts, BiDi | 5 | Planned |
 | Navigation | Recast and Detour, 2D and 3D, avoidance | 7 | Planned |
