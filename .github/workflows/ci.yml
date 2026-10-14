@@ -342,12 +342,17 @@ jobs:
           $dependents = dumpbin /dependents $exe
           $dependents
           if ($dependents -match '(c\+\+|unwind|winpthread|gcc).*\.dll') { exit 1 }
-          Push-Location build/cross/windows
-          $output = & $exe --headless --ticks 60 | Out-String
-          $code = $LASTEXITCODE
-          Pop-Location
+          # Start-Process waits for the game, which uses the GUI subsystem, and keeps its exit code.
+          $out = "$env:RUNNER_TEMP\game-out.txt"
+          $err = "$env:RUNNER_TEMP\game-err.txt"
+          $game = Start-Process -FilePath $exe -ArgumentList '--headless', '--ticks', '60' `
+            -WorkingDirectory (Split-Path $exe) -NoNewWindow -Wait -PassThru `
+            -RedirectStandardOutput $out -RedirectStandardError $err
+          Get-Content $err
+          $output = Get-Content -Raw $out
           $output
-          if ($code -ne 0 -or -not ($output -match '"ticks":60')) { exit 1 }
+          'exit code 0x{0:X8}' -f $game.ExitCode
+          if ($game.ExitCode -ne 0 -or -not ($output -match '"ticks":60')) { exit 1 }
 
       - name: Set up QEMU for arm64 (Linux)
         if: runner.os == 'Linux'
