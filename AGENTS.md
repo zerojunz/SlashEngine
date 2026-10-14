@@ -2,6 +2,22 @@
 
 Instructions for AI agents (Claude Code, Codex, Cursor and others) working on SlashEngine. Read
 [docs/design.md](docs/design.md) for the full design; this file covers the day-to-day loop.
+[CONTRIBUTING.md](CONTRIBUTING.md) covers what a pull request needs.
+
+## Goals
+
+SlashEngine is a lightweight, open-source C++20 game engine whose primary user is an AI agent.
+Keep every change true to these:
+
+- An agent can create, inspect, edit, run and test a game with no GUI editor. Anything that can
+  only be done by hand is a bug.
+- Projects are text (canonical JSON), the engine describes itself (`engine.describe`), and every
+  change to a world is a command, served the same way over the CLI, JSON-RPC, MCP and REST.
+- Commands cost agents as few calls and tokens as possible.
+- Model agnostic: nothing depends on one AI vendor.
+- Lightweight and modular; macOS first, games export to every platform.
+- Permissive open-source code only. When a design choice is open, follow Godot's approach.
+- Gameplay code is plain C++; no embedded scripting language.
 
 ## Build and test
 
@@ -159,9 +175,9 @@ CI rejects unformatted code and any clang-tidy finding.
   `kPascalCase` constants.
 - Headers live in `engine/<module>/include/slash/<module>/`, sources in `engine/<module>/src/`.
   Modules: `core` (Result, logging, JSON, reflection, math), `platform` (SDL3 window, run loop,
-  files, child processes), `world` (EnTT world, components, scenes), `command` (commands, sessions with undo,
-  JSON-RPC and MCP), `server` (localhost HTTP over a session) and `runtime` (project files and
-  the game executable).
+  files, child processes), `world` (EnTT world, components, scenes), `command` (commands,
+  sessions with undo, JSON-RPC and MCP), `server` (localhost HTTP over a session) and `runtime`
+  (project files and the game executable).
 - New dependencies go in `cmake/Dependencies.cmake`, pinned to a tag, and in `THIRD_PARTY.md`
   with their license. Only permissive licenses (MIT, BSD, zlib, Apache 2.0, Boost, MIT-0,
   public domain). Never copy code from closed engines.

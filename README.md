@@ -47,7 +47,8 @@ To build a game for players, export it from its folder. `--test` runs the result
 slash-cli export macos --test        # or windows, linux, web
 ```
 
-Agents working on the engine itself should start with [AGENTS.md](AGENTS.md).
+To contribute, read [CONTRIBUTING.md](CONTRIBUTING.md). Agents working on the engine itself should
+start with [AGENTS.md](AGENTS.md).
 
 ## License
 
