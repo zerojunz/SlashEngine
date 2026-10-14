@@ -12,7 +12,6 @@ order is the plan, and each item carries a status instead. It is drawn from the 
 | **In progress** | Someone is building it now. |
 | **Next** | The next milestone to start. |
 | **Planned** | Scheduled for a named milestone before launch. |
-| **Launch** | Needed for launch; the design does not yet name the milestone it lands in. |
 | **After launch** | Planned, but not needed for the first release. |
 | **Research** | Explored, with no commitment to ship. |
 
@@ -48,8 +47,7 @@ work.
 - [x] Built-in `Transform2D` and `Transform3D` components
 - [x] JSON scenes: load, save, canonical format, JSON Schema generated from components
 - [x] `slash-cli scene validate`, `scene format` and `schema scene`
-- [ ] Prefabs with `"extends"` and overrides (moved out of this milestone; see
-      [Launch work not yet in a milestone](#launch-work-not-yet-in-a-milestone))
+- [ ] Prefabs with `"extends"` and overrides (moved to [milestone 5](#milestone-5-2d-feature-set-planned))
 
 ### Milestone 3: Commands (Done)
 
@@ -94,9 +92,23 @@ Exit: an empty project exports to all six platforms and passes headless tests on
 
 ### Milestone 5: 2D feature set (Planned)
 
+Foundations first, in the order Godot built them: the run loop, scenes and resources, then
+rendering on top.
+
+- [ ] Systems registered with the world, run in a fixed order each tick; `engine.describe`
+      already returns an empty `systems` list for them
+- [ ] Run control commands: `play` and `pause`
+- [ ] `events.subscribe` for a stream of world events
+- [ ] Prefabs: an entity `"extends"` a `.prefab.json` file and overrides fields
+- [ ] Asset handles with reference counting and hot reload, and an `asset.list` command
+- [ ] A license check on every pull request, against a manifest of pinned dependencies, before
+      this milestone adds Box2D, miniaudio, FreeType and HarfBuzz
 - [ ] Renderer foundation: `RenderDevice` over SDL3's GPU API, a null backend for headless runs,
       HLSL shaders cross-compiled with SDL_shadercross
+- [ ] Materials: HLSL shaders plus a JSON material graph agents write directly, starting with
+      2D (canvas) materials; milestone 7 adds the PBR inputs
 - [ ] Sprites, sprite sheets and flipbooks
+- [ ] Keyframe animation tracks on any reflected property, like Godot's AnimationPlayer
 - [ ] Tilemap layers with terrain autotiling
 - [ ] 2D lights, occluders and normal-mapped sprites
 - [ ] 2D physics on Box2D v3
@@ -105,14 +117,17 @@ Exit: an empty project exports to all six platforms and passes headless tests on
 - [ ] Audio on miniaudio
 - [ ] Rebindable input action maps, and `input.inject` for agents
 - [ ] `frame.capture` (PNG) and replays (`replay.run`)
+- [ ] Debug overlay, drawn with the UI and text above
 - [ ] A test command that steps a game headless and returns only the checks that failed
 - [ ] Frame summaries: what is on screen as data instead of an image
 
 Exit: an agent builds `samples/pong` end to end and exports it to all six platforms.
 
-### Milestone 6: Hot reload and AI (Planned)
+### Milestone 6: Hot reload, AI and profiling (Planned)
 
 - [ ] Gameplay as a C++ shared library that reloads on rebuild and keeps world state
+- [ ] Job system, so systems run in parallel before the 3D work in milestone 7 needs it
+- [ ] Profiling: Tracy, a `perf.stats` command and a per-system memory report
 - [ ] `ai::Provider` with OpenAI-compatible, Anthropic and Gemini adapters
 - [ ] `ReplayProvider` so tests that use a model run offline
 - [ ] A benchmark of standard agent tasks that counts calls and tokens
@@ -148,24 +163,6 @@ Exit: an agent builds a small 3D sample end to end.
 - [ ] Exports for all six platforms
 - [ ] Reference docs generated from `engine.describe`
 
-### Launch work not yet in a milestone
-
-The design needs these for launch but does not say which milestone builds them. Each lands by
-milestone 9 at the latest; when one is scheduled, move it into that milestone above.
-
-- [ ] Prefabs: an entity `"extends"` a `.prefab.json` file and overrides fields (Launch)
-- [ ] Asset handles with reference counting and hot reload, and an `asset.list` command (Launch)
-- [ ] Run control commands: `play` and `pause` (Launch)
-- [ ] `events.subscribe` for a stream of world events (Launch)
-- [ ] Profiling: Tracy and a `perf.stats` command (Launch)
-- [ ] Job system and per-system memory report (Launch)
-- [ ] Systems registered with the world; `engine.describe` already returns an empty `systems`
-      list for them (Launch)
-- [ ] Debug overlay (Launch)
-- [ ] Keyframe animation tracks on any reflected property (Launch)
-- [ ] Materials: HLSL shaders plus a JSON material graph agents write directly (Launch)
-- [ ] A license check on every pull request, against a manifest of pinned dependencies (Launch)
-
 ## After launch
 
 Once the macOS release ships:
@@ -198,9 +195,9 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 
 | Area | SlashEngine approach | Milestone | Status |
 | --- | --- | --- | --- |
-| Editor | No GUI editor: MCP and REST command API, debug overlay, frame capture | 3, 5 | In part: the command API is done, frame capture is planned for 5, the overlay is Launch |
+| Editor | No GUI editor: MCP and REST command API, debug overlay, frame capture | 3, 5 | In part: the command API is done; frame capture and the overlay are planned for 5 |
 | Gameplay code | C++ with hot reload; plugins as C++ modules with a stable C ABI | 6 | Planned |
-| Scenes and prefabs | JSON scenes, prefabs with overrides, on EnTT | 2 | In part: scenes are done; prefabs are Launch |
+| Scenes and prefabs | JSON scenes, prefabs with overrides, on EnTT | 2, 5 | In part: scenes are done; prefabs are planned for 5 |
 | 2D sprites and animation | Batched sprites, sprite sheets, flipbooks | 5 | Planned |
 | Tilemaps | Tilemap layers with terrain autotiling, stored as text | 5 | Planned |
 | 2D lighting | 2D lights, occluders, normal-mapped sprites | 5 | Planned |
@@ -209,8 +206,8 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | 3D renderer | Clustered forward+ with PBR, plus a low-end path for web and mobile | 7 | Planned |
 | Shadows | Cascaded, omni and spot shadow maps | 7 | Planned |
 | Post-processing | Tonemap, bloom, SSAO, SSR, DoF, auto exposure, color grading | 7 | Planned |
-| Materials and shaders | HLSL shaders plus a JSON material graph | Not set | Launch |
-| Keyframe animation | Keyframe tracks on any reflected property | Not set | Launch |
+| Materials and shaders | HLSL shaders plus a JSON material graph | 5, 7 | Planned |
+| Keyframe animation | Keyframe tracks on any reflected property | 5 | Planned |
 | Skeletal animation | Skinned meshes, blending, root motion | 7 | Planned |
 | Animation blending | Blend trees and state machines in text, two-bone and FABRIK IK | 7 | Planned |
 | Particles | CPU and GPU particles, particle graphs in text | 5 | Planned |
@@ -220,7 +217,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Text and fonts | FreeType, HarfBuzz, MSDF fonts, BiDi | 5 | Planned |
 | Navigation | Recast and Detour, 2D and 3D, avoidance | 7 | Planned |
 | Asset import | glTF 2.0, FBX, OBJ, PNG, JPG, KTX2, WAV, OGG, MP3 | 7 | Planned |
-| Profiling | Tracy, plus `perf.stats` over the command API | Not set | Launch |
+| Profiling | Tracy, plus `perf.stats` over the command API | 6 | Planned |
 | Global illumination | Baked lightmaps and probe-based GI | 7 | Planned |
 | Sky and volumetrics | Physical sky, volumetric fog | 7 | Planned |
 | Decals | Clustered decals | 7 | Planned |
@@ -281,8 +278,8 @@ needs as its fallback. When an exporter sets a deployment target, it uses these 
 - A pull request that finishes an item ticks its box and, if it finishes a milestone, changes the
   milestone's status. The next milestone becomes **Next**, and the one being built is
   **In progress**.
-- New work goes under the milestone that will build it, or under
-  [Launch work not yet in a milestone](#launch-work-not-yet-in-a-milestone) if none is chosen.
+- New work goes under the milestone that will build it. Launch work with no obvious home goes in
+  the earliest milestone that builds what it depends on, following Godot's order.
 - Moving an item between milestones, or between Launch, After launch and Research, is a design
   change: update [design.md](design.md) in the same pull request.
 - Never add dates.
