@@ -1,11 +1,12 @@
 #pragma once
 
-#include <source_location>
+// __FILE__ and __LINE__ rather than std::source_location, which the libstdc++ that Linux exports
+// build against (GCC 10, for glibc 2.31) doesn't have.
 
 namespace slash::detail {
 
-[[noreturn]] void assert_failed(const char* expression, const char* message,
-                                std::source_location location);
+[[noreturn]] void assert_failed(const char* expression, const char* message, const char* file,
+                                int line);
 
 } // namespace slash::detail
 
@@ -14,6 +15,6 @@ namespace slash::detail {
 #define SLASH_ASSERT(expression, message)                                                          \
     do {                                                                                           \
         if (!(expression)) {                                                                       \
-            ::slash::detail::assert_failed(#expression, message, std::source_location::current()); \
+            ::slash::detail::assert_failed(#expression, message, __FILE__, __LINE__);              \
         }                                                                                          \
     } while (false)
