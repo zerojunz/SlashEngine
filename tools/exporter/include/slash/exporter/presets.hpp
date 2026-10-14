@@ -32,8 +32,8 @@ inline constexpr std::string_view kPresetsFile = "export_presets.json";
 inline constexpr std::int64_t kPresetsFormat = 1;
 
 // The platforms export knows, in the order usage text lists them.
-inline const std::vector<std::string_view> kPlatforms{"macos", "windows", "linux", "web",
-                                                      "android"};
+inline const std::vector<std::string_view> kPlatforms{"macos", "windows", "linux",
+                                                      "web",   "android", "ios"};
 
 // Android CPU architectures, and the ones an export builds unless a preset says otherwise:
 // phones and tablets, plus x86_64 for emulators and Chromebooks.
@@ -52,6 +52,11 @@ inline constexpr std::string_view kAndroidKeystorePath = "SLASH_ANDROID_KEYSTORE
 inline constexpr std::string_view kAndroidKeystorePassword = "SLASH_ANDROID_KEYSTORE_PASSWORD";
 inline constexpr std::string_view kAndroidKeyAlias = "SLASH_ANDROID_KEY_ALIAS";
 inline constexpr std::string_view kAndroidKeyPassword = "SLASH_ANDROID_KEY_PASSWORD";
+inline constexpr std::string_view kIosProvisioningProfile = "SLASH_IOS_PROVISIONING_PROFILE";
+
+// Where an iOS export runs: on iPhones and iPads, signed for a team, or in the Simulator.
+inline constexpr std::string_view kIosDevice = "device";
+inline constexpr std::string_view kIosSimulator = "simulator";
 
 inline constexpr std::string_view kAdHocIdentity = "-";
 inline constexpr std::string_view kDefaultTimestampUrl = "http://timestamp.digicert.com";
@@ -75,6 +80,16 @@ struct AndroidOptions {
     std::int64_t version_code = 0; // 0 means derived from the project's version
 };
 
+struct IosOptions {
+    std::string team_id; // Apple Developer team; device builds are signed for it
+    // kIosDevice or kIosSimulator. Without a team, presets build for the Simulator.
+    std::string destination = std::string(kIosSimulator);
+    std::string bundle_id; // "" means the project's id
+    // "" means the team's "Apple Development" or "Apple Distribution" identity; "-" signs ad hoc.
+    std::string codesign_identity;
+    std::int64_t build_number = 0; // CFBundleVersion; 0 means the project's version
+};
+
 struct Preset {
     std::string name;
     std::string platform;
@@ -83,6 +98,7 @@ struct Preset {
     MacosOptions macos;
     WindowsOptions windows;
     AndroidOptions android;
+    IosOptions ios;
 };
 
 using Presets = std::map<std::string, Preset, std::less<>>;
@@ -105,6 +121,10 @@ using Presets = std::map<std::string, Preset, std::less<>>;
 // each a Java identifier of ASCII letters, digits and '_' that starts with a letter and isn't a
 // Java keyword.
 [[nodiscard]] std::string android_package_problem(std::string_view name);
+
+// Why id can't be an iOS bundle ID, or "" if it can: two or more dot-separated parts of ASCII
+// letters, digits and '-'.
+[[nodiscard]] std::string ios_bundle_id_problem(std::string_view id);
 
 // The Android versionCode for a major.minor.patch version: major * 1000000 + minor * 1000 +
 // patch, so every release sorts after the one before. The error says when the version doesn't

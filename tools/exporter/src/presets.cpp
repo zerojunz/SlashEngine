@@ -81,6 +81,7 @@ bool looks_secret(std::string_view key) {
 }
 
 constexpr std::int64_t kMaxVersionCode = 2100000000; // Google Play's limit
+constexpr std::int64_t kMaxBuildNumber = 2147483647;
 
 // Java keywords and literals, which can't be parts of a package name.
 constexpr std::array<std::string_view, 53> kJavaKeywords{
@@ -123,6 +124,13 @@ void improve(json::ValidationError& error, const json::Value& presets) {
     }
 }
 
+bool valid_team_id(std::string_view team) {
+    constexpr std::size_t kTeamIdLength = 10;
+    return team.size() == kTeamIdLength && std::ranges::all_of(team, [](char c) {
+               return (c >= 'A' && c <= 'Z') || ascii_digit(c);
+           });
+}
+
 void check_preset(const std::string& name, const json::Value& preset,
                   std::vector<json::ValidationError>& errors) {
     const std::string path = "/presets/" + json::pointer_escape(name);
@@ -140,10 +148,10 @@ void check_preset(const std::string& name, const json::Value& preset,
         errors.push_back({path + "/output", "expected a folder inside the project, separated by "
                                             "'/', with no \".\" or \"..\" parts"});
     }
-    for (const std::string_view section : {"macos", "windows", "android"}) {
+    for (const std::string_view section : {"macos", "windows", "android", "ios"}) {
         if (preset.find(section) != nullptr && platform != section) {
             errors.push_back({path + "/" + std::string(section),
-                              "only a " + std::string(section) + " preset can have this section"});
+                              "only " + std::string(section) + " presets can have this section"});
         }
     }
     if (const json::Value* macos = preset.find("macos"); macos != nullptr) {
@@ -186,6 +194,30 @@ void check_preset(const std::string& name, const json::Value& preset,
             if (std::string problem = android_package_problem(package->as_string());
                 !problem.empty()) {
                 errors.push_back({path + "/android/package", std::move(problem)});
+            }
+        }
+    }
+    if (const json::Value* ios = preset.find("ios"); ios != nullptr) {
+        // The schema's pattern says the same, for agents reading it.
+        if (const json::Value* team = ios->find("team_id");
+            team != nullptr && !valid_team_id(team->as_string())) {
+            errors.push_back({path + "/ios/team_id",
+                              "expected a team ID of 10 capital letters and digits, e.g. "
+                              "\"ABCDE12345\", as developer.apple.com shows under Membership"});
+        }
+        const json::Value* destination = ios->find("destination");
+        const json::Value* identity = ios->find("codesign_identity");
+        if (destination != nullptr && destination->as_string() == kIosDevice &&
+            ios->find("team_id") == nullptr &&
+            (identity == nullptr || identity->as_string() != kAdHocIdentity)) {
+            errors.push_back({path + "/ios/destination",
+                              "device builds are signed for an Apple Developer team; set team_id, "
+                              "or codesign_identity \"-\" for an ad hoc .ipa to re-sign later"});
+        }
+        if (const json::Value* bundle_id = ios->find("bundle_id"); bundle_id != nullptr) {
+            if (std::string problem = ios_bundle_id_problem(bundle_id->as_string());
+                !problem.empty()) {
+                errors.push_back({path + "/ios/bundle_id", std::move(problem)});
             }
         }
     }
@@ -263,6 +295,38 @@ json::Value presets_schema() {
             " if it differs), else with the debug keystore. "
             "Only in android presets.");
 
+    json::Value team = property("string", "Apple Developer team ID, e.g. \"ABCDE12345\". Presets "
+                                          "with a team build for devices by default.");
+    team["pattern"] = "^[A-Z0-9]{10}$";
+    json::Value destination =
+        property("string", "\"device\" for an .ipa signed for iPhones and iPads, or "
+                           "\"simulator\" for an .app that runs in the iOS Simulator. Default: "
+                           "device if team_id is set, else simulator.");
+    destination["enum"] = json::Array{std::string(kIosDevice), std::string(kIosSimulator)};
+    json::Value ios_identity = property(
+        "string", "codesign identity from the keychain. Default: the team's \"Apple "
+                  "Development\" identity for debug builds, \"Apple Distribution\" for release. "
+                  "\"-\" signs ad hoc with no profile and needs no team; such an .ipa installs "
+                  "nowhere until it is re-signed.");
+    ios_identity["minLength"] = 1;
+    json::Value build_number =
+        property("integer", "CFBundleVersion, which must grow with every upload of the same "
+                            "version to App Store Connect. Default: the project's version.");
+    build_number["minimum"] = 1;
+    build_number["maximum"] = kMaxBuildNumber;
+    json::Value ios = object_schema(
+        {
+            {"team_id", std::move(team)},
+            {"destination", std::move(destination)},
+            {"bundle_id", property("string", "Bundle ID, e.g. \"com.example.pong\". Default: the "
+                                             "project's id.")},
+            {"codesign_identity", std::move(ios_identity)},
+            {"build_number", std::move(build_number)},
+        },
+        "How to build the app. Device builds embed the provisioning profile in " +
+            std::string(kIosProvisioningProfile) +
+            ", or else the newest installed one for the team and bundle ID. Only in ios presets.");
+
     json::Value platform = property("string", "The platform this preset builds for.");
     json::Array platforms;
     for (const std::string_view name : kPlatforms) {
@@ -281,6 +345,7 @@ json::Value presets_schema() {
             {"macos", std::move(macos)},
             {"windows", std::move(windows)},
             {"android", std::move(android)},
+            {"ios", std::move(ios)},
         },
         "One way to export the game.");
     preset["required"] = json::Array{"platform"};
@@ -379,6 +444,24 @@ Result<Presets> parse_presets(const json::Value& presets) {
                 preset.android.version_code = code->as_int();
             }
         }
+        if (const json::Value* ios = value.find("ios"); ios != nullptr) {
+            if (const json::Value* team = ios->find("team_id"); team != nullptr) {
+                preset.ios.team_id = team->as_string();
+                preset.ios.destination = std::string(kIosDevice);
+            }
+            if (const json::Value* destination = ios->find("destination"); destination != nullptr) {
+                preset.ios.destination = destination->as_string();
+            }
+            if (const json::Value* bundle_id = ios->find("bundle_id"); bundle_id != nullptr) {
+                preset.ios.bundle_id = bundle_id->as_string();
+            }
+            if (const json::Value* identity = ios->find("codesign_identity"); identity != nullptr) {
+                preset.ios.codesign_identity = identity->as_string();
+            }
+            if (const json::Value* build = ios->find("build_number"); build != nullptr) {
+                preset.ios.build_number = build->as_int();
+            }
+        }
         out.emplace(name, std::move(preset));
     }
     return out;
@@ -424,6 +507,33 @@ std::string android_package_problem(std::string_view name) {
         }
         if (std::ranges::find(kJavaKeywords, part) != kJavaKeywords.end()) {
             return "\"" + std::string(part) + "\" is a Java keyword, so it can't be a part";
+        }
+        ++parts;
+        start = end + 1;
+    }
+    if (parts < 2) {
+        return "expected two or more parts separated by dots, e.g. \"com.example.pong\"";
+    }
+    return {};
+}
+
+std::string ios_bundle_id_problem(std::string_view id) {
+    std::size_t parts = 0;
+    std::size_t start = 0;
+    while (start <= id.size()) {
+        std::size_t end = id.find('.', start);
+        if (end == std::string_view::npos) {
+            end = id.size();
+        }
+        const std::string_view part = id.substr(start, end - start);
+        if (part.empty()) {
+            return "expected two or more parts separated by single dots, e.g. "
+                   "\"com.example.pong\"";
+        }
+        if (!std::ranges::all_of(
+                part, [](char c) { return ascii_letter(c) || ascii_digit(c) || c == '-'; })) {
+            return "parts may only use letters, digits and '-', but \"" + std::string(part) +
+                   "\" doesn't";
         }
         ++parts;
         start = end + 1;
@@ -490,7 +600,7 @@ Result<Preset> find_preset(const Presets& presets, std::string_view target) {
         message += "; did you mean \"" + std::string(hint) + "\"?";
     } else {
         message += "; use a preset from " + std::string(kPresetsFile) +
-                   " or macos, windows, linux, web or android";
+                   " or macos, windows, linux, web, android or ios";
     }
     return make_error(ErrorCode::InvalidArgument, std::move(message));
 }
