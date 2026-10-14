@@ -129,6 +129,34 @@ jobs:
           $cli init build/empty-game
           $cli export ${{ matrix.platform }} --project build/empty-game --test
 
+      - name: Check the signature and minimum macOS
+        if: matrix.platform == 'macos'
+        run: |
+          app=$(ls -d build/empty-game/build/export/macos/*.app)
+          codesign --verify --strict --verbose=2 "$app"
+          test "$(plutil -extract LSMinimumSystemVersion raw "$app/Contents/Info.plist")" = "11.0"
+
+      - name: Check the minimum Windows version and sign with a preset
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          $exe = (Get-ChildItem build/empty-game/build/export/windows/*.exe)[0].FullName
+          $headers = dumpbin /headers $exe
+          if (-not ($headers -match '10\.00 subsystem version')) { $headers; exit 1 }
+          # A throwaway certificate, exported the way a developer would hand one over.
+          $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject 'CN=SlashEngine CI' `
+            -CertStoreLocation Cert:\CurrentUser\My
+          $password = ConvertTo-SecureString -String 'ci-only' -Force -AsPlainText
+          Export-PfxCertificate -Cert $cert -FilePath "$env:RUNNER_TEMP\ci.pfx" -Password $password
+          $env:SLASH_WINDOWS_CERTIFICATE_PATH = "$env:RUNNER_TEMP\ci.pfx"
+          $env:SLASH_WINDOWS_CERTIFICATE_PASSWORD = 'ci-only'
+          Set-Content build/empty-game/export_presets.json `
+            '{"format": 1, "presets": {"windows": {"platform": "windows", "windows": {"sign": true, "timestamp_url": ""}}}}'
+          ./build/release/tools/slash-cli/slash-cli export windows --project build/empty-game
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $signature = Get-AuthenticodeSignature $exe
+          if ($null -eq $signature.SignerCertificate) { $signature | Format-List; exit 1 }
+
       - name: Upload the export log
         if: failure()
         uses: actions/upload-artifact@v4

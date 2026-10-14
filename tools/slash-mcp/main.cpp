@@ -8,6 +8,7 @@
 #include "slash/command/session.hpp"
 #include "slash/core/log.hpp"
 #include "slash/core/version.hpp"
+#include "slash/exporter/commands.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/server/client.hpp"
 #include "slash/server/server.hpp"
@@ -33,8 +34,8 @@ Usage:
   slash-mcp [options]
       --project <dir>        Project folder; scene paths are relative to it (default ".")
       --scene <file>         Open this scene at startup, or start a new one saved there
-      --allow <list>         Capabilities to grant: read, edit, run, filesystem or all
-                             (default all), e.g. --allow read,run
+      --allow <list>         Capabilities to grant: read, edit, run, filesystem, build or
+                             all (default all), e.g. --allow read,run
       --live                 Drive the game already running in the project ("slash-cli run
                              --serve" or "slash-cli serve") instead of an engine of its own
       --version              Print the engine version
@@ -127,6 +128,7 @@ int main(int argc, char** argv) {
     slash::world::register_builtin_components(components);
     command::Registry commands;
     command::register_builtin_commands(commands);
+    slash::exporter::register_export_commands(commands);
     command::Session session(components, commands, options);
 
     if (!scene.empty()) {

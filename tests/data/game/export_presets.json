@@ -1,0 +1,15 @@
+{
+  "format": 1,
+  "presets": {
+    "mac-release": {
+      "macos": {
+        "codesign_identity": "-"
+      },
+      "platform": "macos"
+    },
+    "web-release": {
+      "output": "dist/web",
+      "platform": "web"
+    }
+  }
+}

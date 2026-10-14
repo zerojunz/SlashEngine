@@ -1,6 +1,7 @@
 add_executable(slash_tests
     test_main.cpp
     test_command.cpp
+    test_exporter.cpp
     test_fixed_step.cpp
     test_json.cpp
     test_json_schema.cpp
@@ -15,8 +16,8 @@ add_executable(slash_tests
     test_server.cpp
     test_world.cpp)
 target_link_libraries(slash_tests PRIVATE
-    slash::command slash::core slash::platform slash::runtime slash::server slash::world
-    doctest::doctest SDL3::SDL3-static)
+    slash::command slash::core slash::exporter slash::platform slash::runtime slash::server
+    slash::world doctest::doctest SDL3::SDL3-static)
 # doctest forward-declares std::ostream by default, which breaks string_view checks on recent
 # MSVC standard libraries; include the real headers instead.
 target_compile_definitions(slash_tests PRIVATE DOCTEST_CONFIG_USE_STD_HEADERS
@@ -141,6 +142,14 @@ if(SLASH_BUILD_TOOLS)
         PASS_REGULAR_EXPRESSION "\"title\": \"SlashEngine project\"")
     add_test(NAME cli_project_validate COMMAND slash-cli project validate ${scenes}/game)
     set_tests_properties(cli_project_validate PROPERTIES PASS_REGULAR_EXPRESSION "{\"valid\":true}")
+    add_test(NAME cli_schema_presets COMMAND slash-cli schema presets)
+    set_tests_properties(cli_schema_presets PROPERTIES
+        PASS_REGULAR_EXPRESSION "\"title\": \"SlashEngine export presets\"")
+    # project validate checks export_presets.json too, and says where secrets go.
+    add_test(NAME cli_project_validate_presets
+        COMMAND slash-cli project validate ${scenes}/broken_presets)
+    set_tests_properties(cli_project_validate_presets PROPERTIES
+        PASS_REGULAR_EXPRESSION "\"file\":\"export_presets\\.json\",\"message\":\"unknown platform.*did you mean \\\\\"web\\\\\".*\"message\":\"secrets are read from environment variables")
     add_test(NAME game_headless
         COMMAND slash-game --headless --ticks 30 --data ${scenes}/game)
     set_tests_properties(game_headless PROPERTIES
@@ -152,6 +161,10 @@ if(SLASH_BUILD_TOOLS)
     add_test(NAME cli_export_unknown_platform COMMAND slash-cli export macso)
     set_tests_properties(cli_export_unknown_platform PROPERTIES
         PASS_REGULAR_EXPRESSION "did you mean \\\\\"macos\\\\\"")
+    add_test(NAME cli_export_unknown_preset
+        COMMAND slash-cli export web-relase --project ${scenes}/game)
+    set_tests_properties(cli_export_unknown_preset PROPERTIES
+        PASS_REGULAR_EXPRESSION "did you mean \\\\\"web-release\\\\\"")
     if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin")
         set(host_platform macos)
     elseif(CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
@@ -196,6 +209,11 @@ if(SLASH_BUILD_TOOLS)
     set_tests_properties(cli_init_gitignore_updated PROPERTIES
         FIXTURES_REQUIRED init_gitignore
         PASS_REGULAR_EXPRESSION "\"updated\":\\[\"\\.gitignore\"\\]")
+    add_test(NAME cli_init_workflow
+        COMMAND ${CMAKE_COMMAND} -E cat ${init_project}/.github/workflows/export.yml)
+    set_tests_properties(cli_init_workflow PROPERTIES
+        FIXTURES_REQUIRED init_project
+        PASS_REGULAR_EXPRESSION "SLASHENGINE_REF: ([0-9a-f]+|v[0-9.]+)\n")
     add_test(NAME cli_init_scene_valid
         COMMAND slash-cli scene validate ${init_project}/scenes/main.scene.json)
     set_tests_properties(cli_init_scene_valid PROPERTIES

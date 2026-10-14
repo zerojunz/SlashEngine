@@ -26,6 +26,13 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 # Link the C and C++ runtimes statically where possible, so players need nothing installed.
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+# Games support OS versions from 2020 on (docs/roadmap.md). Windows refuses to start an
+# executable whose subsystem version is newer than itself, so 10.0 turns away Windows 8.1 and
+# older. macOS (11.0) is set by slash-cli export, and browsers below.
+if(MSVC)
+    set(CMAKE_C_CREATE_WIN32_EXE "/subsystem:windows,10.00")
+    set(CMAKE_CXX_CREATE_WIN32_EXE "/subsystem:windows,10.00")
+endif()
 
 # Only the targets the game links are built; tools and tests stay off outside the engine repo.
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/.. slashengine EXCLUDE_FROM_ALL)
@@ -43,6 +50,9 @@ if(EMSCRIPTEN)
         "SHELL:--preload-file ${SLASH_GAME_DATA}@/data"
         "SHELL:-s ALLOW_MEMORY_GROWTH=1"
         "SHELL:-s ENVIRONMENT=web,node"
+        "SHELL:-s MIN_CHROME_VERSION=85"
+        "SHELL:-s MIN_FIREFOX_VERSION=79"
+        "SHELL:-s MIN_SAFARI_VERSION=150000"
         "SHELL:--pre-js ${CMAKE_CURRENT_LIST_DIR}/web/node.js")
     set_property(TARGET game APPEND PROPERTY LINK_DEPENDS
         ${SLASH_GAME_DATA}/project.json ${CMAKE_CURRENT_LIST_DIR}/web/node.js)

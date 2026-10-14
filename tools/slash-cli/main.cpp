@@ -1,7 +1,6 @@
 // slash-cli: the command-line entry point agents use to drive SlashEngine.
 // Results go to stdout as JSON; logs go to stderr as JSON lines.
 
-#include "export.hpp"
 #include "init.hpp"
 
 #include "slash/command/builtin.hpp"
@@ -11,6 +10,9 @@
 #include "slash/core/json.hpp"
 #include "slash/core/log.hpp"
 #include "slash/core/version.hpp"
+#include "slash/exporter/commands.hpp"
+#include "slash/exporter/export.hpp"
+#include "slash/exporter/presets.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/platform/platform.hpp"
 #include "slash/platform/run.hpp"
@@ -64,8 +66,10 @@ Usage:
   slash-cli scene validate <file>    Check a scene against the schema; lists every error
   slash-cli scene format <file>      Rewrite a scene in canonical form
       --check                        Only report whether it is canonical; change nothing
-  slash-cli schema scene|project     Print the JSON Schema for scene or project.json files
-  slash-cli project validate [dir]   Check a folder's project.json; lists every error
+  slash-cli schema <name>            Print a JSON Schema: scene, project (project.json) or
+                                     presets (export_presets.json)
+  slash-cli project validate [dir]   Check project.json and export_presets.json; lists every
+                                     error
   slash-cli call <command> [params]  Run one engine command and print its result
                                      params is a JSON object, or - to read it from stdin
       --scene <file>                 Open this scene first (or start a new one saved there)
@@ -82,9 +86,12 @@ Usage:
   slash-cli init [dir]               Set a project up for Claude Code, Codex and Cursor
       --force                        Replace files that already exist
       --mcp-command <cmd>            How agents launch slash-mcp (default "slash-mcp")
-  slash-cli export <platform>        Build the game for macos, windows, linux or web
+  slash-cli export <preset>          Build and sign the game with a preset from
+                                     export_presets.json, or with a platform's defaults:
+                                     macos, windows, linux or web
       --project <dir>                Game folder with project.json (default ".")
-      --out <dir>                    Output folder (default <project>/build/export/<platform>)
+      --out <dir>                    Output folder (default: the preset's, else
+                                     <project>/build/export/<preset>)
       --debug                        Debug build instead of Release
       --test                         Run the exported game headless afterwards, if possible
       --engine <dir>                 Engine sources (default: SLASH_ENGINE_DIR or built in)
@@ -92,7 +99,8 @@ Usage:
 
 call, rpc and serve also take:
       --project <dir>                Folder that scene paths are relative to (default ".")
-      --allow <list>                 Capabilities: read, edit, run, filesystem or all (default)
+      --allow <list>                 Capabilities: read, edit, run, filesystem, build or all
+                                     (default all)
 
 slash-cli call engine.describe lists every command. Agents with MCP should use slash-mcp.
 A server writes its URL and token to .slash/server.json in the project for other tools.
@@ -198,14 +206,18 @@ json::Value error_json(const command::Reply& reply) {
     return out;
 }
 
-// The engine's components and commands, and a session over them.
+// The engine's components and commands, and a session over them. A running game leaves out
+// export.run, which would stall its loop for minutes.
 struct Engine {
     world::ComponentRegistry components = make_registry();
     command::Registry commands;
     std::unique_ptr<command::Session> session;
 
-    explicit Engine(const command::SessionOptions& options) {
+    explicit Engine(const command::SessionOptions& options, bool exports = true) {
         command::register_builtin_commands(commands);
+        if (exports) {
+            slash::exporter::register_export_commands(commands);
+        }
         command::SessionOptions session_options = options;
         session_options.capture_logs = false;
         session = std::make_unique<command::Session>(components, commands, session_options);
@@ -330,7 +342,7 @@ int cmd_run(const std::vector<std::string>& args) {
         return usage_error("--port and --token need --serve");
     }
 
-    Engine engine(session_options);
+    Engine engine(session_options, /*exports=*/false);
     world::World& game = engine.session->world();
     if (!scene_path.empty()) {
         auto text = slash::platform::read_file(scene_path);
@@ -481,14 +493,45 @@ int cmd_scene(const std::vector<std::string>& args) {
 }
 
 int cmd_schema(const std::vector<std::string>& args) {
-    if (args.size() != 1 || (args[0] != "scene" && args[0] != "project")) {
-        return usage_error("schema takes one argument: scene or project");
+    if (args.size() != 1 || (args[0] != "scene" && args[0] != "project" && args[0] != "presets")) {
+        return usage_error("schema takes one argument: scene, project or presets");
     }
-    const json::Value schema = args[0] == "scene" ? world::scene_schema(make_registry())
-                                                  : slash::runtime::project_schema();
+    json::Value schema;
+    if (args[0] == "scene") {
+        schema = world::scene_schema(make_registry());
+    } else if (args[0] == "project") {
+        schema = slash::runtime::project_schema();
+    } else {
+        schema = slash::exporter::presets_schema();
+    }
     const std::string text = json::write(schema) + "\n";
     std::fwrite(text.data(), 1, text.size(), stdout);
     return kExitOk;
+}
+
+// Appends every error in one of a project's files, each with the file's name.
+template <typename Validate>
+void validate_file(const std::string& folder, std::string_view file, Validate validate,
+                   json::Array& errors) {
+    const std::string path = slash::runtime::join_path(folder, file);
+    auto text = slash::platform::read_file(path);
+    if (!text) {
+        return;
+    }
+    auto parsed = json::parse(text.value());
+    std::vector<json::ValidationError> problems;
+    if (!parsed) {
+        problems.push_back({"", parsed.error().message});
+    } else {
+        problems = validate(parsed.value());
+    }
+    for (const json::ValidationError& problem : problems) {
+        json::Value item;
+        item["file"] = std::string(file);
+        item["path"] = problem.path;
+        item["message"] = problem.message;
+        errors.push_back(std::move(item));
+    }
 }
 
 int cmd_project(const std::vector<std::string>& args) {
@@ -497,24 +540,21 @@ int cmd_project(const std::vector<std::string>& args) {
     }
     const std::string folder = args.size() == 2 ? args[1] : ".";
     const std::string path = slash::runtime::join_path(folder, slash::runtime::kProjectFile);
-    auto text = slash::platform::read_file(path);
-    if (!text) {
-        return failure("could not read the project", text.error());
+    if (!slash::platform::exists(path)) {
+        return failure(
+            "could not read the project",
+            slash::make_error(slash::ErrorCode::NotFound, "no project.json in " + folder));
     }
-    auto parsed = json::parse(text.value());
-    std::vector<json::ValidationError> errors;
-    if (!parsed) {
-        errors.push_back({"", parsed.error().message});
-    } else {
-        errors = slash::runtime::validate_project(parsed.value());
-    }
+    json::Array errors;
+    validate_file(folder, slash::runtime::kProjectFile, slash::runtime::validate_project, errors);
+    validate_file(folder, slash::exporter::kPresetsFile, slash::exporter::validate_presets, errors);
     json::Value result;
     result["valid"] = errors.empty();
     if (!errors.empty()) {
-        result["errors"] = errors_to_json(errors);
+        result["errors"] = std::move(errors);
     }
     print(result);
-    return errors.empty() ? kExitOk : kExitFailure;
+    return result.find("errors") == nullptr ? kExitOk : kExitFailure;
 }
 
 int cmd_call(const std::vector<std::string>& args) {
@@ -658,7 +698,7 @@ int cmd_serve(const std::vector<std::string>& args) {
 }
 
 int cmd_export(const std::vector<std::string>& args) {
-    slash::cli::ExportOptions options;
+    slash::exporter::ExportOptions options;
     for (std::size_t i = 0; i < args.size(); ++i) {
         const std::string& arg = args[i];
         const bool has_value = i + 1 < args.size();
@@ -672,16 +712,16 @@ int cmd_export(const std::vector<std::string>& args) {
             options.output = args[++i];
         } else if (arg == "--engine" && has_value) {
             options.engine = args[++i];
-        } else if (options.platform.empty() && !arg.starts_with("--")) {
-            options.platform = arg;
+        } else if (options.target.empty() && !arg.starts_with("--")) {
+            options.target = arg;
         } else {
             return usage_error("unexpected argument for export: " + arg);
         }
     }
-    if (options.platform.empty()) {
-        return usage_error("export needs a platform: macos, windows, linux or web");
+    if (options.target.empty()) {
+        return usage_error("export needs a preset or a platform: macos, windows, linux or web");
     }
-    const slash::cli::ExportResult result = slash::cli::export_game(options);
+    const slash::exporter::ExportResult result = slash::exporter::export_game(options);
     print(result.json);
     if (const json::Value* error = result.json.find("error"); error != nullptr) {
         return error->find("step")->as_string() == "options" ? kExitUsage : kExitFailure;

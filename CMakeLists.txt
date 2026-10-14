@@ -20,6 +20,10 @@ include(Dependencies)
 
 add_subdirectory(engine)
 
+if(SLASH_BUILD_TOOLS OR SLASH_BUILD_TESTS)
+    add_subdirectory(tools/exporter)
+endif()
+
 if(SLASH_BUILD_TOOLS)
     add_subdirectory(tools/slash-cli)
     add_subdirectory(tools/slash-mcp)
