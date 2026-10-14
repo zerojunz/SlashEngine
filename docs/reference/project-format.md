@@ -72,6 +72,7 @@ that platform's defaults, so `slash-cli export windows` above signs.
 | `macos.notarize` | `false` | Notarize with Apple and staple the ticket; needs a Developer ID identity |
 | `windows.sign` | `false` | Sign the executable with signtool |
 | `windows.timestamp_url` | `http://timestamp.digicert.com` | RFC 3161 timestamp server, or `""` for none |
+| `linux.arch` | `x86_64` | CPU architecture: `x86_64` or `arm64` |
 | `android.abis` | `["arm64-v8a", "x86_64"]` | CPU architectures to build: `arm64-v8a`, `armeabi-v7a`, `x86_64`, `x86` |
 | `android.package` | the project's `id` | Application ID; parts start with a letter and use letters, digits and `_` |
 | `android.version_code` | from `version` | versionCode; by default major × 1000000 + minor × 1000 + patch, so `1.2.3` is `1002003` |
@@ -81,7 +82,8 @@ that platform's defaults, so `slash-cli export windows` above signs.
 | `ios.codesign_identity` | the team's `Apple Development` identity (debug) or `Apple Distribution` (release) | Keychain identity for device builds, by name or SHA-1; `"-"` signs ad hoc with no profile, so it needs no team but the `.ipa` installs nowhere until re-signed |
 | `ios.build_number` | from `version` | CFBundleVersion, which must grow with each upload of the same version to App Store Connect |
 
-A `macos`, `windows`, `android` or `ios` section is allowed only in a preset for that platform.
+A `macos`, `windows`, `linux`, `android` or `ios` section is allowed only in a preset for that
+platform.
 Secrets never go in the file, so it can be committed: a key that looks like one (`password`, `secret`, `token`,
 `private`) is an error that points to the environment variables instead. Notarizing reads an App
 Store Connect API key from `SLASH_APPLE_API_KEY_PATH`, `SLASH_APPLE_API_KEY_ID` and
