@@ -27,6 +27,9 @@ endforeach()
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+# Nothing uses C++ modules. Scanning for them would run whichever clang-scan-deps is on PATH,
+# which can't read headers precompiled by another toolchain's clang, such as the Android NDK's.
+set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 # Link the C and C++ runtimes statically where possible, so players need nothing installed.
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 # Games support OS versions from 2020 on (docs/roadmap.md). Windows refuses to start an
