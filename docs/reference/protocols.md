@@ -23,8 +23,8 @@ and `2024-11-05`. It answers `initialize` with the newest version the client als
 **Tools.** Every command is a tool. Tool names replace dots with underscores (`entity_create` for
 `entity.create`), because some clients only accept letters, digits, `_` and `-`. The tool's
 `inputSchema` is the command's params schema, and its annotations say whether it is read-only and,
-if not, whether it is destructive (opening a scene or writing files cannot be undone; other edits
-can).
+if not, whether it is destructive (opening a scene, writing files or building with `export.run`
+cannot be undone; other edits can).
 
 **Results.** A successful call returns the command's result as text content and, for objects, as
 `structuredContent`. A failed command is a tool result with `isError: true`, not a protocol
@@ -96,7 +96,8 @@ game. Both write their URL and token to `.slash/server.json` in the project fold
   rebinding attacks from web pages.
 - `.slash/server.json` is owner-only on macOS and Linux, should stay out of git (`slash-cli init`
   adds `.slash/` to `.gitignore`) and is removed when the server stops.
-- `--allow` limits what callers can do, as on every front end.
+- `--allow` limits what callers can do, as on every front end. A running game never serves
+  `export.run`, so callers can't make it build (the `build` capability).
 
 ### REST
 
@@ -148,7 +149,7 @@ SlashEngine's own.
 | `-32001` | Not found | The entity, component or file the params name does not exist |
 | `-32002` | Invalid argument | The params are well formed but not allowed, such as an ID already in use or nothing to undo |
 | `-32003` | Permission denied | The session lacks a capability, or a path leaves the project folder |
-| `-32004` | Platform failure | The operating system refused, such as a failed file write |
+| `-32004` | Platform failure | The operating system or a tool refused, such as a failed file write or a failed export build |
 
 `data` carries structured details where they help:
 
@@ -156,5 +157,6 @@ SlashEngine's own.
 | --- | --- |
 | `path` | The JSON Pointer of the bad value inside the params |
 | `errors` | Several schema errors, each `{"path", "message"}` |
-| `capability` | The capability a session lacked |
+| `capability` | The capability a session lacked: `read`, `edit`, `run`, `filesystem` or `build` |
+| `step`, `tail`, `log` | Where an `export.run` failed, the end of its build log and the full log's path |
 | `command`, `index` | The command inside a `batch` that failed, and its position |

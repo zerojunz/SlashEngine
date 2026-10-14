@@ -37,9 +37,9 @@ Rules that apply to every command (see [concepts.md](../concepts.md#sessions)):
 | History | [`undo`](#undo), [`redo`](#redo), [`history.get`](#historyget) |
 | Several at once | [`batch`](#batch) |
 | Observe | [`log.tail`](#logtail) |
+| Export | [`export.run`](#exportrun) |
 
-Planned commands from the [roadmap](../roadmap.md), not yet available: `export.run`,
-`input.inject`, `frame.capture`, `replay.run`, `play`, `pause`, `asset.list`,
+Planned commands from the [roadmap](../roadmap.md), not yet available: `input.inject`, `frame.capture`, `replay.run`, `play`, `pause`, `asset.list`,
 `events.subscribe` and `perf.stats`.
 
 ## Describe
@@ -60,7 +60,7 @@ Needs: `read`.
 ```
 
 ```json
-{"capabilities":["read","edit","run","filesystem"],"commands":["batch","component.remove","component.set","engine.describe","entity.create","entity.destroy","entity.get","history.get","log.tail","redo","scene.get","scene.new","scene.open","scene.save","schema.get","step","undo","world.query"],"components":[{"defaults":{"position":[0.0,0.0],"rotation":0.0,"scale":[1.0,1.0]},"doc":"Position, rotation and scale in 2D. Units are pixels and y points down.","name":"Transform2D"},{"defaults":{"position":[0.0,0.0,0.0],"rotation":[0.0,0.0,0.0,1.0],"scale":[1.0,1.0,1.0]},"doc":"Position, rotation and scale in 3D. Units are meters and y points up.","name":"Transform3D"}],"engine":{"name":"SlashEngine","version":"0.1.0"},"scene":{"entities":0,"path":"","tick":0},"systems":[]}
+{"capabilities":["read","edit","run","filesystem","build"],"commands":["batch","component.remove","component.set","engine.describe","entity.create","entity.destroy","entity.get","export.run","history.get","log.tail","redo","scene.get","scene.new","scene.open","scene.save","schema.get","step","undo","world.query"],"components":[{"defaults":{"position":[0.0,0.0],"rotation":0.0,"scale":[1.0,1.0]},"doc":"Position, rotation and scale in 2D. Units are pixels and y points down.","name":"Transform2D"},{"defaults":{"position":[0.0,0.0,0.0],"rotation":[0.0,0.0,0.0,1.0],"scale":[1.0,1.0,1.0]},"doc":"Position, rotation and scale in 3D. Units are meters and y points up.","name":"Transform3D"}],"engine":{"name":"SlashEngine","version":"0.1.0"},"scene":{"entities":0,"path":"","tick":0},"systems":[]}
 ```
 
 `scene` describes the open scene: how many entities it has, its path (empty for an unsaved one)
@@ -435,6 +435,39 @@ Needs: `read`.
 The result is `{"lines": [...]}`, each line an object such as
 `{"level":"info","msg":"server listening","url":"http://127.0.0.1:34467"}`. A session captures
 only the lines logged while it is open, so a fresh one returns `{"lines":[]}`.
+
+## Export
+
+### export.run
+
+Builds the project with an export preset, as [`slash-cli export`](cli.md#export) does, and
+returns the same result. Registered by `slash-cli` and `slash-mcp`; a game served with
+`slash-cli run --serve` leaves it out, because an export would stall its loop.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `preset` | string | required | A preset from `export_presets.json`, or a platform (`macos`, `windows`, `linux`, `web`) for its defaults |
+| `debug` | boolean | `false` | Debug build instead of Release |
+| `test` | boolean | `false` | Run the exported game headless afterwards, where this machine can |
+
+Needs: `filesystem`, `build`. It changes no scene, so there is nothing to undo.
+
+```json
+{"preset": "linux", "test": true}
+```
+
+```json
+{"bytes":5335403,"executable":"build/export/linux/mygame","log":".slash/export/linux/export.log","output":"build/export/linux","platform":"linux","preset":"linux","seconds":66.6,"test":{"entities":0,"passed":true,"ticks":60}}
+```
+
+A bad preset name fails with `-32002` before anything is built; any other failure, including a
+failed headless test, fails with `-32004`. Either way `data` carries the export's error details:
+the failed `step`, the validation `errors` or the end of the build log in `tail`, and the `log`
+path.
+
+```json
+{"code":-32002,"data":{"step":"options"},"message":"no preset or platform called \"macso\"; did you mean \"macos\"?"}
+```
 
 ## Adding a command
 

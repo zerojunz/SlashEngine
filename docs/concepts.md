@@ -108,9 +108,14 @@ scene**, plus its scene files. See [reference/project-format.md](reference/proje
 An **export** is a build of a project for one platform, ready for players. Because gameplay is
 compiled C++, an export is a real build of the game runtime for that platform, with the project's
 data next to it, not a template plus scripts. `slash-cli export <platform>` validates the project
-and its scenes, builds, and with `--test` runs the result headless to prove it starts. Today it
-covers macOS, Windows, Linux and the web; iOS, Android and signing are next on the
+and its scenes, builds, signs, and with `--test` runs the result headless to prove it starts.
+Today it covers macOS, Windows, Linux and the web; iOS and Android are next on the
 [roadmap](roadmap.md).
+
+An **export preset** is a named way to export, kept in the project's `export_presets.json` like
+Godot's `export_presets.cfg`: a platform, an output folder, a debug flag and how to sign. Signing
+secrets never go in the file; they come from environment variables. See
+[reference/project-format.md](reference/project-format.md#export-presets).
 
 ## Ticks and the run loop
 
@@ -182,8 +187,9 @@ A **capability** is a permission level a session grants. Each command lists the 
 | `edit` | Changing the world, undo and redo |
 | `run` | Advancing the simulation |
 | `filesystem` | Reading and writing files in the project folder |
+| `build` | Compiling and packaging the game (`export.run`), which runs compilers and other tools |
 
-Sessions grant all four by default. `--allow read,run` (on `slash-cli` and `slash-mcp`) narrows
+Sessions grant all five by default. `--allow read,run` (on `slash-cli` and `slash-mcp`) narrows
 that, for example to let an agent observe a game without changing it.
 
 ### The project folder
@@ -233,8 +239,9 @@ more than 30 seconds fails with 503.
 
 `slash-cli init` writes everything an agent needs to work on a game: MCP configs for Claude Code
 (`.mcp.json`), Codex (`.codex/config.toml`) and Cursor (`.cursor/mcp.json`), an `AGENTS.md` with
-the working rules, a `CLAUDE.md` that loads it, a Claude Code skill for editing scenes, an empty
-`scenes/main.scene.json`, and a `.gitignore` entry for `.slash/`. The MCP server's own
+the working rules, a `CLAUDE.md` that loads it, a Claude Code skill for editing scenes, a GitHub Actions workflow
+that exports and tests every platform (`.github/workflows/export.yml`), an empty
+`scenes/main.scene.json`, and `.gitignore` entries for `.slash/` and `build/`. The MCP server's own
 instructions repeat the key rules (call `engine_describe` first, use `batch`, don't hand-edit
 scenes while the server runs) to every client that connects.
 
@@ -251,7 +258,7 @@ OpenAI-compatible servers (including local ones), Anthropic and Gemini; see the
 | Term | Meaning |
 | --- | --- |
 | Canonical form | The one way a scene is written: sorted keys, two-space indent, defaults left out |
-| Capability | A permission a session grants: `read`, `edit`, `run` or `filesystem` |
+| Capability | A permission a session grants: `read`, `edit`, `run`, `filesystem` or `build` |
 | Command | A named action with a params schema, capabilities and an effect |
 | Command registry | The list of commands every front end is generated from |
 | Component | A reflected C++ struct of data attached to an entity |

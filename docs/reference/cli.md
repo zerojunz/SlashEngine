@@ -86,18 +86,21 @@ slash-cli scene format --check <file>    # change nothing; exit 1 if not canonic
 
 ### schema
 
-Prints a JSON Schema: for scene files (generated from the registered components) or for
-[`project.json`](project-format.md).
+Prints a JSON Schema: for scene files (generated from the registered components), for
+[`project.json`](project-format.md) or for
+[`export_presets.json`](project-format.md#export-presets).
 
 ```bash
 slash-cli schema scene
 slash-cli schema project
+slash-cli schema presets
 ```
 
 ### project validate
 
-Checks a folder's `project.json` against the project schema and lists every error, each with its
-JSON Pointer path. Exit code 1 if it is invalid. The folder defaults to `.`.
+Checks a folder's `project.json` and, if there is one, its `export_presets.json`, and lists every
+error with its file and JSON Pointer path. Exit code 1 if either is invalid. The folder defaults
+to `.`.
 
 ```bash
 slash-cli project validate tests/data/game
@@ -108,7 +111,7 @@ slash-cli project validate tests/data/game
 ```
 
 ```json
-{"errors":[{"message":"unknown property \"verison\"; did you mean \"version\"?","path":"/verison"}],"valid":false}
+{"errors":[{"file":"export_presets.json","message":"unknown platform \"wbe\"; did you mean \"web\"?","path":"/presets/web/platform"},{"file":"export_presets.json","message":"secrets are read from environment variables, never from export_presets.json; \"slash-cli schema presets\" lists the variables","path":"/presets/windows-signed/windows/certificate_password"}],"valid":false}
 ```
 
 ### call
@@ -126,7 +129,7 @@ slash-cli call <command> [params] [options]
 | `--scene <file>` | Open this scene first, or start a new one that will be saved there |
 | `--save` | Save the scene after the command succeeds |
 | `--project <dir>` | Folder that scene paths are relative to (default `.`) |
-| `--allow <list>` | Capabilities: `read`, `edit`, `run`, `filesystem` or `all` (default `all`) |
+| `--allow <list>` | Capabilities: `read`, `edit`, `run`, `filesystem`, `build` or `all` (default `all`) |
 
 ```bash
 slash-cli call world.query '{"with": ["Transform2D"]}' --scene tests/data/basic.scene.json
@@ -186,10 +189,13 @@ slash-cli init [dir]
 | `--mcp-command <cmd>` | How agents launch `slash-mcp` (default `slash-mcp`, found on `PATH`) |
 
 ```json
-{"created":["project.json","AGENTS.md","CLAUDE.md",".mcp.json",".cursor/mcp.json",".codex/config.toml",".claude/skills/slashengine/SKILL.md","scenes/main.scene.json",".gitignore"],"skipped":[]}
+{"created":["project.json","AGENTS.md","CLAUDE.md",".mcp.json",".cursor/mcp.json",".codex/config.toml",".claude/skills/slashengine/SKILL.md",".github/workflows/export.yml","scenes/main.scene.json",".gitignore"],"skipped":[]}
 ```
 
 The `project.json` it writes is named after the folder and points at `scenes/main.scene.json`.
+`.github/workflows/export.yml` exports the game for every platform on GitHub Actions, each on a
+native runner, runs each export headless and uploads the results. It pins the engine to the commit
+`init` ran from (`SLASHENGINE_REF`), or to its version tag when that commit is unknown.
 An existing `.gitignore` is never replaced, even with `--force`: `init` adds the `.slash/` and
 `build/` lines if they are missing and lists the file under `updated`.
 
@@ -198,29 +204,32 @@ An existing `.gitignore` is never replaced, even with `--force`: `init` adds the
 Builds a game project for one platform, ready to give to players.
 
 ```bash
-slash-cli export <platform> [options]
+slash-cli export <preset> [options]
 ```
 
-`<platform>` is `macos`, `windows`, `linux` or `web`. iOS and Android are planned (see the
-[roadmap](../roadmap.md)).
+`<preset>` is a preset from the project's [`export_presets.json`](project-format.md#export-presets)
+or a platform for its defaults: `macos`, `windows`, `linux` or `web`. iOS and Android are planned
+(see the [roadmap](../roadmap.md)). The [`export.run`](commands.md#exportrun) command does the
+same over MCP, JSON-RPC and REST.
 
 | Flag | Meaning |
 | --- | --- |
 | `--project <dir>` | Game folder with `project.json` (default `.`) |
-| `--out <dir>` | Output folder (default `<project>/build/export/<platform>`) |
-| `--debug` | Debug build instead of Release |
+| `--out <dir>` | Output folder (default: the preset's `output`, else `<project>/build/export/<preset>`) |
+| `--debug` | Debug build, even if the preset says Release |
 | `--test` | Run the exported game headless afterwards, if this machine can |
 | `--engine <dir>` | Engine sources (default: `SLASH_ENGINE_DIR`, an installed copy, or the checkout `slash-cli` was built from) |
 
-Export validates the project and every scene, copies `project.json` and the `.scene.json` files
-into a staging folder (nothing else, so stray files such as `.env` never ship), builds the game
-with CMake and installs it into the output folder. Each host builds its own platform; web exports
-need Emscripten (`EMSDK` set) on any host. An output folder that a previous export did not make is
-never replaced.
+Export validates the project, its presets and every scene, copies `project.json` and the
+`.scene.json` files into a staging folder (nothing else, so stray files such as `.env` never
+ship), builds the game with CMake, signs it and installs it into the output folder. Each host
+builds its own platform; web exports need Emscripten (`EMSDK` set) on any host. An output folder
+that a previous export did not make is never replaced. Missing signing tools or secrets are
+reported before anything is built.
 
 | Platform | Output |
 | --- | --- |
-| `macos` | A universal app bundle (Apple silicon and Intel) |
+| `macos` | A universal app bundle (Apple silicon and Intel), always signed: ad hoc unless the preset names a `codesign_identity` |
 | `windows`, `linux` | An executable plus a `data` folder |
 | `web` | `index.html` plus the script, WebAssembly and data files |
 
@@ -229,14 +238,19 @@ slash-cli export linux --project my-game --test
 ```
 
 ```json
-{"bytes":5335403,"executable":"my-game/build/export/linux/mygame","log":"my-game/.slash/export/linux/export.log","output":"my-game/build/export/linux","platform":"linux","seconds":66.6,"test":{"entities":0,"passed":true,"ticks":60}}
+{"bytes":5335403,"executable":"my-game/build/export/linux/mygame","log":"my-game/.slash/export/linux/export.log","output":"my-game/build/export/linux","platform":"linux","preset":"linux","seconds":66.6,"test":{"entities":0,"passed":true,"ticks":60}}
 ```
 
-The full build log is at `log`. A failure names the step that failed and ends with the last lines
-of the log, so the log rarely needs opening:
+A signed export adds `signed`: `{"identity", "notarized"}` on macOS or
+`{"certificate", "timestamped"}` on Windows.
+
+The full build log is at `log`. A failure names the step that failed (`options`, `validate`,
+`stage`, `configure`, `build`, `install`, `sign`, `notarize` or `publish`) and ends with the last lines of
+the log in `tail`, so the log rarely needs opening. A step of `options` means the request itself
+was wrong, and exits with 2:
 
 ```json
-{"error":{"message":"unknown platform \"linx\"; did you mean \"linux\"? (ios and android are not supported yet)","step":"options"}}
+{"error":{"message":"no preset or platform called \"web-relase\"; did you mean \"web-release\"?","step":"options"}}
 ```
 
 ## slash-mcp
@@ -252,7 +266,7 @@ slash-mcp [options]
 | --- | --- |
 | `--project <dir>` | Project folder; scene paths are relative to it (default `.`) |
 | `--scene <file>` | Open this scene at startup, or start a new one saved there |
-| `--allow <list>` | Capabilities to grant: `read`, `edit`, `run`, `filesystem` or `all` (default `all`), e.g. `--allow read,run` |
+| `--allow <list>` | Capabilities to grant: `read`, `edit`, `run`, `filesystem`, `build` or `all` (default `all`), e.g. `--allow read,run` |
 | `--live` | Drive the game already running in the project (`slash-cli run --serve` or `slash-cli serve`) instead of an engine of its own |
 | `--version` | Print the engine version |
 | `--help` | Show the usage text |
@@ -317,3 +331,5 @@ slash-game --data tests/data/game --headless --ticks 60
 | `SDL_VIDEO_DRIVER` | SDL3's video driver. `dummy` runs the windowed path with no display |
 | `SLASH_ENGINE_DIR` | Engine sources `slash-cli export` builds against |
 | `EMSDK` | The Emscripten SDK, needed for web exports |
+| `SLASH_APPLE_API_KEY_PATH`, `SLASH_APPLE_API_KEY_ID`, `SLASH_APPLE_API_ISSUER` | An App Store Connect API key (the `.p8` file, its ID and issuer) for notarizing macOS exports |
+| `SLASH_WINDOWS_CERTIFICATE_PATH`, `SLASH_WINDOWS_CERTIFICATE_PASSWORD` | A `.pfx` code-signing certificate and its password for signing Windows exports |
