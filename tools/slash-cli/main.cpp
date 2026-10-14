@@ -1,6 +1,12 @@
 // slash-cli: the command-line entry point agents use to drive SlashEngine.
 // Results go to stdout as JSON; logs go to stderr as JSON lines.
 
+#include "init.hpp"
+
+#include "slash/command/builtin.hpp"
+#include "slash/command/command.hpp"
+#include "slash/command/rpc.hpp"
+#include "slash/command/session.hpp"
 #include "slash/core/json.hpp"
 #include "slash/core/log.hpp"
 #include "slash/core/version.hpp"
@@ -16,6 +22,9 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <iostream>
+#include <iterator>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -24,6 +33,7 @@ namespace {
 
 namespace json = slash::json;
 namespace world = slash::world;
+namespace command = slash::command;
 
 constexpr int kExitOk = 0;
 constexpr int kExitFailure = 1;
@@ -43,7 +53,23 @@ Usage:
   slash-cli scene format <file>      Rewrite a scene in canonical form
       --check                        Only report whether it is canonical; change nothing
   slash-cli schema scene             Print the JSON Schema for scene files
+  slash-cli call <command> [params]  Run one engine command and print its result
+                                     params is a JSON object, or - to read it from stdin
+      --scene <file>                 Open this scene first (or start a new one saved there)
+      --save                         Save the scene after the command succeeds
+  slash-cli rpc                      Serve engine commands as JSON-RPC 2.0, one message per
+                                     line on stdin and stdout
+      --scene <file>                 Open this scene first
+  slash-cli init [dir]               Set a project up for Claude Code, Codex and Cursor
+      --force                        Replace files that already exist
+      --mcp-command <cmd>            How agents launch slash-mcp (default "slash-mcp")
   slash-cli help                     Show this message
+
+call and rpc also take:
+      --project <dir>                Folder that scene paths are relative to (default ".")
+      --allow <list>                 Capabilities: read, edit, run, filesystem or all (default)
+
+slash-cli call engine.describe lists every command. Agents with MCP should use slash-mcp.
 
 Results are JSON on stdout. Exit codes: 0 success, 1 failure, 2 usage error.
 )";
@@ -260,6 +286,189 @@ int cmd_schema(const std::vector<std::string>& args) {
     return kExitOk;
 }
 
+// Options shared by call and rpc.
+struct SessionArgs {
+    command::SessionOptions options;
+    std::string scene;
+    bool save = false;
+};
+
+// Parses a session option at args[i]. Returns false if args[i] is not one; sets error if it is
+// one but malformed.
+bool parse_session_arg(const std::vector<std::string>& args, std::size_t& i, SessionArgs& out,
+                       std::string& error) {
+    const std::string& arg = args[i];
+    const bool has_value = i + 1 < args.size();
+    if (arg == "--project" || arg == "--scene" || arg == "--allow") {
+        if (!has_value) {
+            error = arg + " needs a value";
+            return true;
+        }
+        const std::string& value = args[++i];
+        if (arg == "--project") {
+            out.options.project_root = value;
+        } else if (arg == "--scene") {
+            out.scene = value;
+        } else if (auto capabilities = command::parse_capabilities(value); capabilities) {
+            out.options.capabilities = std::move(capabilities).value();
+        } else {
+            error = capabilities.error().message;
+        }
+        return true;
+    }
+    return false;
+}
+
+json::Value error_json(const command::Reply& reply) {
+    json::Value error;
+    error["code"] = reply.code;
+    error["message"] = reply.message;
+    if (!reply.data.is_null()) {
+        error["data"] = reply.data;
+    }
+    json::Value out;
+    out["error"] = std::move(error);
+    return out;
+}
+
+// The engine's components and commands, and a session over them.
+struct Engine {
+    world::ComponentRegistry components = make_registry();
+    command::Registry commands;
+    std::unique_ptr<command::Session> session;
+
+    explicit Engine(const command::SessionOptions& options) {
+        command::register_builtin_commands(commands);
+        command::SessionOptions session_options = options;
+        session_options.capture_logs = false;
+        session = std::make_unique<command::Session>(components, commands, session_options);
+    }
+};
+
+int cmd_call(const std::vector<std::string>& args) {
+    SessionArgs session_args;
+    std::string name;
+    std::string params_text;
+    bool have_params = false;
+    for (std::size_t i = 0; i < args.size(); ++i) {
+        std::string error;
+        if (parse_session_arg(args, i, session_args, error)) {
+            if (!error.empty()) {
+                return usage_error(error);
+            }
+        } else if (args[i] == "--save") {
+            session_args.save = true;
+        } else if (name.empty() && !args[i].starts_with("--")) {
+            name = args[i];
+        } else if (!have_params && (args[i] == "-" || !args[i].starts_with("--"))) {
+            params_text = args[i];
+            have_params = true;
+        } else {
+            return usage_error("unexpected argument for call: " + args[i]);
+        }
+    }
+    if (name.empty()) {
+        return usage_error("call needs a command name, e.g. slash-cli call engine.describe");
+    }
+    if (params_text == "-") {
+        params_text.assign(std::istreambuf_iterator<char>(std::cin), {});
+    }
+    json::Value params = json::Object{};
+    if (have_params) {
+        auto parsed = json::parse(params_text);
+        if (!parsed) {
+            return usage_error("params are not valid JSON: " + parsed.error().message);
+        }
+        params = std::move(parsed).value();
+    }
+
+    Engine engine(session_args.options);
+    command::Session& session = *engine.session;
+    if (!session_args.scene.empty()) {
+        if (const auto opened = command::open_or_new_scene(session, session_args.scene);
+            !opened.ok) {
+            print(error_json(opened));
+            return kExitFailure;
+        }
+    }
+    const command::Reply reply = session.call(name, params);
+    if (!reply.ok) {
+        print(error_json(reply));
+        return kExitFailure;
+    }
+    if (session_args.save) {
+        if (const auto saved = session.call("scene.save", json::Object{}); !saved.ok) {
+            print(error_json(saved));
+            return kExitFailure;
+        }
+    }
+    print(reply.value);
+    return kExitOk;
+}
+
+int cmd_rpc(const std::vector<std::string>& args) {
+    SessionArgs session_args;
+    for (std::size_t i = 0; i < args.size(); ++i) {
+        std::string error;
+        if (!parse_session_arg(args, i, session_args, error)) {
+            return usage_error("unexpected argument for rpc: " + args[i]);
+        }
+        if (!error.empty()) {
+            return usage_error(error);
+        }
+    }
+    Engine engine(session_args.options);
+    command::Session& session = *engine.session;
+    if (!session_args.scene.empty()) {
+        if (const auto opened = command::open_or_new_scene(session, session_args.scene);
+            !opened.ok) {
+            print(error_json(opened));
+            return kExitFailure;
+        }
+    }
+    std::string line;
+    while (std::getline(std::cin, line)) {
+        if (!line.empty() && line.back() == '\r') {
+            line.pop_back();
+        }
+        if (line.find_first_not_of(" \t") == std::string::npos) {
+            continue;
+        }
+        if (const std::string response = command::rpc::handle(session, line); !response.empty()) {
+            const std::string out = response + "\n";
+            std::fwrite(out.data(), 1, out.size(), stdout);
+            std::fflush(stdout);
+        }
+    }
+    return kExitOk;
+}
+
+int cmd_init(const std::vector<std::string>& args) {
+    slash::cli::InitOptions options;
+    bool have_directory = false;
+    for (std::size_t i = 0; i < args.size(); ++i) {
+        if (args[i] == "--force") {
+            options.force = true;
+        } else if (args[i] == "--mcp-command") {
+            if (i + 1 >= args.size()) {
+                return usage_error("--mcp-command needs a value");
+            }
+            options.mcp_command = args[++i];
+        } else if (!have_directory && !args[i].starts_with("--")) {
+            options.directory = args[i];
+            have_directory = true;
+        } else {
+            return usage_error("unexpected argument for init: " + args[i]);
+        }
+    }
+    auto result = slash::cli::init_project(options);
+    if (!result) {
+        return failure("could not set up the project", result.error());
+    }
+    print(result.value());
+    return kExitOk;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -269,19 +478,28 @@ int main(int argc, char** argv) {
         return args.empty() ? kExitUsage : kExitOk;
     }
 
-    const std::string command = args[0];
+    const std::string name = args[0];
     args.erase(args.begin());
-    if (command == "version" || command == "--version") {
+    if (name == "version" || name == "--version") {
         return cmd_version();
     }
-    if (command == "run") {
+    if (name == "run") {
         return cmd_run(args);
     }
-    if (command == "scene") {
+    if (name == "scene") {
         return cmd_scene(args);
     }
-    if (command == "schema") {
+    if (name == "schema") {
         return cmd_schema(args);
     }
-    return usage_error("unknown command: " + command);
+    if (name == "call") {
+        return cmd_call(args);
+    }
+    if (name == "rpc") {
+        return cmd_rpc(args);
+    }
+    if (name == "init") {
+        return cmd_init(args);
+    }
+    return usage_error("unknown command: " + name);
 }

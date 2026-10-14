@@ -4,6 +4,7 @@ add_library(slash_core
     src/json.cpp
     src/json_schema.cpp
     src/log.cpp
+    src/text.cpp
     src/version.cpp)
 add_library(slash::core ALIAS slash_core)
 

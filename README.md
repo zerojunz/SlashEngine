@@ -7,9 +7,10 @@ than manual human input: scenes are plain text, the engine describes itself, and
 command an agent can call over MCP. It is model agnostic and works with Claude Code, Codex, Cursor
 or any other MCP client. See [docs/design.md](docs/design.md) for the full design.
 
-**Status:** milestone 2 (core and world). The engine runs an EnTT world on a fixed-timestep loop,
+**Status:** milestone 3 (commands and MCP). The engine runs an EnTT world on a fixed-timestep loop,
 headless or in an SDL3 window, and loads and saves JSON scenes validated against a schema it
-generates from its own components. Rendering and the command API come next.
+generates from its own components. Agents drive it through a command API with undo, served over
+MCP (`slash-mcp`), JSON-RPC and the command line. Rendering comes next.
 
 ## Quick start
 
@@ -23,7 +24,15 @@ ctest --preset dev
 ./build/dev/tools/slash-cli/slash-cli run --headless --ticks 60 --scene tests/data/basic.scene.json
 ```
 
-Agents should start with [AGENTS.md](AGENTS.md).
+To let an agent edit a game, run `slash-cli init` in the game's folder. It writes the MCP configs
+for Claude Code, Codex and Cursor, an `AGENTS.md` and an empty main scene. With `slash-mcp` on your
+`PATH`, the agent connects on its next start. Claude Code can also add it by hand:
+
+```bash
+claude mcp add slashengine -- slash-mcp --project .
+```
+
+Agents working on the engine itself should start with [AGENTS.md](AGENTS.md).
 
 ## License
 
