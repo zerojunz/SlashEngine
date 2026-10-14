@@ -574,7 +574,10 @@ bool package_apk(const AndroidTools& tools, const AndroidKey& key, const ApkInfo
             return false;
         }
     }
-    std::vector<std::string> sign{tool(tools, "apksigner", kScript), "sign"};
+    // Without --alignment-preserved, apksigner pads the libraries again to its own default page
+    // size, which may undo zipalign's 16 KB alignment.
+    std::vector<std::string> sign{tool(tools, "apksigner", kScript), "sign",
+                                  "--alignment-preserved"};
     sign.insert(sign.end(), key.signer_args.begin(), key.signer_args.end());
     sign.insert(sign.end(), {"--out", signed_apk, aligned});
     if (!detail::step("sign", sign, process, failure)) {
