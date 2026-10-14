@@ -2,7 +2,8 @@
 
 Instructions for AI agents (Claude Code, Codex, Cursor and others) working on SlashEngine. Read
 [docs/design.md](docs/design.md) for the full design; this file covers the day-to-day loop.
-[CONTRIBUTING.md](CONTRIBUTING.md) covers what a pull request needs.
+[CONTRIBUTING.md](CONTRIBUTING.md) covers what a pull request needs. [docs/](docs/README.md) has the
+reference pages and the [roadmap](docs/roadmap.md).
 
 ## Goals
 
@@ -160,3 +161,5 @@ CI rejects unformatted code and any clang-tidy finding.
   with their license. Only permissive licenses (MIT, BSD, zlib, Apache 2.0, Boost, MIT-0,
   public domain). Never copy code from closed engines.
 - Every behavior change comes with a test in `tests/`. Tests must pass headless.
+- A change to a command, flag, component or file format updates its page in `docs/reference/`,
+  and work that finishes a roadmap item ticks it in `docs/roadmap.md`.
