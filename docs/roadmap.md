@@ -167,7 +167,30 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
 - [ ] Navigation on Recast and Detour, in 2D and 3D, with avoidance
 - [ ] Heightmap terrain; CSG and grid-based tile placement
 - [ ] Import of glTF 2.0, FBX, OBJ, PNG, JPG, KTX2, WAV, OGG and MP3
-- [ ] 3D models and materials in the asset library and generator
+- [ ] 3D in the asset library and generator ([design](design.md#3d-assets))
+  - [ ] Parametric models: agents write a `.model.json` recipe of shapes, CSG on Manifold,
+        extrusions, lathes, bevels and arrays, and the engine builds the mesh; the library keeps
+        the recipe, so refining means changing a number
+  - [ ] Concept image first: generate and review a cheap image, then make the 3D model from it,
+        with the image kept as the model's parent
+  - [ ] Game-ready cleanup for every generated or imported mesh: real-world scale, pivot and up
+        axis, a triangle budget with meshoptimizer, UVs with xatlas, PBR textures with baked-in
+        lighting removed, LODs and collision hulls with CoACD
+  - [ ] Automatic review: headless turntable renders, geometry checks (budget, scale, holes,
+        texel density) and a vision-capable model comparing the views with the request, all
+        recorded as feedback; failed checks retry within a call budget
+  - [ ] Text descriptions of 3D assets: size, pivot, parts, materials, triangle count and
+        attachment points, so agents place models without loading images
+  - [ ] Named parts and attachment points, so wheels turn, doors open and parts from different
+        models combine
+  - [ ] Auto-rigging through a generator adapter, retargeted to one standard humanoid skeleton
+        so every library animation works on every character
+  - [ ] A project style profile (palette, reference images, triangle and texel budgets),
+        refined from accepted assets and sent with every request so a game's assets match
+  - [ ] Tileable PBR materials from the 2D generator, shared through the material graph instead
+        of a unique texture per model
+  - [ ] Scene assembly: agents place library assets with constraints (on the ground, not
+        overlapping, along a path) instead of generating a scene as one mesh
 
 Exit: an agent builds a small 3D sample end to end.
 
@@ -258,7 +281,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Navigation | Recast and Detour, 2D and 3D, avoidance | 7 | Planned |
 | Asset import | glTF 2.0, FBX, OBJ, PNG, JPG, KTX2, WAV, OGG, MP3 | 7 | Planned |
 | Profiling | Tracy, plus `perf.stats` over the command API | 6 | Planned |
-| Asset generation and library | Generated assets saved once and shared by every project and teammate, searched before generating, ranked by agent feedback | 6, 7 | Planned: images and audio in 6, 3D in 7 |
+| Asset generation and library | Generated assets saved once and shared by every project and teammate, searched before generating, ranked by agent feedback; 3D models as parametric recipes or cleaned-up generated meshes, reviewed automatically | 6, 7 | Planned: images and audio in 6, 3D in 7 |
 | Global illumination | Baked lightmaps and probe-based GI | 7 | Planned |
 | Sky and volumetrics | Physical sky, volumetric fog | 7 | Planned |
 | Decals | Clustered decals | 7 | Planned |

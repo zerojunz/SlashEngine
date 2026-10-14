@@ -95,7 +95,7 @@ SlashEngine covers nearly every Godot 4 feature area at launch and adds UE5 feat
 | Navigation | Navigation meshes, avoidance | Nav mesh, AI controllers | Recast and Detour, 2D and 3D, avoidance | Launch |
 | Asset import | glTF, FBX, OBJ, images, audio | FBX, glTF, USD | glTF 2.0, FBX, OBJ, PNG, JPG, KTX2, WAV, OGG, MP3 | Launch |
 | Profiling | Profiler, debugger, monitors | Unreal Insights | Tracy, plus perf.stats over the command API | Launch |
-| Asset generation and library | Asset Library (add-ons, no generation) | Fab, shared Derived Data Cache | Generated assets saved once by content hash and shared by every project and teammate; agents search before generating, and agent feedback ranks results | Launch |
+| Asset generation and library | Asset Library (add-ons, no generation) | Fab, shared Derived Data Cache | Generated assets saved once by content hash and shared by every project and teammate; agents search before generating, and agent feedback ranks results; 3D models as parametric recipes or cleaned-up, automatically reviewed meshes | Launch |
 | Global illumination | SDFGI, VoxelGI, LightmapGI | Lumen | Baked lightmaps and probe-based GI | Launch |
 | Sky and volumetrics | Procedural sky, volumetric fog | Sky atmosphere, volumetric clouds | Physical sky, volumetric fog | Launch |
 | Decals | Decal node | Deferred decals | Clustered decals | Launch |
@@ -144,6 +144,9 @@ Every line in the repo is Apache 2.0 or comes from a dependency under a permissi
 | FreeType, HarfBuzz | Fonts and text shaping | FreeType License (BSD-style), MIT |
 | cgltf, ufbx, stb_image | Asset import | MIT |
 | meshoptimizer | LODs, mesh compression | MIT |
+| Manifold | CSG and parametric models | Apache 2.0 |
+| xatlas | UV unwrapping | MIT |
+| CoACD | Convex collision hulls | MIT |
 | ENet | Networking | MIT |
 | OpenXR SDK | XR | Apache 2.0 |
 | dav1d | Video | BSD |
@@ -317,6 +320,19 @@ Generating an image or a sound costs a model call, time and often money, and age
 - **Shared with the team.** The library can sync with a store the team hosts: a shared folder or a small library server that `slash-cli` runs. Nothing goes to a central service the project runs, and a teammate's request finds assets someone else already made.
 - **Model agnostic and testable.** Generators are adapters behind one interface, like `ai::Provider`, for hosted and local image and audio models; 3D models join when glTF import lands. A test generator lets agents and CI use the library headless with no model or key.
 
+### 3D assets
+
+Generated 3D meshes are usually too dense, badly scaled, hard to edit and lit into their textures, so a raw model is rarely ready for a game. The library treats 3D generation as a pipeline that ends in a game-ready, reviewed asset:
+
+- **Parametric models first.** Many props, buildings and hard-surface objects are better written than generated. An agent writes a `.model.json` recipe (primitives, CSG on Manifold, extrusions, lathes, bevels, arrays, all with named parameters) and the engine builds the mesh. Recipes are small, exact and reproducible, and refining one means changing a number rather than generating again. This is Godot's CSG idea, written as text.
+- **Concept image, then model.** For organic shapes a generator makes a cheap 2D concept first. The agent reviews it, and only then is a 3D model made from the image. The image stays in the library as the model's parent.
+- **Game-ready cleanup.** Every generated or imported mesh is set to real-world scale, given a sensible pivot and up axis, reduced to a triangle budget (meshoptimizer), unwrapped (xatlas), rebaked into PBR textures with baked-in lighting removed, given LODs and given collision hulls (CoACD).
+- **Automatic review.** The engine renders turntable views headless, checks the geometry (budget, scale, holes, texel density) and asks a vision-capable model through `ai::Provider` whether the views match the request. The results are recorded with `asset.feedback`, and a failed check retries within a call budget the caller sets.
+- **Described in text.** Each model comes with its size, pivot, named parts, materials, triangle count and attachment points, so agents place and combine models without loading images.
+- **Parts, rigs and animation.** Named parts and attachment points let wheels turn, doors open and parts from different models combine. Characters are auto-rigged through a generator adapter and retargeted to one standard humanoid skeleton, so every animation in the library works on every character.
+- **One style per game.** A project style profile (palette, reference images, triangle and texel budgets) goes with every request and is refined from the assets agents accept, so a game's models match. Materials come from tileable PBR textures shared through the material graph rather than a unique texture per model.
+- **Scenes are assembled, not generated.** Agents place library assets with constraints (on the ground, not overlapping, along a path) instead of generating a whole scene as one mesh, so every piece stays editable and reusable.
+
 ## Repo layout and milestones
 
 The repo splits into a core library, optional modules and the tools agents use, with sample games that double as integration tests.
@@ -354,7 +370,7 @@ SlashEngine/
 4. **Export pipeline.** `slash-cli export` and toolchain install for all six platforms, plus the CI workflow. Exit: an empty project exports and passes headless tests everywhere. It comes this early so every later feature stays exportable. Built in two parts: (a) project files, the game runtime and exports for macOS, Windows, Linux and web on their own hosts, tested in CI; (b) iOS and Android, cross toolchains from a Mac, export presets with signing, and the `export.run` command.
 5. **2D feature set.** Systems, play and pause, event subscriptions, prefabs, asset handles with hot reload and the CI license check first; then the renderer, materials, sprites, keyframe animation, tilemaps, 2D lights, Box2D physics, particles, UI and text, audio, input injection, frame capture, replays and the debug overlay. Exit: an agent builds `samples/pong` and exports it to all six platforms.
 6. **Hot reload, AI and profiling.** Hot-reloadable C++ game module, `ai::Provider` with three adapters and `ReplayProvider`, the asset library and generator for images and audio, the job system, Tracy, `perf.stats` and the per-system memory report.
-7. **3D feature set.** Forward+ PBR renderer, shadows, post-processing, GI, sky, decals, LODs, Jolt physics, skeletal animation and blending, navigation, terrain, CSG, glTF and FBX import, and 3D models in the asset library. Exit: an agent builds a small 3D sample end to end.
+7. **3D feature set.** Forward+ PBR renderer, shadows, post-processing, GI, sky, decals, LODs, Jolt physics, skeletal animation and blending, navigation, terrain, CSG, glTF and FBX import, and 3D in the asset library: parametric models, game-ready cleanup, automatic review, rigging and scene assembly. Exit: an agent builds a small 3D sample end to end.
 8. **Systems and platform services.** Networking, XR, localization, video, accessibility, and analytics, ads and in-app purchases behind one API with a headless test backend.
 9. **Launch.** Every Launch row of the parity table done, the Mac engine and tools released, exports for all six platforms, reference docs generated from `engine.describe`.
 
