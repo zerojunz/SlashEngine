@@ -15,8 +15,9 @@ struct InitOptions {
 
 // Sets up a game project for agents: MCP configs for Claude Code (.mcp.json), Codex
 // (.codex/config.toml) and Cursor (.cursor/mcp.json), an AGENTS.md with a CLAUDE.md pointing to
-// it, a Claude Code skill and an empty main scene. Returns {"created": [...], "skipped": [...]}
-// with paths relative to the directory.
+// it, a Claude Code skill, an empty main scene and a .gitignore entry for .slash/. Returns
+// {"created": [...], "skipped": [...]} plus "updated" when an existing .gitignore gained the
+// entry, with paths relative to the directory.
 [[nodiscard]] Result<json::Value> init_project(const InitOptions& options);
 
 } // namespace slash::cli
