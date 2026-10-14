@@ -116,7 +116,7 @@ $cli call engine.describe
 ```
 
 ```json
-{"capabilities":["read","edit","run","filesystem"],"commands":["batch","component.remove","component.set","engine.describe","entity.create","entity.destroy","entity.get","history.get","log.tail","redo","scene.get","scene.new","scene.open","scene.save","schema.get","step","undo","world.query"],"components":[{"defaults":{"position":[0.0,0.0],"rotation":0.0,"scale":[1.0,1.0]},"doc":"Position, rotation and scale in 2D. Units are pixels and y points down.","name":"Transform2D"},{"defaults":{"position":[0.0,0.0,0.0],"rotation":[0.0,0.0,0.0,1.0],"scale":[1.0,1.0,1.0]},"doc":"Position, rotation and scale in 3D. Units are meters and y points up.","name":"Transform3D"}],"engine":{"name":"SlashEngine","version":"0.1.0"},"scene":{"entities":0,"path":"","tick":0},"systems":[]}
+{"capabilities":["read","edit","run","filesystem","build"],"commands":["batch","component.remove","component.set","engine.describe","entity.create","entity.destroy","entity.get","export.run","history.get","log.tail","redo","scene.get","scene.new","scene.open","scene.save","schema.get","step","undo","world.query"],"components":[{"defaults":{"position":[0.0,0.0],"rotation":0.0,"scale":[1.0,1.0]},"doc":"Position, rotation and scale in 2D. Units are pixels and y points down.","name":"Transform2D"},{"defaults":{"position":[0.0,0.0,0.0],"rotation":[0.0,0.0,0.0,1.0],"scale":[1.0,1.0,1.0]},"doc":"Position, rotation and scale in 3D. Units are meters and y points up.","name":"Transform3D"}],"engine":{"name":"SlashEngine","version":"0.1.0"},"scene":{"entities":0,"path":"","tick":0},"systems":[]}
 ```
 
 Find entities. Queries return only IDs unless you ask for components, which keeps answers small:
@@ -157,7 +157,7 @@ $cli init mygame
 ```
 
 ```json
-{"created":["project.json","AGENTS.md","CLAUDE.md",".mcp.json",".cursor/mcp.json",".codex/config.toml",".claude/skills/slashengine/SKILL.md","scenes/main.scene.json",".gitignore"],"skipped":[]}
+{"created":["project.json","AGENTS.md","CLAUDE.md",".mcp.json",".cursor/mcp.json",".codex/config.toml",".claude/skills/slashengine/SKILL.md",".github/workflows/export.yml","scenes/main.scene.json",".gitignore"],"skipped":[]}
 ```
 
 `mygame` is now a game project: `project.json` names the game and its main scene. Each config launches `slash-mcp`, the engine's MCP server, with the project's main scene open.
@@ -205,12 +205,14 @@ $cli export linux --project mygame --test
 ```
 
 ```json
-{"bytes":5335402,"executable":"mygame/build/export/linux/mygame","log":"mygame/.slash/export/linux/export.log","output":"mygame/build/export/linux","platform":"linux","seconds":64.2,"test":{"entities":0,"passed":true,"ticks":60}}
+{"bytes":5335402,"executable":"mygame/build/export/linux/mygame","log":"mygame/.slash/export/linux/export.log","output":"mygame/build/export/linux","platform":"linux","preset":"linux","seconds":64.2,"test":{"entities":0,"passed":true,"ticks":60}}
 ```
 
 `--test` runs the exported game headless and reports whether it worked. Use `macos` or `windows`
-on those machines, or `web` anywhere Emscripten is installed. See
-[reference/cli.md](reference/cli.md#export).
+on those machines, or `web` anywhere Emscripten is installed. To export every platform at once,
+push the game to GitHub: `init` wrote `.github/workflows/export.yml`, which builds and tests each
+one on its own runner. Presets in `export_presets.json` name output folders and signing settings;
+see [reference/cli.md](reference/cli.md#export).
 
 ## Next
 

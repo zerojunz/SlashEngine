@@ -32,14 +32,63 @@ checks it.
 
 Unknown keys are errors, with a "did you mean" suggestion for a misspelled one.
 
+## Export presets
+
+`export_presets.json`, next to `project.json`, holds named ways to export the game, like Godot's
+`export_presets.cfg`. It is optional: without it, `slash-cli export <platform>` uses that
+platform's defaults. `slash-cli schema presets` prints its JSON Schema and
+`slash-cli project validate` checks it.
+
+```json
+{
+  "format": 1,
+  "presets": {
+    "mac-store": {
+      "macos": {
+        "codesign_identity": "Developer ID Application: Example (ABCDE12345)",
+        "notarize": true
+      },
+      "output": "dist/mac",
+      "platform": "macos"
+    },
+    "windows": {
+      "platform": "windows",
+      "windows": {"sign": true}
+    }
+  }
+}
+```
+
+Preset names are 1 to 64 letters, digits, `-` or `_`. A preset named after a platform replaces
+that platform's defaults, so `slash-cli export windows` above signs.
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `platform` | required | `macos`, `windows`, `linux` or `web` |
+| `output` | `build/export/<preset>` | Output folder, inside the project |
+| `debug` | `false` | Debug build instead of Release |
+| `macos.codesign_identity` | `"-"` | Keychain identity to sign with; `"-"` signs ad hoc |
+| `macos.entitlements` | none | Entitlements `.plist` to sign with, inside the project |
+| `macos.notarize` | `false` | Notarize with Apple and staple the ticket; needs a Developer ID identity |
+| `windows.sign` | `false` | Sign the executable with signtool |
+| `windows.timestamp_url` | `http://timestamp.digicert.com` | RFC 3161 timestamp server, or `""` for none |
+
+A `macos` or `windows` section is allowed only in a preset for that platform. Secrets never go in
+the file, so it can be committed: a key that looks like one (`password`, `secret`, `token`,
+`private`) is an error that points to the environment variables instead. Notarizing reads an App
+Store Connect API key from `SLASH_APPLE_API_KEY_PATH`, `SLASH_APPLE_API_KEY_ID` and
+`SLASH_APPLE_API_ISSUER`; Windows signing reads a `.pfx` certificate from
+`SLASH_WINDOWS_CERTIFICATE_PATH` and its password from `SLASH_WINDOWS_CERTIFICATE_PASSWORD`.
+
 ## Layout
 
 ```text
 my-game/
   project.json
+  export_presets.json   # optional
   scenes/
     main.scene.json
-  build/           # exports land in build/export/<platform>/ (gitignored)
+  build/           # exports land in build/export/<preset>/ (gitignored)
   .slash/          # caches, export logs, a running server's token (gitignored)
 ```
 
