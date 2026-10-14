@@ -5,6 +5,7 @@
 #include "slash/exporter/android.hpp"
 #include "slash/exporter/commands.hpp"
 #include "slash/exporter/export.hpp"
+#include "slash/exporter/ios.hpp"
 #include "slash/exporter/presets.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/world/component_registry.hpp"
@@ -107,7 +108,7 @@ TEST_CASE("export presets report every error with its path") {
     CHECK(contains(error_at(R"({"format": 1, "presets": {"w": {"platform": "windows",
                                 "macos": {"notarize": false}}}})",
                             "/presets/w/macos"),
-                   "only a macos preset"));
+                   "only macos presets"));
     CHECK(contains(error_at(R"({"format": 1, "presets": {"m": {"platform": "macos",
                                 "macos": {"notarize": true}}}})",
                             "/presets/m/macos/notarize"),
@@ -173,7 +174,7 @@ TEST_CASE("android presets choose ABIs, a package and a version code") {
     CHECK(contains(error_at(R"({"format": 1, "presets": {"w": {"platform": "web",
                                 "android": {"abis": ["x86_64"]}}}})",
                             "/presets/w/android"),
-                   "only a android preset"));
+                   "only android presets"));
     CHECK(contains(error_at(R"({"format": 1, "presets": {"a": {"platform": "android",
                                 "android": {"keystore_password": "x"}}}})",
                             "/presets/a/android/keystore_password"),
@@ -271,6 +272,163 @@ TEST_CASE("android exports find the newest stable SDK tools, an NDK and a JDK") 
     std::filesystem::remove_all(root);
 }
 
+TEST_CASE("ios presets build for the Simulator unless they name a team") {
+    auto presets = exporter::parse_presets(parse(R"({
+        "format": 1,
+        "presets": {
+            "ios": {"platform": "ios"},
+            "store": {"platform": "ios", "ios": {"team_id": "ABCDE12345",
+                      "bundle_id": "com.example.pong", "build_number": 7}},
+            "team-sim": {"platform": "ios", "ios": {"team_id": "ABCDE12345",
+                         "destination": "simulator"}}
+        }
+    })"));
+    REQUIRE(presets.ok());
+    const exporter::Preset& defaults = presets.value().at("ios");
+    CHECK(defaults.ios.destination == exporter::kIosSimulator);
+    CHECK(defaults.ios.team_id.empty());
+    CHECK(defaults.ios.bundle_id.empty());
+    CHECK(defaults.ios.build_number == 0);
+    const exporter::Preset& store = presets.value().at("store");
+    CHECK(store.ios.destination == exporter::kIosDevice);
+    CHECK(store.ios.team_id == "ABCDE12345");
+    CHECK(store.ios.bundle_id == "com.example.pong");
+    CHECK(store.ios.build_number == 7);
+    CHECK(store.ios.codesign_identity.empty());
+    CHECK(presets.value().at("team-sim").ios.destination == exporter::kIosSimulator);
+    // An ad hoc device build needs no team.
+    CHECK(exporter::validate_presets(parse(R"({"format": 1, "presets": {"a": {"platform": "ios",
+              "ios": {"destination": "device", "codesign_identity": "-"}}}})"))
+              .empty());
+
+    CHECK(contains(error_at(R"({"format": 1, "presets": {"a": {"platform": "ios",
+                                "ios": {"destination": "device"}}}})",
+                            "/presets/a/ios/destination"),
+                   "team_id"));
+    CHECK(contains(error_at(R"({"format": 1, "presets": {"a": {"platform": "ios",
+                                "ios": {"team_id": "abcde12345"}}}})",
+                            "/presets/a/ios/team_id"),
+                   "10 capital letters"));
+    CHECK(contains(error_at(R"({"format": 1, "presets": {"a": {"platform": "ios",
+                                "ios": {"bundle_id": "com.example.my_game"}}}})",
+                            "/presets/a/ios/bundle_id"),
+                   "\"my_game\""));
+    CHECK_FALSE(error_at(R"({"format": 1, "presets": {"a": {"platform": "ios",
+                             "ios": {"build_number": 0}}}})",
+                         "/presets/a/ios/build_number")
+                    .empty());
+    CHECK(contains(error_at(R"({"format": 1, "presets": {"m": {"platform": "macos",
+                                "ios": {"team_id": "ABCDE12345"}}}})",
+                            "/presets/m/ios"),
+                   "only ios presets"));
+    CHECK(contains(error_at(R"({"format": 1, "presets": {"a": {"platform": "ios",
+                                "ios": {"certificate_password": "x"}}}})",
+                            "/presets/a/ios/certificate_password"),
+                   "environment variables"));
+}
+
+TEST_CASE("ios bundle IDs use letters, digits and '-'") {
+    CHECK(exporter::ios_bundle_id_problem("com.example.pong").empty());
+    CHECK(exporter::ios_bundle_id_problem("com.example.my-game2").empty());
+    CHECK(exporter::ios_bundle_id_problem("com.example.2048").empty());
+    CHECK(contains(exporter::ios_bundle_id_problem("pong"), "two or more parts"));
+    CHECK(contains(exporter::ios_bundle_id_problem("com..pong"), "single dots"));
+    CHECK(contains(exporter::ios_bundle_id_problem("com.example.pong."), "single dots"));
+    CHECK(contains(exporter::ios_bundle_id_problem("com.example.my_game"), "\"my_game\""));
+}
+
+TEST_CASE("ios exports test on a booted iPhone Simulator, else the newest one") {
+    json::Value list = parse(R"({"devices": {
+        "com.apple.CoreSimulator.SimRuntime.iOS-13-7": [
+            {"udid": "OLD", "name": "iPhone 11", "state": "Shutdown", "isAvailable": true,
+             "deviceTypeIdentifier": "com.apple.CoreSimulator.SimDeviceType.iPhone-11"}],
+        "com.apple.CoreSimulator.SimRuntime.iOS-17-10": [
+            {"udid": "A", "name": "iPhone 15", "state": "Shutdown", "isAvailable": true,
+             "deviceTypeIdentifier": "com.apple.CoreSimulator.SimDeviceType.iPhone-15"},
+            {"udid": "PAD", "name": "iPad Air", "state": "Booted", "isAvailable": true,
+             "deviceTypeIdentifier": "com.apple.CoreSimulator.SimDeviceType.iPad-Air"}],
+        "com.apple.CoreSimulator.SimRuntime.iOS-17-5": [
+            {"udid": "B", "name": "iPhone 15 Pro", "state": "Shutdown", "isAvailable": true,
+             "deviceTypeIdentifier": "com.apple.CoreSimulator.SimDeviceType.iPhone-15-Pro"}],
+        "com.apple.CoreSimulator.SimRuntime.iOS-18-0": [
+            {"udid": "GONE", "name": "iPhone 16", "state": "Shutdown", "isAvailable": false,
+             "deviceTypeIdentifier": "com.apple.CoreSimulator.SimDeviceType.iPhone-16"}],
+        "com.apple.CoreSimulator.SimRuntime.watchOS-11-0": [
+            {"udid": "WATCH", "name": "Apple Watch Series 10", "state": "Booted",
+             "isAvailable": true}]
+    }})");
+    auto newest = exporter::pick_simulator(list);
+    REQUIRE(newest.has_value());
+    CHECK(newest->udid == "A");
+    CHECK(newest->name == "iPhone 15");
+    CHECK_FALSE(newest->booted);
+
+    list["devices"]["com.apple.CoreSimulator.SimRuntime.iOS-17-5"].as_array()[0]["state"] =
+        "Booted";
+    auto booted = exporter::pick_simulator(list);
+    REQUIRE(booted.has_value());
+    CHECK(booted->udid == "B");
+    CHECK(booted->booted);
+
+    CHECK_FALSE(exporter::pick_simulator(parse(R"({"devices": {
+        "com.apple.CoreSimulator.SimRuntime.iOS-13-7": [
+            {"udid": "OLD", "name": "iPhone 11", "state": "Booted", "isAvailable": true}]
+    }})"))
+                    .has_value());
+    CHECK_FALSE(exporter::pick_simulator(parse(R"({"devices": {}})")).has_value());
+    CHECK_FALSE(exporter::pick_simulator(parse("[]")).has_value());
+}
+
+TEST_CASE("ios device builds pick the team's codesign identity") {
+    constexpr std::string_view kIdentities =
+        R"ids(  1) 1111111111111111111111111111111111111111 "Apple Development: Jamie Doe (XYZ9876543)"
+  2) 2222222222222222222222222222222222222222 "Apple Distribution: Example Inc (ABCDE12345)"
+  3) 3333333333333333333333333333333333333333 "Apple Distribution: Other Studio (QWERT67890)"
+  4) 2222222222222222222222222222222222222222 "Apple Distribution: Example Inc (ABCDE12345)"
+     4 valid identities found
+)ids";
+    auto development =
+        exporter::find_codesign_identity(kIdentities, "Apple Development", "ABCDE12345");
+    REQUIRE(development.ok());
+    CHECK(development.value().hash == "1111111111111111111111111111111111111111");
+    auto distribution =
+        exporter::find_codesign_identity(kIdentities, "Apple Distribution", "ABCDE12345");
+    REQUIRE(distribution.ok());
+    CHECK(distribution.value().name == "Apple Distribution: Example Inc (ABCDE12345)");
+    auto by_hash = exporter::find_codesign_identity(
+        kIdentities, "3333333333333333333333333333333333333333", "ABCDE12345");
+    REQUIRE(by_hash.ok());
+    CHECK(by_hash.value().name == "Apple Distribution: Other Studio (QWERT67890)");
+    auto by_name = exporter::find_codesign_identity(
+        kIdentities, "Apple Distribution: Other Studio (QWERT67890)", "ABCDE12345");
+    REQUIRE(by_name.ok());
+    CHECK(by_name.value().hash == "3333333333333333333333333333333333333333");
+
+    auto ambiguous =
+        exporter::find_codesign_identity(kIdentities, "Apple Distribution", "ZZZZZ00000");
+    REQUIRE_FALSE(ambiguous.ok());
+    CHECK(contains(ambiguous.error().message, "Other Studio"));
+    CHECK(contains(ambiguous.error().message, "codesign_identity"));
+    auto missing = exporter::find_codesign_identity(kIdentities, "iPhone Distribution", "");
+    REQUIRE_FALSE(missing.ok());
+    CHECK(contains(missing.error().message, "security find-identity"));
+    CHECK_FALSE(exporter::find_codesign_identity("", "Apple Development", "ABCDE12345").ok());
+}
+
+TEST_CASE("ios provisioning profiles cover exact and wildcard bundle IDs") {
+    CHECK(
+        exporter::profile_covers("ABCDE12345.com.example.pong", "ABCDE12345", "com.example.pong"));
+    CHECK_FALSE(
+        exporter::profile_covers("ABCDE12345.com.example.pong", "ABCDE12345", "com.example.pongs"));
+    CHECK(exporter::profile_covers("ABCDE12345.*", "ABCDE12345", "com.example.pong"));
+    CHECK(exporter::profile_covers("ABCDE12345.com.example.*", "ABCDE12345", "com.example.pong"));
+    CHECK_FALSE(
+        exporter::profile_covers("ABCDE12345.com.example.*", "ABCDE12345", "org.example.pong"));
+    CHECK_FALSE(exporter::profile_covers("QWERT67890.*", "ABCDE12345", "com.example.pong"));
+    CHECK_FALSE(exporter::profile_covers("ABCDE12345*", "ABCDE12345", "com.example.pong"));
+    CHECK_FALSE(exporter::profile_covers("ABCDE12345.*", "", "com.example.pong"));
+}
+
 TEST_CASE("presets fall back to platform defaults and suggest names") {
     auto presets = exporter::parse_presets(
         parse(R"({"format": 1, "presets": {"mac-store": {"platform": "macos"}}})"));
@@ -288,7 +446,7 @@ TEST_CASE("presets fall back to platform defaults and suggest names") {
     CHECK(contains(misspelled.error().message, "did you mean \"mac-store\""));
     auto unknown = exporter::find_preset(presets.value(), "playstation");
     REQUIRE_FALSE(unknown.ok());
-    CHECK(contains(unknown.error().message, "macos, windows, linux, web or android"));
+    CHECK(contains(unknown.error().message, "macos, windows, linux, web, android or ios"));
 }
 
 TEST_CASE("presets load from the project folder") {
@@ -351,4 +509,11 @@ TEST_CASE("export.run checks its request before building") {
     REQUIRE_FALSE(reply.ok);
     CHECK(reply.code == command::code::kPermissionDenied);
     CHECK(contains(reply.message, "build"));
+
+#ifndef __APPLE__
+    // iOS games need Xcode, so only a Mac builds them.
+    reply = engine.session->call("export.run", parse(R"({"preset": "ios"})"));
+    REQUIRE_FALSE(reply.ok);
+    CHECK(contains(reply.message, "ios games can't be built on"));
+#endif
 }

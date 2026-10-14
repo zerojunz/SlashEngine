@@ -88,7 +88,7 @@ Usage:
       --mcp-command <cmd>            How agents launch slash-mcp (default "slash-mcp")
   slash-cli export <preset>          Build and sign the game with a preset from
                                      export_presets.json, or with a platform's defaults:
-                                     macos, windows, linux, web or android
+                                     macos, windows, linux, web, android or ios
       --project <dir>                Game folder with project.json (default ".")
       --out <dir>                    Output folder (default: the preset's, else
                                      <project>/build/export/<preset>)
@@ -720,7 +720,7 @@ int cmd_export(const std::vector<std::string>& args) {
     }
     if (options.target.empty()) {
         return usage_error(
-            "export needs a preset or a platform: macos, windows, linux, web or android");
+            "export needs a preset or a platform: macos, windows, linux, web, android or ios");
     }
     const slash::exporter::ExportResult result = slash::exporter::export_game(options);
     print(result.json);
