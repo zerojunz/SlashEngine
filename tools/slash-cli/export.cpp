@@ -12,7 +12,6 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
-#include <cstdlib>
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -45,8 +44,7 @@ std::string display(const fs::path& path) {
 }
 
 std::string environment(const char* name) {
-    const char* value = std::getenv(name);
-    return value == nullptr ? std::string() : std::string(value);
+    return platform::environment_variable(name);
 }
 
 bool host_builds(std::string_view platform) {

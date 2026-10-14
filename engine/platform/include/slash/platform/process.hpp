@@ -27,6 +27,10 @@ struct ProcessResult {
     std::string tail;
 };
 
+// The value of an environment variable of this process, or "" if it is not set. Names are
+// case-sensitive on every platform.
+[[nodiscard]] std::string environment_variable(const std::string& name);
+
 // Runs a program to completion. args[0] is the program, found on PATH if it has no directory.
 // Fails only if the program could not be started; a nonzero exit code is a successful result.
 [[nodiscard]] Result<ProcessResult> run_process(const std::vector<std::string>& args,

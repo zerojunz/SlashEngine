@@ -6,6 +6,7 @@
 #include "slash/runtime/game.hpp"
 #include "slash/runtime/project.hpp"
 
+#include <SDL3/SDL_stdinc.h>
 #include <doctest/doctest.h>
 
 #include <cstdio>
@@ -187,4 +188,12 @@ TEST_CASE("processes run with their output logged") {
 
     CHECK_FALSE(platform::run_process({"slash-no-such-program-anywhere"}).ok());
     CHECK_FALSE(platform::run_process({}).ok());
+}
+
+TEST_CASE("environment variables are read") {
+    CHECK(platform::environment_variable("SLASH_TEST_UNSET_VARIABLE").empty());
+    REQUIRE(SDL_setenv_unsafe("SLASH_TEST_VARIABLE", "set", 1) == 0);
+    CHECK(platform::environment_variable("SLASH_TEST_VARIABLE") == "set");
+    REQUIRE(SDL_unsetenv_unsafe("SLASH_TEST_VARIABLE") == 0);
+    CHECK(platform::environment_variable("SLASH_TEST_VARIABLE").empty());
 }
