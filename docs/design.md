@@ -333,8 +333,8 @@ SlashEngine/
 2. **Core and world.** Reflection macro, EnTT integration, JSON scene load and save with schema validation, headless runner.
 3. **Commands.** Command registry, undo, JSON-RPC server, `slash-mcp`, REST mirror, `slash-cli`. Exit: Claude Code, Codex and Cursor each open, edit and save a scene over MCP.
 4. **Export pipeline.** `slash-cli export` and toolchain install for all six platforms, plus the CI workflow. Exit: an empty project exports and passes headless tests everywhere. It comes this early so every later feature stays exportable. Built in two parts: (a) project files, the game runtime and exports for macOS, Windows, Linux and web on their own hosts, tested in CI; (b) iOS and Android, cross toolchains from a Mac, export presets with signing, and the `export.run` command.
-5. **2D feature set.** Sprites, tilemaps, 2D lights, Box2D physics, particles, UI and text, audio, input injection, frame capture, replays. Exit: an agent builds `samples/pong` and exports it to all six platforms.
-6. **Hot reload and AI.** Hot-reloadable C++ game module, `ai::Provider` with three adapters and `ReplayProvider`.
+5. **2D feature set.** Systems, play and pause, event subscriptions, prefabs, asset handles with hot reload and the CI license check first; then the renderer, materials, sprites, keyframe animation, tilemaps, 2D lights, Box2D physics, particles, UI and text, audio, input injection, frame capture, replays and the debug overlay. Exit: an agent builds `samples/pong` and exports it to all six platforms.
+6. **Hot reload, AI and profiling.** Hot-reloadable C++ game module, `ai::Provider` with three adapters and `ReplayProvider`, the job system, Tracy, `perf.stats` and the per-system memory report.
 7. **3D feature set.** Forward+ PBR renderer, shadows, post-processing, GI, sky, decals, LODs, Jolt physics, skeletal animation and blending, navigation, terrain, CSG, glTF and FBX import. Exit: an agent builds a small 3D sample end to end.
 8. **Systems.** Networking, XR, localization, video, accessibility.
 9. **Launch.** Every Launch row of the parity table done, the Mac engine and tools released, exports for all six platforms, reference docs generated from `engine.describe`.
@@ -343,4 +343,4 @@ After launch: Windows and Linux hosts for the engine and tools, then the After l
 
 **Open questions**
 
-- [ ] Minimum macOS, iOS and Android versions, which SDL3's GPU API sets in practice.
+- [x] Minimum OS versions. Decided by Dan: only versions released in 2020 or later are supported. That means macOS 11, iOS 14, Android 11 (API level 30), Windows 10 version 2004, Linux with glibc 2.31 (Ubuntu 20.04 or newer), and on the web Chrome and Edge 85, Firefox 79 and Safari 15, the oldest browsers Emscripten supports (Safari 14 also lacks WebGL2). SDL3's GPU API needs less on every platform.
