@@ -80,6 +80,27 @@ bool looks_secret(std::string_view key) {
         kWords, [&](std::string_view word) { return key.find(word) != std::string_view::npos; });
 }
 
+constexpr std::int64_t kMaxVersionCode = 2100000000; // Google Play's limit
+
+// Java keywords and literals, which can't be parts of a package name.
+constexpr std::array<std::string_view, 53> kJavaKeywords{
+    "abstract",  "assert",       "boolean",  "break",      "byte",    "case",       "catch",
+    "char",      "class",        "const",    "continue",   "default", "do",         "double",
+    "else",      "enum",         "extends",  "false",      "final",   "finally",    "float",
+    "for",       "goto",         "if",       "implements", "import",  "instanceof", "int",
+    "interface", "long",         "native",   "new",        "null",    "package",    "private",
+    "protected", "public",       "return",   "short",      "static",  "strictfp",   "super",
+    "switch",    "synchronized", "this",     "throw",      "throws",  "transient",  "true",
+    "try",       "void",         "volatile", "while"};
+
+bool ascii_letter(char c) {
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+}
+
+bool ascii_digit(char c) {
+    return c >= '0' && c <= '9';
+}
+
 // Rewrites schema errors that deserve a better message: a misspelled platform gets a "did you
 // mean", and a field that looks like a secret says where secrets go instead.
 void improve(json::ValidationError& error, const json::Value& presets) {
@@ -119,7 +140,7 @@ void check_preset(const std::string& name, const json::Value& preset,
         errors.push_back({path + "/output", "expected a folder inside the project, separated by "
                                             "'/', with no \".\" or \"..\" parts"});
     }
-    for (const std::string_view section : {"macos", "windows"}) {
+    for (const std::string_view section : {"macos", "windows", "android"}) {
         if (preset.find(section) != nullptr && platform != section) {
             errors.push_back({path + "/" + std::string(section),
                               "only a " + std::string(section) + " preset can have this section"});
@@ -147,6 +168,25 @@ void check_preset(const std::string& name, const json::Value& preset,
             !url->as_string().starts_with("http://") && !url->as_string().starts_with("https://")) {
             errors.push_back({path + "/windows/timestamp_url",
                               "expected an http:// or https:// URL, or \"\" for no timestamp"});
+        }
+    }
+    if (const json::Value* android = preset.find("android"); android != nullptr) {
+        if (const json::Value* abis = android->find("abis"); abis != nullptr) {
+            const json::Array& list = abis->as_array();
+            for (std::size_t i = 0; i < list.size(); ++i) {
+                for (std::size_t j = 0; j < i; ++j) {
+                    if (list[j].as_string() == list[i].as_string()) {
+                        errors.push_back({path + "/android/abis/" + std::to_string(i),
+                                          "\"" + list[i].as_string() + "\" is listed twice"});
+                    }
+                }
+            }
+        }
+        if (const json::Value* package = android->find("package"); package != nullptr) {
+            if (std::string problem = android_package_problem(package->as_string());
+                !problem.empty()) {
+                errors.push_back({path + "/android/package", std::move(problem)});
+            }
         }
     }
 }
@@ -186,6 +226,43 @@ json::Value presets_schema() {
         object_schema({{"sign", std::move(sign)}, {"timestamp_url", std::move(timestamp)}},
                       "How to sign the executable. Only in windows presets.");
 
+    json::Value abi;
+    abi["type"] = "string";
+    json::Array abi_names;
+    for (const std::string_view name : kAndroidAbis) {
+        abi_names.emplace_back(name);
+    }
+    abi["enum"] = std::move(abi_names);
+    json::Value abis = property("array", "CPU architectures to build. Default: arm64-v8a "
+                                         "(phones) and x86_64 (emulators and Chromebooks).");
+    abis["items"] = std::move(abi);
+    abis["minItems"] = 1;
+    json::Array default_abis;
+    for (const std::string& name : kDefaultAndroidAbis) {
+        default_abis.emplace_back(name);
+    }
+    abis["default"] = std::move(default_abis);
+    json::Value version_code =
+        property("integer", "versionCode, which must grow with every release on Google Play. "
+                            "Default: major * 1000000 + minor * 1000 + patch of the project's "
+                            "version.");
+    version_code["minimum"] = 1;
+    version_code["maximum"] = kMaxVersionCode;
+    json::Value android = object_schema(
+        {
+            {"abis", std::move(abis)},
+            {"package", property("string", "Application ID, e.g. \"com.example.pong\". "
+                                           "Default: the project's id.")},
+            {"version_code", std::move(version_code)},
+        },
+        "How to build the APK. Release builds are signed with the keystore in " +
+            std::string(kAndroidKeystorePath) + " (password in " +
+            std::string(kAndroidKeystorePassword) + ", key alias in " +
+            std::string(kAndroidKeyAlias) + ", key password in " +
+            std::string(kAndroidKeyPassword) +
+            " if it differs), else with the debug keystore. "
+            "Only in android presets.");
+
     json::Value platform = property("string", "The platform this preset builds for.");
     json::Array platforms;
     for (const std::string_view name : kPlatforms) {
@@ -203,6 +280,7 @@ json::Value presets_schema() {
             {"debug", std::move(debug)},
             {"macos", std::move(macos)},
             {"windows", std::move(windows)},
+            {"android", std::move(android)},
         },
         "One way to export the game.");
     preset["required"] = json::Array{"platform"};
@@ -287,6 +365,20 @@ Result<Presets> parse_presets(const json::Value& presets) {
                 preset.windows.timestamp_url = url->as_string();
             }
         }
+        if (const json::Value* android = value.find("android"); android != nullptr) {
+            if (const json::Value* abis = android->find("abis"); abis != nullptr) {
+                preset.android.abis.clear();
+                for (const json::Value& abi : abis->as_array()) {
+                    preset.android.abis.push_back(abi.as_string());
+                }
+            }
+            if (const json::Value* package = android->find("package"); package != nullptr) {
+                preset.android.package = package->as_string();
+            }
+            if (const json::Value* code = android->find("version_code"); code != nullptr) {
+                preset.android.version_code = code->as_int();
+            }
+        }
         out.emplace(name, std::move(preset));
     }
     return out;
@@ -309,6 +401,76 @@ Result<Presets> load_presets(std::string_view folder) {
     return parse_presets(parsed.value());
 }
 
+std::string android_package_problem(std::string_view name) {
+    std::size_t parts = 0;
+    std::size_t start = 0;
+    while (start <= name.size()) {
+        std::size_t end = name.find('.', start);
+        if (end == std::string_view::npos) {
+            end = name.size();
+        }
+        const std::string_view part = name.substr(start, end - start);
+        if (part.empty()) {
+            return "expected two or more parts separated by single dots, e.g. "
+                   "\"com.example.pong\"";
+        }
+        if (!ascii_letter(part.front())) {
+            return "each part must start with a letter, but \"" + std::string(part) + "\" doesn't";
+        }
+        if (!std::ranges::all_of(
+                part, [](char c) { return ascii_letter(c) || ascii_digit(c) || c == '_'; })) {
+            return "parts may only use letters, digits and '_', but \"" + std::string(part) +
+                   "\" doesn't";
+        }
+        if (std::ranges::find(kJavaKeywords, part) != kJavaKeywords.end()) {
+            return "\"" + std::string(part) + "\" is a Java keyword, so it can't be a part";
+        }
+        ++parts;
+        start = end + 1;
+    }
+    if (parts < 2) {
+        return "expected two or more parts separated by dots, e.g. \"com.example.pong\"";
+    }
+    return {};
+}
+
+Result<std::int64_t> android_version_code(std::string_view version) {
+    std::array<std::int64_t, 3> numbers{};
+    std::size_t index = 0;
+    std::size_t start = 0;
+    while (start <= version.size() && index < numbers.size()) {
+        std::size_t end = version.find('.', start);
+        if (end == std::string_view::npos) {
+            end = version.size();
+        }
+        const std::string_view part = version.substr(start, end - start);
+        if (part.empty() || part.size() > 9 || !std::ranges::all_of(part, ascii_digit)) {
+            break;
+        }
+        for (const char c : part) {
+            numbers.at(index) = numbers.at(index) * 10 + (c - '0');
+        }
+        ++index;
+        start = end + 1;
+    }
+    if (index != numbers.size() || start <= version.size()) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "expected a major.minor.patch version, not \"" + std::string(version) +
+                              "\"");
+    }
+    const auto [major, minor, patch] = numbers;
+    constexpr std::int64_t kStep = 1000;
+    if (minor >= kStep || patch >= kStep || major * kStep * kStep + minor * kStep + patch < 1 ||
+        major * kStep * kStep + minor * kStep + patch > kMaxVersionCode) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "version " + std::string(version) +
+                              " has no Android versionCode: minor and patch must be under 1000, "
+                              "major under 2100 and the version above 0.0.0; set version_code in "
+                              "the preset's android section");
+    }
+    return major * kStep * kStep + minor * kStep + patch;
+}
+
 Result<Preset> find_preset(const Presets& presets, std::string_view target) {
     if (const auto it = presets.find(target); it != presets.end()) {
         return it->second;
@@ -327,8 +489,8 @@ Result<Preset> find_preset(const Presets& presets, std::string_view target) {
     if (const std::string_view hint = closest_match(target, names); !hint.empty()) {
         message += "; did you mean \"" + std::string(hint) + "\"?";
     } else {
-        message +=
-            "; use a preset from " + std::string(kPresetsFile) + " or macos, windows, linux or web";
+        message += "; use a preset from " + std::string(kPresetsFile) +
+                   " or macos, windows, linux, web or android";
     }
     return make_error(ErrorCode::InvalidArgument, std::move(message));
 }

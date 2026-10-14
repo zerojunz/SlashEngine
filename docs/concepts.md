@@ -109,7 +109,7 @@ An **export** is a build of a project for one platform, ready for players. Becau
 compiled C++, an export is a real build of the game runtime for that platform, with the project's
 data next to it, not a template plus scripts. `slash-cli export <platform>` validates the project
 and its scenes, builds, signs, and with `--test` runs the result headless to prove it starts.
-Today it covers macOS, Windows, Linux and the web; iOS and Android are next on the
+Today it covers macOS, Windows, Linux, the web and Android; iOS is next on the
 [roadmap](roadmap.md).
 
 An **export preset** is a named way to export, kept in the project's `export_presets.json` like
