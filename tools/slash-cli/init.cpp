@@ -37,6 +37,13 @@ slash-cli call world.query '{"with": ["Transform2D"]}' --scene scenes/main.scene
 slash-cli call batch '{"commands": [...]}' --scene scenes/main.scene.json --save
 ```
 
+## Drive a running game
+
+`slash-cli run --serve` plays the game and serves the same commands over HTTP on this machine,
+so you can inspect and change the live world. `slash-mcp --live --project .` connects an MCP
+client to it; for Claude Code: `claude mcp add slashengine-live -- slash-mcp --live --project .`.
+The address and token are in `.slash/server.json`, which stays out of git.
+
 ## Work efficiently
 
 - Call `engine_describe` once to learn the components (with default field values) and commands.
@@ -79,6 +86,30 @@ description: Build or change scenes in this SlashEngine game through the slashen
 Do not edit `.scene.json` files by hand while the server runs: it holds the open scene and would
 overwrite the edit on the next save.
 )";
+
+// Engine state that stays on this machine: caches and the running server's token.
+constexpr std::string_view kIgnoredFolder = ".slash/";
+constexpr std::string_view kGitignore =
+    "# SlashEngine caches and the running server's token\n.slash/\n";
+
+bool has_line(std::string_view text, std::string_view line) {
+    std::size_t start = 0;
+    while (start < text.size()) {
+        std::size_t end = text.find('\n', start);
+        if (end == std::string_view::npos) {
+            end = text.size();
+        }
+        std::string_view current = text.substr(start, end - start);
+        if (!current.empty() && current.back() == '\r') {
+            current.remove_suffix(1);
+        }
+        if (current == line) {
+            return true;
+        }
+        start = end + 1;
+    }
+    return false;
+}
 
 json::Value server_entry(const InitOptions& options, std::string_view project) {
     json::Value entry;
@@ -144,9 +175,36 @@ Result<json::Value> init_project(const InitOptions& options) {
         }
         created.emplace_back(relative);
     }
+    // .gitignore is never replaced, even with --force: the line is added if it is missing.
+    const std::string gitignore = root + ".gitignore";
+    json::Array updated;
+    if (!platform::exists(gitignore)) {
+        if (auto written = platform::write_file(gitignore, kGitignore); !written) {
+            return written.error();
+        }
+        created.emplace_back(".gitignore");
+    } else if (auto text = platform::read_file(gitignore); !text) {
+        return text.error();
+    } else if (!has_line(text.value(), kIgnoredFolder)) {
+        std::string contents = text.value();
+        if (!contents.empty() && contents.back() != '\n') {
+            contents += '\n';
+        }
+        contents += std::string(kIgnoredFolder) + "\n";
+        if (auto written = platform::write_file(gitignore, contents); !written) {
+            return written.error();
+        }
+        updated.emplace_back(".gitignore");
+    } else {
+        skipped.emplace_back(".gitignore");
+    }
+
     json::Object result;
     result.emplace("created", std::move(created));
     result.emplace("skipped", std::move(skipped));
+    if (!updated.empty()) {
+        result.emplace("updated", std::move(updated));
+    }
     return json::Value(std::move(result));
 }
 

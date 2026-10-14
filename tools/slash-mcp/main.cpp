@@ -9,6 +9,8 @@
 #include "slash/core/log.hpp"
 #include "slash/core/version.hpp"
 #include "slash/platform/file.hpp"
+#include "slash/server/client.hpp"
+#include "slash/server/server.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
 
@@ -33,6 +35,8 @@ Usage:
       --scene <file>         Open this scene at startup, or start a new one saved there
       --allow <list>         Capabilities to grant: read, edit, run, filesystem or all
                              (default all), e.g. --allow read,run
+      --live                 Drive the game already running in the project ("slash-cli run
+                             --serve" or "slash-cli serve") instead of an engine of its own
       --version              Print the engine version
       --help                 Show this message
 
@@ -58,6 +62,8 @@ int main(int argc, char** argv) {
     const std::vector<std::string> args(argv + 1, argv + argc);
     command::SessionOptions options;
     std::string scene;
+    bool live = false;
+    bool restricted = false;
     for (std::size_t i = 0; i < args.size(); ++i) {
         const std::string& arg = args[i];
         const bool has_value = i + 1 < args.size();
@@ -69,7 +75,9 @@ int main(int argc, char** argv) {
             send(R"({"name":"SlashEngine","version":")" + std::string(slash::version()) + "\"}");
             return kExitOk;
         }
-        if (arg == "--project" && has_value) {
+        if (arg == "--live") {
+            live = true;
+        } else if (arg == "--project" && has_value) {
             options.project_root = args[++i];
         } else if (arg == "--scene" && has_value) {
             scene = args[++i];
@@ -79,12 +87,40 @@ int main(int argc, char** argv) {
                 return usage_error(capabilities.error().message);
             }
             options.capabilities = std::move(capabilities).value();
+            restricted = true;
         } else {
             return usage_error("unknown option or missing value: " + arg);
         }
     }
+    if (live && !scene.empty()) {
+        return usage_error("--scene has no effect with --live; the running game has its scene");
+    }
+    if (live && restricted) {
+        return usage_error("--allow has no effect with --live; pass it to \"slash-cli serve\"");
+    }
     if (!slash::platform::exists(options.project_root)) {
         return usage_error("the project folder does not exist: " + options.project_root);
+    }
+
+    std::string line;
+    if (live) {
+        // The endpoint is read for every message, so a restarted game is picked up.
+        slash::log::info("slash-mcp forwarding to the running game",
+                         {{"project", options.project_root}});
+        while (std::getline(std::cin, line)) {
+            if (!line.empty() && line.back() == '\r') {
+                line.pop_back();
+            }
+            if (line.find_first_not_of(" \t") == std::string::npos) {
+                continue;
+            }
+            const std::string response = slash::server::forward_mcp(
+                slash::server::read_endpoint(options.project_root), line);
+            if (!response.empty()) {
+                send(response);
+            }
+        }
+        return kExitOk;
     }
 
     slash::world::ComponentRegistry components;
@@ -106,7 +142,6 @@ int main(int argc, char** argv) {
     slash::log::info("slash-mcp ready",
                      {{"project", options.project_root}, {"tools", commands.commands().size()}});
 
-    std::string line;
     while (std::getline(std::cin, line)) {
         if (!line.empty() && line.back() == '\r') {
             line.pop_back();
