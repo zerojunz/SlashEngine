@@ -77,27 +77,6 @@ bool valid_version(std::string_view version) {
     return digits > 0 && parts == 2;
 }
 
-// A path inside the project: relative, '/'-separated, with no "." or ".." segments.
-bool valid_relative_path(std::string_view path) {
-    if (path.empty() || path.front() == '/' || path.find('\\') != std::string_view::npos ||
-        path.find(':') != std::string_view::npos) {
-        return false;
-    }
-    std::size_t start = 0;
-    while (start <= path.size()) {
-        std::size_t end = path.find('/', start);
-        if (end == std::string_view::npos) {
-            end = path.size();
-        }
-        const std::string_view segment = path.substr(start, end - start);
-        if (segment.empty() || segment == "." || segment == "..") {
-            return false;
-        }
-        start = end + 1;
-    }
-    return true;
-}
-
 } // namespace
 
 std::string Project::binary_name() const {
@@ -182,7 +161,7 @@ std::vector<json::ValidationError> validate_project(const json::Value& project) 
         errors.push_back({"/version", "expected major.minor.patch, e.g. \"1.2.0\""});
     }
     const std::string& main_scene = project.find("main_scene")->as_string();
-    if (!valid_relative_path(main_scene)) {
+    if (!is_project_path(main_scene)) {
         errors.push_back({"/main_scene", "expected a path inside the project folder, separated "
                                          "by '/', with no \".\" or \"..\" parts"});
     } else if (!main_scene.ends_with(".scene.json")) {
@@ -245,6 +224,26 @@ json::Value new_project(std::string_view name, std::string_view main_scene) {
     project["main_scene"] = main_scene;
     project["version"] = Project{}.version;
     return project;
+}
+
+bool is_project_path(std::string_view path) {
+    if (path.empty() || path.front() == '/' || path.find('\\') != std::string_view::npos ||
+        path.find(':') != std::string_view::npos) {
+        return false;
+    }
+    std::size_t start = 0;
+    while (start <= path.size()) {
+        std::size_t end = path.find('/', start);
+        if (end == std::string_view::npos) {
+            end = path.size();
+        }
+        const std::string_view segment = path.substr(start, end - start);
+        if (segment.empty() || segment == "." || segment == "..") {
+            return false;
+        }
+        start = end + 1;
+    }
+    return true;
 }
 
 std::string join_path(std::string_view folder, std::string_view relative) {

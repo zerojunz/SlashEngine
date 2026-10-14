@@ -1,0 +1,15 @@
+{
+  "format": 1,
+  "presets": {
+    "windows-signed": {
+      "platform": "windows",
+      "windows": {
+        "certificate_password": "hunter2",
+        "sign": true
+      }
+    },
+    "web": {
+      "platform": "wbe"
+    }
+  }
+}

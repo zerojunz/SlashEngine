@@ -1,7 +1,10 @@
 #include "init.hpp"
 
 #include "slash/core/log.hpp"
+#include "slash/core/version.hpp"
+#include "slash/exporter/export.hpp"
 #include "slash/platform/file.hpp"
+#include "slash/platform/process.hpp"
 #include "slash/runtime/project.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
@@ -61,12 +64,19 @@ The address and token are in `.slash/server.json`, which stays out of git.
 ## Run and export
 
 `slash-game --data .` runs the game the way its exports do. `slash-cli export <platform> --test`
-builds it for macos, windows, linux or web into `build/export/<platform>`, then runs the build
-headless where this machine can. A failed export reports the step and the end of its log.
+(or the `export_run` tool) builds it for macos, windows, linux or web into
+`build/export/<platform>`, then runs the build headless where this machine can. A failed export
+reports the step and the end of its log. `.github/workflows/export.yml` exports and tests every
+platform on GitHub Actions.
+
+Presets in `export_presets.json` (`slash-cli schema presets`) name an output folder, a debug build
+and how to sign; export one with `slash-cli export <preset>`. Signing secrets come from
+environment variables, never from the file.
 
 ## Files
 
-- `project.json`: the game's name, version and main scene. `slash-cli project validate` checks it.
+- `project.json`: the game's name, version and main scene. `slash-cli project validate` checks it
+  and `export_presets.json`.
 - `scenes/`: scenes as canonical JSON, keyed by stable entity ID. Run
   `slash-cli scene format <file>` before committing a scene edited outside the engine.
 )";
@@ -97,6 +107,117 @@ description: Build or change scenes in this SlashEngine game through the slashen
 
 Do not edit `.scene.json` files by hand while the server runs: it holds the open scene and would
 overwrite the edit on the next save.
+)";
+
+// Exports the game on every platform's own runner. @ENGINE_REF@ becomes the engine commit.
+constexpr std::string_view kWorkflow =
+    R"(# Exports the game for every platform on native runners and runs each export headless.
+# Written by slash-cli init. SLASHENGINE_REF is the engine commit or tag the game builds
+# against, and must exist on github.com/zerojunz/SlashEngine. To sign, use preset names from
+# export_presets.json instead of platforms and set the signing secrets as repository secrets.
+# If the game is in a subfolder of its repository, move this file to the repository's
+# .github/workflows folder and set GAME_DIR.
+name: Export
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  SLASHENGINE_REF: @ENGINE_REF@
+  GAME_DIR: .
+  EMSDK_VERSION: 6.0.10
+
+jobs:
+  export:
+    name: Export (${{ matrix.platform }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos
+            os: macos-14
+          - platform: windows
+            os: windows-2022
+          - platform: linux
+            os: ubuntu-24.04
+          - platform: web
+            os: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: game
+
+      - uses: actions/checkout@v4
+        with:
+          repository: zerojunz/SlashEngine
+          ref: ${{ env.SLASHENGINE_REF }}
+          path: slashengine
+
+      - name: Cache the engine's dependencies
+        uses: actions/cache@v4
+        with:
+          path: slashengine/.cpm-cache
+          key: slashengine-${{ matrix.os }}-${{ env.SLASHENGINE_REF }}
+
+      - name: Install tools (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ninja
+
+      - name: Install tools (Linux)
+        if: runner.os == 'Linux'
+        run: >-
+          sudo apt-get update && sudo apt-get install -y ninja-build libx11-dev libxext-dev
+          libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev
+          libxkbcommon-dev libwayland-dev libegl-dev libgl-dev libdrm-dev libgbm-dev
+          libasound2-dev libpulse-dev libudev-dev libdbus-1-dev
+
+      - name: Install tools (Windows)
+        if: runner.os == 'Windows'
+        run: choco install ninja -y
+
+      - name: Set up MSVC (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install Emscripten
+        if: matrix.platform == 'web'
+        run: |
+          git clone --depth 1 --branch "$EMSDK_VERSION" https://github.com/emscripten-core/emsdk.git "$RUNNER_TEMP/emsdk"
+          "$RUNNER_TEMP/emsdk/emsdk" install "$EMSDK_VERSION"
+          "$RUNNER_TEMP/emsdk/emsdk" activate "$EMSDK_VERSION"
+          echo "EMSDK=$RUNNER_TEMP/emsdk" >> "$GITHUB_ENV"
+
+      - name: Build slash-cli
+        run: |
+          cmake -S slashengine -B slashengine/build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build slashengine/build --target slash-cli
+
+      - name: Export and run headless
+        shell: bash
+        run: >-
+          slashengine/build/tools/slash-cli/slash-cli export ${{ matrix.platform }}
+          --project "game/$GAME_DIR" --engine slashengine --test
+
+      - name: Upload the game
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.platform }}
+          path: game/${{ env.GAME_DIR }}/build/export/${{ matrix.platform }}
+
+      - name: Upload the export log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: export-log-${{ matrix.platform }}
+          path: game/${{ env.GAME_DIR }}/.slash/export/${{ matrix.platform }}/export.log
+          if-no-files-found: ignore
 )";
 
 // Folders that stay on this machine: engine caches and the running server's token, and exports.
@@ -160,6 +281,29 @@ std::string codex_config(const InitOptions& options) {
            "\nargs = [\"--project\", \".\", \"--scene\", " + toml_string(kMainScene) + "]\n";
 }
 
+// The engine commit to pin CI to: the checkout exports build from, or else this version's tag.
+std::string engine_ref() {
+    if (const auto engine = exporter::find_engine(); engine) {
+        auto head = platform::run_process({"git", "-C", *engine, "rev-parse", "HEAD"});
+        if (head && head.value().exit_code == 0) {
+            const std::string commit = head.value().tail.substr(0, head.value().tail.find('\n'));
+            constexpr std::size_t kShaLength = 40;
+            if (commit.size() == kShaLength &&
+                commit.find_first_not_of("0123456789abcdef") == std::string::npos) {
+                return commit;
+            }
+        }
+    }
+    return "v" + std::string(slash::version());
+}
+
+std::string workflow() {
+    std::string text(kWorkflow);
+    constexpr std::string_view kRef = "@ENGINE_REF@";
+    text.replace(text.find(kRef), kRef.size(), engine_ref());
+    return text;
+}
+
 std::string empty_scene() {
     const world::ComponentRegistry components;
     const world::World scene(components);
@@ -179,6 +323,7 @@ Result<json::Value> init_project(const InitOptions& options) {
         {".cursor/mcp.json", json_config(options, "${workspaceFolder}")},
         {".codex/config.toml", codex_config(options)},
         {".claude/skills/slashengine/SKILL.md", std::string(kSkill)},
+        {".github/workflows/export.yml", workflow()},
         {kMainScene, empty_scene()},
     };
 
