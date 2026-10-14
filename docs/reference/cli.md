@@ -1,11 +1,13 @@
 # Command-line tools
 
-SlashEngine has two programs, built into `build/<preset>/tools/`:
+SlashEngine has three programs, built into `build/<preset>/tools/`:
 
-- **`slash-cli`** runs games, checks scenes, calls commands and serves them over HTTP.
+- **`slash-cli`** runs games, checks scenes and projects, calls commands, serves them over HTTP
+  and exports games.
 - **`slash-mcp`** serves the engine's commands to MCP clients over stdio.
+- **`slash-game`** runs a game project exactly as its export would.
 
-Both print results to stdout as JSON and logs to stderr as JSON lines, one object per line, so
+They all print results to stdout as JSON and logs to stderr as JSON lines, one object per line, so
 their output can always be parsed. Run either with `--help` (or `slash-cli help`) for the same
 usage text as below.
 
@@ -14,8 +16,8 @@ usage text as below.
 | Code | Meaning |
 | --- | --- |
 | `0` | Success |
-| `1` | The command ran and failed: an invalid scene, a command error, a scene that is not canonical under `--check` |
-| `2` | Usage error: an unknown subcommand or flag, or a missing value. The usage text goes to stderr |
+| `1` | The command ran and failed: an invalid scene or project, a command error, a scene that is not canonical under `--check`, a failed export |
+| `2` | Usage error: an unknown subcommand, flag or platform, or a missing value |
 
 ## slash-cli
 
@@ -82,12 +84,31 @@ slash-cli scene format <file>
 slash-cli scene format --check <file>    # change nothing; exit 1 if not canonical
 ```
 
-### schema scene
+### schema
 
-Prints the JSON Schema for scene files, generated from the registered components.
+Prints a JSON Schema: for scene files (generated from the registered components) or for
+[`project.json`](project-format.md).
 
 ```bash
 slash-cli schema scene
+slash-cli schema project
+```
+
+### project validate
+
+Checks a folder's `project.json` against the project schema and lists every error, each with its
+JSON Pointer path. Exit code 1 if it is invalid. The folder defaults to `.`.
+
+```bash
+slash-cli project validate tests/data/game
+```
+
+```json
+{"valid":true}
+```
+
+```json
+{"errors":[{"message":"unknown property \"verison\"; did you mean \"version\"?","path":"/verison"}],"valid":false}
 ```
 
 ### call
@@ -165,11 +186,58 @@ slash-cli init [dir]
 | `--mcp-command <cmd>` | How agents launch `slash-mcp` (default `slash-mcp`, found on `PATH`) |
 
 ```json
-{"created":["AGENTS.md","CLAUDE.md",".mcp.json",".cursor/mcp.json",".codex/config.toml",".claude/skills/slashengine/SKILL.md","scenes/main.scene.json",".gitignore"],"skipped":[]}
+{"created":["project.json","AGENTS.md","CLAUDE.md",".mcp.json",".cursor/mcp.json",".codex/config.toml",".claude/skills/slashengine/SKILL.md","scenes/main.scene.json",".gitignore"],"skipped":[]}
 ```
 
-An existing `.gitignore` is never replaced, even with `--force`: `init` adds a `.slash/` line if
-it is missing and lists the file under `updated`.
+The `project.json` it writes is named after the folder and points at `scenes/main.scene.json`.
+An existing `.gitignore` is never replaced, even with `--force`: `init` adds the `.slash/` and
+`build/` lines if they are missing and lists the file under `updated`.
+
+### export
+
+Builds a game project for one platform, ready to give to players.
+
+```bash
+slash-cli export <platform> [options]
+```
+
+`<platform>` is `macos`, `windows`, `linux` or `web`. iOS and Android are planned (see the
+[roadmap](../roadmap.md)).
+
+| Flag | Meaning |
+| --- | --- |
+| `--project <dir>` | Game folder with `project.json` (default `.`) |
+| `--out <dir>` | Output folder (default `<project>/build/export/<platform>`) |
+| `--debug` | Debug build instead of Release |
+| `--test` | Run the exported game headless afterwards, if this machine can |
+| `--engine <dir>` | Engine sources (default: `SLASH_ENGINE_DIR`, an installed copy, or the checkout `slash-cli` was built from) |
+
+Export validates the project and every scene, copies `project.json` and the `.scene.json` files
+into a staging folder (nothing else, so stray files such as `.env` never ship), builds the game
+with CMake and installs it into the output folder. Each host builds its own platform; web exports
+need Emscripten (`EMSDK` set) on any host. An output folder that a previous export did not make is
+never replaced.
+
+| Platform | Output |
+| --- | --- |
+| `macos` | A universal app bundle (Apple silicon and Intel) |
+| `windows`, `linux` | An executable plus a `data` folder |
+| `web` | `index.html` plus the script, WebAssembly and data files |
+
+```bash
+slash-cli export linux --project my-game --test
+```
+
+```json
+{"bytes":5335403,"executable":"my-game/build/export/linux/mygame","log":"my-game/.slash/export/linux/export.log","output":"my-game/build/export/linux","platform":"linux","seconds":66.6,"test":{"entities":0,"passed":true,"ticks":60}}
+```
+
+The full build log is at `log`. A failure names the step that failed and ends with the last lines
+of the log, so the log rarely needs opening:
+
+```json
+{"error":{"message":"unknown platform \"linx\"; did you mean \"linux\"? (ios and android are not supported yet)","step":"options"}}
+```
 
 ## slash-mcp
 
@@ -218,8 +286,34 @@ Cursor (`.cursor/mcp.json`):
 { "mcpServers": { "slashengine": { "command": "slash-mcp", "args": ["--project", "${workspaceFolder}"] } } }
 ```
 
+## slash-game
+
+Runs a game project the same way an exported game runs. Every export is this program built for
+its platform, with the project's data next to it.
+
+```bash
+slash-game [options]
+```
+
+| Flag | Meaning |
+| --- | --- |
+| `--headless` | Run with no window or GPU (needs `--ticks`) |
+| `--ticks <n>` | Stop after `n` fixed ticks and print a JSON summary |
+| `--data <dir>` | Folder with `project.json` (default: the exported data folder) |
+| `--help` | Show the usage text |
+
+```bash
+slash-game --data tests/data/game --headless --ticks 60
+```
+
+```json
+{"entities":3,"headless":true,"name":"Test Game","quit_requested":false,"scene":"scenes/main.scene.json","ticks":60}
+```
+
 ## Environment variables
 
 | Variable | Effect |
 | --- | --- |
 | `SDL_VIDEO_DRIVER` | SDL3's video driver. `dummy` runs the windowed path with no display |
+| `SLASH_ENGINE_DIR` | Engine sources `slash-cli export` builds against |
+| `EMSDK` | The Emscripten SDK, needed for web exports |

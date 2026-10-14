@@ -17,13 +17,13 @@ order is the plan, and each item carries a status instead. It is drawn from the 
 
 ## Where things stand
 
-Milestones 1 to 3 are done. The engine builds on macOS, Linux and Windows, runs an EnTT world on
+Milestones 1 to 3 and the first half of milestone 4 are done. The engine builds on macOS, Linux and Windows, runs an EnTT world on
 a fixed-timestep loop headless or in an SDL3 window, loads and saves JSON scenes checked against a
 schema it generates from its own components, and serves every engine action as a command over
-MCP, JSON-RPC, a localhost REST API and the command line, including while a game runs. The export
-pipeline (milestone 4) is in progress, in two halves: the first, under review, adds game projects
-and exports to macOS, Windows, Linux and web; the second adds iOS, Android, signing and building
-every platform from one Mac. Nothing draws to the screen yet beyond an empty window; rendering
+MCP, JSON-RPC, a localhost REST API and the command line, including while a game runs. A game is
+a folder with a `project.json`, and `slash-cli export` builds it for macOS, Windows, Linux or the
+web and can test the result headless. The second half of milestone 4, now in progress, adds iOS,
+Android, signing and building every platform from one Mac. Nothing draws to the screen yet beyond an empty window; rendering
 arrives with the 2D feature set in milestone 5.
 
 ## The path to launch
@@ -66,18 +66,18 @@ work.
 
 Built in two halves.
 
-**4a: projects and desktop and web exports (In progress, in review as
+**4a: projects and desktop and web exports (Done,
 [PR #6](https://github.com/zerojunz/SlashEngine/pull/6))**
 
-- [ ] `project.json`, like Godot's `project.godot`: name, version, main scene, window size and
+- [x] `project.json`, like Godot's `project.godot`: name, version, main scene, window size and
       tick rate, with `slash-cli schema project` and `slash-cli project validate`
-- [ ] A game runtime that loads a project's main scene and runs it, headless or in a window
-- [ ] `slash-cli export <platform>` for macOS (universal app bundle), Windows, Linux and web
-- [ ] `--test`, which runs the exported game headless and reports whether it worked
-- [ ] A CI job that exports an empty game for macOS, Windows, Linux and web and runs each one,
+- [x] A game runtime that loads a project's main scene and runs it, headless or in a window
+- [x] `slash-cli export <platform>` for macOS (universal app bundle), Windows, Linux and web
+- [x] `--test`, which runs the exported game headless and reports whether it worked
+- [x] A CI job that exports an empty game for macOS, Windows, Linux and web and runs each one,
       with Emscripten pinned
 
-**4b: mobile, signing and one-Mac builds (Planned)**
+**4b: mobile, signing and one-Mac builds (In progress)**
 
 - [ ] iOS and Android exports
 - [ ] `slash-cli toolchain install`: pinned open-source cross toolchains (llvm-mingw, Clang with a
@@ -229,7 +229,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Localization | Translation tables in text | 8 | Planned |
 | Video playback | AV1 through dav1d | 8 | Planned |
 | Accessibility | AccessKit | 8 | Planned |
-| One-command export | `slash-cli export` to macOS, Windows, Linux, iOS, Android and web | 4 | In progress: desktop and web in review (4a), iOS and Android planned (4b) |
+| One-command export | `slash-cli export` to macOS, Windows, Linux, iOS, Android and web | 4 | In progress: desktop and web done (4a), iOS and Android in progress (4b) |
 | Large worlds | Double-precision transforms, world streaming | After launch | After launch |
 | Cinematics | Timeline tracks for cameras and events | After launch | After launch |
 | Procedural generation | FastNoiseLite plus rule graphs agents write | After launch | After launch |
@@ -259,12 +259,15 @@ calls and tokens ([design section 6](design.md#6-cheap-for-agents-to-use)).
 
 | Platform | Engine and tools run there | Games export there | Oldest supported version |
 | --- | --- | --- | --- |
-| macOS (Apple silicon and Intel) | At launch | Milestone 4a (in review) | macOS 11 Big Sur |
-| Windows x64 | After launch (CI already builds and tests the engine there) | Milestone 4a (in review) | Windows 10 version 2004 (May 2020) |
-| Linux x64 and arm64 | After launch (CI already builds and tests the engine on x64) | Milestone 4a (in review) | glibc 2.31 (Ubuntu 20.04, Debian 11, Fedora 32 or newer) |
+| macOS (Apple silicon and Intel) | At launch | Yes (4a) | macOS 11 Big Sur |
+| Windows x64 | After launch (CI already builds and tests the engine there) | Yes (4a) | Windows 10 version 2004 (May 2020) |
+| Linux x64 and arm64 | After launch (CI already builds and tests the engine on x64) | Yes (4a) | glibc 2.31 (Ubuntu 20.04, Debian 11, Fedora 32 or newer) |
 | iOS | No | Milestone 4b | iOS 14 |
 | Android | No | Milestone 4b | Android 11 (API level 30) |
-| Web | No | Milestone 4a (in review) | Chrome and Edge 85, Firefox 79, Safari 15 |
+| Web | No | Yes (4a) | Chrome and Edge 85, Firefox 79, Safari 15 |
+
+Until milestone 4b, each desktop export is built on a machine running that platform; web exports
+build on any host with Emscripten.
 
 SlashEngine supports operating system versions released in 2020 or later, and nothing older. Each
 minimum above is the first release of its OS from 2020. SDL3's GPU API needs less than this on

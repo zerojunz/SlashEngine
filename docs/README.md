@@ -12,8 +12,9 @@ real commands and real output, and no screenshots.
 | Build the engine and drive your first scene | [getting-started.md](getting-started.md) |
 | Understand how the pieces fit together | [concepts.md](concepts.md) |
 | Look up a command, its params and what it returns | [reference/commands.md](reference/commands.md) |
-| Look up a `slash-cli` or `slash-mcp` flag | [reference/cli.md](reference/cli.md) |
+| Look up a `slash-cli`, `slash-mcp` or `slash-game` flag | [reference/cli.md](reference/cli.md) |
 | Write or check a `.scene.json` file | [reference/scene-format.md](reference/scene-format.md) |
+| Set up a game's `project.json` | [reference/project-format.md](reference/project-format.md) |
 | Call the engine over HTTP, JSON-RPC or MCP | [reference/protocols.md](reference/protocols.md) |
 | Read the full design and the reasons behind it | [design.md](design.md) |
 | Work on the engine's own code | [../AGENTS.md](../AGENTS.md) |
@@ -40,7 +41,8 @@ whether that work is already planned for a milestone.
   `GET /v1/openapi.json` are generated from the code. When a doc and the engine disagree, the
   engine is right and the doc is a bug.
 - **Examples are real.** Every JSON result shown in these docs was produced by running the command
-  against `tests/data/basic.scene.json`. Re-run an example when you change the command it shows.
+  against `tests/data/basic.scene.json`, `tests/data/game` or a project made by `slash-cli init`.
+  Re-run an example when you change the command it shows.
 - **A change updates its docs.** A pull request that adds or changes a command, flag, component or
   file format updates the matching reference page, and a pull request that finishes roadmap work
   updates [roadmap.md](roadmap.md) in the same change.
