@@ -7,12 +7,14 @@
 #   SLASH_GAME_VERSION  major.minor.patch
 #   SLASH_GAME_DATA     absolute path of the folder to ship as the game's data
 #   SLASH_ANDROID_PACKAGE  Android application ID (Android only)
+#   SLASH_IOS_BUILD     CFBundleVersion, if not the version (iOS only)
 #
 # `cmake --install <build> --component game --prefix <out>` lays the game out for its platform:
 # <out>/<binary>.app on macOS, <out>/<binary>[.exe] with <out>/data on Windows and Linux, and
 # <out>/index.html with the script, WebAssembly and data files on the web. On Android it lays out
 # the APK's contents for one ABI (lib/<abi>/libmain.so, assets/data, AndroidManifest.xml) plus the
-# Java sources, which slash-cli export compiles and packages.
+# Java sources, which slash-cli export compiles and packages. On iOS it is <out>/<binary>.app,
+# which slash-cli export signs and, for devices, zips into an .ipa.
 cmake_minimum_required(VERSION 3.25)
 
 project(SlashGame LANGUAGES C CXX)
@@ -39,6 +41,13 @@ if(MSVC)
     set(CMAKE_C_CREATE_WIN32_EXE "/subsystem:windows,10.00")
     set(CMAKE_CXX_CREATE_WIN32_EXE "/subsystem:windows,10.00")
 endif()
+
+# The name, escaped for the XML of Info.plist and AndroidManifest.xml.
+string(REPLACE "&" "&amp;" SLASH_GAME_NAME_XML "${SLASH_GAME_NAME}")
+string(REPLACE "<" "&lt;" SLASH_GAME_NAME_XML "${SLASH_GAME_NAME_XML}")
+string(REPLACE ">" "&gt;" SLASH_GAME_NAME_XML "${SLASH_GAME_NAME_XML}")
+string(REPLACE "\"" "&quot;" SLASH_GAME_NAME_XML "${SLASH_GAME_NAME_XML}")
+string(REPLACE "'" "&apos;" SLASH_GAME_NAME_XML "${SLASH_GAME_NAME_XML}")
 
 # Only the targets the game links are built; tools and tests stay off outside the engine repo.
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/.. slashengine EXCLUDE_FROM_ALL)
@@ -81,12 +90,7 @@ elseif(ANDROID)
     endif()
     # Google Play requires native code to support 16 KB memory pages.
     target_link_options(game PRIVATE "-Wl,-z,max-page-size=16384")
-    # The name, escaped for XML.
-    string(REPLACE "&" "&amp;" SLASH_ANDROID_LABEL "${SLASH_GAME_NAME}")
-    string(REPLACE "<" "&lt;" SLASH_ANDROID_LABEL "${SLASH_ANDROID_LABEL}")
-    string(REPLACE ">" "&gt;" SLASH_ANDROID_LABEL "${SLASH_ANDROID_LABEL}")
-    string(REPLACE "\"" "&quot;" SLASH_ANDROID_LABEL "${SLASH_ANDROID_LABEL}")
-    string(REPLACE "'" "&apos;" SLASH_ANDROID_LABEL "${SLASH_ANDROID_LABEL}")
+    set(SLASH_ANDROID_LABEL "${SLASH_GAME_NAME_XML}")
     configure_file(android/AndroidManifest.xml.in AndroidManifest.xml @ONLY)
     get_target_property(sdl_source_dir SDL3-static SOURCE_DIR)
     install(TARGETS game LIBRARY DESTINATION lib/${ANDROID_ABI} COMPONENT game)
@@ -95,11 +99,54 @@ elseif(ANDROID)
     install(DIRECTORY ${sdl_source_dir}/android-project/app/src/main/java/
         DESTINATION java COMPONENT game)
     install(FILES android/GameActivity.java DESTINATION java/org/slashengine COMPONENT game)
+elseif(IOS)
+    # What Xcode records about the build in Info.plist, which App Store Connect checks.
+    if(CMAKE_OSX_SYSROOT MATCHES "[Ss]imulator")
+        set(SLASH_IOS_SDK iphonesimulator)
+        set(SLASH_IOS_PLATFORM iPhoneSimulator)
+    else()
+        set(SLASH_IOS_SDK iphoneos)
+        set(SLASH_IOS_PLATFORM iPhoneOS)
+    endif()
+    execute_process(COMMAND xcrun --sdk ${SLASH_IOS_SDK} --show-sdk-version
+        OUTPUT_VARIABLE SLASH_IOS_SDK_VERSION OUTPUT_STRIP_TRAILING_WHITESPACE)
+    execute_process(COMMAND xcrun --sdk ${SLASH_IOS_SDK} --show-sdk-build-version
+        OUTPUT_VARIABLE SLASH_IOS_SDK_BUILD OUTPUT_STRIP_TRAILING_WHITESPACE)
+    execute_process(COMMAND sw_vers -buildVersion
+        OUTPUT_VARIABLE SLASH_IOS_HOST_BUILD OUTPUT_STRIP_TRAILING_WHITESPACE)
+    execute_process(COMMAND xcodebuild -version OUTPUT_VARIABLE xcode_version)
+    # "Xcode 16.2\nBuild version 16C5032a" becomes 1620 and 16C5032a.
+    string(REGEX MATCH "Xcode ([0-9]+)\\.?([0-9]*)\\.?([0-9]*)" xcode_match "${xcode_version}")
+    set(xcode_minor ${CMAKE_MATCH_2})
+    set(xcode_patch ${CMAKE_MATCH_3})
+    if(xcode_minor STREQUAL "")
+        set(xcode_minor 0)
+    endif()
+    if(xcode_patch STREQUAL "")
+        set(xcode_patch 0)
+    endif()
+    set(SLASH_IOS_XCODE "${CMAKE_MATCH_1}${xcode_minor}${xcode_patch}")
+    string(REGEX MATCH "Build version ([0-9A-Za-z]+)" xcode_build_match "${xcode_version}")
+    set(SLASH_IOS_XCODE_BUILD ${CMAKE_MATCH_1})
+    if(NOT SLASH_IOS_BUILD)
+        set(SLASH_IOS_BUILD ${SLASH_GAME_VERSION})
+    endif()
+    set_target_properties(game PROPERTIES
+        MACOSX_BUNDLE TRUE
+        MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_LIST_DIR}/ios/Info.plist.in
+        MACOSX_BUNDLE_BUNDLE_NAME "${SLASH_GAME_NAME_XML}"
+        MACOSX_BUNDLE_GUI_IDENTIFIER ${SLASH_GAME_ID}
+        MACOSX_BUNDLE_BUNDLE_VERSION ${SLASH_IOS_BUILD}
+        MACOSX_BUNDLE_SHORT_VERSION_STRING ${SLASH_GAME_VERSION})
+    install(TARGETS game BUNDLE DESTINATION . COMPONENT game)
+    # iOS bundles are flat: resources sit next to the executable.
+    install(DIRECTORY ${SLASH_GAME_DATA}/
+        DESTINATION ${SLASH_GAME_BINARY}.app/data COMPONENT game)
 elseif(APPLE)
     set_target_properties(game PROPERTIES
         MACOSX_BUNDLE TRUE
         MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_LIST_DIR}/macos/Info.plist.in
-        MACOSX_BUNDLE_BUNDLE_NAME ${SLASH_GAME_NAME}
+        MACOSX_BUNDLE_BUNDLE_NAME "${SLASH_GAME_NAME_XML}"
         MACOSX_BUNDLE_GUI_IDENTIFIER ${SLASH_GAME_ID}
         MACOSX_BUNDLE_BUNDLE_VERSION ${SLASH_GAME_VERSION}
         MACOSX_BUNDLE_SHORT_VERSION_STRING ${SLASH_GAME_VERSION})

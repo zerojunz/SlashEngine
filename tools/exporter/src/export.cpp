@@ -1,6 +1,7 @@
 #include "slash/exporter/export.hpp"
 
 #include "android.hpp"
+#include "ios.hpp"
 #include "steps.hpp"
 
 #include "slash/core/log.hpp"
@@ -51,7 +52,7 @@ bool host_builds(std::string_view platform) {
         return true;
     }
 #if defined(__APPLE__)
-    return platform == "macos";
+    return platform == "macos" || platform == "ios";
 #elif defined(_WIN32)
     return platform == "windows";
 #elif defined(__linux__)
@@ -604,6 +605,24 @@ ExportResult export_game(const ExportOptions& options) {
 #endif
     }
 
+    std::string ios_bundle_id;
+    detail::IosSigning ios_signing;
+    if (platform == "ios") {
+        ios_bundle_id =
+            preset.ios.bundle_id.empty() ? project.value().bundle_id() : preset.ios.bundle_id;
+        if (const std::string problem = ios_bundle_id_problem(ios_bundle_id); !problem.empty()) {
+            return fail({"options",
+                         "\"" + ios_bundle_id + "\" can't be an iOS bundle ID: " + problem +
+                             "; set \"id\" in project.json or \"bundle_id\" in the preset's ios "
+                             "section",
+                         {}},
+                        {});
+        }
+        if (!detail::prepare_ios(preset.ios, ios_bundle_id, debug, work, ios_signing, failure)) {
+            return fail(failure, {});
+        }
+    }
+
     std::error_code error;
     fs::create_directories(work, error);
     (void)platform::write_file(log_path.string(), "");
@@ -698,6 +717,26 @@ ExportResult export_game(const ExportOptions& options) {
         }
         signed_with["release"] = android_key.release;
         signed_with["keystore"] = fs::path(android_key.keystore).filename().string();
+    } else if (platform == "ios") {
+        const fs::path app = package / (binary + ".app");
+        if (!build_into(work / ("build-" + preset.ios.destination),
+                        detail::ios_configure_args(preset.ios, debug, ios_bundle_id), package,
+                        !debug) ||
+            !detail::sign_ios_app(ios_signing, app, process, failure)) {
+            return fail(failure, log_path);
+        }
+        // Devices install .ipa files; the Simulator installs the app itself.
+        if (ios_signing.device) {
+            if (!detail::package_ipa(app, package / (binary + ".ipa"), work, process, failure)) {
+                return fail(failure, log_path);
+            }
+            fs::remove_all(app, error);
+        }
+        signed_with["identity"] = ios_signing.identity_name.empty() ? std::string(kAdHocIdentity)
+                                                                    : ios_signing.identity_name;
+        if (!ios_signing.profile.empty()) {
+            signed_with["profile"] = ios_signing.profile_name;
+        }
     } else if (!build_into(work / "build", {}, package, false) ||
                !sign(preset, signing, package, binary, work, process, signed_with, failure)) {
         return fail(failure, log_path);
@@ -719,6 +758,9 @@ ExportResult export_game(const ExportOptions& options) {
         program = executable;
     } else if (platform == "android") {
         executable = output / (binary + ".apk");
+        program = executable;
+    } else if (platform == "ios") {
+        executable = output / (binary + (ios_signing.device ? ".ipa" : ".app"));
         program = executable;
     } else {
         executable = output / "index.html";
@@ -747,12 +789,26 @@ ExportResult export_game(const ExportOptions& options) {
         }
         info["abis"] = std::move(abis);
     }
+    if (platform == "ios") {
+        json::Value& info = out["ios"];
+        info["bundle_id"] = ios_bundle_id;
+        info["destination"] = preset.ios.destination;
+    }
     if (options.test) {
-        json::Value test = android
-                               ? detail::test_apk(*android, fs::absolute(program, error),
-                                                  apk_info.package, preset.android.abis, log_path)
-                               : run_test(platform, fs::absolute(output, error),
-                                          fs::absolute(program, error), log_path);
+        json::Value test;
+        if (android) {
+            test = detail::test_apk(*android, fs::absolute(program, error), apk_info.package,
+                                    preset.android.abis, log_path);
+        } else if (platform == "ios" && ios_signing.device) {
+            test["skipped"] = "device builds don't run in the Simulator; export with "
+                              "\"destination\": \"simulator\" to test";
+        } else if (platform == "ios") {
+            test = detail::test_ios(fs::absolute(program, error), ios_bundle_id,
+                                    fs::absolute(work, error), log_path);
+        } else {
+            test = run_test(platform, fs::absolute(output, error), fs::absolute(program, error),
+                            log_path);
+        }
         if (const json::Value* passed = test.find("passed");
             passed != nullptr && !passed->as_bool()) {
             result.ok = false;

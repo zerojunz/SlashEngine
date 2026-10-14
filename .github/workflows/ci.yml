@@ -84,6 +84,8 @@ jobs:
             os: ubuntu-24.04
           - platform: android
             os: ubuntu-24.04
+          - platform: ios
+            os: macos-14
     env:
       EMSDK_VERSION: 6.0.10
     steps:
@@ -137,6 +139,26 @@ jobs:
           app=$(ls -d build/empty-game/build/export/macos/*.app)
           codesign --verify --strict --verbose=2 "$app"
           test "$(plutil -extract LSMinimumSystemVersion raw "$app/Contents/Info.plist")" = "11.0"
+
+      - name: Check the Simulator app and build an ad hoc .ipa for devices
+        if: matrix.platform == 'ios'
+        run: |
+          app=$(ls -d build/empty-game/build/export/ios/*.app)
+          codesign --verify --strict --verbose=2 "$app"
+          test "$(plutil -extract MinimumOSVersion raw "$app/Info.plist")" = "14.0"
+          binary="$app/$(plutil -extract CFBundleExecutable raw "$app/Info.plist")"
+          lipo -archs "$binary" | grep -q x86_64
+          lipo -archs "$binary" | grep -q arm64
+          # CI has no Apple Developer team, so the device build is signed ad hoc.
+          echo '{"format": 1, "presets": {"device": {"platform": "ios", "ios": {"destination": "device", "codesign_identity": "-"}}}}' \
+            > build/empty-game/export_presets.json
+          ./build/release/tools/slash-cli/slash-cli export device --project build/empty-game
+          ipa=$(ls build/empty-game/build/export/device/*.ipa)
+          unzip -q "$ipa" -d build/ipa
+          app=$(ls -d build/ipa/Payload/*.app)
+          codesign --verify --strict --verbose=2 "$app"
+          test "$(plutil -extract DTPlatformName raw "$app/Info.plist")" = "iphoneos"
+          test "$(lipo -archs "$app/$(plutil -extract CFBundleExecutable raw "$app/Info.plist")")" = "arm64"
 
       - name: Check the minimum Windows version and sign with a preset
         if: matrix.platform == 'windows'
@@ -208,7 +230,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: export-log-${{ matrix.platform }}
-          path: build/empty-game/.slash/export/${{ matrix.platform }}/export.log
+          path: build/empty-game/.slash/export/*/export.log
           if-no-files-found: ignore
 
   lint:
