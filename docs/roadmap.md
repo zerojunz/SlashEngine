@@ -260,18 +260,21 @@ calls and tokens ([design section 6](design.md#6-cheap-for-agents-to-use)).
 
 ## Platforms
 
-| Platform | Engine and tools run there | Games export there |
-| --- | --- | --- |
-| macOS (Apple silicon and Intel) | At launch | Milestone 4a (in review) |
-| Windows x64 | After launch (CI already builds and tests the engine there) | Milestone 4a (in review) |
-| Linux x64 and arm64 | After launch (CI already builds and tests the engine on x64) | Milestone 4a (in review) |
-| iOS | No | Milestone 4b |
-| Android | No | Milestone 4b |
-| Web | No | Milestone 4a (in review) |
+| Platform | Engine and tools run there | Games export there | Oldest supported version |
+| --- | --- | --- | --- |
+| macOS (Apple silicon and Intel) | At launch | Milestone 4a (in review) | macOS 11 Big Sur |
+| Windows x64 | After launch (CI already builds and tests the engine there) | Milestone 4a (in review) | Windows 10 version 2004 (May 2020) |
+| Linux x64 and arm64 | After launch (CI already builds and tests the engine on x64) | Milestone 4a (in review) | glibc 2.31 (Ubuntu 20.04, Debian 11, Fedora 32 or newer) |
+| iOS | No | Milestone 4b | iOS 14 |
+| Android | No | Milestone 4b | Android 11 (API level 30) |
+| Web | No | Milestone 4a (in review) | Chrome and Edge 80, Firefox 72, Safari 15 |
 
-## Open questions
-
-- Minimum macOS, iOS and Android versions, which SDL3's GPU API sets in practice.
+SlashEngine supports operating system versions released in 2020 or later, and nothing older. Each
+minimum above is the first release of its OS from 2020. SDL3's GPU API needs less than this on
+every platform (Metal, Vulkan and Direct3D 12 all predate 2020), so the rule is the limit, not the
+graphics API. On the web the rule applies to browsers, except that Safari's minimum is 15
+because Safari 14 has no WebGL2, which the renderer needs as its fallback. When an exporter sets a
+deployment target, it uses these versions.
 
 ## Keeping this file current
 
