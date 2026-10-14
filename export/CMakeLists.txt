@@ -6,10 +6,13 @@
 #   SLASH_GAME_ID       reverse-DNS identifier, e.g. "com.example.spacepong"
 #   SLASH_GAME_VERSION  major.minor.patch
 #   SLASH_GAME_DATA     absolute path of the folder to ship as the game's data
+#   SLASH_ANDROID_PACKAGE  Android application ID (Android only)
 #
 # `cmake --install <build> --component game --prefix <out>` lays the game out for its platform:
 # <out>/<binary>.app on macOS, <out>/<binary>[.exe] with <out>/data on Windows and Linux, and
-# <out>/index.html with the script, WebAssembly and data files on the web.
+# <out>/index.html with the script, WebAssembly and data files on the web. On Android it lays out
+# the APK's contents for one ABI (lib/<abi>/libmain.so, assets/data, AndroidManifest.xml) plus the
+# Java sources, which slash-cli export compiles and packages.
 cmake_minimum_required(VERSION 3.25)
 
 project(SlashGame LANGUAGES C CXX)
@@ -24,6 +27,9 @@ endforeach()
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+# Nothing uses C++ modules. Scanning for them would run whichever clang-scan-deps is on PATH,
+# which can't read headers precompiled by another toolchain's clang, such as the Android NDK's.
+set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 # Link the C and C++ runtimes statically where possible, so players need nothing installed.
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 # Games support OS versions from 2020 on (docs/roadmap.md). Windows refuses to start an
@@ -37,8 +43,14 @@ endif()
 # Only the targets the game links are built; tools and tests stay off outside the engine repo.
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/.. slashengine EXCLUDE_FROM_ALL)
 
-add_executable(game)
-set_target_properties(game PROPERTIES OUTPUT_NAME ${SLASH_GAME_BINARY})
+if(ANDROID)
+    # SDL's Java activity loads the game as libmain.so.
+    add_library(game SHARED)
+    set_target_properties(game PROPERTIES OUTPUT_NAME main)
+else()
+    add_executable(game)
+    set_target_properties(game PROPERTIES OUTPUT_NAME ${SLASH_GAME_BINARY})
+endif()
 target_link_libraries(game PRIVATE slash::game_main)
 slash_target_warnings(game)
 
@@ -63,6 +75,26 @@ if(EMSCRIPTEN)
         $<TARGET_FILE_DIR:game>/${SLASH_GAME_BINARY}.data
         ${CMAKE_CURRENT_BINARY_DIR}/index.html
         DESTINATION . COMPONENT game)
+elseif(ANDROID)
+    if(NOT SLASH_ANDROID_PACKAGE)
+        message(FATAL_ERROR "SLASH_ANDROID_PACKAGE is not set. Use \"slash-cli export\" to build a game.")
+    endif()
+    # Google Play requires native code to support 16 KB memory pages.
+    target_link_options(game PRIVATE "-Wl,-z,max-page-size=16384")
+    # The name, escaped for XML.
+    string(REPLACE "&" "&amp;" SLASH_ANDROID_LABEL "${SLASH_GAME_NAME}")
+    string(REPLACE "<" "&lt;" SLASH_ANDROID_LABEL "${SLASH_ANDROID_LABEL}")
+    string(REPLACE ">" "&gt;" SLASH_ANDROID_LABEL "${SLASH_ANDROID_LABEL}")
+    string(REPLACE "\"" "&quot;" SLASH_ANDROID_LABEL "${SLASH_ANDROID_LABEL}")
+    string(REPLACE "'" "&apos;" SLASH_ANDROID_LABEL "${SLASH_ANDROID_LABEL}")
+    configure_file(android/AndroidManifest.xml.in AndroidManifest.xml @ONLY)
+    get_target_property(sdl_source_dir SDL3-static SOURCE_DIR)
+    install(TARGETS game LIBRARY DESTINATION lib/${ANDROID_ABI} COMPONENT game)
+    install(DIRECTORY ${SLASH_GAME_DATA}/ DESTINATION assets/data COMPONENT game)
+    install(FILES ${CMAKE_CURRENT_BINARY_DIR}/AndroidManifest.xml DESTINATION . COMPONENT game)
+    install(DIRECTORY ${sdl_source_dir}/android-project/app/src/main/java/
+        DESTINATION java COMPONENT game)
+    install(FILES android/GameActivity.java DESTINATION java/org/slashengine COMPONENT game)
 elseif(APPLE)
     set_target_properties(game PROPERTIES
         MACOSX_BUNDLE TRUE

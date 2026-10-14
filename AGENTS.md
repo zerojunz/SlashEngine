@@ -132,9 +132,10 @@ $cli export linux --project path/to/game --test        # build, lay out and run 
 game's data, configures `export/CMakeLists.txt` with the engine sources, builds, signs and installs
 into `<project>/build/export/<preset>`. Its work folder and full build log are in
 `<project>/.slash/export/<preset>/`; a failure reports the step and the end of the log. Each host
-builds its own platform; web exports need Emscripten (`EMSDK` set) on any host. CI exports and
-runs an empty game for macOS, Windows, Linux and web on every PR, and `slash-cli init` writes the
-same workflow into new games.
+builds its own platform; web exports need Emscripten (`EMSDK` set) and Android exports the
+Android SDK, NDK and a JDK on any host. CI exports and runs an empty game for macOS, Windows,
+Linux, web and Android (on an emulator) on every PR, and `slash-cli init` writes the same workflow
+into new games.
 
 The export code is the `tools/exporter` library, shared by slash-cli and slash-mcp. It also
 registers `export.run`, the one command that needs the `build` capability; a running game leaves
@@ -148,10 +149,15 @@ named after a platform replaces that platform's defaults. Secrets never go in th
 | --- | --- |
 | `SLASH_APPLE_API_KEY_PATH`, `SLASH_APPLE_API_KEY_ID`, `SLASH_APPLE_API_ISSUER` | Notarizing macOS apps (App Store Connect API key) |
 | `SLASH_WINDOWS_CERTIFICATE_PATH`, `SLASH_WINDOWS_CERTIFICATE_PASSWORD` | Signing Windows executables with signtool |
+| `SLASH_ANDROID_KEYSTORE_PATH`, `SLASH_ANDROID_KEYSTORE_PASSWORD`, `SLASH_ANDROID_KEY_ALIAS`, `SLASH_ANDROID_KEY_PASSWORD` | Signing release APKs (the key password defaults to the keystore's) |
 
-macOS exports are always signed, ad hoc unless a preset names a `codesign_identity`. Games
-support OS versions from 2020 on: macOS 11, Windows 10 (the executable's subsystem version is
-10.0) and Chrome 85, Firefox 79 and Safari 15 (pinned in `export/CMakeLists.txt`).
+macOS exports are always signed, ad hoc unless a preset names a `codesign_identity`. Android
+exports are APKs for arm64-v8a and x86_64, built without Gradle: the NDK builds `libmain.so` per
+ABI, then javac, d8, aapt2, zipalign and apksigner package SDL's Java activity
+(`export/android/`) with the game. Debug builds, and release builds with no keystore in the
+environment, are signed with the debug keystore in `~/.android`, as Android Studio does. Games support OS versions from 2020 on: macOS 11, Windows
+10 (the executable's subsystem version is 10.0), Android 11 (API level 30, targeting 36), and
+Chrome 85, Firefox 79 and Safari 15 (pinned in `export/CMakeLists.txt`).
 
 ## Add a component
 
