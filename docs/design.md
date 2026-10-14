@@ -126,7 +126,7 @@ Every line in the repo is Apache 2.0 or comes from a dependency under a permissi
 - **Allowed licenses:** MIT, BSD, zlib, Apache 2.0, Boost, MIT-0 and public domain. No GPL or LGPL in the runtime, so games built on SlashEngine can ship under any license.
 - **No copied engine code.** Nothing from UE5 or any other closed engine, including snippets from its source or docs. Godot is MIT, so its ideas and code may be borrowed with attribution in `THIRD_PARTY.md`.
 - **System APIs are linked, not shipped.** Win32, Direct3D, Metal, Vulkan drivers and mobile OS SDKs are called through SDL3; none of their code lives in the repo.
-- **Store and ad SDKs follow the same rule.** StoreKit is an OS framework and Google Play Billing is fetched at export time with the Android SDK, so the repo holds only SlashEngine's glue for them. Ad network SDKs are proprietary, so their adapters live outside the repo, like console backends (pending Dan's confirmation).
+- **Store and ad SDKs follow the same rule.** StoreKit is an OS framework and Google Play Billing is fetched at export time with the Android SDK, so the repo holds only SlashEngine's glue for them. Ad network SDKs are proprietary, so their adapters live outside the repo, like console backends (decided by Dan).
 - **Consoles live outside the repo.** PlayStation, Xbox and Switch SDKs are closed and under NDA, so, as with Godot, console ports are private backends built by licensed porting partners and offered to studios separately. They plug in behind the same `RenderDevice` and platform interfaces.
 - **Enforced in CI.** Each dependency is pinned with its license in a manifest, and a license check runs on every PR.
 
