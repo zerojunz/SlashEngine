@@ -82,6 +82,10 @@ jobs:
             os: windows-2022
           - platform: web
             os: ubuntu-24.04
+          - platform: android
+            os: ubuntu-24.04
+          - platform: ios
+            os: macos-14
     env:
       EMSDK_VERSION: 6.0.10
     steps:
@@ -136,6 +140,26 @@ jobs:
           codesign --verify --strict --verbose=2 "$app"
           test "$(plutil -extract LSMinimumSystemVersion raw "$app/Contents/Info.plist")" = "11.0"
 
+      - name: Check the Simulator app and build an ad hoc .ipa for devices
+        if: matrix.platform == 'ios'
+        run: |
+          app=$(ls -d build/empty-game/build/export/ios/*.app)
+          codesign --verify --strict --verbose=2 "$app"
+          test "$(plutil -extract MinimumOSVersion raw "$app/Info.plist")" = "14.0"
+          binary="$app/$(plutil -extract CFBundleExecutable raw "$app/Info.plist")"
+          lipo -archs "$binary" | grep -q x86_64
+          lipo -archs "$binary" | grep -q arm64
+          # CI has no Apple Developer team, so the device build is signed ad hoc.
+          echo '{"format": 1, "presets": {"device": {"platform": "ios", "ios": {"destination": "device", "codesign_identity": "-"}}}}' \
+            > build/empty-game/export_presets.json
+          ./build/release/tools/slash-cli/slash-cli export device --project build/empty-game
+          ipa=$(ls build/empty-game/build/export/device/*.ipa)
+          unzip -q "$ipa" -d build/ipa
+          app=$(ls -d build/ipa/Payload/*.app)
+          codesign --verify --strict --verbose=2 "$app"
+          test "$(plutil -extract DTPlatformName raw "$app/Info.plist")" = "iphoneos"
+          test "$(lipo -archs "$app/$(plutil -extract CFBundleExecutable raw "$app/Info.plist")")" = "arm64"
+
       - name: Check the minimum Windows version and sign with a preset
         if: matrix.platform == 'windows'
         shell: pwsh
@@ -157,12 +181,56 @@ jobs:
           $signature = Get-AuthenticodeSignature $exe
           if ($null -eq $signature.SignerCertificate) { $signature | Format-List; exit 1 }
 
+      - name: Check the APK and sign it with a release key
+        if: matrix.platform == 'android'
+        run: |
+          set -x
+          cli=./build/release/tools/slash-cli/slash-cli
+          apk=$(ls build/empty-game/build/export/android/*.apk)
+          tools=$(ls -d "$ANDROID_HOME"/build-tools/*/ | grep -E '/[0-9.]+/$' | sort -V | tail -n 1)
+          "$tools/zipalign" -c -P 16 4 "$apk" || { "$tools/zipalign" -c -v -P 16 4 "$apk"; exit 1; }
+          badging=$("$tools/aapt2" dump badging "$apk")
+          grep -Eq "(minSdkVersion|sdkVersion):'30'" <<< "$badging"
+          grep -q "targetSdkVersion:'36'" <<< "$badging"
+          grep -q "native-code:.*'arm64-v8a'" <<< "$badging"
+          grep -q "native-code:.*'x86_64'" <<< "$badging"
+          "$tools/apksigner" verify --min-sdk-version 30 "$apk"
+          # A throwaway release keystore, passed the way a developer would.
+          keytool -genkeypair -noprompt -keystore "$RUNNER_TEMP/release.jks" -storepass ci-only \
+            -alias game -keypass ci-only -keyalg RSA -keysize 2048 -validity 1 \
+            -dname "CN=SlashEngine CI"
+          SLASH_ANDROID_KEYSTORE_PATH="$RUNNER_TEMP/release.jks" \
+            SLASH_ANDROID_KEYSTORE_PASSWORD=ci-only SLASH_ANDROID_KEY_ALIAS=game \
+            $cli export android --project build/empty-game
+          "$tools/apksigner" verify --print-certs "$apk" | grep -q "CN=SlashEngine CI"
+
+      - name: Enable KVM for the Android emulator
+        if: matrix.platform == 'android'
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run the APK headless on an Android 11 emulator
+        if: matrix.platform == 'android'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          arch: x86_64
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            ./build/release/tools/slash-cli/slash-cli export android --project build/empty-game --test > build/android-test.json
+            cat build/android-test.json
+            jq -e '.test.passed == true' build/android-test.json
+
       - name: Upload the export log
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: export-log-${{ matrix.platform }}
-          path: build/empty-game/.slash/export/${{ matrix.platform }}/export.log
+          path: build/empty-game/.slash/export/*/export.log
           if-no-files-found: ignore
 
   lint:

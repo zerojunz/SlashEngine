@@ -57,8 +57,8 @@ void register_export_commands(command::Registry& registry) {
     params["additionalProperties"] = false;
     params["required"] = json::Array{"preset"};
     params["properties"]["preset"] =
-        property("string", "Preset from export_presets.json, or macos, windows, linux or web for "
-                           "that platform's defaults.");
+        property("string", "Preset from export_presets.json, or macos, windows, linux, web, "
+                           "android or ios for that platform's defaults.");
     params["properties"]["debug"] = property("boolean", "Debug build instead of Release.");
     params["properties"]["test"] =
         property("boolean", "Run the exported game headless afterwards, where this machine can.");

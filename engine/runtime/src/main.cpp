@@ -14,12 +14,22 @@
 #include <string>
 #include <vector>
 
+#ifdef __ANDROID__
+#include <android/log.h>
+#endif
+
 namespace {
 
+// Results such as the summary go to stdout, or to logcat on Android, where slash-cli export
+// --test reads them.
 void print_line(const std::string& text) {
+#ifdef __ANDROID__
+    __android_log_write(ANDROID_LOG_INFO, "SlashEngine", text.c_str());
+#else
     std::fwrite(text.data(), 1, text.size(), stdout);
     std::fputc('\n', stdout);
     std::fflush(stdout);
+#endif
 }
 
 } // namespace

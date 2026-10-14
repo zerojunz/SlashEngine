@@ -13,8 +13,8 @@ headless or in an SDL3 window, and loads and saves JSON scenes validated against
 generates from its own components. Agents drive it through a command API with undo, served over
 MCP (`slash-mcp`), JSON-RPC, a localhost REST API with an OpenAPI document, and the command line,
 including while the game runs. `slash-cli export` builds and signs a game for macOS, Windows,
-Linux or the web in one command, using presets in `export_presets.json`. iOS, Android and
-cross-compiling from a Mac come next.
+Linux, the web, Android or iOS in one command, using presets in `export_presets.json`.
+Cross-compiling every platform from a Mac comes next.
 
 ## Quick start
 

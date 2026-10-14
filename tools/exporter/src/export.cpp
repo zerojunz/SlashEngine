@@ -1,7 +1,12 @@
 #include "slash/exporter/export.hpp"
 
+#include "android.hpp"
+#include "ios.hpp"
+#include "steps.hpp"
+
 #include "slash/core/log.hpp"
 #include "slash/core/text.hpp"
+#include "slash/exporter/android.hpp"
 #include "slash/exporter/presets.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/platform/process.hpp"
@@ -28,35 +33,32 @@ namespace slash::exporter {
 namespace {
 
 namespace fs = std::filesystem;
+using detail::absolute_text;
+using detail::display;
+using detail::environment;
+using detail::Failure;
+using detail::find_on_path;
+using detail::find_summary;
+using detail::folder_bytes;
+using detail::kTestTicks;
+using detail::program_runs;
+using detail::step;
 
 constexpr std::string_view kMacosDeploymentTarget = "11.0";
 constexpr std::string_view kSceneSuffix = ".scene.json";
-constexpr std::uint64_t kTestTicks = 60;
-
-// What went wrong in an export. Each step fills one in and returns false.
-struct Failure {
-    std::string step;
-    std::string message;
-    json::Value details; // merged into the error object
-};
-
-std::string display(const fs::path& path) {
-    return path.lexically_normal().generic_string();
-}
-
-std::string environment(std::string_view name) {
-    return platform::environment_variable(std::string(name));
-}
 
 bool host_builds(std::string_view platform) {
+    if (platform == "web" || platform == "android") {
+        return true;
+    }
 #if defined(__APPLE__)
-    return platform == "macos" || platform == "web";
+    return platform == "macos" || platform == "ios";
 #elif defined(_WIN32)
-    return platform == "windows" || platform == "web";
+    return platform == "windows";
 #elif defined(__linux__)
-    return platform == "linux" || platform == "web";
+    return platform == "linux";
 #else
-    return platform == "web";
+    return false;
 #endif
 }
 
@@ -94,11 +96,6 @@ std::optional<fs::path> find_emscripten_toolchain() {
         }
     }
     return std::nullopt;
-}
-
-bool program_runs(const std::string& program) {
-    auto result = platform::run_process({program, "--version"});
-    return result && result.value().exit_code == 0;
 }
 
 // Skips folders an export must never ship: hidden ones (.git, .slash), build output and game
@@ -188,43 +185,6 @@ bool stage_data(const fs::path& project_dir, const runtime::Project& project, co
     return true;
 }
 
-std::uint64_t folder_bytes(const fs::path& folder) {
-    std::uint64_t total = 0;
-    std::error_code error;
-    for (auto it = fs::recursive_directory_iterator(folder, error);
-         !error && it != fs::recursive_directory_iterator(); it.increment(error)) {
-        if (it->is_regular_file(error)) {
-            total += it->file_size(error);
-        }
-    }
-    return total;
-}
-
-// Runs one build step, appending its output to the log. On failure, records the step with the
-// end of its output.
-bool step(const std::string& name, const std::vector<std::string>& args,
-          const platform::ProcessOptions& process, Failure& failure) {
-    log::info("export step", {{"step", name}});
-    auto result = platform::run_process(args, process);
-    if (!result) {
-        failure = {name, result.error().message, {}};
-        return false;
-    }
-    if (result.value().exit_code != 0) {
-        failure.step = name;
-        failure.message = args[0] + " failed with exit code " +
-                          std::to_string(result.value().exit_code) + " during " + name;
-        failure.details["tail"] = result.value().tail;
-        return false;
-    }
-    return true;
-}
-
-std::string absolute_text(const fs::path& path) {
-    std::error_code error;
-    return fs::absolute(path, error).lexically_normal().generic_string();
-}
-
 // An existing output folder is replaced only if a previous export made it, so a mistyped --out
 // can't delete someone's files. Checked before building, so the refusal comes right away.
 bool output_writable(const fs::path& output, const fs::path& record, Failure& failure) {
@@ -267,22 +227,6 @@ bool publish(const fs::path& package, const fs::path& output, const fs::path& re
     written["output"] = absolute_text(output);
     (void)platform::write_file(record.string(), json::write(written));
     return true;
-}
-
-// The finished game's summary line in the output of `<game> --headless --ticks n`.
-std::optional<json::Value> find_summary(const std::string& output) {
-    std::size_t end = output.size();
-    while (end > 0) {
-        std::size_t start = output.rfind('\n', end - 1);
-        start = start == std::string::npos ? 0 : start + 1;
-        auto parsed = json::parse(std::string_view(output).substr(start, end - start));
-        if (parsed && parsed.value().is_object() && parsed.value().find("ticks") != nullptr &&
-            parsed.value().find("scene") != nullptr) {
-            return std::move(parsed).value();
-        }
-        end = start == 0 ? 0 : start - 1;
-    }
-    return std::nullopt;
 }
 
 json::Value run_test(const std::string& platform, const fs::path& output, const fs::path& program,
@@ -370,34 +314,6 @@ json::Value describe_errors(const fs::path& project_dir, std::string_view file, 
         }
     }
     return details;
-}
-
-// A program on PATH, or "" if there is none.
-std::string find_on_path(std::string_view name) {
-    const std::string path = environment("PATH");
-#ifdef _WIN32
-    constexpr char kSeparator = ';';
-    const std::string file = std::string(name) + ".exe";
-#else
-    constexpr char kSeparator = ':';
-    const std::string file(name);
-#endif
-    std::size_t start = 0;
-    std::error_code error;
-    while (start <= path.size()) {
-        std::size_t end = path.find(kSeparator, start);
-        if (end == std::string::npos) {
-            end = path.size();
-        }
-        if (end > start) {
-            const fs::path candidate = fs::path(path.substr(start, end - start)) / file;
-            if (fs::is_regular_file(candidate, error)) {
-                return candidate.string();
-            }
-        }
-        start = end + 1;
-    }
-    return {};
 }
 
 // signtool from PATH, or from the newest Windows 10 or 11 SDK.
@@ -642,6 +558,71 @@ ExportResult export_game(const ExportOptions& options) {
         return fail(failure, {});
     }
 
+    std::optional<AndroidTools> android;
+    detail::AndroidKey android_key;
+    detail::ApkInfo apk_info;
+    std::string ninja = program_runs("ninja") ? "ninja" : "";
+    if (platform == "android") {
+        auto tools = find_android_tools();
+        if (!tools) {
+            return fail({"options", tools.error().message, {}}, {});
+        }
+        android = std::move(tools).value();
+        apk_info.package =
+            preset.android.package.empty() ? project.value().bundle_id() : preset.android.package;
+        if (const std::string problem = android_package_problem(apk_info.package);
+            !problem.empty()) {
+            return fail({"options",
+                         "\"" + apk_info.package +
+                             "\" can't be an Android package name: " + problem +
+                             "; set \"id\" in project.json or \"package\" in the preset's android "
+                             "section",
+                         {}},
+                        {});
+        }
+        apk_info.version_code = preset.android.version_code;
+        if (apk_info.version_code == 0) {
+            auto code = android_version_code(project.value().version);
+            if (!code) {
+                return fail({"options", code.error().message, {}}, {});
+            }
+            apk_info.version_code = code.value();
+        }
+        apk_info.version_name = project.value().version;
+        apk_info.debug = debug;
+        if (!detail::prepare_android_key(debug, android_key, failure)) {
+            return fail(failure, {});
+        }
+        ninja = detail::android_ninja(*android);
+#ifdef _WIN32
+        if (ninja.empty()) {
+            return fail({"options",
+                         "Android exports on Windows need Ninja; put ninja.exe on PATH or install "
+                         "it with sdkmanager \"cmake;3.31.6\"",
+                         {}},
+                        {});
+        }
+#endif
+    }
+
+    std::string ios_bundle_id;
+    detail::IosSigning ios_signing;
+    if (platform == "ios") {
+        ios_bundle_id =
+            preset.ios.bundle_id.empty() ? project.value().bundle_id() : preset.ios.bundle_id;
+        if (const std::string problem = ios_bundle_id_problem(ios_bundle_id); !problem.empty()) {
+            return fail({"options",
+                         "\"" + ios_bundle_id + "\" can't be an iOS bundle ID: " + problem +
+                             "; set \"id\" in project.json or \"bundle_id\" in the preset's ios "
+                             "section",
+                         {}},
+                        {});
+        }
+        if (!detail::prepare_ios(preset.ios, ios_bundle_id, debug, work, ios_signing, failure)) {
+            return fail(failure, {});
+        }
+    }
+
     std::error_code error;
     fs::create_directories(work, error);
     (void)platform::write_file(log_path.string(), "");
@@ -656,22 +637,16 @@ ExportResult export_game(const ExportOptions& options) {
     }
 
     const std::string config = debug ? "Debug" : "Release";
-    const fs::path build = work / "build";
     const fs::path engine_dir = engine.value();
     std::vector<std::string> configure{"cmake",
                                        "-S",
                                        (engine_dir / "export").string(),
-                                       "-B",
-                                       build.string(),
                                        "-DCMAKE_BUILD_TYPE=" + config,
                                        "-DSLASH_GAME_NAME=" + project.value().name,
                                        "-DSLASH_GAME_BINARY=" + project.value().binary_name(),
                                        "-DSLASH_GAME_ID=" + project.value().bundle_id(),
                                        "-DSLASH_GAME_VERSION=" + project.value().version,
                                        "-DSLASH_GAME_DATA=" + data.generic_string()};
-    if (!fs::exists(build / "CMakeCache.txt", error) && program_runs("ninja")) {
-        configure.insert(configure.begin() + 1, {"-G", "Ninja"});
-    }
     if (platform == "macos") {
         configure.push_back("-DCMAKE_OSX_DEPLOYMENT_TARGET=" + std::string(kMacosDeploymentTarget));
         // Release builds run on Apple silicon and Intel Macs; debug builds only on this one.
@@ -694,19 +669,79 @@ ExportResult export_game(const ExportOptions& options) {
                 : fs::absolute(work / ".." / "cpm-cache", error).lexically_normal().string());
     }
 
+    // Configures, builds and installs export/CMakeLists.txt in build, into prefix.
+    const auto build_into = [&](const fs::path& build, const std::vector<std::string>& extra,
+                                const fs::path& prefix, bool strip) {
+        std::vector<std::string> args = configure;
+        args.insert(args.begin() + 1, {"-B", build.string()});
+        args.insert(args.end(), extra.begin(), extra.end());
+        if (!fs::exists(build / "CMakeCache.txt", error) && !ninja.empty()) {
+            args.insert(args.begin() + 1, {"-G", "Ninja"});
+            if (ninja != "ninja") {
+                args.push_back("-DCMAKE_MAKE_PROGRAM=" + fs::path(ninja).generic_string());
+            }
+        }
+        std::vector<std::string> install{
+            "cmake",    "--install", build.string(),
+            "--config", config,      "--component",
+            "game",     "--prefix",  fs::absolute(prefix, error).string()};
+        if (strip) {
+            install.emplace_back("--strip");
+        }
+        return step("configure", args, process, failure) &&
+               step("build", {"cmake", "--build", build.string(), "--config", config, "--parallel"},
+                    process, failure) &&
+               step("install", install, process, failure);
+    };
+
     const std::string binary = project.value().binary_name();
     const fs::path package = work / "package";
     json::Value signed_with;
     fs::remove_all(package, error);
-    if (!step("configure", configure, process, failure) ||
-        !step("build", {"cmake", "--build", build.string(), "--config", config, "--parallel"},
-              process, failure) ||
-        !step("install",
-              {"cmake", "--install", build.string(), "--config", config, "--component", "game",
-               "--prefix", fs::absolute(package, error).string()},
-              process, failure) ||
-        !sign(preset, signing, package, binary, work, process, signed_with, failure) ||
-        !publish(package, output, work / "output.json", failure)) {
+    if (android) {
+        // One build per ABI, installed into one tree that becomes the APK.
+        const fs::path tree = work / "android";
+        fs::remove_all(tree, error);
+        for (const std::string& abi : preset.android.abis) {
+            if (!build_into(work / ("build-" + abi),
+                            detail::android_configure_args(*android, abi, apk_info.package), tree,
+                            !debug)) {
+                failure.details["abi"] = abi;
+                return fail(failure, log_path);
+            }
+        }
+        if (!detail::package_apk(*android, android_key, apk_info, tree, work,
+                                 package / (binary + ".apk"),
+                                 detail::android_process(*android, process), failure)) {
+            return fail(failure, log_path);
+        }
+        signed_with["release"] = android_key.release;
+        signed_with["keystore"] = fs::path(android_key.keystore).filename().string();
+    } else if (platform == "ios") {
+        const fs::path app = package / (binary + ".app");
+        if (!build_into(work / ("build-" + preset.ios.destination),
+                        detail::ios_configure_args(preset.ios, debug, ios_bundle_id), package,
+                        !debug) ||
+            !detail::sign_ios_app(ios_signing, app, process, failure)) {
+            return fail(failure, log_path);
+        }
+        // Devices install .ipa files; the Simulator installs the app itself.
+        if (ios_signing.device) {
+            if (!detail::package_ipa(app, package / (binary + ".ipa"), work, process, failure)) {
+                return fail(failure, log_path);
+            }
+            fs::remove_all(app, error);
+        }
+        signed_with["identity"] = ios_signing.identity_name.empty() ? std::string(kAdHocIdentity)
+                                                                    : ios_signing.identity_name;
+        if (!ios_signing.profile.empty()) {
+            signed_with["profile"] = ios_signing.profile_name;
+        }
+    } else if (!build_into(work / "build", {}, package, false) ||
+               !sign(preset, signing, package, binary, work, process, signed_with, failure)) {
+        return fail(failure, log_path);
+    }
+    if (!publish(package, output, work / "output.json", failure)) {
         return fail(failure, log_path);
     }
 
@@ -720,6 +755,12 @@ ExportResult export_game(const ExportOptions& options) {
         program = executable;
     } else if (platform == "linux") {
         executable = output / binary;
+        program = executable;
+    } else if (platform == "android") {
+        executable = output / (binary + ".apk");
+        program = executable;
+    } else if (platform == "ios") {
+        executable = output / (binary + (ios_signing.device ? ".ipa" : ".app"));
         program = executable;
     } else {
         executable = output / "index.html";
@@ -738,9 +779,36 @@ ExportResult export_game(const ExportOptions& options) {
     if (!signed_with.is_null()) {
         out["signed"] = std::move(signed_with);
     }
+    if (android) {
+        json::Value& info = out["android"];
+        info["package"] = apk_info.package;
+        info["version_code"] = apk_info.version_code;
+        json::Array abis;
+        for (const std::string& abi : preset.android.abis) {
+            abis.emplace_back(abi);
+        }
+        info["abis"] = std::move(abis);
+    }
+    if (platform == "ios") {
+        json::Value& info = out["ios"];
+        info["bundle_id"] = ios_bundle_id;
+        info["destination"] = preset.ios.destination;
+    }
     if (options.test) {
-        json::Value test =
-            run_test(platform, fs::absolute(output, error), fs::absolute(program, error), log_path);
+        json::Value test;
+        if (android) {
+            test = detail::test_apk(*android, fs::absolute(program, error), apk_info.package,
+                                    preset.android.abis, log_path);
+        } else if (platform == "ios" && ios_signing.device) {
+            test["skipped"] = "device builds don't run in the Simulator; export with "
+                              "\"destination\": \"simulator\" to test";
+        } else if (platform == "ios") {
+            test = detail::test_ios(fs::absolute(program, error), ios_bundle_id,
+                                    fs::absolute(work, error), log_path);
+        } else {
+            test = run_test(platform, fs::absolute(output, error), fs::absolute(program, error),
+                            log_path);
+        }
         if (const json::Value* passed = test.find("passed");
             passed != nullptr && !passed->as_bool()) {
             result.ok = false;
