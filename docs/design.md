@@ -95,6 +95,7 @@ SlashEngine covers nearly every Godot 4 feature area at launch and adds UE5 feat
 | Navigation | Navigation meshes, avoidance | Nav mesh, AI controllers | Recast and Detour, 2D and 3D, avoidance | Launch |
 | Asset import | glTF, FBX, OBJ, images, audio | FBX, glTF, USD | glTF 2.0, FBX, OBJ, PNG, JPG, KTX2, WAV, OGG, MP3 | Launch |
 | Profiling | Profiler, debugger, monitors | Unreal Insights | Tracy, plus perf.stats over the command API | Launch |
+| Asset generation and library | Asset Library (add-ons, no generation) | Fab, shared Derived Data Cache | Generated assets saved once by content hash and shared by every project and teammate; agents search before generating, and agent feedback ranks results | Launch |
 | Global illumination | SDFGI, VoxelGI, LightmapGI | Lumen | Baked lightmaps and probe-based GI | Launch |
 | Sky and volumetrics | Procedural sky, volumetric fog | Sky atmosphere, volumetric clouds | Physical sky, volumetric fog | Launch |
 | Decals | Decal node | Deferred decals | Clustered decals | Launch |
@@ -126,6 +127,7 @@ Every line in the repo is Apache 2.0 or comes from a dependency under a permissi
 - **Allowed licenses:** MIT, BSD, zlib, Apache 2.0, Boost, MIT-0 and public domain. No GPL or LGPL in the runtime, so games built on SlashEngine can ship under any license.
 - **No copied engine code.** Nothing from UE5 or any other closed engine, including snippets from its source or docs. Godot is MIT, so its ideas and code may be borrowed with attribution in `THIRD_PARTY.md`.
 - **System APIs are linked, not shipped.** Win32, Direct3D, Metal, Vulkan drivers and mobile OS SDKs are called through SDL3; none of their code lives in the repo.
+- **Generators are called, not shipped.** The asset generator talks to image and audio models over HTTP, like `ai::Provider`, so no model or vendor SDK is in the repo. Each generated asset records its generator, model and license terms, because what a team may do with an asset depends on the service that made it.
 - **Store and ad SDKs follow the same rule.** StoreKit is an OS framework and Google Play Billing is fetched at export time with the Android SDK, so the repo holds only SlashEngine's glue for them. Ad network SDKs are proprietary, so their adapters live outside the repo, like console backends (decided by Dan).
 - **Consoles live outside the repo.** PlayStation, Xbox and Switch SDKs are closed and under NDA, so, as with Godot, console ports are private backends built by licensed porting partners and offered to studios separately. They plug in behind the same `RenderDevice` and platform interfaces.
 - **Enforced in CI.** Each dependency is pinned with its license in a manifest, and a license check runs on every PR.
@@ -263,6 +265,7 @@ Agents can't be forced to prefer a tool, but they reliably use what the project 
 | A test command steps the game headless and returns only the checks that failed | Screenshots and log reading | 5 |
 | Frame summaries list what is on screen as data; PNG captures stay available | Image tokens | 5 |
 | A benchmark of standard agent tasks counts calls and tokens on a schedule | Regressions in agent efficiency | 6 |
+| The asset library returns an earlier asset instead of generating it again, and describes assets in text | Generation calls and image tokens | 6 |
 
 A custom language for agents is deliberately not on this list: models write C++ and JSON reliably because they have seen so much of both, and MCP tool calls are JSON already. When agents repeat the same sequence of calls, the fix is a new command or prefab.
 
@@ -302,6 +305,18 @@ public:
 - **Testable offline.** A `ReplayProvider` records real responses once and replays them in CI, so tests never need a network or a key.
 - **Optional module.** `slash_ai` is a separate CMake target. A game that uses no model links none of it and carries no HTTP client.
 
+## Asset library and generation
+
+Generating an image or a sound costs a model call, time and often money, and agents otherwise make the same asset again whenever a user switches tools, a teammate asks for something similar or a new project starts. The asset library keeps every generated asset so it can be found and reused instead. It is plain storage, search and commands, so it works with any agent and any model.
+
+- **One library per machine, not per project.** Assets live once in a content-addressed store (`~/.slash/library`), keyed by the hash of their bytes. Every project made with the engine can search it. Using an asset copies it into the project, so exports never depend on the library.
+- **Searched before generating.** `asset.search` matches text, tags and type and returns IDs with short text descriptions, so an agent can pick an asset without loading the image. The `asset.generate` command checks the library first: an exact repeat of an earlier request returns the stored asset with no model call, and close matches come back as candidates.
+- **Every asset remembers how it was made:** the request, generator, model, seed, license terms, tags and its parent if it was refined from another asset. `asset.refine` makes a new version linked to its parent, so iterations form a history that can be compared and rolled back.
+- **Optimized once.** Each asset is imported and compressed for each platform when first used, and the result is cached, so later projects reuse it without converting it again.
+- **Learning from feedback, not training.** Agents record what happened with an asset through `asset.feedback`: accepted or rejected and why, by hand or automatically from scene validation, the headless test command and frame summaries. Feedback ranks search results, picks between candidates, and is passed back into later prompts as notes on what worked. No model is trained, so this works the same with every provider.
+- **Shared with the team.** The library can sync with a store the team hosts: a shared folder or a small library server that `slash-cli` runs. Nothing goes to a central service the project runs, and a teammate's request finds assets someone else already made.
+- **Model agnostic and testable.** Generators are adapters behind one interface, like `ai::Provider`, for hosted and local image and audio models; 3D models join when glTF import lands. A test generator lets agents and CI use the library headless with no model or key.
+
 ## Repo layout and milestones
 
 The repo splits into a core library, optional modules and the tools agents use, with sample games that double as integration tests.
@@ -320,6 +335,7 @@ SlashEngine/
     runtime/         # project.json, the game loop and every game's main()
     hotreload/       # loads and swaps the C++ game module, keeps world state
     ai/              # optional: Provider interface and adapters
+    library/         # optional: asset library, generators and feedback
   tools/
     exporter/        # export presets, building, signing and the export.run command
     slash-mcp/       # MCP over stdio, or forwarded to a running game
@@ -337,8 +353,8 @@ SlashEngine/
 3. **Commands.** Command registry, undo, JSON-RPC server, `slash-mcp`, REST mirror, `slash-cli`. Exit: Claude Code, Codex and Cursor each open, edit and save a scene over MCP.
 4. **Export pipeline.** `slash-cli export` and toolchain install for all six platforms, plus the CI workflow. Exit: an empty project exports and passes headless tests everywhere. It comes this early so every later feature stays exportable. Built in two parts: (a) project files, the game runtime and exports for macOS, Windows, Linux and web on their own hosts, tested in CI; (b) iOS and Android, cross toolchains from a Mac, export presets with signing, and the `export.run` command.
 5. **2D feature set.** Systems, play and pause, event subscriptions, prefabs, asset handles with hot reload and the CI license check first; then the renderer, materials, sprites, keyframe animation, tilemaps, 2D lights, Box2D physics, particles, UI and text, audio, input injection, frame capture, replays and the debug overlay. Exit: an agent builds `samples/pong` and exports it to all six platforms.
-6. **Hot reload, AI and profiling.** Hot-reloadable C++ game module, `ai::Provider` with three adapters and `ReplayProvider`, the job system, Tracy, `perf.stats` and the per-system memory report.
-7. **3D feature set.** Forward+ PBR renderer, shadows, post-processing, GI, sky, decals, LODs, Jolt physics, skeletal animation and blending, navigation, terrain, CSG, glTF and FBX import. Exit: an agent builds a small 3D sample end to end.
+6. **Hot reload, AI and profiling.** Hot-reloadable C++ game module, `ai::Provider` with three adapters and `ReplayProvider`, the asset library and generator for images and audio, the job system, Tracy, `perf.stats` and the per-system memory report.
+7. **3D feature set.** Forward+ PBR renderer, shadows, post-processing, GI, sky, decals, LODs, Jolt physics, skeletal animation and blending, navigation, terrain, CSG, glTF and FBX import, and 3D models in the asset library. Exit: an agent builds a small 3D sample end to end.
 8. **Systems and platform services.** Networking, XR, localization, video, accessibility, and analytics, ads and in-app purchases behind one API with a headless test backend.
 9. **Launch.** Every Launch row of the parity table done, the Mac engine and tools released, exports for all six platforms, reference docs generated from `engine.describe`.
 

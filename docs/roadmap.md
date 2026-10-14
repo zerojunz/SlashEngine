@@ -134,6 +134,25 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
 - [ ] `ai::Provider` with OpenAI-compatible, Anthropic and Gemini adapters
 - [ ] `ReplayProvider` so tests that use a model run offline
 - [ ] A benchmark of standard agent tasks that counts calls and tokens
+- [ ] Asset library and generator, so agents reuse generated assets instead of making them again
+      ([design](design.md#asset-library-and-generation))
+  - [ ] A library shared by every project on the machine: each asset stored once by content
+        hash, with the request that made it, its generator, model, seed, license, tags and a short
+        text description agents can read instead of the file
+  - [ ] `asset.search` by text, tags and type; agents search before they generate
+  - [ ] `asset.generate` through generator adapters for hosted and local image and audio
+        models, behind the same interface style as `ai::Provider`; an exact repeat of an earlier
+        request returns the stored asset with no model call
+  - [ ] Iteration: `asset.refine` makes a new version linked to its parent, so every asset keeps
+        its history and can be rolled back
+  - [ ] Ready-to-use forms: imported and compressed for each platform once, then cached
+  - [ ] Feedback: agents record results with `asset.feedback`, by hand or automatically from
+        checks such as validation, the headless test command and frame summaries; feedback
+        ranks search results, picks between candidates and is passed back into later prompts
+  - [ ] Team sharing: the library syncs with a store the team hosts, such as a shared folder or
+        a library server that `slash-cli` runs, so a teammate's request finds assets someone
+        else already made
+  - [ ] A test generator, so agents and CI can use the library headless with no model or key
 
 ### Milestone 7: 3D feature set (Planned)
 
@@ -148,6 +167,7 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
 - [ ] Navigation on Recast and Detour, in 2D and 3D, with avoidance
 - [ ] Heightmap terrain; CSG and grid-based tile placement
 - [ ] Import of glTF 2.0, FBX, OBJ, PNG, JPG, KTX2, WAV, OGG and MP3
+- [ ] 3D models and materials in the asset library and generator
 
 Exit: an agent builds a small 3D sample end to end.
 
@@ -238,6 +258,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Navigation | Recast and Detour, 2D and 3D, avoidance | 7 | Planned |
 | Asset import | glTF 2.0, FBX, OBJ, PNG, JPG, KTX2, WAV, OGG, MP3 | 7 | Planned |
 | Profiling | Tracy, plus `perf.stats` over the command API | 6 | Planned |
+| Asset generation and library | Generated assets saved once and shared by every project and teammate, searched before generating, ranked by agent feedback | 6, 7 | Planned: images and audio in 6, 3D in 7 |
 | Global illumination | Baked lightmaps and probe-based GI | 7 | Planned |
 | Sky and volumetrics | Physical sky, volumetric fog | 7 | Planned |
 | Decals | Clustered decals | 7 | Planned |
@@ -275,6 +296,7 @@ calls and tokens ([design section 6](design.md#6-cheap-for-agents-to-use)).
 | A test command that returns only the checks that failed | 5 | Planned |
 | Frame summaries as data instead of screenshots | 5 | Planned |
 | A scheduled benchmark of standard agent tasks counting calls and tokens | 6 | Planned |
+| The asset library: search before generating, and read a text description instead of the file | 6 | Planned |
 
 ## Platforms
 
