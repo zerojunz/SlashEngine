@@ -11,9 +11,10 @@ add_executable(slash_tests
     test_result.cpp
     test_rpc.cpp
     test_scene.cpp
+    test_server.cpp
     test_world.cpp)
 target_link_libraries(slash_tests PRIVATE
-    slash::command slash::core slash::platform slash::world doctest::doctest)
+    slash::command slash::core slash::platform slash::server slash::world doctest::doctest)
 # doctest forward-declares std::ostream by default, which breaks string_view checks on recent
 # MSVC standard libraries; include the real headers instead.
 target_compile_definitions(slash_tests PRIVATE DOCTEST_CONFIG_USE_STD_HEADERS)
@@ -116,6 +117,21 @@ if(SLASH_BUILD_TOOLS)
         FIXTURES_REQUIRED mcp_saved
         PASS_REGULAR_EXPRESSION "{\"entities\":1,\"valid\":true}")
 
+    # slash-mcp --live with no game running answers with the reason instead of hanging.
+    add_test(NAME mcp_live_offline
+        COMMAND ${CMAKE_COMMAND} -DPROGRAM=$<TARGET_FILE:slash-mcp> "-DARGS=--live|--project|."
+            -DINPUT=${scenes}/mcp_live_offline.jsonl -DEXPECT=${scenes}/mcp_live_offline.expected
+            -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}/live_project -P ${run_stdio})
+
+    # A headless run can serve its world over HTTP while it ticks.
+    add_test(NAME cli_run_serve
+        COMMAND slash-cli run --headless --ticks 30 --serve
+            --project ${CMAKE_CURRENT_BINARY_DIR}/serve_project)
+    set_tests_properties(cli_run_serve PROPERTIES
+        PASS_REGULAR_EXPRESSION "\"url\":\"http://127\\.0\\.0\\.1:[0-9]+\"")
+    add_test(NAME cli_run_port_needs_serve COMMAND slash-cli run --headless --ticks 1 --port 0)
+    set_tests_properties(cli_run_port_needs_serve PROPERTIES WILL_FAIL TRUE)
+
     # init writes the agent configs and a valid empty scene, and keeps existing files.
     set(init_project ${CMAKE_CURRENT_BINARY_DIR}/init_project)
     add_test(NAME cli_init COMMAND slash-cli init ${init_project} --force)
@@ -125,7 +141,18 @@ if(SLASH_BUILD_TOOLS)
     add_test(NAME cli_init_keeps_files COMMAND slash-cli init ${init_project})
     set_tests_properties(cli_init_keeps_files PROPERTIES
         FIXTURES_REQUIRED init_project
-        PASS_REGULAR_EXPRESSION "\"created\":\\[\\],\"skipped\":\\[\"AGENTS\\.md\"")
+        PASS_REGULAR_EXPRESSION "\"created\":\\[\\],\"skipped\":\\[\"AGENTS\\.md\".*\"\\.gitignore\"\\]")
+    # An existing .gitignore gains the .slash/ line instead of being replaced.
+    add_test(NAME cli_init_gitignore_copy
+        COMMAND ${CMAKE_COMMAND} -E copy ${scenes}/existing.gitignore ${init_project}/.gitignore)
+    set_tests_properties(cli_init_gitignore_copy PROPERTIES
+        DEPENDS cli_init_keeps_files
+        FIXTURES_REQUIRED init_project
+        FIXTURES_SETUP init_gitignore)
+    add_test(NAME cli_init_gitignore_updated COMMAND slash-cli init ${init_project})
+    set_tests_properties(cli_init_gitignore_updated PROPERTIES
+        FIXTURES_REQUIRED init_gitignore
+        PASS_REGULAR_EXPRESSION "\"updated\":\\[\"\\.gitignore\"\\]")
     add_test(NAME cli_init_scene_valid
         COMMAND slash-cli scene validate ${init_project}/scenes/main.scene.json)
     set_tests_properties(cli_init_scene_valid PROPERTIES

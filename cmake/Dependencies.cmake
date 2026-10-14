@@ -51,3 +51,20 @@ CPMAddPackage(
         "YYJSON_DISABLE_UTILS ON"
         "YYJSON_DISABLE_NON_STANDARD ON"
         "YYJSON_READER_DEPTH_LIMIT 256")
+
+# HTTP server and client for the localhost REST mirror and MCP over HTTP. Header-only, used
+# without TLS, compression or exceptions, and only inside slash_server.
+CPMAddPackage(
+    NAME httplib
+    GIT_REPOSITORY https://github.com/yhirose/cpp-httplib.git
+    GIT_TAG v0.58.0
+    GIT_SHALLOW TRUE
+    DOWNLOAD_ONLY TRUE)
+if(httplib_ADDED)
+    find_package(Threads REQUIRED)
+    add_library(slash_httplib INTERFACE)
+    target_include_directories(slash_httplib SYSTEM INTERFACE ${httplib_SOURCE_DIR})
+    target_compile_definitions(slash_httplib INTERFACE CPPHTTPLIB_NO_EXCEPTIONS)
+    target_link_libraries(slash_httplib INTERFACE
+        Threads::Threads $<$<PLATFORM_ID:Windows>:ws2_32>)
+endif()

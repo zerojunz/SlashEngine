@@ -13,18 +13,24 @@
 #include "slash/platform/file.hpp"
 #include "slash/platform/platform.hpp"
 #include "slash/platform/run.hpp"
+#include "slash/server/server.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/scene.hpp"
 #include "slash/world/world.hpp"
 
 #include <charconv>
+#include <chrono>
+#include <csignal>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -49,6 +55,10 @@ Usage:
       --hz <rate>                    Fixed tick rate in Hz (default 60)
       --scene <file>                 Load a .scene.json file before the first tick
       --save <file>                  Save the scene to this file after the last tick
+      --serve                        Serve the running game over HTTP (see serve)
+      --port <n>                     Port for --serve (default: any free port)
+      --token <token>                Bearer token for --serve (default: random)
+      --project <dir>                Project folder for --serve (default ".")
   slash-cli scene validate <file>    Check a scene against the schema; lists every error
   slash-cli scene format <file>      Rewrite a scene in canonical form
       --check                        Only report whether it is canonical; change nothing
@@ -60,16 +70,23 @@ Usage:
   slash-cli rpc                      Serve engine commands as JSON-RPC 2.0, one message per
                                      line on stdin and stdout
       --scene <file>                 Open this scene first
+  slash-cli serve                    Serve engine commands over HTTP on this machine until
+                                     stopped: REST at /v1/commands, OpenAPI at
+                                     /v1/openapi.json, JSON-RPC at /rpc and MCP at /mcp
+      --scene <file>                 Open this scene first
+      --port <n>                     Port (default: any free port)
+      --token <token>                Bearer token clients must send (default: random)
   slash-cli init [dir]               Set a project up for Claude Code, Codex and Cursor
       --force                        Replace files that already exist
       --mcp-command <cmd>            How agents launch slash-mcp (default "slash-mcp")
   slash-cli help                     Show this message
 
-call and rpc also take:
+call, rpc and serve also take:
       --project <dir>                Folder that scene paths are relative to (default ".")
       --allow <list>                 Capabilities: read, edit, run, filesystem or all (default)
 
 slash-cli call engine.describe lists every command. Agents with MCP should use slash-mcp.
+A server writes its URL and token to .slash/server.json in the project for other tools.
 
 Results are JSON on stdout. Exit codes: 0 success, 1 failure, 2 usage error.
 )";
@@ -127,12 +144,144 @@ int cmd_version() {
     return kExitOk;
 }
 
+// Options shared by call and rpc.
+struct SessionArgs {
+    command::SessionOptions options;
+    std::string scene;
+    bool save = false;
+};
+
+// Parses a session option at args[i]. Returns false if args[i] is not one; sets error if it is
+// one but malformed.
+bool parse_session_arg(const std::vector<std::string>& args, std::size_t& i, SessionArgs& out,
+                       std::string& error) {
+    const std::string& arg = args[i];
+    const bool has_value = i + 1 < args.size();
+    if (arg == "--project" || arg == "--scene" || arg == "--allow") {
+        if (!has_value) {
+            error = arg + " needs a value";
+            return true;
+        }
+        const std::string& value = args[++i];
+        if (arg == "--project") {
+            out.options.project_root = value;
+        } else if (arg == "--scene") {
+            out.scene = value;
+        } else if (auto capabilities = command::parse_capabilities(value); capabilities) {
+            out.options.capabilities = std::move(capabilities).value();
+        } else {
+            error = capabilities.error().message;
+        }
+        return true;
+    }
+    return false;
+}
+
+json::Value error_json(const command::Reply& reply) {
+    json::Value error;
+    error["code"] = reply.code;
+    error["message"] = reply.message;
+    if (!reply.data.is_null()) {
+        error["data"] = reply.data;
+    }
+    json::Value out;
+    out["error"] = std::move(error);
+    return out;
+}
+
+// The engine's components and commands, and a session over them.
+struct Engine {
+    world::ComponentRegistry components = make_registry();
+    command::Registry commands;
+    std::unique_ptr<command::Session> session;
+
+    explicit Engine(const command::SessionOptions& options) {
+        command::register_builtin_commands(commands);
+        command::SessionOptions session_options = options;
+        session_options.capture_logs = false;
+        session = std::make_unique<command::Session>(components, commands, session_options);
+    }
+};
+
+// Set by SIGINT and SIGTERM to stop slash-cli serve.
+volatile std::sig_atomic_t g_stop_requested = 0;
+
+void request_stop(int /*signal*/) {
+    g_stop_requested = 1;
+}
+
+// Keeps .slash/server.json in the project folder while a server runs, so slash-mcp --live and
+// other tools can find it. Only the owner may read it, because it holds the token.
+class EndpointFile {
+public:
+    EndpointFile(const std::string& project, const slash::server::Endpoint& endpoint)
+        : path_((std::filesystem::path(project) /
+                 std::filesystem::path(std::string(slash::server::kEndpointFile)))
+                    .lexically_normal()) {
+        namespace fs = std::filesystem;
+        std::error_code error;
+        fs::create_directories(path_.parent_path(), error);
+        std::ofstream(path_, std::ios::trunc).close();
+        fs::permissions(path_, fs::perms::owner_read | fs::perms::owner_write,
+                        fs::perm_options::replace, error);
+        std::ofstream file(path_, std::ios::trunc);
+        file << json::write(endpoint.to_json(), json::Style::Compact) << '\n';
+        if (!file) {
+            slash::log::warn("could not write the server file", {{"path", path()}});
+        }
+    }
+    ~EndpointFile() {
+        std::error_code error;
+        std::filesystem::remove(path_, error);
+    }
+    EndpointFile(const EndpointFile&) = delete;
+    EndpointFile& operator=(const EndpointFile&) = delete;
+    EndpointFile(EndpointFile&&) = delete;
+    EndpointFile& operator=(EndpointFile&&) = delete;
+
+    [[nodiscard]] std::string path() const { return path_.generic_string(); }
+
+private:
+    std::filesystem::path path_;
+};
+
+// Parses a server option at args[i]. Returns false if args[i] is not one; sets error if it is
+// one but malformed.
+bool parse_server_arg(const std::vector<std::string>& args, std::size_t& i,
+                      slash::server::ServerOptions& out, std::string& error) {
+    const std::string& arg = args[i];
+    if (arg != "--port" && arg != "--token") {
+        return false;
+    }
+    if (i + 1 >= args.size()) {
+        error = arg + " needs a value";
+        return true;
+    }
+    const std::string& value = args[++i];
+    if (arg == "--token") {
+        out.token = value;
+        return true;
+    }
+    std::uint64_t port = 0;
+    constexpr std::uint64_t kMaxPort = 65535;
+    if (!parse_u64(value, port) || port > kMaxPort) {
+        error = "--port needs a number from 0 to 65535";
+        return true;
+    }
+    out.port = static_cast<int>(port);
+    return true;
+}
+
 int cmd_run(const std::vector<std::string>& args) {
     slash::platform::Config config;
     config.title = "SlashEngine";
     slash::platform::RunOptions options;
     std::string scene_path;
     std::string save_path;
+    bool serve = false;
+    bool server_args = false;
+    command::SessionOptions session_options;
+    slash::server::ServerOptions server_options;
 
     for (std::size_t i = 0; i < args.size(); ++i) {
         const std::string& arg = args[i];
@@ -152,13 +301,28 @@ int cmd_run(const std::vector<std::string>& args) {
                 return usage_error(arg + " needs a file path");
             }
             (arg == "--scene" ? scene_path : save_path) = args[++i];
+        } else if (arg == "--serve") {
+            serve = true;
+        } else if (arg == "--project") {
+            if (!has_value) {
+                return usage_error("--project needs a folder");
+            }
+            session_options.project_root = args[++i];
+        } else if (std::string error; parse_server_arg(args, i, server_options, error)) {
+            if (!error.empty()) {
+                return usage_error(error);
+            }
+            server_args = true;
         } else {
             return usage_error("unknown option for run: " + arg);
         }
     }
+    if (server_args && !serve) {
+        return usage_error("--port and --token need --serve");
+    }
 
-    const world::ComponentRegistry registry = make_registry();
-    world::World game(registry);
+    Engine engine(session_options);
+    world::World& game = engine.session->world();
     if (!scene_path.empty()) {
         auto text = slash::platform::read_file(scene_path);
         if (!text) {
@@ -171,6 +335,14 @@ int cmd_run(const std::vector<std::string>& args) {
         if (auto loaded = world::load_scene(game, parsed.value()); !loaded) {
             return failure("could not load the scene", loaded.error());
         }
+        // Inside the project, scene.save with no path writes back to the loaded file.
+        std::error_code error;
+        const std::string relative =
+            std::filesystem::relative(scene_path, session_options.project_root, error)
+                .generic_string();
+        if (!error && !relative.empty() && engine.session->resolve_path(relative)) {
+            engine.session->set_scene_path(relative);
+        }
     }
 
     auto platform = slash::platform::Platform::create(config);
@@ -178,9 +350,28 @@ int cmd_run(const std::vector<std::string>& args) {
         return failure("could not start the platform", platform.error());
     }
 
-    auto stats = slash::platform::run(
-        platform.value(), options,
-        [&game](std::uint64_t /*tick*/, double tick_seconds) { game.step(tick_seconds); });
+    // With --serve, requests run on this thread between ticks, so they never race the game.
+    std::unique_ptr<slash::server::Server> server;
+    std::optional<EndpointFile> endpoint_file;
+    if (serve) {
+        auto started = slash::server::Server::start(*engine.session, server_options);
+        if (!started) {
+            return failure("could not start the server", started.error());
+        }
+        server = std::move(started).value();
+        endpoint_file.emplace(session_options.project_root, server->endpoint());
+    }
+
+    auto stats = slash::platform::run(platform.value(), options,
+                                      [&](std::uint64_t /*tick*/, double tick_seconds) {
+                                          if (server) {
+                                              server->poll();
+                                          }
+                                          game.step(tick_seconds);
+                                      });
+    if (server) {
+        server->stop();
+    }
     if (!stats) {
         return failure("run failed", stats.error());
     }
@@ -197,6 +388,9 @@ int cmd_run(const std::vector<std::string>& args) {
     result["quit_requested"] = stats.value().quit_requested;
     result["headless"] = config.headless;
     result["entities"] = game.size();
+    if (server) {
+        result["url"] = server->endpoint().url();
+    }
     print(result);
     return kExitOk;
 }
@@ -285,65 +479,6 @@ int cmd_schema(const std::vector<std::string>& args) {
     std::fwrite(text.data(), 1, text.size(), stdout);
     return kExitOk;
 }
-
-// Options shared by call and rpc.
-struct SessionArgs {
-    command::SessionOptions options;
-    std::string scene;
-    bool save = false;
-};
-
-// Parses a session option at args[i]. Returns false if args[i] is not one; sets error if it is
-// one but malformed.
-bool parse_session_arg(const std::vector<std::string>& args, std::size_t& i, SessionArgs& out,
-                       std::string& error) {
-    const std::string& arg = args[i];
-    const bool has_value = i + 1 < args.size();
-    if (arg == "--project" || arg == "--scene" || arg == "--allow") {
-        if (!has_value) {
-            error = arg + " needs a value";
-            return true;
-        }
-        const std::string& value = args[++i];
-        if (arg == "--project") {
-            out.options.project_root = value;
-        } else if (arg == "--scene") {
-            out.scene = value;
-        } else if (auto capabilities = command::parse_capabilities(value); capabilities) {
-            out.options.capabilities = std::move(capabilities).value();
-        } else {
-            error = capabilities.error().message;
-        }
-        return true;
-    }
-    return false;
-}
-
-json::Value error_json(const command::Reply& reply) {
-    json::Value error;
-    error["code"] = reply.code;
-    error["message"] = reply.message;
-    if (!reply.data.is_null()) {
-        error["data"] = reply.data;
-    }
-    json::Value out;
-    out["error"] = std::move(error);
-    return out;
-}
-
-// The engine's components and commands, and a session over them.
-struct Engine {
-    world::ComponentRegistry components = make_registry();
-    command::Registry commands;
-    std::unique_ptr<command::Session> session;
-
-    explicit Engine(const command::SessionOptions& options) {
-        command::register_builtin_commands(commands);
-        command::SessionOptions session_options = options;
-        session_options.capture_logs = false;
-        session = std::make_unique<command::Session>(components, commands, session_options);
-    }
-};
 
 int cmd_call(const std::vector<std::string>& args) {
     SessionArgs session_args;
@@ -443,6 +578,48 @@ int cmd_rpc(const std::vector<std::string>& args) {
     return kExitOk;
 }
 
+int cmd_serve(const std::vector<std::string>& args) {
+    SessionArgs session_args;
+    slash::server::ServerOptions server_options;
+    for (std::size_t i = 0; i < args.size(); ++i) {
+        std::string error;
+        if (!parse_session_arg(args, i, session_args, error) &&
+            !parse_server_arg(args, i, server_options, error)) {
+            return usage_error("unexpected argument for serve: " + args[i]);
+        }
+        if (!error.empty()) {
+            return usage_error(error);
+        }
+    }
+    Engine engine(session_args.options);
+    command::Session& session = *engine.session;
+    if (!session_args.scene.empty()) {
+        if (const auto opened = command::open_or_new_scene(session, session_args.scene);
+            !opened.ok) {
+            print(error_json(opened));
+            return kExitFailure;
+        }
+    }
+    auto server = slash::server::Server::start(session, server_options);
+    if (!server) {
+        return failure("could not start the server", server.error());
+    }
+    const EndpointFile endpoint_file(session_args.options.project_root, server.value()->endpoint());
+    json::Value started = server.value()->endpoint().to_json();
+    started["endpoint_file"] = endpoint_file.path();
+    print(started);
+    std::fflush(stdout);
+
+    std::signal(SIGINT, request_stop);
+    std::signal(SIGTERM, request_stop);
+    while (g_stop_requested == 0) {
+        server.value()->poll(std::chrono::milliseconds(100));
+    }
+    server.value()->stop();
+    slash::log::info("server stopped");
+    return kExitOk;
+}
+
 int cmd_init(const std::vector<std::string>& args) {
     slash::cli::InitOptions options;
     bool have_directory = false;
@@ -497,6 +674,9 @@ int main(int argc, char** argv) {
     }
     if (name == "rpc") {
         return cmd_rpc(args);
+    }
+    if (name == "serve") {
+        return cmd_serve(args);
     }
     if (name == "init") {
         return cmd_init(args);
