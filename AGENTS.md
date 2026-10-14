@@ -6,7 +6,7 @@ Instructions for AI agents (Claude Code, Codex, Cursor and others) working on Sl
 ## Build and test
 
 ```bash
-cmake --preset dev               # configure (first run fetches SDL3 and doctest)
+cmake --preset dev               # configure (first run fetches the dependencies)
 cmake --build --preset dev       # build engine, slash-cli and tests
 ctest --preset dev               # run unit and smoke tests
 ```
@@ -19,14 +19,51 @@ On Linux, SDL3 needs the X11/Wayland development packages listed in
 ## Run the engine
 
 ```bash
-./build/dev/tools/slash-cli/slash-cli version                     # {"name":"SlashEngine","version":"..."}
-./build/dev/tools/slash-cli/slash-cli run --headless --ticks 120  # no window or GPU
-./build/dev/tools/slash-cli/slash-cli run                         # opens a window until closed
+cli=./build/dev/tools/slash-cli/slash-cli
+$cli version                                   # {"name":"SlashEngine","version":"..."}
+$cli run --headless --ticks 120                # no window or GPU
+$cli run --headless --ticks 60 --scene tests/data/basic.scene.json --save build/out.scene.json
+$cli run                                       # opens a window until closed
 ```
 
 `slash-cli` prints results to stdout as JSON and logs to stderr as JSON lines. Exit codes: 0
 success, 1 runtime failure, 2 usage error. On a machine with no display, set
 `SDL_VIDEO_DRIVER=dummy` to exercise the windowed path.
+
+## Scenes
+
+Scenes are `.scene.json` files: entities keyed by stable ID, each with its components. Fields
+equal to their defaults are left out. `tests/data/basic.scene.json` is a small example.
+
+```bash
+$cli schema scene                                   # JSON Schema for scene files
+$cli scene validate tests/data/basic.scene.json     # every error, with its JSON Pointer path
+$cli scene format level.scene.json                  # rewrite in canonical form
+$cli scene format --check level.scene.json          # exit 1 if not canonical
+```
+
+Validate after editing a scene by hand, and format before committing one.
+
+## Add a component
+
+Components are plain structs reflected with one macro, at namespace scope in the struct's own
+namespace. Register them so scenes can save, load and describe them:
+
+```cpp
+struct Health {
+    float current = 100.0F;
+    float max = 100.0F;
+};
+SLASH_COMPONENT(Health, current, max)
+
+registry.add<Health>()
+    .set_doc("Hit points for anything that can take damage.")
+    .describe("current", {.doc = "Hit points left.", .min = 0.0});
+```
+
+Supported field types are listed in `engine/world/include/slash/world/serialize.hpp`. Use
+`SLASH_REFLECT` for structs that appear inside components. Built-in components are in
+`engine/world/include/slash/world/components.hpp`.
 
 ## Lint
 
@@ -48,6 +85,8 @@ CI rejects unformatted code and any clang-tidy finding.
 - Names: `PascalCase` types, `snake_case` functions and variables, `trailing_` private members,
   `kPascalCase` constants.
 - Headers live in `engine/<module>/include/slash/<module>/`, sources in `engine/<module>/src/`.
+  Modules: `core` (Result, logging, JSON, reflection, math), `platform` (SDL3 window, run loop,
+  files) and `world` (EnTT world, components, scenes).
 - New dependencies go in `cmake/Dependencies.cmake`, pinned to a tag, and in `THIRD_PARTY.md`
   with their license. Only permissive licenses (MIT, BSD, zlib, Apache 2.0, Boost, MIT-0,
   public domain). Never copy code from closed engines.
