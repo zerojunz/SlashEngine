@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  LINUX_SDL_DEPS: >-
+    ninja-build libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev
+    libxss-dev libxtst-dev libxkbcommon-dev libwayland-dev libegl-dev libgl-dev libdrm-dev
+    libgbm-dev libasound2-dev libpulse-dev libudev-dev libdbus-1-dev
+
+jobs:
+  build:
+    name: Build and test (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS
+            os: macos-14
+          - name: Linux
+            os: ubuntu-24.04
+          - name: Windows
+            os: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache fetched dependencies
+        uses: actions/cache@v4
+        with:
+          path: .cpm-cache
+          key: cpm-${{ matrix.os }}-${{ hashFiles('cmake/Dependencies.cmake') }}
+
+      - name: Install tools (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ninja
+
+      - name: Install tools (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y $LINUX_SDL_DEPS
+
+      - name: Install tools (Windows)
+        if: runner.os == 'Windows'
+        run: choco install ninja -y
+
+      - name: Set up MSVC (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Configure
+        run: cmake --preset ci
+
+      - name: Build
+        run: cmake --build --preset ci
+
+      - name: Test
+        run: ctest --preset ci
+
+  lint:
+    name: Format and clang-tidy
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache fetched dependencies
+        uses: actions/cache@v4
+        with:
+          path: .cpm-cache
+          key: cpm-lint-${{ hashFiles('cmake/Dependencies.cmake') }}
+
+      - name: Install tools
+        run: sudo apt-get update && sudo apt-get install -y clang-18 clang-format-18 clang-tidy-18 $LINUX_SDL_DEPS
+
+      - name: Check formatting
+        run: |
+          find engine tools tests -name '*.cpp' -o -name '*.hpp' \
+            | xargs clang-format-18 --dry-run --Werror
+
+      - name: Configure for clang-tidy
+        run: cmake --preset ci -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18
+
+      - name: Run clang-tidy
+        run: find engine tools -name '*.cpp' | xargs clang-tidy-18 -p build/ci --quiet
