@@ -151,13 +151,30 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
 
 Exit: an agent builds a small 3D sample end to end.
 
-### Milestone 8: Systems (Planned)
+### Milestone 8: Systems and platform services (Planned)
 
 - [ ] Networking: ENet transport, replication driven by reflection, WebSocket for web
 - [ ] XR through OpenXR
 - [ ] Localization with translation tables in text
 - [ ] Video playback with dav1d (AV1)
 - [ ] Accessibility through AccessKit
+- [ ] Platform services, like Unity's Analytics, Ads and In-App Purchasing: one cross-platform C++
+      API and command set, with the store or network chosen per export preset
+  - [ ] Analytics: custom events, sessions and funnels, batched and sent as JSON to an endpoint
+        the developer chooses, such as a self-hosted open-source server
+  - [ ] In-app purchases: products, purchase, restore and receipts, on StoreKit for iOS and
+        macOS and Google Play Billing for Android
+  - [ ] Ads: banner, interstitial and rewarded placements behind one interface; each ad network
+        is an adapter (see the note below)
+  - [ ] Consent and privacy: one consent state that gates analytics and ads, with Apple's App
+        Tracking Transparency prompt on iOS
+  - [ ] A test backend for all three, so agents and CI can run purchases, ads and events
+        headless with no store account, plus commands to inspect and drive it
+
+Ad network SDKs (AdMob, Unity Ads, AppLovin and others) are proprietary, so, like console ports,
+their adapters live outside this repository. StoreKit is an OS framework, and Google Play Billing
+is fetched at export time like the rest of the Android SDK, so neither is committed here. This
+split is pending Dan's confirmation.
 
 ### Milestone 9: Launch (Planned)
 
@@ -232,6 +249,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Localization | Translation tables in text | 8 | Planned |
 | Video playback | AV1 through dav1d | 8 | Planned |
 | Accessibility | AccessKit | 8 | Planned |
+| Analytics, ads and in-app purchases | One API for analytics, ads and purchases; StoreKit, Play Billing and a developer-chosen analytics endpoint in the repo, ad networks as outside adapters | 8 | Planned |
 | One-command export | `slash-cli export` to macOS, Windows, Linux, iOS, Android and web | 4 | In progress: desktop and web done (4a), iOS and Android in progress (4b) |
 | Large worlds | Double-precision transforms, world streaming | After launch | After launch |
 | Cinematics | Timeline tracks for cameras and events | After launch | After launch |
