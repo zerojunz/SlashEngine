@@ -12,3 +12,7 @@ versions in `cmake/Dependencies.cmake` unless noted as vendored.
 | [cpp-httplib](https://github.com/yhirose/cpp-httplib) | v0.58.0 | MIT | Localhost HTTP server for the REST mirror and MCP over HTTP | Fetched, header-only |
 | [doctest](https://github.com/doctest/doctest) | v2.5.2 | MIT | Unit tests (not shipped in games) | Fetched, tests only |
 | [CPM.cmake](https://github.com/cpm-cmake/CPM.cmake) | v0.40.2 | MIT | Dependency fetching | Vendored as `cmake/CPM.cmake` |
+
+Exports are built with toolchains the developer installs, not fetched by the engine. Web exports
+use [Emscripten](https://github.com/emscripten-core/emscripten) 6.0.10 in CI (MIT or University of
+Illinois/NCSA), whose JavaScript runtime and C/C++ libraries are compiled into the game.
