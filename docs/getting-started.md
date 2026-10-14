@@ -6,7 +6,8 @@ here is real output from the engine.
 
 SlashEngine is early: it runs worlds of entities and components and saves them as JSON scenes, but
 it does not draw sprites or meshes yet (see the [roadmap](roadmap.md)). What works today is the
-part agents use most: scenes, the command API and the servers that expose it.
+part agents use most: scenes, the command API, the servers that expose it, and exporting a game
+for macOS, Windows, Linux and the web.
 
 ## 1. Build
 
@@ -156,10 +157,10 @@ $cli init mygame
 ```
 
 ```json
-{"created":["AGENTS.md","CLAUDE.md",".mcp.json",".cursor/mcp.json",".codex/config.toml",".claude/skills/slashengine/SKILL.md","scenes/main.scene.json",".gitignore"],"skipped":[]}
+{"created":["project.json","AGENTS.md","CLAUDE.md",".mcp.json",".cursor/mcp.json",".codex/config.toml",".claude/skills/slashengine/SKILL.md","scenes/main.scene.json",".gitignore"],"skipped":[]}
 ```
 
-Each config launches `slash-mcp`, the engine's MCP server, with the project's main scene open.
+`mygame` is now a game project: `project.json` names the game and its main scene. Each config launches `slash-mcp`, the engine's MCP server, with the project's main scene open.
 Put `slash-mcp` on your `PATH` (or pass `--mcp-command` with its full path to `init`), then start
 the agent in `mygame/`; it finds the server on its next start. To add the server to Claude Code by
 hand instead:
@@ -194,6 +195,22 @@ curl -X POST -H "Authorization: Bearer $TOKEN" -d '{"with": ["Transform3D"]}' \
 ```json
 {"count":1,"entities":["camera"],"truncated":false}
 ```
+
+## 7. Export the game
+
+Build the game for players. On Linux, from the folder that holds `mygame`:
+
+```bash
+$cli export linux --project mygame --test
+```
+
+```json
+{"bytes":5335402,"executable":"mygame/build/export/linux/mygame","log":"mygame/.slash/export/linux/export.log","output":"mygame/build/export/linux","platform":"linux","seconds":64.2,"test":{"entities":0,"passed":true,"ticks":60}}
+```
+
+`--test` runs the exported game headless and reports whether it worked. Use `macos` or `windows`
+on those machines, or `web` anywhere Emscripten is installed. See
+[reference/cli.md](reference/cli.md#export).
 
 ## Next
 

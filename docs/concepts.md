@@ -51,9 +51,11 @@ The code follows the same split, one CMake library per module under `engine/`:
 | `world` | The EnTT world, components, the component registry, scenes |
 | `command` | Commands, sessions with undo, JSON-RPC and MCP |
 | `server` | The localhost HTTP server over a session |
+| `runtime` | Project files and the game executable every export is built from |
 
 The tools in `tools/` are thin front ends over these: `slash-cli` (run, validate, call, serve,
-init) and `slash-mcp` (MCP over stdio).
+init, export), `slash-mcp` (MCP over stdio) and `slash-game` (runs a project as its export
+would).
 
 ## World, entities and components
 
@@ -97,6 +99,18 @@ The **scene schema** is a JSON Schema generated from the registered components, 
 matches the build. Validation reports every error at once, each with the JSON Pointer of the bad
 value and, for a misspelled name, the closest valid one. See
 [reference/scene-format.md](reference/scene-format.md).
+
+## Game projects and exports
+
+A **project** is a game's folder: a `project.json` naming the game, its version and its **main
+scene**, plus its scene files. See [reference/project-format.md](reference/project-format.md).
+
+An **export** is a build of a project for one platform, ready for players. Because gameplay is
+compiled C++, an export is a real build of the game runtime for that platform, with the project's
+data next to it, not a template plus scripts. `slash-cli export <platform>` validates the project
+and its scenes, builds, and with `--test` runs the result headless to prove it starts. Today it
+covers macOS, Windows, Linux and the web; iOS, Android and signing are next on the
+[roadmap](roadmap.md).
 
 ## Ticks and the run loop
 
@@ -245,9 +259,12 @@ OpenAI-compatible servers (including local ones), Anthropic and Gemini; see the
 | Discovery file | `.slash/server.json`: a running server's URL and token |
 | Effect | How a command changes the world: read, edit, replace, history or compound |
 | Entity | A thing in the world, named by a stable ID |
+| Export | A build of a project for one platform, ready for players |
 | Front end | A way to reach the commands: MCP, JSON-RPC, REST or the CLI |
 | ID | An entity's stable name: 1 to 64 letters, digits, `_` or `-` |
 | JSON Pointer | A path to a value inside JSON, such as `/entities/player/components` (RFC 6901) |
+| Main scene | The scene a game loads at startup, named in `project.json` |
+| Project | A game's folder: `project.json` plus its scenes |
 | Project folder | The folder all command paths are relative to |
 | Reflection | Field metadata from `SLASH_COMPONENT` or `SLASH_REFLECT` that drives saving, schemas and commands |
 | Resource | Read-only data an MCP client can fetch: the scene, its schema or the logs |
