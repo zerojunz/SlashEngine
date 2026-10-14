@@ -59,9 +59,13 @@ void ComponentType::remove(World& world, entt::entity entity) const {
     }
 }
 
+json::Value ComponentType::get(const World& world, entt::entity entity) const {
+    SLASH_ASSERT(has(world, entity), "get() called for an entity without this component");
+    return ops_.save(world, entity);
+}
+
 json::Value ComponentType::save(const World& world, entt::entity entity) const {
-    SLASH_ASSERT(has(world, entity), "save() called for an entity without this component");
-    json::Value values = ops_.save(world, entity);
+    json::Value values = get(world, entity);
     std::erase_if(values.as_object(), [&](const auto& member) {
         const json::Value* fallback = defaults_.find(member.first);
         return fallback != nullptr && *fallback == member.second;
