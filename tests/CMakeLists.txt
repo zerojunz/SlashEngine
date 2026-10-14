@@ -21,9 +21,10 @@ if(SLASH_BUILD_TOOLS)
     add_test(NAME cli_headless_needs_ticks COMMAND slash-cli run --headless)
     set_tests_properties(cli_headless_needs_ticks PROPERTIES WILL_FAIL TRUE)
 
-    # Exercises the real-time windowed loop on machines with no display.
-    add_test(NAME cli_run_windowed_offscreen COMMAND slash-cli run --ticks 30)
-    set_tests_properties(cli_run_windowed_offscreen PROPERTIES
-        ENVIRONMENT "SDL_VIDEO_DRIVER=offscreen"
+    # Exercises the real-time windowed loop on machines with no display. SDL's "dummy" video
+    # driver works on every platform; "offscreen" needs EGL, which macOS lacks.
+    add_test(NAME cli_run_windowed_dummy_video COMMAND slash-cli run --ticks 30)
+    set_tests_properties(cli_run_windowed_dummy_video PROPERTIES
+        ENVIRONMENT "SDL_VIDEO_DRIVER=dummy"
         PASS_REGULAR_EXPRESSION "\"ticks\":30,\"quit_requested\":false,\"headless\":false")
 endif()

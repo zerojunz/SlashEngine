@@ -26,7 +26,7 @@ On Linux, SDL3 needs the X11/Wayland development packages listed in
 
 `slash-cli` prints results to stdout as JSON and logs to stderr as JSON lines. Exit codes: 0
 success, 1 runtime failure, 2 usage error. On a machine with no display, set
-`SDL_VIDEO_DRIVER=offscreen` to exercise the windowed path.
+`SDL_VIDEO_DRIVER=dummy` to exercise the windowed path.
 
 ## Lint
 
