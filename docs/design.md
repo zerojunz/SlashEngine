@@ -193,7 +193,9 @@ Components register their fields with one macro, for example `SLASH_COMPONENT(Tr
 
 ### 3. A command API, exposed over JSON-RPC and MCP
 
-Every change to a running world is a `Command`: the debug overlay, undo/redo, replays and agents all go through the same path. The engine core speaks JSON-RPC 2.0 over stdio or a localhost WebSocket. A small `slash-mcp` adapter maps each command to an MCP tool and each scene, schema and log to an MCP resource, so any MCP client (Claude, other hosted models, local agents) can drive it with no custom glue. A REST mirror exposes the same commands over plain HTTP for tools that don't speak MCP; it is generated from the same registry, so the two never drift.
+Every change to a running world is a `Command`: the debug overlay, undo/redo, replays and agents all go through the same path. The engine core speaks JSON-RPC 2.0 over stdio or localhost HTTP. A small `slash-mcp` adapter maps each command to an MCP tool and each scene, schema and log to an MCP resource, so any MCP client (Claude, other hosted models, local agents) can drive it with no custom glue. A REST mirror exposes the same commands over plain HTTP for tools that don't speak MCP, with an OpenAPI 3.1 document; both are generated from the same registry, so they never drift.
+
+The HTTP server runs inside the game, so an agent can inspect and change a world while it plays. It serves `POST /v1/commands/<name>` (the REST mirror), `GET /v1/commands`, `GET /v1/openapi.json`, `POST /rpc` (JSON-RPC) and `POST /mcp` (MCP over Streamable HTTP). Requests arrive on a background thread but wait in a queue until the game loop runs them between ticks, so commands never race the simulation.
 
 | Command group | Examples | Purpose |
 | --- | --- | --- |
@@ -205,7 +207,7 @@ Every change to a running world is a `Command`: the debug overlay, undo/redo, re
 
 ### 4. Observability and safety
 
-Agents get structured JSON logs, a subscribable event stream, frame captures as PNG and per-system timings. The server binds to localhost only, requires a session token, and grants capabilities in levels (read, edit, run, filesystem), so a player-facing build ships with the server compiled out.
+Agents get structured JSON logs, a subscribable event stream, frame captures as PNG and per-system timings. The server binds to localhost only, requires a random bearer token, rejects requests whose `Host` or `Origin` header names another site (which blocks DNS rebinding from web pages), and grants capabilities in levels (read, edit, run, filesystem), so a player-facing build ships with the server compiled out. Its address and token go in `.slash/server.json`, which is owner-only on macOS and Linux, gitignored, and removed on exit.
 
 ### 5. Connecting Claude Code, Codex and Cursor
 
@@ -230,6 +232,14 @@ Cursor reads `.cursor/mcp.json`:
 ```json
 { "mcpServers": { "slashengine": { "command": "slash-mcp", "args": ["--project", "${workspaceFolder}"] } } }
 ```
+
+To work on a game while it runs, start it with `slash-cli run --serve` (or `slash-cli serve` for a world with no window) and connect with `slash-mcp --live`, which finds the server through `.slash/server.json` and forwards each message to it:
+
+```bash
+claude mcp add slashengine-live -- slash-mcp --live --project .
+```
+
+Clients that speak MCP over HTTP can connect to `/mcp` directly with the token from that file.
 
 MCP tool names use underscores (`entity_create` for the `entity.create` command), because some clients reject dots. Any other MCP client works the same way, and agents without MCP can use `slash-cli call`, `slash-cli rpc` (JSON-RPC over stdio), or the REST mirror.
 
@@ -299,11 +309,12 @@ SlashEngine/
     platform/        # SDL3 wrapper: window, input, audio, files
     render/          # RenderDevice, SDL GPU + null backends, sprite and 3D passes
     world/           # ECS, scenes, prefabs, serialization
-    command/         # Command registry, undo, JSON-RPC server
+    command/         # Command registry, undo, JSON-RPC and MCP
+    server/          # localhost HTTP: REST mirror, OpenAPI, JSON-RPC and MCP
     hotreload/       # loads and swaps the C++ game module, keeps world state
     ai/              # optional: Provider interface and adapters
   tools/
-    slash-mcp/       # MCP adapter over the JSON-RPC server
+    slash-mcp/       # MCP over stdio, or forwarded to a running game
     slash-cli/       # run, test, format, validate scenes headless
   samples/pong/      # smallest complete game, built by an agent end to end
   tests/

@@ -75,6 +75,27 @@ To add a command, register it in `engine/command/src/builtin.cpp` (or your own r
 name, description, capabilities, an `Effect` and a params schema with
 `"additionalProperties": false`, then add a test to `tests/test_command.cpp`.
 
+## HTTP server and live games
+
+`engine/server` serves a session over HTTP on the loopback interface, so agents can drive a game
+while it runs:
+
+```bash
+$cli serve --scene tests/data/basic.scene.json     # until Ctrl+C; prints the URL and token
+$cli run --serve                                   # a running game, served between ticks
+$mcp --live --project .                            # MCP over stdio, forwarded to that game
+```
+
+Endpoints: `POST /v1/commands/<name>` (REST, params as the body), `GET /v1/commands`,
+`GET /v1/openapi.json`, `POST /rpc` (JSON-RPC) and `POST /mcp` (MCP over Streamable HTTP). Every
+request needs `Authorization: Bearer <token>`; a `Host` or `Origin` naming another site gets 403.
+The URL and token are written to `.slash/server.json` (owner-only on macOS and Linux) and removed
+on exit.
+
+Requests are queued and run only when the session's owner calls `Server::poll()`, so commands
+never race the game loop. Tests drive the server from a helper thread while the test thread polls;
+see `tests/test_server.cpp`.
+
 ## Add a component
 
 Components are plain structs reflected with one macro, at namespace scope in the struct's own
@@ -117,8 +138,8 @@ CI rejects unformatted code and any clang-tidy finding.
   `kPascalCase` constants.
 - Headers live in `engine/<module>/include/slash/<module>/`, sources in `engine/<module>/src/`.
   Modules: `core` (Result, logging, JSON, reflection, math), `platform` (SDL3 window, run loop,
-  files), `world` (EnTT world, components, scenes) and `command` (commands, sessions with undo,
-  JSON-RPC and MCP).
+  files), `world` (EnTT world, components, scenes), `command` (commands, sessions with undo,
+  JSON-RPC and MCP) and `server` (localhost HTTP over a session).
 - New dependencies go in `cmake/Dependencies.cmake`, pinned to a tag, and in `THIRD_PARTY.md`
   with their license. Only permissive licenses (MIT, BSD, zlib, Apache 2.0, Boost, MIT-0,
   public domain). Never copy code from closed engines.

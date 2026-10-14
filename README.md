@@ -10,7 +10,8 @@ or any other MCP client. See [docs/design.md](docs/design.md) for the full desig
 **Status:** milestone 3 (commands and MCP). The engine runs an EnTT world on a fixed-timestep loop,
 headless or in an SDL3 window, and loads and saves JSON scenes validated against a schema it
 generates from its own components. Agents drive it through a command API with undo, served over
-MCP (`slash-mcp`), JSON-RPC and the command line. Rendering comes next.
+MCP (`slash-mcp`), JSON-RPC, a localhost REST API with an OpenAPI document, and the command line,
+including while the game runs. The export pipeline comes next.
 
 ## Quick start
 
@@ -30,6 +31,13 @@ for Claude Code, Codex and Cursor, an `AGENTS.md` and an empty main scene. With 
 
 ```bash
 claude mcp add slashengine -- slash-mcp --project .
+```
+
+To change a game while it plays, start it with `slash-cli run --serve` and connect the agent with
+`slash-mcp --live`:
+
+```bash
+claude mcp add slashengine-live -- slash-mcp --live --project .
 ```
 
 Agents working on the engine itself should start with [AGENTS.md](AGENTS.md).
