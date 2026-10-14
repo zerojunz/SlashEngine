@@ -2,6 +2,7 @@
 #include "slash/command/command.hpp"
 #include "slash/command/session.hpp"
 #include "slash/core/json.hpp"
+#include "slash/exporter/android.hpp"
 #include "slash/exporter/commands.hpp"
 #include "slash/exporter/export.hpp"
 #include "slash/exporter/presets.hpp"
@@ -134,6 +135,142 @@ TEST_CASE("export presets report every error with its path") {
               .empty());
 }
 
+TEST_CASE("android presets choose ABIs, a package and a version code") {
+    auto presets = exporter::parse_presets(parse(R"({
+        "format": 1,
+        "presets": {
+            "android": {"platform": "android"},
+            "phones": {"platform": "android", "android": {"abis": ["arm64-v8a"],
+                       "package": "com.example.phones", "version_code": 42}}
+        }
+    })"));
+    REQUIRE(presets.ok());
+    const exporter::Preset& defaults = presets.value().at("android");
+    CHECK(defaults.android.abis == exporter::kDefaultAndroidAbis);
+    CHECK(defaults.android.package.empty());
+    CHECK(defaults.android.version_code == 0);
+    const exporter::Preset& phones = presets.value().at("phones");
+    CHECK(phones.android.abis == std::vector<std::string>{"arm64-v8a"});
+    CHECK(phones.android.package == "com.example.phones");
+    CHECK(phones.android.version_code == 42);
+
+    CHECK(contains(error_at(R"({"format": 1, "presets": {"a": {"platform": "android",
+                                "android": {"abis": ["arm64-v8a", "x86_64", "arm64-v8a"]}}}})",
+                            "/presets/a/android/abis/2"),
+                   "listed twice"));
+    CHECK(contains(error_at(R"({"format": 1, "presets": {"a": {"platform": "android",
+                                "android": {"abis": ["mips"]}}}})",
+                            "/presets/a/android/abis/0"),
+                   "arm64-v8a"));
+    CHECK(contains(error_at(R"({"format": 1, "presets": {"a": {"platform": "android",
+                                "android": {"package": "com.example.my-game"}}}})",
+                            "/presets/a/android/package"),
+                   "letters, digits and '_'"));
+    CHECK(contains(error_at(R"({"format": 1, "presets": {"a": {"platform": "android",
+                                "android": {"version_code": 0}}}})",
+                            "/presets/a/android/version_code"),
+                   "1"));
+    CHECK(contains(error_at(R"({"format": 1, "presets": {"w": {"platform": "web",
+                                "android": {"abis": ["x86_64"]}}}})",
+                            "/presets/w/android"),
+                   "only a android preset"));
+    CHECK(contains(error_at(R"({"format": 1, "presets": {"a": {"platform": "android",
+                                "android": {"keystore_password": "x"}}}})",
+                            "/presets/a/android/keystore_password"),
+                   "environment variables"));
+}
+
+TEST_CASE("android package names follow Java's rules") {
+    CHECK(exporter::android_package_problem("com.example.pong").empty());
+    CHECK(exporter::android_package_problem("org.slash_engine.Game2").empty());
+    CHECK(contains(exporter::android_package_problem("pong"), "two or more parts"));
+    CHECK(contains(exporter::android_package_problem("com..pong"), "single dots"));
+    CHECK(contains(exporter::android_package_problem("com.example.my-game"), "\"my-game\""));
+    CHECK(contains(exporter::android_package_problem("com.example.2048"), "start with a letter"));
+    CHECK(contains(exporter::android_package_problem("com.example.new"), "Java keyword"));
+}
+
+TEST_CASE("android version codes grow with the version") {
+    CHECK(exporter::android_version_code("0.1.0").value() == 1000);
+    CHECK(exporter::android_version_code("1.2.3").value() == 1002003);
+    CHECK(exporter::android_version_code("2100.0.0").value() == 2100000000);
+    CHECK(contains(exporter::android_version_code("1.1000.0").error().message, "version_code"));
+    CHECK(contains(exporter::android_version_code("2101.0.0").error().message, "version_code"));
+    CHECK_FALSE(exporter::android_version_code("0.0.0").ok());
+    CHECK_FALSE(exporter::android_version_code("1.2").ok());
+}
+
+namespace {
+
+void touch(const std::filesystem::path& path, std::string_view text = "") {
+    std::filesystem::create_directories(path.parent_path());
+    REQUIRE(slash::platform::write_file(path.string(), text).ok());
+}
+
+std::string exe(std::string_view name) {
+#ifdef _WIN32
+    return std::string(name) + ".exe";
+#else
+    return std::string(name);
+#endif
+}
+
+} // namespace
+
+TEST_CASE("android exports find the newest stable SDK tools, an NDK and a JDK") {
+    const std::filesystem::path root = "exporter_android_tools";
+    std::filesystem::remove_all(root);
+    const std::filesystem::path sdk = root / "sdk";
+    for (const char* version : {"34.0.0", "35.0.1", "36.1.0", "37.0.0-rc1"}) {
+        touch(sdk / "build-tools" / version / exe("aapt2"));
+    }
+    for (const char* level :
+         {"android-35", "android-36", "android-36-ext19", "android-37.0", "android-37.2-beta3"}) {
+        touch(sdk / "platforms" / level / "android.jar");
+    }
+    const std::filesystem::path ndk = root / "ndk";
+    touch(ndk / "source.properties", "Pkg.Desc = Android NDK\nPkg.Revision = 27.3.13750724\n");
+    touch(ndk / "build" / "cmake" / "android.toolchain.cmake");
+    const std::filesystem::path jdk = root / "jdk";
+    for (const char* tool : {"javac", "jar", "keytool"}) {
+        touch(jdk / "bin" / exe(tool));
+    }
+    touch(jdk / "release", "IMPLEMENTOR=\"Eclipse Adoptium\"\nJAVA_VERSION=\"17.0.20\"\n");
+
+    exporter::AndroidSearch search;
+    search.sdk = sdk.string();
+    search.ndk = ndk.string();
+    search.java_home = jdk.string();
+    auto tools = exporter::find_android_tools(search);
+    REQUIRE_MESSAGE(tools.ok(), (tools.ok() ? std::string() : tools.error().message));
+    CHECK(std::filesystem::path(tools.value().build_tools).filename() == "36.1.0");
+    CHECK(std::filesystem::path(tools.value().platform).filename() == "android-37.0");
+    CHECK(tools.value().ndk == ndk.string());
+    CHECK(tools.value().java_home == jdk.string());
+
+    touch(jdk / "release", "JAVA_VERSION=\"11.0.2\"\n");
+    auto old_java = exporter::find_android_tools(search);
+    REQUIRE_FALSE(old_java.ok());
+    CHECK(contains(old_java.error().message, "found Java 11.0.2"));
+
+    touch(ndk / "source.properties", "Pkg.Revision = 26.1.10909125\n");
+    auto old_ndk = exporter::find_android_tools(search);
+    REQUIRE_FALSE(old_ndk.ok());
+    CHECK(contains(old_ndk.error().message, "NDK r27"));
+
+    std::filesystem::remove_all(sdk / "platforms" / "android-37.0");
+    std::filesystem::remove_all(sdk / "platforms" / "android-36");
+    auto no_platform = exporter::find_android_tools(search);
+    REQUIRE_FALSE(no_platform.ok());
+    CHECK(contains(no_platform.error().message, "platforms;android-36"));
+
+    search.sdk = (root / "missing").string();
+    auto no_sdk = exporter::find_android_tools(search);
+    REQUIRE_FALSE(no_sdk.ok());
+    CHECK(contains(no_sdk.error().message, "ANDROID_HOME"));
+    std::filesystem::remove_all(root);
+}
+
 TEST_CASE("presets fall back to platform defaults and suggest names") {
     auto presets = exporter::parse_presets(
         parse(R"({"format": 1, "presets": {"mac-store": {"platform": "macos"}}})"));
@@ -151,7 +288,7 @@ TEST_CASE("presets fall back to platform defaults and suggest names") {
     CHECK(contains(misspelled.error().message, "did you mean \"mac-store\""));
     auto unknown = exporter::find_preset(presets.value(), "playstation");
     REQUIRE_FALSE(unknown.ok());
-    CHECK(contains(unknown.error().message, "macos, windows, linux or web"));
+    CHECK(contains(unknown.error().message, "macos, windows, linux, web or android"));
 }
 
 TEST_CASE("presets load from the project folder") {

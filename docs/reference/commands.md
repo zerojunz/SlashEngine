@@ -446,7 +446,7 @@ returns the same result. Registered by `slash-cli` and `slash-mcp`; a game serve
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `preset` | string | required | A preset from `export_presets.json`, or a platform (`macos`, `windows`, `linux`, `web`) for its defaults |
+| `preset` | string | required | A preset from `export_presets.json`, or a platform (`macos`, `windows`, `linux`, `web`, `android`) for its defaults |
 | `debug` | boolean | `false` | Debug build instead of Release |
 | `test` | boolean | `false` | Run the exported game headless afterwards, where this machine can |
 
