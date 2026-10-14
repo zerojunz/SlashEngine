@@ -118,7 +118,8 @@ ComponentType& ComponentRegistry::add() {
         .has = [](const entt::registry& registry,
                   entt::entity entity) { return registry.all_of<T>(entity); },
         .remove = [](entt::registry& registry, entt::entity entity) { registry.remove<T>(entity); },
-        .save = [](const World& world, entt::entity entity) -> json::Value {
+        .save = [](const World& world [[maybe_unused]],
+                   entt::entity entity [[maybe_unused]]) -> json::Value {
             if constexpr (std::is_empty_v<T>) {
                 return json::Object{};
             } else {
