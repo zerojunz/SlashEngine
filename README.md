@@ -11,7 +11,8 @@ or any other MCP client. See [docs/design.md](docs/design.md) for the full desig
 headless or in an SDL3 window, and loads and saves JSON scenes validated against a schema it
 generates from its own components. Agents drive it through a command API with undo, served over
 MCP (`slash-mcp`), JSON-RPC, a localhost REST API with an OpenAPI document, and the command line,
-including while the game runs. The export pipeline comes next.
+including while the game runs. `slash-cli export` builds a game for macOS, Windows, Linux or the
+web in one command. iOS, Android, signing and cross-compiling from a Mac come next.
 
 ## Quick start
 
@@ -38,6 +39,12 @@ To change a game while it plays, start it with `slash-cli run --serve` and conne
 
 ```bash
 claude mcp add slashengine-live -- slash-mcp --live --project .
+```
+
+To build a game for players, export it from its folder. `--test` runs the result headless:
+
+```bash
+slash-cli export macos --test        # or windows, linux, web
 ```
 
 Agents working on the engine itself should start with [AGENTS.md](AGENTS.md).
