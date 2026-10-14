@@ -1,0 +1,3 @@
+# Scene files are canonical with LF line endings, so checkouts must not convert them (Windows
+# runners default to CRLF). The same applies to every other text file.
+* text=auto eol=lf

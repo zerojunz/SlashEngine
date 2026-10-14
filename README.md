@@ -7,8 +7,9 @@ than manual human input: scenes are plain text, the engine describes itself, and
 command an agent can call over MCP. It is model agnostic and works with Claude Code, Codex, Cursor
 or any other MCP client. See [docs/design.md](docs/design.md) for the full design.
 
-**Status:** milestone 1 (project skeleton). The engine opens an SDL3 window or runs headless on a
-fixed-timestep loop; rendering, the ECS and the command API come next.
+**Status:** milestone 2 (core and world). The engine runs an EnTT world on a fixed-timestep loop,
+headless or in an SDL3 window, and loads and saves JSON scenes validated against a schema it
+generates from its own components. Rendering and the command API come next.
 
 ## Quick start
 
@@ -19,6 +20,7 @@ cmake --preset dev
 cmake --build --preset dev
 ctest --preset dev
 ./build/dev/tools/slash-cli/slash-cli run
+./build/dev/tools/slash-cli/slash-cli run --headless --ticks 60 --scene tests/data/basic.scene.json
 ```
 
 Agents should start with [AGENTS.md](AGENTS.md).

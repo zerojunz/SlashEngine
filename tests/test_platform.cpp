@@ -1,9 +1,12 @@
+#include "slash/platform/file.hpp"
 #include "slash/platform/platform.hpp"
 #include "slash/platform/run.hpp"
 
 #include <doctest/doctest.h>
 
 #include <cstdint>
+#include <cstdio>
+#include <string>
 
 using slash::platform::Config;
 using slash::platform::Platform;
@@ -63,4 +66,18 @@ TEST_CASE("run rejects a non-positive tick rate") {
     auto stats =
         slash::platform::run(platform.value(), RunOptions{.tick_hz = 0.0, .max_ticks = 1}, nullptr);
     REQUIRE_FALSE(stats.ok());
+}
+
+TEST_CASE("files round-trip through write_file and read_file") {
+    const std::string path = "slash_test_file.txt";
+    const std::string contents = std::string("line one\nline two\0end", 22);
+    REQUIRE(slash::platform::write_file(path, contents).ok());
+    auto read = slash::platform::read_file(path);
+    REQUIRE(read.ok());
+    CHECK(read.value() == contents);
+    std::remove(path.c_str());
+
+    auto missing = slash::platform::read_file("no/such/file.json");
+    REQUIRE_FALSE(missing.ok());
+    CHECK(missing.error().code == slash::ErrorCode::NotFound);
 }
