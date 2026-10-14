@@ -104,6 +104,23 @@ rendering on top.
 - [ ] `events.subscribe` for a stream of world events
 - [ ] Prefabs: an entity `"extends"` a `.prefab.json` file and overrides fields
 - [ ] Asset handles with reference counting and hot reload, and an `asset.list` command
+- [ ] Storyboard: the game's style, world, story, design rules, names, decisions and open work
+      as typed files in the project, so every agent works from the same facts
+      ([design](design.md#storyboard))
+  - [ ] `storyboard/*.json` files with a schema (`slash-cli schema storyboard`), every entry
+        under a stable ID such as `character/mira`, edited through commands with undo
+  - [ ] `storyboard.brief`: only the facts, decisions and open work linked to the scenes,
+        entities, assets or files a task touches, plus what changed since the agent last looked
+  - [ ] `storyboard.query` and `storyboard.edit`; an edit names the version it read, so a stale
+        edit from another agent is refused instead of overwriting newer facts
+  - [ ] Links: a `StoryRef` component ties entities to storyboard IDs, and assets and source
+        files can be linked too; unknown IDs are errors with "did you mean"
+  - [ ] `storyboard.check`: references, glossary names, palette and budgets checked by
+        `scene validate`, the headless test command and CI
+  - [ ] A journal of who changed what and why, and open work that says which agent is on it
+        and what it touches, so agents can see what others are doing
+  - [ ] `slash-cli init` writes a starter storyboard, and the MCP instructions tell agents to
+        call `storyboard.brief` before a task and `storyboard.check` after it
 - [ ] A license check on every pull request, against a manifest of pinned dependencies, before
       this milestone adds Box2D, miniaudio, FreeType and HarfBuzz
 - [ ] Renderer foundation: `RenderDevice` over SDL3's GPU API, a null backend for headless runs,
@@ -134,6 +151,10 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
 - [ ] `ai::Provider` with OpenAI-compatible, Anthropic and Gemini adapters
 - [ ] `ReplayProvider` so tests that use a model run offline
 - [ ] A benchmark of standard agent tasks that counts calls and tokens
+- [ ] Storyboard review: a model through `ai::Provider` reads new text and assets against the
+      storyboard and reports likely contradictions as advisory findings
+- [ ] `project.map`: a generated map of the project's systems, components, scenes and source
+      files, linked to the storyboard, so agents in a large codebase find code without guessing
 - [ ] Asset library and generator, so agents reuse generated assets instead of making them again
       ([design](design.md#asset-library-and-generation))
   - [ ] A library shared by every project on the machine: each asset stored once by content
@@ -185,8 +206,9 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
         models combine
   - [ ] Auto-rigging through a generator adapter, retargeted to one standard humanoid skeleton
         so every library animation works on every character
-  - [ ] A project style profile (palette, reference images, triangle and texel budgets),
-        refined from accepted assets and sent with every request so a game's assets match
+  - [ ] The storyboard's style section (palette, reference images, triangle and texel
+        budgets), refined from accepted assets and sent with every request so a game's assets
+        match
   - [ ] Tileable PBR materials from the 2D generator, shared through the material graph instead
         of a unique texture per model
   - [ ] Scene assembly: agents place library assets with constraints (on the ground, not
@@ -293,6 +315,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Localization | Translation tables in text | 8 | Planned |
 | Video playback | AV1 through dav1d | 8 | Planned |
 | Accessibility | AccessKit | 8 | Planned |
+| Storyboard | Style, world, story, design rules and decisions as typed project files that agents query and checks enforce | 5, 6 | Planned: files, commands and checks in 5, model review and the project map in 6 |
 | Analytics, ads and in-app purchases | One API for analytics, ads and purchases; StoreKit, Play Billing and a developer-chosen analytics endpoint in the repo, ad networks as outside adapters | 8 | Planned |
 | One-command export | `slash-cli export` to macOS, Windows, Linux, iOS, Android and web | 4 | In progress: desktop and web done (4a), iOS and Android in progress (4b) |
 | Large worlds | Double-precision transforms, world streaming | After launch | After launch |
@@ -318,6 +341,8 @@ calls and tokens ([design section 6](design.md#6-cheap-for-agents-to-use)).
 | `slash-cli init` and the MCP server's instructions point agents at the tools | 3 | Done |
 | A test command that returns only the checks that failed | 5 | Planned |
 | Frame summaries as data instead of screenshots | 5 | Planned |
+| `storyboard.brief`: only the facts a task needs, and what changed since the agent last looked | 5 | Planned |
+| `project.map`: where things are in a large project, without reading the source | 6 | Planned |
 | A scheduled benchmark of standard agent tasks counting calls and tokens | 6 | Planned |
 | The asset library: search before generating, and read a text description instead of the file | 6 | Planned |
 

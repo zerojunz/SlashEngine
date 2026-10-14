@@ -107,6 +107,7 @@ SlashEngine covers nearly every Godot 4 feature area at launch and adds UE5 feat
 | Localization | Translation tables, gettext | Localization dashboard | Translation tables in text | Launch |
 | Video playback | Theora | Media Framework | AV1 through dav1d | Launch |
 | Accessibility | Screen reader support | Partial | AccessKit | Launch |
+| Storyboard | None built in | None built in | Style, world, story, design rules and decisions as typed project files that agents query and checks enforce | Launch |
 | Analytics, ads and in-app purchases | Plugins (Google Play Billing, StoreKit) | Online Subsystem, in-app purchase APIs | One cross-platform API and command set, like Unity's Analytics, Ads and IAP; StoreKit, Play Billing and a developer-chosen analytics endpoint in the repo, ad networks as adapters outside it | Launch |
 | One-command export | Export templates per platform | Packaging per platform | slash-cli export to macOS, Windows, Linux, iOS, Android and web | Launch |
 | Large worlds | Double-precision builds | World Partition, large world coordinates | Double-precision transforms, world streaming | After launch |
@@ -267,6 +268,8 @@ Agents can't be forced to prefer a tool, but they reliably use what the project 
 | `slash-cli init` and the MCP instructions point agents at the tools | Agents falling back to hand edits | 3 |
 | A test command steps the game headless and returns only the checks that failed | Screenshots and log reading | 5 |
 | Frame summaries list what is on screen as data; PNG captures stay available | Image tokens | 5 |
+| `storyboard.brief` returns only the facts a task touches and what changed since the agent last looked | Re-reading design notes, and mistakes from guessing | 5 |
+| `project.map` says where systems, components, scenes and source files are | Searching a large codebase | 6 |
 | A benchmark of standard agent tasks counts calls and tokens on a schedule | Regressions in agent efficiency | 6 |
 | The asset library returns an earlier asset instead of generating it again, and describes assets in text | Generation calls and image tokens | 6 |
 
@@ -330,8 +333,33 @@ Generated 3D meshes are usually too dense, badly scaled, hard to edit and lit in
 - **Automatic review.** The engine renders turntable views headless, checks the geometry (budget, scale, holes, texel density) and asks a vision-capable model through `ai::Provider` whether the views match the request. The results are recorded with `asset.feedback`, and a failed check retries within a call budget the caller sets.
 - **Described in text.** Each model comes with its size, pivot, named parts, materials, triangle count and attachment points, so agents place and combine models without loading images.
 - **Parts, rigs and animation.** Named parts and attachment points let wheels turn, doors open and parts from different models combine. Characters are auto-rigged through a generator adapter and retargeted to one standard humanoid skeleton, so every animation in the library works on every character.
-- **One style per game.** A project style profile (palette, reference images, triangle and texel budgets) goes with every request and is refined from the assets agents accept, so a game's models match. Materials come from tileable PBR textures shared through the material graph rather than a unique texture per model.
+- **One style per game.** The [storyboard](#storyboard)'s style section (palette, reference images, triangle and texel budgets) goes with every request and is refined from the assets agents accept, so a game's models match. Materials come from tileable PBR textures shared through the material graph rather than a unique texture per model.
 - **Scenes are assembled, not generated.** Agents place library assets with constraints (on the ground, not overlapping, along a path) instead of generating a whole scene as one mesh, so every piece stays editable and reusable.
+
+## Storyboard
+
+Agents make things up when they lack the facts or guess at them, and the risk grows when several agents share a project or the project is too big to read. The storyboard is the game's single source of truth for everything that is not code: style, world, story, design rules, names, decisions and open work. It is typed data that agents query and checks enforce, not free-form notes, so a fact is looked up rather than remembered.
+
+```text
+my-game/storyboard/
+  style.json       # art direction: palette, references, tone, triangle and texel budgets
+  world.json       # characters, places, factions, items and lore facts
+  story.json       # acts, beats and quests, in order
+  design.json      # mechanics, rules, tuning numbers and controls
+  glossary.json    # canonical names, aliases and words to avoid
+  decisions.json   # what was decided, by whom and why
+  work.json        # open work: who is on it, what it touches, open questions
+```
+
+- **Stable IDs and typed fields.** Every entry has an ID such as `character/mira` and fields from a schema the engine generates (`slash-cli schema storyboard`), so most facts can be checked by a program, not only read by a model.
+- **Briefs, not the whole board.** `storyboard.brief` takes the scenes, entities, assets or files a task touches and returns only the facts, decisions and open work linked to them, plus what changed since the agent last looked. A brief stays small however large the project grows, which is what keeps this workable in big codebases.
+- **Links make facts checkable.** A `StoryRef` component ties an entity to a storyboard ID, and assets and source files can be linked the same way. An unknown ID is an error with a "did you mean" hint, so a misremembered name fails at once instead of spreading.
+- **Checks, not trust.** `storyboard.check` verifies references, names against the glossary, colors against the palette and assets against budgets. It runs in `scene validate`, the headless test command and CI. With `ai::Provider`, a model can also read new dialogue, text and assets against the storyboard and report likely contradictions; these findings are advisory, since a model's judgment is not proof.
+- **Safe for many agents.** Edits go through `storyboard.edit` with undo. Each edit names the version it read, so a stale edit is refused instead of overwriting a newer fact. A journal records who changed what and why, and `work.json` says which agent is on what, so agents see each other's work.
+- **Grounding code too.** `engine.describe` already lists the real components and commands. `project.map` adds a generated map of the project's systems, scenes and source files, linked to the storyboard. Because it is generated, it cannot go stale the way hand-written notes do.
+- **Used by default.** `slash-cli init` writes a starter storyboard, and `AGENTS.md`, the skill and the MCP instructions tell agents to call `storyboard.brief` before a task and `storyboard.check` after it. The asset library sends the style section with every generation request, and asset feedback refines it.
+
+What it cannot do: no tool can stop a model from inventing things in prose it writes. The storyboard makes that much less likely by putting the right facts in front of the agent, and it catches every contradiction in typed, linked data. Contradictions in free text, such as plot logic or tone, are caught only as well as the reviewing model reads them.
 
 ## Repo layout and milestones
 
@@ -352,6 +380,7 @@ SlashEngine/
     hotreload/       # loads and swaps the C++ game module, keeps world state
     ai/              # optional: Provider interface and adapters
     library/         # optional: asset library, generators and feedback
+    storyboard/      # storyboard files, briefs, checks and the project map
   tools/
     exporter/        # export presets, building, signing and the export.run command
     slash-mcp/       # MCP over stdio, or forwarded to a running game
@@ -368,8 +397,8 @@ SlashEngine/
 2. **Core and world.** Reflection macro, EnTT integration, JSON scene load and save with schema validation, headless runner.
 3. **Commands.** Command registry, undo, JSON-RPC server, `slash-mcp`, REST mirror, `slash-cli`. Exit: Claude Code, Codex and Cursor each open, edit and save a scene over MCP.
 4. **Export pipeline.** `slash-cli export` and toolchain install for all six platforms, plus the CI workflow. Exit: an empty project exports and passes headless tests everywhere. It comes this early so every later feature stays exportable. Built in two parts: (a) project files, the game runtime and exports for macOS, Windows, Linux and web on their own hosts, tested in CI; (b) iOS and Android, cross toolchains from a Mac, export presets with signing, and the `export.run` command.
-5. **2D feature set.** Systems, play and pause, event subscriptions, prefabs, asset handles with hot reload and the CI license check first; then the renderer, materials, sprites, keyframe animation, tilemaps, 2D lights, Box2D physics, particles, UI and text, audio, input injection, frame capture, replays and the debug overlay. Exit: an agent builds `samples/pong` and exports it to all six platforms.
-6. **Hot reload, AI and profiling.** Hot-reloadable C++ game module, `ai::Provider` with three adapters and `ReplayProvider`, the asset library and generator for images and audio, the job system, Tracy, `perf.stats` and the per-system memory report.
+5. **2D feature set.** Systems, play and pause, event subscriptions, prefabs, asset handles with hot reload, the storyboard and the CI license check first; then the renderer, materials, sprites, keyframe animation, tilemaps, 2D lights, Box2D physics, particles, UI and text, audio, input injection, frame capture, replays and the debug overlay. Exit: an agent builds `samples/pong` and exports it to all six platforms.
+6. **Hot reload, AI and profiling.** Hot-reloadable C++ game module, `ai::Provider` with three adapters and `ReplayProvider`, the asset library and generator for images and audio, storyboard review by a model and the project map, the job system, Tracy, `perf.stats` and the per-system memory report.
 7. **3D feature set.** Forward+ PBR renderer, shadows, post-processing, GI, sky, decals, LODs, Jolt physics, skeletal animation and blending, navigation, terrain, CSG, glTF and FBX import, and 3D in the asset library: parametric models, game-ready cleanup, automatic review, rigging and scene assembly. Exit: an agent builds a small 3D sample end to end.
 8. **Systems and platform services.** Networking, XR, localization, video, accessibility, and analytics, ads and in-app purchases behind one API with a headless test backend.
 9. **Launch.** Every Launch row of the parity table done, the Mac engine and tools released, exports for all six platforms, reference docs generated from `engine.describe`.
