@@ -76,9 +76,10 @@ $cli call batch '{"commands": [{"command": "entity.create", "params": {"id": "a"
 $cli init path/to/game                                   # MCP configs for Claude Code, Codex, Cursor
 ```
 
-A session checks each command's capabilities (`--allow read,edit,run,filesystem`), validates its
-params against the command's JSON Schema, runs it, and records an undo step if it changed the
-world. A failed command changes nothing. Paths are relative to `--project` and cannot leave it.
+A session checks each command's capabilities (`--allow read,edit,run,filesystem,build`),
+validates its params against the command's JSON Schema, runs it, and records an undo step if it
+changed the world. A failed command changes nothing. Paths are relative to `--project` and cannot
+leave it.
 
 Commands are built for agents, so keep them cheap to call:
 
@@ -126,12 +127,30 @@ $cli project validate tests/data/game
 $cli export linux --project path/to/game --test        # build, lay out and run headless
 ```
 
-`slash-cli export <platform>` validates the project and every scene, stages them as the game's
-data, configures `export/CMakeLists.txt` with the engine sources, builds and installs into
-`<project>/build/export/<platform>`. Its work folder and full build log are in
-`<project>/.slash/export/<platform>/`; a failure reports the step and the end of the log. Each
-host builds its own platform; web exports need Emscripten (`EMSDK` set) on any host. CI exports
-and runs an empty game for macOS, Windows, Linux and web on every PR.
+`slash-cli export <preset>` validates the project, its presets and every scene, stages them as the
+game's data, configures `export/CMakeLists.txt` with the engine sources, builds, signs and installs
+into `<project>/build/export/<preset>`. Its work folder and full build log are in
+`<project>/.slash/export/<preset>/`; a failure reports the step and the end of the log. Each host
+builds its own platform; web exports need Emscripten (`EMSDK` set) on any host. CI exports and
+runs an empty game for macOS, Windows, Linux and web on every PR, and `slash-cli init` writes the
+same workflow into new games.
+
+The export code is the `tools/exporter` library, shared by slash-cli and slash-mcp. It also
+registers `export.run`, the one command that needs the `build` capability; a running game leaves
+it out because an export would stall its loop.
+
+Presets live in `export_presets.json` (`$cli schema presets`), like Godot's
+`export_presets.cfg`: a platform, an output folder, a debug flag and signing settings. A preset
+named after a platform replaces that platform's defaults. Secrets never go in the file:
+
+| Variable | Used for |
+| --- | --- |
+| `SLASH_APPLE_API_KEY_PATH`, `SLASH_APPLE_API_KEY_ID`, `SLASH_APPLE_API_ISSUER` | Notarizing macOS apps (App Store Connect API key) |
+| `SLASH_WINDOWS_CERTIFICATE_PATH`, `SLASH_WINDOWS_CERTIFICATE_PASSWORD` | Signing Windows executables with signtool |
+
+macOS exports are always signed, ad hoc unless a preset names a `codesign_identity`. Games
+support OS versions from 2020 on: macOS 11, Windows 10 (the executable's subsystem version is
+10.0) and Chrome 85, Firefox 79 and Safari 15 (pinned in `export/CMakeLists.txt`).
 
 ## Add a component
 
@@ -177,7 +196,8 @@ CI rejects unformatted code and any clang-tidy finding.
   Modules: `core` (Result, logging, JSON, reflection, math), `platform` (SDL3 window, run loop,
   files, child processes), `world` (EnTT world, components, scenes), `command` (commands,
   sessions with undo, JSON-RPC and MCP), `server` (localhost HTTP over a session) and `runtime`
-  (project files and the game executable).
+  (project files and the game executable). Tool-only libraries such as `tools/exporter` use the
+  same layout and may use exceptions.
 - New dependencies go in `cmake/Dependencies.cmake`, pinned to a tag, and in `THIRD_PARTY.md`
   with their license. Only permissive licenses (MIT, BSD, zlib, Apache 2.0, Boost, MIT-0,
   public domain). Never copy code from closed engines.

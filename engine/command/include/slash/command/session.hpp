@@ -20,7 +20,7 @@ struct SessionOptions {
     std::string project_root = ".";
     // What callers of this session may do.
     std::vector<Capability> capabilities = {Capability::Read, Capability::Edit, Capability::Run,
-                                            Capability::Filesystem};
+                                            Capability::Filesystem, Capability::Build};
     // How many edits undo remembers.
     std::size_t history_limit = 100;
     // Keep recent log lines for log.tail. The session installs a log sink that also forwards

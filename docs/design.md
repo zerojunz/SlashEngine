@@ -64,7 +64,7 @@ SDL3 is the only platform layer: windowing, input, audio, file I/O, threads and 
 
 - **Toolchains on demand.** `slash-cli toolchain install` downloads and pins the open-source cross toolchains above, so one Mac can produce every build with no manual setup.
 - **CI as a second path.** `slash-cli init` also writes a GitHub Actions workflow that builds and runs headless tests for every platform on native runners, which is how Windows and Linux exports get tested before those hosts are supported.
-- **Signing.** As in Godot, each developer brings their own Apple team ID and certificates, Android keystore and Windows code-signing certificate. Export presets live in a text file (`export_presets.json`) that agents can edit, with secrets read from environment variables. The engine generates a throwaway debug keystore for Android test builds, and the project's own accounts sign only its sample games in CI.
+- **Signing.** As in Godot, each developer brings their own Apple team ID and certificates, Android keystore and Windows code-signing certificate. Export presets live in a text file (`export_presets.json`) that agents can edit, with secrets read from environment variables. macOS exports are always signed, ad hoc unless a preset names a Developer ID identity. The engine generates a throwaway debug keystore for Android test builds, and the project's own accounts sign only its sample games in CI.
 
 ## Feature parity with Godot and UE5
 
@@ -211,7 +211,7 @@ The HTTP server runs inside the game, so an agent can inspect and change a world
 
 ### 4. Observability and safety
 
-Agents get structured JSON logs, a subscribable event stream, frame captures as PNG and per-system timings. The server binds to localhost only, requires a random bearer token, rejects requests whose `Host` or `Origin` header names another site (which blocks DNS rebinding from web pages), and grants capabilities in levels (read, edit, run, filesystem), so a player-facing build ships with the server compiled out. Its address and token go in `.slash/server.json`, which is owner-only on macOS and Linux, gitignored, and removed on exit.
+Agents get structured JSON logs, a subscribable event stream, frame captures as PNG and per-system timings. The server binds to localhost only, requires a random bearer token, rejects requests whose `Host` or `Origin` header names another site (which blocks DNS rebinding from web pages), and grants capabilities in levels (read, edit, run, filesystem, build), so a player-facing build ships with the server compiled out. Its address and token go in `.slash/server.json`, which is owner-only on macOS and Linux, gitignored, and removed on exit.
 
 ### 5. Connecting Claude Code, Codex and Cursor
 
@@ -319,6 +319,7 @@ SlashEngine/
     hotreload/       # loads and swaps the C++ game module, keeps world state
     ai/              # optional: Provider interface and adapters
   tools/
+    exporter/        # export presets, building, signing and the export.run command
     slash-mcp/       # MCP over stdio, or forwarded to a running game
     slash-cli/       # run, export, format, validate scenes headless
     slash-game/      # runs a project the way its exports do

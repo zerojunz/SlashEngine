@@ -7,12 +7,13 @@ than manual human input: scenes are plain text, the engine describes itself, and
 command an agent can call over MCP. It is model agnostic and works with Claude Code, Codex, Cursor
 or any other MCP client. See [docs/design.md](docs/design.md) for the full design.
 
-**Status:** milestone 3 (commands and MCP). The engine runs an EnTT world on a fixed-timestep loop,
+**Status:** milestone 4 (exports). The engine runs an EnTT world on a fixed-timestep loop,
 headless or in an SDL3 window, and loads and saves JSON scenes validated against a schema it
 generates from its own components. Agents drive it through a command API with undo, served over
 MCP (`slash-mcp`), JSON-RPC, a localhost REST API with an OpenAPI document, and the command line,
-including while the game runs. `slash-cli export` builds a game for macOS, Windows, Linux or the
-web in one command. iOS, Android, signing and cross-compiling from a Mac come next.
+including while the game runs. `slash-cli export` builds and signs a game for macOS, Windows,
+Linux or the web in one command, using presets in `export_presets.json`. iOS, Android and
+cross-compiling from a Mac come next.
 
 ## Quick start
 
