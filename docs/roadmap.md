@@ -121,6 +121,12 @@ rendering on top.
         and what it touches, so agents can see what others are doing
   - [ ] `slash-cli init` writes a starter storyboard, and the MCP instructions tell agents to
         call `storyboard.brief` before a task and `storyboard.check` after it
+- [ ] Dry runs: `"dry_run": true` on any edit or `batch` returns what would change and any
+      errors, and changes nothing
+- [ ] Snapshots and semantic diffs: `world.snapshot`, `world.diff` (entities and fields added,
+      removed or changed, by ID) and `world.restore`
+- [ ] Verified examples: every feature from here on ships with a small working example in
+      `examples/` that CI builds and runs headless, so agents copy code that is known to work
 - [ ] A license check on every pull request, against a manifest of pinned dependencies, before
       this milestone adds Box2D, miniaudio, FreeType and HarfBuzz
 - [ ] Renderer foundation: `RenderDevice` over SDL3's GPU API, a null backend for headless runs,
@@ -137,8 +143,13 @@ rendering on top.
 - [ ] Audio on miniaudio
 - [ ] Rebindable input action maps, and `input.inject` for agents
 - [ ] `frame.capture` (PNG) and replays (`replay.run`)
+- [ ] Time travel: `replay.seek` jumps a recorded run to any tick, where every query command
+      works, so a bug can be reproduced and inspected at the moment it happened
 - [ ] Debug overlay, drawn with the UI and text above
 - [ ] A test command that steps a game headless and returns only the checks that failed
+- [ ] Watch conditions: `run.until` steps a game headless until a condition on component
+      fields holds (say, the player below the floor) or a tick limit passes, and returns the
+      tick and the matching entities
 - [ ] Frame summaries: what is on screen as data instead of an image
 
 Exit: an agent builds `samples/pong` end to end and exports it to all six platforms.
@@ -146,6 +157,8 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
 ### Milestone 6: Hot reload, AI and profiling (Planned)
 
 - [ ] Gameplay as a C++ shared library that reloads on rebuild and keeps world state
+- [ ] `build.check`: compiles only the changed gameplay files and returns errors as data (file,
+      line, message and the compiler's suggested fix), with no build log to read
 - [ ] Job system, so systems run in parallel before the 3D work in milestone 7 needs it
 - [ ] Profiling: Tracy, a `perf.stats` command and a per-system memory report
 - [ ] `ai::Provider` with OpenAI-compatible, Anthropic and Gemini adapters
@@ -155,6 +168,11 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
       storyboard and reports likely contradictions as advisory findings
 - [ ] `project.map`: a generated map of the project's systems, components, scenes and source
       files, linked to the storyboard, so agents in a large codebase find code without guessing
+- [ ] `api.search`: finds engine and project C++ functions and types by name or purpose and
+      returns their signatures, docs and the verified examples that use them
+- [ ] Playtests and tuning sweeps: `playtest.run` runs many headless copies of a game at once,
+      driven by simple scripted bots and each with different values (jump height, enemy speed),
+      and returns a summary of the results per value
 - [ ] Asset library and generator, so agents reuse generated assets instead of making them again
       ([design](design.md#asset-library-and-generation))
   - [ ] A library shared by every project on the machine: each asset stored once by content
@@ -342,6 +360,14 @@ calls and tokens ([design section 6](design.md#6-cheap-for-agents-to-use)).
 | A test command that returns only the checks that failed | 5 | Planned |
 | Frame summaries as data instead of screenshots | 5 | Planned |
 | `storyboard.brief`: only the facts a task needs, and what changed since the agent last looked | 5 | Planned |
+| Dry runs: see what an edit would change before making it | 5 | Planned |
+| `world.snapshot` and `world.diff`: try something, see exactly what changed, roll back | 5 | Planned |
+| Verified examples for every feature, built and run in CI | 5 | Planned |
+| `run.until`: run headless until a condition holds instead of polling | 5 | Planned |
+| `replay.seek`: query any earlier tick of a recorded run | 5 | Planned |
+| `build.check`: C++ compile errors as data from an incremental build | 6 | Planned |
+| `api.search`: real signatures and examples instead of guessed function names | 6 | Planned |
+| `playtest.run`: many headless bot runs and tuning sweeps in one call | 6 | Planned |
 | `project.map`: where things are in a large project, without reading the source | 6 | Planned |
 | A scheduled benchmark of standard agent tasks counting calls and tokens | 6 | Planned |
 | The asset library: search before generating, and read a text description instead of the file | 6 | Planned |
