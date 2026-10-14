@@ -1,0 +1,7 @@
+build/
+.cpm-cache/
+.slash/
+compile_commands.json
+.DS_Store
+.vscode/
+.idea/
