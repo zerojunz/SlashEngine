@@ -288,8 +288,24 @@ jobs:
             cat build/$preset.json
             jq -e '.test.skipped' build/$preset.json
           done
+          # Temporary: small programs that isolate which link option breaks Windows startup.
+          bin=$(ls -d ~/.slash/toolchains/llvm-mingw-*/bin)
+          mkdir -p build/empty-game/build/export/probes
+          cd build/empty-game/build/export/probes
+          printf '#include <stdio.h>\nint main(void) { puts("ok"); return 0; }\n' > hello.c
+          printf '#include <cstdio>\n#include <string>\nint main() { std::string s = "ok"; std::puts(s.c_str()); }\n' > hello.cpp
+          v10="-Wl,--major-subsystem-version,10 -Wl,--minor-subsystem-version,0"
+          "$bin/x86_64-w64-mingw32-clang" hello.c -o c.exe
+          "$bin/x86_64-w64-mingw32-clang++" hello.cpp -o cpp.exe
+          "$bin/x86_64-w64-mingw32-clang++" hello.cpp -o cpp-static.exe -static
+          "$bin/x86_64-w64-mingw32-clang++" hello.cpp -o cpp-static-gui.exe -static -mwindows
+          "$bin/x86_64-w64-mingw32-clang++" hello.cpp -o cpp-static-v10.exe -static $v10
+          "$bin/x86_64-w64-mingw32-clang++" hello.cpp -o cpp-static-gui-v10.exe -static -mwindows $v10
+          "$bin/x86_64-w64-mingw32-clang++" hello.cpp -o cpp-static-gui-v10-os10.exe -static -mwindows $v10 \
+            -Wl,--major-os-version,10 -Wl,--minor-os-version,0 || echo "no --major-os-version"
+          cd -
           # A tarball keeps the games' executable bits, which artifacts drop.
-          tar -C build/empty-game/build/export -cf build/cross-exports.tar windows linux linux-arm64
+          tar -C build/empty-game/build/export -cf build/cross-exports.tar windows linux linux-arm64 probes
 
       - uses: actions/upload-artifact@v4
         with:
@@ -353,13 +369,17 @@ jobs:
           $output
           'exit code 0x{0:X8}' -f $game.ExitCode
           if ($game.ExitCode -ne 0 -or -not ($output -match '"ticks":60')) {
-            # Show the headers, and the loader's own account of why the game didn't start.
-            $headers
+            # Temporary: which probe programs start, the load config, and the loader's last steps.
+            foreach ($probe in Get-ChildItem build/cross/probes/*.exe) {
+              $p = Start-Process -FilePath $probe.FullName -NoNewWindow -Wait -PassThru `
+                -RedirectStandardOutput "$env:RUNNER_TEMP\probe.txt"
+              '{0}: exit code 0x{1:X8}' -f $probe.Name, $p.ExitCode
+            }
+            dumpbin /loadconfig /tls $exe | Select-Object -First 80
             $debuggers = "${env:ProgramFiles(x86)}\Windows Kits\10\Debuggers\x64"
             & "$debuggers\gflags.exe" /i (Split-Path -Leaf $exe) +sls
             Push-Location (Split-Path $exe)
-            & "$debuggers\cdb.exe" -g -G -o -c q $exe --headless --ticks 60 2>&1 |
-              Select-String -Pattern 'ERROR|WARNING|fail|0xc0' | Select-Object -First 60
+            & "$debuggers\cdb.exe" -g -G -o -c q $exe --headless --ticks 60 2>&1 | Select-Object -Last 40
             Pop-Location
             exit 1
           }
