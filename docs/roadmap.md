@@ -150,6 +150,9 @@ rendering on top.
 - [ ] 2D physics on Box2D v3
 - [ ] Particles
 - [ ] UI with flexbox layout and themes; text with FreeType, HarfBuzz and MSDF fonts
+- [ ] Text input in every language: IME composition for Japanese, Chinese and Korean with the
+      candidate window placed at the text field, on-screen keyboards on phones, and fallback
+      fonts so no language shows missing-glyph boxes
 - [ ] Audio on miniaudio
 - [ ] Rebindable input action maps, and `input.inject` for agents
 - [ ] `frame.capture` (PNG) and replays (`replay.run`)
@@ -215,7 +218,9 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
 - [ ] Skinned meshes, animation blending, state machines, root motion, two-bone and FABRIK IK
 - [ ] Navigation on Recast and Detour, in 2D and 3D, with avoidance
 - [ ] Heightmap terrain; CSG and grid-based tile placement
-- [ ] Import of glTF 2.0, FBX, OBJ, PNG, JPG, KTX2, WAV, OGG and MP3
+- [ ] Import of glTF 2.0, FBX, OBJ, PNG, JPG, KTX2, WAV, OGG and MP3, plus Blender `.blend`
+      files the way Godot does it: the engine runs the artist's own Blender in the background to
+      convert them to glTF, so no Blender code is linked or shipped
 - [ ] 3D in the asset library and generator ([design](design.md#3d-assets))
   - [ ] Parametric models: agents write a `.model.json` recipe of shapes, CSG on Manifold,
         extrusions, lathes, bevels and arrays, and the engine builds the mesh; the library keeps
@@ -239,6 +244,20 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
         match
   - [ ] Tileable PBR materials from the 2D generator, shared through the material graph instead
         of a unique texture per model
+  - [ ] Imported assets: files from Blender and other tools, asset stores or a team's own
+        artists go into the library like generated ones, with the same cleanup, text
+        description, review, versions and a license the importer records; editing the source
+        file makes a new version
+  - [ ] A Blender bridge: agents build assets by running Blender headless with Python scripts
+        as a generator; the script is saved with the result, so the asset can be rebuilt or
+        tweaked later
+  - [ ] Complex assets: an asset made of other library assets (a building of walls, doors and
+        props, a character with outfits) that references its parts by hash, so shared parts
+        are stored once and updating a part offers new versions of everything that uses it
+  - [ ] Variants: one asset with named options (clean or damaged, seasons, team colors) and
+        quality tiers per export preset (phone, desktop), all built from the same source
+  - [ ] Checks for complex assets: scale, material slot names, rigs, animation clips and every
+        part present, run before an asset is saved and again in CI
   - [ ] Scene assembly: agents place library assets with constraints (on the ground, not
         overlapping, along a path) instead of generating a scene as one mesh
 
@@ -248,7 +267,21 @@ Exit: an agent builds a small 3D sample end to end.
 
 - [ ] Networking: ENet transport, replication driven by reflection, WebSocket for web
 - [ ] XR through OpenXR
-- [ ] Localization with translation tables in text
+- [ ] Localization, following Godot ([design](design.md#languages))
+  - [ ] Translation tables as CSV or gettext `.po` files, with plural forms, placeholders and a
+        fallback chain (`es-MX`, then `es`, then the source language)
+  - [ ] Any language as the source: a game can be written in Japanese and translated to English
+  - [ ] A language setting: the player's OS language by default, changeable in a game's options
+        menu while it runs, with per-language fonts and right-to-left layout
+  - [ ] `l10n.extract`: every player-facing string in scenes and C++ (`tr("...")`) collected
+        into the tables, so no text is missed
+  - [ ] `l10n.translate`: draft translations through `ai::Provider`, using the storyboard's
+        glossary and characters so names and tone stay consistent, marked for review
+  - [ ] `l10n.check`: missing or stale keys, placeholders that don't match, text that overflows
+        its UI box in a given font, and glyphs a font lacks; run by the headless test command
+        and CI
+  - [ ] Pseudo-localization: a fake language with longer, accented text that shows untranslated
+        or clipped strings before any real translation exists
 - [ ] Video playback with dav1d (AV1)
 - [ ] Accessibility through AccessKit
 - [ ] Platform services, like Unity's Analytics, Ads and In-App Purchasing: one cross-platform C++
@@ -328,11 +361,11 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Input | Rebindable action maps over SDL3, injectable by agents | 5 | Planned |
 | Refresh rates and frame pacing | V-Sync modes, frame cap, display refresh rates, variable refresh rate, rendering interpolated between fixed ticks | 5 | Planned |
 | UI | Retained UI with flexbox layout and themes, defined in text | 5 | Planned |
-| Text and fonts | FreeType, HarfBuzz, MSDF fonts, BiDi | 5 | Planned |
+| Text and fonts | FreeType, HarfBuzz, MSDF fonts, BiDi, IME input, fallback fonts | 5 | Planned |
 | Navigation | Recast and Detour, 2D and 3D, avoidance | 7 | Planned |
-| Asset import | glTF 2.0, FBX, OBJ, PNG, JPG, KTX2, WAV, OGG, MP3 | 7 | Planned |
+| Asset import | glTF 2.0, FBX, OBJ, PNG, JPG, KTX2, WAV, OGG, MP3, and `.blend` through the artist's own Blender | 7 | Planned |
 | Profiling | Tracy, plus `perf.stats` over the command API | 6 | Planned |
-| Asset generation and library | Generated assets saved once and shared by every project and teammate, searched before generating, ranked by agent feedback; 3D models as parametric recipes or cleaned-up generated meshes, reviewed automatically | 6, 7 | Planned: images and audio in 6, 3D in 7 |
+| Asset generation and library | Generated assets saved once and shared by every project and teammate, searched before generating, ranked by agent feedback; 3D models as parametric recipes, cleaned-up generated meshes or imported files, combined into complex assets with variants, reviewed automatically | 6, 7 | Planned: images and audio in 6, 3D in 7 |
 | Global illumination | Baked lightmaps and probe-based GI | 7 | Planned |
 | Sky and volumetrics | Physical sky, volumetric fog | 7 | Planned |
 | Decals | Clustered decals | 7 | Planned |
@@ -341,7 +374,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Level geometry | CSG and grid-based tile placement | 7 | Planned |
 | LOD and culling | Generated LODs with meshoptimizer, occlusion culling | 7 | Planned |
 | XR | OpenXR | 8 | Planned |
-| Localization | Translation tables in text | 8 | Planned |
+| Localization | CSV and `.po` translation tables, any source language, a runtime language setting, and commands to extract, draft and check translations | 8 | Planned |
 | Video playback | AV1 through dav1d | 8 | Planned |
 | Accessibility | AccessKit | 8 | Planned |
 | Storyboard | Style, world, story, design rules and decisions as typed project files that agents query and checks enforce | 5, 6 | Planned: files, commands and checks in 5, model review and the project map in 6 |
