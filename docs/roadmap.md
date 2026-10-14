@@ -108,10 +108,39 @@ rendering on top.
 - [ ] `events.subscribe` for a stream of world events
 - [ ] Prefabs: an entity `"extends"` a `.prefab.json` file and overrides fields
 - [ ] Asset handles with reference counting and hot reload, and an `asset.list` command
+- [ ] Storyboard: the game's style, world, story, design rules, names, decisions and open work
+      as typed files in the project, so every agent works from the same facts
+      ([design](design.md#storyboard))
+  - [ ] `storyboard/*.json` files with a schema (`slash-cli schema storyboard`), every entry
+        under a stable ID such as `character/mira`, edited through commands with undo
+  - [ ] `storyboard.brief`: only the facts, decisions and open work linked to the scenes,
+        entities, assets or files a task touches, plus what changed since the agent last looked
+  - [ ] `storyboard.query` and `storyboard.edit`; an edit names the version it read, so a stale
+        edit from another agent is refused instead of overwriting newer facts
+  - [ ] Links: a `StoryRef` component ties entities to storyboard IDs, and assets and source
+        files can be linked too; unknown IDs are errors with "did you mean"
+  - [ ] `storyboard.check`: references, glossary names, palette and budgets checked by
+        `scene validate`, the headless test command and CI
+  - [ ] A journal of who changed what and why, and open work that says which agent is on it
+        and what it touches, so agents can see what others are doing
+  - [ ] `slash-cli init` writes a starter storyboard, and the MCP instructions tell agents to
+        call `storyboard.brief` before a task and `storyboard.check` after it
+- [ ] Dry runs: `"dry_run": true` on any edit or `batch` returns what would change and any
+      errors, and changes nothing
+- [ ] Snapshots and semantic diffs: `world.snapshot`, `world.diff` (entities and fields added,
+      removed or changed, by ID) and `world.restore`
+- [ ] Verified examples: every feature from here on ships with a small working example in
+      `examples/` that CI builds and runs headless, so agents copy code that is known to work
 - [ ] A license check on every pull request, against a manifest of pinned dependencies, before
       this milestone adds Box2D, miniaudio, FreeType and HarfBuzz
 - [ ] Renderer foundation: `RenderDevice` over SDL3's GPU API, a null backend for headless runs,
       HLSL shaders cross-compiled with SDL_shadercross
+- [ ] Refresh rates and frame pacing, following Godot's settings: the display's modes and
+      refresh rates as data; V-Sync modes (on, off, adaptive, mailbox) and a frame cap (30, 60,
+      120, 240 or unlimited) in `project.json`, changeable while the game runs; rendering
+      interpolated between fixed ticks so high refresh rates look smooth; variable refresh rate
+      (G-Sync, FreeSync, ProMotion) left working by using the right present mode; 120 Hz on
+      phones that support it; frame pacing stats in `perf.stats`
 - [ ] Materials: HLSL shaders plus a JSON material graph agents write directly, starting with
       2D (canvas) materials; milestone 7 adds the PBR inputs
 - [ ] Sprites, sprite sheets and flipbooks
@@ -124,8 +153,13 @@ rendering on top.
 - [ ] Audio on miniaudio
 - [ ] Rebindable input action maps, and `input.inject` for agents
 - [ ] `frame.capture` (PNG) and replays (`replay.run`)
+- [ ] Time travel: `replay.seek` jumps a recorded run to any tick, where every query command
+      works, so a bug can be reproduced and inspected at the moment it happened
 - [ ] Debug overlay, drawn with the UI and text above
 - [ ] A test command that steps a game headless and returns only the checks that failed
+- [ ] Watch conditions: `run.until` steps a game headless until a condition on component
+      fields holds (say, the player below the floor) or a tick limit passes, and returns the
+      tick and the matching entities
 - [ ] Frame summaries: what is on screen as data instead of an image
 
 Exit: an agent builds `samples/pong` end to end and exports it to all six platforms.
@@ -133,11 +167,41 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
 ### Milestone 6: Hot reload, AI and profiling (Planned)
 
 - [ ] Gameplay as a C++ shared library that reloads on rebuild and keeps world state
+- [ ] `build.check`: compiles only the changed gameplay files and returns errors as data (file,
+      line, message and the compiler's suggested fix), with no build log to read
 - [ ] Job system, so systems run in parallel before the 3D work in milestone 7 needs it
 - [ ] Profiling: Tracy, a `perf.stats` command and a per-system memory report
 - [ ] `ai::Provider` with OpenAI-compatible, Anthropic and Gemini adapters
 - [ ] `ReplayProvider` so tests that use a model run offline
 - [ ] A benchmark of standard agent tasks that counts calls and tokens
+- [ ] Storyboard review: a model through `ai::Provider` reads new text and assets against the
+      storyboard and reports likely contradictions as advisory findings
+- [ ] `project.map`: a generated map of the project's systems, components, scenes and source
+      files, linked to the storyboard, so agents in a large codebase find code without guessing
+- [ ] `api.search`: finds engine and project C++ functions and types by name or purpose and
+      returns their signatures, docs and the verified examples that use them
+- [ ] Playtests and tuning sweeps: `playtest.run` runs many headless copies of a game at once,
+      driven by simple scripted bots and each with different values (jump height, enemy speed),
+      and returns a summary of the results per value
+- [ ] Asset library and generator, so agents reuse generated assets instead of making them again
+      ([design](design.md#asset-library-and-generation))
+  - [ ] A library shared by every project on the machine: each asset stored once by content
+        hash, with the request that made it, its generator, model, seed, license, tags and a short
+        text description agents can read instead of the file
+  - [ ] `asset.search` by text, tags and type; agents search before they generate
+  - [ ] `asset.generate` through generator adapters for hosted and local image and audio
+        models, behind the same interface style as `ai::Provider`; an exact repeat of an earlier
+        request returns the stored asset with no model call
+  - [ ] Iteration: `asset.refine` makes a new version linked to its parent, so every asset keeps
+        its history and can be rolled back
+  - [ ] Ready-to-use forms: imported and compressed for each platform once, then cached
+  - [ ] Feedback: agents record results with `asset.feedback`, by hand or automatically from
+        checks such as validation, the headless test command and frame summaries; feedback
+        ranks search results, picks between candidates and is passed back into later prompts
+  - [ ] Team sharing: the library syncs with a store the team hosts, such as a shared folder or
+        a library server that `slash-cli` runs, so a teammate's request finds assets someone
+        else already made
+  - [ ] A test generator, so agents and CI can use the library headless with no model or key
 
 ### Milestone 7: 3D feature set (Planned)
 
@@ -152,16 +216,58 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
 - [ ] Navigation on Recast and Detour, in 2D and 3D, with avoidance
 - [ ] Heightmap terrain; CSG and grid-based tile placement
 - [ ] Import of glTF 2.0, FBX, OBJ, PNG, JPG, KTX2, WAV, OGG and MP3
+- [ ] 3D in the asset library and generator ([design](design.md#3d-assets))
+  - [ ] Parametric models: agents write a `.model.json` recipe of shapes, CSG on Manifold,
+        extrusions, lathes, bevels and arrays, and the engine builds the mesh; the library keeps
+        the recipe, so refining means changing a number
+  - [ ] Concept image first: generate and review a cheap image, then make the 3D model from it,
+        with the image kept as the model's parent
+  - [ ] Game-ready cleanup for every generated or imported mesh: real-world scale, pivot and up
+        axis, a triangle budget with meshoptimizer, UVs with xatlas, PBR textures with baked-in
+        lighting removed, LODs and collision hulls with CoACD
+  - [ ] Automatic review: headless turntable renders, geometry checks (budget, scale, holes,
+        texel density) and a vision-capable model comparing the views with the request, all
+        recorded as feedback; failed checks retry within a call budget
+  - [ ] Text descriptions of 3D assets: size, pivot, parts, materials, triangle count and
+        attachment points, so agents place models without loading images
+  - [ ] Named parts and attachment points, so wheels turn, doors open and parts from different
+        models combine
+  - [ ] Auto-rigging through a generator adapter, retargeted to one standard humanoid skeleton
+        so every library animation works on every character
+  - [ ] The storyboard's style section (palette, reference images, triangle and texel
+        budgets), refined from accepted assets and sent with every request so a game's assets
+        match
+  - [ ] Tileable PBR materials from the 2D generator, shared through the material graph instead
+        of a unique texture per model
+  - [ ] Scene assembly: agents place library assets with constraints (on the ground, not
+        overlapping, along a path) instead of generating a scene as one mesh
 
 Exit: an agent builds a small 3D sample end to end.
 
-### Milestone 8: Systems (Planned)
+### Milestone 8: Systems and platform services (Planned)
 
 - [ ] Networking: ENet transport, replication driven by reflection, WebSocket for web
 - [ ] XR through OpenXR
 - [ ] Localization with translation tables in text
 - [ ] Video playback with dav1d (AV1)
 - [ ] Accessibility through AccessKit
+- [ ] Platform services, like Unity's Analytics, Ads and In-App Purchasing: one cross-platform C++
+      API and command set, with the store or network chosen per export preset
+  - [ ] Analytics: custom events, sessions and funnels, batched and sent as JSON to an endpoint
+        the developer chooses, such as a self-hosted open-source server
+  - [ ] In-app purchases: products, purchase, restore and receipts, on StoreKit for iOS and
+        macOS and Google Play Billing for Android
+  - [ ] Ads: banner, interstitial and rewarded placements behind one interface; each ad network
+        is an adapter (see the note below)
+  - [ ] Consent and privacy: one consent state that gates analytics and ads, with Apple's App
+        Tracking Transparency prompt on iOS
+  - [ ] A test backend for all three, so agents and CI can run purchases, ads and events
+        headless with no store account, plus commands to inspect and drive it
+
+Ad network SDKs (AdMob, Unity Ads, AppLovin and others) are proprietary, so, like console ports,
+their adapters live outside this repository. StoreKit is an OS framework, and Google Play Billing
+is fetched at export time like the rest of the Android SDK, so neither is committed here. Dan
+chose this split.
 
 ### Milestone 9: Launch (Planned)
 
@@ -220,11 +326,13 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Particles | CPU and GPU particles, particle graphs in text | 5 | Planned |
 | Audio | miniaudio: buses, effects, 3D spatial audio | 5 | Planned |
 | Input | Rebindable action maps over SDL3, injectable by agents | 5 | Planned |
+| Refresh rates and frame pacing | V-Sync modes, frame cap, display refresh rates, variable refresh rate, rendering interpolated between fixed ticks | 5 | Planned |
 | UI | Retained UI with flexbox layout and themes, defined in text | 5 | Planned |
 | Text and fonts | FreeType, HarfBuzz, MSDF fonts, BiDi | 5 | Planned |
 | Navigation | Recast and Detour, 2D and 3D, avoidance | 7 | Planned |
 | Asset import | glTF 2.0, FBX, OBJ, PNG, JPG, KTX2, WAV, OGG, MP3 | 7 | Planned |
 | Profiling | Tracy, plus `perf.stats` over the command API | 6 | Planned |
+| Asset generation and library | Generated assets saved once and shared by every project and teammate, searched before generating, ranked by agent feedback; 3D models as parametric recipes or cleaned-up generated meshes, reviewed automatically | 6, 7 | Planned: images and audio in 6, 3D in 7 |
 | Global illumination | Baked lightmaps and probe-based GI | 7 | Planned |
 | Sky and volumetrics | Physical sky, volumetric fog | 7 | Planned |
 | Decals | Clustered decals | 7 | Planned |
@@ -236,6 +344,8 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Localization | Translation tables in text | 8 | Planned |
 | Video playback | AV1 through dav1d | 8 | Planned |
 | Accessibility | AccessKit | 8 | Planned |
+| Storyboard | Style, world, story, design rules and decisions as typed project files that agents query and checks enforce | 5, 6 | Planned: files, commands and checks in 5, model review and the project map in 6 |
+| Analytics, ads and in-app purchases | One API for analytics, ads and purchases; StoreKit, Play Billing and a developer-chosen analytics endpoint in the repo, ad networks as outside adapters | 8 | Planned |
 | One-command export | `slash-cli export` to macOS, Windows, Linux, iOS, Android and web | 4 | In progress: every platform exports (4a, 4b); building them all from one Mac is next |
 | Large worlds | Double-precision transforms, world streaming | After launch | After launch |
 | Cinematics | Timeline tracks for cameras and events | After launch | After launch |
@@ -260,7 +370,18 @@ calls and tokens ([design section 6](design.md#6-cheap-for-agents-to-use)).
 | `slash-cli init` and the MCP server's instructions point agents at the tools | 3 | Done |
 | A test command that returns only the checks that failed | 5 | Planned |
 | Frame summaries as data instead of screenshots | 5 | Planned |
+| `storyboard.brief`: only the facts a task needs, and what changed since the agent last looked | 5 | Planned |
+| Dry runs: see what an edit would change before making it | 5 | Planned |
+| `world.snapshot` and `world.diff`: try something, see exactly what changed, roll back | 5 | Planned |
+| Verified examples for every feature, built and run in CI | 5 | Planned |
+| `run.until`: run headless until a condition holds instead of polling | 5 | Planned |
+| `replay.seek`: query any earlier tick of a recorded run | 5 | Planned |
+| `build.check`: C++ compile errors as data from an incremental build | 6 | Planned |
+| `api.search`: real signatures and examples instead of guessed function names | 6 | Planned |
+| `playtest.run`: many headless bot runs and tuning sweeps in one call | 6 | Planned |
+| `project.map`: where things are in a large project, without reading the source | 6 | Planned |
 | A scheduled benchmark of standard agent tasks counting calls and tokens | 6 | Planned |
+| The asset library: search before generating, and read a text description instead of the file | 6 | Planned |
 
 ## Platforms
 
