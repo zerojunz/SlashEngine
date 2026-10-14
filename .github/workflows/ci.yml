@@ -164,7 +164,7 @@ jobs:
         run: |
           cli=./build/release/tools/slash-cli/slash-cli
           apk=$(ls build/empty-game/build/export/android/*.apk)
-          tools=$(ls -d "$ANDROID_HOME"/build-tools/*/ | grep -v -- - | sort -V | tail -n 1)
+          tools=$(ls -d "$ANDROID_HOME"/build-tools/*/ | grep -E '/[0-9.]+/$' | sort -V | tail -n 1)
           "$tools/zipalign" -c -P 16 4 "$apk"
           badging=$("$tools/aapt2" dump badging "$apk")
           grep -q "sdkVersion:'30'" <<< "$badging"
