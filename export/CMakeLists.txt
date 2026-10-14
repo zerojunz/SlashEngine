@@ -30,7 +30,8 @@ set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 # executable whose subsystem version is newer than itself, so 10.0 turns away Windows 8.1 and
 # older. macOS (11.0) is set by slash-cli export, and browsers below.
 if(MSVC)
-    set(CMAKE_CREATE_WIN32_EXE "/subsystem:windows,10.00")
+    set(CMAKE_C_CREATE_WIN32_EXE "/subsystem:windows,10.00")
+    set(CMAKE_CXX_CREATE_WIN32_EXE "/subsystem:windows,10.00")
 endif()
 
 # Only the targets the game links are built; tools and tests stay off outside the engine repo.
