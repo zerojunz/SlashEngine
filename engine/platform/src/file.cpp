@@ -40,4 +40,9 @@ bool exists(std::string_view path) {
     return SDL_GetPathInfo(name.c_str(), nullptr);
 }
 
+std::string base_path() {
+    const char* path = SDL_GetBasePath();
+    return path == nullptr ? std::string() : std::string(path);
+}
+
 } // namespace slash::platform

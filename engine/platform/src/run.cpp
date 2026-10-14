@@ -1,6 +1,5 @@
 #include "slash/platform/run.hpp"
 
-#include "slash/core/fixed_step.hpp"
 #include "slash/core/log.hpp"
 
 #include <SDL3/SDL.h>
@@ -8,54 +7,8 @@
 #include <cmath>
 
 namespace slash::platform {
-namespace {
 
-RunStats run_headless(Platform& platform, const RunOptions& options, const TickFn& on_tick) {
-    const double tick_seconds = 1.0 / options.tick_hz;
-    RunStats stats;
-    while (stats.ticks < options.max_ticks) {
-        if (platform.poll_events().quit_requested) {
-            stats.quit_requested = true;
-            break;
-        }
-        if (on_tick) {
-            on_tick(stats.ticks, tick_seconds);
-        }
-        ++stats.ticks;
-    }
-    return stats;
-}
-
-RunStats run_windowed(Platform& platform, const RunOptions& options, const TickFn& on_tick) {
-    FixedStep step(options.tick_hz);
-    RunStats stats;
-    double last = platform.now_seconds();
-    for (;;) {
-        if (platform.poll_events().quit_requested) {
-            stats.quit_requested = true;
-            break;
-        }
-        const double now = platform.now_seconds();
-        const int ticks = step.advance(now - last);
-        last = now;
-        for (int i = 0; i < ticks; ++i) {
-            if (on_tick) {
-                on_tick(stats.ticks, step.tick_seconds());
-            }
-            ++stats.ticks;
-            if (options.max_ticks != 0 && stats.ticks >= options.max_ticks) {
-                return stats;
-            }
-        }
-        // No renderer yet to pace frames with vsync, so yield instead of spinning.
-        SDL_Delay(1);
-    }
-    return stats;
-}
-
-} // namespace
-
-Result<RunStats> run(Platform& platform, const RunOptions& options, const TickFn& on_tick) {
+Result<Loop> Loop::create(Platform& platform, const RunOptions& options) {
     if (!(options.tick_hz > 0.0) || !std::isfinite(options.tick_hz)) {
         return make_error(ErrorCode::InvalidArgument, "tick_hz must be a positive number");
     }
@@ -63,9 +16,63 @@ Result<RunStats> run(Platform& platform, const RunOptions& options, const TickFn
         return make_error(ErrorCode::InvalidArgument,
                           "headless runs need max_ticks, or they would never end");
     }
+    return Loop(platform, options);
+}
 
-    const RunStats stats = platform.headless() ? run_headless(platform, options, on_tick)
-                                               : run_windowed(platform, options, on_tick);
+Loop::Loop(Platform& platform, const RunOptions& options)
+    : platform_(&platform), options_(options), step_(options.tick_hz),
+      last_seconds_(platform.now_seconds()) {}
+
+bool Loop::frame(const TickFn& on_tick) {
+    if (finished_) {
+        return false;
+    }
+    if (platform_->poll_events().quit_requested) {
+        request_quit();
+        return false;
+    }
+    if (platform_->headless()) {
+        return tick(on_tick, step_.tick_seconds());
+    }
+    const double now = platform_->now_seconds();
+    const int due = step_.advance(now - last_seconds_);
+    last_seconds_ = now;
+    for (int i = 0; i < due; ++i) {
+        if (!tick(on_tick, step_.tick_seconds())) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool Loop::tick(const TickFn& on_tick, double tick_seconds) {
+    if (on_tick) {
+        on_tick(stats_.ticks, tick_seconds);
+    }
+    ++stats_.ticks;
+    if (options_.max_ticks != 0 && stats_.ticks >= options_.max_ticks) {
+        finished_ = true;
+    }
+    return !finished_;
+}
+
+void Loop::request_quit() noexcept {
+    stats_.quit_requested = true;
+    finished_ = true;
+}
+
+Result<RunStats> run(Platform& platform, const RunOptions& options, const TickFn& on_tick) {
+    auto loop = Loop::create(platform, options);
+    if (!loop) {
+        return loop.error();
+    }
+    while (loop.value().frame(on_tick)) {
+        if (!platform.headless()) {
+            // No renderer yet to pace frames with vsync, so yield instead of spinning.
+            SDL_Delay(1);
+        }
+    }
+    const RunStats& stats = loop.value().stats();
     log::info("run finished", {{"ticks", stats.ticks},
                                {"quit_requested", stats.quit_requested},
                                {"headless", platform.headless()}});

@@ -112,6 +112,27 @@ Requests are queued and run only when the session's owner calls `Server::poll()`
 never race the game loop. Tests drive the server from a helper thread while the test thread polls;
 see `tests/test_server.cpp`.
 
+## Game projects and exports
+
+A game is a folder with a `project.json` (name, version, main scene; `$cli schema project`) and
+its scenes. `slash-cli init` creates one. `engine/runtime` runs it: `Game` loads the main scene
+and ticks it, and `src/main.cpp` is every game's entry point, built on SDL's main callbacks so
+the same loop works on the web and on phones.
+
+```bash
+game=./build/dev/tools/slash-game/slash-game
+$game --data tests/data/game --headless --ticks 60     # run a project as its export would
+$cli project validate tests/data/game
+$cli export linux --project path/to/game --test        # build, lay out and run headless
+```
+
+`slash-cli export <platform>` validates the project and every scene, stages them as the game's
+data, configures `export/CMakeLists.txt` with the engine sources, builds and installs into
+`<project>/build/export/<platform>`. Its work folder and full build log are in
+`<project>/.slash/export/<platform>/`; a failure reports the step and the end of the log. Each
+host builds its own platform; web exports need Emscripten (`EMSDK` set) on any host. CI exports
+and runs an empty game for macOS, Windows, Linux and web on every PR.
+
 ## Add a component
 
 Components are plain structs reflected with one macro, at namespace scope in the struct's own
@@ -154,8 +175,9 @@ CI rejects unformatted code and any clang-tidy finding.
   `kPascalCase` constants.
 - Headers live in `engine/<module>/include/slash/<module>/`, sources in `engine/<module>/src/`.
   Modules: `core` (Result, logging, JSON, reflection, math), `platform` (SDL3 window, run loop,
-  files), `world` (EnTT world, components, scenes), `command` (commands, sessions with undo,
-  JSON-RPC and MCP) and `server` (localhost HTTP over a session).
+  files, child processes), `world` (EnTT world, components, scenes), `command` (commands,
+  sessions with undo, JSON-RPC and MCP), `server` (localhost HTTP over a session) and `runtime`
+  (project files and the game executable).
 - New dependencies go in `cmake/Dependencies.cmake`, pinned to a tag, and in `THIRD_PARTY.md`
   with their license. Only permissive licenses (MIT, BSD, zlib, Apache 2.0, Boost, MIT-0,
   public domain). Never copy code from closed engines.

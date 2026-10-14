@@ -43,7 +43,7 @@ except on Linux, where SDL3 needs the X11 and Wayland development packages liste
 
 ```bash
 cmake --preset dev               # configure; the first run fetches the dependencies
-cmake --build --preset dev       # build the engine, slash-cli, slash-mcp and tests
+cmake --build --preset dev       # build the engine, slash-cli, slash-mcp, slash-game and tests
 ctest --preset dev               # run unit and smoke tests
 ```
 
@@ -84,7 +84,8 @@ If you edited a scene file by hand, validate it and rewrite it in canonical form
 - **Names.** `PascalCase` types, `snake_case` functions and variables, `trailing_` private members,
   `kPascalCase` constants.
 - **Layout.** Headers in `engine/<module>/include/slash/<module>/`, sources in
-  `engine/<module>/src/`. The modules are `core`, `platform`, `world`, `command` and `server`.
+  `engine/<module>/src/`. The modules are `core`, `platform`, `world`, `command`, `server` and
+  `runtime`.
 - **Formatting.** clang-format with the repo's `.clang-format` (4-space indent, 100 columns).
 - **Tests.** Every behavior change comes with a test in `tests/`, and tests must pass headless.
 
