@@ -218,7 +218,9 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
 - [ ] Skinned meshes, animation blending, state machines, root motion, two-bone and FABRIK IK
 - [ ] Navigation on Recast and Detour, in 2D and 3D, with avoidance
 - [ ] Heightmap terrain; CSG and grid-based tile placement
-- [ ] Import of glTF 2.0, FBX, OBJ, PNG, JPG, KTX2, WAV, OGG and MP3
+- [ ] Import of glTF 2.0, FBX, OBJ, PNG, JPG, KTX2, WAV, OGG and MP3, plus Blender `.blend`
+      files the way Godot does it: the engine runs the artist's own Blender in the background to
+      convert them to glTF, so no Blender code is linked or shipped
 - [ ] 3D in the asset library and generator ([design](design.md#3d-assets))
   - [ ] Parametric models: agents write a `.model.json` recipe of shapes, CSG on Manifold,
         extrusions, lathes, bevels and arrays, and the engine builds the mesh; the library keeps
@@ -242,6 +244,20 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
         match
   - [ ] Tileable PBR materials from the 2D generator, shared through the material graph instead
         of a unique texture per model
+  - [ ] Imported assets: files from Blender and other tools, asset stores or a team's own
+        artists go into the library like generated ones, with the same cleanup, text
+        description, review, versions and a license the importer records; editing the source
+        file makes a new version
+  - [ ] A Blender bridge: agents build assets by running Blender headless with Python scripts
+        as a generator; the script is saved with the result, so the asset can be rebuilt or
+        tweaked later
+  - [ ] Complex assets: an asset made of other library assets (a building of walls, doors and
+        props, a character with outfits) that references its parts by hash, so shared parts
+        are stored once and updating a part offers new versions of everything that uses it
+  - [ ] Variants: one asset with named options (clean or damaged, seasons, team colors) and
+        quality tiers per export preset (phone, desktop), all built from the same source
+  - [ ] Checks for complex assets: scale, material slot names, rigs, animation clips and every
+        part present, run before an asset is saved and again in CI
   - [ ] Scene assembly: agents place library assets with constraints (on the ground, not
         overlapping, along a path) instead of generating a scene as one mesh
 
@@ -347,9 +363,9 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | UI | Retained UI with flexbox layout and themes, defined in text | 5 | Planned |
 | Text and fonts | FreeType, HarfBuzz, MSDF fonts, BiDi, IME input, fallback fonts | 5 | Planned |
 | Navigation | Recast and Detour, 2D and 3D, avoidance | 7 | Planned |
-| Asset import | glTF 2.0, FBX, OBJ, PNG, JPG, KTX2, WAV, OGG, MP3 | 7 | Planned |
+| Asset import | glTF 2.0, FBX, OBJ, PNG, JPG, KTX2, WAV, OGG, MP3, and `.blend` through the artist's own Blender | 7 | Planned |
 | Profiling | Tracy, plus `perf.stats` over the command API | 6 | Planned |
-| Asset generation and library | Generated assets saved once and shared by every project and teammate, searched before generating, ranked by agent feedback; 3D models as parametric recipes or cleaned-up generated meshes, reviewed automatically | 6, 7 | Planned: images and audio in 6, 3D in 7 |
+| Asset generation and library | Generated assets saved once and shared by every project and teammate, searched before generating, ranked by agent feedback; 3D models as parametric recipes, cleaned-up generated meshes or imported files, combined into complex assets with variants, reviewed automatically | 6, 7 | Planned: images and audio in 6, 3D in 7 |
 | Global illumination | Baked lightmaps and probe-based GI | 7 | Planned |
 | Sky and volumetrics | Physical sky, volumetric fog | 7 | Planned |
 | Decals | Clustered decals | 7 | Planned |
