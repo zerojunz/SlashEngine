@@ -168,8 +168,7 @@ jobs:
           tools=$(ls -d "$ANDROID_HOME"/build-tools/*/ | grep -E '/[0-9.]+/$' | sort -V | tail -n 1)
           "$tools/zipalign" -c -P 16 4 "$apk" || { "$tools/zipalign" -c -v -P 16 4 "$apk"; exit 1; }
           badging=$("$tools/aapt2" dump badging "$apk")
-          head -n 12 <<< "$badging"
-          grep -q "sdkVersion:'30'" <<< "$badging"
+          grep -Eq "(minSdkVersion|sdkVersion):'30'" <<< "$badging"
           grep -q "targetSdkVersion:'36'" <<< "$badging"
           grep -q "native-code:.*'arm64-v8a'" <<< "$badging"
           grep -q "native-code:.*'x86_64'" <<< "$badging"
