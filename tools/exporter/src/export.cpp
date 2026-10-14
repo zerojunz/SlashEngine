@@ -1,6 +1,7 @@
 #include "slash/exporter/export.hpp"
 
 #include "android.hpp"
+#include "cross.hpp"
 #include "ios.hpp"
 #include "steps.hpp"
 
@@ -8,6 +9,7 @@
 #include "slash/core/text.hpp"
 #include "slash/exporter/android.hpp"
 #include "slash/exporter/presets.hpp"
+#include "slash/exporter/toolchains.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/platform/process.hpp"
 #include "slash/runtime/project.hpp"
@@ -47,16 +49,26 @@ using detail::step;
 constexpr std::string_view kMacosDeploymentTarget = "11.0";
 constexpr std::string_view kSceneSuffix = ".scene.json";
 
+#if defined(__x86_64__) || defined(_M_X64)
+constexpr std::string_view kHostArch = kLinuxX86_64;
+#elif defined(__aarch64__) || defined(_M_ARM64)
+constexpr std::string_view kHostArch = kLinuxArm64;
+#else
+constexpr std::string_view kHostArch = "";
+#endif
+
+// Web and Android exports build anywhere. Macs and Linux PCs also cross-build Windows and Linux
+// with downloaded toolchains (toolchains.hpp); Windows PCs build only Windows, with MSVC.
 bool host_builds(std::string_view platform) {
     if (platform == "web" || platform == "android") {
         return true;
     }
 #if defined(__APPLE__)
-    return platform == "macos" || platform == "ios";
+    return platform == "macos" || platform == "ios" || platform == "windows" || platform == "linux";
 #elif defined(_WIN32)
     return platform == "windows";
 #elif defined(__linux__)
-    return platform == "linux";
+    return platform == "linux" || platform == "windows";
 #else
     return false;
 #endif
@@ -229,8 +241,8 @@ bool publish(const fs::path& package, const fs::path& output, const fs::path& re
     return true;
 }
 
-json::Value run_test(const std::string& platform, const fs::path& output, const fs::path& program,
-                     const fs::path& log_path) {
+json::Value run_test(const std::string& platform, const std::string& arch, const fs::path& output,
+                     const fs::path& program, const fs::path& log_path) {
     json::Value test;
     std::vector<std::string> args;
     if (platform == "web") {
@@ -239,8 +251,11 @@ json::Value run_test(const std::string& platform, const fs::path& output, const 
             return test;
         }
         args = {"node", program.string()};
-    } else if (platform == host_name()) {
+    } else if (platform == host_name() && (platform != "linux" || arch == kHostArch)) {
         args = {program.string()};
+    } else if (platform == "linux" && platform == host_name()) {
+        test["skipped"] = "this machine can't run " + arch + " Linux games";
+        return test;
     } else {
         test["skipped"] = "this machine can't run " + platform + " games";
         return test;
@@ -389,6 +404,13 @@ bool prepare_signing(const Preset& preset, const fs::path& project_dir, Signing&
             }
         }
     } else if (preset.platform == "windows" && preset.windows.sign) {
+        if (host_name() != "windows") {
+            failure = {"options",
+                       "signing Windows executables needs signtool, which runs only on Windows; "
+                       "export on Windows or turn off windows.sign in the preset",
+                       {}};
+            return false;
+        }
         signing.certificate = environment(kWindowsCertificatePath);
         signing.password = environment(kWindowsCertificatePassword);
         if (signing.certificate.empty() || !fs::is_regular_file(signing.certificate, error)) {
@@ -504,6 +526,7 @@ ExportResult export_game(const ExportOptions& options) {
     }
     const Preset& preset = found.value();
     const std::string& platform = preset.platform;
+    const std::string arch = platform == "linux" ? preset.linux_options.arch : std::string();
     const bool debug = options.debug || preset.debug;
     const fs::path work = project_dir / ".slash" / "export" / preset.name;
     fs::path output = project_dir / "build" / "export" / preset.name;
@@ -669,6 +692,14 @@ ExportResult export_game(const ExportOptions& options) {
                 : fs::absolute(work / ".." / "cpm-cache", error).lexically_normal().string());
     }
 
+    // Windows and Linux builds on other hosts, and every Linux build, use downloaded toolchains.
+    detail::CrossBuild cross;
+    if (!detail::prepare_cross(platform, arch, work, log_path.string(), cross, failure)) {
+        return fail(failure, log_path);
+    }
+    process.environment.insert(process.environment.end(), cross.environment.begin(),
+                               cross.environment.end());
+
     // Configures, builds and installs export/CMakeLists.txt in build, into prefix.
     const auto build_into = [&](const fs::path& build, const std::vector<std::string>& extra,
                                 const fs::path& prefix, bool strip) {
@@ -737,6 +768,13 @@ ExportResult export_game(const ExportOptions& options) {
         if (!ios_signing.profile.empty()) {
             signed_with["profile"] = ios_signing.profile_name;
         }
+    } else if (!cross.toolchain_file.empty()) {
+        if (!build_into(work / ("build-" + cross.build_name),
+                        {"-DCMAKE_TOOLCHAIN_FILE=" + cross.toolchain_file.generic_string()},
+                        package, false) ||
+            !sign(preset, signing, package, binary, work, process, signed_with, failure)) {
+            return fail(failure, log_path);
+        }
     } else if (!build_into(work / "build", {}, package, false) ||
                !sign(preset, signing, package, binary, work, process, signed_with, failure)) {
         return fail(failure, log_path);
@@ -789,6 +827,9 @@ ExportResult export_game(const ExportOptions& options) {
         }
         info["abis"] = std::move(abis);
     }
+    if (platform == "linux") {
+        out["linux"]["arch"] = arch;
+    }
     if (platform == "ios") {
         json::Value& info = out["ios"];
         info["bundle_id"] = ios_bundle_id;
@@ -806,8 +847,8 @@ ExportResult export_game(const ExportOptions& options) {
             test = detail::test_ios(fs::absolute(program, error), ios_bundle_id,
                                     fs::absolute(work, error), log_path);
         } else {
-            test = run_test(platform, fs::absolute(output, error), fs::absolute(program, error),
-                            log_path);
+            test = run_test(platform, arch, fs::absolute(output, error),
+                            fs::absolute(program, error), log_path);
         }
         if (const json::Value* passed = test.find("passed");
             passed != nullptr && !passed->as_bool()) {

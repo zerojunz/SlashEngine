@@ -7,12 +7,15 @@
 #include "slash/exporter/export.hpp"
 #include "slash/exporter/ios.hpp"
 #include "slash/exporter/presets.hpp"
+#include "slash/exporter/toolchains.hpp"
 #include "slash/platform/file.hpp"
+#include "slash/platform/process.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
 
 #include <doctest/doctest.h>
 
+#include <algorithm>
 #include <filesystem>
 #include <memory>
 #include <string>
@@ -428,6 +431,138 @@ TEST_CASE("ios provisioning profiles cover exact and wildcard bundle IDs") {
     CHECK_FALSE(exporter::profile_covers("ABCDE12345*", "ABCDE12345", "com.example.pong"));
     CHECK_FALSE(exporter::profile_covers("ABCDE12345.*", "", "com.example.pong"));
 }
+
+TEST_CASE("linux presets choose an architecture") {
+    auto presets = exporter::parse_presets(parse(R"({
+        "format": 1,
+        "presets": {
+            "linux": {"platform": "linux"},
+            "pi": {"platform": "linux", "linux": {"arch": "arm64"}}
+        }
+    })"));
+    REQUIRE(presets.ok());
+    CHECK(presets.value().at("linux").linux_options.arch == exporter::kLinuxX86_64);
+    CHECK(presets.value().at("pi").linux_options.arch == exporter::kLinuxArm64);
+    CHECK(contains(error_at(R"({"format": 1, "presets": {"a": {"platform": "linux",
+                                "linux": {"arch": "arm46"}}}})",
+                            "/presets/a/linux/arch"),
+                   "\"x86_64\", \"arm64\""));
+    CHECK(contains(error_at(R"({"format": 1, "presets": {"w": {"platform": "windows",
+                                "linux": {"arch": "arm64"}}}})",
+                            "/presets/w/linux"),
+                   "only linux presets"));
+}
+
+TEST_CASE("toolchains hash their downloads with SHA-256") {
+    CHECK(exporter::sha256_hex("") ==
+          "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+    CHECK(exporter::sha256_hex("abc") ==
+          "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+    CHECK(exporter::sha256_hex("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq") ==
+          "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1");
+    const std::string million(1'000'000, 'a');
+    CHECK(exporter::sha256_hex(million) ==
+          "cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0");
+
+    const std::filesystem::path file = "exporter_sha256.bin";
+    REQUIRE(slash::platform::write_file(file.string(), million).ok());
+    auto hashed = exporter::sha256_file(file);
+    REQUIRE(hashed.ok());
+    CHECK(hashed.value() == exporter::sha256_hex(million));
+    std::filesystem::remove(file);
+    CHECK_FALSE(exporter::sha256_file(file).ok());
+}
+
+TEST_CASE("toolchains are pinned per host and chosen per platform") {
+    const std::vector<exporter::Toolchain> toolchains = exporter::host_toolchains();
+    const auto has = [&toolchains](std::string_view name) {
+        return std::any_of(toolchains.begin(), toolchains.end(),
+                           [name](const exporter::Toolchain& t) { return t.name == name; });
+    };
+    for (const exporter::Toolchain& toolchain : toolchains) {
+        CAPTURE(toolchain.name);
+        CHECK(toolchain.url.starts_with("https://"));
+        CHECK(toolchain.sha256.size() == 64);
+        CHECK(toolchain.sha256.find_first_not_of("0123456789abcdef") == std::string::npos);
+        CHECK_FALSE(toolchain.version.empty());
+        CHECK_FALSE(toolchain.description.empty());
+    }
+#if defined(_WIN32)
+    // Windows exports build with MSVC, and Linux exports aren't built on Windows.
+    CHECK(toolchains.empty());
+    CHECK(exporter::toolchains_for("windows").empty());
+#elif defined(__APPLE__) || (defined(__linux__) && defined(__x86_64__))
+    CHECK(has("llvm-mingw"));
+    CHECK(exporter::toolchains_for("windows") == std::vector<std::string>{"llvm-mingw"});
+    CHECK(exporter::toolchains_for("linux") ==
+          std::vector<std::string>{"llvm-mingw", "linux-sysroot-x86_64"});
+    CHECK(exporter::toolchains_for("linux", exporter::kLinuxArm64) ==
+          std::vector<std::string>{"llvm-mingw", "linux-sysroot-arm64"});
+    for (const std::string& name : exporter::toolchains_for("linux", exporter::kLinuxArm64)) {
+        CHECK(has(name));
+    }
+#endif
+    CHECK(exporter::toolchains_for("macos").empty());
+    CHECK(exporter::toolchains_for("web").empty());
+}
+
+#ifndef _WIN32
+TEST_CASE("toolchains install from a checked archive") {
+    const std::filesystem::path folder = std::filesystem::absolute("exporter_toolchains");
+    std::filesystem::remove_all(folder);
+    std::filesystem::create_directories(folder / "src" / "kit-1.0" / "bin");
+    REQUIRE(slash::platform::write_file((folder / "src" / "kit-1.0" / "bin" / "tool").string(),
+                                        "#!/bin/sh\n")
+                .ok());
+    const std::filesystem::path archive = folder / "kit.tar.gz";
+    auto packed = slash::platform::run_process(
+        {"tar", "-czf", archive.string(), "-C", (folder / "src").string(), "kit-1.0"}, {});
+    REQUIRE(packed.ok());
+    REQUIRE(packed.value().exit_code == 0);
+    auto bytes = slash::platform::read_file(archive.string());
+    REQUIRE(bytes.ok());
+
+    exporter::Toolchain kit{.name = "kit",
+                            .version = "1.0",
+                            .description = "A test toolchain",
+                            .url = "file://" + archive.generic_string(),
+                            .sha256 = exporter::sha256_hex(bytes.value()),
+                            .folder = "kit-1.0"};
+    const std::filesystem::path dir = folder / "toolchains";
+
+    // A download that doesn't match its pinned hash is deleted, and nothing is installed.
+    exporter::Toolchain tampered = kit;
+    tampered.sha256 = exporter::sha256_hex("something else");
+    auto rejected = exporter::install_toolchain(tampered, dir);
+    REQUIRE_FALSE(rejected.ok());
+    CHECK(contains(rejected.error().message, "has SHA-256 " + kit.sha256));
+    CHECK_FALSE(exporter::installed_toolchain(kit, dir).has_value());
+    // Not even its staging folder is left behind.
+    CHECK(std::distance(std::filesystem::directory_iterator(dir),
+                        std::filesystem::directory_iterator()) == 0);
+
+    auto installed = exporter::install_toolchain(kit, dir);
+    REQUIRE_MESSAGE(installed.ok(), (installed.ok() ? std::string() : installed.error().message));
+    CHECK(installed.value() == dir / "kit-1.0");
+    CHECK(std::filesystem::is_regular_file(dir / "kit-1.0" / "bin" / "tool"));
+    REQUIRE(exporter::installed_toolchain(kit, dir).has_value());
+    CHECK(*exporter::installed_toolchain(kit, dir) == installed.value());
+
+    // An installed toolchain isn't downloaded again.
+    exporter::Toolchain moved = kit;
+    moved.url = "file://" + (folder / "missing.tar.gz").generic_string();
+    auto again = exporter::install_toolchain(moved, dir);
+    REQUIRE(again.ok());
+    CHECK(again.value() == installed.value());
+
+    exporter::Toolchain missing = moved;
+    missing.version = "2.0";
+    auto failed = exporter::install_toolchain(missing, dir);
+    REQUIRE_FALSE(failed.ok());
+    CHECK(contains(failed.error().message, "could not download kit"));
+    std::filesystem::remove_all(folder);
+}
+#endif
 
 TEST_CASE("presets fall back to platform defaults and suggest names") {
     auto presets = exporter::parse_presets(
