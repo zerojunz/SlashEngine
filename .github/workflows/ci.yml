@@ -82,6 +82,8 @@ jobs:
             os: windows-2022
           - platform: web
             os: ubuntu-24.04
+          - platform: android
+            os: ubuntu-24.04
     env:
       EMSDK_VERSION: 6.0.10
     steps:
@@ -156,6 +158,50 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit 1 }
           $signature = Get-AuthenticodeSignature $exe
           if ($null -eq $signature.SignerCertificate) { $signature | Format-List; exit 1 }
+
+      - name: Check the APK and sign it with a release key
+        if: matrix.platform == 'android'
+        run: |
+          set -x
+          cli=./build/release/tools/slash-cli/slash-cli
+          apk=$(ls build/empty-game/build/export/android/*.apk)
+          tools=$(ls -d "$ANDROID_HOME"/build-tools/*/ | grep -E '/[0-9.]+/$' | sort -V | tail -n 1)
+          "$tools/zipalign" -c -P 16 4 "$apk" || { "$tools/zipalign" -c -v -P 16 4 "$apk"; exit 1; }
+          badging=$("$tools/aapt2" dump badging "$apk")
+          grep -Eq "(minSdkVersion|sdkVersion):'30'" <<< "$badging"
+          grep -q "targetSdkVersion:'36'" <<< "$badging"
+          grep -q "native-code:.*'arm64-v8a'" <<< "$badging"
+          grep -q "native-code:.*'x86_64'" <<< "$badging"
+          "$tools/apksigner" verify --min-sdk-version 30 "$apk"
+          # A throwaway release keystore, passed the way a developer would.
+          keytool -genkeypair -noprompt -keystore "$RUNNER_TEMP/release.jks" -storepass ci-only \
+            -alias game -keypass ci-only -keyalg RSA -keysize 2048 -validity 1 \
+            -dname "CN=SlashEngine CI"
+          SLASH_ANDROID_KEYSTORE_PATH="$RUNNER_TEMP/release.jks" \
+            SLASH_ANDROID_KEYSTORE_PASSWORD=ci-only SLASH_ANDROID_KEY_ALIAS=game \
+            $cli export android --project build/empty-game
+          "$tools/apksigner" verify --print-certs "$apk" | grep -q "CN=SlashEngine CI"
+
+      - name: Enable KVM for the Android emulator
+        if: matrix.platform == 'android'
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run the APK headless on an Android 11 emulator
+        if: matrix.platform == 'android'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          arch: x86_64
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            ./build/release/tools/slash-cli/slash-cli export android --project build/empty-game --test > build/android-test.json
+            cat build/android-test.json
+            jq -e '.test.passed == true' build/android-test.json
 
       - name: Upload the export log
         if: failure()

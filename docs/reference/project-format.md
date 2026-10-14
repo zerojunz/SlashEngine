@@ -24,7 +24,7 @@ checks it.
 | `format` | Yes | | Format version. Must be `1` |
 | `name` | Yes | | The game's name, 1 to 100 characters, shown in its title bar. Exported files use it with only letters and digits kept (`Test Game` becomes `TestGame`) |
 | `main_scene` | Yes | | The scene loaded at startup, relative to the project folder |
-| `id` | No | `com.example.<name>` | Reverse-DNS identifier for bundles and app stores, e.g. `com.example.pong` |
+| `id` | No | `com.example.<name>` | Reverse-DNS identifier for bundles and app stores, e.g. `com.example.pong`. Android also needs each part to start with a letter and use no `-` |
 | `version` | No | `0.1.0` | Version as major.minor.patch |
 | `tick_hz` | No | `60` | Fixed simulation ticks per second, above 0 and at most 1000 |
 | `window.width` | No | `1280` | Initial window width in pixels, 1 to 16384 |
@@ -64,7 +64,7 @@ that platform's defaults, so `slash-cli export windows` above signs.
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `platform` | required | `macos`, `windows`, `linux` or `web` |
+| `platform` | required | `macos`, `windows`, `linux`, `web` or `android` |
 | `output` | `build/export/<preset>` | Output folder, inside the project |
 | `debug` | `false` | Debug build instead of Release |
 | `macos.codesign_identity` | `"-"` | Keychain identity to sign with; `"-"` signs ad hoc |
@@ -72,13 +72,20 @@ that platform's defaults, so `slash-cli export windows` above signs.
 | `macos.notarize` | `false` | Notarize with Apple and staple the ticket; needs a Developer ID identity |
 | `windows.sign` | `false` | Sign the executable with signtool |
 | `windows.timestamp_url` | `http://timestamp.digicert.com` | RFC 3161 timestamp server, or `""` for none |
+| `android.abis` | `["arm64-v8a", "x86_64"]` | CPU architectures to build: `arm64-v8a`, `armeabi-v7a`, `x86_64`, `x86` |
+| `android.package` | the project's `id` | Application ID; parts start with a letter and use letters, digits and `_` |
+| `android.version_code` | from `version` | versionCode; by default major × 1000000 + minor × 1000 + patch, so `1.2.3` is `1002003` |
 
-A `macos` or `windows` section is allowed only in a preset for that platform. Secrets never go in
+A `macos`, `windows` or `android` section is allowed only in a preset for that platform. Secrets never go in
 the file, so it can be committed: a key that looks like one (`password`, `secret`, `token`,
 `private`) is an error that points to the environment variables instead. Notarizing reads an App
 Store Connect API key from `SLASH_APPLE_API_KEY_PATH`, `SLASH_APPLE_API_KEY_ID` and
 `SLASH_APPLE_API_ISSUER`; Windows signing reads a `.pfx` certificate from
 `SLASH_WINDOWS_CERTIFICATE_PATH` and its password from `SLASH_WINDOWS_CERTIFICATE_PASSWORD`.
+Release Android exports are signed with the keystore in `SLASH_ANDROID_KEYSTORE_PATH`, its
+password in `SLASH_ANDROID_KEYSTORE_PASSWORD`, the key alias in `SLASH_ANDROID_KEY_ALIAS` and the
+key's password in `SLASH_ANDROID_KEY_PASSWORD` if it differs; without them, and for debug builds,
+the debug keystore signs, which Google Play rejects.
 
 ## Layout
 

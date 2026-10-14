@@ -79,12 +79,14 @@ Built in two halves.
 
 **4b: mobile, signing and one-Mac builds (In progress)**
 
-- [ ] iOS and Android exports
+- [x] Android exports: APKs for arm64-v8a and x86_64 with no Gradle, tested on an Android 11
+      emulator in CI
+- [ ] iOS exports
 - [ ] `slash-cli toolchain install`: pinned open-source cross toolchains (llvm-mingw, Clang with a
       Linux sysroot, Android NDK), so one Mac builds every target
 - [x] `export_presets.json`, with signing secrets read from environment variables: macOS
       codesigning (ad hoc by default) and notarization, Windows signtool
-- [ ] A throwaway Android debug keystore, with the Android export
+- [x] A throwaway Android debug keystore, and release keystores from environment variables
 - [x] The `export.run` command, so agents export over MCP
 - [x] A GitHub Actions workflow from `slash-cli init` that builds and tests every platform on
       native runners
@@ -232,7 +234,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Localization | Translation tables in text | 8 | Planned |
 | Video playback | AV1 through dav1d | 8 | Planned |
 | Accessibility | AccessKit | 8 | Planned |
-| One-command export | `slash-cli export` to macOS, Windows, Linux, iOS, Android and web | 4 | In progress: desktop and web done (4a), iOS and Android in progress (4b) |
+| One-command export | `slash-cli export` to macOS, Windows, Linux, iOS, Android and web | 4 | In progress: desktop and web done (4a), Android done and iOS in progress (4b) |
 | Large worlds | Double-precision transforms, world streaming | After launch | After launch |
 | Cinematics | Timeline tracks for cameras and events | After launch | After launch |
 | Procedural generation | FastNoiseLite plus rule graphs agents write | After launch | After launch |
@@ -266,11 +268,12 @@ calls and tokens ([design section 6](design.md#6-cheap-for-agents-to-use)).
 | Windows x64 | After launch (CI already builds and tests the engine there) | Yes (4a) | Windows 10 version 2004 (May 2020) |
 | Linux x64 and arm64 | After launch (CI already builds and tests the engine on x64) | Yes (4a) | glibc 2.31 (Ubuntu 20.04, Debian 11, Fedora 32 or newer) |
 | iOS | No | Milestone 4b | iOS 14 |
-| Android | No | Milestone 4b | Android 11 (API level 30) |
+| Android | No | Yes (4b) | Android 11 (API level 30) |
 | Web | No | Yes (4a) | Chrome and Edge 85, Firefox 79, Safari 15 |
 
-Until milestone 4b, each desktop export is built on a machine running that platform; web exports
-build on any host with Emscripten.
+Until milestone 4b is done, each desktop export is built on a machine running that platform; web
+exports build on any host with Emscripten, and Android exports on any host with the Android SDK,
+NDK and a JDK.
 
 SlashEngine supports operating system versions released in 2020 or later, and nothing older. Each
 minimum above is the first release of its OS from 2020. SDL3's GPU API needs less than this on
