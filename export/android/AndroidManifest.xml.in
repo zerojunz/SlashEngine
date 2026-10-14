@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Configured by export/CMakeLists.txt. slash-cli export adds the version and SDK levels when it
+     links the APK. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="@SLASH_ANDROID_PACKAGE@"
+    android:installLocation="auto">
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+    <uses-feature android:name="android.hardware.gamepad" android:required="false" />
+    <uses-feature android:name="android.hardware.usb.host" android:required="false" />
+    <uses-feature android:name="android.hardware.type.pc" android:required="false" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <application
+        android:label="@SLASH_ANDROID_LABEL@"
+        android:allowBackup="true"
+        android:appCategory="game"
+        android:enableOnBackInvokedCallback="false"
+        android:extractNativeLibs="false"
+        android:hardwareAccelerated="true"
+        android:theme="@android:style/Theme.NoTitleBar.Fullscreen">
+        <activity
+            android:name="org.slashengine.GameActivity"
+            android:alwaysRetainTaskState="true"
+            android:configChanges="layoutDirection|locale|grammaticalGender|fontScale|fontWeightAdjustment|orientation|uiMode|screenLayout|screenSize|smallestScreenSize|keyboard|keyboardHidden|navigation"
+            android:exported="true"
+            android:label="@SLASH_ANDROID_LABEL@"
+            android:launchMode="singleInstance"
+            android:preferMinimalPostProcessing="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

@@ -6,10 +6,15 @@
 #   SLASH_GAME_ID       reverse-DNS identifier, e.g. "com.example.spacepong"
 #   SLASH_GAME_VERSION  major.minor.patch
 #   SLASH_GAME_DATA     absolute path of the folder to ship as the game's data
+#   SLASH_ANDROID_PACKAGE  Android application ID (Android only)
+#   SLASH_IOS_BUILD     CFBundleVersion, if not the version (iOS only)
 #
 # `cmake --install <build> --component game --prefix <out>` lays the game out for its platform:
 # <out>/<binary>.app on macOS, <out>/<binary>[.exe] with <out>/data on Windows and Linux, and
-# <out>/index.html with the script, WebAssembly and data files on the web.
+# <out>/index.html with the script, WebAssembly and data files on the web. On Android it lays out
+# the APK's contents for one ABI (lib/<abi>/libmain.so, assets/data, AndroidManifest.xml) plus the
+# Java sources, which slash-cli export compiles and packages. On iOS it is <out>/<binary>.app,
+# which slash-cli export signs and, for devices, zips into an .ipa.
 cmake_minimum_required(VERSION 3.25)
 
 project(SlashGame LANGUAGES C CXX)
@@ -24,6 +29,9 @@ endforeach()
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+# Nothing uses C++ modules. Scanning for them would run whichever clang-scan-deps is on PATH,
+# which can't read headers precompiled by another toolchain's clang, such as the Android NDK's.
+set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 # Link the C and C++ runtimes statically where possible, so players need nothing installed.
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 # Games support OS versions from 2020 on (docs/roadmap.md). Windows refuses to start an
@@ -34,11 +42,24 @@ if(MSVC)
     set(CMAKE_CXX_CREATE_WIN32_EXE "/subsystem:windows,10.00")
 endif()
 
+# The name, escaped for the XML of Info.plist and AndroidManifest.xml.
+string(REPLACE "&" "&amp;" SLASH_GAME_NAME_XML "${SLASH_GAME_NAME}")
+string(REPLACE "<" "&lt;" SLASH_GAME_NAME_XML "${SLASH_GAME_NAME_XML}")
+string(REPLACE ">" "&gt;" SLASH_GAME_NAME_XML "${SLASH_GAME_NAME_XML}")
+string(REPLACE "\"" "&quot;" SLASH_GAME_NAME_XML "${SLASH_GAME_NAME_XML}")
+string(REPLACE "'" "&apos;" SLASH_GAME_NAME_XML "${SLASH_GAME_NAME_XML}")
+
 # Only the targets the game links are built; tools and tests stay off outside the engine repo.
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/.. slashengine EXCLUDE_FROM_ALL)
 
-add_executable(game)
-set_target_properties(game PROPERTIES OUTPUT_NAME ${SLASH_GAME_BINARY})
+if(ANDROID)
+    # SDL's Java activity loads the game as libmain.so.
+    add_library(game SHARED)
+    set_target_properties(game PROPERTIES OUTPUT_NAME main)
+else()
+    add_executable(game)
+    set_target_properties(game PROPERTIES OUTPUT_NAME ${SLASH_GAME_BINARY})
+endif()
 target_link_libraries(game PRIVATE slash::game_main)
 slash_target_warnings(game)
 
@@ -63,11 +84,69 @@ if(EMSCRIPTEN)
         $<TARGET_FILE_DIR:game>/${SLASH_GAME_BINARY}.data
         ${CMAKE_CURRENT_BINARY_DIR}/index.html
         DESTINATION . COMPONENT game)
+elseif(ANDROID)
+    if(NOT SLASH_ANDROID_PACKAGE)
+        message(FATAL_ERROR "SLASH_ANDROID_PACKAGE is not set. Use \"slash-cli export\" to build a game.")
+    endif()
+    # Google Play requires native code to support 16 KB memory pages.
+    target_link_options(game PRIVATE "-Wl,-z,max-page-size=16384")
+    set(SLASH_ANDROID_LABEL "${SLASH_GAME_NAME_XML}")
+    configure_file(android/AndroidManifest.xml.in AndroidManifest.xml @ONLY)
+    get_target_property(sdl_source_dir SDL3-static SOURCE_DIR)
+    install(TARGETS game LIBRARY DESTINATION lib/${ANDROID_ABI} COMPONENT game)
+    install(DIRECTORY ${SLASH_GAME_DATA}/ DESTINATION assets/data COMPONENT game)
+    install(FILES ${CMAKE_CURRENT_BINARY_DIR}/AndroidManifest.xml DESTINATION . COMPONENT game)
+    install(DIRECTORY ${sdl_source_dir}/android-project/app/src/main/java/
+        DESTINATION java COMPONENT game)
+    install(FILES android/GameActivity.java DESTINATION java/org/slashengine COMPONENT game)
+elseif(IOS)
+    # What Xcode records about the build in Info.plist, which App Store Connect checks.
+    if(CMAKE_OSX_SYSROOT MATCHES "[Ss]imulator")
+        set(SLASH_IOS_SDK iphonesimulator)
+        set(SLASH_IOS_PLATFORM iPhoneSimulator)
+    else()
+        set(SLASH_IOS_SDK iphoneos)
+        set(SLASH_IOS_PLATFORM iPhoneOS)
+    endif()
+    execute_process(COMMAND xcrun --sdk ${SLASH_IOS_SDK} --show-sdk-version
+        OUTPUT_VARIABLE SLASH_IOS_SDK_VERSION OUTPUT_STRIP_TRAILING_WHITESPACE)
+    execute_process(COMMAND xcrun --sdk ${SLASH_IOS_SDK} --show-sdk-build-version
+        OUTPUT_VARIABLE SLASH_IOS_SDK_BUILD OUTPUT_STRIP_TRAILING_WHITESPACE)
+    execute_process(COMMAND sw_vers -buildVersion
+        OUTPUT_VARIABLE SLASH_IOS_HOST_BUILD OUTPUT_STRIP_TRAILING_WHITESPACE)
+    execute_process(COMMAND xcodebuild -version OUTPUT_VARIABLE xcode_version)
+    # "Xcode 16.2\nBuild version 16C5032a" becomes 1620 and 16C5032a.
+    string(REGEX MATCH "Xcode ([0-9]+)\\.?([0-9]*)\\.?([0-9]*)" xcode_match "${xcode_version}")
+    set(xcode_minor ${CMAKE_MATCH_2})
+    set(xcode_patch ${CMAKE_MATCH_3})
+    if(xcode_minor STREQUAL "")
+        set(xcode_minor 0)
+    endif()
+    if(xcode_patch STREQUAL "")
+        set(xcode_patch 0)
+    endif()
+    set(SLASH_IOS_XCODE "${CMAKE_MATCH_1}${xcode_minor}${xcode_patch}")
+    string(REGEX MATCH "Build version ([0-9A-Za-z]+)" xcode_build_match "${xcode_version}")
+    set(SLASH_IOS_XCODE_BUILD ${CMAKE_MATCH_1})
+    if(NOT SLASH_IOS_BUILD)
+        set(SLASH_IOS_BUILD ${SLASH_GAME_VERSION})
+    endif()
+    set_target_properties(game PROPERTIES
+        MACOSX_BUNDLE TRUE
+        MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_LIST_DIR}/ios/Info.plist.in
+        MACOSX_BUNDLE_BUNDLE_NAME "${SLASH_GAME_NAME_XML}"
+        MACOSX_BUNDLE_GUI_IDENTIFIER ${SLASH_GAME_ID}
+        MACOSX_BUNDLE_BUNDLE_VERSION ${SLASH_IOS_BUILD}
+        MACOSX_BUNDLE_SHORT_VERSION_STRING ${SLASH_GAME_VERSION})
+    install(TARGETS game BUNDLE DESTINATION . COMPONENT game)
+    # iOS bundles are flat: resources sit next to the executable.
+    install(DIRECTORY ${SLASH_GAME_DATA}/
+        DESTINATION ${SLASH_GAME_BINARY}.app/data COMPONENT game)
 elseif(APPLE)
     set_target_properties(game PROPERTIES
         MACOSX_BUNDLE TRUE
         MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_LIST_DIR}/macos/Info.plist.in
-        MACOSX_BUNDLE_BUNDLE_NAME ${SLASH_GAME_NAME}
+        MACOSX_BUNDLE_BUNDLE_NAME "${SLASH_GAME_NAME_XML}"
         MACOSX_BUNDLE_GUI_IDENTIFIER ${SLASH_GAME_ID}
         MACOSX_BUNDLE_BUNDLE_VERSION ${SLASH_GAME_VERSION}
         MACOSX_BUNDLE_SHORT_VERSION_STRING ${SLASH_GAME_VERSION})

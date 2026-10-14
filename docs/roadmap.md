@@ -21,10 +21,10 @@ Milestones 1 to 3 and the first half of milestone 4 are done. The engine builds 
 a fixed-timestep loop headless or in an SDL3 window, loads and saves JSON scenes checked against a
 schema it generates from its own components, and serves every engine action as a command over
 MCP, JSON-RPC, a localhost REST API and the command line, including while a game runs. A game is
-a folder with a `project.json`, and `slash-cli export` builds it for macOS, Windows, Linux or the
-web and can test the result headless. The second half of milestone 4, now in progress, adds iOS,
-Android, signing and building every platform from one Mac. Nothing draws to the screen yet beyond an empty window; rendering
-arrives with the 2D feature set in milestone 5.
+a folder with a `project.json`, and `slash-cli export` builds it for macOS, Windows, Linux, the
+web, Android or iOS, signs it and can test the result headless. The rest of milestone 4, now in
+progress, builds every platform from one Mac. Nothing draws to the screen yet beyond an empty
+window; rendering arrives with the 2D feature set in milestone 5.
 
 ## The path to launch
 
@@ -79,17 +79,21 @@ Built in two halves.
 
 **4b: mobile, signing and one-Mac builds (In progress)**
 
-- [ ] iOS and Android exports
+- [x] Android exports: APKs for arm64-v8a and x86_64 with no Gradle, tested on an Android 11
+      emulator in CI
+- [x] iOS exports: an `.app` for the Simulator, tested there in CI, and an `.ipa` for devices
+      signed with the team's identity and provisioning profile
+- [ ] App icons from one image for every platform, which the App Store and Google Play require
 - [ ] `slash-cli toolchain install`: pinned open-source cross toolchains (llvm-mingw, Clang with a
       Linux sysroot, Android NDK), so one Mac builds every target
 - [x] `export_presets.json`, with signing secrets read from environment variables: macOS
       codesigning (ad hoc by default) and notarization, Windows signtool
-- [ ] A throwaway Android debug keystore, with the Android export
+- [x] A throwaway Android debug keystore, and release keystores from environment variables
 - [x] The `export.run` command, so agents export over MCP
 - [x] A GitHub Actions workflow from `slash-cli init` that builds and tests every platform on
       native runners
-- [x] Exports pinned to the 2020 minimums: macOS 11, Windows 10 (subsystem version 10.0), Chrome
-      85, Firefox 79 and Safari 15
+- [x] Exports pinned to the 2020 minimums: macOS 11, iOS 14, Windows 10 (subsystem version 10.0),
+      Android 11, Chrome 85, Firefox 79 and Safari 15
 
 Exit: an empty project exports to all six platforms and passes headless tests on each.
 
@@ -342,7 +346,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Accessibility | AccessKit | 8 | Planned |
 | Storyboard | Style, world, story, design rules and decisions as typed project files that agents query and checks enforce | 5, 6 | Planned: files, commands and checks in 5, model review and the project map in 6 |
 | Analytics, ads and in-app purchases | One API for analytics, ads and purchases; StoreKit, Play Billing and a developer-chosen analytics endpoint in the repo, ad networks as outside adapters | 8 | Planned |
-| One-command export | `slash-cli export` to macOS, Windows, Linux, iOS, Android and web | 4 | In progress: desktop and web done (4a), iOS and Android in progress (4b) |
+| One-command export | `slash-cli export` to macOS, Windows, Linux, iOS, Android and web | 4 | In progress: every platform exports (4a, 4b); building them all from one Mac is next |
 | Large worlds | Double-precision transforms, world streaming | After launch | After launch |
 | Cinematics | Timeline tracks for cameras and events | After launch | After launch |
 | Procedural generation | FastNoiseLite plus rule graphs agents write | After launch | After launch |
@@ -386,12 +390,13 @@ calls and tokens ([design section 6](design.md#6-cheap-for-agents-to-use)).
 | macOS (Apple silicon and Intel) | At launch | Yes (4a) | macOS 11 Big Sur |
 | Windows x64 | After launch (CI already builds and tests the engine there) | Yes (4a) | Windows 10 version 2004 (May 2020) |
 | Linux x64 and arm64 | After launch (CI already builds and tests the engine on x64) | Yes (4a) | glibc 2.31 (Ubuntu 20.04, Debian 11, Fedora 32 or newer) |
-| iOS | No | Milestone 4b | iOS 14 |
-| Android | No | Milestone 4b | Android 11 (API level 30) |
+| iOS | No | Yes (4b) | iOS 14 |
+| Android | No | Yes (4b) | Android 11 (API level 30) |
 | Web | No | Yes (4a) | Chrome and Edge 85, Firefox 79, Safari 15 |
 
-Until milestone 4b, each desktop export is built on a machine running that platform; web exports
-build on any host with Emscripten.
+Until milestone 4b is done, each desktop export is built on a machine running that platform and
+iOS exports on a Mac with Xcode; web exports build on any host with Emscripten, and Android
+exports on any host with the Android SDK, NDK and a JDK.
 
 SlashEngine supports operating system versions released in 2020 or later, and nothing older. Each
 minimum above is the first release of its OS from 2020. SDL3's GPU API needs less than this on

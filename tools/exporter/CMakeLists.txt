@@ -1,9 +1,12 @@
 # Exports games: presets, building with export/CMakeLists.txt, signing, and the export.run
 # command. Used by slash-cli and slash-mcp; games never link it.
 add_library(slash_exporter
+    src/android.cpp
     src/commands.cpp
     src/export.cpp
-    src/presets.cpp)
+    src/ios.cpp
+    src/presets.cpp
+    src/steps.cpp)
 add_library(slash::exporter ALIAS slash_exporter)
 
 target_include_directories(slash_exporter PUBLIC include)

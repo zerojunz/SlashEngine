@@ -3,20 +3,44 @@
 #include <cmath>
 #include <cstdio>
 #include <mutex>
+#include <string>
 #include <utility>
+
+#ifdef __ANDROID__
+#include <android/log.h>
+#endif
 
 namespace slash::log {
 namespace {
 
-void stderr_sink(Level /*level*/, std::string_view line) {
+// Logs go to stderr, or to logcat on Android, where apps have no stderr to read.
+void default_sink([[maybe_unused]] Level level, std::string_view line) {
+#ifdef __ANDROID__
+    int priority = ANDROID_LOG_INFO;
+    switch (level) {
+    case Level::Debug:
+        priority = ANDROID_LOG_DEBUG;
+        break;
+    case Level::Info:
+        break;
+    case Level::Warn:
+        priority = ANDROID_LOG_WARN;
+        break;
+    case Level::Error:
+        priority = ANDROID_LOG_ERROR;
+        break;
+    }
+    __android_log_write(priority, "SlashEngine", std::string(line).c_str());
+#else
     std::fwrite(line.data(), 1, line.size(), stderr);
     std::fputc('\n', stderr);
     std::fflush(stderr);
+#endif
 }
 
 struct State {
     std::mutex mutex;
-    Sink sink = stderr_sink;
+    Sink sink = default_sink;
     Level min_level = Level::Info;
 };
 
@@ -63,11 +87,11 @@ std::string_view to_string(Level level) noexcept {
 
 void set_sink(Sink sink) {
     const std::scoped_lock lock(state().mutex);
-    state().sink = sink ? std::move(sink) : Sink(stderr_sink);
+    state().sink = sink ? std::move(sink) : Sink(default_sink);
 }
 
 void reset_sink() {
-    set_sink(stderr_sink);
+    set_sink(default_sink);
 }
 
 void set_min_level(Level level) {

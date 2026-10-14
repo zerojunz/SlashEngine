@@ -208,9 +208,8 @@ slash-cli export <preset> [options]
 ```
 
 `<preset>` is a preset from the project's [`export_presets.json`](project-format.md#export-presets)
-or a platform for its defaults: `macos`, `windows`, `linux` or `web`. iOS and Android are planned
-(see the [roadmap](../roadmap.md)). The [`export.run`](commands.md#exportrun) command does the
-same over MCP, JSON-RPC and REST.
+or a platform for its defaults: `macos`, `windows`, `linux`, `web`, `android` or `ios`. The
+[`export.run`](commands.md#exportrun) command does the same over MCP, JSON-RPC and REST.
 
 | Flag | Meaning |
 | --- | --- |
@@ -223,15 +222,19 @@ same over MCP, JSON-RPC and REST.
 Export validates the project, its presets and every scene, copies `project.json` and the
 `.scene.json` files into a staging folder (nothing else, so stray files such as `.env` never
 ship), builds the game with CMake, signs it and installs it into the output folder. Each host
-builds its own platform; web exports need Emscripten (`EMSDK` set) on any host. An output folder
-that a previous export did not make is never replaced. Missing signing tools or secrets are
-reported before anything is built.
+builds its own platform, and a Mac also builds iOS with Xcode's iOS SDK; web exports need
+Emscripten (`EMSDK` set) on any host, and Android exports need the Android SDK (build tools 35 or
+newer and the Android 36 platform), NDK r27 or newer and JDK 17 or newer on any host. An output
+folder that a previous export did not make is never replaced. Missing signing tools, identities,
+profiles or secrets are reported before anything is built.
 
 | Platform | Output |
 | --- | --- |
 | `macos` | A universal app bundle (Apple silicon and Intel), always signed: ad hoc unless the preset names a `codesign_identity` |
 | `windows`, `linux` | An executable plus a `data` folder |
 | `web` | `index.html` plus the script, WebAssembly and data files |
+| `android` | `<binary>.apk` for arm64-v8a and x86_64, signed with the release keystore from the environment or else the debug keystore |
+| `ios` | For the Simulator, `<binary>.app` (Apple silicon and Intel), signed ad hoc. For devices, `<binary>.ipa` (arm64), signed with the team's identity and provisioning profile |
 
 ```bash
 slash-cli export linux --project my-game --test
@@ -241,11 +244,19 @@ slash-cli export linux --project my-game --test
 {"bytes":5335403,"executable":"my-game/build/export/linux/mygame","log":"my-game/.slash/export/linux/export.log","output":"my-game/build/export/linux","platform":"linux","preset":"linux","seconds":66.6,"test":{"entities":0,"passed":true,"ticks":60}}
 ```
 
-A signed export adds `signed`: `{"identity", "notarized"}` on macOS or
-`{"certificate", "timestamped"}` on Windows.
+A signed export adds `signed`: `{"identity", "notarized"}` on macOS,
+`{"certificate", "timestamped"}` on Windows, `{"keystore", "release"}` on Android or
+`{"identity", "profile"}` on iOS. Android exports also return `android`: the `package`,
+`version_code` and `abis`. Their `--test` installs the APK on the connected device or emulator
+(`ANDROID_SERIAL` picks one), runs it headless and reads its summary from logcat; with no device
+connected the test is skipped and says so. iOS exports return `ios`: the `bundle_id` and
+`destination`. Their `--test` installs a Simulator build on a booted iPhone Simulator, else boots
+the one with the newest iOS and shuts it down afterwards, runs the game headless and reads its
+summary; device builds and Macs with no Simulator skip the test and say so.
 
 The full build log is at `log`. A failure names the step that failed (`options`, `validate`,
-`stage`, `configure`, `build`, `install`, `sign`, `notarize` or `publish`) and ends with the last lines of
+`stage`, `configure`, `build`, `install`, `package`, `sign`, `notarize` or `publish`; Android
+build failures also name the `abi`) and ends with the last lines of
 the log in `tail`, so the log rarely needs opening. A step of `options` means the request itself
 was wrong, and exits with 2:
 
@@ -333,3 +344,8 @@ slash-game --data tests/data/game --headless --ticks 60
 | `EMSDK` | The Emscripten SDK, needed for web exports |
 | `SLASH_APPLE_API_KEY_PATH`, `SLASH_APPLE_API_KEY_ID`, `SLASH_APPLE_API_ISSUER` | An App Store Connect API key (the `.p8` file, its ID and issuer) for notarizing macOS exports |
 | `SLASH_WINDOWS_CERTIFICATE_PATH`, `SLASH_WINDOWS_CERTIFICATE_PASSWORD` | A `.pfx` code-signing certificate and its password for signing Windows exports |
+| `SLASH_ANDROID_KEYSTORE_PATH`, `SLASH_ANDROID_KEYSTORE_PASSWORD`, `SLASH_ANDROID_KEY_ALIAS`, `SLASH_ANDROID_KEY_PASSWORD` | The keystore, its password, the key's alias and the key's password (default: the keystore's) for signing release Android exports |
+| `SLASH_IOS_PROVISIONING_PROFILE` | The `.mobileprovision` file iOS device exports embed (default: the newest installed one for the team and bundle ID) |
+| `ANDROID_HOME`, `ANDROID_NDK_HOME`, `JAVA_HOME` | Where Android exports find the SDK, the NDK and the JDK when they aren't in Android Studio's default places |
+| `ANDROID_USER_HOME` | The folder holding `debug.keystore` (default `~/.android`) |
+| `ANDROID_SERIAL` | The device or emulator `export --test` uses when several are connected |
