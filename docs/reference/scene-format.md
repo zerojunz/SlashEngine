@@ -76,6 +76,7 @@ A reference must name an entity that exists in the same scene.
 | `Transform3D` | `position` | `Vec3` | `[0, 0, 0]` | Position in meters, as [x, y, z]; y points up |
 | | `rotation` | `Quat` | `[0, 0, 0, 1]` | Unit quaternion [x, y, z, w]; each element from -1 to 1 |
 | | `scale` | `Vec3` | `[1, 1, 1]` | Scale factor on each axis |
+| `StoryRef` | `ids` | `std::vector<std::string>` | `[]` | The [storyboard](storyboard-format.md) entries this entity stands for, e.g. `["character/mira"]` |
 
 `engine.describe` lists every registered component with its defaults, including ones a game adds.
 

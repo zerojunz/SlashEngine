@@ -280,3 +280,117 @@ TEST_CASE("journal lines record who changed what, when and why") {
     CHECK(storyboard::journal_length(line + "\n" + line + "\n") == 2);
     CHECK(storyboard::journal_length(line) == 1);
 }
+
+TEST_CASE("check finds broken references, avoided words and missing links") {
+    json::Object entries = cast();
+    entries["term/couriers"] = parse(R"({"name": "Couriers", "avoid": ["Runners", "mail"],
+                                         "summary": "Never call them runners."})");
+    entries["beat/arrival"] = parse(R"({"name": "Arrival", "place": "place/dock",
+                                        "summary": "The RUNNERS land; e-mail and mailboxes stay.",
+                                        "links": ["scenes/lowtown.scene.json", "scenes/new.scene.json",
+                                                  "https://example.com/art"]})");
+    entries["quest/delivery"] = parse(R"({"name": "Delivery", "steps": ["Find the mail"]})");
+    const auto exists = [](std::string_view path) { return path == "scenes/lowtown.scene.json"; };
+
+    const storyboard::CheckResult result = storyboard::check(entries, exists);
+    std::vector<std::string> errors;
+    for (const auto& error : result.errors) {
+        errors.push_back(error.file + " " + error.path + ": " + error.message);
+    }
+    REQUIRE(errors.size() == 4);
+    CHECK(contains(errors[0], "storyboard/story.json /entries/beat~1arrival/place: "));
+    CHECK(contains(errors[0], "did you mean \"place/docks\"?"));
+    CHECK(errors[1] == "storyboard/story.json /entries/beat~1arrival/summary: uses \"Runners\", "
+                       "which term/couriers says to avoid; write \"Couriers\"");
+    // "e-mail" holds "mail" as a whole word; "mailboxes" does not.
+    CHECK(errors[2] == "storyboard/story.json /entries/beat~1arrival/summary: uses \"mail\", "
+                       "which term/couriers says to avoid; write \"Couriers\"");
+    CHECK(errors[3] == "storyboard/story.json /entries/quest~1delivery/steps/0: uses \"mail\", "
+                       "which term/couriers says to avoid; write \"Couriers\"");
+
+    REQUIRE(result.warnings.size() == 1);
+    CHECK(result.warnings[0].path == "/entries/beat~1arrival/links/1");
+    CHECK(result.warnings[0].message == "links to \"scenes/new.scene.json\", which does not exist");
+
+    CHECK(storyboard::check(cast(), exists).errors.empty());
+}
+
+TEST_CASE("StoryRef IDs in scenes and prefabs must name entries") {
+    const json::Value scene = parse(R"({"entities": {
+        "hero": {"components": {"StoryRef": {"ids": ["character/mira", "character/mia"]}}},
+        "crate": {"components": {"Transform2D": {}}},
+        "sign": {"components": {"StoryRef": {"ids": ["Place/docks"]}}}
+    }, "format": 1})");
+    const std::vector<storyboard::StoryRefId> refs = storyboard::story_refs(scene);
+    REQUIRE(refs.size() == 3);
+    CHECK(refs[0].id == "character/mira");
+    CHECK(refs[0].path == "/entities/hero/components/StoryRef/ids/0");
+    CHECK(refs[2].path == "/entities/sign/components/StoryRef/ids/0");
+
+    std::vector<storyboard::FileError> errors;
+    storyboard::check_story_refs(cast(), "scenes/lowtown.scene.json", scene, errors);
+    REQUIRE(errors.size() == 2);
+    CHECK(errors[0].file == "scenes/lowtown.scene.json");
+    CHECK(errors[0].path == "/entities/hero/components/StoryRef/ids/1");
+    CHECK(contains(errors[0].message, "did you mean \"character/mira\"?"));
+    CHECK(errors[1].message ==
+          "unknown kind \"Place\" in \"Place/docks\"; did you mean \"place\"?");
+
+    const json::Value prefab =
+        parse(R"({"components": {"StoryRef": {"ids": ["place/docks"]}}, "format": 1})");
+    REQUIRE(storyboard::story_refs(prefab).size() == 1);
+    CHECK(storyboard::story_refs(prefab)[0].path == "/components/StoryRef/ids/0");
+    errors.clear();
+    storyboard::check_story_refs(cast(), "prefabs/sign.prefab.json", prefab, errors);
+    CHECK(errors.empty());
+}
+
+TEST_CASE("a brief holds the entries a task touches and names the rest") {
+    json::Object entries = cast();
+    entries["rule/one_hit"] =
+        parse(R"({"name": "One hit", "summary": "Anything dies in one hit."})");
+    entries["rule/boats"] = parse(R"({"name": "Boats", "links": ["scenes/harbor.scene.json"]})");
+    entries["task/mira-voice"] =
+        parse(R"({"name": "Record Mira", "refs": ["character/mira"], "status": "open"})");
+    entries["task/old"] =
+        parse(R"({"name": "Old work", "refs": ["character/mira"], "status": "done"})");
+    entries["decision/fog"] =
+        parse(R"({"name": "Fog", "links": ["scenes/lowtown.scene.json"], "status": "superseded"})");
+
+    const auto ids = [](const json::Array& items) {
+        std::vector<std::string> out;
+        for (const json::Value& item : items) {
+            out.push_back(item.find("id")->as_string());
+        }
+        return out;
+    };
+
+    const storyboard::Brief by_path = storyboard::brief(entries, {}, {"scenes/lowtown.scene.json"});
+    CHECK(ids(by_path.entries) ==
+          std::vector<std::string>{"character/mira", "rule/one_hit", "task/mira-voice"});
+    CHECK(ids(by_path.related) == std::vector<std::string>{"faction/couriers"});
+    CHECK(by_path.entries[0].find("fields")->find("links") != nullptr);
+    const json::Value& couriers = *by_path.related[0].find("fields");
+    CHECK(couriers.find("leader") == nullptr);
+    CHECK(couriers.find("name")->as_string() == "The Couriers");
+
+    const storyboard::Brief by_id =
+        storyboard::brief(entries, {"place/docks", "place/nowhere"}, {});
+    CHECK(ids(by_id.entries) == std::vector<std::string>{"place/docks", "rule/one_hit"});
+    CHECK(by_id.related.empty());
+}
+
+TEST_CASE("changes_since reads the journal lines after a seq") {
+    const std::string journal = R"({"changes":{"character/mira":"00000001"}}
+{"changes":{"character/mira":"00000002","place/docks":"0000000a"}}
+not json
+{"changes":{"place/docks":null}}
+)";
+    CHECK(storyboard::changes_since(journal, 4).empty());
+    const json::Object since_one = storyboard::changes_since(journal, 1);
+    REQUIRE(since_one.size() == 2);
+    CHECK(since_one.at("character/mira").as_string() == "00000002");
+    CHECK(since_one.at("place/docks").is_null());
+    CHECK(storyboard::changes_since(journal, 3).size() == 1);
+    CHECK(storyboard::changes_since(journal, 0).size() == 2);
+}

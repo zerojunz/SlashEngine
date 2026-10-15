@@ -2,7 +2,18 @@
 
 #include <SDL3/SDL.h>
 
+#include <algorithm>
+
 namespace slash::platform {
+namespace {
+
+SDL_EnumerationResult SDLCALL collect_name(void* userdata, const char* /*dirname*/,
+                                           const char* name) {
+    static_cast<std::vector<std::string>*>(userdata)->emplace_back(name);
+    return SDL_ENUM_CONTINUE;
+}
+
+} // namespace
 
 Result<std::string> read_file(std::string_view path) {
     const std::string name(path);
@@ -47,6 +58,46 @@ std::optional<FileStamp> file_stamp(std::string_view path) {
         return std::nullopt;
     }
     return FileStamp{.modified = info.modify_time, .size = info.size};
+}
+
+Result<std::vector<std::string>> list_files(std::string_view folder,
+                                            const std::function<bool(std::string_view)>& descend) {
+    std::string base(folder);
+    if (!base.empty() && base.back() != '/' && base.back() != '\\') {
+        base += '/';
+    }
+    std::vector<std::string> files;
+    std::vector<std::string> pending = {""};
+    while (!pending.empty()) {
+        const std::string relative = std::move(pending.back());
+        pending.pop_back();
+        const std::string directory = base + relative;
+        std::vector<std::string> names;
+        if (!SDL_EnumerateDirectory(directory.empty() ? "." : directory.c_str(), collect_name,
+                                    &names)) {
+            return make_error(ErrorCode::NotFound,
+                              "could not list \"" + directory + "\": " + SDL_GetError());
+        }
+        for (const std::string& name : names) {
+            if (name.starts_with('.')) {
+                continue;
+            }
+            const std::string path = relative + name;
+            SDL_PathInfo info;
+            if (!SDL_GetPathInfo((base + path).c_str(), &info)) {
+                continue;
+            }
+            if (info.type == SDL_PATHTYPE_DIRECTORY) {
+                if (std::string sub = path + "/"; descend == nullptr || descend(sub)) {
+                    pending.push_back(std::move(sub));
+                }
+            } else if (info.type == SDL_PATHTYPE_FILE) {
+                files.push_back(path);
+            }
+        }
+    }
+    std::ranges::sort(files);
+    return files;
 }
 
 std::string base_path() {

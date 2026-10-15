@@ -911,6 +911,103 @@ TEST_CASE("storyboard.edit writes entries, refuses stale versions and undoes") {
     std::filesystem::remove_all(root);
 }
 
+TEST_CASE("storyboard.brief gathers the facts a task needs and storyboard.check finds mistakes") {
+    const std::string root = "command_brief_project";
+    std::filesystem::remove_all(root);
+    REQUIRE(slash::platform::create_directories(root + "/build/export").ok());
+    REQUIRE(slash::platform::create_directories(root + "/prefabs").ok());
+    REQUIRE(slash::platform::create_directories(root + "/scenes").ok());
+    const auto write = [&](const std::string& path, std::string_view text) {
+        REQUIRE(slash::platform::write_file(root + "/" + path, text).ok());
+    };
+    write("prefabs/crate.prefab.json", R"({"components": {"StoryRef": {"ids": ["item/crate"]}},
+        "format": 1})");
+    write("scenes/docks.scene.json", R"({"entities": {
+        "mira": {"components": {"StoryRef": {"ids": ["character/mira"]}}},
+        "crate": {"extends": "prefabs/crate.prefab.json"}}, "format": 1})");
+    write("scenes/roof.scene.json",
+          R"({"entities": {"sign": {"components": {"StoryRef": {"ids": ["place/rooftop"]}}}},
+              "format": 1})");
+    // Exports copy scenes into build/; check leaves them to the project's own copy.
+    write("build/export/roof.scene.json",
+          R"({"entities": {"x": {"components": {"StoryRef": {"ids": ["place/nowhere"]}}}}})");
+    command::SessionOptions options;
+    options.project_root = root;
+    Engine engine(options);
+    const json::Value first = engine.ok("storyboard.edit", R"({"edits": [
+        {"id": "character/mira", "version": null, "set": {"name": "Mira", "home": "place/roofs"}},
+        {"id": "place/roofs", "version": null, "set": {"name": "The Roofs"}},
+        {"id": "item/crate", "version": null,
+         "set": {"name": "Crate", "links": ["prefabs/crate.prefab.json", "art/crate.png"]}},
+        {"id": "rule/one_hit", "version": null, "set": {"name": "One hit"}},
+        {"id": "term/couriers", "version": null, "set": {"name": "Couriers", "avoid": ["runners"]}},
+        {"id": "task/voice", "version": null,
+         "set": {"name": "Voice Mira", "refs": ["character/mira"], "status": "open"}}]})");
+    const std::int64_t seq = first.find("seq")->as_int();
+
+    const auto ids = [](const json::Value& result, std::string_view key) {
+        std::vector<std::string> out;
+        for (const json::Value& item : result.find(key)->as_array()) {
+            out.push_back(item.find("id")->as_string());
+        }
+        return out;
+    };
+    // A scene brings its entities' StoryRef entries and the prefabs they extend.
+    const json::Value docks =
+        engine.ok("storyboard.brief", R"({"scenes": ["scenes/docks.scene.json"]})");
+    CHECK(ids(docks, "entries") ==
+          std::vector<std::string>{"character/mira", "item/crate", "rule/one_hit", "task/voice"});
+    CHECK(ids(docks, "related") == std::vector<std::string>{"place/roofs"});
+    CHECK(docks.find("seq")->as_int() == seq);
+    CHECK(docks.find("changed") == nullptr);
+
+    // Entities in the open scene count the same way, and since lists what changed after a seq.
+    engine.ok("scene.open", R"({"path": "scenes/docks.scene.json"})");
+    const std::string rule = first.find("changes")->find("rule/one_hit")->as_string();
+    engine.ok("storyboard.edit",
+              R"({"edits": [{"id": "rule/one_hit", "remove": true, "version": ")" + rule + "\"}]}");
+    const json::Value mira = engine.ok("storyboard.brief", R"({"entities": ["mira"], "since": 1})");
+    CHECK(ids(mira, "entries") == std::vector<std::string>{"character/mira", "task/voice"});
+    CHECK(*mira.find("changed") == parse(R"({"rule/one_hit": null})"));
+    CHECK(ids(engine.ok("storyboard.brief", R"({"entities": ["crate"]})"), "entries") ==
+          std::vector<std::string>{"item/crate"});
+
+    const auto unknown =
+        engine.fails("storyboard.brief", R"({"entities": ["mria"], "ids": ["character/mia"]})",
+                     command::code::kNotFound);
+    const json::Value& unknown_errors = *unknown.data.find("errors");
+    REQUIRE(unknown_errors.size() == 2);
+    CHECK(unknown_errors.as_array()[0].find("path")->as_string() == "/ids/0");
+    CHECK(contains(unknown_errors.as_array()[0].find("message")->as_string(),
+                   "did you mean \"character/mira\"?"));
+    CHECK(unknown_errors.as_array()[1].find("path")->as_string() == "/entities/0");
+    CHECK(contains(unknown_errors.as_array()[1].find("message")->as_string(),
+                   "did you mean \"mira\"?"));
+
+    // check reads every scene and prefab, and the open scene as it is now. Hand edits to the
+    // storyboard are checked too.
+    engine.ok("component.set",
+              R"({"id": "mira", "components": {"StoryRef": {"ids": ["character/mia"]}}})");
+    write("storyboard/story.json", R"({"entries": {"beat/arrival": {"name": "Arrival",
+        "place": "place/roof", "summary": "The runners land."}}, "format": 1})");
+    const json::Value checked = engine.ok("storyboard.check");
+    CHECK_FALSE(checked.find("valid")->as_bool());
+    std::vector<std::string> errors;
+    for (const json::Value& error : checked.find("errors")->as_array()) {
+        errors.push_back(error.find("file")->as_string() + " " + error.find("path")->as_string());
+    }
+    CHECK(errors == std::vector<std::string>{
+                        "storyboard/story.json /entries/beat~1arrival/place",
+                        "storyboard/story.json /entries/beat~1arrival/summary",
+                        "scenes/roof.scene.json /entities/sign/components/StoryRef/ids/0",
+                        "scenes/docks.scene.json /entities/mira/components/StoryRef/ids/0",
+                    });
+    CHECK(*checked.find("warnings") == parse(R"([{"file": "storyboard/world.json",
+        "message": "links to \"art/crate.png\", which does not exist",
+        "path": "/entries/item~1crate/links/1"}])"));
+    std::filesystem::remove_all(root);
+}
+
 TEST_CASE("a file changed on disk while a command ran is not overwritten") {
     const std::string root = "command_conflict_project";
     std::filesystem::remove_all(root);

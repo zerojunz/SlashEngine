@@ -6,6 +6,7 @@
 #include "slash/platform/file.hpp"
 #include "slash/platform/process.hpp"
 #include "slash/runtime/project.hpp"
+#include "slash/storyboard/storyboard.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/scene.hpp"
@@ -44,6 +45,22 @@ slash-cli call engine.describe
 slash-cli call world.query '{"with": ["Transform2D"]}' --scene scenes/main.scene.json
 slash-cli call batch '{"commands": [...]}' --scene scenes/main.scene.json --save
 ```
+
+## Use the storyboard
+
+`storyboard/` holds the game's facts that are not code: its style, characters, places, story,
+design rules, names, decisions and open work, as typed entries such as `character/mira`. Look facts
+up instead of inventing them, and record new ones so other agents see them:
+
+- Before a task, call `storyboard_brief` with the scenes, entities or files it touches. It returns
+  only the entries linked to them, the rules that apply everywhere, and open tasks and decisions.
+- Record new facts with `storyboard_edit`, passing the version `storyboard_query` or
+  `storyboard_brief` returned; an edit based on stale facts is refused. Say who you are in `by`
+  and why in `why`; `storyboard/journal.jsonl` keeps the record.
+- Put `{"StoryRef": {"ids": ["character/mira"]}}` on the entity that plays an entry.
+- After a task, call `storyboard_check`. It finds references to missing entries and words the
+  glossary says to avoid.
+- Before starting work, add a `task/...` entry with your name as `owner`, so others see it.
 
 ## Drive a running game
 
@@ -87,6 +104,8 @@ environment variables, never from the file.
 - `scenes/`: scenes as canonical JSON, keyed by stable entity ID. Run
   `slash-cli scene format <file>` before committing a scene edited outside the engine.
 - `prefabs/`: `.prefab.json` files, one entity's components each, which scene entities extend.
+- `storyboard/`: the game's facts as typed entries (`slash-cli schema storyboard`), and
+  `journal.jsonl`, the record of who changed them. Commit both.
 )";
 
 constexpr std::string_view kSkill = R"(---
@@ -97,8 +116,10 @@ description: Build or change scenes in this SlashEngine game through the slashen
 # Editing SlashEngine scenes
 
 1. Call `engine_describe` to see the components, their default field values and the open scene.
-2. Open a scene with `scene_open`, or start one with `scene_new` and a path.
-3. Make related changes in one `batch` call, for example:
+2. Call `storyboard_brief` with the scenes or entities you will touch, and use the names and rules
+   it returns rather than inventing them.
+3. Open a scene with `scene_open`, or start one with `scene_new` and a path.
+4. Make related changes in one `batch` call, for example:
 
    ```json
    {"commands": [
@@ -109,9 +130,9 @@ description: Build or change scenes in this SlashEngine game through the slashen
    ]}
    ```
 
-4. Check the result with `world_query` (IDs only unless you pass `include`) or `entity_get`.
-5. If something is wrong, `undo` reverts the whole batch.
-6. Call `scene_save`.
+5. Check the result with `world_query` (IDs only unless you pass `include`) or `entity_get`.
+6. If something is wrong, `undo` reverts the whole batch.
+7. Call `scene_save`, then `storyboard_check`.
 
 Do not edit `.scene.json` files by hand while the server runs: it holds the open scene and would
 overwrite the edit on the next save.
@@ -218,6 +239,10 @@ jobs:
           cmake -S slashengine -B slashengine/build -G Ninja -DCMAKE_BUILD_TYPE=Release
           cmake --build slashengine/build --target slash-cli
 
+      - name: Check the project and its storyboard
+        shell: bash
+        run: slashengine/build/tools/slash-cli/slash-cli project validate "game/$GAME_DIR"
+
       - name: Export and run headless
         shell: bash
         run: >-
@@ -323,6 +348,47 @@ std::string workflow() {
     return text;
 }
 
+// A storyboard entry name from the game's name: "Space Pong!" becomes "space-pong".
+std::string entry_name(std::string_view name) {
+    std::string out;
+    for (const char c : name) {
+        const bool letter = (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9');
+        if (letter || (c >= 'A' && c <= 'Z')) {
+            out += letter ? c : static_cast<char>(c - 'A' + 'a');
+        } else if (!out.empty() && out.back() != '-') {
+            out += '-';
+        }
+    }
+    while (!out.empty() && out.back() == '-') {
+        out.pop_back();
+    }
+    if (out.size() > storyboard::kMaxNameLength) {
+        out.resize(storyboard::kMaxNameLength);
+    }
+    return out.empty() ? std::string("game") : out;
+}
+
+// A starter storyboard: the game's name in the glossary, and the first piece of open work.
+std::string starter_glossary(const std::string& name) {
+    json::Value term;
+    term["name"] = name;
+    term["summary"] = "The game's title.";
+    json::Object entries;
+    entries.emplace("term/" + entry_name(name), std::move(term));
+    return storyboard::format_file(entries);
+}
+
+std::string starter_work() {
+    json::Value task;
+    task["name"] = "Fill in the storyboard";
+    task["summary"] = "Record the game's tone, characters, places and rules, so every agent "
+                      "works from the same facts.";
+    task["status"] = "open";
+    json::Object entries;
+    entries.emplace("task/fill-in-the-storyboard", std::move(task));
+    return storyboard::format_file(entries);
+}
+
 std::string empty_scene() {
     const world::ComponentRegistry components;
     const world::World scene(components);
@@ -333,9 +399,11 @@ std::string empty_scene() {
 
 Result<json::Value> init_project(const InitOptions& options) {
     // Cursor expands ${workspaceFolder}; Claude Code and Codex start servers in the project.
+    const std::string name = project_name(options.directory);
+    const std::string glossary = storyboard::file_path("glossary");
+    const std::string work = storyboard::file_path("work");
     const std::vector<std::pair<std::string_view, std::string>> files{
-        {runtime::kProjectFile,
-         json::write(runtime::new_project(project_name(options.directory), kMainScene)) + "\n"},
+        {runtime::kProjectFile, json::write(runtime::new_project(name, kMainScene)) + "\n"},
         {"AGENTS.md", std::string(kAgents)},
         {"CLAUDE.md", "@AGENTS.md\n"},
         {".mcp.json", json_config(options, ".")},
@@ -344,6 +412,8 @@ Result<json::Value> init_project(const InitOptions& options) {
         {".claude/skills/slashengine/SKILL.md", std::string(kSkill)},
         {".github/workflows/export.yml", workflow()},
         {kMainScene, empty_scene()},
+        {glossary, starter_glossary(name)},
+        {work, starter_work()},
     };
 
     std::string root = options.directory;

@@ -46,8 +46,9 @@ Resources are read through the matching command (`scene.get`, `schema.get`, `log
 session's capabilities apply to them too.
 
 **Instructions.** The `initialize` result carries short instructions that clients pass to the
-model: call `engine_describe` first, use `batch` for many edits, query IDs before components, and
-use the tools rather than editing `.scene.json` files by hand.
+model: call `engine_describe` first, use `batch` for many edits, query IDs before components, use
+the tools rather than editing `.scene.json` files by hand, and call `storyboard_brief` before a
+task and `storyboard_check` after it.
 
 Also supported: `ping`, `tools/list`, `resources/list`, `resources/templates/list` (empty) and
 notifications. The tool and resource lists never change while the server runs.

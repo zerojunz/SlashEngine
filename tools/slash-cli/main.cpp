@@ -438,20 +438,52 @@ int cmd_run(const std::vector<std::string>& args) {
 
 // Reads the prefabs a scene or prefab file extends from its project: the nearest folder above it
 // with a project.json, else the current folder.
-world::FileReader prefab_reader(const std::string& file) {
+// The project a file belongs to: the nearest folder above it with a project.json, else ".".
+std::string project_folder(const std::string& file) {
     namespace fs = std::filesystem;
     std::error_code error;
     fs::path folder = fs::absolute(file, error).parent_path();
     while (!error && !folder.empty()) {
         if (fs::exists(folder / slash::runtime::kProjectFile, error)) {
-            return slash::runtime::folder_reader(folder.string());
+            return folder.string();
         }
         if (folder == folder.parent_path()) {
             break;
         }
         folder = folder.parent_path();
     }
-    return slash::runtime::folder_reader(".");
+    return ".";
+}
+
+// Reads the prefabs a scene or prefab extends from its project.
+world::FileReader prefab_reader(const std::string& file) {
+    return slash::runtime::folder_reader(project_folder(file));
+}
+
+// Errors for StoryRef IDs in a scene or prefab that name no entry in its project's storyboard.
+void check_story_refs(const std::string& file, const json::Value& document,
+                      std::vector<json::ValidationError>& errors) {
+    const std::string folder = project_folder(file);
+    auto loaded = slash::storyboard::load(
+        [&](std::string_view path) -> slash::Result<std::optional<std::string>> {
+            const std::string full = slash::runtime::join_path(folder, path);
+            if (!slash::platform::exists(full)) {
+                return std::optional<std::string>();
+            }
+            auto text = slash::platform::read_file(full);
+            if (!text) {
+                return text.error();
+            }
+            return std::optional<std::string>(std::move(text).value());
+        });
+    if (!loaded) {
+        return;
+    }
+    std::vector<slash::storyboard::FileError> found;
+    slash::storyboard::check_story_refs(loaded.value().entries, file, document, found);
+    for (slash::storyboard::FileError& error : found) {
+        errors.push_back({std::move(error.path), std::move(error.message)});
+    }
 }
 
 int cmd_scene_validate(const std::string& path) {
@@ -470,6 +502,9 @@ int cmd_scene_validate(const std::string& path) {
         errors = world::validate_prefab(registry, parsed.value(), prefab_reader(path));
     } else {
         errors = world::validate_scene(registry, parsed.value(), prefab_reader(path));
+    }
+    if (parsed) {
+        check_story_refs(path, parsed.value(), errors);
     }
     result["valid"] = errors.empty();
     if (errors.empty()) {
@@ -599,7 +634,28 @@ int cmd_project(const std::vector<std::string>& args) {
     json::Array errors;
     validate_file(folder, slash::runtime::kProjectFile, slash::runtime::validate_project, errors);
     validate_file(folder, slash::exporter::kPresetsFile, slash::exporter::validate_presets, errors);
+    // The storyboard, and the StoryRef IDs in every scene and prefab.
+    command::SessionOptions options;
+    options.project_root = folder;
+    Engine engine(options);
+    command::Reply checked = engine.session->call("storyboard.check", json::Object{});
     json::Value result;
+    if (!checked.ok) {
+        json::Value item;
+        item["file"] = "storyboard";
+        item["path"] = "";
+        item["message"] = checked.message;
+        errors.push_back(std::move(item));
+    } else {
+        if (json::Value* found = checked.value.find("errors"); found != nullptr) {
+            for (json::Value& error : found->as_array()) {
+                errors.push_back(std::move(error));
+            }
+        }
+        if (json::Value* warnings = checked.value.find("warnings"); warnings != nullptr) {
+            result["warnings"] = std::move(*warnings);
+        }
+    }
     result["valid"] = errors.empty();
     if (!errors.empty()) {
         result["errors"] = std::move(errors);
