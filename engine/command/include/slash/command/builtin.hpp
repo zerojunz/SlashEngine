@@ -4,6 +4,15 @@
 
 #include <string_view>
 
+namespace slash::platform {
+class Loop;
+class Platform;
+} // namespace slash::platform
+
+namespace slash::render {
+class RenderDevice;
+} // namespace slash::render
+
 namespace slash::command {
 
 class Session;
@@ -26,6 +35,18 @@ void register_builtin_commands(Registry& registry);
 // Adds play and pause, for hosts that tick the world on their own clock and step it only while
 // Session::playing() is true, such as slash-cli run --serve.
 void register_run_commands(Registry& registry);
+
+// The parts of a running game that the display and perf commands reach. All three must outlive
+// the registry's use.
+struct LiveGame {
+    platform::Platform* platform = nullptr;
+    platform::Loop* loop = nullptr;
+    render::RenderDevice* renderer = nullptr;
+};
+
+// Adds display.list (displays and refresh rates), display.set (V-Sync and the frame cap) and
+// perf.stats (frame pacing) for a running game.
+void register_live_commands(Registry& registry, const LiveGame& game);
 
 // Opens a scene file if it exists, or else starts an empty scene that scene.save will write
 // there. Used by the tools' --scene option.

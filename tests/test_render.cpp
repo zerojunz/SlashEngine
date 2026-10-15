@@ -1,6 +1,8 @@
+#include "slash/platform/platform.hpp"
 #include "slash/platform/process.hpp"
 #include "slash/render/device.hpp"
 
+#include <SDL3/SDL_hints.h>
 #include <doctest/doctest.h>
 
 #include <array>
@@ -22,6 +24,7 @@ using slash::render::RenderDevice;
 using slash::render::TextureDesc;
 using slash::render::TextureId;
 using slash::render::Vertex2D;
+using slash::render::VsyncMode;
 
 namespace {
 
@@ -293,4 +296,66 @@ TEST_CASE("the GPU device refuses the same mistakes as the null device") {
     check_refusals(*device);
     CHECK(error_of(device->begin_frame({.target = TextureId::None, .clear = {}, .view = {}})) ==
           "this device has no window; draw to a render-target texture");
+}
+
+TEST_CASE("V-Sync modes have Godot's names") {
+    for (const VsyncMode mode :
+         {VsyncMode::Disabled, VsyncMode::Enabled, VsyncMode::Adaptive, VsyncMode::Mailbox}) {
+        CHECK(slash::render::parse_vsync_mode(slash::render::vsync_mode_name(mode)) == mode);
+    }
+    CHECK(slash::render::vsync_mode_name(VsyncMode::Mailbox) == "mailbox");
+    CHECK_FALSE(slash::render::parse_vsync_mode("on").has_value());
+}
+
+TEST_CASE("a device with no window records the V-Sync mode it is given") {
+    auto null_device = create_null_device();
+    CHECK(null_device->vsync() == VsyncMode::Enabled);
+    CHECK(null_device->set_vsync(VsyncMode::Adaptive) == VsyncMode::Adaptive);
+    CHECK(null_device->vsync() == VsyncMode::Adaptive);
+
+    auto device = gpu_device();
+    if (device == nullptr) {
+        return;
+    }
+    CHECK(device->vsync() == VsyncMode::Enabled);
+    CHECK(device->set_vsync(VsyncMode::Disabled) == VsyncMode::Disabled);
+    CHECK(device->vsync() == VsyncMode::Disabled);
+}
+
+// A window on SDL's offscreen video driver, which can make a Vulkan surface: Linux CI runs this
+// on software Vulkan. Elsewhere, or with no Vulkan driver, it is skipped.
+TEST_CASE("a window's V-Sync mode changes its present mode, falling back to enabled") {
+    SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "offscreen");
+    auto platform = slash::platform::Platform::create(
+        {.title = "vsync test", .width = 64, .height = 64, .headless = false});
+    SDL_ResetHint(SDL_HINT_VIDEO_DRIVER);
+    std::unique_ptr<RenderDevice> device;
+    if (platform.ok()) {
+        auto created =
+            create_device({.window = platform.value().window(), .driver = "auto", .debug = false});
+        if (created.ok()) {
+            device = std::move(created).value();
+        }
+    }
+    if (device == nullptr) {
+#ifdef __linux__
+        if (!slash::platform::environment_variable("SLASH_EXPECT_GPU").empty()) {
+            FAIL("SLASH_EXPECT_GPU is set, but no GPU device works with an offscreen window");
+        }
+#endif
+        MESSAGE("no GPU window here, so present modes are not checked");
+        return;
+    }
+    CHECK(device->vsync() == VsyncMode::Enabled);
+    // SDL has no adaptive present mode; the others are used where the driver has them.
+    CHECK(device->set_vsync(VsyncMode::Adaptive) == VsyncMode::Enabled);
+    const VsyncMode mailbox = device->set_vsync(VsyncMode::Mailbox);
+    CHECK((mailbox == VsyncMode::Mailbox || mailbox == VsyncMode::Enabled));
+    CHECK(device->vsync() == mailbox);
+    CHECK(slash::render::draw_empty_frame(*device, slash::render::kDefaultClearColor).ok());
+    const VsyncMode disabled = device->set_vsync(VsyncMode::Disabled);
+    CHECK((disabled == VsyncMode::Disabled || disabled == VsyncMode::Enabled));
+    CHECK(slash::render::draw_empty_frame(*device, slash::render::kDefaultClearColor).ok());
+    CHECK(device->set_vsync(VsyncMode::Enabled) == VsyncMode::Enabled);
+    CHECK(device->stats().frames == 2);
 }

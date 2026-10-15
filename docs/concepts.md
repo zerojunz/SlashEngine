@@ -191,6 +191,16 @@ startup with the compiler that comes with Windows. The
 [draw-offscreen example](../examples/draw-offscreen/) draws into a texture and reads it back,
 which is how tests check what a game draws.
 
+How often frames are drawn follows Godot. The world ticks at a fixed rate (`tick_hz`), while
+frames come as fast as the **V-Sync mode** lets them (`window.vsync_mode`: wait for each refresh,
+present at once, mailbox or adaptive) and no faster than the **frame cap** (`max_fps`, none by
+default). So a 60 Hz world on a 120 Hz display runs a tick every other frame, and the loop says
+how far real time is into the next tick, for drawing between ticks. A game's options menu can
+change both while it runs, and so can an agent, with `display.set`; `display.list` lists the
+displays and their refresh rates, and `perf.stats` shows whether frames arrive evenly. Headless
+runs ignore both and run one tick per frame, as fast as they can. The
+[frame-pacing example](../examples/frame-pacing/) uses all three commands.
+
 ## Commands
 
 A **command** is a named action such as `entity.create`, `world.query` or `scene.save`. Each one

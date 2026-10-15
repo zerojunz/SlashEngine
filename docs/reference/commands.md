@@ -67,9 +67,10 @@ as `entity.get`, reject it as an unknown param.
 | History | [`undo`](#undo), [`redo`](#redo), [`history.get`](#historyget) |
 | Several at once | [`batch`](#batch) |
 | Observe | [`events.subscribe`](#eventssubscribe), [`events.read`](#eventsread), [`events.unsubscribe`](#eventsunsubscribe), [`log.tail`](#logtail) |
+| Display | [`display.list`](#displaylist), [`display.set`](#displayset), [`perf.stats`](#perfstats) |
 | Export | [`export.run`](#exportrun) |
 
-Planned commands from the [roadmap](../roadmap.md), not yet available: `input.inject`, `frame.capture`, `replay.run` and `perf.stats`.
+Planned commands from the [roadmap](../roadmap.md), not yet available: `input.inject`, `frame.capture` and `replay.run`.
 
 ## Describe
 
@@ -878,6 +879,74 @@ Needs: `read`.
 The result is `{"lines": [...]}`, each line an object such as
 `{"level":"info","msg":"server listening","url":"http://127.0.0.1:34467"}`. A session captures
 only the lines logged while it is open, so a fresh one returns `{"lines":[]}`.
+
+## Display
+
+A game served with `slash-cli run --serve` (or reached through `slash-mcp --live`) also has these
+three, for its displays, how it presents frames and how evenly they arrive. Other sessions have
+no window or loop, so they leave them out. [examples/frame-pacing](../../examples/frame-pacing/)
+calls all three.
+
+### display.list
+
+Lists the displays, primary first, with the game's V-Sync mode and frame cap. A headless game
+has no displays.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `modes` | boolean | `false` | Also list each display's fullscreen modes (`width`, `height`, `refresh_rate`, `pixel_density`) |
+
+Each display has its `id`, `name`, whether it is `primary` and whether the game's `window` is on
+it, its `bounds` (`[x, y, width, height]` in screen coordinates), its UI `scale`, the current
+mode's `refresh_rate` and `pixel_density`, and `refresh_rates`: every rate its fullscreen modes
+offer, fastest first, for an options menu. A refresh rate of `0` means the system doesn't say.
+Needs: `read`. On SDL's offscreen video driver, which has one display and reports no refresh
+rate:
+
+```json
+{}
+```
+
+```json
+{"displays":[{"bounds":[0,0,1024,768],"id":1,"name":"1","pixel_density":1.0,"primary":true,"refresh_rate":0.0,"refresh_rates":[],"scale":1.0,"window":true}],"max_fps":120,"vsync_mode":"mailbox"}
+```
+
+### display.set
+
+Changes the V-Sync mode or the frame cap from the next frame, as a game's options menu would,
+and returns the settings in effect.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `vsync_mode` | `"disabled"`, `"enabled"`, `"adaptive"` or `"mailbox"` | unchanged | How frames wait for the display; see [project-format.md](project-format.md) |
+| `max_fps` | integer, 0 to 1000 | unchanged | Frames per second at most; `0` means no cap |
+
+A mode the GPU or window lacks falls back to `enabled`, which every GPU has, and the result
+shows the mode in effect. SDL's GPU API has no adaptive mode yet, so `adaptive` always falls back
+on a window. Needs: `run`. It changes nothing in the world, so there is nothing to undo. Here
+Mesa's software Vulkan on an offscreen window has no mode that skips V-Sync:
+
+```json
+{"vsync_mode": "disabled", "max_fps": 0}
+```
+
+```json
+{"max_fps":0,"vsync_mode":"enabled"}
+```
+
+### perf.stats
+
+Frame pacing over the last 120 frames, with the settings that shape it. No params. Needs: `read`.
+
+```json
+{"catch_up_frames":0,"fps":120.0,"frame_ms":{"avg":8.33,"max":8.67,"min":7.99},"frames":932,"max_fps":120,"renderer":"vulkan","tick_hz":60.0,"ticks":465,"vsync_mode":"mailbox"}
+```
+
+`frame_ms` is the time from one frame's start to the next: a `max` far above `avg` is a hitch.
+`catch_up_frames` counts, since the game started, frames that ran more than one fixed tick
+because the frame before was late. `frames` and `ticks` also count from the start, and
+`renderer` names the render device (`null` when nothing is drawn). A headless game runs one tick
+per frame and never waits, so its frame times only show how long its ticks take.
 
 ## Export
 

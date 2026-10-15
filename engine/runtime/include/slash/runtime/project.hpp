@@ -21,8 +21,8 @@
 //   }
 //
 // Optional fields: "id" (reverse-DNS identifier for bundles and stores), "version"
-// ("major.minor.patch"), "window" ({"width", "height"}), "tick_hz" and "rendering"
-// ({"clear_color", "driver"}).
+// ("major.minor.patch"), "window" ({"width", "height", "vsync_mode"}), "tick_hz", "max_fps" and
+// "rendering" ({"clear_color", "driver"}).
 namespace slash::runtime {
 
 inline constexpr std::string_view kProjectFile = "project.json";
@@ -35,7 +35,11 @@ struct Project {
     std::string main_scene;
     int window_width = 1280;
     int window_height = 720;
+    // "disabled", "enabled", "adaptive" or "mailbox", as in Godot.
+    std::string vsync_mode = "enabled";
     double tick_hz = 60.0;
+    // Frames per second at most; 0 means no cap.
+    int max_fps = 0;
     // What the window shows behind everything, as RGBA from 0 to 1: Godot's default gray.
     std::array<float, 4> clear_color{0.3F, 0.3F, 0.3F, 1.0F};
     // The GPU backend: "auto", "vulkan", "metal", "d3d12" or "null" (draws nothing).

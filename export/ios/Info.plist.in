@@ -4,6 +4,8 @@
 <dict>
     <key>BuildMachineOSBuild</key>
     <string>${SLASH_IOS_HOST_BUILD}</string>
+    <key>CADisableMinimumFrameDurationOnPhone</key>
+    <true/>
     <key>CFBundleDevelopmentRegion</key>
     <string>en</string>
     <key>CFBundleDisplayName</key>

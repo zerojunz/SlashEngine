@@ -235,6 +235,12 @@ Vulkan (`mesa-vulkan-drivers`) runs them with no GPU, and `SDL_VIDEO_DRIVER=offs
 the windowed path on it too. CI sets `SLASH_EXPECT_GPU=1` on Linux so they fail there instead of
 skipping.
 
+V-Sync and the frame cap follow Godot: `window.vsync_mode` and `max_fps` in `project.json`,
+`--vsync` and `--max-fps` on `slash-cli run`, and `display.set` while a served game runs
+(`display.list` and `perf.stats` too; `engine/command/src/live.cpp`). `platform::Loop` paces
+windowed frames to the cap, never headless ones, and `Loop::interpolation()` gives the fraction
+of the next tick for drawing between ticks.
+
 ## Add a component
 
 Components are plain structs reflected with one macro, at namespace scope in the struct's own

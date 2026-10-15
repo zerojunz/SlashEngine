@@ -2,6 +2,7 @@
 #include "slash/platform/platform.hpp"
 #include "slash/platform/run.hpp"
 
+#include <SDL3/SDL_hints.h>
 #include <doctest/doctest.h>
 
 #include <algorithm>
@@ -16,7 +17,7 @@ using slash::platform::Config;
 using slash::platform::Platform;
 using slash::platform::RunOptions;
 
-// Only headless paths are tested here, so the suite runs on CI machines with no display.
+// Windowed paths use SDL's dummy video driver, so the suite runs on CI machines with no display.
 
 TEST_CASE("headless platform starts without a window") {
     auto platform = Platform::create(Config{.headless = true});
@@ -70,6 +71,77 @@ TEST_CASE("run rejects a non-positive tick rate") {
     auto stats =
         slash::platform::run(platform.value(), RunOptions{.tick_hz = 0.0, .max_ticks = 1}, nullptr);
     REQUIRE_FALSE(stats.ok());
+}
+
+TEST_CASE("a frame cap must be from 0 to kMaxFps, and can change while the loop runs") {
+    auto platform = Platform::create(Config{.headless = true});
+    REQUIRE(platform.ok());
+    for (const int bad : {-1, slash::platform::kMaxFps + 1}) {
+        auto loop = slash::platform::Loop::create(
+            platform.value(), RunOptions{.tick_hz = 60.0, .max_ticks = 1, .max_fps = bad});
+        REQUIRE_FALSE(loop.ok());
+        CHECK(loop.error().message.find("max_fps") != std::string::npos);
+    }
+    auto loop = slash::platform::Loop::create(
+        platform.value(), RunOptions{.tick_hz = 60.0, .max_ticks = 1, .max_fps = 60});
+    REQUIRE(loop.ok());
+    CHECK(loop.value().max_fps() == 60);
+    CHECK_FALSE(loop.value().set_max_fps(slash::platform::kMaxFps + 1));
+    CHECK(loop.value().max_fps() == 60);
+    CHECK(loop.value().set_max_fps(0));
+    CHECK(loop.value().max_fps() == 0);
+}
+
+TEST_CASE("headless frames run one tick each and never wait for the frame cap") {
+    auto platform = Platform::create(Config{.headless = true});
+    REQUIRE(platform.ok());
+    CHECK(platform.value().displays().empty());
+    auto loop = slash::platform::Loop::create(
+        platform.value(), RunOptions{.tick_hz = 60.0, .max_ticks = 50, .max_fps = 1});
+    REQUIRE(loop.ok());
+    CHECK(loop.value().frame_stats().frames == 0);
+    const double start = platform.value().now_seconds();
+    const slash::platform::RunStats stats = slash::platform::run(loop.value(), nullptr);
+    // At one frame per second, 50 frames would take 49 seconds if headless runs waited.
+    CHECK(platform.value().now_seconds() - start < 10.0);
+    CHECK(stats.ticks == 50);
+    const slash::platform::FrameStats frames = loop.value().frame_stats();
+    CHECK(frames.frames == 50);
+    CHECK(frames.catch_up_frames == 0);
+    CHECK(frames.frame_ms_min <= frames.frame_ms_avg);
+    CHECK(frames.frame_ms_avg <= frames.frame_ms_max);
+    CHECK(loop.value().interpolation() == 0.0);
+}
+
+// SDL's dummy video driver opens a window with no display on every platform.
+TEST_CASE("a frame cap spaces windowed frames out") {
+    SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "dummy");
+    auto platform = Platform::create(Config{.headless = false});
+    SDL_ResetHint(SDL_HINT_VIDEO_DRIVER);
+    REQUIRE_MESSAGE(platform.ok(), (platform.ok() ? std::string() : platform.error().message));
+    const std::vector<slash::platform::Display> displays = platform.value().displays();
+    REQUIRE(displays.size() == 1);
+    CHECK(displays.front().primary);
+    CHECK(displays.front().has_window);
+    CHECK(displays.front().width > 0);
+
+    constexpr int kFps = 200;
+    constexpr int kFrames = 20;
+    const double start = platform.value().now_seconds();
+    auto loop = slash::platform::Loop::create(platform.value(),
+                                              RunOptions{.tick_hz = 60.0, .max_fps = kFps});
+    REQUIRE(loop.ok());
+    for (int i = 0; i < kFrames; ++i) {
+        CHECK(loop.value().frame(nullptr));
+    }
+    // Each frame starts at least one period after the one before was aimed, so the frames
+    // can't arrive faster than the cap, even after a late one.
+    CHECK(platform.value().now_seconds() - start >= kFrames * (1.0 / kFps));
+    const slash::platform::FrameStats frames = loop.value().frame_stats();
+    CHECK(frames.frames == kFrames);
+    CHECK(frames.frame_ms_avg >= 4.5);
+    CHECK(loop.value().interpolation() >= 0.0);
+    CHECK(loop.value().interpolation() < 1.0);
 }
 
 TEST_CASE("files round-trip through write_file and read_file") {
