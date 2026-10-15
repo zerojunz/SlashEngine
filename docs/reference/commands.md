@@ -65,7 +65,7 @@ as `entity.get`, reject it as an unknown param.
 | Physics | [`physics.raycast`](#physicsraycast), [`physics.overlap`](#physicsoverlap), [`physics.contacts`](#physicscontacts) |
 | Particles | [`particles.eval`](#particleseval) |
 | Lights | [`light.sample`](#lightsample) |
-| UI and text | [`ui.layout`](#uilayout), [`ui.theme`](#uitheme), [`text.measure`](#textmeasure) |
+| UI and text | [`ui.layout`](#uilayout), [`ui.theme`](#uitheme), [`ui.press`](#uipress), [`ui.focus`](#uifocus), [`text.measure`](#textmeasure) |
 | Input | [`input.inject`](#inputinject), [`input.state`](#inputstate), [`input.actions`](#inputactions) |
 | Storyboard | [`storyboard.query`](#storyboardquery), [`storyboard.brief`](#storyboardbrief), [`storyboard.check`](#storyboardcheck), [`storyboard.edit`](#storyboardedit) |
 | Components | [`component.set`](#componentset), [`component.remove`](#componentremove) |
@@ -655,8 +655,9 @@ torch and one behind the crate from it:
 ### ui.layout
 
 Returns where [controls](scene-format.md#ui-and-text) are on screen, in drawing order, with the
-lines each label and progress bar shows and the mistakes that keep controls from laying out as
-written. A check that needs no screenshot.
+lines each label, button and progress bar shows, how each [button](scene-format.md#buttons)
+draws, which control has focus and which is hovered, and the mistakes that keep controls from
+laying out or working as written. A check that needs no screenshot.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -677,14 +678,23 @@ the sign on a smaller window:
 - `rect` is `[x, y, width, height]` in the viewport: the box round the control as it draws,
   turned and scaled. A control hidden by its own or a parent's `visible` has `"visible": false`.
 - A label has `lines`, the lines it shows, without trailing spaces, those cut ending with the
-  ellipsis. A progress bar showing its percentage has it as its one line, e.g. `["72%"]`. `overflow` is `true` when a line is wider than the rect or lines don't fit its
-  height. `missing_glyphs` counts characters its font doesn't have, and `font_error` says why
+  ellipsis. A button with text has its lines too, and a progress bar showing its percentage has
+  it as its one line, e.g. `["72%"]`. `overflow` is `true` when a line is wider than the rect or
+  lines don't fit its height. `missing_glyphs` counts characters its font doesn't have, and `font_error` says why
   its font didn't load, in which case the built-in font drew it.
+- A `Button` or `TextureButton` has `draw_mode`: `"normal"`, `"hover"`, `"pressed"`,
+  `"hover_pressed"` or `"disabled"`, as Godot's. A toggle button that is on draws `"pressed"`,
+  and `"hover_pressed"` while hovered; a button its shortcut just pressed draws `"hover_pressed"`
+  for 0.2 seconds. The control with focus has `"focused": true`, and the one under the mouse
+  `"hovered": true`.
 - `problems` lists, for each control, a `children` entry that can't be laid out (no such
   entity, not a control, the control itself, a second parent or a loop), a second container on
   one entity, a theme override name its type doesn't have, with the closest one, a style box
   override with a mistake, a theme that doesn't load, a `theme_type_variation` no theme
-  defines, and a font or texture that doesn't load. Each has the
+  defines, a font or texture that doesn't load, a button `shortcut` entry that isn't a binding
+  or names no action, a `button_group` on a button without `toggle_mode`, a `Label` on a button
+  entity (a button draws its own text), two buttons on one entity, and a `focus_*` field that
+  names no control. Each has the
   control's `id`, the JSON Pointer `path` of the value in the entity and a `message`:
 
 ```json
@@ -722,6 +732,58 @@ panel, from the theme's `Slot` variation:
   box's defaults.
 - An item name the control doesn't use is an error at its place in `items`, with the closest
   one; so is an `id` that names no entity or no control.
+
+### ui.press
+
+Presses a [`Button` or `TextureButton`](scene-format.md#buttons) at the next tick, as a click
+released over it would: a toggle button toggles (and turns the others in its `button_group`
+off), then it emits `pressed`. Nothing else about the pointer or focus changes.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `id` | string | required | The button |
+
+Needs: `run`. Changes no entities until the next `step`, so there is nothing to undo; a failed
+`batch` takes the press back.
+
+```json
+{"id": "play"}
+```
+
+```json
+{"tick":4}
+```
+
+`tick` is the tick it is pressed at, which the next `step` runs. An ID that names no entity is an
+error with the closest one, and so are an entity with neither button component and a disabled
+button.
+
+To press a button the way a player does, with hover, focus, `button_down` and `button_up`, send
+the click or tap with [`input.inject`](#inputinject) instead.
+
+### ui.focus
+
+Gives a control focus, as Godot's `grab_focus`, and shows it: `ui_accept` (Enter or Space)
+presses a focused button, and `ui_up`, `ui_down`, `ui_left`, `ui_right`, Tab and Shift+Tab move
+focus on from it. `null` takes focus away.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `id` | string or null | required | The control, or `null` for none |
+
+Needs: `run`. Emits `focus_exited` and `focus_entered` at the next `step`.
+
+```json
+{"id": "play"}
+```
+
+```json
+{"focused":"play"}
+```
+
+`focused` is the control with focus now, or `null`. A control that is hidden, or whose
+`focus_mode` is `"none"` (the default for controls other than buttons), can't take focus, and
+that is an error. [`ui.layout`](#uilayout) marks the control with focus `"focused": true`.
 
 ### text.measure
 

@@ -291,6 +291,20 @@ and `text.measure` sizes text, so an agent checks a screen without a screenshot.
 [UI and text example](../examples/ui-and-text/) is a pause screen, and the
 [UI containers example](../examples/ui-containers/) an inventory laid out by containers.
 
+**Buttons** follow Godot's too. The `gui` system hands each tick's input events to controls as
+Godot's viewport does: the pointer goes to the control drawn on top under it, and on to its
+parents as each one's **mouse filter** says (stop, pass or ignore). A `Button` or
+`TextureButton` is pressed by a click or tap that ends over it, by `ui_accept` while it has
+**focus**, or by its **shortcut**; toggle buttons switch on and off, and a **button group** keeps
+at most one of them on. One control has focus: a click gives it quietly, and the arrow keys,
+Tab and a gamepad move it to the closest button that way and show it. Controls report what
+happened as **UI events** (`pressed`, `toggled`, `mouse_entered`, `focus_entered` and the rest),
+which gameplay code reads each tick and agents subscribe to. An agent clicks and types with
+`input.inject`, presses a button by ID with `ui.press` and moves focus with `ui.focus`, and
+`ui.layout` shows each button's **draw mode** (normal, hover, pressed, hover pressed or
+disabled) and which control has focus and which is hovered. The
+[UI buttons example](../examples/ui-buttons/) is a title menu worked by mouse, keys and touch.
+
 How often frames are drawn follows Godot. The world ticks at a fixed rate (`tick_hz`), while frames
 come as fast as the **V-Sync mode** lets them (`window.vsync_mode`: wait for each refresh, present
 at once, mailbox or adaptive) and no faster than the **frame cap** (`max_fps`, none by default). So
@@ -477,6 +491,7 @@ OpenAI-compatible servers (including local ones), Anthropic and Gemini; see the
 | Autotiling | Picking each tile so its edges connect to its neighbors' terrains, as `tilemap.paint` does |
 | Asset | A file a game loads by project path into a shared, reference-counted handle |
 | Binding | A key, mouse button, gamepad button or stick direction that presses an action |
+| Button group | Toggle buttons with the same `button_group` name, of which at most one is on |
 | Blend mode | How a sprite's color combines with what is under it: `mix`, `add`, `sub`, `mul` or `premul_alpha` |
 | Canonical form | The one way a scene is written: sorted keys, two-space indent, defaults left out |
 | Capability | A permission a session grants: `read`, `edit`, `run`, `filesystem` or `build` |
@@ -486,6 +501,7 @@ OpenAI-compatible servers (including local ones), Anthropic and Gemini; see the
 | Component registry | The list of component types a world knows, with their docs |
 | Control | A UI element: a rect placed in its parent's by anchors and offsets, or by a container, which `Label`, `Panel` and the other drawing components draw in |
 | Container | A control that places its children itself, in a row, a grid, lines that wrap, a margin or the center |
+| Draw mode | How a button draws for its state: `normal`, `hover`, `pressed`, `hover_pressed` or `disabled` |
 | Deadzone | How far a stick must move, from 0 to 1, before it presses an action |
 | Discovery file | `.slash/server.json`: a running server's URL and token |
 | Distance field font | A font drawn from one field per glyph of distances to its outline (MSDF), sharp at any size, scale and outline |
@@ -494,6 +510,7 @@ OpenAI-compatible servers (including local ones), Anthropic and Gemini; see the
 | Example | A small program or sequence of calls in `examples/`, run by CI with its output checked |
 | Export | A build of a project for one platform, ready for players |
 | Flipbook | An animation that shows a sprite's frames one after another, from a `.frames.json` file |
+| Focus | The one control that gets the keyboard's and gamepad's `ui_*` actions first, which the arrow keys and Tab move |
 | Font | A `.ttf` or `.otf` file, or a `.font.json` file naming one with settings |
 | Front end | A way to reach the commands: MCP, JSON-RPC, REST or the CLI |
 | Hot reload | Reloading edited files, and updating prefab instances, while the game runs |
@@ -505,6 +522,7 @@ OpenAI-compatible servers (including local ones), Anthropic and Gemini; see the
 | Key | A track's value, or event, at one time in an animation |
 | Legend | A tile map layer's keys, each standing for one tile of its tile set |
 | Light mask | Bits saying which lights reach a sprite or tile layer: those whose cull mask shares one |
+| Mouse filter | Whether a click or tap stops at a control, goes on to its parent too, or passes it by |
 | Main scene | The scene a game loads at startup, named in `project.json` |
 | Material | A `.material.json` node graph that colors a sprite's pixels, with params each sprite sets |
 | Normal map | A texture whose colors give each pixel of a sprite its own facing, so light falls on it by angle |
@@ -518,6 +536,7 @@ OpenAI-compatible servers (including local ones), Anthropic and Gemini; see the
 | Scene | A world saved as a `.scene.json` file |
 | Session | One world with its open scene path, undo history and recent logs |
 | Shadow map | A texture with one row per shadowed light, holding how far away the nearest occluder is in each direction |
+| Shortcut | A binding or action that presses a button from anywhere, such as Escape for Quit |
 | Size flags | How a container's child fills its cell: fill it, expand into spare room, or sit at the start, center or end |
 | Sprite | A texture, or one frame of a sprite sheet, drawn at an entity's `Transform2D` (`Sprite2D`) |
 | Sprite sheet | One texture holding a grid of frames, `hframes` across and `vframes` down |
@@ -532,5 +551,6 @@ OpenAI-compatible servers (including local ones), Anthropic and Gemini; see the
 | Tile set | A `.tileset.json` file: atlas textures cut into tiles, and the terrains that connect them |
 | Tile map layer | A grid of tiles from a tile set, kept as rows of legend keys (`TileMapLayer`) |
 | Tool name | A command's MCP name, with `_` in place of `.` |
+| UI event | Something a control did, as Godot's signals: `pressed`, `toggled`, `button_down`, `button_up`, `mouse_entered`, `mouse_exited`, `focus_entered` or `focus_exited` |
 | Track | One field an animation sets, or one kind of event it emits, over time, as keys |
 | World | Every entity in a running game, held in EnTT |
