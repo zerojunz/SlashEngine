@@ -5,7 +5,8 @@ add_library(slash::runtime ALIAS slash_runtime)
 
 target_include_directories(slash_runtime PUBLIC include)
 target_link_libraries(slash_runtime
-    PUBLIC slash::animation slash::asset slash::canvas slash::core slash::platform slash::render slash::world)
+    PUBLIC slash::animation slash::asset slash::canvas slash::core slash::physics2d slash::platform slash::render
+           slash::world)
 slash_engine_target(slash_runtime)
 
 # The main() of a game executable, through SDL's main callbacks. It is compiled into each game

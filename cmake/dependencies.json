@@ -14,6 +14,13 @@
       "repository": "https://github.com/libsdl-org/SDL.git",
       "tag": "release-3.4.18"
     },
+    "box2d": {
+      "license": "MIT",
+      "license_file": "LICENSE",
+      "license_sha256": "68a3e676d7e94093b102d5cba0d4e04af812040d6f230c3db67a6664574e43d2",
+      "repository": "https://github.com/erincatto/box2d.git",
+      "tag": "v3.1.1"
+    },
     "doctest": {
       "license": "MIT",
       "license_file": "LICENSE.txt",

@@ -4,6 +4,7 @@
 #include "slash/core/json_schema.hpp"
 #include "slash/core/result.hpp"
 #include "slash/core/text.hpp"
+#include "slash/physics2d/physics2d.hpp"
 #include "slash/world/scene.hpp"
 
 #include <array>
@@ -48,6 +49,8 @@ struct Project {
     bool interpolation = true;
     // The GPU backend: "auto", "vulkan", "metal", "d3d12" or "null" (draws nothing).
     std::string rendering_driver = "auto";
+    // Gravity and default damping for 2D physics.
+    physics2d::Settings physics_2d;
 
     // The identifier to use: id, or the default derived from the name.
     [[nodiscard]] std::string bundle_id() const;
