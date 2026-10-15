@@ -6,11 +6,9 @@
 
 namespace slash::detail {
 
-void assert_failed(const char* expression, const char* message, std::source_location location) {
-    log::error("assertion failed", {{"expression", expression},
-                                    {"message", message},
-                                    {"file", location.file_name()},
-                                    {"line", location.line()}});
+void assert_failed(const char* expression, const char* message, const char* file, int line) {
+    log::error("assertion failed",
+               {{"expression", expression}, {"message", message}, {"file", file}, {"line", line}});
     std::abort();
 }
 

@@ -74,6 +74,14 @@ struct WindowsOptions {
     std::string timestamp_url = std::string(kDefaultTimestampUrl); // "" for no timestamp
 };
 
+// The CPU architectures Linux exports build for.
+inline constexpr std::string_view kLinuxX86_64 = "x86_64";
+inline constexpr std::string_view kLinuxArm64 = "arm64";
+
+struct LinuxOptions {
+    std::string arch = std::string(kLinuxX86_64);
+};
+
 struct AndroidOptions {
     std::vector<std::string> abis = kDefaultAndroidAbis;
     std::string package;           // "" means the project's id
@@ -98,6 +106,7 @@ struct Preset {
     MacosOptions macos;
     WindowsOptions windows;
     AndroidOptions android;
+    LinuxOptions linux_options; // "linux" is a macro on some compilers
     IosOptions ios;
 };
 

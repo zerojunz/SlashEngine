@@ -13,6 +13,16 @@ versions in `cmake/Dependencies.cmake` unless noted as vendored.
 | [doctest](https://github.com/doctest/doctest) | v2.5.2 | MIT | Unit tests (not shipped in games) | Fetched, tests only |
 | [CPM.cmake](https://github.com/cpm-cmake/CPM.cmake) | v0.40.2 | MIT | Dependency fetching | Vendored as `cmake/CPM.cmake` |
 
-Exports are built with toolchains the developer installs, not fetched by the engine. Web exports
-use [Emscripten](https://github.com/emscripten-core/emscripten) 6.0.10 in CI (MIT or University of
-Illinois/NCSA), whose JavaScript runtime and C/C++ libraries are compiled into the game.
+Exports are built with toolchains, which ship in no game except for the runtime libraries listed
+here. Windows and Linux exports from macOS and Linux use toolchains that `slash-cli toolchain
+install` downloads, pinned in `tools/exporter/src/toolchains.cpp`:
+
+| Name | Version | License | Used for | In the game |
+| --- | --- | --- | --- | --- |
+| [llvm-mingw](https://github.com/mstorsjo/llvm-mingw) | 20260922 | Apache 2.0 with LLVM exception (LLVM, libc++, libunwind, compiler-rt); ZPL 2.1 and public domain (mingw-w64); MIT (winpthreads) | Clang and LLD for Windows and Linux exports | Windows: libc++, libunwind, compiler-rt, winpthreads and the mingw-w64 startup code, linked statically |
+| [Chromium's Debian sysroots](https://chromium.googlesource.com/chromium/src/+/main/build/linux/sysroot_scripts/) | bullseye (Debian 11) | Debian's packages: glibc LGPL 2.1, libstdc++ GPL 3 with the GCC Runtime Library Exception, X11 MIT | Headers and libraries Linux exports build against, so they run on glibc 2.31 | glibc and libstdc++ are linked dynamically to the player's own copies, as every Linux program does |
+
+Windows exports on Windows use MSVC, and macOS and iOS exports use Apple's command-line tools.
+Web exports use [Emscripten](https://github.com/emscripten-core/emscripten) 6.0.10 in CI (MIT or
+University of Illinois/NCSA), whose JavaScript runtime and C/C++ libraries are compiled into the
+game.

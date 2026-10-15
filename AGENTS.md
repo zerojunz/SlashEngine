@@ -131,18 +131,24 @@ $cli export linux --project path/to/game --test        # build, lay out and run 
 `slash-cli export <preset>` validates the project, its presets and every scene, stages them as the
 game's data, configures `export/CMakeLists.txt` with the engine sources, builds, signs and installs
 into `<project>/build/export/<preset>`. Its work folder and full build log are in
-`<project>/.slash/export/<preset>/`; a failure reports the step and the end of the log. Each host
-builds its own platform, and a Mac with Xcode also builds iOS; web exports need Emscripten
-(`EMSDK` set) and Android exports the Android SDK, NDK and a JDK on any host. CI exports and runs
-an empty game for macOS, Windows, Linux, web, Android (on an emulator) and iOS (in the Simulator)
-on every PR, and `slash-cli init` writes the same workflow into new games.
+`<project>/.slash/export/<preset>/`; a failure reports the step and the end of the log. A Mac
+builds every platform: macOS and iOS with Xcode's tools, Windows and Linux with llvm-mingw and a
+glibc 2.31 Debian sysroot that the first such export downloads (`$cli toolchain install` gets
+them ahead of time, into `SLASH_TOOLCHAINS_DIR` or `~/.slash/toolchains`). Linux machines build
+Linux and Windows the same way, and Windows machines build Windows with MSVC. Web exports need
+Emscripten (`EMSDK` set) and Android exports the Android SDK, NDK and a JDK on any host. CI
+exports and runs an empty game for macOS, Windows, Linux, web, Android (on an emulator) and iOS
+(in the Simulator) on every PR, cross-exports Windows and Linux (x86_64 and arm64) from macOS and
+runs them on Windows and Ubuntu 20.04, and `slash-cli init` writes the per-platform workflow into
+new games.
 
 The export code is the `tools/exporter` library, shared by slash-cli and slash-mcp. It also
 registers `export.run`, the one command that needs the `build` capability; a running game leaves
 it out because an export would stall its loop.
 
 Presets live in `export_presets.json` (`$cli schema presets`), like Godot's
-`export_presets.cfg`: a platform, an output folder, a debug flag and signing settings. A preset
+`export_presets.cfg`: a platform, an output folder, a debug flag, signing settings and, for Linux,
+the CPU architecture. A preset
 named after a platform replaces that platform's defaults. Secrets never go in the file:
 
 | Variable | Used for |
@@ -164,9 +170,10 @@ them (`export/ios/Info.plist.in` is the app's Info.plist). By default they are a
 `.ipa` for iPhones and iPads instead, signed with the team's keychain identity (Apple Development
 for debug builds, Apple Distribution for release) and a provisioning profile Xcode downloaded.
 
-Games support OS versions from 2020 on: macOS 11, iOS 14, Windows 10 (the executable's subsystem
-version is 10.0), Android 11 (API level 30, targeting 36), and Chrome 85, Firefox 79 and Safari
-15 (pinned in `export/CMakeLists.txt`).
+Games support OS versions from 2020 on: macOS 11, iOS 14, Windows 10 (an MSVC build's subsystem
+version is 10.0; llvm-mingw builds keep 6.0, since Windows 11 won't start a MinGW executable
+marked 10.0), Android 11 (API level 30, targeting 36), and Chrome 85, Firefox 79 and Safari 15
+(pinned in `export/CMakeLists.txt`).
 
 ## Add a component
 

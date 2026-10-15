@@ -13,6 +13,7 @@
 #include "slash/exporter/commands.hpp"
 #include "slash/exporter/export.hpp"
 #include "slash/exporter/presets.hpp"
+#include "slash/exporter/toolchains.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/platform/platform.hpp"
 #include "slash/platform/run.hpp"
@@ -23,6 +24,7 @@
 #include "slash/world/scene.hpp"
 #include "slash/world/world.hpp"
 
+#include <algorithm>
 #include <charconv>
 #include <chrono>
 #include <csignal>
@@ -95,6 +97,11 @@ Usage:
       --debug                        Debug build instead of Release
       --test                         Run the exported game headless afterwards, if possible
       --engine <dir>                 Engine sources (default: SLASH_ENGINE_DIR or built in)
+  slash-cli toolchain list           List the cross toolchains this machine can install
+  slash-cli toolchain install [name] Download the toolchains exports use to build other
+                                     platforms (default: all); also takes a platform name
+                                     (windows, linux) or linux-arm64; folder:
+                                     SLASH_TOOLCHAINS_DIR, else ~/.slash/toolchains
   slash-cli help                     Show this message
 
 call, rpc and serve also take:
@@ -730,6 +737,115 @@ int cmd_export(const std::vector<std::string>& args) {
     return result.ok ? kExitOk : kExitFailure;
 }
 
+json::Value toolchain_json(const slash::exporter::Toolchain& toolchain) {
+    json::Value item;
+    item["name"] = toolchain.name;
+    item["version"] = toolchain.version;
+    return item;
+}
+
+int cmd_toolchain_list() {
+    namespace exporter = slash::exporter;
+    const std::filesystem::path dir = exporter::toolchains_dir();
+    json::Array toolchains;
+    for (const exporter::Toolchain& toolchain : exporter::host_toolchains()) {
+        json::Value item = toolchain_json(toolchain);
+        item["description"] = toolchain.description;
+        item["installed"] = exporter::installed_toolchain(toolchain, dir).has_value();
+        toolchains.push_back(std::move(item));
+    }
+    json::Value result;
+    result["dir"] = dir.generic_string();
+    result["toolchains"] = std::move(toolchains);
+    print(result);
+    return kExitOk;
+}
+
+int cmd_toolchain_install(const std::vector<std::string>& names) {
+    namespace exporter = slash::exporter;
+    const std::vector<exporter::Toolchain> available = exporter::host_toolchains();
+    if (available.empty()) {
+        return usage_error("this machine builds every platform it can with its own compilers; "
+                           "there are no toolchains to install");
+    }
+    // Each name is a toolchain, a platform whose toolchains to install, or "all".
+    std::vector<std::string> wanted;
+    const auto want = [&wanted](const std::string& name) {
+        if (std::find(wanted.begin(), wanted.end(), name) == wanted.end()) {
+            wanted.push_back(name);
+        }
+    };
+    for (const std::string& name : names.empty() ? std::vector<std::string>{"all"} : names) {
+        const bool is_toolchain =
+            std::any_of(available.begin(), available.end(),
+                        [&name](const exporter::Toolchain& t) { return t.name == name; });
+        std::vector<std::string> expanded;
+        if (is_toolchain) {
+            expanded = {name};
+        } else if (name == "all") {
+            for (const exporter::Toolchain& toolchain : available) {
+                expanded.push_back(toolchain.name);
+            }
+        } else if (name == "linux-arm64") {
+            expanded = exporter::toolchains_for("linux", exporter::kLinuxArm64);
+        } else if (std::find(exporter::kPlatforms.begin(), exporter::kPlatforms.end(), name) !=
+                   exporter::kPlatforms.end()) {
+            expanded = exporter::toolchains_for(name); // none for platforms built natively
+        } else {
+            return usage_error("unknown toolchain or platform: " + name +
+                               " (slash-cli toolchain list shows them)");
+        }
+        std::for_each(expanded.begin(), expanded.end(), want);
+    }
+
+    const std::filesystem::path dir = exporter::toolchains_dir();
+    json::Array installed;
+    json::Array already;
+    for (const exporter::Toolchain& toolchain : available) {
+        if (std::find(wanted.begin(), wanted.end(), toolchain.name) == wanted.end()) {
+            continue;
+        }
+        json::Value item = toolchain_json(toolchain);
+        if (const auto folder = exporter::installed_toolchain(toolchain, dir)) {
+            item["path"] = folder->generic_string();
+            already.push_back(std::move(item));
+            continue;
+        }
+        slash::log::info("installing toolchain",
+                         {{"name", toolchain.name}, {"version", toolchain.version}});
+        auto folder = exporter::install_toolchain(toolchain, dir);
+        if (!folder) {
+            return failure("could not install toolchain", folder.error());
+        }
+        item["path"] = folder.value().generic_string();
+        installed.push_back(std::move(item));
+    }
+    json::Value result;
+    result["installed"] = std::move(installed);
+    result["already_installed"] = std::move(already);
+    print(result);
+    return kExitOk;
+}
+
+int cmd_toolchain(const std::vector<std::string>& args) {
+    if (args.empty() || (args[0] != "list" && args[0] != "install")) {
+        return usage_error("toolchain needs an action: list or install");
+    }
+    const std::vector<std::string> rest(args.begin() + 1, args.end());
+    for (const std::string& arg : rest) {
+        if (arg.starts_with("--")) {
+            return usage_error("unexpected argument for toolchain: " + arg);
+        }
+    }
+    if (args[0] == "list") {
+        if (!rest.empty()) {
+            return usage_error("toolchain list takes no arguments");
+        }
+        return cmd_toolchain_list();
+    }
+    return cmd_toolchain_install(rest);
+}
+
 int cmd_init(const std::vector<std::string>& args) {
     slash::cli::InitOptions options;
     bool have_directory = false;
@@ -796,6 +912,9 @@ int main(int argc, char** argv) {
     }
     if (name == "export") {
         return cmd_export(args);
+    }
+    if (name == "toolchain") {
+        return cmd_toolchain(args);
     }
     return usage_error("unknown command: " + name);
 }

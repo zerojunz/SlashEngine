@@ -457,7 +457,7 @@ Needs: `filesystem`, `build`. It changes no scene, so there is nothing to undo.
 ```
 
 ```json
-{"bytes":5335403,"executable":"build/export/linux/mygame","log":".slash/export/linux/export.log","output":"build/export/linux","platform":"linux","preset":"linux","seconds":66.6,"test":{"entities":0,"passed":true,"ticks":60}}
+{"bytes":5335403,"executable":"build/export/linux/mygame","linux":{"arch":"x86_64"},"log":".slash/export/linux/export.log","output":"build/export/linux","platform":"linux","preset":"linux","seconds":66.6,"test":{"entities":0,"passed":true,"ticks":60}}
 ```
 
 A bad preset name fails with `-32002` before anything is built; any other failure, including a

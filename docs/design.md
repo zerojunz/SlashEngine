@@ -53,7 +53,7 @@ SDL3 is the only platform layer: windowing, input, audio, file I/O, threads and 
 | macOS (Apple silicon and Intel) | At launch | Apple's command-line tools (needed for signing) |
 | iOS | No | Xcode's iOS SDK and command-line tools (no Xcode project) |
 | Windows x64 | After launch | llvm-mingw cross toolchain |
-| Linux x64 and arm64 | After launch | Clang with a Linux sysroot |
+| Linux x64 and arm64 | After launch | Clang (from llvm-mingw) with a Debian 11 sysroot (glibc 2.31) |
 | Android | No | Android NDK |
 | Web | No | Emscripten |
 
@@ -61,7 +61,7 @@ SDL3 is the only platform layer: windowing, input, audio, file I/O, threads and 
 
 - **Projects.** A game is a folder with a `project.json`, the equivalent of Godot's `project.godot`: name, identifier, version, main scene, window size and tick rate, checked against a schema the engine publishes.
 - **One entry point.** Every game executable starts in the same `main` built on SDL's main callbacks, so the loop is driven by the host where it must be (the browser, iOS) and by SDL elsewhere. The same executable runs headless with `--headless --ticks N` and prints a JSON summary, which is how exports are tested.
-- **How an export runs.** The project and every scene are validated, staged as the game's data, and built with CMake from the engine sources (`export/CMakeLists.txt`), then laid out for the platform: an app bundle on macOS (universal for release), an executable and `data` folder on Windows and Linux with the C++ runtime linked statically, and `index.html` with WebAssembly on the web. The full build log goes to a file; the caller gets a short JSON result, or the failing step with the end of the log.
+- **How an export runs.** The project and every scene are validated, staged as the game's data, and built with CMake from the engine sources (`export/CMakeLists.txt`), then laid out for the platform: an app bundle on macOS (universal for release), an executable and `data` folder on Windows (C++ runtime linked statically) and Linux (built against a glibc 2.31 sysroot, using the player's libstdc++), and `index.html` with WebAssembly on the web. The full build log goes to a file; the caller gets a short JSON result, or the failing step with the end of the log.
 
 - **Toolchains on demand.** `slash-cli toolchain install` downloads and pins the open-source cross toolchains above, so one Mac can produce every build with no manual setup.
 - **CI as a second path.** `slash-cli init` also writes a GitHub Actions workflow that builds and runs headless tests for every platform on native runners, which is how Windows and Linux exports get tested before those hosts are supported.

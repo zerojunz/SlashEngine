@@ -3,10 +3,12 @@
 add_library(slash_exporter
     src/android.cpp
     src/commands.cpp
+    src/cross.cpp
     src/export.cpp
     src/ios.cpp
     src/presets.cpp
-    src/steps.cpp)
+    src/steps.cpp
+    src/toolchains.cpp)
 add_library(slash::exporter ALIAS slash_exporter)
 
 target_include_directories(slash_exporter PUBLIC include)

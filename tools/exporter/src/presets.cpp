@@ -148,7 +148,7 @@ void check_preset(const std::string& name, const json::Value& preset,
         errors.push_back({path + "/output", "expected a folder inside the project, separated by "
                                             "'/', with no \".\" or \"..\" parts"});
     }
-    for (const std::string_view section : {"macos", "windows", "android", "ios"}) {
+    for (const std::string_view section : {"macos", "windows", "linux", "android", "ios"}) {
         if (preset.find(section) != nullptr && platform != section) {
             errors.push_back({path + "/" + std::string(section),
                               "only " + std::string(section) + " presets can have this section"});
@@ -327,6 +327,12 @@ json::Value presets_schema() {
             std::string(kIosProvisioningProfile) +
             ", or else the newest installed one for the team and bundle ID. Only in ios presets.");
 
+    json::Value arch = property("string", "CPU architecture: x86_64 for PCs, or arm64. Default: "
+                                          "x86_64.");
+    arch["enum"] = json::Array{std::string(kLinuxX86_64), std::string(kLinuxArm64)};
+    json::Value linux_section =
+        object_schema({{"arch", std::move(arch)}}, "How to build the game. Only in linux presets.");
+
     json::Value platform = property("string", "The platform this preset builds for.");
     json::Array platforms;
     for (const std::string_view name : kPlatforms) {
@@ -344,6 +350,7 @@ json::Value presets_schema() {
             {"debug", std::move(debug)},
             {"macos", std::move(macos)},
             {"windows", std::move(windows)},
+            {"linux", std::move(linux_section)},
             {"android", std::move(android)},
             {"ios", std::move(ios)},
         },
@@ -442,6 +449,11 @@ Result<Presets> parse_presets(const json::Value& presets) {
             }
             if (const json::Value* code = android->find("version_code"); code != nullptr) {
                 preset.android.version_code = code->as_int();
+            }
+        }
+        if (const json::Value* linux_section = value.find("linux"); linux_section != nullptr) {
+            if (const json::Value* arch = linux_section->find("arch"); arch != nullptr) {
+                preset.linux_options.arch = arch->as_string();
             }
         }
         if (const json::Value* ios = value.find("ios"); ios != nullptr) {

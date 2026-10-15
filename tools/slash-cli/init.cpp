@@ -171,6 +171,13 @@ jobs:
           path: slashengine/.cpm-cache
           key: slashengine-${{ matrix.os }}-${{ env.SLASHENGINE_REF }}
 
+      - name: Cache the toolchains Linux exports download
+        if: matrix.platform == 'linux'
+        uses: actions/cache@v4
+        with:
+          path: ~/.slash/toolchains
+          key: slash-toolchains-${{ matrix.os }}-${{ env.SLASHENGINE_REF }}
+
       - name: Install tools (macOS)
         if: runner.os == 'macOS'
         run: brew install ninja
