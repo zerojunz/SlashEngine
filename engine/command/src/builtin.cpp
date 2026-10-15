@@ -18,6 +18,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <ctime>
+#include <limits>
 #include <map>
 #include <optional>
 #include <set>
@@ -706,6 +707,182 @@ Reply storyboard_query(Session& session, const json::Value& params) {
     json::Value result;
     result["entries"] = storyboard::query(entries, query);
     result["seq"] = seq.value();
+    return Reply::success(std::move(result));
+}
+
+json::Array file_errors(const std::vector<storyboard::FileError>& errors) {
+    json::Array items;
+    for (const storyboard::FileError& error : errors) {
+        json::Value item;
+        item["file"] = error.file;
+        item["path"] = error.path;
+        item["message"] = error.message;
+        items.push_back(std::move(item));
+    }
+    return items;
+}
+
+Reply storyboard_check(Session& session, const json::Value& /*params*/) {
+    auto loaded = storyboard::load(
+        [&session](std::string_view path) { return session.read_project_file(path); });
+    if (!loaded) {
+        return Reply::failure(loaded.error());
+    }
+    const json::Object& entries = loaded.value().entries;
+    std::vector<storyboard::FileError> errors = std::move(loaded.value().errors);
+    storyboard::CheckResult checked = storyboard::check(entries, [&](std::string_view path) {
+        auto file = session.resolve_path(path);
+        return file && platform::exists(file.value());
+    });
+    errors.insert(errors.end(), checked.errors.begin(), checked.errors.end());
+
+    // StoryRef IDs in every scene and prefab in the project, except exports in build/, and in the
+    // open scene as it is now rather than as last saved.
+    const std::string& open = session.scene_path();
+    auto files = platform::list_files(session.options().project_root,
+                                      [](std::string_view folder) { return folder != "build/"; });
+    if (!files) {
+        return Reply::failure(files.error());
+    }
+    for (const std::string& path : files.value()) {
+        if (path == open ||
+            (!path.ends_with(world::kSceneSuffix) && !path.ends_with(world::kPrefabSuffix))) {
+            continue;
+        }
+        auto text = session.read_project_file(path);
+        const std::optional<std::string> contents = text ? text.value() : std::nullopt;
+        if (!contents) {
+            continue;
+        }
+        // A file that does not parse is scene validate's to report.
+        if (auto document = json::parse(*contents); document) {
+            storyboard::check_story_refs(entries, path, document.value(), errors);
+        }
+    }
+    storyboard::check_story_refs(entries, open.empty() ? "(open scene)" : open,
+                                 session.save().scene, errors);
+
+    json::Value result;
+    result["valid"] = errors.empty();
+    if (!errors.empty()) {
+        result["errors"] = file_errors(errors);
+    }
+    if (!checked.warnings.empty()) {
+        result["warnings"] = file_errors(checked.warnings);
+    }
+    return Reply::success(std::move(result));
+}
+
+Reply storyboard_brief(Session& session, const json::Value& params) {
+    json::Object entries;
+    if (auto failed = load_storyboard(session, entries)) {
+        return std::move(*failed);
+    }
+    std::vector<std::string> ids;
+    std::vector<std::string> paths;
+    std::vector<json::ValidationError> errors;
+    const auto each = [&](std::string_view key, const auto& visit) {
+        if (const json::Value* list = params.find(key); list != nullptr) {
+            for (std::size_t i = 0; i < list->size(); ++i) {
+                visit(list->as_array()[i].as_string(),
+                      "/" + std::string(key) + "/" + std::to_string(i));
+            }
+        }
+    };
+    each("ids", [&](const std::string& id, const std::string& path) {
+        if (!entries.contains(id)) {
+            const std::string message = storyboard::id_error(id);
+            errors.push_back(
+                {path, message.empty() ? storyboard::unknown_entry(entries, id) : message});
+        }
+        ids.push_back(id);
+    });
+    const auto project_path = [&](const std::string& file, const std::string& path) {
+        if (!is_project_path(file)) {
+            errors.push_back({path, "paths are relative to the project folder, separated by "
+                                    "'/', with no \".\" or \"..\" parts; got " +
+                                        quoted(file)});
+            return false;
+        }
+        paths.push_back(file);
+        return true;
+    };
+    each("files", project_path);
+    // A scene brings the entries its entities stand for and the prefabs they extend.
+    each("scenes", [&](const std::string& file, const std::string& path) {
+        if (!project_path(file, path)) {
+            return;
+        }
+        json::Value document;
+        if (file == session.scene_path()) {
+            document = session.save().scene;
+        } else {
+            auto text = session.read_project_file(file);
+            if (!text || !text.value()) {
+                errors.push_back({path, "no scene at " + quoted(file)});
+                return;
+            }
+            auto parsed = json::parse(*text.value());
+            if (!parsed) {
+                errors.push_back({path, quoted(file) + " is not valid: " + parsed.error().message});
+                return;
+            }
+            document = std::move(parsed).value();
+        }
+        for (const storyboard::StoryRefId& ref : storyboard::story_refs(document)) {
+            ids.push_back(ref.id);
+        }
+        if (const json::Value* scene_entities = document.find("entities");
+            scene_entities != nullptr && scene_entities->is_object()) {
+            for (const auto& [id, entity] : scene_entities->as_object()) {
+                if (const json::Value* base = entity.find("extends");
+                    base != nullptr && base->is_string()) {
+                    paths.push_back(base->as_string());
+                }
+            }
+        }
+    });
+    const world::World& world = session.world();
+    const world::PrefabLinks links = world.prefab_links();
+    const ComponentType* story = world.components().find("StoryRef");
+    each("entities", [&](const std::string& id, const std::string& path) {
+        const entt::entity entity = world.find(id);
+        if (entity == entt::null) {
+            std::string message = "no entity has the id " + quoted(id);
+            add_hint(message, id, world.ids());
+            errors.push_back({path, std::move(message)});
+            return;
+        }
+        if (story != nullptr && story->has(world, entity)) {
+            const json::Value fields = story->get(world, entity);
+            for (const json::Value& ref : fields.find("ids")->as_array()) {
+                ids.push_back(ref.as_string());
+            }
+        }
+        if (const auto link = links.find(id); link != links.end()) {
+            paths.push_back(link->second.path);
+        }
+    });
+    if (!errors.empty()) {
+        Reply reply = Reply::invalid_params(errors);
+        reply.code = code::kNotFound;
+        return reply;
+    }
+
+    auto journal = session.read_project_file(storyboard::kJournalPath);
+    if (!journal) {
+        return Reply::failure(journal.error());
+    }
+    const std::string journal_text = journal.value().value_or(std::string());
+    storyboard::Brief found = storyboard::brief(entries, ids, paths);
+    json::Value result;
+    result["entries"] = std::move(found.entries);
+    result["related"] = std::move(found.related);
+    if (const json::Value* since = params.find("since"); since != nullptr) {
+        result["changed"] =
+            storyboard::changes_since(journal_text, static_cast<std::size_t>(since->as_int()));
+    }
+    result["seq"] = storyboard::journal_length(journal_text);
     return Reply::success(std::move(result));
 }
 
@@ -1512,6 +1689,37 @@ void register_builtin_commands(Registry& registry) {
             {"full", property("boolean", "Return every field, not only name and summary.")},
         }),
         .handler = storyboard_query,
+    });
+
+    registry.add({
+        .name = "storyboard.brief",
+        .description = "Call before a task: the storyboard facts it needs. Give the scenes, "
+                       "entities, files or entry IDs it touches; returns linked entries, global "
+                       "rules, open tasks and decisions about them, and with since, what changed.",
+        .capabilities = {Read},
+        .effect = Effect::Read,
+        .params = params_schema({
+            {"scenes", names_property("Scene files, e.g. [\"scenes/main.scene.json\"]; their "
+                                      "entities' StoryRef entries count too.")},
+            {"entities", names_property("Entity IDs in the open scene.")},
+            {"files", names_property("Other project files: assets, prefabs, source.")},
+            {"ids", names_property("Storyboard entry IDs.")},
+            {"since", integer_property("Also list entries changed after this journal seq "
+                                       "(from an earlier result).",
+                                       0, std::numeric_limits<std::int32_t>::max(), 0)},
+        }),
+        .handler = storyboard_brief,
+    });
+
+    registry.add({
+        .name = "storyboard.check",
+        .description = "Call after a task: checks storyboard files, references, glossary words "
+                       "to avoid and StoryRef IDs in scenes and prefabs; missing link targets are "
+                       "warnings.",
+        .capabilities = {Read},
+        .effect = Effect::Read,
+        .params = params_schema(),
+        .handler = storyboard_check,
     });
 
     json::Value story_version;

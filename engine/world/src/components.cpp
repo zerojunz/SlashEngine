@@ -19,6 +19,10 @@ void register_builtin_components(ComponentRegistry& registry) {
                                .min = -1.0,
                                .max = 1.0})
         .describe("scale", {.doc = "Scale factor on each axis, as [x, y, z]."});
+
+    registry.add<StoryRef>()
+        .set_doc("The storyboard entries this entity stands for.")
+        .describe("ids", {.doc = "Storyboard entry IDs, e.g. [\"character/mira\"]."});
 }
 
 } // namespace slash::world

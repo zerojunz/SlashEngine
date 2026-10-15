@@ -11,6 +11,8 @@ prints the JSON Schema.
 
 A project's storyboard is up to seven files in its `storyboard/` folder. Each kind of entry lives
 in one file, so `storyboard.edit` always knows where an entry goes. A missing file has no entries.
+`slash-cli init` starts a new game with two: `glossary.json`, holding the game's title as a
+`term`, and `work.json`, holding an open task to fill in the rest.
 
 ```text
 storyboard/
@@ -92,6 +94,53 @@ the kind shown.
 | `term` | glossary | `aliases`, `avoid` (strings) | A canonical name; `name` is the spelling to use |
 | `decision` | decisions | `status` (`proposed`, `accepted`, `superseded`), `by`, `date`, `why`, `supersedes` (decision) | Something decided, by whom and why |
 | `task` | work | `status` (`open`, `in_progress`, `blocked`, `done`), `owner`, `questions` (strings) | Open work; `refs` and `links` say what it touches |
+
+## StoryRef
+
+The built-in `StoryRef` component says which entries an entity stands for, so a scene and the
+storyboard stay tied together:
+
+```json
+{
+  "entities": {
+    "player": {
+      "components": {
+        "StoryRef": {
+          "ids": ["character/pilot"]
+        }
+      }
+    }
+  },
+  "format": 1
+}
+```
+
+`storyboard.brief` with the entity, or with its scene, returns those entries. A prefab can carry a
+`StoryRef` too, and every entity that extends it inherits it. An entry can point the other way
+with `links`, naming the scenes, prefabs and assets it is about.
+
+## Checks
+
+`storyboard.check` (see the [command reference](commands.md#storyboardcheck)) checks the whole
+storyboard after a task. It reports as errors:
+
+- a storyboard file that is invalid;
+- a reference to an entry that does not exist, or is of the wrong kind;
+- a word that a `term` lists in `avoid`, anywhere in another entry's text, matched as a whole
+  word and ignoring case;
+- a `StoryRef` ID in a scene or prefab that names no entry, with the closest existing ID.
+
+A link to a file that does not exist is a warning, since open work can link files still to be
+made. `slash-cli project validate` runs the same check, so the workflow `slash-cli init` writes
+fails a pull request that breaks the storyboard, and `slash-cli scene validate` checks a scene's
+`StoryRef` IDs:
+
+```json
+{"errors":[{"message":"unknown storyboard entry \"character/pilto\"; did you mean \"character/pilot\"?","path":"/entities/player/components/StoryRef/ids/0"}],"valid":false}
+```
+
+Checking assets against `palette` colors and `budget` limits comes with sprites, textures and
+meshes ([roadmap](../roadmap.md)).
 
 ## Versions
 

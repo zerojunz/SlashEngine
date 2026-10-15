@@ -3,9 +3,11 @@
 #include "slash/core/result.hpp"
 
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 // Whole-file reads and writes through SDL, which also reaches bundled assets on platforms such as
 // Android where files are not plain paths. Neither call needs a Platform to exist.
@@ -31,6 +33,13 @@ struct FileStamp {
 
 // The file's stamp, or nullopt if there is no file at path.
 [[nodiscard]] std::optional<FileStamp> file_stamp(std::string_view path);
+
+// Every file under folder and its subfolders, as paths relative to folder separated by '/',
+// sorted. Files and folders whose names start with '.' are skipped, and so is each subfolder for
+// which descend, given its relative path such as "build/", returns false.
+[[nodiscard]] Result<std::vector<std::string>>
+list_files(std::string_view folder,
+           const std::function<bool(std::string_view folder)>& descend = nullptr);
 
 // The folder holding the running program's bundled files, ending in a separator: the app
 // bundle's Resources folder on macOS and iOS, the executable's folder on Windows and Linux, and

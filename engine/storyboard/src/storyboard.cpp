@@ -3,6 +3,7 @@
 #include "slash/core/text.hpp"
 
 #include <algorithm>
+#include <array>
 #include <map>
 #include <set>
 #include <utility>
@@ -233,6 +234,88 @@ bool links_to(const Kind& kind, const json::Value& entry, std::string_view targe
     return std::ranges::any_of(references(kind, entry), [&](const Reference& reference) {
         return reference.target == target;
     });
+}
+
+// A query or brief result: the ID, the version and every field, or only name and summary.
+json::Value entry_item(const std::string& id, const json::Value& entry, bool full) {
+    json::Value item;
+    item["id"] = id;
+    item["version"] = version(entry);
+    if (full) {
+        item["fields"] = entry;
+        return item;
+    }
+    json::Value& fields = item["fields"];
+    fields = json::Object{};
+    for (const std::string_view name : {"name", "summary"}) {
+        if (const json::Value* value = entry.find(name); value != nullptr) {
+            fields[name] = *value;
+        }
+    }
+    return item;
+}
+
+// Every string in an entry's Text and Texts fields, with its path inside the entry.
+template <typename Visit>
+void for_each_text(const Kind& kind, const json::Value& entry, Visit&& visit) {
+    for_each_field(kind, [&](const Field& field) {
+        const json::Value* value = entry.find(field.name);
+        if (value == nullptr) {
+            return;
+        }
+        const std::string path = "/" + std::string(field.name);
+        if (field.type == Text && value->is_string()) {
+            visit(value->as_string(), path);
+        } else if (field.type == Texts && value->is_array()) {
+            for (std::size_t i = 0; i < value->size(); ++i) {
+                if (const json::Value& item = value->as_array()[i]; item.is_string()) {
+                    visit(item.as_string(), path + "/" + std::to_string(i));
+                }
+            }
+        }
+    });
+}
+
+// Each value of an entry's Paths fields, with its path inside the entry.
+template <typename Visit>
+void for_each_link(const Kind& kind, const json::Value& entry, Visit&& visit) {
+    for_each_field(kind, [&](const Field& field) {
+        const json::Value* value = entry.find(field.name);
+        if (field.type != Paths || value == nullptr || !value->is_array()) {
+            return;
+        }
+        for (std::size_t i = 0; i < value->size(); ++i) {
+            if (const json::Value& item = value->as_array()[i]; item.is_string()) {
+                visit(item.as_string(), "/" + std::string(field.name) + "/" + std::to_string(i));
+            }
+        }
+    });
+}
+
+bool is_word_char(char c) {
+    const auto byte = static_cast<unsigned char>(c);
+    return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || byte >= 0x80;
+}
+
+// Whether lowered text has word as a whole word.
+bool has_word(std::string_view text, std::string_view word) {
+    if (word.empty()) {
+        return false;
+    }
+    for (std::size_t at = text.find(word); at != std::string_view::npos;
+         at = text.find(word, at + 1)) {
+        const std::size_t end = at + word.size();
+        if ((at == 0 || !is_word_char(text[at - 1])) &&
+            (end == text.size() || !is_word_char(text[end]))) {
+            return true;
+        }
+    }
+    return false;
+}
+
+std::string text_of(const json::Value& entry, std::string_view field) {
+    const json::Value* value = entry.find(field);
+    return value != nullptr && value->is_string() ? value->as_string() : std::string();
 }
 
 std::string pad(std::int64_t value, std::size_t width) {
@@ -720,23 +803,211 @@ json::Array query(const json::Object& entries, const Query& query) {
             (!query.linked.empty() && !links_to(*kind, entry, query.linked))) {
             continue;
         }
-        json::Value item;
-        item["id"] = id;
-        item["version"] = version(entry);
-        if (query.full) {
-            item["fields"] = entry;
-        } else {
-            json::Value& fields = item["fields"];
-            fields = json::Object{};
-            for (const std::string_view name : {"name", "summary"}) {
-                if (const json::Value* value = entry.find(name); value != nullptr) {
-                    fields[name] = *value;
+        out.push_back(entry_item(id, entry, query.full));
+    }
+    return out;
+}
+
+CheckResult check(const json::Object& entries,
+                  const std::function<bool(std::string_view path)>& exists) {
+    struct Avoided {
+        std::string word;    // lowered
+        std::string written; // as the term gives it
+        std::string term;
+        std::string name;
+    };
+    std::vector<Avoided> avoided;
+    for (const auto& [id, entry] : entries) {
+        if (const Kind* kind = kind_of(id); kind == nullptr || kind->name != "term") {
+            continue;
+        }
+        if (const json::Value* words = entry.find("avoid"); words != nullptr && words->is_array()) {
+            for (const json::Value& word : words->as_array()) {
+                if (word.is_string()) {
+                    avoided.push_back(
+                        {lowered(word.as_string()), word.as_string(), id, text_of(entry, "name")});
                 }
             }
         }
-        out.push_back(std::move(item));
+    }
+
+    CheckResult result;
+    for (const auto& [id, entry] : entries) {
+        const Kind* found = kind_of(id);
+        if (found == nullptr) {
+            continue;
+        }
+        const Kind& kind = *found;
+        const std::string file = file_path(kind.file);
+        const std::string pointer = "/entries/" + json::pointer_escape(id);
+        for (const Reference& reference : references(kind, entry)) {
+            if (std::string message = reference_error(entries, reference); !message.empty()) {
+                result.errors.push_back({file, pointer + reference.path, std::move(message)});
+            }
+        }
+        for_each_link(kind, entry, [&](const std::string& link, const std::string& path) {
+            if (is_project_path(link) && !exists(link)) {
+                result.warnings.push_back(
+                    {file, pointer + path, "links to " + quoted(link) + ", which does not exist"});
+            }
+        });
+        // A term may mention the words it warns about.
+        if (kind.name == "term") {
+            continue;
+        }
+        for_each_text(kind, entry, [&](const std::string& text, const std::string& path) {
+            const std::string lower = lowered(text);
+            for (const Avoided& avoid : avoided) {
+                if (has_word(lower, avoid.word)) {
+                    result.errors.push_back({file, pointer + path,
+                                             "uses " + quoted(avoid.written) + ", which " +
+                                                 avoid.term + " says to avoid; write " +
+                                                 quoted(avoid.name)});
+                }
+            }
+        });
+    }
+    return result;
+}
+
+std::vector<StoryRefId> story_refs(const json::Value& document) {
+    std::vector<StoryRefId> out;
+    const auto collect = [&](const json::Value& components, const std::string& pointer) {
+        const json::Value* story = components.is_object() ? components.find("StoryRef") : nullptr;
+        const json::Value* ids =
+            story != nullptr && story->is_object() ? story->find("ids") : nullptr;
+        if (ids == nullptr || !ids->is_array()) {
+            return;
+        }
+        for (std::size_t i = 0; i < ids->size(); ++i) {
+            if (const json::Value& id = ids->as_array()[i]; id.is_string()) {
+                out.push_back(
+                    {id.as_string(), pointer + "/components/StoryRef/ids/" + std::to_string(i)});
+            }
+        }
+    };
+    if (!document.is_object()) {
+        return out;
+    }
+    if (const json::Value* components = document.find("components"); components != nullptr) {
+        collect(*components, "");
+    }
+    if (const json::Value* entities = document.find("entities");
+        entities != nullptr && entities->is_object()) {
+        for (const auto& [id, entity] : entities->as_object()) {
+            if (const json::Value* components =
+                    entity.is_object() ? entity.find("components") : nullptr;
+                components != nullptr) {
+                collect(*components, "/entities/" + json::pointer_escape(id));
+            }
+        }
     }
     return out;
+}
+
+void check_story_refs(const json::Object& entries, std::string_view file,
+                      const json::Value& document, std::vector<FileError>& errors) {
+    for (const StoryRefId& ref : story_refs(document)) {
+        if (entries.contains(ref.id)) {
+            continue;
+        }
+        std::string message = id_error(ref.id);
+        errors.push_back({std::string(file), ref.path,
+                          message.empty() ? unknown_entry(entries, ref.id) : std::move(message)});
+    }
+}
+
+Brief brief(const json::Object& entries, const std::vector<std::string>& ids,
+            const std::vector<std::string>& paths) {
+    const std::set<std::string, std::less<>> linked(paths.begin(), paths.end());
+    const auto links_any = [&](const Kind& kind, const json::Value& entry) {
+        bool found = false;
+        for_each_link(kind, entry, [&](const std::string& link, const std::string& /*path*/) {
+            found = found || linked.contains(link);
+        });
+        return found;
+    };
+    std::set<std::string, std::less<>> chosen;
+    for (const std::string& id : ids) {
+        if (entries.contains(id) && kind_of(id) != nullptr) {
+            chosen.insert(id);
+        }
+    }
+    constexpr std::array<std::string_view, 4> kEverywhere = {"rule", "tone", "palette", "budget"};
+    const auto is_work = [](const Kind& kind) {
+        return kind.name == "task" || kind.name == "decision";
+    };
+    for (const auto& [id, entry] : entries) {
+        const Kind* kind = kind_of(id);
+        if (kind == nullptr || is_work(*kind)) {
+            continue;
+        }
+        const bool global = std::ranges::find(kEverywhere, kind->name) != kEverywhere.end() &&
+                            entry.find("links") == nullptr && entry.find("refs") == nullptr;
+        if (global || links_any(*kind, entry)) {
+            chosen.insert(id);
+        }
+    }
+    // Open work and live decisions about the paths or any of those; finished ones are history.
+    const std::set<std::string, std::less<>> direct = chosen;
+    for (const auto& [id, entry] : entries) {
+        const Kind* kind = kind_of(id);
+        if (kind == nullptr || !is_work(*kind) || chosen.contains(id)) {
+            continue;
+        }
+        const std::string status = text_of(entry, "status");
+        if (status == (kind->name == "task" ? "done" : "superseded")) {
+            continue;
+        }
+        const std::vector<Reference> named = references(*kind, entry);
+        if (links_any(*kind, entry) || std::ranges::any_of(named, [&](const Reference& reference) {
+                return direct.contains(reference.target);
+            })) {
+            chosen.insert(id);
+        }
+    }
+    std::set<std::string, std::less<>> related;
+    for (const std::string& id : chosen) {
+        for (const Reference& reference : references(*kind_of(id), entries.at(id))) {
+            if (!chosen.contains(reference.target) && entries.contains(reference.target)) {
+                related.insert(reference.target);
+            }
+        }
+    }
+    Brief out;
+    for (const std::string& id : chosen) {
+        out.entries.push_back(entry_item(id, entries.at(id), true));
+    }
+    for (const std::string& id : related) {
+        out.related.push_back(entry_item(id, entries.at(id), false));
+    }
+    return out;
+}
+
+json::Object changes_since(std::string_view journal, std::size_t seq) {
+    json::Object changes;
+    std::size_t line_number = 0;
+    std::size_t start = 0;
+    while (start < journal.size()) {
+        const std::size_t end = std::min(journal.find('\n', start), journal.size());
+        const std::string_view line = journal.substr(start, end - start);
+        start = end + 1;
+        if (++line_number <= seq) {
+            continue;
+        }
+        auto parsed = json::parse(line);
+        if (!parsed) {
+            continue;
+        }
+        const json::Value entry = std::move(parsed).value();
+        if (const json::Value* changed = entry.find("changes");
+            changed != nullptr && changed->is_object()) {
+            for (const auto& [id, version] : changed->as_object()) {
+                changes[id] = version;
+            }
+        }
+    }
+    return changes;
 }
 
 std::string journal_line(std::string_view by, std::string_view why, const json::Object& changes,

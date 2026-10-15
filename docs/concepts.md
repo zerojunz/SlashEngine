@@ -143,6 +143,13 @@ fields; an edit names the version it read, so a stale edit from another agent is
 of overwriting a newer fact. The **journal**, `storyboard/journal.jsonl`, records who changed which
 entries, when and why, and `task` entries say who is on what, so agents see each other's work.
 
+Agents use it around every task. Before, `storyboard.brief` returns the facts the task touches:
+the entries its scenes and entities stand for (through the `StoryRef` component), the entries
+linked to its files, the rules that apply everywhere, and the open tasks and decisions about any
+of them. After, `storyboard.check` finds references to missing entries, words the glossary says to
+avoid, and `StoryRef` IDs that name nothing. `slash-cli project validate` runs the same check, so
+CI catches what an agent missed.
+
 ## Game projects and exports
 
 A **project** is a game's folder: a `project.json` naming the game, its version and its **main
@@ -315,11 +322,12 @@ edit a frozen frame or advance it with `step`; `play` lets it run again.
 
 `slash-cli init` writes everything an agent needs to work on a game: MCP configs for Claude Code
 (`.mcp.json`), Codex (`.codex/config.toml`) and Cursor (`.cursor/mcp.json`), an `AGENTS.md` with
-the working rules, a `CLAUDE.md` that loads it, a Claude Code skill for editing scenes, a GitHub Actions workflow
-that exports and tests every platform (`.github/workflows/export.yml`), an empty
-`scenes/main.scene.json`, and `.gitignore` entries for `.slash/` and `build/`. The MCP server's own
-instructions repeat the key rules (call `engine_describe` first, use `batch`, don't hand-edit
-scenes while the server runs) to every client that connects.
+the working rules, a `CLAUDE.md` that loads it, a Claude Code skill for editing scenes, a GitHub
+Actions workflow that checks the project and exports and tests every platform
+(`.github/workflows/export.yml`), an empty `scenes/main.scene.json`, a starter storyboard, and
+`.gitignore` entries for `.slash/` and `build/`. The MCP server's own instructions repeat the key
+rules (call `engine_describe` first, use `batch`, brief before a task and check after it, don't
+hand-edit scenes while the server runs) to every client that connects.
 
 ## Model agnostic
 
@@ -358,6 +366,7 @@ OpenAI-compatible servers (including local ones), Anthropic and Gemini; see the
 | Scene | A world saved as a `.scene.json` file |
 | Session | One world with its open scene path, undo history and recent logs |
 | Storyboard | A game's facts that are not code, as typed entries in `storyboard/*.json` |
+| StoryRef | The component that names the storyboard entries an entity stands for |
 | System | Code that updates components every tick, in order of priority |
 | Tick | One fixed simulation step, 1/60 s by default |
 | Tool name | A command's MCP name, with `_` in place of `.` |

@@ -160,6 +160,42 @@ struct Query {
 // Matching entries by ID, each {"fields", "id", "version"}.
 [[nodiscard]] json::Array query(const json::Object& entries, const Query& query);
 
+// Checks entries against each other and the project: every reference names an entry of the
+// right kind and no text uses a word the glossary says to avoid (errors), and every link names a
+// file that exists (warnings, since open work can link files still to be made).
+struct CheckResult {
+    std::vector<FileError> errors;
+    std::vector<FileError> warnings;
+};
+[[nodiscard]] CheckResult check(const json::Object& entries,
+                                const std::function<bool(std::string_view path)>& exists);
+
+// The StoryRef IDs in a scene or prefab document, each with its JSON Pointer.
+struct StoryRefId {
+    std::string id;
+    std::string path;
+};
+[[nodiscard]] std::vector<StoryRefId> story_refs(const json::Value& document);
+// An error for each StoryRef ID in a scene or prefab document that names no entry.
+void check_story_refs(const json::Object& entries, std::string_view file,
+                      const json::Value& document, std::vector<FileError>& errors);
+
+// The facts a task needs, so an agent reads a few entries rather than the whole storyboard:
+// - entries: the given IDs, entries linked to the given paths, the rules and style that apply
+//   everywhere (those with no links or refs), and the open tasks and live decisions that link to
+//   those paths or name those entries, each with every field;
+// - related: the entries those name, with name and summary only.
+struct Brief {
+    json::Array entries;
+    json::Array related;
+};
+[[nodiscard]] Brief brief(const json::Object& entries, const std::vector<std::string>& ids,
+                          const std::vector<std::string>& paths);
+
+// The entries the journal says changed after its first seq lines: each ID's latest version, or
+// null if it was removed. Lines that do not parse are skipped.
+[[nodiscard]] json::Object changes_since(std::string_view journal, std::size_t seq);
+
 // A journal line, without its newline. changes maps each ID to its new version, or null if it
 // was removed.
 [[nodiscard]] std::string journal_line(std::string_view by, std::string_view why,
