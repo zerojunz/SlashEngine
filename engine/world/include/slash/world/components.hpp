@@ -4,6 +4,8 @@
 #include "slash/core/math.hpp"
 #include "slash/core/reflect.hpp"
 
+#include <cstdint>
+#include <entt/entity/entity.hpp>
 #include <map>
 #include <string>
 #include <vector>
@@ -178,6 +180,186 @@ struct CanvasModulate {
     Vec4 color{1.0F, 1.0F, 1.0F, 1.0F};
 };
 SLASH_COMPONENT(CanvasModulate, color)
+
+// ---- 2D physics, as Godot's: a body component makes its entity a physics body, placed by its
+// Transform2D, and the entity's CollisionShape2D and CollisionPolygon2D give it shapes. Units are
+// pixels, seconds, radians and kilograms; layers and masks are Godot's 32 physics layers, and two
+// objects collide when either one's collision_mask shares a bit with the other's collision_layer.
+
+// A shape of the entity's body or area, as Godot's CollisionShape2D with its Shape2D, moved and
+// turned from the entity's Transform2D by position and rotation, and scaled by its scale.
+struct CollisionShape2D {
+    std::string shape = "rectangle"; // "rectangle", "circle", "capsule", "segment" or "polygon"
+    Vec2 size{20.0F, 20.0F};         // rectangle
+    float radius = 10.0F;            // circle and capsule
+    float height = 30.0F;            // capsule, end to end along y
+    Vec2 a;                          // segment
+    Vec2 b{0.0F, 10.0F};             // segment
+    std::vector<Vec2> points;        // polygon: its convex hull is the shape
+    Vec2 position;
+    float rotation = 0.0F;
+    bool disabled = false;
+    bool one_way_collision = false; // collide only with what comes from the shape's -y side
+    float one_way_collision_margin = 1.0F;
+
+    friend bool operator==(const CollisionShape2D&, const CollisionShape2D&) = default;
+};
+SLASH_COMPONENT(CollisionShape2D, shape, size, radius, height, a, b, points, position, rotation,
+                disabled, one_way_collision, one_way_collision_margin)
+
+// A polygon shape of the entity's body or area, as Godot's CollisionPolygon2D: any simple
+// polygon, filled ("solids", split into convex parts) or only its edges ("segments").
+struct CollisionPolygon2D {
+    std::vector<Vec2> polygon;         // points in pixels, from the entity
+    std::string build_mode = "solids"; // "solids" or "segments"
+    bool disabled = false;
+    bool one_way_collision = false;
+    float one_way_collision_margin = 1.0F;
+
+    friend bool operator==(const CollisionPolygon2D&, const CollisionPolygon2D&) = default;
+};
+SLASH_COMPONENT(CollisionPolygon2D, polygon, build_mode, disabled, one_way_collision,
+                one_way_collision_margin)
+
+// A body that doesn't move on its own, such as a wall or the ground, as Godot's StaticBody2D.
+// Changing its Transform2D moves it there at once.
+struct StaticBody2D {
+    std::uint32_t collision_layer = 1;
+    std::uint32_t collision_mask = 1;
+    float friction = 1.0F;
+    float bounce = 0.0F;
+};
+SLASH_COMPONENT(StaticBody2D, collision_layer, collision_mask, friction, bounce)
+
+// A body that goes where its Transform2D says, as Godot's AnimatableBody2D: moving platforms and
+// doors that gameplay code or an AnimationPlayer moves. With sync_to_physics it moves there
+// during the physics step, pushing bodies in its way and carrying those on it.
+struct AnimatableBody2D {
+    std::uint32_t collision_layer = 1;
+    std::uint32_t collision_mask = 1;
+    float friction = 1.0F;
+    float bounce = 0.0F;
+    bool sync_to_physics = true;
+};
+SLASH_COMPONENT(AnimatableBody2D, collision_layer, collision_mask, friction, bounce,
+                sync_to_physics)
+
+// A body that gravity, collisions, forces and joints move, as Godot's RigidBody2D. The physics
+// step writes its Transform2D, velocities and sleeping back each tick.
+struct RigidBody2D {
+    std::uint32_t collision_layer = 1;
+    std::uint32_t collision_mask = 1;
+    float friction = 1.0F;
+    float bounce = 0.0F;
+    float mass = 1.0F;
+    float inertia = 0.0F; // 0 computes it from the shapes and the mass
+    float gravity_scale = 1.0F;
+    Vec2 linear_velocity;
+    float angular_velocity = 0.0F;
+    std::string linear_damp_mode = "combine"; // "combine" adds to the project's; "replace"
+    float linear_damp = 0.0F;
+    std::string angular_damp_mode = "combine";
+    float angular_damp = 0.0F;
+    Vec2 constant_force;
+    float constant_torque = 0.0F;
+    bool lock_rotation = false;
+    bool freeze = false;
+    std::string freeze_mode = "static";     // "static" or "kinematic"
+    std::string continuous_cd = "disabled"; // "disabled", "cast_ray" or "cast_shape"
+    bool can_sleep = true;
+    bool sleeping = false;
+    bool contact_monitor = false; // emit body_entered and body_exited
+};
+SLASH_COMPONENT(RigidBody2D, collision_layer, collision_mask, friction, bounce, mass, inertia,
+                gravity_scale, linear_velocity, angular_velocity, linear_damp_mode, linear_damp,
+                angular_damp_mode, angular_damp, constant_force, constant_torque, lock_rotation,
+                freeze, freeze_mode, continuous_cd, can_sleep, sleeping, contact_monitor)
+
+// A body that gameplay code moves by setting its velocity, as Godot's CharacterBody2D: each tick
+// the physics step runs move_and_slide, sliding it along what it hits, then writes its
+// Transform2D, velocity and what it touches. It moves as its CollisionShape2D (a polygon as its
+// convex hull, with corners rounded by a pixel), else as its CollisionPolygon2D's convex hull.
+struct CharacterBody2D {
+    std::uint32_t collision_layer = 1;
+    std::uint32_t collision_mask = 1;
+    std::string motion_mode = "grounded"; // "grounded" (floors, walls, ceilings) or "floating"
+    Vec2 up_direction{0.0F, -1.0F};
+    Vec2 velocity;
+    int max_slides = 4;
+    bool floor_stop_on_slope = true;
+    float floor_max_angle = 0.785398F; // radians from up_direction
+    float floor_snap_length = 1.0F;
+    bool slide_on_ceiling = true;
+    std::string platform_on_leave = "add_velocity"; // or "add_upward_velocity", "do_nothing"
+    // What the last move found.
+    bool on_floor = false;
+    bool on_wall = false;
+    bool on_ceiling = false;
+    Vec2 floor_normal;
+    Vec2 wall_normal;
+    Vec2 platform_velocity; // of the moving body it stands on
+};
+SLASH_COMPONENT(CharacterBody2D, collision_layer, collision_mask, motion_mode, up_direction,
+                velocity, max_slides, floor_stop_on_slope, floor_max_angle, floor_snap_length,
+                slide_on_ceiling, platform_on_leave, on_floor, on_wall, on_ceiling, floor_normal,
+                wall_normal, platform_velocity)
+
+// A region that reports bodies and areas entering and leaving its shapes, as Godot's Area2D:
+// body_entered, body_exited, area_entered and area_exited events. It goes where its Transform2D
+// says and nothing collides with it.
+struct Area2D {
+    std::uint32_t collision_layer = 1;
+    std::uint32_t collision_mask = 1;
+    bool monitoring = true;  // report what enters
+    bool monitorable = true; // other areas see it
+};
+SLASH_COMPONENT(Area2D, collision_layer, collision_mask, monitoring, monitorable)
+
+// Pins two bodies together at the entity's Transform2D, letting them turn, as Godot's
+// PinJoint2D. A missing node_a pins node_b to the world.
+struct PinJoint2D {
+    entt::entity node_a{entt::null};
+    entt::entity node_b{entt::null};
+    bool disable_collision = true;
+    bool angular_limit_enabled = false;
+    float angular_limit_lower = 0.0F;
+    float angular_limit_upper = 0.0F;
+    bool motor_enabled = false;
+    float motor_target_velocity = 0.0F;
+
+    friend bool operator==(const PinJoint2D&, const PinJoint2D&) = default;
+};
+SLASH_COMPONENT(PinJoint2D, node_a, node_b, disable_collision, angular_limit_enabled,
+                angular_limit_lower, angular_limit_upper, motor_enabled, motor_target_velocity)
+
+// A spring from node_a at the entity's Transform2D to node_b, length pixels along the entity's
+// y axis, as Godot's DampedSpringJoint2D.
+struct DampedSpringJoint2D {
+    entt::entity node_a{entt::null};
+    entt::entity node_b{entt::null};
+    bool disable_collision = true;
+    float length = 50.0F;
+    float rest_length = 0.0F; // 0 rests at length
+    float stiffness = 20.0F;
+    float damping = 1.0F;
+
+    friend bool operator==(const DampedSpringJoint2D&, const DampedSpringJoint2D&) = default;
+};
+SLASH_COMPONENT(DampedSpringJoint2D, node_a, node_b, disable_collision, length, rest_length,
+                stiffness, damping)
+
+// Keeps node_b on a groove of node_a's, from the entity's Transform2D length pixels along its y
+// axis, as Godot's GrooveJoint2D; node_b slides along it and turns freely.
+struct GrooveJoint2D {
+    entt::entity node_a{entt::null};
+    entt::entity node_b{entt::null};
+    bool disable_collision = true;
+    float length = 50.0F;
+    float initial_offset = 25.0F; // where node_b starts along the groove
+
+    friend bool operator==(const GrooveJoint2D&, const GrooveJoint2D&) = default;
+};
+SLASH_COMPONENT(GrooveJoint2D, node_a, node_b, disable_collision, length, initial_offset)
 
 // Registers the components above, with their docs.
 void register_builtin_components(ComponentRegistry& registry);

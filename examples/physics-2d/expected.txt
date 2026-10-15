@@ -1,0 +1,21 @@
+scene.open {"path":"main.scene.json"}
+{"entities":12,"path":"main.scene.json"}
+events.subscribe {"kinds":["coin_taken"]}
+{"subscription":"events_1"}
+tick 60: hero at (125.4, 215.8), at a wall
+tick 120: hero at (215.4, 170.0), on the floor
+tick 180: hero at (303.9, 231.0), on the floor
+tick 240: hero at (378.3, 170.3)
+tick 300: hero at (420.3, 189.0), on the floor
+tick 360: hero at (420.3, 189.0), on the floor
+events.read {"subscription":"events_1"}
+{"dropped":0,"events":[{"id":"coin_1","kind":"coin_taken","seq":1,"tick":32},{"id":"coin_2","kind":"coin_taken","seq":2,"tick":95},{"id":"coin_3","kind":"coin_taken","seq":3,"tick":275}],"more":false}
+physics.raycast {"exclude":["hero"],"from":[420,189],"to":[420,300]}
+{"hit":{"fraction":0.1441,"id":"hill","normal":[0,-1],"point":[420,205]}}
+physics.contacts {"id":"hero"}
+{"areas":[],"bodies":["hill"]}
+physics.overlap {"point":[150,240]}
+{"ids":["crate"]}
+physics.overlap {"collide_with_areas":true,"position":[190,175],"shape":{"size":[40,40]}}
+{"ids":["ledge"]}
+lamp at (76.1, 66.7), 40.0 pixels from its pin

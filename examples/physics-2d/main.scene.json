@@ -1,0 +1,158 @@
+{
+  "entities": {
+    "coin_1": {
+      "components": {
+        "Area2D": {
+          "collision_mask": 2
+        },
+        "CollisionShape2D": {
+          "radius": 6.0,
+          "shape": "circle"
+        },
+        "Transform2D": {
+          "position": [100.0, 235.0]
+        }
+      }
+    },
+    "coin_2": {
+      "components": {
+        "Area2D": {
+          "collision_mask": 2
+        },
+        "CollisionShape2D": {
+          "radius": 6.0,
+          "shape": "circle"
+        },
+        "Transform2D": {
+          "position": [190.0, 170.0]
+        }
+      }
+    },
+    "coin_3": {
+      "components": {
+        "Area2D": {
+          "collision_mask": 2
+        },
+        "CollisionShape2D": {
+          "radius": 6.0,
+          "shape": "circle"
+        },
+        "Transform2D": {
+          "position": [420.0, 190.0]
+        }
+      }
+    },
+    "crate": {
+      "components": {
+        "CollisionShape2D": {
+          "size": [24.0, 24.0]
+        },
+        "RigidBody2D": {
+          "mass": 5.0
+        },
+        "Transform2D": {
+          "position": [150.0, 200.0],
+          "rotation": 0.3
+        }
+      }
+    },
+    "ground": {
+      "components": {
+        "CollisionShape2D": {
+          "size": [480.0, 20.0]
+        },
+        "StaticBody2D": {},
+        "Transform2D": {
+          "position": [240.0, 260.0]
+        }
+      }
+    },
+    "hero": {
+      "components": {
+        "CharacterBody2D": {
+          "collision_layer": 2
+        },
+        "CollisionShape2D": {
+          "height": 32.0,
+          "radius": 8.0,
+          "shape": "capsule"
+        },
+        "Transform2D": {
+          "position": [40.0, 200.0]
+        }
+      }
+    },
+    "hill": {
+      "components": {
+        "CollisionPolygon2D": {
+          "polygon": [
+            [300.0, 250.0],
+            [350.0, 225.0],
+            [380.0, 225.0],
+            [380.0, 205.0],
+            [440.0, 205.0],
+            [440.0, 250.0]
+          ]
+        },
+        "StaticBody2D": {}
+      }
+    },
+    "lamp": {
+      "components": {
+        "CollisionShape2D": {
+          "radius": 6.0,
+          "shape": "circle"
+        },
+        "RigidBody2D": {},
+        "Transform2D": {
+          "position": [100.0, 30.0]
+        }
+      }
+    },
+    "lamp_pin": {
+      "components": {
+        "PinJoint2D": {
+          "node_b": "lamp"
+        },
+        "Transform2D": {
+          "position": [60.0, 30.0]
+        }
+      }
+    },
+    "ledge": {
+      "components": {
+        "CollisionShape2D": {
+          "one_way_collision": true,
+          "size": [80.0, 8.0]
+        },
+        "StaticBody2D": {},
+        "Transform2D": {
+          "position": [180.0, 190.0]
+        }
+      }
+    },
+    "left_wall": {
+      "components": {
+        "CollisionShape2D": {
+          "size": [20.0, 270.0]
+        },
+        "StaticBody2D": {},
+        "Transform2D": {
+          "position": [-10.0, 135.0]
+        }
+      }
+    },
+    "right_wall": {
+      "components": {
+        "CollisionShape2D": {
+          "size": [20.0, 270.0]
+        },
+        "StaticBody2D": {},
+        "Transform2D": {
+          "position": [490.0, 135.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

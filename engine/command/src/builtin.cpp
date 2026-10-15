@@ -11,6 +11,7 @@
 #include "slash/core/log.hpp"
 #include "slash/core/text.hpp"
 #include "slash/core/version.hpp"
+#include "slash/physics2d/physics2d.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/render/image.hpp"
 #include "slash/render/light.hpp"
@@ -1143,6 +1144,126 @@ Reply tilemap_get(Session& session, const json::Value& params) {
     result["origin"] = json::Array{x, y};
     result["legend"] = std::move(legend);
     result["rows"] = std::move(rows);
+    return Reply::success(std::move(result));
+}
+
+// ---- Physics ----
+
+json::Value point_value(Vec2 point) {
+    return rounded(json::Array{point.x, point.y});
+}
+
+json::Value id_array(const world::World& world, const std::vector<entt::entity>& entities) {
+    json::Array ids;
+    for (const entt::entity entity : entities) {
+        ids.emplace_back(world.id_of(entity));
+    }
+    return ids;
+}
+
+// The filter a physics query's params describe, or the error for an unknown excluded ID.
+std::optional<Reply> query_filter(const world::World& world, const json::Value& params,
+                                  physics2d::QueryFilter& filter) {
+    if (const json::Value* mask = params.find("collision_mask"); mask != nullptr) {
+        filter.collision_mask = static_cast<std::uint32_t>(mask->as_int());
+    }
+    if (const json::Value* bodies = params.find("collide_with_bodies"); bodies != nullptr) {
+        filter.collide_with_bodies = bodies->as_bool();
+    }
+    if (const json::Value* areas = params.find("collide_with_areas"); areas != nullptr) {
+        filter.collide_with_areas = areas->as_bool();
+    }
+    if (const json::Value* exclude = params.find("exclude"); exclude != nullptr) {
+        for (std::size_t i = 0; i < exclude->size(); ++i) {
+            const std::string& id = exclude->as_array()[i].as_string();
+            const entt::entity entity = world.find(id);
+            if (entity == entt::null) {
+                return unknown_entity(world, id, item_path("/exclude", i));
+            }
+            filter.exclude.push_back(entity);
+        }
+    }
+    return std::nullopt;
+}
+
+Reply physics_raycast(Session& session, const json::Value& params) {
+    world::World& world = session.world();
+    physics2d::QueryFilter filter;
+    if (auto failed = query_filter(world, params, filter)) {
+        return std::move(*failed);
+    }
+    const auto from = floats<2>(*params.find("from"));
+    const auto to = floats<2>(*params.find("to"));
+    const auto hit = physics2d::raycast(world, {from[0], from[1]}, {to[0], to[1]}, filter);
+    json::Value result;
+    if (!hit) {
+        result["hit"] = nullptr;
+        return Reply::success(std::move(result));
+    }
+    json::Value& found = result["hit"];
+    found["id"] = world.id_of(hit->entity);
+    found["point"] = point_value(hit->point);
+    found["normal"] = point_value(hit->normal);
+    found["fraction"] = rounded(hit->fraction);
+    return Reply::success(std::move(result));
+}
+
+Reply physics_overlap(Session& session, const json::Value& params) {
+    world::World& world = session.world();
+    const json::Value* point = params.find("point");
+    const json::Value* shape_fields = params.find("shape");
+    if ((point == nullptr) == (shape_fields == nullptr)) {
+        return param_error(code::kInvalidParams, "",
+                           "give point, or shape (a CollisionShape2D) with position and rotation");
+    }
+    physics2d::QueryFilter filter;
+    if (auto failed = query_filter(world, params, filter)) {
+        return std::move(*failed);
+    }
+    const auto max_results = static_cast<std::size_t>(integer(params, "max_results", 32));
+    json::Value result;
+    if (point != nullptr) {
+        const auto at = floats<2>(*point);
+        result["ids"] =
+            id_array(world, physics2d::overlap_point(world, {at[0], at[1]}, filter, max_results));
+        return Reply::success(std::move(result));
+    }
+    world::CollisionShape2D shape;
+    std::string path = "/shape";
+    if (auto read = world::from_json(world, *shape_fields, shape, path); !read) {
+        return param_error(code::kInvalidParams, path, read.error().message);
+    }
+    constexpr std::array<std::string_view, 5> kShapes{"rectangle", "circle", "capsule", "segment",
+                                                      "polygon"};
+    if (std::ranges::find(kShapes, shape.shape) == kShapes.end()) {
+        std::string message = "unknown shape " + quoted(shape.shape);
+        add_hint(message, shape.shape, kShapes);
+        return param_error(code::kInvalidParams, "/shape/shape", message);
+    }
+    std::array<float, 2> position{};
+    if (const json::Value* at = params.find("position"); at != nullptr) {
+        position = floats<2>(*at);
+    }
+    const json::Value* rotation = params.find("rotation");
+    result["ids"] =
+        id_array(world, physics2d::overlap_shape(
+                            world, shape, {position[0], position[1]},
+                            rotation != nullptr ? static_cast<float>(rotation->as_double()) : 0.0F,
+                            filter, max_results));
+    return Reply::success(std::move(result));
+}
+
+Reply physics_contacts(Session& session, const json::Value& params) {
+    world::World& world = session.world();
+    const std::string id = text(params, "id");
+    const entt::entity entity = world.find(id);
+    if (entity == entt::null) {
+        return unknown_entity(world, id, "/id");
+    }
+    const physics2d::Contacts contacts = physics2d::contacts(world, entity);
+    json::Value result;
+    result["bodies"] = id_array(world, contacts.bodies);
+    result["areas"] = id_array(world, contacts.areas);
     return Reply::success(std::move(result));
 }
 
@@ -2551,6 +2672,66 @@ void register_builtin_commands(Registry& registry) {
                                          kMinZIndex, kMaxZIndex, 0)},
         }),
         .handler = light_sample,
+    });
+
+    json::Value physics_point = property("array", "[x, y]");
+    physics_point["items"]["type"] = "number";
+    physics_point["minItems"] = 2;
+    physics_point["maxItems"] = 2;
+    const auto with_filter = [&](json::Object properties) {
+        properties["collision_mask"] =
+            integer_property("Layers to look in, as bits; default all.", 0, 0xFFFFFFFF, 0xFFFFFFFF);
+        properties["exclude"] = names_property("Entity IDs to leave out.");
+        json::Value bodies = property("boolean", "Find bodies. Default true.");
+        properties["collide_with_bodies"] = std::move(bodies);
+        json::Value areas = property("boolean", "Find areas. Default false.");
+        properties["collide_with_areas"] = std::move(areas);
+        return properties;
+    };
+    json::Value ray_from = physics_point;
+    ray_from["description"] = "Where the ray starts, [x, y].";
+    json::Value ray_to = physics_point;
+    ray_to["description"] = "Where it ends, [x, y].";
+    registry.add({
+        .name = "physics.raycast",
+        .description = "Returns the first body (or area) a ray from from to to hits: its id, the "
+                       "point, the surface normal and how far along. hit is null if none.",
+        .capabilities = {Read},
+        .effect = Effect::Read,
+        .params =
+            params_schema(with_filter({{"from", std::move(ray_from)}, {"to", std::move(ray_to)}}),
+                          {"from", "to"}),
+        .handler = physics_raycast,
+    });
+    json::Value overlap_point = physics_point;
+    overlap_point["description"] = "Find shapes containing this point, [x, y]. Or give shape.";
+    json::Value overlap_position = physics_point;
+    overlap_position["description"] = "Where the shape goes, [x, y].";
+    registry.add({
+        .name = "physics.overlap",
+        .description = "Returns the IDs of bodies (or areas) whose shapes contain a point or "
+                       "overlap a shape placed somewhere, sorted.",
+        .capabilities = {Read},
+        .effect = Effect::Read,
+        .params = params_schema(with_filter({
+            {"point", std::move(overlap_point)},
+            {"shape", property("object", "CollisionShape2D fields, e.g. {\"shape\": "
+                                         "\"circle\", \"radius\": 8}. Or give point.")},
+            {"position", std::move(overlap_position)},
+            {"rotation", property("number", "The shape's rotation, radians.")},
+            {"max_results", integer_property("At most this many IDs.", 1, 256, 32)},
+        })),
+        .handler = physics_overlap,
+    });
+    registry.add({
+        .name = "physics.contacts",
+        .description = "Returns what touches an entity after the last step: bodies touching it "
+                       "(for a character, what its last move hit and its floor) and the areas "
+                       "it is in; for an area, what is in it.",
+        .capabilities = {Read},
+        .effect = Effect::Read,
+        .params = params_schema({{"id", id_property("A body or area.")}}, {"id"}),
+        .handler = physics_contacts,
     });
 
     json::Value set_components =

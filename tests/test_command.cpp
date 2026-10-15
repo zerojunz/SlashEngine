@@ -1154,15 +1154,19 @@ TEST_CASE("engine.describe lists systems in the order they run") {
     world.add_system("movement", [](world::World& /*w*/, double /*dt*/) {},
                      {.doc = "Moves things by their velocity."});
     world.add_system("input", [](world::World& /*w*/, double /*dt*/) {}, {.priority = -1});
-    // Every session plays AnimatedSprite2D with a built-in system that runs late.
+    // Every session plays animations and steps 2D physics with built-in systems that run late.
     CHECK(*engine.ok("engine.describe").find("systems") ==
-          parse(R"(["input", "movement", "animation_player", "animated_sprite_2d"])"));
+          parse(R"(["input", "movement", "animation_player", "physics2d",
+                    "animated_sprite_2d"])"));
     CHECK(*engine.ok("engine.describe", R"({"full": true})").find("systems") == parse(R"([
         {"name": "input", "priority": -1},
         {"name": "movement", "doc": "Moves things by their velocity.", "priority": 0},
         {"name": "animation_player",
          "doc": "Plays each AnimationPlayer's animation on its entity's components.",
          "priority": 900},
+        {"name": "physics2d",
+         "doc": "Steps 2D physics: moves rigid and character bodies and reports contacts.",
+         "priority": 950},
         {"name": "animated_sprite_2d",
          "doc": "Plays each AnimatedSprite2D's animation on its Sprite2D.", "priority": 1000}
     ])"));
@@ -1372,6 +1376,87 @@ TEST_CASE("material.eval returns the colors a material draws, for a file or a sp
     engine.fails("material.eval", R"({"path": "flash.material.json", "uv": []})",
                  command::code::kInvalidParams);
     std::filesystem::remove_all(root);
+}
+
+TEST_CASE("physics commands find bodies by ray, point and shape, and what touches them") {
+    Engine engine;
+    engine.ok("batch", R"({"commands": [
+        {"command": "entity.create", "params": {"id": "floor", "components": {
+            "Transform2D": {"position": [160, 170]}, "StaticBody2D": {},
+            "CollisionShape2D": {"size": [320, 20]}}}},
+        {"command": "entity.create", "params": {"id": "crate", "components": {
+            "Transform2D": {"position": [100, 40]}, "RigidBody2D": {"contact_monitor": true},
+            "CollisionShape2D": {"size": [24, 24]}}}},
+        {"command": "entity.create", "params": {"id": "coin", "components": {
+            "Transform2D": {"position": [100, 100]}, "Area2D": {},
+            "CollisionShape2D": {"shape": "circle", "radius": 8}}}}]})");
+    engine.ok("events.subscribe", R"({"kinds": ["body_entered", "body_exited"]})");
+
+    // Before any step, queries see the bodies where the components put them.
+    CHECK(engine.ok("physics.raycast", R"({"from": [0, 40], "to": [200, 40]})") ==
+          parse(R"({"hit": {"id": "crate", "point": [88, 40], "normal": [-1, 0],
+                            "fraction": 0.44}})"));
+    CHECK(engine.ok("physics.raycast", R"({"from": [100, 0], "to": [100, 300],
+                                           "collide_with_areas": true, "exclude": ["crate"]})") ==
+          parse(R"({"hit": {"id": "coin", "point": [100, 92], "normal": [0, -1],
+                            "fraction": 0.3067}})"));
+    CHECK(engine.ok("physics.raycast", R"({"from": [0, 0], "to": [10, 0]})") ==
+          parse(R"({"hit": null})"));
+
+    engine.ok("step", R"({"ticks": 60})");
+    const json::Value crate = engine.ok("entity.get", R"({"id": "crate"})");
+    CHECK(crate.find("components")
+              ->find("Transform2D")
+              ->find("position")
+              ->as_array()[1]
+              .as_double() == doctest::Approx(148.0).epsilon(0.001));
+    CHECK(engine.ok("physics.contacts", R"({"id": "crate"})") ==
+          parse(R"({"bodies": ["floor"], "areas": []})"));
+    CHECK(engine.ok("physics.overlap", R"({"point": [100, 150]})") ==
+          parse(R"({"ids": ["crate"]})"));
+    CHECK(engine.ok("physics.overlap", R"({"point": [100, 100], "collide_with_areas": true,
+                                           "collide_with_bodies": false})") ==
+          parse(R"({"ids": ["coin"]})"));
+    CHECK(
+        engine.ok("physics.overlap", R"({"shape": {"size": [300, 40]}, "position": [150, 160]})") ==
+        parse(R"({"ids": ["crate", "floor"]})"));
+    CHECK(engine.ok("physics.overlap", R"({"shape": {"size": [300, 40]}, "position": [150, 160],
+                                           "max_results": 1, "collision_mask": 1})") ==
+          parse(R"({"ids": ["crate"]})"));
+    // It fell through the coin's area on the way down.
+    CHECK(*engine.ok("events.read", R"({"subscription": "events_1"})").find("events") == parse(R"([
+        {"seq": 1, "tick": 17, "kind": "body_entered", "id": "coin", "data": {"body": "crate"}},
+        {"seq": 2, "tick": 24, "kind": "body_exited", "id": "coin", "data": {"body": "crate"}},
+        {"seq": 3, "tick": 30, "kind": "body_entered", "id": "crate", "data": {"body": "floor"}}
+    ])"));
+
+    // Undo puts the crate back in the air without a stray body_exited, and the same steps land
+    // it in the same place.
+    engine.ok("undo");
+    CHECK(engine.ok("physics.contacts", R"({"id": "crate"})") ==
+          parse(R"({"bodies": [], "areas": []})"));
+    engine.ok("step");
+    CHECK(engine.ok("events.read", R"({"subscription": "events_1"})").find("events")->size() == 0);
+    engine.ok("step", R"({"ticks": 59})");
+    CHECK(engine.ok("entity.get", R"({"id": "crate"})") == crate);
+
+    engine.fails("physics.overlap", R"({})", command::code::kInvalidParams);
+    engine.fails("physics.overlap", R"({"point": [0, 0], "shape": {}})",
+                 command::code::kInvalidParams);
+    CHECK(engine
+              .fails("physics.overlap", R"({"shape": {"shape": "circel"}})",
+                     command::code::kInvalidParams)
+              .message == "/shape/shape: unknown shape \"circel\"; did you mean \"circle\"?");
+    CHECK(engine
+              .fails("physics.overlap", R"({"shape": {"radius": "big"}})",
+                     command::code::kInvalidParams)
+              .data.find("path")
+              ->as_string() == "/shape/radius");
+    CHECK(engine
+              .fails("physics.raycast", R"({"from": [0, 0], "to": [1, 0], "exclude": ["crat"]})",
+                     command::code::kNotFound)
+              .message == "/exclude/0: no entity has the id \"crat\"; did you mean \"crate\"?");
+    engine.fails("physics.contacts", R"({"id": "nobody"})", command::code::kNotFound);
 }
 
 TEST_CASE("light.sample returns how lit points are, and which lights reach them") {
