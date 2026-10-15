@@ -523,6 +523,16 @@ Result<std::size_t> load_scene(World& world, const json::Value& scene, const Pre
     return loaded;
 }
 
+Result<std::size_t> restore_scene(World& world, const json::Value& saved,
+                                  const PrefabLinks& links) {
+    std::string path;
+    auto loaded = load_valid(world, saved, links, path);
+    if (!loaded) {
+        return located(path, loaded.error());
+    }
+    return loaded;
+}
+
 json::Value save_scene(const World& world) {
     json::Value entities = json::Object{};
     for (const std::string_view id : world.ids()) {

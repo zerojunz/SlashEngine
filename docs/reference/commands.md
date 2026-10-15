@@ -32,7 +32,7 @@ Rules that apply to every command (see [concepts.md](../concepts.md#sessions)):
 
 Add `"dry_run": true` to the params of any command that changes the world (`scene.new`,
 `scene.open`, `entity.create`, `entity.destroy`, `component.set`, `component.remove`, `step`,
-`world.restore`, `storyboard.edit` and `batch`) to see what it would do. The command runs, then
+`run.until`, `world.restore`, `storyboard.edit` and `batch`) to see what it would do. The command runs, then
 the world, the scene's path, the next generated ID and the tick counter are put back, and no undo
 step is recorded. An error is returned as usual. The result holds the command's own result and the
 changes, in the same form as [`world.diff`](#worlddiff):
@@ -63,7 +63,7 @@ as `entity.get`, reject it as an unknown param.
 | Components | [`component.set`](#componentset), [`component.remove`](#componentremove) |
 | Query | [`world.query`](#worldquery) |
 | Snapshots | [`world.snapshot`](#worldsnapshot), [`world.diff`](#worlddiff), [`world.restore`](#worldrestore) |
-| Run | [`step`](#step), [`play`](#play), [`pause`](#pause) |
+| Run | [`step`](#step), [`run.until`](#rununtil), [`play`](#play), [`pause`](#pause) |
 | History | [`undo`](#undo), [`redo`](#redo), [`history.get`](#historyget) |
 | Several at once | [`batch`](#batch) |
 | Observe | [`events.subscribe`](#eventssubscribe), [`events.read`](#eventsread), [`events.unsubscribe`](#eventsunsubscribe), [`log.tail`](#logtail) |
@@ -89,7 +89,7 @@ Needs: `read`.
 ```
 
 ```json
-{"capabilities":["read","edit","run","filesystem","build"],"commands":["asset.list","batch","component.remove","component.set","engine.describe","entity.create","entity.destroy","entity.get","events.read","events.subscribe","events.unsubscribe","export.run","history.get","log.tail","prefab.save","redo","scene.get","scene.new","scene.open","scene.save","schema.get","step","storyboard.brief","storyboard.check","storyboard.edit","storyboard.query","undo","world.diff","world.query","world.restore","world.snapshot"],"components":[{"defaults":{"position":[0.0,0.0],"rotation":0.0,"scale":[1.0,1.0]},"doc":"Position, rotation and scale in 2D. Units are pixels and y points down.","name":"Transform2D"},{"defaults":{"position":[0.0,0.0,0.0],"rotation":[0.0,0.0,0.0,1.0],"scale":[1.0,1.0,1.0]},"doc":"Position, rotation and scale in 3D. Units are meters and y points up.","name":"Transform3D"},{"defaults":{"ids":[]},"doc":"The storyboard entries this entity stands for.","name":"StoryRef"}],"engine":{"name":"SlashEngine","version":"0.1.0"},"scene":{"entities":0,"path":"","tick":0},"systems":[]}
+{"capabilities":["read","edit","run","filesystem","build"],"commands":["asset.list","batch","component.remove","component.set","engine.describe","entity.create","entity.destroy","entity.get","events.read","events.subscribe","events.unsubscribe","export.run","history.get","log.tail","prefab.save","redo","run.until","scene.get","scene.new","scene.open","scene.save","schema.get","step","storyboard.brief","storyboard.check","storyboard.edit","storyboard.query","undo","world.diff","world.query","world.restore","world.snapshot"],"components":[{"defaults":{"position":[0.0,0.0],"rotation":0.0,"scale":[1.0,1.0]},"doc":"Position, rotation and scale in 2D. Units are pixels and y points down.","name":"Transform2D"},{"defaults":{"position":[0.0,0.0,0.0],"rotation":[0.0,0.0,0.0,1.0],"scale":[1.0,1.0,1.0]},"doc":"Position, rotation and scale in 3D. Units are meters and y points up.","name":"Transform3D"},{"defaults":{"ids":[]},"doc":"The storyboard entries this entity stands for.","name":"StoryRef"}],"engine":{"name":"SlashEngine","version":"0.1.0"},"scene":{"entities":0,"path":"","tick":0},"systems":[]}
 ```
 
 `scene` describes the open scene: how many entities it has, its path (empty for an unsaved one)
@@ -651,6 +651,61 @@ Needs: `run`. Takes `dry_run`.
 ```
 
 `tick` is the world's tick counter after the step. Undo restores entities but not the counter.
+
+### run.until
+
+Steps the simulation until an entity matches a condition, or until none does, or the tick limit
+passes, then returns once. Use it instead of stepping and querying after every tick: "when does
+the ball reach the floor?", "do all enemies die within ten seconds?". Undo reverts the entities to
+how they were before.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `with`, `without`, `where` | as in [`world.query`](#worldquery) | | The entities to wait for. At least one is required |
+| `until` | `"any"` or `"none"` | `"any"` | Stop when any entity matches, or when none does |
+| `ticks` | integer, 1 to 100000 | `600` | Most ticks to run |
+| `tick_seconds` | number, above 0 and at most 1 | `1/60` | Seconds per tick |
+| `include`, `omit_defaults`, `limit` | as in [`world.query`](#worldquery) | | What to return about the matching entities |
+
+Needs: `run`. Takes `dry_run`.
+
+The condition is checked before each tick, so one that already holds runs no ticks. The result is
+`world.query`'s for the entities that match when it stops, plus `matched` (whether the condition
+held), `ticks` (how many ran) and `tick` (the world's tick counter). With `"until": "none"` a
+match means nothing is left, so `entities` is empty.
+
+From [examples/run-until](../../examples/run-until/), where a `gravity` system makes `ball` fall
+and a `despawn` system removes bodies below y = 1000:
+
+```json
+{"with": ["Body"], "include": ["Transform2D", "Body"], "omit_defaults": true, "tick_seconds": 0.015625,
+ "where": [{"component": "Transform2D", "field": "position.y", "op": ">", "value": 600}]}
+```
+
+```json
+{"count":1,"entities":[{"components":{"Body":{"velocity":[0.0,1104.0]},"Transform2D":{"position":[40.0,603.75]}},"id":"ball"}],"matched":true,"tick":69,"ticks":69,"truncated":false}
+```
+
+```json
+{"with": ["Body"], "until": "none", "tick_seconds": 0.015625}
+```
+
+```json
+{"count":0,"entities":[],"matched":true,"tick":89,"ticks":10,"truncated":false}
+```
+
+When the limit passes first, `matched` is `false`:
+
+```json
+{"with": ["Body"], "ticks": 10, "tick_seconds": 0.015625,
+ "where": [{"component": "Transform2D", "field": "position.x", "op": "!=", "value": 40}]}
+```
+
+```json
+{"count":0,"entities":[],"matched":false,"tick":79,"ticks":10,"truncated":false}
+```
+
+In a running game it runs between frames, so the game waits for it, as it does for `step`.
 
 ### play
 

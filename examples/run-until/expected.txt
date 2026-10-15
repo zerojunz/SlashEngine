@@ -1,0 +1,12 @@
+batch {"commands":[{"command":"entity.create","params":{"components":{"Body":{},"Transform2D":{"position":[40,0]}},"id":"ball"}},{"command":"entity.create","params":{"components":{"Transform2D":{"position":[0,600]}},"id":"floor"}}]}
+{"results":[{"id":"ball"},{"id":"floor"}]}
+run.until {"include":["Transform2D","Body"],"omit_defaults":true,"tick_seconds":0.015625,"where":[{"component":"Transform2D","field":"position.y","op":">","value":600}],"with":["Body"]}
+{"count":1,"entities":[{"components":{"Body":{"velocity":[0.0,1104.0]},"Transform2D":{"position":[40.0,603.75]}},"id":"ball"}],"matched":true,"tick":69,"ticks":69,"truncated":false}
+run.until {"tick_seconds":0.015625,"ticks":10,"where":[{"component":"Transform2D","field":"position.x","op":"!=","value":40}],"with":["Body"]}
+{"count":0,"entities":[],"matched":false,"tick":79,"ticks":10,"truncated":false}
+run.until {"tick_seconds":0.015625,"until":"none","with":["Body"]}
+{"count":0,"entities":[],"matched":true,"tick":89,"ticks":10,"truncated":false}
+undo {}
+{"can_redo":1,"can_undo":3,"undone":"run.until"}
+entity.get {"components":["Transform2D","Body"],"id":"ball","omit_defaults":true}
+{"components":{"Body":{"velocity":[0.0,1264.0]},"Transform2D":{"position":[40.0,790.0]}},"id":"ball"}

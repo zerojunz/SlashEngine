@@ -1070,6 +1070,79 @@ TEST_CASE("step advances the simulation and undo reverts it") {
     CHECK(y() == doctest::Approx(0.0));
 }
 
+TEST_CASE("run.until steps until entities match, or until none do") {
+    Engine engine;
+    engine.ok("batch", R"({"commands": [
+        {"command": "entity.create", "params": {"id": "ball", "components": {
+            "Transform2D": {}, "Health": {}}}},
+        {"command": "entity.create", "params": {"id": "wall", "components": {
+            "Transform2D": {"position": [0, -50]}}}}]})");
+    // The ball falls one pixel a tick and loses ten hit points a tick from tick 21 on.
+    engine.session->world().add_system("fall", [](world::World& w, double /*seconds*/) {
+        w.ecs().view<world::Transform2D, cmdtest::Health>().each(
+            [&](world::Transform2D& transform, cmdtest::Health& health) {
+                transform.position.y += 1.0F;
+                if (transform.position.y > 20.0F) {
+                    health.current -= 10.0F;
+                }
+            });
+    });
+
+    const std::string_view below_floor =
+        R"({"where": [{"component": "Transform2D", "field": "position.y", "op": ">", "value": 10}]})";
+    CHECK(engine.ok("run.until", below_floor) == parse(R"({
+        "count": 1, "entities": ["ball"], "matched": true, "tick": 11, "ticks": 11,
+        "truncated": false
+    })"));
+    // A condition that already holds runs no ticks.
+    CHECK(engine.ok("run.until", below_floor).find("ticks")->as_int() == 0);
+
+    // With include, the matching entities come with their components.
+    CHECK(engine.ok("run.until", R"({"where": [{"component": "Health", "field": "current",
+                                     "op": "<=", "value": 50}],
+                                     "include": ["Health"]})") == parse(R"({
+        "count": 1, "matched": true, "tick": 25, "ticks": 14, "truncated": false,
+        "entities": [{"id": "ball", "components": {"Health": {"current": 50.0, "max": 100.0}}}]
+    })"));
+
+    // until "none" waits for the last match to go; the reply then lists no entities.
+    CHECK(engine.ok("run.until", R"({"until": "none", "where": [{"component": "Health",
+                                     "field": "current", "op": ">", "value": 0}]})") ==
+          parse(R"({"count": 0, "entities": [], "matched": true, "tick": 30, "ticks": 5,
+                    "truncated": false})"));
+
+    // The tick limit stops a condition that never holds; the reply says it did not match.
+    CHECK(engine.ok("run.until", R"({"with": ["Follow"], "ticks": 7})") == parse(R"({
+        "count": 0, "entities": [], "matched": false, "tick": 37, "ticks": 7, "truncated": false
+    })"));
+
+    // A dry run reports where the world would be and leaves it; undo reverts a real run. The
+    // ball's hit points are below Health's minimum of 0 by now, and the world still restores.
+    const json::Value dry = engine.ok("run.until", R"({"dry_run": true, "where": [
+        {"component": "Transform2D", "field": "position.y", "op": ">=", "value": 40}]})");
+    CHECK(dry.find("result")->find("ticks")->as_int() == 3);
+    CHECK(*dry.find("changes") == parse(R"({"changed": {"ball": {"Health": {"current": -100.0},
+                                         "Transform2D": {"position": [0.0, 40.0]}}}})"));
+    const json::Value before = engine.scene();
+    engine.ok("run.until", R"({"with": ["Follow"], "ticks": 2})");
+    CHECK(engine.scene() != before);
+    engine.ok("undo");
+    CHECK(engine.scene() == before);
+
+    // It needs something to wait for, and bad conditions point at the bad value.
+    const command::Reply nothing =
+        engine.fails("run.until", R"({"ticks": 5})", command::code::kInvalidParams);
+    CHECK(contains(nothing.message, "give with, without or where"));
+    const command::Reply typo =
+        engine.fails("run.until", R"({"where": [{"component": "Transform2D", "field": "positon.y",
+                                    "value": 1}]})",
+                     command::code::kInvalidParams);
+    CHECK(typo.data.find("path")->as_string() == "/where/0/field");
+    engine.fails("run.until", R"({"with": ["Helth"]})", command::code::kNotFound);
+    engine.fails("run.until", R"({"with": ["Health"], "until": "all"})",
+                 command::code::kInvalidParams);
+}
+
 TEST_CASE("engine.describe lists systems in the order they run") {
     Engine engine;
     world::World& world = engine.session->world();

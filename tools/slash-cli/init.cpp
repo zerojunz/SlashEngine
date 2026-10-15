@@ -78,6 +78,9 @@ asset files reload while it runs: prefab instances update and keep their overrid
   `world_snapshot`, then `world_diff`, lists what changed since; `world_restore` goes back.
 - `world_query` returns only entity IDs unless you pass `include`. Filter with `where`.
 - `component_set` returns only the fields that changed.
+- To test gameplay, `run_until` steps the game headless until an entity matches `with`/`where`
+  (or none does) and returns the tick and the matches: one call instead of a step and a query
+  per tick.
 - For many similar entities, `prefab_save` one to `prefabs/<name>.prefab.json` and create the
   rest with `entity_create` and `"extends"`. Each saves only the fields it overrides, and editing
   the prefab changes them all.
