@@ -482,6 +482,12 @@ int cmd_run(const std::vector<std::string>& args) {
             }
             // After commands, so a sprite an agent moved jumps there instead of sliding.
             canvas.before_tick(game);
+            // Controls are laid out in the window drawn, so clicks land on what is shown.
+            if (const slash::platform::WindowSize window = platform.value().window_size();
+                window.width > 0) {
+                slash::ui::set_viewport(
+                    game, {static_cast<float>(window.width), static_cast<float>(window.height)});
+            }
             if (engine.session->playing()) {
                 game.step(tick_seconds);
             }

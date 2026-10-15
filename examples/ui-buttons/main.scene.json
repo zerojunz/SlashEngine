@@ -1,0 +1,133 @@
+{
+  "entities": {
+    "column": {
+      "components": {
+        "BoxContainer": {
+          "vertical": true
+        },
+        "Control": {
+          "children": ["title", "play", "difficulty", "options", "quit"],
+          "custom_minimum_size": [200.0, 0.0]
+        }
+      }
+    },
+    "difficulty": {
+      "components": {
+        "BoxContainer": {},
+        "Control": {
+          "children": ["easy", "normal", "hard"]
+        }
+      }
+    },
+    "easy": {
+      "components": {
+        "Button": {
+          "button_group": "difficulty",
+          "text": "Easy",
+          "toggle_mode": true
+        },
+        "Control": {
+          "size_flags_horizontal": "expand_fill"
+        }
+      }
+    },
+    "hard": {
+      "components": {
+        "Button": {
+          "button_group": "difficulty",
+          "text": "Hard",
+          "toggle_mode": true
+        },
+        "Control": {
+          "size_flags_horizontal": "expand_fill"
+        }
+      }
+    },
+    "normal": {
+      "components": {
+        "Button": {
+          "button_group": "difficulty",
+          "button_pressed": true,
+          "text": "Normal",
+          "toggle_mode": true
+        },
+        "Control": {
+          "size_flags_horizontal": "expand_fill"
+        }
+      }
+    },
+    "online": {
+      "components": {
+        "Button": {
+          "disabled": true,
+          "text": "Online"
+        },
+        "Control": {
+          "size_flags_horizontal": "expand_fill"
+        }
+      }
+    },
+    "options": {
+      "components": {
+        "BoxContainer": {},
+        "Control": {
+          "children": ["sound", "online"]
+        }
+      }
+    },
+    "play": {
+      "components": {
+        "Button": {
+          "text": "Play"
+        },
+        "Control": {}
+      }
+    },
+    "quit": {
+      "components": {
+        "Button": {
+          "shortcut": [
+            {
+              "action": "ui_cancel",
+              "type": "action"
+            }
+          ],
+          "text": "Quit"
+        },
+        "Control": {}
+      }
+    },
+    "screen": {
+      "components": {
+        "CenterContainer": {},
+        "Control": {
+          "anchor_bottom": 1.0,
+          "anchor_right": 1.0,
+          "children": ["column"]
+        }
+      }
+    },
+    "sound": {
+      "components": {
+        "Control": {},
+        "TextureButton": {
+          "stretch_mode": "keep_centered",
+          "texture_focused": "ui/ring.png",
+          "texture_normal": "ui/speaker.png",
+          "texture_pressed": "ui/muted.png",
+          "toggle_mode": true
+        }
+      }
+    },
+    "title": {
+      "components": {
+        "Control": {},
+        "Label": {
+          "horizontal_alignment": "center",
+          "text": "Slash Quest"
+        }
+      }
+    }
+  },
+  "format": 1
+}

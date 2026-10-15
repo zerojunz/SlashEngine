@@ -3,6 +3,7 @@
 #include "internal.hpp"
 
 #include "slash/core/text.hpp"
+#include "slash/input/input.hpp"
 #include "slash/render/image.hpp"
 #include "slash/world/scene.hpp"
 
@@ -38,12 +39,13 @@ struct Known {
 Known known_items(const std::vector<std::string_view>& classes) {
     Known known;
     for (std::size_t i = 0; i < classes.size(); ++i) {
-        const ThemeItems& items = default_theme(classes[i]);
-        known.items.colors.insert(items.colors.begin(), items.colors.end());
-        known.items.constants.insert(items.constants.begin(), items.constants.end());
-        known.items.fonts.insert(items.fonts.begin(), items.fonts.end());
-        known.items.font_sizes.insert(items.font_sizes.begin(), items.font_sizes.end());
-        known.items.styles.insert(items.styles.begin(), items.styles.end());
+        for (const ThemeItems* items : {&default_theme(classes[i]), &optional_items(classes[i])}) {
+            known.items.colors.insert(items->colors.begin(), items->colors.end());
+            known.items.constants.insert(items->constants.begin(), items->constants.end());
+            known.items.fonts.insert(items->fonts.begin(), items->fonts.end());
+            known.items.font_sizes.insert(items->font_sizes.begin(), items->font_sizes.end());
+            known.items.styles.insert(items->styles.begin(), items->styles.end());
+        }
         if (i > 0) {
             known.subject += i + 1 == classes.size() ? " and " : ", ";
         }
@@ -102,11 +104,18 @@ void install(world::World& world, asset::Assets& assets, const Settings& setting
     state->fonts = std::make_unique<text::Fonts>(assets);
     state->settings = settings;
     world.ecs().ctx().emplace<std::shared_ptr<State>>(std::move(state));
+    install_gui(world);
 }
 
 void set_settings(world::World& world, const Settings& settings) {
     if (auto* found = world.ecs().ctx().find<std::shared_ptr<State>>(); found != nullptr) {
         (*found)->settings = settings;
+    }
+}
+
+void set_viewport(world::World& world, Vec2 viewport) {
+    if (auto* found = world.ecs().ctx().find<std::shared_ptr<State>>(); found != nullptr) {
+        (*found)->settings.viewport = viewport;
     }
 }
 
@@ -125,6 +134,7 @@ bool is_control(const world::World& world, entt::entity entity) {
            (world.ecs()
                 .any_of<world::Control, world::Label, world::ColorRect, world::Panel,
                         world::TextureRect, world::NinePatchRect, world::ProgressBar>(entity) ||
+            world.ecs().any_of<world::Button, world::TextureButton>(entity) ||
             world.ecs()
                 .any_of<world::BoxContainer, world::GridContainer, world::MarginContainer,
                         world::CenterContainer, world::FlowContainer, world::PanelContainer>(
@@ -134,6 +144,12 @@ bool is_control(const world::World& world, entt::entity entity) {
 std::vector<std::string_view> control_classes(const world::World& world, entt::entity entity) {
     std::vector<std::string_view> classes;
     const auto& ecs = world.ecs();
+    if (ecs.all_of<world::Button>(entity)) {
+        classes.emplace_back("Button");
+    }
+    if (ecs.all_of<world::TextureButton>(entity)) {
+        classes.emplace_back("TextureButton");
+    }
     if (ecs.all_of<world::Label>(entity)) {
         classes.emplace_back("Label");
     }
@@ -198,6 +214,7 @@ std::vector<Problem> check(const world::World& world, text::Fonts& fonts) {
         }
     }
     std::ranges::sort(entities);
+    check_buttons(world, problems);
     for (const auto& [id, entity] : entities) {
         const auto& ecs = world.ecs();
         // One container places the children; the first in control_classes' order.
@@ -325,6 +342,16 @@ std::vector<json::ValidationError> check_scene(const world::ComponentRegistry& c
         }
     }
     install(world, assets, project);
+    // The project's input actions, for buttons' shortcuts.
+    input::Map actions = input::Map::with_defaults();
+    if (const json::Value* map =
+            parsed && parsed.value().is_object() ? parsed.value().find("input") : nullptr;
+        map != nullptr && input::validate_map(*map).empty()) {
+        if (auto read = input::parse_map(*map); read) {
+            actions = std::move(read).value();
+        }
+    }
+    input::install(world, std::move(actions));
     for (Problem& problem : check(world, *fonts(world))) {
         errors.push_back({"/entities/" + json::pointer_escape(problem.id) + problem.path,
                           std::move(problem.message)});

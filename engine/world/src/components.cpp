@@ -217,6 +217,9 @@ void register_ui_components(ComponentRegistry& registry) {
                                  .choices = {"stretch", "tile", "tile_fit"}};
     const FieldMeta alignment{.doc = "Where the children go when they don't fill it.",
                               .choices = {"begin", "center", "end"}};
+    const FieldMeta focus_neighbor{
+        .doc = "The control the ui_left, ui_up, ui_right or ui_down action moves focus to from "
+               "this one; null for the closest one that way."};
     registry.add<Control>()
         .set_doc("A UI element's rect, as Godot's Control: placed in its parent's rect by "
                  "anchors and offsets, or in the viewport when no Control lists it in children. "
@@ -280,7 +283,27 @@ void register_ui_components(ComponentRegistry& registry) {
         .describe("texture_filter",
                   {.doc = "How its textures are sampled when scaled; inherit takes its parent's, "
                           "then the project's.",
-                   .choices = {"inherit", "linear", "nearest"}});
+                   .choices = {"inherit", "linear", "nearest"}})
+        .describe("mouse_filter",
+                  {.doc = "Whether clicks and touches stop at it, go on to its parent too (pass) "
+                          "or pass it by (ignore); \"\" takes its type's: ignore for Label and "
+                          "NinePatchRect, pass for containers and TextureRect, stop for the rest.",
+                   .choices = {"", "stop", "pass", "ignore"}})
+        .describe("focus_mode",
+                  {.doc = "Whether clicks and the keyboard or gamepad give it focus (all), only "
+                          "clicks (click) or nothing (none); \"\" takes its type's: all for "
+                          "buttons, none for the rest.",
+                   .choices = {"", "none", "click", "all"}})
+        .describe("focus_neighbor_left", focus_neighbor)
+        .describe("focus_neighbor_top", focus_neighbor)
+        .describe("focus_neighbor_right", focus_neighbor)
+        .describe("focus_neighbor_bottom", focus_neighbor)
+        .describe("focus_next",
+                  {.doc = "The control ui_focus_next (Tab) moves focus to; null for the next in "
+                          "the tree."})
+        .describe("focus_previous",
+                  {.doc = "The control ui_focus_prev (Shift+Tab) moves focus to; null for the "
+                          "previous in the tree."});
 
     registry.add<Label>()
         .set_doc("Text in the control's rect, as Godot's Label. Theme items: font, font_size, "
@@ -377,6 +400,87 @@ void register_ui_components(ComponentRegistry& registry) {
                   {.doc = "Which way the bar fills.",
                    .choices = {"begin_to_end", "end_to_begin", "top_to_bottom", "bottom_to_top"}})
         .describe("show_percentage", {.doc = "Draw the percentage on the bar."});
+
+    const FieldMeta button_mask{.doc = "The mouse buttons that press it.",
+                                .choices = {"left", "right", "middle"}};
+    const FieldMeta shortcut{.doc =
+                                 "What else presses it: bindings as in project.json's input, e.g. "
+                                 "{\"type\": \"key\", \"key\": \"Escape\"}, or actions, e.g. "
+                                 "{\"type\": \"action\", \"action\": \"ui_cancel\"}."};
+    const FieldMeta action_mode{
+        .doc = "Press it when the click or tap starts, or when it ends over the button.",
+        .choices = {"press", "release"}};
+    const FieldMeta button_group{.doc = "Toggle buttons with the same group name act as one "
+                                        "choice: pressing one releases the others."};
+    const auto describe_base = [&](ComponentType& type) -> ComponentType& {
+        return type.describe("disabled", {.doc = "Can't be pressed, and draws dimmed."})
+            .describe("toggle_mode",
+                      {.doc = "Each press turns button_pressed on or off, as a switch."})
+            .describe("button_pressed", {.doc = "Toggled on, for a toggle button."})
+            .describe("action_mode", action_mode)
+            .describe("button_mask", button_mask)
+            .describe("keep_pressed_outside",
+                      {.doc = "Draw it pressed while the pointer that pressed it is outside."})
+            .describe("button_group", button_group)
+            .describe("shortcut", shortcut)
+            .describe("shortcut_feedback",
+                      {.doc = "Draw it pressed for a moment when its shortcut presses it."});
+    };
+    auto& button = registry.add<Button>().set_doc(
+        "A button with text and an icon, as Godot's Button: a click or tap released over it, "
+        "ui_accept while it has focus, or its shortcut presses it, emitting pressed (and "
+        "toggled, data {\"toggled_on\": bool}, for toggle buttons), button_down and button_up "
+        "events. Theme items: normal, hover, pressed, hover_pressed, disabled and focus styles, "
+        "font_color, font_hover_color, font_pressed_color, font_hover_pressed_color, "
+        "font_focus_color, font_disabled_color, icon_*_color for the same states, font, "
+        "font_size, outline_size, font_outline_color, h_separation, icon_max_width, "
+        "align_to_largest_stylebox, line_spacing and click_margin.");
+    describe_base(button)
+        .describe("text", {.doc = R"(Lines break at "\n".)"})
+        .describe("icon", {.doc = "Project path of a PNG or BMP file drawn beside the text; "
+                                  "\"\" for none."})
+        .describe("flat", {.doc = "Draw no style box, only the text and icon."})
+        .describe("alignment", {.doc = "The text's place across the button.",
+                                .choices = {"left", "center", "right"}})
+        .describe("text_overrun_behavior",
+                  {.doc = "Cut text wider than the button, at a character or word, with or "
+                          "without an ellipsis.",
+                   .choices = {"no_trimming", "trim_char", "trim_word", "trim_ellipsis",
+                               "trim_word_ellipsis"}})
+        .describe("autowrap_mode", {.doc = "Wrap the text to the button's width.",
+                                    .choices = {"off", "arbitrary", "word", "word_smart"}})
+        .describe("clip_text",
+                  {.doc = "Let the button be narrower than its text, cutting the text off."})
+        .describe("icon_alignment",
+                  {.doc = "The icon's place across the button; center puts it behind the text.",
+                   .choices = {"left", "center", "right"}})
+        .describe("vertical_icon_alignment",
+                  {.doc = "The icon's place down the button; top and bottom put the text above "
+                          "or below it.",
+                   .choices = {"top", "center", "bottom"}})
+        .describe("expand_icon", {.doc = "Scale the icon to fit the button, keeping its aspect."});
+
+    const FieldMeta button_texture{.doc = "Project path of a PNG or BMP file; \"\" for none."};
+    auto& texture_button = registry.add<TextureButton>().set_doc(
+        "A button drawn with a texture per state, as Godot's TextureButton: texture_normal, "
+        "then texture_pressed, texture_hover and texture_disabled when they are set, and "
+        "texture_focused over them while it has focus. Pressed as Button is, with the same "
+        "events. Its minimum size is its texture's.");
+    describe_base(texture_button)
+        .describe("texture_normal", button_texture)
+        .describe("texture_pressed", button_texture)
+        .describe("texture_hover", button_texture)
+        .describe("texture_disabled", button_texture)
+        .describe("texture_focused", button_texture)
+        .describe("ignore_texture_size", {.doc = "Need no space for the texture."})
+        .describe("stretch_mode",
+                  {.doc = "How the texture fills the button: scaled to it, tiled, at its own "
+                          "size (keep), or scaled keeping its aspect to fit inside "
+                          "(keep_aspect) or to cover it (keep_aspect_covered).",
+                   .choices = {"scale", "tile", "keep", "keep_centered", "keep_aspect",
+                               "keep_aspect_centered", "keep_aspect_covered"}})
+        .describe("flip_h", {.doc = "Draw it mirrored left to right."})
+        .describe("flip_v", {.doc = "Draw it upside down."});
 
     registry.add<BoxContainer>()
         .set_doc("Lays out its children in a row, or a column when vertical, as Godot's "

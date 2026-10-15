@@ -108,7 +108,13 @@ json::Value ComponentType::schema(SchemaBuilder& builder) const {
                 for (const std::string& choice : meta->choices) {
                     choices.emplace_back(choice);
                 }
-                property["enum"] = std::move(choices);
+                // For a list of strings, each item is one of them.
+                const json::Value* type = property.find("type");
+                if (type != nullptr && type->is_string() && type->as_string() == "array") {
+                    property["items"]["enum"] = std::move(choices);
+                } else {
+                    property["enum"] = std::move(choices);
+                }
             }
         }
     }
