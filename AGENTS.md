@@ -233,11 +233,26 @@ Supported field types are listed in `engine/world/include/slash/world/serialize.
 `SLASH_REFLECT` for structs that appear inside components. Built-in components are in
 `engine/world/include/slash/world/components.hpp`.
 
+## Examples
+
+`examples/` holds one small working example per feature, listed in
+[examples/README.md](examples/README.md). An example is a folder with a `README.md` and a
+`main.cpp` (built as `example-<folder>`, its output in `expected.txt`), a `calls.jsonl` of
+JSON-RPC requests (the responses in `results.jsonl`), or both; a `project.json` makes it a game
+project that must validate. `ctest` runs each in a copy under `build/dev/examples/` and compares
+the output exactly. After changing an example or a command it calls, rewrite the expected output
+and read the diff before committing:
+
+```bash
+SLASH_UPDATE_EXAMPLES=1 ctest --preset dev -R example
+git diff examples/
+```
+
 ## Lint
 
 ```bash
-find engine tools tests -name '*.cpp' -o -name '*.hpp' | xargs clang-format -i
-find engine tools -name '*.cpp' | xargs clang-tidy -p build/dev
+find engine tools tests examples -name '*.cpp' -o -name '*.hpp' | xargs clang-format -i
+find engine tools examples -name '*.cpp' | xargs clang-tidy -p build/dev
 ```
 
 CI rejects unformatted code and any clang-tidy finding.
@@ -264,5 +279,6 @@ CI rejects unformatted code and any clang-tidy finding.
   with their license. Only permissive licenses (MIT, BSD, zlib, Apache 2.0, Boost, MIT-0,
   public domain). Never copy code from closed engines.
 - Every behavior change comes with a test in `tests/`. Tests must pass headless.
+- Every new feature comes with an example in `examples/` (see below).
 - A change to a command, flag, component or file format updates its page in `docs/reference/`,
   and work that finishes a roadmap item ticks it in `docs/roadmap.md`.

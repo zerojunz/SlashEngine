@@ -83,6 +83,10 @@ asset files reload while it runs: prefab instances update and keep their overrid
   the prefab changes them all.
 - Errors give the JSON Pointer of the bad value and suggest the right name; fix it and retry.
 - Call `scene_save` when you are done, then `slash-cli scene validate <file>` to double-check.
+- Copy from the engine's examples, which its CI runs on every change: C++ components, systems
+  and commands, and each feature's command calls with their results. They match the engine
+  version this project pins:
+  https://github.com/zerojunz/SlashEngine/tree/@ENGINE_REF@/examples
 
 ## Run and export
 
@@ -99,8 +103,8 @@ environment variables, never from the file.
 
 ## Files
 
-- `project.json`: the game's name, version and main scene. `slash-cli project validate` checks it
-  and `export_presets.json`.
+- `project.json`: the game's name, version and main scene. `slash-cli project validate` checks it,
+  `export_presets.json` and the storyboard.
 - `scenes/`: scenes as canonical JSON, keyed by stable entity ID. Run
   `slash-cli scene format <file>` before committing a scene edited outside the engine.
 - `prefabs/`: `.prefab.json` files, one entity's components each, which scene entities extend.
@@ -341,11 +345,16 @@ std::string engine_ref() {
     return "v" + std::string(slash::version());
 }
 
-std::string workflow() {
-    std::string text(kWorkflow);
+// The text with @ENGINE_REF@ replaced by the engine commit.
+std::string with_engine_ref(std::string_view text) {
+    std::string out(text);
     constexpr std::string_view kRef = "@ENGINE_REF@";
-    text.replace(text.find(kRef), kRef.size(), engine_ref());
-    return text;
+    const std::string ref = engine_ref();
+    for (std::size_t at = out.find(kRef); at != std::string::npos;
+         at = out.find(kRef, at + ref.size())) {
+        out.replace(at, kRef.size(), ref);
+    }
+    return out;
 }
 
 // A storyboard entry name from the game's name: "Space Pong!" becomes "space-pong".
@@ -404,13 +413,13 @@ Result<json::Value> init_project(const InitOptions& options) {
     const std::string work = storyboard::file_path("work");
     const std::vector<std::pair<std::string_view, std::string>> files{
         {runtime::kProjectFile, json::write(runtime::new_project(name, kMainScene)) + "\n"},
-        {"AGENTS.md", std::string(kAgents)},
+        {"AGENTS.md", with_engine_ref(kAgents)},
         {"CLAUDE.md", "@AGENTS.md\n"},
         {".mcp.json", json_config(options, ".")},
         {".cursor/mcp.json", json_config(options, "${workspaceFolder}")},
         {".codex/config.toml", codex_config(options)},
         {".claude/skills/slashengine/SKILL.md", std::string(kSkill)},
-        {".github/workflows/export.yml", workflow()},
+        {".github/workflows/export.yml", with_engine_ref(kWorkflow)},
         {kMainScene, empty_scene()},
         {glossary, starter_glossary(name)},
         {work, starter_work()},

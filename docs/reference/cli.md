@@ -213,7 +213,8 @@ slash-cli init [dir]
 The `project.json` it writes is named after the folder and points at `scenes/main.scene.json`.
 The starter [storyboard](storyboard-format.md) records the game's title in the glossary and an
 open task to fill in the rest, and `AGENTS.md` and the skill tell agents to call
-`storyboard_brief` before a task and `storyboard_check` after it.
+`storyboard_brief` before a task and `storyboard_check` after it. `AGENTS.md` also links the
+engine's [examples](../../examples/README.md) at the commit the project pins.
 
 `.github/workflows/export.yml` exports the game for every platform on GitHub Actions, each on a
 native runner, runs each export headless and uploads the results. It runs

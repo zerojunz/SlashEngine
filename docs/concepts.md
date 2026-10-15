@@ -322,7 +322,8 @@ edit a frozen frame or advance it with `step`; `play` lets it run again.
 
 `slash-cli init` writes everything an agent needs to work on a game: MCP configs for Claude Code
 (`.mcp.json`), Codex (`.codex/config.toml`) and Cursor (`.cursor/mcp.json`), an `AGENTS.md` with
-the working rules, a `CLAUDE.md` that loads it, a Claude Code skill for editing scenes, a GitHub
+the working rules and a link to the engine's [examples](../examples/README.md) at the commit the
+project pins, a `CLAUDE.md` that loads it, a Claude Code skill for editing scenes, a GitHub
 Actions workflow that checks the project and exports and tests every platform
 (`.github/workflows/export.yml`), an empty `scenes/main.scene.json`, a starter storyboard, and
 `.gitignore` entries for `.slash/` and `build/`. The MCP server's own instructions repeat the key
@@ -351,6 +352,7 @@ OpenAI-compatible servers (including local ones), Anthropic and Gemini; see the
 | Discovery file | `.slash/server.json`: a running server's URL and token |
 | Effect | How a command changes the world: read, edit, replace, history or compound |
 | Entity | A thing in the world, named by a stable ID |
+| Example | A small program or sequence of calls in `examples/`, run by CI with its output checked |
 | Export | A build of a project for one platform, ready for players |
 | Front end | A way to reach the commands: MCP, JSON-RPC, REST or the CLI |
 | Hot reload | Reloading edited files, and updating prefab instances, while the game runs |

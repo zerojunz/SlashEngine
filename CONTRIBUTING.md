@@ -63,8 +63,8 @@ runs clang-tidy. Run the same checks locally first:
 
 ```bash
 cmake --preset ci && cmake --build --preset ci && ctest --preset ci
-find engine tools tests -name '*.cpp' -o -name '*.hpp' | xargs clang-format -i
-find engine tools -name '*.cpp' | xargs clang-tidy -p build/dev
+find engine tools tests examples -name '*.cpp' -o -name '*.hpp' | xargs clang-format -i
+find engine tools examples -name '*.cpp' | xargs clang-tidy -p build/dev
 ```
 
 If you edited a scene file by hand, validate it and rewrite it in canonical form:
@@ -88,6 +88,9 @@ If you edited a scene file by hand, validate it and rewrite it in canonical form
   `command`, `server` and `runtime`.
 - **Formatting.** clang-format with the repo's `.clang-format` (4-space indent, 100 columns).
 - **Tests.** Every behavior change comes with a test in `tests/`, and tests must pass headless.
+- **Examples.** Every new feature comes with a small working example in
+  [`examples/`](examples/README.md): C++ code, command calls, or both, with their output checked
+  in. CI runs each one and compares the output exactly, so agents can copy them.
 
 ## Making changes agent-friendly
 

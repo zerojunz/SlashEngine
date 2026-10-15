@@ -1,0 +1,10 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"scenes/rooftops.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"storyboard.brief","params":{"scenes":["scenes/rooftops.scene.json"]}}
+{"jsonrpc":"2.0","id":3,"method":"storyboard.edit","params":{"why":"Give Mira a rival","by":"example","edits":[{"id":"character/vex","version":null,"set":{"name":"Vex","faction":"faction/couriers","summary":"The fastest of the runners, and Mira's rival."}},{"id":"character/mira","version":"a3545291","set":{"traits":["patient"]}}]}}
+{"jsonrpc":"2.0","id":4,"method":"storyboard.edit","params":{"why":"Make Mira bold","by":"another-agent","edits":[{"id":"character/mira","version":"a3545291","set":{"traits":["bold"]}}]}}
+{"jsonrpc":"2.0","id":5,"method":"storyboard.check"}
+{"jsonrpc":"2.0","id":6,"method":"storyboard.edit","params":{"why":"Use the glossary's name","by":"example","edits":[{"id":"character/vex","version":"b09ef212","set":{"summary":"The fastest of the Couriers, and Mira's rival."}}]}}
+{"jsonrpc":"2.0","id":7,"method":"entity.create","params":{"id":"vex","components":{"StoryRef":{"ids":["character/vex"]},"Transform2D":{"position":[160,32]}}}}
+{"jsonrpc":"2.0","id":8,"method":"storyboard.check"}
+{"jsonrpc":"2.0","id":9,"method":"storyboard.brief","params":{"entities":["vex"],"since":0}}
+{"jsonrpc":"2.0","id":10,"method":"scene.save"}

@@ -1,0 +1,15 @@
+{
+  "entities": {
+    "mira": {
+      "components": {
+        "StoryRef": {
+          "ids": ["character/mira"]
+        },
+        "Transform2D": {
+          "position": [64.0, 32.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}
