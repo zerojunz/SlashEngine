@@ -1,0 +1,5 @@
+{
+  "fallbacks": ["fonts/japanese.ttf"],
+  "font": "fonts/roboto.ttf",
+  "format": 1
+}

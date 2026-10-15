@@ -756,5 +756,5 @@ TEST_CASE("ui.press, ui.focus and ui.layout drive and report buttons") {
           "/id: \"locked\" is disabled, so it can't be pressed");
     CHECK(s.fails("ui.focus", R"({"id": "title"})") ==
           "/id: \"title\" can't take focus: it is hidden, or its focus_mode is \"none\" (the "
-          "default for controls that aren't buttons)");
+          "default for controls that aren't buttons or LineEdits)");
 }

@@ -65,7 +65,7 @@ as `entity.get`, reject it as an unknown param.
 | Physics | [`physics.raycast`](#physicsraycast), [`physics.overlap`](#physicsoverlap), [`physics.contacts`](#physicscontacts) |
 | Particles | [`particles.eval`](#particleseval) |
 | Lights | [`light.sample`](#lightsample) |
-| UI and text | [`ui.layout`](#uilayout), [`ui.theme`](#uitheme), [`ui.press`](#uipress), [`ui.focus`](#uifocus), [`text.measure`](#textmeasure) |
+| UI and text | [`ui.layout`](#uilayout), [`ui.theme`](#uitheme), [`ui.press`](#uipress), [`ui.focus`](#uifocus), [`ui.clipboard`](#uiclipboard), [`text.measure`](#textmeasure) |
 | Input | [`input.inject`](#inputinject), [`input.state`](#inputstate), [`input.actions`](#inputactions) |
 | Storyboard | [`storyboard.query`](#storyboardquery), [`storyboard.brief`](#storyboardbrief), [`storyboard.check`](#storyboardcheck), [`storyboard.edit`](#storyboardedit) |
 | Components | [`component.set`](#componentset), [`component.remove`](#componentremove) |
@@ -655,9 +655,10 @@ torch and one behind the crate from it:
 ### ui.layout
 
 Returns where [controls](scene-format.md#ui-and-text) are on screen, in drawing order, with the
-lines each label, button and progress bar shows, how each [button](scene-format.md#buttons)
-draws, which control has focus and which is hovered, and the mistakes that keep controls from
-laying out or working as written. A check that needs no screenshot.
+lines each label, button, progress bar and text field shows, how each
+[button](scene-format.md#buttons) draws, where each [text field](scene-format.md#text-fields)'s
+caret and selection are, which control has focus and which is hovered, and the mistakes that keep
+controls from laying out or working as written. A check that needs no screenshot.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -690,14 +691,27 @@ the sign on a smaller window:
   and `"hover_pressed"` while hovered; a button its shortcut just pressed draws `"hover_pressed"`
   for 0.2 seconds. The control with focus has `"focused": true`, and the one under the mouse
   `"hovered": true`.
+- A `LineEdit`'s `lines` are what it shows: its text with an input method's composition at the
+  caret, a secret field's dots, or its placeholder. It has `line_edit`, from
+  [examples/text-input](../../examples/text-input/):
+
+  ```json
+  {"focused":true,"id":"name","line_edit":{"caret_column":7,"editing":true,"selection":[0,7]},"lines":["Mira 未来"],"rect":[40,42,240,30]}
+  ```
+
+  `caret_column` counts characters before the caret; `editing` is listed while it takes typing,
+  `selection` (`[from, to)` in characters) while text is selected, `ime` while an input method
+  is composing, `placeholder` while the placeholder shows, and `visible` (`[from, to)` of what
+  it shows) when text is scrolled out of the field. A font that doesn't load is `font_error`.
 - `problems` lists, for each control, a `children` entry that can't be laid out (no such
   entity, not a control, the control itself, a second parent or a loop), a second container on
   one entity, a theme override name its type doesn't have, with the closest one, a style box
   override with a mistake, a theme that doesn't load, a `theme_type_variation` no theme
   defines, a font or texture that doesn't load, a button `shortcut` entry that isn't a binding
   or names no action, a `button_group` on a button without `toggle_mode`, a `Label` on a button
-  entity (a button draws its own text), two buttons on one entity, and a `focus_*` field that
-  names no control. Each has the
+  entity (a button draws its own text), two buttons on one entity, a `focus_*` field that
+  names no control, a `LineEdit` with a `Label` or button on its entity and a
+  `secret_character` longer than one character. Each has the
   control's `id`, the JSON Pointer `path` of the value in the entity and a `message`:
 
 ```json
@@ -767,8 +781,8 @@ the click or tap with [`input.inject`](#inputinject) instead.
 ### ui.focus
 
 Gives a control focus, as Godot's `grab_focus`, and shows it: `ui_accept` (Enter or Space)
-presses a focused button, and `ui_up`, `ui_down`, `ui_left`, `ui_right`, Tab and Shift+Tab move
-focus on from it. `null` takes focus away.
+presses a focused button, a focused `LineEdit` starts editing, and `ui_up`, `ui_down`,
+`ui_left`, `ui_right`, Tab and Shift+Tab move focus on from it. `null` takes focus away.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -785,8 +799,30 @@ Needs: `run`. Emits `focus_exited` and `focus_entered` at the next `step`.
 ```
 
 `focused` is the control with focus now, or `null`. A control that is hidden, or whose
-`focus_mode` is `"none"` (the default for controls other than buttons), can't take focus, and
-that is an error. [`ui.layout`](#uilayout) marks the control with focus `"focused": true`.
+`focus_mode` is `"none"` (the default for controls other than buttons and `LineEdit`s), can't
+take focus, and that is an error. [`ui.layout`](#uilayout) marks the control with focus
+`"focused": true`.
+
+### ui.clipboard
+
+Returns the clipboard [text fields](scene-format.md#text-fields) cut, copy and paste with, as
+Godot's `DisplayServer.clipboard_get`; `text` sets it first. Headless runs and tests have the
+session's own clipboard; a game running in a window shares the system's.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `text` | string | | Text to put on the clipboard, up to 65536 bytes |
+
+Needs: `run`. After selecting all of a field's text and copying it (`ui_text_select_all`, then
+`ui_copy`):
+
+```json
+{}
+```
+
+```json
+{"text":"Mira 未来"}
+```
 
 ### text.measure
 
@@ -869,8 +905,12 @@ runs. Each event has a `type`:
 | `joypad_button` | `button`, `pressed` | A gamepad button pressed or released |
 | `joypad_motion` | `axis`, `axis_value` | A stick or trigger moved: sticks from -1 to 1 with y down, triggers from 0 to 1. `0` lets go |
 | `action` | `action`, `pressed`, `strength` | An action pressed or released by name, with a `strength` from 0 to 1 (default 1), as Godot's `Input.action_press` |
+| `text` | `text` | Types text into the [text field](scene-format.md#text-fields) being edited: one key press per character, with the character in `unicode` and no key, as an input method or on-screen keyboard sends it |
+| `ime` | `text`, `selection` | What an input method (for Japanese, Chinese or Korean) is composing, shown at the caret: `selection` is `[start, length]` in characters of the part being converted. `""` ends the composition; a `text` event commits the result |
 
-Every event also takes `device`: which keyboard, mouse or gamepad, from 0. Positions are
+A `key` event also takes `unicode`, the one character the key types (`{"type": "key", "key":
+"A", "unicode": "a", "pressed": true}`); a key with no `unicode` edits a text field but types
+nothing. Every event also takes `device`: which keyboard, mouse or gamepad, from 0. Positions are
 `[x, y]` in window pixels from the top left, the space sprites and controls are drawn in. Fields
 an event's type doesn't have are errors, and so are misspelled names, with the closest one.
 
@@ -891,7 +931,7 @@ events still queued.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `actions` | array of strings | the ones pressed or just released | Only these actions, pressed or not |
+| `actions` | array of strings | the ones pressed or just released, but text editing actions | Only these actions, pressed or not |
 
 Needs: `read`. After a tap of Space, half a stick up and letting go of D:
 
@@ -919,7 +959,7 @@ and `project.json`'s `input`, as the game uses them.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `names` | array of strings | all | Only these actions |
+| `names` | array of strings | all but Godot's [text editing actions](project-format.md#input-actions) | Only these actions |
 
 Needs: `read`.
 

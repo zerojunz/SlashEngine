@@ -3,6 +3,7 @@
 #include "slash/world/world.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -117,6 +118,13 @@ Event key_binding(Key key, bool shift = false) {
     event.device = kAllDevices;
     event.key = key;
     event.modifiers.shift = shift;
+    return event;
+}
+
+// A key with modifiers, as Godot's InputEventKey::create_reference(key | mask).
+Event key_binding(Key key, Modifiers modifiers) {
+    Event event = key_binding(key);
+    event.modifiers = modifiers;
     return event;
 }
 
@@ -270,6 +278,7 @@ void apply(InputState& state, Event event, bool emulated) {
         state.joy_axes[{event.device, event.axis}] = event.axis_value;
         break;
     case EventType::Action:
+    case EventType::Ime:
         break;
     }
 
@@ -324,7 +333,22 @@ json::Value point_json(Vec2 value) {
 
 } // namespace
 
-Map Map::with_defaults() {
+Keyboard host_keyboard() {
+#if defined(__APPLE__)
+    return Keyboard::Mac;
+#else
+    return Keyboard::Pc;
+#endif
+}
+
+bool is_text_action(std::string_view name) {
+    static constexpr std::array<std::string_view, 6> kEditing = {
+        "ui_cut", "ui_copy", "ui_paste", "ui_undo", "ui_redo", "ui_swap_input_direction"};
+    return name.starts_with("ui_text_") ||
+           std::find(kEditing.begin(), kEditing.end(), name) != kEditing.end();
+}
+
+Map Map::with_defaults(Keyboard keyboard) {
     Map map;
     const auto add = [&map](const std::string& name, const std::vector<Event>& events) {
         map.add_action(name, kToggleDeadzone);
@@ -349,6 +373,55 @@ Map Map::with_defaults() {
     add("ui_page_down", {key_binding(Key::PageDown)});
     add("ui_home", {key_binding(Key::Home)});
     add("ui_end", {key_binding(Key::End)});
+
+    // Text editing, from Godot's InputMap::get_builtins: Command on a Mac where Godot says
+    // CMD_OR_CTRL, Ctrl elsewhere, and the ".macos" overrides on a Mac.
+    const bool mac = keyboard == Keyboard::Mac;
+    const Modifiers cmd = mac ? Modifiers{.meta = true} : Modifiers{.ctrl = true};
+    const Modifiers shift_cmd =
+        mac ? Modifiers{.shift = true, .meta = true} : Modifiers{.shift = true, .ctrl = true};
+    const Modifiers shift{.shift = true};
+    const Modifiers alt{.alt = true};
+    const Modifiers ctrl{.ctrl = true};
+    add("ui_cut", {key_binding(Key::X, cmd), key_binding(Key::Delete, shift)});
+    add("ui_copy", {key_binding(Key::C, cmd), key_binding(Key::Insert, cmd)});
+    add("ui_paste", {key_binding(Key::V, cmd), key_binding(Key::Insert, shift)});
+    add("ui_undo", {key_binding(Key::Z, cmd)});
+    add("ui_redo", {key_binding(Key::Z, shift_cmd), key_binding(Key::Y, cmd)});
+    add("ui_text_submit", {key_binding(Key::Enter), key_binding(Key::KpEnter)});
+    add("ui_text_backspace", {key_binding(Key::Backspace), key_binding(Key::Backspace, shift)});
+    add("ui_text_backspace_word", {key_binding(Key::Backspace, mac ? alt : cmd)});
+    add("ui_text_backspace_all_to_left",
+        mac ? std::vector<Event>{key_binding(Key::Backspace, cmd)} : std::vector<Event>{});
+    add("ui_text_delete", {key_binding(Key::Delete)});
+    add("ui_text_delete_word", {key_binding(Key::Delete, mac ? alt : cmd)});
+    add("ui_text_delete_all_to_right",
+        mac ? std::vector<Event>{key_binding(Key::Delete, cmd)} : std::vector<Event>{});
+    add("ui_text_caret_left", {key_binding(Key::Left)});
+    add("ui_text_caret_word_left", {key_binding(Key::Left, mac ? alt : cmd)});
+    add("ui_text_caret_right", {key_binding(Key::Right)});
+    add("ui_text_caret_word_right", {key_binding(Key::Right, mac ? alt : cmd)});
+    add("ui_text_caret_up", {key_binding(Key::Up)});
+    add("ui_text_caret_down", {key_binding(Key::Down)});
+    add("ui_text_caret_line_start",
+        mac ? std::vector<Event>{key_binding(Key::A, ctrl), key_binding(Key::Left, cmd),
+                                 key_binding(Key::Home)}
+            : std::vector<Event>{key_binding(Key::Home)});
+    add("ui_text_caret_line_end",
+        mac ? std::vector<Event>{key_binding(Key::E, ctrl), key_binding(Key::Right, cmd),
+                                 key_binding(Key::End)}
+            : std::vector<Event>{key_binding(Key::End)});
+    add("ui_text_caret_page_up", {key_binding(Key::PageUp)});
+    add("ui_text_caret_page_down", {key_binding(Key::PageDown)});
+    add("ui_text_caret_document_start",
+        mac ? std::vector<Event>{key_binding(Key::Up, cmd), key_binding(Key::Home, cmd)}
+            : std::vector<Event>{key_binding(Key::Home, cmd)});
+    add("ui_text_caret_document_end",
+        mac ? std::vector<Event>{key_binding(Key::Down, cmd), key_binding(Key::End, cmd)}
+            : std::vector<Event>{key_binding(Key::End, cmd)});
+    add("ui_text_select_all", {key_binding(Key::A, cmd)});
+    add("ui_text_clear_carets_and_selection", {key_binding(Key::Escape)});
+    add("ui_swap_input_direction", {key_binding(Key::QuoteLeft, cmd)});
     return map;
 }
 
@@ -482,8 +555,8 @@ std::vector<json::ValidationError> validate_map(const json::Value& doc, const st
     return errors;
 }
 
-Result<Map> parse_map(const json::Value& doc) {
-    Map map = Map::with_defaults();
+Result<Map> parse_map(const json::Value& doc, Keyboard keyboard) {
+    Map map = Map::with_defaults(keyboard);
     if (doc.is_null()) {
         return map;
     }
@@ -774,6 +847,9 @@ json::Value state_json(const world::World& world, std::span<const std::string> a
     };
     if (actions.empty()) {
         for (const auto& [name, action] : state->actions) {
+            if (is_text_action(name)) {
+                continue;
+            }
             if (action.pressed ||
                 (state->tick != kNever &&
                  (action.pressed_tick == state->tick || action.released_tick == state->tick))) {

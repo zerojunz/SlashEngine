@@ -12,6 +12,7 @@ add_custom_command(
 
 add_library(slash_text
     src/box_font.cpp
+    src/editing.cpp
     src/font.cpp
     src/fonts.cpp
     ${_slash_default_font_cpp})

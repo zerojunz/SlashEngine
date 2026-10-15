@@ -1,4 +1,5 @@
 #include "internal.hpp"
+#include "line_edit.hpp"
 
 #include "slash/core/text.hpp"
 #include "slash/input/input.hpp"
@@ -27,8 +28,9 @@
 // _update_mouse_over), moves focus as Control does (scene/gui/control.cpp:
 // find_next_valid_focus, find_prev_valid_focus and _get_focus_neighbor with the legacy
 // strategy, Godot's default) and presses buttons as BaseButton does
-// (scene/gui/base_button.cpp). Its state is kept by entity ID, since sessions make entities
-// anew when they roll a command back. Drag and drop, tooltips and cursor shapes aren't here.
+// (scene/gui/base_button.cpp) and edits text as LineEdit does (scene/gui/line_edit.cpp). Its
+// state is kept by entity ID, since sessions make entities anew when they roll a command back.
+// Drag and drop, tooltips, context menus and cursor shapes aren't here.
 namespace slash::ui {
 namespace {
 
@@ -69,7 +71,15 @@ struct GuiState {
     std::map<int, std::string> touch_focus;        // the control each finger pressed
     // Sticks holding a focus action, so a held stick moves focus once: (device, axis, action).
     std::set<std::tuple<int, int, std::string>> joy_held;
-    std::vector<std::string> presses; // press() calls for the next tick
+    std::vector<std::string> presses;                    // press() calls for the next tick
+    std::map<std::string, EditState, std::less<>> edits; // each LineEdit's
+    std::string clipboard;       // the world's clipboard, which a backend shares with the system's
+    bool focus_by_arrow = false; // an arrow key is moving focus, so a LineEdit won't edit
+};
+
+// The clipboard the platform gives, kept apart from GuiState so snapshots leave it alone.
+struct ClipboardHolder {
+    ClipboardBackend backend;
 };
 
 using Handle = std::shared_ptr<GuiState>;
@@ -131,7 +141,8 @@ Focus focus_mode(const world::World& world, entt::entity entity) {
     if (mode == "none") {
         return Focus::None;
     }
-    return is_button(world, entity) ? Focus::All : Focus::None;
+    return is_button(world, entity) || world.ecs().all_of<world::LineEdit>(entity) ? Focus::All
+                                                                                   : Focus::None;
 }
 
 // The BaseButton fields Button and TextureButton share.
@@ -236,6 +247,7 @@ bool is_pressed(const input::Event& event) {
         return std::abs(event.axis_value) >= 0.5F;
     case input::EventType::MouseMotion:
     case input::EventType::ScreenDrag:
+    case input::EventType::Ime:
         break;
     }
     return false;
@@ -280,7 +292,8 @@ void emit(world::World& world, GuiState& state, std::string_view kind, const std
     if (id.empty()) {
         return;
     }
-    const UiEvent event{.kind = std::string(kind), .id = id, .toggled_on = toggled.value_or(false)};
+    const UiEvent event{
+        .kind = std::string(kind), .id = id, .toggled_on = toggled.value_or(false), .text = {}};
     (state.tick == world.tick() ? state.events : state.next).push_back(event);
     json::Value data;
     if (toggled) {
@@ -298,6 +311,651 @@ ButtonStatus& status_of(const world::World& world, GuiState& state, entt::entity
         found->second.disabled = base && base->disabled;
     }
     return found->second;
+}
+
+// ---- Text fields ----
+
+// Godot's LineEdit: a third click this soon after a double click, this near it, selects all.
+constexpr double kTripleClickSeconds = 0.6;
+constexpr float kTripleClickTolerance = 5.0F;
+
+// Records a LineEdit event that carries text, as emit does.
+void emit_text(world::World& world, GuiState& state, std::string_view kind, const std::string& id,
+               std::string_view key, const std::string& text) {
+    if (id.empty()) {
+        return;
+    }
+    const UiEvent event{.kind = std::string(kind), .id = id, .toggled_on = false, .text = text};
+    (state.tick == world.tick() ? state.events : state.next).push_back(event);
+    world.emit(std::string(kind), id, json::Object{{std::string(key), text}});
+}
+
+// Brings a LineEdit's state up to its component: text changed from outside (a command or
+// gameplay code) starts the history again as set_text does, from the text it had to the text it
+// has, and drops the selection.
+void sync_edit(const world::LineEdit& edit, EditState& s) {
+    if (s.known && s.known_text == edit.text) {
+        return;
+    }
+    const std::string old = s.known ? s.known_text : std::string();
+    s.selection = {};
+    s.scroll_offset = 0.0F;
+    s.undo.clear();
+    s.undo_pos = -1;
+    s.undo.push_back({.text = old, .caret_column = 0, .scroll_offset = 0.0F});
+    if (edit.text != old) {
+        s.undo.push_back({.text = edit.text,
+                          .caret_column = static_cast<int>(to_utf32(edit.text).size()),
+                          .scroll_offset = 0.0F});
+    }
+    s.known_text = edit.text;
+    s.known = true;
+}
+
+// Godot's String::strip_escapes: without control characters, which a LineEdit can't show.
+std::u32string strip_escapes(std::u32string text) {
+    std::erase_if(text, [](char32_t c) { return c < 0x20U; });
+    return text;
+}
+
+// One LineEdit being worked on, as Godot's LineEdit methods work on its members: its text as
+// characters, its caret column in the component and the rest in its EditState. With a layout it
+// shapes its text as the layout does, to scroll, hit test and find words and characters.
+class Editor {
+public:
+    Editor(world::World& world, GuiState& state, entt::entity entity, const Layout* layout)
+        : world_(world), state_(state), id_(world.id_of(entity)),
+          edit_(world.ecs().get<world::LineEdit>(entity)), s_(state.edits[id_]) {
+        sync_edit(edit_, s_);
+        text_ = to_utf32(edit_.text);
+        edit_.caret_column = std::clamp(edit_.caret_column, 0, length());
+        if (layout == nullptr) {
+            return;
+        }
+        const auto view = layout->line_edits.find(entity);
+        const Placed* placed = layout->find(entity);
+        text::Fonts* found = fonts(world);
+        if (view != layout->line_edits.end() && placed != nullptr && found != nullptr) {
+            field_.emplace(*found, view->second, placed->size);
+            field_->shape(edit_, s_);
+            field_->fit(edit_, s_);
+        }
+    }
+
+    [[nodiscard]] const world::LineEdit& edit() const { return edit_; }
+    [[nodiscard]] EditState& state() { return s_; }
+    [[nodiscard]] const std::u32string& text() const { return text_; }
+    [[nodiscard]] int length() const { return static_cast<int>(text_.size()); }
+    [[nodiscard]] int caret() const { return edit_.caret_column; }
+    [[nodiscard]] bool editing() const { return s_.editing; }
+    [[nodiscard]] const Field* field() const { return field_ ? &*field_ : nullptr; }
+
+    // ---- Editing ----
+
+    // _edit, once it has focus: whether it started editing.
+    bool start_editing(bool show_keyboard) {
+        if (!edit_.editable || s_.editing) {
+            return false;
+        }
+        if (edit_.select_all_on_focus) {
+            if ((state_.mouse_focus_mask & mask_bit(input::MouseButton::Left)) != 0) {
+                s_.pending_select_all = true; // when the mouse button is up
+            } else {
+                select_all();
+            }
+        }
+        s_.editing = true;
+        validate_caret();
+        if (show_keyboard && !s_.pending_select_all) {
+            show_virtual_keyboard();
+        }
+        return true;
+    }
+
+    void unedit() {
+        if (!s_.editing) {
+            return;
+        }
+        s_.editing = false;
+        validate_caret();
+        apply_ime();
+        set_caret_column(caret());
+        s_.show_keyboard = false;
+        if (edit_.deselect_on_focus_loss_enabled) {
+            deselect();
+        }
+    }
+
+    void show_virtual_keyboard() { s_.show_keyboard = edit_.virtual_keyboard_enabled; }
+
+    // _validate_caret_can_draw and _reset_caret_blink_timer: the caret shows again.
+    void validate_caret() {
+        if (edit_.caret_blink) {
+            s_.draw_caret = true;
+            s_.blink_timer = 0.0;
+        }
+    }
+    void reset_blink() {
+        if (edit_.caret_blink) {
+            s_.draw_caret = true;
+            if (edit_.caret_force_displayed || (s_.editing && state_.key_focus == id_)) {
+                s_.blink_timer = 0.0;
+            }
+        }
+    }
+
+    // ---- Input method ----
+
+    void cancel_ime() {
+        if (s_.ime_text.empty()) {
+            return;
+        }
+        s_.ime_text.clear();
+        s_.ime_selection_start = 0;
+        s_.ime_selection_length = 0;
+        shape();
+    }
+
+    // Commits what the input method is composing. Godot's apply_ime doesn't emit text_changed;
+    // this does, as for typing.
+    void apply_ime() {
+        if (s_.ime_text.empty()) {
+            return;
+        }
+        const std::u32string composed = s_.ime_text;
+        cancel_ime();
+        insert_text_at_caret(composed);
+        s_.text_changed_dirty = true;
+    }
+
+    // NOTIFICATION_OS_IME_UPDATE.
+    void ime_update(std::u32string text, int selection_start, int selection_length) {
+        if (s_.ime_text == text && s_.ime_selection_start == selection_start &&
+            s_.ime_selection_length == selection_length) {
+            return;
+        }
+        s_.ime_text = std::move(text);
+        s_.ime_selection_start = selection_start;
+        s_.ime_selection_length = selection_length;
+        if (!s_.ime_text.empty()) {
+            selection_delete();
+        }
+        shape();
+        set_caret_column(caret());
+    }
+
+    // ---- Caret ----
+
+    void set_caret_column(int column) {
+        edit_.caret_column = std::clamp(column, 0, length());
+        if (field_) {
+            field_->fit(edit_, s_);
+        }
+    }
+
+    void set_caret_at_pixel_pos(float x) {
+        if (field_) {
+            set_caret_column(field_->column_at(edit_, s_, static_cast<float>(static_cast<int>(x))));
+        }
+    }
+
+    [[nodiscard]] std::vector<std::uint32_t> word_breaks() const {
+        return field_ ? field_->line().word_breaks() : std::vector<std::uint32_t>();
+    }
+
+    // The word start before a column, or 0; the word end after one, or the text's end.
+    [[nodiscard]] int word_left(int column) const {
+        const std::vector<std::uint32_t> words = word_breaks();
+        if (words.empty() || column <= static_cast<int>(words.front())) {
+            return 0;
+        }
+        for (int i = static_cast<int>(words.size()) - 2; i >= 0; i -= 2) {
+            if (static_cast<int>(words[static_cast<std::size_t>(i)]) < column) {
+                return static_cast<int>(words[static_cast<std::size_t>(i)]);
+            }
+        }
+        return column;
+    }
+    [[nodiscard]] int word_right(int column) const {
+        const std::vector<std::uint32_t> words = word_breaks();
+        if (words.empty() || column >= static_cast<int>(words.back())) {
+            return length();
+        }
+        for (std::size_t i = 1; i < words.size(); i += 2) {
+            if (static_cast<int>(words[i]) > column) {
+                return static_cast<int>(words[i]);
+            }
+        }
+        return column;
+    }
+
+    [[nodiscard]] int next_character(int column) const {
+        if (!field_) {
+            return std::min(column + 1, length());
+        }
+        return static_cast<int>(field_->line().next_character(static_cast<std::uint32_t>(column)));
+    }
+    [[nodiscard]] int previous_character(int column) const {
+        if (!field_) {
+            return std::max(column - 1, 0);
+        }
+        return static_cast<int>(
+            field_->line().previous_character(static_cast<std::uint32_t>(column)));
+    }
+
+    void move_caret_left(bool select, bool by_word) {
+        if (s_.selection.enabled && !select) {
+            set_caret_column(s_.selection.begin);
+            deselect();
+            return;
+        }
+        shift_selection_check_pre(select);
+        if (by_word) {
+            set_caret_column(word_left(caret()));
+        } else if (edit_.caret_mid_grapheme) {
+            set_caret_column(caret() - 1);
+        } else {
+            set_caret_column(previous_character(caret()));
+        }
+        shift_selection_check_post(select);
+        reset_blink();
+    }
+
+    void move_caret_right(bool select, bool by_word) {
+        if (s_.selection.enabled && !select) {
+            set_caret_column(s_.selection.end);
+            deselect();
+            return;
+        }
+        shift_selection_check_pre(select);
+        if (by_word) {
+            set_caret_column(word_right(caret()));
+        } else if (edit_.caret_mid_grapheme) {
+            set_caret_column(caret() + 1);
+        } else {
+            set_caret_column(next_character(caret()));
+        }
+        shift_selection_check_post(select);
+        reset_blink();
+    }
+
+    void move_caret_to(bool select, int column) {
+        shift_selection_check_pre(select);
+        set_caret_column(column);
+        shift_selection_check_post(select);
+    }
+
+    void swap_input_direction() {
+        s_.input_direction = s_.input_direction == text::Direction::Ltr ? text::Direction::Rtl
+                                                                        : text::Direction::Ltr;
+        set_caret_column(caret());
+    }
+
+    // ---- Selection ----
+
+    void deselect() { s_.selection = {}; }
+
+    void selection_fill_at_caret() {
+        if (!edit_.selecting_enabled) {
+            return;
+        }
+        EditState::Selection& selection = s_.selection;
+        selection.begin = caret();
+        selection.end = selection.start_column;
+        if (selection.end < selection.begin) {
+            std::swap(selection.begin, selection.end);
+        }
+        selection.enabled = selection.begin != selection.end;
+    }
+
+    void select_all() {
+        if (!edit_.selecting_enabled) {
+            return;
+        }
+        if (text_.empty()) {
+            set_caret_column(0);
+            return;
+        }
+        s_.selection.begin = 0;
+        s_.selection.end = length();
+        s_.selection.enabled = true;
+    }
+
+    void select(int from, int to) {
+        if (!edit_.selecting_enabled) {
+            return;
+        }
+        if (from == 0 && to == 0) {
+            deselect();
+            return;
+        }
+        from = std::clamp(from, 0, length());
+        if (to < 0 || to > length()) {
+            to = length();
+        }
+        if (from >= to) {
+            return;
+        }
+        EditState::Selection& selection = s_.selection;
+        selection.enabled = true;
+        selection.begin = from;
+        selection.end = to;
+        selection.creating = false;
+        selection.double_click = false;
+    }
+
+    void shift_selection_check_pre(bool shift) {
+        if (!s_.selection.enabled && shift) {
+            s_.selection.start_column = caret();
+        }
+        if (!shift) {
+            deselect();
+        }
+    }
+    void shift_selection_check_post(bool shift) {
+        if (shift) {
+            selection_fill_at_caret();
+        }
+    }
+
+    [[nodiscard]] std::u32string selected_text() const {
+        const EditState::Selection& selection = s_.selection;
+        if (!selection.enabled) {
+            return {};
+        }
+        return text_.substr(static_cast<std::size_t>(selection.begin),
+                            static_cast<std::size_t>(selection.end - selection.begin));
+    }
+
+    // ---- Changing the text ----
+
+    void insert_text_at_caret(std::u32string inserted) {
+        if (edit_.max_length > 0) {
+            const int available = std::max(edit_.max_length - length(), 0);
+            if (static_cast<int>(inserted.size()) > available) {
+                emit_text(world_, state_, "text_change_rejected", id_, "rejected_substring",
+                          to_utf8(inserted.substr(static_cast<std::size_t>(available))));
+                inserted.resize(static_cast<std::size_t>(available));
+            }
+        }
+        const auto at = static_cast<std::size_t>(caret());
+        const auto count = static_cast<int>(inserted.size());
+        set_text(text_.substr(0, at) + inserted + text_.substr(at));
+        if (field_) {
+            const text::Direction direction = field_->line().dominant_direction(
+                static_cast<std::uint32_t>(at), static_cast<std::uint32_t>(caret() + count));
+            if (direction != text::Direction::Auto) {
+                s_.input_direction = direction;
+            }
+        }
+        set_caret_column(caret() + count);
+        if (!s_.ime_text.empty()) {
+            shape();
+        }
+    }
+
+    void delete_text(int from, int to) {
+        if (from < 0 || from > to || to > length()) {
+            return;
+        }
+        set_text(text_.substr(0, static_cast<std::size_t>(from)) +
+                 text_.substr(static_cast<std::size_t>(to)));
+        set_caret_column(caret() - std::clamp(caret() - from, 0, to - from));
+        s_.text_changed_dirty = true;
+    }
+
+    void selection_delete() {
+        if (s_.selection.enabled) {
+            delete_text(s_.selection.begin, s_.selection.end);
+        }
+        deselect();
+    }
+
+    void delete_char() {
+        if (text_.empty() || caret() == 0) {
+            return;
+        }
+        int offset = 1;
+        if (!edit_.caret_mid_grapheme && edit_.backspace_deletes_composite_character_enabled) {
+            offset = caret() - previous_character(caret());
+        }
+        const auto at = static_cast<std::size_t>(caret());
+        set_text(text_.substr(0, at - static_cast<std::size_t>(offset)) + text_.substr(at));
+        set_caret_column(caret() - offset);
+        text_changed();
+    }
+
+    void backspace(bool word, bool all_to_left) {
+        if (!edit_.editable) {
+            return;
+        }
+        if (s_.selection.enabled) {
+            selection_delete();
+            return;
+        }
+        if (caret() == 0) {
+            return;
+        }
+        if (all_to_left) {
+            set_text(text_.substr(static_cast<std::size_t>(caret())));
+            set_caret_column(0);
+            text_changed();
+            return;
+        }
+        if (word) {
+            const int from = word_left(caret());
+            delete_text(from, caret());
+            set_caret_column(from);
+        } else {
+            delete_char();
+        }
+    }
+
+    void delete_forward(bool word, bool all_to_right) {
+        if (!edit_.editable) {
+            return;
+        }
+        if (s_.selection.enabled) {
+            selection_delete();
+            return;
+        }
+        if (caret() == length()) {
+            return;
+        }
+        if (all_to_right) {
+            set_text(text_.substr(0, static_cast<std::size_t>(caret())));
+            text_changed();
+            return;
+        }
+        if (word) {
+            delete_text(caret(), word_right(caret()));
+            set_caret_column(caret());
+        } else if (edit_.caret_mid_grapheme) {
+            set_caret_column(caret() + 1);
+            delete_char();
+        } else {
+            const int from = caret();
+            set_caret_column(next_character(caret()));
+            delete_text(from, caret());
+        }
+    }
+
+    void clear() {
+        const bool was_empty = text_.empty();
+        clear_internal();
+        clear_redo();
+        if (!was_empty) {
+            emit_text_change();
+        }
+        if (s_.editing) {
+            show_virtual_keyboard();
+        }
+    }
+
+    // ---- Clipboard ----
+
+    void copy_text() {
+        if (s_.selection.enabled && !edit_.secret) {
+            set_clipboard(world_, to_utf8(selected_text()));
+        }
+    }
+
+    void cut_text() {
+        if (edit_.editable && s_.selection.enabled && !edit_.secret) {
+            set_clipboard(world_, to_utf8(selected_text()));
+            selection_delete();
+        }
+    }
+
+    void paste_text() {
+        if (!edit_.editable) {
+            return;
+        }
+        const std::u32string pasted = strip_escapes(to_utf32(clipboard(world_)));
+        if (pasted.empty()) {
+            return;
+        }
+        const std::u32string before = text_;
+        if (s_.selection.enabled) {
+            selection_delete();
+        }
+        insert_text_at_caret(pasted);
+        if (text_ != before) {
+            s_.text_changed_dirty = true;
+        }
+    }
+
+    // ---- History ----
+
+    // _text_changed: text_changed, and what was typed becomes a step to undo.
+    void text_changed() {
+        emit_text_change();
+        clear_redo();
+    }
+
+    void emit_text_change() {
+        emit_text(world_, state_, "text_changed", id_, "text", edit_.text);
+        s_.text_changed_dirty = false;
+    }
+
+    [[nodiscard]] bool has_undo() const {
+        return s_.undo_pos < 0 ? s_.undo.size() > 1 : s_.undo_pos > 0;
+    }
+    [[nodiscard]] bool has_redo() const {
+        return s_.undo_pos >= 0 && s_.undo_pos != static_cast<int>(s_.undo.size()) - 1;
+    }
+
+    void undo() {
+        if (!edit_.editable || !has_undo()) {
+            return;
+        }
+        if (s_.undo_pos < 0) {
+            s_.undo_pos = static_cast<int>(s_.undo.size()) - 1;
+        }
+        deselect();
+        --s_.undo_pos;
+        restore_operation();
+    }
+
+    void redo() {
+        if (!edit_.editable || !has_redo()) {
+            return;
+        }
+        deselect();
+        ++s_.undo_pos;
+        restore_operation();
+    }
+
+private:
+    void shape() {
+        if (field_) {
+            field_->shape(edit_, s_);
+        }
+    }
+
+    // text = ...; _shape(), with the component and what the state last saw kept in step.
+    void set_text(std::u32string text) {
+        text_ = std::move(text);
+        edit_.text = to_utf8(text_);
+        s_.known_text = edit_.text;
+        shape();
+    }
+
+    void clear_internal() {
+        deselect();
+        clear_undo_stack();
+        edit_.caret_column = 0;
+        s_.scroll_offset = 0.0F;
+        set_text({});
+    }
+
+    void create_undo_state() {
+        s_.undo.push_back(
+            {.text = edit_.text, .caret_column = caret(), .scroll_offset = s_.scroll_offset});
+    }
+
+    // _clear_redo: the history ends at the text as it is.
+    void clear_redo() {
+        create_undo_state();
+        if (s_.undo_pos < 0) {
+            return;
+        }
+        s_.undo.resize(static_cast<std::size_t>(s_.undo_pos) + 1);
+        s_.undo_pos = -1;
+        create_undo_state();
+    }
+
+    void clear_undo_stack() {
+        s_.undo.clear();
+        s_.undo_pos = -1;
+        create_undo_state();
+    }
+
+    void restore_operation() {
+        const EditState::Operation operation = s_.undo[static_cast<std::size_t>(s_.undo_pos)];
+        s_.scroll_offset = operation.scroll_offset;
+        set_text(to_utf32(operation.text));
+        set_caret_column(operation.caret_column);
+        emit_text_change();
+    }
+
+    world::World& world_;
+    GuiState& state_;
+    std::string id_;
+    world::LineEdit& edit_;
+    EditState& s_;
+    std::u32string text_;
+    std::optional<Field> field_;
+};
+
+// LineEdit's NOTIFICATION_FOCUS_ENTER: it starts editing, unless arrow keys moved focus to it.
+// Godot emits editing_toggled even when it was already editing or can't edit; this emits it
+// only when editing starts.
+void line_edit_focus_enter(world::World& world, GuiState& state, const std::string& id) {
+    const entt::entity entity = world.find(id);
+    if (entity == entt::null || !world.ecs().all_of<world::LineEdit>(entity) ||
+        state.focus_by_arrow) {
+        return;
+    }
+    Editor editor(world, state, entity, nullptr);
+    if (editor.start_editing(editor.edit().virtual_keyboard_show_on_focus)) {
+        emit(world, state, "editing_toggled", id, true);
+    }
+}
+
+// NOTIFICATION_FOCUS_EXIT.
+void line_edit_focus_exit(world::World& world, GuiState& state, const std::string& id) {
+    const entt::entity entity = world.find(id);
+    if (entity == entt::null || !world.ecs().all_of<world::LineEdit>(entity)) {
+        return;
+    }
+    Editor editor(world, state, entity, nullptr);
+    if (editor.editing()) {
+        editor.unedit();
+        emit(world, state, "editing_toggled", id, false);
+    } else if (editor.edit().deselect_on_focus_loss_enabled) {
+        editor.deselect();
+    }
 }
 
 // ---- Focus ----
@@ -327,6 +985,7 @@ void release(world::World& world, GuiState& state) {
     state.key_focus.clear();
     emit(world, state, "focus_exited", old);
     button_focus_exit(world, state, old);
+    line_edit_focus_exit(world, state, old);
 }
 
 // Viewport::_gui_control_grab_focus.
@@ -339,6 +998,7 @@ void grab(world::World& world, GuiState& state, const std::string& id, bool hide
     state.key_focus = id;
     state.hide_focus = hide;
     emit(world, state, "focus_entered", id);
+    line_edit_focus_enter(world, state, id);
 }
 
 // ---- Buttons ----
@@ -466,8 +1126,9 @@ Rect2 global_rect(const Placed& placed) {
 // One tick's work: the layout to find controls in, and whether the event being sent was handled.
 class Gui {
 public:
-    Gui(world::World& world, GuiState& state, const Layout& layout)
-        : world_(world), state_(state), layout_(layout), map_(input::map(std::as_const(world))) {
+    Gui(world::World& world, GuiState& state, const Layout& layout, double now)
+        : world_(world), state_(state), layout_(layout), map_(input::map(std::as_const(world))),
+          now_(now) {
         for (const entt::entity entity : layout.tree) {
             const Placed* placed = layout.find(entity);
             if (placed == nullptr) {
@@ -507,10 +1168,16 @@ public:
         case input::EventType::Action:
             action_event(event);
             break;
+        case input::EventType::Ime:
+            ime_event(event);
+            break;
         }
         if (!handled_ &&
             (event.type == input::EventType::Key || event.type == input::EventType::JoypadButton)) {
             shortcut_input(event);
+        }
+        if (!handled_ && event.type == input::EventType::Key) {
+            unhandled_key(event);
         }
     }
 
@@ -695,6 +1362,363 @@ private:
         if (is_button(world_, entity) && !world_.id_of(entity).empty()) {
             button_input(entity, event);
         }
+        if (is_line_edit(entity) && event.type != input::EventType::ScreenTouch &&
+            event.type != input::EventType::ScreenDrag) {
+            line_edit_input(entity, event);
+        }
+    }
+
+    [[nodiscard]] bool is_line_edit(entt::entity entity) const {
+        return entity != entt::null && world_.ecs().all_of<world::LineEdit>(entity) &&
+               !world_.id_of(entity).empty();
+    }
+
+    void toggled(entt::entity entity, bool on) {
+        emit(world_, state_, "editing_toggled", id(entity), on);
+    }
+
+    // LineEdit::gui_input. Clicks and drags place the caret and select; with focus, keys and
+    // actions edit. Action events edit as keys do, so agents can send ui_text_* actions.
+    void line_edit_input(entt::entity entity, const input::Event& event) {
+        Editor editor(world_, state_, entity, &layout_);
+        const world::LineEdit& edit = editor.edit();
+        EditState& s = editor.state();
+        if (event.type == input::EventType::MouseButton) {
+            line_edit_click(entity, editor, event);
+            return;
+        }
+        if (event.type == input::EventType::MouseMotion) {
+            const Vec2 at = to_local(entity, event.position).value_or(Vec2{});
+            const Field* field = editor.field();
+            if (edit.editable && !editor.text().empty() && edit.clear_button_enabled) {
+                s.clear_pressing_inside =
+                    s.clear_press_attempt && field != nullptr && field->over_clear_button(edit, at);
+            }
+            if ((event.button_mask & mask_bit(input::MouseButton::Left)) != 0 &&
+                s.selection.creating) {
+                editor.set_caret_at_pixel_pos(at.x);
+                editor.selection_fill_at_caret();
+                if (s.selection.double_click) {
+                    // Whole words.
+                    const std::vector<std::uint32_t> words = editor.word_breaks();
+                    for (std::size_t i = 0; i + 1 < words.size(); i += 2) {
+                        const auto start = static_cast<int>(words[i]);
+                        const auto end = static_cast<int>(words[i + 1]);
+                        if (start <= s.selection.begin && end >= s.selection.begin) {
+                            s.selection.begin = start;
+                        }
+                        if (start <= s.selection.end && end >= s.selection.end) {
+                            s.selection.end = end;
+                            s.selection.enabled = true;
+                            break;
+                        }
+                    }
+                    editor.set_caret_column(editor.caret() < s.selection.start_column
+                                                ? s.selection.begin
+                                                : s.selection.end);
+                }
+            }
+            return;
+        }
+        const bool key = event.type == input::EventType::Key;
+        if (!key && event.type != input::EventType::Action &&
+            event.type != input::EventType::JoypadButton) {
+            return;
+        }
+        if (edit.editable && !editor.editing() &&
+            action_pressed(event, "ui_text_submit", false, false)) {
+            if (editor.start_editing(true)) {
+                toggled(entity, true);
+            }
+            handled_ = true;
+            return;
+        }
+        if (edit.shortcut_keys_enabled) {
+            if (is_action(event, "ui_copy", true)) {
+                editor.copy_text();
+                handled_ = true;
+                return;
+            }
+            if (is_action(event, "ui_text_select_all", true)) {
+                editor.select(0, -1);
+                handled_ = true;
+                return;
+            }
+            if (is_action(event, "ui_cut", true)) {
+                if (edit.editable) {
+                    editor.cut_text();
+                } else {
+                    editor.copy_text();
+                }
+                handled_ = true;
+                return;
+            }
+        }
+        if (!editor.editing() || event.type == input::EventType::JoypadButton) {
+            return;
+        }
+        if (!s.ime_text.empty()) {
+            // The input method has the keys while it composes; typed text commits its own.
+            if (key && event.unicode == 0) {
+                handled_ = true;
+                return;
+            }
+            editor.cancel_ime();
+        }
+        if (!event.pressed) {
+            return;
+        }
+        handled_ = true;
+        // Enter and keypad Enter by default; not ui_accept, which has Space.
+        if (action_pressed(event, "ui_text_submit", false, false)) {
+            emit_text(world_, state_, "text_submitted", id(entity), "text", edit.text);
+            if (!edit.keep_editing_on_text_submit) {
+                editor.unedit();
+                toggled(entity, false);
+            }
+            return;
+        }
+        if (is_action(event, "ui_cancel", false)) {
+            editor.unedit();
+            toggled(entity, false);
+            return;
+        }
+        if (edit.shortcut_keys_enabled) {
+            if (is_action(event, "ui_paste", true)) {
+                editor.paste_text();
+                return;
+            }
+            if (is_action(event, "ui_undo", true)) {
+                editor.undo();
+                return;
+            }
+            if (is_action(event, "ui_redo", true)) {
+                editor.redo();
+                return;
+            }
+        }
+        if (is_action(event, "ui_text_backspace_all_to_left", true)) {
+            editor.backspace(false, true);
+            return;
+        }
+        if (is_action(event, "ui_text_backspace_word", true)) {
+            editor.backspace(true, false);
+            return;
+        }
+        if (is_action(event, "ui_text_backspace", true)) {
+            editor.backspace(false, false);
+            return;
+        }
+        if (is_action(event, "ui_text_delete_all_to_right", true)) {
+            editor.delete_forward(false, true);
+            return;
+        }
+        if (is_action(event, "ui_text_delete_word", true)) {
+            editor.delete_forward(true, false);
+            return;
+        }
+        if (is_action(event, "ui_text_delete", true)) {
+            editor.delete_forward(false, false);
+            return;
+        }
+        // Caret moves match without shift, which selects.
+        input::Event moved = event;
+        const bool shift = moved.modifiers.shift;
+        moved.modifiers.shift = false;
+        if (is_action(moved, "ui_text_caret_word_left", true)) {
+            editor.move_caret_left(shift, true);
+            return;
+        }
+        if (is_action(moved, "ui_text_caret_left", true)) {
+            editor.move_caret_left(shift, false);
+            return;
+        }
+        if (is_action(moved, "ui_text_caret_word_right", true)) {
+            editor.move_caret_right(shift, true);
+            return;
+        }
+        if (is_action(moved, "ui_text_caret_right", true)) {
+            editor.move_caret_right(shift, false);
+            return;
+        }
+        // Up is Home and Down is End.
+        if (is_action(moved, "ui_text_caret_up", true) ||
+            is_action(moved, "ui_text_caret_line_start", true) ||
+            is_action(moved, "ui_text_caret_page_up", true)) {
+            editor.move_caret_to(shift, 0);
+            return;
+        }
+        if (is_action(moved, "ui_text_caret_down", true) ||
+            is_action(moved, "ui_text_caret_line_end", true) ||
+            is_action(moved, "ui_text_caret_page_down", true)) {
+            editor.move_caret_to(shift, editor.length());
+            return;
+        }
+        if (is_action(moved, "ui_swap_input_direction", true)) {
+            editor.swap_input_direction();
+            return;
+        }
+        editor.reset_blink();
+        // Typed characters, when no modifier but shift is held.
+        const input::Modifiers& held = event.modifiers;
+        if (key && !held.ctrl && !held.alt && !held.meta && edit.editable &&
+            event.unicode >= 0x20U) {
+            type(editor, event.unicode, false);
+            return;
+        }
+        handled_ = false;
+    }
+
+    // Inserts a typed character over the selection: text_changed at the end of the tick when
+    // deferred, as gui_input does, else now, as unhandled_key_input does.
+    static void type(Editor& editor, char32_t c, bool now) {
+        editor.selection_delete();
+        const int before = editor.length();
+        editor.insert_text_at_caret(std::u32string(1, c));
+        if (editor.length() == before) {
+            return;
+        }
+        if (now) {
+            editor.text_changed();
+        } else {
+            editor.state().text_changed_dirty = true;
+        }
+    }
+
+    // The mouse button part of LineEdit::gui_input. Middle-click paste (the primary selection)
+    // and the context menu aren't here.
+    void line_edit_click(entt::entity entity, Editor& editor, const input::Event& event) {
+        const world::LineEdit& edit = editor.edit();
+        EditState& s = editor.state();
+        const Vec2 at = to_local(entity, event.position).value_or(Vec2{});
+        const Field* field = editor.field();
+        if (event.pressed && event.button == input::MouseButton::Right) {
+            editor.apply_ime();
+            if (edit.editable && !s.selection.enabled) {
+                editor.set_caret_at_pixel_pos(at.x);
+            }
+            if (edit.editable && !editor.editing() && editor.start_editing(true)) {
+                toggled(entity, true);
+            }
+            handled_ = true;
+            return;
+        }
+        if (event.button != input::MouseButton::Left) {
+            return;
+        }
+        if (editor.editing()) {
+            editor.reset_blink();
+        }
+        if (!event.pressed) {
+            if (edit.editable && !editor.text().empty() && edit.clear_button_enabled) {
+                const bool attempt = s.clear_press_attempt;
+                s.clear_press_attempt = false;
+                if (attempt && s.clear_pressing_inside && field != nullptr &&
+                    field->over_clear_button(edit, at)) {
+                    editor.clear();
+                    return;
+                }
+            }
+            if (!s.selection.creating && !s.selection.double_click) {
+                editor.deselect();
+            }
+            s.selection.creating = false;
+            s.selection.double_click = false;
+            if (s.pending_select_all) {
+                editor.select_all();
+                s.pending_select_all = false;
+            }
+            if (edit.editable) {
+                editor.show_virtual_keyboard();
+            }
+            return;
+        }
+        editor.apply_ime();
+        handled_ = true;
+        if (edit.editable && !editor.text().empty() && field != nullptr &&
+            field->over_clear_button(edit, at)) {
+            s.clear_press_attempt = true;
+            s.clear_pressing_inside = true;
+            return;
+        }
+        const bool shift = event.modifiers.shift;
+        if (shift) {
+            editor.shift_selection_check_pre(true);
+        }
+        editor.set_caret_at_pixel_pos(at.x);
+        if (shift) {
+            editor.selection_fill_at_caret();
+            s.selection.creating = true;
+        } else {
+            if (edit.selecting_enabled && !editor.text().empty()) {
+                const Vec2 apart = at - s.last_double_click_position;
+                const bool triple = !event.double_click && s.last_double_click >= 0.0 &&
+                                    now_ - s.last_double_click < kTripleClickSeconds &&
+                                    std::hypot(apart.x, apart.y) < kTripleClickTolerance;
+                if (triple) {
+                    s.selection.enabled = true;
+                    s.selection.begin = 0;
+                    s.selection.end = editor.length();
+                    s.selection.double_click = true;
+                    s.last_double_click = -1.0;
+                    editor.set_caret_column(0);
+                } else if (event.double_click) {
+                    s.last_double_click = now_;
+                    s.last_double_click_position = at;
+                    const std::vector<std::uint32_t> words = editor.word_breaks();
+                    for (std::size_t i = 0; i + 1 < words.size(); i += 2) {
+                        const auto start = static_cast<int>(words[i]);
+                        const auto end = static_cast<int>(words[i + 1]);
+                        if (start <= editor.caret() && end >= editor.caret()) {
+                            s.selection.enabled = true;
+                            s.selection.begin = start;
+                            s.selection.end = end;
+                            s.selection.double_click = true;
+                            s.selection.creating = true;
+                            s.selection.start_column = editor.caret();
+                            editor.set_caret_column(end);
+                            break;
+                        }
+                    }
+                }
+            }
+            if (!s.selection.double_click) {
+                editor.deselect();
+                s.selection.start_column = editor.caret();
+                s.selection.creating = true;
+            }
+        }
+        if (edit.editable && !editor.editing() && editor.start_editing(true)) {
+            toggled(entity, true);
+        }
+    }
+
+    // MainLoop's NOTIFICATION_OS_IME_UPDATE, for the LineEdit being edited.
+    void ime_event(const input::Event& event) {
+        const entt::entity focus = find(state_.key_focus);
+        if (!is_line_edit(focus)) {
+            return;
+        }
+        Editor editor(world_, state_, focus, &layout_);
+        if (!editor.editing()) {
+            return;
+        }
+        editor.ime_update(to_utf32(event.text), event.selection_start, event.selection_length);
+        handled_ = true;
+    }
+
+    // LineEdit::unhandled_key_input: a character typed with modifiers no shortcut took.
+    void unhandled_key(const input::Event& event) {
+        const entt::entity focus = find(state_.key_focus);
+        if (!event.pressed || event.unicode < 0x20U || !is_line_edit(focus)) {
+            return;
+        }
+        Editor editor(world_, state_, focus, &layout_);
+        if (!editor.editing() || !editor.edit().editable) {
+            return;
+        }
+        type(editor, event.unicode, true);
+        handled_ = true;
     }
 
     [[nodiscard]] bool is_action(const input::Event& event, std::string_view action,
@@ -937,6 +1961,7 @@ private:
         }
         entt::entity next = entt::null;
         bool show_focus = false;
+        bool arrow = false;
         for (const std::string_view action : kMoves) {
             const bool moved =
                 event.type == input::EventType::JoypadMotion
@@ -946,6 +1971,7 @@ private:
                 continue;
             }
             show_focus = true;
+            arrow = action != "ui_focus_next" && action != "ui_focus_prev";
             if (action == "ui_focus_next") {
                 next = find_next_valid_focus(from);
             } else if (action == "ui_focus_prev") {
@@ -961,7 +1987,9 @@ private:
             }
         }
         if (next != entt::null && !world_.id_of(next).empty()) {
+            state_.focus_by_arrow = arrow;
             grab(world_, state_, id(next), false);
+            state_.focus_by_arrow = false;
             handled_ = true;
         } else if (show_focus && state_.hide_focus && !state_.key_focus.empty()) {
             // Shown even if it didn't move, as feedback.
@@ -1253,8 +2281,39 @@ private:
     const input::Map* map_;
     std::vector<entt::entity> roots_;
     std::unordered_map<entt::entity, std::vector<entt::entity>> kids_;
+    double now_ = 0.0; // seconds of world time, for triple clicks
     bool handled_ = false;
 };
+
+// Drops the state of LineEdits that went away, stops editing one that can no longer be edited,
+// as set_editable does, and blinks carets, as NOTIFICATION_INTERNAL_PROCESS does.
+void edit_upkeep(world::World& world, GuiState& state, double tick_seconds) {
+    for (auto it = state.edits.begin(); it != state.edits.end();) {
+        const entt::entity entity = world.find(it->first);
+        auto* edit = entity != entt::null ? world.ecs().try_get<world::LineEdit>(entity) : nullptr;
+        if (edit == nullptr) {
+            it = state.edits.erase(it);
+            continue;
+        }
+        const std::string id = it->first;
+        EditState& s = it->second;
+        if (s.editing && (!edit->editable || state.key_focus != id)) {
+            Editor(world, state, entity, nullptr).unedit();
+            emit(world, state, "editing_toggled", id, false);
+        }
+        const bool can_draw = edit->caret_force_displayed || (s.editing && state.key_focus == id);
+        if (edit->caret_blink && can_draw && edit->caret_blink_interval > 0.0F) {
+            s.blink_timer += tick_seconds;
+            if (s.blink_timer >= static_cast<double>(edit->caret_blink_interval) - 1e-9) {
+                s.blink_timer = 0.0;
+                s.draw_caret = !s.draw_caret;
+            }
+        } else if (!edit->caret_blink) {
+            s.draw_caret = true;
+        }
+        ++it;
+    }
+}
 
 // Drops what refers to controls that went away, were hidden or can no longer have it, as
 // Viewport::_gui_hide_control and _gui_remove_control, BaseButton's visibility and
@@ -1262,10 +2321,11 @@ private:
 void upkeep(world::World& world, GuiState& state, double tick_seconds) {
     const bool tracking = !state.key_focus.empty() || !state.mouse_focus.empty() ||
                           !state.mouse_over_hierarchy.empty() || !state.touch_focus.empty() ||
-                          !state.buttons.empty();
+                          !state.buttons.empty() || !state.edits.empty();
     if (!tracking) {
         return;
     }
+    edit_upkeep(world, state, tick_seconds);
     const Parents parents(world);
     const auto shown = [&](const std::string& id) {
         const entt::entity entity = world.find(id);
@@ -1342,7 +2402,7 @@ void run(world::World& world, double tick_seconds) {
     if (!events.empty()) {
         if (text::Fonts* found = fonts(world); found != nullptr) {
             const Layout placed = layout(world, *found, settings(world).viewport);
-            Gui gui(world, *state, placed);
+            Gui gui(world, *state, placed, static_cast<double>(world.tick()) * tick_seconds);
             for (const input::Event& event : events) {
                 gui.send(event);
             }
@@ -1354,6 +2414,17 @@ void run(world::World& world, double tick_seconds) {
         }
     }
     std::erase_if(state->buttons, [](const auto& each) { return idle(each.second); });
+    // LineEdit's deferred _text_changed: one text_changed a tick, and one step to undo.
+    for (auto& [id, edit] : state->edits) {
+        if (!edit.text_changed_dirty) {
+            continue;
+        }
+        const entt::entity entity = world.find(id);
+        if (entity != entt::null && world.ecs().all_of<world::LineEdit>(entity)) {
+            Editor(world, *state, entity, nullptr).text_changed();
+        }
+        edit.text_changed_dirty = false;
+    }
 }
 
 } // namespace
@@ -1487,6 +2558,91 @@ void restore(world::World& world, const Snapshot& snapshot) {
         return;
     }
     *state = *static_cast<const GuiState*>(snapshot.data.get());
+}
+
+// ---- Text fields ----
+
+const EditState* edit_state(const world::World& world, entt::entity entity) {
+    const GuiState* state = state_of(world);
+    if (state == nullptr || world.id_of(entity).empty()) {
+        return nullptr;
+    }
+    const auto found = state->edits.find(world.id_of(entity));
+    return found != state->edits.end() ? &found->second : nullptr;
+}
+
+bool has_focus(const world::World& world, entt::entity entity) {
+    const GuiState* state = state_of(world);
+    return state != nullptr && !state->key_focus.empty() && state->key_focus == world.id_of(entity);
+}
+
+bool is_editing(const world::World& world, entt::entity line_edit) {
+    const EditState* state = edit_state(world, line_edit);
+    return state != nullptr && state->editing;
+}
+
+std::optional<std::pair<int, int>> selection(const world::World& world, entt::entity line_edit) {
+    const EditState* state = edit_state(world, line_edit);
+    const auto* edit = world.ecs().try_get<world::LineEdit>(line_edit);
+    // Text changed from outside drops the selection.
+    if (state == nullptr || edit == nullptr || !state->selection.enabled ||
+        state->known_text != edit->text) {
+        return std::nullopt;
+    }
+    return std::pair{state->selection.begin, state->selection.end};
+}
+
+std::string ime_text(const world::World& world, entt::entity line_edit) {
+    const EditState* state = edit_state(world, line_edit);
+    return state != nullptr ? to_utf8(state->ime_text) : std::string();
+}
+
+input::TextInput text_input(const world::World& world) {
+    input::TextInput out;
+    const entt::entity focus = focus_owner(world);
+    const auto* edit = focus != entt::null ? world.ecs().try_get<world::LineEdit>(focus) : nullptr;
+    const EditState* state = edit != nullptr ? edit_state(world, focus) : nullptr;
+    if (state == nullptr || !state->editing) {
+        return out;
+    }
+    out.active = true;
+    out.show_keyboard = state->show_keyboard && edit->virtual_keyboard_enabled;
+    out.keyboard = edit->virtual_keyboard_type;
+    if (text::Fonts* found = fonts(world); found != nullptr) {
+        const Layout placed = layout(world, *found, settings(world).viewport);
+        if (const Placed* at = placed.find(focus); at != nullptr) {
+            const Rect2 rect = global_rect(*at);
+            out.position = rect.position;
+            out.size = rect.size;
+            if (const auto view = placed.line_edits.find(focus); view != placed.line_edits.end()) {
+                out.caret = static_cast<int>(view->second.caret_x);
+            }
+        }
+    }
+    return out;
+}
+
+void set_clipboard_backend(world::World& world, ClipboardBackend backend) {
+    world.ecs().ctx().insert_or_assign(ClipboardHolder{std::move(backend)});
+}
+
+std::string clipboard(const world::World& world) {
+    if (const auto* holder = world.ecs().ctx().find<ClipboardHolder>();
+        holder != nullptr && holder->backend.get) {
+        return holder->backend.get();
+    }
+    const GuiState* state = state_of(world);
+    return state != nullptr ? state->clipboard : std::string();
+}
+
+void set_clipboard(world::World& world, const std::string& text) {
+    if (auto* holder = world.ecs().ctx().find<ClipboardHolder>();
+        holder != nullptr && holder->backend.set) {
+        holder->backend.set(text);
+    }
+    if (GuiState* state = state_of(world); state != nullptr) {
+        state->clipboard = text;
+    }
 }
 
 void check_buttons(const world::World& world, std::vector<Problem>& problems) {

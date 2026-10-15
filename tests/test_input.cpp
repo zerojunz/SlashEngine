@@ -120,6 +120,83 @@ TEST_CASE("input events read and write JSON as input.inject takes them") {
     CHECK(input::key_names().size() == 149);
 }
 
+TEST_CASE("text events type characters, and ime events carry what an input method composes") {
+    // A key can carry the character it types, or only that.
+    const input::Event q = event(R"({"type": "key", "key": "Q", "unicode": "q", "pressed": true})");
+    CHECK(q.unicode == U'q');
+    CHECK(input::event_json(q, input::Use::Event) ==
+          parse(R"({"type": "key", "key": "Q", "unicode": "q", "pressed": true})"));
+    CHECK(event(R"({"type": "key", "unicode": "é", "pressed": true})").key == input::Key::None);
+
+    // A text event is a key press with a character for each character.
+    auto typed = input::parse_events(parse(R"({"type": "text", "text": "hé!"})"));
+    REQUIRE(typed.ok());
+    REQUIRE(typed.value().size() == 3);
+    CHECK(typed.value()[1].unicode == U'é');
+    CHECK(typed.value()[1].pressed);
+    CHECK(typed.value()[1].key == input::Key::None);
+    CHECK_FALSE(input::parse_event(parse(R"({"type": "text", "text": "x"})"), input::Use::Event));
+
+    const input::Event composing = event(R"({"type": "ime", "text": "かな", "selection": [0, 2]})");
+    CHECK(composing.type == input::EventType::Ime);
+    CHECK(composing.text == "かな");
+    CHECK(composing.selection_length == 2);
+    CHECK(input::event_json(composing, input::Use::Event) ==
+          parse(R"({"type": "ime", "text": "かな", "selection": [0, 2]})"));
+
+    CHECK(messages(input::validate_event(parse(R"({"type": "text", "text": "a", "key": "A"})"),
+                                         input::Use::Event)) ==
+          std::vector<std::string>{R"(/key: text events have no "key")"});
+    CHECK(messages(input::validate_event(parse(R"({"type": "ime", "text": "かな",
+                                                   "selection": [1, 2]})"),
+                                         input::Use::Event)) ==
+          std::vector<std::string>{
+              "/selection: the selection [start, length] is past the text's end (2 characters)"});
+    CHECK(messages(input::validate_event(parse(R"({"type": "key", "unicode": "ab"})"),
+                                         input::Use::Event)) ==
+          std::vector<std::string>{"/unicode: unicode is one character"});
+    // Bindings match keys, not what they type.
+    CHECK_FALSE(
+        input::validate_event(parse(R"({"type": "text", "text": "a"})"), input::Use::Binding)
+            .empty());
+}
+
+TEST_CASE("text editing actions use Ctrl on a PC, and Command and Option on a Mac") {
+    const input::Map pc = input::Map::with_defaults(input::Keyboard::Pc);
+    const input::Map mac = input::Map::with_defaults(input::Keyboard::Mac);
+    const auto key = [](input::Key name, input::Modifiers modifiers) {
+        input::Event out;
+        out.type = input::EventType::Key;
+        out.key = name;
+        out.modifiers = modifiers;
+        out.pressed = true;
+        return out;
+    };
+    using input::Key;
+    CHECK(pc.find_event("ui_copy", key(Key::C, {.ctrl = true}), true));
+    CHECK_FALSE(pc.find_event("ui_copy", key(Key::C, {.meta = true}), true));
+    CHECK(mac.find_event("ui_copy", key(Key::C, {.meta = true}), true));
+    CHECK(pc.find_event("ui_redo", key(Key::Y, {.ctrl = true}), true));
+    CHECK(pc.find_event("ui_text_caret_word_left", key(Key::Left, {.ctrl = true}), true));
+    CHECK(mac.find_event("ui_text_caret_word_left", key(Key::Left, {.alt = true}), true));
+    CHECK(mac.find_event("ui_text_caret_line_start", key(Key::A, {.ctrl = true}), true));
+    CHECK_FALSE(pc.find_event("ui_text_caret_line_start", key(Key::A, {.ctrl = true}), true));
+    // Some have keys only on a Mac.
+    CHECK(pc.find("ui_text_backspace_all_to_left")->events.empty());
+    CHECK(
+        mac.find_event("ui_text_backspace_all_to_left", key(Key::Backspace, {.meta = true}), true));
+    CHECK(input::is_text_action("ui_text_submit"));
+    CHECK(input::is_text_action("ui_paste"));
+    CHECK_FALSE(input::is_text_action("ui_accept"));
+    // project.json's actions go over the keyboard's.
+    auto map = input::parse_map(parse(R"({"ui_copy": {"events": [
+        {"type": "key", "key": "F3"}]}})"),
+                                input::Keyboard::Mac);
+    REQUIRE(map.ok());
+    CHECK(map.value().find("ui_copy")->events.size() == 1);
+    CHECK(map.value().find_event("ui_paste", key(Key::V, {.meta = true}), true));
+}
+
 TEST_CASE("input event errors give the path and the closest name") {
     CHECK(messages(input::validate_event(parse(R"({"type": "key", "key": "Spce"})"),
                                          input::Use::Event, "/events/0")) ==
@@ -510,9 +587,28 @@ TEST_CASE("SdlReader turns SDL events into input events") {
     SDL_Event focus{};
     focus.type = SDL_EVENT_WINDOW_FOCUS_LOST;
 
+    // Text an input method commits comes as characters, and what it composes as an ime event.
+    SDL_Event editing{};
+    editing.type = SDL_EVENT_TEXT_EDITING;
+    editing.edit.text = "かな";
+    editing.edit.start = 1;
+    editing.edit.length = 1;
+    reader.read(editing, in.world);
+    SDL_Event typed{};
+    typed.type = SDL_EVENT_TEXT_INPUT;
+    typed.text.text = "仮名";
+    reader.read(typed, in.world);
+
     in.step();
     const auto events = input::events(in.world);
-    REQUIRE(events.size() == 4);
+    REQUIRE(events.size() == 7);
+    CHECK(events[4].type == input::EventType::Ime);
+    CHECK(events[4].text == "かな");
+    CHECK(events[4].selection_start == 1);
+    CHECK(events[4].selection_length == 1);
+    CHECK(events[5].unicode == U'仮');
+    CHECK(events[6].unicode == U'名');
+    CHECK(events[6].key == input::Key::None);
     CHECK(events[0].key == input::Key::Z);
     CHECK(events[0].physical_key == input::Key::W);
     CHECK(events[0].modifiers.ctrl);
