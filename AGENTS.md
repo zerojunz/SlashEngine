@@ -80,7 +80,9 @@ $cli init path/to/game                                   # MCP configs for Claud
 A session checks each command's capabilities (`--allow read,edit,run,filesystem,build`),
 validates its params against the command's JSON Schema, runs it, and records an undo step if it
 changed the world. A failed command changes nothing. Paths are relative to `--project` and cannot
-leave it.
+leave it. Commands that change the world take `"dry_run": true`, which returns what would change
+and changes nothing; `world.snapshot`, `world.diff` and `world.restore` save, compare against and
+go back to a copy of the entities.
 
 Commands are built for agents, so keep them cheap to call:
 

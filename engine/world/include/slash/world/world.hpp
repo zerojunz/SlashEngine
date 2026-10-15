@@ -74,6 +74,18 @@ public:
     void step(double tick_seconds);
     [[nodiscard]] std::uint64_t tick() const noexcept { return tick_; }
 
+    // The counters a saved scene leaves out. Sessions put them back when they roll back a failed
+    // command or a dry run, so the next generated ID and tick are the same as if it never ran.
+    struct Counters {
+        std::uint64_t tick = 0;
+        std::uint64_t next_generated_id = 1;
+    };
+    [[nodiscard]] Counters counters() const noexcept { return {tick_, next_generated_id_}; }
+    void set_counters(const Counters& counters) noexcept {
+        tick_ = counters.tick;
+        next_generated_id_ = counters.next_generated_id;
+    }
+
     // IDs are 1 to 64 characters, each a letter, digit, '_' or '-'.
     [[nodiscard]] static bool is_valid_id(std::string_view id);
 

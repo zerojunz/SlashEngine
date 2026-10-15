@@ -31,6 +31,7 @@ constexpr std::string_view kSceneSuffix = ".scene.json";
 constexpr std::int64_t kDefaultQueryLimit = 100;
 constexpr std::int64_t kDefaultLogLines = 50;
 constexpr double kDefaultTickSeconds = 1.0 / 60.0;
+constexpr std::string_view kDefaultSnapshot = "default";
 
 // ---- Params schemas ----
 
@@ -824,6 +825,76 @@ Reply batch(Session& session, const json::Value& params) {
     return Reply::success(std::move(result));
 }
 
+// ---- Snapshots ----
+
+std::string snapshot_name(const json::Value& params, std::string_view key) {
+    const std::string name = text(params, key);
+    return name.empty() ? std::string(kDefaultSnapshot) : name;
+}
+
+// The snapshot named by params[key], or an error naming the closest snapshot.
+const json::Value* find_snapshot(const Session& session, const json::Value& params,
+                                 std::string_view key, Reply& error) {
+    const std::string name = snapshot_name(params, key);
+    if (const json::Value* snapshot = session.find_snapshot(name); snapshot != nullptr) {
+        return snapshot;
+    }
+    const std::vector<std::string_view> names = session.snapshot_names();
+    std::string message = "no snapshot is named " + quoted(name);
+    if (names.empty()) {
+        message += "; take one with world.snapshot first";
+    } else {
+        add_hint(message, name, names);
+    }
+    error = param_error(code::kNotFound, "/" + std::string(key), message);
+    return nullptr;
+}
+
+Reply world_snapshot(Session& session, const json::Value& params) {
+    std::string name = snapshot_name(params, "name");
+    if (auto taken = session.take_snapshot(name); !taken) {
+        return param_error(taken.error(), "/name");
+    }
+    json::Value result;
+    result["name"] = std::move(name);
+    result["entities"] = session.world().size();
+    return Reply::success(std::move(result));
+}
+
+Reply world_diff(Session& session, const json::Value& params) {
+    Reply error;
+    const json::Value* from = find_snapshot(session, params, "from", error);
+    if (from == nullptr) {
+        return error;
+    }
+    if (params.find("to") == nullptr) {
+        return Reply::success(
+            world::diff_scenes(session.components(), *from, world::save_scene(session.world())));
+    }
+    const json::Value* to = find_snapshot(session, params, "to", error);
+    if (to == nullptr) {
+        return error;
+    }
+    return Reply::success(world::diff_scenes(session.components(), *from, *to));
+}
+
+Reply world_restore(Session& session, const json::Value& params) {
+    Reply error;
+    const json::Value* snapshot = find_snapshot(session, params, "name", error);
+    if (snapshot == nullptr) {
+        return error;
+    }
+    session.world().clear();
+    auto loaded = world::load_scene(session.world(), *snapshot);
+    if (!loaded) {
+        return Reply::failure(loaded.error());
+    }
+    json::Value result;
+    result["restored"] = snapshot_name(params, "name");
+    result["entities"] = loaded.value();
+    return Reply::success(std::move(result));
+}
+
 // ---- Logs ----
 
 int level_rank(std::string_view level) {
@@ -1127,6 +1198,38 @@ void register_builtin_commands(Registry& registry) {
         .effect = Effect::Read,
         .params = params_schema(),
         .handler = history_get,
+    });
+
+    registry.add({
+        .name = "world.snapshot",
+        .description = "Saves a copy of every entity under a name, to compare against with "
+                       "world.diff or go back to with world.restore. A name in use is replaced.",
+        .capabilities = {Read},
+        .effect = Effect::Read,
+        .params = params_schema({{"name", id_property("Snapshot name; \"default\" if left out.")}}),
+        .handler = world_snapshot,
+    });
+
+    registry.add({
+        .name = "world.diff",
+        .description = "Lists the entities added, removed or changed since a snapshot, by ID, with "
+                       "the new values of changed fields. A removed component is null.",
+        .capabilities = {Read},
+        .effect = Effect::Read,
+        .params = params_schema({
+            {"from", id_property("Snapshot to compare from; \"default\" if left out.")},
+            {"to", id_property("Snapshot to compare to. The world as it is now if left out.")},
+        }),
+        .handler = world_diff,
+    });
+
+    registry.add({
+        .name = "world.restore",
+        .description = "Puts every entity back as it was in a snapshot. Undo reverts it.",
+        .capabilities = {Edit},
+        .effect = Effect::Edit,
+        .params = params_schema({{"name", id_property("Snapshot name; \"default\" if left out.")}}),
+        .handler = world_restore,
     });
 
     registry.add({

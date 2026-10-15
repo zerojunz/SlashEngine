@@ -75,21 +75,52 @@ Reply Session::call(std::string_view name, const json::Value& params) {
     }
 
     // Nested calls are snapshotted, recorded and rolled back by the outermost call.
-    const bool snapshots = command->effect == Effect::Edit || command->effect == Effect::Replace ||
-                           command->effect == Effect::Compound;
+    const bool snapshots = changes_world(command->effect);
+
+    // dry_run is the session's param, added to the schema by the registry, so the command never
+    // sees it.
+    bool dry_run = false;
+    json::Value without_dry_run;
+    const json::Value* command_args = &args;
+    if (const json::Value* flag = snapshots ? args.find("dry_run") : nullptr; flag != nullptr) {
+        dry_run = flag->as_bool();
+        without_dry_run = args;
+        without_dry_run.as_object().erase("dry_run");
+        command_args = &without_dry_run;
+    }
+    if (dry_run && depth_ > 0) {
+        json::Value data;
+        data["path"] = "/dry_run";
+        return Reply::failure(code::kInvalidParams,
+                              "/dry_run: set dry_run on the batch, not on the commands in it",
+                              std::move(data));
+    }
     if (depth_ > 0 || !snapshots) {
-        return run(*command, args);
+        return run(*command, *command_args);
     }
 
     Snapshot before{command->name, world::save_scene(world_)};
     const std::string path_before = scene_path_;
+    const world::World::Counters counters_before = world_.counters();
     edited_ = false;
     replaced_ = false;
-    Reply reply = run(*command, args);
-    if (!reply.ok) {
+    Reply reply = run(*command, *command_args);
+    if (!reply.ok || dry_run) {
+        json::Value changes;
+        if (reply.ok) {
+            changes = world::diff_scenes(components(), before.scene, world::save_scene(world_));
+        }
         restore(before.scene);
         scene_path_ = path_before;
-        return reply;
+        world_.set_counters(counters_before);
+        if (!reply.ok) {
+            return reply;
+        }
+        json::Value result;
+        result["dry_run"] = true;
+        result["result"] = std::move(reply.value);
+        result["changes"] = std::move(changes);
+        return Reply::success(std::move(result));
     }
     if (replaced_) {
         clear_history();
@@ -202,6 +233,30 @@ std::vector<std::string> Session::redo_labels() const {
 void Session::clear_history() {
     undo_.clear();
     redo_.clear();
+}
+
+Result<void> Session::take_snapshot(std::string name) {
+    if (snapshots_.size() >= kMaxSnapshots && !snapshots_.contains(name)) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "a session keeps at most " + std::to_string(kMaxSnapshots) +
+                              " snapshots; reuse a name to replace one");
+    }
+    snapshots_[std::move(name)] = world::save_scene(world_);
+    return {};
+}
+
+const json::Value* Session::find_snapshot(std::string_view name) const {
+    const auto it = snapshots_.find(name);
+    return it != snapshots_.end() ? &it->second : nullptr;
+}
+
+std::vector<std::string_view> Session::snapshot_names() const {
+    std::vector<std::string_view> names;
+    names.reserve(snapshots_.size());
+    for (const auto& [name, unused] : snapshots_) {
+        names.emplace_back(name);
+    }
+    return names;
 }
 
 std::vector<std::string> Session::recent_logs(std::size_t count) const {
