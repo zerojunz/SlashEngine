@@ -212,6 +212,29 @@ version is 10.0; llvm-mingw builds keep 6.0, since Windows 11 won't start a MinG
 marked 10.0), Android 11 (API level 30, targeting 36), and Chrome 85, Firefox 79 and Safari 15
 (pinned in `export/CMakeLists.txt`).
 
+## Rendering
+
+`engine/render` is the renderer's device layer: `render::RenderDevice`, a dozen calls over SDL3's
+GPU API (Metal, Direct3D 12 or Vulkan), and a null device for headless runs that checks every
+call the same way but draws nothing. `create_device_or_null` falls back to it, with a warning,
+where no backend starts. Games and `slash-cli run` clear their window to the project's
+`rendering.clear_color`; `examples/draw-offscreen` draws into a texture and reads it back.
+
+Shaders are HLSL in `engine/render/shaders/`. Their SPIR-V and MSL are committed in
+`engine/render/src/*_shaders.hpp`, so only someone changing a shader needs glslang and
+SPIRV-Cross (`glslang-tools` and `spirv-cross` on Debian and Ubuntu, `glslang` and `spirv-cross`
+in Homebrew). After editing one, regenerate and commit the header; the `shaders_up_to_date` test
+fails if the two differ:
+
+```bash
+cmake --build --preset dev --target shaders
+```
+
+The GPU tests in `tests/test_render.cpp` skip when no backend starts. On Linux, Mesa's software
+Vulkan (`mesa-vulkan-drivers`) runs them with no GPU, and `SDL_VIDEO_DRIVER=offscreen` draws
+the windowed path on it too. CI sets `SLASH_EXPECT_GPU=1` on Linux so they fail there instead of
+skipping.
+
 ## Add a component
 
 Components are plain structs reflected with one macro, at namespace scope in the struct's own
@@ -269,7 +292,8 @@ CI rejects unformatted code and any clang-tidy finding.
   `kPascalCase` constants.
 - Headers live in `engine/<module>/include/slash/<module>/`, sources in `engine/<module>/src/`.
   Modules: `core` (Result, logging, JSON, reflection, math), `platform` (SDL3 window, run loop,
-  files and folder listings, child processes), `asset` (asset handles, loaders, hot reload),
+  files and folder listings, child processes), `render` (the render device over SDL3's GPU API,
+  the null device, HLSL shaders), `asset` (asset handles, loaders, hot reload),
   `world` (EnTT world, components, scenes and prefabs), `storyboard` (storyboard kinds, files,
   versions, queries, edits, briefs and checks), `command` (commands, sessions with undo, JSON-RPC
   and MCP), `server` (localhost HTTP over a session) and `runtime` (project files and the game

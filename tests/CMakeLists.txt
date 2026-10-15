@@ -10,6 +10,7 @@ add_executable(slash_tests
     test_mcp.cpp
     test_platform.cpp
     test_reflect.cpp
+    test_render.cpp
     test_result.cpp
     test_rpc.cpp
     test_runtime.cpp
@@ -18,8 +19,8 @@ add_executable(slash_tests
     test_storyboard.cpp
     test_world.cpp)
 target_link_libraries(slash_tests PRIVATE
-    slash::asset slash::command slash::core slash::exporter slash::platform slash::runtime slash::server
-    slash::storyboard slash::world doctest::doctest SDL3::SDL3-static)
+    slash::asset slash::command slash::core slash::exporter slash::platform slash::render slash::runtime
+    slash::server slash::storyboard slash::world doctest::doctest SDL3::SDL3-static)
 # doctest forward-declares std::ostream by default, which breaks string_view checks on recent
 # MSVC standard libraries; include the real headers instead.
 target_compile_definitions(slash_tests PRIVATE DOCTEST_CONFIG_USE_STD_HEADERS
@@ -27,6 +28,13 @@ target_compile_definitions(slash_tests PRIVATE DOCTEST_CONFIG_USE_STD_HEADERS
 slash_target_warnings(slash_tests)
 
 add_test(NAME unit COMMAND slash_tests WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+
+# The compiled shaders committed in engine/render/src match their HLSL; see
+# cmake/compile_shaders.cmake.
+add_test(NAME shaders_up_to_date
+    COMMAND ${CMAKE_COMMAND} -DSOURCE=${PROJECT_SOURCE_DIR}/engine/render/shaders/sprite.hlsl
+        -DOUTPUT=${PROJECT_SOURCE_DIR}/engine/render/src/sprite_shaders.hpp -DCHECK=ON
+        -P ${PROJECT_SOURCE_DIR}/cmake/compile_shaders.cmake)
 
 # Every dependency this build fetched is pinned in cmake/dependencies.json with an allowed license
 # and the license text that was reviewed; see cmake/check_licenses.cmake.
@@ -70,7 +78,22 @@ if(SLASH_BUILD_TOOLS)
     add_test(NAME cli_run_windowed_dummy_video COMMAND slash-cli run --ticks 30)
     set_tests_properties(cli_run_windowed_dummy_video PROPERTIES
         ENVIRONMENT "SDL_VIDEO_DRIVER=dummy"
-        PASS_REGULAR_EXPRESSION "\"headless\":false,\"quit_requested\":false,\"ticks\":30")
+        PASS_REGULAR_EXPRESSION "\"headless\":false,\"quit_requested\":false,\"renderer\":\"null\",\"ticks\":30")
+
+    # A window drawn on the GPU, where SDL's offscreen video driver can make a Vulkan surface. CI
+    # sets SLASH_EXPECT_GPU on Linux, where software Vulkan is installed; elsewhere the run may
+    # fall back to the null device.
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        if(NOT "$ENV{SLASH_EXPECT_GPU}" STREQUAL "")
+            set(windowed_renderer "vulkan")
+        else()
+            set(windowed_renderer "[a-z0-9]+")
+        endif()
+        add_test(NAME cli_run_windowed_gpu COMMAND slash-cli run --ticks 30)
+        set_tests_properties(cli_run_windowed_gpu PROPERTIES
+            ENVIRONMENT "SDL_VIDEO_DRIVER=offscreen"
+            PASS_REGULAR_EXPRESSION "\"headless\":false,\"quit_requested\":false,\"renderer\":\"${windowed_renderer}\",\"ticks\":30")
+    endif()
 
     add_test(NAME cli_schema_scene COMMAND slash-cli schema scene)
     set_tests_properties(cli_schema_scene PROPERTIES

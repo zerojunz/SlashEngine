@@ -86,9 +86,16 @@ Result<std::unique_ptr<Game>> Game::start(const GameOptions& options) {
         return loop.error();
     }
     game->loop_ = std::make_unique<platform::Loop>(std::move(loop).value());
+    game->renderer_ =
+        game->platform_.headless()
+            ? render::create_null_device()
+            : render::create_device_or_null({.window = game->platform_.window(),
+                                             .driver = game->project_.rendering_driver,
+                                             .debug = false});
     log::info("game started", {{"name", game->project_.name},
                                {"scene", game->project_.main_scene},
-                               {"entities", game->world_.size()}});
+                               {"entities", game->world_.size()},
+                               {"renderer", render::backend_name(game->renderer_->backend())}});
     return game;
 }
 
@@ -104,8 +111,22 @@ Game::Game(Project project, platform::Platform platform, const std::string& data
 Game::~Game() = default;
 
 bool Game::frame() {
-    return loop_->frame(
+    const bool running = loop_->frame(
         [this](std::uint64_t /*tick*/, double tick_seconds) { world_.step(tick_seconds); });
+    if (running) {
+        draw();
+    }
+    return running;
+}
+
+void Game::draw() {
+    const auto& [r, g, b, a] = project_.clear_color;
+    auto drawn = render::draw_empty_frame(*renderer_, {.r = r, .g = g, .b = b, .a = a});
+    // One warning, not one per frame.
+    if (!drawn && !draw_failed_) {
+        draw_failed_ = true;
+        log::warn("drawing a frame failed", {{"error", drawn.error().message}});
+    }
 }
 
 void Game::request_quit() noexcept {
@@ -120,6 +141,7 @@ json::Value Game::summary() const {
     summary["ticks"] = loop_->stats().ticks;
     summary["quit_requested"] = loop_->stats().quit_requested;
     summary["headless"] = platform_.headless();
+    summary["renderer"] = render::backend_name(renderer_->backend());
     return summary;
 }
 

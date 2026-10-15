@@ -22,7 +22,7 @@ foreach(name IN LISTS examples)
     if(EXISTS ${dir}/main.cpp)
         add_executable(example-${name} ${name}/main.cpp)
         target_link_libraries(example-${name} PRIVATE
-            slash::command slash::core slash::platform slash::world)
+            slash::command slash::core slash::platform slash::render slash::world)
         slash_target_warnings(example-${name})
         set(program -DPROGRAM=$<TARGET_FILE:example-${name}>)
     endif()
