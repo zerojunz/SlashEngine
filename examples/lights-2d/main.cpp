@@ -81,10 +81,15 @@ void write_textures() {
         return rim ? Rgba{100, 65, 30, 255} : Rgba{160, 110, 60, 255};
     });
     write_png("crate_n.png", 24, 24, [](std::uint32_t x, std::uint32_t y) {
-        constexpr std::uint32_t kBevel = 4;
-        const float nx = x < kBevel ? -1.0F : (x >= 24 - kBevel ? 1.0F : 0.0F);
-        const float up = y < kBevel ? 1.0F : (y >= 24 - kBevel ? -1.0F : 0.0F);
-        return normal_pixel(nx, up, 1.0F);
+        // -1 within 4 pixels of the low edge, 1 within 4 of the high one, else 0.
+        const auto bevel = [](std::uint32_t at) {
+            constexpr std::uint32_t kBevel = 4;
+            if (at < kBevel) {
+                return -1.0F;
+            }
+            return at >= 24 - kBevel ? 1.0F : 0.0F;
+        };
+        return normal_pixel(bevel(x), -bevel(y), 1.0F);
     });
     write_png("hero.png", 16, 16,
               [](std::uint32_t /*x*/, std::uint32_t /*y*/) { return Rgba{80, 200, 120, 255}; });

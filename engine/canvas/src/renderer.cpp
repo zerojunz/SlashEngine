@@ -630,7 +630,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
 
     // The null device stands in for a window it doesn't have, as draw_empty_frame allows: the
     // sprites and tiles are checked and counted, and nothing is drawn.
-    const std::size_t shadows = static_cast<std::size_t>(std::ranges::count_if(
+    const auto shadows = static_cast<std::size_t>(std::ranges::count_if(
         lights.lights, [](const render::Light& l) { return l.shadow_row >= 0; }));
     if (options.target == render::TextureId::None && device_->backend() == render::Backend::Null) {
         sprites_drawn_ = sprites;
