@@ -369,10 +369,10 @@ TEST_CASE("themes give controls their items, nearest first, then the project's t
         items[item.kind + "/" + item.name] = {json::write(item.value, json::Style::Compact),
                                               item.from};
     }
-    CHECK(items["font_sizes/font_size"] == std::pair<std::string, std::string>{
-                                               "32", "ui/game.theme.json"});
-    CHECK(items["colors/font_color"] == std::pair<std::string, std::string>{
-                                            "[1.0,0.0,0.0,1.0]", "ui/game.theme.json"});
+    CHECK(items["font_sizes/font_size"] ==
+          std::pair<std::string, std::string>{"32", "ui/game.theme.json"});
+    CHECK(items["colors/font_color"] ==
+          std::pair<std::string, std::string>{"[1.0,0.0,0.0,1.0]", "ui/game.theme.json"});
     CHECK(items["constants/line_spacing"] == std::pair<std::string, std::string>{"3", "default"});
     CHECK(items.size() == 11);
     const auto body_items = ui::theme_items(scene.world, scene.fonts(), scene.world.find("body"));
@@ -605,8 +605,7 @@ TEST_CASE("texture rects size, stretch and flip their texture as their modes say
     // Its texture_filter, or a parent's, picks how the renderer samples it.
     scene.set("icon", R"({"Control": {"offset_right": 40, "offset_bottom": 20,
                                       "texture_filter": "nearest"}})");
-    CHECK(ui::draw_calls(scene.layout(), scene.world, scene.fonts()).calls[0].filter ==
-          "nearest");
+    CHECK(ui::draw_calls(scene.layout(), scene.world, scene.fonts()).calls[0].filter == "nearest");
 }
 
 TEST_CASE("a progress bar fills as far as its value and shows the percentage") {

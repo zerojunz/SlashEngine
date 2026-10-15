@@ -270,6 +270,12 @@ A reference must name an entity that exists in the same scene.
 | | `theme_override_constants` | `std::map<std::string, int>` | `{}` | Theme constants by name, e.g. `{"outline_size": 4}` |
 | | `theme_override_fonts` | `std::map<std::string, std::string>` | `{}` | Theme fonts by name: a `.ttf`, `.otf` or [`.font.json`](#fonts) file, e.g. `{"font": "fonts/title.ttf"}` |
 | | `theme_override_font_sizes` | `std::map<std::string, int>` | `{}` | Theme font sizes in pixels by name, 1 to 1024, e.g. `{"font_size": 32}` |
+| | `theme_override_styles` | `std::map<std::string, json>` | `{}` | Theme [style boxes](#style-boxes) by name, e.g. `{"panel": {"bg_color": [0.1, 0.1, 0.2, 1], "corner_radius": 8}}` |
+| | `theme` | `std::string` | `""` | A [`.theme.json`](#themes) file whose items it and its children use before the project's theme |
+| | `theme_type_variation` | `std::string` | `""` | A theme type to look its items up in before its own: a variation with a `base_type`, e.g. `"Header"` |
+| | `size_flags_horizontal`, `size_flags_vertical` | `std::string` | `"fill"` | How a [container](#containers) sizes it on this axis: `fill`, `expand_fill`, `expand`, `shrink_begin`, `shrink_center`, `shrink_end`, `expand_shrink_center` or `expand_shrink_end` |
+| | `size_flags_stretch_ratio` | `float` | `1` | Its share of the space expanding children split in a container |
+| | `texture_filter` | `std::string` | `"inherit"` | How its textures are sampled when scaled: `linear`, `nearest`, or `inherit` its parent's, then the project's `rendering.texture_filter` |
 | `Label` | `text` | `std::string` | `""` | The text; lines break at `"\n"` |
 | | `horizontal_alignment` | `std::string` | `"left"` | Each line's place across the rect: `left`, `center`, `right` or `fill`, which stretches spaces to the width on every line but a wrapped paragraph's last |
 | | `vertical_alignment` | `std::string` | `"top"` | The lines' place down the rect: `top`, `center`, `bottom` or `fill`, which spreads them over it |
@@ -283,6 +289,32 @@ A reference must name an entity that exists in the same scene.
 | | `visible_characters` | `int` | `-1` | Characters shown from the start, for typing effects; -1 for all |
 | | `visible_characters_behavior` | `std::string` | `"chars_before_shaping"` | `chars_before_shaping` lays out only the visible characters; `chars_after_shaping` lays out all of them and hides the rest, so lines don't move as more show |
 | `ColorRect` | `color` | `Vec4` | `[1, 1, 1, 1]` | Fills the control's rect, as [r, g, b, a] from 0 to 1 |
+| `Panel` | | | | Draws the theme's `panel` style box in the control's rect |
+| `TextureRect` | `texture` | `std::string` | `""` | Project path of a PNG or BMP file drawn in the rect |
+| | `expand_mode` | `std::string` | `"keep_size"` | Its minimum size: `keep_size` (the texture's), `ignore_size` (none), `fit_width` (the rect's height as its width), `fit_height` (its width as its height), or `fit_width_proportional` / `fit_height_proportional`, keeping the texture's aspect |
+| | `stretch_mode` | `std::string` | `"scale"` | How the texture fills the rect: `scale`, `tile`, `keep` (its own size), `keep_centered`, `keep_aspect` (scaled to fit inside), `keep_aspect_centered` or `keep_aspect_covered` (scaled to cover it, cut to the rect) |
+| | `flip_h`, `flip_v` | `bool` | `false` | Draw it mirrored left to right, or upside down |
+| `NinePatchRect` | `texture` | `std::string` | `""` | Project path of a PNG or BMP file, cut into nine parts |
+| | `region_rect` | `Vec4` | `[0, 0, 0, 0]` | The part of the texture to use, [x, y, width, height] in pixels; a zero size uses the whole texture |
+| | `patch_margin_left`, `_top`, `_right`, `_bottom` | `int` | `0` | Pixels of the texture on each side that keep their size; the sides stretch along, the middle both ways |
+| | `axis_stretch_horizontal`, `axis_stretch_vertical` | `std::string` | `"stretch"` | How the middle parts fill: `stretch`, `tile`, or `tile_fit` (tiles stretched to fit a whole number) |
+| | `draw_center` | `bool` | `true` | Draw the middle part |
+| `ProgressBar` | `value` | `double` | `0` | How full it is, between `min_value` and `max_value`, rounded to `step` |
+| | `min_value`, `max_value` | `double` | `0`, `100` | The values of an empty and a full bar |
+| | `step` | `double` | `0.01` | The value is rounded to a multiple of it; 0 for none |
+| | `allow_greater`, `allow_lesser` | `bool` | `false` | Let the value go past `max_value` or `min_value`; the bar stops at full or empty, the percentage doesn't |
+| | `fill_mode` | `std::string` | `"begin_to_end"` | Which way it fills: `begin_to_end`, `end_to_begin`, `top_to_bottom` or `bottom_to_top` |
+| | `show_percentage` | `bool` | `true` | Draw the percentage, rounded, centered on the bar |
+| `BoxContainer` | `vertical` | `bool` | `false` | Lays its children out in a column instead of a row |
+| | `alignment` | `std::string` | `"begin"` | Where they go when none expands: `begin`, `center` or `end` |
+| `GridContainer` | `columns` | `int` | `1` | Children per row, 1 to 1024 |
+| `MarginContainer` | | | | Fits its children in its rect less the theme's margins |
+| `CenterContainer` | `use_top_left` | `bool` | `false` | Center its children on its top-left corner instead of its center |
+| `FlowContainer` | `vertical` | `bool` | `false` | Columns that wrap to its height instead of rows that wrap to its width |
+| | `alignment` | `std::string` | `"begin"` | Where each line's children go along it: `begin`, `center` or `end` |
+| | `last_wrap_alignment` | `std::string` | `"inherit"` | Where the last line's children go when it isn't full: `inherit` (as `alignment`), `begin`, `center` or `end` |
+| | `reverse_fill` | `bool` | `false` | Fill rows from the bottom up, or columns from the right |
+| `PanelContainer` | | | | Draws the theme's `panel` style box and fits its children inside its margins |
 
 `engine.describe` lists every registered component with its defaults, including ones a game adds.
 
@@ -875,10 +907,12 @@ a fountain, a one-shot burst, smoke and a ring of orbiting particles.
 
 ## UI and text
 
-UI follows Godot's `Control` nodes. A `Control` places a rect in its parent's rect, and `Label`
-and `ColorRect` draw in it; an entity with a `Label` or `ColorRect` and no `Control` is placed
-with `Control`'s defaults. `CanvasRenderer` draws controls above the world, unlit.
-[examples/ui-and-text](../../examples/ui-and-text/) is a pause screen.
+UI follows Godot's `Control` nodes. A `Control` places a rect in its parent's rect, or a
+[container](#containers) places it; `Label`, `ColorRect`, `Panel`, `TextureRect`,
+`NinePatchRect` and `ProgressBar` draw in it. An entity with one of those, or a container, and
+no `Control` is placed with `Control`'s defaults. `CanvasRenderer` draws controls above the
+world, unlit. [examples/ui-and-text](../../examples/ui-and-text/) is a pause screen, and
+[examples/ui-containers](../../examples/ui-containers/) a themed inventory screen.
 
 ```json
 "panel": {
@@ -921,7 +955,8 @@ with `Control`'s defaults. `CanvasRenderer` draws controls above the world, unli
 - `rotation` and `scale` turn and scale a control and its children around `pivot_offset` as it
   draws, without changing layout. `visible`, `modulate` and `z_index` apply to its children too.
 - Controls draw by `z_index`, then parents before children and children in `children` order,
-  then roots in the order their entities were made.
+  then roots in the order their entities were made. An entity with several UI components draws
+  its style boxes and textures (panel, color, texture, nine-patch, bar), then its text.
 - A child listed by two parents, a control listed in its own subtree, and an entry naming no
   entity or an entity that isn't a control are reported, and the entry is left out.
   [`ui.layout`](commands.md#uilayout) lists them with every control's rect, and
@@ -948,11 +983,59 @@ A `Label` lays out its text as Godot's does:
   right-to-left and left-to-right text in one line (BiDi) and fallback fonts are on the
   [roadmap](../roadmap.md).
 
+### Containers
+
+A container component places the controls in its `children` and ignores their anchors and
+offsets, as Godot's containers do; its own rect is placed as any control's. Each is a port of
+Godot's code, so a layout comes out as it would in Godot, to the pixel.
+
+| Component | Places its children | Theme constants |
+| --- | --- | --- |
+| `BoxContainer` | In a row (`HBoxContainer`), or a column with `vertical` (`VBoxContainer`), each at its minimum size along it plus its share of what is left if it expands | `separation` (4) |
+| `GridContainer` | In `columns`, left to right, each column as wide as its widest child and each row as tall as its tallest | `h_separation`, `v_separation` (4) |
+| `FlowContainer` | In rows that wrap to its width, or columns that wrap to its height with `vertical` (`HFlowContainer`, `VFlowContainer`) | `h_separation`, `v_separation` (4) |
+| `MarginContainer` | Each in its whole rect less its margins | `margin_left`, `margin_top`, `margin_right`, `margin_bottom` (0) |
+| `CenterContainer` | Each at its minimum size in its center | |
+| `PanelContainer` | Each in its rect less its `panel` style box's margins, drawn under them | |
+
+- A container is at least as big as its children need: a box the sum of their minimum sizes
+  along it plus the separations, a grid its columns' and rows', a margin or panel container its
+  biggest child's plus the margins. A container in a container grows to fit, up the tree.
+- Where a child gets more room than its minimum size, its `size_flags_horizontal` and
+  `size_flags_vertical` say what it does with it: `fill` takes all of it, `shrink_begin`,
+  `shrink_center` and `shrink_end` keep its minimum size at the start, center or end, and the
+  `expand` flags also take a share of the space left over along a box or flow line, or make a
+  grid column or row expand. Expanding children share by `size_flags_stretch_ratio`; leftover
+  fractions of pixels go to the next child, and the last expanding child reaches the end.
+- Hidden children take no room. A wrapping label in a container gets the height of its lines at
+  the width the container gives it.
+- An entity has one container; `ui.layout` and `scene validate` report a second one.
+- Unlike Godot, a container's children keep their `rotation` and `scale`, drawn around their
+  `pivot_offset` without changing the layout.
+
+### Panels, textures and progress bars
+
+- `Panel` draws the theme's `panel` style box over its whole rect. `PanelContainer` draws the
+  same item and also places children in it.
+- `TextureRect`'s minimum size is its texture's with `expand_mode` `keep_size`; `ignore_size`
+  lets its rect decide, and the `fit_*` modes take one side from the other. `stretch_mode`
+  places the texture: `keep_aspect_centered` scales it to fit inside the rect, centered,
+  rounded to whole pixels as Godot's.
+- `NinePatchRect`'s corners keep their size, its top and bottom stretch (or tile) across, its
+  sides down, and its middle both ways. Its minimum size is its margins.
+- `ProgressBar` draws its `background` style box, then its `fill` box as far as its value: the
+  fill's margins plus the rest of its length times the value's share of the range. Its
+  minimum height fits "100%" in its font, inside the background's margins. `ui.layout` reports
+  the percentage it shows as its line.
+- `texture_filter` picks how a control's textures are sampled; `inherit` takes the nearest
+  parent's that isn't, then the project's `rendering.texture_filter`.
+
 ### Theme items
 
-A control's look comes from theme items, as Godot's default theme gives them; its
-`theme_override_*` fields set them for that control. `ui.layout` and `scene validate` report
-names its type doesn't have, with the closest one.
+A control's look comes from theme items, as Godot's default theme gives them: a control uses
+its `theme_override_*` fields, then its [themes](#themes), then the defaults below.
+`ui.layout` and `scene validate` report names its type doesn't have, with the closest one, and
+[`ui.theme`](commands.md#uitheme) lists the items a control uses and where each comes from.
 
 | Type | Kind | Name | Default |
 | --- | --- | --- | --- |
@@ -966,9 +1049,104 @@ names its type doesn't have, with the closest one.
 | | constant | `shadow_outline_size` | `1` |
 | | constant | `line_spacing` | `3` |
 | | constant | `paragraph_spacing` | `0` |
+| `Panel`, `PanelContainer` | style | `panel` | flat `[0.1, 0.1, 0.1, 0.6]`, `corner_radius` 3 |
+| `ProgressBar` | style | `background` | flat `[0.1, 0.1, 0.1, 0.3]`, `corner_radius` 6, `content_margin` 2 |
+| | style | `fill` | flat `[1, 1, 1, 0.4]`, `corner_radius` 6, `content_margin` 2 |
+| | font, font size | `font`, `font_size` | The built-in font, `16` |
+| | color | `font_color` | `[0.95, 0.95, 0.95, 1]` |
+| | color | `font_outline_color` | `[0, 0, 0, 1]` |
+| | constant | `outline_size` | `0` |
+| `BoxContainer` (`HBoxContainer`, `VBoxContainer`) | constant | `separation` | `4` |
+| `GridContainer`, `FlowContainer` (`HFlowContainer`, `VFlowContainer`) | constant | `h_separation`, `v_separation` | `4` |
+| `MarginContainer` | constant | `margin_left`, `margin_top`, `margin_right`, `margin_bottom` | `0` |
 
-`ColorRect` and `Control` have no theme items. Theme resources shared by many controls
-(`.theme.json`) are on the [roadmap](../roadmap.md).
+`Control`, `ColorRect`, `TextureRect`, `NinePatchRect` and `CenterContainer` have no theme items.
+An entity with several UI components has the items of each.
+
+### Themes
+
+A theme is a `.theme.json` file of items by control type, as Godot's `Theme` resource
+(`slash-cli schema theme`):
+
+```json
+{
+  "format": 1,
+  "default_font_size": 18,
+  "types": {
+    "Header": {
+      "base_type": "Label",
+      "font_sizes": {"font_size": 24}
+    },
+    "Label": {
+      "colors": {"font_color": [0.9, 0.9, 0.95, 1]}
+    },
+    "PanelContainer": {
+      "styles": {
+        "panel": {"bg_color": [0.12, 0.13, 0.18, 0.95], "content_margin": 16, "corner_radius": 10}
+      }
+    }
+  }
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `format` | Must be 1 |
+| `default_font` | The font of every type in this theme that names none: a `.ttf`, `.otf` or `.font.json` file |
+| `default_font_size` | The font size of every type in this theme that names none |
+| `types` | Items by type: `colors`, `constants`, `fonts`, `font_sizes` and `styles`, each by name |
+
+- A type is a control type, with Godot's class names (`Label`, `VBoxContainer`, `Container`,
+  `Range` and so on), or a variation: a name with a `base_type`, which can be another
+  variation. A control whose `theme_type_variation` names one uses its items first, then its
+  base types', then its own type's.
+- A type's items apply to the types built on it: `BoxContainer`'s to `HBoxContainer` and
+  `VBoxContainer`, `Container`'s to every container, `Control`'s to every control.
+- A control looks each item up in its `theme_override_*` fields, then in the themes on its own
+  and its parents' `Control.theme`, nearest first, then in the project's `gui.theme`
+  ([project.json](project-format.md)), then in Godot's default theme. In each theme a type's
+  own item comes before the theme's `default_font` and `default_font_size`.
+- `scene validate` checks a theme file for unknown types and item names (with the closest
+  ones), base types that lead nowhere or round in a loop, style boxes and font paths. A theme
+  that doesn't load, and a `theme_type_variation` no theme defines, are reported by
+  `ui.layout` and `scene validate` on the control.
+- Themes reload when their files change, as every asset does.
+
+### Style boxes
+
+A style box is what a panel or a bar draws behind its content, and the margins its content
+keeps, as Godot's `StyleBox`. In a theme's `styles` or a control's `theme_override_styles` it is
+an object with a `type` and Godot's property names:
+
+| Field | Types | Default | Meaning |
+| --- | --- | --- | --- |
+| `type` | | `"flat"` | `flat` (Godot's `StyleBoxFlat`), `texture` (`StyleBoxTexture`) or `empty` (`StyleBoxEmpty`) |
+| `content_margin_left`, `_top`, `_right`, `_bottom` | all | `-1` | Room kept for the content on each side; -1 takes the style's own: its border, or its texture margin |
+| `expand_margin_left`, `_top`, `_right`, `_bottom` | flat, texture | `0` | Drawn this far outside the rect |
+| `draw_center` | flat, texture | `true` | Draw the middle, not only the border or the nine-patch's edges |
+| `bg_color` | flat | `[0.6, 0.6, 0.6, 1]` | The fill |
+| `border_width_left`, `_top`, `_right`, `_bottom` | flat | `0` | Border widths in pixels |
+| `border_color` | flat | `[0.8, 0.8, 0.8, 1]` | |
+| `border_blend` | flat | `false` | Blend the border into the fill |
+| `corner_radius_top_left`, `_top_right`, `_bottom_right`, `_bottom_left` | flat | `0` | Corner radii in pixels, shrunk to fit as Godot's |
+| `corner_detail` | flat | `8` | Points along each corner, 1 to 20 |
+| `shadow_color`, `shadow_size`, `shadow_offset` | flat | `[0, 0, 0, 0.6]`, `0`, `[0, 0]` | A shadow that fades out over `shadow_size` pixels |
+| `skew` | flat | `[0, 0]` | Slants it: an x of 1 moves the top edge right by half the height and the bottom edge left, a y of 1 the left edge down and the right edge up |
+| `anti_aliasing`, `anti_aliasing_size` | flat | `true`, `1` | Smooth the edges of rounded or skewed boxes over this many pixels |
+| `texture` | texture | | Project path of a PNG or BMP file |
+| `region_rect` | texture | `[0, 0, 0, 0]` | The part of the texture to use; a zero size uses all of it |
+| `texture_margin_left`, `_top`, `_right`, `_bottom` | texture | `0` | Pixels on each side that keep their size, as `NinePatchRect`'s |
+| `axis_stretch_horizontal`, `axis_stretch_vertical` | texture | `"stretch"` | `stretch`, `tile` or `tile_fit` |
+| `modulate_color` | texture | `[1, 1, 1, 1]` | Tints the texture |
+
+- `content_margin`, `expand_margin`, `border_width`, `corner_radius` and `texture_margin` set all
+  four sides or corners at once; the named ones override them.
+- Flat boxes are drawn as Godot's `StyleBoxFlat::draw` draws them: rings of triangles round
+  each corner, a feathered edge where anti-aliasing is on, and the shadow under them. A box
+  with no corners, border, shadow or skew is one rect.
+- A field its type doesn't use is an error, as is a texture box with no texture.
+  [`ui.theme`](commands.md#uitheme) returns style boxes in this form, with only the fields that
+  differ from the defaults.
 
 ### Fonts
 

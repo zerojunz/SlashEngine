@@ -2647,8 +2647,8 @@ void register_builtin_commands(Registry& registry) {
                                           "\"storyboard\" for those files, \"component\" for "
                                           "one component's fields, \"command\" for a command's "
                                           "params.");
-    kind["enum"] = json::Array{"scene", "prefab",     "frames",    "material", "animation", "tileset",
-                               "font",  "theme", "storyboard", "component", "command"};
+    kind["enum"] = json::Array{"scene", "prefab", "frames",     "material",  "animation", "tileset",
+                               "font",  "theme",  "storyboard", "component", "command"};
     registry.add({
         .name = "schema.get",
         .description = "Returns a JSON Schema: for scene, prefab, .frames.json, .material.json, "

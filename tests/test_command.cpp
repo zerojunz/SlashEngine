@@ -1603,8 +1603,9 @@ TEST_CASE("ui.theme returns the theme items a control uses and where each comes 
         {"item": "constants/separation", "value": 8, "from": "ui/game.theme.json"}]})"));
     CHECK(engine.ok("ui.theme", R"({"id": "panel"})") == parse(R"({"items": [
         {"item": "styles/panel", "value": {"corner_radius": 4}, "from": "override"}]})"));
-    CHECK(engine.ok("ui.theme", R"({"id": "label", "items": ["font_sizes", "colors/font_color"]})") ==
-          parse(R"({"items": [
+    CHECK(
+        engine.ok("ui.theme", R"({"id": "label", "items": ["font_sizes", "colors/font_color"]})") ==
+        parse(R"({"items": [
               {"item": "colors/font_color", "value": [1.0, 1.0, 1.0, 1.0], "from": "default"},
               {"item": "font_sizes/font_size", "value": 16, "from": "default"}]})"));
     CHECK(engine

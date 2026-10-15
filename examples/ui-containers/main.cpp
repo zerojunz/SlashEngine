@@ -124,8 +124,10 @@ int main() {
     call(session, "ui.theme", R"({"id": "title", "items": ["colors", "font_sizes"]})");
 
     // The bar shows its value; the grid in one row widens the frame, which stays centered.
-    call(session, "component.set", R"({"id": "health", "components": {"ProgressBar": {"value": 35}}})");
-    call(session, "component.set", R"({"id": "grid", "components": {"GridContainer": {"columns": 8}}})");
+    call(session, "component.set",
+         R"({"id": "health", "components": {"ProgressBar": {"value": 35}}})");
+    call(session, "component.set",
+         R"({"id": "grid", "components": {"GridContainer": {"columns": 8}}})");
     call(session, "ui.layout", R"({"ids": ["frame", "health", "grid", "slot_7"]})");
 
     // A style override its type doesn't have is reported, with the name it was probably meant to

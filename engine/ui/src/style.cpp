@@ -136,8 +136,9 @@ const std::vector<Property>& properties() {
                  "The content's margin in pixels; -1 takes the borders' or texture margins'");
         add_four(out, "expand_margin", kSides, kFlatAndTexture, number(""),
                  "Pixels drawn outside the rect");
-        out.push_back({"draw_center", kFlatAndTexture, boolean("Draw the middle, not only the "
-                                                               "borders.")});
+        out.push_back({"draw_center", kFlatAndTexture,
+                       boolean("Draw the middle, not only the "
+                               "borders.")});
         out.push_back({"bg_color", kFlat, numbers("As [r, g, b, a] from 0 to 1.", 4, 0.0)});
         add_four(out, "border_width", kSides, kFlat, number("", 0.0, std::nullopt, true),
                  "The border's width in pixels");
@@ -151,19 +152,19 @@ const std::vector<Property>& properties() {
                        number("Points around each corner: more is smoother.", 1.0, 20.0, true)});
         out.push_back(
             {"shadow_color", kFlat, numbers("The shadow's color, as [r, g, b, a].", 4, 0.0)});
-        out.push_back({"shadow_size", kFlat,
-                       number("How far the shadow fades out, in pixels.", 0.0, std::nullopt,
-                              true)});
+        out.push_back(
+            {"shadow_size", kFlat,
+             number("How far the shadow fades out, in pixels.", 0.0, std::nullopt, true)});
         out.push_back(
             {"shadow_offset", kFlat, numbers("Where the shadow is, [x, y] in pixels.", 2)});
         out.push_back({"skew", kFlat,
-                       numbers("Slants it, [x, y]: 1 moves the top edge left by half the height "
-                               "and the bottom right.",
+                       numbers("Slants it, [x, y]: x 1 moves the top edge right by half the "
+                               "height and the bottom edge left.",
                                2)});
-        out.push_back({"anti_aliasing", kFlat,
-                       boolean("Smooth the edges of rounded corners and slants.")});
-        out.push_back({"anti_aliasing_size", kFlat,
-                       number("Pixels the smoothing fades over.", 0.01, 10.0)});
+        out.push_back(
+            {"anti_aliasing", kFlat, boolean("Smooth the edges of rounded corners and slants.")});
+        out.push_back(
+            {"anti_aliasing_size", kFlat, number("Pixels the smoothing fades over.", 0.01, 10.0)});
         json::Value texture;
         texture["type"] = "string";
         texture["description"] = "Project path of a PNG or BMP file.";
@@ -180,8 +181,8 @@ const std::vector<Property>& properties() {
                               kStretches)});
         out.push_back({"axis_stretch_vertical", kTexture,
                        choice("How the middle fills the rect down.", kStretches)});
-        out.push_back({"modulate_color", kTexture,
-                       numbers("Tints the texture, as [r, g, b, a].", 4, 0.0)});
+        out.push_back(
+            {"modulate_color", kTexture, numbers("Tints the texture, as [r, g, b, a].", 4, 0.0)});
         return out;
     }();
     return kProperties;
@@ -209,8 +210,9 @@ StyleBox::Type type_of(const json::Value& doc) {
 
 Vec4 vec4(const json::Value& value) {
     const json::Array& channels = value.as_array();
-    return {static_cast<float>(channels[0].as_double()), static_cast<float>(channels[1].as_double()),
-            static_cast<float>(channels[2].as_double()), static_cast<float>(channels[3].as_double())};
+    return {
+        static_cast<float>(channels[0].as_double()), static_cast<float>(channels[1].as_double()),
+        static_cast<float>(channels[2].as_double()), static_cast<float>(channels[3].as_double())};
 }
 
 Vec2 point(const json::Value& value) {
@@ -252,9 +254,8 @@ json::Value color_json(Vec4 c) {
 // Writes four values as base when they are all the same, else the ones that differ from the
 // default as base_<part>.
 template <typename T>
-void write_four(json::Value& out, std::string_view base,
-                std::span<const std::string_view, 4> parts, const std::array<T, 4>& values,
-                T fallback) {
+void write_four(json::Value& out, std::string_view base, std::span<const std::string_view, 4> parts,
+                const std::array<T, 4>& values, T fallback) {
     const bool same = values[0] == values[1] && values[1] == values[2] && values[2] == values[3];
     if (same) {
         if (values[0] != fallback) {
@@ -480,8 +481,8 @@ json::Value style_box_json(const StyleBox& style) {
         out["shadow_size"] = style.shadow_size;
     }
     if (style.shadow_offset != defaults.shadow_offset) {
-        out["shadow_offset"] = json::Array{decimal(style.shadow_offset.x),
-                                           decimal(style.shadow_offset.y)};
+        out["shadow_offset"] =
+            json::Array{decimal(style.shadow_offset.x), decimal(style.shadow_offset.y)};
     }
     if (style.skew != defaults.skew) {
         out["skew"] = json::Array{decimal(style.skew.x), decimal(style.skew.y)};

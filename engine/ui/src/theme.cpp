@@ -1,4 +1,5 @@
 #include "internal.hpp"
+
 #include "slash/core/text.hpp"
 #include "slash/render/image.hpp"
 #include "slash/ui/ui.hpp"
@@ -169,8 +170,9 @@ std::string font_path_error(const std::string& path) {
 
 Vec4 vec4(const json::Value& value) {
     const json::Array& channels = value.as_array();
-    return {static_cast<float>(channels[0].as_double()), static_cast<float>(channels[1].as_double()),
-            static_cast<float>(channels[2].as_double()), static_cast<float>(channels[3].as_double())};
+    return {
+        static_cast<float>(channels[0].as_double()), static_cast<float>(channels[1].as_double()),
+        static_cast<float>(channels[2].as_double()), static_cast<float>(channels[3].as_double())};
 }
 
 } // namespace
@@ -178,8 +180,8 @@ Vec4 vec4(const json::Value& value) {
 std::vector<std::string_view> base_types(std::string_view type) {
     std::vector<std::string_view> out;
     while (!type.empty()) {
-        const auto found = std::ranges::find(kTypes, type, &std::pair<std::string_view,
-                                                                     std::string_view>::first);
+        const auto found =
+            std::ranges::find(kTypes, type, &std::pair<std::string_view, std::string_view>::first);
         if (found == kTypes.end()) {
             break;
         }
@@ -299,7 +301,8 @@ std::vector<json::ValidationError> validate_theme(const json::Value& doc) {
                 break;
             }
             const auto found = all.find(at);
-            const json::Value* base = found != all.end() ? found->second.find("base_type") : nullptr;
+            const json::Value* base =
+                found != all.end() ? found->second.find("base_type") : nullptr;
             if (found == all.end() || base == nullptr) {
                 if (at == name) {
                     std::string message = quoted(name) + " isn't a control type";
@@ -323,8 +326,8 @@ std::vector<json::ValidationError> validate_theme(const json::Value& doc) {
                 }
                 errors.push_back(
                     {at_path + "/base_type",
-                     with_hint(quoted(next) + " isn't a control type or a type in this theme",
-                               next, candidates)});
+                     with_hint(quoted(next) + " isn't a control type or a type in this theme", next,
+                               candidates)});
                 break;
             }
             at = next;
@@ -341,9 +344,8 @@ std::vector<json::ValidationError> validate_theme(const json::Value& doc) {
                 const std::string item_path =
                     path + "/" + std::string(kind) + "/" + json::pointer_escape(item);
                 if (!native.empty() && std::ranges::find(names, item) == names.end()) {
-                    std::string message =
-                        std::string(native) + " has no " + std::string(kind) + " item " +
-                        quoted(item);
+                    std::string message = std::string(native) + " has no " + std::string(kind) +
+                                          " item " + quoted(item);
                     message = names.empty() ? message + "; it has none"
                                             : with_hint(std::move(message), item, names);
                     errors.push_back({item_path, std::move(message)});
@@ -422,15 +424,14 @@ void add_asset_types(asset::Assets& assets) {
                                    [](std::string_view bytes, std::string_view /*path*/) {
                                        return render::decode_image(bytes);
                                    });
-    assets.add_type<Theme>(
-        "theme", {std::string(kThemeSuffix)},
-        [](std::string_view text, std::string_view /*path*/) -> Result<Theme> {
-            auto doc = json::parse(text);
-            if (!doc) {
-                return doc.error();
-            }
-            return parse_theme(doc.value());
-        });
+    assets.add_type<Theme>("theme", {std::string(kThemeSuffix)},
+                           [](std::string_view text, std::string_view /*path*/) -> Result<Theme> {
+                               auto doc = json::parse(text);
+                               if (!doc) {
+                                   return doc.error();
+                               }
+                               return parse_theme(doc.value());
+                           });
 }
 
 } // namespace slash::ui

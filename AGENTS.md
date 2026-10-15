@@ -59,15 +59,15 @@ only what differs from the prefab. `entity.create` takes `"extends"`, and `prefa
 entity to a prefab file. `tests/data/game` has an example.
 
 ```bash
-$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, tileset, font)
+$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, tileset, font, theme)
 $cli scene validate tests/data/basic.scene.json     # every error, with its JSON Pointer path
 $cli scene format level.scene.json                  # rewrite in canonical form
 $cli scene format --check level.scene.json          # exit 1 if not canonical
 ```
 
 Validate after editing a scene or prefab by hand, and format before committing one. Both
-commands take `.prefab.json`, `.frames.json`, `.material.json`, `.anim.json`, `.tileset.json`
-and `.font.json` files too; validating a scene also checks each tile map layer against its tile
+commands take `.prefab.json`, `.frames.json`, `.material.json`, `.anim.json`, `.tileset.json`,
+`.font.json` and `.theme.json` files too; validating a scene also checks each tile map layer against its tile
 set and that its controls lay out as written.
 
 ## Assets and hot reload
@@ -342,17 +342,24 @@ field fonts, as Godot's are without subpixel positioning.
 
 `engine/ui` is UI, as Godot's Control nodes. `Control` places a rect in its parent's (the
 entity listed in a `Control`'s `children`, or the viewport) by anchors, offsets and grow
-directions, turned and scaled around `pivot_offset`; `Label` and `ColorRect` draw in it.
-`ui::layout` (`src/layout.cpp`) follows Godot's `Control` and `Label` code, line for line where
-it can: minimum sizes, wrapping, `max_lines_visible`, trimming and alignment. Theme items
-(`ui::default_theme`, Godot's defaults) are set per control with `theme_override_*` fields.
-`ui::draw_calls` (`src/draw.cpp`) turns a layout into triangles, which `CanvasRenderer` draws
-above the world (`controls_drawn()`, `glyphs_drawn()`); distance field glyphs shade in
-`material.hlsl` through `render::Material::field`, and `render::distance_field_coverage` is its
-CPU twin, compared with it in a test. The viewport is the project's window size
-(`ui::settings`); `ui.layout` returns every control's rect, lines and problems, `text.measure`
-sizes text, and `ui::check_scene` backs `scene validate` and exports. `examples/ui-and-text` is
-a pause screen.
+directions, turned and scaled around `pivot_offset`; `Label`, `ColorRect`, `Panel`,
+`TextureRect`, `NinePatchRect` and `ProgressBar` draw in it. A container component (`HBoxContainer`,
+`GridContainer`, `FlowContainer`, `MarginContainer`, `CenterContainer`, `PanelContainer` and the
+rest) places the control's children instead of their anchors. `ui::layout` (`src/layout.cpp`)
+follows Godot's `Control`, `Label` and container code, line for line where it can: minimum
+sizes, size flags and stretch ratios, wrapping, `max_lines_visible`, trimming and alignment.
+Theme items come from `theme_override_*` fields, then `.theme.json` themes (`src/theme.cpp`; a
+control's own and its parents' `Control.theme`, then the project's `gui.theme`; `$cli schema
+theme`), then `ui::default_theme`, Godot's defaults; `ui.theme` says which one each item came
+from. Style boxes (`src/style.cpp`) are Godot's `StyleBoxFlat` and `StyleBoxTexture`.
+`ui::draw_calls` (`src/draw.cpp`) turns a layout into triangles, drawing flat style boxes as
+`StyleBoxFlat::draw` does, which `CanvasRenderer` draws above the world (`controls_drawn()`,
+`boxes_drawn()`, `glyphs_drawn()`); distance field glyphs shade in `material.hlsl` through
+`render::Material::field`, and `render::distance_field_coverage` is its CPU twin, compared with
+it in a test. The viewport is the project's window size (`ui::settings`); `ui.layout` returns
+every control's rect, lines and problems, `text.measure` sizes text, and `ui::check_scene` backs
+`scene validate` and exports. `examples/ui-and-text` is a pause screen and
+`examples/ui-containers` an inventory laid out by containers and styled by a theme.
 
 ## Add a component
 

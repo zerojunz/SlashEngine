@@ -1,4 +1,5 @@
 #include "internal.hpp"
+
 #include "slash/render/image.hpp"
 #include "slash/ui/ui.hpp"
 
@@ -149,8 +150,7 @@ public:
 private:
     template <typename T, typename Overrides, typename Default>
     T find(std::map<std::string, T, std::less<>> ThemeItems::*member, const std::string& name,
-           const Overrides& overrides, Default theme_default, T fallback,
-           std::string* from) const {
+           const Overrides& overrides, Default theme_default, T fallback, std::string* from) const {
         if (const auto found = overrides.find(name); found != overrides.end()) {
             if (from != nullptr) {
                 *from = "override";
@@ -739,8 +739,7 @@ struct Builder {
                    center != nullptr) {
             node.kind = Kind::Center;
             node.center = center;
-        } else if (const auto* flow = ecs.try_get<world::FlowContainer>(entity);
-                   flow != nullptr) {
+        } else if (const auto* flow = ecs.try_get<world::FlowContainer>(entity); flow != nullptr) {
             node.kind = Kind::Flow;
             node.flow = flow;
             const Resolver theme = resolver(flow->vertical ? "VFlowContainer" : "HFlowContainer");
@@ -887,8 +886,8 @@ struct Builder {
         bool filled = false;
         if (last != kNone) {
             const Node& child = nodes[last];
-            filled = ofs_main + static_cast<int>(vertical ? child.minimum.y : child.minimum.x) >
-                     length;
+            filled =
+                ofs_main + static_cast<int>(vertical ? child.minimum.y : child.minimum.x) > length;
         }
         if (lines != nullptr) {
             lines->push_back(
@@ -944,10 +943,10 @@ struct Builder {
                 sum.y += static_cast<float>(height);
             }
             if (!kids.empty()) {
-                sum.x += static_cast<float>(node.h_separation *
-                                            static_cast<int>(col_minw.size() - 1));
-                sum.y += static_cast<float>(node.v_separation *
-                                            static_cast<int>(row_minh.size() - 1));
+                sum.x +=
+                    static_cast<float>(node.h_separation * static_cast<int>(col_minw.size() - 1));
+                sum.y +=
+                    static_cast<float>(node.v_separation * static_cast<int>(row_minh.size() - 1));
             }
             return sum;
         }
@@ -1017,9 +1016,9 @@ struct Builder {
         }
         if (node.nine_patch != nullptr) {
             const world::NinePatchRect& patch = *node.nine_patch;
-            minimum = max(minimum, {static_cast<float>(patch.patch_margin_left + patch.patch_margin_right),
-                            static_cast<float>(patch.patch_margin_top +
-                                               patch.patch_margin_bottom)});
+            minimum = max(minimum,
+                          {static_cast<float>(patch.patch_margin_left + patch.patch_margin_right),
+                           static_cast<float>(patch.patch_margin_top + patch.patch_margin_bottom)});
         }
         return minimum;
     }
@@ -1148,10 +1147,10 @@ struct Builder {
                 to = vertical ? height : width;
             }
             const auto length = static_cast<float>(to - from);
-            fit(item.kid, vertical ? Rect{{0.0F, static_cast<float>(from)},
-                                          {static_cast<float>(width), length}}
-                                   : Rect{{static_cast<float>(from), 0.0F},
-                                          {length, static_cast<float>(height)}});
+            fit(item.kid,
+                vertical
+                    ? Rect{{0.0F, static_cast<float>(from)}, {static_cast<float>(width), length}}
+                    : Rect{{static_cast<float>(from), 0.0F}, {length, static_cast<float>(height)}});
             ofs = to;
         }
     }
@@ -1292,8 +1291,8 @@ struct Builder {
 
     // Where a FlowContainer line's first child starts, as FlowContainer's alignment and
     // last_wrap_alignment put what its children leave of the line.
-    static float flow_offset(int alignment, std::string_view last_wrap, bool last_line,
-                             float avail, float prior) {
+    static float flow_offset(int alignment, std::string_view last_wrap, bool last_line, float avail,
+                             float prior) {
         const bool own = last_wrap != "inherit" && last_line;
         if (alignment == 0) {
             if (own && last_wrap == "end") {
@@ -1355,9 +1354,9 @@ struct Builder {
                 for (std::size_t j = i; j < end && total > 0.0F; ++j) {
                     const Node& each = nodes[kids[j]];
                     if (main_flags(each).expand) {
-                        stretch[j] = static_cast<int>(static_cast<float>(line.stretch_avail) *
-                                                      each.control->size_flags_stretch_ratio /
-                                                      total);
+                        stretch[j] =
+                            static_cast<int>(static_cast<float>(line.stretch_avail) *
+                                             each.control->size_flags_stretch_ratio / total);
                         used += stretch[j];
                     }
                 }
@@ -1492,10 +1491,10 @@ struct Builder {
         const Transform local = local_transform(control, placed.position);
         placed.transform = parent != nullptr ? parent->placed.transform * local : local;
         placed.visible = control.visible && (parent == nullptr || parent->placed.visible);
-        placed.modulate = parent != nullptr ? times(parent->placed.modulate, control.modulate)
-                                            : control.modulate;
-        placed.z = std::clamp(control.z_index + (parent != nullptr ? parent->placed.z : 0),
-                              -kMaxZ, kMaxZ);
+        placed.modulate =
+            parent != nullptr ? times(parent->placed.modulate, control.modulate) : control.modulate;
+        placed.z =
+            std::clamp(control.z_index + (parent != nullptr ? parent->placed.z : 0), -kMaxZ, kMaxZ);
         placed.texture_filter = control.texture_filter != "inherit" || parent == nullptr
                                     ? control.texture_filter
                                     : parent->placed.texture_filter;
@@ -1581,10 +1580,9 @@ struct Builder {
         const float margins = std::trunc(across ? fill_min.x : fill_min.y);
         const auto p = static_cast<int>(std::round(r * (length - margins)));
         if (p > 0) {
-            const float start =
-                bar.fill_mode == "end_to_begin" || bar.fill_mode == "bottom_to_top"
-                    ? std::round((1.0F - r) * (length - margins))
-                    : 0.0F;
+            const float start = bar.fill_mode == "end_to_begin" || bar.fill_mode == "bottom_to_top"
+                                    ? std::round((1.0F - r) * (length - margins))
+                                    : 0.0F;
             const float filled = static_cast<float>(p) + (across ? fill_min.x : fill_min.y);
             boxes.push_back({.style = node.bar_fill,
                              .position = across ? Vec2{start, 0.0F} : Vec2{0.0F, start},
@@ -1642,7 +1640,8 @@ struct Builder {
         const Vec2 size = node.placed.size;
         std::vector<Box> boxes;
         if (node.panel) {
-            boxes.push_back({.style = *node.panel, .position = {}, .size = size, .texture_size = {}});
+            boxes.push_back(
+                {.style = *node.panel, .position = {}, .size = size, .texture_size = {}});
         }
         if (node.color_rect != nullptr) {
             StyleBox fill;
@@ -1655,7 +1654,9 @@ struct Builder {
         }
         if (node.nine_patch != nullptr && node.patch_texture_size) {
             const world::NinePatchRect& patch = *node.nine_patch;
-            Box box{.style = {}, .position = {}, .size = size,
+            Box box{.style = {},
+                    .position = {},
+                    .size = size,
                     .texture_size = *node.patch_texture_size};
             box.style.type = StyleBox::Type::Texture;
             box.style.texture = patch.texture;

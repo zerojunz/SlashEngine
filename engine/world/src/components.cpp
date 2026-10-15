@@ -274,9 +274,9 @@ void register_ui_components(ComponentRegistry& registry) {
                           "\"TitleLabel\" with base_type Label."})
         .describe("size_flags_horizontal", size_flags)
         .describe("size_flags_vertical", size_flags)
-        .describe("size_flags_stretch_ratio",
-                  {.doc = "Its share of the space expanding children split in a container.",
-                   .min = 0})
+        .describe(
+            "size_flags_stretch_ratio",
+            {.doc = "Its share of the space expanding children split in a container.", .min = 0})
         .describe("texture_filter",
                   {.doc = "How its textures are sampled when scaled; inherit takes its parent's, "
                           "then the project's.",
@@ -369,12 +369,13 @@ void register_ui_components(ComponentRegistry& registry) {
         .describe("max_value", {.doc = "The value of a full bar."})
         .describe("value", {.doc = "Kept between min_value and max_value unless allow_greater or "
                                    "allow_lesser."})
-        .describe("step", {.doc = "The value is rounded to a multiple of it; 0 for none.", .min = 0})
+        .describe("step",
+                  {.doc = "The value is rounded to a multiple of it; 0 for none.", .min = 0})
         .describe("allow_greater", {.doc = "Let value go above max_value."})
         .describe("allow_lesser", {.doc = "Let value go below min_value."})
-        .describe("fill_mode", {.doc = "Which way the bar fills.",
-                                .choices = {"begin_to_end", "end_to_begin", "top_to_bottom",
-                                            "bottom_to_top"}})
+        .describe("fill_mode",
+                  {.doc = "Which way the bar fills.",
+                   .choices = {"begin_to_end", "end_to_begin", "top_to_bottom", "bottom_to_top"}})
         .describe("show_percentage", {.doc = "Draw the percentage on the bar."});
 
     registry.add<BoxContainer>()

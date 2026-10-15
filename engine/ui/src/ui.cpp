@@ -1,7 +1,9 @@
+#include "slash/ui/ui.hpp"
+
 #include "internal.hpp"
+
 #include "slash/core/text.hpp"
 #include "slash/render/image.hpp"
-#include "slash/ui/ui.hpp"
 #include "slash/world/scene.hpp"
 
 #include <algorithm>
@@ -120,12 +122,13 @@ text::Fonts* fonts(const world::World& world) {
 
 bool is_control(const world::World& world, entt::entity entity) {
     return world.valid(entity) &&
-           (world.ecs().any_of<world::Control, world::Label, world::ColorRect, world::Panel,
-                               world::TextureRect, world::NinePatchRect, world::ProgressBar>(
-                entity) ||
-            world.ecs().any_of<world::BoxContainer, world::GridContainer, world::MarginContainer,
-                               world::CenterContainer, world::FlowContainer,
-                               world::PanelContainer>(entity));
+           (world.ecs()
+                .any_of<world::Control, world::Label, world::ColorRect, world::Panel,
+                        world::TextureRect, world::NinePatchRect, world::ProgressBar>(entity) ||
+            world.ecs()
+                .any_of<world::BoxContainer, world::GridContainer, world::MarginContainer,
+                        world::CenterContainer, world::FlowContainer, world::PanelContainer>(
+                    entity));
 }
 
 std::vector<std::string_view> control_classes(const world::World& world, entt::entity entity) {
@@ -298,8 +301,8 @@ std::vector<json::ValidationError> check_scene(const world::ComponentRegistry& c
     }
     // The project's window and theme, when the scene is in one.
     Settings project;
-    const auto project_file = reader ? reader("project.json")
-                                     : Result<std::string>(make_error(ErrorCode::NotFound, ""));
+    const auto project_file =
+        reader ? reader("project.json") : Result<std::string>(make_error(ErrorCode::NotFound, ""));
     const auto parsed = project_file ? json::parse(project_file.value())
                                      : Result<json::Value>(project_file.error());
     if (parsed && parsed.value().is_object()) {
@@ -315,7 +318,8 @@ std::vector<json::ValidationError> check_scene(const world::ComponentRegistry& c
                                 static_cast<float>(height->as_double())};
         }
         const json::Value* gui = doc.find("gui");
-        const json::Value* theme = gui != nullptr && gui->is_object() ? gui->find("theme") : nullptr;
+        const json::Value* theme =
+            gui != nullptr && gui->is_object() ? gui->find("theme") : nullptr;
         if (theme != nullptr && theme->is_string()) {
             project.theme = theme->as_string();
         }
