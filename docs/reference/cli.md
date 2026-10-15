@@ -81,11 +81,11 @@ edited prefab updates its instances and keeps their overrides (see
 
 Checks a scene, a `.prefab.json` file, a [`.frames.json`](scene-format.md#sprite-frames) file, a
 [`.material.json`](scene-format.md#materials) file, a [`.anim.json`](scene-format.md#animations)
-file, a [`.tileset.json`](scene-format.md#tile-sets) file or a [`.font.json`](scene-format.md#fonts)
-file and lists every error, each with its JSON Pointer path.
-Exit code 1 if the file is invalid. The [prefabs](scene-format.md#prefabs) a file extends and the
-tile sets its layers use are read from its project: the nearest folder above it with a
-`project.json`, else the current folder.
+file, a [`.tileset.json`](scene-format.md#tile-sets) file, a [`.font.json`](scene-format.md#fonts)
+file or a [`.theme.json`](scene-format.md#themes) file and lists every error, each with its JSON
+Pointer path. Exit code 1 if the file is invalid. The [prefabs](scene-format.md#prefabs) a file
+extends, the tile sets its layers use and the project's window size and theme are read from its
+project: the nearest folder above it with a `project.json`, else the current folder.
 
 ```bash
 slash-cli scene validate <file>
@@ -96,9 +96,9 @@ slash-cli scene validate <file>
 ```
 
 For a prefab the result counts its `components` instead of `entities`, for a `.frames.json` or
-`.anim.json` file its `animations`, for a `.tileset.json` file its `tiles`, for a `.font.json`
-file nothing more, and for a `.material.json` file the `instructions` its graph compiles to, of
-the 64 a material can run:
+`.anim.json` file its `animations`, for a `.tileset.json` file its `tiles`, for a `.theme.json`
+file its `types`, for a `.font.json` file nothing more, and for a `.material.json` file the
+`instructions` its graph compiles to, of the 64 a material can run:
 
 ```json
 {"instructions":5,"valid":true}
@@ -112,11 +112,19 @@ that loads, and its legend and rows must name tiles there:
 ```
 
 A scene's [controls](scene-format.md#ui-and-text) must lay out as written: each `children`
-entry names a control with no other parent and doesn't make a loop, theme override names are
-ones the control's type has, and fonts load:
+entry names a control with no other parent and doesn't make a loop, an entity has one
+container, theme override names are ones the control's types have, style box overrides are
+valid, and themes, theme type variations, fonts and textures load:
 
 ```json
 {"errors":[{"message":"a control can't be its own child","path":"/entities/body/components/Control/children/0"},{"message":"Label has no colors item \"font_colour\"; did you mean \"font_color\"?","path":"/entities/hint/components/Control/theme_override_colors/font_colour"}],"valid":false}
+```
+
+A theme file's types must be control types or variations of them, with the items those types
+have:
+
+```json
+{"errors":[{"message":"Label has no colors item \"font_colour\"; did you mean \"font_color\"?","path":"/types/Label/colors/font_colour"}],"valid":false}
 ```
 
 When the project has a
@@ -128,8 +136,8 @@ When the project has a
 
 ### scene format
 
-Rewrites a scene, prefab, `.frames.json`, `.material.json`, `.anim.json`, `.tileset.json` or
-`.font.json` file in [canonical form](scene-format.md#canonical-form).
+Rewrites a scene, prefab, `.frames.json`, `.material.json`, `.anim.json`, `.tileset.json`,
+`.font.json` or `.theme.json` file in [canonical form](scene-format.md#canonical-form).
 
 ```bash
 slash-cli scene format <file>
@@ -143,7 +151,7 @@ Prints a JSON Schema: for scene or prefab files (generated from the registered c
 [`.material.json` files](scene-format.md#materials), for
 [`.anim.json` files](scene-format.md#animations), for
 [`.tileset.json` files](scene-format.md#tile-sets), for [`.font.json` files](scene-format.md#fonts),
-for [storyboard files](storyboard-format.md),
+for [`.theme.json` files](scene-format.md#themes), for [storyboard files](storyboard-format.md),
 for [`project.json`](project-format.md) or for [`export_presets.json`](project-format.md#export-presets).
 
 ```bash
@@ -154,6 +162,7 @@ slash-cli schema material
 slash-cli schema animation
 slash-cli schema tileset
 slash-cli schema font
+slash-cli schema theme
 slash-cli schema storyboard
 slash-cli schema project
 slash-cli schema presets
@@ -161,9 +170,9 @@ slash-cli schema presets
 
 ### project validate
 
-Checks a folder's `project.json`, its `export_presets.json` if there is one, and its storyboard
-with [`storyboard.check`](commands.md#storyboardcheck), and lists every error with its file and
-JSON Pointer path. Exit code 1 if any is invalid. Storyboard warnings, such as a link to a file
+Checks a folder's `project.json`, its `export_presets.json` if there is one, the theme its
+`gui.theme` names, and its storyboard with [`storyboard.check`](commands.md#storyboardcheck), and
+lists every error with its file and JSON Pointer path. Exit code 1 if any is invalid. Storyboard warnings, such as a link to a file
 that does not exist yet, are listed under `warnings` and do not fail. The folder defaults to `.`.
 
 ```bash
@@ -172,6 +181,10 @@ slash-cli project validate tests/data/game
 
 ```json
 {"valid":true}
+```
+
+```json
+{"errors":[{"file":"project.json","message":"no file \"ui/gmae.theme.json\"","path":"/gui/theme"}],"valid":false}
 ```
 
 ```json

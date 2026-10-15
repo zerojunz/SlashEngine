@@ -567,9 +567,9 @@ SLASH_COMPONENT(Panel)
 
 // A texture in the control's rect, as Godot's TextureRect.
 struct TextureRect {
-    std::string texture;                  // project path of a PNG or BMP file; "" draws nothing
+    std::string texture;                   // project path of a PNG or BMP file; "" draws nothing
     std::string expand_mode = "keep_size"; // how the texture sets the minimum size
-    std::string stretch_mode = "scale";   // how the texture fills the rect
+    std::string stretch_mode = "scale";    // how the texture fills the rect
     bool flip_h = false;
     bool flip_v = false;
 
@@ -593,8 +593,8 @@ struct NinePatchRect {
     friend bool operator==(const NinePatchRect&, const NinePatchRect&) = default;
 };
 SLASH_COMPONENT(NinePatchRect, texture, draw_center, region_rect, patch_margin_left,
-                patch_margin_top, patch_margin_right, patch_margin_bottom,
-                axis_stretch_horizontal, axis_stretch_vertical)
+                patch_margin_top, patch_margin_right, patch_margin_bottom, axis_stretch_horizontal,
+                axis_stretch_vertical)
 
 // A bar filled to show a value between a minimum and a maximum, as Godot's ProgressBar.
 struct ProgressBar {

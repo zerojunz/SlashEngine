@@ -150,3 +150,18 @@ TEST_CASE("games add their own asset types") {
     REQUIRE(level.ok());
     CHECK(*level.value() == 3);
 }
+
+TEST_CASE("registering an asset type again replaces it") {
+    MemoryFiles files;
+    files.write("levels/one.level", "3");
+    asset::Assets assets(files.source());
+    assets.add_type<int>(
+        "level", {".level"},
+        [](std::string_view /*text*/, std::string_view /*path*/) { return slash::Result<int>(1); });
+    assets.add_type<int>(
+        "level", {".level"},
+        [](std::string_view /*text*/, std::string_view /*path*/) { return slash::Result<int>(2); });
+    auto level = assets.load<int>("levels/one.level");
+    REQUIRE(level.ok());
+    CHECK(*level.value() == 2);
+}

@@ -39,6 +39,7 @@ checks it.
 | `physics_2d.gravity_vector` | No | `[0, 1]` | Gravity's direction, as `[x, y]`; y points down |
 | `physics_2d.linear_damp` | No | `0.1` | How fast rigid bodies slow down, per second. A body's own `linear_damp` adds to it unless its `linear_damp_mode` is `replace` |
 | `physics_2d.angular_damp` | No | `1` | How fast rigid bodies stop turning, per second, combined the same way |
+| `gui.theme` | No | | A [`.theme.json`](scene-format.md#themes) file every control uses after its own and its parents' themes, before Godot's default theme, as Godot's `gui/theme/custom`. `project validate` checks that it exists and `export` checks and ships it |
 
 Unknown keys are errors, with a "did you mean" suggestion for a misspelled one.
 

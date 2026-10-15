@@ -791,8 +791,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             control_textures[i] = render::TextureId::None;
             continue;
         }
-        auto made =
-            texture(call.texture, resolve_filter(call.filter, options.texture_filter));
+        auto made = texture(call.texture, resolve_filter(call.filter, options.texture_filter));
         if (made) {
             control_textures[i] = made.value()->id;
         }

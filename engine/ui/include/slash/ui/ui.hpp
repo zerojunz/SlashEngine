@@ -197,9 +197,9 @@ struct Layout {
     std::vector<Placed> controls;
     std::unordered_map<entt::entity, std::size_t> index; // entity to its place in controls
     std::vector<Problem> problems;
-    std::map<entt::entity, LabelText> labels;      // each Label's text
+    std::map<entt::entity, LabelText> labels;       // each Label's text
     std::map<entt::entity, std::vector<Box>> boxes; // what each control draws under its text
-    std::map<entt::entity, LabelText> percentages; // each ProgressBar's percentage
+    std::map<entt::entity, LabelText> percentages;  // each ProgressBar's percentage
 
     [[nodiscard]] const Placed* find(entt::entity entity) const;
     [[nodiscard]] const LabelText* label(entt::entity entity) const;
@@ -273,9 +273,9 @@ check_scene(const world::ComponentRegistry& components, const json::Value& scene
 struct DrawCall {
     enum class Source : std::uint8_t { None, Texture, Atlas };
     Source source = Source::None;
-    std::string texture;              // a project path, for Texture
-    std::string filter = "inherit";   // for Texture: "linear", "nearest" or the renderer's default
-    std::uint32_t page = 0;           // a page of the fonts' atlas, for Atlas
+    std::string texture;            // a project path, for Texture
+    std::string filter = "inherit"; // for Texture: "linear", "nearest" or the renderer's default
+    std::uint32_t page = 0;         // a page of the fonts' atlas, for Atlas
     render::DistanceField field;
     std::vector<render::Vertex2D> vertices;
 };

@@ -254,13 +254,21 @@ shades them, so an agent checks lighting without a screenshot. The
 (where each edge sits in the parent, from 0 to 1) and offsets in pixels, so a panel can stay
 centered or a score stay in a corner on any window, and grows to fit its content. `Label` draws
 text in the rect, wrapped, aligned and cut with an ellipsis as Godot's does, and `ColorRect`
-fills it. A control's font, size, colors, outline and shadow are **theme items**, which its
-`theme_override_*` fields set. Text is shaped with HarfBuzz, so every script's letters join and
+fills it. **Containers** place their children instead of anchors: a box container stacks them
+in a row or column, a grid puts them in columns, a flow container wraps them onto lines, and
+others keep a margin round them, center them or draw a panel behind them. Each child's **size
+flags** say whether it fills, expands into spare room or sits at the start, center or end. A
+control's font, size, colors, outline, spacing and **style boxes** (the rounded, bordered or
+nine-patch panels drawn behind controls) are **theme items**, which its `theme_override_*`
+fields set one by one and a `.theme.json` **theme** sets for every control of a type at once:
+on a control and everything in it, or on the whole game. Text is shaped with HarfBuzz, so every script's letters join and
 place as they should, and drawn from glyph images FreeType makes, or from **distance fields**
 that stay sharp at any size, for fonts a `.font.json` file sets up so. Controls draw above the
 world. `ui.layout` returns every control's rect, the lines each label shows and mistakes such as
-a misspelled theme override, and `text.measure` sizes text, so an agent checks a screen without
-a screenshot. The [UI and text example](../examples/ui-and-text/) is a pause screen.
+a misspelled theme override, `ui.theme` says where each of a control's theme items comes from,
+and `text.measure` sizes text, so an agent checks a screen without a screenshot. The
+[UI and text example](../examples/ui-and-text/) is a pause screen, and the
+[UI containers example](../examples/ui-containers/) an inventory laid out by containers.
 
 How often frames are drawn follows Godot. The world ticks at a fixed rate (`tick_hz`), while frames
 come as fast as the **V-Sync mode** lets them (`window.vsync_mode`: wait for each refresh, present
@@ -453,7 +461,8 @@ OpenAI-compatible servers (including local ones), Anthropic and Gemini; see the
 | Command registry | The list of commands every front end is generated from |
 | Component | A reflected C++ struct of data attached to an entity |
 | Component registry | The list of component types a world knows, with their docs |
-| Control | A UI element: a rect placed in its parent's by anchors and offsets, which `Label` and `ColorRect` draw in |
+| Control | A UI element: a rect placed in its parent's by anchors and offsets, or by a container, which `Label`, `Panel` and the other drawing components draw in |
+| Container | A control that places its children itself, in a row, a grid, lines that wrap, a margin or the center |
 | Discovery file | `.slash/server.json`: a running server's URL and token |
 | Distance field font | A font drawn from one field per glyph of distances to its outline (MSDF), sharp at any size, scale and outline |
 | Effect | How a command changes the world: read, edit, replace, history or compound |
@@ -484,13 +493,16 @@ OpenAI-compatible servers (including local ones), Anthropic and Gemini; see the
 | Scene | A world saved as a `.scene.json` file |
 | Session | One world with its open scene path, undo history and recent logs |
 | Shadow map | A texture with one row per shadowed light, holding how far away the nearest occluder is in each direction |
+| Size flags | How a container's child fills its cell: fill it, expand into spare room, or sit at the start, center or end |
 | Sprite | A texture, or one frame of a sprite sheet, drawn at an entity's `Transform2D` (`Sprite2D`) |
 | Sprite sheet | One texture holding a grid of frames, `hframes` across and `vframes` down |
 | Storyboard | A game's facts that are not code, as typed entries in `storyboard/*.json` |
 | StoryRef | The component that names the storyboard entries an entity stands for |
+| Style box | What a panel or bar draws behind its content, a flat box with optional rounded corners, border and shadow or a nine-patch texture, and the margin its content keeps |
 | System | Code that updates components every tick, in order of priority |
 | Terrain | A kind of ground in a tile set, such as grass or water, whose tiles autotiling connects |
-| Theme item | A named color, constant, font or font size a control draws with, set by its `theme_override_*` fields |
+| Theme | A `.theme.json` file of theme items by control type, used by a control and everything in it, or by the whole game (`gui.theme`) |
+| Theme item | A named color, constant, font, font size or style box a control draws with, set by its `theme_override_*` fields or a theme |
 | Tick | One fixed simulation step, 1/60 s by default |
 | Tile set | A `.tileset.json` file: atlas textures cut into tiles, and the terrains that connect them |
 | Tile map layer | A grid of tiles from a tile set, kept as rows of legend keys (`TileMapLayer`) |

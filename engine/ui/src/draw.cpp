@@ -215,7 +215,8 @@ void rounded_rectangle(Mesh& mesh, Area style, const Four& corner_radius, Area r
     const Four ring_radius = inner_corner_radius(style, ring, corner_radius);
     const std::array<Vec2, 4> ring_scale = corner_scale(style, ring, ring_radius);
     const std::array<Vec2, 4> outer_points{
-        Vec2{ring.x + (ring_radius[0] * ring_scale[0].x), ring.y + (ring_radius[0] * ring_scale[0].y)},
+        Vec2{ring.x + (ring_radius[0] * ring_scale[0].x),
+             ring.y + (ring_radius[0] * ring_scale[0].y)},
         Vec2{ring.x + ring.w - (ring_radius[1] * ring_scale[1].x),
              ring.y + (ring_radius[1] * ring_scale[1].y)},
         Vec2{ring.x + ring.w - (ring_radius[2] * ring_scale[2].x),
@@ -243,15 +244,14 @@ void rounded_rectangle(Mesh& mesh, Area style, const Four& corner_radius, Area r
     constexpr float kQuarter = std::numbers::pi_v<float> / 2.0F;
     for (std::size_t c = 0; c < 4; ++c) {
         for (int d = 0; d <= detail; ++d) {
-            const float angle = ((static_cast<float>(c) +
-                                  (static_cast<float>(d) / static_cast<float>(detail))) *
-                                 kQuarter) +
-                                std::numbers::pi_v<float>;
+            const float angle =
+                ((static_cast<float>(c) + (static_cast<float>(d) / static_cast<float>(detail))) *
+                 kQuarter) +
+                std::numbers::pi_v<float>;
             const Vec2 cs = cos_sin(angle);
-            mesh.points.push_back(skewed((inner_radius[c] * cs.x * inner_scale[c].x) +
-                                             inner_points[c].x,
-                                         (inner_radius[c] * cs.y * inner_scale[c].y) +
-                                             inner_points[c].y));
+            mesh.points.push_back(
+                skewed((inner_radius[c] * cs.x * inner_scale[c].x) + inner_points[c].x,
+                       (inner_radius[c] * cs.y * inner_scale[c].y) + inner_points[c].y));
             mesh.colors.push_back(inner_color);
             if (border) {
                 mesh.points.push_back(
@@ -264,9 +264,9 @@ void rounded_rectangle(Mesh& mesh, Area style, const Four& corner_radius, Area r
     const std::size_t count = mesh.points.size() - offset;
     if (border) {
         for (std::size_t i = 0; i < count; ++i) {
-            mesh.indices.insert(mesh.indices.end(), {offset + (i % count),
-                                                     offset + ((i + 2) % count),
-                                                     offset + ((i + 1) % count)});
+            mesh.indices.insert(
+                mesh.indices.end(),
+                {offset + (i % count), offset + ((i + 2) % count), offset + ((i + 1) % count)});
         }
     } else {
         // Vertical stripes of two triangles each.
@@ -339,8 +339,8 @@ Mesh flat_mesh(const StyleBox& style, Area rect) {
     adapt_values(kBottomLeft, kBottomRight, corner, corner_radius, width, width - border[kRight],
                  width - border[kLeft]);
 
-    const Area infill =
-        grow_individual(style_rect, -border[kLeft], -border[kTop], -border[kRight], -border[kBottom]);
+    const Area infill = grow_individual(style_rect, -border[kLeft], -border[kTop], -border[kRight],
+                                        -border[kBottom]);
     Area border_style = style_rect;
     if (aa_on) {
         for (std::size_t i = 0; i < 4; ++i) {
@@ -391,9 +391,9 @@ Mesh flat_mesh(const StyleBox& style, Area rect) {
             const Area fill_transparent =
                 grow_individual(infill, fill_aa_half[kLeft], fill_aa_half[kTop],
                                 fill_aa_half[kRight], fill_aa_half[kBottom]);
-            const Area fill_colored = grow_individual(fill_transparent, -fill_aa[kLeft],
-                                                      -fill_aa[kTop], -fill_aa[kRight],
-                                                      -fill_aa[kBottom]);
+            const Area fill_colored =
+                grow_individual(fill_transparent, -fill_aa[kLeft], -fill_aa[kTop], -fill_aa[kRight],
+                                -fill_aa[kBottom]);
             if (!blend_on) {
                 rounded_rectangle(mesh, border_style, corner, fill_colored, fill_colored,
                                   style.bg_color, style.bg_color, detail, style.skew, true);
@@ -495,7 +495,8 @@ std::vector<Segment> segments(float size, float source, float begin, float end,
         if (mode == StyleBox::Stretch::Tile && tile > 0.0F) {
             tiles = static_cast<int>(std::ceil(span / tile));
         } else if (mode == StyleBox::Stretch::TileFit) {
-            tiles = std::max(1, static_cast<int>(std::floor((span / std::max(tile, 1e-7F)) + 0.5F)));
+            tiles =
+                std::max(1, static_cast<int>(std::floor((span / std::max(tile, 1e-7F)) + 0.5F)));
         }
         if (mode == StyleBox::Stretch::Tile && tile > 0.0F && tiles <= kMaxTiles) {
             for (float d = begin; d < middle_end; d += tile) {
@@ -516,10 +517,8 @@ std::vector<Segment> segments(float size, float source, float begin, float end,
     }
     const float end_start = std::max(begin, size - end);
     if (size > end_start) {
-        out.push_back({.d0 = end_start,
-                       .d1 = size,
-                       .u0 = source - (size - end_start),
-                       .u1 = source});
+        out.push_back(
+            {.d0 = end_start, .d1 = size, .u0 = source - (size - end_start), .u1 = source});
     }
     return out;
 }
