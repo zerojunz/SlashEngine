@@ -244,25 +244,25 @@ TEST_CASE("particles repeat for the same entity and seed, and differ for others"
 
 TEST_CASE("gravity, damping and the emitter's transform move particles as Godot's") {
     Particles scene;
-    const entt::entity falling = scene.add(
-        "falling", {0.0F, 0.0F}, R"({"amount": 1, "lifetime": 10, "gravity": [0, 100]})");
-    const entt::entity slowing = scene.add(
-        "slowing", {0.0F, 0.0F},
-        R"({"amount": 1, "lifetime": 10, "gravity": [0, 0], "spread": 0,
+    const entt::entity falling =
+        scene.add("falling", {0.0F, 0.0F}, R"({"amount": 1, "lifetime": 10, "gravity": [0, 100]})");
+    const entt::entity slowing =
+        scene.add("slowing", {0.0F, 0.0F},
+                  R"({"amount": 1, "lifetime": 10, "gravity": [0, 0], "spread": 0,
             "initial_velocity_min": 100, "initial_velocity_max": 100, "damping_min": 50,
             "damping_max": 50})");
     // Turned a quarter turn clockwise and doubled, so it emits down at twice the speed.
-    const entt::entity turned = scene.add(
-        "turned", {10.0F, 20.0F},
-        R"({"amount": 1, "lifetime": 10, "gravity": [0, 0], "spread": 0,
+    const entt::entity turned =
+        scene.add("turned", {10.0F, 20.0F},
+                  R"({"amount": 1, "lifetime": 10, "gravity": [0, 0], "spread": 0,
             "initial_velocity_min": 100, "initial_velocity_max": 100})");
     auto& transform = scene.world.ecs().get<world::Transform2D>(turned);
     transform.rotation = std::numbers::pi_v<float> / 2.0F;
     transform.scale = {2.0F, 2.0F};
     // Its y axis along its velocity, which points along x: a quarter turn anticlockwise.
-    const entt::entity aligned = scene.add(
-        "aligned", {0.0F, 0.0F},
-        R"({"amount": 1, "lifetime": 10, "gravity": [0, 0], "spread": 0,
+    const entt::entity aligned =
+        scene.add("aligned", {0.0F, 0.0F},
+                  R"({"amount": 1, "lifetime": 10, "gravity": [0, 0], "spread": 0,
             "initial_velocity_min": 100, "initial_velocity_max": 100,
             "particle_flag_align_y": true})");
     scene.step(60);
@@ -282,8 +282,7 @@ TEST_CASE("gravity, damping and the emitter's transform move particles as Godot'
     CHECK(down.position.x == doctest::Approx(10.0F));
     CHECK(down.position.y == doctest::Approx(220.0F).epsilon(1e-4));
 
-    CHECK(scene.live(aligned).at(0).rotation ==
-          doctest::Approx(-std::numbers::pi_v<float> / 2.0F));
+    CHECK(scene.live(aligned).at(0).rotation == doctest::Approx(-std::numbers::pi_v<float> / 2.0F));
 
     scene.step(120);
     CHECK(scene.live(slowing).at(0).velocity == Vec2{});
@@ -306,8 +305,8 @@ TEST_CASE("particle_flag_align_y turns particles' y axis along their velocity") 
     for (const auto& [entity, angle] : emitters) {
         CAPTURE(angle);
         // Its x axis is a quarter turn anticlockwise from its velocity.
-        const auto expected = static_cast<float>(
-            std::atan2(-std::cos(static_cast<double>(angle)), std::sin(static_cast<double>(angle))));
+        const auto expected = static_cast<float>(std::atan2(-std::cos(static_cast<double>(angle)),
+                                                            std::sin(static_cast<double>(angle))));
         CHECK(scene.live(entity).at(0).rotation == doctest::Approx(expected).epsilon(1e-5));
     }
 }
@@ -339,9 +338,9 @@ TEST_CASE("particles in local coordinates move with their emitter") {
 
 TEST_CASE("curves and gradients change particles over their lives") {
     Particles scene;
-    const entt::entity entity = scene.add(
-        "fading", {0.0F, 0.0F},
-        R"({"amount": 1, "lifetime": 1, "gravity": [0, 0], "color": [1, 1, 1, 0.5],
+    const entt::entity entity =
+        scene.add("fading", {0.0F, 0.0F},
+                  R"({"amount": 1, "lifetime": 1, "gravity": [0, 0], "color": [1, 1, 1, 0.5],
             "scale_amount_min": 2, "scale_amount_max": 2,
             "scale_amount_curve": [[1, 0], [0, 1]],
             "color_ramp": [{"offset": 0, "color": [1, 0, 0, 1]},

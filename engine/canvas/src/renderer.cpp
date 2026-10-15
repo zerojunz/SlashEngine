@@ -588,8 +588,10 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             auto frame = static_cast<int>(std::floor(particle.frame * static_cast<float>(total)));
             frame = emitter.anim_loop ? ((frame % total) + total) % total
                                       : std::clamp(frame, 0, total - 1);
-            const float u0 = static_cast<float>(frame % hframes) * frame_w / sheet_w;
-            const float v0 = static_cast<float>(frame / hframes) * frame_h / sheet_h;
+            const int column = frame % hframes;
+            const int row = frame / hframes;
+            const float u0 = static_cast<float>(column) * frame_w / sheet_w;
+            const float v0 = static_cast<float>(row) * frame_h / sheet_h;
             const float u1 = u0 + (frame_w / sheet_w);
             const float v1 = v0 + (frame_h / sheet_h);
             const Vec2 at{particle.previous.x + ((particle.position.x - particle.previous.x) * t),

@@ -90,10 +90,9 @@ float angle_of(Vec2 v) {
     double a = std::min(x, y) / std::max(x, y); // 0 to 1
     double base = 0.0;
     constexpr double kTanPiOver12 = 0.2679491924311227;
-    constexpr double kSqrt3 = 1.7320508075688772;
     if (a > kTanPiOver12) {
         // atan(a) = pi/6 + atan((a * sqrt(3) - 1) / (a + sqrt(3)))
-        a = ((a * kSqrt3) - 1.0) / (a + kSqrt3);
+        a = ((a * std::numbers::sqrt3) - 1.0) / (a + std::numbers::sqrt3);
         base = std::numbers::pi / 6.0;
     }
     // atan(a) = a - a^3/3 + a^5/5 - ..., to a^21: good to 1e-14 for |a| <= tan(pi/12).

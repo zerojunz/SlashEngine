@@ -1497,8 +1497,9 @@ TEST_CASE("particles.eval counts and lists particles, as they are or after a tim
               {"age": 0.25, "color": [1, 1, 1, 1], "position": [100, 75], "rotation": 1.5708,
                "scale": 1}]})"));
 
-    CHECK(engine.fails("particles.eval", R"({"id": "sparkle"})", command::code::kNotFound)
-              .message == "/id: no entity has the id \"sparkle\"; did you mean \"sparkler\"?");
+    CHECK(
+        engine.fails("particles.eval", R"({"id": "sparkle"})", command::code::kNotFound).message ==
+        "/id: no entity has the id \"sparkle\"; did you mean \"sparkler\"?");
     engine.ok("entity.create", R"({"id": "rock", "components": {"Transform2D": {}}})");
     CHECK(engine.fails("particles.eval", R"({"id": "rock"})", command::code::kInvalidParams)
               .message == "/id: \"rock\" has no CPUParticles2D");
