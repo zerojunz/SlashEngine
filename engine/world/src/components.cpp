@@ -3,6 +3,8 @@
 #include "slash/world/component_registry.hpp"
 
 #include <numbers>
+#include <optional>
+#include <string>
 
 namespace slash::world {
 
@@ -192,6 +194,117 @@ void register_physics_components(ComponentRegistry& registry) {
 }
 
 } // namespace
+
+// The particles component: Godot's CPUParticles2D.
+void register_particle_components(ComponentRegistry& registry) {
+    const FieldMeta curve{.doc = "Multiplies it over each particle's life: points [offset, value], "
+                                 "offsets from 0 to 1, joined by straight lines. None is 1."};
+    const auto range = [&](ComponentType& type, const std::string& name, const std::string& what,
+                           std::optional<double> min = std::nullopt,
+                           std::optional<double> max = std::nullopt) -> ComponentType& {
+        return type.describe(name + "_min", {.doc = what + ", at least.", .min = min, .max = max})
+            .describe(name + "_max", {.doc = what + ", at most.", .min = min, .max = max});
+    };
+    ComponentType& type =
+        registry.add<CPUParticles2D>()
+            .set_doc("Emits particles from the entity's Transform2D, moves and draws them, as "
+                     "Godot's CPUParticles2D. Each takes a random value between each _min and "
+                     "_max when emitted; a _curve multiplies it as it ages. Emits finished when "
+                     "a one_shot's last particle dies.")
+            .describe("emitting", {.doc = "Emit new particles. Setting it again restarts a "
+                                          "one_shot."})
+            .describe("amount", {.doc = "Particles alive at most: one cycle emits this many, "
+                                        "spread over lifetime.",
+                                 .min = 1,
+                                 .max = 65536})
+            .describe("lifetime",
+                      {.doc = "Seconds each particle lives and each cycle lasts.", .min = 0.001})
+            .describe("one_shot", {.doc = "Emit one cycle, then stop."})
+            .describe("preprocess",
+                      {.doc = "Seconds it runs ahead when it starts, so it starts full.", .min = 0})
+            .describe("speed_scale", {.doc = "Multiplies time for its particles.", .min = 0})
+            .describe("explosiveness",
+                      {.doc = "0 spreads emission over the cycle; 1 emits all at once.",
+                       .min = 0,
+                       .max = 1})
+            .describe(
+                "randomness",
+                {.doc = "Randomizes when each particle is emitted, 0 to 1.", .min = 0, .max = 1})
+            .describe("lifetime_randomness",
+                      {.doc = "Shortens each particle's life by up to this fraction.",
+                       .min = 0,
+                       .max = 1})
+            .describe("seed", {.doc = "Varies the random values; the same seed and entity ID "
+                                      "always give the same particles."})
+            .describe("local_coords", {.doc = "Particles move with the entity; false leaves them "
+                                              "where they were emitted."})
+            .describe("draw_order", {.doc = "\"index\" draws in emission slots' order; "
+                                            "\"lifetime\" draws the youngest on top.",
+                                     .choices = {"index", "lifetime"}})
+            .describe("texture", {.doc = "Project path of a PNG or BMP file each particle draws; "
+                                         "\"\" draws a white pixel."})
+            .describe("texture_filter",
+                      {.doc = "As Sprite2D's.", .choices = {"inherit", "linear", "nearest"}})
+            .describe("hframes",
+                      {.doc = "Columns of frames in the texture.", .min = 1, .max = 16384})
+            .describe("vframes", {.doc = "Rows of frames in the texture.", .min = 1, .max = 16384})
+            .describe("anim_loop", {.doc = "Frames past the last start again from the first; "
+                                           "false stays on the last."})
+            .describe("z_index", {.doc = "As Sprite2D's.", .min = -4096, .max = 4096})
+            .describe("visible", {.doc = "Draw the particles; they move either way."})
+            .describe("material", {.doc = "Project path of a .material.json file; \"\" for none."})
+            .describe("material_params", {.doc = "Values for the material's params by name."})
+            .describe("light_mask",
+                      {.doc = "Lit by lights whose range_item_cull_mask shares a bit.",
+                       .min = 0,
+                       .max = kMaxMask})
+            .describe("emission_shape",
+                      {.doc = "Where particles start: at the entity, in a circle (sphere), on "
+                              "its edge, in a rectangle, in a ring, or at emission_points.",
+                       .choices = {"point", "sphere", "sphere_surface", "rectangle", "ring",
+                                   "points", "directed_points"}})
+            .describe("emission_sphere_radius", {.doc = "In pixels.", .min = 0})
+            .describe("emission_rect_extents",
+                      {.doc = "Half the rectangle's width and height, in pixels.", .min = 0})
+            .describe("emission_ring_radius", {.doc = "In pixels.", .min = 0})
+            .describe("emission_ring_inner_radius", {.doc = "In pixels.", .min = 0})
+            .describe("emission_points", {.doc = "Points particles start at, in pixels from "
+                                                 "the entity; each takes one at random."})
+            .describe("emission_normals",
+                      {.doc = "For directed_points, the direction each point emits along."})
+            .describe("emission_colors", {.doc = "Colors multiplying each point's particles."})
+            .describe("particle_flag_align_y",
+                      {.doc = "Turn each particle so its y axis points along its velocity."})
+            .describe("direction", {.doc = "Which way particles go, as [x, y]."})
+            .describe("spread", {.doc = "Degrees either side of direction.", .min = 0, .max = 180})
+            .describe("gravity", {.doc = "In pixels per second squared, as [x, y]."});
+    range(type, "initial_velocity", "Starting speed in pixels per second");
+    range(type, "angular_velocity", "Degrees per second it turns")
+        .describe("angular_velocity_curve", curve);
+    range(type, "orbit_velocity", "Turns per second round the entity")
+        .describe("orbit_velocity_curve", curve);
+    range(type, "linear_accel", "Pixels per second squared along its velocity")
+        .describe("linear_accel_curve", curve);
+    range(type, "radial_accel", "Pixels per second squared away from the entity")
+        .describe("radial_accel_curve", curve);
+    range(type, "tangential_accel", "Pixels per second squared round the entity")
+        .describe("tangential_accel_curve", curve);
+    range(type, "damping", "Pixels per second squared it slows by", 0)
+        .describe("damping_curve", curve);
+    range(type, "angle", "Starting rotation in degrees").describe("angle_curve", curve);
+    range(type, "scale_amount", "Size, times the texture's").describe("scale_amount_curve", curve);
+    type.describe("color", {.doc = "Multiplies the texture, as [r, g, b, a] from 0 to 1."})
+        .describe("color_ramp", {.doc = "Colors over each particle's life, multiplying color: "
+                                        "points {offset, color}, blended between."})
+        .describe("color_initial_ramp", {.doc = "Each particle multiplies its color by one "
+                                                "picked at random from this gradient."});
+    range(type, "hue_variation", "Turns its hue, as a fraction of the color wheel", -1, 1)
+        .describe("hue_variation_curve", curve);
+    range(type, "anim_speed", "Times its frames play over its life", 0)
+        .describe("anim_speed_curve", curve);
+    range(type, "anim_offset", "The frame it starts on, as a fraction of the frames", 0, 1)
+        .describe("anim_offset_curve", curve);
+}
 
 void register_builtin_components(ComponentRegistry& registry) {
     // Fields lights, sprites and tile map layers share.
@@ -407,6 +520,7 @@ void register_builtin_components(ComponentRegistry& registry) {
         .describe("color", {.doc = "As [r, g, b, a] from 0 to 1.", .min = 0, .max = 1});
 
     register_physics_components(registry);
+    register_particle_components(registry);
 }
 
 } // namespace slash::world
