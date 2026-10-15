@@ -495,6 +495,13 @@ struct Control {
     std::string texture_filter = "inherit"; // "inherit", "linear" or "nearest"
     std::string theme;                      // project path of a .theme.json file; "" for none
     std::string theme_type_variation;       // a theme type to look items up in first
+    // Whether the pointer stops at it ("stop"), goes on to its parent too ("pass") or passes it
+    // by ("ignore"); "" takes its type's, as in Godot: ignore for Label and NinePatchRect, pass
+    // for containers and TextureRect, stop for the rest.
+    std::string mouse_filter;
+    // Whether it takes focus from clicks and the keyboard ("all"), clicks only ("click") or
+    // never ("none"); "" takes its type's: all for buttons, none for the rest.
+    std::string focus_mode;
     std::map<std::string, Vec4> theme_override_colors;
     std::map<std::string, int> theme_override_constants;
     std::map<std::string, std::string> theme_override_fonts;
@@ -516,6 +523,14 @@ struct Control {
     float rotation = 0.0F; // radians, around pivot_offset
     float size_flags_stretch_ratio = 1.0F;
     int z_index = 0;
+    // The controls focus moves to with ui_left, ui_up, ui_right and ui_down, and with
+    // ui_focus_next and ui_focus_prev (Tab and Shift+Tab); null finds the closest one that way.
+    entt::entity focus_neighbor_left = entt::null;
+    entt::entity focus_neighbor_top = entt::null;
+    entt::entity focus_neighbor_right = entt::null;
+    entt::entity focus_neighbor_bottom = entt::null;
+    entt::entity focus_next = entt::null;
+    entt::entity focus_previous = entt::null;
     bool visible = true;
 
     friend bool operator==(const Control&, const Control&) = default;
@@ -523,10 +538,12 @@ struct Control {
 SLASH_COMPONENT(Control, children, anchor_left, anchor_top, anchor_right, anchor_bottom,
                 offset_left, offset_top, offset_right, offset_bottom, grow_horizontal,
                 grow_vertical, custom_minimum_size, rotation, scale, pivot_offset,
-                size_flags_horizontal, size_flags_vertical, size_flags_stretch_ratio, visible,
-                modulate, self_modulate, z_index, texture_filter, theme, theme_type_variation,
-                theme_override_colors, theme_override_constants, theme_override_fonts,
-                theme_override_font_sizes, theme_override_styles)
+                size_flags_horizontal, size_flags_vertical, size_flags_stretch_ratio,
+                focus_neighbor_left, focus_neighbor_top, focus_neighbor_right,
+                focus_neighbor_bottom, focus_next, focus_previous, focus_mode, mouse_filter,
+                visible, modulate, self_modulate, z_index, texture_filter, theme,
+                theme_type_variation, theme_override_colors, theme_override_constants,
+                theme_override_fonts, theme_override_font_sizes, theme_override_styles)
 
 // Text in a control's rect, as Godot's Label. Its font, size, colors, outline and shadow are
 // theme items, set per label with Control's theme_override_* fields.
@@ -612,6 +629,68 @@ struct ProgressBar {
 };
 SLASH_COMPONENT(ProgressBar, min_value, max_value, step, value, allow_greater, allow_lesser,
                 fill_mode, show_percentage)
+
+// Buttons, as Godot's BaseButton: pressed by a click or tap released over them (or as the press
+// starts, with action_mode "press"), by ui_accept while focused, or by a shortcut. They emit
+// world events: pressed, toggled (data {"toggled_on": bool}), button_down and button_up.
+
+// A button with text and an icon, as Godot's Button. Its style boxes, font colors and icon
+// colors per state (normal, hover, pressed, disabled, focus) are theme items.
+struct Button {
+    std::vector<std::string> button_mask{"left"}; // mouse buttons that press it
+    std::vector<json::Value> shortcut;            // bindings or actions that press it
+    std::string text;
+    std::string icon;                 // project path of a PNG or BMP file; "" for none
+    std::string alignment = "center"; // the text's: "left", "center" or "right"
+    std::string text_overrun_behavior = "no_trimming";
+    std::string autowrap_mode = "off";
+    std::string icon_alignment = "left";            // "left", "center" or "right"
+    std::string vertical_icon_alignment = "center"; // "top", "center" or "bottom"
+    std::string action_mode = "release";            // "press" or "release"
+    std::string button_group; // toggle buttons with the same group name: at most one is pressed
+    bool flat = false;        // draw no style box, only the text and icon
+    bool clip_text = false;
+    bool expand_icon = false;
+    bool disabled = false;
+    bool toggle_mode = false;
+    bool button_pressed = false; // toggled on, for toggle buttons
+    bool keep_pressed_outside = false;
+    bool shortcut_feedback = true;
+
+    friend bool operator==(const Button&, const Button&) = default;
+};
+SLASH_COMPONENT(Button, text, icon, flat, alignment, text_overrun_behavior, autowrap_mode,
+                clip_text, icon_alignment, vertical_icon_alignment, expand_icon, disabled,
+                toggle_mode, button_pressed, action_mode, button_mask, keep_pressed_outside,
+                button_group, shortcut, shortcut_feedback)
+
+// A button drawn with a texture per state, as Godot's TextureButton.
+struct TextureButton {
+    std::vector<std::string> button_mask{"left"};
+    std::vector<json::Value> shortcut;
+    std::string texture_normal; // project paths of PNG or BMP files; "" for none
+    std::string texture_pressed;
+    std::string texture_hover;
+    std::string texture_disabled;
+    std::string texture_focused; // drawn over the others while it has focus
+    std::string stretch_mode = "keep";
+    std::string action_mode = "release";
+    std::string button_group;
+    bool ignore_texture_size = false;
+    bool flip_h = false;
+    bool flip_v = false;
+    bool disabled = false;
+    bool toggle_mode = false;
+    bool button_pressed = false;
+    bool keep_pressed_outside = false;
+    bool shortcut_feedback = true;
+
+    friend bool operator==(const TextureButton&, const TextureButton&) = default;
+};
+SLASH_COMPONENT(TextureButton, texture_normal, texture_pressed, texture_hover, texture_disabled,
+                texture_focused, ignore_texture_size, stretch_mode, flip_h, flip_v, disabled,
+                toggle_mode, button_pressed, action_mode, button_mask, keep_pressed_outside,
+                button_group, shortcut, shortcut_feedback)
 
 // Containers place the controls in their children lists, which ignore their anchors and
 // offsets and are sized by their minimum sizes and size flags. An entity has at most one.

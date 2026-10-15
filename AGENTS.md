@@ -356,10 +356,23 @@ from. Style boxes (`src/style.cpp`) are Godot's `StyleBoxFlat` and `StyleBoxText
 `StyleBoxFlat::draw` does, which `CanvasRenderer` draws above the world (`controls_drawn()`,
 `boxes_drawn()`, `glyphs_drawn()`); distance field glyphs shade in `material.hlsl` through
 `render::Material::field`, and `render::distance_field_coverage` is its CPU twin, compared with
-it in a test. The viewport is the project's window size (`ui::settings`); `ui.layout` returns
+it in a test. The viewport is the project's window size (`ui::settings`; windowed games and
+`slash-cli run` set it to the window's each tick with `ui::set_viewport`); `ui.layout` returns
 every control's rect, lines and problems, `text.measure` sizes text, and `ui::check_scene` backs
 `scene validate` and exports. `examples/ui-and-text` is a pause screen and
 `examples/ui-containers` an inventory laid out by containers and styled by a theme.
+
+Buttons and focus are Godot's `BaseButton`, `Button`, `TextureButton` and the GUI half of its
+`Viewport`. The `gui` system (`src/gui.cpp`, priority -900, right after `input`) sends each
+tick's `input::events` to controls: hover by `mouse_filter` (`update_mouse_over`), mouse focus
+and clicks, touches per finger, then keys, gamepads and actions to the control with focus and
+the `ui_*` actions that move focus (`find_next_valid_focus`, `focus_neighbor` with Godot's legacy
+score), then shortcuts. It keeps its state by entity ID in the world's context, so only controls
+with IDs take part; `ui::save` and `ui::restore` let sessions put it back with the world. Each
+port names the Godot function it follows. UI events (`ui::events`, `ui::was_pressed`) are world
+events too. `ui::layout` lays buttons out by `ui::draw_mode` (`layout.buttons`), `ui.press` and
+`ui.focus` drive them, and `ui::check_buttons` catches bad shortcuts, groups and focus fields.
+`examples/ui-buttons` is a title menu worked by mouse, keys and touch.
 
 ## Input
 
@@ -440,7 +453,7 @@ CI rejects unformatted code and any clang-tidy finding.
   the input state and reading SDL's events), `canvas` (sprites, `.frames.json`
   animations, `.material.json` materials, `.tileset.json` tile maps, 2D lights and shadows, CPU
   particles and drawing them), `text` (fonts, shaping, line breaking and glyph atlases), `ui`
-  (Control, Label and ColorRect layout and draw calls), `animation` (`.anim.json` keyframe
+  (controls, containers and themes: layout, draw calls, buttons and focus), `animation` (`.anim.json` keyframe
   animations and the system that plays them),
   `physics2d` (2D bodies, areas, joints and queries on Box2D), `storyboard` (storyboard kinds, files, versions,
   queries, edits, briefs and checks), `command` (commands, sessions with undo, JSON-RPC and MCP),

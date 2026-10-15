@@ -6,6 +6,7 @@ add_executable(slash_tests
     test_command.cpp
     test_exporter.cpp
     test_fixed_step.cpp
+    test_gui.cpp
     test_input.cpp
     test_json.cpp
     test_json_schema.cpp

@@ -223,9 +223,15 @@ rendering on top.
       maps in `project.json` over Godot's `ui_*` actions, deadzones and strengths, touch that
       clicks the mouse, and `input.inject`, `input.state` and `input.actions` so agents press
       keys and actions and see what the game saw
-- [ ] `Button` and the other controls people press, drag and type in, with focus, hover and
-      mouse and touch input
-- [ ] Text input in every language: IME composition for Japanese, Chinese and Korean with the
+- [x] Buttons, focus and hover, as Godot's: `Button` and `TextureButton` pressed by clicks,
+      taps, `ui_accept` and shortcuts, toggle buttons and button groups, mouse filters, focus
+      moved by the arrow keys, Tab and gamepads, and UI events (`pressed`, `toggled`,
+      `mouse_entered`, `focus_entered` and the rest). `ui.press` and `ui.focus` drive them, and
+      `ui.layout` reports each button's draw mode and which control has focus and is hovered
+- [ ] The other controls people press and drag, as Godot's: `CheckBox`, `CheckButton`,
+      `OptionButton` and `MenuButton` with popups, sliders, scroll bars and `ScrollContainer`,
+      with tooltips and drag and drop
+- [ ] Text input in every language: `LineEdit` and `TextEdit`, IME composition for Japanese, Chinese and Korean with the
       candidate window placed at the text field, on-screen keyboards on phones, fallback fonts
       so no language shows missing-glyph boxes, and BiDi so right-to-left and left-to-right
       text mix in one line
@@ -436,7 +442,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Audio | miniaudio: buses, effects, 3D spatial audio | 5 | Planned |
 | Input | Rebindable action maps over SDL3, injectable by agents | 5 | Done |
 | Refresh rates and frame pacing | V-Sync modes, frame cap, display refresh rates, variable refresh rate, rendering interpolated between fixed ticks | 5 | Done |
-| UI | Retained UI with flexbox layout and themes, defined in text | 5 | In part: controls that draw, containers, themes and style boxes are done; buttons, focus and input in 5 |
+| UI | Retained UI with flexbox layout and themes, defined in text | 5 | In part: controls that draw, containers, themes, style boxes, buttons and focus are done; check boxes, option buttons, sliders, scrolling and text fields in 5 |
 | Text and fonts | FreeType, HarfBuzz, MSDF fonts, BiDi, IME input, fallback fonts | 5 | In part: FreeType, HarfBuzz and MSDF fonts are done; BiDi, IME input and fallback fonts in 5 |
 | Navigation | Recast and Detour, 2D and 3D, avoidance | 7 | Planned |
 | Asset import | glTF 2.0, FBX, OBJ, PNG, JPG, KTX2, WAV, OGG, MP3, and `.blend` through the artist's own Blender | 7 | Planned |

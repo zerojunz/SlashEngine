@@ -440,6 +440,214 @@ void finish_label(text::Fonts& fonts, LabelWork& work, Vec2 size) {
     }
 }
 
+// ---- Buttons ----
+
+// A Button being laid out: the theme items of the state it is drawn in, and its text, shaped as
+// a label's.
+struct ButtonWork {
+    const world::Button* button = nullptr;
+    StyleBox style; // the state's style box
+    StyleBox focus;
+    bool focused = false; // it has focus and shows it
+    // The largest of its style boxes' minimum sizes and margins, for align_to_largest_stylebox.
+    Vec2 largest;
+    std::array<float, 4> largest_margins{};
+    bool align = false;
+    int h_separation = 0;
+    int icon_max_width = 0;
+    Vec4 icon_color{1.0F, 1.0F, 1.0F, 1.0F};
+    std::optional<Vec2> icon; // the icon's size, if it loads
+    LabelWork text;
+};
+
+// A Button's theme items for its state, as Button::_update_theme_item_cache,
+// _get_current_stylebox and the colors its NOTIFICATION_DRAW picks.
+ButtonWork start_button(const world::Button& button, const Resolver& theme, DrawMode mode,
+                        bool focused) {
+    ButtonWork work;
+    work.button = &button;
+    work.focused = focused;
+    const StyleBox normal = theme.style("normal");
+    const StyleBox hover = theme.style("hover");
+    const StyleBox pressed = theme.style("pressed");
+    const StyleBox disabled = theme.style("disabled");
+    // hover_pressed only when a theme or override has one; pressed stands in for it.
+    std::string from;
+    const StyleBox hover_pressed_style = theme.style("hover_pressed", &from);
+    const std::optional<StyleBox> hover_pressed =
+        from != "default" ? std::optional(hover_pressed_style) : std::nullopt;
+    std::string_view color = "font_color";
+    std::string_view icon = "icon_normal_color";
+    switch (mode) {
+    case DrawMode::Normal:
+        work.style = normal;
+        if (focused) {
+            color = "font_focus_color";
+            icon = "icon_focus_color";
+        }
+        break;
+    case DrawMode::HoverPressed:
+        work.style = hover_pressed.value_or(pressed);
+        color = "font_hover_pressed_color";
+        icon = "icon_hover_pressed_color";
+        break;
+    case DrawMode::Pressed:
+        work.style = pressed;
+        color = "font_pressed_color";
+        icon = "icon_pressed_color";
+        break;
+    case DrawMode::Hover:
+        work.style = hover;
+        color = "font_hover_color";
+        icon = "icon_hover_color";
+        break;
+    case DrawMode::Disabled:
+        work.style = disabled;
+        color = "font_disabled_color";
+        icon = "icon_disabled_color";
+        break;
+    }
+    work.focus = theme.style("focus");
+    std::vector<const StyleBox*> styles{&normal, &pressed, &hover, &disabled};
+    if (hover_pressed) {
+        styles.push_back(&*hover_pressed);
+    }
+    for (const StyleBox* style : styles) {
+        work.largest = max(work.largest, style->minimum_size());
+        for (std::size_t side = 0; side < 4; ++side) {
+            work.largest_margins.at(side) =
+                std::max(work.largest_margins.at(side), style->margin(side));
+        }
+    }
+    const auto& m = work.largest_margins;
+    work.largest = max(work.largest, {m[kLeft] + m[kRight], m[kTop] + m[kBottom]});
+    work.align = theme.constant("align_to_largest_stylebox") != 0;
+    work.h_separation = theme.constant("h_separation");
+    work.icon_max_width = theme.constant("icon_max_width");
+    work.icon_color = theme.color(std::string(icon));
+
+    LabelWork& text = work.text;
+    text.autowrap = text::parse_autowrap(button.autowrap_mode).value_or(text::Autowrap::Off);
+    text.overrun =
+        text::parse_overrun(button.text_overrun_behavior).value_or(text::Overrun::NoTrimming);
+    text.line_spacing = theme.constant("line_spacing");
+    LabelText& out = text.out;
+    out.font = theme.font("font");
+    out.font_size = std::clamp(theme.font_size("font_size"), 1, text::kMaxFontSize);
+    out.font_color = theme.color(std::string(color));
+    out.outline_color = theme.color("font_outline_color");
+    out.shadow_color = {0.0F, 0.0F, 0.0F, 0.0F};
+    out.outline_size = std::max(theme.constant("outline_size"), 0);
+    if (text.overrun == text::Overrun::TrimEllipsis ||
+        text.overrun == text::Overrun::TrimWordEllipsis) {
+        out.ellipsis = "…";
+    }
+    out.source = button.text;
+    return work;
+}
+
+// Its style margins: the state's, or the largest with align_to_largest_stylebox.
+std::array<float, 4> button_margins(const ButtonWork& work) {
+    if (work.align) {
+        return work.largest_margins;
+    }
+    return {work.style.margin(kLeft), work.style.margin(kTop), work.style.margin(kRight),
+            work.style.margin(kBottom)};
+}
+
+// The text's size as shaped: its widest line, and its lines' heights with line_spacing between,
+// as TextParagraph::get_size; none for no text.
+Vec2 button_text_size(const ButtonWork& work) {
+    if (work.button->text.empty()) {
+        return {};
+    }
+    const text::TextLayout& layout = work.text.out.text;
+    const auto lines = static_cast<float>(layout.lines.size());
+    return {layout.width,
+            (lines * work.text.line_height) +
+                (std::max(lines - 1.0F, 0.0F) * static_cast<float>(work.text.line_spacing))};
+}
+
+bool button_clips(const ButtonWork& work) {
+    return work.button->clip_text || work.text.overrun != text::Overrun::NoTrimming ||
+           work.text.autowrap != text::Autowrap::Off;
+}
+
+// Button::_fit_icon_size: no wider than icon_max_width, keeping its aspect.
+Vec2 fit_icon(const ButtonWork& work, Vec2 size) {
+    if (work.icon_max_width > 0 && size.x > static_cast<float>(work.icon_max_width)) {
+        const auto max_width = static_cast<float>(work.icon_max_width);
+        return {max_width, size.y * max_width / size.x};
+    }
+    return size;
+}
+
+// The size the icon is drawn at in room left by the style's margins: its own, or with
+// expand_icon as big as fits beside the text, then fitted and rounded.
+Vec2 button_icon_size(const ButtonWork& work, Vec2 room) {
+    const world::Button& button = *work.button;
+    Vec2 size = work.icon.value_or(Vec2{});
+    if (button.expand_icon && size.x > 0.0F && size.y > 0.0F) {
+        const Vec2 text = button_text_size(work);
+        if (!button_clips(work) && button.icon_alignment != "center" && text.x > 0.0F) {
+            room.x -= text.x + static_cast<float>(std::max(work.h_separation, 0));
+        }
+        if (button.vertical_icon_alignment != "center") {
+            room.y -= text.y;
+        }
+        float width = size.x * room.y / size.y;
+        float height = room.y;
+        if (width > room.x) {
+            width = room.x;
+            height = size.y * width / size.x;
+        }
+        size = {width, height};
+    }
+    size = fit_icon(work, size);
+    return {std::round(size.x), std::round(size.y)};
+}
+
+// The width its text gets: its rect less the style's margins and the icon beside the text, in
+// whole pixels and at least 1, as Button's NOTIFICATION_DRAW sets its text buffer's width.
+float button_text_width(const ButtonWork& work, Vec2 size) {
+    const std::array<float, 4> m = button_margins(work);
+    const Vec2 room{size.x - m[kLeft] - m[kRight], size.y - m[kTop] - m[kBottom]};
+    float width = room.x;
+    if (work.icon && !work.button->text.empty() && work.button->icon_alignment != "center") {
+        width -=
+            button_icon_size(work, room).x + static_cast<float>(std::max(work.h_separation, 0));
+    }
+    return std::ceil(std::max(1.0F, width));
+}
+
+// Button::get_minimum_size_for_text_and_icon.
+Vec2 button_minimum(const ButtonWork& work) {
+    const world::Button& button = *work.button;
+    Vec2 size = button_text_size(work);
+    if (button_clips(work)) {
+        size.x = 0.0F;
+    }
+    const bool center = button.vertical_icon_alignment == "center";
+    if (!button.expand_icon && work.icon) {
+        const Vec2 icon = fit_icon(work, *work.icon);
+        size.y = center ? std::max(size.y, icon.y) : size.y + icon.y;
+        if (button.icon_alignment != "center") {
+            size.x += icon.x;
+            if (!button.text.empty()) {
+                size.x += static_cast<float>(std::max(work.h_separation, 0));
+            }
+        } else {
+            size.x = std::max(size.x, icon.x);
+        }
+    }
+    if (!button.text.empty()) {
+        const float font_height = work.text.line_height;
+        size.y = center ? std::max(size.y, font_height) : size.y + font_height;
+    }
+    const Vec2 style = work.align ? work.largest : work.style.minimum_size();
+    return {style.x + size.x, style.y + size.y};
+}
+
 // ---- Placement ----
 
 Transform local_transform(const world::Control& control, Vec2 position) {
@@ -542,6 +750,12 @@ struct Node {
     const world::NinePatchRect* nine_patch = nullptr;
     std::optional<Vec2> patch_texture_size;
     const world::ColorRect* color_rect = nullptr;
+    std::optional<ButtonWork> button;
+    const world::TextureButton* texture_button = nullptr;
+    // TextureButton's textures' sizes, those that load: normal, pressed, hover, disabled and
+    // focused.
+    std::array<std::optional<Vec2>, 5> button_textures;
+    std::optional<ButtonState> button_state;
 
     // Each pass.
     Vec2 minimum;                 // combined minimum size
@@ -792,12 +1006,63 @@ struct Builder {
                 node.depends = Depends::Width;
             }
         }
+        if (const auto* button = ecs.try_get<world::Button>(entity); button != nullptr) {
+            start_button_node(node, *button, resolver("Button"));
+        }
+        if (const auto* texture = ecs.try_get<world::TextureButton>(entity); texture != nullptr) {
+            node.texture_button = texture;
+            const std::array<std::pair<const std::string*, std::string_view>, 5> paths{{
+                {&texture->texture_normal, "texture_normal"},
+                {&texture->texture_pressed, "texture_pressed"},
+                {&texture->texture_hover, "texture_hover"},
+                {&texture->texture_disabled, "texture_disabled"},
+                {&texture->texture_focused, "texture_focused"},
+            }};
+            for (std::size_t i = 0; i < paths.size(); ++i) {
+                const std::string& path = *paths.at(i).first;
+                if (path.empty()) {
+                    continue;
+                }
+                std::string error;
+                node.button_textures.at(i) = texture_size(path, &error);
+                if (!node.button_textures.at(i)) {
+                    problem(entity, "/components/TextureButton/" + std::string(paths.at(i).second),
+                            error);
+                }
+            }
+            if (!node.button_state) {
+                node.button_state =
+                    ButtonState{.mode = draw_mode(world, entity),
+                                .click_margin = static_cast<float>(
+                                    resolver("TextureButton").constant("click_margin"))};
+            }
+        }
         if (!node.control->theme_type_variation.empty() &&
             !resolver(node.classes.front()).variation_found()) {
             problem(entity, "/components/Control/theme_type_variation",
                     "\"" + node.control->theme_type_variation +
                         "\" is no type variation in the themes this control uses; give it a "
                         "base_type in one");
+        }
+    }
+
+    void start_button_node(Node& node, const world::Button& button, const Resolver& theme) {
+        const DrawMode mode = draw_mode(world, node.entity);
+        node.button = start_button(button, theme, mode, shows_focus(world, node.entity));
+        node.button_state = ButtonState{
+            .mode = mode, .click_margin = static_cast<float>(theme.constant("click_margin"))};
+        ButtonWork& work = *node.button;
+        if (!button.icon.empty()) {
+            std::string error;
+            work.icon = texture_size(button.icon, &error);
+            if (!work.icon) {
+                problem(node.entity, "/components/Button/icon", error);
+            }
+        }
+        if (work.text.autowrap == text::Autowrap::Off) {
+            shape(fonts, work.text, std::nullopt);
+        } else {
+            node.depends = Depends::Width;
         }
     }
 
@@ -1016,6 +1281,24 @@ struct Builder {
                 minimum = max(minimum, {0.0F, own.x});
             } else if (mode == "fit_height_proportional") {
                 minimum = max(minimum, {0.0F, own.x * texture.y / texture.x});
+            }
+        }
+        if (node.button) {
+            ButtonWork& work = *node.button;
+            if (work.text.autowrap != text::Autowrap::Off) {
+                shape(fonts, work.text,
+                      size ? std::optional<float>(button_text_width(work, *size)) : std::nullopt);
+            }
+            minimum = max(minimum, button_minimum(work));
+        }
+        if (node.texture_button != nullptr && !node.texture_button->ignore_texture_size) {
+            // TextureButton::get_minimum_size: the normal texture's size, else the pressed
+            // one's, else the hover one's.
+            for (std::size_t i = 0; i < 3; ++i) {
+                if (const auto& texture = node.button_textures.at(i); texture) {
+                    minimum = max(minimum, {std::abs(texture->x), std::abs(texture->y)});
+                    break;
+                }
             }
         }
         if (node.nine_patch != nullptr) {
@@ -1680,9 +1963,22 @@ struct Builder {
         if (node.bar != nullptr) {
             bar_boxes(node, size, boxes);
         }
+        if (node.button) {
+            finish_button(*node.button, size, boxes);
+        }
+        if (node.texture_button != nullptr && node.button_state) {
+            texture_button_boxes(node, size, boxes);
+        }
         std::erase_if(boxes, [&](Box& box) { return !keep(box); });
         if (!boxes.empty()) {
             out.boxes.emplace(node.entity, std::move(boxes));
+        }
+        if (node.button_state) {
+            out.buttons.emplace(node.entity, *node.button_state);
+        }
+        // A Button's text is drawn over a Label's on the same entity; check() reports both.
+        if (node.button && !node.button->button->text.empty()) {
+            out.labels.emplace(node.entity, std::move(node.button->text.out));
         }
         if (node.label) {
             LabelWork& work = *node.label;
@@ -1690,7 +1986,219 @@ struct Builder {
                 shape(fonts, work, size.x);
             }
             finish_label(fonts, work, size);
+            work.out.clip = work.label->clip_text;
             out.labels.emplace(node.entity, std::move(work.out));
+        }
+    }
+
+    // A Button's style box, focus box, icon and text, as its NOTIFICATION_DRAW draws them.
+    void finish_button(ButtonWork& work, Vec2 size, std::vector<Box>& boxes) {
+        const world::Button& button = *work.button;
+        if (!button.flat) {
+            boxes.push_back(
+                {.style = work.style, .position = {}, .size = size, .texture_size = {}});
+        }
+        if (work.focused) {
+            boxes.push_back(
+                {.style = work.focus, .position = {}, .size = size, .texture_size = {}});
+        }
+        if (button.text.empty() && !work.icon) {
+            return;
+        }
+        const std::array<float, 4> m = button_margins(work);
+        const auto h_separation = static_cast<float>(std::max(work.h_separation, 0));
+        Vec2 room{size.x - m[kLeft] - m[kRight], size.y - m[kTop] - m[kBottom]};
+        const Vec2 element = room;
+        const bool center_v = button.vertical_icon_alignment == "center";
+        if (work.icon) {
+            const Vec2 icon = button_icon_size(work, element);
+            if (icon.x > 0.0F) {
+                Vec2 at;
+                if (button.icon_alignment == "center") {
+                    at.x = ((element.x - icon.x) / 2.0F) + m[kLeft];
+                } else if (button.icon_alignment == "right") {
+                    at.x = size.x - m[kRight] - icon.x;
+                } else {
+                    at.x = m[kLeft];
+                }
+                if (center_v) {
+                    at.y = ((element.y - icon.y) / 2.0F) + m[kTop];
+                } else if (button.vertical_icon_alignment == "bottom") {
+                    at.y = size.y - m[kBottom] - icon.y;
+                } else {
+                    at.y = m[kTop];
+                }
+                Box box{.style = {},
+                        .position = {std::floor(at.x), std::floor(at.y)},
+                        .size = icon,
+                        .texture_size = *work.icon};
+                box.style.type = StyleBox::Type::Texture;
+                box.style.texture = button.icon;
+                box.style.modulate_color = work.icon_color;
+                boxes.push_back(std::move(box));
+            }
+            if (!button.text.empty()) {
+                if (button.icon_alignment != "center") {
+                    room.x -= icon.x + h_separation;
+                }
+                if (!center_v) {
+                    room.y -= icon.y;
+                }
+            }
+        }
+        if (button.text.empty()) {
+            return;
+        }
+        LabelWork& text = work.text;
+        const float width = std::ceil(std::max(1.0F, room.x));
+        if (text.autowrap != text::Autowrap::Off) {
+            shape(fonts, text, width);
+        }
+        const Vec2 text_size = button_text_size(work);
+        LabelText& shown = text.out;
+        text::TextLayout& layout = shown.text;
+        shown.first = 0;
+        shown.last = layout.lines.size();
+        if (text.autowrap == text::Autowrap::Off && text.overrun != text::Overrun::NoTrimming) {
+            for (std::size_t l = 0; l < layout.lines.size(); ++l) {
+                if (fonts.trim(layout, l, width, text.overrun, shown.ellipsis)) {
+                    shown.trimmed.push_back(l);
+                }
+            }
+        }
+        // Lines are aligned by their whole width, then glyphs that don't fit aren't drawn.
+        std::vector<float> widths;
+        for (std::size_t l = 0; l < layout.lines.size(); ++l) {
+            widths.push_back(layout.lines[l].width);
+            if (layout.lines[l].width > width + 0.01F) {
+                shown.overflow = true;
+                if (fonts.trim(layout, l, width, text::Overrun::TrimChar, "") &&
+                    std::ranges::find(shown.trimmed, l) == shown.trimmed.end()) {
+                    shown.trimmed.push_back(l);
+                }
+            }
+        }
+        Vec2 at;
+        if (button.alignment == "center") {
+            at.x = (room.x - width) / 2.0F;
+        }
+        at.x += m[kLeft];
+        if (work.icon && button.icon_alignment == "left") {
+            at.x += element.x - room.x;
+        }
+        at.y = ((room.y - text_size.y) / 2.0F) + m[kTop];
+        if (button.vertical_icon_alignment == "top") {
+            at.y += element.y - room.y;
+        }
+        float y = at.y;
+        for (std::size_t l = 0; l < layout.lines.size(); ++l) {
+            float x = 0.0F;
+            if (button.alignment == "center" && widths[l] <= width) {
+                x = std::floor((width - widths[l]) / 2.0F);
+            } else if (button.alignment == "right") {
+                x = width - widths[l];
+            }
+            y += layout.metrics.ascent;
+            shown.pens.push_back({at.x + x, y});
+            shown.stretch.push_back(0.0F);
+            y += layout.metrics.descent + static_cast<float>(text.line_spacing);
+        }
+    }
+
+    // A TextureButton's texture for its state and its focused texture over it, as its
+    // NOTIFICATION_DRAW.
+    void texture_button_boxes(const Node& node, Vec2 size, std::vector<Box>& boxes) const {
+        if (!node.button_state) {
+            return;
+        }
+        const world::TextureButton& button = *node.texture_button;
+        const auto& textures = node.button_textures;
+        const std::array<const std::string*, 5> paths{
+            &button.texture_normal, &button.texture_pressed, &button.texture_hover,
+            &button.texture_disabled, &button.texture_focused};
+        constexpr std::size_t kNormal = 0;
+        constexpr std::size_t kPressed = 1;
+        constexpr std::size_t kHover = 2;
+        constexpr std::size_t kDisabled = 3;
+        constexpr std::size_t kFocused = 4;
+        std::size_t drawn = kNone;
+        const auto first = [&](std::initializer_list<std::size_t> order) {
+            for (const std::size_t i : order) {
+                if (textures.at(i)) {
+                    return i;
+                }
+            }
+            return kNone;
+        };
+        switch (node.button_state->mode) {
+        case DrawMode::Normal:
+            drawn = first({kNormal});
+            break;
+        case DrawMode::HoverPressed:
+        case DrawMode::Pressed:
+            drawn = first({kPressed, kHover, kNormal});
+            break;
+        case DrawMode::Hover:
+            drawn = first({kHover, kNormal});
+            break;
+        case DrawMode::Disabled:
+            drawn = first({kDisabled, kNormal});
+            break;
+        }
+        const bool focus = shows_focus(world, node.entity) && textures.at(kFocused);
+        // With no other texture, the focused one gives the rect.
+        const bool focus_only = focus && drawn == kNone;
+        if (focus_only) {
+            drawn = kFocused;
+        }
+        if (drawn == kNone || !textures.at(drawn)) {
+            return;
+        }
+        const Vec2 texture = textures.at(drawn).value_or(Vec2{});
+        Box box{.style = {}, .position = {}, .size = texture, .texture_size = texture};
+        box.style.type = StyleBox::Type::Texture;
+        box.style.texture = *paths.at(drawn);
+        box.style.flip_h = button.flip_h;
+        box.style.flip_v = button.flip_v;
+        const std::string& mode = button.stretch_mode;
+        if (mode == "scale") {
+            box.size = size;
+        } else if (mode == "tile") {
+            box.size = size;
+            box.style.axis_stretch_horizontal = StyleBox::Stretch::Tile;
+            box.style.axis_stretch_vertical = StyleBox::Stretch::Tile;
+        } else if (mode == "keep_centered") {
+            box.position = {(size.x - texture.x) / 2.0F, (size.y - texture.y) / 2.0F};
+        } else if (mode == "keep_aspect" || mode == "keep_aspect_centered") {
+            float width = texture.x * size.y / texture.y;
+            float height = size.y;
+            if (width > size.x) {
+                width = size.x;
+                height = texture.y * width / texture.x;
+            }
+            if (mode == "keep_aspect_centered") {
+                box.position = {(size.x - width) / 2.0F, (size.y - height) / 2.0F};
+            }
+            box.size = {width, height};
+        } else if (mode == "keep_aspect_covered") {
+            box.size = size;
+            const float scale = std::max(size.x / texture.x, size.y / texture.y);
+            box.style.region_rect = {std::abs((texture.x * scale) - size.x) / scale / 2.0F,
+                                     std::abs((texture.y * scale) - size.y) / scale / 2.0F,
+                                     size.x / scale, size.y / scale};
+        }
+        if (!focus_only) {
+            boxes.push_back(box);
+        }
+        if (focus) {
+            Box over = box;
+            over.style = {};
+            over.style.type = StyleBox::Type::Texture;
+            over.style.texture = *paths.at(kFocused);
+            over.style.flip_h = button.flip_h;
+            over.style.flip_v = button.flip_v;
+            over.texture_size = textures.at(kFocused).value_or(Vec2{});
+            boxes.push_back(std::move(over));
         }
     }
 };
@@ -1761,6 +2269,7 @@ Layout layout(const world::World& world, text::Fonts& fonts, Vec2 viewport) {
     std::vector<Node>& nodes = builder.nodes;
     for (Node& node : nodes) {
         builder.start(node);
+        out.tree.push_back(node.entity);
     }
 
     for (int pass = 0; pass < kMaxPasses; ++pass) {
@@ -1813,14 +2322,15 @@ std::vector<ThemeItem> theme_items(const world::World& world, text::Fonts& fonts
     if (node == builder.nodes.end()) {
         return out;
     }
-    std::set<std::pair<std::string, std::string>, std::less<>> seen;
+    // By kind then name; the first type to use an item gives it.
+    std::map<std::pair<std::string, std::string>, ThemeItem, std::less<>> items;
     const auto add = [&](std::string_view kind, const std::string& name, json::Value value,
                          std::string from) {
-        if (seen.emplace(std::string(kind), name).second) {
-            out.push_back({.kind = std::string(kind),
-                           .name = name,
-                           .value = std::move(value),
-                           .from = std::move(from)});
+        std::pair<std::string, std::string> key{std::string(kind), name};
+        if (!items.contains(key)) {
+            ThemeItem item{.kind = key.first, .name = name, .value = {}, .from = std::move(from)};
+            item.value = std::move(value);
+            items.emplace(std::move(key), std::move(item));
         }
     };
     for (const std::string_view type : control_classes(world, entity)) {
@@ -1848,10 +2358,18 @@ std::vector<ThemeItem> theme_items(const world::World& world, text::Fonts& fonts
             const StyleBox style = theme.style(name, &from);
             add("styles", name, style_box_json(style), from);
         }
+        // Items only a theme gives, when one does.
+        for (const auto& [name, fallback] : optional_items(type).styles) {
+            const StyleBox style = theme.style(name, &from);
+            if (from != "default") {
+                add("styles", name, style_box_json(style), from);
+            }
+        }
     }
-    std::ranges::sort(out, [](const ThemeItem& a, const ThemeItem& b) {
-        return std::tie(a.kind, a.name) < std::tie(b.kind, b.name);
-    });
+    out.reserve(items.size());
+    for (auto& [key, item] : items) {
+        out.push_back(std::move(item));
+    }
     return out;
 }
 

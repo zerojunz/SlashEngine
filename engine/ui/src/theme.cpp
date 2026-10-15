@@ -20,9 +20,12 @@ namespace slash::ui {
 namespace {
 
 // Each control type and the type it is built on, as Godot's classes.
-constexpr std::array<std::pair<std::string_view, std::string_view>, 19> kTypes{{
+constexpr std::array<std::pair<std::string_view, std::string_view>, 22> kTypes{{
     {"Control", ""},
     {"Label", "Control"},
+    {"BaseButton", "Control"},
+    {"Button", "BaseButton"},
+    {"TextureButton", "BaseButton"},
     {"ColorRect", "Control"},
     {"Panel", "Control"},
     {"TextureRect", "Control"},
@@ -46,13 +49,16 @@ constexpr std::array<std::string_view, 5> kKinds{"colors", "constants", "fonts",
                                                  "styles"};
 
 // Godot's make_flat_stylebox: a rounded rect with content margins and smooth corners.
-StyleBox flat_style(Vec4 color, float margin, int corner_radius) {
+StyleBox flat_style(Vec4 color, float margin, int corner_radius, bool draw_center = true,
+                    int border_width = 0) {
     StyleBox style;
     style.bg_color = color;
     style.content_margin.fill(margin);
     style.corner_radius.fill(corner_radius);
     style.anti_aliasing = true;
     style.corner_detail = std::min(static_cast<int>(std::ceil(1.5 * corner_radius)), 6);
+    style.draw_center = draw_center;
+    style.border_width.fill(border_width);
     return style;
 }
 
@@ -62,11 +68,51 @@ StyleBox flat_style(Vec4 color, float margin, int corner_radius) {
 const std::map<std::string, ThemeItems, std::less<>>& own_defaults() {
     static const std::map<std::string, ThemeItems, std::less<>> kThemes = [] {
         constexpr int kSeparation = 4;
+        constexpr float kMargin = 4.0F;
+        constexpr int kCornerRadius = 3;
         const Vec4 style_normal_color{0.1F, 0.1F, 0.1F, 0.6F};
+        const Vec4 style_hover_color{0.225F, 0.225F, 0.225F, 0.6F};
+        const Vec4 style_pressed_color{0.0F, 0.0F, 0.0F, 0.6F};
         const Vec4 style_disabled_color{0.1F, 0.1F, 0.1F, 0.3F};
+        const Vec4 style_focus_color{1.0F, 1.0F, 1.0F, 0.75F};
         const Vec4 style_progress_color{1.0F, 1.0F, 1.0F, 0.4F};
+        const Vec4 control_font_color{0.875F, 0.875F, 0.875F, 1.0F};
         const Vec4 control_font_hover_color{0.95F, 0.95F, 0.95F, 1.0F};
+        const Vec4 control_font_focus_color{0.95F, 0.95F, 0.95F, 1.0F};
+        const Vec4 control_font_pressed_color{1.0F, 1.0F, 1.0F, 1.0F};
+        const Vec4 control_font_disabled_color{0.875F, 0.875F, 0.875F, 0.5F};
+        const Vec4 white{1.0F, 1.0F, 1.0F, 1.0F};
         std::map<std::string, ThemeItems, std::less<>> themes;
+        themes["BaseButton"].constants = {{"click_margin", 0}};
+        ThemeItems& button = themes["Button"];
+        // The focus outline sits just outside the button, so it doesn't cover its content.
+        StyleBox focus = flat_style(style_focus_color, kMargin, kCornerRadius, false, 2);
+        focus.expand_margin.fill(2.0F);
+        button.styles = {{"normal", flat_style(style_normal_color, kMargin, kCornerRadius)},
+                         {"hover", flat_style(style_hover_color, kMargin, kCornerRadius)},
+                         {"pressed", flat_style(style_pressed_color, kMargin, kCornerRadius)},
+                         {"disabled", flat_style(style_disabled_color, kMargin, kCornerRadius)},
+                         {"focus", focus}};
+        button.colors = {{"font_color", control_font_color},
+                         {"font_pressed_color", control_font_pressed_color},
+                         {"font_hover_color", control_font_hover_color},
+                         {"font_focus_color", control_font_focus_color},
+                         {"font_hover_pressed_color", control_font_pressed_color},
+                         {"font_disabled_color", control_font_disabled_color},
+                         {"font_outline_color", {0.0F, 0.0F, 0.0F, 1.0F}},
+                         {"icon_normal_color", white},
+                         {"icon_pressed_color", white},
+                         {"icon_hover_color", white},
+                         {"icon_hover_pressed_color", white},
+                         {"icon_focus_color", white},
+                         {"icon_disabled_color", {1.0F, 1.0F, 1.0F, 0.4F}}};
+        button.constants = {{"outline_size", 0},
+                            {"h_separation", kSeparation},
+                            {"icon_max_width", 0},
+                            {"align_to_largest_stylebox", 0},
+                            {"line_spacing", 0}};
+        button.fonts = {{"font", ""}};
+        button.font_sizes = {{"font_size", text::kDefaultFontSize}};
         ThemeItems& label = themes["Label"];
         label.colors = {{"font_color", {1.0F, 1.0F, 1.0F, 1.0F}},
                         {"font_shadow_color", {0.0F, 0.0F, 0.0F, 0.0F}},
@@ -99,6 +145,20 @@ const std::map<std::string, ThemeItems, std::less<>>& own_defaults() {
         return themes;
     }();
     return kThemes;
+}
+
+const ThemeItems& optional_items(std::string_view type) {
+    static const ThemeItems kNone;
+    // Button's hover_pressed style is used when a theme has one, else pressed is, as Godot's.
+    static const ThemeItems kButton = [] {
+        ThemeItems items;
+        StyleBox empty;
+        empty.type = StyleBox::Type::Empty;
+        items.styles = {{"hover_pressed", empty}};
+        return items;
+    }();
+    const std::vector<std::string_view> bases = base_types(type);
+    return std::ranges::find(bases, std::string_view("Button")) != bases.end() ? kButton : kNone;
 }
 
 namespace {
@@ -339,7 +399,8 @@ std::vector<json::ValidationError> validate_theme(const json::Value& doc) {
             at = next;
             at_path = "/types/" + json::pointer_escape(next);
         }
-        const ThemeItems& known = default_theme(native.empty() ? "Control" : native);
+        ThemeItems known = default_theme(native.empty() ? "Control" : native);
+        merge(known, optional_items(native));
         for (const std::string_view kind : kKinds) {
             const json::Value* items = type.find(kind);
             if (items == nullptr) {

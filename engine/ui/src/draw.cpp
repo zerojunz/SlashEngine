@@ -707,9 +707,7 @@ DrawList draw_calls(const Layout& layout, const world::World& world, text::Fonts
             draw_label_pass(drawer, list, fonts, percent, placed, tint, Pass::Text, std::nullopt);
         }
         if (const LabelText* label = layout.label(placed.entity); label != nullptr) {
-            const auto* component = ecs.try_get<world::Label>(placed.entity);
-            const std::optional<Rect> clip =
-                component != nullptr && component->clip_text ? std::optional(bounds) : std::nullopt;
+            const std::optional<Rect> clip = label->clip ? std::optional(bounds) : std::nullopt;
             if (label->shadow_color.w != 0.0F && label->shadow_outline_size > 0) {
                 draw_label_pass(drawer, list, fonts, *label, placed, tint, Pass::ShadowOutline,
                                 clip);
