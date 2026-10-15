@@ -55,6 +55,26 @@ slash_add_dependency(yyjson
         "YYJSON_DISABLE_NON_STANDARD ON"
         "YYJSON_READER_DEPTH_LIMIT 256")
 
+# 2D physics. Box2D builds single-threaded and deterministic: its own CMake turns off
+# floating-point contraction, and SIMD stays off on the web, since browsers before 2021 (Chrome
+# 91, Firefox 89, Safari 16.4) have no WebAssembly SIMD.
+if(EMSCRIPTEN)
+    set(_slash_box2d_simd "BOX2D_DISABLE_SIMD ON")
+else()
+    set(_slash_box2d_simd "BOX2D_DISABLE_SIMD OFF")
+endif()
+slash_add_dependency(box2d
+    SYSTEM TRUE
+    OPTIONS
+        "BOX2D_SAMPLES OFF"
+        "BOX2D_BENCHMARKS OFF"
+        "BOX2D_DOCS OFF"
+        "BOX2D_PROFILE OFF"
+        "BOX2D_VALIDATE OFF"
+        "BOX2D_UNIT_TESTS OFF"
+        "BOX2D_AVX2 OFF"
+        ${_slash_box2d_simd})
+
 # HTTP server and client for the localhost REST mirror and MCP over HTTP. Header-only, used
 # without TLS, compression or exceptions, and only inside slash_server.
 slash_add_dependency(httplib DOWNLOAD_ONLY TRUE)

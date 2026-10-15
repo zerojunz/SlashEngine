@@ -22,7 +22,12 @@ foreach(name IN LISTS examples)
     if(EXISTS ${dir}/main.cpp)
         add_executable(example-${name} ${name}/main.cpp)
         target_link_libraries(example-${name} PRIVATE
-            slash::animation slash::canvas slash::command slash::core slash::platform slash::render slash::world)
+            slash::animation slash::canvas slash::command slash::core slash::physics2d
+            slash::platform slash::render slash::world)
+        # The same output on every platform: no fused multiply-adds, which arm64 compilers
+        # would otherwise emit and x86-64 ones not.
+        target_compile_options(example-${name} PRIVATE
+            $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>)
         slash_target_warnings(example-${name})
         set(program -DPROGRAM=$<TARGET_FILE:example-${name}>)
     endif()

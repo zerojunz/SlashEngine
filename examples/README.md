@@ -21,6 +21,7 @@ engine. Copy from them.
 | [keyframe-animation](keyframe-animation/) | `AnimationPlayer` and `.anim.json` files: tracks for any field, easing, loops, event keys and `animation.eval` |
 | [tilemaps](tilemaps/) | `TileMapLayer` and `.tileset.json` files: terrain autotiling with `tilemap.paint`, `tilemap.set` and `tilemap.get`, drawn offscreen |
 | [lights-2d](lights-2d/) | `PointLight2D`, `DirectionalLight2D`, `CanvasModulate`, occluder shadows, normal maps and `light.sample`, drawn offscreen |
+| [physics-2d](physics-2d/) | Static, rigid and character bodies, areas, concave and one-way shapes, a joint, and `physics.raycast`, `physics.overlap` and `physics.contacts` |
 
 ## What an example holds
 

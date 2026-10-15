@@ -197,6 +197,7 @@ json::Value project_schema() {
     properties["tick_hz"] = std::move(tick_hz);
     properties["max_fps"] = std::move(max_fps);
     properties["rendering"] = std::move(rendering);
+    properties["physics_2d"] = physics2d::settings_schema();
     return schema;
 }
 
@@ -275,6 +276,9 @@ Result<Project> parse_project(const json::Value& project) {
             interpolation != nullptr) {
             out.interpolation = interpolation->as_bool();
         }
+    }
+    if (const json::Value* physics = project.find("physics_2d"); physics != nullptr) {
+        out.physics_2d = physics2d::parse_settings(*physics);
     }
     return out;
 }

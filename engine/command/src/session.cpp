@@ -6,6 +6,7 @@
 #include "slash/core/json_schema.hpp"
 #include "slash/core/log.hpp"
 #include "slash/core/text.hpp"
+#include "slash/physics2d/physics2d.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/world/scene.hpp"
 
@@ -32,6 +33,23 @@ bool same_world(const Session::SavedWorld& a, const Session::SavedWorld& b) {
            });
 }
 
+// The project's physics_2d settings, or the defaults if it has none or they don't validate.
+physics2d::Settings physics_settings(const std::string& project_root) {
+    auto text = platform::read_file_in(project_root, "project.json");
+    if (!text) {
+        return {};
+    }
+    auto project = json::parse(text.value());
+    if (!project) {
+        return {};
+    }
+    const json::Value* settings = project.value().find("physics_2d");
+    if (settings == nullptr || !json::validate(*settings, physics2d::settings_schema()).empty()) {
+        return {};
+    }
+    return physics2d::parse_settings(*settings);
+}
+
 } // namespace
 
 Session::Session(const world::ComponentRegistry& component_registry,
@@ -54,9 +72,10 @@ Session::Session(const world::ComponentRegistry& component_registry,
     world_.set_file_reader(
         [this](std::string_view path) { return assets_.read(path, world::kPrefabType); });
     // Textures, sprite frames, animation libraries and the systems that play AnimatedSprite2D
-    // and AnimationPlayer, so step animates.
+    // and AnimationPlayer, so step animates, and 2D physics.
     canvas::install(world_, assets_);
     animation::install(world_, assets_);
+    physics2d::install(world_, physics_settings(options_.project_root));
     if (options_.capture_logs) {
         log::set_sink([this](log::Level /*level*/, std::string_view line) {
             std::fwrite(line.data(), 1, line.size(), stderr);

@@ -114,6 +114,7 @@ Game::Game(Project project, platform::Platform platform, const std::string& data
         [this](std::string_view path) { return assets_.read(path, world::kPrefabType); });
     canvas::install(world_, assets_);
     animation::install(world_, assets_);
+    physics2d::install(world_, project_.physics_2d);
 }
 
 Game::~Game() = default;

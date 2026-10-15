@@ -296,6 +296,23 @@ animates, a game's own included. Keys are passed as Godot passes them: after whe
 up to and including where it got to. `animation.eval` returns a track's values at given times;
 `examples/keyframe-animation` plays a walk cycle and a hit.
 
+## 2D physics
+
+`engine/physics2d` is 2D physics on Box2D v3, as Godot's. Bodies and areas are components:
+`StaticBody2D`, `AnimatableBody2D`, `RigidBody2D`, `CharacterBody2D` and `Area2D`, with
+`CollisionShape2D` and `CollisionPolygon2D` shapes and `PinJoint2D`, `DampedSpringJoint2D` and
+`GrooveJoint2D` joints. The ECS holds the truth: each tick the `physics2d` system (priority 950)
+brings Box2D's world up to date with the components, steps it, writes rigid bodies back, moves
+character bodies with `move_and_slide` (`src/character.cpp`) and emits `body_entered`,
+`body_exited`, `area_entered` and `area_exited` events. Box2D's lengths are pixels
+(`b2SetLengthUnitsPerMeter(64)`), and Godot's rules are kept where Box2D differs: layers and
+masks collide when either mask matches, one-way shapes, and waking what rests on a moved body.
+`project.json`'s `physics_2d` sets gravity and damping. `physics.raycast`, `physics.overlap` and
+`physics.contacts` (and `physics2d::raycast` and the rest in C++) ask what is where. Results
+must be the same on every platform: `physics2d` and the examples build with
+`-ffp-contract=off`, and angles go through Box2D's own `b2ComputeCosSin`, not libm.
+`examples/physics-2d` has every kind of body.
+
 ## Add a component
 
 Components are plain structs reflected with one macro, at namespace scope in the struct's own
@@ -357,7 +374,8 @@ CI rejects unformatted code and any clang-tidy finding.
   the null device, HLSL shaders, material programs and 2D light shading), `asset` (asset handles, loaders, hot reload),
   `world` (EnTT world, components, scenes and prefabs), `canvas` (sprites, `.frames.json`
   animations, `.material.json` materials, `.tileset.json` tile maps, 2D lights and shadows and
-  drawing them), `animation` (`.anim.json` keyframe animations and the system that plays them), `storyboard` (storyboard kinds, files, versions,
+  drawing them), `animation` (`.anim.json` keyframe animations and the system that plays them),
+  `physics2d` (2D bodies, areas, joints and queries on Box2D), `storyboard` (storyboard kinds, files, versions,
   queries, edits, briefs and checks), `command` (commands, sessions with undo, JSON-RPC and MCP),
   `server` (localhost HTTP over a session) and `runtime` (project files and the game executable).
   Tool-only libraries such as `tools/exporter` use the same layout and may use exceptions.
