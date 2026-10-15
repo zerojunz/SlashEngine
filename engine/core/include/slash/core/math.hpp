@@ -56,4 +56,8 @@ struct Quat {
     friend constexpr bool operator==(const Quat&, const Quat&) = default;
 };
 
+// The cosine and sine of an angle in radians, computed the same way on every platform, as
+// {cos, sin}. Particles and UI use it instead of libm, whose results differ between platforms.
+[[nodiscard]] Vec2 cos_sin(float radians);
+
 } // namespace slash

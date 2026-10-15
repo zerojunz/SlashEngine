@@ -4,6 +4,7 @@ add_library(slash_core
     src/json.cpp
     src/json_schema.cpp
     src/log.cpp
+    src/math.cpp
     src/text.cpp
     src/version.cpp)
 add_library(slash::core ALIAS slash_core)
@@ -18,4 +19,8 @@ endif()
 target_compile_options(slash_core PUBLIC $<$<CXX_COMPILER_ID:MSVC>:/Zc:preprocessor>)
 set_source_files_properties(src/version.cpp PROPERTIES
     COMPILE_DEFINITIONS "SLASH_VERSION=\"${PROJECT_VERSION}\"")
+# cos_sin gives the same bits everywhere: no fused multiply-adds, which arm64 compilers would
+# otherwise emit and x86-64 ones not.
+set_source_files_properties(src/math.cpp PROPERTIES
+    COMPILE_OPTIONS "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>")
 slash_engine_target(slash_core)

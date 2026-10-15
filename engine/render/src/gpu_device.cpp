@@ -43,8 +43,9 @@ struct ProgramUniforms {
     std::array<std::uint32_t, 4> counts{};
     std::array<std::int32_t, 4> shading{};
     std::array<float, 4> specular{};
+    std::array<float, 4> field{};
 };
-static_assert(sizeof(ProgramUniforms) == 1600);
+static_assert(sizeof(ProgramUniforms) == 1616);
 
 // One light, laid out as the material shader's Light struct.
 struct LightUniform {
@@ -476,10 +477,11 @@ public:
         const auto count = static_cast<std::uint32_t>(vertices.size());
         if (batches_.empty() || batches_.back().texture != texture ||
             batches_.back().material != material) {
-            const ShaderKind kind =
-                material.program.code.empty() && material.shading.mode == LightMode::Unshaded
-                    ? ShaderKind::Sprite
-                    : ShaderKind::Material;
+            const ShaderKind kind = material.program.code.empty() &&
+                                            material.shading.mode == LightMode::Unshaded &&
+                                            material.field.pixel_range == 0.0F
+                                        ? ShaderKind::Sprite
+                                        : ShaderKind::Material;
             auto pipeline = pipeline_for(frame_format_, kind, material.blend);
             if (!pipeline) {
                 return pipeline.error();
@@ -721,6 +723,8 @@ private:
                             (shading.normal_map != TextureId::None ? 1 : 0) |
                                 (shading.specular_map != TextureId::None ? 2 : 0)};
         uniforms.specular = shading.specular;
+        uniforms.field = {batch.material.field.pixel_range, batch.material.field.outline, 0.0F,
+                          0.0F};
         SDL_PushGPUFragmentUniformData(commands, 0, &uniforms,
                                        static_cast<std::uint32_t>(sizeof(uniforms)));
     }

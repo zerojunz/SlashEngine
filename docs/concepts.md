@@ -53,6 +53,9 @@ The code follows the same split, one CMake library per module under `engine/`:
 | `world` | The EnTT world, components, the component registry, scenes and prefabs |
 | `canvas` | 2D drawing, as Godot's canvas: sprites, `.frames.json` animations, `.material.json` materials, `.tileset.json` tile sets and tile map layers, and the renderer that draws them |
 | `animation` | Keyframe animation, as Godot's AnimationPlayer: `.anim.json` files and the system that plays them |
+| `physics2d` | 2D physics on Box2D, as Godot's: bodies, areas, shapes, joints and queries |
+| `text` | Fonts and text layout: FreeType, HarfBuzz, distance field fonts and glyph atlases |
+| `ui` | UI, as Godot's Control nodes: layout of controls and labels, and their draw calls |
 | `storyboard` | Storyboard files: kinds, checks, versions, queries and edits |
 | `command` | Commands, sessions with undo, JSON-RPC and MCP |
 | `server` | The localhost HTTP server over a session |
@@ -124,8 +127,8 @@ even after the file changes.
 An **asset** is a file a game loads by project path, like a Godot resource: a JSON table, a CSV
 file, a texture and, once audio arrives, sounds. Loading one returns a **handle**; every handle to
 the same path shares one copy, which stays loaded while any handle exists. `.json`, `.txt`,
-`.csv`, `.png`, `.bmp`, `.frames.json`, `.material.json`, `.anim.json` and `.tileset.json` files
-load out of the box, and a game can add its own types.
+`.csv`, `.png`, `.bmp`, `.frames.json`, `.material.json`, `.anim.json`, `.tileset.json`, `.ttf`,
+`.otf` and `.font.json` files load out of the box, and a game can add its own types.
 
 **Hot reload** keeps an agent's edit-and-check loop short. Before every command, and between
 ticks in `slash-cli run` and `slash-cli serve`, the session checks the files it has loaded. A
@@ -246,6 +249,18 @@ A material's `light_mode` keeps a sprite unshaded, for glowing signs, or shows i
 falls. `light.sample` returns how lit points are and which lights reach them, computed as the GPU
 shades them, so an agent checks lighting without a screenshot. The
 [2D lights example](../examples/lights-2d/) has a torch, the moon and a shadowed crate.
+
+**UI** follows Godot's Control nodes. A `Control` places a rect in its parent's by **anchors**
+(where each edge sits in the parent, from 0 to 1) and offsets in pixels, so a panel can stay
+centered or a score stay in a corner on any window, and grows to fit its content. `Label` draws
+text in the rect, wrapped, aligned and cut with an ellipsis as Godot's does, and `ColorRect`
+fills it. A control's font, size, colors, outline and shadow are **theme items**, which its
+`theme_override_*` fields set. Text is shaped with HarfBuzz, so every script's letters join and
+place as they should, and drawn from glyph images FreeType makes, or from **distance fields**
+that stay sharp at any size, for fonts a `.font.json` file sets up so. Controls draw above the
+world. `ui.layout` returns every control's rect, the lines each label shows and mistakes such as
+a misspelled theme override, and `text.measure` sizes text, so an agent checks a screen without
+a screenshot. The [UI and text example](../examples/ui-and-text/) is a pause screen.
 
 How often frames are drawn follows Godot. The world ticks at a fixed rate (`tick_hz`), while frames
 come as fast as the **V-Sync mode** lets them (`window.vsync_mode`: wait for each refresh, present
@@ -427,6 +442,7 @@ OpenAI-compatible servers (including local ones), Anthropic and Gemini; see the
 | Term | Meaning |
 | --- | --- |
 | Ambient light | The color lit draws start from where no light reaches: the `CanvasModulate` color |
+| Anchor | Where a control's edge sits in its parent's rect, from 0 (left or top) to 1 (right or bottom) |
 | Animation | A `.anim.json` file's named set of tracks, which an `AnimationPlayer` plays on its entity's fields |
 | Autotiling | Picking each tile so its edges connect to its neighbors' terrains, as `tilemap.paint` does |
 | Asset | A file a game loads by project path into a shared, reference-counted handle |
@@ -437,12 +453,15 @@ OpenAI-compatible servers (including local ones), Anthropic and Gemini; see the
 | Command registry | The list of commands every front end is generated from |
 | Component | A reflected C++ struct of data attached to an entity |
 | Component registry | The list of component types a world knows, with their docs |
+| Control | A UI element: a rect placed in its parent's by anchors and offsets, which `Label` and `ColorRect` draw in |
 | Discovery file | `.slash/server.json`: a running server's URL and token |
+| Distance field font | A font drawn from one field per glyph of distances to its outline (MSDF), sharp at any size, scale and outline |
 | Effect | How a command changes the world: read, edit, replace, history or compound |
 | Entity | A thing in the world, named by a stable ID |
 | Example | A small program or sequence of calls in `examples/`, run by CI with its output checked |
 | Export | A build of a project for one platform, ready for players |
 | Flipbook | An animation that shows a sprite's frames one after another, from a `.frames.json` file |
+| Font | A `.ttf` or `.otf` file, or a `.font.json` file naming one with settings |
 | Front end | A way to reach the commands: MCP, JSON-RPC, REST or the CLI |
 | Hot reload | Reloading edited files, and updating prefab instances, while the game runs |
 | Interpolation | Drawing sprites part of the way between two ticks, so motion is smooth at any frame rate |
@@ -471,6 +490,7 @@ OpenAI-compatible servers (including local ones), Anthropic and Gemini; see the
 | StoryRef | The component that names the storyboard entries an entity stands for |
 | System | Code that updates components every tick, in order of priority |
 | Terrain | A kind of ground in a tile set, such as grass or water, whose tiles autotiling connects |
+| Theme item | A named color, constant, font or font size a control draws with, set by its `theme_override_*` fields |
 | Tick | One fixed simulation step, 1/60 s by default |
 | Tile set | A `.tileset.json` file: atlas textures cut into tiles, and the terrains that connect them |
 | Tile map layer | A grid of tiles from a tile set, kept as rows of legend keys (`TileMapLayer`) |

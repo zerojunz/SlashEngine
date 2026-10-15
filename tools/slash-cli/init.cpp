@@ -125,6 +125,11 @@ environment variables, never from the file.
   with `physics_raycast`, `physics_overlap` and `physics_contacts` rather than by geometry.
 - Particles are `CPUParticles2D` components, as Godot's, with a texture from `sprites/`. Check
   them with `particles_eval` (how many, where, and each one) rather than a screenshot.
+- UI is `Control`, `Label` and `ColorRect` components, as Godot's Control nodes, laid out in the
+  window by anchors and offsets. `fonts/` (or any folder): `.ttf` and `.otf` files, and
+  `.font.json` files (`slash-cli schema font`) for distance-field fonts that stay sharp at any
+  size. Check UI with `ui_layout` (each control's rect and each label's lines) rather than a
+  screenshot.
 - `storyboard/`: the game's facts as typed entries (`slash-cli schema storyboard`), and
   `journal.jsonl`, the record of who changed them. Commit both.
 )";

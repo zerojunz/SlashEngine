@@ -476,4 +476,77 @@ SLASH_COMPONENT(CPUParticles2D, emitting, amount, lifetime, one_shot, preprocess
 // Registers the components above, with their docs.
 void register_builtin_components(ComponentRegistry& registry);
 
+// ---- UI, as Godot's Control nodes.
+
+// A UI element, as Godot's Control: a rect placed in its parent's by anchors and offsets, and
+// children, which lay out in its rect and draw over it in order. Label, ColorRect and the other
+// UI components draw in the rect; an entity with one of them and no Control lays out with
+// Control's defaults. A control in no Control's children is placed in the viewport. Controls
+// draw above sprites, tile maps and particles, as on a CanvasLayer in Godot.
+struct Control {
+    // Fields are grouped by type so the struct packs tightly; SLASH_COMPONENT lists them as
+    // Godot groups them.
+    std::vector<entt::entity> children;
+    std::string grow_horizontal = "end"; // "begin", "end" or "both"
+    std::string grow_vertical = "end";
+    std::map<std::string, Vec4> theme_override_colors;
+    std::map<std::string, int> theme_override_constants;
+    std::map<std::string, std::string> theme_override_fonts;
+    std::map<std::string, int> theme_override_font_sizes;
+    Vec4 modulate{1.0F, 1.0F, 1.0F, 1.0F};
+    Vec4 self_modulate{1.0F, 1.0F, 1.0F, 1.0F};
+    Vec2 custom_minimum_size;
+    Vec2 scale{1.0F, 1.0F};
+    Vec2 pivot_offset;
+    float anchor_left = 0.0F; // from 0 (the parent's left edge) to 1 (its right edge)
+    float anchor_top = 0.0F;
+    float anchor_right = 0.0F;
+    float anchor_bottom = 0.0F;
+    float offset_left = 0.0F; // pixels from the anchor
+    float offset_top = 0.0F;
+    float offset_right = 0.0F;
+    float offset_bottom = 0.0F;
+    float rotation = 0.0F; // radians, around pivot_offset
+    int z_index = 0;
+    bool visible = true;
+
+    friend bool operator==(const Control&, const Control&) = default;
+};
+SLASH_COMPONENT(Control, children, anchor_left, anchor_top, anchor_right, anchor_bottom,
+                offset_left, offset_top, offset_right, offset_bottom, grow_horizontal,
+                grow_vertical, custom_minimum_size, rotation, scale, pivot_offset, visible,
+                modulate, self_modulate, z_index, theme_override_colors, theme_override_constants,
+                theme_override_fonts, theme_override_font_sizes)
+
+// Text in a control's rect, as Godot's Label. Its font, size, colors, outline and shadow are
+// theme items, set per label with Control's theme_override_* fields.
+struct Label {
+    std::string text;
+    std::string horizontal_alignment = "left"; // "left", "center", "right" or "fill"
+    std::string vertical_alignment = "top";    // "top", "center", "bottom" or "fill"
+    std::string autowrap_mode = "off";         // "off", "arbitrary", "word" or "word_smart"
+    // "no_trimming", "trim_char", "trim_word", "trim_ellipsis" or "trim_word_ellipsis"
+    std::string text_overrun_behavior = "no_trimming";
+    std::string ellipsis_char = "\u2026";
+    std::string visible_characters_behavior = "chars_before_shaping";
+    int lines_skipped = 0;
+    int max_lines_visible = -1;  // -1 for all
+    int visible_characters = -1; // -1 for all
+    bool clip_text = false;
+    bool uppercase = false;
+
+    friend bool operator==(const Label&, const Label&) = default;
+};
+SLASH_COMPONENT(Label, text, horizontal_alignment, vertical_alignment, autowrap_mode, clip_text,
+                text_overrun_behavior, ellipsis_char, uppercase, lines_skipped, max_lines_visible,
+                visible_characters, visible_characters_behavior)
+
+// A rect of one color, as Godot's ColorRect.
+struct ColorRect {
+    Vec4 color{1.0F, 1.0F, 1.0F, 1.0F};
+
+    friend bool operator==(const ColorRect&, const ColorRect&) = default;
+};
+SLASH_COMPONENT(ColorRect, color)
+
 } // namespace slash::world
