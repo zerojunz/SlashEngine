@@ -1,5 +1,6 @@
 #include "internal.hpp"
 
+#include "slash/core/assert.hpp"
 #include "slash/render/image.hpp"
 #include "slash/ui/ui.hpp"
 
@@ -962,7 +963,10 @@ struct Builder {
             const bool vertical = node.flow->vertical;
             const float along = std::trunc(vertical ? biggest.y : biggest.x);
             // Across, what its lines take at its length; with no length yet, one line.
-            const int length = size ? static_cast<int>(vertical ? size->y : size->x) : INT_MAX;
+            int length = INT_MAX;
+            if (size) {
+                length = static_cast<int>(vertical ? size->y : size->x);
+            }
             const auto across = static_cast<float>(flow_lines(node, length, nullptr));
             return vertical ? Vec2{across, along} : Vec2{along, across};
         }
@@ -1271,12 +1275,14 @@ struct Builder {
                     }
                 }
             }
-            int w = col_expanded.contains(col)
-                        ? col_expand
-                        : (col_fixed.contains(col) ? col_fixed[col] : col_minw[col]);
-            int h = row_expanded.contains(row)
-                        ? row_expand
-                        : (row_fixed.contains(row) ? row_fixed[row] : row_minh[row]);
+            int w = col_expand;
+            if (!col_expanded.contains(col)) {
+                w = col_fixed.contains(col) ? col_fixed[col] : col_minw[col];
+            }
+            int h = row_expand;
+            if (!row_expanded.contains(row)) {
+                h = row_fixed.contains(row) ? row_fixed[row] : row_minh[row];
+            }
             if (col_expanded.contains(col) && col < col_remaining_pixel_index) {
                 ++w;
             }
@@ -1435,6 +1441,7 @@ struct Builder {
             sort_flow(node, size);
             return;
         case Kind::Panel: {
+            SLASH_ASSERT(node.container_panel.has_value(), "a panel container has its style");
             const StyleBox& style = *node.container_panel;
             const Vec2 inner{size.x - style.minimum_size().x, size.y - style.minimum_size().y};
             for (const std::size_t kid : sorted(node)) {

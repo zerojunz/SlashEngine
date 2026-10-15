@@ -179,14 +179,17 @@ Vec4 vec4(const json::Value& value) {
 
 std::vector<std::string_view> base_types(std::string_view type) {
     std::vector<std::string_view> out;
-    while (!type.empty()) {
-        const auto found =
-            std::ranges::find(kTypes, type, &std::pair<std::string_view, std::string_view>::first);
-        if (found == kTypes.end()) {
-            break;
+    bool more = !type.empty();
+    while (more) {
+        more = false;
+        for (const auto& [name, base] : kTypes) {
+            if (name == type) {
+                out.push_back(name);
+                type = base;
+                more = !type.empty();
+                break;
+            }
         }
-        out.push_back(found->first);
-        type = found->second;
     }
     return out;
 }
@@ -194,6 +197,7 @@ std::vector<std::string_view> base_types(std::string_view type) {
 const std::vector<std::string_view>& control_types() {
     static const std::vector<std::string_view> kNames = [] {
         std::vector<std::string_view> names;
+        names.reserve(kTypes.size());
         for (const auto& [name, base] : kTypes) {
             names.push_back(name);
         }
@@ -306,9 +310,11 @@ std::vector<json::ValidationError> validate_theme(const json::Value& doc) {
             if (found == all.end() || base == nullptr) {
                 if (at == name) {
                     std::string message = quoted(name) + " isn't a control type";
-                    message = closest_match(name, control_types()).empty()
-                                  ? message + "; give it a base_type to make it a variation"
-                                  : with_hint(std::move(message), name, control_types());
+                    if (closest_match(name, control_types()).empty()) {
+                        message += "; give it a base_type to make it a variation";
+                    } else {
+                        message = with_hint(std::move(message), name, control_types());
+                    }
                     errors.push_back({path, std::move(message)});
                 }
                 break;
@@ -346,8 +352,11 @@ std::vector<json::ValidationError> validate_theme(const json::Value& doc) {
                 if (!native.empty() && std::ranges::find(names, item) == names.end()) {
                     std::string message = std::string(native) + " has no " + std::string(kind) +
                                           " item " + quoted(item);
-                    message = names.empty() ? message + "; it has none"
-                                            : with_hint(std::move(message), item, names);
+                    if (names.empty()) {
+                        message += "; it has none";
+                    } else {
+                        message = with_hint(std::move(message), item, names);
+                    }
                     errors.push_back({item_path, std::move(message)});
                     continue;
                 }
