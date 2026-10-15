@@ -57,8 +57,12 @@ slash-cli run --headless --ticks 60 --scene tests/data/basic.scene.json
 ```
 
 ```json
-{"entities":3,"headless":true,"quit_requested":false,"ticks":60}
+{"entities":3,"headless":true,"quit_requested":false,"renderer":"null","ticks":60}
 ```
+
+`renderer` names the device that drew the window: `metal`, `d3d12` or `vulkan`, or `null` when
+headless or when no GPU backend works (a warning in the log says why). Until sprites arrive, the
+window shows Godot's default gray.
 
 With `--serve`, the result also carries the server's `url`, and the game takes the `play` and
 `pause` commands: while paused it keeps serving requests but does not step the world, and
@@ -390,14 +394,15 @@ slash-game --data tests/data/game --headless --ticks 60
 ```
 
 ```json
-{"entities":3,"headless":true,"name":"Test Game","quit_requested":false,"scene":"scenes/main.scene.json","ticks":60}
+{"entities":3,"headless":true,"name":"Test Game","quit_requested":false,"renderer":"null","scene":"scenes/main.scene.json","ticks":60}
 ```
 
 ## Environment variables
 
 | Variable | Effect |
 | --- | --- |
-| `SDL_VIDEO_DRIVER` | SDL3's video driver. `dummy` runs the windowed path with no display |
+| `SDL_VIDEO_DRIVER` | SDL3's video driver. `dummy` runs the windowed path with no display; on Linux, `offscreen` does too and still draws on the GPU |
+| `SDL_GPU_DRIVER` | SDL3's GPU backend (`vulkan`, `metal` or `direct3d12`), overriding the project's `rendering.driver` |
 | `SLASH_ENGINE_DIR` | Engine sources `slash-cli export` builds against |
 | `EMSDK` | The Emscripten SDK, needed for web exports |
 | `SLASH_TOOLCHAINS_DIR` | Where `slash-cli toolchain` installs cross toolchains (default `~/.slash/toolchains`) |

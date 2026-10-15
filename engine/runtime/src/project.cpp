@@ -115,6 +115,28 @@ json::Value project_schema() {
     tick_hz["default"] = Project{}.tick_hz;
     tick_hz["description"] = "Fixed simulation ticks per second.";
 
+    json::Value clear_color;
+    clear_color["type"] = "array";
+    clear_color["items"]["type"] = "number";
+    clear_color["items"]["minimum"] = 0;
+    clear_color["items"]["maximum"] = 1;
+    clear_color["minItems"] = 4;
+    clear_color["maxItems"] = 4;
+    clear_color["default"] = json::Array{0.3, 0.3, 0.3, 1.0}; // Project{}.clear_color
+    clear_color["description"] =
+        "What the window shows behind everything, as [r, g, b, a] from 0 to 1.";
+    json::Value driver;
+    driver["enum"] = json::Array{"auto", "vulkan", "metal", "d3d12", "null"};
+    driver["default"] = Project{}.rendering_driver;
+    driver["description"] = "The GPU backend. auto picks the best one on each machine; null draws "
+                            "nothing.";
+    json::Value rendering;
+    rendering["type"] = "object";
+    rendering["additionalProperties"] = false;
+    rendering["description"] = "How the game draws.";
+    rendering["properties"]["clear_color"] = std::move(clear_color);
+    rendering["properties"]["driver"] = std::move(driver);
+
     json::Value name = string_property("The game's name, shown in its title bar. Exported files "
                                        "use it with only letters and digits kept.");
     name["minLength"] = 1;
@@ -143,6 +165,7 @@ json::Value project_schema() {
                         "\"scenes/main.scene.json\".");
     properties["window"] = std::move(window);
     properties["tick_hz"] = std::move(tick_hz);
+    properties["rendering"] = std::move(rendering);
     return schema;
 }
 
@@ -197,6 +220,17 @@ Result<Project> parse_project(const json::Value& project) {
     }
     if (const json::Value* tick_hz = project.find("tick_hz"); tick_hz != nullptr) {
         out.tick_hz = tick_hz->as_double();
+    }
+    if (const json::Value* rendering = project.find("rendering"); rendering != nullptr) {
+        if (const json::Value* color = rendering->find("clear_color"); color != nullptr) {
+            const json::Array& channels = color->as_array();
+            for (std::size_t i = 0; i < out.clear_color.size(); ++i) {
+                out.clear_color.at(i) = static_cast<float>(channels.at(i).as_double());
+            }
+        }
+        if (const json::Value* driver = rendering->find("driver"); driver != nullptr) {
+            out.rendering_driver = driver->as_string();
+        }
     }
     return out;
 }

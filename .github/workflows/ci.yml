@@ -45,9 +45,13 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install ninja
 
+      # Mesa's software Vulkan (lavapipe) lets the renderer's GPU tests run with no GPU, so a
+      # broken GPU path fails here instead of being skipped.
       - name: Install tools (Linux)
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y $LINUX_SDL_DEPS
+        run: |
+          sudo apt-get update && sudo apt-get install -y $LINUX_SDL_DEPS mesa-vulkan-drivers
+          echo "SLASH_EXPECT_GPU=1" >> "$GITHUB_ENV"
 
       - name: Install tools (Windows)
         if: runner.os == 'Windows'

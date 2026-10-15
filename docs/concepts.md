@@ -38,7 +38,7 @@ engine follows Godot's approach.
                                 |
                                 v
   +----------------------------------------------------------------+
-  | Platform: SDL3 window, fixed-timestep run loop, files          |
+  | Platform and render: SDL3 window, run loop, files, GPU device  |
   +----------------------------------------------------------------+
 ```
 
@@ -48,6 +48,7 @@ The code follows the same split, one CMake library per module under `engine/`:
 | --- | --- |
 | `core` | `Result<T>`, JSON logging, JSON parsing and schemas, reflection, math, the fixed-step clock |
 | `platform` | The SDL3 window, the run loop and file access |
+| `render` | The render device: SDL3's GPU API (Vulkan, Metal, Direct3D 12), or the null device for headless runs |
 | `asset` | Asset handles, loaders and hot reload |
 | `world` | The EnTT world, components, the component registry, scenes and prefabs |
 | `storyboard` | Storyboard files: kinds, checks, versions, queries and edits |
@@ -173,6 +174,22 @@ The world advances in fixed **ticks**: 60 per second by default. A fixed step ke
 deterministic, which lets agents and CI repeat a run and get the same result. `slash-cli run`
 ticks the world in a window or headless; the `step` command advances it a given number of ticks
 from any front end, and `run.until` until a condition on the entities holds.
+
+## Rendering
+
+Everything draws through a **render device**, about a dozen calls: make and update textures,
+begin a frame, draw triangles, end it, and read a texture's pixels back. On a GPU it is SDL3's GPU
+API, which uses Metal, Direct3D 12 or Vulkan, whichever the machine has. Headless runs, and
+machines where no backend starts, use the **null device**: it keeps textures and checks every
+call exactly as the GPU device does, but draws nothing. So code tested headless fails the same
+way on a GPU, and `slash-cli run` and `slash-game` report which device drew in their summary's
+`renderer`. For now a game's window shows its `rendering.clear_color`; sprites are next.
+
+Shaders are written once in HLSL. Vulkan's SPIR-V and Metal's MSL are compiled ahead of time
+and committed, so building the engine needs no shader tools, and Direct3D 12 compiles the HLSL at
+startup with the compiler that comes with Windows. The
+[draw-offscreen example](../examples/draw-offscreen/) draws into a texture and reads it back,
+which is how tests check what a game draws.
 
 ## Commands
 

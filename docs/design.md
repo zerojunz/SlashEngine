@@ -41,7 +41,7 @@ A single `cmake --preset dev && cmake --build --preset dev` must produce the eng
 
 SDL3 is the only platform layer: windowing, input, audio, file I/O, threads and timers all go through it. Rendering sits on SDL3's GPU API (Vulkan, Metal, Direct3D 12) behind a thin `RenderDevice` interface of roughly a dozen calls, so the engine never touches a native graphics API directly.
 
-- **Renderer shape.** A frame graph with two full pipelines. 2D: batched sprites, tilemaps, 2D lights and shadows, canvas shaders. 3D: clustered forward+ with PBR materials, cascaded shadows and post-processing, and global illumination. Shaders are written once in HLSL and cross-compiled with SDL_shadercross at build time.
+- **Renderer shape.** A frame graph with two full pipelines. 2D: batched sprites, tilemaps, 2D lights and shadows, canvas shaders. 3D: clustered forward+ with PBR materials, cascaded shadows and post-processing, and global illumination. Shaders are written once in HLSL. SPIR-V (Vulkan) and MSL (Metal) are compiled from it ahead of time with glslang and SPIRV-Cross and committed, so building the engine needs no shader tools; Direct3D 12 compiles the HLSL at startup with `d3dcompiler_47.dll`, which comes with Windows. SDL_shadercross does the same job but has no release yet and needs DXC to read HLSL, so it can replace these tools later.
 - **Headless backend.** A null device that runs the full simulation with no window or GPU. This is how agents and CI run games, tests and replays on a server.
 - **Offscreen capture.** Any backend can render a frame to an image and return it as PNG. This is how an agent sees the game it is building.
 - **Web.** Web export ships at launch. If SDL3's GPU API still has no web backend by then, SlashEngine adds its own WebGPU backend behind the same interface, with WebGL2 as the fallback for browsers without WebGPU.
@@ -137,7 +137,8 @@ Every line in the repo is Apache 2.0 or comes from a dependency under a permissi
 
 | Library | Used for | License |
 | --- | --- | --- |
-| SDL3, SDL_shadercross | Platform layer, GPU API, shader cross-compiling | zlib |
+| SDL3 | Platform layer, GPU API | zlib |
+| glslang, SPIRV-Cross | Compiling HLSL shaders to SPIR-V and MSL ahead of time; tools only, nothing of theirs ships | BSD-3-Clause and others, Apache 2.0 |
 | EnTT | ECS and runtime type metadata | MIT |
 | yyjson | JSON parsing | MIT |
 | Jolt Physics | 3D physics, soft bodies | MIT |

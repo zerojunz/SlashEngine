@@ -61,14 +61,18 @@ void Loop::request_quit() noexcept {
     finished_ = true;
 }
 
-Result<RunStats> run(Platform& platform, const RunOptions& options, const TickFn& on_tick) {
+Result<RunStats> run(Platform& platform, const RunOptions& options, const TickFn& on_tick,
+                     const FrameFn& on_frame) {
     auto loop = Loop::create(platform, options);
     if (!loop) {
         return loop.error();
     }
     while (loop.value().frame(on_tick)) {
+        if (on_frame) {
+            on_frame();
+        }
         if (!platform.headless()) {
-            // No renderer yet to pace frames with vsync, so yield instead of spinning.
+            // Frames aren't paced to the display yet, so yield instead of spinning.
             SDL_Delay(1);
         }
     }

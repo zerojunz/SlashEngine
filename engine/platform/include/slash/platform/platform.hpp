@@ -41,6 +41,9 @@ public:
 
     [[nodiscard]] bool headless() const noexcept { return headless_; }
 
+    // The main window, for the renderer to draw to; null when headless.
+    [[nodiscard]] SDL_Window* window() const noexcept { return window_; }
+
     // The SDL video driver in use (e.g. "cocoa", "wayland"), or "none" when headless.
     [[nodiscard]] std::string_view video_driver() const;
 
