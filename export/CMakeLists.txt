@@ -36,7 +36,9 @@ set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 # Games support OS versions from 2020 on (docs/roadmap.md). Windows refuses to start an
 # executable whose subsystem version is newer than itself, so 10.0 turns away Windows 8.1 and
-# older. macOS (11.0) is set by slash-cli export, and browsers below.
+# older. MinGW builds keep the default 6.0: Windows 11 and Server 2022 refuse to start one marked
+# 10.0 (0xC000007B, in the loader), and they need Windows 10's Universal CRT anyway. macOS (11.0)
+# is set by slash-cli export, glibc (2.31) by the sysroot Linux builds use, and browsers below.
 if(MSVC)
     set(CMAKE_C_CREATE_WIN32_EXE "/subsystem:windows,10.00")
     set(CMAKE_CXX_CREATE_WIN32_EXE "/subsystem:windows,10.00")
@@ -48,6 +50,13 @@ string(REPLACE "<" "&lt;" SLASH_GAME_NAME_XML "${SLASH_GAME_NAME_XML}")
 string(REPLACE ">" "&gt;" SLASH_GAME_NAME_XML "${SLASH_GAME_NAME_XML}")
 string(REPLACE "\"" "&quot;" SLASH_GAME_NAME_XML "${SLASH_GAME_NAME_XML}")
 string(REPLACE "'" "&apos;" SLASH_GAME_NAME_XML "${SLASH_GAME_NAME_XML}")
+
+# Linux builds use a glibc 2.31 sysroot (see tools/exporter), whose Wayland headers are older than
+# the code any host's wayland-scanner writes. So Linux games use X11, which Wayland desktops run
+# through XWayland, as Godot does by default.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_SYSROOT)
+    set(SDL_WAYLAND OFF CACHE BOOL "" FORCE)
+endif()
 
 # Only the targets the game links are built; tools and tests stay off outside the engine repo.
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/.. slashengine EXCLUDE_FROM_ALL)
@@ -156,9 +165,13 @@ elseif(APPLE)
 else()
     if(WIN32)
         set_target_properties(game PROPERTIES WIN32_EXECUTABLE TRUE)
-    elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-        target_link_options(game PRIVATE -static-libstdc++ -static-libgcc)
     endif()
+    if(WIN32 AND NOT MSVC)
+        # llvm-mingw: link libc++, libunwind and winpthreads in, so there are no DLLs to ship.
+        target_link_options(game PRIVATE -static)
+    endif()
+    # Linux games link the system's libstdc++ and libgcc_s, which every distribution ships; built
+    # against GCC 10's, they need nothing newer than Ubuntu 20.04 and Debian 11 have.
     install(TARGETS game RUNTIME DESTINATION . COMPONENT game)
     install(DIRECTORY ${SLASH_GAME_DATA}/ DESTINATION data COMPONENT game)
 endif()

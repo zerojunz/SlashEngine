@@ -84,15 +84,21 @@ Built in two halves.
 - [x] iOS exports: an `.app` for the Simulator, tested there in CI, and an `.ipa` for devices
       signed with the team's identity and provisioning profile
 - [ ] App icons from one image for every platform, which the App Store and Google Play require
-- [ ] `slash-cli toolchain install`: pinned open-source cross toolchains (llvm-mingw, Clang with a
-      Linux sysroot, Android NDK), so one Mac builds every target
+- [x] `slash-cli toolchain install`: pinned open-source cross toolchains (llvm-mingw and Debian
+      11 sysroots with glibc 2.31), so one Mac builds Windows and Linux x86_64 and arm64 games,
+      tested in CI by running them on Windows and Ubuntu 20.04
+- [ ] `slash-cli toolchain install` for Emscripten and the Android SDK, NDK and JDK, so web and
+      Android exports need nothing installed by hand either
+- [ ] Wayland in Linux exports (they use X11, which Wayland desktops run through XWayland,
+      because the glibc 2.31 sysroot's Wayland is too old for SDL's generated protocol code)
 - [x] `export_presets.json`, with signing secrets read from environment variables: macOS
       codesigning (ad hoc by default) and notarization, Windows signtool
 - [x] A throwaway Android debug keystore, and release keystores from environment variables
 - [x] The `export.run` command, so agents export over MCP
 - [x] A GitHub Actions workflow from `slash-cli init` that builds and tests every platform on
       native runners
-- [x] Exports pinned to the 2020 minimums: macOS 11, iOS 14, Windows 10 (subsystem version 10.0),
+- [x] Exports pinned to the 2020 minimums: macOS 11, iOS 14, Windows 10 (subsystem version 10.0
+      in MSVC builds),
       Android 11, Chrome 85, Firefox 79 and Safari 15
 
 Exit: an empty project exports to all six platforms and passes headless tests on each.
@@ -427,9 +433,10 @@ calls and tokens ([design section 6](design.md#6-cheap-for-agents-to-use)).
 | Android | No | Yes (4b) | Android 11 (API level 30) |
 | Web | No | Yes (4a) | Chrome and Edge 85, Firefox 79, Safari 15 |
 
-Until milestone 4b is done, each desktop export is built on a machine running that platform and
-iOS exports on a Mac with Xcode; web exports build on any host with Emscripten, and Android
-exports on any host with the Android SDK, NDK and a JDK.
+A Mac builds every platform: macOS and iOS with Xcode's tools, and Windows and Linux with the
+toolchains `slash-cli toolchain install` downloads. Linux machines build Linux and Windows the
+same way, and Windows machines build Windows with MSVC. Web exports build on any host with
+Emscripten, and Android exports on any host with the Android SDK, NDK and a JDK.
 
 SlashEngine supports operating system versions released in 2020 or later, and nothing older. Each
 minimum above is the first release of its OS from 2020. SDL3's GPU API needs less than this on

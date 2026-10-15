@@ -97,6 +97,13 @@ jobs:
           path: .cpm-cache
           key: cpm-${{ matrix.os }}-${{ hashFiles('cmake/Dependencies.cmake') }}
 
+      - name: Cache downloaded toolchains
+        if: matrix.platform == 'linux'
+        uses: actions/cache@v4
+        with:
+          path: ~/.slash/toolchains
+          key: toolchains-${{ matrix.os }}-${{ hashFiles('tools/exporter/src/toolchains.cpp') }}
+
       - name: Install tools (macOS)
         if: runner.os == 'macOS'
         run: brew install ninja
@@ -139,6 +146,10 @@ jobs:
           app=$(ls -d build/empty-game/build/export/macos/*.app)
           codesign --verify --strict --verbose=2 "$app"
           test "$(plutil -extract LSMinimumSystemVersion raw "$app/Contents/Info.plist")" = "11.0"
+
+      - name: Check the glibc the Linux game needs and run it on Ubuntu 20.04
+        if: matrix.platform == 'linux'
+        run: .github/scripts/check-linux-game.sh build/empty-game/build/export/linux amd64
 
       - name: Check the Simulator app and build an ad hoc .ipa for devices
         if: matrix.platform == 'ios'
@@ -232,6 +243,128 @@ jobs:
           name: export-log-${{ matrix.platform }}
           path: build/empty-game/.slash/export/*/export.log
           if-no-files-found: ignore
+
+  # A Mac builds Windows and Linux games with the toolchains slash-cli downloads; the runners
+  # for those platforms then run them.
+  cross-export:
+    name: Cross-export from macOS
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache fetched dependencies
+        uses: actions/cache@v4
+        with:
+          path: .cpm-cache
+          key: cpm-macos-14-${{ hashFiles('cmake/Dependencies.cmake') }}
+
+      - name: Cache downloaded toolchains
+        uses: actions/cache@v4
+        with:
+          path: ~/.slash/toolchains
+          key: toolchains-macos-14-${{ hashFiles('tools/exporter/src/toolchains.cpp') }}
+
+      - name: Install tools
+        run: brew install ninja
+
+      - name: Build slash-cli
+        run: |
+          cmake --preset release
+          cmake --build --preset release --target slash-cli
+
+      - name: Export Windows, Linux and Linux arm64 games
+        run: |
+          cli=./build/release/tools/slash-cli/slash-cli
+          $cli toolchain install
+          $cli toolchain list
+          $cli init build/empty-game
+          echo '{"format": 1, "presets": {"linux-arm64": {"platform": "linux", "linux": {"arch": "arm64"}}}}' \
+            > build/empty-game/export_presets.json
+          for preset in windows linux linux-arm64; do
+            if ! $cli export $preset --project build/empty-game --test > build/$preset.json; then
+              cat build/$preset.json
+              exit 1
+            fi
+            cat build/$preset.json
+            jq -e '.test.skipped' build/$preset.json
+          done
+          # A tarball keeps the games' executable bits, which artifacts drop.
+          tar -C build/empty-game/build/export -cf build/cross-exports.tar windows linux linux-arm64
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cross-exports
+          path: build/cross-exports.tar
+
+      - name: Upload the export logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: export-log-cross
+          path: build/empty-game/.slash/export/*/export.log
+          if-no-files-found: ignore
+
+  cross-run:
+    name: Run cross-exported games (${{ matrix.name }})
+    needs: cross-export
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows
+            os: windows-2022
+          - name: Linux
+            os: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: cross-exports
+
+      - name: Unpack the games
+        shell: bash
+        run: mkdir -p build/cross && tar -xf cross-exports.tar -C build/cross
+
+      - name: Set up MSVC tools (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Check and run the Windows game
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $exe = (Get-ChildItem build/cross/windows/*.exe)[0].FullName
+          $headers = dumpbin /headers $exe
+          if (-not ($headers -match 'subsystem \(Windows GUI\)')) { $headers; exit 1 }
+          # libc++, libunwind and winpthreads are linked in, so the game needs only Windows DLLs.
+          $dependents = dumpbin /dependents $exe
+          $dependents
+          if ($dependents -match '(c\+\+|unwind|winpthread|gcc).*\.dll') { exit 1 }
+          # Start-Process waits for the game, which uses the GUI subsystem, and keeps its exit code.
+          $out = "$env:RUNNER_TEMP\game-out.txt"
+          $err = "$env:RUNNER_TEMP\game-err.txt"
+          $game = Start-Process -FilePath $exe -ArgumentList '--headless', '--ticks', '60' `
+            -WorkingDirectory (Split-Path $exe) -NoNewWindow -Wait -PassThru `
+            -RedirectStandardOutput $out -RedirectStandardError $err
+          Get-Content $err
+          $output = Get-Content -Raw $out
+          $output
+          'exit code 0x{0:X8}' -f $game.ExitCode
+          if ($game.ExitCode -ne 0 -or -not ($output -match '"ticks":60')) { $headers; exit 1 }
+
+      - name: Set up QEMU for arm64 (Linux)
+        if: runner.os == 'Linux'
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Check and run the Linux games on Ubuntu 20.04
+        if: runner.os == 'Linux'
+        run: |
+          .github/scripts/check-linux-game.sh build/cross/linux amd64
+          .github/scripts/check-linux-game.sh build/cross/linux-arm64 arm64
 
   lint:
     name: Format and clang-tidy
