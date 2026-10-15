@@ -27,6 +27,7 @@ Result<entt::entity> World::create(std::string_view id) {
     const entt::entity entity = registry_.create();
     registry_.emplace<EntityId>(entity, std::string(id));
     by_id_.emplace(std::string(id), entity);
+    notify(std::string(kEntityCreated), id, {});
     return entity;
 }
 
@@ -127,9 +128,24 @@ bool World::is_valid_id(std::string_view id) {
 }
 
 void World::on_id_destroyed(entt::registry& registry, entt::entity entity) {
-    const auto it = by_id_.find(registry.get<EntityId>(entity).value);
+    const std::string& id = registry.get<EntityId>(entity).value;
+    const auto it = by_id_.find(id);
     if (it != by_id_.end() && it->second == entity) {
         by_id_.erase(it);
+        notify(std::string(kEntityDestroyed), id, {});
+    }
+}
+
+void World::emit(std::string kind, std::string_view id, json::Value data) {
+    SLASH_ASSERT(!kind.empty(), "events need a kind");
+    SLASH_ASSERT(!kind.starts_with("entity.") && kind != "command",
+                 "event kinds starting with \"entity.\" and \"command\" are the engine's own");
+    notify(std::move(kind), id, std::move(data));
+}
+
+void World::notify(std::string kind, std::string_view id, json::Value data) {
+    if (listener_) {
+        listener_(Event{std::move(kind), std::string(id), std::move(data), tick_});
     }
 }
 

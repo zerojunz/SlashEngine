@@ -222,6 +222,14 @@ same form, and `world.restore` puts the entities back, as one undo step. Changes
 entity ID: `added` and `removed` IDs, and under `changed` the new value of every field that
 differs. A removed component is `null`.
 
+### Events
+
+`events.subscribe` starts queueing **events**, which `events.read` returns: entities created and
+destroyed (by commands or by systems), a `command` event with the changes for each command that
+changed the world, and events the game emits itself. Gameplay code emits one with
+`world.emit("coin_collected", "coin", data)`, much as a Godot node emits a signal. Polling
+`events.read` is cheaper than re-querying the world, and it works the same over every front end.
+
 ## Front ends
 
 | Front end | Speaks | Use it for |

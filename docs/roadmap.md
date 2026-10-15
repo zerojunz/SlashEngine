@@ -111,7 +111,7 @@ rendering on top.
 - [x] Systems registered with the world, run in a fixed order each tick; `engine.describe`
       already returns an empty `systems` list for them
 - [x] Run control commands: `play` and `pause`
-- [ ] `events.subscribe` for a stream of world events
+- [x] `events.subscribe` for a stream of world events
 - [ ] Prefabs: an entity `"extends"` a `.prefab.json` file and overrides fields
 - [ ] Asset handles with reference counting and hot reload, and an `asset.list` command
 - [ ] Storyboard: the game's style, world, story, design rules, names, decisions and open work

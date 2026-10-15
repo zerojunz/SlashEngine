@@ -19,6 +19,7 @@ class Session;
 //   step                                            advance the simulation
 //   undo, redo, history.get                         undo history
 //   batch                                           run many commands as one, all or nothing
+//   events.subscribe, events.read, events.unsubscribe  queued world events
 //   log.tail                                        recent log lines
 void register_builtin_commands(Registry& registry);
 
