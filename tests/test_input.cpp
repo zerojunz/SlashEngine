@@ -133,8 +133,8 @@ TEST_CASE("input event errors give the path and the closest name") {
     CHECK(messages(input::validate_event(parse(R"({"type": "key"})"), input::Use::Binding)) ==
           std::vector<std::string>{R"(: key bindings need "key" or "physical_key")"});
     // Bindings say what presses an action, not where or when.
-    CHECK(messages(input::validate_event(
-              parse(R"({"type": "key", "key": "A", "pressed": true})"), input::Use::Binding))
+    CHECK(messages(input::validate_event(parse(R"({"type": "key", "key": "A", "pressed": true})"),
+                                         input::Use::Binding))
               .size() == 1);
     CHECK_FALSE(input::validate_event(parse(R"({"type": "screen_touch", "position": [0, 0]})"),
                                       input::Use::Binding)
@@ -143,9 +143,10 @@ TEST_CASE("input event errors give the path and the closest name") {
                                                    "axis_value": 0})"),
                                          input::Use::Binding)) ==
           std::vector<std::string>{"/axis_value: a binding's axis_value is -1 or 1"});
-    CHECK(messages(input::validate_event(parse(R"({"type": "joypad_button", "button": "triangle"})"),
-                                         input::Use::Event))
-              .size() == 1);
+    CHECK(
+        messages(input::validate_event(parse(R"({"type": "joypad_button", "button": "triangle"})"),
+                                       input::Use::Event))
+            .size() == 1);
 }
 
 TEST_CASE("bindings match events as Godot's action_match") {
@@ -471,8 +472,7 @@ TEST_CASE("project.json input adds actions to Godot's ui_* ones") {
         "input": {"jump": {"events": [{"type": "key", "key": "Space", "pressed": true}]}}
     })");
     CHECK(messages(runtime::validate_project(pressed)) ==
-          std::vector<std::string>{
-              R"(/input/jump/events/0/pressed: unknown property "pressed")"});
+          std::vector<std::string>{R"(/input/jump/events/0/pressed: unknown property "pressed")"});
 }
 
 TEST_CASE("SdlReader turns SDL events into input events") {
@@ -544,8 +544,8 @@ struct Session {
     Session() {
         world::register_builtin_components(components);
         command::register_builtin_commands(commands);
-        session = std::make_unique<command::Session>(components, commands,
-                                                     command::SessionOptions{});
+        session =
+            std::make_unique<command::Session>(components, commands, command::SessionOptions{});
     }
 
     command::Reply call(std::string_view name, std::string_view params = "{}") {
@@ -573,8 +573,7 @@ TEST_CASE("input.inject queues events that the next step applies") {
     CHECK(s.ok("input.state") == parse(R"({"tick": 0,
         "actions": {"ui_accept": {"pressed": true, "just_pressed": true}},
         "keys": ["Enter"], "mouse": {"position": [64, 32]}})"));
-    CHECK(s.ok("input.state", R"({"actions": ["ui_accept", "ui_cancel"]})") ==
-          parse(R"({"tick": 0,
+    CHECK(s.ok("input.state", R"({"actions": ["ui_accept", "ui_cancel"]})") == parse(R"({"tick": 0,
         "actions": {"ui_accept": {"pressed": true, "just_pressed": true},
                     "ui_cancel": {"pressed": false}},
         "keys": ["Enter"], "mouse": {"position": [64, 32]}})"));
@@ -589,8 +588,7 @@ TEST_CASE("input.inject queues events that the next step applies") {
                     .ok);
     CHECK(s.ok("input.state").find("queued")->as_int() == 1);
     s.ok("step");
-    CHECK(*s.ok("input.state").find("actions") ==
-          parse(R"({"ui_accept": {"pressed": true},
+    CHECK(*s.ok("input.state").find("actions") == parse(R"({"ui_accept": {"pressed": true},
                     "ui_cancel": {"pressed": true, "just_pressed": true}})"));
 }
 

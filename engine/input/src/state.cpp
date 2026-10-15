@@ -25,8 +25,8 @@ constexpr std::size_t kMaxBindings = 32;
 constexpr std::size_t kMaxActionName = 64;
 
 struct ActionState {
-    // What each device's matching binding last said, by (device, binding index). An Action event
-    // uses the index after the last binding.
+    // What each device's matching binding last said, by (device, binding index). Action events
+    // use their own index, so rebinding never strands a press made by name.
     struct Slot {
         bool pressed = false;
         float strength = 0.0F;
@@ -50,7 +50,7 @@ struct InputState {
     Map map;
     Settings settings;
     std::vector<Pending> queue;
-    std::vector<Event> applied; // this tick's events
+    std::vector<Event> applied;  // this tick's events
     std::uint64_t tick = kNever; // the tick the input system last ran
     std::map<std::string, ActionState, std::less<>> actions;
     std::set<Key> keys;
@@ -246,8 +246,7 @@ void apply(InputState& state, Event event, bool emulated) {
     case EventType::ScreenDrag: {
         const auto touch = state.touches.find(event.index);
         if (!event.relative) {
-            event.relative =
-                touch != state.touches.end() ? event.position - touch->second : Vec2{};
+            event.relative = touch != state.touches.end() ? event.position - touch->second : Vec2{};
         }
         state.touches[event.index] = event.position;
         if (state.settings.emulate_mouse_from_touch && event.index == state.mouse_from_touch) {
@@ -327,7 +326,7 @@ json::Value point_json(Vec2 value) {
 
 Map Map::with_defaults() {
     Map map;
-    const auto add = [&map](const std::string& name, std::vector<Event> events) {
+    const auto add = [&map](const std::string& name, const std::vector<Event>& events) {
         map.add_action(name, kToggleDeadzone);
         for (const Event& event : events) {
             map.action_add_event(name, event);
@@ -369,8 +368,8 @@ void Map::erase_action(std::string_view name) {
 
 void Map::action_add_event(std::string_view name, const Event& binding) {
     const auto found = actions_.find(name);
-    if (found == actions_.end() || std::ranges::find(found->second.events, binding) !=
-                                       found->second.events.end()) {
+    if (found == actions_.end() ||
+        std::ranges::find(found->second.events, binding) != found->second.events.end()) {
         return;
     }
     found->second.events.push_back(binding);
@@ -413,10 +412,9 @@ std::optional<Map::Found> Map::find_event(std::string_view name, const Event& ev
             return std::nullopt;
         }
         const float strength = event.pressed ? event.strength : 0.0F;
-        return Found{.index = action->events.size(),
-                     .match = {.pressed = event.pressed,
-                               .strength = strength,
-                               .raw_strength = strength}};
+        return Found{
+            .index = std::numeric_limits<std::size_t>::max(),
+            .match = {.pressed = event.pressed, .strength = strength, .raw_strength = strength}};
     }
     for (std::size_t i = 0; i < action->events.size(); ++i) {
         const Event& binding = action->events[i];
@@ -680,9 +678,8 @@ float get_axis(const world::World& world, std::string_view negative, std::string
     return get_action_strength(world, positive) - get_action_strength(world, negative);
 }
 
-Vec2 get_vector(const world::World& world, std::string_view negative_x,
-                std::string_view positive_x, std::string_view negative_y,
-                std::string_view positive_y, float deadzone) {
+Vec2 get_vector(const world::World& world, std::string_view negative_x, std::string_view positive_x,
+                std::string_view negative_y, std::string_view positive_y, float deadzone) {
     const Vec2 vector{
         get_action_raw_strength(world, positive_x) - get_action_raw_strength(world, negative_x),
         get_action_raw_strength(world, positive_y) - get_action_raw_strength(world, negative_y)};
@@ -777,8 +774,9 @@ json::Value state_json(const world::World& world, std::span<const std::string> a
     };
     if (actions.empty()) {
         for (const auto& [name, action] : state->actions) {
-            if (action.pressed || (state->tick != kNever && (action.pressed_tick == state->tick ||
-                                                             action.released_tick == state->tick))) {
+            if (action.pressed ||
+                (state->tick != kNever &&
+                 (action.pressed_tick == state->tick || action.released_tick == state->tick))) {
                 describe(name, &action);
             }
         }

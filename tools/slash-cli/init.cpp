@@ -130,6 +130,10 @@ environment variables, never from the file.
   `.font.json` files (`slash-cli schema font`) for distance-field fonts that stay sharp at any
   size. Check UI with `ui_layout` (each control's rect and each label's lines) rather than a
   screenshot.
+- Controls are input actions in `project.json`'s `input`, as Godot's input map: name what the
+  game does (`jump`, `move_left`) and bind keys, mouse buttons, gamepad buttons and sticks to it;
+  gameplay code reads actions, never keys. Try them with `input_inject` (keys, clicks, touches,
+  sticks or actions by name) and `step`, then `input_state`.
 - `storyboard/`: the game's facts as typed entries (`slash-cli schema storyboard`), and
   `journal.jsonl`, the record of who changed them. Commit both.
 )";
