@@ -55,6 +55,7 @@ as `entity.get`, reject it as an unknown param.
 | Scene | [`scene.get`](#sceneget), [`scene.new`](#scenenew), [`scene.open`](#sceneopen), [`scene.save`](#scenesave) |
 | Entities | [`entity.create`](#entitycreate), [`entity.destroy`](#entitydestroy), [`entity.get`](#entityget) |
 | Prefabs | [`prefab.save`](#prefabsave) |
+| Assets | [`asset.list`](#assetlist) |
 | Components | [`component.set`](#componentset), [`component.remove`](#componentremove) |
 | Query | [`world.query`](#worldquery) |
 | Snapshots | [`world.snapshot`](#worldsnapshot), [`world.diff`](#worlddiff), [`world.restore`](#worldrestore) |
@@ -64,7 +65,7 @@ as `entity.get`, reject it as an unknown param.
 | Observe | [`events.subscribe`](#eventssubscribe), [`events.read`](#eventsread), [`events.unsubscribe`](#eventsunsubscribe), [`log.tail`](#logtail) |
 | Export | [`export.run`](#exportrun) |
 
-Planned commands from the [roadmap](../roadmap.md), not yet available: `input.inject`, `frame.capture`, `replay.run`, `asset.list` and `perf.stats`.
+Planned commands from the [roadmap](../roadmap.md), not yet available: `input.inject`, `frame.capture`, `replay.run` and `perf.stats`.
 
 ## Describe
 
@@ -286,6 +287,30 @@ Needs: `read`, `filesystem`.
 ```
 
 Saving an entity to the prefab it extends fails, since the prefab would extend itself.
+
+## Assets
+
+### asset.list
+
+Lists loaded assets and the prefab files entities extend. `version` is 1 when a file is first
+loaded and one more each time it reloads; `refs` counts the handles to an asset, or the entities
+that extend a prefab. Files reload on their own when they change (see
+[hot reload](../concepts.md#assets)), so this command is for checking what is loaded and whether
+an edit was picked up.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `type` | string | all | Only assets of this type: `prefab`, `json`, `text` or one a game added |
+
+Needs: `read`.
+
+```json
+{}
+```
+
+```json
+{"assets":[{"path":"data/tuning.json","refs":1,"type":"json","version":2},{"path":"prefabs/enemy.prefab.json","refs":3,"type":"prefab","version":1}]}
+```
 
 ## Components
 
@@ -578,7 +603,8 @@ events; when a queue is full the oldest event is dropped.
 | --- | --- | --- |
 | `entity.created` | An entity with an ID is created, by a command or a system | `id` |
 | `entity.destroyed` | An entity with an ID is destroyed | `id` |
-| `command` | A command changed the world, including `step`, `undo` and `redo` | `command`, and `changes` as [`world.diff`](#worlddiff) returns them |
+| `command` | A command changed the world, including `step`, `undo` and `redo`, or a prefab reload did (`"command": "asset.reload"`) | `command`, and `changes` as [`world.diff`](#worlddiff) returns them |
+| `asset.reloaded` | A loaded asset or prefab file changed on disk | `data`: `path`, `type`, and `version`, or `error` if it no longer loads |
 | anything else | Gameplay code called `World::emit`, e.g. `"coin_collected"` | `id` and `data`, if the game gave them |
 
 Every event also has `seq`, which counts up across the session, and `tick`, the world's tick when

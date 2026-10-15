@@ -2,6 +2,8 @@
 
 #include "slash/core/result.hpp"
 
+#include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -19,6 +21,16 @@ namespace slash::platform {
 
 // True if a file or directory exists at path.
 [[nodiscard]] bool exists(std::string_view path);
+
+// When a file last changed, and its size. Hot reload compares stamps to notice edits.
+struct FileStamp {
+    std::int64_t modified = 0; // nanoseconds since 1970
+    std::uint64_t size = 0;
+    bool operator==(const FileStamp&) const = default;
+};
+
+// The file's stamp, or nullopt if there is no file at path.
+[[nodiscard]] std::optional<FileStamp> file_stamp(std::string_view path);
 
 // The folder holding the running program's bundled files, ending in a separator: the app
 // bundle's Resources folder on macOS and iOS, the executable's folder on Windows and Linux, and

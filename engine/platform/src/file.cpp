@@ -40,6 +40,15 @@ bool exists(std::string_view path) {
     return SDL_GetPathInfo(name.c_str(), nullptr);
 }
 
+std::optional<FileStamp> file_stamp(std::string_view path) {
+    const std::string name(path);
+    SDL_PathInfo info;
+    if (!SDL_GetPathInfo(name.c_str(), &info) || info.type != SDL_PATHTYPE_FILE) {
+        return std::nullopt;
+    }
+    return FileStamp{.modified = info.modify_time, .size = info.size};
+}
+
 std::string base_path() {
     const char* path = SDL_GetBasePath();
     return path == nullptr ? std::string() : std::string(path);

@@ -64,6 +64,10 @@ With `--serve`, the result also carries the server's `url`, and the game takes t
 `pause` commands: while paused it keeps serving requests but does not step the world, and
 `--ticks` still counts the loop's ticks.
 
+Every 15 ticks it checks the files the game has loaded and reloads the ones that changed: an
+edited prefab updates its instances and keeps their overrides (see
+[hot reload](../concepts.md#assets)).
+
 ### scene validate
 
 Checks a scene or a `.prefab.json` file and lists every error, each with its JSON Pointer path.
@@ -164,7 +168,8 @@ echo '{"jsonrpc":"2.0","id":1,"method":"entity.get","params":{"id":"player","omi
 ### serve
 
 Serves commands over [HTTP](protocols.md#http) on this machine until stopped (Ctrl+C), with no
-window and no ticking. Use `run --serve` to serve a running game instead.
+window and no ticking. Use `run --serve` to serve a running game instead. Edited prefab and
+asset files reload while it runs.
 
 | Flag | Meaning |
 | --- | --- |

@@ -50,7 +50,8 @@ slash-cli call batch '{"commands": [...]}' --scene scenes/main.scene.json --save
 `slash-cli run --serve` plays the game and serves the same commands over HTTP on this machine,
 so you can inspect and change the live world. `slash-mcp --live --project .` connects an MCP
 client to it; for Claude Code: `claude mcp add slashengine-live -- slash-mcp --live --project .`.
-The address and token are in `.slash/server.json`, which stays out of git.
+The address and token are in `.slash/server.json`, which stays out of git. Edited prefab and
+asset files reload while it runs: prefab instances update and keep their overrides.
 
 ## Work efficiently
 

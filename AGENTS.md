@@ -68,6 +68,15 @@ $cli scene format --check level.scene.json          # exit 1 if not canonical
 Validate after editing a scene or prefab by hand, and format before committing one. Both
 commands take `.prefab.json` files too.
 
+## Assets and hot reload
+
+`engine/asset` loads files by project path into shared, reference-counted handles
+(`assets.load<json::Value>("data/tuning.json")`); `.json`, `.txt` and `.csv` load out of the box
+and games add types with `add_type`. Sessions and games own an `asset::Assets`, and prefab files
+are read through it. `Session::poll_assets()` reloads changed files and updates prefab instances
+(keeping overrides); every command polls first, and `slash-cli run` and `serve` poll between
+ticks. `asset.list` shows what is loaded, and subscribers get `asset.reloaded` events.
+
 ## Commands, MCP and JSON-RPC
 
 Every change to a world goes through a command registered in `engine/command`. The same registry
@@ -227,10 +236,11 @@ CI rejects unformatted code and any clang-tidy finding.
   `kPascalCase` constants.
 - Headers live in `engine/<module>/include/slash/<module>/`, sources in `engine/<module>/src/`.
   Modules: `core` (Result, logging, JSON, reflection, math), `platform` (SDL3 window, run loop,
-  files, child processes), `world` (EnTT world, components, scenes), `command` (commands,
-  sessions with undo, JSON-RPC and MCP), `server` (localhost HTTP over a session) and `runtime`
-  (project files and the game executable). Tool-only libraries such as `tools/exporter` use the
-  same layout and may use exceptions.
+  files, child processes), `asset` (asset handles, loaders, hot reload), `world` (EnTT world,
+  components, scenes and prefabs), `command` (commands, sessions with undo, JSON-RPC and MCP),
+  `server` (localhost HTTP over a session) and `runtime` (project files and the game
+  executable). Tool-only libraries such as `tools/exporter` use the same layout and may use
+  exceptions.
 - New dependencies go in `cmake/Dependencies.cmake`, pinned to a tag, and in `THIRD_PARTY.md`
   with their license. Only permissive licenses (MIT, BSD, zlib, Apache 2.0, Boost, MIT-0,
   public domain). Never copy code from closed engines.

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "slash/asset/assets.hpp"
 #include "slash/command/command.hpp"
 #include "slash/core/json.hpp"
 #include "slash/core/result.hpp"
@@ -69,6 +70,15 @@ public:
 
     // Resolves a path inside the project folder. Rejects absolute paths and any ".." segment.
     [[nodiscard]] Result<std::string> resolve_path(std::string_view relative) const;
+
+    // Assets loaded from the project folder, and the prefab files the world reads through them.
+    [[nodiscard]] asset::Assets& assets() noexcept { return assets_; }
+    [[nodiscard]] const asset::Assets& assets() const noexcept { return assets_; }
+    // Hot reload: reloads assets whose files changed and updates the instances of changed prefabs,
+    // keeping their overrides. Queues an "asset.reloaded" event per changed file and a "command"
+    // event named "asset.reload" with the changes to the world. It is not an undo step. Every
+    // command polls first; hosts that tick the world also poll between ticks.
+    void poll_assets();
 
     // The project-relative path of the open scene, or "" for an unsaved one.
     [[nodiscard]] const std::string& scene_path() const noexcept { return scene_path_; }
@@ -160,6 +170,7 @@ private:
 
     const Registry* commands_;
     SessionOptions options_;
+    asset::Assets assets_;
     world::World world_;
     std::string scene_path_;
     std::deque<Snapshot> undo_;

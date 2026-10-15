@@ -26,4 +26,8 @@ template <typename Range>
     return best;
 }
 
+// Whether path names a file inside a project: relative, separated by '/', with no empty, "." or
+// ".." segments, and no backslash or ':'. Such a path names the same file on every platform.
+[[nodiscard]] bool is_project_path(std::string_view path);
+
 } // namespace slash
