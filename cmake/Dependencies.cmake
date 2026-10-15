@@ -1,13 +1,29 @@
-# Third-party dependencies, pinned to exact tags. Every entry must be listed in THIRD_PARTY.md
-# with its license; only permissive licenses are allowed (see docs/design.md).
+# Third-party dependencies. Each is pinned in dependencies.json, with its repository, exact tag,
+# license and the hash of its license file, and listed in THIRD_PARTY.md; only permissive
+# licenses are allowed (see docs/design.md). The "licenses" test checks all of that, so add a
+# dependency with slash_add_dependency, never with CPMAddPackage or FetchContent directly.
 
 include(CPM)
 
-CPMAddPackage(
-    NAME SDL3
-    GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
-    GIT_TAG release-3.4.18
-    GIT_SHALLOW TRUE
+file(READ ${CMAKE_CURRENT_LIST_DIR}/dependencies.json SLASH_DEPENDENCY_MANIFEST)
+set(SLASH_DEPENDENCIES "")
+
+# Fetches a dependency at the repository and tag dependencies.json pins; other arguments go to
+# CPMAddPackage. A macro, so CPM's <name>_SOURCE_DIR and <name>_ADDED reach the caller.
+macro(slash_add_dependency name)
+    string(JSON _slash_repository GET "${SLASH_DEPENDENCY_MANIFEST}" dependencies ${name}
+        repository)
+    string(JSON _slash_tag GET "${SLASH_DEPENDENCY_MANIFEST}" dependencies ${name} tag)
+    CPMAddPackage(
+        NAME ${name}
+        GIT_REPOSITORY ${_slash_repository}
+        GIT_TAG ${_slash_tag}
+        GIT_SHALLOW TRUE
+        ${ARGN})
+    list(APPEND SLASH_DEPENDENCIES ${name})
+endmacro()
+
+slash_add_dependency(SDL3
     SYSTEM TRUE
     OPTIONS
         "SDL_SHARED OFF"
@@ -18,31 +34,18 @@ CPMAddPackage(
         "SDL_INSTALL OFF")
 
 if(SLASH_BUILD_TESTS)
-    CPMAddPackage(
-        NAME doctest
-        GIT_REPOSITORY https://github.com/doctest/doctest.git
-        GIT_TAG v2.5.2
-        GIT_SHALLOW TRUE
+    slash_add_dependency(doctest
         SYSTEM TRUE
         OPTIONS
             "DOCTEST_WITH_TESTS OFF"
             "DOCTEST_NO_INSTALL ON")
 endif()
 
-CPMAddPackage(
-    NAME EnTT
-    GIT_REPOSITORY https://github.com/skypjack/entt.git
-    GIT_TAG v3.16.0
-    GIT_SHALLOW TRUE
-    SYSTEM TRUE)
+slash_add_dependency(EnTT SYSTEM TRUE)
 
 # JSON reader used by slash::json. The engine writes JSON itself so it controls the canonical
 # layout; yyjson only parses and formats numbers.
-CPMAddPackage(
-    NAME yyjson
-    GIT_REPOSITORY https://github.com/ibireme/yyjson.git
-    GIT_TAG 0.13.0
-    GIT_SHALLOW TRUE
+slash_add_dependency(yyjson
     SYSTEM TRUE
     OPTIONS
         "YYJSON_INSTALL OFF"
@@ -54,12 +57,7 @@ CPMAddPackage(
 
 # HTTP server and client for the localhost REST mirror and MCP over HTTP. Header-only, used
 # without TLS, compression or exceptions, and only inside slash_server.
-CPMAddPackage(
-    NAME httplib
-    GIT_REPOSITORY https://github.com/yhirose/cpp-httplib.git
-    GIT_TAG v0.58.0
-    GIT_SHALLOW TRUE
-    DOWNLOAD_ONLY TRUE)
+slash_add_dependency(httplib DOWNLOAD_ONLY TRUE)
 if(httplib_ADDED)
     find_package(Threads REQUIRED)
     add_library(slash_httplib INTERFACE)
