@@ -82,7 +82,12 @@ slash-cli scene validate <file>
 {"entities":3,"valid":true}
 ```
 
-For a prefab the result counts its `components` instead of `entities`.
+For a prefab the result counts its `components` instead of `entities`. When the project has a
+[storyboard](storyboard-format.md#storyref), each `StoryRef` ID must name one of its entries:
+
+```json
+{"errors":[{"message":"unknown storyboard entry \"character/pilto\"; did you mean \"character/pilot\"?","path":"/entities/player/components/StoryRef/ids/0"}],"valid":false}
+```
 
 ### scene format
 
@@ -109,9 +114,10 @@ slash-cli schema presets
 
 ### project validate
 
-Checks a folder's `project.json` and, if there is one, its `export_presets.json`, and lists every
-error with its file and JSON Pointer path. Exit code 1 if either is invalid. The folder defaults
-to `.`.
+Checks a folder's `project.json`, its `export_presets.json` if there is one, and its storyboard
+with [`storyboard.check`](commands.md#storyboardcheck), and lists every error with its file and
+JSON Pointer path. Exit code 1 if any is invalid. Storyboard warnings, such as a link to a file
+that does not exist yet, are listed under `warnings` and do not fail. The folder defaults to `.`.
 
 ```bash
 slash-cli project validate tests/data/game
@@ -201,13 +207,19 @@ slash-cli init [dir]
 | `--mcp-command <cmd>` | How agents launch `slash-mcp` (default `slash-mcp`, found on `PATH`) |
 
 ```json
-{"created":["project.json","AGENTS.md","CLAUDE.md",".mcp.json",".cursor/mcp.json",".codex/config.toml",".claude/skills/slashengine/SKILL.md",".github/workflows/export.yml","scenes/main.scene.json",".gitignore"],"skipped":[]}
+{"created":["project.json","AGENTS.md","CLAUDE.md",".mcp.json",".cursor/mcp.json",".codex/config.toml",".claude/skills/slashengine/SKILL.md",".github/workflows/export.yml","scenes/main.scene.json","storyboard/glossary.json","storyboard/work.json",".gitignore"],"skipped":[]}
 ```
 
 The `project.json` it writes is named after the folder and points at `scenes/main.scene.json`.
+The starter [storyboard](storyboard-format.md) records the game's title in the glossary and an
+open task to fill in the rest, and `AGENTS.md` and the skill tell agents to call
+`storyboard_brief` before a task and `storyboard_check` after it.
+
 `.github/workflows/export.yml` exports the game for every platform on GitHub Actions, each on a
-native runner, runs each export headless and uploads the results. It pins the engine to the commit
-`init` ran from (`SLASHENGINE_REF`), or to its version tag when that commit is unknown.
+native runner, runs each export headless and uploads the results. It runs
+`slash-cli project validate` first, so a change that breaks the storyboard fails the run. It pins
+the engine to the commit `init` ran from (`SLASHENGINE_REF`), or to its version tag when that
+commit is unknown.
 An existing `.gitignore` is never replaced, even with `--force`: `init` adds the `.slash/` and
 `build/` lines if they are missing and lists the file under `updated`.
 

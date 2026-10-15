@@ -119,17 +119,19 @@ rendering on top.
       ([design](design.md#storyboard))
   - [x] `storyboard/*.json` files with a schema (`slash-cli schema storyboard`), every entry
         under a stable ID such as `character/mira`, edited through commands with undo
-  - [ ] `storyboard.brief`: only the facts, decisions and open work linked to the scenes,
+  - [x] `storyboard.brief`: only the facts, decisions and open work linked to the scenes,
         entities, assets or files a task touches, plus what changed since the agent last looked
   - [x] `storyboard.query` and `storyboard.edit`; an edit names the version it read, so a stale
         edit from another agent is refused instead of overwriting newer facts
-  - [ ] Links: a `StoryRef` component ties entities to storyboard IDs, and assets and source
+  - [x] Links: a `StoryRef` component ties entities to storyboard IDs, and assets and source
         files can be linked too; unknown IDs are errors with "did you mean"
-  - [ ] `storyboard.check`: references, glossary names, palette and budgets checked by
-        `scene validate`, the headless test command and CI
+  - [x] `storyboard.check`: references, glossary names and `StoryRef` IDs, checked by
+        `scene validate`, `project validate` and CI
+  - [ ] Palette and budget checks once sprites, textures and meshes exist, and storyboard
+        checks in the headless test command
   - [x] A journal of who changed what and why, and open work that says which agent is on it
         and what it touches, so agents can see what others are doing
-  - [ ] `slash-cli init` writes a starter storyboard, and the MCP instructions tell agents to
+  - [x] `slash-cli init` writes a starter storyboard, and the MCP instructions tell agents to
         call `storyboard.brief` before a task and `storyboard.check` after it
 - [x] Dry runs: `"dry_run": true` on any edit or `batch` returns what would change and any
       errors, and changes nothing
@@ -383,7 +385,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Localization | CSV and `.po` translation tables, any source language, a runtime language setting, and commands to extract, draft and check translations | 8 | Planned |
 | Video playback | AV1 through dav1d | 8 | Planned |
 | Accessibility | AccessKit | 8 | Planned |
-| Storyboard | Style, world, story, design rules and decisions as typed project files that agents query and checks enforce | 5, 6 | Planned: files, commands and checks in 5, model review and the project map in 6 |
+| Storyboard | Style, world, story, design rules and decisions as typed project files that agents query and checks enforce | 5, 6 | In progress: files, commands and checks are done; palette and budget checks wait on sprites and meshes; model review and the project map in 6 |
 | Analytics, ads and in-app purchases | One API for analytics, ads and purchases; StoreKit, Play Billing and a developer-chosen analytics endpoint in the repo, ad networks as outside adapters | 8 | Planned |
 | One-command export | `slash-cli export` to macOS, Windows, Linux, iOS, Android and web | 4 | In progress: every platform exports (4a, 4b); building them all from one Mac is next |
 | Large worlds | Double-precision transforms, world streaming | After launch | After launch |
@@ -409,7 +411,7 @@ calls and tokens ([design section 6](design.md#6-cheap-for-agents-to-use)).
 | `slash-cli init` and the MCP server's instructions point agents at the tools | 3 | Done |
 | A test command that returns only the checks that failed | 5 | Planned |
 | Frame summaries as data instead of screenshots | 5 | Planned |
-| `storyboard.brief`: only the facts a task needs, and what changed since the agent last looked | 5 | Planned |
+| `storyboard.brief`: only the facts a task needs, and what changed since the agent last looked | 5 | Done |
 | Dry runs: see what an edit would change before making it | 5 | Done |
 | `world.snapshot` and `world.diff`: try something, see exactly what changed, roll back | 5 | Done |
 | Verified examples for every feature, built and run in CI | 5 | Planned |
