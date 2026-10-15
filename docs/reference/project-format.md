@@ -106,9 +106,11 @@ my-game/
   export_presets.json   # optional
   scenes/
     main.scene.json
+  prefabs/              # optional: .prefab.json files that entities extend
+    enemy.prefab.json
   build/           # exports land in build/export/<preset>/ (gitignored)
   .slash/          # caches, export logs, a running server's token (gitignored)
 ```
 
-Only `project.json` and `.scene.json` files ship in an export. See
+Only `project.json`, `.scene.json` and `.prefab.json` files ship in an export. See
 [cli.md](cli.md#export) for `slash-cli export` and [scene-format.md](scene-format.md) for scenes.

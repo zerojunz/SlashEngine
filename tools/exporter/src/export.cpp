@@ -47,7 +47,6 @@ using detail::program_runs;
 using detail::step;
 
 constexpr std::string_view kMacosDeploymentTarget = "11.0";
-constexpr std::string_view kSceneSuffix = ".scene.json";
 
 #if defined(__x86_64__) || defined(_M_X64)
 constexpr std::string_view kHostArch = kLinuxX86_64;
@@ -117,7 +116,7 @@ bool skipped_folder(const fs::path& name) {
     return text.starts_with(".") || text == "build" || text == "game";
 }
 
-// Copies project.json and every scene into data, validating each scene on the way.
+// Copies project.json and every scene and prefab into data, validating each on the way.
 bool stage_data(const fs::path& project_dir, const runtime::Project& project, const fs::path& data,
                 Failure& failure) {
     std::error_code error;
@@ -135,6 +134,7 @@ bool stage_data(const fs::path& project_dir, const runtime::Project& project, co
 
     world::ComponentRegistry components;
     world::register_builtin_components(components);
+    const world::FileReader reader = runtime::folder_reader(project_dir.string());
     json::Array problems;
     bool found_main = false;
     auto it = fs::recursive_directory_iterator(project_dir, error);
@@ -147,7 +147,8 @@ bool stage_data(const fs::path& project_dir, const runtime::Project& project, co
             continue;
         }
         const std::string name = entry.path().filename().string();
-        if (!name.ends_with(kSceneSuffix)) {
+        const bool prefab = name.ends_with(world::kPrefabSuffix);
+        if (!prefab && !name.ends_with(world::kSceneSuffix)) {
             continue;
         }
         const fs::path relative = entry.path().lexically_relative(project_dir);
@@ -160,7 +161,8 @@ bool stage_data(const fs::path& project_dir, const runtime::Project& project, co
         } else if (auto parsed = json::parse(text.value()); !parsed) {
             errors.push_back({"", parsed.error().message});
         } else {
-            errors = world::validate_scene(components, parsed.value());
+            errors = prefab ? world::validate_prefab(components, parsed.value(), reader)
+                            : world::validate_scene(components, parsed.value(), reader);
         }
         for (const json::ValidationError& problem : errors) {
             json::Value item;

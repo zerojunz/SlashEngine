@@ -1,6 +1,7 @@
 #include "slash/command/builtin.hpp"
 
 #include "slash/command/session.hpp"
+#include "slash/core/assert.hpp"
 #include "slash/core/json_schema.hpp"
 #include "slash/core/log.hpp"
 #include "slash/core/text.hpp"
@@ -27,7 +28,6 @@ namespace {
 
 using world::ComponentType;
 
-constexpr std::string_view kSceneSuffix = ".scene.json";
 constexpr std::int64_t kDefaultQueryLimit = 100;
 constexpr std::int64_t kDefaultLogLines = 50;
 constexpr double kDefaultTickSeconds = 1.0 / 60.0;
@@ -230,7 +230,7 @@ json::Value components_json(const world::World& world, entt::entity entity,
 
 // Checks that a params path names a scene file inside the project and returns the full path.
 Result<std::string> scene_file(const Session& session, std::string_view path) {
-    if (!path.ends_with(kSceneSuffix) || path.size() == kSceneSuffix.size()) {
+    if (!path.ends_with(world::kSceneSuffix) || path.size() == world::kSceneSuffix.size()) {
         return make_error(ErrorCode::InvalidArgument,
                           R"(scene files end in ".scene.json", e.g. "scenes/main.scene.json")");
     }
@@ -331,6 +331,9 @@ Reply schema_get(Session& session, const json::Value& params) {
     if (kind == "scene") {
         return Reply::success(world::scene_schema(session.components()));
     }
+    if (kind == "prefab") {
+        return Reply::success(world::prefab_schema(session.components()));
+    }
     if (name.empty()) {
         return param_error(code::kInvalidParams, "/name",
                            "name is required when kind is " + quoted(kind));
@@ -396,7 +399,8 @@ Reply scene_open(Session& session, const json::Value& params) {
         return param_error(code::kInvalidArgument, "/path",
                            path + " is not valid JSON: " + scene.error().message);
     }
-    const auto errors = world::validate_scene(session.components(), scene.value());
+    const auto errors =
+        world::validate_scene(session.components(), scene.value(), session.world().file_reader());
     if (!errors.empty()) {
         std::string message =
             path + " is not a valid scene: " +
@@ -422,6 +426,17 @@ Reply scene_open(Session& session, const json::Value& params) {
     return Reply::success(std::move(result));
 }
 
+// Writes a file, creating its folder if needed.
+Result<void> write_file(const std::string& full, const std::string& contents) {
+    if (const std::size_t slash = full.find_last_of('/');
+        slash != std::string::npos && slash > 0 && !platform::exists(full.substr(0, slash))) {
+        if (auto made = platform::create_directories(full.substr(0, slash)); !made) {
+            return made.error();
+        }
+    }
+    return platform::write_file(full, contents);
+}
+
 Reply scene_save(Session& session, const json::Value& params) {
     std::string path = text(params, "path");
     if (path.empty()) {
@@ -436,16 +451,11 @@ Reply scene_save(Session& session, const json::Value& params) {
     if (!file) {
         return param_error(file.error(), "/path");
     }
-    const std::string& full = file.value();
-    if (const std::size_t slash = full.find_last_of('/');
-        slash != std::string::npos && slash > 0 && !platform::exists(full.substr(0, slash))) {
-        if (auto made = platform::create_directories(full.substr(0, slash)); !made) {
-            return Reply::failure(made.error());
-        }
-    }
     const std::string contents = json::write(world::save_scene(session.world())) + "\n";
-    if (auto written = platform::write_file(full, contents); !written) {
-        return Reply::failure(written.error());
+    if (!session.dry_running()) {
+        if (auto written = write_file(file.value(), contents); !written) {
+            return Reply::failure(written.error());
+        }
     }
     session.set_scene_path(path);
     json::Value result;
@@ -467,6 +477,11 @@ Reply entity_create(Session& session, const json::Value& params) {
         entity = created.value();
     } else {
         entity = world.create();
+    }
+    if (const std::string extends = text(params, "extends"); !extends.empty()) {
+        if (auto made = world::instantiate_prefab(world, entity, extends); !made) {
+            return param_error(made.error(), "/extends");
+        }
     }
     if (const json::Value* components = params.find("components"); components != nullptr) {
         for (const auto& [name, fields] : components->as_object()) {
@@ -511,7 +526,67 @@ Reply entity_get(Session& session, const json::Value& params) {
     }
     json::Value result;
     result["id"] = id;
+    if (const world::PrefabLink* link = world.prefab_of(entity); link != nullptr) {
+        result["extends"] = link->path;
+    }
     result["components"] = components_json(world, entity, only, flag(params, "omit_defaults"));
+    return Reply::success(std::move(result));
+}
+
+// ---- Prefabs ----
+
+Reply prefab_save(Session& session, const json::Value& params) {
+    const std::string id = text(params, "id");
+    const entt::entity entity = session.world().find(id);
+    if (entity == entt::null) {
+        return unknown_entity(session.world(), id, "/id");
+    }
+    const std::string path = text(params, "path");
+    if (!path.ends_with(world::kPrefabSuffix) || path.size() == world::kPrefabSuffix.size()) {
+        return param_error(
+            code::kInvalidArgument, "/path",
+            R"(prefab files end in ".prefab.json", e.g. "prefabs/enemy.prefab.json")");
+    }
+    auto file = session.resolve_path(path);
+    if (!file) {
+        return param_error(file.error(), "/path");
+    }
+    const json::Value prefab = world::save_prefab(session.world(), entity);
+    const std::string contents = json::write(prefab) + "\n";
+    // Load it as it would be read back, which catches a prefab that would extend itself.
+    const world::FileReader& files = session.world().file_reader();
+    const world::FileReader read_back = [&](std::string_view name) -> Result<std::string> {
+        return name == path ? Result<std::string>(contents) : files(name);
+    };
+    if (const auto errors = world::validate_prefab(session.components(), prefab, read_back);
+        !errors.empty()) {
+        return param_error(code::kInvalidArgument, "/path",
+                           path + " would not load: " + errors.front().message);
+    }
+    world::World scratch(session.components());
+    scratch.set_file_reader(read_back);
+    auto base = world::resolve_prefab(scratch, path);
+    SLASH_ASSERT(base.ok(), "a validated prefab failed to resolve");
+    if (!session.dry_running()) {
+        if (auto written = write_file(file.value(), contents); !written) {
+            return Reply::failure(written.error());
+        }
+    }
+    // The rest of this command, such as a batch making instances, sees the new prefab.
+    session.world().forget_prefabs();
+    session.world().cache_prefab(path, std::move(base).value());
+    json::Value result;
+    result["path"] = path;
+    if (const json::Value* extends = prefab.find("extends"); extends != nullptr) {
+        result["extends"] = *extends;
+    }
+    json::Array names;
+    for (const auto& type : session.components().types()) {
+        if (type->has(session.world(), entity)) {
+            names.emplace_back(type->name());
+        }
+    }
+    result["components"] = std::move(names);
     return Reply::success(std::move(result));
 }
 
@@ -857,10 +932,10 @@ std::string snapshot_name(const json::Value& params, std::string_view key) {
 }
 
 // The snapshot named by params[key], or an error naming the closest snapshot.
-const json::Value* find_snapshot(const Session& session, const json::Value& params,
-                                 std::string_view key, Reply& error) {
+const Session::SavedWorld* find_snapshot(const Session& session, const json::Value& params,
+                                         std::string_view key, Reply& error) {
     const std::string name = snapshot_name(params, key);
-    if (const json::Value* snapshot = session.find_snapshot(name); snapshot != nullptr) {
+    if (const Session::SavedWorld* snapshot = session.find_snapshot(name); snapshot != nullptr) {
         return snapshot;
     }
     const std::vector<std::string_view> names = session.snapshot_names();
@@ -887,35 +962,31 @@ Reply world_snapshot(Session& session, const json::Value& params) {
 
 Reply world_diff(Session& session, const json::Value& params) {
     Reply error;
-    const json::Value* from = find_snapshot(session, params, "from", error);
+    const Session::SavedWorld* from = find_snapshot(session, params, "from", error);
     if (from == nullptr) {
         return error;
     }
+    Session::SavedWorld now;
+    const Session::SavedWorld* to = &now;
     if (params.find("to") == nullptr) {
-        return Reply::success(
-            world::diff_scenes(session.components(), *from, world::save_scene(session.world())));
-    }
-    const json::Value* to = find_snapshot(session, params, "to", error);
-    if (to == nullptr) {
+        now = session.save();
+    } else if (to = find_snapshot(session, params, "to", error); to == nullptr) {
         return error;
     }
-    return Reply::success(world::diff_scenes(session.components(), *from, *to));
+    return Reply::success(
+        world::diff_scenes(session.components(), from->scene, to->scene, from->links, to->links));
 }
 
 Reply world_restore(Session& session, const json::Value& params) {
     Reply error;
-    const json::Value* snapshot = find_snapshot(session, params, "name", error);
+    const Session::SavedWorld* snapshot = find_snapshot(session, params, "name", error);
     if (snapshot == nullptr) {
         return error;
     }
-    session.world().clear();
-    auto loaded = world::load_scene(session.world(), *snapshot);
-    if (!loaded) {
-        return Reply::failure(loaded.error());
-    }
+    session.restore(*snapshot);
     json::Value result;
     result["restored"] = snapshot_name(params, "name");
-    result["entities"] = loaded.value();
+    result["entities"] = session.world().size();
     return Reply::success(std::move(result));
 }
 
@@ -1087,13 +1158,14 @@ void register_builtin_commands(Registry& registry) {
         .handler = engine_describe,
     });
 
-    json::Value kind = property("string", "\"scene\" for scene files, \"component\" for one "
-                                          "component's fields, \"command\" for a command's "
-                                          "params.");
-    kind["enum"] = json::Array{"scene", "component", "command"};
+    json::Value kind = property("string", "\"scene\" or \"prefab\" for those files, "
+                                          "\"component\" for one component's fields, "
+                                          "\"command\" for a command's params.");
+    kind["enum"] = json::Array{"scene", "prefab", "component", "command"};
     registry.add({
         .name = "schema.get",
-        .description = "Returns a JSON Schema: for scene files, one component or one command.",
+        .description = "Returns a JSON Schema: for scene or prefab files, one component or one "
+                       "command.",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema(
@@ -1155,16 +1227,19 @@ void register_builtin_commands(Registry& registry) {
 
     registry.add({
         .name = "entity.create",
-        .description = "Creates an entity, optionally with components. Returns its ID.",
+        .description = "Creates an entity, optionally from a prefab and with components. Returns "
+                       "its ID.",
         .capabilities = {Edit},
         .effect = Effect::Edit,
         .params = params_schema({
             {"id", id_property("Stable ID: 1 to 64 letters, digits, '_' or '-'. Generated if "
                                "left out.")},
+            {"extends", property("string", "A .prefab.json file to start from, e.g. "
+                                           "\"prefabs/enemy.prefab.json\".")},
             {"components",
              components_property("Components keyed by type name, e.g. {\"Transform2D\": "
                                  "{\"position\": [64, 32]}}. Fields left out keep their "
-                                 "defaults.")},
+                                 "defaults, or the prefab's.")},
         }),
         .handler = entity_create,
     });
@@ -1192,6 +1267,22 @@ void register_builtin_commands(Registry& registry) {
             },
             {"id"}),
         .handler = entity_get,
+    });
+
+    registry.add({
+        .name = "prefab.save",
+        .description = "Writes an entity to a .prefab.json file that entities can extend, "
+                       "creating folders as needed.",
+        .capabilities = {Read, Filesystem},
+        .effect = Effect::Read,
+        .params = params_schema(
+            {
+                {"id", id_property("Entity ID.")},
+                {"path", property("string", "File relative to the project folder, e.g. "
+                                            "\"prefabs/enemy.prefab.json\".")},
+            },
+            {"id", "path"}),
+        .handler = prefab_save,
     });
 
     json::Value set_components =

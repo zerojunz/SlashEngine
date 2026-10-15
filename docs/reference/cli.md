@@ -66,8 +66,9 @@ With `--serve`, the result also carries the server's `url`, and the game takes t
 
 ### scene validate
 
-Checks a scene against the scene schema and lists every error, each with its JSON Pointer path.
-Exit code 1 if the scene is invalid.
+Checks a scene or a `.prefab.json` file and lists every error, each with its JSON Pointer path.
+Exit code 1 if the file is invalid. The [prefabs](scene-format.md#prefabs) a file extends are read
+from its project: the nearest folder above it with a `project.json`, else the current folder.
 
 ```bash
 slash-cli scene validate <file>
@@ -77,9 +78,11 @@ slash-cli scene validate <file>
 {"entities":3,"valid":true}
 ```
 
+For a prefab the result counts its `components` instead of `entities`.
+
 ### scene format
 
-Rewrites a scene in [canonical form](scene-format.md#canonical-form).
+Rewrites a scene or prefab in [canonical form](scene-format.md#canonical-form).
 
 ```bash
 slash-cli scene format <file>
@@ -88,12 +91,13 @@ slash-cli scene format --check <file>    # change nothing; exit 1 if not canonic
 
 ### schema
 
-Prints a JSON Schema: for scene files (generated from the registered components), for
+Prints a JSON Schema: for scene or prefab files (generated from the registered components), for
 [`project.json`](project-format.md) or for
 [`export_presets.json`](project-format.md#export-presets).
 
 ```bash
 slash-cli schema scene
+slash-cli schema prefab
 slash-cli schema project
 slash-cli schema presets
 ```
@@ -221,8 +225,8 @@ or a platform for its defaults: `macos`, `windows`, `linux`, `web`, `android` or
 | `--test` | Run the exported game headless afterwards, if this machine can |
 | `--engine <dir>` | Engine sources (default: `SLASH_ENGINE_DIR`, an installed copy, or the checkout `slash-cli` was built from) |
 
-Export validates the project, its presets and every scene, copies `project.json` and the
-`.scene.json` files into a staging folder (nothing else, so stray files such as `.env` never
+Export validates the project, its presets and every scene and prefab, copies `project.json` and
+the `.scene.json` and `.prefab.json` files into a staging folder (nothing else, so stray files such as `.env` never
 ship), builds the game with CMake, signs it and installs it into the output folder. A Mac builds every
 platform: macOS and iOS with Xcode's command-line tools and SDKs, and Windows and Linux with the
 toolchains in [toolchain](#toolchain), which the first such export downloads. A Linux machine

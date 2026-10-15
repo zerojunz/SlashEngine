@@ -47,7 +47,7 @@ work.
 - [x] Built-in `Transform2D` and `Transform3D` components
 - [x] JSON scenes: load, save, canonical format, JSON Schema generated from components
 - [x] `slash-cli scene validate`, `scene format` and `schema scene`
-- [ ] Prefabs with `"extends"` and overrides (moved to [milestone 5](#milestone-5-2d-feature-set-planned))
+- [x] Prefabs with `"extends"` and overrides (done in [milestone 5](#milestone-5-2d-feature-set-in-progress))
 
 ### Milestone 3: Commands (Done)
 
@@ -103,7 +103,7 @@ Built in two halves.
 
 Exit: an empty project exports to all six platforms and passes headless tests on each.
 
-### Milestone 5: 2D feature set (Planned)
+### Milestone 5: 2D feature set (In progress)
 
 Foundations first, in the order Godot built them: the run loop, scenes and resources, then
 rendering on top.
@@ -112,7 +112,7 @@ rendering on top.
       already returns an empty `systems` list for them
 - [x] Run control commands: `play` and `pause`
 - [x] `events.subscribe` for a stream of world events
-- [ ] Prefabs: an entity `"extends"` a `.prefab.json` file and overrides fields
+- [x] Prefabs: an entity `"extends"` a `.prefab.json` file and overrides fields
 - [ ] Asset handles with reference counting and hot reload, and an `asset.list` command
 - [ ] Storyboard: the game's style, world, story, design rules, names, decisions and open work
       as typed files in the project, so every agent works from the same facts
@@ -349,7 +349,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | --- | --- | --- | --- |
 | Editor | No GUI editor: MCP and REST command API, debug overlay, frame capture | 3, 5 | In part: the command API is done; frame capture and the overlay are planned for 5 |
 | Gameplay code | C++ with hot reload; plugins as C++ modules with a stable C ABI | 6 | Planned |
-| Scenes and prefabs | JSON scenes, prefabs with overrides, on EnTT | 2, 5 | In part: scenes are done; prefabs are planned for 5 |
+| Scenes and prefabs | JSON scenes, prefabs with overrides, on EnTT | 2, 5 | Done |
 | 2D sprites and animation | Batched sprites, sprite sheets, flipbooks | 5 | Planned |
 | Tilemaps | Tilemap layers with terrain autotiling, stored as text | 5 | Planned |
 | 2D lighting | 2D lights, occluders, normal-mapped sprites | 5 | Planned |

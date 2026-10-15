@@ -3,6 +3,7 @@
 #include "slash/core/json.hpp"
 #include "slash/core/json_schema.hpp"
 #include "slash/core/result.hpp"
+#include "slash/world/scene.hpp"
 
 #include <cstdint>
 #include <string>
@@ -62,5 +63,8 @@ struct Project {
 
 // Joins a folder and a project-relative path with '/'.
 [[nodiscard]] std::string join_path(std::string_view folder, std::string_view relative);
+
+// Reads files by project path (is_project_path) from a folder, for World::set_file_reader.
+[[nodiscard]] world::FileReader folder_reader(std::string folder);
 
 } // namespace slash::runtime

@@ -4,8 +4,10 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <functional>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 namespace slash::json {
 namespace {
@@ -113,13 +115,18 @@ private:
         errors_->push_back({path, std::move(message)});
     }
 
-    // Validates against a subschema without recording errors; true if it matched.
-    bool passes(const Value& instance, const Value& schema, std::string& path, int ref_depth) {
+    // Validates against a subschema without recording errors, and returns them.
+    std::vector<ValidationError> collect(const Value& instance, const Value& schema,
+                                         std::string& path, int ref_depth) {
         std::vector<ValidationError> scratch;
         std::vector<ValidationError>* saved = std::exchange(errors_, &scratch);
         check(instance, schema, path, ref_depth);
         errors_ = saved;
-        return scratch.empty();
+        return scratch;
+    }
+
+    bool passes(const Value& instance, const Value& schema, std::string& path, int ref_depth) {
+        return collect(instance, schema, path, ref_depth).empty();
     }
 
     void check_ref(const Value& instance, const std::string& ref, std::string& path,
@@ -213,12 +220,7 @@ private:
             }
         }
         if (const Value* any = schema.find("anyOf"); any != nullptr && any->is_array()) {
-            const bool matched = std::ranges::any_of(any->as_array(), [&](const Value& option) {
-                return passes(instance, option, path, ref_depth);
-            });
-            if (!matched) {
-                fail(path, "does not match any of the allowed schemas");
-            }
+            check_any_of(instance, any->as_array(), path, ref_depth);
         }
         if (const Value* one = schema.find("oneOf"); one != nullptr && one->is_array()) {
             const auto matches = std::ranges::count_if(one->as_array(), [&](const Value& option) {
@@ -232,6 +234,32 @@ private:
         if (const Value* negated = schema.find("not");
             negated != nullptr && passes(instance, *negated, path, ref_depth)) {
             fail(path, "matches a schema it must not match");
+        }
+    }
+
+    // When only one option accepts the instance's type, as in {"anyOf": [{"type": "null"},
+    // {"$ref": ...}]}, that option's errors say what is wrong better than "does not match".
+    void check_any_of(const Value& instance, const Array& options, std::string& path,
+                      int ref_depth) {
+        std::vector<std::vector<ValidationError>> failures;
+        for (const Value& option : options) {
+            std::vector<ValidationError> errors = collect(instance, option, path, ref_depth);
+            if (errors.empty()) {
+                return;
+            }
+            failures.push_back(std::move(errors));
+        }
+        const auto wrong_type = [&](const std::vector<ValidationError>& errors) {
+            return errors.size() == 1 && errors.front().path == path &&
+                   errors.front().message.starts_with("expected ");
+        };
+        const auto plausible = std::ranges::count_if(failures, std::not_fn(wrong_type));
+        if (plausible != 1) {
+            fail(path, "does not match any of the allowed schemas");
+            return;
+        }
+        for (ValidationError& error : *std::ranges::find_if(failures, std::not_fn(wrong_type))) {
+            errors_->push_back(std::move(error));
         }
     }
 
