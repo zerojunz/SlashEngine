@@ -312,10 +312,15 @@ json::Value style_box_schema() {
     for (const Property& property : properties()) {
         json::Value each = property.schema;
         if (property.applies != kAll) {
-            each["description"] = each["description"].as_string() +
-                                  (property.applies == kFlat      ? " (flat)"
-                                   : property.applies == kTexture ? " (texture)"
-                                                                  : " (flat and texture)");
+            std::string description = each["description"].as_string();
+            if (property.applies == kFlat) {
+                description += " (flat)";
+            } else if (property.applies == kTexture) {
+                description += " (texture)";
+            } else {
+                description += " (flat and texture)";
+            }
+            each["description"] = std::move(description);
         }
         out[property.name] = std::move(each);
     }
@@ -333,9 +338,9 @@ std::vector<json::ValidationError> validate_style_box(const json::Value& doc) {
         if (property != nullptr && (property->applies & type_bit(type)) == 0) {
             std::string message = std::string(type_name(type)) + " style boxes have no " + name;
             if ((property->applies & kTexture) != 0) {
-                message += "; it is for \"type\": \"texture\"";
+                message += R"(; it is for "type": "texture")";
             } else if ((property->applies & kFlat) != 0) {
-                message += "; it is for \"type\": \"flat\"";
+                message += R"(; it is for "type": "flat")";
             }
             errors.push_back({"/" + json::pointer_escape(name), std::move(message)});
         }

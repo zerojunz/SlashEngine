@@ -499,7 +499,8 @@ std::vector<Segment> segments(float size, float source, float begin, float end,
                 std::max(1, static_cast<int>(std::floor((span / std::max(tile, 1e-7F)) + 0.5F)));
         }
         if (mode == StyleBox::Stretch::Tile && tile > 0.0F && tiles <= kMaxTiles) {
-            for (float d = begin; d < middle_end; d += tile) {
+            for (int t = 0; begin + (static_cast<float>(t) * tile) < middle_end; ++t) {
+                const float d = begin + (static_cast<float>(t) * tile);
                 const float d1 = std::min(d + tile, middle_end);
                 out.push_back(
                     {.d0 = d, .d1 = d1, .u0 = begin, .u1 = begin + (d1 - d), .middle = true});
