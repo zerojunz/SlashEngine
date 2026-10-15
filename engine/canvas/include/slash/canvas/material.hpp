@@ -60,6 +60,7 @@ struct MaterialParam {
 
 struct CanvasMaterial {
     render::BlendMode blend = render::BlendMode::Mix;
+    render::LightMode light_mode = render::LightMode::Normal; // how 2D lights shade it
     std::map<std::string, MaterialParam, std::less<>> params;
     // The graph, compiled. Its constants hold the params' values. No code means no graph:
     // the texture times the vertex color.
@@ -92,6 +93,7 @@ struct MaterialTextureRef {
 // A material ready to draw one sprite: its params' values and the time filled in.
 struct MaterialInstance {
     render::BlendMode blend = render::BlendMode::Mix;
+    render::LightMode light_mode = render::LightMode::Normal;
     render::MaterialProgram program;
     std::array<MaterialTextureRef, render::kMaterialTextureSlots - 1> textures;
 };

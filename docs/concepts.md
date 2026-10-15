@@ -233,6 +233,19 @@ peering fits its neighbors, so shores and corners draw themselves (**autotiling*
 one texture, so a layer from one atlas is one GPU draw. The
 [tile maps example](../examples/tilemaps/) paints an island with a pond.
 
+**2D lights** follow Godot's. Once a scene has a light or a `CanvasModulate`, sprites and tile
+layers are lit: the `CanvasModulate` color is the **ambient** light, a `PointLight2D` shines from
+its entity through a texture (a soft round one by default), and a `DirectionalLight2D` lights
+everything from one direction, like the sun. Each light adds, subtracts or mixes its color into
+what it reaches, and **light masks** and z ranges pick what that is. A sprite's **normal map**
+gives each pixel its own facing, so light falls on bumps and bevels by their angle. A
+`LightOccluder2D` polygon casts **shadows** from lights that have them on: the CPU casts each
+shadowed light's occluders into one row of a **shadow map**, and the material shader reads it.
+A material's `light_mode` keeps a sprite unshaded, for glowing signs, or shows it only where light
+falls. `light.sample` returns how lit points are and which lights reach them, computed as the GPU
+shades them, so an agent checks lighting without a screenshot. The
+[2D lights example](../examples/lights-2d/) has a torch, the moon and a shadowed crate.
+
 How often frames are drawn follows Godot. The world ticks at a fixed rate (`tick_hz`), while frames
 come as fast as the **V-Sync mode** lets them (`window.vsync_mode`: wait for each refresh, present
 at once, mailbox or adaptive) and no faster than the **frame cap** (`max_fps`, none by default). So
@@ -412,6 +425,7 @@ OpenAI-compatible servers (including local ones), Anthropic and Gemini; see the
 
 | Term | Meaning |
 | --- | --- |
+| Ambient light | The color lit draws start from where no light reaches: the `CanvasModulate` color |
 | Animation | A `.anim.json` file's named set of tracks, which an `AnimationPlayer` plays on its entity's fields |
 | Autotiling | Picking each tile so its edges connect to its neighbors' terrains, as `tilemap.paint` does |
 | Asset | A file a game loads by project path into a shared, reference-counted handle |
@@ -436,8 +450,11 @@ OpenAI-compatible servers (including local ones), Anthropic and Gemini; see the
 | JSON Pointer | A path to a value inside JSON, such as `/entities/player/components` (RFC 6901) |
 | Key | A track's value, or event, at one time in an animation |
 | Legend | A tile map layer's keys, each standing for one tile of its tile set |
+| Light mask | Bits saying which lights reach a sprite or tile layer: those whose cull mask shares one |
 | Main scene | The scene a game loads at startup, named in `project.json` |
 | Material | A `.material.json` node graph that colors a sprite's pixels, with params each sprite sets |
+| Normal map | A texture whose colors give each pixel of a sprite its own facing, so light falls on it by angle |
+| Occluder | A polygon that casts shadows from 2D lights (`LightOccluder2D`) |
 | Peering | The terrain a tile's side or corner must touch for the tile to fit, as Godot's terrain peering bits |
 | Prefab | One entity's components in a `.prefab.json` file, which entities extend and override |
 | Project | A game's folder: `project.json` plus its scenes |
@@ -446,6 +463,7 @@ OpenAI-compatible servers (including local ones), Anthropic and Gemini; see the
 | Resource | Read-only data an MCP client can fetch: the scene, its schema or the logs |
 | Scene | A world saved as a `.scene.json` file |
 | Session | One world with its open scene path, undo history and recent logs |
+| Shadow map | A texture with one row per shadowed light, holding how far away the nearest occluder is in each direction |
 | Sprite | A texture, or one frame of a sprite sheet, drawn at an entity's `Transform2D` (`Sprite2D`) |
 | Sprite sheet | One texture holding a grid of frames, `hframes` across and `vframes` down |
 | Storyboard | A game's facts that are not code, as typed entries in `storyboard/*.json` |

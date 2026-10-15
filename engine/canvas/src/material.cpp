@@ -354,6 +354,11 @@ json::Value schema(bool list_ops) {
     properties["blend"]["default"] = "mix";
     properties["blend"]["description"] =
         "How the color combines with what is under it, as Godot's blend modes.";
+    properties["light_mode"]["enum"] = json::Array{"normal", "unshaded", "light_only"};
+    properties["light_mode"]["default"] = "normal";
+    properties["light_mode"]["description"] =
+        "How 2D lights shade it, as Godot's: normal, unshaded (lights and CanvasModulate leave it "
+        "alone) or light_only (shown only where lights reach).";
     properties["params"]["type"] = "object";
     properties["params"]["additionalProperties"] = param;
     properties["params"]["description"] =
@@ -379,6 +384,10 @@ public:
             // The schema allows only known names.
             material_.blend =
                 render::parse_blend_mode(blend->as_string()).value_or(render::BlendMode::Mix);
+        }
+        if (const json::Value* mode = doc_.find("light_mode"); mode != nullptr) {
+            material_.light_mode =
+                render::parse_light_mode(mode->as_string()).value_or(render::LightMode::Normal);
         }
         read_params();
         if (const json::Value* nodes = doc_.find("nodes"); nodes != nullptr) {
@@ -1158,6 +1167,7 @@ Result<MaterialInstance> instantiate(const CanvasMaterial& material,
                                      std::string* failed_param) {
     MaterialInstance instance;
     instance.blend = material.blend;
+    instance.light_mode = material.light_mode;
     instance.program = material.program;
     const auto place = [&](const MaterialParam& param) {
         if (!param.slot) {

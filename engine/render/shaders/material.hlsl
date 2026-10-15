@@ -1,6 +1,7 @@
 // The material shader: runs a material program (engine/render/include/slash/render/material.hpp)
-// for each pixel. Canvas materials compile from node graphs to a few instructions, so they need
-// no shader compiler at run time. Keep it in step with run_program in src/material.cpp.
+// for each pixel, then shades it with the frame's 2D lights (light.hpp). Canvas materials compile
+// from node graphs to a few instructions, so they need no shader compiler at run time. Keep it in
+// step with run_program in src/material.cpp and shade in src/light.cpp.
 // Registers follow SDL's GPU conventions: vertex uniforms in space1, fragment textures and
 // samplers in space2 and fragment uniforms in space3.
 
@@ -18,6 +19,8 @@ struct VertexInput {
 struct VertexOutput {
     float2 uv : TEXCOORD0;
     float4 color : TEXCOORD1;
+    // The vertex position, which lights are placed in.
+    float2 world : TEXCOORD2;
     float4 position : SV_Position;
 };
 
@@ -26,18 +29,28 @@ VertexOutput vs_main(VertexInput input) {
     output.position = mul(view_projection, float4(input.position, 0.0, 1.0));
     output.uv = input.uv;
     output.color = input.color;
+    output.world = input.position;
     return output;
 }
 
-// Slot 0 is the draw's texture; the material binds the others, or white.
+// Slot 0 is the draw's texture; the material binds 1 to 3, the draw its normal and specular
+// maps, and the frame its light atlas and shadow map, or white.
 Texture2D<float4> texture0 : register(t0, space2);
 Texture2D<float4> texture1 : register(t1, space2);
 Texture2D<float4> texture2 : register(t2, space2);
 Texture2D<float4> texture3 : register(t3, space2);
+Texture2D<float4> normal_map : register(t4, space2);
+Texture2D<float4> specular_map : register(t5, space2);
+Texture2D<float4> light_atlas : register(t6, space2);
+Texture2D<float4> shadow_map : register(t7, space2);
 SamplerState sampler0 : register(s0, space2);
 SamplerState sampler1 : register(s1, space2);
 SamplerState sampler2 : register(s2, space2);
 SamplerState sampler3 : register(s3, space2);
+SamplerState normal_sampler : register(s4, space2);
+SamplerState specular_sampler : register(s5, space2);
+SamplerState atlas_sampler : register(s6, space2);
+SamplerState shadow_sampler : register(s7, space2);
 
 cbuffer Program : register(b0, space3) {
     // Each: op | destination << 8 | aux << 16, then the operands a, b and c.
@@ -45,9 +58,37 @@ cbuffer Program : register(b0, space3) {
     float4 constants[32];
     // One over texture0's size, in pixels.
     float4 texel;
-    // x: how many instructions to run.
+    // x: how many instructions to run; none draws the texture times the vertex color.
     uint4 counts;
+    // x: the light mode (0 unshaded, 1 normal, 2 light only); y: the light mask; z: the z index;
+    // w: 1 with a normal map, plus 2 with a specular map.
+    int4 shading;
+    // The specular color (rgb) and shininess (a).
+    float4 specular;
 };
+
+struct Light {
+    float4 color;         // rgb times energy, and alpha
+    float4 position;      // xy: position, or direction; z: height; w: 0 point, 1 directional
+    float4 texture_u;     // the light texture's u at (x, y) is dot(xyz, (x, y, 1)), v likewise
+    float4 texture_v;
+    float4 atlas;         // where the light texture is in the atlas: x, y, width, height
+    float4 shadow;        // x: shadow row (-1 none); y: far; z: filter step; w: reach
+    float4 shadow_origin; // x, y: where a directional row starts across and in depth; z: span
+    float4 shadow_color;
+    uint4 flags;          // x: blend (0 mix, 1 add, 2 sub); y: filter taps each side; z: cull mask
+    int4 range;           // x, y: the z indexes it lights
+};
+
+cbuffer Lights : register(b1, space3) {
+    float4 ambient;
+    uint4 light_count;
+    Light lights[64];
+};
+
+static const float kTwoPi = 6.28318530717958647;
+static const float kPi = 3.14159265358979323;
+static const int kShadowWidth = 2048;
 
 static float4 registers[32];
 
@@ -77,8 +118,7 @@ float4 splat(float value) {
 }
 
 // There are no mipmaps, so level 0 is what Sample would read, and an explicit level is allowed in
-// the loop's flow control. The slots are read in order, so SPIRV-Cross numbers Metal's textures
-// and samplers 0 to 3, as SDL binds them.
+// the loop's flow control.
 float4 sample_slot(uint slot, float2 uv) {
     if (slot == 0u) {
         return texture0.SampleLevel(sampler0, uv, 0.0);
@@ -109,7 +149,133 @@ float4 hsv_to_rgb(float4 c) {
     return float4(rgb * c.z, 0.0);
 }
 
+// The depth a shadow map texel holds, or 2 for none.
+float shadow_depth(int column, int row) {
+    float4 texel = shadow_map.Load(int3(column, row, 0));
+    if (texel.a < 0.5) {
+        return 2.0;
+    }
+    float3 bytes = round(texel.rgb * 255.0);
+    return (bytes.r * 65536.0 + bytes.g * 256.0 + bytes.b) / 16777216.0;
+}
+
+// From 0 to 1: how much of the filter's samples an occluder hides the position from.
+float shadow_amount(Light light, float2 position) {
+    float column;
+    float depth;
+    bool wrap = light.position.w < 0.5;
+    if (wrap) {
+        float2 d = position - light.position.xy;
+        column = (atan2(d.y, d.x) / kTwoPi + 0.5) * float(kShadowWidth);
+        depth = sqrt(d.x * d.x + d.y * d.y) / light.shadow.y;
+    } else {
+        float across = position.x * -light.position.y + position.y * light.position.x;
+        float along = position.x * light.position.x + position.y * light.position.y;
+        column = (across - light.shadow_origin.x) / light.shadow_origin.z * float(kShadowWidth);
+        depth = (along - light.shadow_origin.y) / light.shadow.y;
+    }
+    int taps = int(light.flags.y);
+    int row = int(light.shadow.x);
+    float bias = 0.5 / light.shadow.y;
+    float hidden = 0.0;
+    [loop] for (int k = -taps; k <= taps; ++k) {
+        int at = int(floor(column + float(k) * light.shadow.z));
+        if (wrap) {
+            at = ((at % kShadowWidth) + kShadowWidth) % kShadowWidth;
+        } else if (at < 0 || at >= kShadowWidth) {
+            continue;
+        }
+        float stored = shadow_depth(at, row);
+        if (stored <= 1.0 && depth > stored + bias && (wrap || depth - stored < light.shadow.w)) {
+            hidden += 1.0;
+        }
+    }
+    return hidden / float(2 * taps + 1);
+}
+
+// Godot's 2D normal lighting: Lambert, plus Blinn-Phong with a specular map.
+float3 light_normal(float3 light_vec, float3 normal, float3 base, float3 light_color,
+                    float4 shine, bool shine_used) {
+    float n_dot_l = max(0.0, dot(normal, light_vec));
+    float3 lit = light_color * base * n_dot_l;
+    if (!shine_used) {
+        return lit;
+    }
+    float3 view = float3(0.0, 0.0, 1.0);
+    float3 half_vec = normalize(view + light_vec);
+    float n_dot_v = max(dot(normal, view), 0.0);
+    float n_dot_h = max(dot(normal, half_vec), 0.0);
+    float shininess = exp2(15.0 * shine.a + 1.0) * 0.25;
+    float blinn = pow(n_dot_h, shininess);
+    blinn *= (shininess + 8.0) * (1.0 / (8.0 * kPi));
+    float s = blinn / max(4.0 * n_dot_v * n_dot_l, 0.75);
+    return lit + shine.rgb * light_color * s;
+}
+
+// Shades the color the program made with the frame's lights.
+float4 light_pixel(float4 base, float2 position, float3 normal, bool normal_used, float4 shine,
+                   bool shine_used) {
+    float4 color = base;
+    if (shading.x == 1) {
+        color *= ambient;
+    }
+    float light_only_alpha = 0.0;
+    uint count = min(light_count.x, 64u);
+    [loop] for (uint i = 0u; i < count; ++i) {
+        Light light = lights[i];
+        if ((light.flags.z & uint(shading.y)) == 0u || shading.z < light.range.x ||
+            shading.z > light.range.y) {
+            continue;
+        }
+        float4 light_color = light.color;
+        float3 light_vec;
+        if (light.position.w < 0.5) {
+            float3 at = float3(position, 1.0);
+            float2 luv = float2(dot(light.texture_u.xyz, at), dot(light.texture_v.xyz, at));
+            if (luv.x < 0.0 || luv.y < 0.0 || luv.x >= 1.0 || luv.y >= 1.0) {
+                continue;
+            }
+            light_color *=
+                light_atlas.SampleLevel(atlas_sampler, light.atlas.xy + luv * light.atlas.zw, 0.0);
+            light_vec = normalize(float3(light.position.xy - position, light.position.z));
+        } else {
+            float h = light.position.z;
+            light_vec = normalize(float3(-light.position.xy * (1.0 - h), h));
+        }
+        if (normal_used) {
+            light_color.rgb =
+                light_normal(light_vec, normal, base.rgb, light_color.rgb, shine, shine_used);
+        } else {
+            light_color.rgb *= base.rgb;
+        }
+        if (light.shadow.x >= 0.0) {
+            float hidden = shadow_amount(light, position);
+            float4 shadow_color = light.shadow_color;
+            shadow_color.a *= light_color.a;
+            light_color += (shadow_color - light_color) * hidden;
+        }
+        light_only_alpha += light_color.a;
+        if (light.flags.x == 2u) {
+            color.rgb -= light_color.rgb * light_color.a;
+        } else if (light.flags.x == 0u) {
+            color.rgb += (light_color.rgb - color.rgb) * light_color.a;
+        } else {
+            color.rgb += light_color.rgb * light_color.a;
+        }
+    }
+    if (shading.x == 2) {
+        color.a *= light_only_alpha;
+    }
+    return color;
+}
+
 float4 fs_main(VertexOutput input) : SV_Target0 {
+    // The texture's u and v axes in the frame, from how both change across the screen, for
+    // turning normal maps with the draw.
+    float2 world_dx = ddx(input.world);
+    float2 world_dy = ddy(input.world);
+    float2 uv_dx = ddx(input.uv);
+    float2 uv_dy = ddy(input.uv);
     registers[0] = float4(input.uv, 0.0, 0.0);
     registers[1] = input.color;
     registers[2] = float4(input.position.xy, 0.0, 0.0);
@@ -178,5 +344,36 @@ float4 fs_main(VertexOutput input) : SV_Target0 {
         }
         registers[(instruction.x >> 8u) & 31u] = o;
     }
-    return registers[0];
+    if (counts.x == 0u) {
+        registers[0] = texture0.SampleLevel(sampler0, input.uv, 0.0) * input.color;
+    }
+    if (shading.x == 0) {
+        return registers[0];
+    }
+    bool normal_used = (shading.w & 1) != 0;
+    bool shine_used = (shading.w & 2) != 0;
+    float3 normal = float3(0.0, 0.0, 1.0);
+    if (normal_used) {
+        float2 u_axis = float2(1.0, 0.0);
+        float2 v_axis = float2(0.0, 1.0);
+        float det = uv_dx.x * uv_dy.y - uv_dy.x * uv_dx.y;
+        if (abs(det) > 1.0e-12) {
+            float2 along_u = (world_dx * uv_dy.y - world_dy * uv_dx.y) / det;
+            float2 along_v = (world_dy * uv_dx.x - world_dx * uv_dy.x) / det;
+            if (dot(along_u, along_u) > 0.0 && dot(along_v, along_v) > 0.0) {
+                u_axis = normalize(along_u);
+                v_axis = normalize(along_v);
+            }
+        }
+        float4 texel = normal_map.SampleLevel(normal_sampler, input.uv, 0.0);
+        float nx = texel.r * 2.0 - 1.0;
+        float ny = 1.0 - texel.g * 2.0;
+        float nz = sqrt(max(0.0, 1.0 - (nx * nx + ny * ny)));
+        normal = normalize(float3(u_axis * nx + v_axis * ny, nz));
+    }
+    float4 shine = float4(0.0, 0.0, 0.0, 0.0);
+    if (shine_used) {
+        shine = specular_map.SampleLevel(specular_sampler, input.uv, 0.0) * specular;
+    }
+    return light_pixel(registers[0], input.world, normal, normal_used, shine, shine_used);
 }

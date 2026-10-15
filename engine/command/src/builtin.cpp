@@ -1,6 +1,7 @@
 #include "slash/command/builtin.hpp"
 
 #include "slash/animation/animation.hpp"
+#include "slash/canvas/light.hpp"
 #include "slash/canvas/material.hpp"
 #include "slash/canvas/sprite_frames.hpp"
 #include "slash/canvas/tilemap.hpp"
@@ -12,6 +13,7 @@
 #include "slash/core/version.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/render/image.hpp"
+#include "slash/render/light.hpp"
 #include "slash/storyboard/storyboard.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
@@ -47,6 +49,10 @@ constexpr std::int64_t kDefaultLogLines = 50;
 constexpr double kDefaultTickSeconds = 1.0 / 60.0;
 constexpr std::string_view kDefaultSnapshot = "default";
 constexpr std::int64_t kDefaultEventLimit = 100;
+// Light masks have 20 bits, and z indexes run from -4096 to 4096, as Godot's.
+constexpr std::int64_t kMaxLightMask = (std::int64_t{1} << 20) - 1;
+constexpr std::int64_t kMinZIndex = -4096;
+constexpr std::int64_t kMaxZIndex = 4096;
 
 // ---- Params schemas ----
 
@@ -1137,6 +1143,152 @@ Reply tilemap_get(Session& session, const json::Value& params) {
     result["origin"] = json::Array{x, y};
     result["legend"] = std::move(legend);
     result["rows"] = std::move(rows);
+    return Reply::success(std::move(result));
+}
+
+// ---- Lights ----
+
+// Three decimals are finer than 8-bit color.
+json::Value color_value(double channel) {
+    constexpr double kScale = 1000.0;
+    return short_number(std::round(channel * kScale) / kScale);
+}
+
+Reply light_sample(Session& session, const json::Value& params) {
+    const world::World& world = session.world();
+    const std::string id = text(params, "id");
+    const json::Value* points = params.find("points");
+    if (id.empty() == (points == nullptr)) {
+        return param_error(code::kInvalidParams, "",
+                           "give points, or id (an entity whose place, light mask and z index "
+                           "are used)");
+    }
+    render::ShadeItem item;
+    std::vector<std::array<float, 2>> positions;
+    if (points != nullptr) {
+        for (const json::Value& point : points->as_array()) {
+            positions.push_back(floats<2>(point));
+        }
+    } else {
+        const entt::entity entity = world.find(id);
+        if (entity == entt::null) {
+            return unknown_entity(world, id, "/id");
+        }
+        const auto& ecs = world.ecs();
+        const auto* transform = ecs.try_get<world::Transform2D>(entity);
+        if (transform == nullptr) {
+            return param_error(code::kInvalidParams, "/id", quoted(id) + " has no Transform2D");
+        }
+        positions.push_back({transform->position.x, transform->position.y});
+        if (const auto* sprite = ecs.try_get<world::Sprite2D>(entity); sprite != nullptr) {
+            item.light_mask = static_cast<std::uint32_t>(sprite->light_mask);
+            item.z_index = sprite->z_index;
+        } else if (const auto* layer = ecs.try_get<world::TileMapLayer>(entity); layer != nullptr) {
+            item.light_mask = static_cast<std::uint32_t>(layer->light_mask);
+            item.z_index = layer->z_index;
+        }
+    }
+    if (const json::Value* mask = params.find("light_mask"); mask != nullptr) {
+        item.light_mask = static_cast<std::uint32_t>(mask->as_int());
+    }
+    if (const json::Value* z_index = params.find("z_index"); z_index != nullptr) {
+        item.z_index = static_cast<std::int32_t>(z_index->as_int());
+    }
+
+    std::vector<asset::Handle<render::Image>> images;
+    const canvas::LightImage load = [&](const std::string& path) -> Result<const render::Image*> {
+        auto image = session.assets().load<render::Image>(path);
+        if (!image) {
+            return image.error();
+        }
+        images.push_back(std::move(image).value());
+        return images.back().get();
+    };
+    const auto name_of = [&](entt::entity entity) {
+        const std::string_view name = world.id_of(entity);
+        return name.empty() ? "entity " + std::to_string(entt::to_entity(entity))
+                            : std::string(name);
+    };
+    std::vector<canvas::LightProblem> problems;
+    canvas::SceneLighting scene = canvas::collect_lighting(world, load, {}, problems);
+    render::Image atlas;
+    if (std::ranges::any_of(scene.lights, [](const canvas::SceneLight& light) {
+            return light.light.kind == render::LightKind::Point;
+        })) {
+        auto packed = canvas::pack_light_atlas(scene.lights, load);
+        if (!packed) {
+            return Reply::failure(packed.error());
+        }
+        atlas = std::move(packed).value();
+    }
+    std::vector<render::Light> lights;
+    lights.reserve(scene.lights.size());
+    for (const canvas::SceneLight& light : scene.lights) {
+        lights.push_back(light.light);
+    }
+    const render::AtlasSampler sample_atlas = [&](float u, float v) {
+        return render::sample_image(atlas, render::Filter::Linear, false, u, v);
+    };
+    const render::ShadowTexel shadow_texel = [&](std::uint32_t column, std::uint32_t row) {
+        std::array<std::uint8_t, 4> texel{};
+        const std::size_t at = ((std::size_t{row} * render::kShadowMapWidth) + column) * 4;
+        std::copy_n(scene.shadow_pixels.data() + at, 4, texel.data());
+        return texel;
+    };
+    if (!scene.lit) {
+        item.mode = render::LightMode::Unshaded;
+    }
+
+    json::Array out;
+    for (const std::array<float, 2>& position : positions) {
+        std::vector<render::LightHit> hits;
+        render::ShadePixel pixel;
+        pixel.position = position;
+        const std::array<float, 4> color =
+            render::shade(lights, scene.ambient, item, pixel, sample_atlas, shadow_texel, &hits);
+        json::Value point;
+        point["color"] =
+            json::Array{color_value(color[0]), color_value(color[1]), color_value(color[2])};
+        json::Array reached;
+        for (const render::LightHit& hit : hits) {
+            const render::Light& light = lights.at(hit.light);
+            json::Array light_color;
+            bool dark = true;
+            for (std::size_t i = 0; i < 3; ++i) {
+                light_color.push_back(color_value(static_cast<double>(hit.color.at(i)) *
+                                                  static_cast<double>(hit.color[3])));
+                dark = dark && light_color.back().as_double() == 0.0;
+            }
+            // A light whose texture is clear here only touches the point.
+            if (dark && !(hit.shadow > 0.0F)) {
+                continue;
+            }
+            json::Value each;
+            each["id"] = name_of(scene.lights.at(hit.light).entity);
+            each["color"] = std::move(light_color);
+            if (light.shadow_row >= 0) {
+                each["shadow"] = color_value(hit.shadow);
+            }
+            reached.push_back(std::move(each));
+        }
+        point["lights"] = std::move(reached);
+        out.push_back(std::move(point));
+    }
+    json::Value result;
+    result["lit"] = scene.lit;
+    result["ambient"] = json::Array{color_value(scene.ambient[0]), color_value(scene.ambient[1]),
+                                    color_value(scene.ambient[2])};
+    result["points"] = std::move(out);
+    if (!problems.empty()) {
+        json::Array warnings;
+        for (const canvas::LightProblem& problem : problems) {
+            json::Value warning;
+            warning["id"] = name_of(problem.entity);
+            warning["message"] = problem.message;
+            warnings.push_back(std::move(warning));
+        }
+        result["warnings"] = std::move(warnings);
+    }
     return Reply::success(std::move(result));
 }
 
@@ -2370,6 +2522,35 @@ void register_builtin_commands(Registry& registry) {
         .effect = Effect::Read,
         .params = params_schema({{"id", layer_id}, {"rect", std::move(tile_rect)}}, {"id"}),
         .handler = tilemap_get,
+    });
+
+    json::Value sample_point = property("array", "[x, y]");
+    sample_point["items"]["type"] = "number";
+    sample_point["minItems"] = 2;
+    sample_point["maxItems"] = 2;
+    json::Value sample_points = property("array", "Points as [x, y]. Or give id.");
+    sample_points["items"] = std::move(sample_point);
+    sample_points["minItems"] = 1;
+    sample_points["maxItems"] = 256;
+    registry.add({
+        .name = "light.sample",
+        .description = "Returns how lit points are, as the GPU shades a white pixel there: the "
+                       "color and each light reaching it, with its shadow. A check without a "
+                       "screenshot.",
+        .capabilities = {Read},
+        .effect = Effect::Read,
+        .params = params_schema({
+            {"points", std::move(sample_points)},
+            {"id", id_property("An entity with a Transform2D: sample at its position, with its "
+                               "Sprite2D or TileMapLayer's light mask and z index. Or give "
+                               "points.")},
+            {"light_mask", integer_property("The draw's light mask: lights whose "
+                                            "range_item_cull_mask shares a bit reach it.",
+                                            0, kMaxLightMask, 1)},
+            {"z_index", integer_property("The draw's z index, for the lights' z ranges.",
+                                         kMinZIndex, kMaxZIndex, 0)},
+        }),
+        .handler = light_sample,
     });
 
     json::Value set_components =

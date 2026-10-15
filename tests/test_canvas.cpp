@@ -638,3 +638,326 @@ TEST_CASE("materials color a sprite's pixels on a GPU, and reload when their fil
     REQUIRE(image.ok());
     CHECK(near(pixel(image.value(), 8, 8), {128, 0, 128, 255}));
 }
+
+// ---- Lights ----
+
+TEST_CASE("cast_shadows keeps the nearest occluder at each angle of a point light") {
+    render::Light light;
+    light.position = {0.0F, 0.0F};
+    light.shadow_far = 100.0F;
+    // Two walls to the right: the nearer one, 30 away, hides the farther one where they overlap.
+    const std::vector<canvas::OccluderEdge> edges{{.a = {50.0F, -10.0F}, .b = {50.0F, 10.0F}},
+                                                  {.a = {30.0F, -2.0F}, .b = {30.0F, 2.0F}}};
+    const auto row = canvas::cast_shadows(light, edges, 0.0F);
+    REQUIRE(row.size() == render::kShadowMapWidth);
+    // Columns go round from -pi, so pi is column 0 again.
+    const auto depth_at = [&](float x, float y) {
+        const auto column = static_cast<std::size_t>(render::shadow_coord(light, {x, y}).column);
+        return render::decode_shadow_depth(row.at(column % render::kShadowMapWidth));
+    };
+    CHECK(depth_at(80.0F, 0.0F) == doctest::Approx(0.3).epsilon(0.001));
+    // Past the near wall's ends, the far wall: 50 / cos(angle) away.
+    CHECK(depth_at(80.0F, 8.0F) == doctest::Approx(std::hypot(50.0F, 5.0F) / 100.0F).epsilon(0.01));
+    // Beyond both, and on the other side of the light, nothing.
+    CHECK(depth_at(80.0F, 30.0F) == 2.0F);
+    CHECK(depth_at(-80.0F, 0.0F) == 2.0F);
+}
+
+TEST_CASE("cast_shadows gives a directional light a row across its direction") {
+    render::Light sun;
+    sun.kind = render::LightKind::Directional;
+    sun.position = {0.0F, 1.0F}; // down the screen
+    // A ledge 20 wide at y = 50; shadows reach 100 past it.
+    const std::vector<canvas::OccluderEdge> edges{{.a = {-10.0F, 50.0F}, .b = {10.0F, 50.0F}}};
+    const auto row = canvas::cast_shadows(sun, edges, 100.0F);
+    REQUIRE(row.size() == render::kShadowMapWidth);
+    // The row spans the ledge, a pixel more each side, and depths go 100 past it.
+    CHECK(sun.shadow_span == doctest::Approx(22.0));
+    CHECK(sun.shadow_far == doctest::Approx(100.0));
+    CHECK(sun.shadow_reach == doctest::Approx(1.0));
+    // Under the ledge, the row holds the ledge's depth, above the point's.
+    const render::ShadowCoord under = render::shadow_coord(sun, {0.0F, 80.0F});
+    REQUIRE(under.column >= 0.0F);
+    REQUIRE(under.column < static_cast<float>(render::kShadowMapWidth));
+    const float stored =
+        render::decode_shadow_depth(row.at(static_cast<std::size_t>(under.column)));
+    CHECK(stored == doctest::Approx(render::shadow_coord(sun, {0.0F, 50.0F}).depth).epsilon(0.001));
+    CHECK(under.depth == doctest::Approx(0.3));
+    // Beside it, off the row, which the shader reads as no shadow.
+    CHECK(render::shadow_coord(sun, {30.0F, 80.0F}).column < 0.0F);
+}
+
+TEST_CASE("collect_lighting gathers lights, the ambient color and shadow rows, and says what it "
+          "leaves out") {
+    Scene scene;
+    scene.files.write("white.png", strip_png({{255, 255, 255, 255}}, 4));
+    std::vector<asset::Handle<render::Image>> kept;
+    const auto images = [&](const std::string& path) -> slash::Result<const render::Image*> {
+        auto image = scene.assets.load<render::Image>(path);
+        if (!image) {
+            return image.error();
+        }
+        kept.push_back(std::move(image).value());
+        return kept.back().get();
+    };
+    std::vector<canvas::LightProblem> problems;
+
+    // Nothing to light, or only a disabled light: draws stay unshaded.
+    scene.create("off", R"({"Transform2D": {}, "PointLight2D": {"enabled": false}})");
+    CHECK_FALSE(canvas::collect_lighting(scene.world, images, {}, problems).lit);
+    CHECK(problems.empty());
+
+    scene.create("dark", R"({"CanvasModulate": {"color": [0.1, 0.2, 0.3, 1]}})");
+    const entt::entity second =
+        scene.create("darker", R"({"CanvasModulate": {"color": [0, 0, 0, 1]}})");
+    // A lamp turned a quarter turn and stretched: its texture still centers on it.
+    const entt::entity lamp =
+        scene.create("lamp", R"({"Transform2D": {"position": [100, 50], "rotation": 1.5707964,
+                                     "scale": [2, 1]},
+                    "PointLight2D": {"texture": "white.png", "texture_scale": 10,
+                                     "energy": 2, "color": [1, 0.5, 0.25, 1],
+                                     "blend_mode": "sub", "range_item_cull_mask": 6,
+                                     "shadow_enabled": true}})");
+    const entt::entity sun =
+        scene.create("sun", R"({"DirectionalLight2D": {"height": 3, "shadow_enabled": true,
+                                          "shadow_filter": "pcf13"}})");
+    const entt::entity gone =
+        scene.create("gone", R"({"Transform2D": {}, "PointLight2D": {"texture": "gone.png"}})");
+    const entt::entity flat =
+        scene.create("flat", R"({"Transform2D": {"scale": [0, 1]}, "PointLight2D": {}})");
+    const entt::entity typo =
+        scene.create("typo", R"({"Transform2D": {}, "PointLight2D": {"blend_mode": "mul"}})");
+    const entt::entity bad_cull =
+        scene.create("bad_cull", R"({"Transform2D": {}, "LightOccluder2D": {
+                       "polygon": [[0, 0], [1, 0]], "cull_mode": "both"}})");
+    // A wall between the lamp and the bottom of the screen.
+    const entt::entity wall =
+        scene.create("wall", R"({"Transform2D": {"position": [100, 60]}, "LightOccluder2D": {
+                   "polygon": [[-5, 0], [5, 0]], "closed": false}})");
+
+    canvas::SceneLighting lighting = canvas::collect_lighting(scene.world, images, {}, problems);
+    CHECK(lighting.lit);
+    CHECK(lighting.ambient == std::array{0.1F, 0.2F, 0.3F, 1.0F});
+    REQUIRE(lighting.lights.size() == 2);
+    const render::Light& point = lighting.lights[0].light;
+    CHECK(lighting.lights[0].entity == lamp);
+    CHECK(lighting.lights[0].texture == "white.png");
+    CHECK(point.kind == render::LightKind::Point);
+    CHECK(point.blend == render::BlendMode::Sub);
+    CHECK(point.color == std::array{2.0F, 1.0F, 0.5F, 1.0F});
+    CHECK(point.item_cull_mask == 6);
+    const auto uv = [&](float x, float y) {
+        const auto& m = point.texture_transform;
+        return std::array{(m[0] * x) + (m[1] * y) + m[2], (m[3] * x) + (m[4] * y) + m[5]};
+    };
+    CHECK(uv(100.0F, 50.0F)[0] == doctest::Approx(0.5));
+    CHECK(uv(100.0F, 50.0F)[1] == doctest::Approx(0.5));
+    // 40 pixels square, stretched 2x along the light's x, which points down the screen.
+    CHECK(uv(100.0F, 90.0F)[0] == doctest::Approx(1.0).epsilon(0.001));
+    CHECK(uv(120.0F, 50.0F)[1] == doctest::Approx(0.0).epsilon(0.001));
+    CHECK(lighting.lights[1].entity == sun);
+    CHECK(lighting.lights[1].light.kind == render::LightKind::Directional);
+    CHECK(lighting.lights[1].light.height == 1.0F); // clamped
+    CHECK(lighting.lights[1].light.shadow_filter == render::ShadowFilter::Pcf13);
+    // Both lights see the wall, so each has a row.
+    CHECK(lighting.shadow_rows == 2);
+    CHECK(point.shadow_row == 0);
+    CHECK(lighting.lights[1].light.shadow_row == 1);
+    CHECK(lighting.shadow_pixels.size() == std::size_t{2} * render::kShadowMapWidth * 4);
+
+    std::map<entt::entity, std::string> messages;
+    for (const canvas::LightProblem& problem : problems) {
+        messages.emplace(problem.entity, problem.message);
+    }
+    REQUIRE(messages.size() == 5);
+    CHECK(messages[second] == "a scene has one CanvasModulate, and \"dark\" is the one used");
+    CHECK(messages[gone].starts_with("gone.png: "));
+    CHECK(messages[flat] == "its texture_scale or Transform2D scale is 0, so it lights nothing");
+    CHECK(messages[typo].find("\"mul\"") != std::string::npos);
+    CHECK(messages[bad_cull].find("\"both\"") != std::string::npos);
+
+    // Culling and masks decide which occluders cast. Seen from the lamp, the wall runs
+    // counterclockwise on screen, so culling counterclockwise edges leaves the lamp unshadowed.
+    auto& occluder = scene.world.ecs().get<world::LightOccluder2D>(wall);
+    occluder.cull_mode = "counter_clockwise";
+    problems.clear();
+    lighting = canvas::collect_lighting(scene.world, images, {}, problems);
+    CHECK(lighting.lights[0].light.shadow_row == -1);
+    occluder.cull_mode = "clockwise";
+    lighting = canvas::collect_lighting(scene.world, images, {}, problems);
+    CHECK(lighting.lights[0].light.shadow_row == 0);
+    occluder.cull_mode = "disabled";
+    occluder.occluder_light_mask = 2; // the lights' shadow_item_cull_mask is 1
+    lighting = canvas::collect_lighting(scene.world, images, {}, problems);
+    CHECK(lighting.shadow_rows == 0);
+    occluder.occluder_light_mask = 1;
+
+    // The cache gives the same rows, and casts again when an occluder moves.
+    canvas::ShadowCache cache;
+    const canvas::SceneLighting first =
+        canvas::collect_lighting(scene.world, images, {}, problems, &cache);
+    CHECK(cache.rows.size() == 2);
+    const canvas::SceneLighting again =
+        canvas::collect_lighting(scene.world, images, {}, problems, &cache);
+    CHECK(again.shadow_pixels == first.shadow_pixels);
+    scene.world.ecs().get<world::Transform2D>(wall).position.y = 70.0F;
+    const canvas::SceneLighting moved =
+        canvas::collect_lighting(scene.world, images, {}, problems, &cache);
+    CHECK(moved.shadow_pixels != first.shadow_pixels);
+    scene.world.ecs().remove<world::LightOccluder2D>(wall);
+    (void)canvas::collect_lighting(scene.world, images, {}, problems, &cache);
+    CHECK(cache.rows.empty());
+}
+
+TEST_CASE("pack_light_atlas places each light texture once, with room around it") {
+    Scene scene;
+    scene.files.write("blue.png", strip_png({{0, 0, 255, 255}}, 4));
+    std::vector<asset::Handle<render::Image>> kept;
+    const auto images = [&](const std::string& path) -> slash::Result<const render::Image*> {
+        auto image = scene.assets.load<render::Image>(path);
+        if (!image) {
+            return image.error();
+        }
+        kept.push_back(std::move(image).value());
+        return kept.back().get();
+    };
+    std::vector<canvas::SceneLight> lights(4);
+    lights[0].texture = "blue.png";
+    lights[1].texture = ""; // the default light
+    lights[2].texture = "blue.png";
+    lights[3].light.kind = render::LightKind::Directional; // needs no texture
+    auto atlas = canvas::pack_light_atlas(lights, images);
+    REQUIRE(atlas.ok());
+    // 128x128 and 4x4 with a pixel between them fit in 256 across.
+    CHECK(atlas.value().width == 256);
+    CHECK(lights[0].light.atlas_rect == lights[2].light.atlas_rect);
+    CHECK(lights[0].light.atlas_rect != lights[1].light.atlas_rect);
+    const auto at = [&](const render::Light& light, float u, float v) {
+        const auto& rect = light.atlas_rect;
+        return render::sample_image(atlas.value(), render::Filter::Linear, false,
+                                    rect[0] + (u * rect[2]), rect[1] + (v * rect[3]));
+    };
+    // Filtering at a texture's edges never reads its neighbors.
+    for (const float u : {0.0F, 0.5F, 1.0F}) {
+        CHECK(at(lights[0].light, u, u) == std::array{0.0F, 0.0F, 1.0F, 1.0F});
+    }
+    CHECK(at(lights[1].light, 0.5F, 0.5F)[3] > 0.95F);
+    CHECK(at(lights[1].light, 0.0F, 0.5F)[3] == 0.0F);
+    CHECK(canvas::default_light_image().width == 128);
+
+    lights[0].texture = "gone.png";
+    auto missing = canvas::pack_light_atlas(lights, images);
+    REQUIRE_FALSE(missing.ok());
+    CHECK(missing.error().message.starts_with("gone.png: "));
+}
+
+TEST_CASE("the canvas counts lights and shadows, and makes their textures only when needed") {
+    Scene scene;
+    scene.files.write("red.png", strip_png({{255, 0, 0, 255}}, 4));
+    scene.create("hero", R"({"Transform2D": {}, "Sprite2D": {"texture": "red.png"}})");
+    const auto device = render::create_null_device();
+    canvas::CanvasRenderer renderer(*device, scene.assets);
+    auto target = device->create_texture(
+        {.width = 8, .height = 8, .filter = render::Filter::Linear, .render_target = true});
+    REQUIRE(target.ok());
+    canvas::CanvasOptions options;
+    options.target = target.value();
+    REQUIRE(renderer.draw(scene.world, options).ok());
+    CHECK(renderer.lights_drawn() == 0);
+    CHECK(device->stats().textures == 2); // the target and red.png
+
+    // A lamp with shadows and a wall: the light atlas and the shadow map join them.
+    scene.create("lamp", R"({"Transform2D": {"position": [4, 4]},
+                             "PointLight2D": {"shadow_enabled": true}})");
+    const entt::entity wall =
+        scene.create("wall", R"({"Transform2D": {"position": [10, 4]}, "LightOccluder2D": {
+                   "polygon": [[0, -2], [0, 2]], "closed": false}})");
+    Warnings warnings;
+    scene.create("gone", R"({"Transform2D": {}, "PointLight2D": {"texture": "gone.png"}})");
+    REQUIRE(renderer.draw(scene.world, options).ok());
+    CHECK(renderer.sprites_drawn() == 1);
+    CHECK(renderer.lights_drawn() == 1);
+    CHECK(renderer.shadows_drawn() == 1);
+    CHECK(device->stats().textures == 4);
+    REQUIRE(warnings.lines.size() == 1);
+    CHECK(warnings.logged(R"("id":"gone")"));
+    CHECK(warnings.logged("a light can't shine"));
+
+    // Nothing changed: no new textures, and no new warnings.
+    REQUIRE(renderer.draw(scene.world, options).ok());
+    CHECK(device->stats().textures == 4);
+    CHECK(warnings.lines.size() == 1);
+
+    // No occluder, no shadow map; no lights, no atlas.
+    scene.world.ecs().remove<world::LightOccluder2D>(wall);
+    REQUIRE(renderer.draw(scene.world, options).ok());
+    CHECK(renderer.shadows_drawn() == 0);
+    CHECK(device->stats().textures == 3);
+    scene.world.ecs().get<world::PointLight2D>(scene.world.find("lamp")).enabled = false;
+    scene.world.ecs().get<world::PointLight2D>(scene.world.find("gone")).enabled = false;
+    REQUIRE(renderer.draw(scene.world, options).ok());
+    CHECK(renderer.lights_drawn() == 0);
+    CHECK(device->stats().textures == 2);
+}
+
+TEST_CASE("lights shade sprites on a GPU, as their masks, materials and shadows say") {
+    auto device = gpu_device();
+    if (device == nullptr) {
+        return;
+    }
+    Scene scene;
+    scene.files.write("white.png", strip_png({{255, 255, 255, 255}}, 8));
+    scene.files.write("flat.material.json", R"({"format": 1, "light_mode": "unshaded"})");
+    scene.create("dark", R"({"CanvasModulate": {"color": [0.5, 0.5, 0.5, 1]}})");
+    // A red light over the right half: 16 across and, stretched, 32 down.
+    scene.create("lamp", R"({"Transform2D": {"position": [24, 16], "scale": [1, 2]},
+                             "PointLight2D": {"texture": "white.png", "texture_scale": 2,
+                                              "color": [1, 0, 0, 1], "shadow_enabled": true}})");
+    const std::string sprite =
+        R"("Sprite2D": {"texture": "white.png", "texture_filter": "nearest")";
+    scene.create("plain", R"({"Transform2D": {"position": [4, 4]}, )" + sprite + "}}");
+    scene.create("flat", R"({"Transform2D": {"position": [4, 20]}, )" + sprite +
+                             R"(, "material": "flat.material.json"}})");
+    scene.create("lit", R"({"Transform2D": {"position": [20, 4]}, )" + sprite + "}}");
+    const entt::entity masked =
+        scene.create("masked", R"({"Transform2D": {"position": [20, 24]}, )" + sprite +
+                                   R"(, "light_mask": 2}})");
+    auto target = device->create_texture(
+        {.width = 32, .height = 32, .filter = render::Filter::Nearest, .render_target = true});
+    REQUIRE(target.ok());
+    canvas::CanvasRenderer renderer(*device, scene.assets);
+    canvas::CanvasOptions options;
+    options.target = target.value();
+    options.clear = {.r = 0.0F, .g = 0.0F, .b = 0.0F, .a = 1.0F};
+    REQUIRE(renderer.draw(scene.world, options).ok());
+    auto image = device->read_texture(target.value());
+    REQUIRE(image.ok());
+    const auto near = [](Rgba got, Rgba want) {
+        for (std::size_t i = 0; i < 4; ++i) {
+            if (got.at(i) + 1 < want.at(i) || got.at(i) > want.at(i) + 1) {
+                return false;
+            }
+        }
+        return true;
+    };
+    CHECK(near(pixel(image.value(), 4, 4), {128, 128, 128, 255}));   // ambient only
+    CHECK(pixel(image.value(), 4, 20) == Rgba{255, 255, 255, 255});  // unshaded
+    CHECK(near(pixel(image.value(), 20, 4), {255, 128, 128, 255}));  // ambient plus red
+    CHECK(near(pixel(image.value(), 20, 24), {128, 128, 128, 255})); // not on the light's mask
+
+    // A wall just under the lamp shadows everything below it.
+    scene.world.ecs().get<world::Sprite2D>(masked).light_mask = 1;
+    scene.create("wall", R"({"Transform2D": {"position": [24, 17]}, "LightOccluder2D": {
+                             "polygon": [[-16, 0], [16, 0]], "closed": false}})");
+    REQUIRE(renderer.draw(scene.world, options).ok());
+    CHECK(renderer.shadows_drawn() == 1);
+    image = device->read_texture(target.value());
+    REQUIRE(image.ok());
+    CHECK(near(pixel(image.value(), 20, 4), {255, 128, 128, 255}));
+    CHECK(near(pixel(image.value(), 20, 24), {128, 128, 128, 255}));
+    scene.world.ecs().remove<world::LightOccluder2D>(scene.world.find("wall"));
+    REQUIRE(renderer.draw(scene.world, options).ok());
+    image = device->read_texture(target.value());
+    REQUIRE(image.ok());
+    CHECK(near(pixel(image.value(), 20, 24), {255, 128, 128, 255}));
+}

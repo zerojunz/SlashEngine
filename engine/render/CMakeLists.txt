@@ -3,6 +3,7 @@ add_library(slash_render
     src/gpu_device.cpp
     src/hlsl_compiler.cpp
     src/image.cpp
+    src/light.cpp
     src/material.cpp)
 add_library(slash::render ALIAS slash_render)
 
