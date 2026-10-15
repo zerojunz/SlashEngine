@@ -707,10 +707,11 @@ TEST_CASE("exports ship textures, frames, material, animation and tile set files
     std::filesystem::remove_all(folder);
 }
 
-TEST_CASE("exports ship fonts and check them, and the controls of scenes, first") {
+TEST_CASE("exports ship fonts and themes and check them, and the controls of scenes, first") {
     const std::filesystem::path folder = "exporter_fonts_project";
     std::filesystem::remove_all(folder);
     std::filesystem::create_directories(folder / "fonts");
+    std::filesystem::create_directories(folder / "ui");
     const auto write = [&](const std::string& path, std::string_view text) {
         REQUIRE(slash::platform::write_file((folder / path).string(), text).ok());
     };
@@ -728,6 +729,9 @@ TEST_CASE("exports ship fonts and check them, and the controls of scenes, first"
         R"({"format": 1, "font": "fonts/roboto.ttf", "multichannel_signed_distance_field": true})");
     write("fonts/broken.ttf", "not a font");
     write("fonts/bad.font.json", R"({"format": 1, "font": "fonts/title.woff"})");
+    write("ui/game.theme.json", R"({"format": 1, "types": {"Label": {"font_sizes": {
+        "font_size": 20}}}})");
+    write("ui/bad.theme.json", R"({"format": 1, "types": {"Lable": {}}})");
 
 #if defined(__APPLE__)
     const std::string host = "macos";
@@ -752,17 +756,21 @@ TEST_CASE("exports ship fonts and check them, and the controls of scenes, first"
                            problem.find("message")->as_string());
     }
     std::ranges::sort(problems); // folders list in any order
-    REQUIRE(problems.size() == 3);
-    INFO(problems[0], "\n", problems[1], "\n", problems[2]);
+    REQUIRE(problems.size() == 4);
+    INFO(problems[0], "\n", problems[1], "\n", problems[2], "\n", problems[3]);
     CHECK(problems[0] == "fonts/bad.font.json /font expected a .ttf or .otf file");
     CHECK(problems[1] == "fonts/broken.ttf  not a TrueType or OpenType font");
     CHECK(problems[2] ==
           "main.scene.json /entities/panel/components/Control/children/0 a control can't be "
           "its own child");
+    CHECK(problems[3] ==
+          "ui/bad.theme.json /types/Lable \"Lable\" isn't a control type; did you mean "
+          "\"Label\"?");
 
     const std::filesystem::path data = folder / ".slash" / "export" / host / "data";
     CHECK(std::filesystem::exists(data / "fonts" / "roboto.ttf"));
     CHECK(std::filesystem::exists(data / "fonts" / "title.font.json"));
+    CHECK(std::filesystem::exists(data / "ui" / "game.theme.json"));
     std::filesystem::remove_all(folder);
 }
 

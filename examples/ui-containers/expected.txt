@@ -1,0 +1,23 @@
+wrote ui/gem.png
+wrote ui/frame.png
+scene.open {"path":"main.scene.json"}
+{"entities":28,"path":"main.scene.json"}
+ui.layout {"ids":["frame","title","health","grid","slot_0","icon_0","slot_7","tags","tag_5","hint","tooltip_text"]}
+{"controls":[{"id":"frame","rect":[140,16,360,327]},{"id":"title","lines":["Inventory"],"rect":[156,32,328,33]},{"id":"health","lines":["72%"],"rect":[156,75,328,26]},{"id":"grid","rect":[183,111,274,134]},{"id":"slot_0","rect":[183,111,64,64]},{"id":"icon_0","rect":[191,119,48,48]},{"id":"slot_7","rect":[393,181,64,64]},{"id":"tags","rect":[156,255,328,40]},{"id":"tag_5","lines":["glows at night"],"rect":[276,276,88,19]},{"id":"hint","lines":["Drag an item onto a slot to equip it."],"rect":[156,305,328,22]},{"id":"tooltip_text","lines":["Ruby: +5 fire damage"],"rect":[26,20,180,28]}],"viewport":[640,360]}
+ui.theme {"id":"slot_0","items":["styles"]}
+{"items":[{"from":"ui/game.theme.json","item":"styles/panel","value":{"bg_color":[0.2,0.22,0.3,1.0],"content_margin":8.0,"corner_radius":6}}]}
+ui.theme {"id":"title","items":["colors","font_sizes"]}
+{"items":[{"from":"ui/game.theme.json","item":"colors/font_color","value":[1.0,0.85,0.4,1.0]},{"from":"default","item":"colors/font_outline_color","value":[0.0,0.0,0.0,1.0]},{"from":"default","item":"colors/font_shadow_color","value":[0.0,0.0,0.0,0.0]},{"from":"ui/game.theme.json","item":"font_sizes/font_size","value":24}]}
+component.set {"components":{"ProgressBar":{"value":35}},"id":"health"}
+{"changed":{"ProgressBar":{"value":35.0}},"id":"health"}
+component.set {"components":{"GridContainer":{"columns":8}},"id":"grid"}
+{"changed":{"GridContainer":{"columns":8}},"id":"grid"}
+ui.layout {"ids":["frame","health","grid","slot_7"]}
+{"controls":[{"id":"frame","rect":[27,62,586,236]},{"id":"health","lines":["35%"],"rect":[43,121,554,26]},{"id":"grid","rect":[43,157,554,64]},{"id":"slot_7","rect":[533,157,64,64]}],"viewport":[640,360]}
+component.set {"components":{"Control":{"theme_override_styles":{"panal":{"bg_color":[1,0,0,1]}}}},"id":"slot_1"}
+{"changed":{"Control":{"theme_override_styles":{"panal":{"bg_color":[1,0,0,1]}}}},"id":"slot_1"}
+ui.layout {"ids":["slot_1"]}
+{"controls":[{"id":"slot_1","rect":[113,157,64,64]}],"problems":[{"id":"slot_1","message":"PanelContainer has no styles item \"panal\"; did you mean \"panel\"?","path":"/components/Control/theme_override_styles/panal"}],"viewport":[640,360]}
+undo {}
+{"can_redo":1,"can_undo":2,"undone":"component.set"}
+controls drawn: 23, boxes drawn: 15, glyphs drawn: 99, GPU draws: 14

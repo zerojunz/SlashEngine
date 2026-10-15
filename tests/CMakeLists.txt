@@ -26,6 +26,7 @@ add_executable(slash_tests
     test_text.cpp
     test_tilemap.cpp
     test_ui.cpp
+    test_ui_containers.cpp
     test_world.cpp)
 target_link_libraries(slash_tests PRIVATE
     slash::animation slash::asset slash::canvas slash::command slash::core slash::exporter slash::physics2d
@@ -246,6 +247,29 @@ if(SLASH_BUILD_TOOLS)
         WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
     set_tests_properties(cli_scene_validate_invalid_ui PROPERTIES
         PASS_REGULAR_EXPRESSION "\"message\":\"a control can't be its own child\",\"path\":\"/entities/panel/components/Control/children/1\"}.*\"path\":\"/entities/hint/components/Control/theme_override_colors/font_colour\"")
+
+    add_test(NAME cli_schema_theme COMMAND slash-cli schema theme)
+    set_tests_properties(cli_schema_theme PROPERTIES
+        PASS_REGULAR_EXPRESSION "\"title\": \"SlashEngine theme\"")
+    # The containers example's theme and scene, which must stay valid and canonical. Its scene
+    # names textures the example writes when it runs, so only its form is checked here.
+    set(containers_example ${PROJECT_SOURCE_DIR}/examples/ui-containers)
+    add_test(NAME cli_scene_validate_theme
+        COMMAND slash-cli scene validate ${containers_example}/ui/game.theme.json)
+    set_tests_properties(cli_scene_validate_theme PROPERTIES
+        PASS_REGULAR_EXPRESSION "{\"types\":8,\"valid\":true}")
+    add_test(NAME cli_scene_format_theme
+        COMMAND slash-cli scene format --check ${containers_example}/ui/game.theme.json)
+    set_tests_properties(cli_scene_format_theme PROPERTIES
+        PASS_REGULAR_EXPRESSION "{\"canonical\":true}")
+    add_test(NAME cli_scene_format_ui_containers
+        COMMAND slash-cli scene format --check ${containers_example}/main.scene.json)
+    set_tests_properties(cli_scene_format_ui_containers PROPERTIES
+        PASS_REGULAR_EXPRESSION "{\"canonical\":true}")
+    add_test(NAME cli_scene_validate_invalid_theme
+        COMMAND slash-cli scene validate ${scenes}/invalid.theme.json)
+    set_tests_properties(cli_scene_validate_invalid_theme PROPERTIES
+        PASS_REGULAR_EXPRESSION "\"message\":\"Label has no colors item \\\\\"font_colour\\\\\"; did you mean \\\\\"font_color\\\\\"[?]\",\"path\":\"/types/Label/colors/font_colour\"")
 
     add_test(NAME cli_schema_storyboard COMMAND slash-cli schema storyboard)
     set_tests_properties(cli_schema_storyboard PROPERTIES
