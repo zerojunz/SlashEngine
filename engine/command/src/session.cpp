@@ -209,8 +209,10 @@ Reply Session::call(std::string_view name, const json::Value& params) {
     }
 
     Snapshot before{command->name, save(), {}, true};
-    // Input events a failed command or dry run stepped through wait for the next tick again.
+    // Input events a failed command or dry run stepped through wait for the next tick again, and
+    // focus, hover and buttons being pressed are as they were.
     const input::Snapshot input_before = input::save(world_);
+    const ui::Snapshot ui_before = ui::save(world_);
     const std::string path_before = scene_path_;
     const world::World::Counters counters_before = world_.counters();
     edited_ = false;
@@ -241,6 +243,7 @@ Reply Session::call(std::string_view name, const json::Value& params) {
         }
         restore(before.saved);
         input::restore(world_, input_before);
+        ui::restore(world_, ui_before);
         scene_path_ = path_before;
         world_.set_counters(counters_before);
         if (!reply.ok) {

@@ -125,11 +125,12 @@ environment variables, never from the file.
   with `physics_raycast`, `physics_overlap` and `physics_contacts` rather than by geometry.
 - Particles are `CPUParticles2D` components, as Godot's, with a texture from `sprites/`. Check
   them with `particles_eval` (how many, where, and each one) rather than a screenshot.
-- UI is `Control`, `Label` and `ColorRect` components, as Godot's Control nodes, laid out in the
-  window by anchors and offsets. `fonts/` (or any folder): `.ttf` and `.otf` files, and
-  `.font.json` files (`slash-cli schema font`) for distance-field fonts that stay sharp at any
-  size. Check UI with `ui_layout` (each control's rect and each label's lines) rather than a
-  screenshot.
+- UI is `Control`, `Label`, `Button` and the other UI components, as Godot's Control nodes,
+  laid out in the window by anchors and offsets or by containers. `fonts/` (or any folder):
+  `.ttf` and `.otf` files, and `.font.json` files (`slash-cli schema font`) for distance-field
+  fonts that stay sharp at any size. Check UI with `ui_layout` (each control's rect, each label's
+  lines, each button's state and which control has focus) rather than a screenshot. Buttons
+  emit `pressed` events; try one with `ui_press`, or a click or `ui_accept` with `input_inject`.
 - Controls are input actions in `project.json`'s `input`, as Godot's input map: name what the
   game does (`jump`, `move_left`) and bind keys, mouse buttons, gamepad buttons and sticks to it;
   gameplay code reads actions, never keys. Try them with `input_inject` (keys, clicks, touches,

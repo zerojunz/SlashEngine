@@ -1390,6 +1390,8 @@ Reply ui_layout(Session& session, const json::Value& params) {
         }
     }
     const ui::Layout layout = ui::layout(world, *fonts, viewport);
+    const entt::entity focused = ui::focus_owner(world);
+    const entt::entity hovered = ui::hovered(world);
     json::Array controls;
     for (const ui::Placed& placed : layout.controls) {
         const std::string_view id = world.id_of(placed.entity);
@@ -1414,6 +1416,16 @@ Reply ui_layout(Session& session, const json::Value& params) {
         item["rect"] = rounded(json::Array{low.x, low.y, high.x - low.x, high.y - low.y});
         if (!placed.visible) {
             item["visible"] = false;
+        }
+        if (const auto button = layout.buttons.find(placed.entity);
+            button != layout.buttons.end()) {
+            item["draw_mode"] = ui::draw_mode_name(button->second.mode);
+        }
+        if (placed.entity == focused) {
+            item["focused"] = true;
+        }
+        if (placed.entity == hovered) {
+            item["hovered"] = true;
         }
         if (const ui::LabelText* label = layout.label(placed.entity); label != nullptr) {
             item["lines"] = line_texts(label->text, label->source, label->first, label->last,
@@ -1539,6 +1551,57 @@ Reply text_measure(Session& session, const json::Value& params) {
     if (layout.missing > 0) {
         result["missing_glyphs"] = static_cast<std::int64_t>(layout.missing);
     }
+    return Reply::success(std::move(result));
+}
+
+Reply ui_press(Session& session, const json::Value& params) {
+    world::World& world = session.world();
+    const std::string id = text(params, "id");
+    const entt::entity entity = world.find(id);
+    if (entity == entt::null) {
+        return unknown_entity(world, id, "/id");
+    }
+    const auto* button = world.ecs().try_get<world::Button>(entity);
+    const auto* texture = world.ecs().try_get<world::TextureButton>(entity);
+    if (button == nullptr && texture == nullptr) {
+        return param_error(code::kInvalidParams, "/id",
+                           quoted(id) + " isn't a button: it has no Button or TextureButton");
+    }
+    if ((button != nullptr && button->disabled) || (texture != nullptr && texture->disabled)) {
+        return param_error(code::kInvalidParams, "/id",
+                           quoted(id) + " is disabled, so it can't be pressed");
+    }
+    ui::press(world, entity);
+    json::Value result;
+    result["tick"] = world.tick();
+    return Reply::success(std::move(result));
+}
+
+Reply ui_focus(Session& session, const json::Value& params) {
+    world::World& world = session.world();
+    const json::Value* id = params.find("id");
+    if (id->is_null()) {
+        ui::release_focus(world);
+    } else {
+        const entt::entity entity = world.find(id->as_string());
+        if (entity == entt::null) {
+            return unknown_entity(world, id->as_string(), "/id");
+        }
+        if (!ui::is_control(world, entity)) {
+            return param_error(code::kInvalidParams, "/id",
+                               quoted(id->as_string()) +
+                                   " isn't a control: it has no Control or UI component");
+        }
+        if (!ui::grab_focus(world, entity)) {
+            return param_error(code::kInvalidParams, "/id",
+                               quoted(id->as_string()) +
+                                   " can't take focus: it is hidden, or its focus_mode is "
+                                   "\"none\" (the default for controls that aren't buttons)");
+        }
+    }
+    json::Value result;
+    const entt::entity owner = ui::focus_owner(world);
+    result["focused"] = owner != entt::null ? json::Value(world.id_of(owner)) : json::Value();
     return Reply::success(std::move(result));
 }
 
@@ -3146,9 +3209,10 @@ void register_builtin_commands(Registry& registry) {
     registry.add({
         .name = "ui.layout",
         .description = "Returns where controls are on screen, in drawing order: each one's rect "
-                       "[x, y, w, h], the lines labels and progress bars show and whether text "
-                       "overflows, and mistakes such as misspelled theme overrides. A check "
-                       "without a screenshot.",
+                       "[x, y, w, h], the lines labels, buttons and progress bars show and "
+                       "whether text overflows, each button's draw_mode, the control with focus "
+                       "and the one hovered, and mistakes such as misspelled theme overrides. A "
+                       "check without a screenshot.",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema({
@@ -3172,6 +3236,28 @@ void register_builtin_commands(Registry& registry) {
             },
             {"id"}),
         .handler = ui_theme,
+    });
+    registry.add({
+        .name = "ui.press",
+        .description = "Presses a Button or TextureButton at the next tick, as a click would: "
+                       "it emits pressed, and toggles first if it is a toggle button. Returns "
+                       "the tick.",
+        .capabilities = {Run},
+        .effect = Effect::Read,
+        .params = params_schema({{"id", property("string", "The button.")}}, {"id"}),
+        .handler = ui_press,
+    });
+    json::Value focus_id = property("string", "The control, or null to take focus away.");
+    focus_id["type"] = json::Array{"string", "null"};
+    registry.add({
+        .name = "ui.focus",
+        .description = "Gives a control focus, so ui_accept presses it and ui_up, ui_down, "
+                       "ui_left, ui_right and Tab move on from it; null takes focus away. "
+                       "Returns the control with focus.",
+        .capabilities = {Run},
+        .effect = Effect::Read,
+        .params = params_schema({{"id", std::move(focus_id)}}, {"id"}),
+        .handler = ui_focus,
     });
     json::Value measure_text = property("string", R"(The text; lines break at "\n".)");
     measure_text["maxLength"] = 65536;

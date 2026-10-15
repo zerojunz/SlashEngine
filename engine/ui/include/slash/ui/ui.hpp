@@ -15,7 +15,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -28,6 +30,10 @@
 // default theme. layout() places every control of a world in a viewport, and draw_calls() turns
 // that into triangles for the canvas renderer, which draws them above the world. Text comes from
 // the world's text::Fonts, and themes and textures load through the assets it loads from.
+//
+// The "gui" system sends each tick's input events to controls, as Godot's Viewport does: the
+// mouse hovers them, clicks and touches press buttons, and the ui_* actions move focus and press
+// the focused button. It emits what happened as UI events (events()) and world events.
 //
 //   ui::install(world, assets, {.viewport = {1280.0F, 720.0F}});
 //   const ui::Layout placed = ui::layout(world, *ui::fonts(world), {1280.0F, 720.0F});
@@ -48,10 +54,13 @@ struct Settings {
 // render::Image), plus the font types (text::add_asset_types).
 void add_asset_types(asset::Assets& assets);
 
-// Adds the asset types and gives the world a text::Fonts that loads through assets, which must
-// outlive the world.
+// Adds the asset types, gives the world a text::Fonts that loads through assets, which must
+// outlive the world, and adds the "gui" system (priority -900, after input::install's "input").
 void install(world::World& world, asset::Assets& assets, const Settings& settings = {});
 void set_settings(world::World& world, const Settings& settings);
+// Sets only the viewport: games set it to the window's size each frame, so controls are hit
+// where they are drawn.
+void set_viewport(world::World& world, Vec2 viewport);
 // The settings of a world ui was installed in, or the defaults.
 [[nodiscard]] Settings settings(const world::World& world);
 // The fonts of a world ui was installed in, or nullptr.
@@ -146,6 +155,7 @@ struct LabelText {
     // Glyphs of the source's bytes from here on are hidden (visible_characters after shaping).
     std::size_t visible_bytes = static_cast<std::size_t>(-1);
     bool overflow = false; // a line is wider than the rect, or lines don't fit its height
+    bool clip = false;     // drawn cut off at the rect
     std::string error;     // why its font didn't load, so the default font drew it
     // Theme items.
     std::string font;
@@ -183,6 +193,18 @@ struct Box {
     Vec2 texture_size; // for texture style boxes: the texture's size in pixels
 };
 
+// What a button looks like, as Godot's BaseButton::DrawMode: hover_pressed is a toggle button
+// that is on and hovered, or one whose shortcut just pressed it.
+enum class DrawMode : std::uint8_t { Normal, Pressed, Hover, Disabled, HoverPressed };
+// "normal", "pressed", "hover", "disabled" or "hover_pressed".
+[[nodiscard]] std::string_view draw_mode_name(DrawMode mode);
+
+// A Button's or TextureButton's state as laid out.
+struct ButtonState {
+    DrawMode mode = DrawMode::Normal;
+    float click_margin = 0.0F; // pixels around its rect that still hit it
+};
+
 // What one control the layout can't place properly is doing wrong.
 struct Problem {
     std::string id;
@@ -196,10 +218,14 @@ struct Layout {
     // order, roots in the order their entities were made.
     std::vector<Placed> controls;
     std::unordered_map<entt::entity, std::size_t> index; // entity to its place in controls
+    // Every control in tree order, as Godot's scene tree: parents before children and children
+    // in order, roots in the order their entities were made. Pointers hit the last first.
+    std::vector<entt::entity> tree;
     std::vector<Problem> problems;
     std::map<entt::entity, LabelText> labels;       // each Label's text
     std::map<entt::entity, std::vector<Box>> boxes; // what each control draws under its text
     std::map<entt::entity, LabelText> percentages;  // each ProgressBar's percentage
+    std::map<entt::entity, ButtonState> buttons;    // each Button and TextureButton
 
     [[nodiscard]] const Placed* find(entt::entity entity) const;
     [[nodiscard]] const LabelText* label(entt::entity entity) const;
@@ -289,5 +315,44 @@ struct DrawList {
 };
 [[nodiscard]] DrawList draw_calls(const Layout& layout, const world::World& world,
                                   text::Fonts& fonts);
+
+// ---- Buttons, focus and hover ----
+
+// Something controls did, as Godot's signals: "pressed", "toggled", "button_down" and
+// "button_up" from buttons, and "mouse_entered", "mouse_exited", "focus_entered" and
+// "focus_exited" from any control. Each is a world event (World::emit) too, with data
+// {"toggled_on": bool} for toggled.
+struct UiEvent {
+    std::string kind;
+    std::string id;          // the control's entity ID
+    bool toggled_on = false; // for toggled
+};
+
+// The UI events of the tick the "gui" system last ran (inside a system: this tick), in order.
+// Controls are known by entity ID, so ones made without an ID take no part.
+[[nodiscard]] std::span<const UiEvent> events(const world::World& world);
+// Whether a button emitted pressed that tick.
+[[nodiscard]] bool was_pressed(const world::World& world, entt::entity button);
+// Presses a button at the next tick, as Godot's BaseButton::press: a toggle button toggles. A
+// disabled one isn't pressed.
+void press(world::World& world, entt::entity button);
+[[nodiscard]] DrawMode draw_mode(const world::World& world, entt::entity button);
+
+// The control with focus, which gets the ui_* actions first, or entt::null, as Godot's
+// gui_get_focus_owner.
+[[nodiscard]] entt::entity focus_owner(const world::World& world);
+// Gives a control focus and shows it, as Godot's grab_focus; false if its focus_mode is none.
+bool grab_focus(world::World& world, entt::entity control);
+void release_focus(world::World& world);
+// The control under the mouse, or entt::null.
+[[nodiscard]] entt::entity hovered(const world::World& world);
+
+// A copy of what the gui system keeps between ticks (focus, hover, buttons being pressed, UI
+// events), so a session can put it back when a command fails or was a dry run.
+struct Snapshot {
+    std::shared_ptr<const void> data;
+};
+[[nodiscard]] Snapshot save(const world::World& world);
+void restore(world::World& world, const Snapshot& snapshot);
 
 } // namespace slash::ui

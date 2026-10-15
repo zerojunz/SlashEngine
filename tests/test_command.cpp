@@ -1157,11 +1157,13 @@ TEST_CASE("engine.describe lists systems in the order they run") {
     // Every session applies input first and plays animations, steps 2D physics and runs
     // particles with built-in systems that run late.
     CHECK(*engine.ok("engine.describe").find("systems") ==
-          parse(R"(["input", "controls", "movement", "animation_player", "physics2d",
+          parse(R"(["input", "gui", "controls", "movement", "animation_player", "physics2d",
                     "animated_sprite_2d", "cpu_particles_2d"])"));
     CHECK(*engine.ok("engine.describe", R"({"full": true})").find("systems") == parse(R"([
         {"name": "input", "doc": "Applies the input events queued since the last tick.",
          "priority": -1000},
+        {"name": "gui", "doc": "Sends input events to controls: hover, focus and button presses.",
+         "priority": -900},
         {"name": "controls", "priority": -1},
         {"name": "movement", "doc": "Moves things by their velocity.", "priority": 0},
         {"name": "animation_player",

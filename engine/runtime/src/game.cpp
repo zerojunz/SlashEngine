@@ -130,6 +130,11 @@ bool Game::frame() {
     const std::uint64_t ticks = loop_->stats().ticks;
     const bool running = loop_->frame([this](std::uint64_t /*tick*/, double tick_seconds) {
         canvas_->before_tick(world_);
+        // Controls are laid out in the window drawn, so clicks land on what is shown.
+        if (const platform::WindowSize window = platform_.window_size(); window.width > 0) {
+            ui::set_viewport(world_,
+                             {static_cast<float>(window.width), static_cast<float>(window.height)});
+        }
         world_.step(tick_seconds);
     });
     // The frame that runs the last tick is drawn too.

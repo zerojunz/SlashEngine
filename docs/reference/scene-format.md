@@ -276,6 +276,10 @@ A reference must name an entity that exists in the same scene.
 | | `size_flags_horizontal`, `size_flags_vertical` | `std::string` | `"fill"` | How a [container](#containers) sizes it on this axis: `fill`, `expand_fill`, `expand`, `shrink_begin`, `shrink_center`, `shrink_end`, `expand_shrink_center` or `expand_shrink_end` |
 | | `size_flags_stretch_ratio` | `float` | `1` | Its share of the space expanding children split in a container |
 | | `texture_filter` | `std::string` | `"inherit"` | How its textures are sampled when scaled: `linear`, `nearest`, or `inherit` its parent's, then the project's `rendering.texture_filter` |
+| | `mouse_filter` | `std::string` | `""` | Whether a click, tap or the mouse [stops at it](#buttons) (`stop`), goes on to its parent too (`pass`) or passes it by (`ignore`); `""` takes its type's: `ignore` for `Label` and `NinePatchRect`, `pass` for `TextureRect` and containers other than `PanelContainer`, `stop` for the rest |
+| | `focus_mode` | `std::string` | `""` | Whether clicks and the keyboard or a gamepad give it [focus](#buttons) (`all`), clicks only (`click`) or nothing (`none`); `""` takes its type's: `all` for buttons, `none` for the rest |
+| | `focus_neighbor_left`, `_top`, `_right`, `_bottom` | `entity` | `null` | The control `ui_left`, `ui_up`, `ui_right` or `ui_down` moves focus to; `null` finds the closest one that way |
+| | `focus_next`, `focus_previous` | `entity` | `null` | The control `ui_focus_next` (Tab) or `ui_focus_prev` (Shift+Tab) moves focus to; `null` takes the next or previous in the tree |
 | `Label` | `text` | `std::string` | `""` | The text; lines break at `"\n"` |
 | | `horizontal_alignment` | `std::string` | `"left"` | Each line's place across the rect: `left`, `center`, `right` or `fill`, which stretches spaces to the width on every line but a wrapped paragraph's last |
 | | `vertical_alignment` | `std::string` | `"top"` | The lines' place down the rect: `top`, `center`, `bottom` or `fill`, which spreads them over it |
@@ -305,6 +309,32 @@ A reference must name an entity that exists in the same scene.
 | | `allow_greater`, `allow_lesser` | `bool` | `false` | Let the value go past `max_value` or `min_value`; the bar stops at full or empty, the percentage doesn't |
 | | `fill_mode` | `std::string` | `"begin_to_end"` | Which way it fills: `begin_to_end`, `end_to_begin`, `top_to_bottom` or `bottom_to_top` |
 | | `show_percentage` | `bool` | `true` | Draw the percentage, rounded, centered on the bar |
+| `Button` | `text` | `std::string` | `""` | The [button](#buttons)'s text; lines break at `"\n"` |
+| | `icon` | `std::string` | `""` | Project path of a PNG or BMP file drawn beside the text |
+| | `flat` | `bool` | `false` | Draw no style box, only the text and icon |
+| | `alignment` | `std::string` | `"center"` | The text's place across the button: `left`, `center` or `right` |
+| | `text_overrun_behavior` | `std::string` | `"no_trimming"` | Cut text wider than the button, as `Label`'s |
+| | `autowrap_mode` | `std::string` | `"off"` | Wrap the text to the button's width, as `Label`'s |
+| | `clip_text` | `bool` | `false` | Let the button be narrower than its text, cutting the text off |
+| | `icon_alignment` | `std::string` | `"left"` | The icon's place across the button: `left`, `center` (behind the text) or `right` |
+| | `vertical_icon_alignment` | `std::string` | `"center"` | The icon's place down it: `top` and `bottom` put the text below or above it |
+| | `expand_icon` | `bool` | `false` | Scale the icon to fit the button, keeping its aspect |
+| | `disabled` | `bool` | `false` | Can't be pressed, and draws dimmed |
+| | `toggle_mode` | `bool` | `false` | Each press turns `button_pressed` on or off |
+| | `button_pressed` | `bool` | `false` | On, for a toggle button |
+| | `action_mode` | `std::string` | `"release"` | Press it when a click or tap ends over it (`release`) or as it starts (`press`) |
+| | `button_mask` | `std::vector<std::string>` | `["left"]` | The mouse buttons that press it: `left`, `right`, `middle` |
+| | `keep_pressed_outside` | `bool` | `false` | Draw it pressed while the pointer that pressed it is outside |
+| | `button_group` | `std::string` | `""` | Toggle buttons with the same group name are one choice: pressing one turns the others off |
+| | `shortcut` | `std::vector<json>` | `[]` | What else presses it: [bindings](project-format.md#input-actions) such as `{"type": "key", "key": "S", "ctrl": true}`, or actions such as `{"type": "action", "action": "ui_cancel"}` |
+| | `shortcut_feedback` | `bool` | `true` | Draw it `hover_pressed` for 0.2 seconds when its shortcut presses it |
+| `TextureButton` | `texture_normal` | `std::string` | `""` | Project path of the PNG or BMP file it draws; its size is the button's minimum size |
+| | `texture_pressed`, `texture_hover`, `texture_disabled` | `std::string` | `""` | Drawn instead in those states, when set |
+| | `texture_focused` | `std::string` | `""` | Drawn over the others while it shows focus |
+| | `ignore_texture_size` | `bool` | `false` | Need no space for the texture |
+| | `stretch_mode` | `std::string` | `"keep"` | How the texture fills the button, as `TextureRect`'s: `scale`, `tile`, `keep`, `keep_centered`, `keep_aspect`, `keep_aspect_centered` or `keep_aspect_covered` |
+| | `flip_h`, `flip_v` | `bool` | `false` | Draw it mirrored left to right, or upside down |
+| | `disabled` … `shortcut_feedback` | | | As `Button`'s |
 | `BoxContainer` | `vertical` | `bool` | `false` | Lays its children out in a column instead of a row |
 | | `alignment` | `std::string` | `"begin"` | Where they go when none expands: `begin`, `center` or `end` |
 | `GridContainer` | `columns` | `int` | `1` | Children per row, 1 to 1024 |
@@ -909,10 +939,11 @@ a fountain, a one-shot burst, smoke and a ring of orbiting particles.
 
 UI follows Godot's `Control` nodes. A `Control` places a rect in its parent's rect, or a
 [container](#containers) places it; `Label`, `ColorRect`, `Panel`, `TextureRect`,
-`NinePatchRect` and `ProgressBar` draw in it. An entity with one of those, or a container, and
+`NinePatchRect`, `ProgressBar` and the [buttons](#buttons) draw in it. An entity with one of those, or a container, and
 no `Control` is placed with `Control`'s defaults. `CanvasRenderer` draws controls above the
 world, unlit. [examples/ui-and-text](../../examples/ui-and-text/) is a pause screen, and
-[examples/ui-containers](../../examples/ui-containers/) a themed inventory screen.
+[examples/ui-containers](../../examples/ui-containers/) a themed inventory screen, and
+[examples/ui-buttons](../../examples/ui-buttons/) a title menu worked by mouse, keys and touch.
 
 ```json
 "panel": {
@@ -1030,6 +1061,61 @@ Godot's code, so a layout comes out as it would in Godot, to the pixel.
 - `texture_filter` picks how a control's textures are sampled; `inherit` takes the nearest
   parent's that isn't, then the project's `rendering.texture_filter`.
 
+### Buttons
+
+`Button` and `TextureButton` are Godot's: the `gui` system (priority -900, right after `input`)
+sends each tick's [input events](commands.md#inputinject) to controls as Godot's viewport does,
+and buttons answer them as Godot's `BaseButton`.
+
+```json
+"quit": {
+  "components": {
+    "Button": {"shortcut": [{"action": "ui_cancel", "type": "action"}], "text": "Quit"},
+    "Control": {}
+  }
+}
+```
+
+- A button is pressed when a click (by a mouse button in `button_mask`) or a tap that started on
+  it ends over it, or as it starts with `action_mode` `press`; when `ui_accept` (Enter, Space)
+  goes down and up while it has focus; when its `shortcut` is pressed, from anywhere and before
+  `ui_*` keys a focused control doesn't use; and by [`ui.press`](commands.md#uipress). A
+  disabled button isn't pressed. A toggle button flips `button_pressed` first, and turns the
+  others in its `button_group` off; the one that is on stays on.
+- Controls emit world events, as Godot's signals: buttons `button_down`, `pressed`, `toggled`
+  (data `{"toggled_on": bool}`) and `button_up`, and any control `mouse_entered`,
+  `mouse_exited`, `focus_entered` and `focus_exited`. Gameplay code reads a tick's with
+  `ui::events(world)` or `ui::was_pressed(world, button)`; agents subscribe to them with
+  [`events.subscribe`](commands.md#eventssubscribe). Only entities with IDs take part.
+- The pointer reaches the last control drawn under it, then its parents as `mouse_filter` says:
+  `stop` keeps it, `pass` hands it on to the parent too, `ignore` lets it through to whatever is
+  under. A control is hovered from when the pointer moves onto it, and its parents too up to the
+  first that stops it.
+- One control has focus, as Godot's: a left click gives it to the first control up from the one
+  clicked whose `focus_mode` is `all` or `click`, without showing it; `ui_focus_next` (Tab),
+  `ui_focus_prev` (Shift+Tab), `ui_up`, `ui_down`, `ui_left` and `ui_right` (the arrow keys, a
+  gamepad's d-pad and left stick, once per push) move it and show it, to the control a
+  `focus_*` field names or else the closest one with `focus_mode` `all` that way, as Godot's
+  default focus strategy measures. A hidden control, or one whose `focus_mode` becomes `none`,
+  loses focus.
+- A button draws by its state, its `draw_mode` in [`ui.layout`](commands.md#uilayout): `normal`,
+  `hover`, `pressed` (held down, or a toggle button that is on), `hover_pressed` (on and
+  hovered, or just pressed by its shortcut) or `disabled`. `Button` draws the style box of that
+  name and the `focus` box over it while it shows focus; `TextureButton` draws
+  `texture_pressed` for `pressed` and `hover_pressed`, `texture_hover`, `texture_disabled`, else
+  `texture_normal`.
+- A `Button` is as big as its text and icon plus its style box's margins, so a button that says
+  "Play" is 8 pixels wider and taller than a `Label` that does; with `clip_text`, a
+  `text_overrun_behavior` or an `autowrap_mode`, the text doesn't widen it. Its text lays out as
+  a `Label`'s, centered by default.
+- `ui.layout` and `scene validate` report a `shortcut` entry that isn't a binding or names no
+  action (with the closest name, among the project's actions too), a `button_group` without
+  `toggle_mode`, a `Label` on a button entity (put it in a child), two buttons on one entity and
+  a `focus_*` field that names no control.
+- Not yet: tooltips, drag and drop, cursor shapes, theme sounds, `allow_unpress` groups and a
+  click mask for `TextureButton`. Hiding a button while it is held lets go of it without
+  pressing it.
+
 ### Theme items
 
 A control's look comes from theme items, as Godot's default theme gives them: a control uses
@@ -1056,6 +1142,25 @@ its `theme_override_*` fields, then its [themes](#themes), then the defaults bel
 | | color | `font_color` | `[0.95, 0.95, 0.95, 1]` |
 | | color | `font_outline_color` | `[0, 0, 0, 1]` |
 | | constant | `outline_size` | `0` |
+| `Button` | style | `normal` | flat `[0.1, 0.1, 0.1, 0.6]`, `corner_radius` 3, `content_margin` 4 |
+| | style | `hover` | flat `[0.225, 0.225, 0.225, 0.6]`, the same shape |
+| | style | `pressed` | flat `[0, 0, 0, 0.6]`, the same shape |
+| | style | `disabled` | flat `[0.1, 0.1, 0.1, 0.3]`, the same shape |
+| | style | `focus` | a `[1, 1, 1, 0.75]` border 2 wide, `expand_margin` 2, no center |
+| | style | `hover_pressed` | none: `pressed` is drawn unless a theme sets it |
+| | font, font size | `font`, `font_size` | The built-in font, `16` |
+| | color | `font_color`, `font_focus_color` | `[0.875, 0.875, 0.875, 1]`, `[0.95, 0.95, 0.95, 1]` |
+| | color | `font_hover_color` | `[0.95, 0.95, 0.95, 1]` |
+| | color | `font_pressed_color`, `font_hover_pressed_color` | `[1, 1, 1, 1]` |
+| | color | `font_disabled_color` | `[0.875, 0.875, 0.875, 0.5]` |
+| | color | `font_outline_color` | `[0, 0, 0, 1]` |
+| | color | `icon_normal_color`, `icon_hover_color`, `icon_pressed_color`, `icon_hover_pressed_color`, `icon_focus_color` | `[1, 1, 1, 1]` |
+| | color | `icon_disabled_color` | `[1, 1, 1, 0.4]` |
+| | constant | `outline_size`, `line_spacing` | `0` |
+| | constant | `h_separation` | `4`, between the icon and the text |
+| | constant | `icon_max_width` | `0`, no limit |
+| | constant | `align_to_largest_stylebox` | `0`; 1 keeps the text in place as the style changes |
+| `Button`, `TextureButton` | constant | `click_margin` | `0`, pixels round the rect that still hit it |
 | `BoxContainer` (`HBoxContainer`, `VBoxContainer`) | constant | `separation` | `4` |
 | `GridContainer`, `FlowContainer` (`HFlowContainer`, `VFlowContainer`) | constant | `h_separation`, `v_separation` | `4` |
 | `MarginContainer` | constant | `margin_left`, `margin_top`, `margin_right`, `margin_bottom` | `0` |

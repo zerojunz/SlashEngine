@@ -28,7 +28,7 @@ struct FieldMeta {
     std::string doc{};                        // NOLINT(readability-redundant-member-init)
     std::optional<double> min = std::nullopt; // inclusive; for arrays and maps, to each number
     std::optional<double> max = std::nullopt;
-    // For a string field, the only values allowed.
+    // For a string field, the only values allowed; for a list of strings, those of each item.
     std::vector<std::string> choices{}; // NOLINT(readability-redundant-member-init)
 };
 
