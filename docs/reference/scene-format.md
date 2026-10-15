@@ -254,6 +254,35 @@ A reference must name an entity that exists in the same scene.
 | | `color` | `Vec4` | `[1, 1, 1, 1]` | Multiplies the texture, as [r, g, b, a] from 0 to 1 |
 | | `color_ramp` | `std::vector<GradientPoint>` | `[]` | Colors over each particle's life, multiplying `color`: points `{"offset", "color"}`, blended between |
 | | `color_initial_ramp` | `std::vector<GradientPoint>` | `[]` | Each particle multiplies its color by one picked at random from this gradient |
+| `Control` | `children` | `std::vector<entity>` | `[]` | [Controls](#ui-and-text) placed in its rect and drawn over it, in this order; each control has one parent at most |
+| | `anchor_left`, `anchor_top`, `anchor_right`, `anchor_bottom` | `float` | `0` | Where each edge is anchored in the parent's rect (or the viewport's): 0 at its left or top, 1 at its right or bottom |
+| | `offset_left`, `offset_top`, `offset_right`, `offset_bottom` | `float` | `0` | Pixels from each edge's anchor to the edge |
+| | `grow_horizontal`, `grow_vertical` | `std::string` | `"end"` | Which way it grows when its minimum size is bigger than its anchors and offsets make it: `begin` (left or up), `end` or `both` |
+| | `custom_minimum_size` | `Vec2` | `[0, 0]` | Its smallest size; it can be bigger to fit its content |
+| | `rotation` | `float` | `0` | Radians, clockwise, around `pivot_offset`; its children turn with it |
+| | `scale` | `Vec2` | `[1, 1]` | Drawn scaled around `pivot_offset`; layout doesn't change |
+| | `pivot_offset` | `Vec2` | `[0, 0]` | The point it turns and scales around, from its top-left corner |
+| | `visible` | `bool` | `true` | Draw it and its children |
+| | `modulate` | `Vec4` | `[1, 1, 1, 1]` | Tints it and its children, as [r, g, b, a] |
+| | `self_modulate` | `Vec4` | `[1, 1, 1, 1]` | Tints it only |
+| | `z_index` | `int` | `0` | Draws over controls with a lower one, added to its parent's; -4096 to 4096 |
+| | `theme_override_colors` | `std::map<std::string, Vec4>` | `{}` | [Theme](#theme-items) colors by name, e.g. `{"font_color": [1, 0.8, 0.2, 1]}` |
+| | `theme_override_constants` | `std::map<std::string, int>` | `{}` | Theme constants by name, e.g. `{"outline_size": 4}` |
+| | `theme_override_fonts` | `std::map<std::string, std::string>` | `{}` | Theme fonts by name: a `.ttf`, `.otf` or [`.font.json`](#fonts) file, e.g. `{"font": "fonts/title.ttf"}` |
+| | `theme_override_font_sizes` | `std::map<std::string, int>` | `{}` | Theme font sizes in pixels by name, 1 to 1024, e.g. `{"font_size": 32}` |
+| `Label` | `text` | `std::string` | `""` | The text; lines break at `"\n"` |
+| | `horizontal_alignment` | `std::string` | `"left"` | Each line's place across the rect: `left`, `center`, `right` or `fill`, which stretches spaces to the width on every line but a wrapped paragraph's last |
+| | `vertical_alignment` | `std::string` | `"top"` | The lines' place down the rect: `top`, `center`, `bottom` or `fill`, which spreads them over it |
+| | `autowrap_mode` | `std::string` | `"off"` | Wrap lines to the rect's width: `off`, `arbitrary` (anywhere), `word` (between words) or `word_smart` (inside a word too long for a line) |
+| | `clip_text` | `bool` | `false` | Cut off text outside the rect |
+| | `text_overrun_behavior` | `std::string` | `"no_trimming"` | Cut lines wider than the rect: `no_trimming`, `trim_char`, `trim_word`, `trim_ellipsis` or `trim_word_ellipsis` |
+| | `ellipsis_char` | `std::string` | `"…"` | What a line cut with an ellipsis ends with; its first character is used |
+| | `uppercase` | `bool` | `false` | Draw the text in capitals |
+| | `lines_skipped` | `int` | `0` | Lines left out from the top |
+| | `max_lines_visible` | `int` | `-1` | Lines shown at most; -1 for all |
+| | `visible_characters` | `int` | `-1` | Characters shown from the start, for typing effects; -1 for all |
+| | `visible_characters_behavior` | `std::string` | `"chars_before_shaping"` | `chars_before_shaping` lays out only the visible characters; `chars_after_shaping` lays out all of them and hides the rest, so lines don't move as more show |
+| `ColorRect` | `color` | `Vec4` | `[1, 1, 1, 1]` | Fills the control's rect, as [r, g, b, a] from 0 to 1 |
 
 `engine.describe` lists every registered component with its defaults, including ones a game adds.
 
@@ -843,3 +872,129 @@ a fountain, a one-shot burst, smoke and a ring of orbiting particles.
   commands leave them as they are. An emitter whose entity is destroyed or loses its
   `CPUParticles2D` loses its particles.
 - `GPUParticles2D`, with process materials, is on the [roadmap](../roadmap.md).
+
+## UI and text
+
+UI follows Godot's `Control` nodes. A `Control` places a rect in its parent's rect, and `Label`
+and `ColorRect` draw in it; an entity with a `Label` or `ColorRect` and no `Control` is placed
+with `Control`'s defaults. `CanvasRenderer` draws controls above the world, unlit.
+[examples/ui-and-text](../../examples/ui-and-text/) is a pause screen.
+
+```json
+"panel": {
+  "components": {
+    "ColorRect": {"color": [0.12, 0.13, 0.2, 0.95]},
+    "Control": {
+      "anchor_bottom": 0.5,
+      "anchor_left": 0.5,
+      "anchor_right": 0.5,
+      "anchor_top": 0.5,
+      "children": ["title", "body"],
+      "offset_bottom": 90.0,
+      "offset_left": -150.0,
+      "offset_right": 150.0,
+      "offset_top": -90.0
+    }
+  }
+},
+"title": {
+  "components": {
+    "Control": {
+      "anchor_right": 1.0,
+      "offset_top": 10.0,
+      "theme_override_constants": {"outline_size": 8},
+      "theme_override_font_sizes": {"font_size": 36}
+    },
+    "Label": {"horizontal_alignment": "center", "text": "Paused"}
+  }
+}
+```
+
+- A control's left edge is at `offset_left` + `anchor_left` × its parent's width, and so on for
+  each edge; controls no `children` list names are placed in the viewport, the project's
+  `window` size (Godot's viewport size). Anchors 0.5 and offsets ±150 keep the panel centered
+  at 300 pixels wide on any window.
+- A control is at least its minimum size: the bigger of `custom_minimum_size` and its content's,
+  such as a label's text. When its edges make it smaller, `grow_horizontal` and
+  `grow_vertical` say which edge moves: `end` moves the right or bottom one, `begin` the left
+  or top one, `both` each by half.
+- `rotation` and `scale` turn and scale a control and its children around `pivot_offset` as it
+  draws, without changing layout. `visible`, `modulate` and `z_index` apply to its children too.
+- Controls draw by `z_index`, then parents before children and children in `children` order,
+  then roots in the order their entities were made.
+- A child listed by two parents, a control listed in its own subtree, and an entry naming no
+  entity or an entity that isn't a control are reported, and the entry is left out.
+  [`ui.layout`](commands.md#uilayout) lists them with every control's rect, and
+  `slash-cli scene validate` fails them.
+
+### Labels
+
+A `Label` lays out its text as Godot's does:
+
+- Its minimum size is its widest line by its lines' height. With `autowrap_mode` set, the
+  text wraps to the rect's width and doesn't widen it. With `clip_text` or a
+  `text_overrun_behavior`, the text doesn't set the height either when it wraps (or the width
+  when it doesn't), so the rect decides and the text is cut to it; a wrapping label that trims
+  with `max_lines_visible` is as tall as those lines.
+- Lines are `font`'s line height apart plus `line_spacing`, and paragraphs (lines between
+  `"\n"`s) `paragraph_spacing` more. The lines that fit the rect's height are shown, at most
+  `max_lines_visible`, after skipping `lines_skipped`.
+- Without wrapping, `text_overrun_behavior` cuts every line wider than the rect. With
+  wrapping, it cuts the last line shown when lines are hidden, adding the ellipsis in the
+  ellipsis modes.
+- `visible_characters` counts characters (Unicode code points) from the start of the text.
+- Each label draws its shadow's outline, its shadow, its outline, then its text.
+- Characters the font doesn't have are counted in `ui.layout`'s `missing_glyphs`. Text is shaped with HarfBuzz, one run per script; mixing
+  right-to-left and left-to-right text in one line (BiDi) and fallback fonts are on the
+  [roadmap](../roadmap.md).
+
+### Theme items
+
+A control's look comes from theme items, as Godot's default theme gives them; its
+`theme_override_*` fields set them for that control. `ui.layout` and `scene validate` report
+names its type doesn't have, with the closest one.
+
+| Type | Kind | Name | Default |
+| --- | --- | --- | --- |
+| `Label` | font | `font` | The built-in font, Roboto Regular |
+| | font size | `font_size` | `16` |
+| | color | `font_color` | `[1, 1, 1, 1]` |
+| | color | `font_outline_color` | `[0, 0, 0, 1]` |
+| | color | `font_shadow_color` | `[0, 0, 0, 0]`, no shadow |
+| | constant | `outline_size` | `0`; the outline reaches a quarter of it in pixels, as Godot's |
+| | constant | `shadow_offset_x`, `shadow_offset_y` | `1` |
+| | constant | `shadow_outline_size` | `1` |
+| | constant | `line_spacing` | `3` |
+| | constant | `paragraph_spacing` | `0` |
+
+`ColorRect` and `Control` have no theme items. Theme resources shared by many controls
+(`.theme.json`) are on the [roadmap](../roadmap.md).
+
+### Fonts
+
+A font is a `.ttf` or `.otf` file (scalable TrueType or OpenType), or a `.font.json` file that
+names one and says how it draws, as Godot's font import options (`slash-cli schema font`):
+
+```json
+{
+  "font": "fonts/roboto.ttf",
+  "format": 1,
+  "multichannel_signed_distance_field": true
+}
+```
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `format` | | Must be 1 |
+| `font` | | Project path of the `.ttf` or `.otf` file |
+| `antialiasing` | `"grayscale"` | `grayscale` for smooth edges, `none` for pixel art fonts |
+| `hinting` | `"light"` | Snap outlines to pixels: `none`, `light` (vertically only) or `normal` |
+| `multichannel_signed_distance_field` | `false` | Draw from one distance field per glyph, made once, which stays sharp at any size, scale and outline |
+| `msdf_pixel_range` | `16` | How far from the outline the field reaches, in pixels at `msdf_size`; outlines are at most half of it |
+| `msdf_size` | `48` | The font size the field is made at |
+
+- Glyph images are made the first time they are drawn, for each font, size and outline (once
+  per glyph with a distance field), and packed into atlas textures.
+- A font that doesn't load is reported by `ui.layout` and `scene validate`, and the label draws
+  with the built-in font.
+- Fonts reload when their files change, as every asset does.

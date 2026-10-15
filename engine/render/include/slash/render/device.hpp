@@ -99,6 +99,25 @@ struct Shading {
     bool operator==(const Shading&) const = default;
 };
 
+// A draw's texture read as a multichannel signed distance field, as Godot draws MSDF text: the
+// median of its red, green and blue is the distance to the edge, 0.5 on it, and alpha is the
+// true distance (msdfgen's MTSDF). Each pixel is the vertex color with coverage as alpha.
+struct DistanceField {
+    // How far the field reaches across its 0 to 1, in texels; 0 draws the texture as colors.
+    float pixel_range = 0.0F;
+    // Widens the shape by this many texels past its edge, for outlines; at most half the range,
+    // less one.
+    float outline = 0.0F;
+
+    bool operator==(const DistanceField&) const = default;
+};
+
+// The coverage a distance field gives a pixel, from 0 to 1: texel is what the texture holds
+// there, and scale is pixels of the target per texel. The material shader does the same, with
+// scale from how the texture coordinates change across the screen.
+[[nodiscard]] float distance_field_coverage(const std::array<float, 4>& texel,
+                                            const DistanceField& field, float scale);
+
 // How a draw colors its pixels: a blend mode, a program the material shader runs for each pixel
 // (see material.hpp) and how lights shade it. The default draws the texture times the vertex
 // color, mixed and unlit.
@@ -108,6 +127,8 @@ struct Material {
     MaterialProgram program;
     std::array<MaterialTexture, kMaterialTextureSlots - 1> textures{};
     Shading shading;
+    // Draws the texture as a distance field instead; only with no program.
+    DistanceField field;
 
     bool operator==(const Material&) const = default;
 };

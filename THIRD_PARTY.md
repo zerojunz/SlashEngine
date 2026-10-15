@@ -12,9 +12,18 @@ or license not allowed here, or whose license text changed without review.
 | [EnTT](https://github.com/skypjack/entt) | v3.16.0 | MIT | Entity component system | Fetched, header-only |
 | [yyjson](https://github.com/ibireme/yyjson) | 0.13.0 | MIT | JSON parsing and number formatting | Fetched, linked statically |
 | [Box2D](https://github.com/erincatto/box2d) | v3.1.1 | MIT | 2D physics: bodies, shapes, joints, queries | Fetched, linked statically |
+| [FreeType](https://github.com/freetype/freetype) | VER-2-14-3 | FreeType License (FTL), or GPL 2.0 at the user's choice; SlashEngine uses it under the FTL | Loading fonts and drawing glyph images | Fetched, linked statically |
+| [HarfBuzz](https://github.com/harfbuzz/harfbuzz) | 14.5.0 | MIT ("Old MIT" and MIT) | Text shaping | Fetched, linked statically |
+| [msdfgen](https://github.com/Chlumsky/msdfgen) | v1.13 | MIT | Multichannel signed distance fields for fonts | Fetched, its core linked statically |
+| [Roboto](https://github.com/googlefonts/roboto) | v2.138 | Apache 2.0 | The default font | Fetched, Roboto Regular embedded in the engine |
 | [cpp-httplib](https://github.com/yhirose/cpp-httplib) | v0.58.0 | MIT | Localhost HTTP server for the REST mirror and MCP over HTTP | Fetched, header-only |
 | [doctest](https://github.com/doctest/doctest) | v2.5.2 | MIT | Unit tests (not shipped in games) | Fetched, tests only |
 | [CPM.cmake](https://github.com/cpm-cmake/CPM.cmake) | v0.40.2 | MIT | Dependency fetching | Vendored as `cmake/CPM.cmake` |
+
+The FreeType License asks that products using FreeType credit it in their documentation, as Godot
+does. Games built with SlashEngine should include this line in their credits or license notice:
+"Portions of this software are copyright © 2026 The FreeType Project (https://freetype.org). All
+rights reserved."
 
 The renderer's shaders are compiled ahead of time with two tools whose output is committed in
 `engine/render/src/*_shaders.hpp`. Nothing of theirs is linked into the engine or a game, and

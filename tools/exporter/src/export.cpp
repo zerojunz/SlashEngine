@@ -18,6 +18,8 @@
 #include "slash/platform/process.hpp"
 #include "slash/render/image.hpp"
 #include "slash/runtime/project.hpp"
+#include "slash/text/text.hpp"
+#include "slash/ui/ui.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/scene.hpp"
@@ -122,8 +124,8 @@ bool skipped_folder(const fs::path& name) {
     return text.starts_with(".") || text == "build" || text == "game";
 }
 
-// The files a game reads at run time: scenes, prefabs, the assets sprites draw, animations and
-// tile sets.
+// The files a game reads at run time: scenes, prefabs, the assets sprites draw, animations, tile
+// sets and fonts.
 enum class DataFile : std::uint8_t {
     None,
     Scene,
@@ -132,7 +134,9 @@ enum class DataFile : std::uint8_t {
     Material,
     Animation,
     TileSet,
-    Texture
+    Texture,
+    FontSettings,
+    Font
 };
 
 DataFile data_file(std::string_view name) {
@@ -157,6 +161,12 @@ DataFile data_file(std::string_view name) {
     if (name.ends_with(".png") || name.ends_with(".bmp")) {
         return DataFile::Texture;
     }
+    if (name.ends_with(text::kFontSuffix)) {
+        return DataFile::FontSettings;
+    }
+    if (text::is_font_path(name)) {
+        return DataFile::Font;
+    }
     return DataFile::None;
 }
 
@@ -167,6 +177,12 @@ std::vector<json::ValidationError> check_data_file(DataFile kind, std::string_vi
     if (kind == DataFile::Texture) {
         if (auto image = render::decode_image(text); !image) {
             return {{"", image.error().message}};
+        }
+        return {};
+    }
+    if (kind == DataFile::Font) {
+        if (auto font = text::check_font_data(text); !font) {
+            return {{"", font.error().message}};
         }
         return {};
     }
@@ -184,6 +200,8 @@ std::vector<json::ValidationError> check_data_file(DataFile kind, std::string_vi
         return animation::validate_animation_library(parsed.value(), &components);
     case DataFile::TileSet:
         return canvas::validate_tileset(parsed.value());
+    case DataFile::FontSettings:
+        return text::validate_font(parsed.value());
     case DataFile::Prefab:
         errors = world::validate_prefab(components, parsed.value(), reader);
         break;
@@ -191,15 +209,18 @@ std::vector<json::ValidationError> check_data_file(DataFile kind, std::string_vi
         errors = world::validate_scene(components, parsed.value(), reader);
         break;
     }
-    // Each tile map layer's cells must name tiles in its tile set.
+    // Each tile map layer's cells must name tiles in its tile set, and controls must lay out.
     if (errors.empty()) {
         errors = canvas::check_tile_layers(parsed.value(), reader);
+    }
+    if (errors.empty() && kind == DataFile::Scene) {
+        errors = ui::check_scene(components, parsed.value(), reader);
     }
     return errors;
 }
 
-// Copies project.json and every scene, prefab, texture, .frames.json, .material.json, .anim.json
-// and .tileset.json file into data, checking each on the way.
+// Copies project.json and every scene, prefab, texture, .frames.json, .material.json, .anim.json,
+// .tileset.json and font file into data, checking each on the way.
 bool stage_data(const fs::path& project_dir, const runtime::Project& project, const fs::path& data,
                 Failure& failure) {
     std::error_code error;

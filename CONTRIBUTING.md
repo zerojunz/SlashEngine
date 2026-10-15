@@ -116,8 +116,9 @@ Most changes add something an agent will use, so check these when you design it:
   (repository, exact tag, SPDX license, license file and that file's SHA-256), fetch it with
   `slash_add_dependency` in `cmake/Dependencies.cmake`, and add a row to
   [THIRD_PARTY.md](THIRD_PARTY.md). Updating a dependency changes its tag in both files.
-- Allowed licenses: MIT, BSD, zlib, Apache 2.0, Boost, MIT-0 and public domain. No GPL or LGPL,
-  so games built with SlashEngine can ship under any license.
+- Allowed licenses: MIT and its variants (such as HarfBuzz's "Old MIT"), BSD, zlib, Apache 2.0,
+  Boost, MIT-0, the FreeType License and public domain. No GPL or LGPL, so games built with
+  SlashEngine can ship under any license.
 - The `licenses` test (`cmake/check_licenses.cmake`) enforces this on every pull request. It fails
   on a license that is not allowed, a pin to a branch, a license file that differs from the one
   reviewed (it prints the new hash to record once you have read the new text), a dependency

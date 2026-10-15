@@ -59,22 +59,24 @@ only what differs from the prefab. `entity.create` takes `"extends"`, and `prefa
 entity to a prefab file. `tests/data/game` has an example.
 
 ```bash
-$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, tileset)
+$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, tileset, font)
 $cli scene validate tests/data/basic.scene.json     # every error, with its JSON Pointer path
 $cli scene format level.scene.json                  # rewrite in canonical form
 $cli scene format --check level.scene.json          # exit 1 if not canonical
 ```
 
 Validate after editing a scene or prefab by hand, and format before committing one. Both
-commands take `.prefab.json`, `.frames.json`, `.material.json`, `.anim.json` and `.tileset.json`
-files too; validating a scene also checks each tile map layer against its tile set.
+commands take `.prefab.json`, `.frames.json`, `.material.json`, `.anim.json`, `.tileset.json`
+and `.font.json` files too; validating a scene also checks each tile map layer against its tile
+set and that its controls lay out as written.
 
 ## Assets and hot reload
 
 `engine/asset` loads files by project path into shared, reference-counted handles
 (`assets.load<json::Value>("data/tuning.json")`); `.json`, `.txt` and `.csv` load out of the box,
 `canvas::add_asset_types` adds textures (`.png`, `.bmp`), `.frames.json`, `.material.json` and
-`.tileset.json` files, `animation::add_asset_types` adds `.anim.json` files, and games add types
+`.tileset.json` files, `animation::add_asset_types` adds `.anim.json` files,
+`text::add_asset_types` adds fonts (`.ttf`, `.otf`, `.font.json`), and games add types
 with `add_type`. Sessions and games own an `asset::Assets`, and prefab files are read through it.
 `Session::poll_assets()` reloads changed files and updates prefab instances (keeping overrides);
 every command polls first, and `slash-cli run` and `serve` poll between ticks. `asset.list` shows
@@ -169,7 +171,7 @@ $cli export linux --project path/to/game --test        # build, lay out and run 
 ```
 
 `slash-cli export <preset>` validates the project, its presets and every scene, prefab, texture,
-`.frames.json` and `.material.json` file, stages them as the game's data, configures
+font, `.frames.json` and `.material.json` file, stages them as the game's data, configures
 `export/CMakeLists.txt` with the engine sources, builds, signs and installs into
 `<project>/build/export/<preset>`. Its work folder
 and full build log are in `<project>/.slash/export/<preset>/`; a failure reports the step and the
@@ -322,10 +324,35 @@ emits, moves and ages each emitter's particles on the CPU and emits `finished` w
 last particle dies; `CanvasRenderer` draws them (`particles_drawn()`). Each `_min`/`_max` pair
 is a random range per particle and each `_curve` is `[offset, value]` points over its life.
 Random values hash the entity ID, `seed`, cycle and slot, so runs repeat everywhere: keep
-particle math in `engine/canvas` (built with `-ffp-contract=off`) and use `canvas::cos_sin`, not
-libm. Particles live beside the components, kept by entity ID, so saving, snapshots and undo
-leave them alone. `particles.eval` returns live particles, or runs the settings for a time with
-`canvas::simulate`; `examples/particles` has a fountain, sparks, smoke and a portal.
+particle math in `engine/canvas` (built with `-ffp-contract=off`) and use `slash::cos_sin`
+(`core/math.hpp`), not libm. Particles live beside the components, kept by entity ID, so saving,
+snapshots and undo leave them alone. `particles.eval` returns live particles, or runs the
+settings for a time with `canvas::simulate`; `examples/particles` has a fountain, sparks, smoke
+and a portal.
+
+## UI and text
+
+`engine/text` is fonts and text layout, as Godot's text server: `.ttf` and `.otf` files, or
+`.font.json` files that name one with settings (`$cli schema font`), shaped with HarfBuzz and
+broken into lines that wrap as Godot's autowrap modes. `text::Fonts` makes glyph images with
+FreeType, or multichannel signed distance fields with msdfgen for fonts that ask, and packs them
+into atlas pages. A font path of `""` is Roboto, built into the engine from the fetched
+dependency (no font file is committed). Glyph advances are whole pixels except in distance
+field fonts, as Godot's are without subpixel positioning.
+
+`engine/ui` is UI, as Godot's Control nodes. `Control` places a rect in its parent's (the
+entity listed in a `Control`'s `children`, or the viewport) by anchors, offsets and grow
+directions, turned and scaled around `pivot_offset`; `Label` and `ColorRect` draw in it.
+`ui::layout` (`src/layout.cpp`) follows Godot's `Control` and `Label` code, line for line where
+it can: minimum sizes, wrapping, `max_lines_visible`, trimming and alignment. Theme items
+(`ui::default_theme`, Godot's defaults) are set per control with `theme_override_*` fields.
+`ui::draw_calls` (`src/draw.cpp`) turns a layout into triangles, which `CanvasRenderer` draws
+above the world (`controls_drawn()`, `glyphs_drawn()`); distance field glyphs shade in
+`material.hlsl` through `render::Material::field`, and `render::distance_field_coverage` is its
+CPU twin, compared with it in a test. The viewport is the project's window size
+(`ui::settings`); `ui.layout` returns every control's rect, lines and problems, `text.measure`
+sizes text, and `ui::check_scene` backs `scene validate` and exports. `examples/ui-and-text` is
+a pause screen.
 
 ## Add a component
 
@@ -388,15 +415,18 @@ CI rejects unformatted code and any clang-tidy finding.
   the null device, HLSL shaders, material programs and 2D light shading), `asset` (asset handles, loaders, hot reload),
   `world` (EnTT world, components, scenes and prefabs), `canvas` (sprites, `.frames.json`
   animations, `.material.json` materials, `.tileset.json` tile maps, 2D lights and shadows, CPU
-  particles and drawing them), `animation` (`.anim.json` keyframe animations and the system that plays them),
+  particles and drawing them), `text` (fonts, shaping, line breaking and glyph atlases), `ui`
+  (Control, Label and ColorRect layout and draw calls), `animation` (`.anim.json` keyframe
+  animations and the system that plays them),
   `physics2d` (2D bodies, areas, joints and queries on Box2D), `storyboard` (storyboard kinds, files, versions,
   queries, edits, briefs and checks), `command` (commands, sessions with undo, JSON-RPC and MCP),
   `server` (localhost HTTP over a session) and `runtime` (project files and the game executable).
   Tool-only libraries such as `tools/exporter` use the same layout and may use exceptions.
 - New dependencies are pinned in `cmake/dependencies.json` (repository, tag, SPDX license and
   the license file's SHA-256), fetched with `slash_add_dependency` in `cmake/Dependencies.cmake`
-  and listed in `THIRD_PARTY.md`. Only permissive licenses (MIT, BSD, zlib, Apache 2.0, Boost,
-  MIT-0, public domain); the `licenses` test fails anything else. Never copy code from closed
+  and listed in `THIRD_PARTY.md`. Only permissive licenses (MIT and its variants, BSD, zlib,
+  Apache 2.0, Boost, MIT-0, the FreeType License, public domain); the `licenses` test fails
+  anything else. Never copy code from closed
   engines.
 - Every behavior change comes with a test in `tests/`. Tests must pass headless.
 - Every new feature comes with an example in `examples/` (see below).

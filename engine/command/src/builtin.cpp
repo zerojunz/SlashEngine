@@ -17,6 +17,8 @@
 #include "slash/render/image.hpp"
 #include "slash/render/light.hpp"
 #include "slash/storyboard/storyboard.hpp"
+#include "slash/text/text.hpp"
+#include "slash/ui/ui.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/scene.hpp"
@@ -370,6 +372,9 @@ Reply schema_get(Session& session, const json::Value& params) {
     }
     if (kind == "tileset") {
         return Reply::success(canvas::tileset_schema());
+    }
+    if (kind == "font") {
+        return Reply::success(text::font_schema());
     }
     if (name.empty()) {
         return param_error(code::kInvalidParams, "/name",
@@ -1327,6 +1332,152 @@ Reply particles_eval(Session& session, const json::Value& params) {
             items.push_back(std::move(item));
         }
         result["particles"] = std::move(items);
+    }
+    return Reply::success(std::move(result));
+}
+
+// ---- UI and text ----
+
+// The lines of laid-out text, without trailing spaces, those cut ending with the ellipsis.
+json::Array line_texts(const text::TextLayout& layout, std::string_view source, std::size_t first,
+                       std::size_t last, const std::vector<std::size_t>& trimmed = {},
+                       std::string_view ellipsis = {}) {
+    json::Array lines;
+    for (std::size_t l = first; l < last && l < layout.lines.size(); ++l) {
+        const text::Line& line = layout.lines[l];
+        std::string_view shown = source.substr(line.start, line.end - line.start);
+        while (!shown.empty() && (shown.back() == ' ' || shown.back() == '\t')) {
+            shown.remove_suffix(1);
+        }
+        std::string item(shown);
+        if (std::ranges::find(trimmed, l) != trimmed.end()) {
+            item += ellipsis;
+        }
+        lines.emplace_back(std::move(item));
+    }
+    return lines;
+}
+
+Reply ui_layout(Session& session, const json::Value& params) {
+    const world::World& world = session.world();
+    text::Fonts* fonts = ui::fonts(world);
+    SLASH_ASSERT(fonts != nullptr, "sessions install ui");
+    Vec2 viewport = ui::settings(world).viewport;
+    if (const json::Value* size = params.find("viewport"); size != nullptr) {
+        viewport = {static_cast<float>(size->as_array()[0].as_double()),
+                    static_cast<float>(size->as_array()[1].as_double())};
+    }
+    std::set<entt::entity> wanted;
+    if (const json::Value* ids = params.find("ids"); ids != nullptr) {
+        const json::Array& list = ids->as_array();
+        for (std::size_t i = 0; i < list.size(); ++i) {
+            const std::string& id = list[i].as_string();
+            const std::string path = "/ids/" + std::to_string(i);
+            const entt::entity entity = world.find(id);
+            if (entity == entt::null) {
+                return unknown_entity(world, id, path);
+            }
+            if (!ui::is_control(world, entity)) {
+                return param_error(code::kInvalidParams, path,
+                                   quoted(id) + " isn't a control: it has no Control, Label or "
+                                                "ColorRect");
+            }
+            wanted.insert(entity);
+        }
+    }
+    const ui::Layout layout = ui::layout(world, *fonts, viewport);
+    json::Array controls;
+    for (const ui::Placed& placed : layout.controls) {
+        const std::string_view id = world.id_of(placed.entity);
+        if (id.empty() || (!wanted.empty() && !wanted.contains(placed.entity))) {
+            continue;
+        }
+        // The rect's bounds on screen, turned and scaled as it draws.
+        const std::array<Vec2, 4> corners{
+            placed.transform.apply({0.0F, 0.0F}),
+            placed.transform.apply({placed.size.x, 0.0F}),
+            placed.transform.apply({0.0F, placed.size.y}),
+            placed.transform.apply({placed.size.x, placed.size.y}),
+        };
+        Vec2 low = corners[0];
+        Vec2 high = corners[0];
+        for (const Vec2 corner : corners) {
+            low = {std::min(low.x, corner.x), std::min(low.y, corner.y)};
+            high = {std::max(high.x, corner.x), std::max(high.y, corner.y)};
+        }
+        json::Value item;
+        item["id"] = id;
+        item["rect"] = rounded(json::Array{low.x, low.y, high.x - low.x, high.y - low.y});
+        if (!placed.visible) {
+            item["visible"] = false;
+        }
+        if (const ui::LabelText* label = layout.label(placed.entity); label != nullptr) {
+            item["lines"] = line_texts(label->text, label->source, label->first, label->last,
+                                       label->trimmed, label->ellipsis);
+            if (label->overflow) {
+                item["overflow"] = true;
+            }
+            if (label->text.missing > 0) {
+                item["missing_glyphs"] = static_cast<std::int64_t>(label->text.missing);
+            }
+            if (!label->error.empty()) {
+                item["font_error"] = label->error;
+            }
+        }
+        controls.push_back(std::move(item));
+    }
+    json::Value result;
+    result["viewport"] = point_value(viewport);
+    result["controls"] = std::move(controls);
+    // Children that can't be laid out, theme overrides with names their type doesn't have and
+    // fonts that don't load, for the controls asked about.
+    json::Array problems;
+    for (const ui::Problem& problem : ui::check(world, *fonts)) {
+        if (!wanted.empty() && !wanted.contains(world.find(problem.id))) {
+            continue;
+        }
+        json::Value item;
+        item["id"] = problem.id;
+        item["path"] = problem.path;
+        item["message"] = problem.message;
+        problems.push_back(std::move(item));
+    }
+    if (!problems.empty()) {
+        result["problems"] = std::move(problems);
+    }
+    return Reply::success(std::move(result));
+}
+
+Reply text_measure(Session& session, const json::Value& params) {
+    text::Fonts* fonts = ui::fonts(session.world());
+    SLASH_ASSERT(fonts != nullptr, "sessions install ui");
+    const std::string source = text(params, "text");
+    const json::Value* width = params.find("width");
+    const text::Autowrap autowrap =
+        text::parse_autowrap(text(params, "autowrap_mode")).value_or(text::Autowrap::Off);
+    if (autowrap != text::Autowrap::Off && width == nullptr) {
+        return param_error(code::kInvalidParams, "/width",
+                           "autowrap_mode needs a width to wrap to");
+    }
+    auto measured = fonts->layout(
+        source,
+        {.font = text(params, "font"),
+         .font_size = static_cast<int>(integer(params, "font_size", text::kDefaultFontSize)),
+         .autowrap = autowrap,
+         .width = width != nullptr ? static_cast<float>(width->as_double()) : 0.0F});
+    if (!measured) {
+        return param_error(code::kInvalidParams, "/font", measured.error().message);
+    }
+    const text::TextLayout& layout = measured.value();
+    const float line_height = layout.metrics.height();
+    json::Value result;
+    result["size"] =
+        rounded(json::Array{layout.width, line_height * static_cast<float>(layout.lines.size())});
+    result["line_height"] = rounded(line_height);
+    result["ascent"] = rounded(layout.metrics.ascent);
+    result["lines"] = line_texts(layout, source, 0, layout.lines.size());
+    if (layout.missing > 0) {
+        result["missing_glyphs"] = static_cast<std::int64_t>(layout.missing);
     }
     return Reply::success(std::move(result));
 }
@@ -2436,13 +2587,13 @@ void register_builtin_commands(Registry& registry) {
                                           "\"storyboard\" for those files, \"component\" for "
                                           "one component's fields, \"command\" for a command's "
                                           "params.");
-    kind["enum"] = json::Array{"scene",   "prefab",     "frames",    "material", "animation",
-                               "tileset", "storyboard", "component", "command"};
+    kind["enum"] = json::Array{"scene",   "prefab", "frames",     "material",  "animation",
+                               "tileset", "font",   "storyboard", "component", "command"};
     registry.add({
         .name = "schema.get",
         .description = "Returns a JSON Schema: for scene, prefab, .frames.json, .material.json, "
-                       ".anim.json, .tileset.json or storyboard files, one component or one "
-                       "command.",
+                       ".anim.json, .tileset.json, .font.json or storyboard files, one component "
+                       "or one command.",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema(
@@ -2822,6 +2973,54 @@ void register_builtin_commands(Registry& registry) {
             },
             {"id"}),
         .handler = particles_eval,
+    });
+
+    json::Value viewport = property("array", "[width, height] to lay out in. Default: the "
+                                             "project's window size.");
+    viewport["items"]["type"] = "number";
+    viewport["items"]["exclusiveMinimum"] = 0;
+    viewport["minItems"] = 2;
+    viewport["maxItems"] = 2;
+    registry.add({
+        .name = "ui.layout",
+        .description = "Returns where controls are on screen, in drawing order: each one's rect "
+                       "[x, y, w, h], for labels the lines shown and whether text overflows, and "
+                       "mistakes such as misspelled theme overrides. A check without a "
+                       "screenshot.",
+        .capabilities = {Read},
+        .effect = Effect::Read,
+        .params = params_schema({
+            {"ids", names_property("Only these controls. Default: all.")},
+            {"viewport", std::move(viewport)},
+        }),
+        .handler = ui_layout,
+    });
+    json::Value measure_text = property("string", R"(The text; lines break at "\n".)");
+    measure_text["maxLength"] = 65536;
+    json::Value measure_width = property("number", "The width to wrap to, with autowrap_mode.");
+    measure_width["exclusiveMinimum"] = 0;
+    json::Value measure_wrap =
+        property("string", "Where lines wrap, as Label's autowrap_mode. Default off.");
+    measure_wrap["enum"] = json::Array{"off", "arbitrary", "word", "word_smart"};
+    registry.add({
+        .name = "text.measure",
+        .description = "Returns text's size in a font: [width, height], the line height and "
+                       "each line, wrapped to a width if asked. Height has no line spacing; a "
+                       "Label adds line_spacing (3) between lines.",
+        .capabilities = {Read},
+        .effect = Effect::Read,
+        .params = params_schema(
+            {
+                {"text", std::move(measure_text)},
+                {"font", property("string", "A .ttf, .otf or .font.json file. Default: the "
+                                            "built-in font.")},
+                {"font_size",
+                 integer_property("Pixels.", 1, text::kMaxFontSize, text::kDefaultFontSize)},
+                {"autowrap_mode", std::move(measure_wrap)},
+                {"width", std::move(measure_width)},
+            },
+            {"text"}),
+        .handler = text_measure,
     });
 
     json::Value set_components =

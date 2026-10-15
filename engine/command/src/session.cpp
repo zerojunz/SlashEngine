@@ -8,6 +8,7 @@
 #include "slash/core/text.hpp"
 #include "slash/physics2d/physics2d.hpp"
 #include "slash/platform/file.hpp"
+#include "slash/ui/ui.hpp"
 #include "slash/world/scene.hpp"
 
 #include <algorithm>
@@ -33,21 +34,39 @@ bool same_world(const Session::SavedWorld& a, const Session::SavedWorld& b) {
            });
 }
 
-// The project's physics_2d settings, or the defaults if it has none or they don't validate.
-physics2d::Settings physics_settings(const std::string& project_root) {
+// The project's project.json, or null if it has none or it doesn't parse.
+json::Value read_project(const std::string& project_root) {
     auto text = platform::read_file_in(project_root, "project.json");
     if (!text) {
         return {};
     }
     auto project = json::parse(text.value());
-    if (!project) {
-        return {};
-    }
-    const json::Value* settings = project.value().find("physics_2d");
+    return project && project.value().is_object() ? std::move(project).value() : json::Value();
+}
+
+// The project's physics_2d settings, or the defaults if it has none or they don't validate.
+physics2d::Settings physics_settings(const json::Value& project) {
+    const json::Value* settings = project.is_object() ? project.find("physics_2d") : nullptr;
     if (settings == nullptr || !json::validate(*settings, physics2d::settings_schema()).empty()) {
         return {};
     }
     return physics2d::parse_settings(*settings);
+}
+
+// The viewport controls are laid out in: the project's window size, or the default.
+ui::Settings ui_settings(const json::Value& project) {
+    ui::Settings settings;
+    const json::Value* window = project.is_object() ? project.find("window") : nullptr;
+    const json::Value* width =
+        window != nullptr && window->is_object() ? window->find("width") : nullptr;
+    const json::Value* height =
+        window != nullptr && window->is_object() ? window->find("height") : nullptr;
+    if (width != nullptr && height != nullptr && width->is_number() && height->is_number() &&
+        width->as_double() > 0.0 && height->as_double() > 0.0) {
+        settings.viewport = {static_cast<float>(width->as_double()),
+                             static_cast<float>(height->as_double())};
+    }
+    return settings;
 }
 
 } // namespace
@@ -71,11 +90,13 @@ Session::Session(const world::ComponentRegistry& component_registry,
     world_.set_event_listener([this](const world::Event& event) { on_world_event(event); });
     world_.set_file_reader(
         [this](std::string_view path) { return assets_.read(path, world::kPrefabType); });
-    // Textures, sprite frames, animation libraries and the systems that play AnimatedSprite2D
-    // and AnimationPlayer, so step animates, and 2D physics.
+    // Textures, fonts, sprite frames, animation libraries and the systems that play
+    // AnimatedSprite2D and AnimationPlayer, so step animates, and 2D physics.
+    const json::Value project = read_project(options_.project_root);
     canvas::install(world_, assets_);
+    ui::set_settings(world_, ui_settings(project));
     animation::install(world_, assets_);
-    physics2d::install(world_, physics_settings(options_.project_root));
+    physics2d::install(world_, physics_settings(project));
     if (options_.capture_logs) {
         log::set_sink([this](log::Level /*level*/, std::string_view line) {
             std::fwrite(line.data(), 1, line.size(), stderr);

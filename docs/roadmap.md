@@ -208,10 +208,19 @@ rendering on top.
       screenshot
 - [ ] GPU particles, as Godot's `GPUParticles2D`: process materials as text graphs on the GPU,
       for many thousands of particles, with sub-emitters, trails and collision with the scene
-- [ ] UI with flexbox layout and themes; text with FreeType, HarfBuzz and MSDF fonts
+- [x] Text with FreeType, HarfBuzz and MSDF fonts, and Godot's `Control`, `Label` and
+      `ColorRect`: anchors, offsets and grow directions, rotation, scale and modulate, labels
+      that wrap, align, trim with an ellipsis and draw outlines and shadows, theme overrides and
+      `.font.json` font settings, drawn above the world. `ui.layout` and `text.measure` check a
+      screen without a screenshot, and `scene validate` and exports catch controls that don't
+      lay out
+- [ ] UI layout and themes: Godot's containers (box, grid, margin, center, flow) as flexbox
+      layout, `.theme.json` themes, `StyleBoxFlat` and `StyleBoxTexture`, and `Panel`, `Button`,
+      `TextureRect`, `ProgressBar` and the other controls, with focus and mouse and touch input
 - [ ] Text input in every language: IME composition for Japanese, Chinese and Korean with the
-      candidate window placed at the text field, on-screen keyboards on phones, and fallback
-      fonts so no language shows missing-glyph boxes
+      candidate window placed at the text field, on-screen keyboards on phones, fallback fonts
+      so no language shows missing-glyph boxes, and BiDi so right-to-left and left-to-right
+      text mix in one line
 - [ ] Audio on miniaudio
 - [ ] Rebindable input action maps, and `input.inject` for agents
 - [ ] `frame.capture` (PNG) and replays (`replay.run`)
@@ -420,8 +429,8 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Audio | miniaudio: buses, effects, 3D spatial audio | 5 | Planned |
 | Input | Rebindable action maps over SDL3, injectable by agents | 5 | Planned |
 | Refresh rates and frame pacing | V-Sync modes, frame cap, display refresh rates, variable refresh rate, rendering interpolated between fixed ticks | 5 | Done |
-| UI | Retained UI with flexbox layout and themes, defined in text | 5 | Planned |
-| Text and fonts | FreeType, HarfBuzz, MSDF fonts, BiDi, IME input, fallback fonts | 5 | Planned |
+| UI | Retained UI with flexbox layout and themes, defined in text | 5 | In part: `Control`, `Label` and `ColorRect` are done; containers and themes in 5 |
+| Text and fonts | FreeType, HarfBuzz, MSDF fonts, BiDi, IME input, fallback fonts | 5 | In part: FreeType, HarfBuzz and MSDF fonts are done; BiDi, IME input and fallback fonts in 5 |
 | Navigation | Recast and Detour, 2D and 3D, avoidance | 7 | Planned |
 | Asset import | glTF 2.0, FBX, OBJ, PNG, JPG, KTX2, WAV, OGG, MP3, and `.blend` through the artist's own Blender | 7 | Planned |
 | Profiling | Tracy, plus `perf.stats` over the command API | 5, 6 | In part: `perf.stats` reports frame pacing; Tracy and per-system timings are planned for 6 |

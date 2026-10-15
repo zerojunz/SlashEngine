@@ -302,6 +302,22 @@ Mat4 pixel_projection(float width, float height) {
     return m;
 }
 
+float distance_field_coverage(const std::array<float, 4>& texel, const DistanceField& field,
+                              float scale) {
+    // As field_coverage in shaders/material.hlsl, where the screen size of the texture over its
+    // size in texels is the scale.
+    const float px_size = std::max(field.pixel_range * scale, 1.0F);
+    float d =
+        std::max(std::min(texel[0], texel[1]), std::min(std::max(texel[0], texel[1]), texel[2]));
+    if (field.outline > 0.0F) {
+        const float cr =
+            std::clamp(field.outline, 0.0F, (field.pixel_range / 2.0F) - 1.0F) / field.pixel_range;
+        d = std::min(d, texel[3]);
+        return std::clamp((d - 0.5F + cr) * px_size, 0.0F, 1.0F);
+    }
+    return std::clamp(((d - 0.5F) * px_size) + 0.5F, 0.0F, 1.0F);
+}
+
 std::unique_ptr<RenderDevice> create_null_device() {
     return std::make_unique<NullDevice>();
 }

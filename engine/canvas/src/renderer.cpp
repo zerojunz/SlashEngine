@@ -1,10 +1,12 @@
 #include "slash/canvas/canvas.hpp"
 #include "slash/canvas/particles.hpp"
 #include "slash/core/log.hpp"
+#include "slash/ui/ui.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <memory>
 #include <numbers>
 #include <string>
 #include <vector>
@@ -147,6 +149,9 @@ CanvasRenderer::CanvasRenderer(render::RenderDevice& device, asset::Assets& asse
 CanvasRenderer::~CanvasRenderer() {
     for (const auto& [key, texture] : textures_) {
         device_->destroy_texture(texture.id);
+    }
+    for (const auto& [texture, version] : pages_) {
+        device_->destroy_texture(texture);
     }
     for (const render::TextureId texture : {atlas_, shadow_map_}) {
         if (texture != render::TextureId::None) {
@@ -429,6 +434,39 @@ Result<render::Material> CanvasRenderer::material(const world::Sprite2D& sprite,
         out.textures.at(slot) = {.texture = texture.value()->id, .repeat = ref.repeat};
     }
     return out;
+}
+
+Result<render::TextureId> CanvasRenderer::atlas_page(const text::Fonts& fonts, std::uint32_t page) {
+    // Another world's fonts have their own pages: upload every page again.
+    if (pages_of_ != &fonts) {
+        pages_of_ = &fonts;
+        for (auto& entry : pages_) {
+            entry.second = static_cast<std::uint64_t>(-1);
+        }
+    }
+    const text::AtlasPage& source = fonts.pages().at(page);
+    while (pages_.size() <= page) {
+        pages_.emplace_back(render::TextureId::None, static_cast<std::uint64_t>(-1));
+    }
+    auto& [texture, version] = pages_[page];
+    if (texture == render::TextureId::None) {
+        auto created = device_->create_texture({.width = source.width,
+                                                .height = source.height,
+                                                .filter = render::Filter::Linear,
+                                                .render_target = false},
+                                               source.rgba);
+        if (!created) {
+            return created.error();
+        }
+        texture = created.value();
+        version = source.version;
+    } else if (version != source.version) {
+        if (auto updated = device_->update_texture(texture, source.rgba); !updated) {
+            return updated.error();
+        }
+        version = source.version;
+    }
+    return texture;
 }
 
 Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions& options) {
@@ -729,6 +767,21 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         return a.order != b.order ? a.order < b.order : a.part < b.part;
     });
 
+    // Controls, over the world.
+    text::Fonts* fonts = ui::fonts(world);
+    if (fonts == nullptr) {
+        if (fonts_ == nullptr) {
+            text::add_asset_types(*assets_);
+            fonts_ = std::make_unique<text::Fonts>(*assets_);
+        }
+        fonts = fonts_.get();
+    }
+    const Vec2 viewport = options.width > 0.0F && options.height > 0.0F
+                              ? Vec2{options.width, options.height}
+                              : ui::settings(world).viewport;
+    const ui::DrawList controls =
+        ui::draw_calls(ui::layout(world, *fonts, viewport), world, *fonts);
+
     // The null device stands in for a window it doesn't have, as draw_empty_frame allows: the
     // sprites and tiles are checked and counted, and nothing is drawn.
     const auto shadows = static_cast<std::size_t>(std::ranges::count_if(
@@ -739,6 +792,8 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         particles_drawn_ = particles;
         lights_drawn_ = lights.lights.size();
         shadows_drawn_ = shadows;
+        controls_drawn_ = controls.controls;
+        glyphs_drawn_ = controls.glyphs;
         return {};
     }
     render::Frame frame;
@@ -759,6 +814,25 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             return drawn.error();
         }
     }
+    for (const ui::DrawCall& call : controls.calls) {
+        render::TextureId texture = render::TextureId::None;
+        if (call.source == ui::DrawCall::Source::Atlas) {
+            auto page = atlas_page(*fonts, call.page);
+            if (!page) {
+                (void)device_->end_frame();
+                return page.error();
+            }
+            texture = page.value();
+        }
+        render::Material material;
+        material.field = call.field;
+        if (auto drawn = device_->draw(texture, call.vertices, material); !drawn) {
+            (void)device_->end_frame();
+            return drawn.error();
+        }
+    }
+    controls_drawn_ = began.value() ? controls.controls : 0;
+    glyphs_drawn_ = began.value() ? controls.glyphs : 0;
     sprites_drawn_ = began.value() ? sprites : 0;
     tiles_drawn_ = began.value() ? tiles : 0;
     particles_drawn_ = began.value() ? particles : 0;
