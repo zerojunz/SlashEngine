@@ -65,11 +65,11 @@ Usage:
       --port <n>                     Port for --serve (default: any free port)
       --token <token>                Bearer token for --serve (default: random)
       --project <dir>                Project folder for --serve (default ".")
-  slash-cli scene validate <file>    Check a scene against the schema; lists every error
-  slash-cli scene format <file>      Rewrite a scene in canonical form
+  slash-cli scene validate <file>    Check a scene or .prefab.json file; lists every error
+  slash-cli scene format <file>      Rewrite a scene or prefab in canonical form
       --check                        Only report whether it is canonical; change nothing
-  slash-cli schema <name>            Print a JSON Schema: scene, project (project.json) or
-                                     presets (export_presets.json)
+  slash-cli schema <name>            Print a JSON Schema: scene, prefab, project
+                                     (project.json) or presets (export_presets.json)
   slash-cli project validate [dir]   Check project.json and export_presets.json; lists every
                                      error
   slash-cli call <command> [params]  Run one engine command and print its result
@@ -429,23 +429,45 @@ int cmd_run(const std::vector<std::string>& args) {
     return kExitOk;
 }
 
+// Reads the prefabs a scene or prefab file extends from its project: the nearest folder above it
+// with a project.json, else the current folder.
+world::FileReader prefab_reader(const std::string& file) {
+    namespace fs = std::filesystem;
+    std::error_code error;
+    fs::path folder = fs::absolute(file, error).parent_path();
+    while (!error && !folder.empty()) {
+        if (fs::exists(folder / slash::runtime::kProjectFile, error)) {
+            return slash::runtime::folder_reader(folder.string());
+        }
+        if (folder == folder.parent_path()) {
+            break;
+        }
+        folder = folder.parent_path();
+    }
+    return slash::runtime::folder_reader(".");
+}
+
 int cmd_scene_validate(const std::string& path) {
     auto text = slash::platform::read_file(path);
     if (!text) {
-        return failure("could not read the scene", text.error());
+        return failure("could not read the file", text.error());
     }
     const world::ComponentRegistry registry = make_registry();
+    const bool prefab = path.ends_with(world::kPrefabSuffix);
     json::Value result;
     auto parsed = json::parse(text.value());
     std::vector<json::ValidationError> errors;
     if (!parsed) {
         errors.push_back({"", parsed.error().message});
+    } else if (prefab) {
+        errors = world::validate_prefab(registry, parsed.value(), prefab_reader(path));
     } else {
-        errors = world::validate_scene(registry, parsed.value());
+        errors = world::validate_scene(registry, parsed.value(), prefab_reader(path));
     }
     result["valid"] = errors.empty();
     if (errors.empty()) {
-        result["entities"] = parsed.value().find("entities")->size();
+        const json::Value* items = parsed.value().find(prefab ? "components" : "entities");
+        result[prefab ? "components" : "entities"] = items != nullptr ? items->size() : 0;
     } else {
         result["errors"] = errors_to_json(errors);
     }
@@ -456,12 +478,14 @@ int cmd_scene_validate(const std::string& path) {
 int cmd_scene_format(const std::string& path, bool check) {
     auto text = slash::platform::read_file(path);
     if (!text) {
-        return failure("could not read the scene", text.error());
+        return failure("could not read the file", text.error());
     }
     const world::ComponentRegistry registry = make_registry();
-    auto formatted = world::format_scene(registry, text.value());
+    auto formatted = path.ends_with(world::kPrefabSuffix)
+                         ? world::format_prefab(registry, text.value(), prefab_reader(path))
+                         : world::format_scene(registry, text.value(), prefab_reader(path));
     if (!formatted) {
-        return failure("could not format the scene", formatted.error());
+        return failure("could not format the file", formatted.error());
     }
     const bool canonical = formatted.value() == text.value();
     json::Value result;
@@ -472,7 +496,7 @@ int cmd_scene_format(const std::string& path, bool check) {
     }
     if (!canonical) {
         if (auto written = slash::platform::write_file(path, formatted.value()); !written) {
-            return failure("could not write the scene", written.error());
+            return failure("could not write the file", written.error());
         }
     }
     result["changed"] = !canonical;
@@ -506,12 +530,15 @@ int cmd_scene(const std::vector<std::string>& args) {
 }
 
 int cmd_schema(const std::vector<std::string>& args) {
-    if (args.size() != 1 || (args[0] != "scene" && args[0] != "project" && args[0] != "presets")) {
-        return usage_error("schema takes one argument: scene, project or presets");
+    if (args.size() != 1 || (args[0] != "scene" && args[0] != "prefab" && args[0] != "project" &&
+                             args[0] != "presets")) {
+        return usage_error("schema takes one argument: scene, prefab, project or presets");
     }
     json::Value schema;
     if (args[0] == "scene") {
         schema = world::scene_schema(make_registry());
+    } else if (args[0] == "prefab") {
+        schema = world::prefab_schema(make_registry());
     } else if (args[0] == "project") {
         schema = slash::runtime::project_schema();
     } else {

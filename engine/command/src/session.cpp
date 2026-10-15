@@ -3,6 +3,7 @@
 #include "slash/core/json_schema.hpp"
 #include "slash/core/log.hpp"
 #include "slash/core/text.hpp"
+#include "slash/platform/file.hpp"
 #include "slash/world/scene.hpp"
 
 #include <algorithm>
@@ -23,6 +24,13 @@ Session::Session(const world::ComponentRegistry& component_registry,
     : commands_(&command_registry), options_(std::move(session_options)),
       world_(component_registry) {
     world_.set_event_listener([this](const world::Event& event) { on_world_event(event); });
+    world_.set_file_reader([this](std::string_view path) -> Result<std::string> {
+        auto file = resolve_path(path);
+        if (!file) {
+            return file.error();
+        }
+        return platform::read_file(file.value());
+    });
     if (options_.capture_logs) {
         log::set_sink([this](log::Level /*level*/, std::string_view line) {
             std::fwrite(line.data(), 1, line.size(), stderr);
@@ -76,6 +84,11 @@ Reply Session::call(std::string_view name, const json::Value& params) {
         return Reply::invalid_params(errors);
     }
 
+    // Each command reads prefab files afresh, so it sees edits made since the last one.
+    if (depth_ == 0) {
+        world_.forget_prefabs();
+    }
+
     // Nested calls are snapshotted, recorded and rolled back by the outermost call.
     const bool snapshots = changes_world(command->effect);
 
@@ -101,22 +114,26 @@ Reply Session::call(std::string_view name, const json::Value& params) {
         return run(*command, *command_args);
     }
 
-    Snapshot before{command->name, world::save_scene(world_)};
+    Snapshot before{command->name, save()};
     const std::string path_before = scene_path_;
     const world::World::Counters counters_before = world_.counters();
     edited_ = false;
     replaced_ = false;
     pending_events_.clear();
     buffering_events_ = true;
+    dry_running_ = dry_run;
     Reply reply = run(*command, *command_args);
+    dry_running_ = false;
     buffering_events_ = false;
     if (!reply.ok || dry_run) {
         pending_events_.clear();
         json::Value changes;
         if (reply.ok) {
-            changes = world::diff_scenes(components(), before.scene, world::save_scene(world_));
+            const SavedWorld after = save();
+            changes = world::diff_scenes(components(), before.saved.scene, after.scene,
+                                         before.saved.links, after.links);
         }
-        restore(before.scene);
+        restore(before.saved);
         scene_path_ = path_before;
         world_.set_counters(counters_before);
         if (!reply.ok) {
@@ -136,7 +153,7 @@ Reply Session::call(std::string_view name, const json::Value& params) {
     }
     pending_events_.clear();
     if ((edited_ || replaced_) && wants("command")) {
-        publish_changes(command->name, before.scene, world::save_scene(world_));
+        publish_changes(command->name, before.saved, save());
     }
     if (replaced_) {
         clear_history();
@@ -202,9 +219,9 @@ Reply Session::undo() {
     }
     const Snapshot target = std::move(undo_.back());
     undo_.pop_back();
-    Snapshot current{target.label, world::save_scene(world_)};
-    restore(target.scene);
-    publish_changes("undo", current.scene, target.scene);
+    Snapshot current{target.label, save()};
+    restore(target.saved);
+    publish_changes("undo", current.saved, target.saved);
     remember(redo_, std::move(current));
     json::Value result;
     result["undone"] = target.label;
@@ -219,9 +236,9 @@ Reply Session::redo() {
     }
     const Snapshot target = std::move(redo_.back());
     redo_.pop_back();
-    Snapshot current{target.label, world::save_scene(world_)};
-    restore(target.scene);
-    publish_changes("redo", current.scene, target.scene);
+    Snapshot current{target.label, save()};
+    restore(target.saved);
+    publish_changes("redo", current.saved, target.saved);
     remember(undo_, std::move(current));
     json::Value result;
     result["redone"] = target.label;
@@ -259,11 +276,11 @@ Result<void> Session::take_snapshot(std::string name) {
                           "a session keeps at most " + std::to_string(kMaxSnapshots) +
                               " snapshots; reuse a name to replace one");
     }
-    snapshots_[std::move(name)] = world::save_scene(world_);
+    snapshots_[std::move(name)] = save();
     return {};
 }
 
-const json::Value* Session::find_snapshot(std::string_view name) const {
+const Session::SavedWorld* Session::find_snapshot(std::string_view name) const {
     const auto it = snapshots_.find(name);
     return it != snapshots_.end() ? &it->second : nullptr;
 }
@@ -283,11 +300,16 @@ std::vector<std::string> Session::recent_logs(std::size_t count) const {
     return {logs_.begin() + static_cast<std::ptrdiff_t>(first), logs_.end()};
 }
 
-void Session::restore(const json::Value& scene) {
+Session::SavedWorld Session::save() const {
+    return {world::save_scene(world_), world_.prefab_links()};
+}
+
+void Session::restore(const SavedWorld& saved) {
     muted_events_ = true;
     world_.clear();
-    // Snapshots are saved from a valid world, so loading one cannot fail.
-    const auto loaded = world::load_scene(world_, scene);
+    // Copies are saved from a valid world with the prefab each entity extends, so loading one
+    // reads no files and cannot fail.
+    const auto loaded = world::load_scene(world_, saved.scene, saved.links);
     muted_events_ = false;
     SLASH_ASSERT(loaded.ok(), "a session snapshot failed to load");
 }
@@ -365,12 +387,13 @@ void Session::publish(const world::Event& event) {
     deliver(event.kind, ids, std::move(item));
 }
 
-void Session::publish_changes(std::string_view command, const json::Value& before,
-                              const json::Value& after) {
+void Session::publish_changes(std::string_view command, const SavedWorld& before,
+                              const SavedWorld& after) {
     if (!wants("command")) {
         return;
     }
-    json::Value changes = world::diff_scenes(components(), before, after);
+    json::Value changes =
+        world::diff_scenes(components(), before.scene, after.scene, before.links, after.links);
     std::vector<std::string> ids;
     for (const std::string_view section : {"added", "removed"}) {
         if (const json::Value* list = changes.find(section); list != nullptr) {

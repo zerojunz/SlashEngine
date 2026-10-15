@@ -118,6 +118,18 @@ TEST_CASE("$ref resolves definitions in the same schema") {
 TEST_CASE("combinators") {
     CHECK(check("1", R"({"anyOf": [{"type": "string"}, {"type": "integer"}]})").empty());
     CHECK(check("1.5", R"({"anyOf": [{"type": "string"}, {"type": "integer"}]})").size() == 1);
+    // When only one option takes the value's type, its errors say what is wrong.
+    const std::string nullable =
+        R"({"anyOf": [{"type": "null"}, {"type": "object", "properties": {"a": {"type": "integer"}},
+                                         "additionalProperties": false}]})";
+    CHECK(check("null", nullable).empty());
+    const auto inner = check(R"({"a": "x", "b": 1})", nullable);
+    REQUIRE(inner.size() == 2);
+    CHECK(inner[0].path == "/a");
+    CHECK(inner[0].message == "expected integer, got string");
+    CHECK(inner[1].path == "/b");
+    REQUIRE(check("5", nullable).size() == 1);
+    CHECK(check("5", nullable)[0].message == "does not match any of the allowed schemas");
     CHECK(check("1", R"({"oneOf": [{"type": "number"}, {"type": "integer"}]})").size() == 1);
     CHECK(check("1", R"({"allOf": [{"minimum": 0}, {"maximum": 0}]})").size() == 1);
     CHECK(check("1", R"({"not": {"type": "string"}})").empty());

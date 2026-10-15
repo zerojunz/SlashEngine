@@ -54,6 +54,10 @@ public:
     // reply is {"dry_run": true, "result": <its result>, "changes": <diff_scenes>}, or its error.
     Reply call(std::string_view name, const json::Value& params);
 
+    // True while a dry run is running. Commands that write files, such as scene.save inside a
+    // batch, check everything but write nothing.
+    [[nodiscard]] bool dry_running() const noexcept { return dry_running_; }
+
     [[nodiscard]] world::World& world() noexcept { return world_; }
     [[nodiscard]] const world::World& world() const noexcept { return world_; }
     [[nodiscard]] const world::ComponentRegistry& components() const noexcept {
@@ -69,6 +73,17 @@ public:
     // The project-relative path of the open scene, or "" for an unsaved one.
     [[nodiscard]] const std::string& scene_path() const noexcept { return scene_path_; }
     void set_scene_path(std::string path) { scene_path_ = std::move(path); }
+
+    // A copy of the world's entities in scene-file form, with the prefabs they extend so it
+    // restores without reading prefab files.
+    struct SavedWorld {
+        json::Value scene;
+        world::PrefabLinks links;
+    };
+    [[nodiscard]] SavedWorld save() const;
+    // Replaces the world's entities with a saved copy. Entity events are not queued; the
+    // command's own event says what changed.
+    void restore(const SavedWorld& saved);
 
     // Undo history. Each entry is labelled with the command that made it. Undo restores the
     // entities and their components; the tick counter keeps counting.
@@ -90,8 +105,8 @@ public:
     // Taking a snapshot under a name in use replaces it; a session holds at most kMaxSnapshots.
     static constexpr std::size_t kMaxSnapshots = 100;
     Result<void> take_snapshot(std::string name);
-    // The snapshot with this name, in scene-file form, or nullptr.
-    [[nodiscard]] const json::Value* find_snapshot(std::string_view name) const;
+    // The snapshot with this name, or nullptr.
+    [[nodiscard]] const SavedWorld* find_snapshot(std::string_view name) const;
     // Every snapshot name, sorted.
     [[nodiscard]] std::vector<std::string_view> snapshot_names() const;
 
@@ -123,7 +138,7 @@ public:
 private:
     struct Snapshot {
         std::string label;
-        json::Value scene;
+        SavedWorld saved;
     };
 
     struct Subscription {
@@ -134,12 +149,11 @@ private:
     };
 
     Reply run(const Command& command, const json::Value& params);
-    void restore(const json::Value& scene);
     void on_world_event(const world::Event& event);
     void publish(const world::Event& event);
     // Queues a command event if a subscription wants one.
-    void publish_changes(std::string_view command, const json::Value& before,
-                         const json::Value& after);
+    void publish_changes(std::string_view command, const SavedWorld& before,
+                         const SavedWorld& after);
     [[nodiscard]] bool wants(std::string_view kind) const;
     void deliver(std::string_view kind, const std::vector<std::string>& ids, json::Value event);
     void remember(std::deque<Snapshot>& stack, Snapshot snapshot) const;
@@ -150,10 +164,11 @@ private:
     std::string scene_path_;
     std::deque<Snapshot> undo_;
     std::deque<Snapshot> redo_;
-    std::map<std::string, json::Value, std::less<>> snapshots_;
+    std::map<std::string, SavedWorld, std::less<>> snapshots_;
     int depth_ = 0;         // how many commands are running (more than one inside a batch)
     bool edited_ = false;   // an Edit command succeeded during the outermost call
     bool replaced_ = false; // a Replace command succeeded during the outermost call
+    bool dry_running_ = false;
     bool playing_ = false;
     std::map<std::string, Subscription, std::less<>> subscriptions_;
     std::uint64_t next_subscription_ = 1;

@@ -55,6 +55,19 @@ if(SLASH_BUILD_TOOLS)
     set_tests_properties(cli_scene_validate PROPERTIES
         PASS_REGULAR_EXPRESSION "{\"entities\":3,\"valid\":true}")
 
+    # Prefabs are read from the project the file is in: the nearest folder with a project.json.
+    add_test(NAME cli_scene_validate_prefab
+        COMMAND slash-cli scene validate ${scenes}/game/prefabs/marker.prefab.json)
+    set_tests_properties(cli_scene_validate_prefab PROPERTIES
+        PASS_REGULAR_EXPRESSION "{\"components\":1,\"valid\":true}")
+    add_test(NAME cli_scene_validate_extends
+        COMMAND slash-cli scene format --check ${scenes}/game/scenes/main.scene.json)
+    set_tests_properties(cli_scene_validate_extends PROPERTIES
+        PASS_REGULAR_EXPRESSION "{\"canonical\":true}")
+    add_test(NAME cli_schema_prefab COMMAND slash-cli schema prefab)
+    set_tests_properties(cli_schema_prefab PROPERTIES
+        PASS_REGULAR_EXPRESSION "\"title\": \"SlashEngine prefab\"")
+
     add_test(NAME cli_scene_validate_invalid
         COMMAND slash-cli scene validate ${scenes}/invalid.scene.json)
     set_tests_properties(cli_scene_validate_invalid PROPERTIES
@@ -181,6 +194,11 @@ if(SLASH_BUILD_TOOLS)
     set_tests_properties(cli_export_invalid_scene PROPERTIES
         FIXTURES_REQUIRED broken_game
         PASS_REGULAR_EXPRESSION "\"file\":\"scenes/main\\.scene\\.json\".*\"step\":\"validate\"")
+    add_test(NAME cli_export_invalid_prefab
+        COMMAND slash-cli export ${host_platform} --project ${broken_game})
+    set_tests_properties(cli_export_invalid_prefab PROPERTIES
+        FIXTURES_REQUIRED broken_game
+        PASS_REGULAR_EXPRESSION "\"file\":\"prefabs/bad\\.prefab\\.json\",\"message\":\"expected array, got string\",\"path\":\"/components/Transform2D/scale\"")
     # A folder export didn't make is never replaced.
     add_test(NAME cli_export_keeps_other_folders
         COMMAND slash-cli export ${host_platform} --project ${broken_game} --out ${broken_game}/scenes)

@@ -103,6 +103,13 @@ matches the build. Validation reports every error at once, each with the JSON Po
 value and, for a misspelled name, the closest valid one. See
 [reference/scene-format.md](reference/scene-format.md).
 
+A **prefab** is one entity's components in a `.prefab.json` file, like a Godot scene that other
+scenes instance. An entity that `"extends"` a prefab starts with its components and overrides
+fields; a `null` component removes one. The entity stays linked to the prefab, so saving writes
+only what differs and editing the prefab changes every instance. Prefabs can extend other
+prefabs. Undo and snapshots keep the prefab each entity was made from, so they restore it exactly
+even after the file changes.
+
 ## Game projects and exports
 
 A **project** is a game's folder: a `project.json` naming the game, its version and its **main
@@ -301,13 +308,14 @@ OpenAI-compatible servers (including local ones), Anthropic and Gemini; see the
 | ID | An entity's stable name: 1 to 64 letters, digits, `_` or `-` |
 | JSON Pointer | A path to a value inside JSON, such as `/entities/player/components` (RFC 6901) |
 | Main scene | The scene a game loads at startup, named in `project.json` |
+| Prefab | One entity's components in a `.prefab.json` file, which entities extend and override |
 | Project | A game's folder: `project.json` plus its scenes |
 | Project folder | The folder all command paths are relative to |
 | Reflection | Field metadata from `SLASH_COMPONENT` or `SLASH_REFLECT` that drives saving, schemas and commands |
 | Resource | Read-only data an MCP client can fetch: the scene, its schema or the logs |
 | Scene | A world saved as a `.scene.json` file |
 | Session | One world with its open scene path, undo history and recent logs |
-| System | Code that updates components every tick (none built in yet) |
+| System | Code that updates components every tick, in order of priority |
 | Tick | One fixed simulation step, 1/60 s by default |
 | Tool name | A command's MCP name, with `_` in place of `.` |
 | World | Every entity in a running game, held in EnTT |

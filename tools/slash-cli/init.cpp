@@ -60,6 +60,9 @@ The address and token are in `.slash/server.json`, which stays out of git.
   `world_snapshot`, then `world_diff`, lists what changed since; `world_restore` goes back.
 - `world_query` returns only entity IDs unless you pass `include`. Filter with `where`.
 - `component_set` returns only the fields that changed.
+- For many similar entities, `prefab_save` one to `prefabs/<name>.prefab.json` and create the
+  rest with `entity_create` and `"extends"`. Each saves only the fields it overrides, and editing
+  the prefab changes them all.
 - Errors give the JSON Pointer of the bad value and suggest the right name; fix it and retry.
 - Call `scene_save` when you are done, then `slash-cli scene validate <file>` to double-check.
 
@@ -82,6 +85,7 @@ environment variables, never from the file.
   and `export_presets.json`.
 - `scenes/`: scenes as canonical JSON, keyed by stable entity ID. Run
   `slash-cli scene format <file>` before committing a scene edited outside the engine.
+- `prefabs/`: `.prefab.json` files, one entity's components each, which scene entities extend.
 )";
 
 constexpr std::string_view kSkill = R"(---

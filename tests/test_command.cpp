@@ -10,6 +10,7 @@
 
 #include <doctest/doctest.h>
 
+#include <filesystem>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -630,6 +631,105 @@ TEST_CASE("scenes save to and open from the project folder") {
     CHECK(engine.session->world().size() == 0);
 }
 
+TEST_CASE("entities extend prefabs, and prefab.save writes them") {
+    const std::string root = "command_prefab_project";
+    std::filesystem::remove_all(root);
+    REQUIRE(slash::platform::create_directories(root + "/prefabs").ok());
+    REQUIRE(slash::platform::write_file(root + "/prefabs/enemy.prefab.json",
+                                        R"({"format": 1, "components": {
+                                            "Health": {"current": 50, "max": 50},
+                                            "Transform2D": {"rotation": 1}}})")
+                .ok());
+    command::SessionOptions options;
+    options.project_root = root;
+    Engine engine(options);
+
+    engine.ok("entity.create", R"({"id": "grunt", "extends": "prefabs/enemy.prefab.json",
+                                   "components": {"Health": {"current": 20}}})");
+    CHECK(engine.ok("entity.get", R"({"id": "grunt", "components": ["Health"]})") == parse(R"({
+        "id": "grunt", "extends": "prefabs/enemy.prefab.json",
+        "components": {"Health": {"current": 20.0, "max": 50.0}}})"));
+    CHECK(engine.scene() == parse(R"({"grunt": {"extends": "prefabs/enemy.prefab.json",
+                                                "components": {"Health": {"current": 20.0}}}})"));
+    const auto missing =
+        engine.fails("entity.create", R"({"id": "x", "extends": "prefabs/gone.prefab.json"})",
+                     command::code::kNotFound);
+    CHECK(*missing.data.find("path") == "/extends");
+    CHECK((engine.session->world().find("x") == entt::null));
+
+    // Each command reads prefab files again, so edits show up in new instances.
+    REQUIRE(slash::platform::write_file(root + "/prefabs/enemy.prefab.json",
+                                        R"({"format": 1, "components": {
+                                            "Health": {"current": 80, "max": 80}}})")
+                .ok());
+    engine.ok("entity.create", R"({"id": "fresh", "extends": "prefabs/enemy.prefab.json"})");
+    CHECK(engine.ok("entity.get", R"({"id": "fresh"})").find("components")->size() == 1);
+
+    // Undo restores instances from the prefab they were made with, without reading the file.
+    std::filesystem::remove(root + "/prefabs/enemy.prefab.json");
+    engine.ok("entity.destroy", R"({"id": "grunt"})");
+    engine.ok("undo");
+    CHECK(engine.ok("entity.get", R"({"id": "grunt", "omit_defaults": true})") == parse(R"({
+        "id": "grunt", "extends": "prefabs/enemy.prefab.json",
+        "components": {"Health": {"current": 20.0, "max": 50.0},
+                       "Transform2D": {"rotation": 1.0}}})"));
+    const json::Value dry = engine.ok("component.set", R"({"id": "grunt", "dry_run": true,
+        "components": {"Health": {"max": 60}}})");
+    CHECK(*dry.find("changes") == parse(R"({"changed": {"grunt": {"Health": {"max": 60.0}}}})"));
+
+    // prefab.save writes an entity as a prefab, and later commands read it.
+    engine.ok("entity.create", R"({"id": "crate", "components": {"Health": {"max": 5}}})");
+    CHECK(engine.ok("prefab.save", R"({"id": "crate", "path": "prefabs/crate.prefab.json"})") ==
+          parse(R"({"path": "prefabs/crate.prefab.json", "components": ["Health"]})"));
+    const auto text = slash::platform::read_file(root + "/prefabs/crate.prefab.json");
+    REQUIRE(text.ok());
+    CHECK(parse(text.value()) == parse(R"({"components": {"Health": {"max": 5.0}}, "format": 1})"));
+    engine.ok("batch", R"({"commands": [
+        {"command": "component.set", "params": {"id": "crate",
+                                               "components": {"Health": {"max": 9}}}},
+        {"command": "prefab.save", "params": {"id": "crate", "path": "prefabs/crate.prefab.json"}},
+        {"command": "entity.create", "params": {"id": "crate_2",
+                                               "extends": "prefabs/crate.prefab.json"}}]})");
+    CHECK(engine.ok("entity.get", R"({"id": "crate_2", "components": ["Health"]})") ==
+          parse(R"({"id": "crate_2", "extends": "prefabs/crate.prefab.json",
+                    "components": {"Health": {"current": 100.0, "max": 9.0}}})"));
+
+    // In a dry run, file-writing commands write nothing, but the rest of the batch sees the
+    // prefab.
+    const json::Value dry_batch = engine.ok("batch", R"({"dry_run": true, "commands": [
+        {"command": "prefab.save", "params": {"id": "crate", "path": "prefabs/box.prefab.json"}},
+        {"command": "entity.create", "params": {"id": "box", "extends": "prefabs/box.prefab.json"}},
+        {"command": "scene.save", "params": {"path": "dry.scene.json"}}]})");
+    CHECK(*dry_batch.find("changes") ==
+          parse(R"({"added": ["box"], "changed": {"box": {"Health": {"max": 9.0}}}})"));
+    CHECK_FALSE(std::filesystem::exists(root + "/prefabs/box.prefab.json"));
+    CHECK_FALSE(std::filesystem::exists(root + "/dry.scene.json"));
+
+    // A prefab cannot extend itself.
+    const auto loop =
+        engine.fails("prefab.save", R"({"id": "crate_2", "path": "prefabs/crate.prefab.json"})",
+                     command::code::kInvalidArgument);
+    CHECK(contains(loop.message, "loop"));
+    engine.fails("prefab.save", R"({"id": "crate", "path": "prefabs/crate.json"})",
+                 command::code::kInvalidArgument);
+    engine.fails("prefab.save", R"({"id": "crate", "path": "../crate.prefab.json"})",
+                 command::code::kPermissionDenied);
+
+    // Scenes save overrides only and open with their prefabs.
+    engine.ok("entity.destroy", R"({"id": "grunt"})");
+    engine.ok("entity.destroy", R"({"id": "fresh"})");
+    engine.ok("scene.save", R"({"path": "main.scene.json"})");
+    engine.ok("scene.new");
+    CHECK(engine.ok("scene.open", R"({"path": "main.scene.json"})").find("entities")->as_int() ==
+          2);
+    CHECK(engine.ok("entity.get", R"({"id": "crate_2", "components": ["Health"]})")
+              .find("components")
+              ->find("Health")
+              ->find("max")
+              ->as_double() == 9.0);
+    std::filesystem::remove_all(root);
+}
+
 TEST_CASE("step advances the simulation and undo reverts it") {
     Engine engine;
     engine.ok("entity.create", R"({"id": "ball", "components": {"Transform2D": {}}})");
@@ -704,6 +804,8 @@ TEST_CASE("play and pause set whether a running game ticks") {
 
 TEST_CASE("schema.get returns scene, component and command schemas") {
     Engine engine;
+    CHECK(engine.ok("schema.get", R"({"kind": "prefab"})").find("title")->as_string() ==
+          "SlashEngine prefab");
     CHECK(engine.ok("schema.get", R"({"kind": "scene"})").find("title")->as_string() ==
           "SlashEngine scene");
 
