@@ -110,6 +110,21 @@ only what differs and editing the prefab changes every instance. Prefabs can ext
 prefabs. Undo and snapshots keep the prefab each entity was made from, so they restore it exactly
 even after the file changes.
 
+## Assets
+
+An **asset** is a file a game loads by project path, like a Godot resource: a JSON table, a CSV
+file and, once the renderer and audio arrive, textures and sounds. Loading one returns a
+**handle**; every handle to the same path shares one copy, which stays loaded while any handle
+exists. `.json`, `.txt` and `.csv` files load out of the box, and a game can add its own types.
+
+**Hot reload** keeps an agent's edit-and-check loop short. Before every command, and between
+ticks in `slash-cli run` and `slash-cli serve`, the session checks the files it has loaded. A
+changed asset reloads in place, so its handles see the new version. A changed prefab updates its
+instances at once, keeping each instance's overrides, as Godot does for instanced scenes. A file
+that no longer loads keeps its last good version, and the error is reported. `asset.list` shows
+what is loaded, and `events.subscribe` delivers an `asset.reloaded` event per changed file plus a
+`command` event named `asset.reload` with the changes to the world. A reload is not an undo step.
+
 ## Game projects and exports
 
 A **project** is a game's folder: a `project.json` naming the game, its version and its **main
@@ -294,6 +309,7 @@ OpenAI-compatible servers (including local ones), Anthropic and Gemini; see the
 
 | Term | Meaning |
 | --- | --- |
+| Asset | A file a game loads by project path into a shared, reference-counted handle |
 | Canonical form | The one way a scene is written: sorted keys, two-space indent, defaults left out |
 | Capability | A permission a session grants: `read`, `edit`, `run`, `filesystem` or `build` |
 | Command | A named action with a params schema, capabilities and an effect |
@@ -305,6 +321,7 @@ OpenAI-compatible servers (including local ones), Anthropic and Gemini; see the
 | Entity | A thing in the world, named by a stable ID |
 | Export | A build of a project for one platform, ready for players |
 | Front end | A way to reach the commands: MCP, JSON-RPC, REST or the CLI |
+| Hot reload | Reloading edited files, and updating prefab instances, while the game runs |
 | ID | An entity's stable name: 1 to 64 letters, digits, `_` or `-` |
 | JSON Pointer | A path to a value inside JSON, such as `/entities/player/components` (RFC 6901) |
 | Main scene | The scene a game loads at startup, named in `project.json` |

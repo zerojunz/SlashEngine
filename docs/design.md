@@ -395,6 +395,7 @@ SlashEngine/
   engine/
     core/            # memory, Result, logging, math, jobs, reflection
     platform/        # SDL3 wrapper: window, input, audio, files
+    asset/           # asset handles, loaders and hot reload of asset files
     render/          # RenderDevice, SDL GPU + null backends, sprite and 3D passes
     world/           # ECS, scenes, prefabs, serialization
     command/         # Command registry, undo, JSON-RPC and MCP

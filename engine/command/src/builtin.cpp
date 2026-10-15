@@ -16,6 +16,7 @@
 #include <charconv>
 #include <cstddef>
 #include <cstdint>
+#include <map>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -587,6 +588,37 @@ Reply prefab_save(Session& session, const json::Value& params) {
         }
     }
     result["components"] = std::move(names);
+    return Reply::success(std::move(result));
+}
+
+// ---- Assets ----
+
+Reply asset_list(Session& session, const json::Value& params) {
+    const std::string type = text(params, "type");
+    // A prefab's references are the entities that extend it.
+    std::map<std::string, std::size_t, std::less<>> instances;
+    for (const auto [entity, link] : session.world().ecs().view<const world::PrefabLink>().each()) {
+        ++instances[link.path];
+    }
+    json::Array assets;
+    for (const asset::Assets::Info& info : session.assets().list()) {
+        if (!type.empty() && info.type != type) {
+            continue;
+        }
+        json::Value item;
+        item["path"] = info.path;
+        item["type"] = info.type;
+        item["version"] = info.version;
+        std::size_t refs = info.refs;
+        if (info.type == world::kPrefabType) {
+            const auto it = instances.find(info.path);
+            refs = it != instances.end() ? it->second : 0;
+        }
+        item["refs"] = refs;
+        assets.push_back(std::move(item));
+    }
+    json::Value result;
+    result["assets"] = std::move(assets);
     return Reply::success(std::move(result));
 }
 
@@ -1283,6 +1315,17 @@ void register_builtin_commands(Registry& registry) {
             },
             {"id", "path"}),
         .handler = prefab_save,
+    });
+
+    registry.add({
+        .name = "asset.list",
+        .description = "Lists loaded assets and the prefab files entities extend, with each one's "
+                       "type, version (one more per reload) and refs (handles, or instances).",
+        .capabilities = {Read},
+        .effect = Effect::Read,
+        .params = params_schema({{"type", property("string", "Only assets of this type, e.g. "
+                                                             "\"prefab\" or \"json\".")}}),
+        .handler = asset_list,
     });
 
     json::Value set_components =

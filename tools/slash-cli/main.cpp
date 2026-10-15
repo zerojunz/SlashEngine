@@ -50,6 +50,8 @@ namespace command = slash::command;
 constexpr int kExitOk = 0;
 constexpr int kExitFailure = 1;
 constexpr int kExitUsage = 2;
+// How often a running game checks for edited asset files: every quarter second at 60 Hz.
+constexpr std::uint64_t kAssetPollTicks = 15;
 
 constexpr std::string_view kUsage = R"(slash-cli: the SlashEngine command-line tool
 
@@ -395,7 +397,11 @@ int cmd_run(const std::vector<std::string>& args) {
     }
 
     auto stats = slash::platform::run(platform.value(), options,
-                                      [&](std::uint64_t /*tick*/, double tick_seconds) {
+                                      [&](std::uint64_t tick, double tick_seconds) {
+                                          // Hot reload: pick up edited assets and prefabs.
+                                          if (tick % kAssetPollTicks == 0) {
+                                              engine.session->poll_assets();
+                                          }
                                           if (server) {
                                               server->poll();
                                           }
@@ -731,6 +737,7 @@ int cmd_serve(const std::vector<std::string>& args) {
     std::signal(SIGTERM, request_stop);
     while (g_stop_requested == 0) {
         server.value()->poll(std::chrono::milliseconds(100));
+        session.poll_assets();
     }
     server.value()->stop();
     slash::log::info("server stopped");

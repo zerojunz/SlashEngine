@@ -22,15 +22,23 @@ constexpr std::size_t kMaxLogLines = 1000;
 Session::Session(const world::ComponentRegistry& component_registry,
                  const Registry& command_registry, SessionOptions session_options)
     : commands_(&command_registry), options_(std::move(session_options)),
+      assets_(asset::FileSource{
+          .read = [this](std::string_view path) -> Result<std::string> {
+              auto file = resolve_path(path);
+              if (!file) {
+                  return file.error();
+              }
+              return platform::read_file(file.value());
+          },
+          .stamp = [this](std::string_view path) -> std::optional<platform::FileStamp> {
+              auto file = resolve_path(path);
+              return file ? platform::file_stamp(file.value()) : std::nullopt;
+          },
+      }),
       world_(component_registry) {
     world_.set_event_listener([this](const world::Event& event) { on_world_event(event); });
-    world_.set_file_reader([this](std::string_view path) -> Result<std::string> {
-        auto file = resolve_path(path);
-        if (!file) {
-            return file.error();
-        }
-        return platform::read_file(file.value());
-    });
+    world_.set_file_reader(
+        [this](std::string_view path) { return assets_.read(path, world::kPrefabType); });
     if (options_.capture_logs) {
         log::set_sink([this](log::Level /*level*/, std::string_view line) {
             std::fwrite(line.data(), 1, line.size(), stderr);
@@ -84,8 +92,10 @@ Reply Session::call(std::string_view name, const json::Value& params) {
         return Reply::invalid_params(errors);
     }
 
-    // Each command reads prefab files afresh, so it sees edits made since the last one.
+    // Each command sees files as they are now: changed assets reload, and prefab files are read
+    // afresh.
     if (depth_ == 0) {
+        poll_assets();
         world_.forget_prefabs();
     }
 
@@ -298,6 +308,46 @@ std::vector<std::string> Session::recent_logs(std::size_t count) const {
     const std::scoped_lock lock(logs_mutex_);
     const std::size_t first = logs_.size() > count ? logs_.size() - count : 0;
     return {logs_.begin() + static_cast<std::ptrdiff_t>(first), logs_.end()};
+}
+
+void Session::poll_assets() {
+    std::vector<asset::Assets::Change> changes = assets_.poll();
+    if (changes.empty()) {
+        return;
+    }
+    std::optional<SavedWorld> before;
+    world::PrefabReload reload;
+    if (std::ranges::any_of(changes, [](const asset::Assets::Change& change) {
+            return change.type == world::kPrefabType;
+        })) {
+        if (wants("command")) {
+            before = save();
+        }
+        reload = world::reload_prefabs(world_);
+        for (const json::ValidationError& error : reload.errors) {
+            log::warn("prefab did not reload", {{"path", error.path}, {"detail", error.message}});
+            const auto it = std::ranges::find(changes, error.path, &asset::Assets::Change::path);
+            if (it != changes.end()) {
+                it->error = error.message;
+            } else {
+                changes.push_back({error.path, std::string(world::kPrefabType), 0, error.message});
+            }
+        }
+    }
+    for (const asset::Assets::Change& change : changes) {
+        json::Value data;
+        data["path"] = change.path;
+        data["type"] = change.type;
+        if (change.error.empty()) {
+            data["version"] = change.version;
+        } else {
+            data["error"] = change.error;
+        }
+        publish({"asset.reloaded", "", std::move(data), world_.tick()});
+    }
+    if (before && !reload.changed.empty()) {
+        publish_changes("asset.reload", *before, save());
+    }
 }
 
 Session::SavedWorld Session::save() const {

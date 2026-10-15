@@ -23,4 +23,21 @@ std::size_t edit_distance(std::string_view a, std::string_view b) {
     return row[b.size()];
 }
 
+bool is_project_path(std::string_view path) {
+    if (path.empty() || path.front() == '/' ||
+        path.find_first_of("\\:") != std::string_view::npos) {
+        return false;
+    }
+    std::size_t start = 0;
+    while (start <= path.size()) {
+        const std::size_t end = std::min(path.find('/', start), path.size());
+        const std::string_view segment = path.substr(start, end - start);
+        if (segment.empty() || segment == "." || segment == "..") {
+            return false;
+        }
+        start = end + 1;
+    }
+    return true;
+}
+
 } // namespace slash

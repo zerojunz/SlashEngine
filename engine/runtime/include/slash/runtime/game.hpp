@@ -1,5 +1,6 @@
 #pragma once
 
+#include "slash/asset/assets.hpp"
 #include "slash/core/json.hpp"
 #include "slash/core/result.hpp"
 #include "slash/platform/platform.hpp"
@@ -56,12 +57,15 @@ public:
 
     [[nodiscard]] const Project& project() const noexcept { return project_; }
     [[nodiscard]] world::World& world() noexcept { return world_; }
+    // Assets from the data folder, for gameplay code; prefab files are read through it too.
+    [[nodiscard]] asset::Assets& assets() noexcept { return assets_; }
     [[nodiscard]] bool headless() const noexcept { return platform_.headless(); }
 
 private:
-    Game(Project project, platform::Platform platform);
+    Game(Project project, platform::Platform platform, const std::string& data_dir);
 
     Project project_;
+    asset::Assets assets_;
     world::ComponentRegistry components_;
     world::World world_;
     platform::Platform platform_;
