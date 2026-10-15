@@ -6,12 +6,14 @@
 #include "slash/canvas/tilemap.hpp"
 #include "slash/core/result.hpp"
 #include "slash/render/device.hpp"
+#include "slash/text/text.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/world.hpp"
 
 #include <array>
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <set>
 #include <string>
 #include <string_view>
@@ -34,7 +36,7 @@ void add_asset_types(asset::Assets& assets);
 // which must outlive the world.
 void add_systems(world::World& world, asset::Assets& assets);
 
-// Both of the above, for a world and the assets it loads from.
+// Both of the above, and ui::install, for a world and the assets it loads from.
 void install(world::World& world, asset::Assets& assets);
 
 // The two triangles a sprite draws, in world pixels, for a texture of the given size: the frame
@@ -88,7 +90,9 @@ public:
     void before_tick(const world::World& world);
 
     // Draws one frame: the target cleared, then every visible sprite, tile map layer and
-    // CPUParticles2D, in z_index order, then the order entities were made. A layer draws its
+    // CPUParticles2D, in z_index order, then the order entities were made, then every visible
+    // control (ui.hpp) over them, laid out in a viewport of the options' width and height, or
+    // ui::settings' when they are 0. A layer draws its
     // cells row by row, each tile's region centered on its cell, moved by the entity's
     // Transform2D if it has one. Particles draw as their emitter's draw_order says, each its
     // texture's frame (or a white pixel) centered on it, turned, scaled and colored. A
@@ -111,6 +115,10 @@ public:
     // Lights the last frame shaded with, and how many of them cast shadows.
     [[nodiscard]] std::size_t lights_drawn() const noexcept { return lights_drawn_; }
     [[nodiscard]] std::size_t shadows_drawn() const noexcept { return shadows_drawn_; }
+    // Controls the last frame drew (ui.hpp), and the glyph images of their text, outlines and
+    // shadows included.
+    [[nodiscard]] std::size_t controls_drawn() const noexcept { return controls_drawn_; }
+    [[nodiscard]] std::size_t glyphs_drawn() const noexcept { return glyphs_drawn_; }
 
 private:
     struct Texture {
@@ -141,6 +149,8 @@ private:
     Result<const render::Image*> light_image(const std::string& path);
     // The frame's lights, with the atlas and shadow map uploaded; none when the world is unlit.
     render::Lighting lighting(const world::World& world, const TransformOf& transform_of);
+    // The GPU texture of a glyph atlas page, uploaded again when the page changed.
+    Result<render::TextureId> atlas_page(const text::Fonts& fonts, std::uint32_t page);
     const LayerCells& cells(entt::entity entity, const world::TileMapLayer& layer,
                             const TileSet& set, std::uint64_t set_version);
     void warn_once(const std::string& key, std::string_view message, std::string_view what,
@@ -169,6 +179,13 @@ private:
     std::size_t particles_drawn_ = 0;
     std::size_t lights_drawn_ = 0;
     std::size_t shadows_drawn_ = 0;
+    std::size_t controls_drawn_ = 0;
+    std::size_t glyphs_drawn_ = 0;
+    // Fonts for worlds ui wasn't installed in.
+    std::unique_ptr<text::Fonts> fonts_;
+    // The glyph atlas pages on the GPU, the fonts they came from and the versions uploaded.
+    const text::Fonts* pages_of_ = nullptr;
+    std::vector<std::pair<render::TextureId, std::uint64_t>> pages_;
 };
 
 } // namespace slash::canvas

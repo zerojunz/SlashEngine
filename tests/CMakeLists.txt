@@ -23,11 +23,13 @@ add_executable(slash_tests
     test_scene.cpp
     test_server.cpp
     test_storyboard.cpp
+    test_text.cpp
     test_tilemap.cpp
+    test_ui.cpp
     test_world.cpp)
 target_link_libraries(slash_tests PRIVATE
     slash::animation slash::asset slash::canvas slash::command slash::core slash::exporter slash::physics2d
-    slash::platform slash::render slash::runtime slash::server slash::storyboard slash::world doctest::doctest SDL3::SDL3-static)
+    slash::platform slash::render slash::runtime slash::server slash::storyboard slash::text slash::ui slash::world doctest::doctest SDL3::SDL3-static)
 # doctest forward-declares std::ostream by default, which breaks string_view checks on recent
 # MSVC standard libraries; include the real headers instead.
 target_compile_definitions(slash_tests PRIVATE DOCTEST_CONFIG_USE_STD_HEADERS
@@ -215,6 +217,35 @@ if(SLASH_BUILD_TOOLS)
         WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
     set_tests_properties(cli_scene_validate_invalid_tile_layer PROPERTIES
         PASS_REGULAR_EXPRESSION "\"path\":\"/entities/map/components/TileMapLayer/legend/w\"")
+
+    add_test(NAME cli_schema_font COMMAND slash-cli schema font)
+    set_tests_properties(cli_schema_font PROPERTIES
+        PASS_REGULAR_EXPRESSION "\"title\": \"SlashEngine font\"")
+    # The UI example's font settings and scene, which must stay valid and canonical. Its scene
+    # names a font file the example writes when it runs, so only its form is checked here.
+    set(ui_example ${PROJECT_SOURCE_DIR}/examples/ui-and-text)
+    add_test(NAME cli_scene_validate_font
+        COMMAND slash-cli scene validate ${ui_example}/fonts/title.font.json)
+    set_tests_properties(cli_scene_validate_font PROPERTIES
+        PASS_REGULAR_EXPRESSION "{\"valid\":true}")
+    add_test(NAME cli_scene_format_font
+        COMMAND slash-cli scene format --check ${ui_example}/fonts/title.font.json)
+    set_tests_properties(cli_scene_format_font PROPERTIES
+        PASS_REGULAR_EXPRESSION "{\"canonical\":true}")
+    add_test(NAME cli_scene_format_ui
+        COMMAND slash-cli scene format --check ${ui_example}/main.scene.json)
+    set_tests_properties(cli_scene_format_ui PROPERTIES
+        PASS_REGULAR_EXPRESSION "{\"canonical\":true}")
+    add_test(NAME cli_scene_validate_invalid_font
+        COMMAND slash-cli scene validate ${scenes}/invalid.font.json)
+    set_tests_properties(cli_scene_validate_invalid_font PROPERTIES
+        PASS_REGULAR_EXPRESSION "\"message\":\"expected a .ttf or .otf file\",\"path\":\"/font\"")
+    # Scenes: controls must lay out as written.
+    add_test(NAME cli_scene_validate_invalid_ui
+        COMMAND slash-cli scene validate ${scenes}/invalid_ui.scene.json
+        WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
+    set_tests_properties(cli_scene_validate_invalid_ui PROPERTIES
+        PASS_REGULAR_EXPRESSION "\"message\":\"a control can't be its own child\",\"path\":\"/entities/panel/components/Control/children/1\"}.*\"path\":\"/entities/hint/components/Control/theme_override_colors/font_colour\"")
 
     add_test(NAME cli_schema_storyboard COMMAND slash-cli schema storyboard)
     set_tests_properties(cli_schema_storyboard PROPERTIES

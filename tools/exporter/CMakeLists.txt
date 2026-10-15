@@ -14,7 +14,8 @@ add_library(slash::exporter ALIAS slash_exporter)
 target_include_directories(slash_exporter PUBLIC include)
 target_link_libraries(slash_exporter
     PUBLIC slash::command slash::core
-    PRIVATE slash::animation slash::canvas slash::platform slash::render slash::runtime slash::world)
+    PRIVATE slash::animation slash::canvas slash::platform slash::render slash::runtime slash::text
+            slash::ui slash::world)
 # Where exports find the engine sources when SLASH_ENGINE_DIR and an installed copy are absent.
 target_compile_definitions(slash_exporter PRIVATE SLASH_ENGINE_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 slash_target_warnings(slash_exporter)

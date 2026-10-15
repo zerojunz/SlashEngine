@@ -4,6 +4,7 @@
 #include "slash/core/log.hpp"
 #include "slash/core/text.hpp"
 #include "slash/platform/file.hpp"
+#include "slash/ui/ui.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/scene.hpp"
 
@@ -113,6 +114,8 @@ Game::Game(Project project, platform::Platform platform, const std::string& data
     world_.set_file_reader(
         [this](std::string_view path) { return assets_.read(path, world::kPrefabType); });
     canvas::install(world_, assets_);
+    ui::set_settings(world_, {.viewport = {static_cast<float>(project_.window_width),
+                                           static_cast<float>(project_.window_height)}});
     animation::install(world_, assets_);
     physics2d::install(world_, project_.physics_2d);
 }

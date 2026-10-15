@@ -28,12 +28,40 @@
       "repository": "https://github.com/doctest/doctest.git",
       "tag": "v2.5.2"
     },
+    "freetype": {
+      "license": "FTL OR GPL-2.0-or-later",
+      "license_file": "docs/FTL.TXT",
+      "license_sha256": "5a5ee54c5001bbad1cdc1a57cc3dd4c42199b2da09d39c7ee41fab002d02967f",
+      "repository": "https://github.com/freetype/freetype.git",
+      "tag": "VER-2-14-3"
+    },
+    "harfbuzz": {
+      "license": "MIT-Modern-Variant AND MIT",
+      "license_file": "COPYING",
+      "license_sha256": "ba8f810f2455c2f08e2d56bb49b72f37fcf68f1f4fade38977cfd7372050ad64",
+      "repository": "https://github.com/harfbuzz/harfbuzz.git",
+      "tag": "14.5.0"
+    },
     "httplib": {
       "license": "MIT",
       "license_file": "LICENSE",
       "license_sha256": "4b45cbe16d7b71b89ae6127e26e0d90a029198ca5e958ad8e3d0b8bbed364d8b",
       "repository": "https://github.com/yhirose/cpp-httplib.git",
       "tag": "v0.58.0"
+    },
+    "msdfgen": {
+      "license": "MIT",
+      "license_file": "LICENSE.txt",
+      "license_sha256": "32a94b25ad7072a78457d35019b32d73d2c265c806b0b76e9638fe800330bbe4",
+      "repository": "https://github.com/Chlumsky/msdfgen.git",
+      "tag": "v1.13"
+    },
+    "roboto": {
+      "license": "Apache-2.0",
+      "license_file": "LICENSE",
+      "license_sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+      "repository": "https://github.com/googlefonts/roboto.git",
+      "tag": "v2.138"
     },
     "yyjson": {
       "license": "MIT",

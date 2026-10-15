@@ -55,8 +55,7 @@ void add_particles_system(world::World& world);
 [[nodiscard]] Vec2 world_position(const world::CPUParticles2D& settings,
                                   const world::Transform2D& transform, Vec2 position);
 
-// The sine and cosine of an angle in radians, computed the same way on every platform, as
-// {cos, sin}. Particles use it instead of libm, whose results differ between platforms.
-[[nodiscard]] Vec2 cos_sin(float radians);
+// slash::cos_sin, which particles use instead of libm.
+using slash::cos_sin;
 
 } // namespace slash::canvas

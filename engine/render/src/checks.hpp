@@ -4,6 +4,7 @@
 #include "slash/render/device.hpp"
 
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <span>
@@ -34,6 +35,16 @@ inline constexpr std::size_t kMaxFrameVertices = std::size_t{1} << 22;
 template <typename Known>
 [[nodiscard]] Result<void> check_material(const Material& material, TextureId target,
                                           const Known& known) {
+    const DistanceField& field = material.field;
+    if (!(field.pixel_range >= 0.0F) || !(field.outline >= 0.0F) ||
+        !std::isfinite(field.pixel_range) || !std::isfinite(field.outline)) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "a distance field's pixel range and outline are 0 or more");
+    }
+    if (field.pixel_range > 0.0F && !material.program.code.empty()) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "a material with a program can't draw a distance field too");
+    }
     if (!material.program.code.empty()) {
         if (auto checked = check_program(material.program); !checked) {
             return checked;

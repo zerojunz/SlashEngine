@@ -196,6 +196,101 @@ void register_physics_components(ComponentRegistry& registry) {
 } // namespace
 
 // The particles component: Godot's CPUParticles2D.
+// The UI components, as Godot's Control nodes.
+void register_ui_components(ComponentRegistry& registry) {
+    const FieldMeta anchor{.doc = "Where the edge is anchored in the parent's rect: 0 at its left "
+                                  "or top, 1 at its right or bottom.",
+                           .min = 0,
+                           .max = 1};
+    const FieldMeta offset{.doc = "Pixels from the edge's anchor to the edge."};
+    const FieldMeta grow{.doc = "Which way it grows when its minimum size is bigger than its "
+                                "anchors and offsets make it.",
+                         .choices = {"begin", "end", "both"}};
+    registry.add<Control>()
+        .set_doc("A UI element's rect, as Godot's Control: placed in its parent's rect by "
+                 "anchors and offsets, or in the viewport when no Control lists it in children. "
+                 "Label, ColorRect and the other UI components draw in it; they lay out with "
+                 "these defaults when the entity has no Control. Controls draw above the "
+                 "world, parents before children.")
+        .describe("children",
+                  {.doc = "Controls laid out in its rect, drawn over it in this order."})
+        .describe("anchor_left", anchor)
+        .describe("anchor_top", anchor)
+        .describe("anchor_right", anchor)
+        .describe("anchor_bottom", anchor)
+        .describe("offset_left", offset)
+        .describe("offset_top", offset)
+        .describe("offset_right", offset)
+        .describe("offset_bottom", offset)
+        .describe("grow_horizontal", grow)
+        .describe("grow_vertical", grow)
+        .describe("custom_minimum_size",
+                  {.doc = "Its smallest size, [width, height]; it can be bigger to fit its "
+                          "content.",
+                   .min = 0})
+        .describe("rotation", {.doc = "Radians, around pivot_offset; its children turn with it."})
+        .describe("scale", {.doc = "Drawn scaled around pivot_offset; layout doesn't change."})
+        .describe("pivot_offset",
+                  {.doc = "The point it turns and scales around, from its top-left corner."})
+        .describe("visible", {.doc = "Draw it and its children."})
+        .describe("modulate", {.doc = "Tints it and its children, as [r, g, b, a].", .min = 0})
+        .describe("self_modulate", {.doc = "Tints it only.", .min = 0})
+        .describe("z_index", {.doc = "Draws over controls with a lower one, added to its parent's.",
+                              .min = -4096,
+                              .max = 4096})
+        .describe("theme_override_colors",
+                  {.doc = "Theme colors for this control by name, e.g. {\"font_color\": "
+                          "[1, 0.8, 0.2, 1]}.",
+                   .min = 0})
+        .describe("theme_override_constants",
+                  {.doc = "Theme constants by name, e.g. {\"outline_size\": 4}."})
+        .describe("theme_override_fonts",
+                  {.doc = "Theme fonts by name: a .ttf, .otf or .font.json file, e.g. "
+                          "{\"font\": \"fonts/title.ttf\"}."})
+        .describe(
+            "theme_override_font_sizes",
+            {.doc = "Theme font sizes by name, e.g. {\"font_size\": 32}.", .min = 1, .max = 1024});
+
+    registry.add<Label>()
+        .set_doc("Text in the control's rect, as Godot's Label. Theme items: font, font_size, "
+                 "font_color, font_outline_color, outline_size, font_shadow_color, "
+                 "shadow_offset_x, shadow_offset_y, shadow_outline_size, line_spacing and "
+                 "paragraph_spacing.")
+        .describe("text", {.doc = R"(Lines break at "\n".)"})
+        .describe("horizontal_alignment",
+                  {.doc = "Each line's place across the rect; fill stretches spaces to its "
+                          "width, except on a paragraph's last line.",
+                   .choices = {"left", "center", "right", "fill"}})
+        .describe("vertical_alignment",
+                  {.doc = "The lines' place down the rect; fill spreads them over it.",
+                   .choices = {"top", "center", "bottom", "fill"}})
+        .describe("autowrap_mode",
+                  {.doc = "Wrap lines to the rect's width: between words, inside words too "
+                          "(word_smart), or anywhere.",
+                   .choices = {"off", "arbitrary", "word", "word_smart"}})
+        .describe("clip_text", {.doc = "Cut off text outside the rect."})
+        .describe("text_overrun_behavior",
+                  {.doc = "Cut lines wider than the rect, at a character or word, with or "
+                          "without the ellipsis.",
+                   .choices = {"no_trimming", "trim_char", "trim_word", "trim_ellipsis",
+                               "trim_word_ellipsis"}})
+        .describe("ellipsis_char", {.doc = "What a trimmed line ends with."})
+        .describe("uppercase", {.doc = "Draw the text in capitals."})
+        .describe("lines_skipped", {.doc = "Lines left out from the top.", .min = 0})
+        .describe("max_lines_visible", {.doc = "Lines shown at most; -1 for all.", .min = -1})
+        .describe(
+            "visible_characters",
+            {.doc = "Characters shown from the start, for typing effects; -1 for all.", .min = -1})
+        .describe("visible_characters_behavior",
+                  {.doc = "Lay out only the visible characters, or all of them and hide the "
+                          "rest so lines don't move as more show.",
+                   .choices = {"chars_before_shaping", "chars_after_shaping"}});
+
+    registry.add<ColorRect>()
+        .set_doc("Fills the control's rect with one color, as Godot's ColorRect.")
+        .describe("color", {.doc = "As [r, g, b, a] from 0 to 1.", .min = 0, .max = 1});
+}
+
 void register_particle_components(ComponentRegistry& registry) {
     const FieldMeta curve{.doc = "Multiplies it over each particle's life: points [offset, value], "
                                  "offsets from 0 to 1, joined by straight lines. None is 1."};
@@ -521,6 +616,7 @@ void register_builtin_components(ComponentRegistry& registry) {
 
     register_physics_components(registry);
     register_particle_components(registry);
+    register_ui_components(registry);
 }
 
 } // namespace slash::world

@@ -1,0 +1,20 @@
+wrote fonts/roboto.ttf
+scene.open {"path":"main.scene.json"}
+{"entities":8,"path":"main.scene.json"}
+ui.layout {}
+{"controls":[{"id":"dim","rect":[0,0,640,360]},{"id":"panel","rect":[170,90,300,180]},{"id":"title","lines":["PAUSED"],"rect":[170,100,300,48.75]},{"id":"body","lines":["The tower is quiet. Mira's lantern still","burns at the top of the stairs."],"rect":[186,154,268,47]},{"id":"quest","lines":["Quest: find the cellar key, then light…"],"rect":[186,206,268,22]},{"id":"hint","lines":["Esc: resume"],"rect":[373,238,85,22]},{"id":"score","lines":["Score 1200"],"rect":[12,8,100,27]},{"id":"sign","lines":["出口 Exit"],"missing_glyphs":2,"rect":[584,8,44,22]}],"viewport":[640,360]}
+text.measure {"font_size":20,"text":"Score 99999"}
+{"ascent":21,"line_height":27,"lines":["Score 99999"],"size":[111,27]}
+component.set {"components":{"Label":{"text":"Score 99999"}},"id":"score"}
+{"changed":{"Label":{"text":"Score 99999"}},"id":"score"}
+ui.layout {"ids":["score"]}
+{"controls":[{"id":"score","lines":["Score 99999"],"rect":[12,8,111,27]}],"viewport":[640,360]}
+ui.layout {"ids":["panel","sign"],"viewport":[480,270]}
+{"controls":[{"id":"panel","rect":[90,45,300,180]},{"id":"sign","lines":["出口 Exit"],"missing_glyphs":2,"rect":[424,8,44,22]}],"viewport":[480,270]}
+component.set {"components":{"Control":{"theme_override_colors":{"font_colour":[1,1,1,1]}}},"id":"hint"}
+{"changed":{"Control":{"theme_override_colors":{"font_colour":[1.0,1.0,1.0,1.0]}}},"id":"hint"}
+ui.layout {"ids":["hint"]}
+{"controls":[{"id":"hint","lines":["Esc: resume"],"rect":[373,238,85,22]}],"problems":[{"id":"hint","message":"Label has no colors item \"font_colour\"; did you mean \"font_color\"?","path":"/components/Control/theme_override_colors/font_colour"}],"viewport":[640,360]}
+undo {}
+{"can_redo":1,"can_undo":1,"undone":"component.set"}
+controls drawn: 8, glyphs drawn: 159, GPU draws: 4
