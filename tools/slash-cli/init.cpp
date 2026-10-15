@@ -111,8 +111,9 @@ environment variables, never from the file.
 - `scenes/`: scenes as canonical JSON, keyed by stable entity ID. Run
   `slash-cli scene format <file>` before committing a scene edited outside the engine.
 - `prefabs/`: `.prefab.json` files, one entity's components each, which scene entities extend.
-- `sprites/` (or any folder): `.png` textures for `Sprite2D`, and `.frames.json` animations
-  (`slash-cli schema frames`) that `AnimatedSprite2D` plays. Exports ship both.
+- `sprites/` (or any folder): `.png` textures for `Sprite2D`, `.frames.json` animations
+  (`slash-cli schema frames`) that `AnimatedSprite2D` plays, and `.material.json` materials
+  (`slash-cli schema material`), node graphs that color a sprite's pixels. Exports ship them all.
 - `storyboard/`: the game's facts as typed entries (`slash-cli schema storyboard`), and
   `journal.jsonl`, the record of who changed them. Commit both.
 )";

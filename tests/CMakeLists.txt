@@ -8,6 +8,7 @@ add_executable(slash_tests
     test_json.cpp
     test_json_schema.cpp
     test_log.cpp
+    test_material.cpp
     test_mcp.cpp
     test_platform.cpp
     test_reflect.cpp
@@ -32,10 +33,12 @@ add_test(NAME unit COMMAND slash_tests WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_
 
 # The compiled shaders committed in engine/render/src match their HLSL; see
 # cmake/compile_shaders.cmake.
-add_test(NAME shaders_up_to_date
-    COMMAND ${CMAKE_COMMAND} -DSOURCE=${PROJECT_SOURCE_DIR}/engine/render/shaders/sprite.hlsl
-        -DOUTPUT=${PROJECT_SOURCE_DIR}/engine/render/src/sprite_shaders.hpp -DCHECK=ON
-        -P ${PROJECT_SOURCE_DIR}/cmake/compile_shaders.cmake)
+foreach(shader IN ITEMS sprite material)
+    add_test(NAME shaders_up_to_date_${shader}
+        COMMAND ${CMAKE_COMMAND} -DSOURCE=${PROJECT_SOURCE_DIR}/engine/render/shaders/${shader}.hlsl
+            -DOUTPUT=${PROJECT_SOURCE_DIR}/engine/render/src/${shader}_shaders.hpp -DCHECK=ON
+            -P ${PROJECT_SOURCE_DIR}/cmake/compile_shaders.cmake)
+endforeach()
 
 # Every dependency this build fetched is pinned in cmake/dependencies.json with an allowed license
 # and the license text that was reviewed; see cmake/check_licenses.cmake.
@@ -140,6 +143,26 @@ if(SLASH_BUILD_TOOLS)
         COMMAND slash-cli scene validate ${scenes}/invalid.frames.json)
     set_tests_properties(cli_scene_validate_invalid_frames PROPERTIES
         PASS_REGULAR_EXPRESSION "\"message\":\"the sheet has 4 frames, numbered from 0\",\"path\":\"/animations/walk/frames/1\"")
+
+    add_test(NAME cli_schema_material COMMAND slash-cli schema material)
+    set_tests_properties(cli_schema_material PROPERTIES
+        PASS_REGULAR_EXPRESSION "\"title\": \"SlashEngine material\"")
+    # The materials example's files, which must stay valid and canonical.
+    foreach(material IN ITEMS hit_flash water glow)
+        set(material_file ${PROJECT_SOURCE_DIR}/examples/materials/${material}.material.json)
+        add_test(NAME cli_scene_validate_material_${material}
+            COMMAND slash-cli scene validate ${material_file})
+        set_tests_properties(cli_scene_validate_material_${material} PROPERTIES
+            PASS_REGULAR_EXPRESSION "{\"instructions\":[0-9]+,\"valid\":true}")
+        add_test(NAME cli_scene_format_material_${material}
+            COMMAND slash-cli scene format --check ${material_file})
+        set_tests_properties(cli_scene_format_material_${material} PROPERTIES
+            PASS_REGULAR_EXPRESSION "{\"canonical\":true}")
+    endforeach()
+    add_test(NAME cli_scene_validate_invalid_material
+        COMMAND slash-cli scene validate ${scenes}/invalid.material.json)
+    set_tests_properties(cli_scene_validate_invalid_material PROPERTIES
+        PASS_REGULAR_EXPRESSION "\"message\":\"no op \\\\\"mull\\\\\"; did you mean \\\\\"mul\\\\\"[?]\",\"path\":\"/color/op\"")
 
     add_test(NAME cli_schema_storyboard COMMAND slash-cli schema storyboard)
     set_tests_properties(cli_schema_storyboard PROPERTIES

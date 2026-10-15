@@ -51,7 +51,12 @@ void register_builtin_components(ComponentRegistry& registry) {
         .describe("texture_filter",
                   {.doc = "How the texture is sampled when scaled: \"nearest\" keeps pixel art "
                           "sharp. \"inherit\" uses the project's rendering.texture_filter.",
-                   .choices = {"inherit", "linear", "nearest"}});
+                   .choices = {"inherit", "linear", "nearest"}})
+        .describe("material", {.doc = "Project path of a .material.json file, which colors the "
+                                      "sprite's pixels; \"\" draws the texture as it is."})
+        .describe("material_params",
+                  {.doc = "Values for the material's params by name, replacing their defaults, "
+                          "e.g. {\"flash\": 1}."});
 
     registry.add<AnimatedSprite2D>()
         .set_doc("Plays an animation from a .frames.json file on the entity's Sprite2D, which it "

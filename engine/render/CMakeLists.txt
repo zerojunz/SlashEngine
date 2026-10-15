@@ -2,7 +2,8 @@ add_library(slash_render
     src/device.cpp
     src/gpu_device.cpp
     src/hlsl_compiler.cpp
-    src/image.cpp)
+    src/image.cpp
+    src/material.cpp)
 add_library(slash::render ALIAS slash_render)
 
 target_include_directories(slash_render PUBLIC include)
@@ -16,7 +17,7 @@ slash_engine_target(slash_render)
 find_program(SLASH_GLSLANG NAMES glslangValidator glslang)
 find_program(SLASH_SPIRV_CROSS NAMES spirv-cross)
 set(slash_shader_headers "")
-foreach(shader IN ITEMS sprite)
+foreach(shader IN ITEMS sprite material)
     set(header ${CMAKE_CURRENT_SOURCE_DIR}/src/${shader}_shaders.hpp)
     set(stamp ${CMAKE_CURRENT_BINARY_DIR}/shaders/${shader}.stamp)
     string(SUBSTRING ${shader} 0 1 first)

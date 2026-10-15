@@ -24,8 +24,9 @@
 //
 // Supported field types: bool, integers, float, double, std::string, Vec2, Vec3, Vec4 and Quat
 // (written as arrays of numbers), entt::entity (written as the target's ID, or null),
-// std::vector of a supported type, and structs declared with SLASH_REFLECT or SLASH_COMPONENT
-// (written as objects).
+// std::vector of a supported type, std::map from std::string to a supported type (written as an
+// object, and replaced whole when read), json::Value (any JSON, as written), and structs declared
+// with SLASH_REFLECT or SLASH_COMPONENT (written as objects).
 namespace slash::world {
 
 namespace detail {
@@ -34,6 +35,11 @@ template <typename T>
 struct IsVector : std::false_type {};
 template <typename T, typename Allocator>
 struct IsVector<std::vector<T, Allocator>> : std::true_type {};
+
+template <typename T>
+struct IsStringMap : std::false_type {};
+template <typename T, typename Compare, typename Allocator>
+struct IsStringMap<std::map<std::string, T, Compare, Allocator>> : std::true_type {};
 
 // Math types are written as fixed-length arrays of numbers, e.g. a Vec3 as [x, y, z].
 template <typename T>
@@ -128,6 +134,14 @@ json::Value to_json(const World& world, const T& value) {
             items.push_back(to_json<typename T::value_type>(world, item));
         }
         return items;
+    } else if constexpr (detail::IsStringMap<T>::value) {
+        json::Object members;
+        for (const auto& [key, item] : value) {
+            members.emplace(key, to_json<typename T::mapped_type>(world, item));
+        }
+        return members;
+    } else if constexpr (std::is_same_v<T, json::Value>) {
+        return value;
     } else if constexpr (reflect::Reflected<T>) {
         json::Object members;
         reflect::for_each_field<T>([&](const auto& field) {
@@ -225,6 +239,24 @@ Result<void> from_json(World& world, const json::Value& json, T& out, std::strin
             items.push_back(std::move(item));
         }
         out = std::move(items);
+    } else if constexpr (detail::IsStringMap<T>::value) {
+        if (!json.is_object()) {
+            return detail::type_error("object", json);
+        }
+        T items;
+        for (const auto& [key, member] : json.as_object()) {
+            typename T::mapped_type item{};
+            const std::size_t length = path.size();
+            detail::push_path(path, key);
+            if (auto status = from_json(world, member, item, path); !status) {
+                return status;
+            }
+            path.resize(length);
+            items.emplace(key, std::move(item));
+        }
+        out = std::move(items);
+    } else if constexpr (std::is_same_v<T, json::Value>) {
+        out = json;
     } else if constexpr (reflect::Reflected<T>) {
         if (!json.is_object()) {
             return detail::type_error("object", json);
@@ -288,6 +320,11 @@ json::Value schema_of(SchemaBuilder& builder) {
     } else if constexpr (detail::IsVector<T>::value) {
         schema["type"] = "array";
         schema["items"] = schema_of<typename T::value_type>(builder);
+    } else if constexpr (detail::IsStringMap<T>::value) {
+        schema["type"] = "object";
+        schema["additionalProperties"] = schema_of<typename T::mapped_type>(builder);
+    } else if constexpr (std::is_same_v<T, json::Value>) {
+        schema = json::Object{}; // any JSON
     } else if constexpr (reflect::Reflected<T>) {
         schema = builder.ref<T>();
     } else {

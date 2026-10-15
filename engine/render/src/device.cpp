@@ -101,6 +101,8 @@ using detail::check_vertices;
 
 class NullDevice final : public RenderDevice {
 public:
+    using RenderDevice::draw;
+
     [[nodiscard]] Backend backend() const override { return Backend::Null; }
 
     Result<TextureId> create_texture(const TextureDesc& desc,
@@ -149,7 +151,8 @@ public:
         return true;
     }
 
-    Result<void> draw(TextureId texture, std::span<const Vertex2D> vertices) override {
+    Result<void> draw(TextureId texture, std::span<const Vertex2D> vertices,
+                      const Material& material) override {
         if (!in_frame_) {
             return detail::no_frame("draw");
         }
@@ -159,15 +162,22 @@ public:
         if (texture != TextureId::None && texture == target_) {
             return detail::target_in_use(texture);
         }
+        if (auto checked = detail::check_material(
+                material, target_, [&](TextureId id) { return textures_.contains(id); });
+            !checked) {
+            return checked;
+        }
         if (auto checked = check_vertices(vertices, frame_vertices_); !checked) {
             return checked;
         }
         if (vertices.empty()) {
             return {};
         }
-        if (last_texture_ != texture) {
+        // Batched as the GPU device batches.
+        if (last_texture_ != texture || last_material_ != material) {
             ++stats_.draws;
             last_texture_ = texture;
+            last_material_ = material;
         }
         frame_vertices_ += vertices.size();
         stats_.triangles += vertices.size() / 3;
@@ -228,6 +238,7 @@ private:
     TextureId target_ = TextureId::None;
     std::size_t frame_vertices_ = 0;
     std::optional<TextureId> last_texture_;
+    Material last_material_;
     VsyncMode vsync_ = VsyncMode::Enabled;
     Stats stats_;
 };

@@ -51,7 +51,7 @@ The code follows the same split, one CMake library per module under `engine/`:
 | `render` | The render device: SDL3's GPU API (Vulkan, Metal, Direct3D 12), or the null device for headless runs |
 | `asset` | Asset handles, loaders and hot reload |
 | `world` | The EnTT world, components, the component registry, scenes and prefabs |
-| `canvas` | 2D drawing, as Godot's canvas: sprites, `.frames.json` animations and the renderer that draws them |
+| `canvas` | 2D drawing, as Godot's canvas: sprites, `.frames.json` animations, `.material.json` materials and the renderer that draws them |
 | `storyboard` | Storyboard files: kinds, checks, versions, queries and edits |
 | `command` | Commands, sessions with undo, JSON-RPC and MCP |
 | `server` | The localhost HTTP server over a session |
@@ -119,8 +119,8 @@ even after the file changes.
 An **asset** is a file a game loads by project path, like a Godot resource: a JSON table, a CSV
 file, a texture and, once audio arrives, sounds. Loading one returns a **handle**; every handle to
 the same path shares one copy, which stays loaded while any handle exists. `.json`, `.txt`,
-`.csv`, `.png`, `.bmp` and `.frames.json` files load out of the box, and a game can add its own
-types.
+`.csv`, `.png`, `.bmp`, `.frames.json` and `.material.json` files load out of the box, and a game
+can add its own types.
 
 **Hot reload** keeps an agent's edit-and-check loop short. Before every command, and between
 ticks in `slash-cli run` and `slash-cli serve`, the session checks the files it has loaded. A
@@ -200,6 +200,15 @@ sprite sheet, at its entity's `Transform2D`: positions are pixels with y down, a
 the animation's frames per second, and emits `animation_finished` when one that doesn't loop
 ends. Textures are `.png` or `.bmp` files loaded as assets, so an edited image shows up at once.
 The [sprites example](../examples/sprites/) plays and draws a scene's sprites.
+
+A **material** colors a sprite's pixels, like a Godot `canvas_item` shader, but written as a node
+graph in a `.material.json` file: ops such as `mul`, `mix` and `texture` over inputs (`uv`,
+`color`, `time`, the sprite's texture) and **params** each sprite sets in `material_params`, plus
+a **blend mode** (`mix`, `add`, `sub`, `mul`, `premul_alpha`). The graph compiles when the file
+loads to a short program that one shader, compiled ahead of time like the rest, runs on the GPU,
+so a game needs no shader compiler and a material reloads at once. The same program runs on the
+CPU for `material.eval`, which returns the colors a material draws: an agent checks its work
+without a screenshot. The [materials example](../examples/materials/) has three.
 
 How often frames are drawn follows Godot. The world ticks at a fixed rate (`tick_hz`), while frames
 come as fast as the **V-Sync mode** lets them (`window.vsync_mode`: wait for each refresh, present
@@ -381,6 +390,7 @@ OpenAI-compatible servers (including local ones), Anthropic and Gemini; see the
 | Term | Meaning |
 | --- | --- |
 | Asset | A file a game loads by project path into a shared, reference-counted handle |
+| Blend mode | How a sprite's color combines with what is under it: `mix`, `add`, `sub`, `mul` or `premul_alpha` |
 | Canonical form | The one way a scene is written: sorted keys, two-space indent, defaults left out |
 | Capability | A permission a session grants: `read`, `edit`, `run`, `filesystem` or `build` |
 | Command | A named action with a params schema, capabilities and an effect |
@@ -400,6 +410,7 @@ OpenAI-compatible servers (including local ones), Anthropic and Gemini; see the
 | Journal | `storyboard/journal.jsonl`: who changed which storyboard entries, when and why |
 | JSON Pointer | A path to a value inside JSON, such as `/entities/player/components` (RFC 6901) |
 | Main scene | The scene a game loads at startup, named in `project.json` |
+| Material | A `.material.json` node graph that colors a sprite's pixels, with params each sprite sets |
 | Prefab | One entity's components in a `.prefab.json` file, which entities extend and override |
 | Project | A game's folder: `project.json` plus its scenes |
 | Project folder | The folder all command paths are relative to |
