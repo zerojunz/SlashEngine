@@ -1,0 +1,17 @@
+{
+  "entities": {
+    "map": {
+      "components": {
+        "TileMapLayer": {
+          "legend": {
+            "g": "grass",
+            "w": "watr"
+          },
+          "rows": ["gw"],
+          "tile_set": "examples/tilemaps/ground.tileset.json"
+        }
+      }
+    }
+  },
+  "format": 1
+}

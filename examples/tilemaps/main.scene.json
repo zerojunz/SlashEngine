@@ -1,0 +1,13 @@
+{
+  "entities": {
+    "ground": {
+      "components": {
+        "TileMapLayer": {
+          "texture_filter": "nearest",
+          "tile_set": "ground.tileset.json"
+        }
+      }
+    }
+  },
+  "format": 1
+}

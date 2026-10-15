@@ -20,6 +20,7 @@ add_executable(slash_tests
     test_scene.cpp
     test_server.cpp
     test_storyboard.cpp
+    test_tilemap.cpp
     test_world.cpp)
 target_link_libraries(slash_tests PRIVATE
     slash::animation slash::asset slash::canvas slash::command slash::core slash::exporter slash::platform slash::render
@@ -181,6 +182,36 @@ if(SLASH_BUILD_TOOLS)
         COMMAND slash-cli scene validate ${scenes}/invalid.anim.json)
     set_tests_properties(cli_scene_validate_invalid_animation PROPERTIES
         PASS_REGULAR_EXPRESSION "\"message\":\"Transform2D has no field \\\\\"positon\\\\\"; did you mean \\\\\"position\\\\\"[?]\",\"path\":\"/animations/bob/tracks/0/path\"")
+
+    add_test(NAME cli_schema_tileset COMMAND slash-cli schema tileset)
+    set_tests_properties(cli_schema_tileset PROPERTIES
+        PASS_REGULAR_EXPRESSION "\"title\": \"SlashEngine tile set\"")
+    # The tile maps example's tile set and scene, which must stay valid and canonical.
+    set(tilemaps ${PROJECT_SOURCE_DIR}/examples/tilemaps)
+    add_test(NAME cli_scene_validate_tileset
+        COMMAND slash-cli scene validate ${tilemaps}/ground.tileset.json)
+    set_tests_properties(cli_scene_validate_tileset PROPERTIES
+        PASS_REGULAR_EXPRESSION "{\"tiles\":16,\"valid\":true}")
+    add_test(NAME cli_scene_format_tileset
+        COMMAND slash-cli scene format --check ${tilemaps}/ground.tileset.json)
+    set_tests_properties(cli_scene_format_tileset PROPERTIES
+        PASS_REGULAR_EXPRESSION "{\"canonical\":true}")
+    add_test(NAME cli_scene_validate_invalid_tileset
+        COMMAND slash-cli scene validate ${scenes}/invalid.tileset.json)
+    set_tests_properties(cli_scene_validate_invalid_tileset PROPERTIES
+        PASS_REGULAR_EXPRESSION "\"message\":\"no terrain set has a terrain named \\\\\"gras\\\\\"; did you mean \\\\\"grass\\\\\"[?]\",\"path\":\"/sources/ground/tiles/0,0/terrain\"")
+    # Scenes: each layer's legend and rows are checked against its tile set, read from the
+    # project folder (here, the working directory).
+    add_test(NAME cli_scene_validate_tile_layers
+        COMMAND slash-cli scene validate ${tilemaps}/main.scene.json
+        WORKING_DIRECTORY ${tilemaps})
+    set_tests_properties(cli_scene_validate_tile_layers PROPERTIES
+        PASS_REGULAR_EXPRESSION "{\"entities\":1,\"valid\":true}")
+    add_test(NAME cli_scene_validate_invalid_tile_layer
+        COMMAND slash-cli scene validate ${scenes}/invalid_tiles.scene.json
+        WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
+    set_tests_properties(cli_scene_validate_invalid_tile_layer PROPERTIES
+        PASS_REGULAR_EXPRESSION "\"path\":\"/entities/map/components/TileMapLayer/legend/w\"")
 
     add_test(NAME cli_schema_storyboard COMMAND slash-cli schema storyboard)
     set_tests_properties(cli_schema_storyboard PROPERTIES

@@ -2,7 +2,8 @@ add_library(slash_canvas
     src/canvas.cpp
     src/material.cpp
     src/renderer.cpp
-    src/sprite_frames.cpp)
+    src/sprite_frames.cpp
+    src/tilemap.cpp)
 add_library(slash::canvas ALIAS slash_canvas)
 
 target_include_directories(slash_canvas PUBLIC include)

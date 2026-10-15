@@ -8,6 +8,7 @@
 #include "slash/animation/animation.hpp"
 #include "slash/canvas/material.hpp"
 #include "slash/canvas/sprite_frames.hpp"
+#include "slash/canvas/tilemap.hpp"
 #include "slash/core/log.hpp"
 #include "slash/core/text.hpp"
 #include "slash/exporter/android.hpp"
@@ -121,7 +122,8 @@ bool skipped_folder(const fs::path& name) {
     return text.starts_with(".") || text == "build" || text == "game";
 }
 
-// The files a game reads at run time: scenes, prefabs, the assets sprites draw and animations.
+// The files a game reads at run time: scenes, prefabs, the assets sprites draw, animations and
+// tile sets.
 enum class DataFile : std::uint8_t {
     None,
     Scene,
@@ -129,6 +131,7 @@ enum class DataFile : std::uint8_t {
     SpriteFrames,
     Material,
     Animation,
+    TileSet,
     Texture
 };
 
@@ -147,6 +150,9 @@ DataFile data_file(std::string_view name) {
     }
     if (name.ends_with(animation::kAnimationSuffix)) {
         return DataFile::Animation;
+    }
+    if (name.ends_with(canvas::kTileSetSuffix)) {
+        return DataFile::TileSet;
     }
     if (name.ends_with(".png") || name.ends_with(".bmp")) {
         return DataFile::Texture;
@@ -168,22 +174,32 @@ std::vector<json::ValidationError> check_data_file(DataFile kind, std::string_vi
     if (!parsed) {
         return {{"", parsed.error().message}};
     }
+    std::vector<json::ValidationError> errors;
     switch (kind) {
-    case DataFile::Prefab:
-        return world::validate_prefab(components, parsed.value(), reader);
     case DataFile::SpriteFrames:
         return canvas::validate_sprite_frames(parsed.value());
     case DataFile::Material:
         return canvas::validate_material(parsed.value());
     case DataFile::Animation:
         return animation::validate_animation_library(parsed.value(), &components);
+    case DataFile::TileSet:
+        return canvas::validate_tileset(parsed.value());
+    case DataFile::Prefab:
+        errors = world::validate_prefab(components, parsed.value(), reader);
+        break;
     default:
-        return world::validate_scene(components, parsed.value(), reader);
+        errors = world::validate_scene(components, parsed.value(), reader);
+        break;
     }
+    // Each tile map layer's cells must name tiles in its tile set.
+    if (errors.empty()) {
+        errors = canvas::check_tile_layers(parsed.value(), reader);
+    }
+    return errors;
 }
 
-// Copies project.json and every scene, prefab, texture, .frames.json, .material.json and
-// .anim.json file into data, checking each on the way.
+// Copies project.json and every scene, prefab, texture, .frames.json, .material.json, .anim.json
+// and .tileset.json file into data, checking each on the way.
 bool stage_data(const fs::path& project_dir, const runtime::Project& project, const fs::path& data,
                 Failure& failure) {
     std::error_code error;
