@@ -378,79 +378,81 @@ SLASH_REFLECT(GradientPoint, offset, color)
 // from 0 to 1, multiplies it as it ages (no points: 1). Angles are in degrees, as Godot's
 // properties. The particles themselves are not saved.
 struct CPUParticles2D {
-    bool emitting = true;
+    // Fields are grouped by type so the struct packs tightly; SLASH_COMPONENT lists them as
+    // Godot groups them.
+    std::vector<Vec2> emission_points;
+    std::vector<Vec2> emission_normals;
+    std::vector<Vec4> emission_colors;
+    std::vector<Vec2> angular_velocity_curve;
+    std::vector<Vec2> orbit_velocity_curve;
+    std::vector<Vec2> linear_accel_curve;
+    std::vector<Vec2> radial_accel_curve;
+    std::vector<Vec2> tangential_accel_curve;
+    std::vector<Vec2> damping_curve;
+    std::vector<Vec2> angle_curve;
+    std::vector<Vec2> scale_amount_curve;
+    std::vector<Vec2> hue_variation_curve;
+    std::vector<Vec2> anim_speed_curve;
+    std::vector<Vec2> anim_offset_curve;
+    std::vector<GradientPoint> color_ramp;
+    std::vector<GradientPoint> color_initial_ramp;
+    std::string draw_order = "index"; // "index" or "lifetime"
+    std::string texture;              // project path of a PNG or BMP file; "" draws pixels
+    std::string texture_filter = "inherit";
+    std::string material;
+    // "point", "sphere", "sphere_surface", "rectangle", "ring", "points" or "directed_points"
+    std::string emission_shape = "point";
+    std::map<std::string, json::Value> material_params;
     int amount = 8;
+    int seed = 0;
+    int hframes = 1; // the texture's frames, as Godot's CanvasItemMaterial particles_anim_*
+    int vframes = 1;
+    int z_index = 0;
+    int light_mask = 1;
     float lifetime = 1.0F;
-    bool one_shot = false;
     float preprocess = 0.0F;
     float speed_scale = 1.0F;
     float explosiveness = 0.0F;
     float randomness = 0.0F;
     float lifetime_randomness = 0.0F;
-    int seed = 0;
-    bool local_coords = false;
-    std::string draw_order = "index"; // "index" or "lifetime"
-    std::string texture;              // project path of a PNG or BMP file; "" draws pixels
-    std::string texture_filter = "inherit";
-    int hframes = 1; // the texture's frames, as Godot's CanvasItemMaterial particles_anim_*
-    int vframes = 1;
-    bool anim_loop = false;
-    int z_index = 0;
-    bool visible = true;
-    std::string material;
-    std::map<std::string, json::Value> material_params;
-    int light_mask = 1;
-    // "point", "sphere", "sphere_surface", "rectangle", "ring", "points" or "directed_points"
-    std::string emission_shape = "point";
     float emission_sphere_radius = 1.0F;
-    Vec2 emission_rect_extents{1.0F, 1.0F};
     float emission_ring_radius = 1.0F;
     float emission_ring_inner_radius = 0.0F;
-    std::vector<Vec2> emission_points;
-    std::vector<Vec2> emission_normals;
-    std::vector<Vec4> emission_colors;
-    bool particle_flag_align_y = false;
-    Vec2 direction{1.0F, 0.0F};
     float spread = 45.0F;
-    Vec2 gravity{0.0F, 980.0F};
     float initial_velocity_min = 0.0F;
     float initial_velocity_max = 0.0F;
     float angular_velocity_min = 0.0F;
     float angular_velocity_max = 0.0F;
-    std::vector<Vec2> angular_velocity_curve;
     float orbit_velocity_min = 0.0F;
     float orbit_velocity_max = 0.0F;
-    std::vector<Vec2> orbit_velocity_curve;
     float linear_accel_min = 0.0F;
     float linear_accel_max = 0.0F;
-    std::vector<Vec2> linear_accel_curve;
     float radial_accel_min = 0.0F;
     float radial_accel_max = 0.0F;
-    std::vector<Vec2> radial_accel_curve;
     float tangential_accel_min = 0.0F;
     float tangential_accel_max = 0.0F;
-    std::vector<Vec2> tangential_accel_curve;
     float damping_min = 0.0F;
     float damping_max = 0.0F;
-    std::vector<Vec2> damping_curve;
     float angle_min = 0.0F;
     float angle_max = 0.0F;
-    std::vector<Vec2> angle_curve;
     float scale_amount_min = 1.0F;
     float scale_amount_max = 1.0F;
-    std::vector<Vec2> scale_amount_curve;
-    Vec4 color{1.0F, 1.0F, 1.0F, 1.0F};
-    std::vector<GradientPoint> color_ramp;
-    std::vector<GradientPoint> color_initial_ramp;
     float hue_variation_min = 0.0F;
     float hue_variation_max = 0.0F;
-    std::vector<Vec2> hue_variation_curve;
     float anim_speed_min = 0.0F;
     float anim_speed_max = 0.0F;
-    std::vector<Vec2> anim_speed_curve;
     float anim_offset_min = 0.0F;
     float anim_offset_max = 0.0F;
-    std::vector<Vec2> anim_offset_curve;
+    Vec2 emission_rect_extents{1.0F, 1.0F};
+    Vec2 direction{1.0F, 0.0F};
+    Vec2 gravity{0.0F, 980.0F};
+    Vec4 color{1.0F, 1.0F, 1.0F, 1.0F};
+    bool emitting = true;
+    bool one_shot = false;
+    bool local_coords = false;
+    bool anim_loop = false;
+    bool visible = true;
+    bool particle_flag_align_y = false;
 
     friend bool operator==(const CPUParticles2D&, const CPUParticles2D&) = default;
 };

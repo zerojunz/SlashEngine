@@ -49,8 +49,9 @@ void write_dot() {
             // Squared distance from the center, in half pixels: 2 at the middle, 98 at a corner.
             const int dx = (static_cast<int>(x) * 2) - 7;
             const int dy = (static_cast<int>(y) * 2) - 7;
-            const int alpha = std::clamp(255 - ((dx * dx + dy * dy) * 4), 0, 255);
-            image.pixels.insert(image.pixels.end(), {255, 255, 255, static_cast<std::uint8_t>(alpha)});
+            const int alpha = std::clamp(255 - (((dx * dx) + (dy * dy)) * 4), 0, 255);
+            image.pixels.insert(image.pixels.end(),
+                                {255, 255, 255, static_cast<std::uint8_t>(alpha)});
         }
     }
     check(slash::platform::write_file("dot.png", render::encode_png(image).value()));
