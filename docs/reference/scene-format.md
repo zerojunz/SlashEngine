@@ -98,6 +98,12 @@ A reference must name an entity that exists in the same scene.
 | | `speed_scale` | `float` | `1` | Multiplies the animation's frames per second; negative plays backwards |
 | | `frame` | `int` | `0` | The animation's current frame, from 0 |
 | | `frame_progress` | `float` | `0` | How far through the current frame, from 0 to 1 |
+| `AnimationPlayer` | `library` | `std::string` | `""` | Project path of a [`.anim.json`](#animations) file |
+| | `animation` | `std::string` | `""` | Name of the animation to play; `""` plays nothing |
+| | `playing` | `bool` | `true` | Advance the animation each tick |
+| | `speed_scale` | `float` | `1` | Multiplies the playback speed; negative plays backwards |
+| | `time` | `double` | `0` | Seconds into the animation, from 0 to its length |
+| | `backwards` | `bool` | `false` | Play toward the start, as Godot's `play_backwards`; pingpong loops flip it at each end |
 
 `engine.describe` lists every registered component with its defaults, including ones a game adds.
 
@@ -364,3 +370,75 @@ unless the table says otherwise.
 - `material.eval` computes colors on the CPU the way the GPU does, so an agent checks a material
   without a screenshot.
 - Material files reload when they change, like every asset, and exports check and ship them.
+
+## Animations
+
+A `.anim.json` file holds keyframe animations by name, like a Godot `AnimationLibrary` of
+`Animation` resources. An entity's `AnimationPlayer` names the file in `library` and plays one
+of them: each tick the `animation_player` system moves `time` on, sets every field the
+animation's value tracks name on the entity's own components (adding a component it lacks), and
+emits the events its event tracks name. `slash-cli schema animation` prints the schema,
+`slash-cli scene validate` and `scene format` accept `.anim.json` files, and the
+[`animation.eval`](commands.md#animationeval) command returns the values an animation sets.
+[examples/keyframe-animation](../../examples/keyframe-animation/) has two.
+
+```json
+{
+  "animations": {
+    "walk": {
+      "length": 0.5,
+      "loop": "linear",
+      "tracks": [
+        {"interpolation": "cubic", "path": "Sprite2D/offset/y",
+         "keys": [{"time": 0, "value": 0}, {"time": 0.25, "value": -4}]},
+        {"path": "Sprite2D/frame",
+         "keys": [{"time": 0, "value": 0}, {"time": 0.25, "value": 1}]},
+        {"event": "footstep",
+         "keys": [{"time": 0, "data": {"foot": "left"}}, {"time": 0.25, "data": {"foot": "right"}}]}
+      ]
+    }
+  },
+  "format": 1
+}
+```
+
+| Key | Required | Meaning |
+| --- | --- | --- |
+| `format` | Yes | Format version. Must be `1` |
+| `animations` | Yes | Animations by name |
+| `animations/<name>/length` | Yes | Seconds, more than 0 |
+| `animations/<name>/loop` | No | What happens at the end, as Godot's loop modes: `none` (default) stops there, `linear` starts over, `pingpong` turns round |
+| `animations/<name>/tracks` | Yes | Value tracks and event tracks |
+| `tracks/<n>/path` | One of these | A value track: the field it sets, as a component, a field and optionally a part of the field |
+| `tracks/<n>/event` | One of these | An event track: the event kind it emits |
+| `tracks/<n>/keys` | Yes | At least one key, in time order, each later than the one before and no later than the length |
+| `keys/<n>/time` | Yes | Seconds from the start |
+| `keys/<n>/value` | Value tracks | A value the field takes |
+| `keys/<n>/data` | No | Event tracks: the event's data, any JSON |
+| `keys/<n>/transition` | No | Easing on the way to the next key, as Godot's easing curve: 1 (default) is linear, above 1 eases in, between 0 and 1 eases out, below 0 eases in and out, 0 holds the value until the next key |
+| `tracks/<n>/interpolation` | No | Value tracks: `linear` (default), `nearest` (each key's value until the next), `cubic` (a smooth curve through the keys), or `linear_angle` and `cubic_angle`, which turn the short way round, for rotations in radians |
+| `tracks/<n>/update` | No | Value tracks: `continuous` sets the value every tick, `discrete` sets a key's value when playback reaches it. `auto` (default) is continuous for float fields and discrete for others: integers, strings, booleans and entity references |
+| `tracks/<n>/loop_wrap` | No | Value tracks in a looping animation: before the first key and after the last, move between the last key and the first across the loop's end (default `true`); `false` holds them |
+
+A path's part picks one number out of a vector or color field, by `x`, `y`, `z` or `w`, `r`, `g`,
+`b` or `a`, or by index (`Sprite2D/modulate/a`, `Transform2D/position/y`), or a field of a
+struct field. Values are absolute, as in Godot: a track on `Transform2D/position` places the
+entity, so animate `Sprite2D/offset` to move a sprite around its entity instead.
+
+- Playback passes the keys after where it was, up to and including where it gets to, as Godot's:
+  at 60 ticks a second, a key at 0.25 seconds is passed on the 15th tick. When playback starts at
+  the start of an animation, a key there is passed too. Event keys emit their event then, with
+  the entity's ID and the key's `data`, and discrete tracks set their key's value.
+- An animation that doesn't loop stops at its end (at the start when playing backwards), sets
+  `playing` to `false` and emits `animation_finished` with `{"animation": "<name>"}`. Playing it
+  again from there starts it over. A linear loop passes keys at both its end and its start as it
+  wraps; a pingpong loop passes a key at each end once and flips `backwards`. Whole loops in a
+  single tick pass no keys.
+- Fields a new animation doesn't set keep their last values, as in Godot.
+- Given the components, mistakes fail with the JSON Pointer of the bad value: keys out of order
+  or past the length, an unknown component or field (with "did you mean"), a part a field doesn't
+  have, a key value the field doesn't take, a string or boolean on a continuous track, two
+  tracks on one path, or an event kind the engine uses itself (`command`, `entity.*`).
+  `slash-cli scene validate` and exports check all of these. A player whose file, animation or
+  track can't be used logs one warning and plays what it can.
+- Animation files reload when they change, like every asset, and exports check and ship them.

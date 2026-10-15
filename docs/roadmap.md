@@ -24,8 +24,9 @@ MCP, JSON-RPC, a localhost REST API and the command line, including while a game
 a folder with a `project.json`, and `slash-cli export` builds it for macOS, Windows, Linux, the
 web, Android or iOS, signs it and can test the result headless. The rest of milestone 4, now in
 progress, builds every platform from one Mac. Games draw sprites and flipbook animations through
-a GPU render device, smoothly between fixed ticks and with Godot's V-Sync modes and frame cap;
-the rest of the 2D renderer follows in milestone 5.
+a GPU render device, smoothly between fixed ticks and with Godot's V-Sync modes and frame cap,
+color them with material graphs, and animate any component field with keyframes; the rest of the
+2D renderer follows in milestone 5.
 
 ## The path to launch
 
@@ -168,7 +169,11 @@ rendering on top.
       SpriteFrames), drawn in order and interpolated between fixed ticks so high refresh rates
       look smooth. Textures are PNG or BMP assets that hot reload, and exports ship and check
       them with the frames files
-- [ ] Keyframe animation tracks on any reflected property, like Godot's AnimationPlayer
+- [x] Keyframe animation tracks on any reflected property, like Godot's AnimationPlayer:
+      `.anim.json` libraries of animations with value tracks on any component field or part of
+      one, Godot's interpolation, easing, update and loop modes, and event tracks that emit world
+      events. `AnimationPlayer` plays them, `animation.eval` returns the values at any times, and
+      exports check and ship the files
 - [ ] Tilemap layers with terrain autotiling
 - [ ] 2D lights, occluders and normal-mapped sprites
 - [ ] 2D physics on Box2D v3
@@ -378,7 +383,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Shadows | Cascaded, omni and spot shadow maps | 7 | Planned |
 | Post-processing | Tonemap, bloom, SSAO, SSR, DoF, auto exposure, color grading | 7 | Planned |
 | Materials and shaders | HLSL shaders plus a JSON material graph | 5, 7 | In part: canvas material graphs are done; a game's own HLSL shaders in 5, PBR inputs in 7 |
-| Keyframe animation | Keyframe tracks on any reflected property | 5 | Planned |
+| Keyframe animation | Keyframe tracks on any reflected property | 5 | Done |
 | Skeletal animation | Skinned meshes, blending, root motion | 7 | Planned |
 | Animation blending | Blend trees and state machines in text, two-bone and FABRIK IK | 7 | Planned |
 | Particles | CPU and GPU particles, particle graphs in text | 5 | Planned |

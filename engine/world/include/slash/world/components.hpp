@@ -73,6 +73,19 @@ struct AnimatedSprite2D {
 SLASH_COMPONENT(AnimatedSprite2D, sprite_frames, animation, playing, speed_scale, frame,
                 frame_progress)
 
+// Plays keyframe animations from a .anim.json file on the entity's own components, as Godot's
+// AnimationPlayer: each tick it moves the time on and sets every field the animation's tracks
+// name.
+struct AnimationPlayer {
+    std::string library; // project path of a .anim.json file
+    std::string animation;
+    bool playing = true;
+    float speed_scale = 1.0F;
+    double time = 0.0;      // seconds into the animation
+    bool backwards = false; // play toward the start; pingpong loops flip it at each end
+};
+SLASH_COMPONENT(AnimationPlayer, library, animation, playing, speed_scale, time, backwards)
+
 // Registers the components above, with their docs.
 void register_builtin_components(ComponentRegistry& registry);
 

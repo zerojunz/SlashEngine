@@ -1,5 +1,6 @@
 #include "slash/runtime/game.hpp"
 
+#include "slash/animation/animation.hpp"
 #include "slash/core/log.hpp"
 #include "slash/core/text.hpp"
 #include "slash/platform/file.hpp"
@@ -112,6 +113,7 @@ Game::Game(Project project, platform::Platform platform, const std::string& data
     world_.set_file_reader(
         [this](std::string_view path) { return assets_.read(path, world::kPrefabType); });
     canvas::install(world_, assets_);
+    animation::install(world_, assets_);
 }
 
 Game::~Game() = default;

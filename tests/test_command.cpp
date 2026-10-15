@@ -1156,10 +1156,13 @@ TEST_CASE("engine.describe lists systems in the order they run") {
     world.add_system("input", [](world::World& /*w*/, double /*dt*/) {}, {.priority = -1});
     // Every session plays AnimatedSprite2D with a built-in system that runs late.
     CHECK(*engine.ok("engine.describe").find("systems") ==
-          parse(R"(["input", "movement", "animated_sprite_2d"])"));
+          parse(R"(["input", "movement", "animation_player", "animated_sprite_2d"])"));
     CHECK(*engine.ok("engine.describe", R"({"full": true})").find("systems") == parse(R"([
         {"name": "input", "priority": -1},
         {"name": "movement", "doc": "Moves things by their velocity.", "priority": 0},
+        {"name": "animation_player",
+         "doc": "Plays each AnimationPlayer's animation on its entity's components.",
+         "priority": 900},
         {"name": "animated_sprite_2d",
          "doc": "Plays each AnimatedSprite2D's animation on its Sprite2D.", "priority": 1000}
     ])"));
@@ -1267,6 +1270,8 @@ TEST_CASE("schema.get returns scene, component and command schemas") {
           "SlashEngine sprite frames");
     CHECK(engine.ok("schema.get", R"({"kind": "material"})").find("title")->as_string() ==
           "SlashEngine material");
+    CHECK(engine.ok("schema.get", R"({"kind": "animation"})").find("title")->as_string() ==
+          "SlashEngine animation library");
 
     const json::Value health =
         engine.ok("schema.get", R"({"kind": "component", "name": "Health"})");
@@ -1366,6 +1371,88 @@ TEST_CASE("material.eval returns the colors a material draws, for a file or a sp
     CHECK(contains(reply.message, "gone.png"));
     engine.fails("material.eval", R"({"path": "flash.material.json", "uv": []})",
                  command::code::kInvalidParams);
+    std::filesystem::remove_all(root);
+}
+
+TEST_CASE("animation.eval returns the values an animation's tracks set, and step plays them") {
+    const std::string root = "animation_test_project";
+    std::filesystem::remove_all(root);
+    REQUIRE(slash::platform::create_directories(root).ok());
+    REQUIRE(slash::platform::write_file(root + "/hero.anim.json", R"({
+      "animations": {
+        "bob": {"length": 1, "loop": "linear", "tracks": [
+          {"path": "Transform2D/position/y", "interpolation": "cubic",
+           "keys": [{"time": 0, "value": 0}, {"time": 0.5, "value": -8}]},
+          {"path": "Sprite2D/frame", "keys": [{"time": 0, "value": 0}, {"time": 0.5, "value": 1}]},
+          {"event": "footstep", "keys": [{"time": 0.5, "data": {"foot": "left"}}]}]},
+        "fade": {"length": 0.5, "tracks": [
+          {"path": "Sprite2D/modulate/a", "keys": [{"time": 0, "value": 1}, {"time": 0.5, "value": 0}]},
+          {"path": "Health/current", "keys": [{"time": 0, "value": 10}]}]}
+      },
+      "format": 1
+    })")
+                .ok());
+    command::SessionOptions options;
+    options.project_root = root;
+    Engine engine(options);
+    engine.ok("entity.create", R"({"id": "hero", "components": {"Transform2D": {},
+        "AnimationPlayer": {"library": "hero.anim.json", "animation": "bob"}}})");
+    engine.ok("entity.create", R"({"id": "empty", "components": {"Transform2D": {}}})");
+
+    // An entity's player: its library and animation. Values are rounded to four decimals.
+    CHECK(engine.ok("animation.eval", R"({"id": "hero", "times": [0, 0.125, 0.25, 0.5]})") ==
+          parse(R"({"length": 1, "loop": "linear", "tracks": {
+                      "Sprite2D/frame": [0, 0, 0, 1],
+                      "Transform2D/position/y": [0, -1.25, -4, -8]}})"));
+    // Another animation from its library, and only some tracks.
+    CHECK(engine.ok("animation.eval", R"({"id": "hero", "animation": "fade", "times": [0.125],
+                                          "tracks": ["Sprite2D/modulate/a"]})") ==
+          parse(R"({"length": 0.5, "loop": "none", "tracks": {"Sprite2D/modulate/a": [0.75]}})"));
+    CHECK(engine.ok("animation.eval", R"({"path": "hero.anim.json", "animation": "fade",
+                                          "times": [0.5]})") ==
+          parse(R"({"length": 0.5, "loop": "none",
+                    "tracks": {"Health/current": [10], "Sprite2D/modulate/a": [0]}})"));
+
+    // step plays it: the frame jumps at its key and the event fires as playback passes it.
+    engine.ok("events.subscribe");
+    CHECK(engine.ok("step", R"({"ticks": 31})").find("tick")->as_int() == 31);
+    const json::Value hero = engine.ok("entity.get", R"({"id": "hero"})");
+    CHECK(hero.find("components")->find("Sprite2D")->find("frame")->as_int() == 1);
+    CHECK(
+        hero.find("components")->find("Transform2D")->find("position")->as_array()[1].as_double() ==
+        doctest::Approx(-8.0).epsilon(0.01));
+    const json::Value events = engine.ok("events.read", R"({"subscription": "events_1"})");
+    REQUIRE(events.find("events")->size() == 2);
+    CHECK(events.find("events")->as_array()[0] ==
+          parse(R"({"data": {"foot": "left"}, "id": "hero", "kind": "footstep", "seq": 1,
+                    "tick": 29})"));
+
+    auto reply = engine.fails("animation.eval", R"({"times": [0]})", command::code::kInvalidParams);
+    CHECK(contains(reply.message, "give id"));
+    reply = engine.fails("animation.eval", R"({"id": "empty", "times": [0]})",
+                         command::code::kInvalidParams);
+    CHECK(reply.message == "/id: \"empty\" has no AnimationPlayer");
+    reply = engine.fails("animation.eval", R"({"id": "hero", "animation": "bop", "times": [0]})",
+                         command::code::kNotFound);
+    CHECK(reply.message == "/animation: hero.anim.json has no animation \"bop\"; did you mean "
+                           "\"bob\"?");
+    reply = engine.fails("animation.eval", R"({"path": "hero.anim.json", "times": [0]})",
+                         command::code::kInvalidParams);
+    CHECK(reply.message ==
+          "/animation: name one of hero.anim.json's animations: \"bob\", \"fade\"");
+    reply = engine.fails("animation.eval", R"({"id": "hero", "times": [0.5, 2]})",
+                         command::code::kInvalidParams);
+    CHECK(reply.message == "/times/1: 2 is past the animation's length, 1");
+    reply = engine.fails("animation.eval", R"({"id": "hero", "times": [0],
+                                              "tracks": ["Sprite2D/fram"]})",
+                         command::code::kNotFound);
+    CHECK(reply.message == "/tracks/0: bob has no value track \"Sprite2D/fram\"; did you mean "
+                           "\"Sprite2D/frame\"?");
+    reply = engine.fails("animation.eval", R"({"path": "gone.anim.json", "animation": "a",
+                                              "times": [0]})",
+                         command::code::kNotFound);
+    CHECK(reply.data.find("path")->as_string() == "/path");
+    engine.fails("animation.eval", R"({"id": "hero", "times": []})", command::code::kInvalidParams);
     std::filesystem::remove_all(root);
 }
 
