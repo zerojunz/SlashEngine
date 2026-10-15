@@ -3,6 +3,6 @@
 {"jsonrpc":"2.0","id":3,"method":"entity.get","params":{"id":"coin_2"}}
 {"jsonrpc":"2.0","id":4,"method":"prefab.save","params":{"id":"player","path":"prefabs/player.prefab.json"}}
 {"jsonrpc":"2.0","id":5,"method":"entity.create","params":{"id":"player_2","extends":"prefabs/player.prefab.json"}}
-{"jsonrpc":"2.0","id":6,"method":"entity.create","params":{"id":"coin_3","extends":"prefabs/con.prefab.json"}}
+{"jsonrpc":"2.0","id":6,"method":"entity.create","params":{"id":"coin_3","extends":"prefabs/coins.prefab.json"}}
 {"jsonrpc":"2.0","id":7,"method":"scene.save"}
 {"jsonrpc":"2.0","id":8,"method":"scene.get"}

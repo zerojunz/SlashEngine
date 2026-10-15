@@ -188,7 +188,8 @@ instance overrides.
 | `extends` | No | Another prefab this one starts from, so prefabs can build on each other |
 
 - Paths are relative to the project folder and use `/`, such as `"prefabs/enemy.prefab.json"`;
-  they cannot leave the folder or contain `.` or `..` parts.
+  they cannot leave the folder, contain `.` or `..` parts, or use a name Windows keeps for a
+  device, such as `con` or `aux`.
 - Saving writes only what differs from the prefab: a field equal to the prefab's value is left
   out, even when the prefab's value is not the default.
 - A missing prefab, a prefab that extends itself through a chain, or a `null` that names a

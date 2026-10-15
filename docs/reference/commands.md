@@ -22,7 +22,9 @@ Rules that apply to every command (see [concepts.md](../concepts.md#sessions)):
 - A failed command changes nothing.
 - Commands that change the world (marked "Takes `dry_run`" below) accept `"dry_run": true`; see
   [Dry runs](#dry-runs).
-- Paths are relative to the project folder and cannot leave it.
+- Paths are relative to the project folder and cannot leave it. Names Windows keeps for devices
+  (`con`, `prn`, `aux`, `nul`, `com1` to `com9`, `lpt1` to `lpt9`, with any extension) are
+  refused on every platform, since opening one on Windows reaches the device.
 - Component fields are written as in scene files: vectors as arrays (`[x, y]`), quaternions as
   `[x, y, z, w]`.
 

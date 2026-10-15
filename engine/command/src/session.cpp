@@ -237,6 +237,9 @@ Result<std::string> Session::resolve_path(std::string_view relative) const {
     if (relative.find(':') != std::string_view::npos) {
         return invalid("contains ':'; use a path relative to the project folder");
     }
+    if (!platform::reserved_device_name(relative).empty()) {
+        return platform::reserved_device_error(relative);
+    }
     std::string path(relative);
     std::ranges::replace(path, '\\', '/');
     std::size_t start = 0;
