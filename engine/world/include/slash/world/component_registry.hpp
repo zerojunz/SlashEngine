@@ -26,7 +26,7 @@ struct FieldMeta {
     // Every member has an initializer so designated initializers may skip any of them without
     // tripping GCC's -Wmissing-field-initializers.
     std::string doc{};                        // NOLINT(readability-redundant-member-init)
-    std::optional<double> min = std::nullopt; // inclusive; for arrays, applies to each number
+    std::optional<double> min = std::nullopt; // inclusive; for arrays and maps, to each number
     std::optional<double> max = std::nullopt;
     // For a string field, the only values allowed.
     std::vector<std::string> choices{}; // NOLINT(readability-redundant-member-init)

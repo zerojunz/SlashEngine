@@ -65,6 +65,9 @@ cbuffer Program : register(b0, space3) {
     int4 shading;
     // The specular color (rgb) and shininess (a).
     float4 specular;
+    // x: the distance field's pixel range in texels, or 0 to draw texture0 as colors; y: its
+    // outline in texels.
+    float4 field;
 };
 
 struct Light {
@@ -147,6 +150,21 @@ float4 hsv_to_rgb(float4 c) {
     float3 rgb = float3(1.0, 1.0, 1.0) + (saturate(p - float3(1.0, 1.0, 1.0)) -
                                           float3(1.0, 1.0, 1.0)) * c.y;
     return float4(rgb * c.z, 0.0);
+}
+
+// Godot's MSDF text: coverage from the median distance of the field's three channels, sharp at
+// any scale. uv_dx and uv_dy are how the texture coordinate changes across one pixel. Keep it in
+// step with distance_field_coverage in src/device.cpp.
+float field_coverage(float4 t, float2 uv_dx, float2 uv_dy) {
+    float2 dest_size = 1.0 / max(abs(uv_dx) + abs(uv_dy), float2(1.0e-8, 1.0e-8));
+    float px_size = max(0.5 * dot(field.x * texel.xy, dest_size), 1.0);
+    float d = max(min(t.r, t.g), min(max(t.r, t.g), t.b));
+    if (field.y > 0.0) {
+        float cr = clamp(field.y, 0.0, field.x / 2.0 - 1.0) / field.x;
+        d = min(d, t.a);
+        return clamp((d - 0.5 + cr) * px_size, 0.0, 1.0);
+    }
+    return clamp((d - 0.5) * px_size + 0.5, 0.0, 1.0);
 }
 
 // The depth a shadow map texel holds, or 2 for none.
@@ -345,7 +363,13 @@ float4 fs_main(VertexOutput input) : SV_Target0 {
         registers[(instruction.x >> 8u) & 31u] = o;
     }
     if (counts.x == 0u) {
-        registers[0] = texture0.SampleLevel(sampler0, input.uv, 0.0) * input.color;
+        float4 sampled = texture0.SampleLevel(sampler0, input.uv, 0.0);
+        if (field.x > 0.0) {
+            registers[0] = float4(input.color.rgb,
+                                  input.color.a * field_coverage(sampled, uv_dx, uv_dy));
+        } else {
+            registers[0] = sampled * input.color;
+        }
     }
     if (shading.x == 0) {
         return registers[0];

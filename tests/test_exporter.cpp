@@ -11,14 +11,17 @@
 #include "slash/platform/file.hpp"
 #include "slash/platform/process.hpp"
 #include "slash/render/image.hpp"
+#include "slash/text/text.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
 
 #include <doctest/doctest.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <filesystem>
 #include <memory>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -701,6 +704,65 @@ TEST_CASE("exports ship textures, frames, material, animation and tile set files
     CHECK(std::filesystem::exists(data / "sprites" / "ground.tileset.json"));
     CHECK(std::filesystem::exists(data / "main.scene.json"));
     CHECK_FALSE(std::filesystem::exists(data / "sprites" / "notes.md"));
+    std::filesystem::remove_all(folder);
+}
+
+TEST_CASE("exports ship fonts and check them, and the controls of scenes, first") {
+    const std::filesystem::path folder = "exporter_fonts_project";
+    std::filesystem::remove_all(folder);
+    std::filesystem::create_directories(folder / "fonts");
+    const auto write = [&](const std::string& path, std::string_view text) {
+        REQUIRE(slash::platform::write_file((folder / path).string(), text).ok());
+    };
+    write("project.json", R"({"format": 1, "name": "Fonts", "main_scene": "main.scene.json"})");
+    // A control listed as its own child.
+    write("main.scene.json", R"({"format": 1, "entities": {"panel": {"components": {
+        "Control": {"children": ["panel"],
+                    "theme_override_fonts": {"font": "fonts/title.font.json"}},
+        "Label": {"text": "Paused"}}}}})");
+    const std::span<const std::uint8_t> roboto = slash::text::default_font();
+    write("fonts/roboto.ttf",
+          std::string_view(reinterpret_cast<const char*>(roboto.data()), roboto.size()));
+    write(
+        "fonts/title.font.json",
+        R"({"format": 1, "font": "fonts/roboto.ttf", "multichannel_signed_distance_field": true})");
+    write("fonts/broken.ttf", "not a font");
+    write("fonts/bad.font.json", R"({"format": 1, "font": "fonts/title.woff"})");
+
+#if defined(__APPLE__)
+    const std::string host = "macos";
+#elif defined(_WIN32)
+    const std::string host = "windows";
+#else
+    const std::string host = "linux";
+#endif
+    exporter::ExportOptions options;
+    options.target = host;
+    options.project = folder.string();
+    const exporter::ExportResult result = exporter::export_game(options);
+    CHECK_FALSE(result.ok);
+    const json::Value* error = result.json.find("error");
+    REQUIRE(error != nullptr);
+    CHECK(error->find("step")->as_string() == "validate");
+    REQUIRE(error->find("errors") != nullptr);
+    std::vector<std::string> problems;
+    for (const json::Value& problem : error->find("errors")->as_array()) {
+        problems.push_back(problem.find("file")->as_string() + " " +
+                           problem.find("path")->as_string() + " " +
+                           problem.find("message")->as_string());
+    }
+    std::ranges::sort(problems); // folders list in any order
+    REQUIRE(problems.size() == 3);
+    INFO(problems[0], "\n", problems[1], "\n", problems[2]);
+    CHECK(problems[0] == "fonts/bad.font.json /font expected a .ttf or .otf file");
+    CHECK(problems[1] == "fonts/broken.ttf  not a TrueType or OpenType font");
+    CHECK(problems[2] ==
+          "main.scene.json /entities/panel/components/Control/children/0 a control can't be "
+          "its own child");
+
+    const std::filesystem::path data = folder / ".slash" / "export" / host / "data";
+    CHECK(std::filesystem::exists(data / "fonts" / "roboto.ttf"));
+    CHECK(std::filesystem::exists(data / "fonts" / "title.font.json"));
     std::filesystem::remove_all(folder);
 }
 

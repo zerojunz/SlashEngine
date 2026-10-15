@@ -127,7 +127,7 @@ The Godot and UE5 columns come from their public feature lists, not a line-by-li
 
 Every line in the repo is Apache 2.0 or comes from a dependency under a permissive open-source license, and CI fails any change that adds anything else.
 
-- **Allowed licenses:** MIT, BSD, zlib, Apache 2.0, Boost, MIT-0 and public domain. No GPL or LGPL in the runtime, so games built on SlashEngine can ship under any license.
+- **Allowed licenses:** MIT (with its variants, such as HarfBuzz's "Old MIT"), BSD, zlib, Apache 2.0, Boost, MIT-0, the FreeType License and public domain. No GPL or LGPL in the runtime, so games built on SlashEngine can ship under any license.
 - **No copied engine code.** Nothing from UE5 or any other closed engine, including snippets from its source or docs. Godot is MIT, so its ideas and code may be borrowed with attribution in `THIRD_PARTY.md`.
 - **System APIs are linked, not shipped.** Win32, Direct3D, Metal, Vulkan drivers and mobile OS SDKs are called through SDL3; none of their code lives in the repo.
 - **Generators are called, not shipped.** The asset generator talks to image and audio models over HTTP, like `ai::Provider`, so no model or vendor SDK is in the repo. Each generated asset records its generator, model and license terms, because what a team may do with an asset depends on the service that made it.
@@ -146,6 +146,8 @@ Every line in the repo is Apache 2.0 or comes from a dependency under a permissi
 | miniaudio | Audio | MIT-0 or public domain |
 | Recast and Detour | Navigation | zlib |
 | FreeType, HarfBuzz | Fonts and text shaping | FreeType License (BSD-style), MIT |
+| msdfgen | Multichannel signed distance field fonts | MIT |
+| Roboto | The default font | Apache 2.0 |
 | cgltf, ufbx, stb_image | Asset import | MIT |
 | meshoptimizer | LODs, mesh compression | MIT |
 | Manifold | CSG and parametric models | Apache 2.0 |

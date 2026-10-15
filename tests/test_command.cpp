@@ -1507,6 +1507,92 @@ TEST_CASE("particles.eval counts and lists particles, as they are or after a tim
                  command::code::kInvalidParams);
 }
 
+TEST_CASE("ui.layout returns where controls are and the lines labels show") {
+    const std::string root = "ui_test_project";
+    std::filesystem::remove_all(root);
+    REQUIRE(slash::platform::create_directories(root).ok());
+    REQUIRE(slash::platform::write_file(root + "/project.json",
+                                        R"({"format": 1, "name": "UI", "version": "0.1.0",
+                                            "main_scene": "main.scene.json",
+                                            "window": {"width": 400, "height": 300}})")
+                .ok());
+    command::SessionOptions options;
+    options.project_root = root;
+    Engine engine(options);
+    engine.ok("batch", R"({"commands": [
+        {"command": "entity.create", "params": {"id": "title", "components": {
+            "Control": {"anchor_right": 1, "offset_top": 10},
+            "Label": {"text": "Paused", "horizontal_alignment": "center"}}}},
+        {"command": "entity.create", "params": {"id": "hint", "components": {
+            "Control": {"offset_left": 20, "offset_top": 60, "offset_right": 80,
+                        "visible": false},
+            "Label": {"text": "Press any key", "autowrap_mode": "word"}}}},
+        {"command": "entity.create", "params": {"id": "panel", "components": {
+            "Control": {"offset_right": 100, "offset_bottom": 50, "children": ["title"],
+                        "rotation": 1.5707964},
+            "ColorRect": {}}}}]})");
+    // The project's window is the viewport; the panel turns a quarter, so its bounds do too.
+    CHECK(engine.ok("ui.layout") == parse(R"({"viewport": [400, 300], "controls": [
+        {"id": "hint", "rect": [20, 60, 60, 47], "visible": false,
+         "lines": ["Press", "any key"]},
+        {"id": "panel", "rect": [-50, 0, 50, 100]},
+        {"id": "title", "rect": [-32, 0, 22, 100], "lines": ["Paused"]}]})"));
+    CHECK(engine.ok("ui.layout", R"({"ids": ["hint"], "viewport": [800, 600]})") ==
+          parse(R"({"viewport": [800, 600], "controls": [
+              {"id": "hint", "rect": [20, 60, 60, 47], "visible": false,
+               "lines": ["Press", "any key"]}]})"));
+
+    // Text that doesn't fit, a missing glyph and a font that doesn't load are reported.
+    engine.ok("component.set", R"({"id": "hint", "components": {
+        "Control": {"visible": true, "theme_override_fonts": {"font": "missing.ttf"}},
+        "Label": {"text": "Press any key \u4e00", "clip_text": true, "autowrap_mode": "off"}}})");
+    json::Value hint = engine.ok("ui.layout", R"({"ids": ["hint"]})");
+    CHECK(hint["controls"].as_array().at(0) == parse(R"({"id": "hint", "rect": [20, 60, 60, 22],
+        "lines": ["Press any key \u4e00"], "overflow": true, "missing_glyphs": 1,
+        "font_error": "asset \"missing.ttf\" could not be read: no such file"})"));
+
+    // A child listed twice is a problem, with its JSON Pointer.
+    engine.ok("component.set", R"({"id": "hint", "components": {"Control": {
+        "children": ["title"]}}})");
+    CHECK(engine.ok("ui.layout", R"({"ids": ["panel"]})")["problems"] == parse(R"([
+        {"id": "panel", "path": "/components/Control/children/0",
+         "message": "\"title\" is already a child of \"hint\""}])"));
+    // So is a theme override its type doesn't have.
+    engine.ok("component.set", R"({"id": "title", "components": {"Control": {
+        "theme_override_colors": {"font_colour": [1, 0, 0, 1]}}}})");
+    CHECK(engine.ok("ui.layout", R"({"ids": ["title"]})")["problems"] == parse(R"([
+        {"id": "title", "path": "/components/Control/theme_override_colors/font_colour",
+         "message": "Label has no colors item \"font_colour\"; did you mean \"font_color\"?"}])"));
+
+    CHECK(engine.fails("ui.layout", R"({"ids": ["titel"]})", command::code::kNotFound).message ==
+          "/ids/0: no entity has the id \"titel\"; did you mean \"title\"?");
+    engine.ok("entity.create", R"({"id": "rock", "components": {"Transform2D": {}}})");
+    CHECK(
+        engine.fails("ui.layout", R"({"ids": ["rock"]})", command::code::kInvalidParams).message ==
+        "/ids/0: \"rock\" isn't a control: it has no Control, Label or ColorRect");
+    std::filesystem::remove_all(root);
+}
+
+TEST_CASE("text.measure returns text's size and lines in a font") {
+    Engine engine;
+    CHECK(engine.ok("text.measure", R"({"text": "Hello\nHello, world"})") ==
+          parse(R"({"size": [82, 44], "line_height": 22, "ascent": 17,
+                    "lines": ["Hello", "Hello, world"]})"));
+    CHECK(engine.ok("text.measure", R"({"text": "Hello world again", "autowrap_mode": "word",
+                                        "width": 60, "font_size": 16})")["lines"] ==
+          parse(R"(["Hello", "world", "again"])"));
+    CHECK(engine.ok("text.measure", R"({"text": "\u4e00"})")["missing_glyphs"] == parse("1"));
+    CHECK(engine
+              .fails("text.measure", R"({"text": "x", "autowrap_mode": "word"})",
+                     command::code::kInvalidParams)
+              .message == "/width: autowrap_mode needs a width to wrap to");
+    CHECK(engine
+              .fails("text.measure", R"({"text": "x", "font": "missing.otf"})",
+                     command::code::kInvalidParams)
+              .message == "/font: asset \"missing.otf\" could not be read: no such file");
+    engine.fails("text.measure", R"({"text": "x", "font_size": 0})", command::code::kInvalidParams);
+}
+
 TEST_CASE("light.sample returns how lit points are, and which lights reach them") {
     const std::string root = "light_test_project";
     std::filesystem::remove_all(root);

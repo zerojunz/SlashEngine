@@ -28,7 +28,7 @@ checks it.
 | `version` | No | `0.1.0` | Version as major.minor.patch |
 | `tick_hz` | No | `60` | Fixed simulation ticks per second, above 0 and at most 1000 |
 | `window.width` | No | `1280` | Initial window width in pixels, 1 to 16384 |
-| `window.height` | No | `720` | Initial window height in pixels, 1 to 16384 |
+| `window.height` | No | `720` | Initial window height in pixels, 1 to 16384. [Controls](scene-format.md#ui-and-text) lay out in the window as it is; `ui.layout` and `scene validate` use this size |
 | `window.vsync_mode` | No | `enabled` | How frames wait for the display, as in Godot. `enabled` waits for each refresh, so nothing tears. `disabled` presents at once: the lowest latency, but it may tear. `mailbox` shows the newest finished frame at each refresh: low latency with no tearing. `adaptive` waits unless a frame is late. A mode the GPU or window lacks falls back to `enabled`; SDL's GPU API has no adaptive mode yet, so `adaptive` always does |
 | `max_fps` | No | `0` | Frames per second at most, 0 to 1000, e.g. 30, 60, 120 or 240. `0` means no cap, so V-Sync alone paces frames. Headless runs ignore it |
 | `rendering.clear_color` | No | `[0.3, 0.3, 0.3, 1]` | What the window shows behind everything, as `[r, g, b, a]` from 0 to 1. The default is Godot's gray |
@@ -136,12 +136,17 @@ my-game/
   tiles/                # optional: .tileset.json tile sets and their atlas textures, in any
     ground.tileset.json #   folder
     ground.png
+  fonts/                # optional: .ttf and .otf fonts, and .font.json files with settings,
+    title.ttf           #   in any folder
+    title.font.json
   build/           # exports land in build/export/<preset>/ (gitignored)
   .slash/          # caches, export logs, a running server's token (gitignored)
 ```
 
 Only `project.json`, `.scene.json`, `.prefab.json`, `.frames.json`, `.material.json`,
-`.anim.json`, `.tileset.json`, `.png` and `.bmp` files ship in an export, and each is checked
-first: a texture SDL can't read is an error, like a scene, material, animation or tile set that
-fails validation, or a tile map layer whose legend or rows don't match its tile set. See
+`.anim.json`, `.tileset.json`, `.font.json`, `.ttf`, `.otf`, `.png` and `.bmp` files ship in an
+export, and each is checked first: a texture SDL can't read or a font FreeType can't draw is an
+error, like a scene, material, animation, tile set or font settings file that fails validation,
+a tile map layer whose legend or rows don't match its tile set, or controls that don't lay out
+as written. See
 [cli.md](cli.md#export) for `slash-cli export` and [scene-format.md](scene-format.md) for scenes.

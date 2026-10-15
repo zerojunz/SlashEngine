@@ -86,3 +86,40 @@ if(httplib_ADDED)
     target_link_libraries(slash_httplib INTERFACE
         Threads::Threads $<$<PLATFORM_ID:Windows>:ws2_32>)
 endif()
+
+# Fonts and text, as Godot's: FreeType rasterizes glyphs with its auto-hinter, HarfBuzz shapes
+# text (with its own OpenType font functions, so it needs no FreeType inside), and msdfgen makes
+# multichannel signed distance fields for fonts that scale. FreeType reads TrueType and OpenType
+# outlines only: no compressed or color fonts, so no zlib, bzip2, PNG or Brotli.
+slash_add_dependency(freetype
+    SYSTEM TRUE
+    OPTIONS
+        "FT_DISABLE_ZLIB ON"
+        "FT_DISABLE_BZIP2 ON"
+        "FT_DISABLE_PNG ON"
+        "FT_DISABLE_HARFBUZZ ON"
+        "FT_DISABLE_BROTLI ON"
+        "SKIP_INSTALL_ALL ON")
+
+# HarfBuzz's single-file build, src/harfbuzz.cc, with no platform font backends.
+slash_add_dependency(harfbuzz DOWNLOAD_ONLY TRUE)
+if(harfbuzz_ADDED)
+    add_library(slash_harfbuzz STATIC ${harfbuzz_SOURCE_DIR}/src/harfbuzz.cc)
+    target_include_directories(slash_harfbuzz SYSTEM PUBLIC ${harfbuzz_SOURCE_DIR}/src)
+    if(MSVC)
+        target_compile_options(slash_harfbuzz PRIVATE /bigobj /utf-8)
+    endif()
+endif()
+
+# msdfgen's core only: the shape and distance field code, with no PNG, SVG or font import.
+slash_add_dependency(msdfgen DOWNLOAD_ONLY TRUE)
+if(msdfgen_ADDED)
+    file(GLOB _slash_msdfgen_sources ${msdfgen_SOURCE_DIR}/core/*.cpp)
+    add_library(slash_msdfgen STATIC ${_slash_msdfgen_sources})
+    target_include_directories(slash_msdfgen SYSTEM PUBLIC ${msdfgen_SOURCE_DIR})
+    target_compile_definitions(slash_msdfgen PUBLIC MSDFGEN_PUBLIC= MSDFGEN_USE_CPP11)
+endif()
+
+# The default font, as Godot has one: Roboto Regular, built into the engine (cmake/embed.cmake),
+# so text draws before a game adds fonts of its own. Version 2 is Apache 2.0; later ones are not.
+slash_add_dependency(roboto DOWNLOAD_ONLY TRUE)

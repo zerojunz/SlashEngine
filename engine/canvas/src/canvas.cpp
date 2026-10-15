@@ -8,6 +8,7 @@
 #include "slash/core/log.hpp"
 #include "slash/core/text.hpp"
 #include "slash/render/image.hpp"
+#include "slash/ui/ui.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -194,6 +195,7 @@ void add_systems(world::World& world, asset::Assets& assets) {
 void install(world::World& world, asset::Assets& assets) {
     add_asset_types(assets);
     add_systems(world, assets);
+    ui::install(world, assets, ui::settings(world));
 }
 
 } // namespace slash::canvas

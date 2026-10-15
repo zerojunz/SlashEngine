@@ -5,10 +5,16 @@
 namespace slash::world {
 namespace {
 
-// Applies a field's range to its number schema, or to the items of an array of numbers.
+// Applies a field's range to its number schema, or to the items of an array or values of a map
+// of numbers.
 void apply_range(json::Value& schema, const FieldMeta& meta) {
     if (json::Value* items = schema.find("items"); items != nullptr && items->is_object()) {
         apply_range(*items, meta);
+        return;
+    }
+    if (json::Value* values = schema.find("additionalProperties");
+        values != nullptr && values->is_object()) {
+        apply_range(*values, meta);
         return;
     }
     const json::Value* type = schema.find("type");

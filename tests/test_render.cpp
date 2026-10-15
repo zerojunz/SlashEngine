@@ -28,6 +28,8 @@ using slash::render::BlendMode;
 using slash::render::Color;
 using slash::render::create_device;
 using slash::render::create_null_device;
+using slash::render::distance_field_coverage;
+using slash::render::DistanceField;
 using slash::render::Filter;
 using slash::render::Frame;
 using slash::render::Image;
@@ -605,6 +607,73 @@ TEST_CASE("the GPU device draws, blends, samples and reads back pixels") {
 
 // Direct3D 12 compiles the HLSL when it first needs a shader, with Windows' own compiler, so a
 // shader that SPIR-V and MSL were made from could still fail there. CI runs this on Windows.
+TEST_CASE("distance_field_coverage reads a multichannel distance field as Godot does") {
+    const DistanceField field{.pixel_range = 4.0F, .outline = 0.0F};
+    // The median of red, green and blue is the distance: 0.5 is the edge, half covered.
+    CHECK(distance_field_coverage({0.6F, 0.5F, 0.4F, 0.0F}, field, 1.0F) == doctest::Approx(0.5F));
+    CHECK(distance_field_coverage({0.9F, 0.7F, 0.1F, 0.0F}, field, 1.0F) == 1.0F);
+    CHECK(distance_field_coverage({0.3F, 0.2F, 0.9F, 0.0F}, field, 1.0F) == 0.0F);
+    // Drawn twice as big, the edge is twice as sharp: 4 texels of range over 8 pixels.
+    CHECK(distance_field_coverage({0.55F, 0.55F, 0.55F, 0.0F}, field, 2.0F) ==
+          doctest::Approx(0.9F));
+    // An outline widens the shape, and takes the true distance in alpha into account.
+    const DistanceField outlined{.pixel_range = 4.0F, .outline = 1.0F};
+    CHECK(distance_field_coverage({0.4F, 0.4F, 0.4F, 0.4F}, outlined, 1.0F) ==
+          doctest::Approx(0.6F));
+    CHECK(distance_field_coverage({0.4F, 0.4F, 0.4F, 0.2F}, outlined, 1.0F) == 0.0F);
+}
+
+TEST_CASE("the GPU device draws distance fields as distance_field_coverage does") {
+    auto device = gpu_device();
+    if (device == nullptr) {
+        return;
+    }
+    constexpr std::uint32_t kSize = 8;
+    auto target = device->create_texture(target_desc(kSize));
+    REQUIRE(target.ok());
+    // A field near the edge everywhere, so most pixels are partly covered; red, green and blue
+    // differ so the median matters, and alpha is lower, for outlines.
+    std::vector<std::uint8_t> texels;
+    for (std::uint32_t y = 0; y < kSize; ++y) {
+        for (std::uint32_t x = 0; x < kSize; ++x) {
+            const auto base = static_cast<std::uint8_t>(112 + (x * 3) + y);
+            texels.insert(texels.end(), {static_cast<std::uint8_t>(base + 10), base,
+                                         static_cast<std::uint8_t>(base - 10),
+                                         static_cast<std::uint8_t>(base - 20)});
+        }
+    }
+    auto texture = device->create_texture(
+        {.width = kSize, .height = kSize, .filter = Filter::Nearest, .render_target = false},
+        texels);
+    REQUIRE(texture.ok());
+
+    for (const float outline : {0.0F, 1.0F}) {
+        CAPTURE(outline);
+        Material material;
+        material.field = {.pixel_range = 4.0F, .outline = outline};
+        auto began = device->begin_frame(
+            {.target = target.value(), .clear = {0.0F, 0.0F, 0.0F, 1.0F}, .view = {}});
+        REQUIRE(began.ok());
+        REQUIRE(device->draw(texture.value(), rect(0, 0, kSize, kSize), material).ok());
+        REQUIRE(device->end_frame().ok());
+        auto image = device->read_texture(target.value());
+        REQUIRE(image.ok());
+        for (std::uint32_t y = 0; y < kSize; ++y) {
+            for (std::uint32_t x = 0; x < kSize; ++x) {
+                const std::size_t at = (std::size_t{y} * kSize + x) * 4;
+                const std::array<float, 4> texel{static_cast<float>(texels[at]) / 255.0F,
+                                                 static_cast<float>(texels[at + 1]) / 255.0F,
+                                                 static_cast<float>(texels[at + 2]) / 255.0F,
+                                                 static_cast<float>(texels[at + 3]) / 255.0F};
+                // White over black, so each pixel is the coverage.
+                const auto gray = static_cast<std::uint8_t>(
+                    std::lround(distance_field_coverage(texel, material.field, 1.0F) * 255.0F));
+                CHECK(pixel_is(image.value(), x, y, {gray, gray, gray, 255}).empty());
+            }
+        }
+    }
+}
+
 TEST_CASE("every shader compiles with Windows' HLSL compiler") {
 #if defined(_WIN32)
     namespace shaders = slash::render::shaders;

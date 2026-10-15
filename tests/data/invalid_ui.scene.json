@@ -1,0 +1,25 @@
+{
+  "entities": {
+    "hint": {
+      "components": {
+        "Control": {
+          "theme_override_colors": {
+            "font_colour": [1.0, 1.0, 1.0, 1.0]
+          }
+        },
+        "Label": {
+          "text": "Esc: resume"
+        }
+      }
+    },
+    "panel": {
+      "components": {
+        "ColorRect": {},
+        "Control": {
+          "children": ["hint", "panel"]
+        }
+      }
+    }
+  },
+  "format": 1
+}
