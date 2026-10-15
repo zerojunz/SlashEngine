@@ -206,6 +206,11 @@ json::Value project_schema() {
     gui["properties"]["theme"] =
         string_property("A .theme.json file every control uses after its own and its parents' "
                         "themes, before Godot's default theme, e.g. \"ui/game.theme.json\".");
+    gui["properties"]["allow_system_fallback"]["type"] = "boolean";
+    gui["properties"]["allow_system_fallback"]["default"] = true;
+    gui["properties"]["allow_system_fallback"]["description"] =
+        "Use fonts installed on the machine for characters the project's fonts lack. Off, text "
+        "lays out the same everywhere, as on the web, which has none.";
     properties["gui"] = std::move(gui);
     properties["input"] = input::map_schema();
     properties["input_devices"] = input::settings_schema();
@@ -310,6 +315,9 @@ Result<Project> parse_project(const json::Value& project) {
     if (const json::Value* gui = project.find("gui"); gui != nullptr) {
         if (const json::Value* theme = gui->find("theme"); theme != nullptr) {
             out.gui_theme = theme->as_string();
+        }
+        if (const json::Value* system = gui->find("allow_system_fallback"); system != nullptr) {
+            out.allow_system_fallback = system->as_bool();
         }
     }
     if (const json::Value* input = project.find("input"); input != nullptr) {

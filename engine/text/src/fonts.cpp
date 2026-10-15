@@ -1,3 +1,6 @@
+#include "slash/platform/fonts.hpp"
+
+#include "slash/platform/file.hpp"
 #include "slash/text/text.hpp"
 
 #include <algorithm>
@@ -5,6 +8,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <map>
 #include <memory>
 #include <optional>
@@ -20,17 +24,19 @@
 #include FT_GLYPH_H
 #include FT_OUTLINE_H
 #include FT_STROKER_H
+#include FT_TRUETYPE_TABLES_H
 
+#include <SheenBidi/SheenBidi.h>
 #include <hb.h>
 #include <msdfgen.h>
 
 namespace slash::text {
 namespace {
 
-// Opens a scalable font face from bytes, which must outlive it.
-bool open_face(FT_Library library, const std::string& bytes, FT_Face& face) {
+// Opens a scalable font face from bytes, which must outlive it: the face at index in a collection.
+bool open_face(FT_Library library, const std::string& bytes, FT_Face& face, FT_Long index = 0) {
     if (FT_New_Memory_Face(library, reinterpret_cast<const FT_Byte*>(bytes.data()),
-                           static_cast<FT_Long>(bytes.size()), 0, &face) != 0) {
+                           static_cast<FT_Long>(bytes.size()), index, &face) != 0) {
         face = nullptr;
         return false;
     }
@@ -48,6 +54,10 @@ constexpr std::uint32_t kPageSize = 1024;
 constexpr std::size_t kShapeCacheSize = 1024;
 // FreeType's 26.6 fixed point.
 constexpr double kUnitsPerPixel = 64.0;
+// How deep fallbacks of fallbacks go, as Godot's limit on font fallback recursion.
+constexpr int kMaxFallbackDepth = 64;
+// Installed fonts tried, one after another, for the characters of a run no font of its chain has.
+constexpr std::size_t kMaxSystemFaces = 4;
 
 bool ends_with(std::string_view text, std::string_view suffix) {
     return text.size() >= suffix.size() && text.substr(text.size() - suffix.size()) == suffix;
@@ -84,6 +94,24 @@ char32_t char_at(std::string_view text, std::size_t i) {
     return code;
 }
 
+void append_utf8(std::string& out, char32_t code) {
+    if (code < 0x80U) {
+        out += static_cast<char>(code);
+    } else if (code < 0x800U) {
+        out += static_cast<char>(0xC0U | (code >> 6U));
+        out += static_cast<char>(0x80U | (code & 0x3FU));
+    } else if (code < 0x10000U) {
+        out += static_cast<char>(0xE0U | (code >> 12U));
+        out += static_cast<char>(0x80U | ((code >> 6U) & 0x3FU));
+        out += static_cast<char>(0x80U | (code & 0x3FU));
+    } else {
+        out += static_cast<char>(0xF0U | (code >> 18U));
+        out += static_cast<char>(0x80U | ((code >> 12U) & 0x3FU));
+        out += static_cast<char>(0x80U | ((code >> 6U) & 0x3FU));
+        out += static_cast<char>(0x80U | (code & 0x3FU));
+    }
+}
+
 // The start of the character before byte i.
 std::size_t previous_char(std::string_view text, std::size_t i) {
     std::size_t at = i;
@@ -100,6 +128,28 @@ std::size_t previous_char(std::string_view text, std::size_t i) {
 bool is_space(char32_t c) {
     return c == U' ' || c == U'\t' || c == 0x1680U || (c >= 0x2000U && c <= 0x2006U) ||
            (c >= 0x2008U && c <= 0x200AU) || c == 0x205FU || c == 0x3000U;
+}
+
+// Unicode's Default_Ignorable_Code_Point characters, which draw nothing in any font: soft
+// hyphens, joiners, direction marks, variation selectors and the like.
+bool is_default_ignorable(char32_t c) {
+    return c == 0xADU || c == 0x34FU || c == 0x61CU || c == 0x115FU || c == 0x1160U ||
+           c == 0x17B4U || c == 0x17B5U || (c >= 0x180BU && c <= 0x180FU) ||
+           (c >= 0x200BU && c <= 0x200FU) || (c >= 0x202AU && c <= 0x202EU) ||
+           (c >= 0x2060U && c <= 0x206FU) || c == 0x3164U || (c >= 0xFE00U && c <= 0xFE0FU) ||
+           c == 0xFEFFU || c == 0xFFA0U || (c >= 0xFFF0U && c <= 0xFFF8U) ||
+           (c >= 0x1BCA0U && c <= 0x1BCA3U) || (c >= 0x1D173U && c <= 0x1D17AU) ||
+           (c >= 0xE0000U && c <= 0xE0FFFU);
+}
+
+// Characters a font must have a glyph for to draw: not whitespace, controls or ignorables.
+bool is_graphic(char32_t c) {
+    return !is_space(c) && c >= 0x20U && (c < 0x7FU || c >= 0xA0U) && !is_default_ignorable(c);
+}
+
+// The Unicode Bidirectional Algorithm's isolate controls, which rule L1 treats as whitespace.
+bool is_isolate(char32_t c) {
+    return c >= 0x2066U && c <= 0x2069U;
 }
 
 // Characters that keep their neighbors on one line: no-break spaces and the word joiner.
@@ -182,6 +232,8 @@ std::uint32_t to_u32(std::size_t value) {
 struct Face {
     std::shared_ptr<const FontData> data; // keeps the bytes FreeType and HarfBuzz read
     FontSettings settings;
+    std::string path;    // the font file: a project path, "" for the default font, or installed
+    bool system = false; // installed on the machine
     FT_Face ft = nullptr;
     hb_blob_t* blob = nullptr;
     hb_face_t* hb_face = nullptr;
@@ -220,11 +272,58 @@ struct Shelf {
     std::uint32_t x = 0;
 };
 
-// A run of a paragraph's text in one script.
+// A run of a paragraph's text in one direction and script, shaped as one.
 struct Run {
     std::size_t start = 0;
     std::size_t end = 0;
+    std::uint8_t level = 0; // its bidi embedding level: odd goes right to left
+    hb_script_t script = HB_SCRIPT_COMMON;
 };
+
+// A paragraph shaped: its glyphs in the order of its text, each with its x offset only, and the
+// bidi embedding level of each of its bytes.
+struct Shaped {
+    std::vector<Glyph> glyphs;
+    std::vector<std::uint8_t> levels;
+    std::uint8_t base = 0; // the paragraph's level: 1 when it goes right to left
+};
+
+// A font and its fallbacks, depth first, each face once.
+struct Chain {
+    std::vector<std::uint32_t> faces;
+    bool system = false; // installed fonts may stand in when none of them has a character
+};
+
+// What makes two shapings of a paragraph the same.
+using ShapeKey =
+    std::tuple<std::vector<std::uint32_t>, bool, int, Direction, std::string, std::string>;
+
+// Whether a font is for a language or script, by its support overrides: the code, then a BCP 47
+// code's language alone ("zh" for "zh-Hant"), then "*"; yes when none is listed.
+bool supported(const std::map<std::string, bool, std::less<>>& overrides, std::string_view code) {
+    if (overrides.empty() || code.empty()) {
+        return true;
+    }
+    if (const auto found = overrides.find(code); found != overrides.end()) {
+        return found->second;
+    }
+    if (const std::size_t dash = code.find('-'); dash != std::string_view::npos) {
+        if (const auto found = overrides.find(code.substr(0, dash)); found != overrides.end()) {
+            return found->second;
+        }
+    }
+    if (const auto found = overrides.find("*"); found != overrides.end()) {
+        return found->second;
+    }
+    return true;
+}
+
+// A script's ISO 15924 code, such as "Arab".
+std::string script_code(hb_script_t script) {
+    std::array<char, 5> tag{};
+    hb_tag_to_string(hb_script_to_iso15924_tag(script), tag.data());
+    return {tag.data(), 4};
+}
 
 // Glyphs sharing a cluster: what a line breaks between.
 struct Cluster {
@@ -310,7 +409,7 @@ struct Fonts::Impl {
     FT_Library library = nullptr;
     FT_Stroker stroker = nullptr;
     hb_buffer_t* buffer = nullptr;
-    hb_language_t language = nullptr;
+    hb_language_t default_language = nullptr; // "und", for text with no language
     std::vector<std::unique_ptr<Face>> faces;
     std::map<std::string, Source, std::less<>> sources;
     std::vector<AtlasPage> pages;
@@ -318,14 +417,22 @@ struct Fonts::Impl {
     std::vector<std::uint32_t> page_bottoms; // where the next shelf of each page goes
     std::map<std::tuple<std::uint32_t, std::uint32_t, int, int>, std::optional<GlyphImage>> glyphs;
     std::size_t glyph_images = 0;
-    std::map<std::tuple<std::uint32_t, int, std::string>, std::vector<Glyph>, std::less<>> shaped;
+    std::map<ShapeKey, Shaped> shaped;
+    bool system_fallback = true;
+    // Installed font files by path, read when first needed; nullptr for one that didn't read.
+    std::map<std::string, std::shared_ptr<const FontData>, std::less<>> system_files;
+    // Faces of installed fonts by file and index in it.
+    std::map<std::pair<std::string, int>, std::uint32_t> system_faces;
+    // The installed face found for a character in a language and script, or nullopt for none.
+    std::map<std::tuple<char32_t, std::string, std::string>, std::optional<std::uint32_t>>
+        system_lookups;
 
     Impl() {
         FT_Init_FreeType(&library);
         FT_Stroker_New(library, &stroker);
         buffer = hb_buffer_create();
         // A fixed language, so shaping is the same whatever the machine's locale.
-        language = hb_language_from_string("und", -1);
+        default_language = hb_language_from_string("und", -1);
     }
     Impl(const Impl&) = delete;
     Impl& operator=(const Impl&) = delete;
@@ -339,18 +446,19 @@ struct Fonts::Impl {
     }
 
     Result<std::uint32_t> make_face(std::shared_ptr<const FontData> data, FontSettings settings,
-                                    std::string_view path) {
+                                    std::string_view path, std::string_view name, int index = 0) {
         auto face = std::make_unique<Face>();
         face->data = std::move(data);
         face->settings = std::move(settings);
+        face->path = std::string(path);
         const std::string& bytes = face->data->bytes;
-        if (!open_face(library, bytes, face->ft)) {
+        if (!open_face(library, bytes, face->ft, index)) {
             return make_error(ErrorCode::InvalidArgument,
-                              std::string(path) + " is not a TrueType or OpenType font");
+                              std::string(name) + " is not a TrueType or OpenType font");
         }
         face->blob = hb_blob_create(bytes.data(), static_cast<unsigned int>(bytes.size()),
                                     HB_MEMORY_MODE_READONLY, nullptr, nullptr);
-        face->hb_face = hb_face_create(face->blob, 0);
+        face->hb_face = hb_face_create(face->blob, static_cast<unsigned int>(index));
         face->hb_font = hb_font_create(face->hb_face);
         faces.push_back(std::move(face));
         return to_u32(faces.size() - 1);
@@ -366,7 +474,7 @@ struct Fonts::Impl {
             const std::span<const std::uint8_t> bytes = default_font();
             auto data = std::make_shared<const FontData>(
                 FontData{std::string(reinterpret_cast<const char*>(bytes.data()), bytes.size())});
-            auto face = make_face(std::move(data), {}, "the default font");
+            auto face = make_face(std::move(data), {}, "", "the default font");
             if (!face) {
                 return face.error();
             }
@@ -405,7 +513,7 @@ struct Fonts::Impl {
             found->second.data.path() == source.data.path()) {
             return found->second.face;
         }
-        auto face = make_face(source.data.share(), std::move(settings), data_path);
+        auto face = make_face(source.data.share(), std::move(settings), data_path, data_path);
         if (!face) {
             return face.error();
         }
@@ -436,87 +544,395 @@ struct Fonts::Impl {
         return out;
     }
 
-    // Splits a paragraph where its script changes; spaces and punctuation join the run they are
-    // in.
-    static std::vector<Run> script_runs(std::string_view text) {
-        std::vector<Run> runs;
-        hb_unicode_funcs_t* unicode = hb_unicode_funcs_get_default();
-        hb_script_t current = HB_SCRIPT_INVALID;
-        std::size_t start = 0;
-        for (std::size_t i = 0; i < text.size();
-             i += utf8_length(static_cast<unsigned char>(text[i]))) {
-            const hb_script_t script = hb_unicode_script(unicode, char_at(text, i));
-            if (script == HB_SCRIPT_COMMON || script == HB_SCRIPT_INHERITED ||
-                script == HB_SCRIPT_UNKNOWN) {
-                continue;
-            }
-            if (current != HB_SCRIPT_INVALID && script != current) {
-                runs.push_back({start, i});
-                start = i;
-            }
-            current = script;
+    // A font path's face followed by its fallbacks', depth first, each face once. A fallback
+    // that doesn't load fails the chain, naming the file that lists it.
+    Result<void> add_to_chain(Chain& chain, std::string_view path, std::string_view listed_by,
+                              std::vector<std::string>& visited, int depth) {
+        if (std::ranges::find(visited, path) != visited.end()) {
+            return {};
         }
-        runs.push_back({start, text.size()});
-        return runs;
+        visited.emplace_back(path);
+        auto face = face_for(path);
+        if (!face) {
+            if (listed_by.empty()) {
+                return face.error();
+            }
+            return make_error(face.error().code, "fallback " + std::string(path) + " of " +
+                                                     std::string(listed_by) + ": " +
+                                                     face.error().message);
+        }
+        if (std::ranges::find(chain.faces, face.value()) == chain.faces.end()) {
+            chain.faces.push_back(face.value());
+        }
+        if (depth >= kMaxFallbackDepth) {
+            return {};
+        }
+        const std::vector<std::string> fallbacks = faces[face.value()]->settings.fallbacks;
+        for (const std::string& fallback : fallbacks) {
+            if (auto added = add_to_chain(chain, fallback, path, visited, depth + 1); !added) {
+                return added.error();
+            }
+        }
+        return {};
     }
 
-    // A paragraph's glyphs in the order of its text, clusters from its start.
-    std::vector<Glyph> shape(std::uint32_t face_id, int size, std::string_view text) {
-        const auto key = std::make_tuple(face_id, size, std::string(text));
-        if (const auto found = shaped.find(key); found != shaped.end()) {
+    Result<Chain> chain_for(std::string_view path) {
+        Chain chain;
+        std::vector<std::string> visited;
+        if (auto added = add_to_chain(chain, path, "", visited, 0); !added) {
+            return added.error();
+        }
+        chain.system = system_fallback && faces[chain.faces[0]]->settings.allow_system_fallback;
+        return chain;
+    }
+
+    // A chain in the order its fonts are tried for a run, as Godot's FontPriorityList: the first
+    // font, then fallbacks for the script and language, those for the script only, then the rest.
+    [[nodiscard]] std::vector<std::uint32_t> ordered(const Chain& chain, std::string_view script,
+                                                     std::string_view language) const {
+        std::vector<std::uint32_t> out{chain.faces[0]};
+        const auto priority = [&](const Face& face) {
+            if (!supported(face.settings.script_support, script)) {
+                return 2;
+            }
+            return supported(face.settings.language_support, language) ? 0 : 1;
+        };
+        for (int level = 0; level <= 2; ++level) {
+            for (std::size_t i = 1; i < chain.faces.size(); ++i) {
+                if (priority(*faces[chain.faces[i]]) == level) {
+                    out.push_back(chain.faces[i]);
+                }
+            }
+        }
+        return out;
+    }
+
+    // An installed font file's bytes, read once.
+    std::shared_ptr<const FontData> system_file(const std::string& path) {
+        if (const auto found = system_files.find(path); found != system_files.end()) {
             return found->second;
         }
+        std::shared_ptr<const FontData> data;
+        if (auto bytes = platform::read_file(path)) {
+            data = std::make_shared<const FontData>(FontData{std::move(bytes).value()});
+        }
+        system_files.emplace(path, data);
+        return data;
+    }
+
+    // The face of an installed font file, or of a collection, that has a character: the most
+    // regular one (upright, weight nearest 400), as Godot picks a system font's face.
+    std::optional<std::uint32_t> system_face_in(const std::string& path, char32_t character) {
+        const std::shared_ptr<const FontData> data = system_file(path);
+        if (!data) {
+            return std::nullopt;
+        }
+        FT_Face probe = nullptr;
+        if (FT_New_Memory_Face(library, reinterpret_cast<const FT_Byte*>(data->bytes.data()),
+                               static_cast<FT_Long>(data->bytes.size()), -1, &probe) != 0) {
+            return std::nullopt;
+        }
+        const FT_Long count = probe->num_faces;
+        FT_Done_Face(probe);
+        int best = -1;
+        int best_score = -1;
+        for (FT_Long index = 0; index < count; ++index) {
+            FT_Face face = nullptr;
+            if (!open_face(library, data->bytes, face, index)) {
+                continue;
+            }
+            if (FT_Get_Char_Index(face, character) != 0) {
+                const auto* os2 = static_cast<const TT_OS2*>(FT_Get_Sfnt_Table(face, FT_SFNT_OS2));
+                const int weight = os2 != nullptr ? static_cast<int>(os2->usWeightClass) : 400;
+                int score = 20 - (std::abs(weight - 400) / 50);
+                if ((face->style_flags & FT_STYLE_FLAG_ITALIC) == 0) {
+                    score += 30;
+                }
+                if (score > best_score) {
+                    best_score = score;
+                    best = static_cast<int>(index);
+                }
+            }
+            FT_Done_Face(face);
+        }
+        if (best < 0) {
+            return std::nullopt;
+        }
+        const auto key = std::make_pair(path, best);
+        if (const auto found = system_faces.find(key); found != system_faces.end()) {
+            return found->second;
+        }
+        auto face = make_face(data, {}, path, path, best);
+        if (!face) {
+            return std::nullopt;
+        }
+        faces[face.value()]->system = true;
+        system_faces.emplace(key, face.value());
+        return face.value();
+    }
+
+    // The installed face the platform picks for a character in a language and script.
+    std::optional<std::uint32_t> system_face(char32_t character, const std::string& language,
+                                             const std::string& script) {
+        const auto key = std::make_tuple(character, language, script);
+        if (const auto found = system_lookups.find(key); found != system_lookups.end()) {
+            return found->second;
+        }
+        std::string utf8;
+        append_utf8(utf8, character);
+        std::optional<std::uint32_t> out;
+        for (const std::string& path : platform::system_fonts_for(utf8, language, script)) {
+            out = system_face_in(path, character);
+            if (out) {
+                break;
+            }
+        }
+        system_lookups.emplace(key, out);
+        return out;
+    }
+
+    // Glyphs of text[start, end) shaped with one face in one direction, in the order of the text,
+    // each with its x offset; the rest of the text is context for joining.
+    std::vector<Glyph> shape_with(std::uint32_t face_id, int size, std::string_view text,
+                                  std::size_t start, std::size_t end, bool rtl, hb_script_t script,
+                                  hb_language_t lang) {
         const Face& face = *faces[face_id];
         const bool round = !face.msdf();
         hb_font_set_scale(face.hb_font, size * 64, size * 64);
+        hb_buffer_clear_contents(buffer);
+        hb_buffer_add_utf8(buffer, text.data(), static_cast<int>(text.size()),
+                           static_cast<unsigned int>(start), static_cast<int>(end - start));
+        hb_buffer_set_direction(buffer, rtl ? HB_DIRECTION_RTL : HB_DIRECTION_LTR);
+        hb_buffer_set_script(buffer, script);
+        hb_buffer_set_language(buffer, lang);
+        unsigned int flags = HB_BUFFER_FLAG_DEFAULT;
+        if (start == 0) {
+            flags |= HB_BUFFER_FLAG_BOT;
+        }
+        if (end == text.size()) {
+            flags |= HB_BUFFER_FLAG_EOT;
+        }
+        // NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange): HarfBuzz's flags combine.
+        hb_buffer_set_flags(buffer, static_cast<hb_buffer_flags_t>(flags));
+        hb_buffer_set_cluster_level(buffer, HB_BUFFER_CLUSTER_LEVEL_MONOTONE_GRAPHEMES);
+        hb_shape(face.hb_font, buffer, nullptr, 0);
+        unsigned int count = 0;
+        const hb_glyph_info_t* infos = hb_buffer_get_glyph_infos(buffer, &count);
+        const hb_glyph_position_t* positions = hb_buffer_get_glyph_positions(buffer, &count);
+        // Glyph images draw at whole pixels, so their advances are whole too, as Godot's are
+        // without subpixel positioning.
+        const auto pixels = [round](hb_position_t value) {
+            const double exact = static_cast<double>(value) / kUnitsPerPixel;
+            return static_cast<float>(round ? std::round(exact) : exact);
+        };
         std::vector<Glyph> out;
-        for (const Run& run : script_runs(text)) {
-            hb_buffer_clear_contents(buffer);
-            hb_buffer_add_utf8(buffer, text.data(), static_cast<int>(text.size()),
-                               static_cast<unsigned int>(run.start),
-                               static_cast<int>(run.end - run.start));
-            hb_buffer_set_language(buffer, language);
-            hb_buffer_guess_segment_properties(buffer);
-            hb_buffer_set_cluster_level(buffer, HB_BUFFER_CLUSTER_LEVEL_MONOTONE_GRAPHEMES);
-            hb_shape(face.hb_font, buffer, nullptr, 0);
-            unsigned int count = 0;
-            const hb_glyph_info_t* infos = hb_buffer_get_glyph_infos(buffer, &count);
-            const hb_glyph_position_t* positions = hb_buffer_get_glyph_positions(buffer, &count);
-            const std::size_t first = out.size();
-            const bool rtl = HB_DIRECTION_IS_BACKWARD(hb_buffer_get_direction(buffer));
-            for (unsigned int i = 0; i < count; ++i) {
-                // Glyph images draw at whole pixels, so their advances are whole too, as
-                // Godot's are without subpixel positioning.
-                const auto pixels = [round](hb_position_t value) {
-                    const double exact = static_cast<double>(value) / kUnitsPerPixel;
-                    return static_cast<float>(round ? std::round(exact) : exact);
-                };
-                Glyph glyph;
-                glyph.face = face_id;
-                glyph.index = infos[i].codepoint;
-                glyph.cluster = infos[i].cluster;
-                glyph.x = pixels(positions[i].x_offset);
-                glyph.y = -pixels(positions[i].y_offset);
-                glyph.advance = pixels(positions[i].x_advance);
-                glyph.space = is_space(char_at(text, infos[i].cluster));
-                glyph.rtl = rtl;
-                out.push_back(glyph);
+        out.reserve(count);
+        for (unsigned int i = 0; i < count; ++i) {
+            Glyph glyph;
+            glyph.face = face_id;
+            glyph.index = infos[i].codepoint;
+            glyph.cluster = infos[i].cluster;
+            glyph.x = pixels(positions[i].x_offset);
+            glyph.y = -pixels(positions[i].y_offset);
+            glyph.advance = pixels(positions[i].x_advance);
+            glyph.space = is_space(char_at(text, infos[i].cluster));
+            glyph.rtl = rtl;
+            out.push_back(glyph);
+        }
+        // Right-to-left runs come out in display order; lines break in text order.
+        if (rtl) {
+            std::ranges::reverse(out);
+        }
+        return out;
+    }
+
+    // What one run's shaping needs to know.
+    struct RunContext {
+        std::string_view text;
+        int size = 0;
+        bool rtl = false;
+        hb_script_t script = HB_SCRIPT_COMMON;
+        hb_language_t lang = nullptr;
+        std::string language;
+        std::string script_code;
+        std::vector<std::uint32_t> fonts; // tried in order
+        bool system = false;
+        std::vector<std::uint32_t> tried; // faces shaping text[start, end) now, outermost first
+    };
+
+    // Shapes text[start, end) with the run's fonts from the one at index on, as Godot's
+    // _shape_run: characters a font has no glyph for are shaped again with the next font, then
+    // with installed fonts; what no font has is drawn with the first font's missing-glyph box.
+    void shape_run(std::vector<Glyph>& out, RunContext& run, std::size_t start, std::size_t end,
+                   std::size_t index) {
+        std::optional<std::uint32_t> face;
+        if (index < run.fonts.size()) {
+            face = run.fonts[index];
+        } else if (run.system && index < run.fonts.size() + kMaxSystemFaces) {
+            face = system_face(char_at(run.text, start), run.language, run.script_code);
+            if (face && std::ranges::find(run.tried, *face) != run.tried.end()) {
+                face.reset();
             }
-            // Right-to-left runs come out in display order; lines break in text order.
-            if (rtl) {
-                std::reverse(out.begin() + static_cast<std::ptrdiff_t>(first), out.end());
+        }
+        if (!face) {
+            std::vector<Glyph> boxes = shape_with(run.fonts[0], run.size, run.text, start, end,
+                                                  run.rtl, run.script, run.lang);
+            out.insert(out.end(), boxes.begin(), boxes.end());
+            return;
+        }
+        run.tried.push_back(*face);
+        const std::vector<Glyph> shaped_glyphs =
+            shape_with(*face, run.size, run.text, start, end, run.rtl, run.script, run.lang);
+        std::optional<std::size_t> failed; // where the characters this face lacks start
+        std::size_t g = 0;
+        while (g < shaped_glyphs.size()) {
+            std::size_t next = g;
+            bool valid = true;
+            while (next < shaped_glyphs.size() &&
+                   shaped_glyphs[next].cluster == shaped_glyphs[g].cluster) {
+                valid = valid && shaped_glyphs[next].index != 0;
+                ++next;
             }
+            valid = valid || !is_graphic(char_at(run.text, shaped_glyphs[g].cluster));
+            if (!valid) {
+                if (!failed) {
+                    failed = shaped_glyphs[g].cluster;
+                }
+            } else {
+                if (failed) {
+                    shape_run(out, run, *failed, shaped_glyphs[g].cluster, index + 1);
+                    failed.reset();
+                }
+                out.insert(out.end(), shaped_glyphs.begin() + static_cast<std::ptrdiff_t>(g),
+                           shaped_glyphs.begin() + static_cast<std::ptrdiff_t>(next));
+            }
+            g = next;
+        }
+        if (failed) {
+            shape_run(out, run, *failed, end, index + 1);
+        }
+        run.tried.pop_back();
+    }
+
+    // The bidi embedding level of each byte of a paragraph, and the paragraph's own level, by the
+    // Unicode Bidirectional Algorithm (rules P2 to I2).
+    static std::pair<std::vector<std::uint8_t>, std::uint8_t> bidi_levels(std::string_view text,
+                                                                          Direction direction) {
+        SBLevel request = SBLevelDefaultLTR;
+        if (direction == Direction::Ltr) {
+            request = 0;
+        } else if (direction == Direction::Rtl) {
+            request = 1;
+        }
+        const std::uint8_t fallback = direction == Direction::Rtl ? 1 : 0;
+        std::vector<std::uint8_t> levels(text.size(), fallback);
+        std::optional<std::uint8_t> base;
+        const SBCodepointSequence sequence{SBStringEncodingUTF8, text.data(), text.size()};
+        SBAlgorithmRef algorithm = SBAlgorithmCreate(&sequence);
+        // Information separators end bidi paragraphs too, so there may be more than one.
+        std::size_t offset = 0;
+        while (algorithm != nullptr && offset < text.size()) {
+            SBParagraphRef paragraph =
+                SBAlgorithmCreateParagraph(algorithm, offset, text.size() - offset, request);
+            if (paragraph == nullptr) {
+                break;
+            }
+            const std::size_t length = SBParagraphGetLength(paragraph);
+            const SBLevel* resolved = SBParagraphGetLevelsPtr(paragraph);
+            std::copy_n(resolved, length, levels.begin() + static_cast<std::ptrdiff_t>(offset));
+            if (!base) {
+                base = SBParagraphGetBaseLevel(paragraph);
+            }
+            SBParagraphRelease(paragraph);
+            offset += std::max<std::size_t>(length, 1);
+        }
+        if (algorithm != nullptr) {
+            SBAlgorithmRelease(algorithm);
+        }
+        return {std::move(levels), base.value_or(fallback)};
+    }
+
+    // A paragraph cut into runs of one level and one script (UAX #24, with brackets and marks
+    // joining the run they belong to).
+    static std::vector<Run> runs_of(std::string_view text,
+                                    const std::vector<std::uint8_t>& levels) {
+        std::vector<Run> scripts;
+        const SBCodepointSequence sequence{SBStringEncodingUTF8, text.data(), text.size()};
+        SBScriptLocatorRef locator = SBScriptLocatorCreate();
+        SBScriptLocatorLoadCodepoints(locator, &sequence);
+        const SBScriptAgent* agent = SBScriptLocatorGetAgent(locator);
+        while (SBScriptLocatorMoveNext(locator) != 0) {
+            const hb_script_t script =
+                hb_script_from_iso15924_tag(SBScriptGetUnicodeTag(agent->script));
+            scripts.push_back({.start = agent->offset,
+                               .end = agent->offset + agent->length,
+                               .level = 0,
+                               .script = script == HB_SCRIPT_INVALID ||
+                                                 script == HB_SCRIPT_UNKNOWN ||
+                                                 script == HB_SCRIPT_INHERITED
+                                             ? HB_SCRIPT_COMMON
+                                             : script});
+        }
+        SBScriptLocatorRelease(locator);
+        std::vector<Run> out;
+        for (const Run& script : scripts) {
+            std::size_t start = script.start;
+            for (std::size_t i = script.start + 1; i <= script.end; ++i) {
+                if (i == script.end || levels[i] != levels[start]) {
+                    out.push_back({.start = start,
+                                   .end = i,
+                                   .level = levels[start],
+                                   .script = script.script});
+                    start = i;
+                }
+            }
+        }
+        return out;
+    }
+
+    // A paragraph's glyphs in the order of its text, clusters from its start, with its levels.
+    const Shaped& shape(const Chain& chain, int size, std::string_view text,
+                        const LayoutOptions& options) {
+        ShapeKey key{chain.faces,       chain.system,     size,
+                     options.direction, options.language, std::string(text)};
+        if (const auto found = shaped.find(key); found != shaped.end()) {
+            return found->second;
+        }
+        Shaped out;
+        auto [levels, base] = bidi_levels(text, options.direction);
+        out.levels = std::move(levels);
+        out.base = base;
+        const hb_language_t lang = options.language.empty()
+                                       ? default_language
+                                       : hb_language_from_string(options.language.c_str(), -1);
+        for (const Run& each : runs_of(text, out.levels)) {
+            RunContext run;
+            run.text = text;
+            run.size = size;
+            run.rtl = (each.level % 2U) == 1U;
+            run.script = each.script;
+            run.lang = lang;
+            run.language = options.language;
+            run.script_code = script_code(each.script);
+            run.fonts = ordered(chain, run.script_code, options.language);
+            run.system = chain.system;
+            shape_run(out.glyphs, run, each.start, each.end, 0);
         }
         if (shaped.size() >= kShapeCacheSize) {
             shaped.clear();
         }
-        shaped.emplace(key, out);
-        return out;
+        return shaped.emplace(std::move(key), std::move(out)).first->second;
     }
 
+    // Text shaped left to right with one face, for an ellipsis.
+    std::vector<Glyph> shape_plain(std::uint32_t face_id, int size, std::string_view text) {
+        return shape_with(face_id, size, text, 0, text.size(), false, HB_SCRIPT_COMMON,
+                          default_language);
+    }
     // Breaks one paragraph's glyphs into lines and appends them to the layout.
     static void break_lines(TextLayout& layout, std::string_view text, std::size_t offset,
-                            std::vector<Glyph> glyphs, const LayoutOptions& options) {
+                            const std::vector<Glyph>& glyphs, bool rtl,
+                            const LayoutOptions& options) {
         std::vector<Cluster> clusters;
         for (std::size_t i = 0; i < glyphs.size(); ++i) {
             if (clusters.empty() || glyphs[i].cluster != glyphs[clusters.back().first].cluster) {
@@ -544,6 +960,7 @@ struct Fonts::Impl {
             line.start = to_u32(offset + (from < clusters.size() ? clusters[from].start : 0));
             line.end = to_u32(offset + (to < clusters.size() ? clusters[to].start : text.size()));
             line.paragraph_end = paragraph_end;
+            line.rtl = rtl;
             float width = 0.0F;
             float trailing = 0.0F;
             for (std::size_t k = from; k < to; ++k) {
@@ -597,25 +1014,64 @@ struct Fonts::Impl {
         emit(start, clusters.size(), true);
     }
 
-    // Sets where each glyph of a line draws: in text order, with right-to-left runs reversed.
-    static void place(TextLayout& layout, const Line& line) {
+    // Puts a line's glyphs in display order and sets where each draws, by the Unicode
+    // Bidirectional Algorithm's rules L1 and L2: whitespace at the line's end and before tabs
+    // takes the paragraph's level, then from the highest level down to the lowest odd one, each
+    // stretch of glyphs at that level or higher is reversed. A right-to-left line's trailing
+    // spaces end up at its left, out of its width, so its text starts at 0 as a left-to-right
+    // line's does.
+    static void place(TextLayout& layout, const Line& line, std::string_view text,
+                      std::size_t offset, const Shaped& shaped) {
         const auto begin = layout.glyphs.begin() + line.first;
-        const auto end = begin + line.count;
-        for (auto run = begin; run != end;) {
-            auto run_end = run;
-            const bool rtl = run->rtl;
-            while (run_end != end && run_end->rtl == rtl) {
-                ++run_end;
-            }
-            if (rtl) {
-                std::reverse(run, run_end);
-            }
-            run = run_end;
+        std::vector<std::uint8_t> levels(line.count);
+        for (std::uint32_t g = 0; g < line.count; ++g) {
+            levels[g] = shaped.levels[layout.glyphs[line.first + g].cluster - offset];
         }
-        float pen = 0.0F;
-        for (auto glyph = begin; glyph != end; ++glyph) {
-            const float offset = glyph->x;
-            glyph->x = pen + offset;
+        bool trailing = true;
+        for (std::uint32_t g = line.count; g-- > 0;) {
+            const char32_t c = char_at(text, layout.glyphs[line.first + g].cluster - offset);
+            if (c == U'\t') {
+                levels[g] = shaped.base;
+                trailing = true;
+            } else if (trailing && (is_space(c) || is_isolate(c))) {
+                levels[g] = shaped.base;
+            } else {
+                trailing = false;
+            }
+        }
+        // The spaces at the line's end, which its width leaves out.
+        float hanging = 0.0F;
+        for (std::uint32_t g = line.count; g > 0 && layout.glyphs[line.first + g - 1].space; --g) {
+            hanging += layout.glyphs[line.first + g - 1].advance;
+        }
+        std::uint8_t highest = 0;
+        std::uint8_t lowest_odd = 0xFF;
+        for (const std::uint8_t level : levels) {
+            highest = std::max(highest, level);
+            if ((level % 2U) == 1U) {
+                lowest_odd = std::min(lowest_odd, level);
+            }
+        }
+        for (int level = highest; level >= lowest_odd && level > 0; --level) {
+            std::uint32_t g = 0;
+            while (g < line.count) {
+                if (levels[g] < level) {
+                    ++g;
+                    continue;
+                }
+                std::uint32_t end = g;
+                while (end < line.count && levels[end] >= level) {
+                    ++end;
+                }
+                std::reverse(begin + g, begin + end);
+                std::reverse(levels.begin() + g, levels.begin() + end);
+                g = end;
+            }
+        }
+        float pen = line.rtl ? -hanging : 0.0F;
+        for (auto glyph = begin; glyph != begin + line.count; ++glyph) {
+            const float x_offset = glyph->x;
+            glyph->x = pen + x_offset;
             pen += glyph->advance;
         }
     }
@@ -827,14 +1283,13 @@ Result<TextLayout> Fonts::layout(std::string_view text, const LayoutOptions& opt
         return make_error(ErrorCode::InvalidArgument,
                           "font sizes go from 1 to " + std::to_string(kMaxFontSize));
     }
-    auto face = impl_->face_for(options.font);
-    if (!face) {
-        return face.error();
+    auto chain = impl_->chain_for(options.font);
+    if (!chain) {
+        return chain.error();
     }
     TextLayout layout;
     layout.font = options.font;
     layout.font_size = options.font_size;
-    layout.metrics = impl_->metrics(*impl_->faces[face.value()], options.font_size);
     std::size_t start = 0;
     std::size_t i = 0;
     while (true) {
@@ -844,11 +1299,12 @@ Result<TextLayout> Fonts::layout(std::string_view text, const LayoutOptions& opt
             continue;
         }
         const std::string_view paragraph = text.substr(start, i - start);
-        std::vector<Glyph> glyphs = impl_->shape(face.value(), options.font_size, paragraph);
+        const Shaped& shaped = impl_->shape(chain.value(), options.font_size, paragraph, options);
         const std::size_t first_line = layout.lines.size();
-        Impl::break_lines(layout, paragraph, start, std::move(glyphs), options);
+        Impl::break_lines(layout, paragraph, start, shaped.glyphs, (shaped.base % 2U) == 1U,
+                          options);
         for (std::size_t l = first_line; l < layout.lines.size(); ++l) {
-            Impl::place(layout, layout.lines[l]);
+            Impl::place(layout, layout.lines[l], paragraph, start, shaped);
         }
         if (i >= text.size()) {
             break;
@@ -856,15 +1312,40 @@ Result<TextLayout> Fonts::layout(std::string_view text, const LayoutOptions& opt
         i += length;
         start = i;
     }
+    // Lines are as tall as the tallest font drawn in them, as Godot's.
+    layout.metrics = impl_->metrics(*impl_->faces[chain.value().faces[0]], options.font_size);
+    std::vector<std::uint32_t> used;
     for (const Glyph& glyph : layout.glyphs) {
         if (glyph.index == 0) {
             ++layout.missing;
+        }
+        const Face& face = *impl_->faces[glyph.face];
+        if (face.system) {
+            ++layout.system;
+        }
+        if (std::ranges::find(used, glyph.face) == used.end()) {
+            used.push_back(glyph.face);
+            const FontMetrics metrics =
+                impl_->metrics(*impl_->faces[glyph.face], options.font_size);
+            layout.metrics.ascent = std::max(layout.metrics.ascent, metrics.ascent);
+            layout.metrics.descent = std::max(layout.metrics.descent, metrics.descent);
         }
     }
     for (const Line& line : layout.lines) {
         layout.width = std::max(layout.width, line.width);
     }
     return layout;
+}
+
+void Fonts::set_system_fallback(bool on) {
+    if (impl_->system_fallback != on) {
+        impl_->system_fallback = on;
+        impl_->shaped.clear();
+    }
+}
+
+bool Fonts::system_fallback() const {
+    return impl_->system_fallback;
 }
 
 Result<FontMetrics> Fonts::metrics(std::string_view font, int size) {
@@ -889,13 +1370,40 @@ bool Fonts::trim(TextLayout& layout, std::size_t line_index, float width, Overru
     if (line.width <= width && !(force_ellipsis && add_dots)) {
         return false;
     }
+    // The line's glyphs from where its text starts: the left, or the right for a right-to-left
+    // line, which is cut at its left.
+    const auto at = [&](std::uint32_t g) -> Glyph& {
+        return layout.glyphs[line.first + (line.rtl ? line.count - 1 - g : g)];
+    };
     std::vector<Glyph> dots;
     float dots_width = 0.0F;
     if (add_dots && line.count > 0) {
-        const std::uint32_t face = layout.glyphs[line.first].face;
-        dots = impl_->shape(face, layout.font_size, ellipsis);
-        if (std::ranges::any_of(dots, [](const Glyph& g) { return g.index == 0; })) {
-            dots = impl_->shape(face, layout.font_size, "...");
+        // The ellipsis from the line's first font that has it, then the layout's fonts in
+        // order, as Godot looks for one; three dots where none has it.
+        std::vector<std::uint32_t> faces{at(0).face};
+        if (const auto chain = impl_->chain_for(layout.font); chain) {
+            for (const std::uint32_t face : chain.value().faces) {
+                if (std::ranges::find(faces, face) == faces.end()) {
+                    faces.push_back(face);
+                }
+            }
+        }
+        const auto has_all = [](const std::vector<Glyph>& glyphs) {
+            return std::ranges::none_of(glyphs, [](const Glyph& g) { return g.index == 0; });
+        };
+        for (const std::string_view mark : {ellipsis, std::string_view("...")}) {
+            for (const std::uint32_t face : faces) {
+                dots = impl_->shape_plain(face, layout.font_size, mark);
+                if (has_all(dots)) {
+                    break;
+                }
+            }
+            if (has_all(dots)) {
+                break;
+            }
+        }
+        if (!has_all(dots)) {
+            dots = impl_->shape_plain(faces.front(), layout.font_size, ellipsis);
         }
         for (const Glyph& dot : dots) {
             dots_width += dot.advance;
@@ -908,7 +1416,7 @@ bool Fonts::trim(TextLayout& layout, std::size_t line_index, float width, Overru
     std::uint32_t word_fit = 0;
     float pen = 0.0F;
     for (std::uint32_t g = 0; g < line.count; ++g) {
-        const Glyph& glyph = layout.glyphs[line.first + g];
+        const Glyph& glyph = at(g);
         if (!glyph.space && pen + glyph.advance > room) {
             break;
         }
@@ -919,24 +1427,50 @@ bool Fonts::trim(TextLayout& layout, std::size_t line_index, float width, Overru
         }
     }
     std::uint32_t keep = by_word && word_fit > 0 ? word_fit : fit;
-    while (keep > 0 && layout.glyphs[line.first + keep - 1].space) {
+    while (keep > 0 && at(keep - 1).space) {
         --keep;
     }
-    const auto begin = layout.glyphs.begin() + line.first;
-    const std::uint32_t end_byte =
-        keep < line.count ? layout.glyphs[line.first + keep].cluster : line.end;
-    layout.glyphs.erase(begin + keep, begin + line.count);
-    float x = 0.0F;
-    for (std::uint32_t g = 0; g < keep; ++g) {
-        x += layout.glyphs[line.first + g].advance;
+    // Where the text cut off starts.
+    std::uint32_t end_byte = line.end;
+    for (std::uint32_t g = keep; g < line.count; ++g) {
+        end_byte = std::min(end_byte, at(g).cluster);
     }
-    const float kept_width = x;
-    for (Glyph dot : dots) {
-        dot.x += x;
-        dot.cluster = end_byte;
-        x += dot.advance;
-        layout.glyphs.insert(layout.glyphs.begin() + line.first + keep, dot);
-        ++keep;
+    float kept_width = 0.0F;
+    for (std::uint32_t g = 0; g < keep; ++g) {
+        kept_width += at(g).advance;
+    }
+    const auto begin = layout.glyphs.begin() + line.first;
+    if (line.rtl) {
+        // The kept glyphs move left, after the ellipsis.
+        const std::uint32_t cut = line.count - keep;
+        float left = line.count > 0 ? begin->x : 0.0F;
+        for (std::uint32_t g = 0; g < cut; ++g) {
+            left += begin[g].advance;
+        }
+        layout.glyphs.erase(begin, begin + cut);
+        for (std::uint32_t g = 0; g < keep; ++g) {
+            layout.glyphs[line.first + g].x += dots_width - left;
+        }
+        float x = 0.0F;
+        std::uint32_t inserted = 0;
+        for (Glyph dot : dots) {
+            dot.x += x;
+            dot.cluster = end_byte;
+            x += dot.advance;
+            layout.glyphs.insert(layout.glyphs.begin() + line.first + inserted, dot);
+            ++inserted;
+        }
+        keep += inserted;
+    } else {
+        layout.glyphs.erase(begin + keep, begin + line.count);
+        float x = kept_width;
+        for (Glyph dot : dots) {
+            dot.x += x;
+            dot.cluster = end_byte;
+            x += dot.advance;
+            layout.glyphs.insert(layout.glyphs.begin() + line.first + keep, dot);
+            ++keep;
+        }
     }
     const std::uint32_t removed = line.count - keep;
     line.count = keep;
@@ -985,7 +1519,9 @@ FaceInfo Fonts::face_info(std::uint32_t face_id) const {
     const Face& face = *impl_->faces[face_id];
     return {.msdf = face.msdf(),
             .msdf_pixel_range = face.msdf() ? face.settings.msdf_pixel_range : 0,
-            .antialiasing = face.settings.antialiasing};
+            .antialiasing = face.settings.antialiasing,
+            .path = face.path,
+            .system = face.system};
 }
 
 const std::vector<AtlasPage>& Fonts::pages() const {

@@ -231,10 +231,14 @@ rendering on top.
 - [ ] The other controls people press and drag, as Godot's: `CheckBox`, `CheckButton`,
       `OptionButton` and `MenuButton` with popups, sliders, scroll bars and `ScrollContainer`,
       with tooltips and drag and drop
-- [ ] Text input in every language: `LineEdit` and `TextEdit`, IME composition for Japanese, Chinese and Korean with the
-      candidate window placed at the text field, on-screen keyboards on phones, fallback fonts
-      so no language shows missing-glyph boxes, and BiDi so right-to-left and left-to-right
-      text mix in one line
+- [x] Text in every language, as Godot's text server: BiDi (SheenBidi) so right-to-left and
+      left-to-right text mix in one line, right-to-left layout of controls
+      (`layout_direction`), `text_direction` and `language` on labels and buttons, fallback
+      fonts in `.font.json` files picked by language and script, and fonts installed on the
+      machine for the rest, counted in `system_glyphs`
+- [ ] Text input in every language: `LineEdit` and `TextEdit`, IME composition for Japanese,
+      Chinese and Korean with the candidate window placed at the text field, on-screen
+      keyboards on phones, and the clipboard
 - [ ] Audio on miniaudio
 - [ ] `frame.capture` (PNG) and replays (`replay.run`)
 - [ ] Time travel: `replay.seek` jumps a recorded run to any tick, where every query command
@@ -443,7 +447,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Input | Rebindable action maps over SDL3, injectable by agents | 5 | Done |
 | Refresh rates and frame pacing | V-Sync modes, frame cap, display refresh rates, variable refresh rate, rendering interpolated between fixed ticks | 5 | Done |
 | UI | Retained UI with flexbox layout and themes, defined in text | 5 | In part: controls that draw, containers, themes, style boxes, buttons and focus are done; check boxes, option buttons, sliders, scrolling and text fields in 5 |
-| Text and fonts | FreeType, HarfBuzz, MSDF fonts, BiDi, IME input, fallback fonts | 5 | In part: FreeType, HarfBuzz and MSDF fonts are done; BiDi, IME input and fallback fonts in 5 |
+| Text and fonts | FreeType, HarfBuzz, MSDF fonts, BiDi, IME input, fallback fonts | 5 | In part: FreeType, HarfBuzz, MSDF fonts, BiDi and fallback fonts are done; IME input in 5 |
 | Navigation | Recast and Detour, 2D and 3D, avoidance | 7 | Planned |
 | Asset import | glTF 2.0, FBX, OBJ, PNG, JPG, KTX2, WAV, OGG, MP3, and `.blend` through the artist's own Blender | 7 | Planned |
 | Profiling | Tracy, plus `perf.stats` over the command API | 5, 6 | In part: `perf.stats` reports frame pacing; Tracy and per-system timings are planned for 6 |

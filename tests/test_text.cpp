@@ -1,5 +1,6 @@
 #include "slash/asset/assets.hpp"
 #include "slash/core/json.hpp"
+#include "slash/platform/fonts.hpp"
 #include "slash/text/text.hpp"
 
 #include <doctest/doctest.h>
@@ -158,8 +159,9 @@ TEST_CASE("lines break between ideographs but not before closing marks") {
     MemoryFiles files;
     asset::Assets assets(files.source());
     text::Fonts fonts(assets);
-    // The default font has no Japanese glyphs, so these shape as missing-glyph boxes of one
-    // width, which still break as Japanese text does.
+    // The default font has no Japanese glyphs and installed fonts are left out, so these shape
+    // as missing-glyph boxes of one width, which still break as Japanese text does.
+    fonts.set_system_fallback(false);
     const std::string japanese = "日本語。。";
     const text::TextLayout one = lay_out(fonts, japanese);
     CHECK(one.missing == 5);
@@ -320,4 +322,233 @@ TEST_CASE("text helpers upper-case and count characters") {
     CHECK(text::first_characters("héllo", 2) == "hé");
     CHECK(text::first_characters("hi", 5) == "hi");
     CHECK(text::character_index("héllo", 3) == 2);
+}
+
+namespace {
+
+std::string bytes_of(const std::vector<std::uint8_t>& bytes) {
+    return {reinterpret_cast<const char*>(bytes.data()), bytes.size()};
+}
+
+// Each glyph's byte in the text, in the order the glyphs draw.
+std::vector<std::uint32_t> clusters(const text::TextLayout& layout, std::size_t line = 0) {
+    std::vector<std::uint32_t> out;
+    const text::Line& shown = layout.lines[line];
+    for (std::uint32_t g = 0; g < shown.count; ++g) {
+        out.push_back(layout.glyphs[shown.first + g].cluster);
+    }
+    return out;
+}
+
+constexpr std::u32string_view kHebrew = U"אבגדהוזחטיכלמנסעפצקרשת";
+
+} // namespace
+
+TEST_CASE("box fonts are placeholder fonts made in code") {
+    MemoryFiles files;
+    files.write("boxes.ttf", bytes_of(text::box_font(U"ab ")));
+    asset::Assets assets(files.source());
+    text::add_asset_types(assets);
+    text::Fonts fonts(assets);
+    fonts.set_system_fallback(false);
+    // 600 units of 1000 at 20 pixels: 12 pixels a box, 5 a space; the hollow box for the rest.
+    const text::TextLayout layout = lay_out(fonts, "ab ac", {.font = "boxes.ttf", .font_size = 20});
+    CHECK(layout.width == 12.0F * 4 + 5.0F);
+    CHECK(layout.missing == 1);
+    CHECK(layout.metrics.ascent == 16.0F);
+    CHECK(layout.metrics.descent == 4.0F);
+    const auto image = fonts.glyph(layout.glyphs[0].face, layout.glyphs[0].index, 20);
+    REQUIRE(image.has_value());
+    CHECK(image->width == 10 + 2); // a box 500 units wide, with a clear border
+    CHECK(fonts.face_info(layout.glyphs[0].face).path == "boxes.ttf");
+}
+
+TEST_CASE("text in both directions is ordered as the Unicode Bidirectional Algorithm says") {
+    MemoryFiles files;
+    files.write("roboto.ttf", default_font_bytes());
+    files.write("hebrew.ttf", bytes_of(text::box_font(kHebrew, "Hebrew Boxes")));
+    files.write("ui.font.json",
+                R"({"format": 1, "font": "roboto.ttf", "fallbacks": ["hebrew.ttf"]})");
+    asset::Assets assets(files.source());
+    text::add_asset_types(assets);
+    text::Fonts fonts(assets);
+    fonts.set_system_fallback(false);
+    const text::LayoutOptions ui{.font = "ui.font.json"};
+
+    // A Hebrew word in English text: its letters draw right to left, from the fallback font.
+    // Bytes: "abc " 0-3, א 4, ב 6, ג 8, " " 10, "def" 11-13.
+    const text::TextLayout mixed = lay_out(fonts, "abc אבג def", ui);
+    CHECK(clusters(mixed) == std::vector<std::uint32_t>{0, 1, 2, 3, 8, 6, 4, 10, 11, 12, 13});
+    CHECK_FALSE(mixed.lines[0].rtl);
+    CHECK(mixed.missing == 0);
+    CHECK(fonts.face_info(mixed.glyphs[4].face).path == "hebrew.ttf");
+    CHECK(fonts.face_info(mixed.glyphs[0].face).path == "roboto.ttf");
+    for (std::size_t g = 1; g < mixed.glyphs.size(); ++g) {
+        CHECK(mixed.glyphs[g].x > mixed.glyphs[g - 1].x);
+    }
+
+    // A Hebrew paragraph with an English word: the paragraph goes right to left, the word left
+    // to right. Bytes: א 0, ב 2, " " 4, "abc" 5-7, " " 8, ג 9, ד 11.
+    const text::TextLayout hebrew = lay_out(fonts, "אב abc גד", ui);
+    CHECK(clusters(hebrew) == std::vector<std::uint32_t>{11, 9, 8, 5, 6, 7, 4, 2, 0});
+    CHECK(hebrew.lines[0].rtl);
+
+    // Direction sets the paragraph's direction; English in a right-to-left paragraph still reads
+    // left to right, but the line is aligned and trimmed from the right.
+    const text::TextLayout forced =
+        lay_out(fonts, "abc", {.font = "ui.font.json", .direction = text::Direction::Rtl});
+    CHECK(forced.lines[0].rtl);
+    CHECK(clusters(forced) == std::vector<std::uint32_t>{0, 1, 2});
+    const text::TextLayout ltr =
+        lay_out(fonts, "אב", {.font = "ui.font.json", .direction = text::Direction::Ltr});
+    CHECK_FALSE(ltr.lines[0].rtl);
+    CHECK(clusters(ltr) == std::vector<std::uint32_t>{2, 0});
+
+    // Each paragraph takes its own direction.
+    const text::TextLayout two = lay_out(fonts, "abc\nאב", ui);
+    CHECK_FALSE(two.lines[0].rtl);
+    CHECK(two.lines[1].rtl);
+
+    // A right-to-left line's trailing spaces hang off its left, so its text starts at 0.
+    const text::TextLayout spaced = lay_out(fonts, "אב  ", ui);
+    CHECK(clusters(spaced) == std::vector<std::uint32_t>{5, 4, 2, 0});
+    CHECK(spaced.glyphs[2].x == 0.0F);
+    CHECK(spaced.glyphs[0].x < 0.0F);
+    CHECK(spaced.lines[0].width == 20.0F);
+
+    // Wrapped, each line of a right-to-left paragraph goes right to left.
+    const text::TextLayout wrapped =
+        lay_out(fonts, "אבג דהו",
+                {.font = "ui.font.json", .autowrap = text::Autowrap::Word, .width = 40.0F});
+    REQUIRE(wrapped.lines.size() == 2);
+    CHECK(lines_of(wrapped, "אבג דהו") == std::vector<std::string>{"אבג ", "דהו"});
+    CHECK(wrapped.lines[0].rtl);
+    CHECK(wrapped.lines[1].rtl);
+    CHECK(clusters(wrapped, 1) == std::vector<std::uint32_t>{11, 9, 7});
+}
+
+TEST_CASE("right-to-left lines are trimmed at their left end") {
+    MemoryFiles files;
+    files.write("roboto.ttf", default_font_bytes());
+    files.write("hebrew.ttf", bytes_of(text::box_font(kHebrew)));
+    files.write("ui.font.json",
+                R"({"format": 1, "font": "roboto.ttf", "fallbacks": ["hebrew.ttf"]})");
+    asset::Assets assets(files.source());
+    text::add_asset_types(assets);
+    text::Fonts fonts(assets);
+    fonts.set_system_fallback(false);
+    // Six letters of 10 pixels; 35 pixels keep two and the ellipsis on the left.
+    text::TextLayout layout = lay_out(fonts, "אבגדהו", {.font = "ui.font.json"});
+    REQUIRE(layout.width == 60.0F);
+    const float ellipsis = lay_out(fonts, "…").width;
+    CHECK(fonts.trim(layout, 0, 20.0F + ellipsis, text::Overrun::TrimEllipsis));
+    const text::Line& line = layout.lines[0];
+    CHECK(line.count == 3);
+    CHECK(clusters(layout) == std::vector<std::uint32_t>{4, 2, 0});
+    CHECK(layout.glyphs[line.first].x == 0.0F);
+    CHECK(line.width <= 20.0F + ellipsis);
+}
+
+TEST_CASE("fallback fonts are tried in order, those for the text's language and script first") {
+    MemoryFiles files;
+    files.write("roboto.ttf", default_font_bytes());
+    files.write("first.ttf", bytes_of(text::box_font(kHebrew, "First")));
+    files.write("second.ttf", bytes_of(text::box_font(kHebrew, "Second")));
+    files.write("not_hebrew.font.json",
+                R"({"format": 1, "font": "first.ttf", "language_support": {"he": false}})");
+    files.write("not_hebrew_script.font.json",
+                R"({"format": 1, "font": "first.ttf", "script_support": {"Hebr": false}})");
+    files.write("plain.font.json", R"({"format": 1, "font": "roboto.ttf",
+                                       "fallbacks": ["first.ttf", "second.ttf"]})");
+    files.write("by_language.font.json", R"({"format": 1, "font": "roboto.ttf",
+        "fallbacks": ["not_hebrew.font.json", "second.ttf"]})");
+    files.write("by_script.font.json", R"({"format": 1, "font": "roboto.ttf",
+        "fallbacks": ["not_hebrew_script.font.json", "second.ttf"]})");
+    files.write("loop.font.json",
+                R"({"format": 1, "font": "roboto.ttf", "fallbacks": ["loop.font.json"]})");
+    files.write("broken.font.json",
+                R"({"format": 1, "font": "roboto.ttf", "fallbacks": ["none.ttf"]})");
+    asset::Assets assets(files.source());
+    text::add_asset_types(assets);
+    text::Fonts fonts(assets);
+    fonts.set_system_fallback(false);
+    const auto face_of = [&](std::string_view font, std::string language = "") {
+        const text::TextLayout layout =
+            lay_out(fonts, "א", {.font = std::string(font), .language = std::move(language)});
+        return fonts.face_info(layout.glyphs[0].face).path;
+    };
+    CHECK(face_of("plain.font.json") == "first.ttf");
+    // A font that says it isn't for Hebrew is tried after those that don't say, for Hebrew text.
+    CHECK(face_of("by_language.font.json") == "first.ttf");
+    CHECK(face_of("by_language.font.json", "he") == "second.ttf");
+    CHECK(face_of("by_language.font.json", "he-IL") == "second.ttf");
+    // The script is the text's own.
+    CHECK(face_of("by_script.font.json") == "second.ttf");
+    // A fallback that names its own file again is used once.
+    CHECK(lay_out(fonts, "a", {.font = "loop.font.json"}).missing == 0);
+    auto broken = fonts.layout("a", {.font = "broken.font.json"});
+    REQUIRE_FALSE(broken.ok());
+    CHECK(broken.error().message.starts_with("fallback none.ttf of broken.font.json: "));
+}
+
+TEST_CASE("fonts installed on the machine draw what a game's fonts can't") {
+    MemoryFiles files;
+    asset::Assets assets(files.source());
+    text::Fonts fonts(assets);
+    const std::string hebrew = "שלום";
+    if (slash::platform::system_fonts_for("ש", "he", "Hebr").empty()) {
+        // Nothing installed has Hebrew (or the platform lists no fonts, as on the web).
+        CHECK(lay_out(fonts, hebrew).missing == 4);
+        return;
+    }
+    const text::TextLayout layout = lay_out(fonts, hebrew, {.language = "he"});
+    CHECK(layout.missing == 0);
+    CHECK(layout.system == 4);
+    const text::FaceInfo info = fonts.face_info(layout.glyphs[0].face);
+    CHECK(info.system);
+    CHECK_FALSE(info.path.empty());
+    CHECK(layout.lines[0].rtl);
+    // Turned off, they aren't used.
+    fonts.set_system_fallback(false);
+    CHECK_FALSE(fonts.system_fallback());
+    const text::TextLayout without = lay_out(fonts, hebrew);
+    CHECK(without.missing == 4);
+    CHECK(without.system == 0);
+}
+
+TEST_CASE(".font.json fallbacks and support lists are checked") {
+    auto parsed =
+        json::parse(R"({"format": 1, "font": "a.ttf", "fallbacks": ["b.otf", "c.font.json"],
+                                  "allow_system_fallback": false,
+                                  "language_support": {"ja": true, "zh-Hant": false, "*": false},
+                                  "script_support": {"Hani": true}})");
+    REQUIRE(parsed.ok());
+    auto settings = text::parse_font(parsed.value());
+    REQUIRE(settings.ok());
+    CHECK(settings.value().fallbacks == std::vector<std::string>{"b.otf", "c.font.json"});
+    CHECK_FALSE(settings.value().allow_system_fallback);
+    CHECK(settings.value().language_support.at("zh-Hant") == false);
+    CHECK(settings.value().script_support.at("Hani"));
+
+    auto bad = json::parse(R"({"format": 1, "font": "a.ttf", "fallbacks": ["b.woff", "../c.ttf"],
+                               "language_support": {"japanese": true},
+                               "script_support": {"hani": true}})");
+    REQUIRE(bad.ok());
+    std::vector<std::string> messages;
+    for (const json::ValidationError& error : text::validate_font(bad.value())) {
+        messages.push_back(error.path + ": " + error.message);
+    }
+    CHECK(messages ==
+          std::vector<std::string>{
+              "/fallbacks/0: expected a .ttf, .otf or .font.json file",
+              "/fallbacks/1: expected a path inside the project folder, separated by '/', with "
+              "no \".\" or \"..\" parts",
+              "/language_support/japanese: expected a BCP 47 language code such as \"ja\" or "
+              "\"zh-Hant\", or \"*\"",
+              "/script_support/hani: expected an ISO 15924 script code such as \"Latn\" or "
+              "\"Hani\", or \"*\""});
+    CHECK(text::is_language_code("sr-Latn-RS"));
+    CHECK_FALSE(text::is_language_code("x"));
+    CHECK(text::is_script_code("Arab"));
+    CHECK_FALSE(text::is_script_code("ARAB"));
 }

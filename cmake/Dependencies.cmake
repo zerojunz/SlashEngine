@@ -111,6 +111,19 @@ if(harfbuzz_ADDED)
     endif()
 endif()
 
+# The Unicode Bidirectional Algorithm, so right-to-left and left-to-right text mix in one line, and
+# script runs (UAX #24) for shaping. Its single-file build, with no text editing API.
+slash_add_dependency(SheenBidi DOWNLOAD_ONLY TRUE)
+if(SheenBidi_ADDED)
+    add_library(slash_sheenbidi STATIC ${SheenBidi_SOURCE_DIR}/Source/SheenBidi.c)
+    target_include_directories(slash_sheenbidi SYSTEM PUBLIC ${SheenBidi_SOURCE_DIR}/Headers)
+    target_include_directories(slash_sheenbidi PRIVATE ${SheenBidi_SOURCE_DIR}/Source)
+    target_compile_definitions(slash_sheenbidi PRIVATE SB_CONFIG_UNITY)
+    if(MSVC)
+        target_compile_options(slash_sheenbidi PRIVATE /utf-8)
+    endif()
+endif()
+
 # msdfgen's core only: the shape and distance field code, with no PNG, SVG or font import.
 slash_add_dependency(msdfgen DOWNLOAD_ONLY TRUE)
 if(msdfgen_ADDED)

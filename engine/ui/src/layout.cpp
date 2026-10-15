@@ -212,12 +212,25 @@ struct LabelWork {
     float line_height = 0.0F;
     std::optional<float> shaped_width; // the width it was last wrapped to; nullopt for none
     bool shaped = false;
+    text::Direction direction = text::Direction::Auto;
+    std::string language;
     LabelText out;
 };
 
-LabelWork start_label(const world::Label& label, const Resolver& theme) {
+// A Label's or Button's text_direction as a direction for text::Fonts: inherited takes the
+// control's layout direction.
+text::Direction text_direction(std::string_view name, bool rtl) {
+    if (name == "inherited") {
+        return rtl ? text::Direction::Rtl : text::Direction::Ltr;
+    }
+    return text::parse_direction(name).value_or(text::Direction::Auto);
+}
+
+LabelWork start_label(const world::Label& label, const Resolver& theme, bool rtl) {
     LabelWork work;
     work.label = &label;
+    work.direction = text_direction(label.text_direction, rtl);
+    work.language = label.language;
     work.autowrap = text::parse_autowrap(label.autowrap_mode).value_or(text::Autowrap::Off);
     work.overrun =
         text::parse_overrun(label.text_overrun_behavior).value_or(text::Overrun::NoTrimming);
@@ -266,7 +279,9 @@ void shape(text::Fonts& fonts, LabelWork& work, std::optional<float> width) {
     text::LayoutOptions options{.font = work.out.font,
                                 .font_size = work.out.font_size,
                                 .autowrap = wraps ? work.autowrap : text::Autowrap::Off,
-                                .width = wrap.value_or(0.0F)};
+                                .width = wrap.value_or(0.0F),
+                                .direction = work.direction,
+                                .language = work.language};
     auto shaped = fonts.layout(work.out.source, options);
     if (!shaped && !options.font.empty()) {
         work.out.error = shaped.error().message;
@@ -340,8 +355,9 @@ Vec2 label_minimum(const LabelWork& work) {
 }
 
 // Cuts, stretches and places a label's lines in its rect, as Label's _shape_internal,
-// get_layout_data and NOTIFICATION_DRAW do.
-void finish_label(text::Fonts& fonts, LabelWork& work, Vec2 size) {
+// get_layout_data and NOTIFICATION_DRAW do; rtl is the control's layout direction, which swaps
+// left and right alignment.
+void finish_label(text::Fonts& fonts, LabelWork& work, Vec2 size, bool rtl) {
     const world::Label& label = *work.label;
     LabelText& out = work.out;
     text::TextLayout& layout = out.text;
@@ -409,22 +425,22 @@ void finish_label(text::Fonts& fonts, LabelWork& work, Vec2 size) {
         float stretch = 0.0F;
         const bool wrapped_last = line.paragraph_end && l > 0 && !layout.lines[l - 1].paragraph_end;
         if (fill && !wrapped_last && line_width < size.x) {
-            std::uint32_t end = line.count;
-            while (end > 0 && layout.glyphs[line.first + end - 1].space) {
-                --end;
-            }
-            const auto spaces = std::count_if(layout.glyphs.begin() + line.first,
-                                              layout.glyphs.begin() + line.first + end,
-                                              [](const text::Glyph& glyph) { return glyph.space; });
+            const auto spaces = std::count_if(
+                layout.glyphs.begin() + line.first, layout.glyphs.begin() + line.first + line.count,
+                [&](const text::Glyph& glyph) { return text::stretches(line, glyph); });
             if (spaces > 0) {
                 stretch = (size.x - line_width) / static_cast<float>(spaces);
                 line_width = size.x;
             }
         }
+        // A wrapped right-to-left paragraph's lines that fill doesn't stretch start at the right.
+        const std::string& align = label.horizontal_alignment;
+        const bool right = align == "fill" ? line.rtl && work.autowrap != text::Autowrap::Off
+                                           : align == (rtl ? "left" : "right");
         float x = 0.0F;
-        if (label.horizontal_alignment == "center") {
+        if (align == "center") {
             x = std::trunc(std::trunc(size.x - line_width) / 2.0F);
-        } else if (label.horizontal_alignment == "right") {
+        } else if (right) {
             x = std::trunc(size.x - line_width);
         }
         if (line_width > size.x + 0.01F) {
@@ -449,6 +465,7 @@ struct ButtonWork {
     StyleBox style; // the state's style box
     StyleBox focus;
     bool focused = false; // it has focus and shows it
+    bool rtl = false;     // laid out right to left, which swaps left and right alignment
     // The largest of its style boxes' minimum sizes and margins, for align_to_largest_stylebox.
     Vec2 largest;
     std::array<float, 4> largest_margins{};
@@ -463,17 +480,32 @@ struct ButtonWork {
 // A Button's theme items for its state, as Button::_update_theme_item_cache,
 // _get_current_stylebox and the colors its NOTIFICATION_DRAW picks.
 ButtonWork start_button(const world::Button& button, const Resolver& theme, DrawMode mode,
-                        bool focused) {
+                        bool focused, bool rtl) {
     ButtonWork work;
     work.button = &button;
     work.focused = focused;
-    const StyleBox normal = theme.style("normal");
-    const StyleBox hover = theme.style("hover");
-    const StyleBox pressed = theme.style("pressed");
-    const StyleBox disabled = theme.style("disabled");
+    work.rtl = rtl;
+    // Laid out right to left, a state's "_mirrored" style box when a theme or override has one.
+    const auto state_style = [&](const std::string& name, std::string* from = nullptr) {
+        if (rtl) {
+            std::string mirrored_from;
+            StyleBox mirrored = theme.style(name + "_mirrored", &mirrored_from);
+            if (mirrored_from != "default") {
+                if (from != nullptr) {
+                    *from = mirrored_from;
+                }
+                return mirrored;
+            }
+        }
+        return theme.style(name, from);
+    };
+    const StyleBox normal = state_style("normal");
+    const StyleBox hover = state_style("hover");
+    const StyleBox pressed = state_style("pressed");
+    const StyleBox disabled = state_style("disabled");
     // hover_pressed only when a theme or override has one; pressed stands in for it.
     std::string from;
-    const StyleBox hover_pressed_style = theme.style("hover_pressed", &from);
+    const StyleBox hover_pressed_style = state_style("hover_pressed", &from);
     const std::optional<StyleBox> hover_pressed =
         from != "default" ? std::optional(hover_pressed_style) : std::nullopt;
     std::string_view color = "font_color";
@@ -527,6 +559,8 @@ ButtonWork start_button(const world::Button& button, const Resolver& theme, Draw
     work.icon_color = theme.color(std::string(icon));
 
     LabelWork& text = work.text;
+    text.direction = text_direction(button.text_direction, rtl);
+    text.language = button.language;
     text.autowrap = text::parse_autowrap(button.autowrap_mode).value_or(text::Autowrap::Off);
     text.overrun =
         text::parse_overrun(button.text_overrun_behavior).value_or(text::Overrun::NoTrimming);
@@ -727,6 +761,7 @@ struct Node {
     std::vector<std::string_view> classes;
     Kind kind = Kind::None;
     Depends depends = Depends::None;
+    bool rtl = false; // it lays out right to left
 
     // Theme items and what doesn't change between passes.
     const world::BoxContainer* box = nullptr;
@@ -999,7 +1034,7 @@ struct Builder {
             start_bar(node, *bar, resolver("ProgressBar"));
         }
         if (const auto* label = ecs.try_get<world::Label>(entity); label != nullptr) {
-            node.label = start_label(*label, resolver("Label"));
+            node.label = start_label(*label, resolver("Label"), node.rtl);
             if (node.label->autowrap == text::Autowrap::Off) {
                 shape(fonts, *node.label, std::nullopt);
             } else {
@@ -1048,7 +1083,7 @@ struct Builder {
 
     void start_button_node(Node& node, const world::Button& button, const Resolver& theme) {
         const DrawMode mode = draw_mode(world, node.entity);
-        node.button = start_button(button, theme, mode, shows_focus(world, node.entity));
+        node.button = start_button(button, theme, mode, shows_focus(world, node.entity), node.rtl);
         node.button_state = ButtonState{
             .mode = mode, .click_margin = static_cast<float>(theme.constant("click_margin"))};
         ButtonWork& work = *node.button;
@@ -1313,18 +1348,19 @@ struct Builder {
     // ---- Containers ----
 
     // Fits a child in a rect, as Container::fit_child_in_rect: the whole rect on an axis it
-    // fills, else its minimum size at the start, center or end.
-    void fit(std::size_t kid, Rect rect) {
+    // fills, else its minimum size at the start, center or end; across, the start is the right
+    // in a container laid out right to left.
+    void fit(std::size_t kid, Rect rect, bool rtl) {
         Node& child = nodes[kid];
         const Flags h = flags_of(child.control->size_flags_horizontal);
         const Flags v = flags_of(child.control->size_flags_vertical);
         Rect r = rect;
         if (!h.fill) {
             r.size.x = child.minimum.x;
-            if (h.shrink == 2) {
-                r.position.x += rect.size.x - r.size.x;
-            } else if (h.shrink == 1) {
+            if (h.shrink == 1) {
                 r.position.x += std::floor((rect.size.x - r.size.x) / 2.0F);
+            } else if ((h.shrink == 2) != rtl) {
+                r.position.x += rect.size.x - r.size.x;
             }
         }
         if (!v.fill) {
@@ -1415,12 +1451,18 @@ struct Builder {
             final_stretch_diff -= item.final_size - item.min_size;
         }
         final_stretch_diff = std::max(final_stretch_diff, 0);
+        // Laid out right to left, a row starts at the right: its children go last first and
+        // begin and end alignment swap.
+        const bool reversed = node.rtl && !vertical;
         int ofs = 0;
         const int alignment = alignment_of(node.box->alignment);
         if (alignment == 1) {
             ofs = final_stretch_diff / 2;
-        } else if (alignment == 2) {
+        } else if ((alignment == 2) != reversed) {
             ofs = final_stretch_diff;
+        }
+        if (reversed) {
+            std::ranges::reverse(items);
         }
         for (int i = 0; i < count; ++i) {
             const Item& item = items[static_cast<std::size_t>(i)];
@@ -1437,7 +1479,8 @@ struct Builder {
             fit(item.kid,
                 vertical
                     ? Rect{{0.0F, static_cast<float>(from)}, {static_cast<float>(width), length}}
-                    : Rect{{static_cast<float>(from), 0.0F}, {length, static_cast<float>(height)}});
+                    : Rect{{static_cast<float>(from), 0.0F}, {length, static_cast<float>(height)}},
+                node.rtl);
             ofs = to;
         }
     }
@@ -1572,8 +1615,12 @@ struct Builder {
             if (row_expanded.contains(row) && row < row_remaining_pixel_index) {
                 ++h;
             }
-            fit(kid, {{static_cast<float>(col_ofs), static_cast<float>(row_ofs)},
-                      {static_cast<float>(w), static_cast<float>(h)}});
+            // Laid out right to left, columns go from the right.
+            const int x = node.rtl ? static_cast<int>(size.x) - col_ofs - w : col_ofs;
+            fit(kid,
+                {{static_cast<float>(x), static_cast<float>(row_ofs)},
+                 {static_cast<float>(w), static_cast<float>(h)}},
+                node.rtl);
             col_ofs += w + node.h_separation;
         }
     }
@@ -1674,14 +1721,14 @@ struct Builder {
             const Vec2 extent{static_cast<float>(vertical ? cross : main),
                               static_cast<float>(vertical ? main : cross)};
             Rect rect{at, extent};
-            if (node.flow->reverse_fill) {
-                if (vertical) {
-                    rect.position.x = size.x - rect.position.x - rect.size.x;
-                } else {
-                    rect.position.y = size.y - rect.position.y - rect.size.y;
-                }
+            if (node.flow->reverse_fill && !vertical) {
+                rect.position.y = size.y - rect.position.y - rect.size.y;
             }
-            fit(kids[i], rect);
+            // Laid out right to left, rows start at the right and columns fill from it.
+            if (vertical ? node.rtl != node.flow->reverse_fill : node.rtl) {
+                rect.position.x = size.x - rect.position.x - rect.size.x;
+            }
+            fit(kids[i], rect, node.rtl);
             ofs_main += main + main_sep;
             ++in_line;
         }
@@ -1704,9 +1751,11 @@ struct Builder {
             const auto h = static_cast<float>(static_cast<int>(size.y) - node.margins[kTop] -
                                               node.margins[kBottom]);
             for (const std::size_t kid : sorted(node)) {
-                fit(kid, {{static_cast<float>(node.margins[kLeft]),
-                           static_cast<float>(node.margins[kTop])},
-                          {w, h}});
+                fit(kid,
+                    {{static_cast<float>(node.margins[kLeft]),
+                      static_cast<float>(node.margins[kTop])},
+                     {w, h}},
+                    node.rtl);
             }
             return;
         }
@@ -1717,7 +1766,7 @@ struct Builder {
                                     ? Vec2{std::floor(-m.x * 0.5F), std::floor(-m.y * 0.5F)}
                                     : Vec2{std::floor((size.x - m.x) / 2.0F),
                                            std::floor((size.y - m.y) / 2.0F)};
-                fit(kid, {at, m});
+                fit(kid, {at, m}, node.rtl);
             }
             return;
         case Kind::Flow:
@@ -1728,7 +1777,7 @@ struct Builder {
             const StyleBox& style = *node.container_panel;
             const Vec2 inner{size.x - style.minimum_size().x, size.y - style.minimum_size().y};
             for (const std::size_t kid : sorted(node)) {
-                fit(kid, {{style.margin(kLeft), style.margin(kTop)}, inner});
+                fit(kid, {{style.margin(kLeft), style.margin(kTop)}, inner}, node.rtl);
             }
             return;
         }
@@ -1746,11 +1795,20 @@ struct Builder {
         float width = 0.0F;
         float height = 0.0F;
         Vec2 minimum = node.minimum;
+        // Laid out right to left, a control is placed as if the parent were mirrored, then
+        // mirrored back: anchors and offsets count from the right, and it grows the other way.
+        const auto mirror = [&] {
+            if (node.rtl) {
+                left = area.x - left - width;
+            }
+        };
         if (node.assigned) {
+            // Its container gave it a rect where it draws.
             left = node.assigned->position.x;
             top = node.assigned->position.y;
             width = node.assigned->size.x;
             height = node.assigned->size.y;
+            mirror();
             grow(left, width, minimum.x, control.grow_horizontal);
             grow(top, height, minimum.y, control.grow_vertical);
         } else {
@@ -1772,6 +1830,7 @@ struct Builder {
                 grow(top, height, minimum.y, control.grow_vertical);
             }
         }
+        mirror();
         Placed& placed = node.placed;
         placed.entity = node.entity;
         placed.parent = parent != nullptr ? parent->entity : entt::null;
@@ -1870,9 +1929,10 @@ struct Builder {
         const float margins = std::trunc(across ? fill_min.x : fill_min.y);
         const auto p = static_cast<int>(std::round(r * (length - margins)));
         if (p > 0) {
-            const float start = bar.fill_mode == "end_to_begin" || bar.fill_mode == "bottom_to_top"
-                                    ? std::round((1.0F - r) * (length - margins))
-                                    : 0.0F;
+            // Laid out right to left, begin_to_end fills from the right.
+            const bool from_end = bar.fill_mode == (node.rtl ? "begin_to_end" : "end_to_begin") ||
+                                  bar.fill_mode == "bottom_to_top";
+            const float start = from_end ? std::round((1.0F - r) * (length - margins)) : 0.0F;
             const float filled = static_cast<float>(p) + (across ? fill_min.x : fill_min.y);
             boxes.push_back({.style = node.bar_fill,
                              .position = across ? Vec2{start, 0.0F} : Vec2{0.0F, start},
@@ -1985,7 +2045,7 @@ struct Builder {
             if (work.autowrap != text::Autowrap::Off) {
                 shape(fonts, work, size.x);
             }
-            finish_label(fonts, work, size);
+            finish_label(fonts, work, size, node.rtl);
             work.out.clip = work.label->clip_text;
             out.labels.emplace(node.entity, std::move(work.out));
         }
@@ -2010,13 +2070,22 @@ struct Builder {
         Vec2 room{size.x - m[kLeft] - m[kRight], size.y - m[kTop] - m[kBottom]};
         const Vec2 element = room;
         const bool center_v = button.vertical_icon_alignment == "center";
+        // Laid out right to left, left and right swap for the icon and the text.
+        const auto mirrored = [&](const std::string& alignment) -> std::string_view {
+            if (work.rtl && alignment != "center") {
+                return alignment == "left" ? "right" : "left";
+            }
+            return alignment;
+        };
+        const std::string_view icon_alignment = mirrored(button.icon_alignment);
+        const std::string_view alignment = mirrored(button.alignment);
         if (work.icon) {
             const Vec2 icon = button_icon_size(work, element);
             if (icon.x > 0.0F) {
                 Vec2 at;
-                if (button.icon_alignment == "center") {
+                if (icon_alignment == "center") {
                     at.x = ((element.x - icon.x) / 2.0F) + m[kLeft];
-                } else if (button.icon_alignment == "right") {
+                } else if (icon_alignment == "right") {
                     at.x = size.x - m[kRight] - icon.x;
                 } else {
                     at.x = m[kLeft];
@@ -2038,7 +2107,7 @@ struct Builder {
                 boxes.push_back(std::move(box));
             }
             if (!button.text.empty()) {
-                if (button.icon_alignment != "center") {
+                if (icon_alignment != "center") {
                     room.x -= icon.x + h_separation;
                 }
                 if (!center_v) {
@@ -2079,11 +2148,11 @@ struct Builder {
             }
         }
         Vec2 at;
-        if (button.alignment == "center") {
+        if (alignment == "center") {
             at.x = (room.x - width) / 2.0F;
         }
         at.x += m[kLeft];
-        if (work.icon && button.icon_alignment == "left") {
+        if (work.icon && icon_alignment == "left") {
             at.x += element.x - room.x;
         }
         at.y = ((room.y - text_size.y) / 2.0F) + m[kTop];
@@ -2093,9 +2162,9 @@ struct Builder {
         float y = at.y;
         for (std::size_t l = 0; l < layout.lines.size(); ++l) {
             float x = 0.0F;
-            if (button.alignment == "center" && widths[l] <= width) {
+            if (alignment == "center" && widths[l] <= width) {
                 x = std::floor((width - widths[l]) / 2.0F);
-            } else if (button.alignment == "right") {
+            } else if (alignment == "right") {
                 x = width - widths[l];
             }
             y += layout.metrics.ascent;
@@ -2248,6 +2317,10 @@ void build(Builder& builder, const std::vector<entt::entity>& controls) {
             }
         }
         builder.nodes[index].themes = themes;
+        const std::string& direction = node.control->layout_direction;
+        builder.nodes[index].rtl = direction == "inherited"
+                                       ? parent != kNone && builder.nodes[parent].rtl
+                                       : direction == "rtl";
         if (parent != kNone) {
             builder.nodes[parent].kids.push_back(index);
         }

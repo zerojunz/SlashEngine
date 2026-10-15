@@ -1,0 +1,8 @@
+{
+  "font": "fonts/japanese.ttf",
+  "format": 1,
+  "language_support": {
+    "*": false,
+    "ja": true
+  }
+}

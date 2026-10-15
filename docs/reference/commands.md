@@ -680,8 +680,11 @@ the sign on a smaller window:
 - A label has `lines`, the lines it shows, without trailing spaces, those cut ending with the
   ellipsis. A button with text has its lines too, and a progress bar showing its percentage has
   it as its one line, e.g. `["72%"]`. `overflow` is `true` when a line is wider than the rect or
-  lines don't fit its height. `missing_glyphs` counts characters its font doesn't have, and `font_error` says why
-  its font didn't load, in which case the built-in font drew it.
+  lines don't fit its height. `rtl` is `true` when its lines go right to left (a list of one
+  `true` or `false` per line when only some do). `missing_glyphs` counts characters no font has,
+  `system_glyphs` characters drawn from fonts installed on the machine (other machines may lack
+  them), and `font_error` says why its font didn't load, in which case the built-in font drew
+  it.
 - A `Button` or `TextureButton` has `draw_mode`: `"normal"`, `"hover"`, `"pressed"`,
   `"hover_pressed"` or `"disabled"`, as Godot's. A toggle button that is on draws `"pressed"`,
   and `"hover_pressed"` while hovered; a button its shortcut just pressed draws `"hover_pressed"`
@@ -798,6 +801,8 @@ before setting it.
 | `font_size` | integer | `16` | In pixels, 1 to 1024 |
 | `autowrap_mode` | `"off"`, `"arbitrary"`, `"word"` or `"word_smart"` | `"off"` | Where lines wrap, as `Label`'s |
 | `width` | number | | The width to wrap to; required with `autowrap_mode` |
+| `direction` | `"auto"`, `"ltr"` or `"rtl"` | `"auto"` | Each paragraph's base direction, as `Label`'s `text_direction`; `auto` takes its first letter's |
+| `language` | string | | A BCP 47 tag, such as `"ar"` or `"ja"`, which picks [fallback fonts](scene-format.md#fonts) |
 
 Needs: `read`.
 
@@ -811,8 +816,18 @@ Needs: `read`.
 
 `size` is `[width, height]`: the widest line, and `line_height` times the lines. A `Label` adds
 its `line_spacing` (3 by default) between lines, and `paragraph_spacing` between paragraphs.
-`ascent` is from the top of a line to its baseline. `missing_glyphs` counts characters the font
-doesn't have. A font that doesn't load is an error at `/font`.
+`ascent` is from the top of a line to its baseline. `rtl` is `true` when the lines go right to
+left, or one `true` or `false` per line when only some do. `missing_glyphs` counts characters no
+font has and `system_glyphs` characters drawn from fonts installed on the machine. A font that
+doesn't load is an error at `/font`, and a `language` that isn't a BCP 47 tag at `/language`:
+
+```json
+{"text": "الإصدار 1.2 (beta)", "font": "fonts/ui.font.json"}
+```
+
+```json
+{"ascent":17,"line_height":22,"lines":["الإصدار 1.2 (beta)"],"rtl":true,"size":[142,22]}
+```
 
 ## Input
 

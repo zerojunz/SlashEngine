@@ -294,6 +294,11 @@ void register_ui_components(ComponentRegistry& registry) {
                           "clicks (click) or nothing (none); \"\" takes its type's: all for "
                           "buttons, none for the rest.",
                    .choices = {"", "none", "click", "all"}})
+        .describe("layout_direction",
+                  {.doc = "Which way it lays out; rtl mirrors its anchors, offsets, grow "
+                          "directions, its children's order in containers and its text's "
+                          "alignment. inherited takes its parent's, left to right at the root.",
+                   .choices = {"inherited", "ltr", "rtl"}})
         .describe("focus_neighbor_left", focus_neighbor)
         .describe("focus_neighbor_top", focus_neighbor)
         .describe("focus_neighbor_right", focus_neighbor)
@@ -305,6 +310,13 @@ void register_ui_components(ComponentRegistry& registry) {
                   {.doc = "The control ui_focus_prev (Shift+Tab) moves focus to; null for the "
                           "previous in the tree."});
 
+    const FieldMeta text_direction{
+        .doc = "The text's base direction: auto takes its first letter's (right to left for "
+               "Arabic or Hebrew), inherited the control's layout_direction.",
+        .choices = {"auto", "ltr", "rtl", "inherited"}};
+    const FieldMeta language{.doc = "The text's language (BCP 47, such as \"ar\" or "
+                                    "\"zh-Hant\"), which picks fallback fonts and the glyphs "
+                                    "a font has for it; \"\" for none."};
     registry.add<Label>()
         .set_doc("Text in the control's rect, as Godot's Label. Theme items: font, font_size, "
                  "font_color, font_outline_color, outline_size, font_shadow_color, "
@@ -338,7 +350,9 @@ void register_ui_components(ComponentRegistry& registry) {
         .describe("visible_characters_behavior",
                   {.doc = "Lay out only the visible characters, or all of them and hide the "
                           "rest so lines don't move as more show.",
-                   .choices = {"chars_before_shaping", "chars_after_shaping"}});
+                   .choices = {"chars_before_shaping", "chars_after_shaping"}})
+        .describe("text_direction", text_direction)
+        .describe("language", language);
 
     registry.add<ColorRect>()
         .set_doc("Fills the control's rect with one color, as Godot's ColorRect.")
@@ -458,7 +472,9 @@ void register_ui_components(ComponentRegistry& registry) {
                   {.doc = "The icon's place down the button; top and bottom put the text above "
                           "or below it.",
                    .choices = {"top", "center", "bottom"}})
-        .describe("expand_icon", {.doc = "Scale the icon to fit the button, keeping its aspect."});
+        .describe("expand_icon", {.doc = "Scale the icon to fit the button, keeping its aspect."})
+        .describe("text_direction", text_direction)
+        .describe("language", language);
 
     const FieldMeta button_texture{.doc = "Project path of a PNG or BMP file; \"\" for none."};
     auto& texture_button = registry.add<TextureButton>().set_doc(

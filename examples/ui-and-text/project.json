@@ -1,5 +1,6 @@
 {
   "format": 1,
+  "gui": {"allow_system_fallback": false},
   "main_scene": "main.scene.json",
   "name": "UI and text",
   "version": "0.1.0",
