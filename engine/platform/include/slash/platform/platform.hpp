@@ -3,11 +3,13 @@
 #include "slash/core/result.hpp"
 
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <string_view>
 #include <vector>
 
 struct SDL_Window;
+union SDL_Event;
 
 namespace slash::platform {
 
@@ -64,6 +66,8 @@ public:
 
     // Drains pending OS events. A closed window or Ctrl+C both report quit_requested.
     Events poll_events();
+    // Called with each event poll_events drains, e.g. to read input from it.
+    void set_event_handler(std::function<void(const SDL_Event&)> handler);
 
     // Monotonic time in seconds since the platform started.
     [[nodiscard]] double now_seconds() const;
@@ -87,6 +91,7 @@ private:
     void shutdown() noexcept;
 
     SDL_Window* window_ = nullptr;
+    std::function<void(const SDL_Event&)> event_handler_;
     bool headless_ = false;
     bool active_ = false;
 };

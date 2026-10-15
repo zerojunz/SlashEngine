@@ -6,6 +6,7 @@ add_executable(slash_tests
     test_command.cpp
     test_exporter.cpp
     test_fixed_step.cpp
+    test_input.cpp
     test_json.cpp
     test_json_schema.cpp
     test_light.cpp
@@ -29,7 +30,7 @@ add_executable(slash_tests
     test_ui_containers.cpp
     test_world.cpp)
 target_link_libraries(slash_tests PRIVATE
-    slash::animation slash::asset slash::canvas slash::command slash::core slash::exporter slash::physics2d
+    slash::animation slash::asset slash::canvas slash::command slash::core slash::exporter slash::input slash::physics2d
     slash::platform slash::render slash::runtime slash::server slash::storyboard slash::text slash::ui slash::world doctest::doctest SDL3::SDL3-static)
 # doctest forward-declares std::ostream by default, which breaks string_view checks on recent
 # MSVC standard libraries; include the real headers instead.

@@ -19,6 +19,7 @@
 #include "slash/exporter/export.hpp"
 #include "slash/exporter/presets.hpp"
 #include "slash/exporter/toolchains.hpp"
+#include "slash/input/sdl.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/platform/platform.hpp"
 #include "slash/platform/run.hpp"
@@ -413,6 +414,11 @@ int cmd_run(const std::vector<std::string>& args) {
     if (!platform) {
         return failure("could not start the platform", platform.error());
     }
+    // Keys, the mouse, touches and gamepads, queued for the next tick. Made after the platform,
+    // so it closes the gamepads before SDL quits.
+    slash::input::SdlReader input_reader;
+    platform.value().set_event_handler(
+        [&](const SDL_Event& event) { input_reader.read(event, game); });
     // Made after the platform, so it lets go of the window before the window closes.
     const std::unique_ptr<slash::render::RenderDevice> renderer =
         config.headless
