@@ -88,6 +88,13 @@ ones with `-32005`, writes the files and appends to `storyboard/journal.jsonl`. 
 change project files stage them through `Session::stage_file` and record undo with
 `Session::add_undo_call`, so a failed command writes nothing and undo replays the reverse edit.
 
+`storyboard.brief` returns the entries a task touches: those its scenes' and entities' `StoryRef`
+components name, those linked to its files, global rules and live work. `storyboard.check` finds
+broken references, glossary words to avoid and unknown `StoryRef` IDs in every scene and prefab;
+`$cli scene validate` checks a scene's `StoryRef` IDs and `$cli project validate` runs the whole
+check. Games made by `$cli init` start with a storyboard and are told to brief before a task and
+check after it.
+
 ## Commands, MCP and JSON-RPC
 
 Every change to a world goes through a command registered in `engine/command`. The same registry
@@ -247,10 +254,11 @@ CI rejects unformatted code and any clang-tidy finding.
   `kPascalCase` constants.
 - Headers live in `engine/<module>/include/slash/<module>/`, sources in `engine/<module>/src/`.
   Modules: `core` (Result, logging, JSON, reflection, math), `platform` (SDL3 window, run loop,
-  files, child processes), `asset` (asset handles, loaders, hot reload), `world` (EnTT world,
-  components, scenes and prefabs), `storyboard` (storyboard kinds, files, versions, queries and
-  edits), `command` (commands, sessions with undo, JSON-RPC and MCP), `server` (localhost HTTP
-  over a session) and `runtime` (project files and the game executable). Tool-only libraries such as `tools/exporter` use the same layout and may use
+  files and folder listings, child processes), `asset` (asset handles, loaders, hot reload),
+  `world` (EnTT world, components, scenes and prefabs), `storyboard` (storyboard kinds, files,
+  versions, queries, edits, briefs and checks), `command` (commands, sessions with undo, JSON-RPC
+  and MCP), `server` (localhost HTTP over a session) and `runtime` (project files and the game
+  executable). Tool-only libraries such as `tools/exporter` use the same layout and may use
   exceptions.
 - New dependencies go in `cmake/Dependencies.cmake`, pinned to a tag, and in `THIRD_PARTY.md`
   with their license. Only permissive licenses (MIT, BSD, zlib, Apache 2.0, Boost, MIT-0,

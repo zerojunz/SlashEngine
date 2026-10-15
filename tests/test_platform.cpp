@@ -4,9 +4,13 @@
 
 #include <doctest/doctest.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
+#include <filesystem>
 #include <string>
+#include <string_view>
+#include <vector>
 
 using slash::platform::Config;
 using slash::platform::Platform;
@@ -80,4 +84,31 @@ TEST_CASE("files round-trip through write_file and read_file") {
     auto missing = slash::platform::read_file("no/such/file.json");
     REQUIRE_FALSE(missing.ok());
     CHECK(missing.error().code == slash::ErrorCode::NotFound);
+}
+
+TEST_CASE("list_files walks subfolders, skipping hidden names and refused folders") {
+    const std::string root = "slash_test_list";
+    std::filesystem::remove_all(root);
+    for (const char* folder : {"/scenes/levels", "/build", "/.slash"}) {
+        REQUIRE(slash::platform::create_directories(root + folder).ok());
+    }
+    for (const char* file :
+         {"/project.json", "/scenes/main.scene.json", "/scenes/levels/one.scene.json",
+          "/build/game.scene.json", "/.slash/server.json", "/scenes/.draft.json"}) {
+        REQUIRE(slash::platform::write_file(root + file, "{}").ok());
+    }
+    std::vector<std::string> seen;
+    auto files = slash::platform::list_files(root, [&](std::string_view folder) {
+        seen.emplace_back(folder);
+        return folder != "build/";
+    });
+    REQUIRE(files.ok());
+    CHECK(files.value() == std::vector<std::string>{"project.json", "scenes/levels/one.scene.json",
+                                                    "scenes/main.scene.json"});
+    std::ranges::sort(seen);
+    CHECK(seen == std::vector<std::string>{"build/", "scenes/", "scenes/levels/"});
+    CHECK(slash::platform::list_files(root + "/").value().size() == 4);
+    std::filesystem::remove_all(root);
+
+    CHECK_FALSE(slash::platform::list_files("no/such/folder").ok());
 }

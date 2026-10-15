@@ -30,9 +30,9 @@ Rules that apply to every command (see [concepts.md](../concepts.md#sessions)):
 
 Add `"dry_run": true` to the params of any command that changes the world (`scene.new`,
 `scene.open`, `entity.create`, `entity.destroy`, `component.set`, `component.remove`, `step`,
-`world.restore`, `storyboard.edit` and `batch`) to see what it would do. The command runs, then the world, the
-scene's path, the next generated ID and the tick counter are put back, and no undo step is
-recorded. An error is returned as usual. The result holds the command's own result and the
+`world.restore`, `storyboard.edit` and `batch`) to see what it would do. The command runs, then
+the world, the scene's path, the next generated ID and the tick counter are put back, and no undo
+step is recorded. An error is returned as usual. The result holds the command's own result and the
 changes, in the same form as [`world.diff`](#worlddiff):
 
 ```json
@@ -57,7 +57,7 @@ as `entity.get`, reject it as an unknown param.
 | Entities | [`entity.create`](#entitycreate), [`entity.destroy`](#entitydestroy), [`entity.get`](#entityget) |
 | Prefabs | [`prefab.save`](#prefabsave) |
 | Assets | [`asset.list`](#assetlist) |
-| Storyboard | [`storyboard.query`](#storyboardquery), [`storyboard.edit`](#storyboardedit) |
+| Storyboard | [`storyboard.query`](#storyboardquery), [`storyboard.brief`](#storyboardbrief), [`storyboard.check`](#storyboardcheck), [`storyboard.edit`](#storyboardedit) |
 | Components | [`component.set`](#componentset), [`component.remove`](#componentremove) |
 | Query | [`world.query`](#worldquery) |
 | Snapshots | [`world.snapshot`](#worldsnapshot), [`world.diff`](#worlddiff), [`world.restore`](#worldrestore) |
@@ -87,7 +87,7 @@ Needs: `read`.
 ```
 
 ```json
-{"capabilities":["read","edit","run","filesystem","build"],"commands":["batch","component.remove","component.set","engine.describe","entity.create","entity.destroy","entity.get","export.run","history.get","log.tail","redo","scene.get","scene.new","scene.open","scene.save","schema.get","step","undo","world.diff","world.query","world.restore","world.snapshot"],"components":[{"defaults":{"position":[0.0,0.0],"rotation":0.0,"scale":[1.0,1.0]},"doc":"Position, rotation and scale in 2D. Units are pixels and y points down.","name":"Transform2D"},{"defaults":{"position":[0.0,0.0,0.0],"rotation":[0.0,0.0,0.0,1.0],"scale":[1.0,1.0,1.0]},"doc":"Position, rotation and scale in 3D. Units are meters and y points up.","name":"Transform3D"}],"engine":{"name":"SlashEngine","version":"0.1.0"},"scene":{"entities":0,"path":"","tick":0},"systems":[]}
+{"capabilities":["read","edit","run","filesystem","build"],"commands":["asset.list","batch","component.remove","component.set","engine.describe","entity.create","entity.destroy","entity.get","events.read","events.subscribe","events.unsubscribe","export.run","history.get","log.tail","prefab.save","redo","scene.get","scene.new","scene.open","scene.save","schema.get","step","storyboard.brief","storyboard.check","storyboard.edit","storyboard.query","undo","world.diff","world.query","world.restore","world.snapshot"],"components":[{"defaults":{"position":[0.0,0.0],"rotation":0.0,"scale":[1.0,1.0]},"doc":"Position, rotation and scale in 2D. Units are pixels and y points down.","name":"Transform2D"},{"defaults":{"position":[0.0,0.0,0.0],"rotation":[0.0,0.0,0.0,1.0],"scale":[1.0,1.0,1.0]},"doc":"Position, rotation and scale in 3D. Units are meters and y points up.","name":"Transform3D"},{"defaults":{"ids":[]},"doc":"The storyboard entries this entity stands for.","name":"StoryRef"}],"engine":{"name":"SlashEngine","version":"0.1.0"},"scene":{"entities":0,"path":"","tick":0},"systems":[]}
 ```
 
 `scene` describes the open scene: how many entities it has, its path (empty for an unsaved one)
@@ -319,6 +319,10 @@ Needs: `read`.
 The game's facts as typed entries in `storyboard/*.json`; see the
 [storyboard format](storyboard-format.md). Examples run against a copy of `tests/data/game`.
 
+An agent calls `storyboard.brief` before a task, so it works from the game's recorded facts
+instead of guessing them, records what it decides with `storyboard.edit`, and calls
+`storyboard.check` after the task.
+
 ### storyboard.query
 
 Finds storyboard entries. Filters combine; with none, every entry is returned. Each result has the
@@ -342,6 +346,72 @@ Needs: `read`.
 ```json
 {"entries":[{"fields":{"name":"Pilot","summary":"The player: a courier pilot on her first run."},"id":"character/pilot","version":"f6ce5b73"},{"fields":{"name":"Landing pad","summary":"Where every run starts."},"id":"place/landing_pad","version":"4bdb955e"}],"seq":0}
 ```
+
+### storyboard.brief
+
+The facts a task needs, in one call: name the scenes, entities, files or entries it touches.
+Returns, each with every field:
+
+- the entries named, and the entries named by the `StoryRef` components in those scenes or on
+  those entities;
+- entries whose `links` name those files, those scenes, or the prefabs their entities extend;
+- rules, tones, palettes and budgets that apply everywhere (those with no `links` or `refs`);
+- open tasks and live decisions that link to those files or name those entries.
+
+`related` lists the other entries those name, with name and summary only. With `since`, `changed`
+maps each entry changed after that journal `seq` to its new version, or `null` if it was removed,
+so an agent that briefed earlier rereads only what moved.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `scenes` | array of paths | | Scene files, e.g. `["scenes/main.scene.json"]`. The open scene is read as it is now |
+| `entities` | array of IDs | | Entities in the open scene |
+| `files` | array of paths | | Other project files: assets, prefabs, source |
+| `ids` | array of IDs | | Storyboard entries |
+| `since` | integer | | Also list entries changed after this journal `seq` |
+
+An unknown entity or entry, or a scene that does not exist, fails with `-32001` and a "did you
+mean" hint. Needs: `read`.
+
+```json
+{"scenes": ["scenes/main.scene.json"]}
+```
+
+```json
+{"entries":[{"fields":{"links":["scenes/main.scene.json"],"name":"Pilot","summary":"The player: a courier pilot on her first run."},"id":"character/pilot","version":"f6ce5b73"},{"fields":{"links":["prefabs/marker.prefab.json","scenes/main.scene.json"],"name":"Landing pad","summary":"Where every run starts."},"id":"place/landing_pad","version":"4bdb955e"},{"fields":{"name":"One hit","summary":"Any hazard ends the run; there is no health bar."},"id":"rule/one_hit","version":"7b97241a"}],"related":[],"seq":0}
+```
+
+After another agent's edit:
+
+```json
+{"files": ["prefabs/marker.prefab.json"], "since": 0}
+```
+
+```json
+{"changed":{"character/pilot":"80d23357","term/courier":"d1f7edb3"},"entries":[{"fields":{"links":["prefabs/marker.prefab.json","scenes/main.scene.json"],"name":"Landing pad","summary":"Where every run starts."},"id":"place/landing_pad","version":"4bdb955e"},{"fields":{"name":"One hit","summary":"Any hazard ends the run; there is no health bar."},"id":"rule/one_hit","version":"7b97241a"}],"related":[],"seq":1}
+```
+
+### storyboard.check
+
+Checks the storyboard against itself and the project. Errors: a storyboard file that is invalid,
+a reference to an entry that does not exist or is of the wrong kind, a word a glossary `term`
+says to `avoid` (as a whole word, ignoring case), and a `StoryRef` ID in a scene or prefab that
+names no entry. Every `.scene.json` and `.prefab.json` file in the project is read, except those
+in `build/` and in folders whose names start with `.`; the open scene is checked as it is now.
+Warnings: a link to a file that does not exist, since open work can link files still to be made.
+`slash-cli project validate` runs the same check.
+
+Takes no params. Needs: `read`.
+
+```json
+{}
+```
+
+```json
+{"errors":[{"file":"storyboard/world.json","message":"uses \"driver\", which term/courier says to avoid; write \"courier\"","path":"/entries/character~1pilot/summary"},{"file":"scenes/main.scene.json","message":"unknown storyboard entry \"character/pilto\"; did you mean \"character/pilot\"?","path":"/entities/player/components/StoryRef/ids/0"}],"valid":false}
+```
+
+`errors` and `warnings` are left out when empty, so a clean project returns `{"valid":true}`.
 
 ### storyboard.edit
 

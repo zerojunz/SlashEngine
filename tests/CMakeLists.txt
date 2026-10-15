@@ -248,4 +248,9 @@ if(SLASH_BUILD_TOOLS)
     set_tests_properties(cli_init_scene_valid PROPERTIES
         FIXTURES_REQUIRED init_project
         PASS_REGULAR_EXPRESSION "{\"entities\":0,\"valid\":true}")
+    # The starter storyboard passes its own checks.
+    add_test(NAME cli_init_project_valid COMMAND slash-cli project validate ${init_project})
+    set_tests_properties(cli_init_project_valid PROPERTIES
+        FIXTURES_REQUIRED init_project
+        PASS_REGULAR_EXPRESSION "^{\"valid\":true}")
 endif()
