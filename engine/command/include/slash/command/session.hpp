@@ -7,10 +7,12 @@
 #include "slash/world/world.hpp"
 
 #include <cstddef>
+#include <cstdint>
 #include <deque>
 #include <functional>
 #include <map>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -93,6 +95,27 @@ public:
     // Every snapshot name, sorted.
     [[nodiscard]] std::vector<std::string_view> snapshot_names() const;
 
+    // Event subscriptions, for events.subscribe, events.read and events.unsubscribe. While one
+    // wants them, the session queues entity.created and entity.destroyed, events gameplay code
+    // emits, and a "command" event with the changes for each command that changed the world
+    // (undo and redo included). A failed command or a dry run queues nothing.
+    static constexpr std::size_t kMaxSubscriptions = 16;
+    static constexpr std::size_t kMaxQueuedEvents = 1000;
+    // Kinds and ids filter the events; empty lists let every one through. Returns the
+    // subscription's name.
+    Result<std::string> subscribe(std::vector<std::string> kinds, std::vector<std::string> ids);
+    struct EventBatch {
+        json::Array events;        // oldest first
+        std::uint64_t dropped = 0; // events lost since the last read because the queue was full
+        bool more = false;         // events are still queued
+    };
+    // Takes up to limit queued events. Null if no subscription has this name.
+    [[nodiscard]] std::optional<EventBatch> read_events(std::string_view subscription,
+                                                        std::size_t limit);
+    // False if no subscription has this name.
+    bool unsubscribe(std::string_view subscription);
+    [[nodiscard]] std::vector<std::string_view> subscription_names() const;
+
     // The most recent captured log lines, oldest first. Only one session at a time should
     // capture logs, since the log sink is global.
     [[nodiscard]] std::vector<std::string> recent_logs(std::size_t count) const;
@@ -103,8 +126,22 @@ private:
         json::Value scene;
     };
 
+    struct Subscription {
+        std::vector<std::string> kinds;
+        std::vector<std::string> ids;
+        std::deque<json::Value> events;
+        std::uint64_t dropped = 0;
+    };
+
     Reply run(const Command& command, const json::Value& params);
     void restore(const json::Value& scene);
+    void on_world_event(const world::Event& event);
+    void publish(const world::Event& event);
+    // Queues a command event if a subscription wants one.
+    void publish_changes(std::string_view command, const json::Value& before,
+                         const json::Value& after);
+    [[nodiscard]] bool wants(std::string_view kind) const;
+    void deliver(std::string_view kind, const std::vector<std::string>& ids, json::Value event);
     void remember(std::deque<Snapshot>& stack, Snapshot snapshot) const;
 
     const Registry* commands_;
@@ -118,6 +155,12 @@ private:
     bool edited_ = false;   // an Edit command succeeded during the outermost call
     bool replaced_ = false; // a Replace command succeeded during the outermost call
     bool playing_ = false;
+    std::map<std::string, Subscription, std::less<>> subscriptions_;
+    std::uint64_t next_subscription_ = 1;
+    std::uint64_t next_event_ = 1;
+    std::vector<world::Event> pending_events_; // from the command running now, kept if it succeeds
+    bool buffering_events_ = false;
+    bool muted_events_ = false;     // while restoring a snapshot, which recreates every entity
     mutable std::mutex logs_mutex_; // the log sink may run on any thread
     std::deque<std::string> logs_;
 };

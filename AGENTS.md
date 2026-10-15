@@ -82,7 +82,8 @@ validates its params against the command's JSON Schema, runs it, and records an 
 changed the world. A failed command changes nothing. Paths are relative to `--project` and cannot
 leave it. Commands that change the world take `"dry_run": true`, which returns what would change
 and changes nothing; `world.snapshot`, `world.diff` and `world.restore` save, compare against and
-go back to a copy of the entities.
+go back to a copy of the entities. `events.subscribe` and `events.read` report entities created and
+destroyed, each change to the world and events gameplay code emits with `World::emit`.
 
 Commands are built for agents, so keep them cheap to call:
 

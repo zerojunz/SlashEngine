@@ -32,6 +32,7 @@ constexpr std::int64_t kDefaultQueryLimit = 100;
 constexpr std::int64_t kDefaultLogLines = 50;
 constexpr double kDefaultTickSeconds = 1.0 / 60.0;
 constexpr std::string_view kDefaultSnapshot = "default";
+constexpr std::int64_t kDefaultEventLimit = 100;
 
 // ---- Params schemas ----
 
@@ -918,6 +919,76 @@ Reply world_restore(Session& session, const json::Value& params) {
     return Reply::success(std::move(result));
 }
 
+// ---- Events ----
+
+std::vector<std::string> strings(const json::Value& params, std::string_view key) {
+    std::vector<std::string> out;
+    if (const json::Value* list = params.find(key); list != nullptr) {
+        for (const json::Value& item : list->as_array()) {
+            out.push_back(item.as_string());
+        }
+    }
+    return out;
+}
+
+Reply unknown_subscription(const Session& session, std::string_view name) {
+    const std::vector<std::string_view> names = session.subscription_names();
+    std::string message = "no subscription is named " + quoted(name);
+    if (names.empty()) {
+        message += "; start one with events.subscribe";
+    } else {
+        add_hint(message, name, names);
+    }
+    return param_error(code::kNotFound, "/subscription", message);
+}
+
+Reply events_subscribe(Session& session, const json::Value& params) {
+    std::vector<std::string> kinds = strings(params, "kinds");
+    // The engine's own kinds are checked, so a misspelled one doesn't silently match nothing.
+    constexpr std::array<std::string_view, 3> kEngineKinds{world::kEntityCreated,
+                                                           world::kEntityDestroyed, "command"};
+    for (std::size_t i = 0; i < kinds.size(); ++i) {
+        const std::string& kind = kinds[i];
+        if (kind.starts_with("entity.") &&
+            std::ranges::find(kEngineKinds, kind) == kEngineKinds.end()) {
+            std::string message = "unknown event kind " + quoted(kind);
+            add_hint(message, kind, kEngineKinds);
+            return param_error(code::kInvalidParams, item_path("/kinds", i), message);
+        }
+    }
+    auto name = session.subscribe(std::move(kinds), strings(params, "ids"));
+    if (!name) {
+        return Reply::failure(name.error());
+    }
+    json::Value result;
+    result["subscription"] = std::move(name).value();
+    return Reply::success(std::move(result));
+}
+
+Reply events_read(Session& session, const json::Value& params) {
+    const std::string name = text(params, "subscription");
+    auto batch = session.read_events(
+        name, static_cast<std::size_t>(integer(params, "limit", kDefaultEventLimit)));
+    if (!batch) {
+        return unknown_subscription(session, name);
+    }
+    json::Value result;
+    result["events"] = std::move(batch->events);
+    result["dropped"] = batch->dropped;
+    result["more"] = batch->more;
+    return Reply::success(std::move(result));
+}
+
+Reply events_unsubscribe(Session& session, const json::Value& params) {
+    const std::string name = text(params, "subscription");
+    if (!session.unsubscribe(name)) {
+        return unknown_subscription(session, name);
+    }
+    json::Value result;
+    result["unsubscribed"] = name;
+    return Reply::success(std::move(result));
+}
+
 // ---- Logs ----
 
 int level_rank(std::string_view level) {
@@ -1264,6 +1335,47 @@ void register_builtin_commands(Registry& registry) {
         .effect = Effect::Compound,
         .params = batch_schema(),
         .handler = batch,
+    });
+
+    registry.add({
+        .name = "events.subscribe",
+        .description = "Starts queueing world events for events.read: entities created or "
+                       "destroyed, each change to the world with what changed, and events the "
+                       "game emits.",
+        .capabilities = {Read},
+        .effect = Effect::Read,
+        .params = params_schema({
+            {"kinds", names_property("Only these kinds: \"entity.created\", "
+                                     "\"entity.destroyed\", \"command\" (a change to the "
+                                     "world) or the game's own. All if left out.")},
+            {"ids", names_property("Only events about these entity IDs.")},
+        }),
+        .handler = events_subscribe,
+    });
+
+    registry.add({
+        .name = "events.read",
+        .description = "Returns and removes a subscription's queued events, oldest first.",
+        .capabilities = {Read},
+        .effect = Effect::Read,
+        .params = params_schema(
+            {
+                {"subscription", property("string", "Name from events.subscribe.")},
+                {"limit", integer_property("Most events to return.", 1, 1000, kDefaultEventLimit)},
+            },
+            {"subscription"}),
+        .handler = events_read,
+    });
+
+    registry.add({
+        .name = "events.unsubscribe",
+        .description = "Stops a subscription and drops its queued events.",
+        .capabilities = {Read},
+        .effect = Effect::Read,
+        .params =
+            params_schema({{"subscription", property("string", "Name from events.subscribe.")}},
+                          {"subscription"}),
+        .handler = events_unsubscribe,
     });
 
     json::Value level = property("string", "Only lines at this level or above.");
