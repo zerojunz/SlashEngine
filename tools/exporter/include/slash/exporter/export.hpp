@@ -26,10 +26,10 @@ struct ExportResult {
 };
 
 // Exports a game project: validates project.json, export_presets.json and every scene, prefab,
-// texture (.png, .bmp), .frames.json and .material.json file, stages them as the game's data,
-// builds the engine and game for the platform with CMake, signs the result and lays it out in
-// the output folder. Progress goes to the log as JSON lines and the full build output to a log
-// file.
+// texture (.png, .bmp), .frames.json, .material.json and .anim.json file, stages them as the
+// game's data, builds the engine and game for the platform with CMake, signs the result and lays
+// it out in the output folder. Progress goes to the log as JSON lines and the full build output to
+// a log file.
 [[nodiscard]] ExportResult export_game(const ExportOptions& options);
 
 // The engine folder exports build from: engine if given and valid, else SLASH_ENGINE_DIR, an

@@ -1,5 +1,6 @@
 #include "slash/command/builtin.hpp"
 
+#include "slash/animation/animation.hpp"
 #include "slash/canvas/material.hpp"
 #include "slash/canvas/sprite_frames.hpp"
 #include "slash/command/session.hpp"
@@ -354,6 +355,9 @@ Reply schema_get(Session& session, const json::Value& params) {
     }
     if (kind == "material") {
         return Reply::success(canvas::material_schema());
+    }
+    if (kind == "animation") {
+        return Reply::success(animation::animation_schema());
     }
     if (name.empty()) {
         return param_error(code::kInvalidParams, "/name",
@@ -750,6 +754,154 @@ Reply material_eval(Session& session, const json::Value& params) {
     }
     json::Value result;
     result["colors"] = std::move(out);
+    return Reply::success(std::move(result));
+}
+
+// ---- Animations ----
+
+// A number as JSON, with no ".0" on whole ones.
+json::Value short_number(double value) {
+    constexpr double kWhole = 1.0e15;
+    if (value == std::floor(value) && std::abs(value) < kWhole) {
+        return static_cast<std::int64_t>(value);
+    }
+    return value;
+}
+
+// Numbers rounded to four decimals, finer than a pixel or a degree, so replies stay short.
+json::Value rounded(const json::Value& value) {
+    constexpr double kScale = 10000.0;
+    if (value.is_number() && !value.is_int()) {
+        return short_number(std::round(value.as_double() * kScale) / kScale);
+    }
+    if (value.is_array()) {
+        json::Array out;
+        out.reserve(value.size());
+        for (const json::Value& item : value.as_array()) {
+            out.push_back(rounded(item));
+        }
+        return out;
+    }
+    if (value.is_object()) {
+        json::Value out = json::Object{};
+        for (const auto& [name, item] : value.as_object()) {
+            out[name] = rounded(item);
+        }
+        return out;
+    }
+    return value;
+}
+
+Reply animation_eval(Session& session, const json::Value& params) {
+    const std::string id = text(params, "id");
+    std::string path = text(params, "path");
+    std::string name = text(params, "animation");
+    if (id.empty() == path.empty()) {
+        return param_error(code::kInvalidParams, "",
+                           "give id (an entity with an AnimationPlayer) or path (a .anim.json "
+                           "file)");
+    }
+    if (!id.empty()) {
+        const world::World& world = session.world();
+        const entt::entity entity = world.find(id);
+        if (entity == entt::null) {
+            return unknown_entity(world, id, "/id");
+        }
+        const auto* player = world.ecs().try_get<world::AnimationPlayer>(entity);
+        if (player == nullptr || player->library.empty()) {
+            return param_error(code::kInvalidParams, "/id",
+                               quoted(id) + (player == nullptr
+                                                 ? " has no AnimationPlayer"
+                                                 : "'s AnimationPlayer has no library"));
+        }
+        path = player->library;
+        if (name.empty()) {
+            name = player->animation;
+        }
+    }
+    auto library = session.assets().load<animation::AnimationLibrary>(path);
+    if (!library) {
+        return param_error(library.error(), id.empty() ? "/path" : "/id");
+    }
+    const auto& animations = library.value()->animations;
+    const auto found = animations.find(name);
+    if (found == animations.end()) {
+        std::vector<std::string_view> names;
+        names.reserve(animations.size());
+        for (const auto& [each, animation] : animations) {
+            names.emplace_back(each);
+        }
+        if (name.empty()) {
+            std::string message = "name one of " + path + "'s animations:";
+            for (const std::string_view each : names) {
+                message += (each == names.front() ? " " : ", ") + quoted(each);
+            }
+            return param_error(code::kInvalidParams, "/animation", message);
+        }
+        std::string message = path + " has no animation " + quoted(name);
+        add_hint(message, name, names);
+        return param_error(code::kNotFound, "/animation", message);
+    }
+    const animation::Animation& animation = found->second;
+
+    std::vector<double> times;
+    const json::Array& given_times = params.find("times")->as_array();
+    for (std::size_t i = 0; i < given_times.size(); ++i) {
+        const double time = given_times[i].as_double();
+        if (time > animation.length) {
+            return param_error(
+                code::kInvalidParams, "/times/" + std::to_string(i),
+                json::write(short_number(time), json::Style::Compact) +
+                    " is past the animation's length, " +
+                    json::write(short_number(animation.length), json::Style::Compact));
+        }
+        times.push_back(time);
+    }
+    std::vector<std::string_view> paths;
+    for (const animation::Track& track : animation.tracks) {
+        if (!track.path.empty()) {
+            paths.emplace_back(track.path);
+        }
+    }
+    std::set<std::string, std::less<>> wanted;
+    if (const json::Value* only = params.find("tracks"); only != nullptr) {
+        const json::Array& items = only->as_array();
+        for (std::size_t i = 0; i < items.size(); ++i) {
+            const std::string& track = items[i].as_string();
+            if (std::ranges::find(paths, track) == paths.end()) {
+                std::string message = name + " has no value track " + quoted(track);
+                add_hint(message, track, paths);
+                return param_error(code::kNotFound, "/tracks/" + std::to_string(i), message);
+            }
+            wanted.insert(track);
+        }
+    }
+
+    json::Value tracks = json::Object{};
+    for (const animation::Track& track : animation.tracks) {
+        if (track.path.empty() || (!wanted.empty() && !wanted.contains(track.path))) {
+            continue;
+        }
+        auto target = animation::resolve_target(track.path, session.components());
+        if (!target) {
+            return Reply::failure(code::kInvalidArgument, path + ": " + track.path + ": " +
+                                                              target.error().message +
+                                                              "; fix the file, then retry");
+        }
+        const bool discrete =
+            track.update == animation::UpdateMode::Discrete ||
+            (track.update == animation::UpdateMode::Auto && target.value().discrete);
+        json::Array values;
+        values.reserve(times.size());
+        for (const double time : times) {
+            values.push_back(rounded(animation::sample(animation, track, time, discrete)));
+        }
+        tracks[track.path] = std::move(values);
+    }
+    json::Value result;
+    result["length"] = short_number(animation.length);
+    result["loop"] = animation::loop_mode_name(animation.loop);
+    result["tracks"] = std::move(tracks);
     return Reply::success(std::move(result));
 }
 
@@ -1707,15 +1859,16 @@ void register_builtin_commands(Registry& registry) {
     });
 
     json::Value kind = property("string", "\"scene\", \"prefab\", \"frames\" (.frames.json), "
-                                          "\"material\" (.material.json) or \"storyboard\" for "
-                                          "those files, \"component\" for one component's "
-                                          "fields, \"command\" for a command's params.");
-    kind["enum"] =
-        json::Array{"scene", "prefab", "frames", "material", "storyboard", "component", "command"};
+                                          "\"material\" (.material.json), \"animation\" "
+                                          "(.anim.json) or \"storyboard\" for those files, "
+                                          "\"component\" for one component's fields, "
+                                          "\"command\" for a command's params.");
+    kind["enum"] = json::Array{"scene",     "prefab",     "frames",    "material",
+                               "animation", "storyboard", "component", "command"};
     registry.add({
         .name = "schema.get",
-        .description = "Returns a JSON Schema: for scene, prefab, .frames.json, .material.json or "
-                       "storyboard files, one component or one command.",
+        .description = "Returns a JSON Schema: for scene, prefab, .frames.json, .material.json, "
+                       ".anim.json or storyboard files, one component or one command.",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema(
@@ -1888,6 +2041,33 @@ void register_builtin_commands(Registry& registry) {
             },
             {"uv"}),
         .handler = material_eval,
+    });
+
+    json::Value times = property("array", "Seconds into the animation, each from 0 to its length.");
+    times["items"]["type"] = "number";
+    times["items"]["minimum"] = 0;
+    times["minItems"] = 1;
+    times["maxItems"] = 100;
+    json::Value only_tracks = property("array", "Value track paths to return. Default: all.");
+    only_tracks["items"]["type"] = "string";
+    only_tracks["minItems"] = 1;
+    registry.add({
+        .name = "animation.eval",
+        .description = "Returns the values an animation's tracks set at times, as AnimationPlayer "
+                       "sets them: a check without playing it.",
+        .capabilities = {Read},
+        .effect = Effect::Read,
+        .params = params_schema(
+            {
+                {"id", id_property("An entity with an AnimationPlayer: its library and, by "
+                                   "default, its animation. Or give path.")},
+                {"path", property("string", "A .anim.json file. Or give id.")},
+                {"animation", property("string", "The animation's name.")},
+                {"times", std::move(times)},
+                {"tracks", std::move(only_tracks)},
+            },
+            {"times"}),
+        .handler = animation_eval,
     });
 
     json::Value set_components =
