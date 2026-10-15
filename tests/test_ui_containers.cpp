@@ -692,3 +692,156 @@ TEST_CASE("the canvas renderer counts the style boxes it draws") {
     CHECK(renderer.controls_drawn() == 2);
     CHECK(renderer.boxes_drawn() == 2);
 }
+
+TEST_CASE("controls laid out right to left mirror their anchors, offsets and grow directions") {
+    Scene scene;
+    // 10 pixels from the left edge, left to right, is 10 from the right edge.
+    scene.create("tag", R"({"Control": {"offset_left": 10, "offset_right": 110,
+                                        "offset_bottom": 20, "layout_direction": "rtl"},
+                            "ColorRect": {}})");
+    // Growing to its minimum size toward its end grows it toward the left.
+    scene.create("grows", R"({"Control": {"offset_left": 100, "offset_right": 100,
+                                          "custom_minimum_size": [40, 10],
+                                          "layout_direction": "rtl"}})");
+    // Children inherit their parent's direction unless they set their own.
+    scene.block("inner", 20, 10, R"("offset_right": 20, "offset_bottom": 10)");
+    scene.block("own", 20, 10,
+                R"("offset_right": 20, "offset_bottom": 10, "layout_direction": "ltr")");
+    scene.create("panel", R"({"Control": {"offset_left": 100, "offset_right": 300,
+                                          "offset_bottom": 50, "layout_direction": "rtl",
+                                          "children": ["inner", "own"]}})");
+    const ui::Layout layout = scene.layout();
+    CHECK(layout.problems.empty());
+    CHECK(rect_of(scene, layout, "tag") == Rect{290, 0, 100, 20});
+    CHECK(rect_of(scene, layout, "grows") == Rect{260, 0, 40, 10});
+    CHECK(rect_of(scene, layout, "panel") == Rect{100, 0, 200, 50});
+    CHECK(rect_of(scene, layout, "inner") == Rect{280, 0, 20, 10});
+    CHECK(rect_of(scene, layout, "own") == Rect{100, 0, 20, 10});
+}
+
+TEST_CASE("containers laid out right to left place their children from the right") {
+    Scene scene;
+    scene.block("a", 50, 20);
+    scene.block("b", 60, 30, R"("size_flags_horizontal": "expand_fill")");
+    scene.block("c", 40, 10);
+    scene.create("box", R"({"Control": {"offset_right": 300, "offset_bottom": 50,
+                                        "layout_direction": "rtl", "children": ["a", "b", "c"]},
+                            "BoxContainer": {}})");
+    // The box sits at the right of the 400-wide viewport, its first child at its right.
+    ui::Layout layout = scene.layout();
+    CHECK(rect_of(scene, layout, "box") == Rect{100, 0, 300, 50});
+    CHECK(rect_of(scene, layout, "a") == Rect{350, 0, 50, 50});
+    CHECK(rect_of(scene, layout, "b") == Rect{144, 0, 202, 50});
+    CHECK(rect_of(scene, layout, "c") == Rect{100, 0, 40, 50});
+    // With nothing expanding, begin alignment puts the row at the right, end at the left.
+    scene.set("b", R"({"Control": {"size_flags_horizontal": "fill"}})");
+    layout = scene.layout();
+    CHECK(rect_of(scene, layout, "a") == Rect{350, 0, 50, 50});
+    CHECK(rect_of(scene, layout, "c") == Rect{242, 0, 40, 50});
+    scene.set("box", R"({"BoxContainer": {"alignment": "end"}})");
+    layout = scene.layout();
+    CHECK(rect_of(scene, layout, "a") == Rect{208, 0, 50, 50});
+    CHECK(rect_of(scene, layout, "c") == Rect{100, 0, 40, 50});
+    // A vertical box keeps its order down the box; shrink_begin across it is at the right.
+    scene.set("box", R"({"BoxContainer": {"vertical": true}})");
+    scene.set("a", R"({"Control": {"size_flags_horizontal": "shrink_begin"}})");
+    layout = scene.layout();
+    CHECK(rect_of(scene, layout, "a") == Rect{350, 0, 50, 20});
+    CHECK(rect_of(scene, layout, "b") == Rect{100, 24, 300, 30});
+
+    // A grid's columns go from the right.
+    scene.block("g1", 30, 10);
+    scene.block("g2", 20, 10);
+    scene.block("g3", 30, 10);
+    scene.create("grid", R"({"Control": {"offset_right": 100, "layout_direction": "rtl",
+                                         "children": ["g1", "g2", "g3"]},
+                             "GridContainer": {"columns": 2}})");
+    layout = scene.layout();
+    CHECK(rect_of(scene, layout, "g1") == Rect{370, 0, 30, 10});
+    CHECK(rect_of(scene, layout, "g2") == Rect{346, 0, 20, 10});
+    CHECK(rect_of(scene, layout, "g3") == Rect{370, 14, 30, 10});
+
+    // A flow's lines start at the right.
+    scene.block("f1", 30, 10);
+    scene.block("f2", 30, 10);
+    scene.create("flow", R"({"Control": {"offset_right": 100, "layout_direction": "rtl",
+                                         "children": ["f1", "f2"]},
+                             "FlowContainer": {}})");
+    layout = scene.layout();
+    CHECK(rect_of(scene, layout, "f1") == Rect{370, 0, 30, 10});
+    CHECK(rect_of(scene, layout, "f2") == Rect{336, 0, 30, 10});
+}
+
+TEST_CASE("labels, buttons and bars laid out right to left start at the right") {
+    Scene scene;
+    scene.files.files["ui/icon.png"] = png(16, 16);
+    // Left alignment is the start of the line: the right.
+    scene.create("label", R"({"Control": {"offset_right": 100, "layout_direction": "rtl"},
+                              "Label": {"text": "Hello"}})");
+    scene.create("right", R"({"Control": {"offset_right": 100, "layout_direction": "rtl"},
+                              "Label": {"text": "Hello", "horizontal_alignment": "right"}})");
+    // text_direction inherited takes the layout's direction.
+    scene.create("inherits", R"({"Control": {"layout_direction": "rtl"},
+                                 "Label": {"text": "Hello", "text_direction": "inherited"}})");
+    // A button's icon on the left goes to the right.
+    scene.create("button", R"({"Control": {"offset_right": 120, "layout_direction": "rtl"},
+                               "Button": {"text": "Go", "icon": "ui/icon.png"}})");
+    scene.create("bar", R"({"Control": {"offset_right": 200, "layout_direction": "rtl"},
+                            "ProgressBar": {"value": 25}})");
+    ui::Layout layout = scene.layout();
+    CHECK(layout.problems.empty());
+    const float hello = scene.fonts().layout("Hello", {}).value().width;
+    CHECK(layout.label(scene.world.find("label"))->pens.front().x == 100.0F - hello);
+    CHECK(layout.label(scene.world.find("right"))->pens.front().x == 0.0F);
+    CHECK_FALSE(layout.label(scene.world.find("label"))->text.lines[0].rtl);
+    CHECK(layout.label(scene.world.find("inherits"))->text.lines[0].rtl);
+
+    const std::vector<ui::Box>& button = layout.boxes.at(scene.world.find("button"));
+    const auto icon = std::ranges::find(button, std::string("ui/icon.png"),
+                                        [](const ui::Box& box) { return box.style.texture; });
+    REQUIRE(icon != button.end());
+    CHECK(icon->position.x > 60.0F);
+    CHECK(layout.label(scene.world.find("button"))->pens.front().x < icon->position.x);
+
+    // begin_to_end fills from the right.
+    const std::vector<ui::Box>& bar = layout.boxes.at(scene.world.find("bar"));
+    CHECK(bar[1].position.x == 147.0F);
+
+    // A theme's _mirrored style boxes are used for buttons laid out right to left.
+    scene.set("button", R"({"Control": {"offset_right": 120, "layout_direction": "rtl",
+        "theme_override_styles": {"normal_mirrored": {"bg_color": [1, 0, 0, 1]}}}})");
+    layout = scene.layout();
+    CHECK(layout.boxes.at(scene.world.find("button")).front().style.bg_color ==
+          Vec4{1.0F, 0.0F, 0.0F, 1.0F});
+    CHECK(ui::check(scene.world, scene.fonts()).empty());
+    scene.set("button", R"({"Control": {"layout_direction": "ltr"}})");
+    CHECK(scene.layout().boxes.at(scene.world.find("button")).front().style.bg_color !=
+          Vec4{1.0F, 0.0F, 0.0F, 1.0F});
+}
+
+TEST_CASE("fill alignment stretches the spaces between words of right-to-left lines") {
+    Scene scene;
+    scene.files.files["hebrew.ttf"] = [] {
+        const auto bytes = text::box_font(U"אבג ");
+        return std::string(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+    }();
+    scene.create("filled", R"({"Control": {"offset_right": 200,
+                                           "theme_override_fonts": {"font": "hebrew.ttf"}},
+                               "Label": {"text": "א ב ג ", "horizontal_alignment": "fill"}})");
+    const ui::Layout layout = scene.layout();
+    const ui::LabelText& label = *layout.label(scene.world.find("filled"));
+    REQUIRE(label.text.lines[0].rtl);
+    // Three boxes of 10 and two spaces of 4 between them; the trailing space hangs at the left.
+    CHECK(label.text.lines[0].width == 38.0F);
+    CHECK(label.stretch.front() == doctest::Approx((200.0F - 38.0F) / 2.0F));
+    CHECK(label.pens.front().x == 0.0F);
+}
+
+TEST_CASE("labels and buttons with a language that isn't a BCP 47 tag are reported") {
+    Scene scene;
+    scene.create("label", R"({"Label": {"text": "x", "language": "english"}})");
+    scene.create("button", R"({"Button": {"text": "x", "language": "zh-Hant"}})");
+    CHECK(problem_lines(ui::check(scene.world, scene.fonts())) ==
+          std::vector<std::string>{"label/components/Label/language: \"english\" isn't a BCP 47 "
+                                   "language tag, such as \"ar\" or \"zh-Hant\""});
+}

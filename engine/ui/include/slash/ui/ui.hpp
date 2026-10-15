@@ -48,6 +48,10 @@ struct Settings {
     // A .theme.json file every control uses after its own and its parents' themes, as Godot's
     // gui/theme/custom; "" for none.
     std::string theme;
+    // Whether text may use fonts installed on the machine for characters the project's fonts
+    // lack (for fonts that allow it). Off, text lays out the same on every machine, as it does
+    // on the web.
+    bool allow_system_fallback = true;
 };
 
 // Asset types "theme" (.theme.json files as Theme) and "texture" (.png and .bmp files as

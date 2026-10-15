@@ -149,12 +149,19 @@ const std::map<std::string, ThemeItems, std::less<>>& own_defaults() {
 
 const ThemeItems& optional_items(std::string_view type) {
     static const ThemeItems kNone;
-    // Button's hover_pressed style is used when a theme has one, else pressed is, as Godot's.
+    // Button's hover_pressed style is used when a theme has one, else pressed is, and a state's
+    // _mirrored style in place of its own when the button lays out right to left, as Godot's.
     static const ThemeItems kButton = [] {
         ThemeItems items;
         StyleBox empty;
         empty.type = StyleBox::Type::Empty;
-        items.styles = {{"hover_pressed", empty}};
+        for (const std::string_view state :
+             {"hover_pressed", "normal", "hover", "pressed", "disabled"}) {
+            if (state == "hover_pressed") {
+                items.styles.emplace(state, empty);
+            }
+            items.styles.emplace(std::string(state) + "_mirrored", empty);
+        }
         return items;
     }();
     const std::vector<std::string_view> bases = base_types(type);

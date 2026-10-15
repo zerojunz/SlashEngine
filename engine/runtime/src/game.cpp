@@ -117,7 +117,8 @@ Game::Game(Project project, platform::Platform platform, const std::string& data
     canvas::install(world_, assets_);
     ui::set_settings(world_, {.viewport = {static_cast<float>(project_.window_width),
                                            static_cast<float>(project_.window_height)},
-                              .theme = project_.gui_theme});
+                              .theme = project_.gui_theme,
+                              .allow_system_fallback = project_.allow_system_fallback});
     animation::install(world_, assets_);
     physics2d::install(world_, project_.physics_2d);
     input::install(world_, project_.input, project_.input_devices);

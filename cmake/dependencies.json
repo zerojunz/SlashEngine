@@ -14,6 +14,13 @@
       "repository": "https://github.com/libsdl-org/SDL.git",
       "tag": "release-3.4.18"
     },
+    "SheenBidi": {
+      "license": "Apache-2.0",
+      "license_file": "LICENSE",
+      "license_sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+      "repository": "https://github.com/Tehreer/SheenBidi.git",
+      "tag": "v3.0.0"
+    },
     "box2d": {
       "license": "MIT",
       "license_file": "LICENSE",

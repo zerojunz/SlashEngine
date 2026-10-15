@@ -77,7 +77,8 @@ int main() {
 
     // Where everything is in the 640x360 window, in drawing order: parents before children.
     // The body wrapped to the panel's width, the quest was cut to one line with "…", and the
-    // sign's Chinese characters aren't in Roboto, so they are counted as missing.
+    // sign's Chinese characters aren't in Roboto, so they are counted as missing (project.json
+    // turns off fonts installed on the machine, which might have them).
     call(session, "ui.layout", "{}");
 
     // Will a bigger score fit? text.measure answers without changing the scene.

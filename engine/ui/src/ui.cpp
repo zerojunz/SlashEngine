@@ -97,11 +97,13 @@ Transform Transform::operator*(const Transform& o) const {
 void install(world::World& world, asset::Assets& assets, const Settings& settings) {
     if (auto* found = world.ecs().ctx().find<std::shared_ptr<State>>(); found != nullptr) {
         (*found)->settings = settings;
+        (*found)->fonts->set_system_fallback(settings.allow_system_fallback);
         return;
     }
     add_asset_types(assets);
     auto state = std::make_shared<State>();
     state->fonts = std::make_unique<text::Fonts>(assets);
+    state->fonts->set_system_fallback(settings.allow_system_fallback);
     state->settings = settings;
     world.ecs().ctx().emplace<std::shared_ptr<State>>(std::move(state));
     install_gui(world);
@@ -110,6 +112,7 @@ void install(world::World& world, asset::Assets& assets, const Settings& setting
 void set_settings(world::World& world, const Settings& settings) {
     if (auto* found = world.ecs().ctx().find<std::shared_ptr<State>>(); found != nullptr) {
         (*found)->settings = settings;
+        (*found)->fonts->set_system_fallback(settings.allow_system_fallback);
     }
 }
 
@@ -241,6 +244,23 @@ std::vector<Problem> check(const world::World& world, text::Fonts& fonts) {
                                            std::string(first) + " places its children"});
         }
 
+        // A language that isn't a BCP 47 tag picks no fonts for it.
+        const auto check_language = [&](std::string_view type, const std::string& language) {
+            if (!language.empty() && !text::is_language_code(language)) {
+                problems.push_back({.id = id,
+                                    .path = "/components/" + std::string(type) + "/language",
+                                    .message = "\"" + language +
+                                               "\" isn't a BCP 47 language tag, such as \"ar\" "
+                                               "or \"zh-Hant\""});
+            }
+        };
+        if (const auto* label = ecs.try_get<world::Label>(entity); label != nullptr) {
+            check_language("Label", label->language);
+        }
+        if (const auto* button = ecs.try_get<world::Button>(entity); button != nullptr) {
+            check_language("Button", button->language);
+        }
+
         const auto* control = ecs.try_get<world::Control>(entity);
         if (control == nullptr) {
             continue;
@@ -339,6 +359,11 @@ std::vector<json::ValidationError> check_scene(const world::ComponentRegistry& c
             gui != nullptr && gui->is_object() ? gui->find("theme") : nullptr;
         if (theme != nullptr && theme->is_string()) {
             project.theme = theme->as_string();
+        }
+        const json::Value* system =
+            gui != nullptr && gui->is_object() ? gui->find("allow_system_fallback") : nullptr;
+        if (system != nullptr && system->is_bool()) {
+            project.allow_system_fallback = system->as_bool();
         }
     }
     install(world, assets, project);

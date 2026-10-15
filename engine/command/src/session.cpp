@@ -91,6 +91,11 @@ ui::Settings ui_settings(const json::Value& project) {
     if (theme != nullptr && theme->is_string()) {
         settings.theme = theme->as_string();
     }
+    const json::Value* system =
+        gui != nullptr && gui->is_object() ? gui->find("allow_system_fallback") : nullptr;
+    if (system != nullptr && system->is_bool()) {
+        settings.allow_system_fallback = system->as_bool();
+    }
     return settings;
 }
 

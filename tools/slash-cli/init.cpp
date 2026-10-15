@@ -128,7 +128,9 @@ environment variables, never from the file.
 - UI is `Control`, `Label`, `Button` and the other UI components, as Godot's Control nodes,
   laid out in the window by anchors and offsets or by containers. `fonts/` (or any folder):
   `.ttf` and `.otf` files, and `.font.json` files (`slash-cli schema font`) for distance-field
-  fonts that stay sharp at any size. Check UI with `ui_layout` (each control's rect, each label's
+  fonts that stay sharp at any size or that list `fallbacks` for the characters a font lacks
+  (Arabic, Japanese and so on). `Control.layout_direction` `rtl` mirrors a menu for
+  right-to-left languages. Check UI with `ui_layout` (each control's rect, each label's
   lines, each button's state and which control has focus) rather than a screenshot. Buttons
   emit `pressed` events; try one with `ui_press`, or a click or `ui_accept` with `input_inject`.
 - Controls are input actions in `project.json`'s `input`, as Godot's input map: name what the

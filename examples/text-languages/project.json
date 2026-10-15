@@ -1,0 +1,8 @@
+{
+  "format": 1,
+  "gui": {"allow_system_fallback": false, "theme": "ui/game.theme.json"},
+  "main_scene": "main.scene.json",
+  "name": "Text in every language",
+  "version": "0.1.0",
+  "window": {"height": 240, "width": 400}
+}

@@ -56,6 +56,8 @@ struct Project {
     // A .theme.json file every control uses after its own themes, as Godot's gui/theme/custom;
     // empty for none.
     std::string gui_theme;
+    // Text may use fonts installed on the machine for characters the project's fonts lack.
+    bool allow_system_fallback = true;
     // Input actions and their bindings: Godot's ui_* actions, then the project's.
     input::Map input = input::Map::with_defaults();
     // How touches and the mouse stand in for each other.

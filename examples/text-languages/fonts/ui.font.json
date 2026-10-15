@@ -1,0 +1,5 @@
+{
+  "fallbacks": ["fonts/arabic.ttf", "fonts/hebrew.ttf", "fonts/japanese.font.json", "fonts/chinese.font.json"],
+  "font": "fonts/roboto.ttf",
+  "format": 1
+}
