@@ -10,6 +10,7 @@
 #include <SDL3/SDL_stdinc.h>
 #include <doctest/doctest.h>
 
+#include <array>
 #include <cstdio>
 #include <string>
 #include <string_view>
@@ -46,10 +47,15 @@ TEST_CASE("a minimal project gets the defaults") {
     CHECK(project.value().tick_hz == doctest::Approx(60.0));
     CHECK(project.value().binary_name() == "SpacePong2");
     CHECK(project.value().bundle_id() == "com.example.spacepong2");
+    CHECK(project.value().clear_color == std::array<float, 4>{0.3F, 0.3F, 0.3F, 1.0F});
+    CHECK(project.value().rendering_driver == "auto");
 
     project = runtime::parse_project(parse(R"({"format": 1, "name": "?!", "id": "org.me.game",
-        "main_scene": "a.scene.json", "window": {"width": 320}, "tick_hz": 30})"));
+        "main_scene": "a.scene.json", "window": {"width": 320}, "tick_hz": 30,
+        "rendering": {"clear_color": [0, 0.5, 1, 1], "driver": "null"}})"));
     REQUIRE(project.ok());
+    CHECK(project.value().clear_color == std::array<float, 4>{0.0F, 0.5F, 1.0F, 1.0F});
+    CHECK(project.value().rendering_driver == "null");
     CHECK(project.value().binary_name() == "Game");
     CHECK(project.value().bundle_id() == "org.me.game");
     CHECK(project.value().window_width == 320);
@@ -70,6 +76,12 @@ TEST_CASE("project files are checked field by field") {
     CHECK(error_paths("{" + base + R"(, "window": {"width": 0}})") ==
           std::vector<std::string>{"/window/width"});
     CHECK(error_paths("{" + base + R"(, "tick_hz": 0})") == std::vector<std::string>{"/tick_hz"});
+    CHECK(error_paths("{" + base + R"(, "rendering": {"clear_color": [0, 0, 2, 1]}})") ==
+          std::vector<std::string>{"/rendering/clear_color/2"});
+    CHECK(error_paths("{" + base + R"(, "rendering": {"clear_color": [0, 0, 0]}})") ==
+          std::vector<std::string>{"/rendering/clear_color"});
+    CHECK(error_paths("{" + base + R"(, "rendering": {"driver": "opengl"}})") ==
+          std::vector<std::string>{"/rendering/driver"});
     for (const std::string_view scene :
          {"/abs.scene.json", "../up.scene.json", "a/./b.scene.json", "c:/x.scene.json",
           "dir\\\\x.scene.json", "scenes/main.json"}) {
@@ -123,6 +135,8 @@ TEST_CASE("a game loads its main scene and runs headless") {
     CHECK(summary.find("ticks")->as_int() == 25);
     CHECK(summary.find("entities")->as_int() == 3);
     CHECK(summary.find("scene")->as_string() == "scenes/main.scene.json");
+    CHECK(summary.find("renderer")->as_string() == "null"); // headless
+    CHECK(game.value()->renderer().stats().frames == 0);
     // spawn_point extends prefabs/marker.prefab.json.
     const auto& world = game.value()->world();
     CHECK(world.ecs().get<slash::world::Transform2D>(world.find("spawn_point")).position.y ==

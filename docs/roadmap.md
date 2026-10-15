@@ -23,8 +23,8 @@ schema it generates from its own components, and serves every engine action as a
 MCP, JSON-RPC, a localhost REST API and the command line, including while a game runs. A game is
 a folder with a `project.json`, and `slash-cli export` builds it for macOS, Windows, Linux, the
 web, Android or iOS, signs it and can test the result headless. The rest of milestone 4, now in
-progress, builds every platform from one Mac. Nothing draws to the screen yet beyond an empty
-window; rendering arrives with the 2D feature set in milestone 5.
+progress, builds every platform from one Mac. Games draw through a GPU render device but only
+clear their window so far; sprites and the rest of the 2D renderer follow in milestone 5.
 
 ## The path to launch
 
@@ -141,8 +141,13 @@ rendering on top.
       `examples/` that CI builds and runs headless, so agents copy code that is known to work
 - [x] A license check on every pull request, against a manifest of pinned dependencies, before
       this milestone adds Box2D, miniaudio, FreeType and HarfBuzz
-- [ ] Renderer foundation: `RenderDevice` over SDL3's GPU API, a null backend for headless runs,
-      HLSL shaders cross-compiled with SDL_shadercross
+- [x] Renderer foundation: `RenderDevice` over SDL3's GPU API (Metal, Direct3D 12, Vulkan) and a
+      null backend for headless runs. Shaders are written once in HLSL: SPIR-V and MSL are
+      compiled ahead of time with glslang and SPIRV-Cross and committed, and Direct3D 12 compiles
+      the HLSL at startup with Windows' own compiler. Games clear their window to
+      `rendering.clear_color`
+- [ ] A web backend behind `RenderDevice`, since SDL3's GPU API has none: WebGPU, with WebGL2
+      for browsers without it. Web games run with the null device until then
 - [ ] Refresh rates and frame pacing, following Godot's settings: the display's modes and
       refresh rates as data; V-Sync modes (on, off, adaptive, mailbox) and a frame cap (30, 60,
       120, 240 or unlimited) in `project.json`, changeable while the game runs; rendering

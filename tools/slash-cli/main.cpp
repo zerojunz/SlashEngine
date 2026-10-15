@@ -17,6 +17,7 @@
 #include "slash/platform/file.hpp"
 #include "slash/platform/platform.hpp"
 #include "slash/platform/run.hpp"
+#include "slash/render/device.hpp"
 #include "slash/runtime/project.hpp"
 #include "slash/server/server.hpp"
 #include "slash/storyboard/storyboard.hpp"
@@ -382,6 +383,13 @@ int cmd_run(const std::vector<std::string>& args) {
     if (!platform) {
         return failure("could not start the platform", platform.error());
     }
+    // Made after the platform, so it lets go of the window before the window closes.
+    const std::unique_ptr<slash::render::RenderDevice> renderer =
+        config.headless
+            ? slash::render::create_null_device()
+            : slash::render::create_device_or_null(
+                  {.window = platform.value().window(), .driver = "auto", .debug = false});
+    bool draw_failed = false;
 
     // With --serve, requests run on this thread between ticks, so they never race the game, and
     // pause stops the world while the loop keeps serving.
@@ -397,19 +405,28 @@ int cmd_run(const std::vector<std::string>& args) {
         endpoint_file.emplace(session_options.project_root, server->endpoint());
     }
 
-    auto stats = slash::platform::run(platform.value(), options,
-                                      [&](std::uint64_t tick, double tick_seconds) {
-                                          // Hot reload: pick up edited assets and prefabs.
-                                          if (tick % kAssetPollTicks == 0) {
-                                              engine.session->poll_assets();
-                                          }
-                                          if (server) {
-                                              server->poll();
-                                          }
-                                          if (engine.session->playing()) {
-                                              game.step(tick_seconds);
-                                          }
-                                      });
+    auto stats = slash::platform::run(
+        platform.value(), options,
+        [&](std::uint64_t tick, double tick_seconds) {
+            // Hot reload: pick up edited assets and prefabs.
+            if (tick % kAssetPollTicks == 0) {
+                engine.session->poll_assets();
+            }
+            if (server) {
+                server->poll();
+            }
+            if (engine.session->playing()) {
+                game.step(tick_seconds);
+            }
+        },
+        [&] {
+            auto drawn =
+                slash::render::draw_empty_frame(*renderer, slash::render::kDefaultClearColor);
+            if (!drawn && !draw_failed) {
+                draw_failed = true;
+                slash::log::warn("drawing a frame failed", {{"error", drawn.error().message}});
+            }
+        });
     if (server) {
         server->stop();
     }
@@ -428,6 +445,7 @@ int cmd_run(const std::vector<std::string>& args) {
     result["ticks"] = stats.value().ticks;
     result["quit_requested"] = stats.value().quit_requested;
     result["headless"] = config.headless;
+    result["renderer"] = slash::render::backend_name(renderer->backend());
     result["entities"] = game.size();
     if (server) {
         result["url"] = server->endpoint().url();

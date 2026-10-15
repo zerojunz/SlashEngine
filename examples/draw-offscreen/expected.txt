@@ -1,0 +1,3 @@
+draw 4 vertices: every three vertices make a triangle, so 4 vertices is not a whole number of triangles
+image: 64x64, pixel (60, 60) = 51,102,153,255
+frames: 1, GPU draws: 2, triangles: 6, textures: 2

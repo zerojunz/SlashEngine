@@ -47,7 +47,7 @@ $cli run --headless --ticks 60 --scene tests/data/basic.scene.json
 ```
 
 ```json
-{"entities":3,"headless":true,"quit_requested":false,"ticks":60}
+{"entities":3,"headless":true,"quit_requested":false,"renderer":"null","ticks":60}
 ```
 
 `$cli run` with no flags opens a window and ticks until you close it. On a machine with no

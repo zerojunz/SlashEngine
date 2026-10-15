@@ -15,6 +15,18 @@ or license not allowed here, or whose license text changed without review.
 | [doctest](https://github.com/doctest/doctest) | v2.5.2 | MIT | Unit tests (not shipped in games) | Fetched, tests only |
 | [CPM.cmake](https://github.com/cpm-cmake/CPM.cmake) | v0.40.2 | MIT | Dependency fetching | Vendored as `cmake/CPM.cmake` |
 
+The renderer's shaders are compiled ahead of time with two tools whose output is committed in
+`engine/render/src/*_shaders.hpp`. Nothing of theirs is linked into the engine or a game, and
+building needs neither:
+
+| Name | License | Used for |
+| --- | --- | --- |
+| [glslang](https://github.com/KhronosGroup/glslang) | BSD-3-Clause, with parts under BSD-2-Clause, MIT and Apache 2.0 | HLSL to SPIR-V for Vulkan |
+| [SPIRV-Cross](https://github.com/KhronosGroup/SPIRV-Cross) | Apache 2.0 | SPIR-V to MSL for Metal |
+
+On Windows, Direct3D 12 compiles the HLSL at startup with `d3dcompiler_47.dll`, which comes with
+Windows; the engine loads it at run time and ships no copy.
+
 Exports are built with toolchains, which ship in no game except for the runtime libraries listed
 here. Windows and Linux exports from macOS and Linux use toolchains that `slash-cli toolchain
 install` downloads, pinned in `tools/exporter/src/toolchains.cpp`:

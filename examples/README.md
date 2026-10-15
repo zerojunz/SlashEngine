@@ -14,6 +14,7 @@ engine. Copy from them.
 | [events](events/) | `events.subscribe` and `events.read` to hear what changed |
 | [run-until](run-until/) | `run.until`: run a game headless until something happens, in one call |
 | [storyboard](storyboard/) | Briefing before a task, editing facts with versions, and checking after |
+| [draw-offscreen](draw-offscreen/) | The renderer's device: drawing into a texture and reading the pixels back |
 
 ## What an example holds
 
