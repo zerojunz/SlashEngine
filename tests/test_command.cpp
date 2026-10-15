@@ -1569,7 +1569,7 @@ TEST_CASE("ui.layout returns where controls are and the lines labels show") {
     engine.ok("entity.create", R"({"id": "rock", "components": {"Transform2D": {}}})");
     CHECK(
         engine.fails("ui.layout", R"({"ids": ["rock"]})", command::code::kInvalidParams).message ==
-        "/ids/0: \"rock\" isn't a control: it has no Control, Label or ColorRect");
+        "/ids/0: \"rock\" isn't a control: it has no Control or UI component");
     std::filesystem::remove_all(root);
 }
 

@@ -206,12 +206,24 @@ void register_ui_components(ComponentRegistry& registry) {
     const FieldMeta grow{.doc = "Which way it grows when its minimum size is bigger than its "
                                 "anchors and offsets make it.",
                          .choices = {"begin", "end", "both"}};
+    const FieldMeta size_flags{
+        .doc = "How a container sizes it on this axis: fill takes the space it is given, "
+               "expand also takes a share of the space left over, and shrink_* keep it at its "
+               "minimum size at the start, center or end.",
+        .choices = {"fill", "expand_fill", "expand", "shrink_begin", "shrink_center", "shrink_end",
+                    "expand_shrink_center", "expand_shrink_end"}};
+    const FieldMeta axis_stretch{.doc = "How the middle parts fill the rect: stretched, tiled, or "
+                                        "tiled with tiles stretched to fit a whole number.",
+                                 .choices = {"stretch", "tile", "tile_fit"}};
+    const FieldMeta alignment{.doc = "Where the children go when they don't fill it.",
+                              .choices = {"begin", "center", "end"}};
     registry.add<Control>()
         .set_doc("A UI element's rect, as Godot's Control: placed in its parent's rect by "
                  "anchors and offsets, or in the viewport when no Control lists it in children. "
                  "Label, ColorRect and the other UI components draw in it; they lay out with "
-                 "these defaults when the entity has no Control. Controls draw above the "
-                 "world, parents before children.")
+                 "these defaults when the entity has no Control. A container component places "
+                 "its children by size flags instead of their anchors and offsets. Controls "
+                 "draw above the world, parents before children.")
         .describe("children",
                   {.doc = "Controls laid out in its rect, drawn over it in this order."})
         .describe("anchor_left", anchor)
@@ -249,7 +261,26 @@ void register_ui_components(ComponentRegistry& registry) {
                           "{\"font\": \"fonts/title.ttf\"}."})
         .describe(
             "theme_override_font_sizes",
-            {.doc = "Theme font sizes by name, e.g. {\"font_size\": 32}.", .min = 1, .max = 1024});
+            {.doc = "Theme font sizes by name, e.g. {\"font_size\": 32}.", .min = 1, .max = 1024})
+        .describe("theme_override_styles",
+                  {.doc = "Theme style boxes by name, as in a .theme.json file, e.g. "
+                          "{\"panel\": {\"bg_color\": [0.1, 0.1, 0.2, 1], "
+                          "\"corner_radius\": 8}}."})
+        .describe("theme",
+                  {.doc = "A .theme.json file whose items it and its children use before the "
+                          "project's theme and the default one."})
+        .describe("theme_type_variation",
+                  {.doc = "A theme type to look its items up in before its own, e.g. "
+                          "\"TitleLabel\" with base_type Label."})
+        .describe("size_flags_horizontal", size_flags)
+        .describe("size_flags_vertical", size_flags)
+        .describe("size_flags_stretch_ratio",
+                  {.doc = "Its share of the space expanding children split in a container.",
+                   .min = 0})
+        .describe("texture_filter",
+                  {.doc = "How its textures are sampled when scaled; inherit takes its parent's, "
+                          "then the project's.",
+                   .choices = {"inherit", "linear", "nearest"}});
 
     registry.add<Label>()
         .set_doc("Text in the control's rect, as Godot's Label. Theme items: font, font_size, "
@@ -289,6 +320,100 @@ void register_ui_components(ComponentRegistry& registry) {
     registry.add<ColorRect>()
         .set_doc("Fills the control's rect with one color, as Godot's ColorRect.")
         .describe("color", {.doc = "As [r, g, b, a] from 0 to 1.", .min = 0, .max = 1});
+
+    registry.add<Panel>().set_doc(
+        "Draws the theme's panel style box in the control's rect, as Godot's Panel.");
+
+    registry.add<TextureRect>()
+        .set_doc("Draws a texture in the control's rect, as Godot's TextureRect.")
+        .describe("texture", {.doc = "Project path of a PNG or BMP file; \"\" draws nothing."})
+        .describe("expand_mode",
+                  {.doc = "Its minimum size: the texture's size, none, or the rect's height as "
+                          "its width (fit_width) or its width as its height (fit_height), "
+                          "_proportional keeping the texture's aspect.",
+                   .choices = {"keep_size", "ignore_size", "fit_width", "fit_width_proportional",
+                               "fit_height", "fit_height_proportional"}})
+        .describe("stretch_mode",
+                  {.doc = "How the texture fills the rect: scaled to it, tiled, at its own size "
+                          "(keep), or scaled keeping its aspect to fit inside (keep_aspect) or "
+                          "to cover it (keep_aspect_covered).",
+                   .choices = {"scale", "tile", "keep", "keep_centered", "keep_aspect",
+                               "keep_aspect_centered", "keep_aspect_covered"}})
+        .describe("flip_h", {.doc = "Draw it mirrored left to right."})
+        .describe("flip_v", {.doc = "Draw it upside down."});
+
+    const FieldMeta patch_margin{.doc = "Pixels of the texture on this side that don't stretch.",
+                                 .min = 0};
+    registry.add<NinePatchRect>()
+        .set_doc("Draws a texture cut into nine parts in the control's rect, as Godot's "
+                 "NinePatchRect: the corners keep their size, the sides stretch along and the "
+                 "middle both ways. Its minimum size is its margins.")
+        .describe("texture", {.doc = "Project path of a PNG or BMP file; \"\" draws nothing."})
+        .describe("region_rect",
+                  {.doc = "The part of the texture to use, [x, y, width, height] in pixels; a "
+                          "zero size uses the whole texture.",
+                   .min = 0})
+        .describe("patch_margin_left", patch_margin)
+        .describe("patch_margin_top", patch_margin)
+        .describe("patch_margin_right", patch_margin)
+        .describe("patch_margin_bottom", patch_margin)
+        .describe("axis_stretch_horizontal", axis_stretch)
+        .describe("axis_stretch_vertical", axis_stretch)
+        .describe("draw_center", {.doc = "Draw the middle part."});
+
+    registry.add<ProgressBar>()
+        .set_doc("A bar filled to show value between min_value and max_value, with the percentage "
+                 "on it, as Godot's ProgressBar. Theme items: background, fill, font, font_size, "
+                 "font_color, font_outline_color and outline_size.")
+        .describe("min_value", {.doc = "The value of an empty bar."})
+        .describe("max_value", {.doc = "The value of a full bar."})
+        .describe("value", {.doc = "Kept between min_value and max_value unless allow_greater or "
+                                   "allow_lesser."})
+        .describe("step", {.doc = "The value is rounded to a multiple of it; 0 for none.", .min = 0})
+        .describe("allow_greater", {.doc = "Let value go above max_value."})
+        .describe("allow_lesser", {.doc = "Let value go below min_value."})
+        .describe("fill_mode", {.doc = "Which way the bar fills.",
+                                .choices = {"begin_to_end", "end_to_begin", "top_to_bottom",
+                                            "bottom_to_top"}})
+        .describe("show_percentage", {.doc = "Draw the percentage on the bar."});
+
+    registry.add<BoxContainer>()
+        .set_doc("Lays out its children in a row, or a column when vertical, as Godot's "
+                 "HBoxContainer and VBoxContainer: each at its minimum size along it, plus a share "
+                 "of the space left for those that expand. Theme constant: separation.")
+        .describe("vertical", {.doc = "A column instead of a row."})
+        .describe("alignment", alignment);
+
+    registry.add<GridContainer>()
+        .set_doc("Lays out its children in a grid, as Godot's GridContainer: left to right, a new "
+                 "row every columns children. Theme constants: h_separation and v_separation.")
+        .describe("columns", {.doc = "Children per row.", .min = 1, .max = 1024});
+
+    registry.add<MarginContainer>().set_doc(
+        "Fits its children in its rect less margins, as Godot's MarginContainer. Theme "
+        "constants: margin_left, margin_top, margin_right and margin_bottom.");
+
+    registry.add<CenterContainer>()
+        .set_doc("Keeps its children at their minimum sizes in its center, as Godot's "
+                 "CenterContainer.")
+        .describe("use_top_left",
+                  {.doc = "Center them on its top-left corner, and need no space for them."});
+
+    registry.add<FlowContainer>()
+        .set_doc("Lays out its children in rows that wrap to its width, or columns that wrap to "
+                 "its height when vertical, as Godot's HFlowContainer and VFlowContainer. Theme "
+                 "constants: h_separation and v_separation.")
+        .describe("vertical", {.doc = "Columns instead of rows."})
+        .describe("alignment", alignment)
+        .describe("last_wrap_alignment",
+                  {.doc = "Where the last line goes when it isn't full; inherit uses alignment.",
+                   .choices = {"inherit", "begin", "center", "end"}})
+        .describe("reverse_fill",
+                  {.doc = "Fill rows from the bottom up, or columns from the right."});
+
+    registry.add<PanelContainer>().set_doc(
+        "Draws the theme's panel style box and fits its children inside the style's margins, "
+        "as Godot's PanelContainer.");
 }
 
 void register_particle_components(ComponentRegistry& registry) {

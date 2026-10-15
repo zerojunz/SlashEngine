@@ -115,7 +115,8 @@ Game::Game(Project project, platform::Platform platform, const std::string& data
         [this](std::string_view path) { return assets_.read(path, world::kPrefabType); });
     canvas::install(world_, assets_);
     ui::set_settings(world_, {.viewport = {static_cast<float>(project_.window_width),
-                                           static_cast<float>(project_.window_height)}});
+                                           static_cast<float>(project_.window_height)},
+                              .theme = project_.gui_theme});
     animation::install(world_, assets_);
     physics2d::install(world_, project_.physics_2d);
 }

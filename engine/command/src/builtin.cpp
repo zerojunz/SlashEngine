@@ -376,6 +376,9 @@ Reply schema_get(Session& session, const json::Value& params) {
     if (kind == "font") {
         return Reply::success(text::font_schema());
     }
+    if (kind == "theme") {
+        return Reply::success(ui::theme_schema());
+    }
     if (name.empty()) {
         return param_error(code::kInvalidParams, "/name",
                            "name is required when kind is " + quoted(kind));
@@ -1379,8 +1382,8 @@ Reply ui_layout(Session& session, const json::Value& params) {
             }
             if (!ui::is_control(world, entity)) {
                 return param_error(code::kInvalidParams, path,
-                                   quoted(id) + " isn't a control: it has no Control, Label or "
-                                                "ColorRect");
+                                   quoted(id) + " isn't a control: it has no Control or UI "
+                                                "component");
             }
             wanted.insert(entity);
         }
@@ -1445,6 +1448,58 @@ Reply ui_layout(Session& session, const json::Value& params) {
     if (!problems.empty()) {
         result["problems"] = std::move(problems);
     }
+    return Reply::success(std::move(result));
+}
+
+Reply ui_theme(Session& session, const json::Value& params) {
+    const world::World& world = session.world();
+    text::Fonts* fonts = ui::fonts(world);
+    SLASH_ASSERT(fonts != nullptr, "sessions install ui");
+    const std::string id = text(params, "id");
+    const entt::entity entity = world.find(id);
+    if (entity == entt::null) {
+        return unknown_entity(world, id, "/id");
+    }
+    if (!ui::is_control(world, entity)) {
+        return param_error(code::kInvalidParams, "/id",
+                           quoted(id) + " isn't a control: it has no Control or UI component");
+    }
+    const std::vector<ui::ThemeItem> items = ui::theme_items(world, *fonts, entity);
+    // What it has, as "kind" and "kind/name", for the filter and its suggestions.
+    std::vector<std::string> names;
+    for (const ui::ThemeItem& item : items) {
+        if (std::ranges::find(names, item.kind) == names.end()) {
+            names.push_back(item.kind);
+        }
+        names.push_back(item.kind + "/" + item.name);
+    }
+    std::set<std::string, std::less<>> wanted;
+    if (const json::Value* filter = params.find("items"); filter != nullptr) {
+        const json::Array& list = filter->as_array();
+        for (std::size_t i = 0; i < list.size(); ++i) {
+            const std::string& name = list[i].as_string();
+            if (std::ranges::find(names, name) == names.end()) {
+                std::string message = quoted(id) + " uses no theme item " + quoted(name);
+                add_hint(message, name, names);
+                return param_error(code::kInvalidParams, "/items/" + std::to_string(i), message);
+            }
+            wanted.insert(name);
+        }
+    }
+    json::Array out;
+    for (const ui::ThemeItem& item : items) {
+        const std::string name = item.kind + "/" + item.name;
+        if (!wanted.empty() && !wanted.contains(item.kind) && !wanted.contains(name)) {
+            continue;
+        }
+        json::Value entry;
+        entry["item"] = name;
+        entry["value"] = item.value;
+        entry["from"] = item.from;
+        out.push_back(std::move(entry));
+    }
+    json::Value result;
+    result["items"] = std::move(out);
     return Reply::success(std::move(result));
 }
 
@@ -2583,17 +2638,18 @@ void register_builtin_commands(Registry& registry) {
 
     json::Value kind = property("string", "\"scene\", \"prefab\", \"frames\" (.frames.json), "
                                           "\"material\" (.material.json), \"animation\" "
-                                          "(.anim.json), \"tileset\" (.tileset.json) or "
+                                          "(.anim.json), \"tileset\" (.tileset.json), \"font\" "
+                                          "(.font.json), \"theme\" (.theme.json) or "
                                           "\"storyboard\" for those files, \"component\" for "
                                           "one component's fields, \"command\" for a command's "
                                           "params.");
-    kind["enum"] = json::Array{"scene",   "prefab", "frames",     "material",  "animation",
-                               "tileset", "font",   "storyboard", "component", "command"};
+    kind["enum"] = json::Array{"scene", "prefab",     "frames",    "material", "animation", "tileset",
+                               "font",  "theme", "storyboard", "component", "command"};
     registry.add({
         .name = "schema.get",
         .description = "Returns a JSON Schema: for scene, prefab, .frames.json, .material.json, "
-                       ".anim.json, .tileset.json, .font.json or storyboard files, one component "
-                       "or one command.",
+                       ".anim.json, .tileset.json, .font.json, .theme.json or storyboard files, "
+                       "one component or one command.",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema(
@@ -2994,6 +3050,22 @@ void register_builtin_commands(Registry& registry) {
             {"viewport", std::move(viewport)},
         }),
         .handler = ui_layout,
+    });
+    registry.add({
+        .name = "ui.theme",
+        .description = "Returns the theme items a control uses (colors, constants, fonts, font "
+                       "sizes, styles) as \"kind/name\", each with its value and where it "
+                       "comes from: \"override\", a .theme.json path or \"default\".",
+        .capabilities = {Read},
+        .effect = Effect::Read,
+        .params = params_schema(
+            {
+                {"id", property("string", "The control.")},
+                {"items", names_property("Only these: kinds such as \"styles\" or items such "
+                                         "as \"constants/separation\". Default: all.")},
+            },
+            {"id"}),
+        .handler = ui_theme,
     });
     json::Value measure_text = property("string", R"(The text; lines break at "\n".)");
     measure_text["maxLength"] = 65536;
