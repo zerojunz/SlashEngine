@@ -7,6 +7,7 @@
 #include "slash/core/text.hpp"
 #include "slash/core/version.hpp"
 #include "slash/platform/file.hpp"
+#include "slash/storyboard/storyboard.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/scene.hpp"
 #include "slash/world/world.hpp"
@@ -16,8 +17,10 @@
 #include <charconv>
 #include <cstddef>
 #include <cstdint>
+#include <ctime>
 #include <map>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -335,6 +338,9 @@ Reply schema_get(Session& session, const json::Value& params) {
     if (kind == "prefab") {
         return Reply::success(world::prefab_schema(session.components()));
     }
+    if (kind == "storyboard") {
+        return Reply::success(storyboard::file_schema());
+    }
     if (name.empty()) {
         return param_error(code::kInvalidParams, "/name",
                            "name is required when kind is " + quoted(kind));
@@ -619,6 +625,156 @@ Reply asset_list(Session& session, const json::Value& params) {
     }
     json::Value result;
     result["assets"] = std::move(assets);
+    return Reply::success(std::move(result));
+}
+
+// ---- Storyboard ----
+
+// The storyboard's entries, or a failure listing every problem in its files.
+std::optional<Reply> load_storyboard(Session& session, json::Object& entries) {
+    auto loaded = storyboard::load(
+        [&session](std::string_view path) { return session.read_project_file(path); });
+    if (!loaded) {
+        return Reply::failure(loaded.error());
+    }
+    const std::vector<storyboard::FileError>& errors = loaded.value().errors;
+    if (!errors.empty()) {
+        json::Array items;
+        for (const storyboard::FileError& error : errors) {
+            json::Value item;
+            item["file"] = error.file;
+            item["path"] = error.path;
+            item["message"] = error.message;
+            items.push_back(std::move(item));
+        }
+        json::Value data;
+        data["errors"] = std::move(items);
+        const storyboard::FileError& first = errors.front();
+        std::string message =
+            first.file + (first.path.empty() ? "" : " at " + first.path) + ": " + first.message;
+        if (errors.size() > 1) {
+            message += " (and " + std::to_string(errors.size() - 1) + " more errors)";
+        }
+        return Reply::failure(code::kInvalidArgument,
+                              message + "; fix the storyboard file, then retry", std::move(data));
+    }
+    entries = std::move(loaded.value().entries);
+    return std::nullopt;
+}
+
+// How many lines the journal has: a later brief can ask what changed since.
+Result<std::size_t> journal_seq(Session& session) {
+    auto journal = session.read_project_file(storyboard::kJournalPath);
+    if (!journal) {
+        return journal.error();
+    }
+    return storyboard::journal_length(journal.value().value_or(std::string()));
+}
+
+Reply storyboard_query(Session& session, const json::Value& params) {
+    json::Object entries;
+    if (auto failed = load_storyboard(session, entries)) {
+        return std::move(*failed);
+    }
+    storyboard::Query query;
+    std::vector<json::ValidationError> unknown;
+    if (const json::Value* ids = params.find("ids"); ids != nullptr) {
+        for (std::size_t i = 0; i < ids->size(); ++i) {
+            const std::string& id = ids->as_array()[i].as_string();
+            if (!entries.contains(id)) {
+                std::string message = storyboard::id_error(id);
+                unknown.push_back({"/ids/" + std::to_string(i),
+                                   message.empty() ? storyboard::unknown_entry(entries, id)
+                                                   : std::move(message)});
+            }
+            query.ids.push_back(id);
+        }
+    }
+    if (!unknown.empty()) {
+        Reply reply = Reply::invalid_params(unknown);
+        reply.code = code::kNotFound;
+        return reply;
+    }
+    query.kind = text(params, "kind");
+    query.text = text(params, "text");
+    query.linked = text(params, "linked");
+    query.full = flag(params, "full");
+    auto seq = journal_seq(session);
+    if (!seq) {
+        return Reply::failure(seq.error());
+    }
+    json::Value result;
+    result["entries"] = storyboard::query(entries, query);
+    result["seq"] = seq.value();
+    return Reply::success(std::move(result));
+}
+
+Reply storyboard_edit(Session& session, const json::Value& params) {
+    json::Object entries;
+    if (auto failed = load_storyboard(session, entries)) {
+        return std::move(*failed);
+    }
+    storyboard::EditResult edited = storyboard::apply_edits(entries, *params.find("edits"));
+    if (!edited.errors.empty()) {
+        Reply reply = Reply::invalid_params(edited.errors);
+        if (!edited.current.is_null()) {
+            reply.code = code::kConflict;
+            reply.data["current"] = std::move(edited.current);
+        }
+        return reply;
+    }
+
+    // Rewrite each file an edit touched, and record the new versions in the journal.
+    std::set<std::string_view> files;
+    json::Object changes;
+    for (const auto& [id, unused] : edited.previous) {
+        files.insert(storyboard::kind_of(id)->file);
+        const auto it = entries.find(id);
+        changes[id] =
+            it != entries.end() ? json::Value(storyboard::version(it->second)) : json::Value();
+    }
+    for (const std::string_view file : files) {
+        json::Object in_file;
+        for (const auto& [id, entry] : entries) {
+            if (storyboard::kind_of(id)->file == file) {
+                in_file.emplace(id, entry);
+            }
+        }
+        if (auto staged =
+                session.stage_file(storyboard::file_path(file), storyboard::format_file(in_file));
+            !staged) {
+            return Reply::failure(staged.error());
+        }
+    }
+    const std::string why = text(params, "why");
+    std::string by = text(params, "by");
+    if (by.empty()) {
+        by = session.client().empty() ? "unknown" : session.client();
+    }
+    const auto now = static_cast<std::int64_t>(std::time(nullptr));
+    if (auto logged = session.stage_append(storyboard::kJournalPath,
+                                           storyboard::journal_line(by, why, changes, now) + "\n");
+        !logged) {
+        return Reply::failure(logged.error());
+    }
+
+    // Undo puts the entries back as they were, and redo makes this edit again; both are
+    // refused if an entry changed in between. Whoever undoes or redoes is the journal's "by".
+    json::Value undo;
+    undo["edits"] = storyboard::reverse_edits(entries, edited.previous);
+    undo["why"] = why.empty() ? std::string("undo") : "undo: " + why;
+    json::Value redo = params;
+    redo.as_object().erase("by");
+    redo["why"] = why.empty() ? std::string("redo") : "redo: " + why;
+    session.add_undo_call("storyboard.edit", std::move(undo), std::move(redo));
+
+    auto seq = journal_seq(session);
+    if (!seq) {
+        return Reply::failure(seq.error());
+    }
+    json::Value result;
+    result["changes"] = std::move(changes);
+    result["seq"] = seq.value();
     return Reply::success(std::move(result));
 }
 
@@ -1190,14 +1346,14 @@ void register_builtin_commands(Registry& registry) {
         .handler = engine_describe,
     });
 
-    json::Value kind = property("string", "\"scene\" or \"prefab\" for those files, "
-                                          "\"component\" for one component's fields, "
-                                          "\"command\" for a command's params.");
-    kind["enum"] = json::Array{"scene", "prefab", "component", "command"};
+    json::Value kind = property("string", "\"scene\", \"prefab\" or \"storyboard\" for "
+                                          "those files, \"component\" for one component's "
+                                          "fields, \"command\" for a command's params.");
+    kind["enum"] = json::Array{"scene", "prefab", "storyboard", "component", "command"};
     registry.add({
         .name = "schema.get",
-        .description = "Returns a JSON Schema: for scene or prefab files, one component or one "
-                       "command.",
+        .description = "Returns a JSON Schema: for scene, prefab or storyboard files, one "
+                       "component or one command.",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema(
@@ -1333,6 +1489,65 @@ void register_builtin_commands(Registry& registry) {
                             "{\"rotation\": 1.57}}. Fields left out are unchanged; missing "
                             "components are added.");
     set_components["minProperties"] = 1;
+    json::Array kind_names;
+    for (const storyboard::Kind& each : storyboard::kinds()) {
+        kind_names.emplace_back(each.name);
+    }
+    json::Value story_kind = property("string", "Only entries of this kind.");
+    story_kind["enum"] = std::move(kind_names);
+    registry.add({
+        .name = "storyboard.query",
+        .description = "Finds storyboard entries: the game's style, world, story, design, names, "
+                       "decisions and open work. Returns IDs, versions, names and summaries; "
+                       "full: true returns every field.",
+        .capabilities = {Read},
+        .effect = Effect::Read,
+        .params = params_schema({
+            {"ids", names_property("Only these entries, e.g. [\"character/mira\"].")},
+            {"kind", std::move(story_kind)},
+            {"text", property("string", "Only entries with this text in a field, ignoring "
+                                        "case.")},
+            {"linked", property("string", "Only entries whose links name this project path, "
+                                          "or whose refs name this entry ID.")},
+            {"full", property("boolean", "Return every field, not only name and summary.")},
+        }),
+        .handler = storyboard_query,
+    });
+
+    json::Value story_version;
+    story_version["description"] = "The version storyboard.query returned, or null to create "
+                                   "the entry. A stale version is refused.";
+    story_version["type"] = json::Array{"string", "null"};
+    json::Value story_edit = params_schema(
+        {
+            {"id", property("string", "Entry ID: a kind and a lowercase name, e.g. "
+                                      "\"character/mira\".")},
+            {"version", std::move(story_version)},
+            {"set", property("object", "Fields to set; null removes a field.")},
+            {"remove", property("boolean", "Remove the entry.")},
+        },
+        {"id", "version"});
+    json::Value story_edits = property("array", "Edits, applied together or not at all.");
+    story_edits["items"] = std::move(story_edit);
+    story_edits["minItems"] = 1;
+    story_edits["maxItems"] = 1000;
+    registry.add({
+        .name = "storyboard.edit",
+        .description = "Creates, changes or removes storyboard entries in one undoable step, and "
+                       "records it in the journal. Each edit names the version it read.",
+        .capabilities = {Edit, Filesystem},
+        .effect = Effect::Edit,
+        .params = params_schema(
+            {
+                {"edits", std::move(story_edits)},
+                {"why", property("string", "Why, for the journal.")},
+                {"by", property("string", "Who, for the journal; defaults to the MCP client's "
+                                          "name.")},
+            },
+            {"edits"}),
+        .handler = storyboard_edit,
+    });
+
     registry.add({
         .name = "component.set",
         .description = "Sets component fields on an entity, adding components it lacks. "

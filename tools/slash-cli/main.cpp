@@ -19,6 +19,7 @@
 #include "slash/platform/run.hpp"
 #include "slash/runtime/project.hpp"
 #include "slash/server/server.hpp"
+#include "slash/storyboard/storyboard.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/scene.hpp"
@@ -70,7 +71,7 @@ Usage:
   slash-cli scene validate <file>    Check a scene or .prefab.json file; lists every error
   slash-cli scene format <file>      Rewrite a scene or prefab in canonical form
       --check                        Only report whether it is canonical; change nothing
-  slash-cli schema <name>            Print a JSON Schema: scene, prefab, project
+  slash-cli schema <name>            Print a JSON Schema: scene, prefab, storyboard, project
                                      (project.json) or presets (export_presets.json)
   slash-cli project validate [dir]   Check project.json and export_presets.json; lists every
                                      error
@@ -536,15 +537,19 @@ int cmd_scene(const std::vector<std::string>& args) {
 }
 
 int cmd_schema(const std::vector<std::string>& args) {
-    if (args.size() != 1 || (args[0] != "scene" && args[0] != "prefab" && args[0] != "project" &&
-                             args[0] != "presets")) {
-        return usage_error("schema takes one argument: scene, prefab, project or presets");
+    constexpr std::array<std::string_view, 5> kKinds = {"scene", "prefab", "storyboard", "project",
+                                                        "presets"};
+    if (args.size() != 1 || std::ranges::find(kKinds, args[0]) == kKinds.end()) {
+        return usage_error(
+            "schema takes one argument: scene, prefab, storyboard, project or presets");
     }
     json::Value schema;
     if (args[0] == "scene") {
         schema = world::scene_schema(make_registry());
     } else if (args[0] == "prefab") {
         schema = world::prefab_schema(make_registry());
+    } else if (args[0] == "storyboard") {
+        schema = slash::storyboard::file_schema();
     } else if (args[0] == "project") {
         schema = slash::runtime::project_schema();
     } else {

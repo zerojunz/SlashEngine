@@ -14,6 +14,7 @@ real commands and real output, and no screenshots.
 | Look up a command, its params and what it returns | [reference/commands.md](reference/commands.md) |
 | Look up a `slash-cli`, `slash-mcp` or `slash-game` flag | [reference/cli.md](reference/cli.md) |
 | Write or check a `.scene.json` file | [reference/scene-format.md](reference/scene-format.md) |
+| Record a game's characters, story, rules or decisions | [reference/storyboard-format.md](reference/storyboard-format.md) |
 | Set up a game's `project.json` | [reference/project-format.md](reference/project-format.md) |
 | Call the engine over HTTP, JSON-RPC or MCP | [reference/protocols.md](reference/protocols.md) |
 | Read the full design and the reasons behind it | [design.md](design.md) |

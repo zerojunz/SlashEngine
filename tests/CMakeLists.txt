@@ -15,10 +15,11 @@ add_executable(slash_tests
     test_runtime.cpp
     test_scene.cpp
     test_server.cpp
+    test_storyboard.cpp
     test_world.cpp)
 target_link_libraries(slash_tests PRIVATE
     slash::asset slash::command slash::core slash::exporter slash::platform slash::runtime slash::server
-    slash::world doctest::doctest SDL3::SDL3-static)
+    slash::storyboard slash::world doctest::doctest SDL3::SDL3-static)
 # doctest forward-declares std::ostream by default, which breaks string_view checks on recent
 # MSVC standard libraries; include the real headers instead.
 target_compile_definitions(slash_tests PRIVATE DOCTEST_CONFIG_USE_STD_HEADERS
@@ -68,6 +69,15 @@ if(SLASH_BUILD_TOOLS)
     add_test(NAME cli_schema_prefab COMMAND slash-cli schema prefab)
     set_tests_properties(cli_schema_prefab PROPERTIES
         PASS_REGULAR_EXPRESSION "\"title\": \"SlashEngine prefab\"")
+
+    add_test(NAME cli_schema_storyboard COMMAND slash-cli schema storyboard)
+    set_tests_properties(cli_schema_storyboard PROPERTIES
+        PASS_REGULAR_EXPRESSION "\"title\": \"SlashEngine storyboard file\"")
+
+    add_test(NAME cli_storyboard_query COMMAND slash-cli call storyboard.query
+        "{\"linked\": \"prefabs/marker.prefab.json\"}" --project ${scenes}/game)
+    set_tests_properties(cli_storyboard_query PROPERTIES
+        PASS_REGULAR_EXPRESSION "\"id\":\"place/landing_pad\",\"version\":\"[0-9a-f]+\"")
 
     add_test(NAME cli_scene_validate_invalid
         COMMAND slash-cli scene validate ${scenes}/invalid.scene.json)

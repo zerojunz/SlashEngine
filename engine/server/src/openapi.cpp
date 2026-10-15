@@ -96,6 +96,8 @@ int http_status(int error_code) noexcept {
     case command::code::kMethodNotFound:
     case command::code::kNotFound:
         return 404;
+    case command::code::kConflict:
+        return 409;
     default:
         return 500;
     }
