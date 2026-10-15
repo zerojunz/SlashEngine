@@ -1426,6 +1426,10 @@ Reply ui_layout(Session& session, const json::Value& params) {
             if (!label->error.empty()) {
                 item["font_error"] = label->error;
             }
+        } else if (const auto percent = layout.percentages.find(placed.entity);
+                   percent != layout.percentages.end()) {
+            // A ProgressBar's percentage.
+            item["lines"] = json::Array{percent->second.source};
         }
         controls.push_back(std::move(item));
     }
@@ -3040,9 +3044,9 @@ void register_builtin_commands(Registry& registry) {
     registry.add({
         .name = "ui.layout",
         .description = "Returns where controls are on screen, in drawing order: each one's rect "
-                       "[x, y, w, h], for labels the lines shown and whether text overflows, and "
-                       "mistakes such as misspelled theme overrides. A check without a "
-                       "screenshot.",
+                       "[x, y, w, h], the lines labels and progress bars show and whether text "
+                       "overflows, and mistakes such as misspelled theme overrides. A check "
+                       "without a screenshot.",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema({

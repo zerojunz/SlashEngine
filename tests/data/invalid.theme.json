@@ -1,0 +1,10 @@
+{
+  "format": 1,
+  "types": {
+    "Label": {
+      "colors": {
+        "font_colour": [1, 1, 1, 1]
+      }
+    }
+  }
+}

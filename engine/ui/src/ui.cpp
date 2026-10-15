@@ -296,7 +296,31 @@ std::vector<json::ValidationError> check_scene(const world::ComponentRegistry& c
     if (!world::load_scene(world, scene)) {
         return errors;
     }
-    install(world, assets);
+    // The project's window and theme, when the scene is in one.
+    Settings project;
+    const auto project_file = reader ? reader("project.json")
+                                     : Result<std::string>(make_error(ErrorCode::NotFound, ""));
+    const auto parsed = project_file ? json::parse(project_file.value())
+                                     : Result<json::Value>(project_file.error());
+    if (parsed && parsed.value().is_object()) {
+        const json::Value& doc = parsed.value();
+        const json::Value* window = doc.find("window");
+        const json::Value* width =
+            window != nullptr && window->is_object() ? window->find("width") : nullptr;
+        const json::Value* height =
+            window != nullptr && window->is_object() ? window->find("height") : nullptr;
+        if (width != nullptr && height != nullptr && width->is_number() && height->is_number() &&
+            width->as_double() > 0.0 && height->as_double() > 0.0) {
+            project.viewport = {static_cast<float>(width->as_double()),
+                                static_cast<float>(height->as_double())};
+        }
+        const json::Value* gui = doc.find("gui");
+        const json::Value* theme = gui != nullptr && gui->is_object() ? gui->find("theme") : nullptr;
+        if (theme != nullptr && theme->is_string()) {
+            project.theme = theme->as_string();
+        }
+    }
+    install(world, assets, project);
     for (Problem& problem : check(world, *fonts(world))) {
         errors.push_back({"/entities/" + json::pointer_escape(problem.id) + problem.path,
                           std::move(problem.message)});

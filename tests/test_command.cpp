@@ -1279,6 +1279,8 @@ TEST_CASE("schema.get returns scene, component and command schemas") {
           "SlashEngine material");
     CHECK(engine.ok("schema.get", R"({"kind": "animation"})").find("title")->as_string() ==
           "SlashEngine animation library");
+    CHECK(engine.ok("schema.get", R"({"kind": "theme"})").find("title")->as_string() ==
+          "SlashEngine theme");
 
     const json::Value health =
         engine.ok("schema.get", R"({"kind": "component", "name": "Health"})");
@@ -1570,6 +1572,49 @@ TEST_CASE("ui.layout returns where controls are and the lines labels show") {
     CHECK(
         engine.fails("ui.layout", R"({"ids": ["rock"]})", command::code::kInvalidParams).message ==
         "/ids/0: \"rock\" isn't a control: it has no Control or UI component");
+    std::filesystem::remove_all(root);
+}
+
+TEST_CASE("ui.theme returns the theme items a control uses and where each comes from") {
+    const std::string root = "ui_theme_project";
+    std::filesystem::remove_all(root);
+    REQUIRE(slash::platform::create_directories(root + "/ui").ok());
+    REQUIRE(slash::platform::write_file(root + "/project.json",
+                                        R"({"format": 1, "name": "UI", "version": "0.1.0",
+                                            "main_scene": "main.scene.json",
+                                            "gui": {"theme": "ui/game.theme.json"}})")
+                .ok());
+    REQUIRE(slash::platform::write_file(
+                root + "/ui/game.theme.json",
+                R"({"format": 1, "types": {"BoxContainer": {"constants": {"separation": 8}}}})")
+                .ok());
+    command::SessionOptions options;
+    options.project_root = root;
+    Engine engine(options);
+    engine.ok("batch", R"({"commands": [
+        {"command": "entity.create", "params": {"id": "box", "components": {
+            "BoxContainer": {"vertical": true}}}},
+        {"command": "entity.create", "params": {"id": "panel", "components": {
+            "Control": {"theme_override_styles": {"panel": {"corner_radius": 4}}},
+            "Panel": {}}}},
+        {"command": "entity.create", "params": {"id": "label", "components": {
+            "Label": {"text": "Hi"}}}}]})");
+    CHECK(engine.ok("ui.theme", R"({"id": "box"})") == parse(R"({"items": [
+        {"item": "constants/separation", "value": 8, "from": "ui/game.theme.json"}]})"));
+    CHECK(engine.ok("ui.theme", R"({"id": "panel"})") == parse(R"({"items": [
+        {"item": "styles/panel", "value": {"corner_radius": 4}, "from": "override"}]})"));
+    CHECK(engine.ok("ui.theme", R"({"id": "label", "items": ["font_sizes", "colors/font_color"]})") ==
+          parse(R"({"items": [
+              {"item": "colors/font_color", "value": [1.0, 1.0, 1.0, 1.0], "from": "default"},
+              {"item": "font_sizes/font_size", "value": 16, "from": "default"}]})"));
+    CHECK(engine
+              .fails("ui.theme", R"({"id": "box", "items": ["constants/separaton"]})",
+                     command::code::kInvalidParams)
+              .message == "/items/0: \"box\" uses no theme item \"constants/separaton\"; did you "
+                          "mean \"constants/separation\"?");
+    engine.ok("entity.create", R"({"id": "rock", "components": {"Transform2D": {}}})");
+    CHECK(engine.fails("ui.theme", R"({"id": "rock"})", command::code::kInvalidParams).message ==
+          "/id: \"rock\" isn't a control: it has no Control or UI component");
     std::filesystem::remove_all(root);
 }
 
