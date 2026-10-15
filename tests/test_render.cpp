@@ -1,24 +1,43 @@
 #include "slash/platform/platform.hpp"
 #include "slash/platform/process.hpp"
 #include "slash/render/device.hpp"
+#include "slash/render/image.hpp"
+#include "slash/render/material.hpp"
 
 #include <SDL3/SDL_hints.h>
 #include <doctest/doctest.h>
 
+#if defined(_WIN32)
+// The renderer's own headers, for its HLSL and Windows' compiler.
+#include "../engine/render/src/hlsl_compiler.hpp"
+#include "../engine/render/src/material_shaders.hpp"
+#include "../engine/render/src/sprite_shaders.hpp"
+#endif
+
+#include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
+using slash::render::BlendMode;
 using slash::render::Color;
 using slash::render::create_device;
 using slash::render::create_null_device;
 using slash::render::Filter;
 using slash::render::Frame;
 using slash::render::Image;
+using slash::render::Instruction;
+using slash::render::instruction;
 using slash::render::Mat4;
+using slash::render::Material;
+using slash::render::MaterialProgram;
+using slash::render::Op;
+using slash::render::operand;
 using slash::render::pixel_projection;
 using slash::render::RenderDevice;
 using slash::render::TextureDesc;
@@ -137,6 +156,16 @@ void check_refusals(RenderDevice& device) {
     CHECK(error_of(device.draw(static_cast<TextureId>(99), rect(0, 0, 1, 1))) == "no texture 99");
     CHECK(error_of(device.read_texture(target.value())) ==
           "read_texture can't run during a frame; call end_frame first");
+    Material material;
+    material.program.code = {instruction(Op::Mov, 0, operand(5))};
+    CHECK(error_of(device.draw(TextureId::None, rect(0, 0, 1, 1), material)) ==
+          "instruction 0 reads register 5 before anything writes it");
+    material.program.code = {instruction(Op::Mov, 0, operand(1))};
+    material.textures[1].texture = static_cast<TextureId>(99);
+    CHECK(error_of(device.draw(TextureId::None, rect(0, 0, 1, 1), material)) == "no texture 99");
+    material.textures[1].texture = target.value();
+    CHECK(error_of(device.draw(TextureId::None, rect(0, 0, 1, 1), material)) ==
+          "texture 2 is this frame's target, so it can't be drawn with until the frame ends");
     CHECK(device.end_frame().ok());
 
     CHECK(error_of(device.update_texture(plain.value(), short_pixels)) ==
@@ -146,7 +175,293 @@ void check_refusals(RenderDevice& device) {
     CHECK(device.stats().textures == 1);
 }
 
+// A program that runs one op on the pixel's texture coordinate (u, v, u, v), a constant and the
+// vertex color, and draws the result with alpha 1, so the target shows it unblended.
+MaterialProgram one_op(Op op, std::uint32_t aux = 0) {
+    MaterialProgram program;
+    program.constants = {{0.3F, 0.6F, 0.5F, 0.2F}, {1.0F, 1.0F, 1.0F, 1.0F}};
+    const std::uint32_t uv = operand(slash::render::kUvRegister, {0, 1, 0, 1});
+    program.code = {
+        instruction(op, 4, uv, operand(32), operand(slash::render::kColorRegister), aux),
+        instruction(Op::Merge, 0, operand(4), operand(33), 0, 0b1000),
+    };
+    return program;
+}
+
+std::array<float, 4> saturated(std::array<float, 4> color) {
+    for (float& channel : color) {
+        channel = channel > 0.0F ? std::min(channel, 1.0F) : 0.0F;
+    }
+    return color;
+}
+
 } // namespace
+
+TEST_CASE("material programs are checked before anything runs them") {
+    using slash::render::check_program;
+    MaterialProgram program;
+    CHECK(check_program(program).ok());
+    program.code.assign(65, instruction(Op::Mov, 0, operand(0)));
+    CHECK(error_of(check_program(program)) ==
+          "a material program has at most 64 instructions, not 65");
+    program.code = {instruction(static_cast<Op>(99), 4, operand(0))};
+    CHECK(error_of(check_program(program)) == "instruction 0 has no op 99");
+    program.code = {instruction(Op::Mov, 4, operand(0)),
+                    instruction(Op::Add, 5, operand(4), operand(6))};
+    CHECK(error_of(check_program(program)) ==
+          "instruction 1 reads register 6 before anything writes it");
+    program.code = {instruction(Op::Mov, 4, operand(33))};
+    program.constants = {{1.0F, 1.0F, 1.0F, 1.0F}};
+    CHECK(error_of(check_program(program)) ==
+          "instruction 0 reads constant 1, but the program has 1");
+    program.code = {instruction(Op::Mov, 40, operand(32))};
+    CHECK(error_of(check_program(program)) ==
+          "instruction 0 writes register 40; registers are 0 to 31");
+    program.code = {instruction(Op::Dot, 4, operand(0), operand(0), 0, 5)};
+    CHECK(error_of(check_program(program)) == "instruction 0 uses 5 components; use 1 to 4");
+    program.code = {instruction(Op::Sample, 4, operand(0), 0, 0, 4)};
+    CHECK(error_of(check_program(program)) ==
+          "instruction 0 samples texture slot 4; slots are 0 to 3");
+    // Operands an op doesn't read aren't checked.
+    program.code = {instruction(Op::Abs, 4, operand(0), operand(9), operand(63))};
+    CHECK(check_program(program).ok());
+    program.constants.assign(33, {});
+    CHECK(error_of(check_program(program)) ==
+          "a material program has at most 32 constants, not 33");
+}
+
+TEST_CASE("run_program runs a material program on the CPU") {
+    using slash::render::run_program;
+    const auto never = [](std::uint32_t, float, float) {
+        FAIL("nothing samples");
+        return std::array<float, 4>{};
+    };
+    const slash::render::PixelInput input{.uv = {0.25F, 0.75F},
+                                          .color = {0.9F, 0.4F, 0.7F, 1.0F},
+                                          .frag_coord = {3.5F, 1.5F},
+                                          .texel = {0.5F, 0.25F}};
+    // With no code, register 0 still holds the texture coordinate.
+    CHECK(run_program({}, input, never) == std::array<float, 4>{0.25F, 0.75F, 0.0F, 0.0F});
+
+    MaterialProgram program;
+    program.constants = {{2.0F, 2.0F, 2.0F, 2.0F}, {-1.5F, 0.5F, 2.5F, -0.5F}};
+    // Swizzles pick components: (v, u, u, u) times 2.
+    program.code = {instruction(Op::Mul, 0, operand(0, {1, 0, 0, 0}), operand(32))};
+    CHECK(run_program(program, input, never) == std::array<float, 4>{1.5F, 0.5F, 0.5F, 0.5F});
+    // GLSL's mod, round halves up, and frag_coord and texel registers.
+    program.code = {instruction(Op::Mod, 0, operand(33), operand(32))};
+    CHECK(run_program(program, input, never) == std::array<float, 4>{0.5F, 0.5F, 0.5F, 1.5F});
+    program.code = {instruction(Op::Round, 0, operand(33))};
+    CHECK(run_program(program, input, never) == std::array<float, 4>{-1.0F, 1.0F, 3.0F, 0.0F});
+    program.code = {instruction(Op::Add, 0, operand(2), operand(3))};
+    CHECK(run_program(program, input, never) == std::array<float, 4>{4.0F, 1.75F, 0.0F, 0.0F});
+    // Dot over two components, in every component; merge takes b where the mask says.
+    program.code = {instruction(Op::Dot, 0, operand(1), operand(33), 0, 2)};
+    CHECK(run_program(program, input, never)[3] == doctest::Approx(-1.15F));
+    program.code = {instruction(Op::Merge, 0, operand(1), operand(33), 0, 0b0110)};
+    CHECK(run_program(program, input, never) == std::array<float, 4>{0.9F, 0.5F, 2.5F, 1.0F});
+    // HSV round trips.
+    program.code = {instruction(Op::RgbToHsv, 4, operand(1)),
+                    instruction(Op::HsvToRgb, 0, operand(4))};
+    const auto rgb = run_program(program, input, never);
+    CHECK(rgb[0] == doctest::Approx(0.9F));
+    CHECK(rgb[1] == doctest::Approx(0.4F));
+    CHECK(rgb[2] == doctest::Approx(0.7F));
+    // Sampling hands the slot and coordinate to the sampler.
+    program.code = {instruction(Op::Sample, 0, operand(0, {1, 0, 0, 0}), 0, 0, 2)};
+    const auto sampled = run_program(program, input, [](std::uint32_t slot, float u, float v) {
+        return std::array<float, 4>{static_cast<float>(slot), u, v, 1.0F};
+    });
+    CHECK(sampled == std::array<float, 4>{2.0F, 0.75F, 0.25F, 1.0F});
+}
+
+TEST_CASE("sample_image filters and wraps as a GPU samples") {
+    using slash::render::sample_image;
+    // A 2x1 image: black, white.
+    const Image image{.width = 2, .height = 1, .pixels = {0, 0, 0, 255, 255, 255, 255, 255}};
+    CHECK(sample_image(image, Filter::Nearest, false, 0.4F, 0.5F)[0] == 0.0F);
+    CHECK(sample_image(image, Filter::Nearest, false, 0.6F, 0.5F)[0] == 1.0F);
+    CHECK(sample_image(image, Filter::Linear, false, 0.5F, 0.5F)[0] == doctest::Approx(0.5F));
+    // At the texel centers, linear filtering gives the texels; past the edge they stretch on.
+    CHECK(sample_image(image, Filter::Linear, false, 0.25F, 0.5F)[0] == 0.0F);
+    CHECK(sample_image(image, Filter::Linear, false, 1.5F, 0.5F)[0] == 1.0F);
+    // Repeating tiles: past the right edge comes the left texel again.
+    CHECK(sample_image(image, Filter::Nearest, true, 1.25F, 0.5F)[0] == 0.0F);
+    CHECK(sample_image(image, Filter::Linear, true, 1.0F, 0.5F)[0] == doctest::Approx(0.5F));
+    CHECK(sample_image({}, Filter::Linear, false, 0.5F, 0.5F) ==
+          std::array<float, 4>{1.0F, 1.0F, 1.0F, 1.0F});
+}
+
+TEST_CASE("draws with different materials are separate GPU draws") {
+    auto device = create_null_device();
+    auto target = device->create_texture(target_desc(4));
+    REQUIRE(target.ok());
+    Material glow;
+    glow.blend = BlendMode::Add;
+    Material tinted;
+    tinted.program.code = {instruction(Op::Mul, 0, operand(1), operand(32))};
+    tinted.program.constants = {{1.0F, 0.5F, 0.5F, 1.0F}};
+    Material other_tint = tinted;
+    other_tint.program.constants[0][1] = 0.25F;
+    REQUIRE(device->begin_frame({.target = target.value(), .clear = {}, .view = {}}).ok());
+    REQUIRE(device->draw(TextureId::None, rect(0, 0, 1, 1), glow).ok());
+    REQUIRE(device->draw(TextureId::None, rect(1, 0, 2, 1), glow).ok());
+    REQUIRE(device->draw(TextureId::None, rect(2, 0, 3, 1), tinted).ok());
+    REQUIRE(device->draw(TextureId::None, rect(3, 0, 4, 1), tinted).ok());
+    REQUIRE(device->draw(TextureId::None, rect(0, 1, 1, 2), other_tint).ok());
+    REQUIRE(device->draw(TextureId::None, rect(1, 1, 2, 2)).ok());
+    REQUIRE(device->end_frame().ok());
+    CHECK(device->stats().draws == 4);
+
+    auto gpu = gpu_device();
+    if (gpu == nullptr) {
+        return;
+    }
+    auto gpu_target = gpu->create_texture(target_desc(4));
+    REQUIRE(gpu_target.ok());
+    REQUIRE(gpu->begin_frame({.target = gpu_target.value(), .clear = {}, .view = {}}).ok());
+    REQUIRE(gpu->draw(TextureId::None, rect(0, 0, 1, 1), glow).ok());
+    REQUIRE(gpu->draw(TextureId::None, rect(1, 0, 2, 1), glow).ok());
+    REQUIRE(gpu->draw(TextureId::None, rect(2, 0, 3, 1), tinted).ok());
+    REQUIRE(gpu->draw(TextureId::None, rect(3, 0, 4, 1), tinted).ok());
+    REQUIRE(gpu->draw(TextureId::None, rect(0, 1, 1, 2), other_tint).ok());
+    REQUIRE(gpu->draw(TextureId::None, rect(1, 1, 2, 2)).ok());
+    REQUIRE(gpu->end_frame().ok());
+    CHECK(gpu->stats().draws == 4);
+    auto drawn = gpu->read_texture(gpu_target.value());
+    REQUIRE(drawn.ok());
+    CHECK(pixel_is(drawn.value(), 3, 0, {255, 128, 128, 255}).empty());
+    CHECK(pixel_is(drawn.value(), 0, 1, {255, 64, 128, 255}).empty());
+}
+
+TEST_CASE("the GPU device runs every material op as run_program does") {
+    auto device = gpu_device();
+    if (device == nullptr) {
+        return;
+    }
+    constexpr std::uint32_t kSize = 8;
+    auto target = device->create_texture(target_desc(kSize));
+    REQUIRE(target.ok());
+    // Slot 0: red, green / blue, white. Slot 1: a 4x1 gradient that repeats.
+    const Image quarters{
+        .width = 2,
+        .height = 2,
+        .pixels = {255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255}};
+    const Image gradient{
+        .width = 4,
+        .height = 1,
+        .pixels = {0, 0, 0, 255, 85, 40, 20, 255, 170, 80, 40, 255, 255, 120, 60, 255}};
+    auto texture0 = device->create_texture(
+        {.width = 2, .height = 2, .filter = Filter::Nearest, .render_target = false},
+        quarters.pixels);
+    auto texture1 = device->create_texture(
+        {.width = 4, .height = 1, .filter = Filter::Linear, .render_target = false},
+        gradient.pixels);
+    REQUIRE(texture0.ok());
+    REQUIRE(texture1.ok());
+    const auto sampler = [&](std::uint32_t slot, float u, float v) {
+        return slot == 1 ? slash::render::sample_image(gradient, Filter::Linear, true, u, v)
+                         : slash::render::sample_image(quarters, Filter::Nearest, false, u, v);
+    };
+
+    std::vector<std::pair<std::string, MaterialProgram>> programs;
+    for (std::uint32_t number = 0; number < slash::render::kOpCount; ++number) {
+        const auto op = static_cast<Op>(number);
+        std::uint32_t aux = 0;
+        if (op == Op::Dot || op == Op::Length || op == Op::Distance || op == Op::Normalize) {
+            aux = 3;
+        } else if (op == Op::Merge) {
+            aux = 0b0101;
+        }
+        programs.emplace_back("op " + std::to_string(number), one_op(op, aux));
+    }
+    // Sampling both slots, the second at twice the coordinate so it repeats.
+    MaterialProgram sample0 = one_op(Op::Sample, 0);
+    MaterialProgram sample1 = one_op(Op::Sample, 1);
+    sample1.code.insert(sample1.code.begin(), instruction(Op::Add, 5, operand(0), operand(0)));
+    sample1.code[1].a = operand(5);
+    programs.emplace_back("sample slot 0", sample0);
+    programs.emplace_back("sample slot 1, repeating", sample1);
+    // frag_coord over the target's size, and texel times 4.
+    MaterialProgram frag;
+    frag.constants = {{0.125F, 0.125F, 0.125F, 0.125F}, {1.0F, 1.0F, 1.0F, 1.0F}};
+    frag.code = {instruction(Op::Mul, 4, operand(2), operand(32)),
+                 instruction(Op::Mul, 5, operand(3), operand(32)),
+                 instruction(Op::Merge, 4, operand(4), operand(5, {0, 0, 0, 0}), 0, 0b0100),
+                 instruction(Op::Merge, 0, operand(4), operand(33), 0, 0b1000)};
+    programs.emplace_back("frag_coord and texel", frag);
+
+    for (const auto& [name, program] : programs) {
+        CAPTURE(name);
+        REQUIRE(slash::render::check_program(program).ok());
+        Material material;
+        material.program = program;
+        material.textures[0] = {.texture = texture1.value(), .repeat = true};
+        REQUIRE(device->begin_frame({.target = target.value(), .clear = {}, .view = {}}).ok());
+        REQUIRE(
+            device->draw(texture0.value(), rect(0, 0, kSize, kSize, {230, 102, 179, 255}), material)
+                .ok());
+        REQUIRE(device->end_frame().ok());
+        auto drawn = device->read_texture(target.value());
+        REQUIRE(drawn.ok());
+        for (std::uint32_t y = 0; y < kSize; y += 3) {
+            for (std::uint32_t x = 0; x < kSize; x += 3) {
+                const slash::render::PixelInput input{
+                    .uv = {(static_cast<float>(x) + 0.5F) / kSize,
+                           (static_cast<float>(y) + 0.5F) / kSize},
+                    .color = {230.0F / 255.0F, 102.0F / 255.0F, 179.0F / 255.0F, 1.0F},
+                    .frag_coord = {static_cast<float>(x) + 0.5F, static_cast<float>(y) + 0.5F},
+                    .texel = {0.5F, 0.5F}};
+                const auto expected =
+                    saturated(slash::render::run_program(program, input, sampler));
+                const auto byte = [](float channel) {
+                    return static_cast<std::uint8_t>(std::lround(channel * 255.0F));
+                };
+                CHECK(pixel_is(drawn.value(), x, y,
+                               {byte(expected[0]), byte(expected[1]), byte(expected[2]), 255})
+                          .empty());
+            }
+        }
+    }
+}
+
+TEST_CASE("blend modes combine colors as Godot's do") {
+    auto device = gpu_device();
+    if (device == nullptr) {
+        return;
+    }
+    auto target = device->create_texture(target_desc(2));
+    REQUIRE(target.ok());
+    const std::vector<std::pair<BlendMode, Rgba>> expected{
+        {BlendMode::Mix, {90, 115, 204, 255}},
+        {BlendMode::Add, {115, 166, 255, 255}},
+        {BlendMode::Sub, {0, 38, 25, 191}},
+        {BlendMode::Mul, {26, 51, 153, 128}},
+        {BlendMode::PremulAlpha, {153, 179, 255, 255}},
+    };
+    for (const auto& [blend, rgba] : expected) {
+        CAPTURE(slash::render::blend_mode_name(blend));
+        Material material;
+        material.blend = blend;
+        REQUIRE(device
+                    ->begin_frame(
+                        {.target = target.value(), .clear = {0.2F, 0.4F, 0.6F, 1.0F}, .view = {}})
+                    .ok());
+        REQUIRE(
+            device->draw(TextureId::None, rect(0, 0, 2, 2, {128, 128, 255, 128}), material).ok());
+        REQUIRE(device->end_frame().ok());
+        auto image = device->read_texture(target.value());
+        REQUIRE(image.ok());
+        CHECK(pixel_is(image.value(), 1, 1, rgba).empty());
+    }
+}
+
+TEST_CASE("blend modes have Godot's names") {
+    using slash::render::parse_blend_mode;
+    CHECK(slash::render::blend_mode_name(BlendMode::PremulAlpha) == "premul_alpha");
+    CHECK(parse_blend_mode("add") == BlendMode::Add);
+    CHECK_FALSE(parse_blend_mode("multiply").has_value());
+}
 
 TEST_CASE("create_device knows its drivers") {
     auto device = create_device({.window = nullptr, .driver = "vulkn", .debug = false});
@@ -286,6 +601,28 @@ TEST_CASE("the GPU device draws, blends, samples and reads back pixels") {
         CHECK(device->stats().triangles == 6);
         CHECK(device->stats().textures == 1);
     }
+}
+
+// Direct3D 12 compiles the HLSL when it first needs a shader, with Windows' own compiler, so a
+// shader that SPIR-V and MSL were made from could still fail there. CI runs this on Windows.
+TEST_CASE("every shader compiles with Windows' HLSL compiler") {
+#if defined(_WIN32)
+    namespace shaders = slash::render::shaders;
+    const std::array<std::pair<const char*, std::string_view>, 2> sources{{
+        {"sprite", shaders::kSpriteHlsl},
+        {"material", shaders::kMaterialHlsl},
+    }};
+    for (const auto& [name, hlsl] : sources) {
+        for (const auto& [entry, target] :
+             {std::pair{"vs_main", "vs_5_1"}, {"fs_main", "ps_5_1"}}) {
+            const auto compiled = slash::render::detail::compile_hlsl(hlsl, entry, target);
+            CHECK_MESSAGE(compiled.ok(), name, " ", entry, ": ",
+                          (compiled.ok() ? std::string() : compiled.error().message));
+        }
+    }
+#else
+    MESSAGE("HLSL compiles only on Windows");
+#endif
 }
 
 TEST_CASE("the GPU device refuses the same mistakes as the null device") {

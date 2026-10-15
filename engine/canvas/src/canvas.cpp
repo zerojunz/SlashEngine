@@ -1,5 +1,6 @@
 #include "slash/canvas/canvas.hpp"
 
+#include "slash/canvas/material.hpp"
 #include "slash/canvas/sprite_frames.hpp"
 #include "slash/core/json.hpp"
 #include "slash/core/log.hpp"
@@ -157,6 +158,15 @@ void add_asset_types(asset::Assets& assets) {
                 return doc.error();
             }
             return parse_sprite_frames(doc.value());
+        });
+    assets.add_type<CanvasMaterial>(
+        "material", {std::string(kMaterialSuffix)},
+        [](std::string_view text, std::string_view /*path*/) -> Result<CanvasMaterial> {
+            auto doc = json::parse(text);
+            if (!doc) {
+                return doc.error();
+            }
+            return parse_material(doc.value());
         });
 }
 

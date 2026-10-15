@@ -1,0 +1,5 @@
+{
+  "color": {"op": "mull", "args": ["tint", 2]},
+  "format": 1,
+  "params": {"tint": {"type": "color", "value": [1, 0.5]}}
+}

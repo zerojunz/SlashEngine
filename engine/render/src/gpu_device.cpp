@@ -2,6 +2,7 @@
 
 #include "checks.hpp"
 #include "hlsl_compiler.hpp"
+#include "material_shaders.hpp"
 #include "sprite_shaders.hpp"
 
 #include "slash/core/log.hpp"
@@ -12,7 +13,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <span>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -30,6 +33,81 @@ constexpr SDL_GPUShaderFormat kHlslFormats = 0;
 #endif
 // The vertex buffer's first size: 3,276 vertices.
 constexpr std::uint32_t kMinVertexBytes = 64 * 1024;
+
+// The material shader's fragment uniforms, laid out as its Program cbuffer.
+struct ProgramUniforms {
+    std::array<Instruction, kMaxInstructions> code{};
+    std::array<std::array<float, 4>, kMaxConstants> constants{};
+    std::array<float, 4> texel{};
+    std::array<std::uint32_t, 4> counts{};
+};
+static_assert(sizeof(ProgramUniforms) == 1568);
+
+// The two shaders: plain sprites, and materials that run a program.
+enum class ShaderKind : std::uint8_t { Sprite, Material };
+
+struct ShaderCode {
+    std::span<const unsigned char> vertex_spirv;
+    std::span<const unsigned char> fragment_spirv;
+    std::string_view vertex_msl;
+    std::string_view fragment_msl;
+    std::string_view hlsl;
+};
+
+ShaderCode shader_code(ShaderKind kind) {
+    if (kind == ShaderKind::Material) {
+        return {.vertex_spirv = shaders::kMaterialVertexSpirv,
+                .fragment_spirv = shaders::kMaterialFragmentSpirv,
+                .vertex_msl = shaders::kMaterialVertexMsl,
+                .fragment_msl = shaders::kMaterialFragmentMsl,
+                .hlsl = shaders::kMaterialHlsl};
+    }
+    return {.vertex_spirv = shaders::kSpriteVertexSpirv,
+            .fragment_spirv = shaders::kSpriteFragmentSpirv,
+            .vertex_msl = shaders::kSpriteVertexMsl,
+            .fragment_msl = shaders::kSpriteFragmentMsl,
+            .hlsl = shaders::kSpriteHlsl};
+}
+
+// Godot's canvas blend modes, for straight-alpha colors.
+SDL_GPUColorTargetBlendState blend_state(BlendMode mode) {
+    SDL_GPUColorTargetBlendState blend{};
+    blend.enable_blend = true;
+    blend.color_blend_op = SDL_GPU_BLENDOP_ADD;
+    blend.alpha_blend_op = SDL_GPU_BLENDOP_ADD;
+    switch (mode) {
+    case BlendMode::Mix:
+        blend.src_color_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA;
+        blend.dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+        blend.src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE;
+        blend.dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+        break;
+    case BlendMode::Add:
+    case BlendMode::Sub:
+        blend.src_color_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA;
+        blend.dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE;
+        blend.src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA;
+        blend.dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE;
+        if (mode == BlendMode::Sub) {
+            blend.color_blend_op = SDL_GPU_BLENDOP_REVERSE_SUBTRACT;
+            blend.alpha_blend_op = SDL_GPU_BLENDOP_REVERSE_SUBTRACT;
+        }
+        break;
+    case BlendMode::Mul:
+        blend.src_color_blendfactor = SDL_GPU_BLENDFACTOR_DST_COLOR;
+        blend.dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ZERO;
+        blend.src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_DST_ALPHA;
+        blend.dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ZERO;
+        break;
+    case BlendMode::PremulAlpha:
+        blend.src_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE;
+        blend.dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+        blend.src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE;
+        blend.dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+        break;
+    }
+    return blend;
+}
 
 Error sdl_error(std::string_view what) {
     return make_error(ErrorCode::PlatformFailure, std::string(what) + ": " + SDL_GetError());
@@ -93,6 +171,8 @@ private:
 
 class GpuDevice final : public RenderDevice {
 public:
+    using RenderDevice::draw;
+
     GpuDevice(SDL_GPUDevice* device, SDL_Window* window, bool owns_video)
         : device_(device), window_(window), owns_video_(owns_video), backend_(backend_of(device)) {}
 
@@ -118,8 +198,8 @@ public:
                 SDL_ReleaseGPUSampler(device_, sampler);
             }
         }
-        for (const auto& [format, pipeline] : pipelines_) {
-            SDL_ReleaseGPUGraphicsPipeline(device_, pipeline);
+        for (const Pipeline& pipeline : pipelines_) {
+            SDL_ReleaseGPUGraphicsPipeline(device_, pipeline.pipeline);
         }
         if (vertex_buffer_ != nullptr) {
             SDL_ReleaseGPUBuffer(device_, vertex_buffer_);
@@ -127,11 +207,10 @@ public:
         if (vertex_transfer_ != nullptr) {
             SDL_ReleaseGPUTransferBuffer(device_, vertex_transfer_);
         }
-        if (vertex_shader_ != nullptr) {
-            SDL_ReleaseGPUShader(device_, vertex_shader_);
-        }
-        if (fragment_shader_ != nullptr) {
-            SDL_ReleaseGPUShader(device_, fragment_shader_);
+        for (SDL_GPUShader* shader : shaders_) {
+            if (shader != nullptr) {
+                SDL_ReleaseGPUShader(device_, shader);
+            }
         }
         if (window_ != nullptr) {
             SDL_ReleaseWindowFromGPUDevice(device_, window_);
@@ -142,36 +221,33 @@ public:
         }
     }
 
-    // Claims the window, then makes the shaders, samplers and the white texture.
+    // Claims the window, then makes the sprite shaders, samplers and the white texture. The
+    // material shaders wait for the first material, since Direct3D 12 compiles them at run time.
     Result<void> init() {
         if (window_ != nullptr && !SDL_ClaimWindowForGPUDevice(device_, window_)) {
             window_ = nullptr;
             return sdl_error("the GPU device couldn't draw to the window");
         }
-        auto vertex = create_shader(SDL_GPU_SHADERSTAGE_VERTEX);
-        if (!vertex) {
-            return vertex.error();
+        if (auto made = make_shaders(ShaderKind::Sprite); !made) {
+            return made;
         }
-        vertex_shader_ = vertex.value();
-        auto fragment = create_shader(SDL_GPU_SHADERSTAGE_FRAGMENT);
-        if (!fragment) {
-            return fragment.error();
-        }
-        fragment_shader_ = fragment.value();
         for (const Filter filter : {Filter::Linear, Filter::Nearest}) {
-            SDL_GPUSamplerCreateInfo info{};
-            info.min_filter =
-                filter == Filter::Linear ? SDL_GPU_FILTER_LINEAR : SDL_GPU_FILTER_NEAREST;
-            info.mag_filter = info.min_filter;
-            info.mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_NEAREST;
-            info.address_mode_u = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
-            info.address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
-            info.address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
-            SDL_GPUSampler* sampler = SDL_CreateGPUSampler(device_, &info);
-            if (sampler == nullptr) {
-                return sdl_error("creating a sampler failed");
+            for (const bool repeat : {false, true}) {
+                SDL_GPUSamplerCreateInfo info{};
+                info.min_filter =
+                    filter == Filter::Linear ? SDL_GPU_FILTER_LINEAR : SDL_GPU_FILTER_NEAREST;
+                info.mag_filter = info.min_filter;
+                info.mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_NEAREST;
+                info.address_mode_u = repeat ? SDL_GPU_SAMPLERADDRESSMODE_REPEAT
+                                             : SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
+                info.address_mode_v = info.address_mode_u;
+                info.address_mode_w = info.address_mode_u;
+                SDL_GPUSampler* sampler = SDL_CreateGPUSampler(device_, &info);
+                if (sampler == nullptr) {
+                    return sdl_error("creating a sampler failed");
+                }
+                samplers_.at(sampler_index(filter, repeat)) = sampler;
             }
-            samplers_.at(static_cast<std::size_t>(filter)) = sampler;
         }
         const TextureDesc white_desc{
             .width = 1, .height = 1, .filter = Filter::Linear, .render_target = false};
@@ -268,8 +344,9 @@ public:
             width = it->second.desc.width;
             height = it->second.desc.height;
         }
-        // Made before the command buffer, so a failure leaves nothing half started.
-        auto pipeline = pipeline_for(format);
+        // Made before the command buffer, so a failure leaves nothing half started. Pipelines for
+        // materials are made when a draw first needs them.
+        auto pipeline = pipeline_for(format, ShaderKind::Sprite, BlendMode::Mix);
         if (!pipeline) {
             return pipeline.error();
         }
@@ -291,16 +368,15 @@ public:
             }
         }
         start_frame(frame, commands, target, width, height);
-        pipeline_ = pipeline.value();
+        frame_format_ = format;
         return true;
     }
 
-    Result<void> draw(TextureId texture, std::span<const Vertex2D> vertices) override {
+    Result<void> draw(TextureId texture, std::span<const Vertex2D> vertices,
+                      const Material& material) override {
         if (!in_frame_) {
             return no_frame("draw");
         }
-        SDL_GPUTexture* gpu = white_;
-        SDL_GPUSampler* sampler = samplers_.at(static_cast<std::size_t>(Filter::Linear));
         if (texture != TextureId::None) {
             const auto it = textures_.find(texture);
             if (it == textures_.end()) {
@@ -309,8 +385,11 @@ public:
             if (texture == frame_.target) {
                 return target_in_use(texture);
             }
-            gpu = it->second.gpu;
-            sampler = samplers_.at(static_cast<std::size_t>(it->second.desc.filter));
+        }
+        if (auto checked = check_material(material, frame_.target,
+                                          [&](TextureId id) { return textures_.contains(id); });
+            !checked) {
+            return checked;
         }
         if (auto checked = check_vertices(vertices, vertices_.size()); !checked) {
             return checked;
@@ -320,9 +399,32 @@ public:
         }
         const auto first = static_cast<std::uint32_t>(vertices_.size());
         const auto count = static_cast<std::uint32_t>(vertices.size());
-        if (batches_.empty() || batches_.back().texture != texture) {
-            batches_.push_back(Batch{
-                .texture = texture, .gpu = gpu, .sampler = sampler, .first = first, .count = 0});
+        if (batches_.empty() || batches_.back().texture != texture ||
+            batches_.back().material != material) {
+            const ShaderKind kind =
+                material.program.code.empty() ? ShaderKind::Sprite : ShaderKind::Material;
+            auto pipeline = pipeline_for(frame_format_, kind, material.blend);
+            if (!pipeline) {
+                return pipeline.error();
+            }
+            Batch batch{.texture = texture,
+                        .material = material,
+                        .pipeline = pipeline.value(),
+                        .samplers = {},
+                        .texel = {1.0F, 1.0F, 0.0F, 0.0F},
+                        .first = first,
+                        .count = 0};
+            batch.samplers.at(0) = binding(texture, false);
+            for (std::size_t slot = 1; slot < kMaterialTextureSlots; ++slot) {
+                const MaterialTexture& bound = material.textures.at(slot - 1);
+                batch.samplers.at(slot) = binding(bound.texture, bound.repeat);
+            }
+            if (texture != TextureId::None) {
+                const TextureDesc& desc = textures_.at(texture).desc;
+                batch.texel = {1.0F / static_cast<float>(desc.width),
+                               1.0F / static_cast<float>(desc.height), 0.0F, 0.0F};
+            }
+            batches_.push_back(std::move(batch));
             ++stats_.draws;
         }
         batches_.back().count += count;
@@ -359,13 +461,21 @@ public:
                 static_cast<float>(frame_width_), static_cast<float>(frame_height_)));
             SDL_PushGPUVertexUniformData(commands, 0, view.data(),
                                          static_cast<std::uint32_t>(sizeof(view)));
-            SDL_BindGPUGraphicsPipeline(pass, pipeline_);
-            const SDL_GPUBufferBinding binding{.buffer = vertex_buffer_, .offset = 0};
-            SDL_BindGPUVertexBuffers(pass, 0, &binding, 1);
+            const SDL_GPUBufferBinding vertices{.buffer = vertex_buffer_, .offset = 0};
+            SDL_BindGPUVertexBuffers(pass, 0, &vertices, 1);
+            SDL_GPUGraphicsPipeline* bound = nullptr;
             for (const Batch& batch : batches_) {
-                const SDL_GPUTextureSamplerBinding sampled{.texture = batch.gpu,
-                                                           .sampler = batch.sampler};
-                SDL_BindGPUFragmentSamplers(pass, 0, &sampled, 1);
+                if (batch.pipeline != bound) {
+                    SDL_BindGPUGraphicsPipeline(pass, batch.pipeline);
+                    bound = batch.pipeline;
+                }
+                if (batch.material.program.code.empty()) {
+                    SDL_BindGPUFragmentSamplers(pass, 0, batch.samplers.data(), 1);
+                } else {
+                    push_program(commands, batch);
+                    SDL_BindGPUFragmentSamplers(pass, 0, batch.samplers.data(),
+                                                static_cast<std::uint32_t>(batch.samplers.size()));
+                }
                 SDL_DrawGPUPrimitives(pass, batch.count, 1, batch.first, 0);
             }
         }
@@ -468,14 +578,53 @@ private:
         TextureDesc desc;
     };
 
-    // Draws in a row with the same texture, sent as one GPU draw.
+    // Draws in a row with the same texture and material, sent as one GPU draw.
     struct Batch {
         TextureId texture = TextureId::None;
-        SDL_GPUTexture* gpu = nullptr;
-        SDL_GPUSampler* sampler = nullptr;
+        Material material;
+        SDL_GPUGraphicsPipeline* pipeline = nullptr;
+        // The draw's texture, then the material's.
+        std::array<SDL_GPUTextureSamplerBinding, kMaterialTextureSlots> samplers{};
+        std::array<float, 4> texel{};
         std::uint32_t first = 0;
         std::uint32_t count = 0;
     };
+
+    struct Pipeline {
+        SDL_GPUTextureFormat format = SDL_GPU_TEXTUREFORMAT_INVALID;
+        ShaderKind kind = ShaderKind::Sprite;
+        BlendMode blend = BlendMode::Mix;
+        SDL_GPUGraphicsPipeline* pipeline = nullptr;
+    };
+
+    static std::size_t shader_index(ShaderKind kind, SDL_GPUShaderStage stage) {
+        return (static_cast<std::size_t>(kind) * 2) + (stage == SDL_GPU_SHADERSTAGE_VERTEX ? 0 : 1);
+    }
+
+    static std::size_t sampler_index(Filter filter, bool repeat) {
+        return (static_cast<std::size_t>(filter) * 2) + (repeat ? 1 : 0);
+    }
+
+    // A texture and its sampler; None is white. The texture must exist.
+    SDL_GPUTextureSamplerBinding binding(TextureId texture, bool repeat) const {
+        if (texture == TextureId::None) {
+            return {.texture = white_,
+                    .sampler = samplers_.at(sampler_index(Filter::Linear, repeat))};
+        }
+        const Texture& found = textures_.at(texture);
+        return {.texture = found.gpu,
+                .sampler = samplers_.at(sampler_index(found.desc.filter, repeat))};
+    }
+
+    static void push_program(SDL_GPUCommandBuffer* commands, const Batch& batch) {
+        ProgramUniforms uniforms;
+        std::ranges::copy(batch.material.program.code, uniforms.code.begin());
+        std::ranges::copy(batch.material.program.constants, uniforms.constants.begin());
+        uniforms.texel = batch.texel;
+        uniforms.counts.at(0) = static_cast<std::uint32_t>(batch.material.program.code.size());
+        SDL_PushGPUFragmentUniformData(commands, 0, &uniforms,
+                                       static_cast<std::uint32_t>(sizeof(uniforms)));
+    }
 
     static SDL_GPUTextureRegion whole(SDL_GPUTexture* texture, const TextureDesc& desc) {
         SDL_GPUTextureRegion region{};
@@ -486,29 +635,51 @@ private:
         return region;
     }
 
-    Result<SDL_GPUShader*> create_shader(SDL_GPUShaderStage stage) {
+    // Both of a kind's shaders, unless they are made already.
+    Result<void> make_shaders(ShaderKind kind) {
+        for (const SDL_GPUShaderStage stage :
+             {SDL_GPU_SHADERSTAGE_VERTEX, SDL_GPU_SHADERSTAGE_FRAGMENT}) {
+            SDL_GPUShader*& slot = shaders_.at(shader_index(kind, stage));
+            if (slot != nullptr) {
+                continue;
+            }
+            auto shader = create_shader(kind, stage);
+            if (!shader) {
+                return shader.error();
+            }
+            slot = shader.value();
+        }
+        return {};
+    }
+
+    Result<SDL_GPUShader*> create_shader(ShaderKind kind, SDL_GPUShaderStage stage) {
         const bool vertex = stage == SDL_GPU_SHADERSTAGE_VERTEX;
+        const bool material = kind == ShaderKind::Material;
+        const ShaderCode code = shader_code(kind);
         SDL_GPUShaderCreateInfo info{};
         info.stage = stage;
         info.entrypoint = vertex ? "vs_main" : "fs_main";
-        info.num_samplers = vertex ? 0 : 1;
-        info.num_uniform_buffers = vertex ? 1 : 0;
+        if (vertex) {
+            info.num_uniform_buffers = 1;
+        } else {
+            info.num_samplers = material ? static_cast<std::uint32_t>(kMaterialTextureSlots) : 1;
+            info.num_uniform_buffers = material ? 1 : 0;
+        }
         const SDL_GPUShaderFormat formats = SDL_GetGPUShaderFormats(device_);
         std::vector<std::uint8_t> compiled;
         if ((formats & SDL_GPU_SHADERFORMAT_SPIRV) != 0) {
+            const std::span<const unsigned char> spirv =
+                vertex ? code.vertex_spirv : code.fragment_spirv;
             info.format = SDL_GPU_SHADERFORMAT_SPIRV;
-            info.code = vertex ? shaders::kSpriteVertexSpirv : shaders::kSpriteFragmentSpirv;
-            info.code_size = vertex ? sizeof(shaders::kSpriteVertexSpirv)
-                                    : sizeof(shaders::kSpriteFragmentSpirv);
+            info.code = spirv.data();
+            info.code_size = spirv.size();
         } else if ((formats & SDL_GPU_SHADERFORMAT_MSL) != 0) {
-            const std::string_view msl =
-                vertex ? shaders::kSpriteVertexMsl : shaders::kSpriteFragmentMsl;
+            const std::string_view msl = vertex ? code.vertex_msl : code.fragment_msl;
             info.format = SDL_GPU_SHADERFORMAT_MSL;
             info.code = reinterpret_cast<const std::uint8_t*>(msl.data());
             info.code_size = msl.size();
         } else if ((formats & SDL_GPU_SHADERFORMAT_DXBC) != 0) {
-            auto bytecode =
-                compile_hlsl(shaders::kSpriteHlsl, info.entrypoint, vertex ? "vs_5_1" : "ps_5_1");
+            auto bytecode = compile_hlsl(code.hlsl, info.entrypoint, vertex ? "vs_5_1" : "ps_5_1");
             if (!bytecode) {
                 return bytecode.error();
             }
@@ -528,12 +699,17 @@ private:
         return shader;
     }
 
-    // The 2D pipeline for one target format, made the first time a frame draws to it.
-    Result<SDL_GPUGraphicsPipeline*> pipeline_for(SDL_GPUTextureFormat format) {
-        for (const auto& [made_for, pipeline] : pipelines_) {
-            if (made_for == format) {
-                return pipeline;
+    // The 2D pipeline for a target format, shader and blend mode, made the first time a frame
+    // needs it.
+    Result<SDL_GPUGraphicsPipeline*> pipeline_for(SDL_GPUTextureFormat format, ShaderKind kind,
+                                                  BlendMode blend) {
+        for (const Pipeline& made : pipelines_) {
+            if (made.format == format && made.kind == kind && made.blend == blend) {
+                return made.pipeline;
             }
+        }
+        if (auto made = make_shaders(kind); !made) {
+            return made.error();
         }
         SDL_GPUVertexBufferDescription buffer{};
         buffer.slot = 0;
@@ -553,20 +729,13 @@ private:
                          .format = SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4_NORM,
                          .offset = offsetof(Vertex2D, rgba)};
 
-        // Godot's default "mix" blending, for straight alpha.
         SDL_GPUColorTargetDescription color{};
         color.format = format;
-        color.blend_state.enable_blend = true;
-        color.blend_state.src_color_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA;
-        color.blend_state.dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
-        color.blend_state.color_blend_op = SDL_GPU_BLENDOP_ADD;
-        color.blend_state.src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE;
-        color.blend_state.dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
-        color.blend_state.alpha_blend_op = SDL_GPU_BLENDOP_ADD;
+        color.blend_state = blend_state(blend);
 
         SDL_GPUGraphicsPipelineCreateInfo info{};
-        info.vertex_shader = vertex_shader_;
-        info.fragment_shader = fragment_shader_;
+        info.vertex_shader = shaders_.at(shader_index(kind, SDL_GPU_SHADERSTAGE_VERTEX));
+        info.fragment_shader = shaders_.at(shader_index(kind, SDL_GPU_SHADERSTAGE_FRAGMENT));
         info.vertex_input_state.vertex_buffer_descriptions = &buffer;
         info.vertex_input_state.num_vertex_buffers = 1;
         info.vertex_input_state.vertex_attributes = attributes.data();
@@ -581,7 +750,8 @@ private:
         if (pipeline == nullptr) {
             return sdl_error("creating the 2D pipeline failed");
         }
-        pipelines_.emplace_back(format, pipeline);
+        pipelines_.push_back(
+            {.format = format, .kind = kind, .blend = blend, .pipeline = pipeline});
         return pipeline;
     }
 
@@ -732,10 +902,9 @@ private:
     SDL_Window* window_;
     bool owns_video_;
     Backend backend_;
-    SDL_GPUShader* vertex_shader_ = nullptr;
-    SDL_GPUShader* fragment_shader_ = nullptr;
-    std::vector<std::pair<SDL_GPUTextureFormat, SDL_GPUGraphicsPipeline*>> pipelines_;
-    std::array<SDL_GPUSampler*, 2> samplers_{}; // by Filter
+    std::array<SDL_GPUShader*, 4> shaders_{}; // by shader_index
+    std::vector<Pipeline> pipelines_;
+    std::array<SDL_GPUSampler*, 4> samplers_{}; // by sampler_index
     SDL_GPUTexture* white_ = nullptr;
     SDL_GPUBuffer* vertex_buffer_ = nullptr;
     SDL_GPUTransferBuffer* vertex_transfer_ = nullptr;
@@ -749,7 +918,7 @@ private:
     Frame frame_;
     SDL_GPUCommandBuffer* frame_commands_ = nullptr;
     SDL_GPUTexture* frame_texture_ = nullptr;
-    SDL_GPUGraphicsPipeline* pipeline_ = nullptr;
+    SDL_GPUTextureFormat frame_format_ = kTextureFormat;
     std::uint32_t frame_width_ = 0;
     std::uint32_t frame_height_ = 0;
     std::vector<Vertex2D> vertices_;

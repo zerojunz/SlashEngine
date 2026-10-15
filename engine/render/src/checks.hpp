@@ -28,4 +28,28 @@ inline constexpr std::size_t kMaxFrameVertices = std::size_t{1} << 22;
 [[nodiscard]] Error frame_in_progress(std::string_view call);
 [[nodiscard]] std::array<std::uint8_t, 4> to_rgba8(const Color& color);
 
+// The material's program, and that its textures exist (known says whether one does) and aren't
+// the frame's target.
+template <typename Known>
+[[nodiscard]] Result<void> check_material(const Material& material, TextureId target,
+                                          const Known& known) {
+    if (!material.program.code.empty()) {
+        if (auto checked = check_program(material.program); !checked) {
+            return checked;
+        }
+    }
+    for (const MaterialTexture& slot : material.textures) {
+        if (slot.texture == TextureId::None) {
+            continue;
+        }
+        if (!known(slot.texture)) {
+            return unknown_texture(slot.texture);
+        }
+        if (slot.texture == target) {
+            return target_in_use(slot.texture);
+        }
+    }
+    return {};
+}
+
 } // namespace slash::render::detail

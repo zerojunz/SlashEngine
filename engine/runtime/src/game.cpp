@@ -142,6 +142,8 @@ void Game::draw() {
         project_.interpolation && !platform_.headless() ? loop_->interpolation() : 1.0;
     options.texture_filter =
         project_.texture_filter == "nearest" ? render::Filter::Nearest : render::Filter::Linear;
+    options.time =
+        canvas::material_time(world_.tick(), 1.0 / loop_->tick_hz(), options.interpolation);
     auto drawn = canvas_->draw(world_, options);
     // One warning, not one per frame.
     if (!drawn && !draw_failed_) {

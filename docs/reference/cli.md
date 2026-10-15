@@ -79,8 +79,9 @@ edited prefab updates its instances and keeps their overrides (see
 
 ### scene validate
 
-Checks a scene, a `.prefab.json` file or a [`.frames.json`](scene-format.md#sprite-frames) file
-and lists every error, each with its JSON Pointer path.
+Checks a scene, a `.prefab.json` file, a [`.frames.json`](scene-format.md#sprite-frames) file or
+a [`.material.json`](scene-format.md#materials) file and lists every error, each with its JSON
+Pointer path.
 Exit code 1 if the file is invalid. The [prefabs](scene-format.md#prefabs) a file extends are read
 from its project: the nearest folder above it with a `project.json`, else the current folder.
 
@@ -92,8 +93,15 @@ slash-cli scene validate <file>
 {"entities":3,"valid":true}
 ```
 
-For a prefab the result counts its `components` instead of `entities`, and for a `.frames.json`
-file its `animations`. When the project has a
+For a prefab the result counts its `components` instead of `entities`, for a `.frames.json` file
+its `animations`, and for a `.material.json` file the `instructions` its graph compiles to, of the
+64 a material can run:
+
+```json
+{"instructions":5,"valid":true}
+```
+
+When the project has a
 [storyboard](storyboard-format.md#storyref), each `StoryRef` ID must name one of its entries:
 
 ```json
@@ -102,7 +110,7 @@ file its `animations`. When the project has a
 
 ### scene format
 
-Rewrites a scene, prefab or `.frames.json` file in
+Rewrites a scene, prefab, `.frames.json` or `.material.json` file in
 [canonical form](scene-format.md#canonical-form).
 
 ```bash
@@ -113,13 +121,15 @@ slash-cli scene format --check <file>    # change nothing; exit 1 if not canonic
 ### schema
 
 Prints a JSON Schema: for scene or prefab files (generated from the registered components), for
-[`.frames.json` files](scene-format.md#sprite-frames), for [storyboard files](storyboard-format.md), for [`project.json`](project-format.md) or for
-[`export_presets.json`](project-format.md#export-presets).
+[`.frames.json` files](scene-format.md#sprite-frames), for
+[`.material.json` files](scene-format.md#materials), for [storyboard files](storyboard-format.md),
+for [`project.json`](project-format.md) or for [`export_presets.json`](project-format.md#export-presets).
 
 ```bash
 slash-cli schema scene
 slash-cli schema prefab
 slash-cli schema frames
+slash-cli schema material
 slash-cli schema storyboard
 slash-cli schema project
 slash-cli schema presets

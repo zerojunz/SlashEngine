@@ -1,0 +1,42 @@
+{
+  "entities": {
+    "hero": {
+      "components": {
+        "Sprite2D": {
+          "material": "hit_flash.material.json",
+          "texture": "hero.png",
+          "texture_filter": "nearest"
+        },
+        "Transform2D": {
+          "position": [24.0, 24.0]
+        }
+      }
+    },
+    "pond": {
+      "components": {
+        "Sprite2D": {
+          "material": "water.material.json",
+          "texture": "pond.png"
+        },
+        "Transform2D": {
+          "position": [64.0, 72.0]
+        }
+      }
+    },
+    "spark": {
+      "components": {
+        "Sprite2D": {
+          "material": "glow.material.json",
+          "modulate": [1.0, 0.8, 0.2, 0.5],
+          "texture": "hero.png",
+          "texture_filter": "nearest",
+          "z_index": 1
+        },
+        "Transform2D": {
+          "position": [32.0, 32.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

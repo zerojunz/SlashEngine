@@ -4,6 +4,8 @@
 
 #include <SDL3/SDL.h>
 
+#include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -19,6 +21,16 @@ struct SurfaceDeleter {
     void operator()(SDL_Surface* surface) const { SDL_DestroySurface(surface); }
 };
 using SurfacePtr = std::unique_ptr<SDL_Surface, SurfaceDeleter>;
+
+// A texel index on one axis of a size-texel image, clamped to its edge or wrapped around.
+std::uint32_t texel_index(float texel, std::uint32_t size, bool repeat) {
+    const auto count = static_cast<float>(size);
+    if (repeat) {
+        const float wrapped = texel - (count * std::floor(texel / count));
+        return std::min(static_cast<std::uint32_t>(wrapped), size - 1);
+    }
+    return static_cast<std::uint32_t>(std::clamp(texel, 0.0F, count - 1.0F));
+}
 
 } // namespace
 
@@ -94,6 +106,47 @@ Result<std::string> encode_png(const Image& image) {
         return make_error(ErrorCode::PlatformFailure, "could not encode the image");
     }
     return png;
+}
+
+std::array<float, 4> sample_image(const Image& image, Filter filter, bool repeat, float u,
+                                  float v) {
+    if (image.width == 0 || image.height == 0 ||
+        image.pixels.size() != std::size_t{image.width} * image.height * 4) {
+        return {1.0F, 1.0F, 1.0F, 1.0F};
+    }
+    const auto texel = [&](float x, float y) {
+        const std::size_t at = ((std::size_t{texel_index(y, image.height, repeat)} * image.width) +
+                                texel_index(x, image.width, repeat)) *
+                               4;
+        std::array<float, 4> color{};
+        for (std::size_t channel = 0; channel < 4; ++channel) {
+            color.at(channel) = static_cast<float>(image.pixels[at + channel]) / 255.0F;
+        }
+        return color;
+    };
+    // Texel centers are at half-texel coordinates, as on the GPU.
+    const float x = (u * static_cast<float>(image.width)) - 0.5F;
+    const float y = (v * static_cast<float>(image.height)) - 0.5F;
+    if (filter == Filter::Nearest) {
+        return texel(std::floor(x + 0.5F), std::floor(y + 0.5F));
+    }
+    const float x0 = std::floor(x);
+    const float y0 = std::floor(y);
+    const float tx = x - x0;
+    const float ty = y - y0;
+    const std::array<float, 4> top_left = texel(x0, y0);
+    const std::array<float, 4> top_right = texel(x0 + 1.0F, y0);
+    const std::array<float, 4> bottom_left = texel(x0, y0 + 1.0F);
+    const std::array<float, 4> bottom_right = texel(x0 + 1.0F, y0 + 1.0F);
+    std::array<float, 4> color{};
+    for (std::size_t channel = 0; channel < 4; ++channel) {
+        const float top =
+            top_left.at(channel) + ((top_right.at(channel) - top_left.at(channel)) * tx);
+        const float bottom =
+            bottom_left.at(channel) + ((bottom_right.at(channel) - bottom_left.at(channel)) * tx);
+        color.at(channel) = top + ((bottom - top) * ty);
+    }
+    return color;
 }
 
 } // namespace slash::render

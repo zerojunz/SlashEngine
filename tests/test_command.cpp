@@ -8,6 +8,7 @@
 #include "slash/platform/platform.hpp"
 #include "slash/platform/run.hpp"
 #include "slash/render/device.hpp"
+#include "slash/render/image.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
 
@@ -38,6 +39,7 @@ SLASH_COMPONENT(Follow, target, mode)
 namespace json = slash::json;
 namespace world = slash::world;
 namespace command = slash::command;
+namespace render = slash::render;
 using command::Capability;
 
 namespace {
@@ -1263,6 +1265,8 @@ TEST_CASE("schema.get returns scene, component and command schemas") {
           "SlashEngine storyboard file");
     CHECK(engine.ok("schema.get", R"({"kind": "frames"})").find("title")->as_string() ==
           "SlashEngine sprite frames");
+    CHECK(engine.ok("schema.get", R"({"kind": "material"})").find("title")->as_string() ==
+          "SlashEngine material");
 
     const json::Value health =
         engine.ok("schema.get", R"({"kind": "component", "name": "Health"})");
@@ -1276,6 +1280,93 @@ TEST_CASE("schema.get returns scene, component and command schemas") {
     const auto reply = engine.fails("schema.get", R"({"kind": "command", "name": "stpe"})",
                                     command::code::kNotFound);
     CHECK(contains(reply.message, "did you mean \"step\""));
+}
+
+TEST_CASE("material.eval returns the colors a material draws, for a file or a sprite") {
+    const std::string root = "material_test_project";
+    std::filesystem::remove_all(root);
+    REQUIRE(slash::platform::create_directories(root).ok());
+    render::Image red;
+    red.width = 1;
+    red.height = 1;
+    red.pixels = {255, 0, 0, 255};
+    REQUIRE(slash::platform::write_file(root + "/red.png", render::encode_png(red).value()).ok());
+    REQUIRE(slash::platform::write_file(root + "/flash.material.json", R"({
+      "color": {"op": "vec4", "args": [
+        {"op": "mix", "args": ["base.rgb", "flash_color.rgb", "flash"]}, "base.a"]},
+      "format": 1,
+      "nodes": {
+        "base": {"op": "mul", "args": [{"op": "texture", "args": ["texture", "uv"]}, "color"]}
+      },
+      "params": {
+        "flash": {"type": "float", "value": 0, "min": 0, "max": 1},
+        "flash_color": {"type": "color", "value": [1, 1, 1, 1]}
+      }
+    })")
+                .ok());
+    command::SessionOptions options;
+    options.project_root = root;
+    Engine engine(options);
+    engine.ok("entity.create", R"({"id": "hero", "components": {"Transform2D": {},
+        "Sprite2D": {"texture": "red.png", "material": "flash.material.json",
+                     "material_params": {"flash": 0.5}, "modulate": [1, 1, 1, 0.5]}}})");
+    engine.ok("entity.create", R"({"id": "plain", "components": {"Transform2D": {},
+        "Sprite2D": {"texture": "red.png"}}})");
+    engine.ok("entity.create", R"({"id": "empty", "components": {"Transform2D": {}}})");
+
+    // A sprite: its texture, params and modulate.
+    CHECK(engine.ok("material.eval", R"({"id": "hero", "uv": [[0.5, 0.5]]})") ==
+          parse(R"({"colors": [[1, 0.5, 0.5, 0.5]]})"));
+    // Params given here win over the sprite's.
+    CHECK(engine.ok("material.eval", R"({"id": "hero", "uv": [[0.5, 0.5]],
+                                         "params": {"flash": 1}, "color": [1, 1, 1, 1]})") ==
+          parse(R"({"colors": [[1, 1, 1, 1]]})"));
+    // A sprite with no material draws its texture times its modulate.
+    CHECK(engine.ok("material.eval", R"({"id": "plain", "uv": [[0, 0], [1, 1]]})") ==
+          parse(R"({"colors": [[1, 0, 0, 1], [1, 0, 0, 1]]})"));
+    // A file on its own samples white, unless given a texture.
+    CHECK(engine.ok("material.eval", R"({"path": "flash.material.json", "uv": [[0.5, 0.5]],
+                                         "params": {"flash": 0.25,
+                                                    "flash_color": [0, 0, 0]}})") ==
+          parse(R"({"colors": [[0.75, 0.75, 0.75, 1]]})"));
+    CHECK(engine.ok("material.eval", R"({"path": "flash.material.json", "uv": [[0.5, 0.5]],
+                                         "texture": "red.png"})") ==
+          parse(R"({"colors": [[1, 0, 0, 1]]})"));
+
+    auto reply =
+        engine.fails("material.eval", R"({"uv": [[0, 0]]})", command::code::kInvalidParams);
+    CHECK(contains(reply.message, "give id"));
+    engine.fails("material.eval", R"({"id": "hero", "path": "flash.material.json",
+                                      "uv": [[0, 0]]})",
+                 command::code::kInvalidParams);
+    reply = engine.fails("material.eval", R"({"id": "hero", "uv": [[0, 0]],
+                                              "params": {"flsh": 1}})",
+                         command::code::kInvalidArgument);
+    CHECK(reply.message ==
+          "/params/flsh: the material has no param \"flsh\"; did you mean \"flash\"?");
+    CHECK(reply.data.find("path")->as_string() == "/params/flsh");
+    engine.ok("component.set", R"({"id": "plain", "components": {"Sprite2D": {
+        "material": "flash.material.json", "material_params": {"flash": 3}}}})");
+    reply = engine.fails("material.eval", R"({"id": "plain", "uv": [[0, 0]]})",
+                         command::code::kInvalidArgument);
+    CHECK(reply.message ==
+          "/id: material_params/flash: 3 is outside the param's range, from 0 to 1");
+    reply = engine.fails("material.eval", R"({"id": "empty", "uv": [[0, 0]]})",
+                         command::code::kInvalidParams);
+    CHECK(reply.message == "/id: \"empty\" has no Sprite2D");
+    reply = engine.fails("material.eval", R"({"id": "hreo", "uv": [[0, 0]]})",
+                         command::code::kNotFound);
+    CHECK(contains(reply.message, "did you mean \"hero\""));
+    reply = engine.fails("material.eval", R"({"path": "gone.material.json", "uv": [[0, 0]]})",
+                         command::code::kNotFound);
+    CHECK(reply.data.find("path")->as_string() == "/path");
+    reply = engine.fails("material.eval", R"({"path": "flash.material.json", "uv": [[0, 0]],
+                                              "texture": "gone.png"})",
+                         command::code::kNotFound);
+    CHECK(contains(reply.message, "gone.png"));
+    engine.fails("material.eval", R"({"path": "flash.material.json", "uv": []})",
+                 command::code::kInvalidParams);
+    std::filesystem::remove_all(root);
 }
 
 TEST_CASE("log.tail returns recent log lines as objects") {

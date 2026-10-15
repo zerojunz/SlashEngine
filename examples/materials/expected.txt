@@ -1,0 +1,25 @@
+wrote hero.png: 16x16
+wrote pond.png: 64x16
+wrote ripples.png: 2x1
+scene.open {"path":"main.scene.json"}
+{"entities":3,"path":"main.scene.json"}
+material.eval {"id":"hero","uv":[[0.5,0.5]]}
+{"colors":[[1.0,0.251,0.0,1.0]]}
+component.set {"components":{"Sprite2D":{"material_params":{"flash":1}}},"id":"hero"}
+{"changed":{"Sprite2D":{"material_params":{"flash":1}}},"id":"hero"}
+material.eval {"id":"hero","uv":[[0.5,0.5]]}
+{"colors":[[1.0,1.0,1.0,1.0]]}
+material.eval {"id":"hero","params":{"flash":0.5},"uv":[[0.5,0.5]]}
+{"colors":[[1.0,0.625,0.5,1.0]]}
+material.eval {"id":"hero","params":{"flsh":1},"uv":[[0.5,0.5]]}
+"/params/flsh: the material has no param \"flsh\"; did you mean \"flash\"?"
+material.eval {"id":"hero","params":{"flash":2},"uv":[[0.5,0.5]]}
+"/params/flash: 2 is outside the param's range, from 0 to 1"
+material.eval {"id":"pond","uv":[[0.05,0.5],[0.15,0.5]]}
+{"colors":[[0.251,0.502,1.0,1.0],[0.126,0.252,0.502,1.0]]}
+material.eval {"id":"pond","time":2,"uv":[[0.05,0.5],[0.15,0.5]]}
+{"colors":[[0.126,0.252,0.502,1.0],[0.251,0.502,1.0,1.0]]}
+hit_flash.material.json: blend mix, 5 instructions, 2 constants
+water.material.json: blend mix, 8 instructions, 4 constants
+glow.material.json: blend add, 0 instructions, 0 constants
+sprites drawn: 3, GPU draws: 3, triangles: 6, textures: 4

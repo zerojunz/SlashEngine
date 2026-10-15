@@ -123,14 +123,15 @@ my-game/
     main.scene.json
   prefabs/              # optional: .prefab.json files that entities extend
     enemy.prefab.json
-  sprites/              # optional: textures and .frames.json animations, in any folder
-    hero.png
+  sprites/              # optional: textures, .frames.json animations and .material.json
+    hero.png            #   materials, in any folder
     hero.frames.json
+    hit_flash.material.json
   build/           # exports land in build/export/<preset>/ (gitignored)
   .slash/          # caches, export logs, a running server's token (gitignored)
 ```
 
-Only `project.json`, `.scene.json`, `.prefab.json`, `.frames.json`, `.png` and `.bmp` files ship
-in an export, and each is checked first: a texture SDL can't read is an error, like a scene that
-fails validation. See
+Only `project.json`, `.scene.json`, `.prefab.json`, `.frames.json`, `.material.json`, `.png` and
+`.bmp` files ship in an export, and each is checked first: a texture SDL can't read is an error,
+like a scene or material that fails validation. See
 [cli.md](cli.md#export) for `slash-cli export` and [scene-format.md](scene-format.md) for scenes.

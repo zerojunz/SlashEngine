@@ -1,0 +1,37 @@
+{
+  "color": {
+    "args": [
+      {
+        "args": ["base.rgb", "flash_color.rgb", "flash"],
+        "op": "mix"
+      },
+      "base.a"
+    ],
+    "op": "vec4"
+  },
+  "format": 1,
+  "nodes": {
+    "base": {
+      "args": [
+        {
+          "args": ["texture", "uv"],
+          "op": "texture"
+        },
+        "color"
+      ],
+      "op": "mul"
+    }
+  },
+  "params": {
+    "flash": {
+      "max": 1,
+      "min": 0,
+      "type": "float",
+      "value": 0
+    },
+    "flash_color": {
+      "type": "color",
+      "value": [1, 1, 1, 1]
+    }
+  }
+}
