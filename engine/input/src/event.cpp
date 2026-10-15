@@ -203,10 +203,12 @@ constexpr std::array<std::string_view, 6> kJoyAxes{
     "left_x", "left_y", "right_x", "right_y", "trigger_left", "trigger_right",
 };
 
-constexpr std::array<std::string_view, 8> kTypes{
-    "key",         "mouse_button",  "mouse_motion",  "screen_touch",
-    "screen_drag", "joypad_button", "joypad_motion", "action",
+constexpr std::array<std::string_view, 9> kTypes{
+    "key",           "mouse_button",  "mouse_motion", "screen_touch", "screen_drag",
+    "joypad_button", "joypad_motion", "action",       "ime",
 };
+// Not an event of its own: input.inject turns it into key presses, one per character.
+constexpr std::string_view kTextType = "text";
 
 constexpr std::size_t kMaxDevice = 63;
 constexpr std::size_t kMaxFingers = 32;
@@ -215,7 +217,7 @@ constexpr std::size_t kMaxFingers = 32;
 constexpr std::uint16_t bit(EventType type) {
     return static_cast<std::uint16_t>(1U << static_cast<unsigned>(type));
 }
-constexpr std::uint16_t kAnyType = 0xFF;
+constexpr std::uint16_t kAnyType = 0x1FF;
 constexpr std::uint16_t kBindingTypes = bit(EventType::Key) | bit(EventType::MouseButton) |
                                         bit(EventType::JoypadButton) | bit(EventType::JoypadMotion);
 constexpr std::uint16_t kPressTypes = bit(EventType::Key) | bit(EventType::MouseButton) |
@@ -231,13 +233,14 @@ struct Field {
     std::uint16_t binding_types = 0; // types whose bindings have it
 };
 
-constexpr std::array<Field, 21> kFields{{
+constexpr std::array<Field, 24> kFields{{
     {"type", kAnyType, kBindingTypes},
     {"device", kAnyType, kBindingTypes},
     {"pressed", kPressTypes, 0},
     {"key", bit(EventType::Key), bit(EventType::Key)},
     {"physical_key", bit(EventType::Key), bit(EventType::Key)},
     {"echo", bit(EventType::Key), 0},
+    {"unicode", bit(EventType::Key), 0},
     {"shift", kModifierTypes, kModifierTypes},
     {"ctrl", kModifierTypes, kModifierTypes},
     {"alt", kModifierTypes, kModifierTypes},
@@ -254,6 +257,8 @@ constexpr std::array<Field, 21> kFields{{
     {"axis_value", bit(EventType::JoypadMotion), bit(EventType::JoypadMotion)},
     {"action", bit(EventType::Action), 0},
     {"strength", bit(EventType::Action), 0},
+    {"text", bit(EventType::Ime), 0},
+    {"selection", bit(EventType::Ime), 0},
 }};
 
 template <std::size_t N>
@@ -340,6 +345,21 @@ json::Value point_json(Vec2 value) {
     return json::Array{json::Value(value.x), json::Value(value.y)};
 }
 
+// Whether doc is the "text" pseudo event, which types its text.
+bool is_text(const json::Value& doc) {
+    const json::Value* type = doc.is_object() ? doc.find("type") : nullptr;
+    return type != nullptr && type->is_string() && type->as_string() == kTextType;
+}
+
+// Characters in UTF-8 text.
+std::size_t count_characters(std::string_view text) {
+    std::size_t count = 0;
+    for (std::size_t i = 0; i < text.size(); ++count) {
+        static_cast<void>(next_utf8(text, i));
+    }
+    return count;
+}
+
 bool flag(const json::Value& doc, std::string_view name) {
     const json::Value* value = doc.find(name);
     return value != nullptr && value->as_bool();
@@ -413,13 +433,18 @@ json::Value event_schema(Use use) {
         binding ? "An event bound to an action: a key, mouse button, gamepad button or gamepad "
                   "axis, e.g. {\"type\": \"key\", \"key\": \"Space\"}."
                 : "An input event, e.g. {\"type\": \"key\", \"key\": \"Space\", \"pressed\": "
-                  "true} or {\"type\": \"action\", \"action\": \"jump\", \"pressed\": true}.";
+                  "true}, {\"type\": \"action\", \"action\": \"jump\", \"pressed\": true} or "
+                  "{\"type\": \"text\", \"text\": \"Mira\"}, which types into the focused text "
+                  "field.";
     json::Value& properties = schema["properties"];
     json::Array types;
     for (std::size_t i = 0; i < kTypes.size(); ++i) {
         if (!binding || (kBindingTypes & bit(static_cast<EventType>(i))) != 0) {
             types.emplace_back(kTypes.at(i));
         }
+    }
+    if (!binding) {
+        types.emplace_back(kTextType);
     }
     properties["type"]["type"] = "string";
     properties["type"]["enum"] = std::move(types);
@@ -477,6 +502,20 @@ json::Value event_schema(Use use) {
         properties["action"] = string_property("action: the action's name.");
         properties["strength"] =
             number_property("action: how hard, from 0 to 1 (default 1).", 0.0, 1.0);
+        properties["unicode"] = string_property(
+            "key: the character the key types, which a focused text field inserts.");
+        properties["text"] = string_property(
+            "text: what to type, sent as one key press with unicode per character. ime: the "
+            "text an input method is composing; \"\" ends the composition.");
+        json::Value selection;
+        selection["type"] = "array";
+        selection["items"]["type"] = "integer";
+        selection["items"]["minimum"] = 0;
+        selection["minItems"] = 2;
+        selection["maxItems"] = 2;
+        selection["description"] =
+            "ime: [start, length] of the part being converted, in characters of text.";
+        properties["selection"] = std::move(selection);
     }
     schema["required"] = json::Array{"type"};
     schema["additionalProperties"] = false;
@@ -493,6 +532,18 @@ std::vector<json::ValidationError> validate_event(const json::Value& doc, Use us
         return errors;
     }
     const bool binding = use == Use::Binding;
+    if (!binding && is_text(doc)) {
+        for (const auto& [member, value] : doc.as_object()) {
+            if (member != "type" && member != "device" && member != "text") {
+                errors.push_back({path + "/" + json::pointer_escape(member),
+                                  "text events have no " + quoted(member)});
+            }
+        }
+        if (doc.find("text") == nullptr) {
+            errors.push_back({path, R"(text events need "text")"});
+        }
+        return errors;
+    }
     const EventType type = type_of(doc);
     const std::string name(type_name(type));
     const std::string kind = binding ? name + " bindings" : name + " events";
@@ -529,11 +580,18 @@ std::vector<json::ValidationError> validate_event(const json::Value& doc, Use us
     const auto is_key = [](std::string_view text) { return parse_key(text).has_value(); };
     switch (type) {
     case EventType::Key:
-        if (doc.find("key") == nullptr && doc.find("physical_key") == nullptr) {
-            errors.push_back({path, kind + R"( need "key" or "physical_key")"});
+        if (doc.find("key") == nullptr && doc.find("physical_key") == nullptr &&
+            (binding || doc.find("unicode") == nullptr)) {
+            errors.push_back(
+                {path, kind + (binding ? R"( need "key" or "physical_key")"
+                                       : R"( need "key", "physical_key" or "unicode")")});
         }
         check_name("key", is_key, "key", key_names());
         check_name("physical_key", is_key, "key", key_names());
+        if (const json::Value* unicode = doc.find("unicode");
+            unicode != nullptr && count_characters(unicode->as_string()) != 1) {
+            errors.push_back({path + "/unicode", "unicode is one character"});
+        }
         break;
     case EventType::MouseButton:
         require("button");
@@ -570,11 +628,30 @@ std::vector<json::ValidationError> validate_event(const json::Value& doc, Use us
     case EventType::Action:
         require("action");
         break;
+    case EventType::Ime: {
+        require("text");
+        const json::Value* text = doc.find("text");
+        const json::Value* selection = doc.find("selection");
+        if (text != nullptr && selection != nullptr) {
+            const json::Array& range = selection->as_array();
+            const auto length = static_cast<std::int64_t>(count_characters(text->as_string()));
+            if (range[0].as_int() + range[1].as_int() > length) {
+                errors.push_back(
+                    {path + "/selection", "the selection [start, length] is past the text's end (" +
+                                              std::to_string(length) + " characters)"});
+            }
+        }
+        break;
+    }
     }
     return errors;
 }
 
 Result<Event> parse_event(const json::Value& doc, Use use) {
+    if (use == Use::Event && is_text(doc)) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "a text event is several key presses; read it with parse_events");
+    }
     if (const auto errors = validate_event(doc, use); !errors.empty()) {
         return make_error(ErrorCode::InvalidArgument,
                           (errors.front().path.empty() ? "" : errors.front().path + ": ") +
@@ -643,7 +720,52 @@ Result<Event> parse_event(const json::Value& doc, Use use) {
     if (const json::Value* strength = doc.find("strength"); strength != nullptr) {
         event.strength = static_cast<float>(strength->as_double());
     }
+    if (const json::Value* unicode = doc.find("unicode"); unicode != nullptr) {
+        std::size_t i = 0;
+        event.unicode = next_utf8(unicode->as_string(), i);
+    }
+    if (const json::Value* text = doc.find("text"); text != nullptr) {
+        event.text = text->as_string();
+    }
+    if (const json::Value* selection = doc.find("selection"); selection != nullptr) {
+        event.selection_start = static_cast<int>(selection->as_array()[0].as_int());
+        event.selection_length = static_cast<int>(selection->as_array()[1].as_int());
+    }
     return event;
+}
+
+Result<std::vector<Event>> parse_events(const json::Value& doc) {
+    if (!is_text(doc)) {
+        auto event = parse_event(doc, Use::Event);
+        if (!event) {
+            return event.error();
+        }
+        return std::vector<Event>{std::move(event).value()};
+    }
+    if (const auto errors = validate_event(doc, Use::Event); !errors.empty()) {
+        return make_error(ErrorCode::InvalidArgument,
+                          (errors.front().path.empty() ? "" : errors.front().path + ": ") +
+                              errors.front().message);
+    }
+    std::vector<Event> events = text_events(doc.find("text")->as_string());
+    if (const json::Value* device = doc.find("device"); device != nullptr) {
+        for (Event& event : events) {
+            event.device = static_cast<int>(device->as_int());
+        }
+    }
+    return events;
+}
+
+std::vector<Event> text_events(std::string_view text) {
+    std::vector<Event> events;
+    for (std::size_t i = 0; i < text.size();) {
+        Event event;
+        event.type = EventType::Key;
+        event.pressed = true;
+        event.unicode = next_utf8(text, i);
+        events.push_back(event);
+    }
+    return events;
 }
 
 json::Value event_json(const Event& event, Use use) {
@@ -684,6 +806,11 @@ json::Value event_json(const Event& event, Use use) {
         pressed();
         if (!binding && event.echo) {
             out["echo"] = true;
+        }
+        if (!binding && event.unicode != 0) {
+            std::string unicode;
+            append_utf8(unicode, event.unicode);
+            out["unicode"] = std::move(unicode);
         }
         break;
     case EventType::MouseButton:
@@ -733,6 +860,12 @@ json::Value event_json(const Event& event, Use use) {
         pressed();
         if (event.strength != 1.0F) {
             out["strength"] = event.strength;
+        }
+        break;
+    case EventType::Ime:
+        out["text"] = event.text;
+        if (event.selection_start != 0 || event.selection_length != 0) {
+            out["selection"] = json::Array{event.selection_start, event.selection_length};
         }
         break;
     }
@@ -789,6 +922,7 @@ std::optional<Match> match(const Event& binding, const Event& event, float deadz
     case EventType::ScreenTouch:
     case EventType::ScreenDrag:
     case EventType::Action:
+    case EventType::Ime:
         break;
     }
     return std::nullopt;

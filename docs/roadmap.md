@@ -236,9 +236,14 @@ rendering on top.
       (`layout_direction`), `text_direction` and `language` on labels and buttons, fallback
       fonts in `.font.json` files picked by language and script, and fonts installed on the
       machine for the rest, counted in `system_glyphs`
-- [ ] Text input in every language: `LineEdit` and `TextEdit`, IME composition for Japanese,
-      Chinese and Korean with the candidate window placed at the text field, on-screen
-      keyboards on phones, and the clipboard
+- [x] Text input in every language, as Godot's `LineEdit`: typing, the caret, selection by
+      keys, clicks and drags, undo and redo, the clipboard, secret text and `max_length`; IME
+      composition for Japanese, Chinese and Korean with the candidate window placed at the
+      caret; on-screen keyboards on phones by `virtual_keyboard_type`; Godot's text editing
+      actions with Mac and PC shortcuts; and `input.inject` `text` and `ime` events,
+      `ui.clipboard` and the text field's caret and selection in `ui.layout`
+- [ ] `TextEdit`: text fields of several lines, as Godot's, with wrapping, scrolling and line
+      numbers
 - [ ] Audio on miniaudio
 - [ ] `frame.capture` (PNG) and replays (`replay.run`)
 - [ ] Time travel: `replay.seek` jumps a recorded run to any tick, where every query command

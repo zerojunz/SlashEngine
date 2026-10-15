@@ -498,6 +498,70 @@ void register_ui_components(ComponentRegistry& registry) {
         .describe("flip_h", {.doc = "Draw it mirrored left to right."})
         .describe("flip_v", {.doc = "Draw it upside down."});
 
+    registry.add<LineEdit>()
+        .set_doc("A one-line text field, as Godot's LineEdit: a click, focus or ui_text_submit "
+                 "starts editing; typing, an input method and the on-screen keyboard insert at "
+                 "the caret; ui_text_* actions move the caret, select and delete; ui_cut, "
+                 "ui_copy, ui_paste, ui_undo and ui_redo work the clipboard and undo. Emits "
+                 "text_changed {\"text\"}, text_submitted {\"text\"} (ui_text_submit), "
+                 "text_change_rejected {\"rejected_substring\"} and editing_toggled "
+                 "{\"toggled_on\"}. Theme items: normal, read_only and focus styles, font, "
+                 "font_size, font_color, font_selected_color, font_uneditable_color, "
+                 "font_placeholder_color, font_outline_color, outline_size, caret_color, "
+                 "caret_width, selection_color, clear_button_color, clear_button_color_pressed "
+                 "and minimum_character_width.")
+        .describe("text", {.doc = "One line; line breaks show as spaces."})
+        .describe("placeholder_text", {.doc = "Shown, dimmed, while the text is empty."})
+        .describe("alignment", {.doc = "The text's place across the field; fill acts as left.",
+                                .choices = {"left", "center", "right", "fill"}})
+        .describe("max_length",
+                  {.doc = "Most characters it takes; 0 for no limit. Typing or pasting more "
+                          "emits text_change_rejected with what didn't fit.",
+                   .min = 0})
+        .describe("editable", {.doc = "Typing changes the text; off, it can still be selected "
+                                      "and copied."})
+        .describe("keep_editing_on_text_submit",
+                  {.doc = "Keep editing after ui_text_submit (Enter) instead of stopping."})
+        .describe("expand_to_text_length", {.doc = "Its minimum width grows to fit the text."})
+        .describe("backspace_deletes_composite_character_enabled",
+                  {.doc = "Backspace deletes a whole character with its accents or an emoji "
+                          "sequence, not one code point."})
+        .describe("virtual_keyboard_enabled",
+                  {.doc = "Show the on-screen keyboard while editing, on phones and tablets."})
+        .describe("virtual_keyboard_show_on_focus",
+                  {.doc = "Show it as soon as the field takes focus, not only when tapped."})
+        .describe("virtual_keyboard_type",
+                  {.doc = "The kind of on-screen keyboard.",
+                   .choices = {"default", "multiline", "number", "number_decimal", "phone",
+                               "email_address", "password", "url"}})
+        .describe("clear_button_enabled", {.doc = "Show a button at the end that clears the text."})
+        .describe("shortcut_keys_enabled",
+                  {.doc = "Cut, copy, paste, select all, undo and redo by keyboard shortcut."})
+        .describe("selecting_enabled", {.doc = "Text can be selected."})
+        .describe("deselect_on_focus_loss_enabled", {.doc = "Losing focus drops the selection."})
+        .describe("right_icon", {.doc = "Project path of a PNG or BMP file drawn at the end; "
+                                        "\"\" for none."})
+        .describe("icon_expand_mode",
+                  {.doc = "The right icon's size: its own, the font's height, or the field's "
+                          "height times right_icon_scale.",
+                   .choices = {"original_size", "fit_to_text", "fit_to_line_edit"}})
+        .describe("right_icon_scale", {.doc = "For fit_to_line_edit.", .min = 0.0})
+        .describe("flat", {.doc = "Draw no style box."})
+        .describe("select_all_on_focus", {.doc = "Select all the text when it takes focus."})
+        .describe("caret_blink", {.doc = "The caret blinks."})
+        .describe("caret_blink_interval",
+                  {.doc = "Seconds the caret is shown, then hidden, when it blinks.", .min = 0.001})
+        .describe("caret_column", {.doc = "Characters before the caret.", .min = 0})
+        .describe("caret_force_displayed", {.doc = "Draw the caret even when not editing."})
+        .describe("caret_mid_grapheme",
+                  {.doc = "Let the caret stop between a letter and its accents, or inside an "
+                          "emoji sequence."})
+        .describe("secret", {.doc = "Show each character as secret_character, for passwords; "
+                                    "copying and cutting are off."})
+        .describe("secret_character", {.doc = "One character."})
+        .describe("text_direction", text_direction)
+        .describe("language", language);
+
     registry.add<BoxContainer>()
         .set_doc("Lays out its children in a row, or a column when vertical, as Godot's "
                  "HBoxContainer and VBoxContainer: each at its minimum size along it, plus a share "

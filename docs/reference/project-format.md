@@ -112,6 +112,28 @@ has a deadzone of 0.5 and Godot's bindings.
 | `ui_left`, `ui_right`, `ui_up`, `ui_down` | The arrow keys, the D-pad and the left stick |
 | `ui_page_up`, `ui_page_down`, `ui_home`, `ui_end` | PageUp, PageDown, Home, End |
 
+[Text fields](scene-format.md#text-fields) edit with Godot's built-in text actions, bound to Ctrl
+on Windows, Linux, Android and the web, and to Command (and Option for words) on macOS and iOS,
+as Godot's `.macos` bindings. `input.state` and `input.actions` list them only when asked by
+name.
+
+| Action | Bindings on a PC | On a Mac |
+| --- | --- | --- |
+| `ui_cut`, `ui_copy`, `ui_paste` | Ctrl+X, Ctrl+C, Ctrl+V; Shift+Delete, Ctrl+Insert, Shift+Insert | Command instead of Ctrl |
+| `ui_undo`, `ui_redo` | Ctrl+Z; Ctrl+Shift+Z, Ctrl+Y | Command instead of Ctrl |
+| `ui_text_submit` | Enter, Kp Enter | The same |
+| `ui_text_backspace`, `ui_text_delete` | Backspace (and Shift+Backspace), Delete | The same |
+| `ui_text_backspace_word`, `ui_text_delete_word` | Ctrl+Backspace, Ctrl+Delete | Option+Backspace, Option+Delete |
+| `ui_text_backspace_all_to_left`, `ui_text_delete_all_to_right` | None | Command+Backspace, Command+Delete |
+| `ui_text_caret_left`, `_right`, `_up`, `_down` | The arrow keys | The same |
+| `ui_text_caret_word_left`, `ui_text_caret_word_right` | Ctrl+Left, Ctrl+Right | Option+Left, Option+Right |
+| `ui_text_caret_line_start`, `ui_text_caret_line_end` | Home, End | Command+Left, Command+Right, Ctrl+A, Ctrl+E, Home, End |
+| `ui_text_caret_page_up`, `ui_text_caret_page_down` | PageUp, PageDown | The same |
+| `ui_text_caret_document_start`, `ui_text_caret_document_end` | Ctrl+Home, Ctrl+End | Command+Up, Command+Down, Command+Home, Command+End |
+| `ui_text_select_all` | Ctrl+A | Command+A |
+| `ui_text_clear_carets_and_selection` | Escape | The same |
+| `ui_swap_input_direction` | Ctrl+` | Command+` |
+
 `project validate` checks every binding, naming a misspelled key, button or axis with the closest
 one. Games read keys, the mouse, touches and gamepads from SDL; gamepads connect and disconnect as
 they are plugged in, numbered from 0. A window losing focus releases everything held.

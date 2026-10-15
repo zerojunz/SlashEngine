@@ -13,6 +13,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace asset = slash::asset;
@@ -551,4 +552,72 @@ TEST_CASE(".font.json fallbacks and support lists are checked") {
     CHECK_FALSE(text::is_language_code("x"));
     CHECK(text::is_script_code("Arab"));
     CHECK_FALSE(text::is_script_code("ARAB"));
+}
+
+TEST_CASE("character breaks keep accents, emoji sequences, flags and Hangul syllables whole") {
+    using Breaks = std::vector<std::uint32_t>;
+    CHECK(text::character_breaks(U"").empty());
+    CHECK(text::character_breaks(U"ab") == Breaks{1, 2});
+    CHECK(text::character_breaks(U"éx") == Breaks{2, 3});
+    CHECK(text::character_breaks(U"\r\n") == Breaks{2});
+    // A family: man, woman and girl joined by U+200D.
+    CHECK(text::character_breaks(U"\U0001F468‍\U0001F469‍\U0001F467!") == Breaks{5, 6});
+    // Two flags, each two regional indicators.
+    CHECK(text::character_breaks(U"\U0001F1EF\U0001F1F5\U0001F1FA\U0001F1F8") == Breaks{2, 4});
+    // A skin tone goes with the emoji before it.
+    CHECK(text::character_breaks(U"\U0001F44B\U0001F3FD") == Breaks{2});
+    // Jamo making one syllable, then a precomposed one.
+    CHECK(text::character_breaks(U"각가") == Breaks{3, 4});
+}
+
+TEST_CASE("a shaped line gives carets, selections, hit tests and words as Godot's TextServer") {
+    MemoryFiles files;
+    files.write("boxes.ttf", bytes_of(text::box_font(U"abcd ")));
+    files.write("hebrew.ttf", bytes_of(text::box_font(kHebrew, "Hebrew Boxes")));
+    asset::Assets assets(files.source());
+    text::add_asset_types(assets);
+    text::Fonts fonts(assets);
+    fonts.set_system_fallback(false);
+
+    // 12 pixels a letter and 5 a space: a 0, b 12, space 24, c 29, d 41.
+    const std::string source = "ab cd";
+    const text::TextLayout layout = lay_out(fonts, source, {.font = "boxes.ttf", .font_size = 20});
+    const text::ShapedLine line(source, layout);
+    CHECK(line.width() == 53.0F);
+    CHECK(line.end() == 5);
+    REQUIRE(line.clusters().size() == 5);
+    CHECK(line.clusters()[3].x == 29.0F);
+    CHECK(line.clusters()[2].space);
+
+    // At the start only the caret before 'a'; between letters both halves meet.
+    text::ShapedLine::Carets carets = line.carets(0);
+    CHECK_FALSE(carets.leading.found);
+    CHECK(carets.trailing.found);
+    CHECK(carets.trailing.x == 0.0F);
+    carets = line.carets(2);
+    CHECK(carets.leading.x == 24.0F);
+    CHECK(carets.trailing.x == 24.0F);
+    CHECK(carets.leading.direction == text::Direction::Ltr);
+    CHECK(line.carets(5).leading.x == 53.0F);
+
+    CHECK(line.hit_test(-5.0F) == 0);
+    CHECK(line.hit_test(13.0F) == 1);
+    CHECK(line.hit_test(20.0F) == 2);
+    CHECK(line.hit_test(100.0F) == 5);
+    CHECK(line.selection(1, 4) == std::vector<std::pair<float, float>>{{12.0F, 41.0F}});
+    CHECK(line.word_breaks() == std::vector<std::uint32_t>{0, 2, 3, 5});
+    CHECK(line.next_character(2) == 3);
+    CHECK(line.previous_character(2) == 1);
+    CHECK(line.dominant_direction(0, 5) == text::Direction::Ltr);
+
+    // Right to left, a caret before a letter is at its right edge.
+    const std::string hebrew = "אב";
+    const text::TextLayout rtl = lay_out(fonts, hebrew, {.font = "hebrew.ttf", .font_size = 20});
+    const text::ShapedLine rtl_line(hebrew, rtl);
+    CHECK(rtl_line.carets(0).trailing.x == 24.0F);
+    CHECK(rtl_line.carets(0).trailing.direction == text::Direction::Rtl);
+    CHECK(rtl_line.carets(2).leading.x == 0.0F);
+    CHECK(rtl_line.hit_test(20.0F) == 0);
+    CHECK(rtl_line.hit_test(2.0F) == 2);
+    CHECK(rtl_line.dominant_direction(0, 2) == text::Direction::Rtl);
 }

@@ -302,6 +302,89 @@ private:
     std::unique_ptr<Impl> impl_;
 };
 
+// ---- Editing ----
+
+// Where text may be cut into user-perceived characters (extended grapheme clusters, as Unicode's
+// UAX #29 and ICU's character break iterator): the end of each, in characters from the start. A
+// letter and its accents, a flag or an emoji sequence joined by U+200D is one, as is a Hangul
+// syllable made of jamo. Godot's TextServer::string_get_character_breaks.
+[[nodiscard]] std::vector<std::uint32_t> character_breaks(std::u32string_view text);
+
+// One line of a layout seen as Godot's TextServer sees a shaped text for editing it: its
+// clusters (the glyphs that show some characters together) in display order, so carets,
+// selections and clicks map between character positions and x. Positions count characters (code
+// points) from the start of the text; x counts pixels from the line's left edge, its spaces
+// included, as Godot's shaped text does.
+class ShapedLine {
+public:
+    struct Cluster {
+        std::uint32_t start = 0; // the characters it shows: [start, end)
+        std::uint32_t end = 0;
+        std::uint32_t first = 0; // its glyphs in the layout: [first, first + count)
+        std::uint32_t count = 0;
+        float x = 0.0F;
+        float advance = 0.0F;
+        bool rtl = false;
+        bool space = false;       // it starts with whitespace
+        bool punctuation = false; // it starts with punctuation other than '_'
+    };
+    // Where a caret draws, from the top of the line: TextServer's CaretInfo half.
+    struct Caret {
+        bool found = false;
+        float x = 0.0F;
+        float top = 0.0F;
+        float height = 0.0F;
+        Direction direction = Direction::Auto; // Auto for a caret inside a cluster
+    };
+    struct Carets {
+        Caret leading;  // after the cluster that ends at the position
+        Caret trailing; // before the one that starts there
+    };
+
+    ShapedLine() = default;
+    // text is what was laid out; the layout's line must be one of it.
+    ShapedLine(std::string_view text, const TextLayout& layout, std::size_t line = 0);
+
+    [[nodiscard]] const std::vector<Cluster>& clusters() const { return clusters_; }
+    // The characters the line shows, [start, end), and its width with every space.
+    [[nodiscard]] std::uint32_t start() const { return start_; }
+    [[nodiscard]] std::uint32_t end() const { return end_; }
+    [[nodiscard]] float width() const { return width_; }
+    // What to add to a glyph's x in the layout to put it in this line's x.
+    [[nodiscard]] float origin() const { return origin_; }
+    [[nodiscard]] float height() const { return height_; }
+
+    // shaped_text_get_carets: where a caret at a position draws. Between clusters of one
+    // direction the two halves line up; where directions meet they split.
+    [[nodiscard]] Carets carets(std::uint32_t position) const;
+    // shaped_text_get_selection: the [left, right] spans characters [start, end) cover, spans
+    // that touch merged.
+    [[nodiscard]] std::vector<std::pair<float, float>> selection(std::uint32_t start,
+                                                                 std::uint32_t end) const;
+    // shaped_text_hit_test_position: the position a click at x puts the caret at.
+    [[nodiscard]] std::uint32_t hit_test(float x) const;
+    // shaped_text_get_word_breaks: the words, as [start, end) pairs in a flat list, between
+    // spaces and punctuation.
+    [[nodiscard]] std::vector<std::uint32_t> word_breaks() const;
+    // shaped_text_next_character_pos, _prev_character_pos and _closest_character_pos: the
+    // nearest character break after, before or around a position.
+    [[nodiscard]] std::uint32_t next_character(std::uint32_t position) const;
+    [[nodiscard]] std::uint32_t previous_character(std::uint32_t position) const;
+    [[nodiscard]] std::uint32_t closest_character(std::uint32_t position) const;
+    // shaped_text_get_dominant_direction_in_range: whether more clusters of [start, end) go
+    // right to left or left to right; Auto if neither.
+    [[nodiscard]] Direction dominant_direction(std::uint32_t start, std::uint32_t end) const;
+
+private:
+    std::vector<Cluster> clusters_;
+    std::vector<std::uint32_t> breaks_;
+    std::uint32_t start_ = 0;
+    std::uint32_t end_ = 0;
+    float width_ = 0.0F;
+    float origin_ = 0.0F;
+    float height_ = 0.0F;
+};
+
 // Text in upper case, as Godot's Label uppercase: Latin, Greek and Cyrillic letters.
 [[nodiscard]] std::string to_upper(std::string_view text);
 

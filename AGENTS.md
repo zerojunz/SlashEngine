@@ -387,6 +387,20 @@ events too. `ui::layout` lays buttons out by `ui::draw_mode` (`layout.buttons`),
 `ui.focus` drive them, and `ui::check_buttons` catches bad shortcuts, groups and focus fields.
 `examples/ui-buttons` is a title menu worked by mouse, keys and touch.
 
+Text fields are Godot's `LineEdit`. The gui system edits them (`Editor` in `src/gui.cpp`, which
+follows `LineEdit::gui_input`, its undo stack and its caret and selection calls) from key events
+with a `unicode` character, `ime` events and the `ui_text_*`, `ui_cut`/`copy`/`paste` and
+`ui_undo`/`redo` actions, which `Map::with_defaults` binds to Ctrl on a PC and Command and
+Option on a Mac (`input::Keyboard`; tests pin `Keyboard::Pc`). `src/line_edit.cpp` is the
+geometry they share with the layout: shaping, scrolling, carets, hit tests and drawing, on
+`text::ShapedLine`'s carets, selections and word breaks (`engine/text/src/editing.cpp`).
+`LineEdit.text` and `caret_column` are the truth; the rest stays in the gui state, and a text
+change from outside resets the undo history. `ui::text_input` tells the platform where the caret
+is and which on-screen keyboard to show (`SdlReader::set_text_input`), and
+`ui::set_clipboard_backend` connects SDL's clipboard in a window; `ui.clipboard` reads and sets
+it. `examples/text-input` is a sign-up form typed into with `input.inject`'s `text` and `ime`
+events.
+
 ## Input
 
 `engine/input` is input, as Godot's InputEvent, InputMap and Input. Events (`input::Event`: key,
@@ -465,8 +479,8 @@ CI rejects unformatted code and any clang-tidy finding.
   `world` (EnTT world, components, scenes and prefabs), `input` (input events, action maps,
   the input state and reading SDL's events), `canvas` (sprites, `.frames.json`
   animations, `.material.json` materials, `.tileset.json` tile maps, 2D lights and shadows, CPU
-  particles and drawing them), `text` (fonts, shaping, line breaking and glyph atlases), `ui`
-  (controls, containers and themes: layout, draw calls, buttons and focus), `animation` (`.anim.json` keyframe
+  particles and drawing them), `text` (fonts, shaping, line breaking, carets and selections, and glyph atlases), `ui`
+  (controls, containers and themes: layout, draw calls, buttons, focus and text fields), `animation` (`.anim.json` keyframe
   animations and the system that plays them),
   `physics2d` (2D bodies, areas, joints and queries on Box2D), `storyboard` (storyboard kinds, files, versions,
   queries, edits, briefs and checks), `command` (commands, sessions with undo, JSON-RPC and MCP),

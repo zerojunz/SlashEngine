@@ -607,6 +607,7 @@ void draw_label_pass(Drawer& drawer, DrawList& list, text::Fonts& fonts, const L
         break;
     }
     color = times(color, tint);
+    const Vec4 selected = times(label.selected_color, tint);
     const auto& pages = fonts.pages();
     const bool snap = placed.transform.translation_only();
     std::vector<float> spaces;
@@ -661,7 +662,9 @@ void draw_label_pass(Drawer& drawer, DrawList& list, text::Fonts& fonts, const L
                 source.field = {.pixel_range = static_cast<float>(info.msdf_pixel_range),
                                 .outline = static_cast<float>(outline) / 4.0F / image->scale};
             }
-            drawer.quad(source, placed.transform, rect, uv, color, clip);
+            const bool in_selection = pass == Pass::Text && glyph.cluster >= label.selected_start &&
+                                      glyph.cluster < label.selected_end;
+            drawer.quad(source, placed.transform, rect, uv, in_selection ? selected : color, clip);
             ++list.glyphs;
         }
     }
@@ -715,6 +718,14 @@ DrawList draw_calls(const Layout& layout, const world::World& world, text::Fonts
                 draw_label_pass(drawer, list, fonts, *label, placed, tint, Pass::Outline, clip);
             }
             draw_label_pass(drawer, list, fonts, *label, placed, tint, Pass::Text, clip);
+            drawn = true;
+        }
+        if (const auto found = layout.overlays.find(placed.entity);
+            found != layout.overlays.end()) {
+            for (const Box& box : found->second) {
+                draw_flat(drawer, box, placed, tint);
+                ++list.boxes;
+            }
             drawn = true;
         }
         if (drawn) {
