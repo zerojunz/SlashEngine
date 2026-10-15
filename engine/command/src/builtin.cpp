@@ -1,5 +1,6 @@
 #include "slash/command/builtin.hpp"
 
+#include "slash/canvas/sprite_frames.hpp"
 #include "slash/command/session.hpp"
 #include "slash/core/assert.hpp"
 #include "slash/core/json_schema.hpp"
@@ -343,6 +344,9 @@ Reply schema_get(Session& session, const json::Value& params) {
     }
     if (kind == "storyboard") {
         return Reply::success(storyboard::file_schema());
+    }
+    if (kind == "frames") {
+        return Reply::success(canvas::sprite_frames_schema());
     }
     if (name.empty()) {
         return param_error(code::kInvalidParams, "/name",
@@ -1584,14 +1588,15 @@ void register_builtin_commands(Registry& registry) {
         .handler = engine_describe,
     });
 
-    json::Value kind = property("string", "\"scene\", \"prefab\" or \"storyboard\" for "
-                                          "those files, \"component\" for one component's "
-                                          "fields, \"command\" for a command's params.");
-    kind["enum"] = json::Array{"scene", "prefab", "storyboard", "component", "command"};
+    json::Value kind = property("string", "\"scene\", \"prefab\", \"frames\" (.frames.json) or "
+                                          "\"storyboard\" for those files, \"component\" for one "
+                                          "component's fields, \"command\" for a command's "
+                                          "params.");
+    kind["enum"] = json::Array{"scene", "prefab", "frames", "storyboard", "component", "command"};
     registry.add({
         .name = "schema.get",
-        .description = "Returns a JSON Schema: for scene, prefab or storyboard files, one "
-                       "component or one command.",
+        .description = "Returns a JSON Schema: for scene, prefab, .frames.json or storyboard "
+                       "files, one component or one command.",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema(

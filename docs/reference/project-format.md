@@ -33,6 +33,8 @@ checks it.
 | `max_fps` | No | `0` | Frames per second at most, 0 to 1000, e.g. 30, 60, 120 or 240. `0` means no cap, so V-Sync alone paces frames. Headless runs ignore it |
 | `rendering.clear_color` | No | `[0.3, 0.3, 0.3, 1]` | What the window shows behind everything, as `[r, g, b, a]` from 0 to 1. The default is Godot's gray |
 | `rendering.driver` | No | `auto` | The GPU backend. `auto` takes the first that works: Metal on Apple platforms, Direct3D 12 then Vulkan on Windows, Vulkan on Linux and Android. `vulkan`, `metal` or `d3d12` asks for one, and `null` draws nothing. If none starts, the game logs a warning and runs with the null device, which is also what web games do for now |
+| `rendering.texture_filter` | No | `linear` | How sprites whose `texture_filter` is `inherit` are sampled when scaled: `linear` is smooth, `nearest` keeps pixel art sharp |
+| `rendering.interpolation` | No | `true` | Draw sprites part of the way between fixed ticks, from where they were before the last tick to where they are, so motion looks smooth when the display refreshes faster than the game ticks. Drawing lags the simulation by up to one tick; set `false` to draw exactly where things are |
 
 Unknown keys are errors, with a "did you mean" suggestion for a misspelled one.
 
@@ -121,9 +123,14 @@ my-game/
     main.scene.json
   prefabs/              # optional: .prefab.json files that entities extend
     enemy.prefab.json
+  sprites/              # optional: textures and .frames.json animations, in any folder
+    hero.png
+    hero.frames.json
   build/           # exports land in build/export/<preset>/ (gitignored)
   .slash/          # caches, export logs, a running server's token (gitignored)
 ```
 
-Only `project.json`, `.scene.json` and `.prefab.json` files ship in an export. See
+Only `project.json`, `.scene.json`, `.prefab.json`, `.frames.json`, `.png` and `.bmp` files ship
+in an export, and each is checked first: a texture SDL can't read is an error, like a scene that
+fails validation. See
 [cli.md](cli.md#export) for `slash-cli export` and [scene-format.md](scene-format.md) for scenes.

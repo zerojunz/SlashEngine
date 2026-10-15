@@ -10,6 +10,7 @@
 #include "slash/exporter/toolchains.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/platform/process.hpp"
+#include "slash/render/image.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
 
@@ -615,6 +616,63 @@ TEST_CASE("presets load from the project folder") {
     REQUIRE(error->find("errors") != nullptr);
     CHECK(error->find("errors")->as_array()[0].find("file")->as_string() == "export_presets.json");
     CHECK_FALSE(std::filesystem::exists(folder / ".slash"));
+    std::filesystem::remove_all(folder);
+}
+
+TEST_CASE("exports ship textures and frames files, and check them first") {
+    const std::filesystem::path folder = "exporter_sprites_project";
+    std::filesystem::remove_all(folder);
+    std::filesystem::create_directories(folder / "sprites");
+    const auto write = [&](const std::string& path, std::string_view text) {
+        REQUIRE(slash::platform::write_file((folder / path).string(), text).ok());
+    };
+    write("project.json", R"({"format": 1, "name": "Sprites", "main_scene": "main.scene.json"})");
+    write("main.scene.json", R"({"format": 1, "entities": {}})");
+    const slash::render::Image image{
+        .width = 2, .height = 1, .pixels = {255, 0, 0, 255, 0, 0, 255, 255}};
+    write("sprites/hero.png", slash::render::encode_png(image).value());
+    write(
+        "sprites/hero.frames.json",
+        R"({"format": 1, "animations": {"walk": {"texture": "sprites/hero.png", "hframes": 2}}})");
+    write("sprites/notes.md", "not part of the game");
+    write("sprites/broken.png", "not an image");
+    write("sprites/bad.frames.json", R"({"format": 1, "animations": {"walk": {"frames": [0]}}})");
+
+#if defined(__APPLE__)
+    const std::string host = "macos";
+#elif defined(_WIN32)
+    const std::string host = "windows";
+#else
+    const std::string host = "linux";
+#endif
+    exporter::ExportOptions options;
+    options.target = host;
+    options.project = folder.string();
+    const exporter::ExportResult result = exporter::export_game(options);
+    CHECK_FALSE(result.ok);
+    const json::Value* error = result.json.find("error");
+    REQUIRE(error != nullptr);
+    CHECK(error->find("step")->as_string() == "validate");
+    REQUIRE(error->find("errors") != nullptr);
+    std::vector<std::string> problems;
+    for (const json::Value& problem : error->find("errors")->as_array()) {
+        problems.push_back(problem.find("file")->as_string() + " " +
+                           problem.find("path")->as_string() + " " +
+                           problem.find("message")->as_string());
+    }
+    std::ranges::sort(problems); // folders list in any order
+    REQUIRE(problems.size() == 2);
+    INFO(problems[0], "\n", problems[1]);
+    CHECK(contains(problems[0], "sprites/bad.frames.json /animations/walk/frames/0 a frame number "
+                                "needs the animation's \"texture\""));
+    CHECK(contains(problems[1], "sprites/broken.png  not a PNG or BMP image"));
+
+    // The good files were staged with the scenes; files a game never loads were not.
+    const std::filesystem::path data = folder / ".slash" / "export" / host / "data";
+    CHECK(std::filesystem::exists(data / "sprites" / "hero.png"));
+    CHECK(std::filesystem::exists(data / "sprites" / "hero.frames.json"));
+    CHECK(std::filesystem::exists(data / "main.scene.json"));
+    CHECK_FALSE(std::filesystem::exists(data / "sprites" / "notes.md"));
     std::filesystem::remove_all(folder);
 }
 

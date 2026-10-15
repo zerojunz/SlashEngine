@@ -28,6 +28,8 @@ struct FieldMeta {
     std::string doc{};                        // NOLINT(readability-redundant-member-init)
     std::optional<double> min = std::nullopt; // inclusive; for arrays, applies to each number
     std::optional<double> max = std::nullopt;
+    // For a string field, the only values allowed.
+    std::vector<std::string> choices{}; // NOLINT(readability-redundant-member-init)
 };
 
 // A registered component type: its name, fields and docs, plus type-erased operations so scenes

@@ -63,8 +63,9 @@ slash-cli run --headless --ticks 60 --scene tests/data/basic.scene.json
 ```
 
 `renderer` names the device that drew the window: `metal`, `d3d12` or `vulkan`, or `null` when
-headless or when no GPU backend works (a warning in the log says why). Until sprites arrive, the
-window shows Godot's default gray.
+headless or when no GPU backend works (a warning in the log says why). The window shows the
+scene's [sprites](scene-format.md#built-in-components) over Godot's default gray, drawn between
+ticks as the game moves (see [`rendering.interpolation`](project-format.md)).
 
 With `--serve`, the result also carries the server's `url`, and the game takes the `play` and
 `pause` commands: while paused it keeps serving requests but does not step the world, and
@@ -78,7 +79,8 @@ edited prefab updates its instances and keeps their overrides (see
 
 ### scene validate
 
-Checks a scene or a `.prefab.json` file and lists every error, each with its JSON Pointer path.
+Checks a scene, a `.prefab.json` file or a [`.frames.json`](scene-format.md#sprite-frames) file
+and lists every error, each with its JSON Pointer path.
 Exit code 1 if the file is invalid. The [prefabs](scene-format.md#prefabs) a file extends are read
 from its project: the nearest folder above it with a `project.json`, else the current folder.
 
@@ -90,7 +92,8 @@ slash-cli scene validate <file>
 {"entities":3,"valid":true}
 ```
 
-For a prefab the result counts its `components` instead of `entities`. When the project has a
+For a prefab the result counts its `components` instead of `entities`, and for a `.frames.json`
+file its `animations`. When the project has a
 [storyboard](storyboard-format.md#storyref), each `StoryRef` ID must name one of its entries:
 
 ```json
@@ -99,7 +102,8 @@ For a prefab the result counts its `components` instead of `entities`. When the 
 
 ### scene format
 
-Rewrites a scene or prefab in [canonical form](scene-format.md#canonical-form).
+Rewrites a scene, prefab or `.frames.json` file in
+[canonical form](scene-format.md#canonical-form).
 
 ```bash
 slash-cli scene format <file>
@@ -109,12 +113,13 @@ slash-cli scene format --check <file>    # change nothing; exit 1 if not canonic
 ### schema
 
 Prints a JSON Schema: for scene or prefab files (generated from the registered components), for
-[storyboard files](storyboard-format.md), for [`project.json`](project-format.md) or for
+[`.frames.json` files](scene-format.md#sprite-frames), for [storyboard files](storyboard-format.md), for [`project.json`](project-format.md) or for
 [`export_presets.json`](project-format.md#export-presets).
 
 ```bash
 slash-cli schema scene
 slash-cli schema prefab
+slash-cli schema frames
 slash-cli schema storyboard
 slash-cli schema project
 slash-cli schema presets
@@ -398,8 +403,11 @@ slash-game --data tests/data/game --headless --ticks 60
 ```
 
 ```json
-{"entities":3,"headless":true,"name":"Test Game","quit_requested":false,"renderer":"null","scene":"scenes/main.scene.json","ticks":60}
+{"entities":3,"headless":true,"name":"Test Game","quit_requested":false,"renderer":"null","scene":"scenes/main.scene.json","sprites":0,"ticks":60}
 ```
+
+`sprites` counts the sprites the last frame drew. Headless and on the null device nothing is
+drawn, but the sprites are still checked and counted, so a test can see that they would draw.
 
 ## Environment variables
 
