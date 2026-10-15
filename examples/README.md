@@ -12,6 +12,7 @@ engine. Copy from them.
 | [prefabs](prefabs/) | Entities that extend a `.prefab.json` file and override fields |
 | [try-and-roll-back](try-and-roll-back/) | Dry runs, and `world.snapshot`, `world.diff` and `world.restore` |
 | [events](events/) | `events.subscribe` and `events.read` to hear what changed |
+| [run-until](run-until/) | `run.until`: run a game headless until something happens, in one call |
 | [storyboard](storyboard/) | Briefing before a task, editing facts with versions, and checking after |
 
 ## What an example holds

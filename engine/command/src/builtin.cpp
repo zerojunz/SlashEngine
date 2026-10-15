@@ -34,6 +34,8 @@ namespace {
 using world::ComponentType;
 
 constexpr std::int64_t kDefaultQueryLimit = 100;
+// run.until gives up after this many ticks unless told otherwise: ten seconds at 60 ticks a second.
+constexpr std::int64_t kDefaultUntilTicks = 600;
 constexpr std::int64_t kDefaultLogLines = 50;
 constexpr double kDefaultTickSeconds = 1.0 / 60.0;
 constexpr std::string_view kDefaultSnapshot = "default";
@@ -1112,20 +1114,28 @@ bool matches(const world::World& world, entt::entity entity, const Condition& co
     return compare(*value, condition.op, condition.value);
 }
 
-Reply world_query(Session& session, const json::Value& params) {
-    const world::World& world = session.world();
-    const world::ComponentRegistry& components = world.components();
-
+// What world.query and run.until select: entities with all of `with`, none of `without` and
+// meeting every `where` condition, returned as IDs or with the components `include` names.
+struct Selection {
     std::vector<const ComponentType*> with;
     std::vector<const ComponentType*> without;
-    if (auto failed = lookup_components(components, params.find("with"), "/with", with)) {
-        return std::move(*failed);
-    }
-    if (auto failed = lookup_components(components, params.find("without"), "/without", without)) {
-        return std::move(*failed);
-    }
-
     std::vector<Condition> conditions;
+    std::vector<const ComponentType*> included;
+    bool with_components = false;
+    bool omit_defaults = false;
+    std::size_t limit = kDefaultQueryLimit;
+};
+
+// Reads a selection from params, or returns the error for a bad one.
+std::optional<Reply> parse_selection(const world::ComponentRegistry& components,
+                                     const json::Value& params, Selection& out) {
+    if (auto failed = lookup_components(components, params.find("with"), "/with", out.with)) {
+        return failed;
+    }
+    if (auto failed =
+            lookup_components(components, params.find("without"), "/without", out.without)) {
+        return failed;
+    }
     if (const json::Value* where = params.find("where"); where != nullptr) {
         for (std::size_t i = 0; i < where->size(); ++i) {
             const json::Value& item = where->as_array()[i];
@@ -1151,56 +1161,69 @@ Reply world_query(Session& session, const json::Value& params) {
                 return param_error(code::kInvalidParams, base + "/value",
                                    "\"" + condition.op + "\" compares numbers or strings");
             }
-            conditions.push_back(std::move(condition));
+            out.conditions.push_back(std::move(condition));
         }
     }
-
     // include: true returns every component, a list returns those, absent returns only IDs.
     const json::Value* include = params.find("include");
-    std::vector<const ComponentType*> included;
-    bool with_components = false;
     if (include != nullptr && include->is_array()) {
-        if (auto failed = lookup_components(components, include, "/include", included)) {
-            return std::move(*failed);
+        if (auto failed = lookup_components(components, include, "/include", out.included)) {
+            return failed;
         }
-        with_components = true;
+        out.with_components = true;
     } else if (include != nullptr && include->is_bool()) {
-        with_components = include->as_bool();
+        out.with_components = include->as_bool();
     }
-    const bool omit_defaults = flag(params, "omit_defaults");
-    const auto limit = static_cast<std::size_t>(integer(params, "limit", kDefaultQueryLimit));
+    out.omit_defaults = flag(params, "omit_defaults");
+    out.limit = static_cast<std::size_t>(integer(params, "limit", kDefaultQueryLimit));
+    return std::nullopt;
+}
 
+bool selects(const world::World& world, entt::entity entity, const Selection& selection) {
+    return std::ranges::all_of(selection.with,
+                               [&](const auto* type) { return type->has(world, entity); }) &&
+           std::ranges::none_of(selection.without,
+                                [&](const auto* type) { return type->has(world, entity); }) &&
+           std::ranges::all_of(selection.conditions,
+                               [&](const Condition& c) { return matches(world, entity, c); });
+}
+
+// {"count", "entities", "truncated"} for the entities a selection picks now.
+json::Value select(const world::World& world, const Selection& selection) {
     std::size_t count = 0;
     json::Array entities;
     for (const std::string_view id : world.ids()) {
         const entt::entity entity = world.find(id);
-        const bool match =
-            std::ranges::all_of(with, [&](const auto* t) { return t->has(world, entity); }) &&
-            std::ranges::none_of(without, [&](const auto* t) { return t->has(world, entity); }) &&
-            std::ranges::all_of(conditions,
-                                [&](const Condition& c) { return matches(world, entity, c); });
-        if (!match) {
+        if (!selects(world, entity, selection)) {
             continue;
         }
         ++count;
-        if (entities.size() >= limit) {
+        if (entities.size() >= selection.limit) {
             continue;
         }
-        if (!with_components) {
+        if (!selection.with_components) {
             entities.emplace_back(id);
             continue;
         }
         json::Value item;
         item["id"] = id;
-        item["components"] = components_json(world, entity, included, omit_defaults);
+        item["components"] =
+            components_json(world, entity, selection.included, selection.omit_defaults);
         entities.push_back(std::move(item));
     }
-
     json::Value result;
     result["count"] = count;
     result["truncated"] = count > entities.size();
     result["entities"] = std::move(entities);
-    return Reply::success(std::move(result));
+    return result;
+}
+
+Reply world_query(Session& session, const json::Value& params) {
+    Selection selection;
+    if (auto failed = parse_selection(session.world().components(), params, selection)) {
+        return std::move(*failed);
+    }
+    return Reply::success(select(session.world(), selection));
 }
 
 // ---- Simulation and history ----
@@ -1215,6 +1238,44 @@ Reply step(Session& session, const json::Value& params) {
     json::Value result;
     result["ticks"] = ticks;
     result["tick"] = session.world().tick();
+    return Reply::success(std::move(result));
+}
+
+// Steps until any entity matches the selection (or, with "until": "none", until none does), or
+// the tick limit passes. The condition is checked before each tick, so one that already holds
+// runs no ticks.
+Reply run_until(Session& session, const json::Value& params) {
+    if (params.find("with") == nullptr && params.find("without") == nullptr &&
+        params.find("where") == nullptr) {
+        return param_error(code::kInvalidParams, "",
+                           "give with, without or where: the entities to wait for");
+    }
+    Selection selection;
+    if (auto failed = parse_selection(session.world().components(), params, selection)) {
+        return std::move(*failed);
+    }
+    const bool until_none = text(params, "until") == "none";
+    const std::int64_t max_ticks = integer(params, "ticks", kDefaultUntilTicks);
+    const json::Value* seconds = params.find("tick_seconds");
+    const double tick_seconds = seconds != nullptr ? seconds->as_double() : kDefaultTickSeconds;
+    world::World& world = session.world();
+    const auto holds = [&] {
+        const auto ids = world.ids();
+        const bool any = std::ranges::any_of(
+            ids, [&](std::string_view id) { return selects(world, world.find(id), selection); });
+        return any != until_none;
+    };
+    std::int64_t ticks = 0;
+    bool matched = holds();
+    while (!matched && ticks < max_ticks) {
+        world.step(tick_seconds);
+        ++ticks;
+        matched = holds();
+    }
+    json::Value result = select(world, selection);
+    result["matched"] = matched;
+    result["ticks"] = ticks;
+    result["tick"] = world.tick();
     return Reply::success(std::move(result));
 }
 
@@ -1821,6 +1882,35 @@ void register_builtin_commands(Registry& registry) {
             {"tick_seconds", std::move(tick_seconds)},
         }),
         .handler = step,
+    });
+
+    json::Value until_seconds = property("number", "Seconds per tick.");
+    until_seconds["exclusiveMinimum"] = 0;
+    until_seconds["maximum"] = 1;
+    until_seconds["default"] = kDefaultTickSeconds;
+    json::Value until = property("string", "Stop when any entity matches, or when none does.");
+    until["enum"] = json::Array{"any", "none"};
+    until["default"] = "any";
+    registry.add({
+        .name = "run.until",
+        .description = "Steps the simulation until an entity matches with/without/where (e.g. "
+                       "the player's position.y > 600), or none does, or ticks run out. Returns "
+                       "whether it matched, the tick and the matching entities.",
+        .capabilities = {Run},
+        .effect = Effect::Edit,
+        .params = params_schema({
+            {"with", names_property("Only entities with all of these components.")},
+            {"without", names_property("Only entities with none of these components.")},
+            {"where", where_schema()},
+            {"until", std::move(until)},
+            {"ticks", integer_property("Most ticks to run.", 1, 100000, kDefaultUntilTicks)},
+            {"tick_seconds", std::move(until_seconds)},
+            {"include", include_schema()},
+            {"omit_defaults", omit_defaults},
+            {"limit", integer_property("Most entities to return; count still covers all.", 1, 10000,
+                                       kDefaultQueryLimit)},
+        }),
+        .handler = run_until,
     });
 
     registry.add({
