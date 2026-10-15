@@ -275,9 +275,11 @@ CI rejects unformatted code and any clang-tidy finding.
   and MCP), `server` (localhost HTTP over a session) and `runtime` (project files and the game
   executable). Tool-only libraries such as `tools/exporter` use the same layout and may use
   exceptions.
-- New dependencies go in `cmake/Dependencies.cmake`, pinned to a tag, and in `THIRD_PARTY.md`
-  with their license. Only permissive licenses (MIT, BSD, zlib, Apache 2.0, Boost, MIT-0,
-  public domain). Never copy code from closed engines.
+- New dependencies are pinned in `cmake/dependencies.json` (repository, tag, SPDX license and
+  the license file's SHA-256), fetched with `slash_add_dependency` in `cmake/Dependencies.cmake`
+  and listed in `THIRD_PARTY.md`. Only permissive licenses (MIT, BSD, zlib, Apache 2.0, Boost,
+  MIT-0, public domain); the `licenses` test fails anything else. Never copy code from closed
+  engines.
 - Every behavior change comes with a test in `tests/`. Tests must pass headless.
 - Every new feature comes with an example in `examples/` (see below).
 - A change to a command, flag, component or file format updates its page in `docs/reference/`,
