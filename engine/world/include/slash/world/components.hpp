@@ -703,6 +703,50 @@ SLASH_COMPONENT(TextureButton, texture_normal, texture_pressed, texture_hover, t
                 toggle_mode, button_pressed, action_mode, button_mask, keep_pressed_outside,
                 button_group, shortcut, shortcut_feedback)
 
+// A one-line text field, as Godot's LineEdit: typed into while it has focus, with a caret,
+// selection, undo, the clipboard, an input method's composition and the on-screen keyboard.
+struct LineEdit {
+    std::string text;
+    std::string placeholder_text;   // shown, dimmed, while the text is empty
+    std::string alignment = "left"; // "left", "center", "right" or "fill"
+    int max_length = 0;             // characters; 0 for no limit
+    bool editable = true;
+    bool keep_editing_on_text_submit = false;
+    bool expand_to_text_length = false; // its minimum width grows with the text
+    bool backspace_deletes_composite_character_enabled = false;
+    bool virtual_keyboard_enabled = true;
+    bool virtual_keyboard_show_on_focus = true;
+    std::string virtual_keyboard_type = "default";
+    bool clear_button_enabled = false;
+    bool shortcut_keys_enabled = true;
+    bool selecting_enabled = true;
+    bool deselect_on_focus_loss_enabled = true;
+    std::string right_icon; // project path of a PNG or BMP file; "" for none
+    std::string icon_expand_mode = "original_size";
+    float right_icon_scale = 1.0F;
+    bool flat = false;
+    bool select_all_on_focus = false;
+    bool caret_blink = false;
+    float caret_blink_interval = 0.65F;
+    int caret_column = 0; // characters before the caret
+    bool caret_force_displayed = false;
+    bool caret_mid_grapheme = false;
+    bool secret = false; // show each character as secret_character
+    std::string secret_character = "\u2022";
+    std::string text_direction = "auto"; // as Label's
+    std::string language{};              // NOLINT(readability-redundant-member-init)
+
+    friend bool operator==(const LineEdit&, const LineEdit&) = default;
+};
+SLASH_COMPONENT(LineEdit, text, placeholder_text, alignment, max_length, editable,
+                keep_editing_on_text_submit, expand_to_text_length,
+                backspace_deletes_composite_character_enabled, virtual_keyboard_enabled,
+                virtual_keyboard_show_on_focus, virtual_keyboard_type, clear_button_enabled,
+                shortcut_keys_enabled, selecting_enabled, deselect_on_focus_loss_enabled,
+                right_icon, icon_expand_mode, right_icon_scale, flat, select_all_on_focus,
+                caret_blink, caret_blink_interval, caret_column, caret_force_displayed,
+                caret_mid_grapheme, secret, secret_character, text_direction, language)
+
 // Containers place the controls in their children lists, which ignore their anchors and
 // offsets and are sized by their minimum sizes and size flags. An entity has at most one.
 

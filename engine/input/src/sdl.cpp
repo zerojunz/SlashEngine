@@ -1,6 +1,7 @@
 #include "slash/input/sdl.hpp"
 
 #include "slash/core/log.hpp"
+#include "slash/core/text.hpp"
 #include "slash/world/world.hpp"
 
 #include <SDL3/SDL.h>
@@ -495,12 +496,94 @@ void SdlReader::read(const SDL_Event& event, world::World& world) {
         push(world, motion);
         return;
     }
+    case SDL_EVENT_TEXT_INPUT:
+        if (event.text.text != nullptr) {
+            for (Event& typed : text_events(event.text.text)) {
+                push(world, std::move(typed));
+            }
+        }
+        return;
+    case SDL_EVENT_TEXT_EDITING: {
+        Event ime;
+        ime.type = EventType::Ime;
+        ime.text = event.edit.text != nullptr ? event.edit.text : "";
+        const int length = static_cast<int>(to_utf32(ime.text).size());
+        // SDL says -1 when the input method names no selection: the caret is at the end.
+        ime.selection_start = event.edit.start >= 0 ? std::min(event.edit.start, length) : length;
+        ime.selection_length =
+            event.edit.length >= 0 ? std::min(event.edit.length, length - ime.selection_start) : 0;
+        push(world, std::move(ime));
+        return;
+    }
     case SDL_EVENT_WINDOW_FOCUS_LOST:
         release_pressed(world);
         return;
     default:
         return;
     }
+}
+
+void SdlReader::set_text_input(SDL_Window* window, const TextInput& request) {
+    if (window == nullptr || request == text_input_) {
+        return;
+    }
+    if (!request.active) {
+        if (text_input_.active) {
+            SDL_StopTextInput(window);
+        }
+        text_input_ = request;
+        return;
+    }
+    const bool restart = !text_input_.active || request.keyboard != text_input_.keyboard ||
+                         request.show_keyboard != text_input_.show_keyboard;
+    if (restart) {
+        if (text_input_.active) {
+            SDL_StopTextInput(window);
+        }
+        // SDL shows the on-screen keyboard when text input starts, where there is no hardware
+        // keyboard, unless this hint says not to.
+        SDL_SetHint(SDL_HINT_ENABLE_SCREEN_KEYBOARD, request.show_keyboard ? "auto" : "0");
+        const SDL_PropertiesID props = SDL_CreateProperties();
+        SDL_TextInputType type = SDL_TEXTINPUT_TYPE_TEXT;
+        // Android's InputType for the kinds SDL has no type for.
+        constexpr std::int64_t kClassText = 0x1;
+        constexpr std::int64_t kClassNumber = 0x2;
+        constexpr std::int64_t kClassPhone = 0x3;
+        constexpr std::int64_t kNumberDecimal = 0x2000;
+        constexpr std::int64_t kTextUri = 0x10;
+        std::int64_t android = 0;
+        if (request.keyboard == "email_address") {
+            type = SDL_TEXTINPUT_TYPE_TEXT_EMAIL;
+        } else if (request.keyboard == "password") {
+            type = SDL_TEXTINPUT_TYPE_TEXT_PASSWORD_HIDDEN;
+        } else if (request.keyboard == "number") {
+            type = SDL_TEXTINPUT_TYPE_NUMBER;
+        } else if (request.keyboard == "number_decimal") {
+            type = SDL_TEXTINPUT_TYPE_NUMBER;
+            android = kClassNumber | kNumberDecimal;
+        } else if (request.keyboard == "phone") {
+            type = SDL_TEXTINPUT_TYPE_NUMBER;
+            android = kClassPhone;
+        } else if (request.keyboard == "url") {
+            android = kClassText | kTextUri;
+        }
+        SDL_SetNumberProperty(props, SDL_PROP_TEXTINPUT_TYPE_NUMBER, type);
+        SDL_SetBooleanProperty(props, SDL_PROP_TEXTINPUT_MULTILINE_BOOLEAN,
+                               request.keyboard == "multiline");
+        if (android != 0) {
+            SDL_SetNumberProperty(props, SDL_PROP_TEXTINPUT_ANDROID_INPUTTYPE_NUMBER, android);
+        }
+        if (!SDL_StartTextInputWithProperties(window, props)) {
+            log::warn("text input did not start", {{"error", SDL_GetError()}});
+        }
+        SDL_DestroyProperties(props);
+    }
+    const SDL_Rect area{static_cast<int>(std::lround(request.position.x)),
+                        static_cast<int>(std::lround(request.position.y)),
+                        static_cast<int>(std::lround(request.size.x)),
+                        static_cast<int>(std::lround(request.size.y))};
+    SDL_SetTextInputArea(window, &area, request.caret);
+    text_input_ = request;
 }
 
 } // namespace slash::input

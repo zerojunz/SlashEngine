@@ -123,6 +123,13 @@ Game::Game(Project project, platform::Platform platform, const std::string& data
     physics2d::install(world_, project_.physics_2d);
     input::install(world_, project_.input, project_.input_devices);
     platform_.set_event_handler([this](const SDL_Event& event) { handle_event(event); });
+    if (!platform_.headless()) {
+        // LineEdits cut, copy and paste with the system's clipboard.
+        ui::set_clipboard_backend(
+            world_,
+            {.get = [this] { return platform_.clipboard_text(); },
+             .set = [this](const std::string& text) { platform_.set_clipboard_text(text); }});
+    }
 }
 
 Game::~Game() = default;
@@ -137,6 +144,10 @@ bool Game::frame() {
                              {static_cast<float>(window.width), static_cast<float>(window.height)});
         }
         world_.step(tick_seconds);
+        // The input method and on-screen keyboard follow the LineEdit being edited.
+        if (!platform_.headless()) {
+            input_reader_.set_text_input(platform_.window(), ui::text_input(world_));
+        }
     });
     // The frame that runs the last tick is drawn too.
     if (running || loop_->stats().ticks != ticks) {

@@ -1,4 +1,5 @@
 #include "internal.hpp"
+#include "line_edit.hpp"
 
 #include "slash/core/assert.hpp"
 #include "slash/render/image.hpp"
@@ -11,6 +12,7 @@
 #include <cstddef>
 #include <deque>
 #include <map>
+#include <memory>
 #include <optional>
 #include <ranges>
 #include <set>
@@ -791,6 +793,12 @@ struct Node {
     // focused.
     std::array<std::optional<Vec2>, 5> button_textures;
     std::optional<ButtonState> button_state;
+    // A LineEdit: a copy with its caret column in its text, its theme items, its shaped text and
+    // the gui system's state for it.
+    std::optional<world::LineEdit> line_edit;
+    std::unique_ptr<LineEditView> edit_view;
+    std::optional<Field> field;
+    EditState edit;
 
     // Each pass.
     Vec2 minimum;                 // combined minimum size
@@ -1044,6 +1052,9 @@ struct Builder {
         if (const auto* button = ecs.try_get<world::Button>(entity); button != nullptr) {
             start_button_node(node, *button, resolver("Button"));
         }
+        if (const auto* edit = ecs.try_get<world::LineEdit>(entity); edit != nullptr) {
+            start_line_edit(node, *edit, resolver("LineEdit"));
+        }
         if (const auto* texture = ecs.try_get<world::TextureButton>(entity); texture != nullptr) {
             node.texture_button = texture;
             const std::array<std::pair<const std::string*, std::string_view>, 5> paths{{
@@ -1097,6 +1108,48 @@ struct Builder {
         if (work.text.autowrap == text::Autowrap::Off) {
             shape(fonts, work.text, std::nullopt);
         } else {
+            node.depends = Depends::Width;
+        }
+    }
+
+    // A LineEdit's theme items and its text shaped as it shows.
+    void start_line_edit(Node& node, const world::LineEdit& edit, const Resolver& theme) {
+        auto view = std::make_unique<LineEditView>();
+        view->normal = theme.style("normal");
+        view->read_only = theme.style("read_only");
+        view->focus = theme.style("focus");
+        view->font = theme.font("font");
+        view->font_size = std::clamp(theme.font_size("font_size"), 1, text::kMaxFontSize);
+        view->font_color = theme.color("font_color");
+        view->font_selected_color = theme.color("font_selected_color");
+        view->font_uneditable_color = theme.color("font_uneditable_color");
+        view->font_placeholder_color = theme.color("font_placeholder_color");
+        view->font_outline_color = theme.color("font_outline_color");
+        view->caret_color = theme.color("caret_color");
+        view->selection_color = theme.color("selection_color");
+        view->clear_button_color = theme.color("clear_button_color");
+        view->clear_button_color_pressed = theme.color("clear_button_color_pressed");
+        view->minimum_character_width = theme.constant("minimum_character_width");
+        view->outline_size = theme.constant("outline_size");
+        view->caret_width = theme.constant("caret_width");
+        view->rtl = node.rtl;
+        if (!edit.right_icon.empty()) {
+            std::string error;
+            view->right_icon = texture_size(edit.right_icon, &error);
+            if (!view->right_icon) {
+                problem(node.entity, "/components/LineEdit/right_icon", error);
+            }
+        }
+        node.line_edit = edit;
+        const auto length = static_cast<int>(characters(edit).size());
+        node.line_edit->caret_column = std::clamp(edit.caret_column, 0, length);
+        if (const EditState* state = edit_state(world, node.entity); state != nullptr) {
+            node.edit = *state;
+        }
+        node.edit_view = std::move(view);
+        node.field.emplace(fonts, *node.edit_view, node.hint.value_or(Vec2{}));
+        node.field->shape(*node.line_edit, node.edit);
+        if (edit.icon_expand_mode == "fit_to_line_edit") {
             node.depends = Depends::Width;
         }
     }
@@ -1325,6 +1378,10 @@ struct Builder {
                       size ? std::optional<float>(button_text_width(work, *size)) : std::nullopt);
             }
             minimum = max(minimum, button_minimum(work));
+        }
+        if (node.field && node.line_edit) {
+            node.field->resize(size.value_or(Vec2{}));
+            minimum = max(minimum, node.field->minimum_size(*node.line_edit));
         }
         if (node.texture_button != nullptr && !node.texture_button->ignore_texture_size) {
             // TextureButton::get_minimum_size: the normal texture's size, else the pressed
@@ -2029,6 +2086,9 @@ struct Builder {
         if (node.texture_button != nullptr && node.button_state) {
             texture_button_boxes(node, size, boxes);
         }
+        if (node.field) {
+            finish_line_edit(node, size, boxes);
+        }
         std::erase_if(boxes, [&](Box& box) { return !keep(box); });
         if (!boxes.empty()) {
             out.boxes.emplace(node.entity, std::move(boxes));
@@ -2049,6 +2109,27 @@ struct Builder {
             work.out.clip = work.label->clip_text;
             out.labels.emplace(node.entity, std::move(work.out));
         }
+    }
+
+    // What a LineEdit draws, scrolled to show its caret at the size it got.
+    void finish_line_edit(Node& node, Vec2 size, std::vector<Box>& boxes) {
+        if (!node.field || !node.line_edit) {
+            return;
+        }
+        Field& field = *node.field;
+        field.resize(size);
+        field.fit(*node.line_edit, node.edit);
+        LabelText text;
+        std::vector<Box> over;
+        LineEditView view = *node.edit_view;
+        field.draw(*node.line_edit, node.edit, has_focus(world, node.entity), boxes, text, over,
+                   view);
+        view.error = field.error();
+        out.labels.emplace(node.entity, std::move(text));
+        if (!over.empty()) {
+            out.overlays.emplace(node.entity, std::move(over));
+        }
+        out.line_edits.emplace(node.entity, std::move(view));
     }
 
     // A Button's style box, focus box, icon and text, as its NOTIFICATION_DRAW draws them.

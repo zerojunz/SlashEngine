@@ -86,6 +86,11 @@ public:
     // The connected displays, primary first; none when headless.
     [[nodiscard]] std::vector<Display> displays() const;
 
+    // The system clipboard's text, as Godot's DisplayServer::clipboard_get and clipboard_set.
+    // Headless, there is no clipboard: it reads empty and setting it does nothing.
+    [[nodiscard]] std::string clipboard_text() const;
+    void set_clipboard_text(const std::string& text) const;
+
 private:
     Platform(SDL_Window* window, bool headless) noexcept;
     void shutdown() noexcept;

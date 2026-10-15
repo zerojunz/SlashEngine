@@ -1,0 +1,63 @@
+wrote fonts/roboto.ttf
+wrote fonts/japanese.ttf
+scene.open {"path":"main.scene.json"}
+{"entities":6,"path":"main.scene.json"}
+events.subscribe {"kinds":["focus_entered","focus_exited","editing_toggled","text_changed","text_submitted","text_change_rejected"]}
+{"subscription":"events_1"}
+ui.layout {"ids":["name","password","age"]}
+{"controls":[{"id":"name","line_edit":{"caret_column":0,"placeholder":true},"lines":["Your name"],"rect":[40,42,240,30]},{"id":"password","line_edit":{"caret_column":0,"placeholder":true},"lines":["Password"],"rect":[40,76,240,30]},{"id":"age","line_edit":{"caret_column":0,"placeholder":true},"lines":["Age"],"rect":[40,110,240,30]}],"viewport":[320,240]}
+input.inject {"events":[{"button":"left","position":[100,56],"pressed":true,"type":"mouse_button"},{"button":"left","position":[100,56],"pressed":false,"type":"mouse_button"},{"text":"Mira ","type":"text"}]}
+{"queued":7,"tick":0}
+step {}
+{"tick":1,"ticks":1}
+events.read {"subscription":"events_1"}
+{"dropped":0,"events":[{"id":"name","kind":"focus_entered","seq":1,"tick":0},{"data":{"toggled_on":true},"id":"name","kind":"editing_toggled","seq":2,"tick":0},{"data":{"text":"Mira "},"id":"name","kind":"text_changed","seq":3,"tick":0}],"more":false}
+text input: on, field at 40,42 240x30, caret 40 px in, keyboard default (shown)
+input.inject {"events":[{"selection":[0,2],"text":"みら","type":"ime"}]}
+{"queued":1,"tick":1}
+step {}
+{"tick":2,"ticks":1}
+ui.layout {"ids":["name"]}
+{"controls":[{"focused":true,"hovered":true,"id":"name","line_edit":{"caret_column":5,"editing":true,"ime":"みら"},"lines":["Mira みら"],"rect":[40,42,240,30]}],"viewport":[320,240]}
+input.inject {"events":[{"text":"","type":"ime"},{"text":"未来","type":"text"}]}
+{"queued":3,"tick":2}
+step {}
+{"tick":3,"ticks":1}
+events.read {"subscription":"events_1"}
+{"dropped":0,"events":[{"data":{"text":"Mira 未来"},"id":"name","kind":"text_changed","seq":4,"tick":2}],"more":false}
+input.inject {"events":[{"action":"ui_text_select_all","pressed":true,"type":"action"},{"action":"ui_copy","pressed":true,"type":"action"}]}
+{"queued":2,"tick":3}
+step {}
+{"tick":4,"ticks":1}
+ui.clipboard {}
+{"text":"Mira 未来"}
+ui.layout {"ids":["name"]}
+{"controls":[{"focused":true,"hovered":true,"id":"name","line_edit":{"caret_column":7,"editing":true,"selection":[0,7]},"lines":["Mira 未来"],"rect":[40,42,240,30]}],"viewport":[320,240]}
+input.inject {"events":[{"key":"Enter","pressed":true,"type":"key"},{"key":"Enter","pressed":false,"type":"key"}]}
+{"queued":2,"tick":4}
+step {}
+{"tick":5,"ticks":1}
+events.read {"subscription":"events_1"}
+{"dropped":0,"events":[{"data":{"text":"Mira 未来"},"id":"name","kind":"text_submitted","seq":5,"tick":4},{"data":{"toggled_on":false},"id":"name","kind":"editing_toggled","seq":6,"tick":4}],"more":false}
+input.inject {"events":[{"key":"Tab","pressed":true,"type":"key"},{"key":"Tab","pressed":false,"type":"key"},{"text":"hunter2","type":"text"}]}
+{"queued":9,"tick":5}
+step {}
+{"tick":6,"ticks":1}
+ui.layout {"ids":["password"]}
+{"controls":[{"focused":true,"id":"password","line_edit":{"caret_column":7,"editing":true},"lines":["•••••••"],"rect":[40,76,240,30]}],"viewport":[320,240]}
+input.inject {"events":[{"key":"Tab","pressed":true,"type":"key"},{"key":"Tab","pressed":false,"type":"key"},{"text":"1234","type":"text"}]}
+{"queued":6,"tick":6}
+step {}
+{"tick":7,"ticks":1}
+text input: on, field at 40,110 240x30, caret 31 px in, keyboard number (shown)
+input.inject {"events":[{"action":"ui_undo","pressed":true,"type":"action"},{"text":"34","type":"text"}]}
+{"queued":3,"tick":7}
+step {}
+{"tick":8,"ticks":1}
+events.read {"subscription":"events_1"}
+{"dropped":0,"events":[{"id":"name","kind":"focus_exited","seq":7,"tick":5},{"id":"password","kind":"focus_entered","seq":8,"tick":5},{"data":{"toggled_on":true},"id":"password","kind":"editing_toggled","seq":9,"tick":5},{"data":{"text":"hunter2"},"id":"password","kind":"text_changed","seq":10,"tick":5},{"id":"password","kind":"focus_exited","seq":11,"tick":6},{"data":{"toggled_on":false},"id":"password","kind":"editing_toggled","seq":12,"tick":6},{"id":"age","kind":"focus_entered","seq":13,"tick":6},{"data":{"toggled_on":true},"id":"age","kind":"editing_toggled","seq":14,"tick":6},{"data":{"rejected_substring":"4"},"id":"age","kind":"text_change_rejected","seq":15,"tick":6},{"data":{"text":"123"},"id":"age","kind":"text_changed","seq":16,"tick":6},{"data":{"text":""},"id":"age","kind":"text_changed","seq":17,"tick":7},{"data":{"text":"34"},"id":"age","kind":"text_changed","seq":18,"tick":7}],"more":false}
+entity.get {"components":["Profile"],"id":"form"}
+{"components":{"Profile":{"age":34,"name":"Mira 未来"}},"id":"form"}
+ui.layout {"ids":["status"]}
+{"controls":[{"id":"status","lines":["Hi, Mira 未来"],"rect":[40,144,240,22]}],"viewport":[320,240]}
+controls drawn: 5, boxes drawn: 7, glyphs drawn: 30

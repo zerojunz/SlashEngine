@@ -26,6 +26,7 @@ engine. Copy from them.
 | [ui-and-text](ui-and-text/) | `Control`, `Label` and `ColorRect`: anchors, wrapping and trimmed text, fonts and theme overrides, `ui.layout` and `text.measure`, drawn offscreen |
 | [ui-containers](ui-containers/) | Box, grid, flow, center, margin and panel containers, `.theme.json` themes and variations, style boxes, `ProgressBar`, `TextureRect`, `NinePatchRect` and `ui.theme`, drawn offscreen |
 | [ui-buttons](ui-buttons/) | `Button` and `TextureButton`: clicks, taps, hover, focus moved by keys and gamepads, toggle groups, shortcuts, UI events, `ui.press` and `ui.focus`, drawn offscreen |
+| [text-input](text-input/) | `LineEdit`: clicks, typing, an input method's composition, editing actions, undo, the clipboard, secret text, `max_length`, on-screen keyboards, `ui.clipboard` and the text events, drawn offscreen |
 | [text-languages](text-languages/) | Right-to-left text and layout (`layout_direction`, `text_direction`), fallback fonts in `.font.json` files, fonts per language, installed fonts and `text::box_font` placeholders |
 | [input-actions](input-actions/) | Rebindable input actions in `project.json`, Godot's `ui_*` actions, sticks with deadzones, taps, touch as a mouse, and `input.inject`, `input.state` and `input.actions` |
 
