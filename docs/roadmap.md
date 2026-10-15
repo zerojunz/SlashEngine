@@ -117,17 +117,17 @@ rendering on top.
 - [ ] Storyboard: the game's style, world, story, design rules, names, decisions and open work
       as typed files in the project, so every agent works from the same facts
       ([design](design.md#storyboard))
-  - [ ] `storyboard/*.json` files with a schema (`slash-cli schema storyboard`), every entry
+  - [x] `storyboard/*.json` files with a schema (`slash-cli schema storyboard`), every entry
         under a stable ID such as `character/mira`, edited through commands with undo
   - [ ] `storyboard.brief`: only the facts, decisions and open work linked to the scenes,
         entities, assets or files a task touches, plus what changed since the agent last looked
-  - [ ] `storyboard.query` and `storyboard.edit`; an edit names the version it read, so a stale
+  - [x] `storyboard.query` and `storyboard.edit`; an edit names the version it read, so a stale
         edit from another agent is refused instead of overwriting newer facts
   - [ ] Links: a `StoryRef` component ties entities to storyboard IDs, and assets and source
         files can be linked too; unknown IDs are errors with "did you mean"
   - [ ] `storyboard.check`: references, glossary names, palette and budgets checked by
         `scene validate`, the headless test command and CI
-  - [ ] A journal of who changed what and why, and open work that says which agent is on it
+  - [x] A journal of who changed what and why, and open work that says which agent is on it
         and what it touches, so agents can see what others are doing
   - [ ] `slash-cli init` writes a starter storyboard, and the MCP instructions tell agents to
         call `storyboard.brief` before a task and `storyboard.check` after it

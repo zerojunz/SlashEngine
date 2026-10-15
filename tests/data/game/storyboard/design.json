@@ -1,0 +1,9 @@
+{
+  "entries": {
+    "rule/one_hit": {
+      "name": "One hit",
+      "summary": "Any hazard ends the run; there is no health bar."
+    }
+  },
+  "format": 1
+}

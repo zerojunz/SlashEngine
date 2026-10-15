@@ -85,6 +85,8 @@ Reply Reply::failure(const Error& error) {
         return failure(code::kPlatformFailure, error.message);
     case ErrorCode::PermissionDenied:
         return failure(code::kPermissionDenied, error.message);
+    case ErrorCode::Conflict:
+        return failure(code::kConflict, error.message);
     case ErrorCode::Unknown:
         break;
     }

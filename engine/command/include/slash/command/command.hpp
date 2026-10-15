@@ -61,6 +61,7 @@ inline constexpr int kNotFound = -32001;
 inline constexpr int kInvalidArgument = -32002;
 inline constexpr int kPermissionDenied = -32003;
 inline constexpr int kPlatformFailure = -32004;
+inline constexpr int kConflict = -32005; // the data changed since the caller read it
 } // namespace code
 
 // The outcome of a command: a JSON value, or an error code, message and optional structured

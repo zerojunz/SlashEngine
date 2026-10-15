@@ -120,6 +120,7 @@ error code:
 | `-32700`, `-32600`, `-32602`, `-32002` | 400 |
 | `-32003` | 403 (and 401 for a bad token) |
 | `-32601`, `-32001` | 404 |
+| `-32005` | 409 |
 | Anything else | 500 |
 | Request waited more than 30 s for the game loop, or the server stopped | 503 |
 
@@ -150,6 +151,7 @@ SlashEngine's own.
 | `-32002` | Invalid argument | The params are well formed but not allowed, such as an ID already in use or nothing to undo |
 | `-32003` | Permission denied | The session lacks a capability, or a path leaves the project folder |
 | `-32004` | Platform failure | The operating system or a tool refused, such as a failed file write or a failed export build |
+| `-32005` | Conflict | The data changed since the caller read it, such as a storyboard entry another agent edited; read it again and retry |
 
 `data` carries structured details where they help:
 

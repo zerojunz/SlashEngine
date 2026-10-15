@@ -1,0 +1,15 @@
+{
+  "entries": {
+    "character/pilot": {
+      "links": ["scenes/main.scene.json"],
+      "name": "Pilot",
+      "summary": "The player: a courier pilot on her first run."
+    },
+    "place/landing_pad": {
+      "links": ["prefabs/marker.prefab.json", "scenes/main.scene.json"],
+      "name": "Landing pad",
+      "summary": "Where every run starts."
+    }
+  },
+  "format": 1
+}

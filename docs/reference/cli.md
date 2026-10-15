@@ -96,12 +96,13 @@ slash-cli scene format --check <file>    # change nothing; exit 1 if not canonic
 ### schema
 
 Prints a JSON Schema: for scene or prefab files (generated from the registered components), for
-[`project.json`](project-format.md) or for
+[storyboard files](storyboard-format.md), for [`project.json`](project-format.md) or for
 [`export_presets.json`](project-format.md#export-presets).
 
 ```bash
 slash-cli schema scene
 slash-cli schema prefab
+slash-cli schema storyboard
 slash-cli schema project
 slash-cli schema presets
 ```
