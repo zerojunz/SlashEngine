@@ -2,6 +2,8 @@
 
 #include "slash/world/component_registry.hpp"
 
+#include <numbers>
+
 namespace slash::world {
 
 namespace {
@@ -132,7 +134,7 @@ void register_physics_components(ComponentRegistry& registry) {
         .describe("floor_stop_on_slope", {.doc = "Don't slide down slopes while standing."})
         .describe("floor_max_angle", {.doc = "Steepest floor, in radians from up_direction.",
                                       .min = 0,
-                                      .max = 3.14159})
+                                      .max = std::numbers::pi})
         .describe("floor_snap_length", {.doc = "How far down it keeps to a floor while walking "
                                                "off steps and slopes, in pixels.",
                                         .min = 0})
@@ -185,8 +187,8 @@ void register_physics_components(ComponentRegistry& registry) {
         .describe("node_b", node_b)
         .describe("disable_collision", disable_collision)
         .describe("length", {.doc = "The groove's length, in pixels.", .min = 0})
-        .describe("initial_offset", {.doc = "Where node_b starts along the groove, in pixels.",
-                                     .min = 0});
+        .describe("initial_offset",
+                  {.doc = "Where node_b starts along the groove, in pixels.", .min = 0});
 }
 
 } // namespace

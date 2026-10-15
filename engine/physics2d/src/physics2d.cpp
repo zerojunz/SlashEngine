@@ -146,12 +146,14 @@ std::vector<b2ShapeProxy> proxies(const world::CollisionShape2D& shape, Vec2 pos
         out.push_back(b2MakeProxy(ends.data(), 2, 0.0F));
     } else if (shape.shape == "polygon") {
         std::vector<Vec2> points;
+        points.reserve(shape.points.size());
         for (const Vec2 local : shape.points) {
             points.push_back(from_b2(point(local)));
         }
         for (const detail::Polygon& piece :
              detail::split_convex(detail::convex_hull(points), B2_MAX_POLYGON_VERTICES)) {
             std::vector<b2Vec2> corners;
+            corners.reserve(piece.size());
             for (const Vec2 corner : piece) {
                 corners.push_back(to_b2(corner));
             }

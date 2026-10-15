@@ -104,8 +104,10 @@ std::optional<MoverShape> polygon_mover(std::span<const b2Vec2> points) {
     const auto normal = [&](std::size_t i) {
         return b2Normalize(b2CrossVS(b2Sub(hull.points[(i + 1) % count], hull.points[i]), 1.0F));
     };
-    // A small polygon gets a smaller skin.
-    for (float skin = kSkin; skin >= kLinearSlop; skin *= 0.5F) {
+    // A small polygon gets a smaller skin, though no thinner than Box2D's linear slop.
+    static constexpr std::array kSkins{kSkin, kSkin * 0.5F};
+    static_assert(kSkin * 0.5F >= kLinearSlop);
+    for (const float skin : kSkins) {
         std::array<b2Vec2, B2_MAX_POLYGON_VERTICES> inset{};
         bool fits = true;
         for (std::size_t i = 0; i < count && fits; ++i) {
@@ -161,6 +163,7 @@ std::optional<MoverShape> mover_shape(const entt::registry& registry, entt::enti
         }
         std::vector<b2Vec2> points;
         if (shape->shape == "polygon") {
+            points.reserve(shape->points.size());
             for (const Vec2 local : shape->points) {
                 points.push_back(point(local));
             }
@@ -171,6 +174,7 @@ std::optional<MoverShape> mover_shape(const entt::registry& registry, entt::enti
         }
         if (points.size() > B2_MAX_POLYGON_VERTICES) {
             std::vector<Vec2> outline;
+            outline.reserve(points.size());
             for (const b2Vec2 corner : points) {
                 outline.push_back(from_b2(corner));
             }
@@ -186,6 +190,7 @@ std::optional<MoverShape> mover_shape(const entt::registry& registry, entt::enti
         const ShapePlacement place{
             .rotation = b2Rot_identity, .position = {}, .scale = transform.scale};
         std::vector<Vec2> outline;
+        outline.reserve(polygon->polygon.size());
         for (const Vec2 local : polygon->polygon) {
             outline.push_back(from_b2(b2RotateVector(turn, place.point(local))));
         }

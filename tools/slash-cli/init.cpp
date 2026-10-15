@@ -120,6 +120,9 @@ environment variables, never from the file.
 - `tiles/` (or any folder): `.tileset.json` tile sets (`slash-cli schema tileset`) that cut atlas
   textures into tiles and name the terrains they connect. A `TileMapLayer` draws them; paint one
   with `tilemap_paint` rather than editing its rows by hand.
+- Physics bodies and areas are components on scene entities, as Godot's nodes: `RigidBody2D`,
+  `CharacterBody2D`, `Area2D` and the rest, with `CollisionShape2D` shapes. Ask what is where
+  with `physics_raycast`, `physics_overlap` and `physics_contacts` rather than by geometry.
 - `storyboard/`: the game's facts as typed entries (`slash-cli schema storyboard`), and
   `journal.jsonl`, the record of who changed them. Commit both.
 )";

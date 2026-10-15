@@ -190,7 +190,15 @@ rendering on top.
       returns how lit points are without a screenshot
 - [ ] Normal and specular maps on tile set atlases, and lights' canvas layer ranges once canvas
       layers exist
-- [ ] 2D physics on Box2D v3
+- [x] 2D physics on Box2D v3, as Godot's: `StaticBody2D`, `AnimatableBody2D`, `RigidBody2D`
+      and `CharacterBody2D` (`move_and_slide` with floors, walls, slopes, snapping, moving
+      platforms and one-way platforms), `Area2D` with enter and exit events, rectangle, circle,
+      capsule, segment and convex shapes, concave `CollisionPolygon2D`, collision layers and
+      masks, pin, spring and groove joints, and `physics.raycast`, `physics.overlap` and
+      `physics.contacts`. Results are the same on every platform
+- [ ] More of Godot's 2D physics: collision polygons on tile set tiles, `Area2D` gravity and
+      damping overrides, `StaticBody2D` constant velocities, and `CharacterBody2D`'s
+      `floor_block_on_wall`, `floor_constant_speed`, `wall_min_slide_angle` and `safe_margin`
 - [ ] Particles
 - [ ] UI with flexbox layout and themes; text with FreeType, HarfBuzz and MSDF fonts
 - [ ] Text input in every language: IME composition for Japanese, Chinese and Korean with the
@@ -391,7 +399,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | 2D sprites and animation | Batched sprites, sprite sheets, flipbooks | 5 | Done |
 | Tilemaps | Tilemap layers with terrain autotiling, stored as text | 5 | In part: square tiles are done; isometric and hexagonal shapes in 5 |
 | 2D lighting | 2D lights, occluders, normal-mapped sprites | 5 | Done |
-| 2D physics | Box2D v3 | 5 | Planned |
+| 2D physics | Box2D v3: bodies, areas, joints, character movement and queries | 5 | In part: tile set collision and area overrides in 5 |
 | 3D physics | Jolt: rigid bodies, joints, character controller, vehicles | 7 | Planned |
 | 3D renderer | Clustered forward+ with PBR, plus a low-end path for web and mobile | 7 | Planned |
 | Shadows | Cascaded, omni and spot shadow maps | 7 | Planned |

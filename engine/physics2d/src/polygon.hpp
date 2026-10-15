@@ -22,7 +22,7 @@ using Polygon = std::vector<Vec2>;
 
 // Splits a simple polygon, wound either way, into convex polygons of at most max_points points.
 // Fails if it crosses itself or has no area.
-[[nodiscard]] Result<std::vector<Polygon>> decompose(std::span<const Vec2> polygon,
+[[nodiscard]] Result<std::vector<Polygon>> decompose(std::span<const Vec2> points,
                                                      std::size_t max_points);
 
 } // namespace slash::physics2d::detail

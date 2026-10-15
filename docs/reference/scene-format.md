@@ -143,6 +143,74 @@ A reference must name an entity that exists in the same scene.
 | | `cull_mode` | `std::string` | `"disabled"` | `clockwise` or `counter_clockwise` leaves out edges that run that way around the light, as seen on screen |
 | | `occluder_light_mask` | `int` | `1` | Casts shadows from lights whose `shadow_item_cull_mask` shares a bit |
 | `CanvasModulate` | `color` | `Vec4` | `[1, 1, 1, 1]` | Tints everything lit: the light a scene has where no light reaches. One per scene |
+| `CollisionShape2D` | `shape` | `std::string` | `"rectangle"` | A [physics](#2d-physics) shape of the entity's body or area: `rectangle`, `circle`, `capsule`, `segment` or `polygon` |
+| | `size` | `Vec2` | `[20, 20]` | Rectangle width and height, in pixels |
+| | `radius` | `float` | `10` | Circle and capsule radius, in pixels |
+| | `height` | `float` | `30` | Capsule height end to end along y, in pixels |
+| | `a`, `b` | `Vec2` | `[0, 0]`, `[0, 10]` | Segment ends, in pixels |
+| | `points` | `std::vector<Vec2>` | `[]` | Polygon points in pixels; the shape is their convex hull |
+| | `position` | `Vec2` | `[0, 0]` | Moves the shape from the entity, in pixels; the entity's `Transform2D` scale scales it |
+| | `rotation` | `float` | `0` | Turns the shape, in radians clockwise |
+| | `disabled` | `bool` | `false` | Leave the shape out |
+| | `one_way_collision` | `bool` | `false` | Collide only with what comes from the shape's -y side, as platforms one jumps through from below |
+| | `one_way_collision_margin` | `float` | `1` | How deep something may be in a one-way shape and still land on it, in pixels |
+| `CollisionPolygon2D` | `polygon` | `std::vector<Vec2>` | `[]` | Any simple polygon, as [x, y] points in pixels from the entity |
+| | `build_mode` | `std::string` | `"solids"` | `solids` fills it, split into convex parts; `segments` makes only its outline solid |
+| | `disabled`, `one_way_collision`, `one_way_collision_margin` | | | As `CollisionShape2D`'s |
+| `StaticBody2D` | `collision_layer` | `int` | `1` | The physics layers it is in, as bits: layer 1 is 1, layer 2 is 2, layer 3 is 4. Every body and area has it |
+| | `collision_mask` | `int` | `1` | The layers it collides with, as bits. Every body and area has it |
+| | `friction` | `float` | `1` | How much it resists sliding: 0 is ice. Two bodies use the smaller friction |
+| | `bounce` | `float` | `0` | How much it bounces, 0 to 1. Two bodies add theirs, up to 1 |
+| `AnimatableBody2D` | `collision_layer`, `collision_mask`, `friction`, `bounce` | | | As `StaticBody2D`'s. It goes where its `Transform2D` says, such as a moving platform |
+| | `sync_to_physics` | `bool` | `true` | Move there during the physics step, pushing bodies in the way and carrying those on it; `false` jumps there |
+| `RigidBody2D` | `collision_layer`, `collision_mask`, `friction`, `bounce` | | | As `StaticBody2D`'s |
+| | `mass` | `float` | `1` | In kilograms, from 0.001 |
+| | `inertia` | `float` | `0` | Resistance to turning; 0 computes it from the shapes and the mass |
+| | `gravity_scale` | `float` | `1` | Multiplies gravity; 0 floats |
+| | `linear_velocity` | `Vec2` | `[0, 0]` | In pixels per second; the physics step writes it |
+| | `angular_velocity` | `float` | `0` | In radians per second, clockwise; the physics step writes it |
+| | `linear_damp_mode`, `angular_damp_mode` | `std::string` | `"combine"` | `combine` adds the damp below to the project's; `replace` uses only it |
+| | `linear_damp`, `angular_damp` | `float` | `0` | Slows moving or turning, per second |
+| | `constant_force` | `Vec2` | `[0, 0]` | A force applied every tick |
+| | `constant_torque` | `float` | `0` | A torque applied every tick |
+| | `lock_rotation` | `bool` | `false` | Never turn |
+| | `freeze` | `bool` | `false` | Stop simulating it; it acts as `freeze_mode` says |
+| | `freeze_mode` | `std::string` | `"static"` | What a frozen body acts as: `static`, or `kinematic`, moved by its `Transform2D` |
+| | `continuous_cd` | `std::string` | `"disabled"` | `cast_ray` or `cast_shape` sweeps it against other moving bodies so it can't pass through them when fast |
+| | `can_sleep` | `bool` | `true` | Stop simulating it while it rests |
+| | `sleeping` | `bool` | `false` | Resting and not simulated; set `false` to wake it |
+| | `contact_monitor` | `bool` | `false` | Emit `body_entered` and `body_exited` events as bodies start and stop touching it |
+| `CharacterBody2D` | `collision_layer`, `collision_mask` | | | As `StaticBody2D`'s |
+| | `motion_mode` | `std::string` | `"grounded"` | `grounded` has floors, walls and ceilings, for side views; `floating` has only walls, for top-down games |
+| | `up_direction` | `Vec2` | `[0, -1]` | Which way is up, as a unit vector |
+| | `velocity` | `Vec2` | `[0, 0]` | In pixels per second. Gameplay code sets it; each move slides it along what it hits |
+| | `max_slides` | `int` | `4` | Slides per move at most, 1 to 16 |
+| | `floor_stop_on_slope` | `bool` | `true` | Don't slide down slopes while standing |
+| | `floor_max_angle` | `float` | `0.785398` | Steepest floor, in radians from `up_direction` |
+| | `floor_snap_length` | `float` | `1` | How far down it keeps to a floor while walking off steps and slopes, in pixels |
+| | `slide_on_ceiling` | `bool` | `true` | Slide along ceilings; `false` stops and falls |
+| | `platform_on_leave` | `std::string` | `"add_velocity"` | What it keeps of a moving floor's velocity on leaving it: `add_velocity`, `add_upward_velocity` or `do_nothing` |
+| | `on_floor`, `on_wall`, `on_ceiling` | `bool` | `false` | What the last move touched; the physics step writes them |
+| | `floor_normal`, `wall_normal` | `Vec2` | `[0, 0]` | The floor's and the wall's normals in the last move |
+| | `platform_velocity` | `Vec2` | `[0, 0]` | The velocity of the moving floor it stands on |
+| `Area2D` | `collision_layer` | `int` | `1` | As `StaticBody2D`'s |
+| | `collision_mask` | `int` | `1` | The layers of bodies and areas it detects |
+| | `monitoring` | `bool` | `true` | Emit `body_entered`, `body_exited`, `area_entered` and `area_exited` events |
+| | `monitorable` | `bool` | `true` | Other areas detect it |
+| `PinJoint2D` | `node_a`, `node_b` | Reference to another entity | `null` | The two bodies it joins, at the entity's `Transform2D`; a `null` `node_a` pins `node_b` to the world. Every joint has them |
+| | `disable_collision` | `bool` | `true` | The two bodies don't collide with each other. Every joint has it |
+| | `angular_limit_enabled` | `bool` | `false` | Limit how far `node_b` turns from `node_a` |
+| | `angular_limit_lower`, `angular_limit_upper` | `float` | `0` | The limits in radians, from -3.1 to 0 and from 0 to 3.1 |
+| | `motor_enabled` | `bool` | `false` | Turn `node_b` at `motor_target_velocity` |
+| | `motor_target_velocity` | `float` | `0` | In radians per second |
+| `DampedSpringJoint2D` | `node_a`, `node_b`, `disable_collision` | | | As `PinJoint2D`'s; a spring from `node_a` at the entity's `Transform2D` to `node_b` |
+| | `length` | `float` | `50` | Where `node_b` is attached, in pixels along the entity's y axis |
+| | `rest_length` | `float` | `0` | The length it pulls toward; 0 is `length` |
+| | `stiffness` | `float` | `20` | How hard it pulls |
+| | `damping` | `float` | `1` | How fast it settles |
+| `GrooveJoint2D` | `node_a`, `node_b`, `disable_collision` | | | As `PinJoint2D`'s; `node_b` slides along a groove of `node_a`'s and turns freely |
+| | `length` | `float` | `50` | The groove's length in pixels, from the entity's `Transform2D` along its y axis |
+| | `initial_offset` | `float` | `25` | Where `node_b` starts along the groove, in pixels |
 
 `engine.describe` lists every registered component with its defaults, including ones a game adds.
 
@@ -617,3 +685,61 @@ map.
 - [`light.sample`](commands.md#lightsample) computes the color a white pixel gets at points, and
   which lights reach them, the way the GPU does, so an agent checks lighting without a
   screenshot.
+
+## 2D physics
+
+2D physics follows Godot's, on [Box2D](https://box2d.org) v3. An entity is a body or an area by
+having one of `StaticBody2D`, `AnimatableBody2D`, `RigidBody2D`, `CharacterBody2D` or `Area2D`,
+placed by its `Transform2D`, and takes its shapes from its `CollisionShape2D` and
+`CollisionPolygon2D`. Lengths are pixels and y points down. The `physics2d` system steps the
+world each tick at priority 950, after gameplay systems and keyframe animation; gravity and
+damping come from `physics_2d` in [`project.json`](project-format.md).
+[examples/physics-2d](../../examples/physics-2d/) has every kind of body, an area and a joint.
+
+```json
+"hero": {
+  "components": {
+    "CharacterBody2D": {"collision_layer": 2},
+    "CollisionShape2D": {"height": 32.0, "radius": 8.0, "shape": "capsule"},
+    "Transform2D": {"position": [40.0, 200.0]}
+  }
+}
+```
+
+- A `StaticBody2D` doesn't move on its own; changing its `Transform2D` moves it there at once.
+  An `AnimatableBody2D` goes where its `Transform2D` says, set by gameplay code or an
+  `AnimationPlayer`; with `sync_to_physics` it moves there during the step, so it pushes bodies
+  in its way and carries those standing on it.
+- A `RigidBody2D` is moved by gravity, collisions, forces and joints, and the step writes back
+  its `Transform2D`, `linear_velocity`, `angular_velocity` and `sleeping`. Setting those moves
+  or wakes it. `physics2d::apply_impulse` and `apply_torque_impulse` push it at the next step.
+- A `CharacterBody2D` moves as Godot's `move_and_slide`, each tick: gameplay code sets its
+  `velocity`, then the step moves it, slides it along what it hits up to `max_slides` times,
+  snaps it to the floor within `floor_snap_length` and writes `on_floor`, `on_wall`,
+  `on_ceiling`, the normals and the velocity it ended with. Standing on a moving body carries
+  it along. It moves as its `CollisionShape2D`, or its `CollisionPolygon2D`'s convex hull; a
+  polygon's corners are rounded by a pixel.
+- An `Area2D` collides with nothing and detects the bodies and areas in its `collision_mask`
+  (an area only if it is `monitorable`), emitting `body_entered`, `body_exited`,
+  `area_entered` and `area_exited` events with the other entity's ID in `body` or `area`. A
+  `RigidBody2D` with `contact_monitor` emits `body_entered` and `body_exited` the same way.
+  Events report each pair once and stay quiet when [`undo`](commands.md#undo) or
+  [`world.restore`](commands.md#worldrestore) brings bodies back.
+- Two bodies collide when either one's `collision_mask` has a bit of the other's
+  `collision_layer`, as in Godot. Joints with `disable_collision` stop their two bodies
+  colliding with each other.
+- A shape with `one_way_collision` stops only what comes from its -y side, after the shape's
+  and the entity's rotation, and lets through what is deeper in it than
+  `one_way_collision_margin` pixels: platforms one jumps up through.
+- A `CollisionShape2D`'s size is scaled by the entity's `Transform2D` scale; a circle or capsule
+  radius takes the larger of the two. A `polygon` shape is its points' convex hull. A
+  `CollisionPolygon2D` takes any simple polygon, split into convex pieces, or only its outline
+  with `build_mode` `segments`. A shape with no area, or a polygon that crosses itself, is left
+  out with one warning in the log.
+- A joint joins `node_a` and `node_b` at its own entity's `Transform2D`, as Godot's joints are
+  placed by their node; a `null` `node_a` joins `node_b` to the world.
+- Results are the same on every platform for the same scene and ticks, so tests and replays
+  can check exact positions.
+- [`physics.raycast`](commands.md#physicsraycast), [`physics.overlap`](commands.md#physicsoverlap)
+  and [`physics.contacts`](commands.md#physicscontacts) answer what is where and what touches
+  what; C++ code calls `physics2d::raycast`, `overlap_point`, `overlap_shape` and `contacts`.
