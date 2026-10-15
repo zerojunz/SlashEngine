@@ -87,7 +87,8 @@ public:
     explicit Assets(FileSource source);
 
     // Registers an asset type: files ending in one of the suffixes load with load. The longest
-    // matching suffix wins, so ".scene.json" can have its own type beside ".json".
+    // matching suffix wins, so ".scene.json" can have its own type beside ".json". Registering a
+    // name again replaces that type, so modules that share one can each register it.
     template <typename T>
     void add_type(std::string name, std::vector<std::string> suffixes,
                   std::function<Result<T>(std::string_view text, std::string_view path)> load) {

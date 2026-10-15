@@ -53,12 +53,14 @@ TEST_CASE("a minimal project gets the defaults") {
     CHECK(project.value().rendering_driver == "auto");
     CHECK(project.value().vsync_mode == "enabled");
     CHECK(project.value().max_fps == 0);
+    CHECK(project.value().gui_theme.empty());
 
     project = runtime::parse_project(parse(R"({"format": 1, "name": "?!", "id": "org.me.game",
         "main_scene": "a.scene.json", "window": {"width": 320, "vsync_mode": "mailbox"},
         "tick_hz": 30, "max_fps": 120, "rendering": {"clear_color": [0, 0.5, 1, 1],
-        "driver": "null"}})"));
+        "driver": "null"}, "gui": {"theme": "ui/game.theme.json"}})"));
     REQUIRE(project.ok());
+    CHECK(project.value().gui_theme == "ui/game.theme.json");
     CHECK(project.value().vsync_mode == "mailbox");
     CHECK(project.value().max_fps == 120);
     CHECK(project.value().clear_color == std::array<float, 4>{0.0F, 0.5F, 1.0F, 1.0F});
@@ -94,6 +96,11 @@ TEST_CASE("project files are checked field by field") {
           std::vector<std::string>{"/rendering/clear_color"});
     CHECK(error_paths("{" + base + R"(, "rendering": {"driver": "opengl"}})") ==
           std::vector<std::string>{"/rendering/driver"});
+    CHECK(error_paths("{" + base + R"(, "gui": {"theme": "../game.theme.json"}})") ==
+          std::vector<std::string>{"/gui/theme"});
+    CHECK(error_paths("{" + base + R"(, "gui": {"theme": "game.json"}})") ==
+          std::vector<std::string>{"/gui/theme"});
+    CHECK(error_paths("{" + base + R"(, "gui": {"theme": ""}})").empty());
     for (const std::string_view scene :
          {"/abs.scene.json", "../up.scene.json", "a/./b.scene.json", "c:/x.scene.json",
           "dir\\\\x.scene.json", "scenes/main.json"}) {

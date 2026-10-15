@@ -489,10 +489,17 @@ struct Control {
     std::vector<entt::entity> children;
     std::string grow_horizontal = "end"; // "begin", "end" or "both"
     std::string grow_vertical = "end";
+    // How a container sizes and places it: "fill", "expand_fill", "shrink_center" and so on.
+    std::string size_flags_horizontal = "fill";
+    std::string size_flags_vertical = "fill";
+    std::string texture_filter = "inherit"; // "inherit", "linear" or "nearest"
+    std::string theme;                      // project path of a .theme.json file; "" for none
+    std::string theme_type_variation;       // a theme type to look items up in first
     std::map<std::string, Vec4> theme_override_colors;
     std::map<std::string, int> theme_override_constants;
     std::map<std::string, std::string> theme_override_fonts;
     std::map<std::string, int> theme_override_font_sizes;
+    std::map<std::string, json::Value> theme_override_styles; // style boxes, as in a theme
     Vec4 modulate{1.0F, 1.0F, 1.0F, 1.0F};
     Vec4 self_modulate{1.0F, 1.0F, 1.0F, 1.0F};
     Vec2 custom_minimum_size;
@@ -507,6 +514,7 @@ struct Control {
     float offset_right = 0.0F;
     float offset_bottom = 0.0F;
     float rotation = 0.0F; // radians, around pivot_offset
+    float size_flags_stretch_ratio = 1.0F;
     int z_index = 0;
     bool visible = true;
 
@@ -514,9 +522,11 @@ struct Control {
 };
 SLASH_COMPONENT(Control, children, anchor_left, anchor_top, anchor_right, anchor_bottom,
                 offset_left, offset_top, offset_right, offset_bottom, grow_horizontal,
-                grow_vertical, custom_minimum_size, rotation, scale, pivot_offset, visible,
-                modulate, self_modulate, z_index, theme_override_colors, theme_override_constants,
-                theme_override_fonts, theme_override_font_sizes)
+                grow_vertical, custom_minimum_size, rotation, scale, pivot_offset,
+                size_flags_horizontal, size_flags_vertical, size_flags_stretch_ratio, visible,
+                modulate, self_modulate, z_index, texture_filter, theme, theme_type_variation,
+                theme_override_colors, theme_override_constants, theme_override_fonts,
+                theme_override_font_sizes, theme_override_styles)
 
 // Text in a control's rect, as Godot's Label. Its font, size, colors, outline and shadow are
 // theme items, set per label with Control's theme_override_* fields.
@@ -548,5 +558,113 @@ struct ColorRect {
     friend bool operator==(const ColorRect&, const ColorRect&) = default;
 };
 SLASH_COMPONENT(ColorRect, color)
+
+// Draws the theme's "panel" style box in the control's rect, as Godot's Panel.
+struct Panel {
+    friend bool operator==(const Panel&, const Panel&) = default;
+};
+SLASH_COMPONENT(Panel)
+
+// A texture in the control's rect, as Godot's TextureRect.
+struct TextureRect {
+    std::string texture;                   // project path of a PNG or BMP file; "" draws nothing
+    std::string expand_mode = "keep_size"; // how the texture sets the minimum size
+    std::string stretch_mode = "scale";    // how the texture fills the rect
+    bool flip_h = false;
+    bool flip_v = false;
+
+    friend bool operator==(const TextureRect&, const TextureRect&) = default;
+};
+SLASH_COMPONENT(TextureRect, texture, expand_mode, stretch_mode, flip_h, flip_v)
+
+// A texture cut into nine parts that stretch to the control's rect without stretching its
+// corners, as Godot's NinePatchRect.
+struct NinePatchRect {
+    std::string texture;
+    std::string axis_stretch_horizontal = "stretch"; // "stretch", "tile" or "tile_fit"
+    std::string axis_stretch_vertical = "stretch";
+    Vec4 region_rect; // [x, y, width, height] in pixels; a zero size uses the whole texture
+    int patch_margin_left = 0;
+    int patch_margin_top = 0;
+    int patch_margin_right = 0;
+    int patch_margin_bottom = 0;
+    bool draw_center = true;
+
+    friend bool operator==(const NinePatchRect&, const NinePatchRect&) = default;
+};
+SLASH_COMPONENT(NinePatchRect, texture, draw_center, region_rect, patch_margin_left,
+                patch_margin_top, patch_margin_right, patch_margin_bottom, axis_stretch_horizontal,
+                axis_stretch_vertical)
+
+// A bar filled to show a value between a minimum and a maximum, as Godot's ProgressBar.
+struct ProgressBar {
+    std::string fill_mode = "begin_to_end"; // "begin_to_end", "end_to_begin", "top_to_bottom"
+                                            // or "bottom_to_top"
+    double min_value = 0.0;
+    double max_value = 100.0;
+    double step = 0.01; // the value is rounded to a multiple of this; 0 for none
+    double value = 0.0;
+    bool allow_greater = false;
+    bool allow_lesser = false;
+    bool show_percentage = true;
+
+    friend bool operator==(const ProgressBar&, const ProgressBar&) = default;
+};
+SLASH_COMPONENT(ProgressBar, min_value, max_value, step, value, allow_greater, allow_lesser,
+                fill_mode, show_percentage)
+
+// Containers place the controls in their children lists, which ignore their anchors and
+// offsets and are sized by their minimum sizes and size flags. An entity has at most one.
+
+// Lays out its children in a row, or a column when vertical, as Godot's BoxContainer
+// (HBoxContainer and VBoxContainer).
+struct BoxContainer {
+    std::string alignment = "begin"; // "begin", "center" or "end"
+    bool vertical = false;
+
+    friend bool operator==(const BoxContainer&, const BoxContainer&) = default;
+};
+SLASH_COMPONENT(BoxContainer, alignment, vertical)
+
+// Lays out its children in a grid, left to right then top to bottom, as Godot's GridContainer.
+struct GridContainer {
+    int columns = 1;
+
+    friend bool operator==(const GridContainer&, const GridContainer&) = default;
+};
+SLASH_COMPONENT(GridContainer, columns)
+
+// Fits its children in its rect less the theme's margins, as Godot's MarginContainer.
+struct MarginContainer {
+    friend bool operator==(const MarginContainer&, const MarginContainer&) = default;
+};
+SLASH_COMPONENT(MarginContainer)
+
+// Centers its children at their minimum sizes, as Godot's CenterContainer.
+struct CenterContainer {
+    bool use_top_left = false; // center them on its top-left corner instead
+
+    friend bool operator==(const CenterContainer&, const CenterContainer&) = default;
+};
+SLASH_COMPONENT(CenterContainer, use_top_left)
+
+// Lays out its children in rows that wrap to its width, or columns that wrap to its height when
+// vertical, as Godot's FlowContainer (HFlowContainer and VFlowContainer).
+struct FlowContainer {
+    std::string alignment = "begin";             // "begin", "center" or "end"
+    std::string last_wrap_alignment = "inherit"; // "inherit", "begin", "center" or "end"
+    bool vertical = false;
+    bool reverse_fill = false; // rows from the bottom up, or columns from the right
+
+    friend bool operator==(const FlowContainer&, const FlowContainer&) = default;
+};
+SLASH_COMPONENT(FlowContainer, alignment, last_wrap_alignment, vertical, reverse_fill)
+
+// Draws the theme's "panel" style box and fits its children inside the style's margins, as
+// Godot's PanelContainer.
+struct PanelContainer {
+    friend bool operator==(const PanelContainer&, const PanelContainer&) = default;
+};
+SLASH_COMPONENT(PanelContainer)
 
 } // namespace slash::world

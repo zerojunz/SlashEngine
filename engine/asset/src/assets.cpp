@@ -44,7 +44,13 @@ Assets::Assets(FileSource source) : source_(std::move(source)) {
 
 void Assets::add_loader(std::string name, entt::id_type id, std::vector<std::string> suffixes,
                         detail::Loader load) {
-    types_.push_back({std::move(name), id, std::move(suffixes), std::move(load)});
+    Type type{std::move(name), id, std::move(suffixes), std::move(load)};
+    const auto same = std::ranges::find(types_, type.name, &Type::name);
+    if (same != types_.end()) {
+        *same = std::move(type);
+    } else {
+        types_.push_back(std::move(type));
+    }
 }
 
 const Assets::Type* Assets::type_for(std::string_view path) const {

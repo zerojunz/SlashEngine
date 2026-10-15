@@ -22,8 +22,9 @@
 //   }
 //
 // Optional fields: "id" (reverse-DNS identifier for bundles and stores), "version"
-// ("major.minor.patch"), "window" ({"width", "height", "vsync_mode"}), "tick_hz", "max_fps" and
-// "rendering" ({"clear_color", "driver", "texture_filter", "interpolation"}).
+// ("major.minor.patch"), "window" ({"width", "height", "vsync_mode"}), "tick_hz", "max_fps",
+// "rendering" ({"clear_color", "driver", "texture_filter", "interpolation"}), "physics_2d" and
+// "gui" ({"theme"}).
 namespace slash::runtime {
 
 inline constexpr std::string_view kProjectFile = "project.json";
@@ -51,6 +52,9 @@ struct Project {
     std::string rendering_driver = "auto";
     // Gravity and default damping for 2D physics.
     physics2d::Settings physics_2d;
+    // A .theme.json file every control uses after its own themes, as Godot's gui/theme/custom;
+    // empty for none.
+    std::string gui_theme;
 
     // The identifier to use: id, or the default derived from the name.
     [[nodiscard]] std::string bundle_id() const;

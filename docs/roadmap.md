@@ -214,9 +214,13 @@ rendering on top.
       `.font.json` font settings, drawn above the world. `ui.layout` and `text.measure` check a
       screen without a screenshot, and `scene validate` and exports catch controls that don't
       lay out
-- [ ] UI layout and themes: Godot's containers (box, grid, margin, center, flow) as flexbox
-      layout, `.theme.json` themes, `StyleBoxFlat` and `StyleBoxTexture`, and `Panel`, `Button`,
-      `TextureRect`, `ProgressBar` and the other controls, with focus and mouse and touch input
+- [x] UI layout and themes: Godot's containers (box, grid, margin, center, flow and panel),
+      `.theme.json` themes with type variations and a project theme, `StyleBoxFlat` (rounded
+      corners, borders, shadows, skew and anti-aliasing) and `StyleBoxTexture`, and `Panel`,
+      `TextureRect`, `NinePatchRect` and `ProgressBar`. `ui.theme` says where each of a control's
+      theme items comes from
+- [ ] `Button` and the other controls people press, drag and type in, with focus, hover and
+      mouse and touch input
 - [ ] Text input in every language: IME composition for Japanese, Chinese and Korean with the
       candidate window placed at the text field, on-screen keyboards on phones, fallback fonts
       so no language shows missing-glyph boxes, and BiDi so right-to-left and left-to-right
@@ -429,7 +433,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Audio | miniaudio: buses, effects, 3D spatial audio | 5 | Planned |
 | Input | Rebindable action maps over SDL3, injectable by agents | 5 | Planned |
 | Refresh rates and frame pacing | V-Sync modes, frame cap, display refresh rates, variable refresh rate, rendering interpolated between fixed ticks | 5 | Done |
-| UI | Retained UI with flexbox layout and themes, defined in text | 5 | In part: `Control`, `Label` and `ColorRect` are done; containers and themes in 5 |
+| UI | Retained UI with flexbox layout and themes, defined in text | 5 | In part: controls that draw, containers, themes and style boxes are done; buttons, focus and input in 5 |
 | Text and fonts | FreeType, HarfBuzz, MSDF fonts, BiDi, IME input, fallback fonts | 5 | In part: FreeType, HarfBuzz and MSDF fonts are done; BiDi, IME input and fallback fonts in 5 |
 | Navigation | Recast and Detour, 2D and 3D, avoidance | 7 | Planned |
 | Asset import | glTF 2.0, FBX, OBJ, PNG, JPG, KTX2, WAV, OGG, MP3, and `.blend` through the artist's own Blender | 7 | Planned |

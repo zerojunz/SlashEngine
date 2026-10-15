@@ -1,0 +1,328 @@
+{
+  "entities": {
+    "content": {
+      "components": {
+        "BoxContainer": {
+          "vertical": true
+        },
+        "Control": {
+          "children": ["title", "health", "grid", "tags", "hint"]
+        }
+      }
+    },
+    "frame": {
+      "components": {
+        "Control": {
+          "children": ["content"],
+          "custom_minimum_size": [360.0, 0.0]
+        },
+        "PanelContainer": {}
+      }
+    },
+    "grid": {
+      "components": {
+        "Control": {
+          "children": ["slot_0", "slot_1", "slot_2", "slot_3", "slot_4", "slot_5", "slot_6", "slot_7"],
+          "size_flags_horizontal": "shrink_center"
+        },
+        "GridContainer": {
+          "columns": 4
+        }
+      }
+    },
+    "health": {
+      "components": {
+        "ProgressBar": {
+          "value": 72.0
+        }
+      }
+    },
+    "hint": {
+      "components": {
+        "Label": {
+          "autowrap_mode": "word",
+          "horizontal_alignment": "center",
+          "text": "Drag an item onto a slot to equip it."
+        }
+      }
+    },
+    "icon_0": {
+      "components": {
+        "Control": {
+          "self_modulate": [1.0, 0.35, 0.35, 1.0],
+          "texture_filter": "nearest"
+        },
+        "TextureRect": {
+          "expand_mode": "ignore_size",
+          "stretch_mode": "keep_aspect_centered",
+          "texture": "ui/gem.png"
+        }
+      }
+    },
+    "icon_1": {
+      "components": {
+        "Control": {
+          "self_modulate": [0.4, 1.0, 0.5, 1.0],
+          "texture_filter": "nearest"
+        },
+        "TextureRect": {
+          "expand_mode": "ignore_size",
+          "stretch_mode": "keep_aspect_centered",
+          "texture": "ui/gem.png"
+        }
+      }
+    },
+    "icon_2": {
+      "components": {
+        "Control": {
+          "self_modulate": [0.45, 0.6, 1.0, 1.0],
+          "texture_filter": "nearest"
+        },
+        "TextureRect": {
+          "expand_mode": "ignore_size",
+          "stretch_mode": "keep_aspect_centered",
+          "texture": "ui/gem.png"
+        }
+      }
+    },
+    "root": {
+      "components": {
+        "CenterContainer": {},
+        "Control": {
+          "anchor_bottom": 1.0,
+          "anchor_right": 1.0,
+          "children": ["frame"]
+        }
+      }
+    },
+    "slot_0": {
+      "components": {
+        "Control": {
+          "children": ["icon_0"],
+          "custom_minimum_size": [64.0, 64.0],
+          "theme_type_variation": "Slot"
+        },
+        "PanelContainer": {}
+      }
+    },
+    "slot_1": {
+      "components": {
+        "Control": {
+          "children": ["icon_1"],
+          "custom_minimum_size": [64.0, 64.0],
+          "theme_type_variation": "Slot"
+        },
+        "PanelContainer": {}
+      }
+    },
+    "slot_2": {
+      "components": {
+        "Control": {
+          "children": ["icon_2"],
+          "custom_minimum_size": [64.0, 64.0],
+          "theme_type_variation": "Slot"
+        },
+        "PanelContainer": {}
+      }
+    },
+    "slot_3": {
+      "components": {
+        "Control": {
+          "custom_minimum_size": [64.0, 64.0],
+          "theme_type_variation": "Slot"
+        },
+        "PanelContainer": {}
+      }
+    },
+    "slot_4": {
+      "components": {
+        "Control": {
+          "custom_minimum_size": [64.0, 64.0],
+          "theme_type_variation": "Slot"
+        },
+        "PanelContainer": {}
+      }
+    },
+    "slot_5": {
+      "components": {
+        "Control": {
+          "custom_minimum_size": [64.0, 64.0],
+          "theme_type_variation": "Slot"
+        },
+        "PanelContainer": {}
+      }
+    },
+    "slot_6": {
+      "components": {
+        "Control": {
+          "custom_minimum_size": [64.0, 64.0],
+          "theme_type_variation": "Slot"
+        },
+        "PanelContainer": {}
+      }
+    },
+    "slot_7": {
+      "components": {
+        "Control": {
+          "custom_minimum_size": [64.0, 64.0],
+          "theme_type_variation": "Slot"
+        },
+        "PanelContainer": {}
+      }
+    },
+    "tag_0": {
+      "components": {
+        "Control": {
+          "theme_override_colors": {
+            "font_color": [0.7, 0.75, 0.85, 1.0]
+          },
+          "theme_override_font_sizes": {
+            "font_size": 14
+          }
+        },
+        "Label": {
+          "text": "rare"
+        }
+      }
+    },
+    "tag_1": {
+      "components": {
+        "Control": {
+          "theme_override_colors": {
+            "font_color": [0.7, 0.75, 0.85, 1.0]
+          },
+          "theme_override_font_sizes": {
+            "font_size": 14
+          }
+        },
+        "Label": {
+          "text": "magic"
+        }
+      }
+    },
+    "tag_2": {
+      "components": {
+        "Control": {
+          "theme_override_colors": {
+            "font_color": [0.7, 0.75, 0.85, 1.0]
+          },
+          "theme_override_font_sizes": {
+            "font_size": 14
+          }
+        },
+        "Label": {
+          "text": "two-handed"
+        }
+      }
+    },
+    "tag_3": {
+      "components": {
+        "Control": {
+          "theme_override_colors": {
+            "font_color": [0.7, 0.75, 0.85, 1.0]
+          },
+          "theme_override_font_sizes": {
+            "font_size": 14
+          }
+        },
+        "Label": {
+          "text": "cursed"
+        }
+      }
+    },
+    "tag_4": {
+      "components": {
+        "Control": {
+          "theme_override_colors": {
+            "font_color": [0.7, 0.75, 0.85, 1.0]
+          },
+          "theme_override_font_sizes": {
+            "font_size": 14
+          }
+        },
+        "Label": {
+          "text": "heavy"
+        }
+      }
+    },
+    "tag_5": {
+      "components": {
+        "Control": {
+          "theme_override_colors": {
+            "font_color": [0.7, 0.75, 0.85, 1.0]
+          },
+          "theme_override_font_sizes": {
+            "font_size": 14
+          }
+        },
+        "Label": {
+          "text": "glows at night"
+        }
+      }
+    },
+    "tags": {
+      "components": {
+        "Control": {
+          "children": ["tag_0", "tag_1", "tag_2", "tag_3", "tag_4", "tag_5"]
+        },
+        "FlowContainer": {
+          "alignment": "center"
+        }
+      }
+    },
+    "title": {
+      "components": {
+        "Control": {
+          "theme_type_variation": "Header"
+        },
+        "Label": {
+          "horizontal_alignment": "center",
+          "text": "Inventory"
+        }
+      }
+    },
+    "tooltip": {
+      "components": {
+        "Control": {
+          "children": ["tooltip_margin"],
+          "offset_bottom": 52.0,
+          "offset_left": 16.0,
+          "offset_right": 216.0,
+          "offset_top": 16.0
+        },
+        "NinePatchRect": {
+          "patch_margin_bottom": 6,
+          "patch_margin_left": 6,
+          "patch_margin_right": 6,
+          "patch_margin_top": 6,
+          "texture": "ui/frame.png"
+        }
+      }
+    },
+    "tooltip_margin": {
+      "components": {
+        "Control": {
+          "anchor_bottom": 1.0,
+          "anchor_right": 1.0,
+          "children": ["tooltip_text"],
+          "theme_override_constants": {
+            "margin_bottom": 4,
+            "margin_left": 10,
+            "margin_right": 10,
+            "margin_top": 4
+          }
+        },
+        "MarginContainer": {}
+      }
+    },
+    "tooltip_text": {
+      "components": {
+        "Label": {
+          "text": "Ruby: +5 fire damage",
+          "vertical_alignment": "center"
+        }
+      }
+    }
+  },
+  "format": 1
+}

@@ -136,7 +136,8 @@ enum class DataFile : std::uint8_t {
     TileSet,
     Texture,
     FontSettings,
-    Font
+    Font,
+    Theme
 };
 
 DataFile data_file(std::string_view name) {
@@ -163,6 +164,9 @@ DataFile data_file(std::string_view name) {
     }
     if (name.ends_with(text::kFontSuffix)) {
         return DataFile::FontSettings;
+    }
+    if (name.ends_with(ui::kThemeSuffix)) {
+        return DataFile::Theme;
     }
     if (text::is_font_path(name)) {
         return DataFile::Font;
@@ -202,6 +206,8 @@ std::vector<json::ValidationError> check_data_file(DataFile kind, std::string_vi
         return canvas::validate_tileset(parsed.value());
     case DataFile::FontSettings:
         return text::validate_font(parsed.value());
+    case DataFile::Theme:
+        return ui::validate_theme(parsed.value());
     case DataFile::Prefab:
         errors = world::validate_prefab(components, parsed.value(), reader);
         break;
@@ -220,7 +226,7 @@ std::vector<json::ValidationError> check_data_file(DataFile kind, std::string_vi
 }
 
 // Copies project.json and every scene, prefab, texture, .frames.json, .material.json, .anim.json,
-// .tileset.json and font file into data, checking each on the way.
+// .tileset.json, font and .theme.json file into data, checking each on the way.
 bool stage_data(const fs::path& project_dir, const runtime::Project& project, const fs::path& data,
                 Failure& failure) {
     std::error_code error;
