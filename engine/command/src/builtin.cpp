@@ -1233,8 +1233,8 @@ Reply physics_overlap(Session& session, const json::Value& params) {
     if (auto read = world::from_json(world, *shape_fields, shape, path); !read) {
         return param_error(code::kInvalidParams, path, read.error().message);
     }
-    constexpr std::array<std::string_view, 5> kShapes{"rectangle", "circle", "capsule",
-                                                      "segment", "polygon"};
+    constexpr std::array<std::string_view, 5> kShapes{"rectangle", "circle", "capsule", "segment",
+                                                      "polygon"};
     if (std::ranges::find(kShapes, shape.shape) == kShapes.end()) {
         std::string message = "unknown shape " + quoted(shape.shape);
         add_hint(message, shape.shape, kShapes);
@@ -1245,11 +1245,11 @@ Reply physics_overlap(Session& session, const json::Value& params) {
         position = floats<2>(*at);
     }
     const json::Value* rotation = params.find("rotation");
-    result["ids"] = id_array(
-        world, physics2d::overlap_shape(
-                   world, shape, {position[0], position[1]},
-                   rotation != nullptr ? static_cast<float>(rotation->as_double()) : 0.0F, filter,
-                   max_results));
+    result["ids"] =
+        id_array(world, physics2d::overlap_shape(
+                            world, shape, {position[0], position[1]},
+                            rotation != nullptr ? static_cast<float>(rotation->as_double()) : 0.0F,
+                            filter, max_results));
     return Reply::success(std::move(result));
 }
 
@@ -2679,8 +2679,8 @@ void register_builtin_commands(Registry& registry) {
     physics_point["minItems"] = 2;
     physics_point["maxItems"] = 2;
     const auto with_filter = [&](json::Object properties) {
-        properties["collision_mask"] = integer_property(
-            "Layers to look in, as bits; default all.", 0, 0xFFFFFFFF, 0xFFFFFFFF);
+        properties["collision_mask"] =
+            integer_property("Layers to look in, as bits; default all.", 0, 0xFFFFFFFF, 0xFFFFFFFF);
         properties["exclude"] = names_property("Entity IDs to leave out.");
         json::Value bodies = property("boolean", "Find bodies. Default true.");
         properties["collide_with_bodies"] = std::move(bodies);
@@ -2698,9 +2698,9 @@ void register_builtin_commands(Registry& registry) {
                        "point, the surface normal and how far along. hit is null if none.",
         .capabilities = {Read},
         .effect = Effect::Read,
-        .params = params_schema(with_filter({{"from", std::move(ray_from)},
-                                             {"to", std::move(ray_to)}}),
-                                {"from", "to"}),
+        .params =
+            params_schema(with_filter({{"from", std::move(ray_from)}, {"to", std::move(ray_to)}}),
+                          {"from", "to"}),
         .handler = physics_raycast,
     });
     json::Value overlap_point = physics_point;

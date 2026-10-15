@@ -210,7 +210,7 @@ SLASH_COMPONENT(CollisionShape2D, shape, size, radius, height, a, b, points, pos
 // A polygon shape of the entity's body or area, as Godot's CollisionPolygon2D: any simple
 // polygon, filled ("solids", split into convex parts) or only its edges ("segments").
 struct CollisionPolygon2D {
-    std::vector<Vec2> polygon;          // points in pixels, from the entity
+    std::vector<Vec2> polygon;         // points in pixels, from the entity
     std::string build_mode = "solids"; // "solids" or "segments"
     bool disabled = false;
     bool one_way_collision = false;

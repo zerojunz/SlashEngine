@@ -224,8 +224,8 @@ void warn_shape(const world::World& world, entt::entity entity, std::string_view
 bool wake_dynamic(b2ShapeId shape, void* context) {
     const b2BodyId body = b2Shape_GetBody(shape);
     const b2BodyId self = *static_cast<const b2BodyId*>(context);
-    if (!B2_ID_EQUALS(body, self) && b2Body_GetType(body) == b2_dynamicBody &&
-        !b2Body_IsAwake(body)) {
+    const bool is_self = B2_ID_EQUALS(body, self);
+    if (!is_self && b2Body_GetType(body) == b2_dynamicBody && !b2Body_IsAwake(body)) {
         b2Body_SetAwake(body, true);
     }
     return true;
