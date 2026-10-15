@@ -12,6 +12,7 @@ real commands and real output, and no screenshots.
 | Build the engine and drive your first scene | [getting-started.md](getting-started.md) |
 | Understand how the pieces fit together | [concepts.md](concepts.md) |
 | Look up a command, its params and what it returns | [reference/commands.md](reference/commands.md) |
+| Copy code or command calls that are known to work | [../examples/](../examples/README.md) |
 | Look up a `slash-cli`, `slash-mcp` or `slash-game` flag | [reference/cli.md](reference/cli.md) |
 | Write or check a `.scene.json` file | [reference/scene-format.md](reference/scene-format.md) |
 | Record a game's characters, story, rules or decisions | [reference/storyboard-format.md](reference/storyboard-format.md) |
@@ -30,7 +31,8 @@ An agent new to the engine needs only three things, in this order:
 2. Skim [concepts.md](concepts.md) for the rules every command follows: capabilities, undo,
    all-or-nothing batches and error shapes.
 3. Use [reference/commands.md](reference/commands.md) when you need an example of a call and its
-   result.
+   result, and [examples/](../examples/README.md) for whole tasks: C++ components, systems and
+   commands, and sequences of calls, each run by CI with its output checked.
 
 An agent changing the engine itself starts with [AGENTS.md](../AGENTS.md), then reads the section
 of [design.md](design.md) for the area it is changing, then checks [roadmap.md](roadmap.md) to see

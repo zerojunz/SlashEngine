@@ -1,0 +1,7 @@
+{"id":"knight"}
+{"current":70.0,"id":"knight"}
+{"id":1,"jsonrpc":"2.0","result":{"current":0.0,"id":"knight"}}
+"/id: no entity with Health has the id \"knigt\"; did you mean \"knight\"?"
+"/amount: must be greater than 0, got -5"
+{"can_redo":1,"can_undo":2,"undone":"health.damage"}
+{"components":{"Health":{"current":70.0,"max":100.0}},"id":"knight"}

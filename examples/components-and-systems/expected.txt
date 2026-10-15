@@ -1,0 +1,22 @@
+{
+  "entities": {
+    "ball": {
+      "components": {
+        "Transform2D": {
+          "position": [32.0, -16.0]
+        },
+        "Velocity": {
+          "value": [32.0, -16.0]
+        }
+      }
+    },
+    "wall": {
+      "components": {
+        "Transform2D": {
+          "position": [100.0, 0.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

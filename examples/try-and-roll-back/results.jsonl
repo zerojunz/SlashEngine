@@ -1,0 +1,10 @@
+{"id":1,"jsonrpc":"2.0","result":{"results":[{"id":"player"},{"id":"crate"}]}}
+{"id":2,"jsonrpc":"2.0","result":{"changes":{"removed":["crate"]},"dry_run":true,"result":{"destroyed":"crate"}}}
+{"id":3,"jsonrpc":"2.0","result":{"entities":2,"name":"before"}}
+{"id":4,"jsonrpc":"2.0","result":{"results":[{"changed":{"Transform2D":{"position":[80.0,32.0]}},"id":"player"},{"destroyed":"crate"},{"id":"enemy"}]}}
+{"id":5,"jsonrpc":"2.0","result":{"added":["enemy"],"changed":{"enemy":{"Transform2D":{"position":[200.0,40.0]}},"player":{"Transform2D":{"position":[80.0,32.0]}}},"removed":["crate"]}}
+{"id":6,"jsonrpc":"2.0","result":{"entities":2,"restored":"before"}}
+{"id":7,"jsonrpc":"2.0","result":{"count":2,"entities":["crate","player"],"truncated":false}}
+{"id":8,"jsonrpc":"2.0","result":{"can_redo":1,"can_undo":2,"undone":"world.restore"}}
+{"id":9,"jsonrpc":"2.0","result":{"count":2,"entities":["enemy","player"],"truncated":false}}
+{"error":{"code":-32001,"data":{"path":"/from"},"message":"/from: no snapshot is named \"befor\"; did you mean \"before\"?"},"id":10,"jsonrpc":"2.0"}

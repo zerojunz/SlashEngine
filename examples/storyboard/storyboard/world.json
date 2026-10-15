@@ -1,0 +1,19 @@
+{
+  "entries": {
+    "character/mira": {
+      "faction": "faction/couriers",
+      "name": "Mira",
+      "summary": "A courier who knows every rooftop route in Lowtown."
+    },
+    "faction/couriers": {
+      "name": "The Couriers",
+      "summary": "Deliver anything across Lowtown, over the rooftops."
+    },
+    "place/rooftops": {
+      "links": ["scenes/rooftops.scene.json"],
+      "name": "The Rooftops",
+      "summary": "Lowtown seen from above: washing lines, skylights and long jumps."
+    }
+  },
+  "format": 1
+}
