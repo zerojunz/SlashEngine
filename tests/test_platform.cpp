@@ -119,11 +119,11 @@ TEST_CASE("read_file_in names the closest file of the same type when a file is m
     REQUIRE(slash::platform::create_directories(root + "/prefabs").ok());
     REQUIRE(slash::platform::create_directories(root + "/build").ok());
     for (const char* file :
-         {"/prefabs/coin.prefab.json", "/prefabs/con.json", "/build/coin.prefab.json"}) {
+         {"/prefabs/coin.prefab.json", "/prefabs/coins.json", "/build/coin.prefab.json"}) {
         REQUIRE(slash::platform::write_file(root + file, "{}").ok());
     }
     CHECK(slash::platform::read_file_in(root, "prefabs/coin.prefab.json").value() == "{}");
-    CHECK(slash::platform::read_file_in(root + "/", "prefabs/con.json").value() == "{}");
+    CHECK(slash::platform::read_file_in(root + "/", "prefabs/coins.json").value() == "{}");
 
     const auto message = [&](std::string_view path) {
         auto text = slash::platform::read_file_in(root, path);
@@ -131,10 +131,30 @@ TEST_CASE("read_file_in names the closest file of the same type when a file is m
         CHECK(text.error().code == slash::ErrorCode::NotFound);
         return text.error().message;
     };
-    CHECK(message("prefabs/con.prefab.json") ==
+    CHECK(message("prefabs/coins.prefab.json") ==
           "no such file; did you mean \"prefabs/coin.prefab.json\"?");
     CHECK(message("prefab/coin.prefab.json") ==
           "no such file; did you mean \"prefabs/coin.prefab.json\"?");
     CHECK(message("prefabs/nothing-like-it.prefab.json") == "no such file");
     std::filesystem::remove_all(root);
+}
+
+TEST_CASE("paths with a name Windows keeps for a device are refused") {
+    using slash::platform::reserved_device_name;
+    CHECK(reserved_device_name("prefabs/con.prefab.json") == "con");
+    CHECK(reserved_device_name("AUX") == "AUX");
+    CHECK(reserved_device_name("levels\\Nul.scene.json") == "Nul");
+    CHECK(reserved_device_name("lpt1/x.json") == "lpt1");
+    CHECK(reserved_device_name("com9.txt") == "com9");
+    for (const char* fine : {"prefabs/coin.prefab.json", "console.json", "com0.json", "com10",
+                             "lpt.json", "icon/con_x.png", ""}) {
+        CHECK(reserved_device_name(fine).empty());
+    }
+    // Reading one on Windows would wait for console input, so it is refused unread everywhere.
+    auto refused = slash::platform::read_file_in(".", "prefabs/con.prefab.json");
+    REQUIRE_FALSE(refused.ok());
+    CHECK(refused.error().code == slash::ErrorCode::InvalidArgument);
+    CHECK(refused.error().message ==
+          "path \"prefabs/con.prefab.json\" uses \"con\", a name Windows keeps for a device; "
+          "choose another name");
 }
