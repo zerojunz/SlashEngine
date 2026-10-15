@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <memory>
 #include <numbers>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -781,6 +782,21 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
                               : ui::settings(world).viewport;
     const ui::DrawList controls =
         ui::draw_calls(ui::layout(world, *fonts, viewport), world, *fonts);
+    // Their textures, made now so the null device checks them too; a call whose texture doesn't
+    // load draws nothing (layout leaves out the boxes whose textures don't).
+    std::vector<std::optional<render::TextureId>> control_textures(controls.calls.size());
+    for (std::size_t i = 0; i < controls.calls.size(); ++i) {
+        const ui::DrawCall& call = controls.calls[i];
+        if (call.source != ui::DrawCall::Source::Texture) {
+            control_textures[i] = render::TextureId::None;
+            continue;
+        }
+        auto made =
+            texture(call.texture, resolve_filter(call.filter, options.texture_filter));
+        if (made) {
+            control_textures[i] = made.value()->id;
+        }
+    }
 
     // The null device stands in for a window it doesn't have, as draw_empty_frame allows: the
     // sprites and tiles are checked and counted, and nothing is drawn.
@@ -794,6 +810,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         shadows_drawn_ = shadows;
         controls_drawn_ = controls.controls;
         glyphs_drawn_ = controls.glyphs;
+        boxes_drawn_ = controls.boxes;
         return {};
     }
     render::Frame frame;
@@ -814,8 +831,12 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             return drawn.error();
         }
     }
-    for (const ui::DrawCall& call : controls.calls) {
-        render::TextureId texture = render::TextureId::None;
+    for (std::size_t i = 0; i < controls.calls.size(); ++i) {
+        const ui::DrawCall& call = controls.calls[i];
+        if (!control_textures[i]) {
+            continue;
+        }
+        render::TextureId texture = *control_textures[i];
         if (call.source == ui::DrawCall::Source::Atlas) {
             auto page = atlas_page(*fonts, call.page);
             if (!page) {
@@ -833,6 +854,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
     }
     controls_drawn_ = began.value() ? controls.controls : 0;
     glyphs_drawn_ = began.value() ? controls.glyphs : 0;
+    boxes_drawn_ = began.value() ? controls.boxes : 0;
     sprites_drawn_ = began.value() ? sprites : 0;
     tiles_drawn_ = began.value() ? tiles : 0;
     particles_drawn_ = began.value() ? particles : 0;

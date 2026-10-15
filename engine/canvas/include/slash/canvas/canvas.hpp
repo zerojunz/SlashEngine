@@ -115,10 +115,11 @@ public:
     // Lights the last frame shaded with, and how many of them cast shadows.
     [[nodiscard]] std::size_t lights_drawn() const noexcept { return lights_drawn_; }
     [[nodiscard]] std::size_t shadows_drawn() const noexcept { return shadows_drawn_; }
-    // Controls the last frame drew (ui.hpp), and the glyph images of their text, outlines and
-    // shadows included.
+    // Controls the last frame drew (ui.hpp), the glyph images of their text, outlines and
+    // shadows included, and their style boxes and textures.
     [[nodiscard]] std::size_t controls_drawn() const noexcept { return controls_drawn_; }
     [[nodiscard]] std::size_t glyphs_drawn() const noexcept { return glyphs_drawn_; }
+    [[nodiscard]] std::size_t boxes_drawn() const noexcept { return boxes_drawn_; }
 
 private:
     struct Texture {
@@ -181,6 +182,7 @@ private:
     std::size_t shadows_drawn_ = 0;
     std::size_t controls_drawn_ = 0;
     std::size_t glyphs_drawn_ = 0;
+    std::size_t boxes_drawn_ = 0;
     // Fonts for worlds ui wasn't installed in.
     std::unique_ptr<text::Fonts> fonts_;
     // The glyph atlas pages on the GPU, the fonts they came from and the versions uploaded.

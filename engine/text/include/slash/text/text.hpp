@@ -226,6 +226,8 @@ public:
     [[nodiscard]] FaceInfo face_info(std::uint32_t face) const;
 
     [[nodiscard]] const std::vector<AtlasPage>& pages() const;
+    // The assets fonts load from.
+    [[nodiscard]] asset::Assets& assets() const;
     // Glyph images made so far.
     [[nodiscard]] std::size_t glyph_count() const;
 

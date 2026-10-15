@@ -79,16 +79,17 @@ Usage:
       --token <token>                Bearer token for --serve (default: random)
       --project <dir>                Project folder for --serve (default ".")
   slash-cli scene validate <file>    Check a scene, .prefab.json, .frames.json,
-                                     .material.json, .anim.json, .tileset.json or .font.json
-                                     file; lists every error
+                                     .material.json, .anim.json, .tileset.json, .font.json or
+                                     .theme.json file; lists every error
   slash-cli scene format <file>      Rewrite one of those files in canonical form
       --check                        Only report whether it is canonical; change nothing
   slash-cli schema <name>            Print a JSON Schema: scene, prefab, frames (.frames.json),
                                      material (.material.json), animation (.anim.json),
-                                     tileset (.tileset.json), font (.font.json), storyboard,
-                                     project (project.json) or presets (export_presets.json)
-  slash-cli project validate [dir]   Check project.json and export_presets.json; lists every
-                                     error
+                                     tileset (.tileset.json), font (.font.json), theme
+                                     (.theme.json), storyboard, project (project.json) or
+                                     presets (export_presets.json)
+  slash-cli project validate [dir]   Check project.json, export_presets.json, the project's
+                                     theme and storyboard; lists every error
   slash-cli call <command> [params]  Run one engine command and print its result
                                      params is a JSON object, or - to read it from stdin
       --scene <file>                 Open this scene first (or start a new one saved there)
@@ -564,6 +565,7 @@ int cmd_scene_validate(const std::string& path) {
     const bool animation = path.ends_with(slash::animation::kAnimationSuffix);
     const bool tileset = path.ends_with(slash::canvas::kTileSetSuffix);
     const bool font = path.ends_with(slash::text::kFontSuffix);
+    const bool theme = path.ends_with(slash::ui::kThemeSuffix);
     json::Value result;
     auto parsed = json::parse(text.value());
     std::vector<json::ValidationError> errors;
@@ -579,6 +581,8 @@ int cmd_scene_validate(const std::string& path) {
         errors = slash::canvas::validate_tileset(parsed.value());
     } else if (font) {
         errors = slash::text::validate_font(parsed.value());
+    } else if (theme) {
+        errors = slash::ui::validate_theme(parsed.value());
     } else {
         errors = prefab ? world::validate_prefab(registry, parsed.value(), prefab_reader(path))
                         : world::validate_scene(registry, parsed.value(), prefab_reader(path));
@@ -589,7 +593,7 @@ int cmd_scene_validate(const std::string& path) {
             errors = slash::ui::check_scene(registry, parsed.value(), prefab_reader(path));
         }
     }
-    if (parsed && !frames && !material && !animation && !tileset && !font) {
+    if (parsed && !frames && !material && !animation && !tileset && !font && !theme) {
         check_story_refs(path, parsed.value(), errors);
     }
     result["valid"] = errors.empty();
@@ -604,6 +608,13 @@ int cmd_scene_validate(const std::string& path) {
             slash::canvas::parse_material(parsed.value()).value().program.code.size();
     } else {
         const char* counted = "entities";
+        if (theme) {
+            // How many types it gives items to.
+            const json::Value* types = parsed.value().find("types");
+            result["types"] = types != nullptr ? types->size() : 0;
+            print(result);
+            return kExitOk;
+        }
         if (tileset) {
             // How many tiles its sources cut.
             std::size_t tiles = 0;
@@ -627,7 +638,8 @@ int cmd_scene_validate(const std::string& path) {
     return errors.empty() ? kExitOk : kExitFailure;
 }
 
-// A .frames.json, .material.json, .anim.json, .tileset.json or .font.json file in canonical form:
+// A .frames.json, .material.json, .anim.json, .tileset.json, .font.json or .theme.json file in
+// canonical form:
 // checked, then written with sorted keys.
 template <typename Parse>
 slash::Result<std::string> format_checked(std::string_view text, Parse parse) {
@@ -662,6 +674,9 @@ int cmd_scene_format(const std::string& path, bool check) {
         }
         if (path.ends_with(slash::text::kFontSuffix)) {
             return format_checked(text.value(), slash::text::parse_font);
+        }
+        if (path.ends_with(slash::ui::kThemeSuffix)) {
+            return format_checked(text.value(), slash::ui::parse_theme);
         }
         if (path.ends_with(world::kPrefabSuffix)) {
             return world::format_prefab(registry, text.value(), prefab_reader(path));
@@ -714,12 +729,12 @@ int cmd_scene(const std::vector<std::string>& args) {
 }
 
 int cmd_schema(const std::vector<std::string>& args) {
-    constexpr std::array<std::string_view, 10> kKinds = {
-        "scene",   "prefab", "frames",     "material", "animation",
-        "tileset", "font",   "storyboard", "project",  "presets"};
+    constexpr std::array<std::string_view, 11> kKinds = {
+        "scene", "prefab", "frames",     "material", "animation", "tileset",
+        "font",  "theme",  "storyboard", "project",  "presets"};
     if (args.size() != 1 || std::ranges::find(kKinds, args[0]) == kKinds.end()) {
         return usage_error("schema takes one argument: scene, prefab, frames, material, "
-                           "animation, tileset, font, storyboard, project or presets");
+                           "animation, tileset, font, theme, storyboard, project or presets");
     }
     json::Value schema;
     if (args[0] == "scene") {
@@ -736,6 +751,8 @@ int cmd_schema(const std::vector<std::string>& args) {
         schema = slash::canvas::tileset_schema();
     } else if (args[0] == "font") {
         schema = slash::text::font_schema();
+    } else if (args[0] == "theme") {
+        schema = slash::ui::theme_schema();
     } else if (args[0] == "storyboard") {
         schema = slash::storyboard::file_schema();
     } else if (args[0] == "project") {
@@ -787,6 +804,20 @@ int cmd_project(const std::vector<std::string>& args) {
     json::Array errors;
     validate_file(folder, slash::runtime::kProjectFile, slash::runtime::validate_project, errors);
     validate_file(folder, slash::exporter::kPresetsFile, slash::exporter::validate_presets, errors);
+    // The project's theme.
+    if (auto project = slash::runtime::load_project(folder);
+        project && !project.value().gui_theme.empty()) {
+        const std::string& theme = project.value().gui_theme;
+        if (slash::platform::exists(slash::runtime::join_path(folder, theme))) {
+            validate_file(folder, theme, slash::ui::validate_theme, errors);
+        } else {
+            json::Value item;
+            item["file"] = std::string(slash::runtime::kProjectFile);
+            item["path"] = "/gui/theme";
+            item["message"] = "no file \"" + theme + "\"";
+            errors.push_back(std::move(item));
+        }
+    }
     // The storyboard, and the StoryRef IDs in every scene and prefab.
     command::SessionOptions options;
     options.project_root = folder;

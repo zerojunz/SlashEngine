@@ -992,6 +992,10 @@ const std::vector<AtlasPage>& Fonts::pages() const {
     return impl_->pages;
 }
 
+asset::Assets& Fonts::assets() const {
+    return *impl_->assets;
+}
+
 std::size_t Fonts::glyph_count() const {
     return impl_->glyph_images;
 }

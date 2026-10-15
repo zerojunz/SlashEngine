@@ -198,6 +198,14 @@ json::Value project_schema() {
     properties["max_fps"] = std::move(max_fps);
     properties["rendering"] = std::move(rendering);
     properties["physics_2d"] = physics2d::settings_schema();
+    json::Value gui;
+    gui["type"] = "object";
+    gui["additionalProperties"] = false;
+    gui["description"] = "UI settings.";
+    gui["properties"]["theme"] =
+        string_property("A .theme.json file every control uses after its own and its parents' "
+                        "themes, before Godot's default theme, e.g. \"ui/game.theme.json\".");
+    properties["gui"] = std::move(gui);
     return schema;
 }
 
@@ -221,6 +229,17 @@ std::vector<json::ValidationError> validate_project(const json::Value& project) 
                                          "by '/', with no \".\" or \"..\" parts"});
     } else if (!main_scene.ends_with(".scene.json")) {
         errors.push_back({"/main_scene", "expected a .scene.json file"});
+    }
+    if (const json::Value* gui = project.find("gui"); gui != nullptr) {
+        if (const json::Value* theme = gui->find("theme");
+            theme != nullptr && !theme->as_string().empty()) {
+            if (!is_project_path(theme->as_string())) {
+                errors.push_back({"/gui/theme", "expected a path inside the project folder, "
+                                                "separated by '/', with no \".\" or \"..\" parts"});
+            } else if (!theme->as_string().ends_with(".theme.json")) {
+                errors.push_back({"/gui/theme", "expected a .theme.json file"});
+            }
+        }
     }
     return errors;
 }
@@ -279,6 +298,11 @@ Result<Project> parse_project(const json::Value& project) {
     }
     if (const json::Value* physics = project.find("physics_2d"); physics != nullptr) {
         out.physics_2d = physics2d::parse_settings(*physics);
+    }
+    if (const json::Value* gui = project.find("gui"); gui != nullptr) {
+        if (const json::Value* theme = gui->find("theme"); theme != nullptr) {
+            out.gui_theme = theme->as_string();
+        }
     }
     return out;
 }

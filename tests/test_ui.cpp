@@ -73,7 +73,7 @@ struct Scene {
 
     Scene() {
         world::register_builtin_components(components);
-        ui::install(world, assets, {.viewport = {400.0F, 300.0F}});
+        ui::install(world, assets, {.viewport = {400.0F, 300.0F}, .theme = ""});
     }
 
     entt::entity create(std::string_view id, std::string_view components_json) {
@@ -246,7 +246,7 @@ TEST_CASE("children that can't be laid out are reported with their JSON Pointer"
     CHECK(problems == std::vector<std::string>{
                           "a/components/Control/children/1: a control can't be its own child",
                           "a/components/Control/children/2: \"sprite\" isn't a control; give it "
-                          "a Control, Label or ColorRect",
+                          "a Control or a UI component",
                           "a/components/Control/children/3: names no entity",
                           "c/components/Control/children/0: \"b\" is already a child of \"a\"",
                           "b/components/Control/children/0: \"a\" contains \"b\", so it can't be "
