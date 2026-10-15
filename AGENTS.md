@@ -250,6 +250,18 @@ sets; a terrain tile's `peering` names the terrain each side and corner must tou
 texture (`tiles_drawn()`), and `check_tile_layers` checks a scene's layers for `scene validate`
 and exports. `examples/tilemaps` paints an island with a pond.
 
+2D lights follow Godot's: `PointLight2D`, `DirectionalLight2D`, `LightOccluder2D` and
+`CanvasModulate`, with `Sprite2D`'s `light_mask`, `normal_texture` and `specular_texture` and a
+material's `light_mode`. `engine/render/include/slash/render/light.hpp` is the device side: a
+frame's `render::Lighting` (ambient color, up to 64 lights, a light atlas and a shadow map) and a
+draw's `Material::shading`, shaded in `material.hlsl`; `render::shade` is its CPU twin, used by
+`light.sample`, and a test compares the two pixel for pixel. A change to the light math goes in
+both. `engine/canvas/src/light.cpp` turns a world's lights into that: `collect_lighting` casts
+each shadowed light's occluder edges on the CPU into one row of `render::kShadowMapWidth` texels
+(a point light's goes round it, a directional light's across it) and `pack_light_atlas` packs
+the light textures. `CanvasRenderer` uploads both only when they change (`lights_drawn()`,
+`shadows_drawn()`). `examples/lights-2d` has a torch, the moon and a shadowed crate.
+
 Shaders are HLSL in `engine/render/shaders/`. Their SPIR-V and MSL are committed in
 `engine/render/src/*_shaders.hpp`, so only someone changing a shader needs glslang and
 SPIRV-Cross (`glslang-tools` and `spirv-cross` on Debian and Ubuntu, `glslang` and `spirv-cross`
@@ -342,11 +354,10 @@ CI rejects unformatted code and any clang-tidy finding.
 - Headers live in `engine/<module>/include/slash/<module>/`, sources in `engine/<module>/src/`.
   Modules: `core` (Result, logging, JSON, reflection, math), `platform` (SDL3 window, run loop,
   files and folder listings, child processes), `render` (the render device over SDL3's GPU API,
-  the null device, HLSL shaders), `asset` (asset handles, loaders, hot reload),
+  the null device, HLSL shaders, material programs and 2D light shading), `asset` (asset handles, loaders, hot reload),
   `world` (EnTT world, components, scenes and prefabs), `canvas` (sprites, `.frames.json`
-  animations, `.material.json` materials, `.tileset.json` tile maps and drawing them),
-  `animation` (`.anim.json` keyframe
-  animations and the system that plays them), `storyboard` (storyboard kinds, files, versions,
+  animations, `.material.json` materials, `.tileset.json` tile maps, 2D lights and shadows and
+  drawing them), `animation` (`.anim.json` keyframe animations and the system that plays them), `storyboard` (storyboard kinds, files, versions,
   queries, edits, briefs and checks), `command` (commands, sessions with undo, JSON-RPC and MCP),
   `server` (localhost HTTP over a session) and `runtime` (project files and the game executable).
   Tool-only libraries such as `tools/exporter` use the same layout and may use exceptions.

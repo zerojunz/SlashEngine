@@ -176,6 +176,18 @@ TEST_CASE("a material with no color draws the texture times the vertex color") {
     }
 }
 
+TEST_CASE("a material says how 2D lights shade it, as Godot's light_mode") {
+    CHECK(compile(R"({"format": 1})").light_mode == render::LightMode::Normal);
+    CHECK(compile(R"({"format": 1, "light_mode": "unshaded"})").light_mode ==
+          render::LightMode::Unshaded);
+    const canvas::CanvasMaterial glow = compile(R"({"format": 1, "light_mode": "light_only"})");
+    CHECK(glow.light_mode == render::LightMode::LightOnly);
+    auto instance = canvas::instantiate(glow, {}, 0.0);
+    REQUIRE(instance.ok());
+    CHECK(instance.value().light_mode == render::LightMode::LightOnly);
+    CHECK(first_error(R"({"format": 1, "light_mode": "lit"})").starts_with("/light_mode: "));
+}
+
 TEST_CASE("material errors point at the bad value and suggest the closest name") {
     CHECK(errors(R"({
       "color": "tint.rgb",

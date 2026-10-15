@@ -39,7 +39,9 @@ SLASH_COMPONENT(StoryRef, ids)
 
 // A texture drawn at the entity's Transform2D, as Godot's Sprite2D. A texture can be a sprite
 // sheet of hframes x vframes equal frames, of which frame is drawn, and region picks a part of
-// it first. Sprites draw in order of z_index, then in the order their entities were made.
+// it first. Sprites draw in order of z_index, then in the order their entities were made. 2D
+// lights shade them, with normal and specular maps laid out as the texture, as a CanvasTexture's
+// in Godot.
 struct Sprite2D {
     std::string texture; // project path of a PNG or BMP file; "" draws nothing
     bool centered = true;
@@ -56,9 +58,15 @@ struct Sprite2D {
     std::string texture_filter = "inherit"; // "inherit", "linear" or "nearest"
     std::string material;                   // project path of a .material.json file; "" for none
     std::map<std::string, json::Value> material_params; // values for the material's params
+    int light_mask = 1;                                 // lit by lights sharing a bit
+    std::string normal_texture;   // project path of a normal map; "" faces the viewer
+    std::string specular_texture; // project path of a specular map; "" has no highlights
+    Vec4 specular_color{1.0F, 1.0F, 1.0F, 1.0F};
+    float specular_shininess = 1.0F;
 };
 SLASH_COMPONENT(Sprite2D, texture, centered, offset, flip_h, flip_v, hframes, vframes, frame,
-                region, modulate, z_index, visible, texture_filter, material, material_params)
+                region, modulate, z_index, visible, texture_filter, material, material_params,
+                light_mask, normal_texture, specular_texture, specular_color, specular_shininess)
 
 // Plays animations from a .frames.json file (Godot's SpriteFrames) on the entity's Sprite2D,
 // as Godot's AnimatedSprite2D: each tick it sets the sprite's texture, sheet and frame.
@@ -99,9 +107,77 @@ struct TileMapLayer {
     bool visible = true;
     Vec4 modulate{1.0F, 1.0F, 1.0F, 1.0F};
     std::string texture_filter = "inherit"; // "linear", "nearest" or "inherit"
+    int light_mask = 1;                     // lit by lights sharing a bit
 };
 SLASH_COMPONENT(TileMapLayer, tile_set, origin, legend, rows, z_index, visible, modulate,
-                texture_filter)
+                texture_filter, light_mask)
+
+// A light shining from the entity's Transform2D (or the origin) through a texture, as Godot's
+// PointLight2D. It lights the sprites and tile map layers whose light_mask shares a bit with
+// range_item_cull_mask and whose z_index is in its range, and with shadow_enabled, the
+// LightOccluder2D polygons whose occluder_light_mask shares a bit with shadow_item_cull_mask
+// cast shadows from it.
+struct PointLight2D {
+    bool enabled = true;
+    std::string texture; // project path of a PNG or BMP file; "" is a soft round light
+    float texture_scale = 1.0F;
+    Vec2 offset; // moves the texture from the light, in pixels
+    Vec4 color{1.0F, 1.0F, 1.0F, 1.0F};
+    float energy = 1.0F;
+    std::string blend_mode = "add"; // "add", "sub" or "mix"
+    float height = 0.0F;            // pixels above the plane, for normal maps
+    int range_z_min = -1024;
+    int range_z_max = 1024;
+    int range_item_cull_mask = 1;
+    bool shadow_enabled = false;
+    Vec4 shadow_color{0.0F, 0.0F, 0.0F, 0.0F};
+    std::string shadow_filter = "none"; // "none", "pcf5" or "pcf13"
+    float shadow_filter_smooth = 0.0F;
+    int shadow_item_cull_mask = 1;
+};
+SLASH_COMPONENT(PointLight2D, enabled, texture, texture_scale, offset, color, energy, blend_mode,
+                height, range_z_min, range_z_max, range_item_cull_mask, shadow_enabled,
+                shadow_color, shadow_filter, shadow_filter_smooth, shadow_item_cull_mask)
+
+// Light from one direction over everything, as Godot's DirectionalLight2D, such as the sun or the
+// moon. It shines down the screen, turned by the entity's Transform2D rotation if it has one.
+// Masks, ranges and shadows work as PointLight2D's.
+struct DirectionalLight2D {
+    bool enabled = true;
+    Vec4 color{1.0F, 1.0F, 1.0F, 1.0F};
+    float energy = 1.0F;
+    std::string blend_mode = "add"; // "add", "sub" or "mix"
+    float height = 0.0F;            // from 0, along the plane, to 1, straight down, for normal maps
+    float max_distance = 10000.0F;  // how far shadows reach past their occluders, in pixels
+    int range_z_min = -1024;
+    int range_z_max = 1024;
+    int range_item_cull_mask = 1;
+    bool shadow_enabled = false;
+    Vec4 shadow_color{0.0F, 0.0F, 0.0F, 0.0F};
+    std::string shadow_filter = "none"; // "none", "pcf5" or "pcf13"
+    float shadow_filter_smooth = 0.0F;
+    int shadow_item_cull_mask = 1;
+};
+SLASH_COMPONENT(DirectionalLight2D, enabled, color, energy, blend_mode, height, max_distance,
+                range_z_min, range_z_max, range_item_cull_mask, shadow_enabled, shadow_color,
+                shadow_filter, shadow_filter_smooth, shadow_item_cull_mask)
+
+// A polygon that casts shadows from 2D lights, as Godot's LightOccluder2D with its
+// OccluderPolygon2D, placed by the entity's Transform2D if it has one.
+struct LightOccluder2D {
+    std::vector<Vec2> polygon;          // points in pixels
+    bool closed = true;                 // the last point joins the first
+    std::string cull_mode = "disabled"; // "disabled", "clockwise" or "counter_clockwise"
+    int occluder_light_mask = 1;
+};
+SLASH_COMPONENT(LightOccluder2D, polygon, closed, cull_mode, occluder_light_mask)
+
+// Tints everything lit, as Godot's CanvasModulate: the light a scene has where no light reaches.
+// One per scene.
+struct CanvasModulate {
+    Vec4 color{1.0F, 1.0F, 1.0F, 1.0F};
+};
+SLASH_COMPONENT(CanvasModulate, color)
 
 // Registers the components above, with their docs.
 void register_builtin_components(ComponentRegistry& registry);
