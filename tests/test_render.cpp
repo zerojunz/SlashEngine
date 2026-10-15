@@ -1,10 +1,10 @@
+#include "slash/platform/process.hpp"
 #include "slash/render/device.hpp"
 
 #include <doctest/doctest.h>
 
 #include <array>
 #include <cstdint>
-#include <cstdlib>
 #include <memory>
 #include <string>
 #include <utility>
@@ -71,8 +71,7 @@ std::string error_of(const slash::Result<T>& result) {
 std::unique_ptr<RenderDevice> gpu_device() {
     auto device = create_device({.window = nullptr, .driver = "auto", .debug = false});
     if (!device) {
-        if (const char* expect = std::getenv("SLASH_EXPECT_GPU");
-            expect != nullptr && *expect != '\0') {
+        if (!slash::platform::environment_variable("SLASH_EXPECT_GPU").empty()) {
             FAIL("SLASH_EXPECT_GPU is set, but no GPU device works: " << device.error().message);
         }
         MESSAGE("no GPU here, so GPU checks are skipped: " << device.error().message);
