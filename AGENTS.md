@@ -59,21 +59,22 @@ only what differs from the prefab. `entity.create` takes `"extends"`, and `prefa
 entity to a prefab file. `tests/data/game` has an example.
 
 ```bash
-$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material)
+$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation)
 $cli scene validate tests/data/basic.scene.json     # every error, with its JSON Pointer path
 $cli scene format level.scene.json                  # rewrite in canonical form
 $cli scene format --check level.scene.json          # exit 1 if not canonical
 ```
 
 Validate after editing a scene or prefab by hand, and format before committing one. Both
-commands take `.prefab.json`, `.frames.json` and `.material.json` files too.
+commands take `.prefab.json`, `.frames.json`, `.material.json` and `.anim.json` files too.
 
 ## Assets and hot reload
 
 `engine/asset` loads files by project path into shared, reference-counted handles
 (`assets.load<json::Value>("data/tuning.json")`); `.json`, `.txt` and `.csv` load out of the box,
 `canvas::add_asset_types` adds textures (`.png`, `.bmp`), `.frames.json` and `.material.json`
-files, and games add types with `add_type`. Sessions and games own an `asset::Assets`, and prefab
+files, `animation::add_asset_types` adds `.anim.json` files, and games add types with
+`add_type`. Sessions and games own an `asset::Assets`, and prefab
 files are read through it. `Session::poll_assets()` reloads changed files and updates prefab
 instances (keeping overrides); every command polls first, and `slash-cli run` and `serve` poll
 between ticks. `asset.list` shows what is loaded, and subscribers get `asset.reloaded` events.
@@ -259,6 +260,19 @@ V-Sync and the frame cap follow Godot: `window.vsync_mode` and `max_fps` in `pro
 windowed frames to the cap, never headless ones, and `Loop::interpolation()` gives the fraction
 of the next tick for drawing between ticks.
 
+## Keyframe animation
+
+`engine/animation` is keyframe animation, as Godot's AnimationPlayer. A `.anim.json` file
+(`$cli schema animation`) holds animations by name: a length, a loop mode (`none`, `linear`,
+`pingpong`) and tracks. A value track's `path` names a component field or part of one
+(`Sprite2D/modulate/a`, `Transform2D/position/y`) and its keys are values with Godot's
+interpolation and easing; an event track emits a world event at each key. The
+`animation_player` system (priority 900, before `animated_sprite_2d`) plays each entity's
+`AnimationPlayer` on its own components, through `ComponentType::assign`, so any reflected field
+animates, a game's own included. Keys are passed as Godot passes them: after where playback was,
+up to and including where it got to. `animation.eval` returns a track's values at given times;
+`examples/keyframe-animation` plays a walk cycle and a hit.
+
 ## Add a component
 
 Components are plain structs reflected with one macro, at namespace scope in the struct's own
@@ -319,10 +333,10 @@ CI rejects unformatted code and any clang-tidy finding.
   files and folder listings, child processes), `render` (the render device over SDL3's GPU API,
   the null device, HLSL shaders), `asset` (asset handles, loaders, hot reload),
   `world` (EnTT world, components, scenes and prefabs), `canvas` (sprites, `.frames.json`
-  animations, `.material.json` materials and drawing them), `storyboard` (storyboard kinds,
-  files, versions, queries, edits, briefs and checks), `command` (commands, sessions with undo,
-  JSON-RPC and MCP), `server` (localhost HTTP over a session) and `runtime` (project files and
-  the game executable).
+  animations, `.material.json` materials and drawing them), `animation` (`.anim.json` keyframe
+  animations and the system that plays them), `storyboard` (storyboard kinds, files, versions,
+  queries, edits, briefs and checks), `command` (commands, sessions with undo, JSON-RPC and MCP),
+  `server` (localhost HTTP over a session) and `runtime` (project files and the game executable).
   Tool-only libraries such as `tools/exporter` use the same layout and may use exceptions.
 - New dependencies are pinned in `cmake/dependencies.json` (repository, tag, SPDX license and
   the license file's SHA-256), fetched with `slash_add_dependency` in `cmake/Dependencies.cmake`

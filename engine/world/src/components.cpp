@@ -70,6 +70,19 @@ void register_builtin_components(ComponentRegistry& registry) {
         .describe("frame", {.doc = "The animation's current frame, from 0.", .min = 0})
         .describe("frame_progress",
                   {.doc = "How far through the current frame, from 0 to 1.", .min = 0, .max = 1});
+
+    registry.add<AnimationPlayer>()
+        .set_doc("Plays a keyframe animation from a .anim.json file on the entity's components. "
+                 "Emits animation_finished when an animation that doesn't loop ends, and the "
+                 "events of its event tracks.")
+        .describe("library", {.doc = "Project path of a .anim.json file."})
+        .describe("animation", {.doc = "Name of the animation to play."})
+        .describe("playing", {.doc = "Advance the animation each tick."})
+        .describe("speed_scale", {.doc = "Multiplies the playback speed; negative plays "
+                                         "backwards."})
+        .describe("time", {.doc = "Seconds into the animation, from 0 to its length.", .min = 0})
+        .describe("backwards", {.doc = "Play toward the start, as Godot's play_backwards. "
+                                       "Pingpong loops flip it at each end."});
 }
 
 } // namespace slash::world

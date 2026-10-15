@@ -1,0 +1,19 @@
+{
+  "animations": {
+    "bob": {
+      "length": 1,
+      "tracks": [
+        {
+          "keys": [
+            {
+              "time": 0,
+              "value": 0
+            }
+          ],
+          "path": "Transform2D/positon/y"
+        }
+      ]
+    }
+  },
+  "format": 1
+}
