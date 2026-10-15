@@ -383,11 +383,11 @@ jobs:
 
       - name: Check formatting
         run: |
-          find engine tools tests -name '*.cpp' -o -name '*.hpp' \
+          find engine tools tests examples -name '*.cpp' -o -name '*.hpp' \
             | xargs clang-format-18 --dry-run --Werror
 
       - name: Configure for clang-tidy
         run: cmake --preset ci -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18
 
       - name: Run clang-tidy
-        run: find engine tools -name '*.cpp' | xargs clang-tidy-18 -p build/ci --quiet
+        run: find engine tools examples -name '*.cpp' | xargs clang-tidy-18 -p build/ci --quiet

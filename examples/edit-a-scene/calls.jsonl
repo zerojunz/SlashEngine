@@ -1,0 +1,9 @@
+{"jsonrpc":"2.0","id":1,"method":"entity.create","params":{"id":"player","components":{"Transform2D":{"position":[64,32]}}}}
+{"jsonrpc":"2.0","id":2,"method":"batch","params":{"commands":[{"command":"entity.create","params":{"id":"coin_1","components":{"Transform2D":{"position":[96,32]}}}},{"command":"entity.create","params":{"id":"coin_2","components":{"Transform2D":{"position":[128,32]}}}}]}}
+{"jsonrpc":"2.0","id":3,"method":"component.set","params":{"id":"player","components":{"Transform2D":{"position":[64,32],"rotation":0.5}}}}
+{"jsonrpc":"2.0","id":4,"method":"world.query","params":{"with":["Transform2D"]}}
+{"jsonrpc":"2.0","id":5,"method":"entity.get","params":{"id":"playr"}}
+{"jsonrpc":"2.0","id":6,"method":"entity.destroy","params":{"id":"coin_2"}}
+{"jsonrpc":"2.0","id":7,"method":"undo"}
+{"jsonrpc":"2.0","id":8,"method":"scene.save","params":{"path":"scenes/level.scene.json"}}
+{"jsonrpc":"2.0","id":9,"method":"scene.get"}

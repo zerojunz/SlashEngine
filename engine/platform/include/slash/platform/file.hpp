@@ -15,6 +15,11 @@ namespace slash::platform {
 
 [[nodiscard]] Result<std::string> read_file(std::string_view path);
 
+// Reads path, relative to folder. If there is no such file, the error is NotFound "no such file"
+// with the closest file of the same type in folder (outside build/) as a "did you mean" hint, so
+// a misspelled path is easy to fix.
+[[nodiscard]] Result<std::string> read_file_in(std::string_view folder, std::string_view path);
+
 // Creates or replaces the file.
 [[nodiscard]] Result<void> write_file(std::string_view path, std::string_view contents);
 

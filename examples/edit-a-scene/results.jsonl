@@ -1,0 +1,9 @@
+{"id":1,"jsonrpc":"2.0","result":{"id":"player"}}
+{"id":2,"jsonrpc":"2.0","result":{"results":[{"id":"coin_1"},{"id":"coin_2"}]}}
+{"id":3,"jsonrpc":"2.0","result":{"changed":{"Transform2D":{"rotation":0.5}},"id":"player"}}
+{"id":4,"jsonrpc":"2.0","result":{"count":3,"entities":["coin_1","coin_2","player"],"truncated":false}}
+{"error":{"code":-32001,"data":{"path":"/id"},"message":"/id: no entity has the id \"playr\"; did you mean \"player\"?"},"id":5,"jsonrpc":"2.0"}
+{"id":6,"jsonrpc":"2.0","result":{"destroyed":"coin_2"}}
+{"id":7,"jsonrpc":"2.0","result":{"can_redo":1,"can_undo":3,"undone":"entity.destroy"}}
+{"id":8,"jsonrpc":"2.0","result":{"entities":3,"path":"scenes/level.scene.json"}}
+{"id":9,"jsonrpc":"2.0","result":{"path":"scenes/level.scene.json","scene":{"entities":{"coin_1":{"components":{"Transform2D":{"position":[96.0,32.0]}}},"coin_2":{"components":{"Transform2D":{"position":[128.0,32.0]}}},"player":{"components":{"Transform2D":{"position":[64.0,32.0],"rotation":0.5}}}},"format":1}}}

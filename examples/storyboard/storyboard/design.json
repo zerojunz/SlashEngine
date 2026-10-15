@@ -1,0 +1,9 @@
+{
+  "entries": {
+    "rule/no-combat": {
+      "name": "No combat",
+      "summary": "Mira outruns trouble; nothing in the game fights."
+    }
+  },
+  "format": 1
+}

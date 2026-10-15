@@ -112,3 +112,29 @@ TEST_CASE("list_files walks subfolders, skipping hidden names and refused folder
 
     CHECK_FALSE(slash::platform::list_files("no/such/folder").ok());
 }
+
+TEST_CASE("read_file_in names the closest file of the same type when a file is missing") {
+    const std::string root = "slash_test_read_in";
+    std::filesystem::remove_all(root);
+    REQUIRE(slash::platform::create_directories(root + "/prefabs").ok());
+    REQUIRE(slash::platform::create_directories(root + "/build").ok());
+    for (const char* file :
+         {"/prefabs/coin.prefab.json", "/prefabs/con.json", "/build/coin.prefab.json"}) {
+        REQUIRE(slash::platform::write_file(root + file, "{}").ok());
+    }
+    CHECK(slash::platform::read_file_in(root, "prefabs/coin.prefab.json").value() == "{}");
+    CHECK(slash::platform::read_file_in(root + "/", "prefabs/con.json").value() == "{}");
+
+    const auto message = [&](std::string_view path) {
+        auto text = slash::platform::read_file_in(root, path);
+        REQUIRE_FALSE(text.ok());
+        CHECK(text.error().code == slash::ErrorCode::NotFound);
+        return text.error().message;
+    };
+    CHECK(message("prefabs/con.prefab.json") ==
+          "no such file; did you mean \"prefabs/coin.prefab.json\"?");
+    CHECK(message("prefab/coin.prefab.json") ==
+          "no such file; did you mean \"prefabs/coin.prefab.json\"?");
+    CHECK(message("prefabs/nothing-like-it.prefab.json") == "no such file");
+    std::filesystem::remove_all(root);
+}

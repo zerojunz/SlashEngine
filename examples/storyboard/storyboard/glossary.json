@@ -1,0 +1,10 @@
+{
+  "entries": {
+    "term/couriers": {
+      "avoid": ["runners", "messengers"],
+      "name": "Couriers",
+      "summary": "What the faction's members are called."
+    }
+  },
+  "format": 1
+}

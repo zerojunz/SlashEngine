@@ -436,8 +436,6 @@ int cmd_run(const std::vector<std::string>& args) {
     return kExitOk;
 }
 
-// Reads the prefabs a scene or prefab file extends from its project: the nearest folder above it
-// with a project.json, else the current folder.
 // The project a file belongs to: the nearest folder above it with a project.json, else ".".
 std::string project_folder(const std::string& file) {
     namespace fs = std::filesystem;

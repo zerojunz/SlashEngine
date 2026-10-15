@@ -12,6 +12,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(SLASH_BUILD_TOOLS "Build slash-cli and slash-mcp" ${PROJECT_IS_TOP_LEVEL})
 option(SLASH_BUILD_TESTS "Build the unit and smoke tests" ${PROJECT_IS_TOP_LEVEL})
+option(SLASH_BUILD_EXAMPLES "Build the examples and test them (needs tools and tests)"
+    ${PROJECT_IS_TOP_LEVEL})
 option(SLASH_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
@@ -35,4 +37,7 @@ endif()
 if(SLASH_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
+    if(SLASH_BUILD_EXAMPLES AND SLASH_BUILD_TOOLS)
+        add_subdirectory(examples)
+    endif()
 endif()
