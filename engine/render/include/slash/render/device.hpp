@@ -1,6 +1,7 @@
 #pragma once
 
 #include "slash/core/result.hpp"
+#include "slash/render/material.hpp"
 
 #include <array>
 #include <cstdint>
@@ -19,6 +20,7 @@ struct SDL_Window;
 //   auto device = render::create_device({.window = window});
 //   device->begin_frame({.clear = {0.3F, 0.3F, 0.3F, 1.0F}});
 //   device->draw(render::TextureId::None, vertices); // every three vertices make a triangle
+//   device->draw(texture, vertices, material);       // with a blend mode and material program
 //   device->end_frame();                               // submits and presents
 namespace slash::render {
 
@@ -67,6 +69,25 @@ struct TextureDesc {
     Filter filter = Filter::Linear;
     // Frames can draw into it and read_texture can read it back.
     bool render_target = false;
+};
+
+// A texture a material samples in slot 1, 2 or 3.
+struct MaterialTexture {
+    TextureId texture = TextureId::None; // None samples white
+    bool repeat = false;                 // tile past the edges instead of stretching them
+
+    bool operator==(const MaterialTexture&) const = default;
+};
+
+// How a draw colors its pixels: a blend mode, and a program the material shader runs for each
+// pixel (see material.hpp). The default draws the texture times the vertex color, mixed.
+struct Material {
+    BlendMode blend = BlendMode::Mix;
+    // With no code, each pixel is the texture times the vertex color.
+    MaterialProgram program;
+    std::array<MaterialTexture, kMaterialTextureSlots - 1> textures{};
+
+    bool operator==(const Material&) const = default;
 };
 
 // One corner of a triangle: a position, a texture coordinate from (0, 0) at the texture's top
@@ -129,10 +150,15 @@ public:
     // Starts a frame and clears its target. Returns false when there is nothing to draw to,
     // such as a minimized window: draws are still checked but dropped, and end_frame ends it.
     [[nodiscard]] virtual Result<bool> begin_frame(const Frame& frame) = 0;
-    // Draws triangles, every three vertices one, with a texture or None for plain color. Draws
-    // in a row with the same texture are batched into one GPU draw.
-    [[nodiscard]] virtual Result<void> draw(TextureId texture,
-                                            std::span<const Vertex2D> vertices) = 0;
+    // Draws triangles, every three vertices one, with a texture or None for plain color, and a
+    // material. Draws in a row with the same texture and an equal material are batched into one
+    // GPU draw.
+    [[nodiscard]] virtual Result<void> draw(TextureId texture, std::span<const Vertex2D> vertices,
+                                            const Material& material) = 0;
+    // Draws with the default material: the texture times the vertex color.
+    [[nodiscard]] Result<void> draw(TextureId texture, std::span<const Vertex2D> vertices) {
+        return draw(texture, vertices, Material{});
+    }
     // Sends the frame to the GPU, and to the window when it is the target.
     [[nodiscard]] virtual Result<void> end_frame() = 0;
 

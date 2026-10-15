@@ -4,6 +4,7 @@
 #include "init.hpp"
 
 #include "slash/canvas/canvas.hpp"
+#include "slash/canvas/material.hpp"
 #include "slash/canvas/sprite_frames.hpp"
 #include "slash/command/builtin.hpp"
 #include "slash/command/command.hpp"
@@ -73,13 +74,13 @@ Usage:
       --port <n>                     Port for --serve (default: any free port)
       --token <token>                Bearer token for --serve (default: random)
       --project <dir>                Project folder for --serve (default ".")
-  slash-cli scene validate <file>    Check a scene, .prefab.json or .frames.json file; lists
-                                     every error
+  slash-cli scene validate <file>    Check a scene, .prefab.json, .frames.json or
+                                     .material.json file; lists every error
   slash-cli scene format <file>      Rewrite one of those files in canonical form
       --check                        Only report whether it is canonical; change nothing
   slash-cli schema <name>            Print a JSON Schema: scene, prefab, frames (.frames.json),
-                                     storyboard, project (project.json) or presets
-                                     (export_presets.json)
+                                     material (.material.json), storyboard, project
+                                     (project.json) or presets (export_presets.json)
   slash-cli project validate [dir]   Check project.json and export_presets.json; lists every
                                      error
   slash-cli call <command> [params]  Run one engine command and print its result
@@ -447,6 +448,8 @@ int cmd_run(const std::vector<std::string>& args) {
             canvas_options.width = static_cast<float>(window.width);
             canvas_options.height = static_cast<float>(window.height);
             canvas_options.interpolation = loop.value().interpolation();
+            canvas_options.time = slash::canvas::material_time(
+                game.tick(), 1.0 / loop.value().tick_hz(), canvas_options.interpolation);
             auto drawn = canvas.draw(game, canvas_options);
             if (!drawn && !draw_failed) {
                 draw_failed = true;
@@ -551,6 +554,7 @@ int cmd_scene_validate(const std::string& path) {
     const world::ComponentRegistry registry = make_registry();
     const bool prefab = path.ends_with(world::kPrefabSuffix);
     const bool frames = path.ends_with(slash::canvas::kSpriteFramesSuffix);
+    const bool material = path.ends_with(slash::canvas::kMaterialSuffix);
     json::Value result;
     auto parsed = json::parse(text.value());
     std::vector<json::ValidationError> errors;
@@ -558,16 +562,24 @@ int cmd_scene_validate(const std::string& path) {
         errors.push_back({"", parsed.error().message});
     } else if (frames) {
         errors = slash::canvas::validate_sprite_frames(parsed.value());
+    } else if (material) {
+        errors = slash::canvas::validate_material(parsed.value());
     } else if (prefab) {
         errors = world::validate_prefab(registry, parsed.value(), prefab_reader(path));
     } else {
         errors = world::validate_scene(registry, parsed.value(), prefab_reader(path));
     }
-    if (parsed && !frames) {
+    if (parsed && !frames && !material) {
         check_story_refs(path, parsed.value(), errors);
     }
     result["valid"] = errors.empty();
-    if (errors.empty()) {
+    if (!errors.empty()) {
+        result["errors"] = errors_to_json(errors);
+    } else if (material) {
+        // How much of the material shader's budget the graph uses.
+        result["instructions"] =
+            slash::canvas::parse_material(parsed.value()).value().program.code.size();
+    } else {
         const char* counted = "entities";
         if (frames) {
             counted = "animations";
@@ -576,21 +588,21 @@ int cmd_scene_validate(const std::string& path) {
         }
         const json::Value* items = parsed.value().find(counted);
         result[counted] = items != nullptr ? items->size() : 0;
-    } else {
-        result["errors"] = errors_to_json(errors);
     }
     print(result);
     return errors.empty() ? kExitOk : kExitFailure;
 }
 
-// A .frames.json file in canonical form: checked, then written with sorted keys.
-slash::Result<std::string> format_sprite_frames(std::string_view text) {
+// A .frames.json or .material.json file in canonical form: checked, then written with sorted
+// keys.
+template <typename Parse>
+slash::Result<std::string> format_checked(std::string_view text, Parse parse) {
     auto parsed = json::parse(text);
     if (!parsed) {
         return parsed.error();
     }
-    if (auto frames = slash::canvas::parse_sprite_frames(parsed.value()); !frames) {
-        return frames.error();
+    if (auto checked = parse(parsed.value()); !checked) {
+        return checked.error();
     }
     return json::write(parsed.value()) + "\n";
 }
@@ -603,7 +615,10 @@ int cmd_scene_format(const std::string& path, bool check) {
     const world::ComponentRegistry registry = make_registry();
     auto formatted = [&]() -> slash::Result<std::string> {
         if (path.ends_with(slash::canvas::kSpriteFramesSuffix)) {
-            return format_sprite_frames(text.value());
+            return format_checked(text.value(), slash::canvas::parse_sprite_frames);
+        }
+        if (path.ends_with(slash::canvas::kMaterialSuffix)) {
+            return format_checked(text.value(), slash::canvas::parse_material);
         }
         if (path.ends_with(world::kPrefabSuffix)) {
             return world::format_prefab(registry, text.value(), prefab_reader(path));
@@ -656,11 +671,11 @@ int cmd_scene(const std::vector<std::string>& args) {
 }
 
 int cmd_schema(const std::vector<std::string>& args) {
-    constexpr std::array<std::string_view, 6> kKinds = {"scene",      "prefab",  "frames",
-                                                        "storyboard", "project", "presets"};
+    constexpr std::array<std::string_view, 7> kKinds = {
+        "scene", "prefab", "frames", "material", "storyboard", "project", "presets"};
     if (args.size() != 1 || std::ranges::find(kKinds, args[0]) == kKinds.end()) {
-        return usage_error(
-            "schema takes one argument: scene, prefab, frames, storyboard, project or presets");
+        return usage_error("schema takes one argument: scene, prefab, frames, material, "
+                           "storyboard, project or presets");
     }
     json::Value schema;
     if (args[0] == "scene") {
@@ -669,6 +684,8 @@ int cmd_schema(const std::vector<std::string>& args) {
         schema = world::prefab_schema(make_registry());
     } else if (args[0] == "frames") {
         schema = slash::canvas::sprite_frames_schema();
+    } else if (args[0] == "material") {
+        schema = slash::canvas::material_schema();
     } else if (args[0] == "storyboard") {
         schema = slash::storyboard::file_schema();
     } else if (args[0] == "project") {

@@ -59,6 +59,7 @@ as `entity.get`, reject it as an unknown param.
 | Entities | [`entity.create`](#entitycreate), [`entity.destroy`](#entitydestroy), [`entity.get`](#entityget) |
 | Prefabs | [`prefab.save`](#prefabsave) |
 | Assets | [`asset.list`](#assetlist) |
+| Materials | [`material.eval`](#materialeval) |
 | Storyboard | [`storyboard.query`](#storyboardquery), [`storyboard.brief`](#storyboardbrief), [`storyboard.check`](#storyboardcheck), [`storyboard.edit`](#storyboardedit) |
 | Components | [`component.set`](#componentset), [`component.remove`](#componentremove) |
 | Query | [`world.query`](#worldquery) |
@@ -90,7 +91,7 @@ Needs: `read`.
 ```
 
 ```json
-{"capabilities":["read","edit","run","filesystem","build"],"commands":["asset.list","batch","component.remove","component.set","engine.describe","entity.create","entity.destroy","entity.get","events.read","events.subscribe","events.unsubscribe","export.run","history.get","log.tail","prefab.save","redo","run.until","scene.get","scene.new","scene.open","scene.save","schema.get","step","storyboard.brief","storyboard.check","storyboard.edit","storyboard.query","undo","world.diff","world.query","world.restore","world.snapshot"],"components":[{"defaults":{"position":[0.0,0.0],"rotation":0.0,"scale":[1.0,1.0]},"doc":"Position, rotation and scale in 2D. Units are pixels and y points down.","name":"Transform2D"},{"defaults":{"position":[0.0,0.0,0.0],"rotation":[0.0,0.0,0.0,1.0],"scale":[1.0,1.0,1.0]},"doc":"Position, rotation and scale in 3D. Units are meters and y points up.","name":"Transform3D"},{"defaults":{"ids":[]},"doc":"The storyboard entries this entity stands for.","name":"StoryRef"},{"defaults":{"centered":true,"flip_h":false,"flip_v":false,"frame":0,"hframes":1,"modulate":[1.0,1.0,1.0,1.0],"offset":[0.0,0.0],"region":[0.0,0.0,0.0,0.0],"texture":"","texture_filter":"inherit","vframes":1,"visible":true,"z_index":0},"doc":"A texture drawn at the entity's Transform2D. Sprites draw in order of z_index, then in the order their entities were made.","name":"Sprite2D"},{"defaults":{"animation":"default","frame":0,"frame_progress":0.0,"playing":true,"speed_scale":1.0,"sprite_frames":""},"doc":"Plays an animation from a .frames.json file on the entity's Sprite2D, which it adds if missing. Emits animation_finished when an animation that doesn't loop ends.","name":"AnimatedSprite2D"}],"engine":{"name":"SlashEngine","version":"0.1.0"},"scene":{"entities":0,"path":"","tick":0},"systems":["animated_sprite_2d"]}
+{"capabilities":["read","edit","run","filesystem","build"],"commands":["asset.list","batch","component.remove","component.set","engine.describe","entity.create","entity.destroy","entity.get","events.read","events.subscribe","events.unsubscribe","export.run","history.get","log.tail","material.eval","prefab.save","redo","run.until","scene.get","scene.new","scene.open","scene.save","schema.get","step","storyboard.brief","storyboard.check","storyboard.edit","storyboard.query","undo","world.diff","world.query","world.restore","world.snapshot"],"components":[{"defaults":{"position":[0.0,0.0],"rotation":0.0,"scale":[1.0,1.0]},"doc":"Position, rotation and scale in 2D. Units are pixels and y points down.","name":"Transform2D"},{"defaults":{"position":[0.0,0.0,0.0],"rotation":[0.0,0.0,0.0,1.0],"scale":[1.0,1.0,1.0]},"doc":"Position, rotation and scale in 3D. Units are meters and y points up.","name":"Transform3D"},{"defaults":{"ids":[]},"doc":"The storyboard entries this entity stands for.","name":"StoryRef"},{"defaults":{"centered":true,"flip_h":false,"flip_v":false,"frame":0,"hframes":1,"material":"","material_params":{},"modulate":[1.0,1.0,1.0,1.0],"offset":[0.0,0.0],"region":[0.0,0.0,0.0,0.0],"texture":"","texture_filter":"inherit","vframes":1,"visible":true,"z_index":0},"doc":"A texture drawn at the entity's Transform2D. Sprites draw in order of z_index, then in the order their entities were made.","name":"Sprite2D"},{"defaults":{"animation":"default","frame":0,"frame_progress":0.0,"playing":true,"speed_scale":1.0,"sprite_frames":""},"doc":"Plays an animation from a .frames.json file on the entity's Sprite2D, which it adds if missing. Emits animation_finished when an animation that doesn't loop ends.","name":"AnimatedSprite2D"}],"engine":{"name":"SlashEngine","version":"0.1.0"},"scene":{"entities":0,"path":"","tick":0},"systems":["animated_sprite_2d"]}
 ```
 
 `scene` describes the open scene: how many entities it has, its path (empty for an unsaved one)
@@ -105,12 +106,12 @@ says whether the game is `playing`.
 
 ### schema.get
 
-Returns a JSON Schema: for scene, prefab, [`.frames.json`](scene-format.md#sprite-frames) or
-storyboard files, one component or one command.
+Returns a JSON Schema: for scene, prefab, [`.frames.json`](scene-format.md#sprite-frames),
+[`.material.json`](scene-format.md#materials) or storyboard files, one component or one command.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `kind` | `"scene"`, `"prefab"`, `"frames"`, `"storyboard"`, `"component"` or `"command"` | required | Which schema |
+| `kind` | `"scene"`, `"prefab"`, `"frames"`, `"material"`, `"storyboard"`, `"component"` or `"command"` | required | Which schema |
 | `name` | string | | Component or command name, for `component` and `command` |
 
 Needs: `read`.
@@ -317,6 +318,41 @@ Needs: `read`.
 ```json
 {"assets":[{"path":"data/tuning.json","refs":1,"type":"json","version":2},{"path":"prefabs/enemy.prefab.json","refs":3,"type":"prefab","version":1}]}
 ```
+
+## Materials
+
+### material.eval
+
+Returns the colors a [material](scene-format.md#materials) draws at texture coordinates, before
+blending, from 0 to 1 and computed on the CPU as the GPU computes them: a check that needs no
+screenshot. Given an entity, it uses its `Sprite2D`'s material, texture, `material_params` and
+`modulate`; the other params try other values. A sprite with no material gives its texture times
+its modulate.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `id` | string | | An entity with a `Sprite2D`. Give `id` or `path` |
+| `path` | string | | A `.material.json` file |
+| `uv` | array of `[u, v]` | required | The texture coordinates, 1 to 64 of them |
+| `texture` | string | the entity's, or none | The sprite's texture path; none samples white |
+| `params` | object | | Param values by name, over the entity's `material_params` |
+| `color` | `[r, g, b, a]` | the entity's `modulate`, or white | What the `color` input reads |
+| `frag_coord` | `[x, y]` | `[0, 0]` | What `fragcoord` reads, in pixels |
+| `time` | number | `0` | What `time` reads, in seconds |
+
+Needs: `read`.
+
+```json
+{"id": "hero", "uv": [[0.5, 0.5]], "params": {"flash": 0.5}}
+```
+
+```json
+{"colors":[[1.0,0.625,0.5,1.0]]}
+```
+
+Colors are rounded to three decimals. A param the material doesn't have fails with the closest
+name, and a value of the wrong type or outside the param's range says what it expected; the
+error's `path` is `/params/<name>` for a param given here and `/id` for one of the entity's.
 
 ## Storyboard
 

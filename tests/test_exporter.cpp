@@ -619,7 +619,7 @@ TEST_CASE("presets load from the project folder") {
     std::filesystem::remove_all(folder);
 }
 
-TEST_CASE("exports ship textures and frames files, and check them first") {
+TEST_CASE("exports ship textures, frames and material files, and check them first") {
     const std::filesystem::path folder = "exporter_sprites_project";
     std::filesystem::remove_all(folder);
     std::filesystem::create_directories(folder / "sprites");
@@ -637,6 +637,9 @@ TEST_CASE("exports ship textures and frames files, and check them first") {
     write("sprites/notes.md", "not part of the game");
     write("sprites/broken.png", "not an image");
     write("sprites/bad.frames.json", R"({"format": 1, "animations": {"walk": {"frames": [0]}}})");
+    write("sprites/glow.material.json",
+          R"({"format": 1, "color": {"op": "mul", "args": ["color", 2]}, "blend": "add"})");
+    write("sprites/bad.material.json", R"({"format": 1, "color": "colr"})");
 
 #if defined(__APPLE__)
     const std::string host = "macos";
@@ -661,16 +664,20 @@ TEST_CASE("exports ship textures and frames files, and check them first") {
                            problem.find("message")->as_string());
     }
     std::ranges::sort(problems); // folders list in any order
-    REQUIRE(problems.size() == 2);
-    INFO(problems[0], "\n", problems[1]);
+    REQUIRE(problems.size() == 3);
+    INFO(problems[0], "\n", problems[1], "\n", problems[2]);
     CHECK(contains(problems[0], "sprites/bad.frames.json /animations/walk/frames/0 a frame number "
                                 "needs the animation's \"texture\""));
-    CHECK(contains(problems[1], "sprites/broken.png  not a PNG or BMP image"));
+    CHECK(problems[1] ==
+          "sprites/bad.material.json /color no node, param or input \"colr\"; did you mean "
+          "\"color\"?");
+    CHECK(contains(problems[2], "sprites/broken.png  not a PNG or BMP image"));
 
     // The good files were staged with the scenes; files a game never loads were not.
     const std::filesystem::path data = folder / ".slash" / "export" / host / "data";
     CHECK(std::filesystem::exists(data / "sprites" / "hero.png"));
     CHECK(std::filesystem::exists(data / "sprites" / "hero.frames.json"));
+    CHECK(std::filesystem::exists(data / "sprites" / "glow.material.json"));
     CHECK(std::filesystem::exists(data / "main.scene.json"));
     CHECK_FALSE(std::filesystem::exists(data / "sprites" / "notes.md"));
     std::filesystem::remove_all(folder);

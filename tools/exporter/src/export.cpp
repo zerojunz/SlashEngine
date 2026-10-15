@@ -5,6 +5,7 @@
 #include "ios.hpp"
 #include "steps.hpp"
 
+#include "slash/canvas/material.hpp"
 #include "slash/canvas/sprite_frames.hpp"
 #include "slash/core/log.hpp"
 #include "slash/core/text.hpp"
@@ -120,7 +121,7 @@ bool skipped_folder(const fs::path& name) {
 }
 
 // The files a game reads at run time: scenes, prefabs and the assets sprites draw.
-enum class DataFile : std::uint8_t { None, Scene, Prefab, SpriteFrames, Texture };
+enum class DataFile : std::uint8_t { None, Scene, Prefab, SpriteFrames, Material, Texture };
 
 DataFile data_file(std::string_view name) {
     if (name.ends_with(world::kPrefabSuffix)) {
@@ -131,6 +132,9 @@ DataFile data_file(std::string_view name) {
     }
     if (name.ends_with(canvas::kSpriteFramesSuffix)) {
         return DataFile::SpriteFrames;
+    }
+    if (name.ends_with(canvas::kMaterialSuffix)) {
+        return DataFile::Material;
     }
     if (name.ends_with(".png") || name.ends_with(".bmp")) {
         return DataFile::Texture;
@@ -157,13 +161,15 @@ std::vector<json::ValidationError> check_data_file(DataFile kind, std::string_vi
         return world::validate_prefab(components, parsed.value(), reader);
     case DataFile::SpriteFrames:
         return canvas::validate_sprite_frames(parsed.value());
+    case DataFile::Material:
+        return canvas::validate_material(parsed.value());
     default:
         return world::validate_scene(components, parsed.value(), reader);
     }
 }
 
-// Copies project.json and every scene, prefab, texture and .frames.json file into data,
-// checking each on the way.
+// Copies project.json and every scene, prefab, texture, .frames.json and .material.json file into
+// data, checking each on the way.
 bool stage_data(const fs::path& project_dir, const runtime::Project& project, const fs::path& data,
                 Failure& failure) {
     std::error_code error;

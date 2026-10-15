@@ -1,0 +1,52 @@
+{
+  "color": {
+    "args": [
+      {
+        "args": ["texture", "uv"],
+        "op": "texture"
+      },
+      {
+        "args": ["ripples", "moved"],
+        "op": "texture"
+      }
+    ],
+    "op": "mul"
+  },
+  "format": 1,
+  "nodes": {
+    "moved": {
+      "args": [
+        {
+          "args": [
+            "uv",
+            [4, 1]
+          ],
+          "op": "mul"
+        },
+        {
+          "args": [
+            {
+              "args": ["time", "speed"],
+              "op": "mul"
+            },
+            0
+          ],
+          "op": "vec2"
+        }
+      ],
+      "op": "add"
+    }
+  },
+  "params": {
+    "ripples": {
+      "filter": "nearest",
+      "repeat": true,
+      "type": "texture",
+      "value": "ripples.png"
+    },
+    "speed": {
+      "type": "float",
+      "value": 0.25
+    }
+  }
+}
