@@ -9,7 +9,10 @@
 #include <doctest/doctest.h>
 
 #include <cstdint>
+#include <functional>
+#include <map>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace demo {
@@ -328,4 +331,181 @@ TEST_CASE("headless runs of the same scene are deterministic") {
                                ->as_array();
     CHECK(position[0].as_double() == doctest::Approx(60.0).epsilon(0.001));
     CHECK(position[1].as_double() == doctest::Approx(-30.0).epsilon(0.001));
+}
+
+namespace {
+
+// Reads prefab files from memory.
+world::FileReader memory_files(std::map<std::string, std::string, std::less<>> files) {
+    return [files = std::move(files)](std::string_view path) -> slash::Result<std::string> {
+        const auto it = files.find(path);
+        if (it == files.end()) {
+            return slash::make_error(slash::ErrorCode::NotFound, "no such file");
+        }
+        return it->second;
+    };
+}
+
+const std::string kEnemyPrefab = R"({"format": 1, "components": {
+    "Health": {"current": 50, "max": 50}, "Enemy": {}, "Transform2D": {"rotation": 1}}})";
+
+// The first error loading a scene, as "path: message", or "" if it loads.
+std::string load_error(const world::ComponentRegistry& registry, const json::Value& scene,
+                       const world::FileReader& reader) {
+    const auto errors = world::validate_scene(registry, scene, reader);
+    return errors.empty() ? std::string() : errors.front().path + ": " + errors.front().message;
+}
+
+} // namespace
+
+TEST_CASE("an entity extends a prefab and overrides its fields") {
+    const auto registry = make_registry();
+    World world(registry);
+    world.set_file_reader(memory_files({{"prefabs/enemy.prefab.json", kEnemyPrefab}}));
+    // grunt overrides one field, sets another back to its default and drops a component.
+    const json::Value scene = parse(R"({"format": 1, "entities": {
+        "grunt": {"extends": "prefabs/enemy.prefab.json",
+                  "components": {"Health": {"current": 20, "max": 100}, "Transform2D": null}},
+        "plain": {"extends": "prefabs/enemy.prefab.json"}
+    }})");
+    REQUIRE(world::load_scene(world, scene).ok());
+
+    const auto grunt = world.find("grunt");
+    const auto plain = world.find("plain");
+    CHECK(world.ecs().get<demo::Health>(grunt).current == 20.0F);
+    CHECK(world.ecs().get<demo::Health>(grunt).max == 100.0F);
+    CHECK(world.ecs().all_of<demo::Enemy>(grunt));
+    CHECK_FALSE(world.ecs().all_of<Transform2D>(grunt));
+    CHECK(world.ecs().get<demo::Health>(plain).current == 50.0F);
+    CHECK(world.ecs().get<Transform2D>(plain).rotation == 1.0F);
+    REQUIRE(world.prefab_of(grunt) != nullptr);
+    CHECK(world.prefab_of(grunt)->path == "prefabs/enemy.prefab.json");
+    // Every instance shares one copy of the prefab.
+    CHECK(world.prefab_of(grunt)->base == world.prefab_of(plain)->base);
+
+    // Saving writes only what differs from the prefab.
+    CHECK(world::save_scene(world) == scene);
+
+    world.ecs().get<demo::Health>(plain).current = 50.0F;
+    world.ecs().get<Transform2D>(plain).rotation = 0.0F;
+    CHECK(*world::save_scene(world).find("entities")->find("plain") == parse(R"({
+        "extends": "prefabs/enemy.prefab.json",
+        "components": {"Transform2D": {"rotation": 0.0}}})"));
+    CHECK(world::save_prefab(world, plain) == parse(R"({"format": 1,
+        "extends": "prefabs/enemy.prefab.json",
+        "components": {"Transform2D": {"rotation": 0.0}}})"));
+    CHECK(world::save_prefab(world, world.create("loose").value()) == parse(R"({"format": 1})"));
+}
+
+TEST_CASE("prefabs extend other prefabs") {
+    const auto registry = make_registry();
+    World world(registry);
+    world.set_file_reader(memory_files({
+        {"base.prefab.json", R"({"format": 1, "components": {"Health": {"max": 200}}})"},
+        {"boss.prefab.json", R"({"format": 1, "extends": "base.prefab.json",
+                                 "components": {"Health": {"current": 150}, "Enemy": {}}})"},
+    }));
+    const auto entity = world.create("boss").value();
+    REQUIRE(world::instantiate_prefab(world, entity, "boss.prefab.json").ok());
+    CHECK(world.ecs().get<demo::Health>(entity).current == 150.0F);
+    CHECK(world.ecs().get<demo::Health>(entity).max == 200.0F);
+    CHECK(world.ecs().all_of<demo::Enemy>(entity));
+    CHECK(world::save_scene(world) ==
+          parse(R"({"format": 1, "entities": {"boss": {"extends": "boss.prefab.json"}}})"));
+    CHECK(world.prefab_links().size() == 1);
+}
+
+TEST_CASE("prefab errors name the value at fault") {
+    const auto registry = make_registry();
+    const auto reader = memory_files({
+        {"enemy.prefab.json", kEnemyPrefab},
+        {"a.prefab.json", R"({"format": 1, "extends": "b.prefab.json"})"},
+        {"b.prefab.json", R"({"format": 1, "extends": "a.prefab.json"})"},
+        {"bad.prefab.json", R"({"format": 1, "components": {"Health": {"current": "full"}}})"},
+    });
+    const auto error = [&](const std::string& entity) {
+        return load_error(registry, parse(R"({"format": 1, "entities": {"e": )" + entity + "}}"),
+                          reader);
+    };
+    CHECK(error(R"({"extends": "enemy.prefab.json"})").empty());
+    CHECK(error(R"({"extends": "missing.prefab.json"})") ==
+          "/entities/e/extends: prefab \"missing.prefab.json\" could not be read: no such file");
+    CHECK(error(R"({"extends": "a.prefab.json"})") ==
+          "/entities/e/extends: prefabs extend each other in a loop: \"a.prefab.json\" extends "
+          "\"b.prefab.json\" extends \"a.prefab.json\"");
+    CHECK(error(R"({"extends": "bad.prefab.json"})") ==
+          "/entities/e/extends: prefab \"bad.prefab.json\" is not valid: "
+          "/components/Health/current: expected number, got string");
+    CHECK(error(R"({"extends": "enemy.json"})") ==
+          "/entities/e/extends: expected a .prefab.json file, got \"enemy.json\"");
+    CHECK(error(R"({"extends": "../enemy.prefab.json"})").find("inside the project folder") !=
+          std::string::npos);
+    CHECK(error(R"({"extends": "enemy.prefab.json", "components": {"Velocity": null}})") ==
+          "/entities/e/components/Velocity: null removes a component the prefab has, but "
+          "\"enemy.prefab.json\" has no \"Velocity\"");
+    CHECK(error(R"({"components": {"Health": null}})") ==
+          "/entities/e/components/Health: null removes a component the prefab has, but this "
+          "entity extends no prefab");
+    CHECK(load_error(registry,
+                     parse(R"({"format": 1, "entities": {"e": {"extends": "enemy.prefab.json"}}})"),
+                     {}) == "/entities/e/extends: prefab \"enemy.prefab.json\" cannot be read: "
+                            "there is no project folder");
+}
+
+TEST_CASE("prefab files validate and format like scenes") {
+    const auto registry = make_registry();
+    const auto reader = memory_files({{"enemy.prefab.json", kEnemyPrefab}});
+    CHECK(world::validate_prefab(registry, parse(kEnemyPrefab)).empty());
+    const auto errors = world::validate_prefab(
+        registry, parse(R"({"format": 1, "components": {"Health": {"current": -1}, "Nope": {}}})"));
+    REQUIRE(errors.size() == 2);
+    CHECK(errors[0].path == "/components/Health/current");
+    CHECK(errors[1].path == "/components/Nope");
+    CHECK(world::validate_prefab(registry, parse(R"({"format": 1, "extends": "enemy.prefab.json",
+                                                    "components": {"Velocity": null}})"),
+                                 reader)
+              .front()
+              .path == "/components/Velocity");
+
+    auto formatted = world::format_prefab(
+        registry, R"({"components":{"Health":{"max":100,"current":7}},"format":1})");
+    REQUIRE(formatted.ok());
+    CHECK(formatted.value() == R"({
+  "components": {
+    "Health": {
+      "current": 7.0
+    }
+  },
+  "format": 1
+}
+)");
+    formatted = world::format_prefab(
+        registry,
+        R"({"format":1,"extends":"enemy.prefab.json","components":{"Health":{"current":50}}})",
+        reader);
+    REQUIRE(formatted.ok());
+    CHECK(parse(formatted.value()) == parse(R"({"extends": "enemy.prefab.json", "format": 1})"));
+    CHECK(world::prefab_schema(registry).find("title")->as_string() == "SlashEngine prefab");
+}
+
+TEST_CASE("diff_scenes compares entities through their prefabs") {
+    const auto registry = make_registry();
+    World world(registry);
+    world.set_file_reader(memory_files({{"enemy.prefab.json", kEnemyPrefab}}));
+    const json::Value before =
+        parse(R"({"format": 1, "entities": {"e": {"extends": "enemy.prefab.json"}}})");
+    REQUIRE(world::load_scene(world, before).ok());
+    const world::PrefabLinks prefabs = world.prefab_links();
+    const json::Value after = parse(R"({"format": 1, "entities": {"e": {
+        "extends": "enemy.prefab.json",
+        "components": {"Health": {"current": 20}, "Transform2D": null}}}})");
+    CHECK(world::diff_scenes(registry, before, after, prefabs, prefabs) ==
+          parse(R"({"changed": {"e": {"Health": {"current": 20.0}, "Transform2D": null}}})"));
+    CHECK(world::diff_scenes(registry, before, before, prefabs, prefabs) ==
+          json::Value(json::Object{}));
+    // The prefab's components count as changes for an entity that starts extending it.
+    const json::Value plain = parse(R"({"format": 1, "entities": {"e": {}}})");
+    CHECK(world::diff_scenes(registry, plain, before, {}, prefabs) ==
+          parse(R"({"changed": {"e": {"Enemy": {}, "Health": {"current": 50.0, "max": 50.0},
+                                      "Transform2D": {"rotation": 1.0}}}})"));
 }

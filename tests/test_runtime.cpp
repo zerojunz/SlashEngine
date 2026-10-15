@@ -5,6 +5,7 @@
 #include "slash/platform/run.hpp"
 #include "slash/runtime/game.hpp"
 #include "slash/runtime/project.hpp"
+#include "slash/world/components.hpp"
 
 #include <SDL3/SDL_stdinc.h>
 #include <doctest/doctest.h>
@@ -122,6 +123,10 @@ TEST_CASE("a game loads its main scene and runs headless") {
     CHECK(summary.find("ticks")->as_int() == 25);
     CHECK(summary.find("entities")->as_int() == 3);
     CHECK(summary.find("scene")->as_string() == "scenes/main.scene.json");
+    // spawn_point extends prefabs/marker.prefab.json.
+    const auto& world = game.value()->world();
+    CHECK(world.ecs().get<slash::world::Transform2D>(world.find("spawn_point")).position.y ==
+          100.0F);
     CHECK_FALSE(summary.find("quit_requested")->as_bool());
     CHECK_FALSE(game.value()->frame());
 }

@@ -136,6 +136,29 @@ void World::on_id_destroyed(entt::registry& registry, entt::entity entity) {
     }
 }
 
+const PrefabLink* World::prefab_of(entt::entity entity) const {
+    return registry_.valid(entity) ? registry_.try_get<PrefabLink>(entity) : nullptr;
+}
+
+PrefabLinks World::prefab_links() const {
+    PrefabLinks links;
+    for (const auto [entity, link] : registry_.view<const PrefabLink>().each()) {
+        if (const std::string_view id = id_of(entity); !id.empty()) {
+            links.emplace(id, link);
+        }
+    }
+    return links;
+}
+
+std::shared_ptr<const json::Value> World::cached_prefab(std::string_view path) const {
+    const auto it = prefabs_.find(path);
+    return it != prefabs_.end() ? it->second : nullptr;
+}
+
+void World::cache_prefab(std::string path, std::shared_ptr<const json::Value> components) {
+    prefabs_[std::move(path)] = std::move(components);
+}
+
 void World::emit(std::string kind, std::string_view id, json::Value data) {
     SLASH_ASSERT(!kind.empty(), "events need a kind");
     SLASH_ASSERT(!kind.starts_with("entity.") && kind != "command",

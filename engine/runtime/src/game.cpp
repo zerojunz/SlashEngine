@@ -76,6 +76,7 @@ Result<std::unique_ptr<Game>> Game::start(const GameOptions& options) {
 
     auto game =
         std::unique_ptr<Game>(new Game(std::move(project).value(), std::move(platform).value()));
+    game->world_.set_file_reader(folder_reader(data_dir));
     if (auto loaded = world::load_scene(game->world_, scene.value()); !loaded) {
         return make_error(loaded.error().code,
                           game->project_.main_scene + ": " + loaded.error().message);

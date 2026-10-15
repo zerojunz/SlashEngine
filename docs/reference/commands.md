@@ -43,7 +43,8 @@ changes, in the same form as [`world.diff`](#worlddiff):
 {"changes":{"changed":{"player":{"Transform2D":{"rotation":1.0}}}},"dry_run":true,"result":{"changed":{"Transform2D":{"rotation":1.0}},"id":"player"}}
 ```
 
-A batch takes `dry_run` itself; the commands inside it cannot. Commands that change nothing, such
+A batch takes `dry_run` itself; the commands inside it cannot. In a dry-run batch, `scene.save`
+and `prefab.save` check everything and return their usual result but write no file. Commands that change nothing, such
 as `entity.get`, reject it as an unknown param.
 
 ## Contents
@@ -53,6 +54,7 @@ as `entity.get`, reject it as an unknown param.
 | Describe | [`engine.describe`](#enginedescribe), [`schema.get`](#schemaget) |
 | Scene | [`scene.get`](#sceneget), [`scene.new`](#scenenew), [`scene.open`](#sceneopen), [`scene.save`](#scenesave) |
 | Entities | [`entity.create`](#entitycreate), [`entity.destroy`](#entitydestroy), [`entity.get`](#entityget) |
+| Prefabs | [`prefab.save`](#prefabsave) |
 | Components | [`component.set`](#componentset), [`component.remove`](#componentremove) |
 | Query | [`world.query`](#worldquery) |
 | Snapshots | [`world.snapshot`](#worldsnapshot), [`world.diff`](#worlddiff), [`world.restore`](#worldrestore) |
@@ -97,11 +99,11 @@ says whether the game is `playing`.
 
 ### schema.get
 
-Returns a JSON Schema: for scene files, one component or one command.
+Returns a JSON Schema: for scene or prefab files, one component or one command.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `kind` | `"scene"`, `"component"` or `"command"` | required | Which schema |
+| `kind` | `"scene"`, `"prefab"`, `"component"` or `"command"` | required | Which schema |
 | `name` | string | | Component or command name, for `component` and `command` |
 
 Needs: `read`.
@@ -148,7 +150,8 @@ Needs: `edit`. Takes `dry_run`.
 ### scene.open
 
 Loads a `.scene.json` file in place of the open scene and clears undo history. An invalid file
-changes nothing and every error is listed.
+changes nothing and every error is listed. Prefabs its entities extend are read from the project
+folder.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -192,12 +195,13 @@ A path outside the project folder fails with `-32003`:
 
 ### entity.create
 
-Creates an entity, optionally with components. Returns its ID.
+Creates an entity, optionally from a prefab and with components. Returns its ID.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `id` | string | generated | Stable ID: 1 to 64 letters, digits, `_` or `-` |
-| `components` | object | | Components keyed by type name. Fields left out keep their defaults |
+| `extends` | string | | A `.prefab.json` file to start from, e.g. `"prefabs/enemy.prefab.json"` |
+| `components` | object | | Components keyed by type name. Fields left out keep their defaults, or the prefab's |
 
 Needs: `edit`. Takes `dry_run`.
 
@@ -210,7 +214,9 @@ Needs: `edit`. Takes `dry_run`.
 ```
 
 Left out, the ID is generated (`entity_1`, `entity_2` and so on). An ID already in use is an
-error.
+error. With `extends`, the entity gets the prefab's components and stays linked to it, so saving
+the scene writes only the fields that differ from the prefab ([prefabs](scene-format.md#prefabs)).
+Each command reads prefab files afresh, so an edited prefab shows up in the next instance.
 
 ### entity.destroy
 
@@ -232,7 +238,7 @@ Needs: `edit`. Takes `dry_run`.
 
 ### entity.get
 
-Returns an entity's components.
+Returns an entity's components, and the prefab it extends, if any, as `extends`.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -255,6 +261,31 @@ An unknown ID fails with `-32001` (not found):
 ```json
 {"code":-32001,"data":{"path":"/id"},"message":"/id: no entity has the id \"nobody\""}
 ```
+
+## Prefabs
+
+### prefab.save
+
+Writes an entity to a `.prefab.json` file that entities can extend, creating folders as needed.
+An entity that extends a prefab is saved as `extends` plus what differs from it. The entity
+itself is not linked to the new file; `entity.create` with `extends` makes instances.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `id` | string | required | Entity ID |
+| `path` | string | required | File relative to the project folder, e.g. `"prefabs/enemy.prefab.json"` |
+
+Needs: `read`, `filesystem`.
+
+```json
+{"id": "player", "path": "prefabs/player.prefab.json"}
+```
+
+```json
+{"components":["Transform2D"],"path":"prefabs/player.prefab.json"}
+```
+
+Saving an entity to the prefab it extends fails, since the prefab would extend itself.
 
 ## Components
 
@@ -551,8 +582,8 @@ events; when a queue is full the oldest event is dropped.
 | anything else | Gameplay code called `World::emit`, e.g. `"coin_collected"` | `id` and `data`, if the game gave them |
 
 Every event also has `seq`, which counts up across the session, and `tick`, the world's tick when
-it happened. A failed command or a dry run queues nothing, and opening or creating a scene queues
-one `command` event instead of an event per entity. An unknown kind starting with `entity.` fails
+it happened. A failed command or a dry run queues nothing. Opening or creating a scene, `undo`,
+`redo` and `world.restore` queue one `command` event instead of an event per entity. An unknown kind starting with `entity.` fails
 with "did you mean". Needs: `read`.
 
 ```json
