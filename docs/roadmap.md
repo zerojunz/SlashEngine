@@ -182,7 +182,14 @@ rendering on top.
       exports check every layer against its tile set
 - [ ] Isometric and hexagonal tile shapes, Godot's other TileSet layouts, with their terrain
       peering bits, and alternative tiles (flipped, transposed) for tile sets that reuse art
-- [ ] 2D lights, occluders and normal-mapped sprites
+- [x] 2D lights, occluders and normal-mapped sprites, as Godot's: `PointLight2D` (textured,
+      with a height for normal maps), `DirectionalLight2D` and `CanvasModulate`, with light masks,
+      z ranges and add, sub and mix blending; `LightOccluder2D` shadows with cull modes and PCF
+      filters; `Sprite2D` normal and specular maps; and materials' `light_mode`. The material
+      shader lights every lit draw, the CPU casts shadows into a shadow map, and `light.sample`
+      returns how lit points are without a screenshot
+- [ ] Normal and specular maps on tile set atlases, and lights' canvas layer ranges once canvas
+      layers exist
 - [ ] 2D physics on Box2D v3
 - [ ] Particles
 - [ ] UI with flexbox layout and themes; text with FreeType, HarfBuzz and MSDF fonts
@@ -383,7 +390,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Scenes and prefabs | JSON scenes, prefabs with overrides, on EnTT | 2, 5 | Done |
 | 2D sprites and animation | Batched sprites, sprite sheets, flipbooks | 5 | Done |
 | Tilemaps | Tilemap layers with terrain autotiling, stored as text | 5 | In part: square tiles are done; isometric and hexagonal shapes in 5 |
-| 2D lighting | 2D lights, occluders, normal-mapped sprites | 5 | Planned |
+| 2D lighting | 2D lights, occluders, normal-mapped sprites | 5 | Done |
 | 2D physics | Box2D v3 | 5 | Planned |
 | 3D physics | Jolt: rigid bodies, joints, character controller, vehicles | 7 | Planned |
 | 3D renderer | Clustered forward+ with PBR, plus a low-end path for web and mobile | 7 | Planned |

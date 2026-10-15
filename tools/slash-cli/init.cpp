@@ -111,9 +111,10 @@ environment variables, never from the file.
 - `scenes/`: scenes as canonical JSON, keyed by stable entity ID. Run
   `slash-cli scene format <file>` before committing a scene edited outside the engine.
 - `prefabs/`: `.prefab.json` files, one entity's components each, which scene entities extend.
-- `sprites/` (or any folder): `.png` textures for `Sprite2D`, `.frames.json` animations
-  (`slash-cli schema frames`) that `AnimatedSprite2D` plays, and `.material.json` materials
-  (`slash-cli schema material`), node graphs that color a sprite's pixels. Exports ship them all.
+- `sprites/` (or any folder): `.png` textures for `Sprite2D` (and its normal maps and light
+  textures), `.frames.json` animations (`slash-cli schema frames`) that `AnimatedSprite2D` plays,
+  and `.material.json` materials (`slash-cli schema material`), node graphs that color a sprite's
+  pixels. Exports ship them all. Check lighting with `light_sample` rather than a screenshot.
 - `animations/` (or any folder): `.anim.json` keyframe animations (`slash-cli schema animation`)
   that `AnimationPlayer` plays on an entity's fields. Check one with `animation_eval`.
 - `tiles/` (or any folder): `.tileset.json` tile sets (`slash-cli schema tileset`) that cut atlas

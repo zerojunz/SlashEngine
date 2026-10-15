@@ -13,6 +13,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <memory>
 #include <span>
 #include <string>
 #include <string_view>
@@ -40,8 +41,68 @@ struct ProgramUniforms {
     std::array<std::array<float, 4>, kMaxConstants> constants{};
     std::array<float, 4> texel{};
     std::array<std::uint32_t, 4> counts{};
+    std::array<std::int32_t, 4> shading{};
+    std::array<float, 4> specular{};
 };
-static_assert(sizeof(ProgramUniforms) == 1568);
+static_assert(sizeof(ProgramUniforms) == 1600);
+
+// One light, laid out as the material shader's Light struct.
+struct LightUniform {
+    std::array<float, 4> color{};
+    std::array<float, 4> position{};
+    std::array<float, 4> texture_u{};
+    std::array<float, 4> texture_v{};
+    std::array<float, 4> atlas{};
+    std::array<float, 4> shadow{};
+    std::array<float, 4> shadow_origin{};
+    std::array<float, 4> shadow_color{};
+    std::array<std::uint32_t, 4> flags{};
+    std::array<std::int32_t, 4> range{};
+};
+static_assert(sizeof(LightUniform) == 160);
+
+// The material shader's Lights cbuffer.
+struct LightsUniforms {
+    std::array<float, 4> ambient{1.0F, 1.0F, 1.0F, 1.0F};
+    std::array<std::uint32_t, 4> count{};
+    std::array<LightUniform, kMaxLights> lights{};
+};
+static_assert(sizeof(LightsUniforms) == 32 + (160 * kMaxLights));
+
+// The material shader's samplers: the draw's texture, the material's three, the draw's normal and
+// specular maps, then the frame's light atlas and shadow map.
+constexpr std::size_t kMaterialSamplers = kMaterialTextureSlots + 4;
+
+LightsUniforms lights_uniforms(const Lighting& lighting) {
+    LightsUniforms out;
+    out.ambient = {lighting.ambient.r, lighting.ambient.g, lighting.ambient.b, lighting.ambient.a};
+    const std::size_t count = std::min(lighting.lights.size(), kMaxLights);
+    out.count.at(0) = static_cast<std::uint32_t>(count);
+    for (std::size_t i = 0; i < count; ++i) {
+        const Light& light = lighting.lights[i];
+        LightUniform& u = out.lights.at(i);
+        const bool point = light.kind == LightKind::Point;
+        const auto& m = light.texture_transform;
+        u.color = light.color;
+        u.position = {light.position[0], light.position[1], light.height, point ? 0.0F : 1.0F};
+        u.texture_u = {m[0], m[1], m[2], 0.0F};
+        u.texture_v = {m[3], m[4], m[5], 0.0F};
+        u.atlas = light.atlas_rect;
+        u.shadow = {static_cast<float>(light.shadow_row), light.shadow_far,
+                    1.0F + light.shadow_smooth, light.shadow_reach};
+        u.shadow_origin = {light.shadow_origin[0], light.shadow_origin[1], light.shadow_span, 0.0F};
+        u.shadow_color = light.shadow_color;
+        std::uint32_t taps = 0;
+        if (light.shadow_filter == ShadowFilter::Pcf5) {
+            taps = 2;
+        } else if (light.shadow_filter == ShadowFilter::Pcf13) {
+            taps = 6;
+        }
+        u.flags = {static_cast<std::uint32_t>(light.blend), taps, light.item_cull_mask, 0};
+        u.range = {light.z_min, light.z_max, 0, 0};
+    }
+    return out;
+}
 
 // The two shaders: plain sprites, and materials that run a program.
 enum class ShaderKind : std::uint8_t { Sprite, Material };
@@ -344,6 +405,15 @@ public:
             width = it->second.desc.width;
             height = it->second.desc.height;
         }
+        if (auto checked = check_lighting(
+                frame.lighting, frame.target, [&](TextureId id) { return textures_.contains(id); },
+                [&](TextureId id) {
+                    const TextureDesc& desc = textures_.at(id).desc;
+                    return std::pair{desc.width, desc.height};
+                });
+            !checked) {
+            return checked.error();
+        }
         // Made before the command buffer, so a failure leaves nothing half started. Pipelines for
         // materials are made when a draw first needs them.
         auto pipeline = pipeline_for(format, ShaderKind::Sprite, BlendMode::Mix);
@@ -394,6 +464,11 @@ public:
         if (auto checked = check_vertices(vertices, vertices_.size()); !checked) {
             return checked;
         }
+        if (auto checked = check_lighting_textures(
+                frame_.lighting, [&](TextureId id) { return textures_.contains(id); });
+            !checked) {
+            return checked;
+        }
         if (vertices.empty() || frame_commands_ == nullptr) {
             return {}; // nothing to draw, or a skipped frame
         }
@@ -402,13 +477,16 @@ public:
         if (batches_.empty() || batches_.back().texture != texture ||
             batches_.back().material != material) {
             const ShaderKind kind =
-                material.program.code.empty() ? ShaderKind::Sprite : ShaderKind::Material;
+                material.program.code.empty() && material.shading.mode == LightMode::Unshaded
+                    ? ShaderKind::Sprite
+                    : ShaderKind::Material;
             auto pipeline = pipeline_for(frame_format_, kind, material.blend);
             if (!pipeline) {
                 return pipeline.error();
             }
             Batch batch{.texture = texture,
                         .material = material,
+                        .kind = kind,
                         .pipeline = pipeline.value(),
                         .samplers = {},
                         .texel = {1.0F, 1.0F, 0.0F, 0.0F},
@@ -419,6 +497,12 @@ public:
                 const MaterialTexture& bound = material.textures.at(slot - 1);
                 batch.samplers.at(slot) = binding(bound.texture, bound.repeat);
             }
+            batch.samplers.at(kMaterialTextureSlots) = binding(material.shading.normal_map, false);
+            batch.samplers.at(kMaterialTextureSlots + 1) =
+                binding(material.shading.specular_map, false);
+            batch.samplers.at(kMaterialTextureSlots + 2) = binding(frame_.lighting.atlas, false);
+            batch.samplers.at(kMaterialTextureSlots + 3) =
+                binding(frame_.lighting.shadow_map, false);
             if (texture != TextureId::None) {
                 const TextureDesc& desc = textures_.at(texture).desc;
                 batch.texel = {1.0F / static_cast<float>(desc.width),
@@ -461,6 +545,14 @@ public:
                 static_cast<float>(frame_width_), static_cast<float>(frame_height_)));
             SDL_PushGPUVertexUniformData(commands, 0, view.data(),
                                          static_cast<std::uint32_t>(sizeof(view)));
+            if (std::ranges::any_of(batches_, [](const Batch& batch) {
+                    return batch.kind == ShaderKind::Material;
+                })) {
+                const auto lights =
+                    std::make_unique<LightsUniforms>(lights_uniforms(frame_.lighting));
+                SDL_PushGPUFragmentUniformData(commands, 1, lights.get(),
+                                               static_cast<std::uint32_t>(sizeof(LightsUniforms)));
+            }
             const SDL_GPUBufferBinding vertices{.buffer = vertex_buffer_, .offset = 0};
             SDL_BindGPUVertexBuffers(pass, 0, &vertices, 1);
             SDL_GPUGraphicsPipeline* bound = nullptr;
@@ -469,7 +561,7 @@ public:
                     SDL_BindGPUGraphicsPipeline(pass, batch.pipeline);
                     bound = batch.pipeline;
                 }
-                if (batch.material.program.code.empty()) {
+                if (batch.kind == ShaderKind::Sprite) {
                     SDL_BindGPUFragmentSamplers(pass, 0, batch.samplers.data(), 1);
                 } else {
                     push_program(commands, batch);
@@ -582,9 +674,10 @@ private:
     struct Batch {
         TextureId texture = TextureId::None;
         Material material;
+        ShaderKind kind = ShaderKind::Sprite;
         SDL_GPUGraphicsPipeline* pipeline = nullptr;
-        // The draw's texture, then the material's.
-        std::array<SDL_GPUTextureSamplerBinding, kMaterialTextureSlots> samplers{};
+        // The draw's texture, the material's, the shading's and the frame's lighting textures.
+        std::array<SDL_GPUTextureSamplerBinding, kMaterialSamplers> samplers{};
         std::array<float, 4> texel{};
         std::uint32_t first = 0;
         std::uint32_t count = 0;
@@ -622,6 +715,12 @@ private:
         std::ranges::copy(batch.material.program.constants, uniforms.constants.begin());
         uniforms.texel = batch.texel;
         uniforms.counts.at(0) = static_cast<std::uint32_t>(batch.material.program.code.size());
+        const Shading& shading = batch.material.shading;
+        uniforms.shading = {static_cast<std::int32_t>(shading.mode),
+                            static_cast<std::int32_t>(shading.light_mask), shading.z_index,
+                            (shading.normal_map != TextureId::None ? 1 : 0) |
+                                (shading.specular_map != TextureId::None ? 2 : 0)};
+        uniforms.specular = shading.specular;
         SDL_PushGPUFragmentUniformData(commands, 0, &uniforms,
                                        static_cast<std::uint32_t>(sizeof(uniforms)));
     }
@@ -662,8 +761,8 @@ private:
         if (vertex) {
             info.num_uniform_buffers = 1;
         } else {
-            info.num_samplers = material ? static_cast<std::uint32_t>(kMaterialTextureSlots) : 1;
-            info.num_uniform_buffers = material ? 1 : 0;
+            info.num_samplers = material ? static_cast<std::uint32_t>(kMaterialSamplers) : 1;
+            info.num_uniform_buffers = material ? 2 : 0;
         }
         const SDL_GPUShaderFormat formats = SDL_GetGPUShaderFormats(device_);
         std::vector<std::uint8_t> compiled;

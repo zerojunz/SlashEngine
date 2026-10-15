@@ -1,0 +1,96 @@
+{
+  "entities": {
+    "crate": {
+      "components": {
+        "LightOccluder2D": {
+          "cull_mode": "counter_clockwise",
+          "polygon": [
+            [-12.0, -12.0],
+            [12.0, -12.0],
+            [12.0, 12.0],
+            [-12.0, 12.0]
+          ]
+        },
+        "Sprite2D": {
+          "normal_texture": "crate_n.png",
+          "texture": "crate.png",
+          "texture_filter": "nearest"
+        },
+        "Transform2D": {
+          "position": [160.0, 90.0]
+        }
+      }
+    },
+    "dark": {
+      "components": {
+        "CanvasModulate": {
+          "color": [0.12, 0.12, 0.2, 1.0]
+        }
+      }
+    },
+    "floor": {
+      "components": {
+        "Sprite2D": {
+          "centered": false,
+          "texture": "stone.png",
+          "texture_filter": "nearest",
+          "z_index": -1
+        },
+        "Transform2D": {
+          "scale": [10.0, 6.0]
+        }
+      }
+    },
+    "hero": {
+      "components": {
+        "Sprite2D": {
+          "texture": "hero.png",
+          "texture_filter": "nearest"
+        },
+        "Transform2D": {
+          "position": [60.0, 120.0]
+        }
+      }
+    },
+    "moon": {
+      "components": {
+        "DirectionalLight2D": {
+          "color": [0.5, 0.6, 1.0, 1.0],
+          "energy": 0.25,
+          "height": 0.6
+        },
+        "Transform2D": {
+          "rotation": 0.5
+        }
+      }
+    },
+    "sign": {
+      "components": {
+        "Sprite2D": {
+          "material": "neon.material.json",
+          "texture": "sign.png",
+          "texture_filter": "nearest"
+        },
+        "Transform2D": {
+          "position": [260.0, 40.0]
+        }
+      }
+    },
+    "torch": {
+      "components": {
+        "PointLight2D": {
+          "color": [1.0, 0.75, 0.45, 1.0],
+          "energy": 1.4,
+          "height": 40.0,
+          "shadow_enabled": true,
+          "shadow_filter": "pcf5",
+          "texture_scale": 1.5
+        },
+        "Transform2D": {
+          "position": [96.0, 90.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

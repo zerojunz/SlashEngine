@@ -1374,6 +1374,84 @@ TEST_CASE("material.eval returns the colors a material draws, for a file or a sp
     std::filesystem::remove_all(root);
 }
 
+TEST_CASE("light.sample returns how lit points are, and which lights reach them") {
+    const std::string root = "light_test_project";
+    std::filesystem::remove_all(root);
+    REQUIRE(slash::platform::create_directories(root).ok());
+    render::Image white;
+    white.width = 4;
+    white.height = 4;
+    white.pixels.assign(std::size_t{4} * 4 * 4, 255);
+    REQUIRE(
+        slash::platform::write_file(root + "/white.png", render::encode_png(white).value()).ok());
+    command::SessionOptions options;
+    options.project_root = root;
+    Engine engine(options);
+
+    // No lights and no CanvasModulate: draws are unshaded.
+    CHECK(engine.ok("light.sample", R"({"points": [[0, 0]]})") ==
+          parse(R"({"lit": false, "ambient": [1, 1, 1],
+                    "points": [{"color": [1, 1, 1], "lights": []}]})"));
+
+    // A 200-pixel square lamp with shadows, and a wall to its right.
+    engine.ok("batch", R"({"commands": [
+        {"command": "entity.create", "params": {"id": "dark", "components": {
+            "CanvasModulate": {"color": [0.2, 0.2, 0.2, 1]}}}},
+        {"command": "entity.create", "params": {"id": "lamp", "components": {
+            "Transform2D": {},
+            "PointLight2D": {"texture": "white.png", "texture_scale": 50,
+                             "color": [1, 0.5, 0, 1], "energy": 2, "shadow_enabled": true}}}},
+        {"command": "entity.create", "params": {"id": "wall", "components": {
+            "Transform2D": {"position": [50, 0]},
+            "LightOccluder2D": {"polygon": [[0, -10], [10, -10], [10, 10], [0, 10]]}}}},
+        {"command": "entity.create", "params": {"id": "hero", "components": {
+            "Transform2D": {"position": [0, 30]}, "Sprite2D": {"light_mask": 2}}}},
+        {"command": "entity.create", "params": {"id": "empty"}}]})");
+    CHECK(engine.ok("light.sample", R"({"points": [[0, 30], [80, 0], [150, 0]]})") ==
+          parse(R"({"lit": true, "ambient": [0.2, 0.2, 0.2], "points": [
+              {"color": [2.2, 1.2, 0.2],
+               "lights": [{"id": "lamp", "color": [2, 1, 0], "shadow": 0}]},
+              {"color": [0.2, 0.2, 0.2],
+               "lights": [{"id": "lamp", "color": [0, 0, 0], "shadow": 1}]},
+              {"color": [0.2, 0.2, 0.2], "lights": []}]})"));
+    // The lamp's range_item_cull_mask is 1, so draws on light mask 2 stay dark.
+    const json::Value dark = parse(R"({"lit": true, "ambient": [0.2, 0.2, 0.2],
+                                       "points": [{"color": [0.2, 0.2, 0.2], "lights": []}]})");
+    CHECK(engine.ok("light.sample", R"({"points": [[0, 30]], "light_mask": 2})") == dark);
+    // An entity: its position and its sprite's light mask, unless given.
+    CHECK(engine.ok("light.sample", R"({"id": "hero"})") == dark);
+    CHECK(engine.ok("light.sample", R"({"id": "hero", "light_mask": 1})")
+              .find("points")
+              ->as_array()[0]
+              .find("color")
+              ->as_array()[0]
+              .as_double() == 2.2);
+    // z ranges: the lamp lights z indexes from -1024 to 1024.
+    CHECK(engine.ok("light.sample", R"({"points": [[0, 30]], "z_index": 2000})") == dark);
+
+    // A light that can't shine is left out with a warning.
+    engine.ok("entity.create", R"({"id": "broken", "components": {"Transform2D": {},
+        "PointLight2D": {"texture": "gone.png"}}})");
+    auto result = engine.ok("light.sample", R"({"points": [[150, 0]]})");
+    REQUIRE(result.find("warnings") != nullptr);
+    CHECK(result.find("warnings")->as_array()[0].find("id")->as_string() == "broken");
+    CHECK(
+        contains(result.find("warnings")->as_array()[0].find("message")->as_string(), "gone.png"));
+
+    auto reply = engine.fails("light.sample", "{}", command::code::kInvalidParams);
+    CHECK(contains(reply.message, "give points"));
+    engine.fails("light.sample", R"({"id": "hero", "points": [[0, 0]]})",
+                 command::code::kInvalidParams);
+    reply = engine.fails("light.sample", R"({"id": "hreo"})", command::code::kNotFound);
+    CHECK(contains(reply.message, "did you mean \"hero\""));
+    reply = engine.fails("light.sample", R"({"id": "empty"})", command::code::kInvalidParams);
+    CHECK(reply.message == "/id: \"empty\" has no Transform2D");
+    engine.fails("light.sample", R"({"points": []})", command::code::kInvalidParams);
+    engine.fails("light.sample", R"({"points": [[0, 0]], "light_mask": -1})",
+                 command::code::kInvalidParams);
+    std::filesystem::remove_all(root);
+}
+
 TEST_CASE("animation.eval returns the values an animation's tracks set, and step plays them") {
     const std::string root = "animation_test_project";
     std::filesystem::remove_all(root);

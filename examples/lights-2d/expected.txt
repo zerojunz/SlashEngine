@@ -1,0 +1,20 @@
+wrote stone.png: 32x32
+wrote crate.png: 24x24
+wrote crate_n.png: 24x24
+wrote hero.png: 16x16
+wrote sign.png: 32x12
+scene.open {"path":"main.scene.json"}
+{"entities":7,"path":"main.scene.json"}
+light.sample {"points":[[96,60],[200,90],[300,170]]}
+{"ambient":[0.12,0.12,0.2],"lit":true,"points":[{"color":[1.244,1.02,0.9],"lights":[{"color":[0.125,0.15,0.25],"id":"moon"},{"color":[0.999,0.75,0.45],"id":"torch","shadow":0}]},{"color":[0.245,0.27,0.45],"lights":[{"color":[0.125,0.15,0.25],"id":"moon"},{"color":[0,0,0],"id":"torch","shadow":1}]},{"color":[0.245,0.27,0.45],"lights":[{"color":[0.125,0.15,0.25],"id":"moon"}]}]}
+light.sample {"id":"crate"}
+{"ambient":[0.12,0.12,0.2],"lit":true,"points":[{"color":[0.871,0.739,0.732],"lights":[{"color":[0.125,0.15,0.25],"id":"moon"},{"color":[0.626,0.469,0.282],"id":"torch","shadow":0}]}]}
+light.sample {"id":"hero"}
+{"ambient":[0.12,0.12,0.2],"lit":true,"points":[{"color":[1.049,0.873,0.812],"lights":[{"color":[0.125,0.15,0.25],"id":"moon"},{"color":[0.804,0.603,0.362],"id":"torch","shadow":0}]}]}
+component.set {"components":{"PointLight2D":{"color":[0.6,0.8,1,1]}},"id":"torch"}
+{"changed":{"PointLight2D":{"color":[0.6,0.8,1.0,1.0]}},"id":"torch"}
+light.sample {"points":[[96,60]]}
+{"ambient":[0.12,0.12,0.2],"lit":true,"points":[{"color":[0.845,1.07,1.449],"lights":[{"color":[0.125,0.15,0.25],"id":"moon"},{"color":[0.6,0.8,0.999],"id":"torch","shadow":0}]}]}
+component.set {"components":{"PointLight2D":{"blend_mode":"ad"}},"id":"torch"}
+"/components/PointLight2D/blend_mode: expected one of \"add\", \"sub\", \"mix\", got \"ad\""
+sprites drawn: 4, lights: 2, shadows: 1, GPU draws: 4
