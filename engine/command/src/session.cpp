@@ -579,9 +579,9 @@ Session::SavedWorld Session::save() const {
 void Session::restore(const SavedWorld& saved) {
     muted_events_ = true;
     world_.clear();
-    // Copies are saved from a valid world with the prefab each entity extends, so loading one
-    // reads no files and cannot fail.
-    const auto loaded = world::load_scene(world_, saved.scene, saved.links);
+    // Copies are saved from this world with the prefab each entity extends, so restoring one
+    // reads no files and cannot fail, even when a system moved a field outside its range.
+    const auto loaded = world::restore_scene(world_, saved.scene, saved.links);
     muted_events_ = false;
     SLASH_ASSERT(loaded.ok(), "a session snapshot failed to load");
 }

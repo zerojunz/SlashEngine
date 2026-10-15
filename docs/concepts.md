@@ -172,7 +172,7 @@ secrets never go in the file; they come from environment variables. See
 The world advances in fixed **ticks**: 60 per second by default. A fixed step keeps runs
 deterministic, which lets agents and CI repeat a run and get the same result. `slash-cli run`
 ticks the world in a window or headless; the `step` command advances it a given number of ticks
-from any front end.
+from any front end, and `run.until` until a condition on the entities holds.
 
 ## Commands
 
