@@ -25,6 +25,7 @@ constexpr std::string_view kInstructions =
 - Add "dry_run": true to any edit or batch to see what it would change without changing anything. world_snapshot, then world_diff later, lists every entity and field that changed; world_restore goes back.
 - world_query returns only entity IDs unless you pass include. Filter with where, e.g. {"component": "Transform2D", "field": "position.y", "op": ">", "value": 100}.
 - component_set returns only the fields that changed.
+- storyboard_query looks up the game's facts (characters, places, story, rules, names, decisions, open work) instead of guessing; storyboard_edit records new ones and needs the version you read.
 - Edited files reload on their own before each call: prefab instances update and keep their overrides. asset_list shows what is loaded.
 - Errors give the JSON Pointer of the bad value and suggest the right name when one is misspelled, so fix it and retry.
 - Paths are relative to the project folder. Call scene_save when you are done.)";
@@ -85,6 +86,13 @@ std::string Server::handle(std::string_view message) {
 
 Reply Server::dispatch(std::string_view method, const json::Value& params) {
     if (method == "initialize") {
+        // The client's name says who made a change, e.g. in the storyboard journal.
+        if (const json::Value* info = params.find("clientInfo"); info != nullptr) {
+            if (const json::Value* name = info->find("name");
+                name != nullptr && name->is_string()) {
+                session_->set_client(name->as_string());
+            }
+        }
         return initialize(params);
     }
     if (method == "ping") {

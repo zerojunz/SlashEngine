@@ -86,6 +86,8 @@ TEST_CASE("initialize negotiates the protocol version and sends instructions") {
     CHECK(result.find("serverInfo")->find("name")->as_string() == "slashengine");
     CHECK(result.find("capabilities")->find("tools") != nullptr);
     CHECK(result.find("instructions")->as_string().find("batch") != std::string::npos);
+    // The client's name is who the storyboard journal says made a change.
+    CHECK(client.session->client() == "test");
 
     const json::Value newest = client.result("initialize", R"({"protocolVersion": "1999-01-01"})");
     CHECK(newest.find("protocolVersion")->as_string() == mcp::kProtocolVersions.front());

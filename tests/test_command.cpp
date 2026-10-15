@@ -797,6 +797,154 @@ TEST_CASE("changed files reload, and prefab instances update with their override
     std::filesystem::remove_all(root);
 }
 
+TEST_CASE("storyboard.edit writes entries, refuses stale versions and undoes") {
+    const std::string root = "command_storyboard_project";
+    std::filesystem::remove_all(root);
+    command::SessionOptions options;
+    options.project_root = root;
+    Engine engine(options);
+    const auto read = [&](const std::string& path) {
+        auto text = slash::platform::read_file(root + "/" + path);
+        REQUIRE(text.ok());
+        return std::move(text).value();
+    };
+
+    const json::Value created = engine.ok("storyboard.edit", R"({"why": "first cast", "edits": [
+        {"id": "faction/couriers", "version": null, "set": {"name": "The Couriers"}},
+        {"id": "character/mira", "version": null,
+         "set": {"name": "Mira", "faction": "faction/couriers"}}]})");
+    const std::string mira = created.find("changes")->find("character/mira")->as_string();
+    CHECK(created.find("seq")->as_int() == 1);
+    CHECK(read("storyboard/world.json") == R"({
+  "entries": {
+    "character/mira": {
+      "faction": "faction/couriers",
+      "name": "Mira"
+    },
+    "faction/couriers": {
+      "name": "The Couriers"
+    }
+  },
+  "format": 1
+}
+)");
+    const json::Value line = parse(read("storyboard/journal.jsonl"));
+    CHECK(line.find("by")->as_string() == "unknown");
+    CHECK(line.find("why")->as_string() == "first cast");
+    CHECK(*line.find("changes") == *created.find("changes"));
+
+    CHECK(engine.ok("storyboard.query", R"({"kind": "character"})") == parse(R"({"seq": 1,
+        "entries": [{"id": "character/mira", "version": ")" + mira + R"(",
+                     "fields": {"name": "Mira"}}]})"));
+    engine.fails("storyboard.query", R"({"ids": ["character/mra"]})", command::code::kNotFound);
+
+    // Another agent's change makes a version stale; the error carries the entry as it is now.
+    const auto stale = engine.fails("storyboard.edit", R"({"edits": [{"id": "character/mira",
+        "version": "0000000a", "set": {"voice": "dry"}}]})",
+                                    command::code::kConflict);
+    CHECK(stale.data.find("current")->find("version")->as_string() == mira);
+    engine.fails("storyboard.edit",
+                 R"({"edits": [{"id": "character/mira", "version": ")" + mira +
+                     R"(", "set": {"home": "place/nowhere"}}]})",
+                 command::code::kInvalidParams);
+
+    // A dry run, and a failed batch, write nothing.
+    const std::string world_before = read("storyboard/world.json");
+    const std::string journal_before = read("storyboard/journal.jsonl");
+    const json::Value dry = engine.ok("storyboard.edit", R"({"dry_run": true, "edits": [
+        {"id": "character/mira", "version": ")" + mira + R"(", "set": {"voice": "dry"}}]})");
+    CHECK(dry.find("result")->find("seq")->as_int() == 2);
+    engine.fails("batch", R"({"commands": [
+        {"command": "storyboard.edit", "params": {"edits": [{"id": "place/docks",
+                                                             "version": null,
+                                                             "set": {"name": "Docks"}}]}},
+        {"command": "entity.destroy", "params": {"id": "nobody"}}]})",
+                 command::code::kNotFound);
+    CHECK(read("storyboard/world.json") == world_before);
+    CHECK(read("storyboard/journal.jsonl") == journal_before);
+
+    // A batch that edits the world and the storyboard is one undo step.
+    engine.ok("batch", R"({"commands": [
+        {"command": "entity.create", "params": {"id": "courier"}},
+        {"command": "storyboard.edit", "params": {"edits": [{"id": "place/docks",
+                                                             "version": null,
+                                                             "set": {"name": "Docks"}}]}}]})");
+    CHECK(engine.session->undo_labels() == std::vector<std::string>{"storyboard.edit", "batch"});
+    engine.ok("undo");
+    CHECK(engine.scene().size() == 0);
+    CHECK(read("storyboard/world.json") == world_before);
+    engine.ok("redo");
+    CHECK(engine.scene().size() == 1);
+    CHECK(contains(read("storyboard/world.json"), "place/docks"));
+    engine.ok("undo");
+
+    // Undo of an edit that changed only files leaves the world alone, and is journaled.
+    engine.ok("entity.create", R"({"id": "bystander"})");
+    engine.session->clear_history();
+    const json::Value voiced = engine.ok("storyboard.edit", R"({"edits": [{"id": "character/mira",
+        "version": ")" + mira + R"(", "set": {"voice": "dry"}}]})");
+    engine.ok("undo");
+    CHECK(engine.scene().size() == 1);
+    CHECK(read("storyboard/world.json") == world_before);
+    const std::string journal = read("storyboard/journal.jsonl");
+    CHECK(contains(journal, R"("why":"undo")"));
+    engine.ok("redo");
+    CHECK(contains(read("storyboard/world.json"), R"("voice": "dry")"));
+
+    // Undo is refused, and changes nothing, once someone else changed the entry since.
+    const std::string edited_elsewhere = R"({"format": 1, "entries": {
+        "character/mira": {"name": "Mira", "voice": "warm", "faction": "faction/couriers"},
+        "faction/couriers": {"name": "The Couriers"}}})";
+    REQUIRE(slash::platform::write_file(root + "/storyboard/world.json", edited_elsewhere).ok());
+    const auto refused = engine.fails("undo", "{}", command::code::kConflict);
+    CHECK(contains(refused.message, "could not undo \"storyboard.edit\""));
+    CHECK(read("storyboard/world.json") == edited_elsewhere);
+    CHECK(engine.session->undo_labels() == std::vector<std::string>{"storyboard.edit"});
+    CHECK(voiced.find("changes")->size() == 1);
+
+    // An invalid storyboard file is reported, with every error, before any edit.
+    REQUIRE(slash::platform::write_file(root + "/storyboard/story.json",
+                                        R"({"format": 1, "entries": {"beat/x": {}}})")
+                .ok());
+    const auto invalid = engine.fails("storyboard.query", "{}", command::code::kInvalidArgument);
+    CHECK(contains(invalid.message, "storyboard/story.json at /entries/beat~1x: missing required"));
+    std::filesystem::remove_all(root);
+}
+
+TEST_CASE("a file changed on disk while a command ran is not overwritten") {
+    const std::string root = "command_conflict_project";
+    std::filesystem::remove_all(root);
+    REQUIRE(slash::platform::create_directories(root).ok());
+    REQUIRE(slash::platform::write_file(root + "/notes.txt", "first").ok());
+    command::SessionOptions options;
+    options.project_root = root;
+    Engine engine(options);
+    // A command that reads a file, then finds another agent wrote it before it staged its own.
+    engine.commands.add({
+        .name = "test.race",
+        .description = "Stages a file that changes on disk meanwhile.",
+        .capabilities = {Capability::Edit},
+        .effect = command::Effect::Edit,
+        .params = parse(R"({"type": "object"})"),
+        .handler =
+            [&](command::Session& session, const json::Value& /*params*/) {
+                REQUIRE(session.read_project_file("notes.txt").value() == "first");
+                REQUIRE(slash::platform::write_file(root + "/notes.txt", "theirs").ok());
+                REQUIRE(session.stage_file("notes.txt", "mine").ok());
+                REQUIRE(session.stage_append("log.txt", "line\n").ok());
+                return command::Reply::success(json::Object{});
+            },
+    });
+    const auto reply = engine.fails("test.race", "{}", command::code::kConflict);
+    CHECK(contains(reply.message, "\"notes.txt\" changed on disk"));
+    CHECK(slash::platform::read_file(root + "/notes.txt").value() == "theirs");
+    CHECK_FALSE(slash::platform::exists(root + "/log.txt"));
+    CHECK(engine.session->undo_labels().empty());
+    // Read commands cannot stage files.
+    CHECK_FALSE(engine.session->stage_file("notes.txt", "x").ok());
+    std::filesystem::remove_all(root);
+}
+
 TEST_CASE("step advances the simulation and undo reverts it") {
     Engine engine;
     engine.ok("entity.create", R"({"id": "ball", "components": {"Transform2D": {}}})");
@@ -875,6 +1023,8 @@ TEST_CASE("schema.get returns scene, component and command schemas") {
           "SlashEngine prefab");
     CHECK(engine.ok("schema.get", R"({"kind": "scene"})").find("title")->as_string() ==
           "SlashEngine scene");
+    CHECK(engine.ok("schema.get", R"({"kind": "storyboard"})").find("title")->as_string() ==
+          "SlashEngine storyboard file");
 
     const json::Value health =
         engine.ok("schema.get", R"({"kind": "component", "name": "Health"})");

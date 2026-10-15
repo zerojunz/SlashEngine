@@ -30,7 +30,7 @@ Rules that apply to every command (see [concepts.md](../concepts.md#sessions)):
 
 Add `"dry_run": true` to the params of any command that changes the world (`scene.new`,
 `scene.open`, `entity.create`, `entity.destroy`, `component.set`, `component.remove`, `step`,
-`world.restore` and `batch`) to see what it would do. The command runs, then the world, the
+`world.restore`, `storyboard.edit` and `batch`) to see what it would do. The command runs, then the world, the
 scene's path, the next generated ID and the tick counter are put back, and no undo step is
 recorded. An error is returned as usual. The result holds the command's own result and the
 changes, in the same form as [`world.diff`](#worlddiff):
@@ -44,7 +44,8 @@ changes, in the same form as [`world.diff`](#worlddiff):
 ```
 
 A batch takes `dry_run` itself; the commands inside it cannot. In a dry-run batch, `scene.save`
-and `prefab.save` check everything and return their usual result but write no file. Commands that change nothing, such
+and `prefab.save` check everything and return their usual result but write no file, and
+`storyboard.edit` returns the versions it would write. Commands that change nothing, such
 as `entity.get`, reject it as an unknown param.
 
 ## Contents
@@ -56,6 +57,7 @@ as `entity.get`, reject it as an unknown param.
 | Entities | [`entity.create`](#entitycreate), [`entity.destroy`](#entitydestroy), [`entity.get`](#entityget) |
 | Prefabs | [`prefab.save`](#prefabsave) |
 | Assets | [`asset.list`](#assetlist) |
+| Storyboard | [`storyboard.query`](#storyboardquery), [`storyboard.edit`](#storyboardedit) |
 | Components | [`component.set`](#componentset), [`component.remove`](#componentremove) |
 | Query | [`world.query`](#worldquery) |
 | Snapshots | [`world.snapshot`](#worldsnapshot), [`world.diff`](#worlddiff), [`world.restore`](#worldrestore) |
@@ -100,11 +102,11 @@ says whether the game is `playing`.
 
 ### schema.get
 
-Returns a JSON Schema: for scene or prefab files, one component or one command.
+Returns a JSON Schema: for scene, prefab or storyboard files, one component or one command.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `kind` | `"scene"`, `"prefab"`, `"component"` or `"command"` | required | Which schema |
+| `kind` | `"scene"`, `"prefab"`, `"storyboard"`, `"component"` or `"command"` | required | Which schema |
 | `name` | string | | Component or command name, for `component` and `command` |
 
 Needs: `read`.
@@ -311,6 +313,80 @@ Needs: `read`.
 ```json
 {"assets":[{"path":"data/tuning.json","refs":1,"type":"json","version":2},{"path":"prefabs/enemy.prefab.json","refs":3,"type":"prefab","version":1}]}
 ```
+
+## Storyboard
+
+The game's facts as typed entries in `storyboard/*.json`; see the
+[storyboard format](storyboard-format.md). Examples run against a copy of `tests/data/game`.
+
+### storyboard.query
+
+Finds storyboard entries. Filters combine; with none, every entry is returned. Each result has the
+entry's ID, its version (which `storyboard.edit` needs) and its name and summary, or every field
+with `"full": true`. `seq` is the journal's line count.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `ids` | array of IDs | all | Only these entries. An unknown ID fails with `-32001` and a "did you mean" hint |
+| `kind` | string | all | Only entries of this kind, e.g. `"character"` |
+| `text` | string | | Only entries with this text in a field, ignoring case |
+| `linked` | string | | Only entries whose `links` name this project path, or whose references name this ID |
+| `full` | boolean | `false` | Return every field, not only `name` and `summary` |
+
+Needs: `read`.
+
+```json
+{"linked": "scenes/main.scene.json"}
+```
+
+```json
+{"entries":[{"fields":{"name":"Pilot","summary":"The player: a courier pilot on her first run."},"id":"character/pilot","version":"f6ce5b73"},{"fields":{"name":"Landing pad","summary":"Where every run starts."},"id":"place/landing_pad","version":"4bdb955e"}],"seq":0}
+```
+
+### storyboard.edit
+
+Creates, changes or removes entries, all in one step: every edit applies or none does. It writes
+the files in canonical form, appends a line to the journal, and records an undo step.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `edits` | array | required | 1 to 1000 edits, at most one per entry |
+| `edits[].id` | string | required | The entry's ID |
+| `edits[].version` | string or `null` | required | The version `storyboard.query` returned, or `null` to create the entry |
+| `edits[].set` | object | | Fields to set; a `null` value removes a field |
+| `edits[].remove` | boolean | `false` | Remove the entry; give this or `set` |
+| `why` | string | | Why, for the journal |
+| `by` | string | the MCP client's name | Who, for the journal |
+
+Needs: `edit`, `filesystem`. Takes `dry_run`.
+
+```json
+{"why": "Give the pilot a rival", "by": "claude-code", "edits": [
+  {"id": "character/vex", "version": null, "set": {"name": "Vex", "summary": "A rival courier."}},
+  {"id": "character/pilot", "version": "f6ce5b73", "set": {"refs": ["character/vex"]}}]}
+```
+
+```json
+{"changes":{"character/pilot":"45b24094","character/vex":"a77d1847"},"seq":1}
+```
+
+`changes` holds each entry's new version, or `null` for a removed one. Fields are checked against
+the entry's kind, and every entry a set field names must exist, with the right kind:
+
+```json
+{"error":{"code":-32602,"data":{"path":"/edits/0/set/home"},"message":"/edits/0/set/home: unknown storyboard entry \"place/landing_pd\"; did you mean \"place/landing_pad\"?"}}
+```
+
+An edit with an old version fails with `-32005`, changes nothing, and returns the entry as it is
+now in `data.current`; edit that version instead:
+
+```json
+{"error":{"code":-32005,"data":{"current":{"fields":{"links":["scenes/main.scene.json"],"name":"Pilot","refs":["character/vex"],"summary":"The player: a courier pilot on her first run."},"id":"character/pilot","version":"45b24094"},"path":"/edits/0/version"},"message":"/edits/0/version: \"character/pilot\" changed since version f6ce5b73 was read; it is now 45b24094 (see current), so edit that version"}}
+```
+
+Removing an entry that another entry still names fails; change both in one call. `undo` and
+`redo` apply the reverse edit and the edit again, with the same version checks, so an undo that
+would overwrite someone else's later change is refused.
 
 ## Components
 
@@ -529,13 +605,14 @@ serving requests, and `step` still advances it. No params. Needs: `run`.
 
 ### undo
 
-Reverts the last change to the scene. No params. Needs: `edit`.
+Reverts the last change to the scene or the storyboard. No params. Needs: `edit`.
 
 ```json
 {"can_redo":1,"can_undo":2,"undone":"entity.destroy"}
 ```
 
-With nothing to undo, it fails with `-32002` and the message `nothing to undo`.
+With nothing to undo, it fails with `-32002` and the message `nothing to undo`. Undoing a
+`storyboard.edit` whose entries changed since fails with `-32005` and changes nothing.
 
 ### redo
 

@@ -80,6 +80,29 @@ public:
     // command polls first; hosts that tick the world also poll between ticks.
     void poll_assets();
 
+    // Project files that commands change, such as the storyboard. A command's changes are staged
+    // and written together when the outermost command succeeds, so a failed command or a dry run
+    // writes nothing, and later commands in a batch read the staged text. If someone else
+    // changed a file since the command read it, nothing is written and the command fails.
+    //
+    // The file's text, or nullopt if it does not exist.
+    [[nodiscard]] Result<std::optional<std::string>> read_project_file(std::string_view path);
+    // Replaces a file's text. Only commands that change the world (Edit and Compound effects)
+    // and undo and redo can stage files.
+    Result<void> stage_file(std::string_view path, std::string text);
+    // Appends text to an append-only log, such as the storyboard journal. Undo leaves logs alone.
+    Result<void> stage_append(std::string_view path, std::string_view text);
+
+    // Undo for changes outside the world, like Godot's UndoRedo: a command that changes files
+    // records the call that reverses it and the call that makes it again. Undo and redo run those
+    // calls as one staged change; if one fails, for example because the file changed since,
+    // nothing changes and undo reports why.
+    void add_undo_call(std::string command, json::Value undo_params, json::Value redo_params);
+
+    // Who is calling, for records such as the storyboard journal: the MCP client's name, or "".
+    [[nodiscard]] const std::string& client() const noexcept { return client_; }
+    void set_client(std::string client) { client_ = std::move(client); }
+
     // The project-relative path of the open scene, or "" for an unsaved one.
     [[nodiscard]] const std::string& scene_path() const noexcept { return scene_path_; }
     void set_scene_path(std::string path) { scene_path_ = std::move(path); }
@@ -146,9 +169,23 @@ public:
     [[nodiscard]] std::vector<std::string> recent_logs(std::size_t count) const;
 
 private:
+    struct UndoCall {
+        std::string command;
+        json::Value undo;
+        json::Value redo;
+    };
+
     struct Snapshot {
         std::string label;
         SavedWorld saved;
+        std::vector<UndoCall> calls;
+        bool restores_world = true; // false when the step changed only files
+    };
+
+    struct StagedFile {
+        std::optional<std::string> seen; // on disk when the command first read it
+        std::optional<std::string> text; // what to write, if the command replaced it
+        std::string append;              // what to append
     };
 
     struct Subscription {
@@ -167,6 +204,14 @@ private:
     [[nodiscard]] bool wants(std::string_view kind) const;
     void deliver(std::string_view kind, const std::vector<std::string>& ids, json::Value event);
     void remember(std::deque<Snapshot>& stack, Snapshot snapshot) const;
+    // Stages files until commit_files or discard_files.
+    void begin_files();
+    Result<void> commit_files();
+    void discard_files();
+    Result<StagedFile*> staged(std::string_view path);
+    [[nodiscard]] Result<std::optional<std::string>> read_disk(std::string_view path) const;
+    // Runs a step's undo calls (or its redo calls) as one staged change.
+    Reply replay(const Snapshot& step, bool undo);
 
     const Registry* commands_;
     SessionOptions options_;
@@ -186,7 +231,12 @@ private:
     std::uint64_t next_event_ = 1;
     std::vector<world::Event> pending_events_; // from the command running now, kept if it succeeds
     bool buffering_events_ = false;
-    bool muted_events_ = false;     // while restoring a snapshot, which recreates every entity
+    bool muted_events_ = false; // while restoring a snapshot, which recreates every entity
+    std::map<std::string, StagedFile, std::less<>> staged_;
+    bool staging_ = false;
+    std::vector<UndoCall> undo_calls_; // from the command running now
+    bool replaying_ = false;           // undo or redo is running a step's calls
+    std::string client_;
     mutable std::mutex logs_mutex_; // the log sink may run on any thread
     std::deque<std::string> logs_;
 };
