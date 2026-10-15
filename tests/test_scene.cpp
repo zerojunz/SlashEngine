@@ -243,6 +243,20 @@ TEST_CASE("a failed load leaves the world unchanged") {
     CHECK(game.size() == 1);
 }
 
+TEST_CASE("restore_scene puts back fields that systems moved outside their range") {
+    const auto registry = make_registry();
+    World game(registry);
+    const entt::entity hero = game.create("hero").value();
+    game.ecs().emplace<demo::Health>(hero, demo::Health{.current = -20.0F});
+    const json::Value saved = world::save_scene(game);
+
+    // A scene file with that value is invalid, but a world saved that way restores exactly.
+    World copy(registry);
+    CHECK_FALSE(world::load_scene(copy, saved).ok());
+    REQUIRE(world::restore_scene(copy, saved, game.prefab_links()).ok());
+    CHECK(world::save_scene(copy) == saved);
+}
+
 TEST_CASE("diff_scenes lists what changed by entity ID") {
     const auto registry = make_registry();
     const json::Value before = parse(R"({"format": 1, "entities": {

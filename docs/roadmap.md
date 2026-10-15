@@ -168,7 +168,7 @@ rendering on top.
       works, so a bug can be reproduced and inspected at the moment it happened
 - [ ] Debug overlay, drawn with the UI and text above
 - [ ] A test command that steps a game headless and returns only the checks that failed
-- [ ] Watch conditions: `run.until` steps a game headless until a condition on component
+- [x] Watch conditions: `run.until` steps a game headless until a condition on component
       fields holds (say, the player below the floor) or a tick limit passes, and returns the
       tick and the matching entities
 - [ ] Frame summaries: what is on screen as data instead of an image
@@ -415,7 +415,7 @@ calls and tokens ([design section 6](design.md#6-cheap-for-agents-to-use)).
 | Dry runs: see what an edit would change before making it | 5 | Done |
 | `world.snapshot` and `world.diff`: try something, see exactly what changed, roll back | 5 | Done |
 | Verified examples for every feature, built and run in CI | 5 | Done |
-| `run.until`: run headless until a condition holds instead of polling | 5 | Planned |
+| `run.until`: run headless until a condition holds instead of polling | 5 | Done |
 | `replay.seek`: query any earlier tick of a recorded run | 5 | Planned |
 | `build.check`: C++ compile errors as data from an incremental build | 6 | Planned |
 | `api.search`: real signatures and examples instead of guessed function names | 6 | Planned |

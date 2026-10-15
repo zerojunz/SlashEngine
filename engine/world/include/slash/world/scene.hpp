@@ -74,6 +74,12 @@ validate_prefab(const ComponentRegistry& components, const json::Value& prefab,
 [[nodiscard]] Result<std::size_t> load_scene(World& world, const json::Value& scene,
                                              const PrefabLinks& links = {});
 
+// Puts back entities that save_scene saved from a world with the same components, exactly as they
+// were. Unlike load_scene it skips the schema check: systems may have moved a field outside its
+// documented range, such as hit points below a minimum of 0, and the world must still restore.
+[[nodiscard]] Result<std::size_t> restore_scene(World& world, const json::Value& saved,
+                                                const PrefabLinks& links);
+
 // Every entity that has an ID, with the registered components it carries. An entity that extends
 // a prefab keeps "extends" and only the fields that differ from the prefab.
 [[nodiscard]] json::Value save_scene(const World& world);
