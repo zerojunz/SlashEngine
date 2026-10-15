@@ -50,6 +50,12 @@ SLASH_COMPONENT(Loadout, items, stats, level)
 struct Enemy {};
 SLASH_COMPONENT(Enemy)
 
+struct Tuning {
+    std::map<std::string, float> weights;
+    slash::json::Value extra;
+};
+SLASH_COMPONENT(Tuning, weights, extra)
+
 } // namespace demo
 
 namespace json = slash::json;
@@ -163,6 +169,56 @@ TEST_CASE("assign changes only the fields it is given") {
     REQUIRE_FALSE(failed.ok());
     CHECK(path == "/max");
     CHECK(game.ecs().get<demo::Health>(player).max == 30.0F); // unchanged
+}
+
+TEST_CASE("maps and JSON values save, load and validate") {
+    world::ComponentRegistry registry;
+    registry.add<demo::Tuning>();
+    World game(registry);
+    const entt::entity entity = game.create("knob").value();
+    const world::ComponentType& tuning = *registry.find("Tuning");
+    std::string path;
+    REQUIRE(tuning
+                .assign(game, entity,
+                        parse(R"({"weights": {"a": 1, "b/c": 2.5}, "extra": [1, "x", null]})"),
+                        path)
+                .ok());
+    const demo::Tuning& value = game.ecs().get<demo::Tuning>(entity);
+    CHECK(value.weights == std::map<std::string, float>{{"a", 1.0F}, {"b/c", 2.5F}});
+    CHECK(value.extra == parse(R"([1, "x", null])"));
+    CHECK(*world::save_scene(game)
+               .find("entities")
+               ->find("knob")
+               ->find("components")
+               ->find("Tuning") ==
+          parse(R"({"extra": [1, "x", null], "weights": {"a": 1.0, "b/c": 2.5}})"));
+
+    // A map is replaced whole, and its errors point inside it.
+    REQUIRE(tuning.assign(game, entity, parse(R"({"weights": {"c": 3}})"), path).ok());
+    CHECK(game.ecs().get<demo::Tuning>(entity).weights ==
+          std::map<std::string, float>{{"c", 3.0F}});
+    path.clear();
+    const auto bad = tuning.assign(game, entity, parse(R"({"weights": {"b/c": "x"}})"), path);
+    REQUIRE_FALSE(bad.ok());
+    CHECK(path == "/weights/b~1c");
+
+    // The defaults, an empty map and null, are left out of saved scenes.
+    game.ecs().get<demo::Tuning>(entity) = {};
+    CHECK(*world::save_scene(game)
+               .find("entities")
+               ->find("knob")
+               ->find("components")
+               ->find("Tuning") == parse("{}"));
+
+    world::SchemaBuilder builder;
+    (void)tuning.schema(builder);
+    const json::Value& definition = builder.definition("Tuning");
+    CHECK(
+        *definition.find("properties")->find("weights") ==
+        parse(R"({"type": "object", "additionalProperties": {"type": "number"}, "default": {}})"));
+    CHECK(json::validate(parse(R"({"weights": {"a": 1}, "extra": {"any": ["thing"]}})"), definition)
+              .empty());
+    CHECK_FALSE(json::validate(parse(R"({"weights": {"a": "x"}})"), definition).empty());
 }
 
 TEST_CASE("the scene schema carries docs, defaults and ranges") {

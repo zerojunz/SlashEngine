@@ -24,7 +24,7 @@ std::string number(float value) {
     return text;
 }
 
-render::Filter resolve_filter(const std::string& filter, render::Filter fallback) {
+render::Filter resolve_filter(std::string_view filter, render::Filter fallback) {
     if (filter == "nearest") {
         return render::Filter::Nearest;
     }
@@ -135,6 +135,11 @@ world::Transform2D interpolate(const world::Transform2D& from, const world::Tran
     return out;
 }
 
+double material_time(std::uint64_t tick, double tick_seconds, double interpolation) {
+    return std::max(static_cast<double>(tick) - 1.0 + std::clamp(interpolation, 0.0, 1.0), 0.0) *
+           tick_seconds;
+}
+
 CanvasRenderer::CanvasRenderer(render::RenderDevice& device, asset::Assets& assets)
     : device_(&device), assets_(&assets) {}
 
@@ -203,12 +208,46 @@ Result<const CanvasRenderer::Texture*> CanvasRenderer::texture(const std::string
     return &entry;
 }
 
+Result<render::Material> CanvasRenderer::material(const world::Sprite2D& sprite,
+                                                  render::Filter filter, double time) {
+    auto it = materials_.find(sprite.material);
+    if (it == materials_.end()) {
+        auto loaded = assets_->load<CanvasMaterial>(sprite.material);
+        if (!loaded) {
+            return loaded.error();
+        }
+        it = materials_.emplace(sprite.material, std::move(loaded).value()).first;
+    }
+    std::string failed;
+    auto instance = instantiate(*it->second, sprite.material_params, time, &failed);
+    if (!instance) {
+        return make_error(instance.error().code,
+                          "material_params/" + failed + ": " + instance.error().message);
+    }
+    render::Material out;
+    out.blend = instance.value().blend;
+    out.program = std::move(instance.value().program);
+    for (std::size_t slot = 0; slot < out.textures.size(); ++slot) {
+        const MaterialTextureRef& ref = instance.value().textures.at(slot);
+        if (ref.path.empty()) {
+            continue;
+        }
+        auto texture = this->texture(ref.path, resolve_filter(ref.filter, filter));
+        if (!texture) {
+            return make_error(texture.error().code, ref.path + ": " + texture.error().message);
+        }
+        out.textures.at(slot) = {.texture = texture.value()->id, .repeat = ref.repeat};
+    }
+    return out;
+}
+
 Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions& options) {
     struct Item {
         int z_index = 0;
         std::uint32_t order = 0;
         render::TextureId texture = render::TextureId::None;
         std::array<render::Vertex2D, 6> quad{};
+        render::Material material;
     };
     std::vector<Item> items;
     const auto& ecs = world.ecs();
@@ -217,11 +256,20 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         if (!sprite.visible || sprite.texture.empty()) {
             continue;
         }
-        auto texture = this->texture(sprite.texture,
-                                     resolve_filter(sprite.texture_filter, options.texture_filter));
+        const render::Filter filter = resolve_filter(sprite.texture_filter, options.texture_filter);
+        auto texture = this->texture(sprite.texture, filter);
         if (!texture) {
             warn_once(sprite.texture, texture.error().message, "texture");
             continue;
+        }
+        render::Material material;
+        if (!sprite.material.empty()) {
+            auto made = this->material(sprite, filter, options.time);
+            if (!made) {
+                warn_once(sprite.material, made.error().message, "material");
+                continue;
+            }
+            material = std::move(made).value();
         }
         world::Transform2D transform = current;
         if (options.interpolation < 1.0) {
@@ -240,7 +288,8 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         items.push_back({.z_index = sprite.z_index,
                          .order = static_cast<std::uint32_t>(entt::to_entity(entity)),
                          .texture = texture.value()->id,
-                         .quad = quad.value()});
+                         .quad = quad.value(),
+                         .material = std::move(material)});
     }
     std::ranges::sort(items, [](const Item& a, const Item& b) {
         return a.z_index != b.z_index ? a.z_index < b.z_index : a.order < b.order;
@@ -263,7 +312,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         return began.error();
     }
     for (const Item& item : items) {
-        if (auto drawn = device_->draw(item.texture, item.quad); !drawn) {
+        if (auto drawn = device_->draw(item.texture, item.quad, item.material); !drawn) {
             (void)device_->end_frame();
             return drawn.error();
         }

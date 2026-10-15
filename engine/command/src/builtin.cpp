@@ -1,5 +1,6 @@
 #include "slash/command/builtin.hpp"
 
+#include "slash/canvas/material.hpp"
 #include "slash/canvas/sprite_frames.hpp"
 #include "slash/command/session.hpp"
 #include "slash/core/assert.hpp"
@@ -8,14 +9,17 @@
 #include "slash/core/text.hpp"
 #include "slash/core/version.hpp"
 #include "slash/platform/file.hpp"
+#include "slash/render/image.hpp"
 #include "slash/storyboard/storyboard.hpp"
 #include "slash/world/component_registry.hpp"
+#include "slash/world/components.hpp"
 #include "slash/world/scene.hpp"
 #include "slash/world/world.hpp"
 
 #include <algorithm>
 #include <array>
 #include <charconv>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <ctime>
@@ -348,6 +352,9 @@ Reply schema_get(Session& session, const json::Value& params) {
     if (kind == "frames") {
         return Reply::success(canvas::sprite_frames_schema());
     }
+    if (kind == "material") {
+        return Reply::success(canvas::material_schema());
+    }
     if (name.empty()) {
         return param_error(code::kInvalidParams, "/name",
                            "name is required when kind is " + quoted(kind));
@@ -632,6 +639,117 @@ Reply asset_list(Session& session, const json::Value& params) {
     }
     json::Value result;
     result["assets"] = std::move(assets);
+    return Reply::success(std::move(result));
+}
+
+// ---- Materials ----
+
+template <std::size_t N>
+std::array<float, N> floats(const json::Value& array) {
+    std::array<float, N> out{};
+    for (std::size_t i = 0; i < N; ++i) {
+        out.at(i) = static_cast<float>(array.as_array()[i].as_double());
+    }
+    return out;
+}
+
+Reply material_eval(Session& session, const json::Value& params) {
+    const std::string id = text(params, "id");
+    std::string path = text(params, "path");
+    if (id.empty() == path.empty()) {
+        return param_error(code::kInvalidParams, "",
+                           "give id (an entity with a Sprite2D) or path (a .material.json file)");
+    }
+    std::string texture;
+    std::map<std::string, json::Value> overrides;
+    canvas::PixelInputs inputs;
+    render::Filter filter = render::Filter::Linear;
+    if (!id.empty()) {
+        const world::World& world = session.world();
+        const entt::entity entity = world.find(id);
+        if (entity == entt::null) {
+            return unknown_entity(world, id, "/id");
+        }
+        const auto* sprite = world.ecs().try_get<world::Sprite2D>(entity);
+        if (sprite == nullptr) {
+            return param_error(code::kInvalidParams, "/id", quoted(id) + " has no Sprite2D");
+        }
+        path = sprite->material;
+        texture = sprite->texture;
+        overrides = sprite->material_params;
+        inputs.color = {sprite->modulate.x, sprite->modulate.y, sprite->modulate.z,
+                        sprite->modulate.w};
+        if (sprite->texture_filter == "nearest") {
+            filter = render::Filter::Nearest;
+        }
+    }
+    if (const json::Value* value = params.find("texture"); value != nullptr) {
+        texture = value->as_string();
+    }
+    if (const json::Value* value = params.find("params"); value != nullptr) {
+        for (const auto& [name, param] : value->as_object()) {
+            overrides.insert_or_assign(name, param);
+        }
+    }
+    if (const json::Value* value = params.find("color"); value != nullptr) {
+        inputs.color = floats<4>(*value);
+    }
+    if (const json::Value* value = params.find("frag_coord"); value != nullptr) {
+        inputs.frag_coord = floats<2>(*value);
+    }
+    const json::Value* time = params.find("time");
+
+    const canvas::CanvasMaterial plain; // no graph: the texture times the color
+    asset::Handle<canvas::CanvasMaterial> loaded;
+    if (!path.empty()) {
+        auto handle = session.assets().load<canvas::CanvasMaterial>(path);
+        if (!handle) {
+            return param_error(handle.error(), id.empty() ? "/path" : "/id");
+        }
+        loaded = std::move(handle).value();
+    }
+    std::string failed;
+    auto instance = canvas::instantiate(loaded ? *loaded : plain, overrides,
+                                        time != nullptr ? time->as_double() : 0.0, &failed);
+    if (!instance) {
+        // A param given here, or one of the entity's material_params.
+        const json::Value* given = params.find("params");
+        if (given != nullptr && given->find(failed) != nullptr) {
+            return param_error(instance.error(), "/params/" + json::pointer_escape(failed));
+        }
+        return param_error(make_error(instance.error().code, "material_params/" + failed + ": " +
+                                                                 instance.error().message),
+                           "/id");
+    }
+    std::vector<std::array<float, 2>> uvs;
+    for (const json::Value& uv : params.find("uv")->as_array()) {
+        uvs.push_back(floats<2>(uv));
+    }
+    std::vector<asset::Handle<render::Image>> images;
+    auto colors = canvas::evaluate(
+        instance.value(), texture, filter, inputs, uvs,
+        [&](const std::string& image_path) -> Result<const render::Image*> {
+            auto image = session.assets().load<render::Image>(image_path);
+            if (!image) {
+                return make_error(image.error().code, image_path + ": " + image.error().message);
+            }
+            images.push_back(std::move(image).value());
+            return images.back().get();
+        });
+    if (!colors) {
+        return Reply::failure(colors.error());
+    }
+    json::Array out;
+    for (const std::array<float, 4>& color : colors.value()) {
+        json::Array channels;
+        for (const float channel : color) {
+            // Three decimals are finer than 8-bit color.
+            channels.emplace_back(std::round(static_cast<double>(channel) * 1000.0) / 1000.0);
+        }
+        out.emplace_back(std::move(channels));
+    }
+    json::Value result;
+    result["colors"] = std::move(out);
     return Reply::success(std::move(result));
 }
 
@@ -1588,15 +1706,16 @@ void register_builtin_commands(Registry& registry) {
         .handler = engine_describe,
     });
 
-    json::Value kind = property("string", "\"scene\", \"prefab\", \"frames\" (.frames.json) or "
-                                          "\"storyboard\" for those files, \"component\" for one "
-                                          "component's fields, \"command\" for a command's "
-                                          "params.");
-    kind["enum"] = json::Array{"scene", "prefab", "frames", "storyboard", "component", "command"};
+    json::Value kind = property("string", "\"scene\", \"prefab\", \"frames\" (.frames.json), "
+                                          "\"material\" (.material.json) or \"storyboard\" for "
+                                          "those files, \"component\" for one component's "
+                                          "fields, \"command\" for a command's params.");
+    kind["enum"] =
+        json::Array{"scene", "prefab", "frames", "material", "storyboard", "component", "command"};
     registry.add({
         .name = "schema.get",
-        .description = "Returns a JSON Schema: for scene, prefab, .frames.json or storyboard "
-                       "files, one component or one command.",
+        .description = "Returns a JSON Schema: for scene, prefab, .frames.json, .material.json or "
+                       "storyboard files, one component or one command.",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema(
@@ -1725,6 +1844,50 @@ void register_builtin_commands(Registry& registry) {
         .params = params_schema({{"type", property("string", "Only assets of this type, e.g. "
                                                              "\"prefab\" or \"json\".")}}),
         .handler = asset_list,
+    });
+
+    json::Value uv_pair = property("array", "[u, v]");
+    uv_pair["items"]["type"] = "number";
+    uv_pair["minItems"] = 2;
+    uv_pair["maxItems"] = 2;
+    json::Value uvs = property("array", "Texture coordinates, from [0, 0] at the texture's top "
+                                        "left to [1, 1].");
+    uvs["items"] = uv_pair;
+    uvs["minItems"] = 1;
+    uvs["maxItems"] = 64;
+    json::Value eval_color = property("array", "The vertex color, [r, g, b, a]. Default: the "
+                                               "entity's modulate, or white.");
+    eval_color["items"]["type"] = "number";
+    eval_color["minItems"] = 4;
+    eval_color["maxItems"] = 4;
+    json::Value frag_coord = property("array", "What fragcoord reads, in pixels. Default: [0, 0].");
+    frag_coord["items"]["type"] = "number";
+    frag_coord["minItems"] = 2;
+    frag_coord["maxItems"] = 2;
+    json::Value eval_time = property("number", "What time reads, in seconds. Default: 0.");
+    eval_time["minimum"] = 0;
+    registry.add({
+        .name = "material.eval",
+        .description = "Returns the colors a material draws at texture coordinates, before "
+                       "blending, computed as the GPU does: a check without a screenshot.",
+        .capabilities = {Read},
+        .effect = Effect::Read,
+        .params = params_schema(
+            {
+                {"id", id_property("An entity with a Sprite2D: its material, texture, params and "
+                                   "modulate. Or give path.")},
+                {"path", property("string", "A .material.json file. Or give id.")},
+                {"uv", std::move(uvs)},
+                {"texture",
+                 property("string", "The sprite's texture path. Default: the entity's, or "
+                                    "none (white).")},
+                {"params", property("object", "Param values, over the entity's material_params.")},
+                {"color", std::move(eval_color)},
+                {"frag_coord", std::move(frag_coord)},
+                {"time", std::move(eval_time)},
+            },
+            {"uv"}),
+        .handler = material_eval,
     });
 
     json::Value set_components =

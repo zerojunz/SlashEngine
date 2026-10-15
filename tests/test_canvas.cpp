@@ -2,6 +2,7 @@
 #include "slash/canvas/canvas.hpp"
 #include "slash/canvas/sprite_frames.hpp"
 #include "slash/core/json.hpp"
+#include "slash/core/log.hpp"
 #include "slash/platform/process.hpp"
 #include "slash/render/device.hpp"
 #include "slash/render/image.hpp"
@@ -11,6 +12,7 @@
 
 #include <doctest/doctest.h>
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <map>
@@ -380,6 +382,102 @@ TEST_CASE("the canvas draws visible sprites, skips broken ones and reloads textu
     CHECK(renderer.sprites_drawn() == 2);
 }
 
+namespace {
+
+// The texture times the vertex color, mixed toward a flash color by "flash".
+constexpr std::string_view kFlashMaterial = R"({
+  "color": {"op": "vec4", "args": [
+    {"op": "mix", "args": ["base.rgb", "flash_color.rgb", "flash"]}, "base.a"]},
+  "format": 1,
+  "nodes": {
+    "base": {"op": "mul", "args": [{"op": "texture", "args": ["texture", "uv"]}, "color"]}
+  },
+  "params": {
+    "flash": {"type": "float", "value": 0, "min": 0, "max": 1},
+    "flash_color": {"type": "color", "value": [1, 1, 1, 1]}
+  }
+})";
+
+// Warnings logged while it lives.
+struct Warnings {
+    std::vector<std::string> lines;
+    Warnings() {
+        slash::log::set_sink([this](slash::log::Level level, std::string_view line) {
+            if (level == slash::log::Level::Warn) {
+                lines.emplace_back(line);
+            }
+        });
+    }
+    ~Warnings() { slash::log::reset_sink(); }
+    [[nodiscard]] bool logged(std::string_view text) const {
+        return std::ranges::any_of(lines, [text](const std::string& line) {
+            return line.find(text) != std::string::npos;
+        });
+    }
+    Warnings(const Warnings&) = delete;
+    Warnings& operator=(const Warnings&) = delete;
+    Warnings(Warnings&&) = delete;
+    Warnings& operator=(Warnings&&) = delete;
+};
+
+} // namespace
+
+TEST_CASE("sprites draw with their materials, and a broken material leaves its sprite out") {
+    Scene scene;
+    scene.files.write("red.png", strip_png({{255, 0, 0, 255}}, 4));
+    scene.files.write("noise.png", strip_png({{9, 9, 9, 255}}, 2));
+    scene.files.write("flash.material.json", std::string(kFlashMaterial));
+    scene.files.write("noise.material.json", R"({
+      "color": {"op": "texture", "args": ["noise", "uv"]},
+      "format": 1,
+      "params": {"noise": {"type": "texture", "value": "noise.png", "repeat": true}}
+    })");
+    scene.files.write("bad.material.json", R"({"format": 1, "color": "colr"})");
+    scene.create("plain", R"({"Transform2D": {}, "Sprite2D": {"texture": "red.png"}})");
+    scene.create("flashing", R"({"Transform2D": {}, "Sprite2D": {"texture": "red.png",
+        "material": "flash.material.json", "material_params": {"flash": 1}}})");
+    scene.create("flashing_too", R"({"Transform2D": {}, "Sprite2D": {"texture": "red.png",
+        "material": "flash.material.json", "material_params": {"flash": 1}}})");
+    scene.create("noisy", R"({"Transform2D": {}, "Sprite2D": {"texture": "red.png",
+        "material": "noise.material.json"}})");
+    scene.create("typo", R"({"Transform2D": {}, "Sprite2D": {"texture": "red.png",
+        "material": "flash.material.json", "material_params": {"flsh": 1}}})");
+    scene.create("broken", R"({"Transform2D": {}, "Sprite2D": {"texture": "red.png",
+        "material": "bad.material.json"}})");
+    scene.create("missing", R"({"Transform2D": {}, "Sprite2D": {"texture": "red.png",
+        "material": "gone.material.json"}})");
+
+    const auto device = render::create_null_device();
+    canvas::CanvasRenderer renderer(*device, scene.assets);
+    auto target = device->create_texture(
+        {.width = 8, .height = 8, .filter = render::Filter::Linear, .render_target = true});
+    REQUIRE(target.ok());
+    canvas::CanvasOptions options;
+    options.target = target.value();
+    Warnings warnings;
+    REQUIRE(renderer.draw(scene.world, options).ok());
+    CHECK(renderer.sprites_drawn() == 4);
+    // Plain, then the two flashing sprites in one batch, then the noisy one: three draws. The
+    // noise texture is made alongside the target and red.png.
+    CHECK(device->stats().draws == 3);
+    CHECK(device->stats().textures == 3);
+    REQUIRE(warnings.lines.size() == 3);
+    CHECK(warnings.logged(R"("material":"flash.material.json","error":"material_params/flsh: the )"
+                          R"(material has no param \"flsh\"; did you mean \"flash\"?")"));
+    CHECK(warnings.logged(R"("material":"bad.material.json","error":"asset \"bad.material.json)"
+                          R"(\" did not load: /color: no node, param or input \"colr\"; did )"
+                          R"(you mean \"color\"?")"));
+    CHECK(warnings.logged(R"("material":"gone.material.json")"));
+
+    // Each problem is told once, and a fixed file draws on the next frame.
+    REQUIRE(renderer.draw(scene.world, options).ok());
+    CHECK(warnings.lines.size() == 3);
+    scene.files.write("bad.material.json", R"({"format": 1, "color": "color"})");
+    (void)scene.assets.poll();
+    REQUIRE(renderer.draw(scene.world, options).ok());
+    CHECK(renderer.sprites_drawn() == 5);
+}
+
 TEST_CASE("Sprite2D texture_filter takes only known names") {
     world::ComponentRegistry components;
     world::register_builtin_components(components);
@@ -470,4 +568,73 @@ TEST_CASE("sprites draw where Godot would put them, in z order, on a GPU") {
     CHECK(pixel(image.value(), 15, 44) == Rgba{0, 0, 255, 255}); // spans 8..16 at x = 12
     CHECK(pixel(image.value(), 17, 44) == Rgba{0, 0, 0, 255});
     CHECK(pixel(image.value(), 7, 44) == Rgba{0, 0, 0, 255});
+}
+
+TEST_CASE("materials color a sprite's pixels on a GPU, and reload when their files change") {
+    auto device = gpu_device();
+    if (device == nullptr) {
+        return;
+    }
+    Scene scene;
+    scene.files.write("red.png", strip_png({{255, 0, 0, 255}}, 8));
+    scene.files.write("stripes.png", strip_png({{0, 255, 0, 255}, {0, 0, 255, 255}}, 1));
+    scene.files.write("flash.material.json", std::string(kFlashMaterial));
+    // The stripes, four times across the sprite.
+    scene.files.write("tiles.material.json", R"({
+      "color": {"op": "texture", "args": ["stripes", {"op": "mul", "args": ["uv", 4]}]},
+      "format": 1,
+      "params": {"stripes": {"type": "texture", "value": "stripes.png", "repeat": true,
+                             "filter": "nearest"}}
+    })");
+    // Gray, as bright as the fraction of a second.
+    scene.files.write("clock.material.json", R"({
+      "color": {"op": "vec4", "args": [{"op": "vec3", "args": [{"op": "fract", "args": ["time"]}]},
+                                       1]},
+      "format": 1
+    })");
+    scene.create("flash", R"({"Transform2D": {"position": [8, 8]},
+                              "Sprite2D": {"texture": "red.png", "texture_filter": "nearest",
+                                           "material": "flash.material.json",
+                                           "material_params": {"flash": 0.5}}})");
+    scene.create("tiles", R"({"Transform2D": {"position": [24, 8]},
+                              "Sprite2D": {"texture": "red.png", "texture_filter": "nearest",
+                                           "material": "tiles.material.json"}})");
+    scene.create("clock", R"({"Transform2D": {"position": [8, 24]},
+                              "Sprite2D": {"texture": "red.png", "texture_filter": "nearest",
+                                           "material": "clock.material.json"}})");
+    auto target = device->create_texture(
+        {.width = 32, .height = 32, .filter = render::Filter::Nearest, .render_target = true});
+    REQUIRE(target.ok());
+    canvas::CanvasRenderer renderer(*device, scene.assets);
+    canvas::CanvasOptions options;
+    options.target = target.value();
+    options.clear = {.r = 0.0F, .g = 0.0F, .b = 0.0F, .a = 1.0F};
+    options.time = 7.25;
+    REQUIRE(renderer.draw(scene.world, options).ok());
+    CHECK(renderer.sprites_drawn() == 3);
+    auto image = device->read_texture(target.value());
+    REQUIRE(image.ok());
+    const auto near = [](Rgba got, Rgba want) {
+        for (std::size_t i = 0; i < 4; ++i) {
+            if (got.at(i) + 1 < want.at(i) || got.at(i) > want.at(i) + 1) {
+                return false;
+            }
+        }
+        return true;
+    };
+    CHECK(near(pixel(image.value(), 8, 8), {255, 128, 128, 255}));
+    CHECK(pixel(image.value(), 20, 8) == Rgba{0, 255, 0, 255});
+    CHECK(pixel(image.value(), 21, 8) == Rgba{0, 0, 255, 255});
+    CHECK(pixel(image.value(), 26, 8) == Rgba{0, 255, 0, 255});
+    CHECK(near(pixel(image.value(), 8, 24), {64, 64, 64, 255}));
+
+    // A new flash color, from the file.
+    std::string blue(kFlashMaterial);
+    blue.replace(blue.find("[1, 1, 1, 1]"), 12, "[0, 0, 1, 1]");
+    scene.files.write("flash.material.json", blue);
+    REQUIRE(scene.assets.poll().size() == 1);
+    REQUIRE(renderer.draw(scene.world, options).ok());
+    image = device->read_texture(target.value());
+    REQUIRE(image.ok());
+    CHECK(near(pixel(image.value(), 8, 8), {128, 0, 128, 255}));
 }

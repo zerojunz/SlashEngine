@@ -156,8 +156,13 @@ rendering on top.
       by keeping V-Sync's present mode; 120 Hz on iPhones and Android phones that support it;
       frame pacing stats in `perf.stats`. The loop reports how far real time is into the next
       tick, for interpolated drawing
-- [ ] Materials: HLSL shaders plus a JSON material graph agents write directly, starting with
-      2D (canvas) materials; milestone 7 adds the PBR inputs
+- [x] Canvas materials as a JSON graph agents write directly: `.material.json` node graphs over
+      Godot's canvas inputs, with params each sprite sets (`material_params`) and Godot's blend
+      modes, compiled on load to a program one HLSL shader runs, so materials hot reload and need
+      no shader compiler. `material.eval` runs the same program on the CPU to check colors without
+      a screenshot; exports check and ship the files. Milestone 7 adds the PBR inputs
+- [ ] A game's own HLSL shaders for canvas materials, compiled at export with the engine's
+      shader tools, for effects the graph can't express
 - [x] Sprites, sprite sheets and flipbooks, as in Godot: `Sprite2D` (frames, regions, flips,
       tint, `z_index`) and `AnimatedSprite2D` playing `.frames.json` files (Godot's
       SpriteFrames), drawn in order and interpolated between fixed ticks so high refresh rates
@@ -372,7 +377,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | 3D renderer | Clustered forward+ with PBR, plus a low-end path for web and mobile | 7 | Planned |
 | Shadows | Cascaded, omni and spot shadow maps | 7 | Planned |
 | Post-processing | Tonemap, bloom, SSAO, SSR, DoF, auto exposure, color grading | 7 | Planned |
-| Materials and shaders | HLSL shaders plus a JSON material graph | 5, 7 | Planned |
+| Materials and shaders | HLSL shaders plus a JSON material graph | 5, 7 | In part: canvas material graphs are done; a game's own HLSL shaders in 5, PBR inputs in 7 |
 | Keyframe animation | Keyframe tracks on any reflected property | 5 | Planned |
 | Skeletal animation | Skinned meshes, blending, root motion | 7 | Planned |
 | Animation blending | Blend trees and state machines in text, two-bone and FABRIK IK | 7 | Planned |

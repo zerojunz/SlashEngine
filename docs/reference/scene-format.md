@@ -62,6 +62,8 @@ them.
 | `Quat` | array `[x, y, z, w]` | `[0.0, 0.0, 0.0, 1.0]` |
 | Reference to another entity | that entity's ID, or `null` | `"player"` |
 | `std::vector<T>` | array of `T` | `[1, 2, 3]` |
+| `std::map<std::string, T>` | object of `T` by name, replaced whole when set | `{"flash": 1}` |
+| `json::Value` | any JSON value | `[1, 0, 0]` |
 | Struct declared with `SLASH_REFLECT` | object of its fields | `{"r": 1.0, "g": 0.5}` |
 
 A reference must name an entity that exists in the same scene.
@@ -88,6 +90,8 @@ A reference must name an entity that exists in the same scene.
 | | `z_index` | `int` | `0` | Higher draws on top, -4096 to 4096; equal values draw in the order the entities were made |
 | | `visible` | `bool` | `true` | Draw it |
 | | `texture_filter` | `std::string` | `"inherit"` | `"linear"`, `"nearest"` (sharp pixel art) or `"inherit"`, which uses the project's `rendering.texture_filter` |
+| | `material` | `std::string` | `""` | Project path of a [`.material.json`](#materials) file, which colors the sprite's pixels; `""` draws the texture as it is |
+| | `material_params` | `std::map<std::string, json::Value>` | `{}` | Values for the material's params by name, replacing their defaults, e.g. `{"flash": 1}` |
 | `AnimatedSprite2D` | `sprite_frames` | `std::string` | `""` | Project path of a [`.frames.json`](#sprite-frames) file |
 | | `animation` | `std::string` | `"default"` | Name of the animation to play |
 | | `playing` | `bool` | `true` | Advance the animation each tick |
@@ -269,3 +273,94 @@ has none: each tick the `animated_sprite_2d` system moves the animation on and s
 - An unknown `animation` name logs one warning, with the closest name ("did you mean"), and the
   sprite keeps its last frame.
 - Files reload when they change, like every asset.
+
+## Materials
+
+A `.material.json` file colors each pixel of a sprite, like a Godot `ShaderMaterial` with a
+`canvas_item` shader, written as a node graph instead of shader code. `Sprite2D`'s `material`
+names the file and `material_params` sets its params, so one material serves many sprites.
+`slash-cli schema material` prints the schema, `slash-cli scene validate` and `scene format`
+accept `.material.json` files, and the [`material.eval`](commands.md#materialeval) command
+returns the colors a material draws. [examples/materials](../../examples/materials/) has three.
+
+```json
+{
+  "color": {"op": "vec4", "args": [
+    {"op": "mix", "args": ["base.rgb", "flash_color.rgb", "flash"]}, "base.a"]},
+  "format": 1,
+  "nodes": {
+    "base": {"op": "mul", "args": [{"op": "texture", "args": ["texture", "uv"]}, "color"]}
+  },
+  "params": {
+    "flash": {"type": "float", "value": 0, "min": 0, "max": 1},
+    "flash_color": {"type": "color", "value": [1, 1, 1, 1]}
+  }
+}
+```
+
+| Key | Required | Meaning |
+| --- | --- | --- |
+| `format` | Yes | Format version. Must be `1` |
+| `color` | No | The pixel's color, a vec4 from 0 to 1. Left out, the texture times the vertex color, as a sprite with no material draws |
+| `nodes` | No | Named nodes, `{"op": ..., "args": [...]}`, for values used more than once: each is computed once |
+| `params` | No | Values sprites set through `material_params`, by name |
+| `params/<name>/type` | Yes | `float`, `vec2`, `vec3`, `vec4`, `color` (a vec4; `[r, g, b]` means alpha 1) or `texture` |
+| `params/<name>/value` | No | The default: a number, an array of numbers, or a texture path (`""` samples white). Left out, 0, or white for colors and textures |
+| `params/<name>/min`, `max` | No | Numbers: the range every component must be in |
+| `params/<name>/repeat` | No | Textures: tile past the edges instead of stretching them (default `false`) |
+| `params/<name>/filter` | No | Textures: `inherit` (the sprite's filter, the default), `linear` or `nearest` |
+| `params/<name>/doc` | No | What the param does, for whoever sets it |
+| `blend` | No | How the color combines with what is under it, as Godot's blend modes: `mix` (default), `add`, `sub`, `mul` or `premul_alpha` |
+
+An arg is a number, an array of 2 to 4 numbers, a node written in place, or a name: a node in
+`nodes`, a param, or an input. A name can pick components after a dot, from `xyzw` or `rgba`:
+`"base.rgb"`, `"uv.yx"`, `"color.aaaa"`. Names of nodes and params use lowercase letters, digits
+and `_`, don't start with a digit, and can't be an input's.
+
+| Input | Type | Godot's | Value |
+| --- | --- | --- | --- |
+| `uv` | vec2 | `UV` | The texture coordinate, from 0 to 1 across the sprite's frame |
+| `color` | vec4 | `COLOR` | The vertex color: the sprite's `modulate` |
+| `texture` | texture | `TEXTURE` | The sprite's texture, for the `texture` op |
+| `texture_pixel_size` | vec2 | `TEXTURE_PIXEL_SIZE` | One over the texture's width and height |
+| `fragcoord` | vec2 | `FRAGCOORD.xy` | The pixel's position in the target, in pixels from the top left |
+| `time` | float | `TIME` | Seconds of game time, wrapping every hour |
+
+Ops work on each component, as in shaders. Args of one op have one size, and a float stands in
+for any size: `["uv", 2]` doubles both components. Each op's result has the size of its args
+unless the table says otherwise.
+
+| Ops | Args | Result |
+| --- | --- | --- |
+| `add`, `sub`, `mul`, `div`, `min`, `max` | a, b | |
+| `mod` | a, b | `a - b * floor(a / b)`, as GLSL's `mod` |
+| `pow` | a, b | `a` to the power `b`; a negative `a` gives 0 |
+| `step` | edge, x | 1 where `x >= edge`, else 0 |
+| `abs`, `sign`, `floor`, `ceil`, `fract`, `sqrt`, `exp`, `log` | a | |
+| `round` | a | `floor(a + 0.5)` |
+| `sin`, `cos`, `tan`, `asin`, `acos` | a | In radians |
+| `atan` | y_over_x, or y, x | With two args, the angle of (x, y), as `atan2` |
+| `saturate`, `one_minus`, `negate` | a | Clamped to 0 to 1; `1 - a`; `-a` |
+| `mix` | a, b, t | `a + (b - a) * t` |
+| `clamp` | x, min, max | |
+| `smoothstep` | edge0, edge1, x | 0 below `edge0`, 1 above `edge1`, smooth between |
+| `dot`, `distance` | a, b | A float; both args the same size |
+| `length` | a | A float |
+| `normalize` | a | `a` with length 1; zero stays zero |
+| `vec2`, `vec3`, `vec4` | floats and vectors | A vector made of the args' components in order, as `vec4(rgb, 1)`; one float fills every component |
+| `texture` | texture, uv | The vec4 color of `texture` (the input) or a texture param at `uv` |
+| `rgb_to_hsv`, `hsv_to_rgb` | a vec3 | The color as hue, saturation and value, each from 0 to 1, or back |
+
+- The color is clamped to 0 to 1 before blending, and NaN draws as 0.
+- A material runs on the GPU as one program of at most 64 instructions (most ops take one; a
+  `vecN` takes one per arg) and 32 constants (each different number, number param and the time
+  take one), with 28 values alive at once and 3 texture params besides the sprite's texture. It has at most 64 nodes, nested in place at most
+  16 deep. A graph past a limit fails with what to change.
+- Mistakes fail when the file loads, each with the JSON Pointer of the bad value and the closest
+  name: an unknown op, name or param, args of the wrong size or number, a cycle between nodes, a
+  value outside its param's range. A sprite whose material fails to load, or whose
+  `material_params` name a param the material doesn't have or give a bad value, is left out
+  with one warning in the log.
+- `material.eval` computes colors on the CPU the way the GPU does, so an agent checks a material
+  without a screenshot.
+- Material files reload when they change, like every asset, and exports check and ship them.

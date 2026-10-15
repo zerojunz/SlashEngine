@@ -1,6 +1,7 @@
 #pragma once
 
 #include "slash/asset/assets.hpp"
+#include "slash/canvas/material.hpp"
 #include "slash/core/result.hpp"
 #include "slash/render/device.hpp"
 #include "slash/world/components.hpp"
@@ -19,8 +20,8 @@
 // device, in world pixels with y down.
 namespace slash::canvas {
 
-// Asset types: "texture" (.png and .bmp files as render::Image) and "sprite_frames"
-// (.frames.json files as SpriteFrames).
+// Asset types: "texture" (.png and .bmp files as render::Image), "sprite_frames" (.frames.json
+// files as SpriteFrames) and "material" (.material.json files as CanvasMaterial).
 void add_asset_types(asset::Assets& assets);
 
 // The "animated_sprite_2d" system, which plays each AnimatedSprite2D on its Sprite2D. It reads
@@ -55,10 +56,17 @@ struct CanvasOptions {
     double interpolation = 1.0;
     // The filter for sprites whose texture_filter is "inherit".
     render::Filter texture_filter = render::Filter::Linear;
+    // Seconds of game time, which materials read as time. Callers pass the moment the frame
+    // shows, between ticks too; see material_time.
+    double time = 0.0;
 };
 
-// Draws a world's sprites. Textures load through the assets, by path, and reload when their
-// files change.
+// The time a frame shows, for CanvasOptions::time: tick ticks of tick_seconds have run, and the
+// frame is interpolation of the way from the tick before to the last one.
+[[nodiscard]] double material_time(std::uint64_t tick, double tick_seconds, double interpolation);
+
+// Draws a world's sprites. Textures and materials load through the assets, by path, and reload
+// when their files change.
 class CanvasRenderer {
 public:
     CanvasRenderer(render::RenderDevice& device, asset::Assets& assets);
@@ -73,8 +81,9 @@ public:
     void before_tick(const world::World& world);
 
     // Draws one frame: the target cleared, then every visible sprite. A sprite that can't draw,
-    // such as one whose texture is missing, is left out with one warning in the log. On the null
-    // device a window frame checks and counts the sprites but draws nothing.
+    // such as one whose texture or material is missing, or whose material_params name a param
+    // the material doesn't have, is left out with one warning in the log. On the null device a
+    // window frame checks and counts the sprites but draws nothing.
     [[nodiscard]] Result<void> draw(const world::World& world, const CanvasOptions& options);
 
     // Sprites the last frame drew.
@@ -91,11 +100,15 @@ private:
 
     // The GPU texture for a path and filter, made or updated from the loaded image.
     Result<const Texture*> texture(const std::string& path, render::Filter filter);
+    // The material a sprite draws with, its params and the time filled in.
+    Result<render::Material> material(const world::Sprite2D& sprite, render::Filter filter,
+                                      double time);
     void warn_once(const std::string& key, std::string_view message, std::string_view what);
 
     render::RenderDevice* device_;
     asset::Assets* assets_;
     std::map<std::pair<std::string, render::Filter>, Texture> textures_;
+    std::map<std::string, asset::Handle<CanvasMaterial>, std::less<>> materials_;
     std::unordered_map<entt::entity, world::Transform2D> previous_;
     std::set<std::string, std::less<>> warned_;
     std::size_t sprites_drawn_ = 0;

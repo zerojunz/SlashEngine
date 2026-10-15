@@ -1,8 +1,10 @@
 #pragma once
 
+#include "slash/core/json.hpp"
 #include "slash/core/math.hpp"
 #include "slash/core/reflect.hpp"
 
+#include <map>
 #include <string>
 #include <vector>
 
@@ -52,9 +54,11 @@ struct Sprite2D {
     int z_index = 0;
     bool visible = true;
     std::string texture_filter = "inherit"; // "inherit", "linear" or "nearest"
+    std::string material;                   // project path of a .material.json file; "" for none
+    std::map<std::string, json::Value> material_params; // values for the material's params
 };
 SLASH_COMPONENT(Sprite2D, texture, centered, offset, flip_h, flip_v, hframes, vframes, frame,
-                region, modulate, z_index, visible, texture_filter)
+                region, modulate, z_index, visible, texture_filter, material, material_params)
 
 // Plays animations from a .frames.json file (Godot's SpriteFrames) on the entity's Sprite2D,
 // as Godot's AnimatedSprite2D: each tick it sets the sprite's texture, sheet and frame.

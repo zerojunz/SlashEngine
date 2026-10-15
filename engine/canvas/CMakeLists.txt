@@ -1,5 +1,6 @@
 add_library(slash_canvas
     src/canvas.cpp
+    src/material.cpp
     src/renderer.cpp
     src/sprite_frames.cpp)
 add_library(slash::canvas ALIAS slash_canvas)
