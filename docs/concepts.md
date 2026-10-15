@@ -82,8 +82,11 @@ be `bool`, integers, `float`, `double`, `std::string`, `Vec2`, `Vec3`, `Vec4`, `
 reference to another entity, a `std::vector` of these, or a nested struct declared with
 `SLASH_REFLECT`.
 
-A **system** is code that updates components every tick. The engine has no built-in systems yet,
-so `engine.describe` reports an empty `systems` list; they arrive with the feature milestones.
+A **system** is code that updates components every tick, added with `World::add_system` and an
+optional doc string and priority. Systems run in order of priority, lowest first as with Godot's
+`process_priority`, and in the order they were added when priorities are equal. `engine.describe`
+lists them in that order. The engine has no built-in systems yet; they arrive with the feature
+milestones (2D physics, animation, particles).
 
 ## Scenes
 
@@ -249,6 +252,10 @@ Requests arrive on a background thread but never run there. They wait in a queue
 session's owner calls `Server::poll()`, which the run loop does between ticks. So a command never
 races the game loop, and every command sees the world at a tick boundary. A request that waits
 more than 30 seconds fails with 503.
+
+A running game (`slash-cli run --serve`) adds the `play` and `pause` commands. `pause` stops the
+world, like a debugger's break, while the loop keeps serving requests, so an agent can inspect and
+edit a frozen frame or advance it with `step`; `play` lets it run again.
 
 ## Agent setup files
 

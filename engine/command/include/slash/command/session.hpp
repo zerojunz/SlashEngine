@@ -78,6 +78,12 @@ public:
     [[nodiscard]] std::vector<std::string> redo_labels() const;
     void clear_history();
 
+    // Whether the world should advance in real time. Hosts that tick the world on their own clock,
+    // such as slash-cli run --serve, register play and pause (register_run_commands) and step the
+    // world only while this is true. Sessions start paused; such hosts call set_playing(true).
+    [[nodiscard]] bool playing() const noexcept { return playing_; }
+    void set_playing(bool playing) noexcept { playing_ = playing; }
+
     // Named copies of the world's entities, for world.snapshot, world.diff and world.restore.
     // Taking a snapshot under a name in use replaces it; a session holds at most kMaxSnapshots.
     static constexpr std::size_t kMaxSnapshots = 100;
@@ -108,9 +114,10 @@ private:
     std::deque<Snapshot> undo_;
     std::deque<Snapshot> redo_;
     std::map<std::string, json::Value, std::less<>> snapshots_;
-    int depth_ = 0;                 // how many commands are running (more than one inside a batch)
-    bool edited_ = false;           // an Edit command succeeded during the outermost call
-    bool replaced_ = false;         // a Replace command succeeded during the outermost call
+    int depth_ = 0;         // how many commands are running (more than one inside a batch)
+    bool edited_ = false;   // an Edit command succeeded during the outermost call
+    bool replaced_ = false; // a Replace command succeeded during the outermost call
+    bool playing_ = false;
     mutable std::mutex logs_mutex_; // the log sink may run on any thread
     std::deque<std::string> logs_;
 };

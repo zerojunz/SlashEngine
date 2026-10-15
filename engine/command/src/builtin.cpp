@@ -297,15 +297,30 @@ Reply engine_describe(Session& session, const json::Value& params) {
     }
     result["components"] = std::move(components);
 
+    // In the order they run.
     json::Array systems;
-    for (const std::string_view name : session.world().system_names()) {
-        systems.emplace_back(name);
+    for (const world::SystemInfo& system : session.world().systems()) {
+        if (!full) {
+            systems.emplace_back(system.name);
+            continue;
+        }
+        json::Value item;
+        item["name"] = system.name;
+        if (!system.doc.empty()) {
+            item["doc"] = system.doc;
+        }
+        item["priority"] = system.priority;
+        systems.push_back(std::move(item));
     }
     result["systems"] = std::move(systems);
 
     result["scene"]["path"] = session.scene_path();
     result["scene"]["entities"] = session.world().size();
     result["scene"]["tick"] = session.world().tick();
+    // Only hosts that tick the world on their own clock can play.
+    if (session.commands().find("play") != nullptr) {
+        result["scene"]["playing"] = session.playing();
+    }
     return Reply::success(std::move(result));
 }
 
@@ -758,6 +773,14 @@ Reply step(Session& session, const json::Value& params) {
     }
     json::Value result;
     result["ticks"] = ticks;
+    result["tick"] = session.world().tick();
+    return Reply::success(std::move(result));
+}
+
+Reply run_state(Session& session, bool playing) {
+    session.set_playing(playing);
+    json::Value result;
+    result["playing"] = playing;
     result["tick"] = session.world().tick();
     return Reply::success(std::move(result));
 }
@@ -1255,6 +1278,29 @@ void register_builtin_commands(Registry& registry) {
             {"level", std::move(level)},
         }),
         .handler = log_tail,
+    });
+}
+
+void register_run_commands(Registry& registry) {
+    using enum Capability;
+    registry.add({
+        .name = "play",
+        .description = "Starts the game ticking in real time, running every system each tick.",
+        .capabilities = {Run},
+        .effect = Effect::Read,
+        .params = params_schema(),
+        .handler = [](Session& session,
+                      const json::Value& /*params*/) { return run_state(session, true); },
+    });
+    registry.add({
+        .name = "pause",
+        .description = "Stops the game ticking, so the world holds still while you inspect or "
+                       "edit it. step still advances it.",
+        .capabilities = {Run},
+        .effect = Effect::Read,
+        .params = params_schema(),
+        .handler = [](Session& session,
+                      const json::Value& /*params*/) { return run_state(session, false); },
     });
 }
 
