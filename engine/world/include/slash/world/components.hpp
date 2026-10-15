@@ -86,6 +86,23 @@ struct AnimationPlayer {
 };
 SLASH_COMPONENT(AnimationPlayer, library, animation, playing, speed_scale, time, backwards)
 
+// A grid of tiles from a .tileset.json file, as Godot's TileMapLayer, drawn at the entity's
+// Transform2D with cell [0, 0]'s top left corner there. Its cells are text: each row is a string
+// of keys, each key standing for the tile the legend names, and "." for an empty cell. The
+// tilemap commands keep them in canonical form, so most edits go through them.
+struct TileMapLayer {
+    std::string tile_set;                      // project path of a .tileset.json file
+    Vec2i origin;                              // the cell the first key of the first row stands for
+    std::map<std::string, std::string> legend; // key -> tile: a tile's name or "source:x,y"
+    std::vector<std::string> rows;
+    int z_index = 0;
+    bool visible = true;
+    Vec4 modulate{1.0F, 1.0F, 1.0F, 1.0F};
+    std::string texture_filter = "inherit"; // "linear", "nearest" or "inherit"
+};
+SLASH_COMPONENT(TileMapLayer, tile_set, origin, legend, rows, z_index, visible, modulate,
+                texture_filter)
+
 // Registers the components above, with their docs.
 void register_builtin_components(ComponentRegistry& registry);
 

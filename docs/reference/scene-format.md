@@ -59,6 +59,7 @@ them.
 | `float`, `double` | number | `0.5` |
 | `std::string` | string | `"door"` |
 | `Vec2`, `Vec3`, `Vec4` | array of 2, 3 or 4 numbers | `[64.0, 32.0]` |
+| `Vec2i` | array of 2 integers | `[-3, 2]` |
 | `Quat` | array `[x, y, z, w]` | `[0.0, 0.0, 0.0, 1.0]` |
 | Reference to another entity | that entity's ID, or `null` | `"player"` |
 | `std::vector<T>` | array of `T` | `[1, 2, 3]` |
@@ -104,6 +105,14 @@ A reference must name an entity that exists in the same scene.
 | | `speed_scale` | `float` | `1` | Multiplies the playback speed; negative plays backwards |
 | | `time` | `double` | `0` | Seconds into the animation, from 0 to its length |
 | | `backwards` | `bool` | `false` | Play toward the start, as Godot's `play_backwards`; pingpong loops flip it at each end |
+| `TileMapLayer` | `tile_set` | `std::string` | `""` | Project path of a [`.tileset.json`](#tile-sets) file |
+| | `origin` | `Vec2i` | `[0, 0]` | The cell the first key of the first row stands for, as [column, row] |
+| | `legend` | `std::map<std::string, std::string>` | `{}` | The tile each key in `rows` stands for, by name or as `"source:column,row"` |
+| | `rows` | `std::vector<std::string>` | `[]` | The [cells](#tile-map-layers), one string of keys per row from `origin` rightward; `.` is an empty cell |
+| | `z_index` | `int` | `0` | Higher draws on top, -4096 to 4096; layers and sprites draw in one order |
+| | `visible` | `bool` | `true` | Draw it |
+| | `modulate` | `Vec4` | `[1, 1, 1, 1]` | Color every tile is multiplied by, as [r, g, b, a] from 0 to 1 |
+| | `texture_filter` | `std::string` | `"inherit"` | `"linear"`, `"nearest"` (sharp pixel art) or `"inherit"`, which uses the project's `rendering.texture_filter` |
 
 `engine.describe` lists every registered component with its defaults, including ones a game adds.
 
@@ -442,3 +451,96 @@ entity, so animate `Sprite2D/offset` to move a sprite around its entity instead.
   `slash-cli scene validate` and exports check all of these. A player whose file, animation or
   track can't be used logs one warning and plays what it can.
 - Animation files reload when they change, like every asset, and exports check and ship them.
+
+## Tile sets
+
+A `.tileset.json` file cuts atlas textures into tiles and names the terrains that connect them,
+like Godot's `TileSet` with `TileSetAtlasSource`s. A [`TileMapLayer`](#tile-map-layers) draws
+its tiles. `slash-cli schema tileset` prints the schema, `slash-cli scene validate` and
+`scene format` accept `.tileset.json` files, and exports check and ship them.
+[examples/tilemaps](../../examples/tilemaps/) has one with grass, water and the tiles between.
+
+```json
+{
+  "format": 1,
+  "tile_size": [16, 16],
+  "terrain_sets": {"ground": {"terrains": ["grass", "water"]}},
+  "sources": {
+    "ground": {
+      "texture": "tiles/ground.png",
+      "tiles": {
+        "1,1": {"name": "grass", "terrain": "grass"},
+        "1,0": {"name": "grass_n", "terrain": "grass",
+                "peering": {"n": "water", "ne": "water", "nw": "water"}},
+        "3,0": {"name": "water", "terrain": "water"},
+        "3,2": {"name": "rock"}
+      }
+    }
+  }
+}
+```
+
+| Key | Required | Meaning |
+| --- | --- | --- |
+| `format` | Yes | Format version. Must be `1` |
+| `tile_size` | No | A cell's width and height in pixels; default `[16, 16]` |
+| `terrain_sets` | No | Terrain sets by name |
+| `terrain_sets/<name>/mode` | No | How tiles connect, as Godot's terrain modes: `match_corners_and_sides` (default) by all eight neighbors, `match_corners` by the four at their corners, `match_sides` by the four at their sides |
+| `terrain_sets/<name>/terrains` | Yes | Terrain names, unique in the file |
+| `sources` | Yes | Atlas sources by name, at least one |
+| `sources/<name>/texture` | Yes | Project path of a PNG or BMP file |
+| `sources/<name>/region_size` | No | Each tile's width and height in the texture; default `tile_size` |
+| `sources/<name>/margins` | No | Pixels before the first column and row; default `[0, 0]` |
+| `sources/<name>/separation` | No | Pixels between columns and rows; default `[0, 0]` |
+| `sources/<name>/tiles` | No | Tiles by `"column,row"` in the texture's grid, as `"2,0"` |
+| `tiles/<cell>/name` | No | What legends and `tilemap.set` call the tile: unique in the file, no `:`. A tile without one is `"source:column,row"` |
+| `tiles/<cell>/terrain` | No | The terrain it paints |
+| `tiles/<cell>/peering` | No | The terrain each neighbor must have for the tile to fit, by direction: `n`, `ne`, `e`, `se`, `s`, `sw`, `w`, `nw`, as Godot's terrain peering bits. A direction left out must have the tile's own terrain; `null` means none |
+| `tiles/<cell>/probability` | No | How often painting picks the tile over others that fit as well; default `1`, and `0` only when nothing else fits |
+
+A tile's pixels start at `margins + column × (region_size + separation)` on each axis. Peering
+names only directions the terrain set's mode connects by, and only terrains of the tile's own
+set. Mistakes fail with the JSON Pointer of the bad value and, for a misspelled terrain, the
+closest one. Tile sets reload when they change, like every asset.
+
+### Tile map layers
+
+A `TileMapLayer` holds its cells as text, so an agent reads a map in one call and a diff shows
+the rows that changed:
+
+```json
+"ground": {
+  "components": {
+    "TileMapLayer": {
+      "legend": {"G": "grass_n", "g": "grass", "r": "rock", "w": "water"},
+      "origin": [0, -1],
+      "rows": ["wwww", "wGGw", "wggr", "", "..ww"],
+      "tile_set": "tiles/ground.tileset.json"
+    }
+  }
+}
+```
+
+- Each legend key is one to three characters from letters, digits and punctuation other than
+  `.`, `"` and backslash, all keys the same length. Each row is a string of keys for the cells
+  from `origin` rightward, and `.` (or `..`, `...`) is an empty cell. Cells are from -32768 to
+  32767 on each axis, as in Godot.
+- Commands write the layer in canonical form: `origin` is the top left of the cells in use, rows
+  end at their last tile, keys keep standing for the tiles they stood for, and new keys go to
+  the most used tiles first, each the first letter of the tile's name where that is free. Keys
+  are one character while a layer uses up to 91 tiles, then two, then three.
+- [`tilemap.paint`](commands.md#tilemappaint) paints terrain as Godot's terrain painting does:
+  each painted cell, and each terrain cell around them, gets the tile of its terrain whose
+  peering fits its neighbors best, first where its own terrain stops and then which terrain lies
+  beyond. Empty cells and terrains of other sets count as none, so painting in empty space draws
+  edges. Among equal fits the cell's position picks, weighted by `probability`, so the same
+  paint always gives the same tiles. [`tilemap.set`](commands.md#tilemapset) places tiles
+  without changing their neighbors, and [`tilemap.get`](commands.md#tilemapget) reads the rows.
+- A layer draws at its entity's `Transform2D` if it has one, each tile's region centered on its
+  cell (cell `(c, r)` spans `c × tile_size` to `(c + 1) × tile_size`), row by row. Tiles from one
+  texture draw together, so a layer whose tiles share an atlas is one GPU draw.
+- `slash-cli scene validate` and exports check every layer's legend and rows against its tile
+  set; a layer that takes part of itself from a prefab is checked in the prefab. A layer that
+  can't draw, or a tile outside its texture, logs one warning and draws the rest.
+- Square tiles only for now; isometric and hexagonal shapes are on the
+  [roadmap](../roadmap.md).

@@ -619,7 +619,8 @@ TEST_CASE("presets load from the project folder") {
     std::filesystem::remove_all(folder);
 }
 
-TEST_CASE("exports ship textures, frames, material and animation files, and check them first") {
+TEST_CASE("exports ship textures, frames, material, animation and tile set files, and check them "
+          "first") {
     const std::filesystem::path folder = "exporter_sprites_project";
     std::filesystem::remove_all(folder);
     std::filesystem::create_directories(folder / "sprites");
@@ -627,7 +628,10 @@ TEST_CASE("exports ship textures, frames, material and animation files, and chec
         REQUIRE(slash::platform::write_file((folder / path).string(), text).ok());
     };
     write("project.json", R"({"format": 1, "name": "Sprites", "main_scene": "main.scene.json"})");
-    write("main.scene.json", R"({"format": 1, "entities": {}})");
+    // A tile map layer whose rows use a key its legend lacks.
+    write("main.scene.json", R"({"format": 1, "entities": {"map": {"components": {
+        "TileMapLayer": {"tile_set": "sprites/ground.tileset.json", "legend": {"r": "rock"},
+                         "rows": ["rx"]}}}}})");
     const slash::render::Image image{
         .width = 2, .height = 1, .pixels = {255, 0, 0, 255, 0, 0, 255, 255}};
     write("sprites/hero.png", slash::render::encode_png(image).value());
@@ -644,6 +648,10 @@ TEST_CASE("exports ship textures, frames, material and animation files, and chec
         "tracks": [{"path": "Transform2D/rotation", "keys": [{"time": 0, "value": 0}]}]}}})");
     write("sprites/bad.anim.json", R"({"format": 1, "animations": {"spin": {"length": 1,
         "tracks": [{"path": "Transform2D/rotation", "keys": [{"time": 0, "value": "fast"}]}]}}})");
+    write("sprites/ground.tileset.json", R"({"format": 1, "sources": {"ground": {
+        "texture": "sprites/hero.png", "tiles": {"0,0": {"name": "rock"}}}}})");
+    write("sprites/bad.tileset.json", R"({"format": 1, "sources": {"ground": {
+        "texture": "sprites/hero.png", "tiles": {"0,0": {"terrain": "grass"}}}}})");
 
 #if defined(__APPLE__)
     const std::string host = "macos";
@@ -668,16 +676,21 @@ TEST_CASE("exports ship textures, frames, material and animation files, and chec
                            problem.find("message")->as_string());
     }
     std::ranges::sort(problems); // folders list in any order
-    REQUIRE(problems.size() == 4);
-    INFO(problems[0], "\n", problems[1], "\n", problems[2], "\n", problems[3]);
-    CHECK(problems[0] == "sprites/bad.anim.json /animations/spin/tracks/0/keys/0/value expected "
+    REQUIRE(problems.size() == 6);
+    INFO(problems[0], "\n", problems[1], "\n", problems[2], "\n", problems[3], "\n", problems[4],
+         "\n", problems[5]);
+    CHECK(problems[0] == "main.scene.json /entities/map/components/TileMapLayer/rows/0 column 1: "
+                         "\"x\" is not in the legend");
+    CHECK(problems[1] == "sprites/bad.anim.json /animations/spin/tracks/0/keys/0/value expected "
                          "number, got string");
-    CHECK(contains(problems[1], "sprites/bad.frames.json /animations/walk/frames/0 a frame number "
+    CHECK(contains(problems[2], "sprites/bad.frames.json /animations/walk/frames/0 a frame number "
                                 "needs the animation's \"texture\""));
-    CHECK(problems[2] ==
+    CHECK(problems[3] ==
           "sprites/bad.material.json /color no node, param or input \"colr\"; did you mean "
           "\"color\"?");
-    CHECK(contains(problems[3], "sprites/broken.png  not a PNG or BMP image"));
+    CHECK(problems[4] == "sprites/bad.tileset.json /sources/ground/tiles/0,0/terrain no terrain "
+                         "set has a terrain named \"grass\"");
+    CHECK(contains(problems[5], "sprites/broken.png  not a PNG or BMP image"));
 
     // The good files were staged with the scenes; files a game never loads were not.
     const std::filesystem::path data = folder / ".slash" / "export" / host / "data";
@@ -685,6 +698,7 @@ TEST_CASE("exports ship textures, frames, material and animation files, and chec
     CHECK(std::filesystem::exists(data / "sprites" / "hero.frames.json"));
     CHECK(std::filesystem::exists(data / "sprites" / "glow.material.json"));
     CHECK(std::filesystem::exists(data / "sprites" / "hero.anim.json"));
+    CHECK(std::filesystem::exists(data / "sprites" / "ground.tileset.json"));
     CHECK(std::filesystem::exists(data / "main.scene.json"));
     CHECK_FALSE(std::filesystem::exists(data / "sprites" / "notes.md"));
     std::filesystem::remove_all(folder);

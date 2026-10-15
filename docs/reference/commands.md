@@ -61,6 +61,7 @@ as `entity.get`, reject it as an unknown param.
 | Assets | [`asset.list`](#assetlist) |
 | Materials | [`material.eval`](#materialeval) |
 | Animations | [`animation.eval`](#animationeval) |
+| Tile maps | [`tilemap.paint`](#tilemappaint), [`tilemap.set`](#tilemapset), [`tilemap.get`](#tilemapget) |
 | Storyboard | [`storyboard.query`](#storyboardquery), [`storyboard.brief`](#storyboardbrief), [`storyboard.check`](#storyboardcheck), [`storyboard.edit`](#storyboardedit) |
 | Components | [`component.set`](#componentset), [`component.remove`](#componentremove) |
 | Query | [`world.query`](#worldquery) |
@@ -92,7 +93,7 @@ Needs: `read`.
 ```
 
 ```json
-{"capabilities":["read","edit","run","filesystem","build"],"commands":["animation.eval","asset.list","batch","component.remove","component.set","engine.describe","entity.create","entity.destroy","entity.get","events.read","events.subscribe","events.unsubscribe","export.run","history.get","log.tail","material.eval","prefab.save","redo","run.until","scene.get","scene.new","scene.open","scene.save","schema.get","step","storyboard.brief","storyboard.check","storyboard.edit","storyboard.query","undo","world.diff","world.query","world.restore","world.snapshot"],"components":[{"defaults":{"position":[0.0,0.0],"rotation":0.0,"scale":[1.0,1.0]},"doc":"Position, rotation and scale in 2D. Units are pixels and y points down.","name":"Transform2D"},{"defaults":{"position":[0.0,0.0,0.0],"rotation":[0.0,0.0,0.0,1.0],"scale":[1.0,1.0,1.0]},"doc":"Position, rotation and scale in 3D. Units are meters and y points up.","name":"Transform3D"},{"defaults":{"ids":[]},"doc":"The storyboard entries this entity stands for.","name":"StoryRef"},{"defaults":{"centered":true,"flip_h":false,"flip_v":false,"frame":0,"hframes":1,"material":"","material_params":{},"modulate":[1.0,1.0,1.0,1.0],"offset":[0.0,0.0],"region":[0.0,0.0,0.0,0.0],"texture":"","texture_filter":"inherit","vframes":1,"visible":true,"z_index":0},"doc":"A texture drawn at the entity's Transform2D. Sprites draw in order of z_index, then in the order their entities were made.","name":"Sprite2D"},{"defaults":{"animation":"default","frame":0,"frame_progress":0.0,"playing":true,"speed_scale":1.0,"sprite_frames":""},"doc":"Plays an animation from a .frames.json file on the entity's Sprite2D, which it adds if missing. Emits animation_finished when an animation that doesn't loop ends.","name":"AnimatedSprite2D"},{"defaults":{"animation":"","backwards":false,"library":"","playing":true,"speed_scale":1.0,"time":0.0},"doc":"Plays a keyframe animation from a .anim.json file on the entity's components. Emits animation_finished when an animation that doesn't loop ends, and the events of its event tracks.","name":"AnimationPlayer"}],"engine":{"name":"SlashEngine","version":"0.1.0"},"scene":{"entities":0,"path":"","tick":0},"systems":["animation_player","animated_sprite_2d"]}
+{"capabilities":["read","edit","run","filesystem","build"],"commands":["animation.eval","asset.list","batch","component.remove","component.set","engine.describe","entity.create","entity.destroy","entity.get","events.read","events.subscribe","events.unsubscribe","export.run","history.get","log.tail","material.eval","prefab.save","redo","run.until","scene.get","scene.new","scene.open","scene.save","schema.get","step","storyboard.brief","storyboard.check","storyboard.edit","storyboard.query","tilemap.get","tilemap.paint","tilemap.set","undo","world.diff","world.query","world.restore","world.snapshot"],"components":[{"defaults":{"position":[0.0,0.0],"rotation":0.0,"scale":[1.0,1.0]},"doc":"Position, rotation and scale in 2D. Units are pixels and y points down.","name":"Transform2D"},{"defaults":{"position":[0.0,0.0,0.0],"rotation":[0.0,0.0,0.0,1.0],"scale":[1.0,1.0,1.0]},"doc":"Position, rotation and scale in 3D. Units are meters and y points up.","name":"Transform3D"},{"defaults":{"ids":[]},"doc":"The storyboard entries this entity stands for.","name":"StoryRef"},{"defaults":{"centered":true,"flip_h":false,"flip_v":false,"frame":0,"hframes":1,"material":"","material_params":{},"modulate":[1.0,1.0,1.0,1.0],"offset":[0.0,0.0],"region":[0.0,0.0,0.0,0.0],"texture":"","texture_filter":"inherit","vframes":1,"visible":true,"z_index":0},"doc":"A texture drawn at the entity's Transform2D. Sprites draw in order of z_index, then in the order their entities were made.","name":"Sprite2D"},{"defaults":{"animation":"default","frame":0,"frame_progress":0.0,"playing":true,"speed_scale":1.0,"sprite_frames":""},"doc":"Plays an animation from a .frames.json file on the entity's Sprite2D, which it adds if missing. Emits animation_finished when an animation that doesn't loop ends.","name":"AnimatedSprite2D"},{"defaults":{"animation":"","backwards":false,"library":"","playing":true,"speed_scale":1.0,"time":0.0},"doc":"Plays a keyframe animation from a .anim.json file on the entity's components. Emits animation_finished when an animation that doesn't loop ends, and the events of its event tracks.","name":"AnimationPlayer"},{"defaults":{"legend":{},"modulate":[1.0,1.0,1.0,1.0],"origin":[0,0],"rows":[],"texture_filter":"inherit","tile_set":"","visible":true,"z_index":0},"doc":"A grid of tiles from a .tileset.json file, drawn at the entity's Transform2D if it has one. Cells are text: rows of legend keys, \".\" for empty. Edit them with tilemap.paint and tilemap.set.","name":"TileMapLayer"}],"engine":{"name":"SlashEngine","version":"0.1.0"},"scene":{"entities":0,"path":"","tick":0},"systems":["animation_player","animated_sprite_2d"]}
 ```
 
 `scene` describes the open scene: how many entities it has, its path (empty for an unsaved one)
@@ -108,12 +109,12 @@ says whether the game is `playing`.
 ### schema.get
 
 Returns a JSON Schema: for scene, prefab, [`.frames.json`](scene-format.md#sprite-frames),
-[`.material.json`](scene-format.md#materials), [`.anim.json`](scene-format.md#animations) or
-storyboard files, one component or one command.
+[`.material.json`](scene-format.md#materials), [`.anim.json`](scene-format.md#animations),
+[`.tileset.json`](scene-format.md#tile-sets) or storyboard files, one component or one command.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `kind` | `"scene"`, `"prefab"`, `"frames"`, `"material"`, `"animation"`, `"storyboard"`, `"component"` or `"command"` | required | Which schema |
+| `kind` | `"scene"`, `"prefab"`, `"frames"`, `"material"`, `"animation"`, `"tileset"`, `"storyboard"`, `"component"` or `"command"` | required | Which schema |
 | `name` | string | | Component or command name, for `component` and `command` |
 
 Needs: `read`.
@@ -387,6 +388,91 @@ Needs: `read`.
 four decimals. A discrete track gives the value of the last key at or before each time. An
 unknown animation or track path fails with the closest name, and a time past the animation's
 length fails with its `path`, `/times/<n>`. Event tracks are left out; read them in the file.
+
+## Tile maps
+
+These commands edit an entity's [`TileMapLayer`](scene-format.md#tile-map-layers) through its
+[tile set](scene-format.md#tile-sets), and write its cells back in canonical form. Each takes
+the cells as `cells`, a list of `[column, row]` (up to 4096), or `rect`,
+`[column, row, width, height]` (up to 65536 cells); give one. Columns and rows are from -32768 to
+32767. A layer whose tile set doesn't load, or whose legend or rows are wrong, fails with `path`
+`/id` and the message names the bad value, as `"map"'s TileMapLayer/rows/2: ...`.
+
+### tilemap.paint
+
+Paints a terrain on cells and picks tiles for them and the terrain cells around them so their
+edges connect, as Godot's terrain painting does. `null` erases the cells and fixes up their
+neighbors. Returns how many cells changed.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `id` | string | required | An entity with a `TileMapLayer` |
+| `cells` | array of `[column, row]` | | The cells to paint. Give `cells` or `rect` |
+| `rect` | `[column, row, width, height]` | | Every cell in it |
+| `terrain` | string or `null` | required | A terrain of the tile set, or `null` to erase |
+
+Needs: `edit`.
+
+```json
+{"id": "ground", "rect": [2, 1, 8, 6], "terrain": "grass"}
+```
+
+```json
+{"changed":48,"id":"ground"}
+```
+
+Each cell gets the tile of its terrain whose `peering` fits its neighbors best, first where its
+own terrain stops and then which terrain lies beyond; empty cells count as no terrain, so
+painting in empty space draws edges. Equal fits are picked by the cell's position, weighted by
+`probability`, so the same paint gives the same tiles. An unknown terrain fails with the
+closest name.
+
+### tilemap.set
+
+Sets cells to one tile, or erases them, without changing the tiles around them. Returns how
+many cells changed.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `id` | string | required | An entity with a `TileMapLayer` |
+| `cells` | array of `[column, row]` | | The cells to set. Give `cells` or `rect` |
+| `rect` | `[column, row, width, height]` | | Every cell in it |
+| `tile` | string or `null` | required | A tile by name or as `"source:column,row"`, or `null` to erase |
+
+Needs: `edit`.
+
+```json
+{"id": "ground", "cells": [[8, 2]], "tile": "rock"}
+```
+
+```json
+{"changed":1,"id":"ground"}
+```
+
+An unknown tile or source fails with the closest name.
+
+### tilemap.get
+
+Returns a layer's cells as rows of legend keys from an origin, with `.` for an empty cell: the
+whole layer as stored, or a window of it in the layer's own keys.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `id` | string | required | An entity with a `TileMapLayer` |
+| `rect` | `[column, row, width, height]` | the whole layer | Only these cells |
+
+Needs: `read`.
+
+```json
+{"id": "ground", "rect": [3, 2, 3, 3]}
+```
+
+```json
+{"legend":{"G":"grass_n","a":"grass_s","b":"grass_w","c":"grass_e","j":"grass_in_se","k":"grass_in_sw","l":"grass_in_ne","m":"grass_in_nw","w":"water"},"origin":[3,2],"rows":["jak","cwb","lGm"]}
+```
+
+With `rect`, `origin` is the rect's top left, there is a row for each of its rows, and each row
+ends at its last tile. `legend` holds only the keys the rows use.
 
 ## Storyboard
 

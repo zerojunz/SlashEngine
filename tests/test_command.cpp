@@ -1456,6 +1456,116 @@ TEST_CASE("animation.eval returns the values an animation's tracks set, and step
     std::filesystem::remove_all(root);
 }
 
+namespace {
+
+// A tile set whose grass tiles match by side: water at 0,0, and grass at column 1 + the sides
+// facing water (1 n, 2 e, 4 s, 8 w), named for them, as "grass_ns".
+std::string sides_tileset() {
+    std::string tiles = R"("0,0": {"name": "water", "terrain": "water"})";
+    for (int mask = 0; mask < 16; ++mask) {
+        std::string name = "grass";
+        std::string peering;
+        for (int side = 0; side < 4; ++side) {
+            if ((mask & (1 << side)) != 0) {
+                const std::string letter(1, "nesw"[side]);
+                name += (name == "grass" ? "_" : "") + letter;
+                peering += (peering.empty() ? "" : ", ") + ("\"" + letter + "\": \"water\"");
+            }
+        }
+        tiles += ", \"" + std::to_string(mask + 1) + ",0\": {\"name\": \"" + name +
+                 R"(", "terrain": "grass", "peering": {)" + peering + "}}";
+    }
+    return R"({"format": 1, "terrain_sets": {"ground": {"mode": "match_sides",
+        "terrains": ["grass", "water"]}}, "sources": {"ground": {"texture": "ground.png",
+        "tiles": {)" +
+           tiles + "}}}}";
+}
+
+} // namespace
+
+TEST_CASE("tilemap commands set, paint and read a TileMapLayer's cells") {
+    const std::string root = "tilemap_test_project";
+    std::filesystem::remove_all(root);
+    REQUIRE(slash::platform::create_directories(root).ok());
+    REQUIRE(slash::platform::write_file(root + "/ground.tileset.json", sides_tileset()).ok());
+    command::SessionOptions options;
+    options.project_root = root;
+    Engine engine(options);
+    engine.ok("entity.create", R"({"id": "map", "components": {
+        "TileMapLayer": {"tile_set": "ground.tileset.json"}}})");
+    engine.ok("entity.create", R"({"id": "empty", "components": {"Transform2D": {}}})");
+
+    // Painting grass in empty space draws its edges, as if water were all around.
+    CHECK(
+        engine.ok("tilemap.paint", R"({"id": "map", "rect": [0, 0, 3, 1], "terrain": "grass"})") ==
+        parse(R"({"id": "map", "changed": 3})"));
+    CHECK(engine.ok("tilemap.get", R"({"id": "map"})") ==
+          parse(R"({"origin": [0, 0], "legend": {"G": "grass_ns", "a": "grass_nes",
+                    "g": "grass_nsw"}, "rows": ["gGa"]})"));
+    // Water below joins up: the grass keeps its edges, now facing water.
+    CHECK(engine.ok("tilemap.paint", R"({"id": "map", "cells": [[0, 1], [1, 1], [2, 1]],
+                                         "terrain": "water"})") ==
+          parse(R"({"id": "map", "changed": 3})"));
+    // Grass over the middle water cell turns its neighbors.
+    CHECK(engine.ok("tilemap.paint", R"({"id": "map", "cells": [[1, 1]], "terrain": "grass"})") ==
+          parse(R"({"id": "map", "changed": 2})"));
+    CHECK(engine.ok("tilemap.get", R"({"id": "map"})") ==
+          parse(R"({"origin": [0, 0], "legend": {"G": "grass_n", "a": "grass_nes",
+                    "b": "grass_esw", "g": "grass_nsw", "w": "water"}, "rows": ["gGa", "wbw"]})"));
+
+    // tilemap.set places one tile, by name or source and grid cell, or erases with null.
+    CHECK(engine.ok("tilemap.set", R"({"id": "map", "cells": [[4, -1]], "tile": "ground:1,0"})") ==
+          parse(R"({"id": "map", "changed": 1})"));
+    CHECK(engine.ok("tilemap.set", R"({"id": "map", "rect": [0, 1, 3, 1], "tile": null})") ==
+          parse(R"({"id": "map", "changed": 3})"));
+    CHECK(engine.ok("tilemap.get", R"({"id": "map"})") ==
+          parse(R"({"origin": [0, -1], "legend": {"G": "grass_n", "a": "grass_nes",
+                    "c": "grass", "g": "grass_nsw"}, "rows": ["....c", "gGa"]})"));
+    // A window of the layer, in the layer's own keys.
+    CHECK(engine.ok("tilemap.get", R"({"id": "map", "rect": [1, -1, 4, 3]})") ==
+          parse(R"({"origin": [1, -1], "legend": {"G": "grass_n", "a": "grass_nes",
+                    "c": "grass"}, "rows": ["...c", "Ga", ""]})"));
+
+    // Each edit is one undo step, and a dry run changes nothing.
+    engine.ok("undo");
+    CHECK(engine.ok("tilemap.get", R"({"id": "map", "rect": [0, 1, 3, 1]})")
+              .find("rows")
+              ->as_array()
+              .at(0) == "wbw");
+    CHECK(engine.ok("tilemap.set", R"({"id": "map", "cells": [[4, -1]], "tile": "grass"})") ==
+          parse(R"({"id": "map", "changed": 0})"));
+    engine.ok("tilemap.paint", R"({"id": "map", "rect": [0, 0, 3, 2], "terrain": null,
+                                   "dry_run": true})");
+    CHECK(engine.ok("tilemap.get", R"({"id": "map"})").find("rows")->size() == 3);
+
+    auto reply = engine.fails("tilemap.set", R"({"id": "nobody", "cells": [[0, 0]], "tile": null})",
+                              command::code::kNotFound);
+    CHECK(reply.message == "/id: no entity has the id \"nobody\"");
+    reply = engine.fails("tilemap.get", R"({"id": "empty"})", command::code::kInvalidParams);
+    CHECK(reply.message == "/id: \"empty\" has no TileMapLayer");
+    reply = engine.fails("tilemap.set", R"({"id": "map", "cells": [[0, 0]], "tile": "gras"})",
+                         command::code::kNotFound);
+    CHECK(reply.message ==
+          "/tile: the tile set has no tile named \"gras\"; did you mean \"grass\"?");
+    reply = engine.fails("tilemap.paint", R"({"id": "map", "cells": [[0, 0]], "terrain": "watr"})",
+                         command::code::kNotFound);
+    CHECK(reply.message ==
+          "/terrain: the tile set has no terrain \"watr\"; did you mean \"water\"?");
+    reply = engine.fails("tilemap.paint", R"({"id": "map", "terrain": "water"})",
+                         command::code::kInvalidParams);
+    CHECK(contains(reply.message, "give cells"));
+    reply = engine.fails("tilemap.set", R"({"id": "map", "rect": [0, 0, 300, 300], "tile": null})",
+                         command::code::kInvalidParams);
+    CHECK(reply.message == "/rect: covers 90000 cells; the most is 65536");
+    engine.fails("tilemap.set", R"({"id": "map", "cells": [[0, 40000]], "tile": null})",
+                 command::code::kInvalidParams);
+    engine.ok("component.set", R"({"id": "map", "components": {"TileMapLayer": {"rows": ["q"]}}})");
+    reply = engine.fails("tilemap.get", R"({"id": "map"})", command::code::kInvalidArgument);
+    CHECK(reply.message == "/id: \"map\"'s TileMapLayer/rows/0: column 0: \"q\" is not in the "
+                           "legend");
+    std::filesystem::remove_all(root);
+}
+
 TEST_CASE("log.tail returns recent log lines as objects") {
     Engine engine({}, /*capture_logs=*/true);
     slash::log::info("first", {{"n", 1}});
