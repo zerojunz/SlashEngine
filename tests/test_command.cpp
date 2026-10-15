@@ -1154,10 +1154,11 @@ TEST_CASE("engine.describe lists systems in the order they run") {
     world.add_system("movement", [](world::World& /*w*/, double /*dt*/) {},
                      {.doc = "Moves things by their velocity."});
     world.add_system("input", [](world::World& /*w*/, double /*dt*/) {}, {.priority = -1});
-    // Every session plays animations and steps 2D physics with built-in systems that run late.
+    // Every session plays animations, steps 2D physics and runs particles with built-in systems
+    // that run late.
     CHECK(*engine.ok("engine.describe").find("systems") ==
           parse(R"(["input", "movement", "animation_player", "physics2d",
-                    "animated_sprite_2d"])"));
+                    "animated_sprite_2d", "cpu_particles_2d"])"));
     CHECK(*engine.ok("engine.describe", R"({"full": true})").find("systems") == parse(R"([
         {"name": "input", "priority": -1},
         {"name": "movement", "doc": "Moves things by their velocity.", "priority": 0},
@@ -1168,7 +1169,9 @@ TEST_CASE("engine.describe lists systems in the order they run") {
          "doc": "Steps 2D physics: moves rigid and character bodies and reports contacts.",
          "priority": 950},
         {"name": "animated_sprite_2d",
-         "doc": "Plays each AnimatedSprite2D's animation on its Sprite2D.", "priority": 1000}
+         "doc": "Plays each AnimatedSprite2D's animation on its Sprite2D.", "priority": 1000},
+        {"name": "cpu_particles_2d",
+         "doc": "Emits, moves and ages each CPUParticles2D's particles.", "priority": 1100}
     ])"));
 }
 
@@ -1457,6 +1460,43 @@ TEST_CASE("physics commands find bodies by ray, point and shape, and what touche
                      command::code::kNotFound)
               .message == "/exclude/0: no entity has the id \"crat\"; did you mean \"crate\"?");
     engine.fails("physics.contacts", R"({"id": "nobody"})", command::code::kNotFound);
+}
+
+TEST_CASE("particles.eval counts and lists particles, as they are or after a time") {
+    Engine engine;
+    engine.ok("entity.create", R"({"id": "sparkler", "components": {
+        "Transform2D": {"position": [100, 50]},
+        "CPUParticles2D": {"amount": 10, "spread": 0, "gravity": [0, 0],
+                           "initial_velocity_min": 100, "initial_velocity_max": 100}}})");
+    CHECK(engine.ok("particles.eval", R"({"id": "sparkler"})") ==
+          parse(R"({"alive": 0, "bounds": null})"));
+    engine.ok("step", R"({"ticks": 45})");
+    CHECK(engine.ok("particles.eval", R"({"id": "sparkler", "list": true, "max_results": 2})") ==
+          parse(R"({"alive": 8, "bounds": [105, 50, 70.0001, 0], "particles": [
+              {"age": 0.75, "color": [1, 1, 1, 1], "position": [175.0001, 50], "rotation": 0,
+               "scale": 1},
+              {"age": 0.65, "color": [1, 1, 1, 1], "position": [165.0001, 50], "rotation": 0,
+               "scale": 1}]})"));
+    // A time runs the settings from the start, apart from the world, as stepping would.
+    CHECK(engine.ok("particles.eval", R"({"id": "sparkler", "time": 0.75})") ==
+          parse(R"({"alive": 8, "bounds": [105, 50, 70.0001, 0]})"));
+
+    // Particles in local coordinates are placed in the world by the entity's transform.
+    engine.ok("component.set", R"({"id": "sparkler", "components": {
+        "Transform2D": {"rotation": 1.5707964}, "CPUParticles2D": {"local_coords": true}}})");
+    CHECK(engine.ok("particles.eval", R"({"id": "sparkler", "time": 0.25, "list": true,
+                                          "max_results": 1})") ==
+          parse(R"({"alive": 3, "bounds": [100, 55, 0, 20], "particles": [
+              {"age": 0.25, "color": [1, 1, 1, 1], "position": [100, 75], "rotation": 1.5708,
+               "scale": 1}]})"));
+
+    CHECK(engine.fails("particles.eval", R"({"id": "sparkle"})", command::code::kNotFound)
+              .message == "/id: no entity has the id \"sparkle\"; did you mean \"sparkler\"?");
+    engine.ok("entity.create", R"({"id": "rock", "components": {"Transform2D": {}}})");
+    CHECK(engine.fails("particles.eval", R"({"id": "rock"})", command::code::kInvalidParams)
+              .message == "/id: \"rock\" has no CPUParticles2D");
+    engine.fails("particles.eval", R"({"id": "sparkler", "time": -1})",
+                 command::code::kInvalidParams);
 }
 
 TEST_CASE("light.sample returns how lit points are, and which lights reach them") {
