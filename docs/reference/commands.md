@@ -20,9 +20,31 @@ Rules that apply to every command (see [concepts.md](../concepts.md#sessions)):
 - Params are a JSON object, checked against the command's schema before it runs. Unknown params
   are errors. Left out, params take the defaults listed here.
 - A failed command changes nothing.
+- Commands that change the world (marked "Takes `dry_run`" below) accept `"dry_run": true`; see
+  [Dry runs](#dry-runs).
 - Paths are relative to the project folder and cannot leave it.
 - Component fields are written as in scene files: vectors as arrays (`[x, y]`), quaternions as
   `[x, y, z, w]`.
+
+## Dry runs
+
+Add `"dry_run": true` to the params of any command that changes the world (`scene.new`,
+`scene.open`, `entity.create`, `entity.destroy`, `component.set`, `component.remove`, `step`,
+`world.restore` and `batch`) to see what it would do. The command runs, then the world, the
+scene's path, the next generated ID and the tick counter are put back, and no undo step is
+recorded. An error is returned as usual. The result holds the command's own result and the
+changes, in the same form as [`world.diff`](#worlddiff):
+
+```json
+{"id": "player", "dry_run": true, "components": {"Transform2D": {"rotation": 1.0}}}
+```
+
+```json
+{"changes":{"changed":{"player":{"Transform2D":{"rotation":1.0}}}},"dry_run":true,"result":{"changed":{"Transform2D":{"rotation":1.0}},"id":"player"}}
+```
+
+A batch takes `dry_run` itself; the commands inside it cannot. Commands that change nothing, such
+as `entity.get`, reject it as an unknown param.
 
 ## Contents
 
@@ -33,6 +55,7 @@ Rules that apply to every command (see [concepts.md](../concepts.md#sessions)):
 | Entities | [`entity.create`](#entitycreate), [`entity.destroy`](#entitydestroy), [`entity.get`](#entityget) |
 | Components | [`component.set`](#componentset), [`component.remove`](#componentremove) |
 | Query | [`world.query`](#worldquery) |
+| Snapshots | [`world.snapshot`](#worldsnapshot), [`world.diff`](#worlddiff), [`world.restore`](#worldrestore) |
 | Run | [`step`](#step) |
 | History | [`undo`](#undo), [`redo`](#redo), [`history.get`](#historyget) |
 | Several at once | [`batch`](#batch) |
@@ -60,7 +83,7 @@ Needs: `read`.
 ```
 
 ```json
-{"capabilities":["read","edit","run","filesystem","build"],"commands":["batch","component.remove","component.set","engine.describe","entity.create","entity.destroy","entity.get","export.run","history.get","log.tail","redo","scene.get","scene.new","scene.open","scene.save","schema.get","step","undo","world.query"],"components":[{"defaults":{"position":[0.0,0.0],"rotation":0.0,"scale":[1.0,1.0]},"doc":"Position, rotation and scale in 2D. Units are pixels and y points down.","name":"Transform2D"},{"defaults":{"position":[0.0,0.0,0.0],"rotation":[0.0,0.0,0.0,1.0],"scale":[1.0,1.0,1.0]},"doc":"Position, rotation and scale in 3D. Units are meters and y points up.","name":"Transform3D"}],"engine":{"name":"SlashEngine","version":"0.1.0"},"scene":{"entities":0,"path":"","tick":0},"systems":[]}
+{"capabilities":["read","edit","run","filesystem","build"],"commands":["batch","component.remove","component.set","engine.describe","entity.create","entity.destroy","entity.get","export.run","history.get","log.tail","redo","scene.get","scene.new","scene.open","scene.save","schema.get","step","undo","world.diff","world.query","world.restore","world.snapshot"],"components":[{"defaults":{"position":[0.0,0.0],"rotation":0.0,"scale":[1.0,1.0]},"doc":"Position, rotation and scale in 2D. Units are pixels and y points down.","name":"Transform2D"},{"defaults":{"position":[0.0,0.0,0.0],"rotation":[0.0,0.0,0.0,1.0],"scale":[1.0,1.0,1.0]},"doc":"Position, rotation and scale in 3D. Units are meters and y points up.","name":"Transform3D"}],"engine":{"name":"SlashEngine","version":"0.1.0"},"scene":{"entities":0,"path":"","tick":0},"systems":[]}
 ```
 
 `scene` describes the open scene: how many entities it has, its path (empty for an unsaved one)
@@ -106,7 +129,7 @@ Replaces the open scene with an empty one and clears undo history.
 | --- | --- | --- | --- |
 | `path` | string | | Where `scene.save` will write it, e.g. `"scenes/level2.scene.json"`. Nothing is written yet |
 
-Needs: `edit`.
+Needs: `edit`. Takes `dry_run`.
 
 ```json
 {"path": "scenes/two.scene.json"}
@@ -125,7 +148,7 @@ changes nothing and every error is listed.
 | --- | --- | --- | --- |
 | `path` | string | required | Scene file, e.g. `"scenes/main.scene.json"` |
 
-Needs: `edit`, `filesystem`.
+Needs: `edit`, `filesystem`. Takes `dry_run`.
 
 ```json
 {"path": "basic.scene.json"}
@@ -170,7 +193,7 @@ Creates an entity, optionally with components. Returns its ID.
 | `id` | string | generated | Stable ID: 1 to 64 letters, digits, `_` or `-` |
 | `components` | object | | Components keyed by type name. Fields left out keep their defaults |
 
-Needs: `edit`.
+Needs: `edit`. Takes `dry_run`.
 
 ```json
 {"id": "enemy_01", "components": {"Transform2D": {"position": [200, 40]}}}
@@ -191,7 +214,7 @@ Destroys an entity and its components.
 | --- | --- | --- | --- |
 | `id` | string | required | Entity ID |
 
-Needs: `edit`.
+Needs: `edit`. Takes `dry_run`.
 
 ```json
 {"id": "camera"}
@@ -239,7 +262,7 @@ values changed.
 | `id` | string | required | Entity ID |
 | `components` | object | required | Fields to set, keyed by component type. Fields left out are unchanged; missing components are added |
 
-Needs: `edit`.
+Needs: `edit`. Takes `dry_run`.
 
 ```json
 {"id": "player", "components": {"Transform2D": {"rotation": 1.0, "position": [64, 32]}}}
@@ -265,7 +288,7 @@ Removes components from an entity. Returns the ones it had.
 | `id` | string | required | Entity ID |
 | `components` | array of strings | required | Component types to remove (at least one) |
 
-Needs: `edit`.
+Needs: `edit`. Takes `dry_run`.
 
 ```json
 {"id": "player", "components": ["Transform2D"]}
@@ -330,6 +353,71 @@ With components, and with defaults dropped:
 {"count":3,"entities":["camera"],"truncated":true}
 ```
 
+## Snapshots
+
+### world.snapshot
+
+Saves a copy of every entity under a name, to compare against with `world.diff` or go back to
+with `world.restore`. A name in use is replaced. A session keeps up to 100 snapshots, and they
+last as long as the session.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `name` | string, 1 to 64 characters | `"default"` | Snapshot name |
+
+Needs: `read`.
+
+```json
+{}
+```
+
+```json
+{"entities":3,"name":"default"}
+```
+
+### world.diff
+
+Lists the entities added, removed or changed since a snapshot, by ID. `changed` holds every added
+or changed entity with the new value of each field that differs: from the snapshot, or from its
+default for a component the entity did not have (`{}` when every field is at its default). A
+removed component is `null`. Empty sections are left out, so no changes give `{}`.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `from` | string | `"default"` | Snapshot to compare from |
+| `to` | string | the world now | Snapshot to compare to |
+
+Needs: `read`. After a snapshot, moving `player` and destroying `spawn_point`:
+
+```json
+{}
+```
+
+```json
+{"changed":{"player":{"Transform2D":{"position":[80.0,32.0]}}},"removed":["spawn_point"]}
+```
+
+An unknown name fails with `-32001` and the closest name:
+`/from: no snapshot is named "defualt"; did you mean "default"?`.
+
+### world.restore
+
+Puts every entity back as it was in a snapshot. Undo reverts it; the tick counter keeps counting.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `name` | string | `"default"` | Snapshot to restore |
+
+Needs: `edit`. Takes `dry_run`.
+
+```json
+{}
+```
+
+```json
+{"entities":3,"restored":"default"}
+```
+
 ## Run
 
 ### step
@@ -342,7 +430,7 @@ they were before.
 | `ticks` | integer, 1 to 100000 | `1` | Ticks to run |
 | `tick_seconds` | number, above 0 and at most 1 | `1/60` | Seconds per tick |
 
-Needs: `run`.
+Needs: `run`. Takes `dry_run`.
 
 ```json
 {"ticks": 120}
@@ -394,8 +482,8 @@ the error names the failing command. One undo reverts the whole batch.
 | --- | --- | --- | --- |
 | `commands` | array of 1 to 1000 `{"command", "params"}` objects | required | Commands to run in order |
 
-Needs no capability itself; each command inside it is checked as usual. A batch cannot contain
-another `batch`.
+Needs no capability itself; each command inside it is checked as usual. Takes `dry_run`, which
+the commands inside it cannot. A batch cannot contain another `batch`, `undo` or `redo`.
 
 ```json
 {"commands": [

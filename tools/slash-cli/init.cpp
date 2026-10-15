@@ -56,6 +56,8 @@ The address and token are in `.slash/server.json`, which stays out of git.
 
 - Call `engine_describe` once to learn the components (with default field values) and commands.
 - Group related edits in one `batch` call. It is all or nothing, and one `undo` reverts it.
+- Add `"dry_run": true` to any edit or `batch` to see what it would change, changing nothing.
+  `world_snapshot`, then `world_diff`, lists what changed since; `world_restore` goes back.
 - `world_query` returns only entity IDs unless you pass `include`. Filter with `where`.
 - `component_set` returns only the fields that changed.
 - Errors give the JSON Pointer of the bad value and suggest the right name; fix it and retry.

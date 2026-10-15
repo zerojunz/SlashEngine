@@ -49,6 +49,18 @@ inline constexpr std::int64_t kSceneFormat = 1;
 // Every entity that has an ID, with the registered components it carries.
 [[nodiscard]] json::Value save_scene(const World& world);
 
+// What changed between two saved scenes, by entity ID:
+//
+//   {"added": ["bullet_1"], "removed": ["enemy_2"],
+//    "changed": {"player": {"Transform2D": {"position": [64.0, 40.0]}, "Health": null}}}
+//
+// "changed" holds every added or changed entity with the new value of each field that differs:
+// from before, or from its default for a component the entity did not have, which is {} when every
+// field is at its default. A removed component is null. Empty sections are left out, so identical
+// scenes give {}.
+[[nodiscard]] json::Value diff_scenes(const ComponentRegistry& components,
+                                      const json::Value& before, const json::Value& after);
+
 // Rewrites scene text in canonical form: parsed, loaded into a fresh world and saved again, so
 // defaults are dropped and numbers normalized. The text ends with a newline.
 [[nodiscard]] Result<std::string> format_scene(const ComponentRegistry& components,

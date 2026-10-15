@@ -131,9 +131,9 @@ rendering on top.
         and what it touches, so agents can see what others are doing
   - [ ] `slash-cli init` writes a starter storyboard, and the MCP instructions tell agents to
         call `storyboard.brief` before a task and `storyboard.check` after it
-- [ ] Dry runs: `"dry_run": true` on any edit or `batch` returns what would change and any
+- [x] Dry runs: `"dry_run": true` on any edit or `batch` returns what would change and any
       errors, and changes nothing
-- [ ] Snapshots and semantic diffs: `world.snapshot`, `world.diff` (entities and fields added,
+- [x] Snapshots and semantic diffs: `world.snapshot`, `world.diff` (entities and fields added,
       removed or changed, by ID) and `world.restore`
 - [ ] Verified examples: every feature from here on ships with a small working example in
       `examples/` that CI builds and runs headless, so agents copy code that is known to work
@@ -410,8 +410,8 @@ calls and tokens ([design section 6](design.md#6-cheap-for-agents-to-use)).
 | A test command that returns only the checks that failed | 5 | Planned |
 | Frame summaries as data instead of screenshots | 5 | Planned |
 | `storyboard.brief`: only the facts a task needs, and what changed since the agent last looked | 5 | Planned |
-| Dry runs: see what an edit would change before making it | 5 | Planned |
-| `world.snapshot` and `world.diff`: try something, see exactly what changed, roll back | 5 | Planned |
+| Dry runs: see what an edit would change before making it | 5 | Done |
+| `world.snapshot` and `world.diff`: try something, see exactly what changed, roll back | 5 | Done |
 | Verified examples for every feature, built and run in CI | 5 | Planned |
 | `run.until`: run headless until a condition holds instead of polling | 5 | Planned |
 | `replay.seek`: query any earlier tick of a recorded run | 5 | Planned |
