@@ -51,6 +51,7 @@ The code follows the same split, one CMake library per module under `engine/`:
 | `render` | The render device: SDL3's GPU API (Vulkan, Metal, Direct3D 12), or the null device for headless runs |
 | `asset` | Asset handles, loaders and hot reload |
 | `world` | The EnTT world, components, the component registry, scenes and prefabs |
+| `canvas` | 2D drawing, as Godot's canvas: sprites, `.frames.json` animations and the renderer that draws them |
 | `storyboard` | Storyboard files: kinds, checks, versions, queries and edits |
 | `command` | Commands, sessions with undo, JSON-RPC and MCP |
 | `server` | The localhost HTTP server over a session |
@@ -116,9 +117,10 @@ even after the file changes.
 ## Assets
 
 An **asset** is a file a game loads by project path, like a Godot resource: a JSON table, a CSV
-file and, once the renderer and audio arrive, textures and sounds. Loading one returns a
-**handle**; every handle to the same path shares one copy, which stays loaded while any handle
-exists. `.json`, `.txt` and `.csv` files load out of the box, and a game can add its own types.
+file, a texture and, once audio arrives, sounds. Loading one returns a **handle**; every handle to
+the same path shares one copy, which stays loaded while any handle exists. `.json`, `.txt`,
+`.csv`, `.png`, `.bmp` and `.frames.json` files load out of the box, and a game can add its own
+types.
 
 **Hot reload** keeps an agent's edit-and-check loop short. Before every command, and between
 ticks in `slash-cli run` and `slash-cli serve`, the session checks the files it has loaded. A
@@ -183,7 +185,7 @@ API, which uses Metal, Direct3D 12 or Vulkan, whichever the machine has. Headles
 machines where no backend starts, use the **null device**: it keeps textures and checks every
 call exactly as the GPU device does, but draws nothing. So code tested headless fails the same
 way on a GPU, and `slash-cli run` and `slash-game` report which device drew in their summary's
-`renderer`. For now a game's window shows its `rendering.clear_color`; sprites are next.
+`renderer`.
 
 Shaders are written once in HLSL. Vulkan's SPIR-V and Metal's MSL are compiled ahead of time
 and committed, so building the engine needs no shader tools, and Direct3D 12 compiles the HLSL at
@@ -191,15 +193,24 @@ startup with the compiler that comes with Windows. The
 [draw-offscreen example](../examples/draw-offscreen/) draws into a texture and reads it back,
 which is how tests check what a game draws.
 
-How often frames are drawn follows Godot. The world ticks at a fixed rate (`tick_hz`), while
-frames come as fast as the **V-Sync mode** lets them (`window.vsync_mode`: wait for each refresh,
-present at once, mailbox or adaptive) and no faster than the **frame cap** (`max_fps`, none by
-default). So a 60 Hz world on a 120 Hz display runs a tick every other frame, and the loop says
-how far real time is into the next tick, for drawing between ticks. A game's options menu can
-change both while it runs, and so can an agent, with `display.set`; `display.list` lists the
-displays and their refresh rates, and `perf.stats` shows whether frames arrive evenly. Headless
-runs ignore both and run one tick per frame, as fast as they can. The
-[frame-pacing example](../examples/frame-pacing/) uses all three commands.
+2D drawing follows Godot's canvas. A **sprite** (`Sprite2D`) draws a texture, or one frame of a
+sprite sheet, at its entity's `Transform2D`: positions are pixels with y down, and sprites draw in
+`z_index` order, then in the order their entities were made. An `AnimatedSprite2D` plays a
+**flipbook** from a `.frames.json` file (Godot's SpriteFrames) on the sprite, frame by frame at
+the animation's frames per second, and emits `animation_finished` when one that doesn't loop
+ends. Textures are `.png` or `.bmp` files loaded as assets, so an edited image shows up at once.
+The [sprites example](../examples/sprites/) plays and draws a scene's sprites.
+
+How often frames are drawn follows Godot. The world ticks at a fixed rate (`tick_hz`), while frames
+come as fast as the **V-Sync mode** lets them (`window.vsync_mode`: wait for each refresh, present
+at once, mailbox or adaptive) and no faster than the **frame cap** (`max_fps`, none by default). So
+a 60 Hz world on a 120 Hz display runs a tick every other frame, and the frames in between draw each
+sprite part of the way from where it was before the last tick to where it is
+(`rendering.interpolation`), so motion stays smooth whatever the display's rate. A game's options
+menu can change both while it runs, and so can an agent, with `display.set`; `display.list` lists
+the displays and their refresh rates, and `perf.stats` shows whether frames arrive evenly. Headless
+runs ignore both and run one tick per frame, as fast as they can. The [frame-pacing
+example](../examples/frame-pacing/) uses all three commands.
 
 ## Commands
 
@@ -381,8 +392,10 @@ OpenAI-compatible servers (including local ones), Anthropic and Gemini; see the
 | Entity | A thing in the world, named by a stable ID |
 | Example | A small program or sequence of calls in `examples/`, run by CI with its output checked |
 | Export | A build of a project for one platform, ready for players |
+| Flipbook | An animation that shows a sprite's frames one after another, from a `.frames.json` file |
 | Front end | A way to reach the commands: MCP, JSON-RPC, REST or the CLI |
 | Hot reload | Reloading edited files, and updating prefab instances, while the game runs |
+| Interpolation | Drawing sprites part of the way between two ticks, so motion is smooth at any frame rate |
 | ID | An entity's stable name: 1 to 64 letters, digits, `_` or `-` |
 | Journal | `storyboard/journal.jsonl`: who changed which storyboard entries, when and why |
 | JSON Pointer | A path to a value inside JSON, such as `/entities/player/components` (RFC 6901) |
@@ -394,6 +407,8 @@ OpenAI-compatible servers (including local ones), Anthropic and Gemini; see the
 | Resource | Read-only data an MCP client can fetch: the scene, its schema or the logs |
 | Scene | A world saved as a `.scene.json` file |
 | Session | One world with its open scene path, undo history and recent logs |
+| Sprite | A texture, or one frame of a sprite sheet, drawn at an entity's `Transform2D` (`Sprite2D`) |
+| Sprite sheet | One texture holding a grid of frames, `hframes` across and `vframes` down |
 | Storyboard | A game's facts that are not code, as typed entries in `storyboard/*.json` |
 | StoryRef | The component that names the storyboard entries an entity stands for |
 | System | Code that updates components every tick, in order of priority |

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "slash/asset/assets.hpp"
+#include "slash/canvas/canvas.hpp"
 #include "slash/core/json.hpp"
 #include "slash/core/result.hpp"
 #include "slash/platform/platform.hpp"
@@ -54,7 +55,9 @@ public:
     bool frame();
     void request_quit() noexcept;
 
-    // What ran: {"entities", "headless", "name", "quit_requested", "renderer", "scene", "ticks"}.
+    // What ran: {"entities", "headless", "name", "quit_requested", "renderer", "scene",
+    // "sprites", "ticks"}. "sprites" counts the sprites the last frame drew, or would have
+    // drawn on the null device, so a headless run shows whether every sprite can draw.
     [[nodiscard]] json::Value summary() const;
 
     [[nodiscard]] const Project& project() const noexcept { return project_; }
@@ -80,6 +83,8 @@ private:
     platform::Platform platform_;
     // Declared after the platform, so it lets go of the window before the window closes.
     std::unique_ptr<render::RenderDevice> renderer_;
+    // Declared after the device, so its textures go before the device does.
+    std::unique_ptr<canvas::CanvasRenderer> canvas_;
     std::unique_ptr<platform::Loop> loop_;
     bool draw_failed_ = false;
 };

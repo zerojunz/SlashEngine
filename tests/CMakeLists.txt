@@ -1,6 +1,7 @@
 add_executable(slash_tests
     test_main.cpp
     test_asset.cpp
+    test_canvas.cpp
     test_command.cpp
     test_exporter.cpp
     test_fixed_step.cpp
@@ -19,8 +20,8 @@ add_executable(slash_tests
     test_storyboard.cpp
     test_world.cpp)
 target_link_libraries(slash_tests PRIVATE
-    slash::asset slash::command slash::core slash::exporter slash::platform slash::render slash::runtime
-    slash::server slash::storyboard slash::world doctest::doctest SDL3::SDL3-static)
+    slash::asset slash::canvas slash::command slash::core slash::exporter slash::platform slash::render
+    slash::runtime slash::server slash::storyboard slash::world doctest::doctest SDL3::SDL3-static)
 # doctest forward-declares std::ostream by default, which breaks string_view checks on recent
 # MSVC standard libraries; include the real headers instead.
 target_compile_definitions(slash_tests PRIVATE DOCTEST_CONFIG_USE_STD_HEADERS
@@ -122,6 +123,23 @@ if(SLASH_BUILD_TOOLS)
     add_test(NAME cli_schema_prefab COMMAND slash-cli schema prefab)
     set_tests_properties(cli_schema_prefab PROPERTIES
         PASS_REGULAR_EXPRESSION "\"title\": \"SlashEngine prefab\"")
+
+    add_test(NAME cli_schema_frames COMMAND slash-cli schema frames)
+    set_tests_properties(cli_schema_frames PROPERTIES
+        PASS_REGULAR_EXPRESSION "\"title\": \"SlashEngine sprite frames\"")
+    # The sprites example's .frames.json file, which must stay valid and canonical.
+    add_test(NAME cli_scene_validate_frames
+        COMMAND slash-cli scene validate ${PROJECT_SOURCE_DIR}/examples/sprites/hero.frames.json)
+    set_tests_properties(cli_scene_validate_frames PROPERTIES
+        PASS_REGULAR_EXPRESSION "{\"animations\":2,\"valid\":true}")
+    add_test(NAME cli_scene_format_frames COMMAND slash-cli scene format --check
+        ${PROJECT_SOURCE_DIR}/examples/sprites/hero.frames.json)
+    set_tests_properties(cli_scene_format_frames PROPERTIES
+        PASS_REGULAR_EXPRESSION "{\"canonical\":true}")
+    add_test(NAME cli_scene_validate_invalid_frames
+        COMMAND slash-cli scene validate ${scenes}/invalid.frames.json)
+    set_tests_properties(cli_scene_validate_invalid_frames PROPERTIES
+        PASS_REGULAR_EXPRESSION "\"message\":\"the sheet has 4 frames, numbered from 0\",\"path\":\"/animations/walk/frames/1\"")
 
     add_test(NAME cli_schema_storyboard COMMAND slash-cli schema storyboard)
     set_tests_properties(cli_schema_storyboard PROPERTIES

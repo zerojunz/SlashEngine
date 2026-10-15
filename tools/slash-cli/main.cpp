@@ -3,6 +3,8 @@
 
 #include "init.hpp"
 
+#include "slash/canvas/canvas.hpp"
+#include "slash/canvas/sprite_frames.hpp"
 #include "slash/command/builtin.hpp"
 #include "slash/command/command.hpp"
 #include "slash/command/rpc.hpp"
@@ -71,11 +73,13 @@ Usage:
       --port <n>                     Port for --serve (default: any free port)
       --token <token>                Bearer token for --serve (default: random)
       --project <dir>                Project folder for --serve (default ".")
-  slash-cli scene validate <file>    Check a scene or .prefab.json file; lists every error
-  slash-cli scene format <file>      Rewrite a scene or prefab in canonical form
+  slash-cli scene validate <file>    Check a scene, .prefab.json or .frames.json file; lists
+                                     every error
+  slash-cli scene format <file>      Rewrite one of those files in canonical form
       --check                        Only report whether it is canonical; change nothing
-  slash-cli schema <name>            Print a JSON Schema: scene, prefab, storyboard, project
-                                     (project.json) or presets (export_presets.json)
+  slash-cli schema <name>            Print a JSON Schema: scene, prefab, frames (.frames.json),
+                                     storyboard, project (project.json) or presets
+                                     (export_presets.json)
   slash-cli project validate [dir]   Check project.json and export_presets.json; lists every
                                      error
   slash-cli call <command> [params]  Run one engine command and print its result
@@ -432,12 +436,18 @@ int cmd_run(const std::vector<std::string>& args) {
         endpoint_file.emplace(session_options.project_root, server->endpoint());
     }
 
-    // The null device draws nothing, so it gets no frame callback and the loop yields instead.
+    // Sprites from the project folder, drawn between ticks. The null device draws nothing, so
+    // it gets no frame callback and the loop yields instead.
+    slash::canvas::CanvasRenderer canvas(*renderer, engine.session->assets());
     slash::platform::FrameFn draw_frame;
     if (renderer->backend() != slash::render::Backend::Null) {
         draw_frame = [&] {
-            auto drawn =
-                slash::render::draw_empty_frame(*renderer, slash::render::kDefaultClearColor);
+            const slash::platform::WindowSize window = platform.value().window_size();
+            slash::canvas::CanvasOptions canvas_options;
+            canvas_options.width = static_cast<float>(window.width);
+            canvas_options.height = static_cast<float>(window.height);
+            canvas_options.interpolation = loop.value().interpolation();
+            auto drawn = canvas.draw(game, canvas_options);
             if (!drawn && !draw_failed) {
                 draw_failed = true;
                 slash::log::warn("drawing a frame failed", {{"error", drawn.error().message}});
@@ -454,6 +464,8 @@ int cmd_run(const std::vector<std::string>& args) {
             if (server) {
                 server->poll();
             }
+            // After commands, so a sprite an agent moved jumps there instead of sliding.
+            canvas.before_tick(game);
             if (engine.session->playing()) {
                 game.step(tick_seconds);
             }
@@ -538,28 +550,49 @@ int cmd_scene_validate(const std::string& path) {
     }
     const world::ComponentRegistry registry = make_registry();
     const bool prefab = path.ends_with(world::kPrefabSuffix);
+    const bool frames = path.ends_with(slash::canvas::kSpriteFramesSuffix);
     json::Value result;
     auto parsed = json::parse(text.value());
     std::vector<json::ValidationError> errors;
     if (!parsed) {
         errors.push_back({"", parsed.error().message});
+    } else if (frames) {
+        errors = slash::canvas::validate_sprite_frames(parsed.value());
     } else if (prefab) {
         errors = world::validate_prefab(registry, parsed.value(), prefab_reader(path));
     } else {
         errors = world::validate_scene(registry, parsed.value(), prefab_reader(path));
     }
-    if (parsed) {
+    if (parsed && !frames) {
         check_story_refs(path, parsed.value(), errors);
     }
     result["valid"] = errors.empty();
     if (errors.empty()) {
-        const json::Value* items = parsed.value().find(prefab ? "components" : "entities");
-        result[prefab ? "components" : "entities"] = items != nullptr ? items->size() : 0;
+        const char* counted = "entities";
+        if (frames) {
+            counted = "animations";
+        } else if (prefab) {
+            counted = "components";
+        }
+        const json::Value* items = parsed.value().find(counted);
+        result[counted] = items != nullptr ? items->size() : 0;
     } else {
         result["errors"] = errors_to_json(errors);
     }
     print(result);
     return errors.empty() ? kExitOk : kExitFailure;
+}
+
+// A .frames.json file in canonical form: checked, then written with sorted keys.
+slash::Result<std::string> format_sprite_frames(std::string_view text) {
+    auto parsed = json::parse(text);
+    if (!parsed) {
+        return parsed.error();
+    }
+    if (auto frames = slash::canvas::parse_sprite_frames(parsed.value()); !frames) {
+        return frames.error();
+    }
+    return json::write(parsed.value()) + "\n";
 }
 
 int cmd_scene_format(const std::string& path, bool check) {
@@ -568,9 +601,15 @@ int cmd_scene_format(const std::string& path, bool check) {
         return failure("could not read the file", text.error());
     }
     const world::ComponentRegistry registry = make_registry();
-    auto formatted = path.ends_with(world::kPrefabSuffix)
-                         ? world::format_prefab(registry, text.value(), prefab_reader(path))
-                         : world::format_scene(registry, text.value(), prefab_reader(path));
+    auto formatted = [&]() -> slash::Result<std::string> {
+        if (path.ends_with(slash::canvas::kSpriteFramesSuffix)) {
+            return format_sprite_frames(text.value());
+        }
+        if (path.ends_with(world::kPrefabSuffix)) {
+            return world::format_prefab(registry, text.value(), prefab_reader(path));
+        }
+        return world::format_scene(registry, text.value(), prefab_reader(path));
+    }();
     if (!formatted) {
         return failure("could not format the file", formatted.error());
     }
@@ -617,17 +656,19 @@ int cmd_scene(const std::vector<std::string>& args) {
 }
 
 int cmd_schema(const std::vector<std::string>& args) {
-    constexpr std::array<std::string_view, 5> kKinds = {"scene", "prefab", "storyboard", "project",
-                                                        "presets"};
+    constexpr std::array<std::string_view, 6> kKinds = {"scene",      "prefab",  "frames",
+                                                        "storyboard", "project", "presets"};
     if (args.size() != 1 || std::ranges::find(kKinds, args[0]) == kKinds.end()) {
         return usage_error(
-            "schema takes one argument: scene, prefab, storyboard, project or presets");
+            "schema takes one argument: scene, prefab, frames, storyboard, project or presets");
     }
     json::Value schema;
     if (args[0] == "scene") {
         schema = world::scene_schema(make_registry());
     } else if (args[0] == "prefab") {
         schema = world::prefab_schema(make_registry());
+    } else if (args[0] == "frames") {
+        schema = slash::canvas::sprite_frames_schema();
     } else if (args[0] == "storyboard") {
         schema = slash::storyboard::file_schema();
     } else if (args[0] == "project") {

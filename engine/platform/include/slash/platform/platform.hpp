@@ -44,6 +44,12 @@ struct Display {
     std::vector<DisplayMode> modes; // its fullscreen modes, largest and fastest first
 };
 
+// A window's size in screen coordinates. On a high-density display it has more pixels than that.
+struct WindowSize {
+    int width = 0;
+    int height = 0;
+};
+
 // Owns the SDL3 platform layer and, unless headless, the main window. Only one Platform may
 // exist at a time.
 class Platform {
@@ -66,6 +72,9 @@ public:
 
     // The main window, for the renderer to draw to; null when headless.
     [[nodiscard]] SDL_Window* window() const noexcept { return window_; }
+
+    // The window's current size; zero when headless.
+    [[nodiscard]] WindowSize window_size() const;
 
     // The SDL video driver in use (e.g. "cocoa", "wayland"), or "none" when headless.
     [[nodiscard]] std::string_view video_driver() const;

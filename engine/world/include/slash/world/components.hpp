@@ -35,6 +35,40 @@ struct StoryRef {
 };
 SLASH_COMPONENT(StoryRef, ids)
 
+// A texture drawn at the entity's Transform2D, as Godot's Sprite2D. A texture can be a sprite
+// sheet of hframes x vframes equal frames, of which frame is drawn, and region picks a part of
+// it first. Sprites draw in order of z_index, then in the order their entities were made.
+struct Sprite2D {
+    std::string texture; // project path of a PNG or BMP file; "" draws nothing
+    bool centered = true;
+    Vec2 offset;
+    bool flip_h = false;
+    bool flip_v = false;
+    int hframes = 1;
+    int vframes = 1;
+    int frame = 0;
+    Vec4 region; // [x, y, width, height] in pixels; a zero size uses the whole texture
+    Vec4 modulate{1.0F, 1.0F, 1.0F, 1.0F};
+    int z_index = 0;
+    bool visible = true;
+    std::string texture_filter = "inherit"; // "inherit", "linear" or "nearest"
+};
+SLASH_COMPONENT(Sprite2D, texture, centered, offset, flip_h, flip_v, hframes, vframes, frame,
+                region, modulate, z_index, visible, texture_filter)
+
+// Plays animations from a .frames.json file (Godot's SpriteFrames) on the entity's Sprite2D,
+// as Godot's AnimatedSprite2D: each tick it sets the sprite's texture, sheet and frame.
+struct AnimatedSprite2D {
+    std::string sprite_frames; // project path of a .frames.json file
+    std::string animation = "default";
+    bool playing = true;
+    float speed_scale = 1.0F;
+    int frame = 0;               // the animation's current frame
+    float frame_progress = 0.0F; // how far through the current frame, from 0 to 1
+};
+SLASH_COMPONENT(AnimatedSprite2D, sprite_frames, animation, playing, speed_scale, frame,
+                frame_progress)
+
 // Registers the components above, with their docs.
 void register_builtin_components(ComponentRegistry& registry);
 

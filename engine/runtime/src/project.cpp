@@ -152,6 +152,20 @@ json::Value project_schema() {
     rendering["description"] = "How the game draws.";
     rendering["properties"]["clear_color"] = std::move(clear_color);
     rendering["properties"]["driver"] = std::move(driver);
+    json::Value texture_filter;
+    texture_filter["enum"] = json::Array{"linear", "nearest"};
+    texture_filter["default"] = Project{}.texture_filter;
+    texture_filter["description"] =
+        "How sprites whose texture_filter is \"inherit\" are sampled when scaled: linear is "
+        "smooth, nearest keeps pixel art sharp.";
+    rendering["properties"]["texture_filter"] = std::move(texture_filter);
+    json::Value interpolation;
+    interpolation["type"] = "boolean";
+    interpolation["default"] = Project{}.interpolation;
+    interpolation["description"] =
+        "Draw sprites part of the way between fixed ticks, so motion looks smooth when the "
+        "display refreshes faster than the game ticks.";
+    rendering["properties"]["interpolation"] = std::move(interpolation);
 
     json::Value name = string_property("The game's name, shown in its title bar. Exported files "
                                        "use it with only letters and digits kept.");
@@ -253,6 +267,13 @@ Result<Project> parse_project(const json::Value& project) {
         }
         if (const json::Value* driver = rendering->find("driver"); driver != nullptr) {
             out.rendering_driver = driver->as_string();
+        }
+        if (const json::Value* filter = rendering->find("texture_filter"); filter != nullptr) {
+            out.texture_filter = filter->as_string();
+        }
+        if (const json::Value* interpolation = rendering->find("interpolation");
+            interpolation != nullptr) {
+            out.interpolation = interpolation->as_bool();
         }
     }
     return out;

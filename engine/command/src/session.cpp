@@ -1,5 +1,6 @@
 #include "slash/command/session.hpp"
 
+#include "slash/canvas/canvas.hpp"
 #include "slash/core/assert.hpp"
 #include "slash/core/json_schema.hpp"
 #include "slash/core/log.hpp"
@@ -51,6 +52,8 @@ Session::Session(const world::ComponentRegistry& component_registry,
     world_.set_event_listener([this](const world::Event& event) { on_world_event(event); });
     world_.set_file_reader(
         [this](std::string_view path) { return assets_.read(path, world::kPrefabType); });
+    // Textures, sprite frames and the system that plays AnimatedSprite2D, so step animates.
+    canvas::install(world_, assets_);
     if (options_.capture_logs) {
         log::set_sink([this](log::Level /*level*/, std::string_view line) {
             std::fwrite(line.data(), 1, line.size(), stderr);

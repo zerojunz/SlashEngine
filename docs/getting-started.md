@@ -4,10 +4,11 @@ This walks through building SlashEngine, running a scene, changing it with comma
 connecting an AI agent to it. It takes a few minutes once the build is done. Every result shown
 here is real output from the engine.
 
-SlashEngine is early: it runs worlds of entities and components and saves them as JSON scenes, but
-it does not draw sprites or meshes yet (see the [roadmap](roadmap.md)). What works today is the
-part agents use most: scenes, the command API, the servers that expose it, and exporting a game
-for macOS, Windows, Linux and the web.
+SlashEngine is early: it runs worlds of entities and components, saves them as JSON scenes and
+draws 2D sprites and flipbook animations, but has no tilemaps, physics, audio or 3D yet (see the
+[roadmap](roadmap.md)). What works today is the part agents use most: scenes, the command API,
+the servers that expose it, and exporting a game for macOS, Windows, Linux, the web, Android and
+iOS.
 
 ## 1. Build
 
@@ -116,7 +117,7 @@ $cli call engine.describe
 ```
 
 ```json
-{"capabilities":["read","edit","run","filesystem","build"],"commands":["asset.list","batch","component.remove","component.set","engine.describe","entity.create","entity.destroy","entity.get","events.read","events.subscribe","events.unsubscribe","export.run","history.get","log.tail","prefab.save","redo","run.until","scene.get","scene.new","scene.open","scene.save","schema.get","step","storyboard.brief","storyboard.check","storyboard.edit","storyboard.query","undo","world.diff","world.query","world.restore","world.snapshot"],"components":[{"defaults":{"position":[0.0,0.0],"rotation":0.0,"scale":[1.0,1.0]},"doc":"Position, rotation and scale in 2D. Units are pixels and y points down.","name":"Transform2D"},{"defaults":{"position":[0.0,0.0,0.0],"rotation":[0.0,0.0,0.0,1.0],"scale":[1.0,1.0,1.0]},"doc":"Position, rotation and scale in 3D. Units are meters and y points up.","name":"Transform3D"},{"defaults":{"ids":[]},"doc":"The storyboard entries this entity stands for.","name":"StoryRef"}],"engine":{"name":"SlashEngine","version":"0.1.0"},"scene":{"entities":0,"path":"","tick":0},"systems":[]}
+{"capabilities":["read","edit","run","filesystem","build"],"commands":["asset.list","batch","component.remove","component.set","engine.describe","entity.create","entity.destroy","entity.get","events.read","events.subscribe","events.unsubscribe","export.run","history.get","log.tail","prefab.save","redo","run.until","scene.get","scene.new","scene.open","scene.save","schema.get","step","storyboard.brief","storyboard.check","storyboard.edit","storyboard.query","undo","world.diff","world.query","world.restore","world.snapshot"],"components":[{"defaults":{"position":[0.0,0.0],"rotation":0.0,"scale":[1.0,1.0]},"doc":"Position, rotation and scale in 2D. Units are pixels and y points down.","name":"Transform2D"},{"defaults":{"position":[0.0,0.0,0.0],"rotation":[0.0,0.0,0.0,1.0],"scale":[1.0,1.0,1.0]},"doc":"Position, rotation and scale in 3D. Units are meters and y points up.","name":"Transform3D"},{"defaults":{"ids":[]},"doc":"The storyboard entries this entity stands for.","name":"StoryRef"},{"defaults":{"centered":true,"flip_h":false,"flip_v":false,"frame":0,"hframes":1,"modulate":[1.0,1.0,1.0,1.0],"offset":[0.0,0.0],"region":[0.0,0.0,0.0,0.0],"texture":"","texture_filter":"inherit","vframes":1,"visible":true,"z_index":0},"doc":"A texture drawn at the entity's Transform2D. Sprites draw in order of z_index, then in the order their entities were made.","name":"Sprite2D"},{"defaults":{"animation":"default","frame":0,"frame_progress":0.0,"playing":true,"speed_scale":1.0,"sprite_frames":""},"doc":"Plays an animation from a .frames.json file on the entity's Sprite2D, which it adds if missing. Emits animation_finished when an animation that doesn't loop ends.","name":"AnimatedSprite2D"}],"engine":{"name":"SlashEngine","version":"0.1.0"},"scene":{"entities":0,"path":"","tick":0},"systems":["animated_sprite_2d"]}
 ```
 
 Find entities. Queries return only IDs unless you ask for components, which keeps answers small:

@@ -1,0 +1,17 @@
+{
+  "animations": {
+    "jump": {
+      "fps": 10,
+      "frames": [2, 3],
+      "hframes": 4,
+      "loop": false,
+      "texture": "hero.png"
+    },
+    "walk": {
+      "fps": 8,
+      "hframes": 4,
+      "texture": "hero.png"
+    }
+  },
+  "format": 1
+}

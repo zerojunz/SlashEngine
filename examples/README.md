@@ -16,6 +16,7 @@ engine. Copy from them.
 | [storyboard](storyboard/) | Briefing before a task, editing facts with versions, and checking after |
 | [draw-offscreen](draw-offscreen/) | The renderer's device: drawing into a texture and reading the pixels back |
 | [frame-pacing](frame-pacing/) | V-Sync, the frame cap and frame pacing: `display.list`, `display.set` and `perf.stats` |
+| [sprites](sprites/) | `Sprite2D`, sprite sheets and `AnimatedSprite2D` flipbooks from a `.frames.json` file, drawn offscreen |
 
 ## What an example holds
 
