@@ -59,11 +59,10 @@ as `entity.get`, reject it as an unknown param.
 | Run | [`step`](#step), [`play`](#play), [`pause`](#pause) |
 | History | [`undo`](#undo), [`redo`](#redo), [`history.get`](#historyget) |
 | Several at once | [`batch`](#batch) |
-| Observe | [`log.tail`](#logtail) |
+| Observe | [`events.subscribe`](#eventssubscribe), [`events.read`](#eventsread), [`events.unsubscribe`](#eventsunsubscribe), [`log.tail`](#logtail) |
 | Export | [`export.run`](#exportrun) |
 
-Planned commands from the [roadmap](../roadmap.md), not yet available: `input.inject`, `frame.capture`, `replay.run`, `asset.list`, `events.subscribe` and
-`perf.stats`.
+Planned commands from the [roadmap](../roadmap.md), not yet available: `input.inject`, `frame.capture`, `replay.run`, `asset.list` and `perf.stats`.
 
 ## Describe
 
@@ -532,6 +531,73 @@ inside the batch:
 ```
 
 ## Observe
+
+### events.subscribe
+
+Starts queueing world events for `events.read`, so an agent learns what happened without
+re-querying the world. A session keeps up to 16 subscriptions, each with up to 1000 queued
+events; when a queue is full the oldest event is dropped.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `kinds` | array of strings | all | Only these kinds of event (below) |
+| `ids` | array of strings | all | Only events about these entity IDs |
+
+| Kind | When | Fields |
+| --- | --- | --- |
+| `entity.created` | An entity with an ID is created, by a command or a system | `id` |
+| `entity.destroyed` | An entity with an ID is destroyed | `id` |
+| `command` | A command changed the world, including `step`, `undo` and `redo` | `command`, and `changes` as [`world.diff`](#worlddiff) returns them |
+| anything else | Gameplay code called `World::emit`, e.g. `"coin_collected"` | `id` and `data`, if the game gave them |
+
+Every event also has `seq`, which counts up across the session, and `tick`, the world's tick when
+it happened. A failed command or a dry run queues nothing, and opening or creating a scene queues
+one `command` event instead of an event per entity. An unknown kind starting with `entity.` fails
+with "did you mean". Needs: `read`.
+
+```json
+{}
+```
+
+```json
+{"subscription":"events_1"}
+```
+
+### events.read
+
+Returns and removes a subscription's queued events, oldest first.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `subscription` | string | required | Name from `events.subscribe` |
+| `limit` | integer, 1 to 1000 | `100` | Most events to return |
+
+Needs: `read`. After creating `enemy_01` and turning `player`:
+
+```json
+{"subscription": "events_1"}
+```
+
+```json
+{"dropped":0,"events":[{"id":"enemy_01","kind":"entity.created","seq":1,"tick":0},{"changes":{"added":["enemy_01"],"changed":{"enemy_01":{"Transform2D":{"position":[200.0,40.0]}}}},"command":"entity.create","kind":"command","seq":2,"tick":0},{"changes":{"changed":{"player":{"Transform2D":{"rotation":1.0}}}},"command":"component.set","kind":"command","seq":3,"tick":0}],"more":false}
+```
+
+`dropped` counts the events lost since the last read because the queue was full, and `more` is
+`true` when `limit` left events in the queue.
+
+### events.unsubscribe
+
+Stops a subscription and drops its queued events.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `subscription` | string | required | Name from `events.subscribe` |
+
+Needs: `read`.
+
+```json
+{"unsubscribed":"events_1"}
+```
 
 ### log.tail
 

@@ -20,6 +20,7 @@ constexpr std::string_view kInstructions =
     R"(SlashEngine is a game engine. These tools change the open scene directly and safely: every change is checked against the engine's schemas, can be undone, and returns a compact result. Use them instead of editing .scene.json files by hand.
 - Call engine_describe first: it lists every component with its default field values, and every command.
 - Use batch to run many commands in one call. It is all or nothing, and one undo reverts it.
+- events_subscribe, then events_read, tells you what changed and what the game emitted since you last looked, without re-querying.
 - Add "dry_run": true to any edit or batch to see what it would change without changing anything. world_snapshot, then world_diff later, lists every entity and field that changed; world_restore goes back.
 - world_query returns only entity IDs unless you pass include. Filter with where, e.g. {"component": "Transform2D", "field": "position.y", "op": ">", "value": 100}.
 - component_set returns only the fields that changed.

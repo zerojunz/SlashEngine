@@ -1,5 +1,6 @@
 #pragma once
 
+#include "slash/core/json.hpp"
 #include "slash/core/result.hpp"
 
 #include <cstdint>
@@ -31,6 +32,20 @@ struct SystemOptions {
     // Lower priorities run first, as with Godot's process_priority.
     int priority = 0;
 };
+
+// Something that happened in the world, for events.subscribe: an entity created or destroyed, or
+// an event gameplay code emitted with World::emit.
+struct Event {
+    std::string kind;
+    std::string id;   // the entity it is about, or ""
+    json::Value data; // details, or null
+    std::uint64_t tick = 0;
+};
+using EventListener = std::function<void(const Event& event)>;
+
+// The kinds of event the world emits itself. Gameplay events may use any other kind.
+inline constexpr std::string_view kEntityCreated = "entity.created";
+inline constexpr std::string_view kEntityDestroyed = "entity.destroyed";
 
 // A system as engine.describe lists it.
 struct SystemInfo {
@@ -104,6 +119,13 @@ public:
         next_generated_id_ = counters.next_generated_id;
     }
 
+    // Emits a gameplay event, such as emit("player_died", "player", {{"cause", "lava"}}). Kinds
+    // starting with "entity." and the kind "command" are the engine's own.
+    void emit(std::string kind, std::string_view id = {}, json::Value data = {});
+    // The one function that receives every event: entity.created and entity.destroyed as entities
+    // with IDs come and go, and emitted events. Sessions set it to serve events.subscribe.
+    void set_event_listener(EventListener listener) { listener_ = std::move(listener); }
+
     // IDs are 1 to 64 characters, each a letter, digit, '_' or '-'.
     [[nodiscard]] static bool is_valid_id(std::string_view id);
 
@@ -115,12 +137,14 @@ private:
     };
 
     void on_id_destroyed(entt::registry& registry, entt::entity entity);
+    void notify(std::string kind, std::string_view id, json::Value data);
 
     const ComponentRegistry* components_;
     // Declared before registry_ so it outlives the registry's destruction signals.
     std::map<std::string, entt::entity, std::less<>> by_id_;
     entt::registry registry_;
     std::vector<NamedSystem> systems_;
+    EventListener listener_;
     std::uint64_t tick_ = 0;
     std::uint64_t next_generated_id_ = 1;
     bool stepping_ = false;

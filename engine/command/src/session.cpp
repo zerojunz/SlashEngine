@@ -22,6 +22,7 @@ Session::Session(const world::ComponentRegistry& component_registry,
                  const Registry& command_registry, SessionOptions session_options)
     : commands_(&command_registry), options_(std::move(session_options)),
       world_(component_registry) {
+    world_.set_event_listener([this](const world::Event& event) { on_world_event(event); });
     if (options_.capture_logs) {
         log::set_sink([this](log::Level /*level*/, std::string_view line) {
             std::fwrite(line.data(), 1, line.size(), stderr);
@@ -37,6 +38,7 @@ Session::Session(const world::ComponentRegistry& component_registry,
 }
 
 Session::~Session() {
+    world_.set_event_listener(nullptr);
     if (options_.capture_logs) {
         log::reset_sink();
     }
@@ -104,8 +106,12 @@ Reply Session::call(std::string_view name, const json::Value& params) {
     const world::World::Counters counters_before = world_.counters();
     edited_ = false;
     replaced_ = false;
+    pending_events_.clear();
+    buffering_events_ = true;
     Reply reply = run(*command, *command_args);
+    buffering_events_ = false;
     if (!reply.ok || dry_run) {
+        pending_events_.clear();
         json::Value changes;
         if (reply.ok) {
             changes = world::diff_scenes(components(), before.scene, world::save_scene(world_));
@@ -121,6 +127,16 @@ Reply Session::call(std::string_view name, const json::Value& params) {
         result["result"] = std::move(reply.value);
         result["changes"] = std::move(changes);
         return Reply::success(std::move(result));
+    }
+    // A new scene's entities are not news; its command event says what changed.
+    for (const world::Event& event : pending_events_) {
+        if (!replaced_ || !event.kind.starts_with("entity.")) {
+            publish(event);
+        }
+    }
+    pending_events_.clear();
+    if ((edited_ || replaced_) && wants("command")) {
+        publish_changes(command->name, before.scene, world::save_scene(world_));
     }
     if (replaced_) {
         clear_history();
@@ -188,6 +204,7 @@ Reply Session::undo() {
     undo_.pop_back();
     Snapshot current{target.label, world::save_scene(world_)};
     restore(target.scene);
+    publish_changes("undo", current.scene, target.scene);
     remember(redo_, std::move(current));
     json::Value result;
     result["undone"] = target.label;
@@ -204,6 +221,7 @@ Reply Session::redo() {
     redo_.pop_back();
     Snapshot current{target.label, world::save_scene(world_)};
     restore(target.scene);
+    publish_changes("redo", current.scene, target.scene);
     remember(undo_, std::move(current));
     json::Value result;
     result["redone"] = target.label;
@@ -266,10 +284,148 @@ std::vector<std::string> Session::recent_logs(std::size_t count) const {
 }
 
 void Session::restore(const json::Value& scene) {
+    muted_events_ = true;
     world_.clear();
     // Snapshots are saved from a valid world, so loading one cannot fail.
     const auto loaded = world::load_scene(world_, scene);
+    muted_events_ = false;
     SLASH_ASSERT(loaded.ok(), "a session snapshot failed to load");
+}
+
+Result<std::string> Session::subscribe(std::vector<std::string> kinds,
+                                       std::vector<std::string> ids) {
+    if (subscriptions_.size() >= kMaxSubscriptions) {
+        return make_error(ErrorCode::InvalidArgument, "a session keeps at most " +
+                                                          std::to_string(kMaxSubscriptions) +
+                                                          " subscriptions; unsubscribe one first");
+    }
+    std::string name = "events_" + std::to_string(next_subscription_++);
+    subscriptions_[name] = Subscription{std::move(kinds), std::move(ids), {}, 0};
+    return name;
+}
+
+std::optional<Session::EventBatch> Session::read_events(std::string_view subscription,
+                                                        std::size_t limit) {
+    const auto it = subscriptions_.find(subscription);
+    if (it == subscriptions_.end()) {
+        return std::nullopt;
+    }
+    Subscription& queue = it->second;
+    EventBatch batch;
+    while (!queue.events.empty() && batch.events.size() < limit) {
+        batch.events.push_back(std::move(queue.events.front()));
+        queue.events.pop_front();
+    }
+    batch.dropped = std::exchange(queue.dropped, 0);
+    batch.more = !queue.events.empty();
+    return batch;
+}
+
+bool Session::unsubscribe(std::string_view subscription) {
+    const auto it = subscriptions_.find(subscription);
+    if (it == subscriptions_.end()) {
+        return false;
+    }
+    subscriptions_.erase(it);
+    return true;
+}
+
+std::vector<std::string_view> Session::subscription_names() const {
+    std::vector<std::string_view> names;
+    names.reserve(subscriptions_.size());
+    for (const auto& [name, unused] : subscriptions_) {
+        names.emplace_back(name);
+    }
+    return names;
+}
+
+void Session::on_world_event(const world::Event& event) {
+    if (muted_events_ || subscriptions_.empty()) {
+        return;
+    }
+    if (buffering_events_) {
+        pending_events_.push_back(event);
+        return;
+    }
+    publish(event);
+}
+
+void Session::publish(const world::Event& event) {
+    json::Value item;
+    item["tick"] = event.tick;
+    item["kind"] = event.kind;
+    std::vector<std::string> ids;
+    if (!event.id.empty()) {
+        item["id"] = event.id;
+        ids.push_back(event.id);
+    }
+    if (!event.data.is_null()) {
+        item["data"] = event.data;
+    }
+    deliver(event.kind, ids, std::move(item));
+}
+
+void Session::publish_changes(std::string_view command, const json::Value& before,
+                              const json::Value& after) {
+    if (!wants("command")) {
+        return;
+    }
+    json::Value changes = world::diff_scenes(components(), before, after);
+    std::vector<std::string> ids;
+    for (const std::string_view section : {"added", "removed"}) {
+        if (const json::Value* list = changes.find(section); list != nullptr) {
+            for (const json::Value& id : list->as_array()) {
+                ids.push_back(id.as_string());
+            }
+        }
+    }
+    if (const json::Value* changed = changes.find("changed"); changed != nullptr) {
+        for (const auto& [id, unused] : changed->as_object()) {
+            ids.push_back(id);
+        }
+    }
+    json::Value item;
+    item["tick"] = world_.tick();
+    item["kind"] = "command";
+    item["command"] = command;
+    item["changes"] = std::move(changes);
+    deliver("command", ids, std::move(item));
+}
+
+bool Session::wants(std::string_view kind) const {
+    return std::ranges::any_of(subscriptions_, [&](const auto& entry) {
+        const std::vector<std::string>& kinds = entry.second.kinds;
+        return kinds.empty() || std::ranges::find(kinds, kind) != kinds.end();
+    });
+}
+
+void Session::deliver(std::string_view kind, const std::vector<std::string>& ids,
+                      json::Value event) {
+    const auto matches = [&](const Subscription& subscription) {
+        const bool kind_ok =
+            subscription.kinds.empty() ||
+            std::ranges::find(subscription.kinds, kind) != subscription.kinds.end();
+        const bool id_ok =
+            subscription.ids.empty() || std::ranges::any_of(ids, [&](const std::string& id) {
+                return std::ranges::find(subscription.ids, id) != subscription.ids.end();
+            });
+        return kind_ok && id_ok;
+    };
+    bool numbered = false;
+    for (auto& [name, subscription] : subscriptions_) {
+        if (!matches(subscription)) {
+            continue;
+        }
+        if (!numbered) {
+            event["seq"] = next_event_++;
+            numbered = true;
+        }
+        subscription.events.push_back(event);
+        if (subscription.events.size() > kMaxQueuedEvents) {
+            subscription.events.pop_front();
+            ++subscription.dropped;
+        }
+    }
 }
 
 void Session::remember(std::deque<Snapshot>& stack, Snapshot snapshot) const {
