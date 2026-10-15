@@ -1,6 +1,7 @@
 #include "slash/canvas/canvas.hpp"
 
 #include "slash/canvas/material.hpp"
+#include "slash/canvas/particles.hpp"
 #include "slash/canvas/sprite_frames.hpp"
 #include "slash/canvas/tilemap.hpp"
 #include "slash/core/json.hpp"
@@ -187,6 +188,7 @@ void add_systems(world::World& world, asset::Assets& assets) {
         "animated_sprite_2d",
         [state](world::World& w, double tick_seconds) { state->run(w, tick_seconds); },
         {.doc = "Plays each AnimatedSprite2D's animation on its Sprite2D.", .priority = 1000});
+    add_particles_system(world);
 }
 
 void install(world::World& world, asset::Assets& assets) {

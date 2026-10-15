@@ -422,6 +422,39 @@ struct Warnings {
 
 } // namespace
 
+TEST_CASE("the canvas draws each visible CPUParticles2D's live particles") {
+    Scene scene;
+    scene.files.write("red.png", strip_png({{255, 0, 0, 255}}, 4));
+    const auto device = render::create_null_device();
+    canvas::CanvasRenderer renderer(*device, scene.assets);
+    scene.create("dots", R"({"Transform2D": {}, "CPUParticles2D": {"amount": 4,
+                             "explosiveness": 1}})");
+    scene.create("sparks", R"({"Transform2D": {}, "CPUParticles2D": {"amount": 3,
+                               "explosiveness": 1, "texture": "red.png", "z_index": 1}})");
+    scene.create("hidden", R"({"Transform2D": {}, "CPUParticles2D": {"amount": 5,
+                               "explosiveness": 1, "visible": false}})");
+    scene.create("missing", R"({"Transform2D": {}, "CPUParticles2D": {"amount": 6,
+                                "explosiveness": 1, "texture": "gone.png"}})");
+    // Nothing has been emitted before the first tick.
+    REQUIRE(renderer.draw(scene.world, {}).ok());
+    CHECK(renderer.particles_drawn() == 0);
+    scene.world.step(1.0 / 60.0);
+    REQUIRE(renderer.draw(scene.world, {}).ok());
+    CHECK(renderer.particles_drawn() == 7);
+    CHECK(renderer.sprites_drawn() == 0);
+
+    // One draw per emitter, two triangles per particle.
+    auto target = device->create_texture(
+        {.width = 8, .height = 8, .filter = render::Filter::Linear, .render_target = true});
+    REQUIRE(target.ok());
+    canvas::CanvasOptions options;
+    options.target = target.value();
+    REQUIRE(renderer.draw(scene.world, options).ok());
+    CHECK(renderer.particles_drawn() == 7);
+    CHECK(device->stats().draws == 2);
+    CHECK(device->stats().triangles == 14);
+}
+
 TEST_CASE("sprites draw with their materials, and a broken material leaves its sprite out") {
     Scene scene;
     scene.files.write("red.png", strip_png({{255, 0, 0, 255}}, 4));
@@ -568,6 +601,44 @@ TEST_CASE("sprites draw where Godot would put them, in z order, on a GPU") {
     CHECK(pixel(image.value(), 15, 44) == Rgba{0, 0, 255, 255}); // spans 8..16 at x = 12
     CHECK(pixel(image.value(), 17, 44) == Rgba{0, 0, 0, 255});
     CHECK(pixel(image.value(), 7, 44) == Rgba{0, 0, 0, 255});
+}
+
+TEST_CASE("particles draw their frame, color and scale on a GPU") {
+    auto device = gpu_device();
+    if (device == nullptr) {
+        return;
+    }
+    Scene scene;
+    scene.files.write("sheet.png", strip_png({{255, 0, 0, 255}, {0, 0, 255, 255}}, 8));
+    // A white pixel scaled to 8x8 and colored green.
+    scene.create("green", R"({"Transform2D": {"position": [12, 12]},
+                              "CPUParticles2D": {"amount": 1, "gravity": [0, 0],
+                                                 "scale_amount_min": 8, "scale_amount_max": 8,
+                                                 "color": [0, 1, 0, 1]}})");
+    // The second frame of the sheet, picked by anim_offset.
+    scene.create("blue", R"({"Transform2D": {"position": [36, 36]},
+                             "CPUParticles2D": {"amount": 1, "gravity": [0, 0],
+                                                "texture": "sheet.png", "hframes": 2,
+                                                "texture_filter": "nearest",
+                                                "anim_offset_min": 0.5,
+                                                "anim_offset_max": 0.5}})");
+    scene.world.step(1.0 / 60.0);
+    auto target = device->create_texture(
+        {.width = 48, .height = 48, .filter = render::Filter::Nearest, .render_target = true});
+    REQUIRE(target.ok());
+    canvas::CanvasRenderer renderer(*device, scene.assets);
+    canvas::CanvasOptions options;
+    options.target = target.value();
+    options.clear = {.r = 0.0F, .g = 0.0F, .b = 0.0F, .a = 1.0F};
+    REQUIRE(renderer.draw(scene.world, options).ok());
+    CHECK(renderer.particles_drawn() == 2);
+    auto image = device->read_texture(target.value());
+    REQUIRE(image.ok());
+    CHECK(pixel(image.value(), 9, 9) == Rgba{0, 255, 0, 255}); // spans 8..16
+    CHECK(pixel(image.value(), 15, 15) == Rgba{0, 255, 0, 255});
+    CHECK(pixel(image.value(), 17, 12) == Rgba{0, 0, 0, 255});
+    CHECK(pixel(image.value(), 33, 33) == Rgba{0, 0, 255, 255}); // spans 32..40
+    CHECK(pixel(image.value(), 41, 36) == Rgba{0, 0, 0, 255});
 }
 
 TEST_CASE("materials color a sprite's pixels on a GPU, and reload when their files change") {

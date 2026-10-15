@@ -3,6 +3,7 @@
 #include "slash/animation/animation.hpp"
 #include "slash/canvas/light.hpp"
 #include "slash/canvas/material.hpp"
+#include "slash/canvas/particles.hpp"
 #include "slash/canvas/sprite_frames.hpp"
 #include "slash/canvas/tilemap.hpp"
 #include "slash/command/session.hpp"
@@ -1264,6 +1265,69 @@ Reply physics_contacts(Session& session, const json::Value& params) {
     json::Value result;
     result["bodies"] = id_array(world, contacts.bodies);
     result["areas"] = id_array(world, contacts.areas);
+    return Reply::success(std::move(result));
+}
+
+// ---- Particles ----
+
+Reply particles_eval(Session& session, const json::Value& params) {
+    const world::World& world = session.world();
+    const std::string id = text(params, "id");
+    const entt::entity entity = world.find(id);
+    if (entity == entt::null) {
+        return unknown_entity(world, id, "/id");
+    }
+    const auto* emitter = world.ecs().try_get<world::CPUParticles2D>(entity);
+    if (emitter == nullptr) {
+        return param_error(code::kInvalidParams, "/id", quoted(id) + " has no CPUParticles2D");
+    }
+    world::Transform2D transform;
+    if (const auto* current = world.ecs().try_get<world::Transform2D>(entity); current != nullptr) {
+        transform = *current;
+    }
+    std::vector<canvas::Particle> live;
+    if (const json::Value* time = params.find("time"); time != nullptr) {
+        const json::Value* seconds = params.find("tick_seconds");
+        live = canvas::simulate(*emitter, transform, canvas::particle_seed(id, emitter->seed),
+                                time->as_double(),
+                                seconds != nullptr ? seconds->as_double() : kDefaultTickSeconds);
+    } else {
+        live = canvas::particles(world, entity);
+    }
+    const auto place = [&](Vec2 point) {
+        return canvas::world_position(*emitter, transform, point);
+    };
+    json::Value result;
+    result["alive"] = static_cast<std::int64_t>(live.size());
+    if (live.empty()) {
+        result["bounds"] = nullptr;
+    } else {
+        Vec2 low = place(live.front().position);
+        Vec2 high = low;
+        for (const canvas::Particle& particle : live) {
+            const Vec2 at = place(particle.position);
+            low = {std::min(low.x, at.x), std::min(low.y, at.y)};
+            high = {std::max(high.x, at.x), std::max(high.y, at.y)};
+        }
+        result["bounds"] = rounded(json::Array{low.x, low.y, high.x - low.x, high.y - low.y});
+    }
+    if (flag(params, "list")) {
+        const auto max_results = static_cast<std::size_t>(integer(params, "max_results", 32));
+        json::Array items;
+        for (std::size_t i = 0; i < live.size() && i < max_results; ++i) {
+            const canvas::Particle& particle = live[i];
+            json::Value item;
+            item["position"] = point_value(place(particle.position));
+            item["rotation"] =
+                rounded(particle.rotation + (emitter->local_coords ? transform.rotation : 0.0F));
+            item["scale"] = rounded(particle.scale);
+            item["color"] = rounded(json::Array{particle.color.x, particle.color.y,
+                                                particle.color.z, particle.color.w});
+            item["age"] = rounded(particle.age);
+            items.push_back(std::move(item));
+        }
+        result["particles"] = std::move(items);
+    }
     return Reply::success(std::move(result));
 }
 
@@ -2732,6 +2796,32 @@ void register_builtin_commands(Registry& registry) {
         .effect = Effect::Read,
         .params = params_schema({{"id", id_property("A body or area.")}}, {"id"}),
         .handler = physics_contacts,
+    });
+
+    json::Value particles_time = property("number", "Run its settings from a fresh start for this "
+                                                    "many seconds instead, apart from the world.");
+    particles_time["minimum"] = 0;
+    particles_time["maximum"] = 3600;
+    json::Value particles_tick = property("number", "Seconds per tick for time. Default 1/60.");
+    particles_tick["exclusiveMinimum"] = 0;
+    particles_tick["maximum"] = 1;
+    registry.add({
+        .name = "particles.eval",
+        .description = "Returns a CPUParticles2D's live particles: how many, their bounds [x, y, "
+                       "w, h] in the world and, with list, each one. A check without a "
+                       "screenshot.",
+        .capabilities = {Read},
+        .effect = Effect::Read,
+        .params = params_schema(
+            {
+                {"id", id_property("An entity with a CPUParticles2D.")},
+                {"time", std::move(particles_time)},
+                {"tick_seconds", std::move(particles_tick)},
+                {"list", property("boolean", "Also return each particle. Default false.")},
+                {"max_results", integer_property("Particles to list at most.", 1, 256, 32)},
+            },
+            {"id"}),
+        .handler = particles_eval,
     });
 
     json::Value set_components =

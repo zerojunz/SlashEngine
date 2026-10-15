@@ -199,7 +199,15 @@ rendering on top.
 - [ ] More of Godot's 2D physics: collision polygons on tile set tiles, `Area2D` gravity and
       damping overrides, `StaticBody2D` constant velocities, and `CharacterBody2D`'s
       `floor_block_on_wall`, `floor_constant_speed`, `wall_min_slide_angle` and `safe_margin`
-- [ ] Particles
+- [x] CPU particles, as Godot's `CPUParticles2D`: emission shapes, directions and spread,
+      gravity, linear, radial and tangential acceleration, orbits, damping, angles and spin,
+      scale, color ramps and hue variation, each a random range with a curve over the
+      particle's life; sprite sheet animation, one-shots with a `finished` event, preprocess,
+      explosiveness, local coordinates and draw orders. Seeded by entity ID, so the same scene
+      makes the same particles on every platform, and `particles.eval` checks them without a
+      screenshot
+- [ ] GPU particles, as Godot's `GPUParticles2D`: process materials as text graphs on the GPU,
+      for many thousands of particles, with sub-emitters, trails and collision with the scene
 - [ ] UI with flexbox layout and themes; text with FreeType, HarfBuzz and MSDF fonts
 - [ ] Text input in every language: IME composition for Japanese, Chinese and Korean with the
       candidate window placed at the text field, on-screen keyboards on phones, and fallback
@@ -408,7 +416,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Keyframe animation | Keyframe tracks on any reflected property | 5 | Done |
 | Skeletal animation | Skinned meshes, blending, root motion | 7 | Planned |
 | Animation blending | Blend trees and state machines in text, two-bone and FABRIK IK | 7 | Planned |
-| Particles | CPU and GPU particles, particle graphs in text | 5 | Planned |
+| Particles | CPU and GPU particles, particle graphs in text | 5 | In part: CPU particles are done; GPU particles in 5 |
 | Audio | miniaudio: buses, effects, 3D spatial audio | 5 | Planned |
 | Input | Rebindable action maps over SDL3, injectable by agents | 5 | Planned |
 | Refresh rates and frame pacing | V-Sync modes, frame cap, display refresh rates, variable refresh rate, rendering interpolated between fixed ticks | 5 | Done |
