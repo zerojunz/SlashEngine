@@ -6,7 +6,6 @@
 #include <cmath>
 #include <cstddef>
 #include <numbers>
-#include <optional>
 #include <string>
 #include <vector>
 
@@ -575,21 +574,12 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         }
         material.shading = shading_for(light_mode, emitter.light_mask, emitter.z_index);
         // With local_coords, particles move with the entity's transform.
-        std::optional<world::Transform2D> local;
-        if (emitter.local_coords) {
-            const auto* current = ecs.try_get<world::Transform2D>(entity);
-            local = current != nullptr ? transform_of(entity, *current) : world::Transform2D{};
+        world::Transform2D local;
+        if (const auto* current = ecs.try_get<world::Transform2D>(entity);
+            emitter.local_coords && current != nullptr) {
+            local = transform_of(entity, *current);
         }
-        const Vec2 local_turn = local ? cos_sin(local->rotation) : Vec2{1.0F, 0.0F};
-        const auto place = [&](Vec2 point) {
-            if (!local) {
-                return point;
-            }
-            const float sx = point.x * local->scale.x;
-            const float sy = point.y * local->scale.y;
-            return Vec2{local->position.x + (sx * local_turn.x) - (sy * local_turn.y),
-                        local->position.y + (sx * local_turn.y) + (sy * local_turn.x)};
-        };
+        const auto place = [&](Vec2 point) { return world_position(emitter, local, point); };
         const int total = hframes * vframes;
         const auto t = static_cast<float>(std::clamp(options.interpolation, 0.0, 1.0));
         const std::size_t first = vertices.size();

@@ -50,6 +50,11 @@ void add_particles_system(world::World& world);
                                              std::uint32_t seed, double seconds,
                                              double tick_seconds);
 
+// Where a particle's position is in the world: with local_coords, placed there by the entity's
+// transform; otherwise as it is.
+[[nodiscard]] Vec2 world_position(const world::CPUParticles2D& settings,
+                                  const world::Transform2D& transform, Vec2 position);
+
 // The sine and cosine of an angle in radians, computed the same way on every platform, as
 // {cos, sin}. Particles use it instead of libm, whose results differ between platforms.
 [[nodiscard]] Vec2 cos_sin(float radians);

@@ -1480,6 +1480,13 @@ TEST_CASE("particles.eval counts and lists particles, as they are or after a tim
     // A time runs the settings from the start, apart from the world, as stepping would.
     CHECK(engine.ok("particles.eval", R"({"id": "sparkler", "time": 0.75})") ==
           parse(R"({"alive": 8, "bounds": [105, 50, 70.0001, 0]})"));
+    // A failed command and a dry run put back a copy of the world; the particles stay.
+    engine.fails("component.set",
+                 R"({"id": "sparkler", "components": {"CPUParticles2D": {"amount": 0}}})",
+                 command::code::kInvalidParams);
+    engine.ok("entity.destroy", R"({"id": "sparkler", "dry_run": true})");
+    CHECK(engine.ok("particles.eval", R"({"id": "sparkler"})") ==
+          parse(R"({"alive": 8, "bounds": [105, 50, 70.0001, 0]})"));
 
     // Particles in local coordinates are placed in the world by the entity's transform.
     engine.ok("component.set", R"({"id": "sparkler", "components": {

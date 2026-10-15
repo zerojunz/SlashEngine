@@ -1294,15 +1294,8 @@ Reply particles_eval(Session& session, const json::Value& params) {
     } else {
         live = canvas::particles(world, entity);
     }
-    // Where a particle is in the world: those that move with the entity are placed by it.
-    const Vec2 turn = canvas::cos_sin(transform.rotation);
     const auto place = [&](Vec2 point) {
-        if (!emitter->local_coords) {
-            return point;
-        }
-        const Vec2 scaled{point.x * transform.scale.x, point.y * transform.scale.y};
-        return Vec2{transform.position.x + (scaled.x * turn.x) - (scaled.y * turn.y),
-                    transform.position.y + (scaled.x * turn.y) + (scaled.y * turn.x)};
+        return canvas::world_position(*emitter, transform, point);
     };
     json::Value result;
     result["alive"] = static_cast<std::int64_t>(live.size());

@@ -289,6 +289,29 @@ TEST_CASE("gravity, damping and the emitter's transform move particles as Godot'
     CHECK(scene.live(slowing).at(0).velocity == Vec2{});
 }
 
+TEST_CASE("particle_flag_align_y turns particles' y axis along their velocity") {
+    Particles scene;
+    std::vector<std::pair<entt::entity, float>> emitters;
+    for (int i = 0; i < 24; ++i) {
+        const float angle = (static_cast<float>(i) * 0.27F) - 3.1F;
+        const entt::entity entity =
+            scene.add("e" + std::to_string(i), {},
+                      R"({"amount": 1, "lifetime": 10, "gravity": [0, 0], "spread": 0,
+                          "initial_velocity_min": 10, "initial_velocity_max": 10,
+                          "particle_flag_align_y": true})");
+        scene.emitter(entity).direction = canvas::cos_sin(angle);
+        emitters.emplace_back(entity, angle);
+    }
+    scene.step();
+    for (const auto& [entity, angle] : emitters) {
+        CAPTURE(angle);
+        // Its x axis is a quarter turn anticlockwise from its velocity.
+        const auto expected = static_cast<float>(
+            std::atan2(-std::cos(static_cast<double>(angle)), std::sin(static_cast<double>(angle))));
+        CHECK(scene.live(entity).at(0).rotation == doctest::Approx(expected).epsilon(1e-5));
+    }
+}
+
 TEST_CASE("particles in local coordinates move with their emitter") {
     Particles scene;
     const std::string fields =
