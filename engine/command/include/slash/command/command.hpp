@@ -43,6 +43,12 @@ enum class Effect : std::uint8_t {
     Compound, // runs other commands (batch); one undo step reverts all of them
 };
 
+// Edit, Replace and Compound commands change the world, so the session snapshots the world
+// before running one and they take "dry_run".
+[[nodiscard]] constexpr bool changes_world(Effect effect) noexcept {
+    return effect == Effect::Edit || effect == Effect::Replace || effect == Effect::Compound;
+}
+
 // Error codes, shared with JSON-RPC 2.0. The -326xx codes are the protocol's own; the -320xx
 // codes are SlashEngine's.
 namespace code {
@@ -86,6 +92,8 @@ struct Command {
     std::vector<Capability> capabilities;
     Effect effect = Effect::Read;
     // JSON Schema for the params object. Params are validated against it before the handler runs.
+    // The registry adds "dry_run" to it for commands that change the world; the session handles
+    // that param, so the handler never sees it.
     json::Value params;
     Handler handler;
 };

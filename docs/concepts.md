@@ -204,6 +204,21 @@ The session keeps up to 100 undo steps. `undo` and `redo` move through them, and
 lists them by command name. Undo restores entities and components; the tick counter keeps
 counting. Opening or creating a scene clears the history.
 
+### Dry runs and snapshots
+
+Every command that changes the world takes `"dry_run": true`. The session runs the command, notes
+what changed, and puts the world back exactly as it was, generated IDs and tick counter included,
+with no undo step. The reply holds the command's own result and the changes:
+
+```json
+{"changes":{"changed":{"player":{"Transform2D":{"rotation":1.0}}}},"dry_run":true,"result":{"changed":{"Transform2D":{"rotation":1.0}},"id":"player"}}
+```
+
+`world.snapshot` saves a named copy of the entities. `world.diff` lists what changed since, in the
+same form, and `world.restore` puts the entities back, as one undo step. Changes are listed by
+entity ID: `added` and `removed` IDs, and under `changed` the new value of every field that
+differs. A removed component is `null`.
+
 ## Front ends
 
 | Front end | Speaks | Use it for |
