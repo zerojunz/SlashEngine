@@ -1,0 +1,40 @@
+{
+  "dependencies": {
+    "branch": {
+      "license": "MIT",
+      "license_file": "LICENSE",
+      "license_sha256": "a7022cfdacb35aec9fc20ed88e8c432ef500b9a08222d0111f5d9d7e6b852f24",
+      "repository": "https://example.com/branch.git",
+      "tag": "main"
+    },
+    "changed": {
+      "license": "MIT",
+      "license_file": "LICENSE",
+      "license_sha256": "a7022cfdacb35aec9fc20ed88e8c432ef500b9a08222d0111f5d9d7e6b852f24",
+      "repository": "https://example.com/changed.git",
+      "tag": "v2.0"
+    },
+    "copyleft": {
+      "license": "GPL-3.0-only OR LGPL-2.1-only",
+      "license_file": "COPYING",
+      "license_sha256": "a7022cfdacb35aec9fc20ed88e8c432ef500b9a08222d0111f5d9d7e6b852f24",
+      "repository": "https://example.com/copyleft.git",
+      "tag": "v1.0"
+    },
+    "good": {
+      "license": "MIT-0 OR Unlicense",
+      "license_file": "LICENSE",
+      "license_sha256": "a7022cfdacb35aec9fc20ed88e8c432ef500b9a08222d0111f5d9d7e6b852f24",
+      "repository": "https://example.com/good.git",
+      "tag": "v1.0"
+    }
+  },
+  "format": 1,
+  "vendored": {
+    "cmake/gone.cmake": {
+      "license": "MIT",
+      "name": "Gone",
+      "version": "v1"
+    }
+  }
+}
