@@ -170,9 +170,10 @@ them (`export/ios/Info.plist.in` is the app's Info.plist). By default they are a
 `.ipa` for iPhones and iPads instead, signed with the team's keychain identity (Apple Development
 for debug builds, Apple Distribution for release) and a provisioning profile Xcode downloaded.
 
-Games support OS versions from 2020 on: macOS 11, iOS 14, Windows 10 (the executable's subsystem
-version is 10.0), Android 11 (API level 30, targeting 36), and Chrome 85, Firefox 79 and Safari
-15 (pinned in `export/CMakeLists.txt`).
+Games support OS versions from 2020 on: macOS 11, iOS 14, Windows 10 (an MSVC build's subsystem
+version is 10.0; llvm-mingw builds keep 6.0, since Windows 11 won't start a MinGW executable
+marked 10.0), Android 11 (API level 30, targeting 36), and Chrome 85, Firefox 79 and Safari 15
+(pinned in `export/CMakeLists.txt`).
 
 ## Add a component
 

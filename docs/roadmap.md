@@ -97,7 +97,8 @@ Built in two halves.
 - [x] The `export.run` command, so agents export over MCP
 - [x] A GitHub Actions workflow from `slash-cli init` that builds and tests every platform on
       native runners
-- [x] Exports pinned to the 2020 minimums: macOS 11, iOS 14, Windows 10 (subsystem version 10.0),
+- [x] Exports pinned to the 2020 minimums: macOS 11, iOS 14, Windows 10 (subsystem version 10.0
+      in MSVC builds),
       Android 11, Chrome 85, Firefox 79 and Safari 15
 
 Exit: an empty project exports to all six platforms and passes headless tests on each.
