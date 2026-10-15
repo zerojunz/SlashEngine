@@ -3,7 +3,10 @@
 #include "slash/world/component_registry.hpp"
 #include "slash/world/world.hpp"
 
+#include <algorithm>
+#include <string>
 #include <utility>
+#include <vector>
 
 namespace slash::world {
 namespace {
@@ -63,6 +66,80 @@ Result<std::size_t> load_valid(World& world, const json::Value& scene, std::stri
     }
     path.clear();
     return created.size();
+}
+
+// The object under key, or nullptr if value is not an object or has no such object.
+const json::Value* object_at(const json::Value* value, std::string_view key) {
+    if (value == nullptr || !value->is_object()) {
+        return nullptr;
+    }
+    const json::Value* member = value->find(key);
+    return member != nullptr && member->is_object() ? member : nullptr;
+}
+
+// A field's value in saved fields, which leave out fields equal to their defaults.
+json::Value field_value(const json::Value* fields, const json::Value& defaults,
+                        const std::string& field) {
+    if (const json::Value* value = fields != nullptr ? fields->find(field) : nullptr) {
+        return *value;
+    }
+    if (const json::Value* value = defaults.is_object() ? defaults.find(field) : nullptr) {
+        return *value;
+    }
+    return {};
+}
+
+// The fields of after whose values differ from before, with their new values.
+json::Value changed_fields(const json::Value& defaults, const json::Value* before,
+                           const json::Value& after) {
+    std::vector<std::string> fields;
+    for (const json::Value* source : {&defaults, before, &after}) {
+        if (source != nullptr && source->is_object()) {
+            for (const auto& [field, unused] : source->as_object()) {
+                fields.push_back(field);
+            }
+        }
+    }
+    std::ranges::sort(fields);
+    const auto [first, last] = std::ranges::unique(fields);
+    fields.erase(first, last);
+
+    json::Value changed = json::Object{};
+    for (const std::string& field : fields) {
+        json::Value value = field_value(&after, defaults, field);
+        if (!(value == field_value(before, defaults, field))) {
+            changed[field] = std::move(value);
+        }
+    }
+    return changed;
+}
+
+// The components an entity gained, lost or changed, as diff_scenes describes. before is
+// nullptr for an added entity.
+json::Value changed_components(const ComponentRegistry& components, const json::Value* before,
+                               const json::Value& after) {
+    const json::Value* old_components = object_at(before, "components");
+    const json::Value* new_components = object_at(&after, "components");
+    json::Value changes = json::Object{};
+    if (new_components != nullptr) {
+        for (const auto& [name, fields] : new_components->as_object()) {
+            const ComponentType* type = components.find(name);
+            const json::Value defaults = type != nullptr ? type->defaults() : json::Value();
+            const json::Value* old_fields = object_at(old_components, name);
+            json::Value changed = changed_fields(defaults, old_fields, fields);
+            if (old_fields == nullptr || changed.size() > 0) {
+                changes[name] = std::move(changed);
+            }
+        }
+    }
+    if (old_components != nullptr) {
+        for (const auto& [name, unused] : old_components->as_object()) {
+            if (new_components == nullptr || new_components->find(name) == nullptr) {
+                changes[name] = json::Value();
+            }
+        }
+    }
+    return changes;
 }
 
 } // namespace
@@ -179,6 +256,46 @@ json::Value save_scene(const World& world) {
     scene["entities"] = std::move(entities);
     scene["format"] = kSceneFormat;
     return scene;
+}
+
+json::Value diff_scenes(const ComponentRegistry& components, const json::Value& before,
+                        const json::Value& after) {
+    const json::Value* old_entities = object_at(&before, "entities");
+    const json::Value* new_entities = object_at(&after, "entities");
+    json::Array added;
+    json::Array removed;
+    json::Value changed = json::Object{};
+    if (old_entities != nullptr) {
+        for (const auto& [id, unused] : old_entities->as_object()) {
+            if (new_entities == nullptr || new_entities->find(id) == nullptr) {
+                removed.emplace_back(id);
+            }
+        }
+    }
+    if (new_entities != nullptr) {
+        for (const auto& [id, entity] : new_entities->as_object()) {
+            const json::Value* old_entity =
+                old_entities != nullptr ? old_entities->find(id) : nullptr;
+            if (old_entity == nullptr) {
+                added.emplace_back(id);
+            }
+            json::Value changes = changed_components(components, old_entity, entity);
+            if (changes.size() > 0) {
+                changed[id] = std::move(changes);
+            }
+        }
+    }
+    json::Value diff = json::Object{};
+    if (!added.empty()) {
+        diff["added"] = std::move(added);
+    }
+    if (!removed.empty()) {
+        diff["removed"] = std::move(removed);
+    }
+    if (changed.size() > 0) {
+        diff["changed"] = std::move(changed);
+    }
+    return diff;
 }
 
 Result<std::string> format_scene(const ComponentRegistry& components, std::string_view text) {

@@ -359,6 +359,108 @@ TEST_CASE("batch runs commands as one all-or-nothing step") {
     CHECK(contains(unknown.message, "did you mean \"entity.create\""));
 }
 
+TEST_CASE("dry runs report what would change and change nothing") {
+    Engine engine;
+    engine.ok("batch", R"({"commands": [
+        {"command": "entity.create", "params": {"id": "player",
+            "components": {"Transform2D": {"position": [1, 2]}, "Health": {}}}},
+        {"command": "entity.create", "params": {"id": "enemy"}}]})");
+    const json::Value before = engine.scene();
+    const std::vector<std::string> history = engine.session->undo_labels();
+
+    CHECK(engine.ok("component.set", R"({"id": "player", "dry_run": true,
+            "components": {"Transform2D": {"rotation": 1.5}}})") == parse(R"({
+        "dry_run": true,
+        "result": {"id": "player", "changed": {"Transform2D": {"rotation": 1.5}}},
+        "changes": {"changed": {"player": {"Transform2D": {"rotation": 1.5}}}}
+    })"));
+    CHECK(engine.scene() == before);
+    CHECK(engine.session->undo_labels() == history);
+
+    const json::Value batch = engine.ok("batch", R"({"dry_run": true, "commands": [
+        {"command": "entity.create", "params": {"components": {"Transform2D": {}}}},
+        {"command": "entity.destroy", "params": {"id": "enemy"}},
+        {"command": "component.remove", "params": {"id": "player", "components": ["Health"]}},
+        {"command": "component.set", "params": {"id": "player",
+            "components": {"Follow": {"mode": "flee"}}}}]})");
+    CHECK(*batch.find("changes") == parse(R"({
+        "added": ["entity_1"],
+        "removed": ["enemy"],
+        "changed": {"entity_1": {"Transform2D": {}},
+                    "player": {"Follow": {"mode": "flee"}, "Health": null}}
+    })"));
+    CHECK(engine.scene() == before);
+    CHECK(engine.session->undo_labels() == history);
+
+    // The next generated ID and the tick counter are as if the dry runs never happened.
+    CHECK(engine.ok("entity.create").find("id")->as_string() == "entity_1");
+    CHECK(engine.ok("step", R"({"ticks": 5, "dry_run": true})")
+              .find("result")
+              ->find("tick")
+              ->as_int() == 5);
+    CHECK(engine.ok("step").find("tick")->as_int() == 1);
+
+    // Replacing the scene: everything would go, and the undo history stays.
+    CHECK(*engine.ok("scene.new", R"({"dry_run": true})").find("changes") ==
+          parse(R"({"removed": ["enemy", "entity_1", "player"]})"));
+    CHECK(engine.scene().size() == 3);
+    CHECK(engine.session->undo_labels().size() == history.size() + 2);
+
+    // Errors are reported as usual, and dry_run false is an ordinary call.
+    engine.fails("entity.destroy", R"({"id": "nobody", "dry_run": true})",
+                 command::code::kNotFound);
+    engine.ok("entity.destroy", R"({"id": "enemy", "dry_run": false})");
+    CHECK(engine.scene().find("enemy") == nullptr);
+
+    // dry_run goes on the batch, and only commands that change the world take it.
+    const command::Reply nested = engine.fails(
+        "batch", R"({"commands": [{"command": "entity.create", "params": {"dry_run": true}}]})",
+        command::code::kInvalidParams);
+    CHECK(nested.data.find("path")->as_string() == "/commands/0/params/dry_run");
+    engine.fails("entity.get", R"({"id": "player", "dry_run": true})",
+                 command::code::kInvalidParams);
+    const json::Value schema = engine.ok("schema.get", R"({"kind": "command", "name": "batch"})");
+    CHECK(schema.find("properties")->find("dry_run") != nullptr);
+}
+
+TEST_CASE("world snapshots show what changed and restore it") {
+    Engine engine;
+    engine.ok("entity.create",
+              R"({"id": "player", "components": {"Transform2D": {"position": [1, 2]}}})");
+    const command::Reply none = engine.fails("world.diff", "{}", command::code::kNotFound);
+    CHECK(none.message == "/from: no snapshot is named \"default\"; take one with "
+                          "world.snapshot first");
+    CHECK(engine.ok("world.snapshot") == parse(R"({"name": "default", "entities": 1})"));
+    CHECK(engine.ok("world.diff") == parse("{}"));
+
+    engine.ok("component.set",
+              R"({"id": "player", "components": {"Transform2D": {"position": [5, 2]}}})");
+    engine.ok("entity.create", R"({"id": "coin"})");
+    CHECK(engine.ok("world.diff") == parse(R"({
+        "added": ["coin"],
+        "changed": {"player": {"Transform2D": {"position": [5, 2]}}}
+    })"));
+
+    engine.ok("world.snapshot", R"({"name": "moved"})");
+    CHECK(engine.ok("world.diff", R"({"from": "moved", "to": "default"})") == parse(R"({
+        "removed": ["coin"],
+        "changed": {"player": {"Transform2D": {"position": [1, 2]}}}
+    })"));
+    const command::Reply typo =
+        engine.fails("world.restore", R"({"name": "moev"})", command::code::kNotFound);
+    CHECK(typo.message == "/name: no snapshot is named \"moev\"; did you mean \"moved\"?");
+    CHECK(typo.data.find("path")->as_string() == "/name");
+
+    // A dry run shows what restoring would change; restoring is one undo step.
+    CHECK(*engine.ok("world.restore", R"({"dry_run": true})").find("changes") ==
+          engine.ok("world.diff", R"({"from": "moved", "to": "default"})"));
+    CHECK(engine.ok("world.restore") == parse(R"({"restored": "default", "entities": 1})"));
+    CHECK(engine.ok("world.diff") == parse("{}"));
+    CHECK(engine.session->undo_labels().back() == "world.restore");
+    engine.ok("undo");
+    CHECK(engine.ok("world.diff", R"({"from": "moved"})") == parse("{}"));
+}
+
 TEST_CASE("sessions only run commands their capabilities allow") {
     command::SessionOptions options;
     options.capabilities = {Capability::Read};

@@ -121,6 +121,15 @@ void Registry::add(Command command) {
     const json::Value* type = command.params.find("type");
     SLASH_ASSERT(type != nullptr && type->is_string() && type->as_string() == "object",
                  "command params must be an object schema");
+    if (changes_world(command.effect)) {
+        json::Value& properties = command.params["properties"];
+        SLASH_ASSERT(properties.find("dry_run") == nullptr,
+                     "dry_run is added by the registry; leave it out of params");
+        json::Value dry_run;
+        dry_run["type"] = "boolean";
+        dry_run["description"] = "Return what would change, or the error, and change nothing.";
+        properties["dry_run"] = std::move(dry_run);
+    }
     const auto position =
         std::ranges::upper_bound(commands_, command.name, std::less<>(),
                                  [](const Command& c) -> const std::string& { return c.name; });

@@ -240,6 +240,39 @@ TEST_CASE("a failed load leaves the world unchanged") {
     CHECK(game.size() == 1);
 }
 
+TEST_CASE("diff_scenes lists what changed by entity ID") {
+    const auto registry = make_registry();
+    const json::Value before = parse(R"({"format": 1, "entities": {
+        "player": {"components": {"Transform2D": {"position": [1, 2], "rotation": 0.5},
+                                  "Health": {"current": 50}}},
+        "grunt": {"components": {"Enemy": {}}},
+        "door": {}
+    }})");
+    // The player's rotation goes back to its default, its health changes and it gains a velocity;
+    // the grunt and the door are unchanged, and a crate appears.
+    const json::Value after = parse(R"({"format": 1, "entities": {
+        "player": {"components": {"Transform2D": {"position": [1, 2]}, "Velocity": {}}},
+        "grunt": {"components": {"Enemy": {}}},
+        "door": {},
+        "crate": {"components": {"Health": {"max": 20}, "Enemy": {}}}
+    }})");
+    CHECK(world::diff_scenes(registry, before, after) == parse(R"({
+        "added": ["crate"],
+        "changed": {
+            "crate": {"Enemy": {}, "Health": {"max": 20.0}},
+            "player": {"Health": null, "Transform2D": {"rotation": 0.0}, "Velocity": {}}
+        }
+    })"));
+    CHECK(world::diff_scenes(registry, after, before) == parse(R"({
+        "removed": ["crate"],
+        "changed": {
+            "player": {"Health": {"current": 50.0}, "Transform2D": {"rotation": 0.5},
+                       "Velocity": null}
+        }
+    })"));
+    CHECK(world::diff_scenes(registry, before, before) == json::Value(json::Object{}));
+}
+
 TEST_CASE("format_scene rewrites any valid scene in canonical form") {
     auto formatted = world::format_scene(
         make_registry(),

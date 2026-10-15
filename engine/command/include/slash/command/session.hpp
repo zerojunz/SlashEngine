@@ -8,6 +8,8 @@
 
 #include <cstddef>
 #include <deque>
+#include <functional>
+#include <map>
 #include <mutex>
 #include <string>
 #include <string_view>
@@ -45,6 +47,9 @@ public:
     // it, and records it for undo if it changed the world. A failed command leaves the world as
     // it was. Null params count as an empty object. Commands may call other commands (batch
     // does); nested calls are recorded and rolled back as part of the outermost one.
+    //
+    // With "dry_run": true, an Edit, Replace or Compound command runs and is then rolled back. Its
+    // reply is {"dry_run": true, "result": <its result>, "changes": <diff_scenes>}, or its error.
     Reply call(std::string_view name, const json::Value& params);
 
     [[nodiscard]] world::World& world() noexcept { return world_; }
@@ -73,6 +78,15 @@ public:
     [[nodiscard]] std::vector<std::string> redo_labels() const;
     void clear_history();
 
+    // Named copies of the world's entities, for world.snapshot, world.diff and world.restore.
+    // Taking a snapshot under a name in use replaces it; a session holds at most kMaxSnapshots.
+    static constexpr std::size_t kMaxSnapshots = 100;
+    Result<void> take_snapshot(std::string name);
+    // The snapshot with this name, in scene-file form, or nullptr.
+    [[nodiscard]] const json::Value* find_snapshot(std::string_view name) const;
+    // Every snapshot name, sorted.
+    [[nodiscard]] std::vector<std::string_view> snapshot_names() const;
+
     // The most recent captured log lines, oldest first. Only one session at a time should
     // capture logs, since the log sink is global.
     [[nodiscard]] std::vector<std::string> recent_logs(std::size_t count) const;
@@ -93,6 +107,7 @@ private:
     std::string scene_path_;
     std::deque<Snapshot> undo_;
     std::deque<Snapshot> redo_;
+    std::map<std::string, json::Value, std::less<>> snapshots_;
     int depth_ = 0;                 // how many commands are running (more than one inside a batch)
     bool edited_ = false;           // an Edit command succeeded during the outermost call
     bool replaced_ = false;         // a Replace command succeeded during the outermost call
