@@ -219,6 +219,10 @@ rendering on top.
       corners, borders, shadows, skew and anti-aliasing) and `StyleBoxTexture`, and `Panel`,
       `TextureRect`, `NinePatchRect` and `ProgressBar`. `ui.theme` says where each of a control's
       theme items comes from
+- [x] Input, as Godot's: keyboard, mouse, touch and gamepad events from SDL, rebindable action
+      maps in `project.json` over Godot's `ui_*` actions, deadzones and strengths, touch that
+      clicks the mouse, and `input.inject`, `input.state` and `input.actions` so agents press
+      keys and actions and see what the game saw
 - [ ] `Button` and the other controls people press, drag and type in, with focus, hover and
       mouse and touch input
 - [ ] Text input in every language: IME composition for Japanese, Chinese and Korean with the
@@ -226,7 +230,6 @@ rendering on top.
       so no language shows missing-glyph boxes, and BiDi so right-to-left and left-to-right
       text mix in one line
 - [ ] Audio on miniaudio
-- [ ] Rebindable input action maps, and `input.inject` for agents
 - [ ] `frame.capture` (PNG) and replays (`replay.run`)
 - [ ] Time travel: `replay.seek` jumps a recorded run to any tick, where every query command
       works, so a bug can be reproduced and inspected at the moment it happened
@@ -431,7 +434,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Animation blending | Blend trees and state machines in text, two-bone and FABRIK IK | 7 | Planned |
 | Particles | CPU and GPU particles, particle graphs in text | 5 | In part: CPU particles are done; GPU particles in 5 |
 | Audio | miniaudio: buses, effects, 3D spatial audio | 5 | Planned |
-| Input | Rebindable action maps over SDL3, injectable by agents | 5 | Planned |
+| Input | Rebindable action maps over SDL3, injectable by agents | 5 | Done |
 | Refresh rates and frame pacing | V-Sync modes, frame cap, display refresh rates, variable refresh rate, rendering interpolated between fixed ticks | 5 | Done |
 | UI | Retained UI with flexbox layout and themes, defined in text | 5 | In part: controls that draw, containers, themes and style boxes are done; buttons, focus and input in 5 |
 | Text and fonts | FreeType, HarfBuzz, MSDF fonts, BiDi, IME input, fallback fonts | 5 | In part: FreeType, HarfBuzz and MSDF fonts are done; BiDi, IME input and fallback fonts in 5 |

@@ -1,0 +1,39 @@
+scene.open {"path":"main.scene.json"}
+{"entities":1,"path":"main.scene.json"}
+input.actions {"names":["move_right","jump"]}
+{"actions":{"jump":{"deadzone":0.2,"events":[{"physical_key":"Space","type":"key"},{"button":"a","type":"joypad_button"}]},"move_right":{"deadzone":0.25,"events":[{"physical_key":"D","type":"key"},{"key":"Right","type":"key"},{"axis":"left_x","axis_value":1.0,"type":"joypad_motion"}]}}}
+input.inject {"events":[{"physical_key":"D","pressed":true,"type":"key"}]}
+{"queued":1,"tick":0}
+step {"tick_seconds":0.015625,"ticks":8}
+{"tick":8,"ticks":8}
+input.state {}
+{"actions":{"move_right":{"pressed":true}},"keys":["D"],"mouse":{"position":[0.0,0.0]},"tick":7}
+entity.get {"id":"player","omit_defaults":true}
+{"components":{"Player":{},"Transform2D":{"position":[176.0,120.0]}},"id":"player"}
+input.inject {"events":[{"physical_key":"D","pressed":false,"type":"key"},{"axis":"left_y","axis_value":-0.625,"type":"joypad_motion"},{"physical_key":"Space","pressed":true,"type":"key"},{"physical_key":"Space","pressed":false,"type":"key"}]}
+{"queued":4,"tick":8}
+step {"tick_seconds":0.015625}
+{"tick":9,"ticks":1}
+input.state {"actions":["jump","move_right","move_up"]}
+{"actions":{"jump":{"just_pressed":true,"just_released":true,"pressed":false},"move_right":{"just_released":true,"pressed":false},"move_up":{"just_pressed":true,"pressed":true,"strength":0.5}},"joypads":[{"axes":{"left_y":-0.625},"device":0}],"mouse":{"position":[0.0,0.0]},"tick":8}
+step {"tick_seconds":0.015625,"ticks":3}
+{"tick":12,"ticks":3}
+entity.get {"id":"player","omit_defaults":true}
+{"components":{"Player":{"jumps":1},"Transform2D":{"position":[176.0,116.0]}},"id":"player"}
+input.inject {"events":[{"axis":"left_y","axis_value":0,"type":"joypad_motion"},{"position":[40,200],"pressed":true,"type":"screen_touch"},{"position":[40,200],"pressed":false,"type":"screen_touch"}]}
+{"queued":3,"tick":12}
+step {"tick_seconds":0.015625}
+{"tick":13,"ticks":1}
+entity.get {"components":["Player"],"id":"player"}
+{"components":{"Player":{"jumps":1,"target":[40.0,200.0]}},"id":"player"}
+input.inject {"events":[{"action":"jmup","pressed":true,"type":"action"}]}
+"/events/0/action: no action \"jmup\"; did you mean \"jump\"?"
+rebound jump to K too
+input.inject {"events":[{"key":"K","pressed":true,"type":"key"},{"key":"K","pressed":false,"type":"key"},{"action":"move_right","pressed":true,"strength":0.625,"type":"action"}]}
+{"queued":3,"tick":13}
+step {"tick_seconds":0.015625}
+{"tick":14,"ticks":1}
+input.state {}
+{"actions":{"jump":{"just_pressed":true,"just_released":true,"pressed":false},"move_right":{"just_pressed":true,"pressed":true,"strength":0.625}},"mouse":{"position":[40.0,200.0]},"tick":13}
+entity.get {"id":"player","omit_defaults":true}
+{"components":{"Player":{"jumps":2,"target":[40.0,200.0]},"Transform2D":{"position":[177.0,116.0]}},"id":"player"}

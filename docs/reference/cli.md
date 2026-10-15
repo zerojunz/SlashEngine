@@ -65,7 +65,9 @@ slash-cli run --headless --ticks 60 --scene tests/data/basic.scene.json
 `renderer` names the device that drew the window: `metal`, `d3d12` or `vulkan`, or `null` when
 headless or when no GPU backend works (a warning in the log says why). The window shows the
 scene's [sprites](scene-format.md#built-in-components) over Godot's default gray, drawn between
-ticks as the game moves (see [`rendering.interpolation`](project-format.md)).
+ticks as the game moves (see [`rendering.interpolation`](project-format.md)). The keyboard,
+mouse, touches and gamepads press the [input actions](project-format.md#input-actions) of the
+project folder's `project.json`, or only Godot's `ui_*` actions without one.
 
 With `--serve`, the result also carries the server's `url`, and the game takes the `play` and
 `pause` commands: while paused it keeps serving requests but does not step the world, and

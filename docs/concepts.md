@@ -51,6 +51,7 @@ The code follows the same split, one CMake library per module under `engine/`:
 | `render` | The render device: SDL3's GPU API (Vulkan, Metal, Direct3D 12), or the null device for headless runs |
 | `asset` | Asset handles, loaders and hot reload |
 | `world` | The EnTT world, components, the component registry, scenes and prefabs |
+| `input` | Input, as Godot's: key, mouse, touch and gamepad events from SDL, rebindable actions and the state gameplay code reads |
 | `canvas` | 2D drawing, as Godot's canvas: sprites, `.frames.json` animations, `.material.json` materials, `.tileset.json` tile sets and tile map layers, and the renderer that draws them |
 | `animation` | Keyframe animation, as Godot's AnimationPlayer: `.anim.json` files and the system that plays them |
 | `physics2d` | 2D physics on Box2D, as Godot's: bodies, areas, shapes, joints and queries |
@@ -95,7 +96,8 @@ nested struct declared with `SLASH_REFLECT`.
 A **system** is code that updates components every tick, added with `World::add_system` and an
 optional doc string and priority. Systems run in order of priority, lowest first as with Godot's
 `process_priority`, and in the order they were added when priorities are equal. `engine.describe`
-lists them in that order. The built-in systems play animations, step physics and run particles:
+lists them in that order. The built-in systems apply input, play animations, step physics and
+run particles: `input` applies the input events queued since the last tick, first,
 `animation_player` runs `AnimationPlayer` components, `physics2d` moves bodies and reports
 contacts, `animated_sprite_2d` runs `AnimatedSprite2D` flipbooks, then `cpu_particles_2d`
 emits and moves `CPUParticles2D` particles. More arrive with the feature milestones (audio).
@@ -184,6 +186,25 @@ The world advances in fixed **ticks**: 60 per second by default. A fixed step ke
 deterministic, which lets agents and CI repeat a run and get the same result. `slash-cli run`
 ticks the world in a window or headless; the `step` command advances it a given number of ticks
 from any front end, and `run.until` until a condition on the entities holds.
+
+## Input
+
+Input follows Godot. Keys, mouse buttons and motion, touches and gamepads arrive as **input
+events**, which wait in a queue and apply at the start of the next tick, so a run with the same
+events at the same ticks plays out the same way. Gameplay code reads **actions** rather than
+keys: `project.json`'s `input` names what the game does, such as `jump` or `move_left`, and the
+**bindings** that do it (keys by label or by where they sit on the keyboard, mouse buttons,
+gamepad buttons and stick directions), on top of Godot's built-in `ui_*` actions for moving
+through and pressing UI. An action is pressed while any binding holds it, and "just pressed" or
+"just released" for the one tick it changed, so a tap shorter than a tick still counts. A stick
+presses an action past its **deadzone**, with a strength from 0 to 1, and `get_vector` turns
+four actions into a direction. Players rebind actions while the game runs, from an options
+menu. A touch also clicks the mouse, so mouse code works on phones.
+
+Games read the events from SDL. Agents send them with `input.inject`, by key, button, finger,
+stick or action name, then `step` and read back what the game saw with `input.state`;
+`input.actions` lists the bindings. The [input example](../examples/input-actions/) moves a
+player with WASD, a stick and taps.
 
 ## Rendering
 
@@ -449,11 +470,13 @@ OpenAI-compatible servers (including local ones), Anthropic and Gemini; see the
 
 | Term | Meaning |
 | --- | --- |
+| Action | A named thing a game does, such as `jump`, and the input bindings that press it, as Godot's input map |
 | Ambient light | The color lit draws start from where no light reaches: the `CanvasModulate` color |
 | Anchor | Where a control's edge sits in its parent's rect, from 0 (left or top) to 1 (right or bottom) |
 | Animation | A `.anim.json` file's named set of tracks, which an `AnimationPlayer` plays on its entity's fields |
 | Autotiling | Picking each tile so its edges connect to its neighbors' terrains, as `tilemap.paint` does |
 | Asset | A file a game loads by project path into a shared, reference-counted handle |
+| Binding | A key, mouse button, gamepad button or stick direction that presses an action |
 | Blend mode | How a sprite's color combines with what is under it: `mix`, `add`, `sub`, `mul` or `premul_alpha` |
 | Canonical form | The one way a scene is written: sorted keys, two-space indent, defaults left out |
 | Capability | A permission a session grants: `read`, `edit`, `run`, `filesystem` or `build` |
@@ -463,6 +486,7 @@ OpenAI-compatible servers (including local ones), Anthropic and Gemini; see the
 | Component registry | The list of component types a world knows, with their docs |
 | Control | A UI element: a rect placed in its parent's by anchors and offsets, or by a container, which `Label`, `Panel` and the other drawing components draw in |
 | Container | A control that places its children itself, in a row, a grid, lines that wrap, a margin or the center |
+| Deadzone | How far a stick must move, from 0 to 1, before it presses an action |
 | Discovery file | `.slash/server.json`: a running server's URL and token |
 | Distance field font | A font drawn from one field per glyph of distances to its outline (MSDF), sharp at any size, scale and outline |
 | Effect | How a command changes the world: read, edit, replace, history or compound |
@@ -473,6 +497,7 @@ OpenAI-compatible servers (including local ones), Anthropic and Gemini; see the
 | Font | A `.ttf` or `.otf` file, or a `.font.json` file naming one with settings |
 | Front end | A way to reach the commands: MCP, JSON-RPC, REST or the CLI |
 | Hot reload | Reloading edited files, and updating prefab instances, while the game runs |
+| Input event | A key, mouse, touch, gamepad or action event, queued for the next tick |
 | Interpolation | Drawing sprites part of the way between two ticks, so motion is smooth at any frame rate |
 | ID | An entity's stable name: 1 to 64 letters, digits, `_` or `-` |
 | Journal | `storyboard/journal.jsonl`: who changed which storyboard entries, when and why |

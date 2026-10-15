@@ -6,6 +6,7 @@
 #include "slash/core/json_schema.hpp"
 #include "slash/core/log.hpp"
 #include "slash/core/text.hpp"
+#include "slash/input/input.hpp"
 #include "slash/physics2d/physics2d.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/ui/ui.hpp"
@@ -53,6 +54,25 @@ physics2d::Settings physics_settings(const json::Value& project) {
     return physics2d::parse_settings(*settings);
 }
 
+// The project's input actions over Godot's ui_* ones, or only those if its "input" doesn't
+// validate.
+input::Map input_map(const json::Value& project) {
+    const json::Value* map = project.is_object() ? project.find("input") : nullptr;
+    if (map == nullptr) {
+        return input::Map::with_defaults();
+    }
+    auto parsed = input::parse_map(*map);
+    return parsed ? std::move(parsed).value() : input::Map::with_defaults();
+}
+
+input::Settings input_settings(const json::Value& project) {
+    const json::Value* settings = project.is_object() ? project.find("input_devices") : nullptr;
+    if (settings == nullptr || !json::validate(*settings, input::settings_schema()).empty()) {
+        return {};
+    }
+    return input::parse_settings(*settings);
+}
+
 // The viewport controls are laid out in: the project's window size, or the default.
 ui::Settings ui_settings(const json::Value& project) {
     ui::Settings settings;
@@ -96,12 +116,13 @@ Session::Session(const world::ComponentRegistry& component_registry,
     world_.set_file_reader(
         [this](std::string_view path) { return assets_.read(path, world::kPrefabType); });
     // Textures, fonts, sprite frames, animation libraries and the systems that play
-    // AnimatedSprite2D and AnimationPlayer, so step animates, and 2D physics.
+    // AnimatedSprite2D and AnimationPlayer, so step animates, 2D physics and input actions.
     const json::Value project = read_project(options_.project_root);
     canvas::install(world_, assets_);
     ui::set_settings(world_, ui_settings(project));
     animation::install(world_, assets_);
     physics2d::install(world_, physics_settings(project));
+    input::install(world_, input_map(project), input_settings(project));
     if (options_.capture_logs) {
         log::set_sink([this](log::Level /*level*/, std::string_view line) {
             std::fwrite(line.data(), 1, line.size(), stderr);
@@ -188,6 +209,8 @@ Reply Session::call(std::string_view name, const json::Value& params) {
     }
 
     Snapshot before{command->name, save(), {}, true};
+    // Input events a failed command or dry run stepped through wait for the next tick again.
+    const input::Snapshot input_before = input::save(world_);
     const std::string path_before = scene_path_;
     const world::World::Counters counters_before = world_.counters();
     edited_ = false;
@@ -217,6 +240,7 @@ Reply Session::call(std::string_view name, const json::Value& params) {
                                          before.saved.links, after.links);
         }
         restore(before.saved);
+        input::restore(world_, input_before);
         scene_path_ = path_before;
         world_.set_counters(counters_before);
         if (!reply.ok) {
