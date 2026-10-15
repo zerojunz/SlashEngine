@@ -137,7 +137,7 @@ bool is_control(const world::World& world, entt::entity entity) {
            (world.ecs()
                 .any_of<world::Control, world::Label, world::ColorRect, world::Panel,
                         world::TextureRect, world::NinePatchRect, world::ProgressBar>(entity) ||
-            world.ecs().any_of<world::Button, world::TextureButton>(entity) ||
+            world.ecs().any_of<world::Button, world::TextureButton, world::LineEdit>(entity) ||
             world.ecs()
                 .any_of<world::BoxContainer, world::GridContainer, world::MarginContainer,
                         world::CenterContainer, world::FlowContainer, world::PanelContainer>(
@@ -152,6 +152,9 @@ std::vector<std::string_view> control_classes(const world::World& world, entt::e
     }
     if (ecs.all_of<world::TextureButton>(entity)) {
         classes.emplace_back("TextureButton");
+    }
+    if (ecs.all_of<world::LineEdit>(entity)) {
+        classes.emplace_back("LineEdit");
     }
     if (ecs.all_of<world::Label>(entity)) {
         classes.emplace_back("Label");
@@ -259,6 +262,22 @@ std::vector<Problem> check(const world::World& world, text::Fonts& fonts) {
         }
         if (const auto* button = ecs.try_get<world::Button>(entity); button != nullptr) {
             check_language("Button", button->language);
+        }
+        if (const auto* edit = ecs.try_get<world::LineEdit>(entity); edit != nullptr) {
+            check_language("LineEdit", edit->language);
+            if (to_utf32(edit->secret_character).size() > 1) {
+                problems.push_back({.id = id,
+                                    .path = "/components/LineEdit/secret_character",
+                                    .message = "a secret character is one character; the "
+                                               "others are left out"});
+            }
+            if (ecs.any_of<world::Label, world::Button, world::TextureButton>(entity)) {
+                problems.push_back(
+                    {.id = id,
+                     .path = "/components/LineEdit",
+                     .message = "a LineEdit draws its own text and takes its own input; put the "
+                                "Label or button in another control"});
+            }
         }
 
         const auto* control = ecs.try_get<world::Control>(entity);

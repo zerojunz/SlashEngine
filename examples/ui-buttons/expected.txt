@@ -48,7 +48,7 @@ entity.get {"components":["Menu"],"id":"screen"}
 ui.press {"id":"online"}
 "/id: \"online\" is disabled, so it can't be pressed"
 ui.focus {"id":"title"}
-"/id: \"title\" can't take focus: it is hidden, or its focus_mode is \"none\" (the default for controls that aren't buttons)"
+"/id: \"title\" can't take focus: it is hidden, or its focus_mode is \"none\" (the default for controls that aren't buttons or LineEdits)"
 ui.focus {"id":"play"}
 {"focused":"play"}
 controls drawn: 8, boxes drawn: 8, glyphs drawn: 38, GPU draws: 14

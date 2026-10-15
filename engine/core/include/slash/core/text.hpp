@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <string>
 #include <string_view>
 
 namespace slash {
@@ -25,6 +26,15 @@ template <typename Range>
     }
     return best;
 }
+
+// The character of UTF-8 text at byte i, moving i past it; a malformed byte reads as U+FFFD
+// and moves one byte.
+[[nodiscard]] char32_t next_utf8(std::string_view text, std::size_t& i);
+// Adds a character to UTF-8 text.
+void append_utf8(std::string& out, char32_t character);
+// UTF-8 text as characters, and back.
+[[nodiscard]] std::u32string to_utf32(std::string_view text);
+[[nodiscard]] std::string to_utf8(std::u32string_view text);
 
 // Whether path names a file inside a project: relative, separated by '/', with no empty, "." or
 // ".." segments, and no backslash or ':'. Such a path names the same file on every platform.

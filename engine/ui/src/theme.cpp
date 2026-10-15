@@ -20,12 +20,13 @@ namespace slash::ui {
 namespace {
 
 // Each control type and the type it is built on, as Godot's classes.
-constexpr std::array<std::pair<std::string_view, std::string_view>, 22> kTypes{{
+constexpr std::array<std::pair<std::string_view, std::string_view>, 23> kTypes{{
     {"Control", ""},
     {"Label", "Control"},
     {"BaseButton", "Control"},
     {"Button", "BaseButton"},
     {"TextureButton", "BaseButton"},
+    {"LineEdit", "Control"},
     {"ColorRect", "Control"},
     {"Panel", "Control"},
     {"TextureRect", "Control"},
@@ -113,6 +114,29 @@ const std::map<std::string, ThemeItems, std::less<>>& own_defaults() {
                             {"line_spacing", 0}};
         button.fonts = {{"font", ""}};
         button.font_sizes = {{"font_size", text::kDefaultFontSize}};
+        // A line along the bottom tells a LineEdit from a Button.
+        ThemeItems& line_edit = themes["LineEdit"];
+        StyleBox line_normal = flat_style(style_normal_color, kMargin, kCornerRadius);
+        line_normal.border_width[3] = 2;
+        line_normal.border_color = style_pressed_color;
+        StyleBox line_read_only = flat_style(style_disabled_color, kMargin, kCornerRadius);
+        line_read_only.border_width[3] = 2;
+        line_read_only.border_color = {0.0F, 0.0F, 0.0F, 0.3F};
+        line_edit.styles = {
+            {"normal", line_normal}, {"read_only", line_read_only}, {"focus", focus}};
+        line_edit.colors = {{"font_color", control_font_color},
+                            {"font_selected_color", control_font_pressed_color},
+                            {"font_uneditable_color", control_font_disabled_color},
+                            {"font_placeholder_color", {0.875F, 0.875F, 0.875F, 0.6F}},
+                            {"font_outline_color", {0.0F, 0.0F, 0.0F, 1.0F}},
+                            {"caret_color", control_font_hover_color},
+                            {"selection_color", {0.5F, 0.5F, 0.5F, 1.0F}},
+                            {"clear_button_color", control_font_color},
+                            {"clear_button_color_pressed", control_font_pressed_color}};
+        line_edit.constants = {
+            {"minimum_character_width", 4}, {"outline_size", 0}, {"caret_width", 1}};
+        line_edit.fonts = {{"font", ""}};
+        line_edit.font_sizes = {{"font_size", text::kDefaultFontSize}};
         ThemeItems& label = themes["Label"];
         label.colors = {{"font_color", {1.0F, 1.0F, 1.0F, 1.0F}},
                         {"font_shadow_color", {0.0F, 0.0F, 0.0F, 0.0F}},

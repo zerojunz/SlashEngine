@@ -1380,6 +1380,38 @@ json::Value rtl_lines(const text::TextLayout& layout, std::size_t first, std::si
     return count == lines.size() ? json::Value(true) : json::Value(std::move(lines));
 }
 
+// A LineEdit as ui.layout reports it: whether it is being edited, its caret and selection in
+// characters, what an input method is composing, whether it shows its placeholder, and the
+// characters drawn (of the text with the composition at the caret) when they aren't all of them.
+json::Value line_edit_json(const world::World& world, entt::entity entity,
+                           const ui::LineEditView& view) {
+    const auto& edit = world.ecs().get<world::LineEdit>(entity);
+    const auto length = static_cast<std::uint32_t>(to_utf32(edit.text).size());
+    json::Value out;
+    if (ui::is_editing(world, entity)) {
+        out["editing"] = true;
+    }
+    out["caret_column"] = std::clamp(edit.caret_column, 0, static_cast<int>(length));
+    if (const auto selection = ui::selection(world, entity); selection) {
+        out["selection"] = json::Array{selection->first, selection->second};
+    }
+    const std::string ime = ui::ime_text(world, entity);
+    if (!ime.empty()) {
+        out["ime"] = ime;
+    }
+    const auto shown = length + static_cast<std::uint32_t>(to_utf32(ime).size());
+    if (shown == 0) {
+        out["placeholder"] = !edit.placeholder_text.empty();
+    } else if (view.visible_start != 0 || view.visible_end != shown) {
+        out["visible"] = json::Array{static_cast<std::int64_t>(view.visible_start),
+                                     static_cast<std::int64_t>(view.visible_end)};
+    }
+    if (!view.error.empty()) {
+        out["font_error"] = view.error;
+    }
+    return out;
+}
+
 Reply ui_layout(Session& session, const json::Value& params) {
     const world::World& world = session.world();
     text::Fonts* fonts = ui::fonts(world);
@@ -1444,6 +1476,10 @@ Reply ui_layout(Session& session, const json::Value& params) {
         }
         if (placed.entity == hovered) {
             item["hovered"] = true;
+        }
+        if (const auto edit = layout.line_edits.find(placed.entity);
+            edit != layout.line_edits.end()) {
+            item["line_edit"] = line_edit_json(world, placed.entity, edit->second);
         }
         if (const ui::LabelText* label = layout.label(placed.entity); label != nullptr) {
             item["lines"] = line_texts(label->text, label->source, label->first, label->last,
@@ -1636,12 +1672,23 @@ Reply ui_focus(Session& session, const json::Value& params) {
             return param_error(code::kInvalidParams, "/id",
                                quoted(id->as_string()) +
                                    " can't take focus: it is hidden, or its focus_mode is "
-                                   "\"none\" (the default for controls that aren't buttons)");
+                                   "\"none\" (the default for controls that aren't buttons or "
+                                   "LineEdits)");
         }
     }
     json::Value result;
     const entt::entity owner = ui::focus_owner(world);
     result["focused"] = owner != entt::null ? json::Value(world.id_of(owner)) : json::Value();
+    return Reply::success(std::move(result));
+}
+
+Reply ui_clipboard(Session& session, const json::Value& params) {
+    world::World& world = session.world();
+    if (const json::Value* text = params.find("text"); text != nullptr) {
+        ui::set_clipboard(world, text->as_string());
+    }
+    json::Value result;
+    result["text"] = ui::clipboard(world);
     return Reply::success(std::move(result));
 }
 
@@ -1674,17 +1721,18 @@ Reply input_inject(Session& session, const json::Value& params) {
             errors.insert(errors.end(), found.begin(), found.end());
             continue;
         }
-        auto event = input::parse_event(items[i], input::Use::Event);
-        if (!event) {
-            errors.push_back({path, event.error().message});
+        auto parsed = input::parse_events(items[i]);
+        if (!parsed) {
+            errors.push_back({path, parsed.error().message});
             continue;
         }
-        if (event.value().type == input::EventType::Action &&
-            !map.has_action(event.value().action)) {
-            errors.push_back(unknown_action(map, event.value().action, path + "/action"));
-            continue;
+        for (input::Event& event : parsed.value()) {
+            if (event.type == input::EventType::Action && !map.has_action(event.action)) {
+                errors.push_back(unknown_action(map, event.action, path + "/action"));
+                continue;
+            }
+            events.push_back(std::move(event));
         }
-        events.push_back(std::move(event).value());
     }
     if (!errors.empty()) {
         return Reply::invalid_params(errors);
@@ -1738,7 +1786,9 @@ Reply input_actions(Session& session, const json::Value& params) {
         }
     } else {
         for (const auto& [name, action] : map.actions()) {
-            actions[name] = input::action_json(action);
+            if (!input::is_text_action(name)) {
+                actions[name] = input::action_json(action);
+            }
         }
     }
     json::Value result;
@@ -3249,10 +3299,11 @@ void register_builtin_commands(Registry& registry) {
     registry.add({
         .name = "ui.layout",
         .description = "Returns where controls are on screen, in drawing order: each one's rect "
-                       "[x, y, w, h], the lines labels, buttons and progress bars show (rtl when "
-                       "they go right to left) and whether text overflows, each button's "
-                       "draw_mode, the control with focus and the one hovered, and mistakes such "
-                       "as misspelled theme overrides. A check without a screenshot.",
+                       "[x, y, w, h], the lines labels, buttons, progress bars and LineEdits show "
+                       "(rtl when they go right to left) and whether text overflows, each "
+                       "button's draw_mode, each LineEdit's caret, selection and editing state, "
+                       "the control with focus and the one hovered, and mistakes such as "
+                       "misspelled theme overrides. A check without a screenshot.",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema({
@@ -3299,6 +3350,17 @@ void register_builtin_commands(Registry& registry) {
         .params = params_schema({{"id", std::move(focus_id)}}, {"id"}),
         .handler = ui_focus,
     });
+    json::Value clipboard_text = property("string", "Text to put on the clipboard first.");
+    clipboard_text["maxLength"] = 65536;
+    registry.add({
+        .name = "ui.clipboard",
+        .description = "Returns the clipboard LineEdits cut, copy and paste with; text sets it "
+                       "first. A game running in a window shares the system's.",
+        .capabilities = {Run},
+        .effect = Effect::Read,
+        .params = params_schema({{"text", std::move(clipboard_text)}}),
+        .handler = ui_clipboard,
+    });
     json::Value measure_text = property("string", R"(The text; lines break at "\n".)");
     measure_text["maxLength"] = 65536;
     json::Value measure_width = property("number", "The width to wrap to, with autowrap_mode.");
@@ -3342,10 +3404,10 @@ void register_builtin_commands(Registry& registry) {
     inject_events["items"] = input::event_schema(input::Use::Event);
     registry.add({
         .name = "input.inject",
-        .description = "Queues input events (keys, mouse, touches, gamepads or actions by name) "
-                       "for the next tick, as if a player sent them. A press and release before "
-                       "one step is a tap. Returns how many are queued and the tick they apply "
-                       "at.",
+        .description = "Queues input events (keys, typed text, IME composition, mouse, touches, "
+                       "gamepads or actions by name) for the next tick, as if a player sent "
+                       "them. A press and release before one step is a tap. Returns how many are "
+                       "queued and the tick they apply at.",
         .capabilities = {Run},
         .effect = Effect::Read,
         .params = params_schema({{"events", std::move(inject_events)}}, {"events"}),
@@ -3361,13 +3423,15 @@ void register_builtin_commands(Registry& registry) {
         .effect = Effect::Read,
         .params = params_schema(
             {{"actions", names_property("Only these actions, pressed or not. Default: the ones "
-                                        "pressed or just released.")}}),
+                                        "pressed or just released, except text editing "
+                                        "actions.")}}),
         .handler = input_state,
     });
     registry.add({
         .name = "input.actions",
         .description = "Returns input actions with their deadzone and the events bound to each: "
-                       "Godot's ui_* actions and project.json's \"input\".",
+                       "Godot's ui_* actions and project.json's \"input\". Text editing actions "
+                       "(ui_text_*, ui_cut, ui_copy and so on) only when named.",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema({{"names", names_property("Only these actions. Default: all.")}}),

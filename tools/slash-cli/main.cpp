@@ -419,6 +419,13 @@ int cmd_run(const std::vector<std::string>& args) {
     slash::input::SdlReader input_reader;
     platform.value().set_event_handler(
         [&](const SDL_Event& event) { input_reader.read(event, game); });
+    if (!config.headless) {
+        // LineEdits cut, copy and paste with the system's clipboard.
+        slash::ui::set_clipboard_backend(
+            game,
+            {.get = [&] { return platform.value().clipboard_text(); },
+             .set = [&](const std::string& text) { platform.value().set_clipboard_text(text); }});
+    }
     // Made after the platform, so it lets go of the window before the window closes.
     const std::unique_ptr<slash::render::RenderDevice> renderer =
         config.headless
@@ -491,11 +498,16 @@ int cmd_run(const std::vector<std::string>& args) {
             if (engine.session->playing()) {
                 game.step(tick_seconds);
             }
+            // The input method and on-screen keyboard follow the LineEdit being edited.
+            if (!config.headless) {
+                input_reader.set_text_input(platform.value().window(), slash::ui::text_input(game));
+            }
         },
         draw_frame);
     if (server) {
         server->stop();
     }
+    slash::ui::set_clipboard_backend(game, {});
 
     if (!save_path.empty()) {
         const std::string text = json::write(world::save_scene(game)) + "\n";

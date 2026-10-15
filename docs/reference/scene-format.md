@@ -339,6 +339,33 @@ A reference must name an entity that exists in the same scene.
 | | `stretch_mode` | `std::string` | `"keep"` | How the texture fills the button, as `TextureRect`'s: `scale`, `tile`, `keep`, `keep_centered`, `keep_aspect`, `keep_aspect_centered` or `keep_aspect_covered` |
 | | `flip_h`, `flip_v` | `bool` | `false` | Draw it mirrored left to right, or upside down |
 | | `disabled` … `shortcut_feedback` | | | As `Button`'s |
+| `LineEdit` | `text` | `std::string` | `""` | The [text field](#text-fields)'s one line; line breaks show as spaces |
+| | `placeholder_text` | `std::string` | `""` | Shown, dimmed, while the text is empty |
+| | `alignment` | `std::string` | `"left"` | The text's place across the field: `left`, `center`, `right` or `fill` (as `left`) |
+| | `max_length` | `int` | `0` | Most characters it takes; 0 for no limit. Typing or pasting more emits `text_change_rejected` |
+| | `editable` | `bool` | `true` | Typing changes the text; off, it can still be selected and copied, and draws `read_only` |
+| | `keep_editing_on_text_submit` | `bool` | `false` | Keep editing after `ui_text_submit` (Enter) |
+| | `expand_to_text_length` | `bool` | `false` | Its minimum width grows to fit the text |
+| | `backspace_deletes_composite_character_enabled` | `bool` | `false` | Backspace deletes a whole character with its accents, an emoji sequence or a Hangul syllable, not its last code point |
+| | `virtual_keyboard_enabled` | `bool` | `true` | Show the on-screen keyboard while editing, on phones and tablets |
+| | `virtual_keyboard_show_on_focus` | `bool` | `true` | Show it as soon as the field takes focus, not only when tapped |
+| | `virtual_keyboard_type` | `std::string` | `"default"` | `default`, `multiline`, `number`, `number_decimal`, `phone`, `email_address`, `password` or `url` |
+| | `clear_button_enabled` | `bool` | `false` | Show a button at the end, while there is text, that clears it |
+| | `shortcut_keys_enabled` | `bool` | `true` | Cut, copy, paste, select all, undo and redo by keyboard shortcut |
+| | `selecting_enabled` | `bool` | `true` | Text can be selected |
+| | `deselect_on_focus_loss_enabled` | `bool` | `true` | Losing focus drops the selection |
+| | `right_icon` | `std::string` | `""` | Project path of a PNG or BMP file drawn at the end |
+| | `icon_expand_mode` | `std::string` | `"original_size"` | The right icon's size: `original_size`, `fit_to_text` (the font's height) or `fit_to_line_edit` (the field's height times `right_icon_scale`) |
+| | `right_icon_scale` | `float` | `1` | For `fit_to_line_edit` |
+| | `flat` | `bool` | `false` | Draw no style box |
+| | `select_all_on_focus` | `bool` | `false` | Select all the text when it takes focus |
+| | `caret_blink`, `caret_blink_interval` | `bool`, `float` | `false`, `0.65` | The caret blinks, shown then hidden for that many seconds |
+| | `caret_column` | `int` | `0` | Characters before the caret |
+| | `caret_force_displayed` | `bool` | `false` | Draw the caret even when not editing |
+| | `caret_mid_grapheme` | `bool` | `false` | Let the caret stop between a letter and its accents, or inside an emoji sequence |
+| | `secret` | `bool` | `false` | Show each character as `secret_character`, for passwords; cut and copy do nothing |
+| | `secret_character` | `std::string` | `"•"` | One character |
+| | `text_direction`, `language` | `std::string` | `"auto"`, `""` | As `Label`'s |
 | `BoxContainer` | `vertical` | `bool` | `false` | Lays its children out in a column instead of a row |
 | | `alignment` | `std::string` | `"begin"` | Where they go when none expands: `begin`, `center` or `end` |
 | `GridContainer` | `columns` | `int` | `1` | Children per row, 1 to 1024 |
@@ -1145,6 +1172,54 @@ and buttons answer them as Godot's `BaseButton`.
   click mask for `TextureButton`. Hiding a button while it is held lets go of it without
   pressing it.
 
+### Text fields
+
+`LineEdit` is Godot's one-line text field. The `gui` system edits it from the tick's
+[input events](commands.md#inputinject) as Godot's `LineEdit::gui_input` does, so the same keys,
+clicks and input methods work on every platform. From
+[examples/text-input](../../examples/text-input/):
+
+```json
+"name": {
+  "components": {
+    "LineEdit": {"clear_button_enabled": true, "max_length": 20, "placeholder_text": "Your name"}
+  }
+}
+```
+
+- A click, Tab, `ui.focus` or [`ui_text_submit`](project-format.md#input-actions) while it
+  has focus starts editing; focus moved by the arrow keys or a gamepad doesn't, as in Godot.
+  `ui_text_submit` (Enter) emits `text_submitted` and stops editing unless
+  `keep_editing_on_text_submit`; `ui_cancel` (Escape) and losing focus stop it. A field takes
+  focus by default (`focus_mode` `all`).
+- While editing, typed characters (key events with a `unicode` character and no Ctrl, Alt or
+  Command) go in at the caret, replacing the selection. The
+  [text actions](project-format.md#input-actions) move the caret by character, word and line,
+  select with Shift, delete, select all, cut, copy, paste, undo and redo. A double click selects
+  a word, a triple click all of it, and a drag selects; a right click places the caret.
+- An input method's composition (`ime` events) shows at the caret, underlined, until it commits
+  the result as typed text. The platform shows its candidate window next to the caret: games
+  pass `ui::text_input(world)` to `SdlReader::set_text_input` each tick, which also shows the
+  on-screen keyboard of `virtual_keyboard_type` on phones.
+- `text` and `caret_column` are the truth: the field writes them as it is edited, and setting
+  `text` from outside (a command, an animation, gameplay code) starts its undo history again.
+  Undo takes back a tick's typing at a time, as Godot takes back a frame's.
+- A field emits `text_changed` (data `{"text": string}`, once a tick, after the tick's typing),
+  `text_submitted` (`{"text": string}`), `text_change_rejected` (`{"rejected_substring":
+  string}`, what `max_length` left out) and `editing_toggled` (`{"toggled_on": bool}`) as world
+  events, with the focus and hover events every control has.
+- The clipboard is the session's own headless and in tests; a game in a window shares the
+  system's. [`ui.clipboard`](commands.md#uiclipboard) reads and sets it.
+- It draws its `normal` style box (`read_only` when not `editable`), the `focus` box while it has
+  focus, the selection in `selection_color`, the text (`font_placeholder_color` for the
+  placeholder, `font_uneditable_color` when not `editable`, `font_selected_color` where
+  selected), the caret `caret_width` wide and the clear button or right icon. Text that doesn't
+  fit scrolls to keep the caret in view. Its minimum size is its style box's margins round
+  `minimum_character_width` "W"s of its font, its icon and a line's height.
+- Not yet: `TextEdit` (several lines), the context menu, middle-click paste of the primary
+  selection, drag and drop of text and `structured_text_bidi_override`. `editing_toggled` is
+  emitted only when editing really starts or stops.
+
 ### Theme items
 
 A control's look comes from theme items, as Godot's default theme gives them: a control uses
@@ -1191,6 +1266,20 @@ its `theme_override_*` fields, then its [themes](#themes), then the defaults bel
 | | constant | `icon_max_width` | `0`, no limit |
 | | constant | `align_to_largest_stylebox` | `0`; 1 keeps the text in place as the style changes |
 | `Button`, `TextureButton` | constant | `click_margin` | `0`, pixels round the rect that still hit it |
+| `LineEdit` | style | `normal` | flat `[0.1, 0.1, 0.1, 0.6]`, `corner_radius` 3, `content_margin` 4, a `[0, 0, 0, 0.6]` bottom border 2 wide |
+| | style | `read_only` | flat `[0.1, 0.1, 0.1, 0.3]`, the same shape, a `[0, 0, 0, 0.3]` bottom border |
+| | style | `focus` | as `Button`'s |
+| | font, font size | `font`, `font_size` | The built-in font, `16` |
+| | color | `font_color`, `font_selected_color` | `[0.875, 0.875, 0.875, 1]`, `[1, 1, 1, 1]` |
+| | color | `font_uneditable_color` | `[0.875, 0.875, 0.875, 0.5]` |
+| | color | `font_placeholder_color` | `[0.875, 0.875, 0.875, 0.6]` |
+| | color | `font_outline_color` | `[0, 0, 0, 1]` |
+| | color | `caret_color` | `[0.95, 0.95, 0.95, 1]` |
+| | color | `selection_color` | `[0.5, 0.5, 0.5, 1]` |
+| | color | `clear_button_color`, `clear_button_color_pressed` | `[0.875, 0.875, 0.875, 1]`, `[1, 1, 1, 1]` |
+| | constant | `minimum_character_width` | `4` |
+| | constant | `outline_size` | `0` |
+| | constant | `caret_width` | `1` |
 | `BoxContainer` (`HBoxContainer`, `VBoxContainer`) | constant | `separation` | `4` |
 | `GridContainer`, `FlowContainer` (`HFlowContainer`, `VFlowContainer`) | constant | `h_separation`, `v_separation` | `4` |
 | `MarginContainer` | constant | `margin_left`, `margin_top`, `margin_right`, `margin_bottom` | `0` |

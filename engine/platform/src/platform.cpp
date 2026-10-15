@@ -175,4 +175,20 @@ std::string_view Platform::video_driver() const {
     return driver != nullptr ? driver : "unknown";
 }
 
+std::string Platform::clipboard_text() const {
+    if (headless_) {
+        return {};
+    }
+    char* text = SDL_GetClipboardText();
+    std::string out = text != nullptr ? text : "";
+    SDL_free(text);
+    return out;
+}
+
+void Platform::set_clipboard_text(const std::string& text) const {
+    if (!headless_ && !SDL_SetClipboardText(text.c_str())) {
+        log::warn("the clipboard was not set", {{"error", SDL_GetError()}});
+    }
+}
+
 } // namespace slash::platform

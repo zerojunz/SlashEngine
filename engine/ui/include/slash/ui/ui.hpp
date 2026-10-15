@@ -5,6 +5,7 @@
 #include "slash/core/json_schema.hpp"
 #include "slash/core/math.hpp"
 #include "slash/core/result.hpp"
+#include "slash/input/input.hpp"
 #include "slash/render/device.hpp"
 #include "slash/text/text.hpp"
 #include "slash/world/component_registry.hpp"
@@ -14,6 +15,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <memory>
 #include <optional>
@@ -158,6 +160,11 @@ struct LabelText {
     std::vector<float> stretch; // extra pixels after each space of a shown line, for fill
     // Glyphs of the source's bytes from here on are hidden (visible_characters after shaping).
     std::size_t visible_bytes = static_cast<std::size_t>(-1);
+    // Glyphs of the source's bytes [selected_start, selected_end) draw in selected_color: a
+    // LineEdit's selection.
+    std::size_t selected_start = 0;
+    std::size_t selected_end = 0;
+    Vec4 selected_color;
     bool overflow = false; // a line is wider than the rect, or lines don't fit its height
     bool clip = false;     // drawn cut off at the rect
     std::string error;     // why its font didn't load, so the default font drew it
@@ -209,6 +216,37 @@ struct ButtonState {
     float click_margin = 0.0F; // pixels around its rect that still hit it
 };
 
+// A LineEdit as laid out: its theme items and what it shows.
+struct LineEditView {
+    StyleBox normal;
+    StyleBox read_only;
+    StyleBox focus;
+    std::string font;
+    int font_size = text::kDefaultFontSize;
+    Vec4 font_color;
+    Vec4 font_selected_color;
+    Vec4 font_uneditable_color;
+    Vec4 font_placeholder_color;
+    Vec4 font_outline_color;
+    Vec4 caret_color;
+    Vec4 selection_color;
+    Vec4 clear_button_color;
+    Vec4 clear_button_color_pressed;
+    int minimum_character_width = 0;
+    int outline_size = 0;
+    int caret_width = 1;
+    std::optional<Vec2> right_icon; // the right icon's size in pixels, when it loads
+    bool rtl = false;               // laid out right to left
+    std::string error;              // why its font didn't load, so the default font drew it
+    // What it shows: the text scrolled left (scroll_offset, 0 or less) to keep the caret in
+    // view, the characters drawn [visible_start, visible_end), and where the caret is across its
+    // rect.
+    float scroll_offset = 0.0F;
+    std::uint32_t visible_start = 0;
+    std::uint32_t visible_end = 0;
+    float caret_x = 0.0F;
+};
+
 // What one control the layout can't place properly is doing wrong.
 struct Problem {
     std::string id;
@@ -230,6 +268,9 @@ struct Layout {
     std::map<entt::entity, std::vector<Box>> boxes; // what each control draws under its text
     std::map<entt::entity, LabelText> percentages;  // each ProgressBar's percentage
     std::map<entt::entity, ButtonState> buttons;    // each Button and TextureButton
+    std::map<entt::entity, LineEditView> line_edits;
+    // What each control draws over its text: a LineEdit's caret and composition underline.
+    std::map<entt::entity, std::vector<Box>> overlays;
 
     [[nodiscard]] const Placed* find(entt::entity entity) const;
     [[nodiscard]] const LabelText* label(entt::entity entity) const;
@@ -323,13 +364,16 @@ struct DrawList {
 // ---- Buttons, focus and hover ----
 
 // Something controls did, as Godot's signals: "pressed", "toggled", "button_down" and
-// "button_up" from buttons, and "mouse_entered", "mouse_exited", "focus_entered" and
+// "button_up" from buttons; "text_changed", "text_submitted", "text_change_rejected" and
+// "editing_toggled" from LineEdits; and "mouse_entered", "mouse_exited", "focus_entered" and
 // "focus_exited" from any control. Each is a world event (World::emit) too, with data
-// {"toggled_on": bool} for toggled.
+// {"toggled_on": bool} for toggled and editing_toggled, {"text": string} for text_changed and
+// text_submitted and {"rejected_substring": string} for text_change_rejected.
 struct UiEvent {
     std::string kind;
     std::string id;          // the control's entity ID
-    bool toggled_on = false; // for toggled
+    bool toggled_on = false; // for toggled and editing_toggled
+    std::string text;        // for text_changed, text_submitted and text_change_rejected
 };
 
 // The UI events of the tick the "gui" system last ran (inside a system: this tick), in order.
@@ -351,8 +395,34 @@ void release_focus(world::World& world);
 // The control under the mouse, or entt::null.
 [[nodiscard]] entt::entity hovered(const world::World& world);
 
-// A copy of what the gui system keeps between ticks (focus, hover, buttons being pressed, UI
-// events), so a session can put it back when a command fails or was a dry run.
+// ---- Text fields ----
+
+// Whether a LineEdit is being edited: it has focus and takes typing.
+[[nodiscard]] bool is_editing(const world::World& world, entt::entity line_edit);
+// A LineEdit's selection, [from, to) in characters, or nullopt for none.
+[[nodiscard]] std::optional<std::pair<int, int>> selection(const world::World& world,
+                                                           entt::entity line_edit);
+// The text an input method is composing in a LineEdit, shown at its caret until it is done.
+[[nodiscard]] std::string ime_text(const world::World& world, entt::entity line_edit);
+
+// What the LineEdit being edited asks of the platform (text input, where its caret is, the
+// on-screen keyboard), as Godot's LineEdit asks DisplayServer; inactive when none is. Games pass
+// it to SdlReader::set_text_input each frame.
+[[nodiscard]] input::TextInput text_input(const world::World& world);
+
+// The clipboard LineEdits cut, copy and paste with, as Godot's DisplayServer::clipboard_get and
+// clipboard_set. The world keeps its own text, so headless runs and tests have one; a backend
+// (Game and slash-cli run give SDL's when they have a window) shares it with the system's.
+struct ClipboardBackend {
+    std::function<std::string()> get;
+    std::function<void(const std::string&)> set;
+};
+void set_clipboard_backend(world::World& world, ClipboardBackend backend);
+[[nodiscard]] std::string clipboard(const world::World& world);
+void set_clipboard(world::World& world, const std::string& text);
+
+// A copy of what the gui system keeps between ticks (focus, hover, buttons being pressed, text
+// being edited, UI events), so a session can put it back when a command fails or was a dry run.
 struct Snapshot {
     std::shared_ptr<const void> data;
 };
