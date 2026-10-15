@@ -1,5 +1,6 @@
 #include "slash/command/session.hpp"
 
+#include "slash/core/assert.hpp"
 #include "slash/core/json_schema.hpp"
 #include "slash/core/log.hpp"
 #include "slash/core/text.hpp"
@@ -16,6 +17,18 @@ namespace {
 
 // How many log lines a session keeps for log.tail.
 constexpr std::size_t kMaxLogLines = 1000;
+
+std::string quoted(std::string_view text) {
+    return "\"" + std::string(text) + "\"";
+}
+
+// Whether two copies of the world hold the same entities, components and prefab links.
+bool same_world(const Session::SavedWorld& a, const Session::SavedWorld& b) {
+    return a.scene == b.scene &&
+           std::ranges::equal(a.links, b.links, [](const auto& left, const auto& right) {
+               return left.first == right.first && left.second.path == right.second.path;
+           });
+}
 
 } // namespace
 
@@ -124,7 +137,7 @@ Reply Session::call(std::string_view name, const json::Value& params) {
         return run(*command, *command_args);
     }
 
-    Snapshot before{command->name, save()};
+    Snapshot before{command->name, save(), {}, true};
     const std::string path_before = scene_path_;
     const world::World::Counters counters_before = world_.counters();
     edited_ = false;
@@ -132,9 +145,19 @@ Reply Session::call(std::string_view name, const json::Value& params) {
     pending_events_.clear();
     buffering_events_ = true;
     dry_running_ = dry_run;
+    undo_calls_.clear();
+    begin_files();
     Reply reply = run(*command, *command_args);
     dry_running_ = false;
     buffering_events_ = false;
+    if (reply.ok && !dry_run) {
+        if (auto committed = commit_files(); !committed) {
+            reply = Reply::failure(committed.error());
+        }
+    }
+    discard_files();
+    std::vector<UndoCall> calls = std::move(undo_calls_);
+    undo_calls_.clear();
     if (!reply.ok || dry_run) {
         pending_events_.clear();
         json::Value changes;
@@ -162,12 +185,24 @@ Reply Session::call(std::string_view name, const json::Value& params) {
         }
     }
     pending_events_.clear();
-    if ((edited_ || replaced_) && wants("command")) {
-        publish_changes(command->name, before.saved, save());
+    // A command that changed only files, such as storyboard.edit, leaves the world alone on undo.
+    bool world_changed = true;
+    std::optional<SavedWorld> after;
+    if (!calls.empty()) {
+        after = save();
+        world_changed = !same_world(before.saved, *after);
+    }
+    if ((edited_ || replaced_) && world_changed && wants("command")) {
+        publish_changes(command->name, before.saved, after ? *after : save());
     }
     if (replaced_) {
         clear_history();
     } else if (edited_) {
+        before.calls = std::move(calls);
+        before.restores_world = world_changed;
+        if (!world_changed) {
+            before.saved = {};
+        }
         remember(undo_, std::move(before));
         redo_.clear();
     }
@@ -227,11 +262,17 @@ Reply Session::undo() {
     if (undo_.empty()) {
         return Reply::failure(code::kInvalidArgument, "nothing to undo");
     }
-    const Snapshot target = std::move(undo_.back());
+    if (Reply replayed = replay(undo_.back(), true); !replayed.ok) {
+        return replayed;
+    }
+    Snapshot target = std::move(undo_.back());
     undo_.pop_back();
-    Snapshot current{target.label, save()};
-    restore(target.saved);
-    publish_changes("undo", current.saved, target.saved);
+    Snapshot current{target.label, target.restores_world ? save() : SavedWorld{},
+                     std::move(target.calls), target.restores_world};
+    if (target.restores_world) {
+        restore(target.saved);
+        publish_changes("undo", current.saved, target.saved);
+    }
     remember(redo_, std::move(current));
     json::Value result;
     result["undone"] = target.label;
@@ -244,11 +285,17 @@ Reply Session::redo() {
     if (redo_.empty()) {
         return Reply::failure(code::kInvalidArgument, "nothing to redo");
     }
-    const Snapshot target = std::move(redo_.back());
+    if (Reply replayed = replay(redo_.back(), false); !replayed.ok) {
+        return replayed;
+    }
+    Snapshot target = std::move(redo_.back());
     redo_.pop_back();
-    Snapshot current{target.label, save()};
-    restore(target.saved);
-    publish_changes("redo", current.saved, target.saved);
+    Snapshot current{target.label, target.restores_world ? save() : SavedWorld{},
+                     std::move(target.calls), target.restores_world};
+    if (target.restores_world) {
+        restore(target.saved);
+        publish_changes("redo", current.saved, target.saved);
+    }
     remember(undo_, std::move(current));
     json::Value result;
     result["redone"] = target.label;
@@ -273,6 +320,179 @@ std::vector<std::string> Session::redo_labels() const {
         labels.push_back(snapshot.label);
     }
     return labels;
+}
+
+Result<std::optional<std::string>> Session::read_disk(std::string_view path) const {
+    auto file = resolve_path(path);
+    if (!file) {
+        return file.error();
+    }
+    if (!platform::exists(file.value())) {
+        return std::optional<std::string>();
+    }
+    auto text = platform::read_file(file.value());
+    if (!text) {
+        return text.error();
+    }
+    return std::optional<std::string>(std::move(text).value());
+}
+
+Result<std::optional<std::string>> Session::read_project_file(std::string_view path) {
+    if (!staging_) {
+        return read_disk(path);
+    }
+    auto file = staged(path);
+    if (!file) {
+        return file.error();
+    }
+    const StagedFile& staged_file = *file.value();
+    const std::optional<std::string>& text = staged_file.text ? staged_file.text : staged_file.seen;
+    if (!text && staged_file.append.empty()) {
+        return std::optional<std::string>();
+    }
+    return std::optional<std::string>(text.value_or(std::string()) + staged_file.append);
+}
+
+Result<void> Session::stage_file(std::string_view path, std::string text) {
+    auto file = staged(path);
+    if (!file) {
+        return file.error();
+    }
+    file.value()->text = std::move(text);
+    return {};
+}
+
+Result<void> Session::stage_append(std::string_view path, std::string_view text) {
+    auto file = staged(path);
+    if (!file) {
+        return file.error();
+    }
+    file.value()->append += text;
+    return {};
+}
+
+void Session::add_undo_call(std::string command, json::Value undo_params, json::Value redo_params) {
+    if (!replaying_) {
+        undo_calls_.push_back({std::move(command), std::move(undo_params), std::move(redo_params)});
+    }
+}
+
+void Session::begin_files() {
+    staged_.clear();
+    staging_ = true;
+}
+
+void Session::discard_files() {
+    staged_.clear();
+    staging_ = false;
+}
+
+Result<Session::StagedFile*> Session::staged(std::string_view path) {
+    if (!staging_) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "only commands that change the world can write project files");
+    }
+    auto it = staged_.find(path);
+    if (it == staged_.end()) {
+        auto seen = read_disk(path);
+        if (!seen) {
+            return seen.error();
+        }
+        it = staged_.emplace(std::string(path), StagedFile{std::move(seen).value(), {}, {}}).first;
+    }
+    return &it->second;
+}
+
+Result<void> Session::commit_files() {
+    // Nothing is written if a file changed on disk since the command read it.
+    for (const auto& [path, file] : staged_) {
+        if (!file.text) {
+            continue;
+        }
+        auto now = read_disk(path);
+        if (!now) {
+            return now.error();
+        }
+        if (now.value() != file.seen) {
+            return make_error(ErrorCode::Conflict,
+                              quoted(path) +
+                                  " changed on disk while the command ran; nothing was written, "
+                                  "so read it again and retry");
+        }
+    }
+    for (const auto& [path, file] : staged_) {
+        if (!file.text && file.append.empty()) {
+            continue;
+        }
+        auto resolved = resolve_path(path);
+        if (!resolved) {
+            return resolved.error();
+        }
+        std::string text;
+        if (file.text) {
+            text = *file.text;
+        } else {
+            // Logs are appended to what is on disk now, whoever else wrote to them.
+            auto now = read_disk(path);
+            if (!now) {
+                return now.error();
+            }
+            text = now.value().value_or(std::string());
+        }
+        text += file.append;
+        if (const std::size_t slash = resolved.value().rfind('/'); slash != std::string::npos) {
+            if (auto created = platform::create_directories(resolved.value().substr(0, slash));
+                !created) {
+                return created.error();
+            }
+        }
+        if (auto written = platform::write_file(resolved.value(), text); !written) {
+            return written.error();
+        }
+    }
+    return {};
+}
+
+Reply Session::replay(const Snapshot& step, bool undo) {
+    if (step.calls.empty()) {
+        return Reply::success({});
+    }
+    begin_files();
+    replaying_ = true;
+    Reply reply = Reply::success({});
+    const auto run_call = [&](const UndoCall& call) {
+        const Command* command = commands_->find(call.command);
+        SLASH_ASSERT(command != nullptr, "undo calls name registered commands");
+        reply = run(*command, undo ? call.undo : call.redo);
+        return reply.ok;
+    };
+    if (undo) {
+        for (const UndoCall& call : std::views::reverse(step.calls)) {
+            if (!run_call(call)) {
+                break;
+            }
+        }
+    } else {
+        for (const UndoCall& call : step.calls) {
+            if (!run_call(call)) {
+                break;
+            }
+        }
+    }
+    replaying_ = false;
+    if (reply.ok) {
+        if (auto committed = commit_files(); !committed) {
+            reply = Reply::failure(committed.error());
+        }
+    }
+    discard_files();
+    if (!reply.ok) {
+        return Reply::failure(reply.code,
+                              std::string(undo ? "could not undo " : "could not redo ") +
+                                  quoted(step.label) + ": " + reply.message,
+                              std::move(reply.data));
+    }
+    return reply;
 }
 
 void Session::clear_history() {

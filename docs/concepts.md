@@ -48,7 +48,9 @@ The code follows the same split, one CMake library per module under `engine/`:
 | --- | --- |
 | `core` | `Result<T>`, JSON logging, JSON parsing and schemas, reflection, math, the fixed-step clock |
 | `platform` | The SDL3 window, the run loop and file access |
-| `world` | The EnTT world, components, the component registry, scenes |
+| `asset` | Asset handles, loaders and hot reload |
+| `world` | The EnTT world, components, the component registry, scenes and prefabs |
+| `storyboard` | Storyboard files: kinds, checks, versions, queries and edits |
 | `command` | Commands, sessions with undo, JSON-RPC and MCP |
 | `server` | The localhost HTTP server over a session |
 | `runtime` | Project files and the game executable every export is built from |
@@ -124,6 +126,22 @@ instances at once, keeping each instance's overrides, as Godot does for instance
 that no longer loads keeps its last good version, and the error is reported. `asset.list` shows
 what is loaded, and `events.subscribe` delivers an `asset.reloaded` event per changed file plus a
 `command` event named `asset.reload` with the changes to the world. A reload is not an undo step.
+
+## Storyboard
+
+The **storyboard** holds a game's facts that are not code: its style, world, story, design rules,
+names, decisions and open work. Agents guess when they lack a fact, and the risk grows when
+several agents share a project, so each fact is a typed **entry** under a stable ID such as
+`character/mira`, in one of the `storyboard/*.json` files. The entry's **kind** (`character`,
+`place`, `rule`, `task` and so on) decides its fields and its file; see the
+[storyboard format](reference/storyboard-format.md).
+
+`storyboard.query` finds entries by ID, kind, text or link. `storyboard.edit` creates, changes and
+removes them in one undoable step, and checks fields and references: naming an entry that does not
+exist is an error with a "did you mean" hint. Each entry has a **version** that changes with its
+fields; an edit names the version it read, so a stale edit from another agent is refused instead
+of overwriting a newer fact. The **journal**, `storyboard/journal.jsonl`, records who changed which
+entries, when and why, and `task` entries say who is on what, so agents see each other's work.
 
 ## Game projects and exports
 
@@ -229,6 +247,12 @@ The session keeps up to 100 undo steps. `undo` and `redo` move through them, and
 lists them by command name. Undo restores entities and components; the tick counter keeps
 counting. Opening or creating a scene clears the history.
 
+Commands that change project files, such as `storyboard.edit`, record how to reverse their change
+and how to make it again, as Godot's UndoRedo does. Their files are written only when the whole
+command succeeds, and not at all in a dry run; if another program changed a file meanwhile,
+nothing is written and the command fails with `-32005`. Undo of such a step is refused the same
+way when the files changed since.
+
 ### Dry runs and snapshots
 
 Every command that changes the world takes `"dry_run": true`. The session runs the command, notes
@@ -323,6 +347,7 @@ OpenAI-compatible servers (including local ones), Anthropic and Gemini; see the
 | Front end | A way to reach the commands: MCP, JSON-RPC, REST or the CLI |
 | Hot reload | Reloading edited files, and updating prefab instances, while the game runs |
 | ID | An entity's stable name: 1 to 64 letters, digits, `_` or `-` |
+| Journal | `storyboard/journal.jsonl`: who changed which storyboard entries, when and why |
 | JSON Pointer | A path to a value inside JSON, such as `/entities/player/components` (RFC 6901) |
 | Main scene | The scene a game loads at startup, named in `project.json` |
 | Prefab | One entity's components in a `.prefab.json` file, which entities extend and override |
@@ -332,6 +357,7 @@ OpenAI-compatible servers (including local ones), Anthropic and Gemini; see the
 | Resource | Read-only data an MCP client can fetch: the scene, its schema or the logs |
 | Scene | A world saved as a `.scene.json` file |
 | Session | One world with its open scene path, undo history and recent logs |
+| Storyboard | A game's facts that are not code, as typed entries in `storyboard/*.json` |
 | System | Code that updates components every tick, in order of priority |
 | Tick | One fixed simulation step, 1/60 s by default |
 | Tool name | A command's MCP name, with `_` in place of `.` |

@@ -17,6 +17,7 @@ enum class ErrorCode : std::uint8_t {
     NotFound,
     PlatformFailure,
     PermissionDenied,
+    Conflict, // the data changed since the caller read it
 };
 
 constexpr std::string_view to_string(ErrorCode code) noexcept {
@@ -29,6 +30,8 @@ constexpr std::string_view to_string(ErrorCode code) noexcept {
         return "platform_failure";
     case ErrorCode::PermissionDenied:
         return "permission_denied";
+    case ErrorCode::Conflict:
+        return "conflict";
     case ErrorCode::Unknown:
         break;
     }

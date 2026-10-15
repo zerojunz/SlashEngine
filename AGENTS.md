@@ -77,6 +77,17 @@ are read through it. `Session::poll_assets()` reloads changed files and updates 
 (keeping overrides); every command polls first, and `slash-cli run` and `serve` poll between
 ticks. `asset.list` shows what is loaded, and subscribers get `asset.reloaded` events.
 
+## Storyboard
+
+The storyboard is a game's facts that are not code (style, world, story, design rules, names,
+decisions, open work) as typed entries in `storyboard/*.json`, under IDs such as
+`character/mira`. Kinds and their fields are defined in `engine/storyboard`
+(`$cli schema storyboard`); `tests/data/game/storyboard` has an example. `storyboard.query` finds
+entries and returns their versions; `storyboard.edit` takes the version it read, refuses stale
+ones with `-32005`, writes the files and appends to `storyboard/journal.jsonl`. Commands that
+change project files stage them through `Session::stage_file` and record undo with
+`Session::add_undo_call`, so a failed command writes nothing and undo replays the reverse edit.
+
 ## Commands, MCP and JSON-RPC
 
 Every change to a world goes through a command registered in `engine/command`. The same registry
@@ -237,9 +248,9 @@ CI rejects unformatted code and any clang-tidy finding.
 - Headers live in `engine/<module>/include/slash/<module>/`, sources in `engine/<module>/src/`.
   Modules: `core` (Result, logging, JSON, reflection, math), `platform` (SDL3 window, run loop,
   files, child processes), `asset` (asset handles, loaders, hot reload), `world` (EnTT world,
-  components, scenes and prefabs), `command` (commands, sessions with undo, JSON-RPC and MCP),
-  `server` (localhost HTTP over a session) and `runtime` (project files and the game
-  executable). Tool-only libraries such as `tools/exporter` use the same layout and may use
+  components, scenes and prefabs), `storyboard` (storyboard kinds, files, versions, queries and
+  edits), `command` (commands, sessions with undo, JSON-RPC and MCP), `server` (localhost HTTP
+  over a session) and `runtime` (project files and the game executable). Tool-only libraries such as `tools/exporter` use the same layout and may use
   exceptions.
 - New dependencies go in `cmake/Dependencies.cmake`, pinned to a tag, and in `THIRD_PARTY.md`
   with their license. Only permissive licenses (MIT, BSD, zlib, Apache 2.0, Boost, MIT-0,
