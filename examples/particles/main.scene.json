@@ -1,0 +1,131 @@
+{
+  "entities": {
+    "fountain": {
+      "components": {
+        "CPUParticles2D": {
+          "amount": 32,
+          "color_ramp": [
+            {
+              "color": [0.6, 0.85, 1.0, 1.0],
+              "offset": 0.0
+            },
+            {
+              "color": [0.3, 0.5, 1.0, 0.0],
+              "offset": 1.0
+            }
+          ],
+          "direction": [0.0, -1.0],
+          "gravity": [0.0, 300.0],
+          "initial_velocity_max": 200.0,
+          "initial_velocity_min": 160.0,
+          "lifetime": 1.2,
+          "randomness": 0.3,
+          "scale_amount_curve": [
+            [0.0, 1.0],
+            [1.0, 0.3]
+          ],
+          "spread": 12.0,
+          "texture": "dot.png"
+        },
+        "Transform2D": {
+          "position": [80.0, 160.0]
+        }
+      }
+    },
+    "portal": {
+      "components": {
+        "CPUParticles2D": {
+          "amount": 20,
+          "color": [0.7, 0.4, 1.0, 1.0],
+          "emission_ring_inner_radius": 20.0,
+          "emission_ring_radius": 24.0,
+          "emission_shape": "ring",
+          "gravity": [0.0, 0.0],
+          "hue_variation_max": 0.1,
+          "hue_variation_min": -0.1,
+          "local_coords": true,
+          "orbit_velocity_max": 0.25,
+          "orbit_velocity_min": 0.25,
+          "scale_amount_max": 0.5,
+          "scale_amount_min": 0.5,
+          "texture": "dot.png"
+        },
+        "Transform2D": {
+          "position": [180.0, 40.0]
+        }
+      }
+    },
+    "smoke": {
+      "components": {
+        "CPUParticles2D": {
+          "amount": 16,
+          "angular_velocity_max": 45.0,
+          "angular_velocity_min": -45.0,
+          "color_ramp": [
+            {
+              "color": [0.5, 0.5, 0.5, 0.8],
+              "offset": 0.0
+            },
+            {
+              "color": [0.7, 0.7, 0.7, 0.0],
+              "offset": 1.0
+            }
+          ],
+          "direction": [0.0, -1.0],
+          "draw_order": "lifetime",
+          "emission_shape": "sphere",
+          "emission_sphere_radius": 4.0,
+          "gravity": [0.0, -10.0],
+          "initial_velocity_max": 30.0,
+          "initial_velocity_min": 20.0,
+          "lifetime": 2.0,
+          "preprocess": 2.0,
+          "scale_amount_curve": [
+            [0.0, 0.5],
+            [1.0, 2.0]
+          ],
+          "scale_amount_max": 1.5,
+          "spread": 20.0,
+          "texture": "dot.png"
+        },
+        "Transform2D": {
+          "position": [260.0, 160.0]
+        }
+      }
+    },
+    "sparks": {
+      "components": {
+        "CPUParticles2D": {
+          "amount": 24,
+          "color_ramp": [
+            {
+              "color": [1.0, 0.95, 0.5, 1.0],
+              "offset": 0.0
+            },
+            {
+              "color": [1.0, 0.2, 0.0, 0.0],
+              "offset": 1.0
+            }
+          ],
+          "damping_max": 60.0,
+          "damping_min": 40.0,
+          "explosiveness": 1.0,
+          "gravity": [0.0, 200.0],
+          "initial_velocity_max": 140.0,
+          "initial_velocity_min": 80.0,
+          "lifetime": 0.6,
+          "one_shot": true,
+          "particle_flag_align_y": true,
+          "scale_amount_max": 3.0,
+          "scale_amount_min": 2.0,
+          "seed": 7,
+          "spread": 180.0
+        },
+        "Transform2D": {
+          "position": [180.0, 90.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

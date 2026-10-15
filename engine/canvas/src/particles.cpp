@@ -10,6 +10,7 @@
 #include <memory>
 #include <numbers>
 #include <optional>
+#include <set>
 #include <span>
 #include <string>
 #include <utility>
@@ -76,6 +77,39 @@ float length(Vec2 v) {
 Vec2 normalized(Vec2 v) {
     const float l = length(v);
     return l > 0.0F ? Vec2{v.x / l, v.y / l} : Vec2{};
+}
+
+// The angle of a vector in radians, from -pi to pi, as std::atan2 but computed the same way on
+// every platform: a reduction to at most tan(pi/12), then a series, in double.
+float angle_of(Vec2 v) {
+    const double x = std::abs(static_cast<double>(v.x));
+    const double y = std::abs(static_cast<double>(v.y));
+    if (x == 0.0 && y == 0.0) {
+        return 0.0F;
+    }
+    double a = std::min(x, y) / std::max(x, y); // 0 to 1
+    double base = 0.0;
+    constexpr double kTanPiOver12 = 0.2679491924311227;
+    constexpr double kSqrt3 = 1.7320508075688772;
+    if (a > kTanPiOver12) {
+        // atan(a) = pi/6 + atan((a * sqrt(3) - 1) / (a + sqrt(3)))
+        a = ((a * kSqrt3) - 1.0) / (a + kSqrt3);
+        base = std::numbers::pi / 6.0;
+    }
+    // atan(a) = a - a^3/3 + a^5/5 - ..., to a^21: good to 1e-14 for |a| <= tan(pi/12).
+    const double a2 = a * a;
+    double sum = 0.0;
+    for (int n = 21; n >= 1; n -= 2) {
+        sum = ((((n / 2) % 2 == 0) ? 1.0 : -1.0) / n) + (a2 * sum);
+    }
+    double angle = base + (a * sum);
+    if (y > x) {
+        angle = (std::numbers::pi / 2.0) - angle;
+    }
+    if (v.x < 0.0F) {
+        angle = std::numbers::pi - angle;
+    }
+    return static_cast<float>(v.y < 0.0F ? -angle : angle);
 }
 
 // v turned by the angle whose {cos, sin} is turn.
@@ -426,7 +460,7 @@ private:
             const Vec2 y_axis =
                 p.velocity == Vec2{} ? Vec2{-p.axis.y, p.axis.x} : normalized(p.velocity);
             p.axis = {y_axis.y, -y_axis.x};
-            p.rotation = std::atan2(p.axis.y, p.axis.x);
+            p.rotation = angle_of(p.axis);
         } else {
             p.rotation = degrees * kRadiansPerDegree;
             p.axis = cos_sin(p.rotation);
@@ -489,20 +523,27 @@ std::vector<Particle> live(const Emitter& emitter, std::string_view draw_order) 
     return out;
 }
 
+// What an entity's emitter is kept under: its ID, which outlives the entity handles that
+// restoring a copy of the world (a failed command, a dry run, undo) hands out anew.
+std::string key_of(const world::World& world, entt::entity entity) {
+    const std::string_view id = world.id_of(entity);
+    return id.empty() ? "#" + std::to_string(entt::to_integral(entity)) : std::string(id);
+}
+
 // Every emitter's particles, kept with the world it runs in.
 struct ParticleSystem {
-    std::map<entt::entity, Emitter> emitters;
+    std::map<std::string, Emitter, std::less<>> emitters;
 
     void run_all(world::World& world, double tick_seconds) {
         auto& ecs = world.ecs();
-        std::erase_if(emitters, [&](const auto& entry) {
-            return !ecs.valid(entry.first) || !ecs.all_of<CPUParticles2D>(entry.first);
-        });
+        std::set<std::string, std::less<>> seen;
         for (const entt::entity entity : ecs.view<CPUParticles2D>()) {
             auto& component = ecs.get<CPUParticles2D>(entity);
             const auto* transform = ecs.try_get<world::Transform2D>(entity);
             const std::string_view id = world.id_of(entity);
-            Emitter& emitter = emitters[entity];
+            const std::string key = key_of(world, entity);
+            seen.insert(key);
+            Emitter& emitter = emitters[key];
             if (tick_seconds > 0.0 &&
                 run(emitter, component, transform != nullptr ? *transform : world::Transform2D{},
                     particle_seed(id, component.seed), tick_seconds, 1)) {
@@ -515,6 +556,7 @@ struct ParticleSystem {
                 world.emit("finished", id, {});
             }
         }
+        std::erase_if(emitters, [&](const auto& entry) { return !seen.contains(entry.first); });
     }
 };
 
@@ -553,6 +595,11 @@ Vec2 cos_sin(float radians) {
     }
 }
 
+Vec2 world_position(const CPUParticles2D& settings, const world::Transform2D& transform,
+                    Vec2 position) {
+    return settings.local_coords ? to_world(transform, position, true) : position;
+}
+
 std::uint32_t particle_seed(std::string_view id, int seed) {
     // FNV-1a over the ID's bytes.
     std::uint32_t h = 2166136261U;
@@ -580,7 +627,7 @@ std::vector<Particle> particles(const world::World& world, entt::entity entity) 
     if (system == nullptr || component == nullptr) {
         return {};
     }
-    const auto found = (*system)->emitters.find(entity);
+    const auto found = (*system)->emitters.find(key_of(world, entity));
     return found != (*system)->emitters.end() ? live(found->second, component->draw_order)
                                               : std::vector<Particle>{};
 }
