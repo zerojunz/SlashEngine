@@ -1,6 +1,7 @@
 #include "slash/runtime/project.hpp"
 
 #include "slash/platform/file.hpp"
+#include "slash/platform/run.hpp"
 
 #include <cctype>
 #include <cstddef>
@@ -107,6 +108,14 @@ json::Value project_schema() {
     window["description"] = "Initial window size in pixels.";
     window["properties"]["width"] = integer_property("Window width.", Project{}.window_width);
     window["properties"]["height"] = integer_property("Window height.", Project{}.window_height);
+    json::Value vsync_mode;
+    vsync_mode["enum"] = json::Array{"disabled", "enabled", "adaptive", "mailbox"};
+    vsync_mode["default"] = Project{}.vsync_mode;
+    vsync_mode["description"] =
+        "How frames wait for the display: enabled waits for each refresh; disabled presents at "
+        "once and may tear; mailbox shows the newest frame each refresh; adaptive waits unless "
+        "a frame is late. Unsupported modes fall back to enabled.";
+    window["properties"]["vsync_mode"] = std::move(vsync_mode);
 
     json::Value tick_hz;
     tick_hz["type"] = "number";
@@ -114,6 +123,13 @@ json::Value project_schema() {
     tick_hz["maximum"] = kMaxTickHz;
     tick_hz["default"] = Project{}.tick_hz;
     tick_hz["description"] = "Fixed simulation ticks per second.";
+
+    json::Value max_fps;
+    max_fps["type"] = "integer";
+    max_fps["minimum"] = 0;
+    max_fps["maximum"] = platform::kMaxFps;
+    max_fps["default"] = Project{}.max_fps;
+    max_fps["description"] = "Frames per second at most, e.g. 30, 60, 120 or 240; 0 means no cap.";
 
     json::Value clear_color;
     clear_color["type"] = "array";
@@ -165,6 +181,7 @@ json::Value project_schema() {
                         "\"scenes/main.scene.json\".");
     properties["window"] = std::move(window);
     properties["tick_hz"] = std::move(tick_hz);
+    properties["max_fps"] = std::move(max_fps);
     properties["rendering"] = std::move(rendering);
     return schema;
 }
@@ -217,9 +234,15 @@ Result<Project> parse_project(const json::Value& project) {
         if (const json::Value* height = window->find("height"); height != nullptr) {
             out.window_height = static_cast<int>(height->as_int());
         }
+        if (const json::Value* vsync = window->find("vsync_mode"); vsync != nullptr) {
+            out.vsync_mode = vsync->as_string();
+        }
     }
     if (const json::Value* tick_hz = project.find("tick_hz"); tick_hz != nullptr) {
         out.tick_hz = tick_hz->as_double();
+    }
+    if (const json::Value* max_fps = project.find("max_fps"); max_fps != nullptr) {
+        out.max_fps = static_cast<int>(max_fps->as_int());
     }
     if (const json::Value* rendering = project.find("rendering"); rendering != nullptr) {
         if (const json::Value* color = rendering->find("clear_color"); color != nullptr) {

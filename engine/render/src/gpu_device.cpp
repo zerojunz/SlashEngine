@@ -427,6 +427,35 @@ public:
         return image;
     }
 
+    VsyncMode set_vsync(VsyncMode mode) override {
+        if (window_ == nullptr) {
+            vsync_ = mode;
+            return vsync_;
+        }
+        // SDL has no adaptive (relaxed FIFO) present mode, so it, like an unsupported mode,
+        // falls back to waiting for every refresh, which every backend supports.
+        SDL_GPUPresentMode present = SDL_GPU_PRESENTMODE_VSYNC;
+        VsyncMode effective = VsyncMode::Enabled;
+        if (mode == VsyncMode::Disabled &&
+            SDL_WindowSupportsGPUPresentMode(device_, window_, SDL_GPU_PRESENTMODE_IMMEDIATE)) {
+            present = SDL_GPU_PRESENTMODE_IMMEDIATE;
+            effective = VsyncMode::Disabled;
+        } else if (mode == VsyncMode::Mailbox &&
+                   SDL_WindowSupportsGPUPresentMode(device_, window_,
+                                                    SDL_GPU_PRESENTMODE_MAILBOX)) {
+            present = SDL_GPU_PRESENTMODE_MAILBOX;
+            effective = VsyncMode::Mailbox;
+        }
+        if (!SDL_SetGPUSwapchainParameters(device_, window_, SDL_GPU_SWAPCHAINCOMPOSITION_SDR,
+                                           present)) {
+            log::warn("changing V-Sync failed", {{"error", SDL_GetError()}});
+            return vsync_;
+        }
+        vsync_ = effective;
+        return vsync_;
+    }
+    [[nodiscard]] VsyncMode vsync() const override { return vsync_; }
+
     [[nodiscard]] Stats stats() const override {
         Stats stats = stats_;
         stats.textures = static_cast<std::uint32_t>(textures_.size());
@@ -725,6 +754,7 @@ private:
     std::uint32_t frame_height_ = 0;
     std::vector<Vertex2D> vertices_;
     std::vector<Batch> batches_;
+    VsyncMode vsync_ = VsyncMode::Enabled; // SDL's default present mode
     Stats stats_;
 };
 

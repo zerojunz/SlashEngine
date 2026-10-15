@@ -5,6 +5,9 @@
 #include "slash/core/json_schema.hpp"
 #include "slash/core/log.hpp"
 #include "slash/platform/file.hpp"
+#include "slash/platform/platform.hpp"
+#include "slash/platform/run.hpp"
+#include "slash/render/device.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
 
@@ -1191,6 +1194,59 @@ TEST_CASE("play and pause set whether a running game ticks") {
     read_only.capabilities = {Capability::Read};
     command::Session observer(components, commands, read_only);
     CHECK(observer.call("play", json::Value()).code == command::code::kPermissionDenied);
+}
+
+TEST_CASE("a running game lists displays, changes V-Sync and the frame cap, and reports pacing") {
+    auto platform = slash::platform::Platform::create({.headless = true});
+    REQUIRE(platform.ok());
+    auto loop = slash::platform::Loop::create(platform.value(),
+                                              {.tick_hz = 60.0, .max_ticks = 100, .max_fps = 0});
+    REQUIRE(loop.ok());
+    const auto renderer = slash::render::create_null_device();
+    Engine engine;
+    command::register_live_commands(
+        engine.commands,
+        {.platform = &platform.value(), .loop = &loop.value(), .renderer = renderer.get()});
+
+    // Headless runs have no displays.
+    CHECK(engine.ok("display.list") ==
+          parse(R"({"displays": [], "max_fps": 0, "vsync_mode": "enabled"})"));
+    CHECK(engine.ok("display.set", R"({"vsync_mode": "mailbox", "max_fps": 120})") ==
+          parse(R"({"max_fps": 120, "vsync_mode": "mailbox"})"));
+    CHECK(loop.value().max_fps() == 120);
+    CHECK(renderer->vsync() == slash::render::VsyncMode::Mailbox);
+    CHECK(engine.ok("display.set", R"({"max_fps": 0})") ==
+          parse(R"({"max_fps": 0, "vsync_mode": "mailbox"})"));
+    command::Reply bad =
+        engine.fails("display.set", R"({"max_fps": 1001})", command::code::kInvalidParams);
+    CHECK(contains(bad.message, "/max_fps"));
+    bad =
+        engine.fails("display.set", R"({"vsync_mode": "adaptiv"})", command::code::kInvalidParams);
+    CHECK(contains(bad.message, "/vsync_mode"));
+    CHECK(loop.value().max_fps() == 0);
+    // Neither changes the world, so there is nothing to undo.
+    CHECK(engine.session->undo_labels().empty());
+
+    for (int i = 0; i < 3; ++i) {
+        REQUIRE(loop.value().frame(nullptr));
+    }
+    const json::Value stats = engine.ok("perf.stats");
+    CHECK(stats.find("frames")->as_int() == 3);
+    CHECK(stats.find("ticks")->as_int() == 3);
+    CHECK(stats.find("catch_up_frames")->as_int() == 0);
+    CHECK(stats.find("tick_hz")->as_double() == doctest::Approx(60.0));
+    CHECK(stats.find("renderer")->as_string() == "null");
+    CHECK(stats.find("vsync_mode")->as_string() == "mailbox");
+    CHECK(stats.find("frame_ms")->find("avg") != nullptr);
+    CHECK(stats.find("fps") != nullptr);
+
+    command::SessionOptions read_only;
+    read_only.capture_logs = false;
+    read_only.capabilities = {Capability::Read};
+    command::Session observer(engine.components, engine.commands, read_only);
+    CHECK(observer.call("display.list", json::Value()).ok);
+    CHECK(observer.call("display.set", parse(R"({"max_fps": 60})")).code ==
+          command::code::kPermissionDenied);
 }
 
 TEST_CASE("schema.get returns scene, component and command schemas") {

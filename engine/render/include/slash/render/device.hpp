@@ -35,6 +35,20 @@ struct Color {
     float a = 1.0F;
 };
 
+// How frames wait for the display, as in Godot.
+enum class VsyncMode : std::uint8_t {
+    Disabled, // present at once: lowest latency, may tear; Enabled where unsupported
+    Enabled,  // wait for the display's refresh: no tearing, the default
+    Adaptive, // like Enabled, but a late frame presents at once; Enabled where unsupported
+    Mailbox,  // present the newest finished frame each refresh: no tearing, low latency; Enabled
+              // where unsupported
+};
+
+// "disabled", "enabled", "adaptive" or "mailbox".
+[[nodiscard]] std::string_view vsync_mode_name(VsyncMode mode);
+// The mode with this name, or nullopt.
+[[nodiscard]] std::optional<VsyncMode> parse_vsync_mode(std::string_view name);
+
 // What a window shows behind everything: Godot's default clear color.
 inline constexpr Color kDefaultClearColor{.r = 0.3F, .g = 0.3F, .b = 0.3F, .a = 1.0F};
 
@@ -124,6 +138,12 @@ public:
 
     // Waits for the GPU, then returns a render target's pixels.
     [[nodiscard]] virtual Result<Image> read_texture(TextureId texture) = 0;
+
+    // Changes how frames presented to the window wait for the display, from the next frame.
+    // Returns the mode in effect, which falls back to Enabled where the requested one isn't
+    // supported. Without a window there is nothing to present, so the mode is only recorded.
+    virtual VsyncMode set_vsync(VsyncMode mode) = 0;
+    [[nodiscard]] virtual VsyncMode vsync() const = 0;
 
     [[nodiscard]] virtual Stats stats() const = 0;
 };
