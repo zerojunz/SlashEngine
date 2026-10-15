@@ -2318,7 +2318,8 @@ fragment fs_main_out fs_main(fs_main_in in [[stage_in]], constant Program& _104 
                 case 38u:
                 {
                     float4 _2331 = select(float4(_2097[_2124], _2097[_2129], 0.0, -0.3333333432674407958984375), float4(_2097[_2129], _2097[_2124], -1.0, 0.666666686534881591796875), bool4(_2097[_2124] < _2097[_2129]));
-                    float4 _2356 = select(float4(_2097[_2119], _2331.yzx), float4(_2331.xyw, _2097[_2119]), bool4(_2097[_2119] < _2331.x));
+)msl"
+R"msl(                    float4 _2356 = select(float4(_2097[_2119], _2331.yzx), float4(_2331.xyw, _2097[_2119]), bool4(_2097[_2119] < _2331.x));
                     float _2364 = _2356.x - fast::min(_2356.w, _2356.y);
                     _3281 = float4(abs(_2356.z + ((_2356.w - _2356.y) / ((6.0 * _2364) + 1.0000000133514319600180897396058e-10))), _2364 / (_2356.x + 1.0000000133514319600180897396058e-10), _2356.x, 0.0);
                     break;
@@ -2903,7 +2904,8 @@ float4 fs_main(VertexOutput input) : SV_Target0 {
         case 7u: o = min(a, b); break;
         case 8u: o = max(a, b); break;
         case 9u: o = float4(b.x >= a.x ? 1.0 : 0.0, b.y >= a.y ? 1.0 : 0.0, b.z >= a.z ? 1.0 : 0.0,
-                            b.w >= a.w ? 1.0 : 0.0); break;
+)hlsl"
+R"hlsl(                            b.w >= a.w ? 1.0 : 0.0); break;
         case 10u: o = atan2(a, b); break;
         case 11u: o = abs(a); break;
         case 12u: o = float4(sign(a)); break;
