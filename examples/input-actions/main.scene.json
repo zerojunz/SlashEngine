@@ -1,0 +1,12 @@
+{
+  "entities": {
+    "player": {
+      "components": {
+        "Transform2D": {
+          "position": [160.0, 120.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

@@ -4,6 +4,7 @@
 #include "slash/core/json_schema.hpp"
 #include "slash/core/result.hpp"
 #include "slash/core/text.hpp"
+#include "slash/input/input.hpp"
 #include "slash/physics2d/physics2d.hpp"
 #include "slash/world/scene.hpp"
 
@@ -23,8 +24,8 @@
 //
 // Optional fields: "id" (reverse-DNS identifier for bundles and stores), "version"
 // ("major.minor.patch"), "window" ({"width", "height", "vsync_mode"}), "tick_hz", "max_fps",
-// "rendering" ({"clear_color", "driver", "texture_filter", "interpolation"}), "physics_2d" and
-// "gui" ({"theme"}).
+// "rendering" ({"clear_color", "driver", "texture_filter", "interpolation"}), "physics_2d",
+// "gui" ({"theme"}), "input" (actions by name) and "input_devices" ({"pointing"}).
 namespace slash::runtime {
 
 inline constexpr std::string_view kProjectFile = "project.json";
@@ -55,6 +56,10 @@ struct Project {
     // A .theme.json file every control uses after its own themes, as Godot's gui/theme/custom;
     // empty for none.
     std::string gui_theme;
+    // Input actions and their bindings: Godot's ui_* actions, then the project's.
+    input::Map input = input::Map::with_defaults();
+    // How touches and the mouse stand in for each other.
+    input::Settings input_devices;
 
     // The identifier to use: id, or the default derived from the name.
     [[nodiscard]] std::string bundle_id() const;

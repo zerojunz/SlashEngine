@@ -3,6 +3,7 @@
 #include "slash/animation/animation.hpp"
 #include "slash/core/log.hpp"
 #include "slash/core/text.hpp"
+#include "slash/input/input.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/ui/ui.hpp"
 #include "slash/world/components.hpp"
@@ -119,6 +120,8 @@ Game::Game(Project project, platform::Platform platform, const std::string& data
                               .theme = project_.gui_theme});
     animation::install(world_, assets_);
     physics2d::install(world_, project_.physics_2d);
+    input::install(world_, project_.input, project_.input_devices);
+    platform_.set_event_handler([this](const SDL_Event& event) { handle_event(event); });
 }
 
 Game::~Game() = default;
@@ -157,6 +160,10 @@ void Game::draw() {
         draw_failed_ = true;
         log::warn("drawing a frame failed", {{"error", drawn.error().message}});
     }
+}
+
+void Game::handle_event(const SDL_Event& event) {
+    input_reader_.read(event, world_);
 }
 
 void Game::request_quit() noexcept {

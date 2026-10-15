@@ -1,4 +1,5 @@
 #include "slash/core/json.hpp"
+#include "slash/input/input.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/platform/platform.hpp"
 #include "slash/platform/process.hpp"
@@ -9,6 +10,7 @@
 #include "slash/runtime/project.hpp"
 #include "slash/world/components.hpp"
 
+#include <SDL3/SDL_events.h>
 #include <SDL3/SDL_stdinc.h>
 #include <doctest/doctest.h>
 
@@ -213,6 +215,39 @@ TEST_CASE("a headless game plays animations and counts the sprites it would draw
     const entt::entity hero = world.find("hero");
     CHECK(world.ecs().get<slash::world::AnimatedSprite2D>(hero).frame == 1);
     CHECK(world.ecs().get<slash::world::Sprite2D>(hero).frame == 1);
+}
+
+TEST_CASE("a game reads SDL's events as the project's input actions") {
+    const std::string root = "runtime_input";
+    REQUIRE(platform::create_directories(root).ok());
+    REQUIRE(
+        platform::write_file(root + "/main.scene.json", R"({"entities": {}, "format": 1})").ok());
+    REQUIRE(platform::write_file(root + "/project.json",
+                                 R"({"format": 1, "name": "G", "main_scene": "main.scene.json",
+                                     "input": {"jump": {"events": [
+                                         {"type": "key", "key": "Space"}]}}})")
+                .ok());
+    auto game = runtime::Game::start({.data_dir = root, .headless = true, .max_ticks = 3});
+    REQUIRE_MESSAGE(game.ok(), (game.ok() ? std::string() : game.error().message));
+    const auto& world = game.value()->world();
+
+    // Events SDL hands to the app's event callback...
+    SDL_Event key{};
+    key.type = SDL_EVENT_KEY_DOWN;
+    key.key.key = SDLK_SPACE;
+    key.key.scancode = SDL_SCANCODE_SPACE;
+    key.key.down = true;
+    game.value()->handle_event(key);
+    CHECK(game.value()->frame());
+    CHECK(slash::input::is_action_just_pressed(world, "jump"));
+    CHECK(slash::input::is_action_pressed(world, "ui_accept"));
+
+    // ...and those the loop drains itself.
+    key.type = SDL_EVENT_KEY_UP;
+    key.key.down = false;
+    REQUIRE(SDL_PushEvent(&key));
+    CHECK(game.value()->frame());
+    CHECK(slash::input::is_action_just_released(world, "jump"));
 }
 
 TEST_CASE("a game explains what is missing") {

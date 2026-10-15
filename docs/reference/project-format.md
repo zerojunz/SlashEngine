@@ -40,6 +40,9 @@ checks it.
 | `physics_2d.linear_damp` | No | `0.1` | How fast rigid bodies slow down, per second. A body's own `linear_damp` adds to it unless its `linear_damp_mode` is `replace` |
 | `physics_2d.angular_damp` | No | `1` | How fast rigid bodies stop turning, per second, combined the same way |
 | `gui.theme` | No | | A [`.theme.json`](scene-format.md#themes) file every control uses after its own and its parents' themes, before Godot's default theme, as Godot's `gui/theme/custom`. `project validate` checks that it exists and `export` checks and ships it |
+| `input` | No | Godot's `ui_*` actions | [Input actions](#input-actions) by name, each with the events that press it |
+| `input_devices.pointing.emulate_mouse_from_touch` | No | `true` | A touch also clicks the left mouse button and dragging it moves the mouse, so mouse code works on phones, as Godot's setting of the same name |
+| `input_devices.pointing.emulate_touch_from_mouse` | No | `false` | A left click also touches the screen and dragging with it drags a finger, so touch code can be tried with a mouse |
 
 Unknown keys are errors, with a "did you mean" suggestion for a misspelled one.
 
@@ -51,6 +54,66 @@ display's refresh rate. Exports ask phones for their fastest refresh rate: iOS a
 `CADisableMinimumFrameDurationOnPhone`, so iPhones with ProMotion run at 120 Hz, and Android apps
 pick the display's fastest mode at its current resolution. On the web the browser calls each
 frame at the display's rate, and a frame cap sets how often it calls instead.
+
+## Input actions
+
+`input` is Godot's input map: actions by name, each with a `deadzone` and the `events` that press
+it. Gameplay code asks about actions (`input::is_action_pressed(world, "jump")`), never keys, so
+players can rebind them and agents can press them by name with
+[`input.inject`](commands.md#inputinject). From [examples/input-actions](../../examples/input-actions/):
+
+```json
+"input": {
+  "jump": {
+    "events": [
+      {"physical_key": "Space", "type": "key"},
+      {"button": "a", "type": "joypad_button"}
+    ]
+  },
+  "move_left": {
+    "deadzone": 0.25,
+    "events": [
+      {"physical_key": "A", "type": "key"},
+      {"key": "Left", "type": "key"},
+      {"axis": "left_x", "axis_value": -1, "type": "joypad_motion"}
+    ]
+  }
+}
+```
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `deadzone` | `0.2` | How far a stick or trigger must move, from 0 to 1, to press the action. Past it, the action's strength runs from 0 to 1 |
+| `events` | `[]` | Up to 32 bindings, any of which presses the action |
+
+Each binding has a `type` and the fields that say which key, button or axis:
+
+| `type` | Fields | Meaning |
+| --- | --- | --- |
+| `key` | `key` or `physical_key`, and `shift`, `ctrl`, `alt`, `meta` | A key by Godot's name (`"A"`, `"Space"`, `"Enter"`, `"Left"`, `"F5"`, `"Kp 1"`). `key` is what the layout labels it; `physical_key` is where it sits on a US QWERTY keyboard, so WASD stays in place on any layout. The modifiers named must be held; more are fine |
+| `mouse_button` | `button`, and the modifiers | `left`, `right`, `middle`, `wheel_up`, `wheel_down`, `wheel_left`, `wheel_right`, `xbutton1` or `xbutton2` |
+| `joypad_button` | `button` | `a`, `b`, `x`, `y` (the bottom, right, left and top face buttons), `back`, `guide`, `start`, `left_stick`, `right_stick`, `left_shoulder`, `right_shoulder`, `dpad_up`, `dpad_down`, `dpad_left`, `dpad_right`, `misc1`, `paddle1` to `paddle4` or `touchpad` |
+| `joypad_motion` | `axis`, `axis_value` | A stick or trigger moved one way: `left_x`, `left_y`, `right_x`, `right_y`, `trigger_left` or `trigger_right`, and `-1` or `1`. Sticks go from -1 to 1 with y down, so up is `left_y` `-1` |
+
+Every binding also takes `device`: only events from that keyboard, mouse or gamepad, from 0.
+Left out, it is `-1` and matches every device.
+
+Godot's built-in actions are always there unless an entry with the same name replaces one: each
+has a deadzone of 0.5 and Godot's bindings.
+
+| Action | Bindings |
+| --- | --- |
+| `ui_accept` | Enter, Kp Enter, Space |
+| `ui_select` | Gamepad Y, Space |
+| `ui_cancel` | Escape |
+| `ui_focus_next` | Tab |
+| `ui_focus_prev` | Shift+Tab |
+| `ui_left`, `ui_right`, `ui_up`, `ui_down` | The arrow keys, the D-pad and the left stick |
+| `ui_page_up`, `ui_page_down`, `ui_home`, `ui_end` | PageUp, PageDown, Home, End |
+
+`project validate` checks every binding, naming a misspelled key, button or axis with the closest
+one. Games read keys, the mouse, touches and gamepads from SDL; gamepads connect and disconnect as
+they are plugged in, numbered from 0. A window losing focus releases everything held.
 
 ## Export presets
 

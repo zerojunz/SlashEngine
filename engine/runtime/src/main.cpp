@@ -71,10 +71,12 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
 }
 
 SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
+    auto* game = static_cast<slash::runtime::Game*>(appstate);
     if (event->type == SDL_EVENT_QUIT) {
-        static_cast<slash::runtime::Game*>(appstate)->request_quit();
+        game->request_quit();
         return SDL_APP_SUCCESS;
     }
+    game->handle_event(*event);
     return SDL_APP_CONTINUE;
 }
 

@@ -361,6 +361,22 @@ every control's rect, lines and problems, `text.measure` sizes text, and `ui::ch
 `scene validate` and exports. `examples/ui-and-text` is a pause screen and
 `examples/ui-containers` an inventory laid out by containers and styled by a theme.
 
+## Input
+
+`engine/input` is input, as Godot's InputEvent, InputMap and Input. Events (`input::Event`: key,
+mouse button and motion, screen touch and drag, gamepad button and motion, action) queue with
+`input::push` and apply when the `input` system runs, first in each tick (priority -1000), so
+runs repeat. Gameplay code asks about actions: `is_action_pressed`, `is_action_just_pressed`
+(the tick it changed; a press and release in one tick count as both), `get_action_strength`,
+`get_axis` and `get_vector`, as Godot's, and `input::map(world)` rebinds them. `project.json`'s
+`input` adds actions over Godot's `ui_*` ones (`Map::with_defaults`) and `input_devices` sets
+touch and mouse emulation. Matching follows Godot's `action_match` (`src/event.cpp`); the state
+follows `Input::_parse_input_event_impl` (`src/state.cpp`). `input::SdlReader` (`src/sdl.cpp`)
+turns SDL's events into input events: games call it from `Game::handle_event` and the platform's
+event handler, and so does `slash-cli run`. Agents send events with `input.inject` and read
+`input.state` and `input.actions`; sessions put input back with the world when a command fails or
+is a dry run. `examples/input-actions` moves a player with keys, a stick and taps.
+
 ## Add a component
 
 Components are plain structs reflected with one macro, at namespace scope in the struct's own
@@ -420,7 +436,8 @@ CI rejects unformatted code and any clang-tidy finding.
   Modules: `core` (Result, logging, JSON, reflection, math), `platform` (SDL3 window, run loop,
   files and folder listings, child processes), `render` (the render device over SDL3's GPU API,
   the null device, HLSL shaders, material programs and 2D light shading), `asset` (asset handles, loaders, hot reload),
-  `world` (EnTT world, components, scenes and prefabs), `canvas` (sprites, `.frames.json`
+  `world` (EnTT world, components, scenes and prefabs), `input` (input events, action maps,
+  the input state and reading SDL's events), `canvas` (sprites, `.frames.json`
   animations, `.material.json` materials, `.tileset.json` tile maps, 2D lights and shadows, CPU
   particles and drawing them), `text` (fonts, shaping, line breaking and glyph atlases), `ui`
   (Control, Label and ColorRect layout and draw calls), `animation` (`.anim.json` keyframe

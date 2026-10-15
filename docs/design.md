@@ -401,6 +401,7 @@ SlashEngine/
     asset/           # asset handles, loaders and hot reload of asset files
     render/          # RenderDevice, SDL GPU + null backends, images, 3D passes
     world/           # ECS, scenes, prefabs, serialization
+    input/           # input events, rebindable action maps, the input state, SDL events
     canvas/          # 2D drawing like Godot's canvas: sprites, materials, tilemaps, lights, particles
     command/         # Command registry, undo, JSON-RPC and MCP
     server/          # localhost HTTP: REST mirror, OpenAPI, JSON-RPC and MCP

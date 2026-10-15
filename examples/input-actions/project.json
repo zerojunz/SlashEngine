@@ -1,0 +1,52 @@
+{
+  "format": 1,
+  "input": {
+    "jump": {
+      "events": [
+        {"physical_key": "Space", "type": "key"},
+        {"button": "a", "type": "joypad_button"}
+      ]
+    },
+    "move_down": {
+      "deadzone": 0.25,
+      "events": [
+        {"physical_key": "S", "type": "key"},
+        {"key": "Down", "type": "key"},
+        {"axis": "left_y", "axis_value": 1, "type": "joypad_motion"}
+      ]
+    },
+    "move_left": {
+      "deadzone": 0.25,
+      "events": [
+        {"physical_key": "A", "type": "key"},
+        {"key": "Left", "type": "key"},
+        {"axis": "left_x", "axis_value": -1, "type": "joypad_motion"}
+      ]
+    },
+    "move_right": {
+      "deadzone": 0.25,
+      "events": [
+        {"physical_key": "D", "type": "key"},
+        {"key": "Right", "type": "key"},
+        {"axis": "left_x", "axis_value": 1, "type": "joypad_motion"}
+      ]
+    },
+    "move_to": {
+      "events": [
+        {"button": "left", "type": "mouse_button"}
+      ]
+    },
+    "move_up": {
+      "deadzone": 0.25,
+      "events": [
+        {"physical_key": "W", "type": "key"},
+        {"key": "Up", "type": "key"},
+        {"axis": "left_y", "axis_value": -1, "type": "joypad_motion"}
+      ]
+    }
+  },
+  "main_scene": "main.scene.json",
+  "name": "Input actions",
+  "version": "0.1.0",
+  "window": {"height": 240, "width": 320}
+}

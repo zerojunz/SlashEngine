@@ -38,6 +38,10 @@ Result<Platform> Platform::create(const Config& config) {
             SDL_Quit();
             return make_error(ErrorCode::PlatformFailure, std::move(message));
         }
+        // Gamepads are optional: a game still runs with the keyboard if they can't start.
+        if (!SDL_InitSubSystem(SDL_INIT_GAMEPAD)) {
+            log::warn("gamepads are unavailable", {{"error", SDL_GetError()}});
+        }
     }
 
     Platform platform(window, config.headless);
@@ -54,13 +58,15 @@ Platform::Platform(SDL_Window* window, bool headless) noexcept
 }
 
 Platform::Platform(Platform&& other) noexcept
-    : window_(std::exchange(other.window_, nullptr)), headless_(other.headless_),
+    : window_(std::exchange(other.window_, nullptr)),
+      event_handler_(std::move(other.event_handler_)), headless_(other.headless_),
       active_(std::exchange(other.active_, false)) {}
 
 Platform& Platform::operator=(Platform&& other) noexcept {
     if (this != &other) {
         shutdown();
         window_ = std::exchange(other.window_, nullptr);
+        event_handler_ = std::move(other.event_handler_);
         headless_ = other.headless_;
         active_ = std::exchange(other.active_, false);
     }
@@ -91,8 +97,15 @@ Events Platform::poll_events() {
         if (event.type == SDL_EVENT_QUIT || event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED) {
             events.quit_requested = true;
         }
+        if (event_handler_) {
+            event_handler_(event);
+        }
     }
     return events;
+}
+
+void Platform::set_event_handler(std::function<void(const SDL_Event&)> handler) {
+    event_handler_ = std::move(handler);
 }
 
 double Platform::now_seconds() const {

@@ -12,6 +12,7 @@
 #include "slash/core/log.hpp"
 #include "slash/core/text.hpp"
 #include "slash/core/version.hpp"
+#include "slash/input/input.hpp"
 #include "slash/physics2d/physics2d.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/render/image.hpp"
@@ -1538,6 +1539,107 @@ Reply text_measure(Session& session, const json::Value& params) {
     if (layout.missing > 0) {
         result["missing_glyphs"] = static_cast<std::int64_t>(layout.missing);
     }
+    return Reply::success(std::move(result));
+}
+
+// ---- Input ----
+
+const input::Map& input_map(const Session& session) {
+    const input::Map* map = input::map(session.world());
+    SLASH_ASSERT(map != nullptr, "sessions install input");
+    return *map;
+}
+
+// An error for an action the map doesn't have, with the closest name.
+json::ValidationError unknown_action(const input::Map& map, std::string_view name,
+                                     std::string path) {
+    std::string message = "no action " + quoted(name);
+    add_hint(message, name, map.names());
+    return {std::move(path), std::move(message)};
+}
+
+Reply input_inject(Session& session, const json::Value& params) {
+    const input::Map& map = input_map(session);
+    const json::Array& items = params.find("events")->as_array();
+    std::vector<json::ValidationError> errors;
+    std::vector<input::Event> events;
+    events.reserve(items.size());
+    for (std::size_t i = 0; i < items.size(); ++i) {
+        const std::string path = item_path("/events", i);
+        auto found = input::validate_event(items[i], input::Use::Event, path);
+        if (!found.empty()) {
+            errors.insert(errors.end(), found.begin(), found.end());
+            continue;
+        }
+        auto event = input::parse_event(items[i], input::Use::Event);
+        if (!event) {
+            errors.push_back({path, event.error().message});
+            continue;
+        }
+        if (event.value().type == input::EventType::Action &&
+            !map.has_action(event.value().action)) {
+            errors.push_back(unknown_action(map, event.value().action, path + "/action"));
+            continue;
+        }
+        events.push_back(std::move(event).value());
+    }
+    if (!errors.empty()) {
+        return Reply::invalid_params(errors);
+    }
+    world::World& world = session.world();
+    for (input::Event& event : events) {
+        input::push(world, std::move(event));
+    }
+    json::Value result;
+    result["queued"] = input::queued(world);
+    result["tick"] = world.tick();
+    return Reply::success(std::move(result));
+}
+
+Reply input_state(Session& session, const json::Value& params) {
+    const input::Map& map = input_map(session);
+    std::vector<std::string> actions;
+    if (const json::Value* names = params.find("actions"); names != nullptr) {
+        std::vector<json::ValidationError> errors;
+        const json::Array& items = names->as_array();
+        for (std::size_t i = 0; i < items.size(); ++i) {
+            if (!map.has_action(items[i].as_string())) {
+                errors.push_back(
+                    unknown_action(map, items[i].as_string(), item_path("/actions", i)));
+            }
+            actions.push_back(items[i].as_string());
+        }
+        if (!errors.empty()) {
+            return Reply::invalid_params(errors);
+        }
+    }
+    return Reply::success(input::state_json(session.world(), actions));
+}
+
+Reply input_actions(Session& session, const json::Value& params) {
+    const input::Map& map = input_map(session);
+    json::Value actions = json::Object{};
+    if (const json::Value* names = params.find("names"); names != nullptr) {
+        std::vector<json::ValidationError> errors;
+        const json::Array& items = names->as_array();
+        for (std::size_t i = 0; i < items.size(); ++i) {
+            const input::Action* action = map.find(items[i].as_string());
+            if (action == nullptr) {
+                errors.push_back(unknown_action(map, items[i].as_string(), item_path("/names", i)));
+                continue;
+            }
+            actions[items[i].as_string()] = input::action_json(*action);
+        }
+        if (!errors.empty()) {
+            return Reply::invalid_params(errors);
+        }
+    } else {
+        for (const auto& [name, action] : map.actions()) {
+            actions[name] = input::action_json(action);
+        }
+    }
+    json::Value result;
+    result["actions"] = std::move(actions);
     return Reply::success(std::move(result));
 }
 
@@ -3097,6 +3199,45 @@ void register_builtin_commands(Registry& registry) {
             },
             {"text"}),
         .handler = text_measure,
+    });
+
+    json::Value inject_events = property("array", "Events in order. Mouse and finger positions "
+                                                  "are window pixels from the top left.");
+    inject_events["minItems"] = 1;
+    inject_events["maxItems"] = 256;
+    inject_events["items"] = input::event_schema(input::Use::Event);
+    registry.add({
+        .name = "input.inject",
+        .description = "Queues input events (keys, mouse, touches, gamepads or actions by name) "
+                       "for the next tick, as if a player sent them. A press and release before "
+                       "one step is a tap. Returns how many are queued and the tick they apply "
+                       "at.",
+        .capabilities = {Run},
+        .effect = Effect::Read,
+        .params = params_schema({{"events", std::move(inject_events)}}, {"events"}),
+        .handler = input_inject,
+    });
+    registry.add({
+        .name = "input.state",
+        .description = "Returns what the game sees: actions pressed or just pressed or released "
+                       "at the last tick (strength if partial), keys and mouse buttons held, the "
+                       "mouse position, fingers down, gamepad buttons and axes, and events "
+                       "queued.",
+        .capabilities = {Read},
+        .effect = Effect::Read,
+        .params = params_schema(
+            {{"actions", names_property("Only these actions, pressed or not. Default: the ones "
+                                        "pressed or just released.")}}),
+        .handler = input_state,
+    });
+    registry.add({
+        .name = "input.actions",
+        .description = "Returns input actions with their deadzone and the events bound to each: "
+                       "Godot's ui_* actions and project.json's \"input\".",
+        .capabilities = {Read},
+        .effect = Effect::Read,
+        .params = params_schema({{"names", names_property("Only these actions. Default: all.")}}),
+        .handler = input_actions,
     });
 
     json::Value set_components =

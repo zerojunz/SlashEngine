@@ -66,6 +66,7 @@ as `entity.get`, reject it as an unknown param.
 | Particles | [`particles.eval`](#particleseval) |
 | Lights | [`light.sample`](#lightsample) |
 | UI and text | [`ui.layout`](#uilayout), [`ui.theme`](#uitheme), [`text.measure`](#textmeasure) |
+| Input | [`input.inject`](#inputinject), [`input.state`](#inputstate), [`input.actions`](#inputactions) |
 | Storyboard | [`storyboard.query`](#storyboardquery), [`storyboard.brief`](#storyboardbrief), [`storyboard.check`](#storyboardcheck), [`storyboard.edit`](#storyboardedit) |
 | Components | [`component.set`](#componentset), [`component.remove`](#componentremove) |
 | Query | [`world.query`](#worldquery) |
@@ -77,7 +78,7 @@ as `entity.get`, reject it as an unknown param.
 | Display | [`display.list`](#displaylist), [`display.set`](#displayset), [`perf.stats`](#perfstats) |
 | Export | [`export.run`](#exportrun) |
 
-Planned commands from the [roadmap](../roadmap.md), not yet available: `input.inject`, `frame.capture` and `replay.run`.
+Planned commands from the [roadmap](../roadmap.md), not yet available: `frame.capture` and `replay.run`.
 
 ## Describe
 
@@ -750,6 +751,111 @@ Needs: `read`.
 its `line_spacing` (3 by default) between lines, and `paragraph_spacing` between paragraphs.
 `ascent` is from the top of a line to its baseline. `missing_glyphs` counts characters the font
 doesn't have. A font that doesn't load is an error at `/font`.
+
+## Input
+
+Input follows Godot: events from keys, the mouse, touches and gamepads press
+[actions](project-format.md#input-actions) that gameplay code asks about. Events wait in a queue
+and apply at the start of the next tick, so `input.inject` then `step` plays out the same way
+every run. The examples here are from [examples/input-actions](../../examples/input-actions/).
+
+### input.inject
+
+Queues input events for the next tick, as if a player sent them. Gameplay code sees them exactly
+as it sees a real keyboard, mouse, touch screen or gamepad.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `events` | array of 1 to 256 events | required | Events in order |
+
+Needs: `run`. Changes no entities, so there is nothing to undo; a failed command, or a `batch` or
+dry run that steps past the events, leaves them queued.
+
+```json
+{"events": [{"type": "key", "physical_key": "D", "pressed": true}]}
+```
+
+```json
+{"queued":1,"tick":0}
+```
+
+`queued` is how many events wait now; `tick` is the tick they apply at, which the next `step`
+runs. Each event has a `type`:
+
+| `type` | Fields | Meaning |
+| --- | --- | --- |
+| `key` | `key` or `physical_key`, `pressed`, `echo`, `shift`, `ctrl`, `alt`, `meta` | A key pressed or released, by [name](project-format.md#input-actions). Give either name and the event has both, as a US keyboard's would. `echo` is a repeat while held |
+| `mouse_button` | `button`, `position`, `pressed`, `double_click`, `factor`, the modifiers | A mouse button pressed or released. The wheel is a press and a release of `wheel_up` and the rest; `factor` is how far it turned |
+| `mouse_motion` | `position`, `relative` | The mouse moved. `relative` defaults to the distance from the last position |
+| `screen_touch` | `index`, `position`, `pressed`, `double_tap` | A finger touched or left the screen. `index` is which finger, from 0 |
+| `screen_drag` | `index`, `position`, `relative` | A finger moved |
+| `joypad_button` | `button`, `pressed` | A gamepad button pressed or released |
+| `joypad_motion` | `axis`, `axis_value` | A stick or trigger moved: sticks from -1 to 1 with y down, triggers from 0 to 1. `0` lets go |
+| `action` | `action`, `pressed`, `strength` | An action pressed or released by name, with a `strength` from 0 to 1 (default 1), as Godot's `Input.action_press` |
+
+Every event also takes `device`: which keyboard, mouse or gamepad, from 0. Positions are
+`[x, y]` in window pixels from the top left, the space sprites and controls are drawn in. Fields
+an event's type doesn't have are errors, and so are misspelled names, with the closest one.
+
+- A press and a release before one `step` is a tap: during that tick the action is both just
+  pressed and just released, so gameplay code that checks `is_action_just_pressed` never misses
+  it. To hold a key, inject the press, `step` as long as it is held, then inject the release.
+- A touch also clicks the left mouse button, unless `project.json` turns
+  `input_devices.pointing.emulate_mouse_from_touch` off.
+- A motion right after another from the same mouse, finger or stick merges into it, as Godot's
+  accumulated input.
+- In a running game, events apply at the next tick of the game loop.
+
+### input.state
+
+Returns what the game sees: actions pressed or changed at the last tick, the keys and mouse
+buttons held, the mouse position, fingers down, gamepad buttons and axes away from rest, and
+events still queued.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `actions` | array of strings | the ones pressed or just released | Only these actions, pressed or not |
+
+Needs: `read`. After a tap of Space, half a stick up and letting go of D:
+
+```json
+{"actions": ["jump", "move_right", "move_up"]}
+```
+
+```json
+{"actions":{"jump":{"just_pressed":true,"just_released":true,"pressed":false},"move_right":{"just_released":true,"pressed":false},"move_up":{"just_pressed":true,"pressed":true,"strength":0.5}},"joypads":[{"axes":{"left_y":-0.625},"device":0}],"mouse":{"position":[0.0,0.0]},"tick":8}
+```
+
+- `tick` is the tick the input last applied at, the one before the world's tick counter. It is
+  left out before the first step.
+- `strength` is listed when it is between 0 and 1: a stick or trigger, or an action pressed with
+  a `strength`. Past the deadzone (0.25 here), a stick at 0.625 reads 0.5.
+- `just_pressed` and `just_released` are listed when true.
+- `keys` are labels, as `key` names them; `mouse.buttons`, `touches` and `joypads` are listed
+  when something is held. `queued` counts events waiting for the next tick.
+- An action the game doesn't have is an error at its place in `actions`, with the closest name.
+
+### input.actions
+
+Returns input actions with their deadzone and the events bound to each: Godot's `ui_*` actions
+and `project.json`'s `input`, as the game uses them.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `names` | array of strings | all | Only these actions |
+
+Needs: `read`.
+
+```json
+{"names": ["move_right", "jump"]}
+```
+
+```json
+{"actions":{"jump":{"deadzone":0.2,"events":[{"physical_key":"Space","type":"key"},{"button":"a","type":"joypad_button"}]},"move_right":{"deadzone":0.25,"events":[{"physical_key":"D","type":"key"},{"key":"Right","type":"key"},{"axis":"left_x","axis_value":1.0,"type":"joypad_motion"}]}}}
+```
+
+Bindings are written as in `project.json`. A game that rebinds actions while it runs, e.g. from
+an options menu, shows its bindings as they are now.
 
 ## Storyboard
 

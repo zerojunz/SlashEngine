@@ -5,6 +5,7 @@
 
 #include <cctype>
 #include <cstddef>
+#include <iterator>
 #include <utility>
 
 namespace slash::runtime {
@@ -206,6 +207,8 @@ json::Value project_schema() {
         string_property("A .theme.json file every control uses after its own and its parents' "
                         "themes, before Godot's default theme, e.g. \"ui/game.theme.json\".");
     properties["gui"] = std::move(gui);
+    properties["input"] = input::map_schema();
+    properties["input_devices"] = input::settings_schema();
     return schema;
 }
 
@@ -240,6 +243,11 @@ std::vector<json::ValidationError> validate_project(const json::Value& project) 
                 errors.push_back({"/gui/theme", "expected a .theme.json file"});
             }
         }
+    }
+    if (const json::Value* input = project.find("input"); input != nullptr) {
+        auto found = input::validate_map(*input, "/input");
+        errors.insert(errors.end(), std::make_move_iterator(found.begin()),
+                      std::make_move_iterator(found.end()));
     }
     return errors;
 }
@@ -303,6 +311,17 @@ Result<Project> parse_project(const json::Value& project) {
         if (const json::Value* theme = gui->find("theme"); theme != nullptr) {
             out.gui_theme = theme->as_string();
         }
+    }
+    if (const json::Value* input = project.find("input"); input != nullptr) {
+        auto map = input::parse_map(*input);
+        if (!map) {
+            return make_error(ErrorCode::InvalidArgument,
+                              std::string(kProjectFile) + " /input" + map.error().message);
+        }
+        out.input = std::move(map).value();
+    }
+    if (const json::Value* devices = project.find("input_devices"); devices != nullptr) {
+        out.input_devices = input::parse_settings(*devices);
     }
     return out;
 }

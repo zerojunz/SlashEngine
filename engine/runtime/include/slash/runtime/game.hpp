@@ -4,6 +4,7 @@
 #include "slash/canvas/canvas.hpp"
 #include "slash/core/json.hpp"
 #include "slash/core/result.hpp"
+#include "slash/input/sdl.hpp"
 #include "slash/platform/platform.hpp"
 #include "slash/platform/run.hpp"
 #include "slash/render/device.hpp"
@@ -16,6 +17,8 @@
 #include <string>
 #include <string_view>
 #include <vector>
+
+union SDL_Event;
 
 namespace slash::runtime {
 
@@ -54,6 +57,8 @@ public:
     // Runs one frame. Returns false once the run is over.
     bool frame();
     void request_quit() noexcept;
+    // Reads input from an OS event SDL hands to the app; the platform hands the rest over itself.
+    void handle_event(const SDL_Event& event);
 
     // What ran: {"entities", "headless", "name", "quit_requested", "renderer", "scene",
     // "sprites", "ticks"}. "sprites" counts the sprites the last frame drew, or would have
@@ -81,6 +86,8 @@ private:
     world::ComponentRegistry components_;
     world::World world_;
     platform::Platform platform_;
+    // Declared after the platform, so it closes the gamepads before SDL quits.
+    input::SdlReader input_reader_;
     // Declared after the platform, so it lets go of the window before the window closes.
     std::unique_ptr<render::RenderDevice> renderer_;
     // Declared after the device, so its textures go before the device does.
