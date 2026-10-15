@@ -1,0 +1,36 @@
+wrote dot.png: 8x8
+scene.open {"path":"main.scene.json"}
+{"entities":4,"path":"main.scene.json"}
+particles.eval {"id":"fountain","time":0.5}
+{"alive":14,"bounds":[69.1172,109.1664,22.2788,50.2752]}
+events.subscribe {"kinds":["finished"]}
+{"subscription":"events_1"}
+step {"ticks":30}
+{"tick":30,"ticks":30}
+particles.eval {"id":"fountain"}
+{"alive":14,"bounds":[69.1172,109.1664,22.2788,50.2752]}
+particles.eval {"id":"sparks","list":true,"max_results":2}
+{"alive":24,"bounds":[125.0635,58.4695,113.0968,114.781],"particles":[{"age":0.5,"color":[1,0.325,0.0833,0.1667],"position":[238.1602,134.3399],"rotation":-0.694,"scale":2.262},{"age":0.5,"color":[1,0.325,0.0833,0.1667],"position":[125.0635,136.8566],"rotation":0.6476,"scale":2.0231}]}
+particles.eval {"id":"smoke","list":true,"max_results":2}
+{"alive":16,"bounds":[252.9996,97.1735,16.3739,64.3654],"particles":[{"age":1.875,"color":[0.6875,0.6875,0.6875,0.05],"position":[267.9177,97.1735],"rotation":-0.8575,"scale":2.2834},{"age":1.75,"color":[0.675,0.675,0.675,0.1],"position":[256.9869,97.5076],"rotation":-1.332,"scale":1.9865}]}
+particles.eval {"id":"portal"}
+{"alive":11,"bounds":[160.3899,19.3824,40.4028,42.9972]}
+component.set {"components":{"Transform2D":{"position":[180,60]}},"id":"portal"}
+{"changed":{"Transform2D":{"position":[180.0,60.0]}},"id":"portal"}
+particles.eval {"id":"portal"}
+{"alive":11,"bounds":[160.3899,39.3824,40.4028,42.9972]}
+step {"ticks":30}
+{"tick":60,"ticks":30}
+events.read {"subscription":"events_1"}
+{"dropped":0,"events":[{"id":"sparks","kind":"finished","seq":1,"tick":35}],"more":false}
+entity.get {"components":["CPUParticles2D"],"id":"sparks","omit_defaults":true}
+{"components":{"CPUParticles2D":{"amount":24,"color_ramp":[{"color":[1.0,0.95,0.5,1.0],"offset":0.0},{"color":[1.0,0.2,0.0,0.0],"offset":1.0}],"damping_max":60.0,"damping_min":40.0,"emitting":false,"explosiveness":1.0,"gravity":[0.0,200.0],"initial_velocity_max":140.0,"initial_velocity_min":80.0,"lifetime":0.6,"one_shot":true,"particle_flag_align_y":true,"scale_amount_max":3.0,"scale_amount_min":2.0,"seed":7,"spread":180.0}},"id":"sparks"}
+component.set {"components":{"CPUParticles2D":{"emitting":true}},"id":"sparks"}
+{"changed":{"CPUParticles2D":{"emitting":true}},"id":"sparks"}
+step {"ticks":1}
+{"tick":61,"ticks":1}
+particles.eval {"id":"sparks"}
+{"alive":24,"bounds":[178.3638,87.8597,3.431,4.4025]}
+component.set {"components":{"CPUParticles2D":{"emission_shape":"sphear"}},"id":"smoke"}
+"/components/CPUParticles2D/emission_shape: expected one of \"point\", \"sphere\", \"sphere_surface\", \"rectangle\", \"ring\", \"points\", \"directed_points\", got \"sphear\""
+particles drawn: 87, GPU draws: 2

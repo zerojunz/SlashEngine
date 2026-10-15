@@ -211,6 +211,49 @@ A reference must name an entity that exists in the same scene.
 | `GrooveJoint2D` | `node_a`, `node_b`, `disable_collision` | | | As `PinJoint2D`'s; `node_b` slides along a groove of `node_a`'s and turns freely |
 | | `length` | `float` | `50` | The groove's length in pixels, from the entity's `Transform2D` along its y axis |
 | | `initial_offset` | `float` | `25` | Where `node_b` starts along the groove, in pixels |
+| `CPUParticles2D` | `emitting` | `bool` | `true` | Emit new [particles](#particles); setting it again restarts a `one_shot` |
+| | `amount` | `int` | `8` | Particles alive at most, 1 to 65536: each cycle emits this many |
+| | `lifetime` | `float` | `1` | Seconds each particle lives and each cycle lasts, from 0.001 |
+| | `one_shot` | `bool` | `false` | Emit one cycle, then set `emitting` to false |
+| | `preprocess` | `float` | `0` | Seconds it runs ahead before its first tick, so it starts full |
+| | `speed_scale` | `float` | `1` | Multiplies time for its particles |
+| | `explosiveness` | `float` | `0` | 0 spreads a cycle's particles evenly over it; 1 emits them all at once |
+| | `randomness` | `float` | `0` | Emits each particle later by up to its share of the cycle times this, 0 to 1 |
+| | `lifetime_randomness` | `float` | `0` | Shortens each particle's life by up to this fraction, 0 to 1 |
+| | `seed` | `int` | `0` | Varies the random values; the same seed and entity ID give the same particles |
+| | `local_coords` | `bool` | `false` | Particles live in the entity's coordinates and move with it; `false` leaves them where they were emitted |
+| | `draw_order` | `std::string` | `"index"` | `index` draws in emission slot order; `lifetime` draws the oldest first, so the youngest are on top |
+| | `texture` | `std::string` | `""` | Project path of a PNG or BMP file each particle draws, centered on it; `""` draws a white pixel |
+| | `texture_filter`, `z_index`, `visible`, `material`, `material_params`, `light_mask` | | | As `Sprite2D`'s |
+| | `hframes`, `vframes` | `int` | `1` | Columns and rows of frames in the texture, for `anim_speed` and `anim_offset` |
+| | `anim_loop` | `bool` | `false` | Frames past the last start again from the first; `false` stays on the last |
+| | `emission_shape` | `std::string` | `"point"` | Where particles start: `point` (the entity), `sphere` (in a circle), `sphere_surface` (on its edge), `rectangle`, `ring`, `points` or `directed_points` |
+| | `emission_sphere_radius` | `float` | `1` | The circle's radius, in pixels |
+| | `emission_rect_extents` | `Vec2` | `[1, 1]` | Half the rectangle's width and height, in pixels |
+| | `emission_ring_radius`, `emission_ring_inner_radius` | `float` | `1`, `0` | The ring's outer and inner radius, in pixels |
+| | `emission_points` | `std::vector<Vec2>` | `[]` | Points in pixels from the entity; each particle starts at one picked at random |
+| | `emission_normals` | `std::vector<Vec2>` | `[]` | For `directed_points`, each point's direction: it turns the particle's velocity from x to it |
+| | `emission_colors` | `std::vector<Vec4>` | `[]` | Colors multiplying each point's particles |
+| | `particle_flag_align_y` | `bool` | `false` | Turn each particle so its y axis points along its velocity |
+| | `direction` | `Vec2` | `[1, 0]` | Which way particles go |
+| | `spread` | `float` | `45` | Degrees either side of `direction`, 0 to 180 |
+| | `gravity` | `Vec2` | `[0, 980]` | In pixels per second squared |
+| | `initial_velocity_min`, `_max` | `float` | `0` | Starting speed in pixels per second |
+| | `angular_velocity_min`, `_max` | `float` | `0` | Degrees per second it turns, clockwise |
+| | `orbit_velocity_min`, `_max` | `float` | `0` | Turns per second round the entity, anticlockwise on screen |
+| | `linear_accel_min`, `_max` | `float` | `0` | Pixels per second squared along its velocity |
+| | `radial_accel_min`, `_max` | `float` | `0` | Pixels per second squared away from the entity |
+| | `tangential_accel_min`, `_max` | `float` | `0` | Pixels per second squared round the entity, clockwise |
+| | `damping_min`, `_max` | `float` | `0` | Pixels per second squared it slows by, down to a stop |
+| | `angle_min`, `_max` | `float` | `0` | Starting rotation in degrees, clockwise |
+| | `scale_amount_min`, `_max` | `float` | `1` | Size, times the texture's |
+| | `hue_variation_min`, `_max` | `float` | `0` | Turns its hue by this fraction of the color wheel, -1 to 1 |
+| | `anim_speed_min`, `_max` | `float` | `0` | Times its frames play over its life |
+| | `anim_offset_min`, `_max` | `float` | `0` | The frame it starts on, as a fraction of the frames, 0 to 1 |
+| | `*_curve` | `std::vector<Vec2>` | `[]` | Each `_min` / `_max` pair but `initial_velocity` has one: points `[offset, value]` that multiply the value over each particle's life, offsets from 0 to 1, joined by straight lines; none is 1 |
+| | `color` | `Vec4` | `[1, 1, 1, 1]` | Multiplies the texture, as [r, g, b, a] from 0 to 1 |
+| | `color_ramp` | `std::vector<GradientPoint>` | `[]` | Colors over each particle's life, multiplying `color`: points `{"offset", "color"}`, blended between |
+| | `color_initial_ramp` | `std::vector<GradientPoint>` | `[]` | Each particle multiplies its color by one picked at random from this gradient |
 
 `engine.describe` lists every registered component with its defaults, including ones a game adds.
 
@@ -743,3 +786,60 @@ damping come from `physics_2d` in [`project.json`](project-format.md).
 - [`physics.raycast`](commands.md#physicsraycast), [`physics.overlap`](commands.md#physicsoverlap)
   and [`physics.contacts`](commands.md#physicscontacts) answer what is where and what touches
   what; C++ code calls `physics2d::raycast`, `overlap_point`, `overlap_shape` and `contacts`.
+
+## Particles
+
+Particles follow Godot's `CPUParticles2D`. Each tick, after physics, the `cpu_particles_2d`
+system (priority 1100) emits, moves and ages every `CPUParticles2D`'s particles on the CPU, and
+`CanvasRenderer` draws them with the sprites. [examples/particles](../../examples/particles/) has
+a fountain, a one-shot burst, smoke and a ring of orbiting particles.
+
+```json
+"fountain": {
+  "components": {
+    "CPUParticles2D": {
+      "amount": 32,
+      "color_ramp": [
+        {"color": [0.6, 0.85, 1.0, 1.0], "offset": 0.0},
+        {"color": [0.3, 0.5, 1.0, 0.0], "offset": 1.0}
+      ],
+      "direction": [0.0, -1.0],
+      "gravity": [0.0, 300.0],
+      "initial_velocity_max": 200.0,
+      "initial_velocity_min": 160.0,
+      "scale_amount_curve": [[0.0, 1.0], [1.0, 0.3]],
+      "spread": 12.0,
+      "texture": "dot.png"
+    },
+    "Transform2D": {"position": [80.0, 160.0]}
+  }
+}
+```
+
+- An emitter has `amount` slots and emits from each once a cycle of `lifetime` seconds, slot
+  `i` at `i / amount` of the way through, moved later by up to one slot's share times
+  `randomness` and pulled toward the cycle's start by `explosiveness`. A particle emitted
+  between ticks starts moved on by the time since, so emission is smooth at any tick rate.
+- A new particle starts where `emission_shape` says and heads along `direction`, turned up to
+  `spread` degrees either way, at a speed between `initial_velocity_min` and `_max`. Unless
+  `local_coords` is set, both go through the entity's `Transform2D` (scaled, turned, moved) and
+  the particle stays in the world when the entity moves.
+- Each tick a particle speeds up by `gravity`, its linear, radial and tangential acceleration,
+  orbits the entity, slows by `damping`, then moves by its velocity. Radial and tangential
+  acceleration and orbits go round the entity's position.
+- Each other parameter takes a random value between its `_min` and `_max` when the particle is
+  emitted, times its `_curve` at the particle's age as a fraction of its life. Its color is
+  `color` × `color_ramp` at that age × its pick of `color_initial_ramp` × its point's
+  `emission_colors`, with its hue turned by `hue_variation`.
+- With `hframes` or `vframes` over 1, a particle draws the texture frame `anim_offset` +
+  `anim_speed` × age-fraction of the way through the frames, as Godot's particle animation.
+- Random values come from the entity's ID and `seed`, so a scene makes the same particles every
+  run and on every platform. [`particles.eval`](commands.md#particleseval) returns them as
+  numbers, as they are or after a time, for checks without a screenshot.
+- A `one_shot` emits one cycle, then sets `emitting` to false; when its last particle dies it
+  emits a `finished` event. Setting `emitting` to true starts a new cycle with new random
+  values. Changing `amount` starts the emitter over.
+- Particles are not saved: scenes, snapshots, [`undo`](commands.md#undo), dry runs and failed
+  commands leave them as they are. An emitter whose entity is destroyed or loses its
+  `CPUParticles2D` loses its particles.
+- `GPUParticles2D`, with process materials, is on the [roadmap](../roadmap.md).

@@ -19,8 +19,9 @@
 #include <utility>
 #include <vector>
 
-// 2D drawing, as Godot's canvas: Sprite2D, AnimatedSprite2D and TileMapLayer entities drawn
-// through a render device, in world pixels with y down, and shaded by 2D lights (light.hpp).
+// 2D drawing, as Godot's canvas: Sprite2D, AnimatedSprite2D, TileMapLayer and CPUParticles2D
+// entities drawn through a render device, in world pixels with y down, and shaded by 2D lights
+// (light.hpp).
 namespace slash::canvas {
 
 // Asset types: "texture" (.png and .bmp files as render::Image), "sprite_frames" (.frames.json
@@ -28,8 +29,9 @@ namespace slash::canvas {
 // (.tileset.json files as TileSet).
 void add_asset_types(asset::Assets& assets);
 
-// The "animated_sprite_2d" system, which plays each AnimatedSprite2D on its Sprite2D. It reads
-// .frames.json files through assets, which must outlive the world.
+// The "animated_sprite_2d" system, which plays each AnimatedSprite2D on its Sprite2D, and the
+// "cpu_particles_2d" system (particles.hpp). The first reads .frames.json files through assets,
+// which must outlive the world.
 void add_systems(world::World& world, asset::Assets& assets);
 
 // Both of the above, for a world and the assets it loads from.
@@ -85,9 +87,11 @@ public:
     // where they are.
     void before_tick(const world::World& world);
 
-    // Draws one frame: the target cleared, then every visible sprite and tile map layer, in
-    // z_index order, then the order entities were made. A layer draws its cells row by row, each
-    // tile's region centered on its cell, moved by the entity's Transform2D if it has one. A
+    // Draws one frame: the target cleared, then every visible sprite, tile map layer and
+    // CPUParticles2D, in z_index order, then the order entities were made. A layer draws its
+    // cells row by row, each tile's region centered on its cell, moved by the entity's
+    // Transform2D if it has one. Particles draw as their emitter's draw_order says, each its
+    // texture's frame (or a white pixel) centered on it, turned, scaled and colored. A
     // sprite or tile that can't draw, such as one whose texture or material is missing, or whose
     // material_params name a param the material doesn't have, is left out with one warning in the
     // log. On the null device a window frame checks and counts them but draws nothing.
@@ -102,6 +106,8 @@ public:
     [[nodiscard]] std::size_t sprites_drawn() const noexcept { return sprites_drawn_; }
     // Tiles the last frame drew, over every layer.
     [[nodiscard]] std::size_t tiles_drawn() const noexcept { return tiles_drawn_; }
+    // Particles the last frame drew, over every CPUParticles2D.
+    [[nodiscard]] std::size_t particles_drawn() const noexcept { return particles_drawn_; }
     // Lights the last frame shaded with, and how many of them cast shadows.
     [[nodiscard]] std::size_t lights_drawn() const noexcept { return lights_drawn_; }
     [[nodiscard]] std::size_t shadows_drawn() const noexcept { return shadows_drawn_; }
@@ -160,6 +166,7 @@ private:
     std::set<std::string, std::less<>> warned_;
     std::size_t sprites_drawn_ = 0;
     std::size_t tiles_drawn_ = 0;
+    std::size_t particles_drawn_ = 0;
     std::size_t lights_drawn_ = 0;
     std::size_t shadows_drawn_ = 0;
 };

@@ -227,7 +227,8 @@ where no backend starts. `examples/draw-offscreen` draws into a texture and read
 sprite sheet, at the entity's `Transform2D`, in `z_index` order, then the order entities were
 made. `AnimatedSprite2D` plays a `.frames.json` file's animations on it through the
 `animated_sprite_2d` system (`$cli schema frames`; `animation_finished` events). `canvas::install`
-adds the asset types and the system to a world; sessions and games call it. `CanvasRenderer`
+adds the asset types and the systems (that one and `cpu_particles_2d`) to a world; sessions and
+games call it. `CanvasRenderer`
 draws a world through a render device over the project's `rendering.clear_color`: games and
 `slash-cli run` call `before_tick` before each tick and draw between ticks with
 `Loop::interpolation()`, so sprites move smoothly at any frame rate. On the null device it checks
@@ -313,6 +314,19 @@ must be the same on every platform: `physics2d` and the examples build with
 `-ffp-contract=off`, and angles go through Box2D's own `b2ComputeCosSin`, not libm.
 `examples/physics-2d` has every kind of body.
 
+## Particles
+
+`CPUParticles2D` is Godot's, with Godot's field names and angles in degrees. The
+`cpu_particles_2d` system (priority 1100, after physics; `engine/canvas/src/particles.cpp`)
+emits, moves and ages each emitter's particles on the CPU and emits `finished` when a one-shot's
+last particle dies; `CanvasRenderer` draws them (`particles_drawn()`). Each `_min`/`_max` pair
+is a random range per particle and each `_curve` is `[offset, value]` points over its life.
+Random values hash the entity ID, `seed`, cycle and slot, so runs repeat everywhere: keep
+particle math in `engine/canvas` (built with `-ffp-contract=off`) and use `canvas::cos_sin`, not
+libm. Particles live beside the components, kept by entity ID, so saving, snapshots and undo
+leave them alone. `particles.eval` returns live particles, or runs the settings for a time with
+`canvas::simulate`; `examples/particles` has a fountain, sparks, smoke and a portal.
+
 ## Add a component
 
 Components are plain structs reflected with one macro, at namespace scope in the struct's own
@@ -373,8 +387,8 @@ CI rejects unformatted code and any clang-tidy finding.
   files and folder listings, child processes), `render` (the render device over SDL3's GPU API,
   the null device, HLSL shaders, material programs and 2D light shading), `asset` (asset handles, loaders, hot reload),
   `world` (EnTT world, components, scenes and prefabs), `canvas` (sprites, `.frames.json`
-  animations, `.material.json` materials, `.tileset.json` tile maps, 2D lights and shadows and
-  drawing them), `animation` (`.anim.json` keyframe animations and the system that plays them),
+  animations, `.material.json` materials, `.tileset.json` tile maps, 2D lights and shadows, CPU
+  particles and drawing them), `animation` (`.anim.json` keyframe animations and the system that plays them),
   `physics2d` (2D bodies, areas, joints and queries on Box2D), `storyboard` (storyboard kinds, files, versions,
   queries, edits, briefs and checks), `command` (commands, sessions with undo, JSON-RPC and MCP),
   `server` (localhost HTTP over a session) and `runtime` (project files and the game executable).

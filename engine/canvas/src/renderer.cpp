@@ -1,4 +1,5 @@
 #include "slash/canvas/canvas.hpp"
+#include "slash/canvas/particles.hpp"
 #include "slash/core/log.hpp"
 
 #include <algorithm>
@@ -175,6 +176,10 @@ void CanvasRenderer::before_tick(const world::World& world) {
     }
     for (const auto [entity, transform, occluder] :
          ecs.view<const world::Transform2D, const world::LightOccluder2D>().each()) {
+        previous_.emplace(entity, transform);
+    }
+    for (const auto [entity, transform, emitter] :
+         ecs.view<const world::Transform2D, const world::CPUParticles2D>().each()) {
         previous_.emplace(entity, transform);
     }
 }
@@ -441,6 +446,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
     std::vector<render::Vertex2D> vertices;
     std::size_t sprites = 0;
     std::size_t tiles = 0;
+    std::size_t particles = 0;
     const auto& ecs = world.ecs();
     const auto name_of = [&](entt::entity entity) {
         const std::string_view id = world.id_of(entity);
@@ -520,6 +526,101 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
                          .material = std::move(material)});
         vertices.insert(vertices.end(), quad.value().begin(), quad.value().end());
         ++sprites;
+    }
+
+    for (const auto [entity, emitter] : ecs.view<const world::CPUParticles2D>().each()) {
+        if (!emitter.visible) {
+            continue;
+        }
+        const std::vector<Particle> live = canvas::particles(world, entity);
+        if (live.empty()) {
+            continue;
+        }
+        constexpr std::string_view kEvent = "particles can't draw";
+        const render::Filter filter =
+            resolve_filter(emitter.texture_filter, options.texture_filter);
+        // A particle is its texture's frame, or a white pixel.
+        render::TextureId texture_id = render::TextureId::None;
+        float frame_w = 1.0F;
+        float frame_h = 1.0F;
+        float sheet_w = 1.0F;
+        float sheet_h = 1.0F;
+        const int hframes = std::max(emitter.hframes, 1);
+        const int vframes = std::max(emitter.vframes, 1);
+        if (!emitter.texture.empty()) {
+            auto texture = this->texture(emitter.texture, filter);
+            if (!texture) {
+                warn_once(emitter.texture, texture.error().message, "texture", kEvent);
+                continue;
+            }
+            texture_id = texture.value()->id;
+            sheet_w = static_cast<float>(texture.value()->width);
+            sheet_h = static_cast<float>(texture.value()->height);
+            frame_w = sheet_w / static_cast<float>(hframes);
+            frame_h = sheet_h / static_cast<float>(vframes);
+        }
+        render::Material material;
+        render::LightMode light_mode = render::LightMode::Normal;
+        if (!emitter.material.empty()) {
+            world::Sprite2D look;
+            look.material = emitter.material;
+            look.material_params = emitter.material_params;
+            auto made = this->material(look, filter, options.time, &light_mode);
+            if (!made) {
+                warn_once(emitter.material, made.error().message, "material", kEvent);
+                continue;
+            }
+            material = std::move(made).value();
+        }
+        material.shading = shading_for(light_mode, emitter.light_mask, emitter.z_index);
+        // With local_coords, particles move with the entity's transform.
+        world::Transform2D local;
+        if (const auto* current = ecs.try_get<world::Transform2D>(entity);
+            emitter.local_coords && current != nullptr) {
+            local = transform_of(entity, *current);
+        }
+        const auto place = [&](Vec2 point) { return world_position(emitter, local, point); };
+        const int total = hframes * vframes;
+        const auto t = static_cast<float>(std::clamp(options.interpolation, 0.0, 1.0));
+        const std::size_t first = vertices.size();
+        for (const Particle& particle : live) {
+            // The frame its animation is on, as Godot's particle animation picks it.
+            auto frame = static_cast<int>(std::floor(particle.frame * static_cast<float>(total)));
+            frame = emitter.anim_loop ? ((frame % total) + total) % total
+                                      : std::clamp(frame, 0, total - 1);
+            const int column = frame % hframes;
+            const int row = frame / hframes;
+            const float u0 = static_cast<float>(column) * frame_w / sheet_w;
+            const float v0 = static_cast<float>(row) * frame_h / sheet_h;
+            const float u1 = u0 + (frame_w / sheet_w);
+            const float v1 = v0 + (frame_h / sheet_h);
+            const Vec2 at{particle.previous.x + ((particle.position.x - particle.previous.x) * t),
+                          particle.previous.y + ((particle.position.y - particle.previous.y) * t)};
+            const Vec2 x_axis = particle.axis * (frame_w * 0.5F * particle.scale);
+            const Vec2 y_axis =
+                Vec2{-particle.axis.y, particle.axis.x} * (frame_h * 0.5F * particle.scale);
+            const std::array<std::uint8_t, 4> rgba{
+                to_byte(particle.color.x), to_byte(particle.color.y), to_byte(particle.color.z),
+                to_byte(particle.color.w)};
+            const auto corner = [&](float sx, float sy, float u, float v) {
+                const Vec2 point = place(at + (x_axis * sx) + (y_axis * sy));
+                return render::Vertex2D{.x = point.x, .y = point.y, .u = u, .v = v, .rgba = rgba};
+            };
+            const render::Vertex2D top_left = corner(-1.0F, -1.0F, u0, v0);
+            const render::Vertex2D top_right = corner(1.0F, -1.0F, u1, v0);
+            const render::Vertex2D bottom_left = corner(-1.0F, 1.0F, u0, v1);
+            const render::Vertex2D bottom_right = corner(1.0F, 1.0F, u1, v1);
+            vertices.insert(vertices.end(), {top_left, top_right, bottom_left, top_right,
+                                             bottom_right, bottom_left});
+        }
+        items.push_back({.z_index = emitter.z_index,
+                         .order = static_cast<std::uint32_t>(entt::to_entity(entity)),
+                         .part = 0,
+                         .texture = texture_id,
+                         .first = first,
+                         .count = vertices.size() - first,
+                         .material = std::move(material)});
+        particles += live.size();
     }
 
     for (auto& [entity, cached] : layer_cells_) {
@@ -635,6 +736,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
     if (options.target == render::TextureId::None && device_->backend() == render::Backend::Null) {
         sprites_drawn_ = sprites;
         tiles_drawn_ = tiles;
+        particles_drawn_ = particles;
         lights_drawn_ = lights.lights.size();
         shadows_drawn_ = shadows;
         return {};
@@ -659,6 +761,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
     }
     sprites_drawn_ = began.value() ? sprites : 0;
     tiles_drawn_ = began.value() ? tiles : 0;
+    particles_drawn_ = began.value() ? particles : 0;
     lights_drawn_ = began.value() ? lights.lights.size() : 0;
     shadows_drawn_ = began.value() ? shadows : 0;
     return device_->end_frame();

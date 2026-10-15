@@ -123,6 +123,8 @@ environment variables, never from the file.
 - Physics bodies and areas are components on scene entities, as Godot's nodes: `RigidBody2D`,
   `CharacterBody2D`, `Area2D` and the rest, with `CollisionShape2D` shapes. Ask what is where
   with `physics_raycast`, `physics_overlap` and `physics_contacts` rather than by geometry.
+- Particles are `CPUParticles2D` components, as Godot's, with a texture from `sprites/`. Check
+  them with `particles_eval` (how many, where, and each one) rather than a screenshot.
 - `storyboard/`: the game's facts as typed entries (`slash-cli schema storyboard`), and
   `journal.jsonl`, the record of who changed them. Commit both.
 )";
