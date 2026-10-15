@@ -66,6 +66,11 @@ ui::Settings ui_settings(const json::Value& project) {
         settings.viewport = {static_cast<float>(width->as_double()),
                              static_cast<float>(height->as_double())};
     }
+    const json::Value* gui = project.is_object() ? project.find("gui") : nullptr;
+    const json::Value* theme = gui != nullptr && gui->is_object() ? gui->find("theme") : nullptr;
+    if (theme != nullptr && theme->is_string()) {
+        settings.theme = theme->as_string();
+    }
     return settings;
 }
 
