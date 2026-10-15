@@ -1,7 +1,8 @@
 #pragma once
 
-// Small value types for positions, directions and rotations. They are plain aggregates so they
-// can live in components and serialize as JSON arrays, e.g. a Vec3 is written as [x, y, z].
+// Small value types for positions, directions, rotations and grid cells. They are plain
+// aggregates so they can live in components and serialize as JSON arrays, e.g. a Vec3 is written
+// as [x, y, z].
 namespace slash {
 
 struct Vec2 {
@@ -12,6 +13,17 @@ struct Vec2 {
     friend constexpr Vec2 operator+(Vec2 a, Vec2 b) { return {a.x + b.x, a.y + b.y}; }
     friend constexpr Vec2 operator-(Vec2 a, Vec2 b) { return {a.x - b.x, a.y - b.y}; }
     friend constexpr Vec2 operator*(Vec2 v, float s) { return {v.x * s, v.y * s}; }
+};
+
+// A pair of integers, such as a cell of a tile map, written to JSON as [x, y], as Godot's
+// Vector2i.
+struct Vec2i {
+    int x = 0;
+    int y = 0;
+
+    friend constexpr bool operator==(const Vec2i&, const Vec2i&) = default;
+    friend constexpr Vec2i operator+(Vec2i a, Vec2i b) { return {a.x + b.x, a.y + b.y}; }
+    friend constexpr Vec2i operator-(Vec2i a, Vec2i b) { return {a.x - b.x, a.y - b.y}; }
 };
 
 struct Vec3 {

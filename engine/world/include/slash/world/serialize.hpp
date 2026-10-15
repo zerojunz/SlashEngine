@@ -23,10 +23,10 @@
 // Conversions between reflected C++ values and JSON, plus the JSON Schema of each type.
 //
 // Supported field types: bool, integers, float, double, std::string, Vec2, Vec3, Vec4 and Quat
-// (written as arrays of numbers), entt::entity (written as the target's ID, or null),
-// std::vector of a supported type, std::map from std::string to a supported type (written as an
-// object, and replaced whole when read), json::Value (any JSON, as written), and structs declared
-// with SLASH_REFLECT or SLASH_COMPONENT (written as objects).
+// (written as arrays of numbers), Vec2i (an array of two integers), entt::entity (written as the
+// target's ID, or null), std::vector of a supported type, std::map from std::string to a supported
+// type (written as an object, and replaced whole when read), json::Value (any JSON, as written),
+// and structs declared with SLASH_REFLECT or SLASH_COMPONENT (written as objects).
 namespace slash::world {
 
 namespace detail {
@@ -63,6 +63,17 @@ struct FloatArray<Quat> {
 
 template <typename T>
 concept FloatArrayType = requires { FloatArray<T>::kMembers; };
+
+// Integer vectors are written as fixed-length arrays of integers, e.g. a Vec2i as [x, y].
+template <typename T>
+struct IntArray;
+template <>
+struct IntArray<Vec2i> {
+    static constexpr std::array<int Vec2i::*, 2> kMembers{&Vec2i::x, &Vec2i::y};
+};
+
+template <typename T>
+concept IntArrayType = requires { IntArray<T>::kMembers; };
 
 template <typename T>
 inline constexpr bool kUnsupported = false;
@@ -121,6 +132,12 @@ json::Value to_json(const World& world, const T& value) {
     } else if constexpr (detail::FloatArrayType<T>) {
         json::Array items;
         for (const auto member : detail::FloatArray<T>::kMembers) {
+            items.emplace_back(value.*member);
+        }
+        return items;
+    } else if constexpr (detail::IntArrayType<T>) {
+        json::Array items;
+        for (const auto member : detail::IntArray<T>::kMembers) {
             items.emplace_back(value.*member);
         }
         return items;
@@ -207,6 +224,23 @@ Result<void> from_json(World& world, const json::Value& json, T& out, std::strin
                 return detail::type_error("number", item);
             }
             value.*detail::FloatArray<T>::kMembers[i] = static_cast<float>(item.as_double());
+        }
+        out = value;
+    } else if constexpr (detail::IntArrayType<T>) {
+        constexpr std::size_t kCount = detail::IntArray<T>::kMembers.size();
+        if (!json.is_array() || json.size() != kCount) {
+            return detail::type_error("array of " + std::to_string(kCount) + " integers", json);
+        }
+        T value{};
+        for (std::size_t i = 0; i < kCount; ++i) {
+            const std::size_t length = path.size();
+            detail::push_path(path, std::to_string(i));
+            if (auto status = from_json(world, json.as_array()[i],
+                                        value.*detail::IntArray<T>::kMembers[i], path);
+                !status) {
+                return status;
+            }
+            path.resize(length);
         }
         out = value;
     } else if constexpr (std::is_same_v<T, entt::entity>) {
@@ -312,6 +346,12 @@ json::Value schema_of(SchemaBuilder& builder) {
         constexpr std::size_t kCount = detail::FloatArray<T>::kMembers.size();
         schema["type"] = "array";
         schema["items"]["type"] = "number";
+        schema["minItems"] = kCount;
+        schema["maxItems"] = kCount;
+    } else if constexpr (detail::IntArrayType<T>) {
+        constexpr std::size_t kCount = detail::IntArray<T>::kMembers.size();
+        schema["type"] = "array";
+        schema["items"] = schema_of<int>(builder);
         schema["minItems"] = kCount;
         schema["maxItems"] = kCount;
     } else if constexpr (std::is_same_v<T, entt::entity>) {

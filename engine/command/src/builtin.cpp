@@ -3,6 +3,7 @@
 #include "slash/animation/animation.hpp"
 #include "slash/canvas/material.hpp"
 #include "slash/canvas/sprite_frames.hpp"
+#include "slash/canvas/tilemap.hpp"
 #include "slash/command/session.hpp"
 #include "slash/core/assert.hpp"
 #include "slash/core/json_schema.hpp"
@@ -358,6 +359,9 @@ Reply schema_get(Session& session, const json::Value& params) {
     }
     if (kind == "animation") {
         return Reply::success(animation::animation_schema());
+    }
+    if (kind == "tileset") {
+        return Reply::success(canvas::tileset_schema());
     }
     if (name.empty()) {
         return param_error(code::kInvalidParams, "/name",
@@ -902,6 +906,237 @@ Reply animation_eval(Session& session, const json::Value& params) {
     result["length"] = short_number(animation.length);
     result["loop"] = animation::loop_mode_name(animation.loop);
     result["tracks"] = std::move(tracks);
+    return Reply::success(std::move(result));
+}
+
+// ---- Tile maps ----
+
+// The most cells one tilemap command takes.
+constexpr std::int64_t kMaxTileCells = 65536;
+
+// An entity's TileMapLayer, the tile set it draws from and its cells.
+struct LayerTarget {
+    entt::entity entity = entt::null;
+    asset::Handle<canvas::TileSet> set;
+    canvas::Cells cells;
+};
+
+std::optional<Reply> find_layer(Session& session, const std::string& id, LayerTarget& out) {
+    world::World& world = session.world();
+    out.entity = world.find(id);
+    if (out.entity == entt::null) {
+        return unknown_entity(world, id, "/id");
+    }
+    const auto* layer = world.ecs().try_get<world::TileMapLayer>(out.entity);
+    if (layer == nullptr || layer->tile_set.empty()) {
+        return param_error(code::kInvalidParams, "/id",
+                           quoted(id) + (layer == nullptr ? " has no TileMapLayer"
+                                                          : "'s TileMapLayer has no tile_set"));
+    }
+    auto set = session.assets().load<canvas::TileSet>(layer->tile_set);
+    if (!set) {
+        return param_error(set.error(), "/id");
+    }
+    auto cells = canvas::decode_cells(*layer, *set.value());
+    if (!cells) {
+        return param_error(code::kInvalidArgument, "/id",
+                           quoted(id) + "'s TileMapLayer" + cells.error().message);
+    }
+    out.set = std::move(set).value();
+    out.cells = std::move(cells).value();
+    return std::nullopt;
+}
+
+// The cells a tilemap command names, as "cells" or "rect".
+std::optional<Reply> target_cells(const json::Value& params, std::vector<Vec2i>& out) {
+    const json::Value* cells = params.find("cells");
+    const json::Value* rect = params.find("rect");
+    if ((cells == nullptr) == (rect == nullptr)) {
+        return param_error(code::kInvalidParams, "",
+                           "give cells, a list of [column, row], or rect, [column, row, width, "
+                           "height]");
+    }
+    if (cells != nullptr) {
+        for (const json::Value& cell : cells->as_array()) {
+            out.push_back({static_cast<int>(cell.as_array()[0].as_int()),
+                           static_cast<int>(cell.as_array()[1].as_int())});
+        }
+        return std::nullopt;
+    }
+    const json::Array& box = rect->as_array();
+    const std::int64_t x = box[0].as_int();
+    const std::int64_t y = box[1].as_int();
+    const std::int64_t width = box[2].as_int();
+    const std::int64_t height = box[3].as_int();
+    if (width * height > kMaxTileCells) {
+        return param_error(code::kInvalidParams, "/rect",
+                           "covers " + std::to_string(width * height) + " cells; the most is " +
+                               std::to_string(kMaxTileCells));
+    }
+    if (x + width - 1 > canvas::kMaxCell || y + height - 1 > canvas::kMaxCell) {
+        return param_error(code::kInvalidParams, "/rect",
+                           "reaches past 32767, the last column or row cells can be in");
+    }
+    for (std::int64_t row = y; row < y + height; ++row) {
+        for (std::int64_t column = x; column < x + width; ++column) {
+            out.push_back({static_cast<int>(column), static_cast<int>(row)});
+        }
+    }
+    return std::nullopt;
+}
+
+// Writes cells back into the entity's layer after a change.
+void store_cells(Session& session, const LayerTarget& target) {
+    auto& layer = session.world().ecs().get<world::TileMapLayer>(target.entity);
+    canvas::encode_cells(target.cells, *target.set, layer);
+}
+
+json::Value changed_json(const std::string& id, std::size_t changed) {
+    json::Value result;
+    result["id"] = id;
+    result["changed"] = changed;
+    return result;
+}
+
+Reply tilemap_set(Session& session, const json::Value& params) {
+    const std::string id = text(params, "id");
+    LayerTarget target;
+    if (auto failed = find_layer(session, id, target)) {
+        return std::move(*failed);
+    }
+    std::vector<Vec2i> cells;
+    if (auto failed = target_cells(params, cells)) {
+        return std::move(*failed);
+    }
+    const json::Value& tile = *params.find("tile");
+    std::optional<canvas::TileRef> ref;
+    if (!tile.is_null()) {
+        auto found = canvas::find_tile(*target.set, tile.as_string());
+        if (!found) {
+            return param_error(found.error(), "/tile");
+        }
+        ref = std::move(found).value();
+    }
+    std::size_t changed = 0;
+    for (const Vec2i cell : cells) {
+        if (!ref) {
+            changed += target.cells.erase(cell);
+            continue;
+        }
+        const auto it = target.cells.find(cell);
+        if (it == target.cells.end() || !(it->second == *ref)) {
+            target.cells.insert_or_assign(cell, *ref);
+            ++changed;
+        }
+    }
+    if (changed > 0) {
+        store_cells(session, target);
+    }
+    return Reply::success(changed_json(id, changed));
+}
+
+Reply tilemap_paint(Session& session, const json::Value& params) {
+    const std::string id = text(params, "id");
+    LayerTarget target;
+    if (auto failed = find_layer(session, id, target)) {
+        return std::move(*failed);
+    }
+    std::vector<Vec2i> cells;
+    if (auto failed = target_cells(params, cells)) {
+        return std::move(*failed);
+    }
+    const canvas::TileSet& set = *target.set;
+    const json::Value& name = *params.find("terrain");
+    int terrain = -1;
+    if (!name.is_null()) {
+        terrain = set.terrain(name.as_string());
+        if (terrain < 0) {
+            if (set.terrains.empty()) {
+                return param_error(code::kNotFound, "/terrain",
+                                   "the tile set has no terrains; its terrain_sets name them");
+            }
+            std::vector<std::string_view> names;
+            names.reserve(set.terrains.size());
+            for (const canvas::Terrain& each : set.terrains) {
+                names.emplace_back(each.name);
+            }
+            std::string message = "the tile set has no terrain " + quoted(name.as_string());
+            add_hint(message, name.as_string(), names);
+            return param_error(code::kNotFound, "/terrain", message);
+        }
+    }
+    auto changed = canvas::paint_terrain(target.cells, set, cells, terrain);
+    if (!changed) {
+        return param_error(changed.error(), "/terrain");
+    }
+    if (changed.value() > 0) {
+        store_cells(session, target);
+    }
+    return Reply::success(changed_json(id, changed.value()));
+}
+
+Reply tilemap_get(Session& session, const json::Value& params) {
+    const std::string id = text(params, "id");
+    LayerTarget target;
+    if (auto failed = find_layer(session, id, target)) {
+        return std::move(*failed);
+    }
+    const auto& layer = session.world().ecs().get<world::TileMapLayer>(target.entity);
+    json::Value result;
+    const json::Value* rect = params.find("rect");
+    if (rect == nullptr) {
+        result["origin"] = json::Array{layer.origin.x, layer.origin.y};
+        result["legend"] = json::Object{};
+        for (const auto& [key, tile] : layer.legend) {
+            result["legend"][key] = tile;
+        }
+        json::Array rows;
+        for (const std::string& row : layer.rows) {
+            rows.emplace_back(row);
+        }
+        result["rows"] = std::move(rows);
+        return Reply::success(std::move(result));
+    }
+    std::vector<Vec2i> cells;
+    if (auto failed = target_cells(params, cells)) {
+        return std::move(*failed);
+    }
+    // The layer's own keys, the first for each tile.
+    const canvas::TileSet& set = *target.set;
+    std::map<std::string, std::string, std::less<>> key_of;
+    std::size_t length = 1;
+    for (const auto& [key, tile] : layer.legend) {
+        length = key.size();
+        if (auto found = canvas::find_tile(set, tile); found) {
+            key_of.try_emplace(canvas::tile_text(set, found.value()), key);
+        }
+    }
+    const json::Array& box = rect->as_array();
+    const auto x = static_cast<int>(box[0].as_int());
+    const auto y = static_cast<int>(box[1].as_int());
+    const auto width = static_cast<int>(box[2].as_int());
+    const auto height = static_cast<int>(box[3].as_int());
+    json::Value legend = json::Object{};
+    json::Array rows;
+    for (int row = y; row < y + height; ++row) {
+        std::string line;
+        for (int column = x; column < x + width; ++column) {
+            const auto it = target.cells.find(Vec2i{column, row});
+            if (it == target.cells.end()) {
+                line.append(length, '.');
+                continue;
+            }
+            const std::string text = canvas::tile_text(set, it->second);
+            const std::string& key = key_of.at(text);
+            legend[key] = text;
+            line += key;
+        }
+        line.erase(line.find_last_not_of('.') + 1);
+        rows.emplace_back(std::move(line));
+    }
+    result["origin"] = json::Array{x, y};
+    result["legend"] = std::move(legend);
+    result["rows"] = std::move(rows);
     return Reply::success(std::move(result));
 }
 
@@ -1860,15 +2095,17 @@ void register_builtin_commands(Registry& registry) {
 
     json::Value kind = property("string", "\"scene\", \"prefab\", \"frames\" (.frames.json), "
                                           "\"material\" (.material.json), \"animation\" "
-                                          "(.anim.json) or \"storyboard\" for those files, "
-                                          "\"component\" for one component's fields, "
-                                          "\"command\" for a command's params.");
-    kind["enum"] = json::Array{"scene",     "prefab",     "frames",    "material",
-                               "animation", "storyboard", "component", "command"};
+                                          "(.anim.json), \"tileset\" (.tileset.json) or "
+                                          "\"storyboard\" for those files, \"component\" for "
+                                          "one component's fields, \"command\" for a command's "
+                                          "params.");
+    kind["enum"] = json::Array{"scene",   "prefab",     "frames",    "material", "animation",
+                               "tileset", "storyboard", "component", "command"};
     registry.add({
         .name = "schema.get",
         .description = "Returns a JSON Schema: for scene, prefab, .frames.json, .material.json, "
-                       ".anim.json or storyboard files, one component or one command.",
+                       ".anim.json, .tileset.json or storyboard files, one component or one "
+                       "command.",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema(
@@ -2068,6 +2305,71 @@ void register_builtin_commands(Registry& registry) {
             },
             {"times"}),
         .handler = animation_eval,
+    });
+
+    // A cell is [column, row]; a rect is [column, row, width, height].
+    json::Value coordinate;
+    coordinate["type"] = "integer";
+    coordinate["minimum"] = canvas::kMinCell;
+    coordinate["maximum"] = canvas::kMaxCell;
+    json::Value extent;
+    extent["type"] = "integer";
+    extent["minimum"] = 1;
+    extent["maximum"] = kMaxTileCells;
+    json::Value cell = property("array", "[column, row]");
+    cell["items"] = coordinate;
+    cell["minItems"] = 2;
+    cell["maxItems"] = 2;
+    json::Value tile_cells = property("array", "Cells as [column, row]. Or give rect.");
+    tile_cells["items"] = std::move(cell);
+    tile_cells["minItems"] = 1;
+    tile_cells["maxItems"] = 4096;
+    json::Value tile_rect =
+        property("array", "[column, row, width, height]: every cell in it. Or give cells.");
+    tile_rect["prefixItems"] = json::Array{coordinate, coordinate, extent, extent};
+    tile_rect["minItems"] = 4;
+    tile_rect["maxItems"] = 4;
+    json::Value tile = any_property("A tile by name or as \"source:column,row\"; null erases.");
+    tile["type"] = json::Array{"string", "null"};
+    json::Value terrain = any_property("A terrain name; null erases.");
+    terrain["type"] = json::Array{"string", "null"};
+    const json::Value layer_id = id_property("An entity with a TileMapLayer.");
+    registry.add({
+        .name = "tilemap.set",
+        .description = "Sets cells of an entity's TileMapLayer to one tile, or erases them. "
+                       "Returns how many changed.",
+        .capabilities = {Edit},
+        .effect = Effect::Edit,
+        .params = params_schema({{"id", layer_id},
+                                 {"cells", tile_cells},
+                                 {"rect", tile_rect},
+                                 {"tile", std::move(tile)}},
+                                {"id", "tile"}),
+        .handler = tilemap_set,
+    });
+    registry.add({
+        .name = "tilemap.paint",
+        .description = "Paints a terrain on cells of a TileMapLayer, picking tiles for them and "
+                       "their neighbors so edges connect, as Godot's terrain painting. Returns "
+                       "how many cells changed.",
+        .capabilities = {Edit},
+        .effect = Effect::Edit,
+        .params = params_schema({{"id", layer_id},
+                                 {"cells", tile_cells},
+                                 {"rect", tile_rect},
+                                 {"terrain", std::move(terrain)}},
+                                {"id", "terrain"}),
+        .handler = tilemap_paint,
+    });
+    tile_rect["description"] = "[column, row, width, height]: only these cells. Default: all.";
+    registry.add({
+        .name = "tilemap.get",
+        .description = "Returns a TileMapLayer's cells as rows of legend keys from an origin, "
+                       "with \".\" for an empty cell.",
+        .capabilities = {Read},
+        .effect = Effect::Read,
+        .params = params_schema({{"id", layer_id}, {"rect", std::move(tile_rect)}}, {"id"}),
+        .handler = tilemap_get,
     });
 
     json::Value set_components =

@@ -51,7 +51,7 @@ The code follows the same split, one CMake library per module under `engine/`:
 | `render` | The render device: SDL3's GPU API (Vulkan, Metal, Direct3D 12), or the null device for headless runs |
 | `asset` | Asset handles, loaders and hot reload |
 | `world` | The EnTT world, components, the component registry, scenes and prefabs |
-| `canvas` | 2D drawing, as Godot's canvas: sprites, `.frames.json` animations, `.material.json` materials and the renderer that draws them |
+| `canvas` | 2D drawing, as Godot's canvas: sprites, `.frames.json` animations, `.material.json` materials, `.tileset.json` tile sets and tile map layers, and the renderer that draws them |
 | `animation` | Keyframe animation, as Godot's AnimationPlayer: `.anim.json` files and the system that plays them |
 | `storyboard` | Storyboard files: kinds, checks, versions, queries and edits |
 | `command` | Commands, sessions with undo, JSON-RPC and MCP |
@@ -73,8 +73,8 @@ undo, so agents can refer to entities by name instead of by an index that change
 
 A **component** is a plain C++ struct of data attached to an entity. An entity has at most one of
 each component type. The transforms place every entity; the
-[built-in components](reference/scene-format.md#built-in-components) also draw sprites, play
-animations and link entities to the storyboard:
+[built-in components](reference/scene-format.md#built-in-components) also draw sprites and tile
+maps, play animations and link entities to the storyboard:
 
 | Component | Fields | Units |
 | --- | --- | --- |
@@ -85,9 +85,9 @@ Units and axes follow Godot. Components are **reflected**: one `SLASH_COMPONENT(
 line lets the engine save, load, validate and describe the struct. Registering a component with
 the **component registry** adds its docs and value ranges, and from then on it appears in scene
 files, the scene schema, `engine.describe` and every command, with no other glue. Field types can
-be `bool`, integers, `float`, `double`, `std::string`, `Vec2`, `Vec3`, `Vec4`, `Quat`, a
-reference to another entity, a `std::vector` of these, or a nested struct declared with
-`SLASH_REFLECT`.
+be `bool`, integers, `float`, `double`, `std::string`, `Vec2`, `Vec2i`, `Vec3`, `Vec4`, `Quat`,
+a reference to another entity, a `std::vector` of these, a `std::map` of them by name, or a
+nested struct declared with `SLASH_REFLECT`.
 
 A **system** is code that updates components every tick, added with `World::add_system` and an
 optional doc string and priority. Systems run in order of priority, lowest first as with Godot's
@@ -123,8 +123,8 @@ even after the file changes.
 An **asset** is a file a game loads by project path, like a Godot resource: a JSON table, a CSV
 file, a texture and, once audio arrives, sounds. Loading one returns a **handle**; every handle to
 the same path shares one copy, which stays loaded while any handle exists. `.json`, `.txt`,
-`.csv`, `.png`, `.bmp`, `.frames.json`, `.material.json` and `.anim.json` files load out of the
-box, and a game can add its own types.
+`.csv`, `.png`, `.bmp`, `.frames.json`, `.material.json`, `.anim.json` and `.tileset.json` files
+load out of the box, and a game can add its own types.
 
 **Hot reload** keeps an agent's edit-and-check loop short. Before every command, and between
 ticks in `slash-cli run` and `slash-cli serve`, the session checks the files it has loaded. A
@@ -222,6 +222,16 @@ An entity's `AnimationPlayer` plays one animation on its own components, so the 
 animates any field of any component, a game's own included. `animation.eval` returns the values
 an animation sets at any times, so an agent checks it without stepping the game. The
 [keyframe animation example](../examples/keyframe-animation/) plays a walk cycle and a hit.
+
+**Tile maps** follow Godot's TileSet and TileMapLayer. A `.tileset.json` file cuts atlas
+textures into **tiles** and groups **terrains** (grass, water) into terrain sets; each terrain
+tile's **peering** says which terrain its sides and corners must touch. A `TileMapLayer` keeps
+its cells as text, rows of one-letter **legend** keys, so an agent reads a whole map in one call.
+`tilemap.paint` paints a terrain and picks, for each cell and the cells around it, the tile whose
+peering fits its neighbors, so shores and corners draw themselves (**autotiling**);
+`tilemap.set` places single tiles and `tilemap.get` reads the rows back. A layer draws in runs of
+one texture, so a layer from one atlas is one GPU draw. The
+[tile maps example](../examples/tilemaps/) paints an island with a pond.
 
 How often frames are drawn follows Godot. The world ticks at a fixed rate (`tick_hz`), while frames
 come as fast as the **V-Sync mode** lets them (`window.vsync_mode`: wait for each refresh, present
@@ -403,6 +413,7 @@ OpenAI-compatible servers (including local ones), Anthropic and Gemini; see the
 | Term | Meaning |
 | --- | --- |
 | Animation | A `.anim.json` file's named set of tracks, which an `AnimationPlayer` plays on its entity's fields |
+| Autotiling | Picking each tile so its edges connect to its neighbors' terrains, as `tilemap.paint` does |
 | Asset | A file a game loads by project path into a shared, reference-counted handle |
 | Blend mode | How a sprite's color combines with what is under it: `mix`, `add`, `sub`, `mul` or `premul_alpha` |
 | Canonical form | The one way a scene is written: sorted keys, two-space indent, defaults left out |
@@ -424,8 +435,10 @@ OpenAI-compatible servers (including local ones), Anthropic and Gemini; see the
 | Journal | `storyboard/journal.jsonl`: who changed which storyboard entries, when and why |
 | JSON Pointer | A path to a value inside JSON, such as `/entities/player/components` (RFC 6901) |
 | Key | A track's value, or event, at one time in an animation |
+| Legend | A tile map layer's keys, each standing for one tile of its tile set |
 | Main scene | The scene a game loads at startup, named in `project.json` |
 | Material | A `.material.json` node graph that colors a sprite's pixels, with params each sprite sets |
+| Peering | The terrain a tile's side or corner must touch for the tile to fit, as Godot's terrain peering bits |
 | Prefab | One entity's components in a `.prefab.json` file, which entities extend and override |
 | Project | A game's folder: `project.json` plus its scenes |
 | Project folder | The folder all command paths are relative to |
@@ -438,7 +451,10 @@ OpenAI-compatible servers (including local ones), Anthropic and Gemini; see the
 | Storyboard | A game's facts that are not code, as typed entries in `storyboard/*.json` |
 | StoryRef | The component that names the storyboard entries an entity stands for |
 | System | Code that updates components every tick, in order of priority |
+| Terrain | A kind of ground in a tile set, such as grass or water, whose tiles autotiling connects |
 | Tick | One fixed simulation step, 1/60 s by default |
+| Tile set | A `.tileset.json` file: atlas textures cut into tiles, and the terrains that connect them |
+| Tile map layer | A grid of tiles from a tile set, kept as rows of legend keys (`TileMapLayer`) |
 | Tool name | A command's MCP name, with `_` in place of `.` |
 | Track | One field an animation sets, or one kind of event it emits, over time, as keys |
 | World | Every entity in a running game, held in EnTT |

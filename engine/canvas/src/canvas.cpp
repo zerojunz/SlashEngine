@@ -2,6 +2,7 @@
 
 #include "slash/canvas/material.hpp"
 #include "slash/canvas/sprite_frames.hpp"
+#include "slash/canvas/tilemap.hpp"
 #include "slash/core/json.hpp"
 #include "slash/core/log.hpp"
 #include "slash/core/text.hpp"
@@ -167,6 +168,15 @@ void add_asset_types(asset::Assets& assets) {
                 return doc.error();
             }
             return parse_material(doc.value());
+        });
+    assets.add_type<TileSet>(
+        "tile_set", {std::string(kTileSetSuffix)},
+        [](std::string_view text, std::string_view /*path*/) -> Result<TileSet> {
+            auto doc = json::parse(text);
+            if (!doc) {
+                return doc.error();
+            }
+            return parse_tileset(doc.value());
         });
 }
 

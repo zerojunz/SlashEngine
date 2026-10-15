@@ -25,8 +25,8 @@ a folder with a `project.json`, and `slash-cli export` builds it for macOS, Wind
 web, Android or iOS, signs it and can test the result headless. The rest of milestone 4, now in
 progress, builds every platform from one Mac. Games draw sprites and flipbook animations through
 a GPU render device, smoothly between fixed ticks and with Godot's V-Sync modes and frame cap,
-color them with material graphs, and animate any component field with keyframes; the rest of the
-2D renderer follows in milestone 5.
+color them with material graphs, animate any component field with keyframes and draw tile maps
+that autotile terrain; the rest of the 2D renderer follows in milestone 5.
 
 ## The path to launch
 
@@ -174,7 +174,14 @@ rendering on top.
       one, Godot's interpolation, easing, update and loop modes, and event tracks that emit world
       events. `AnimationPlayer` plays them, `animation.eval` returns the values at any times, and
       exports check and ship the files
-- [ ] Tilemap layers with terrain autotiling
+- [x] Tilemap layers with terrain autotiling, as Godot's TileSet and TileMapLayer:
+      `.tileset.json` files cut atlas textures into tiles with terrain peering bits (corners and
+      sides, corners or sides), and `TileMapLayer` keeps its cells as text, rows of legend keys.
+      `tilemap.paint` paints terrain and picks the tiles that connect, `tilemap.set` places
+      tiles and `tilemap.get` reads them; layers draw in runs of one texture, and validation and
+      exports check every layer against its tile set
+- [ ] Isometric and hexagonal tile shapes, Godot's other TileSet layouts, with their terrain
+      peering bits, and alternative tiles (flipped, transposed) for tile sets that reuse art
 - [ ] 2D lights, occluders and normal-mapped sprites
 - [ ] 2D physics on Box2D v3
 - [ ] Particles
@@ -375,7 +382,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Gameplay code | C++ with hot reload; plugins as C++ modules with a stable C ABI | 6 | Planned |
 | Scenes and prefabs | JSON scenes, prefabs with overrides, on EnTT | 2, 5 | Done |
 | 2D sprites and animation | Batched sprites, sprite sheets, flipbooks | 5 | Done |
-| Tilemaps | Tilemap layers with terrain autotiling, stored as text | 5 | Planned |
+| Tilemaps | Tilemap layers with terrain autotiling, stored as text | 5 | In part: square tiles are done; isometric and hexagonal shapes in 5 |
 | 2D lighting | 2D lights, occluders, normal-mapped sprites | 5 | Planned |
 | 2D physics | Box2D v3 | 5 | Planned |
 | 3D physics | Jolt: rigid bodies, joints, character controller, vehicles | 7 | Planned |

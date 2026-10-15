@@ -1,0 +1,28 @@
+wrote ground.png: 64x64, 16 tiles
+scene.open {"path":"main.scene.json"}
+{"entities":1,"path":"main.scene.json"}
+tilemap.paint {"id":"ground","rect":[0,0,12,8],"terrain":"water"}
+{"changed":96,"id":"ground"}
+tilemap.paint {"id":"ground","rect":[2,1,8,6],"terrain":"grass"}
+{"changed":48,"id":"ground"}
+tilemap.paint {"cells":[[4,3]],"id":"ground","terrain":"water"}
+{"changed":9,"id":"ground"}
+tilemap.set {"cells":[[8,2]],"id":"ground","tile":"rock"}
+{"changed":1,"id":"ground"}
+tilemap.get {"id":"ground"}
+{"legend":{"G":"grass_n","a":"grass_s","b":"grass_w","c":"grass_e","d":"grass_nw","e":"grass_ne","f":"flowers","g":"grass","h":"grass_sw","i":"grass_se","j":"grass_in_se","k":"grass_in_sw","l":"grass_in_ne","m":"grass_in_nw","r":"rock","w":"water"},"origin":[0,0],"rows":["wwwwwwwwwwww","wwdGGGGGGeww","wwbjakggrcww","wwbcwbgfgcww","wwblGmgfgcww","wwbggggfgcww","wwhaaaaaaiww","wwwwwwwwwwww"]}
+  wwwwwwwwwwww
+  wwdGGGGGGeww
+  wwbjakggrcww
+  wwbcwbgfgcww
+  wwblGmgfgcww
+  wwbggggfgcww
+  wwhaaaaaaiww
+  wwwwwwwwwwww
+tilemap.get {"id":"ground","rect":[3,2,3,3]}
+{"legend":{"G":"grass_n","a":"grass_s","b":"grass_w","c":"grass_e","j":"grass_in_se","k":"grass_in_sw","l":"grass_in_ne","m":"grass_in_nw","w":"water"},"origin":[3,2],"rows":["jak","cwb","lGm"]}
+tilemap.paint {"cells":[[0,0]],"id":"ground","terrain":"watr"}
+"/terrain: the tile set has no terrain \"watr\"; did you mean \"water\"?"
+tilemap.set {"cells":[[0,0]],"id":"ground","tile":"grass_nn"}
+"/tile: the tile set has no tile named \"grass_nn\"; did you mean \"grass_n\"?"
+tiles drawn: 96, GPU draws: 1, triangles: 192

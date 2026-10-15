@@ -83,6 +83,29 @@ void register_builtin_components(ComponentRegistry& registry) {
         .describe("time", {.doc = "Seconds into the animation, from 0 to its length.", .min = 0})
         .describe("backwards", {.doc = "Play toward the start, as Godot's play_backwards. "
                                        "Pingpong loops flip it at each end."});
+
+    registry.add<TileMapLayer>()
+        .set_doc("A grid of tiles from a .tileset.json file, drawn at the entity's Transform2D "
+                 "if it has one. Cells are text: rows of legend keys, \".\" for empty. Edit them "
+                 "with tilemap.paint and tilemap.set.")
+        .describe("tile_set", {.doc = "Project path of a .tileset.json file."})
+        .describe("origin", {.doc = "The cell the first key of the first row stands for, as "
+                                    "[column, row]."})
+        .describe("legend", {.doc = "The tile each key stands for: a tile's name or "
+                                    "\"source:column,row\". Keys are 1 to 3 characters, all "
+                                    "the same length."})
+        .describe("rows", {.doc = "Cells from the origin, one string of keys per row, \".\" for "
+                                  "an empty cell."})
+        .describe("z_index", {.doc = "Higher draws on top.", .min = -4096, .max = 4096})
+        .describe("visible", {.doc = "Draw it."})
+        .describe("modulate", {.doc = "Color every tile is multiplied by, as [r, g, b, a] from 0 "
+                                      "to 1.",
+                               .min = 0,
+                               .max = 1})
+        .describe("texture_filter",
+                  {.doc = "How tiles are sampled when scaled: \"nearest\" keeps pixel art "
+                          "sharp. \"inherit\" uses the project's rendering.texture_filter.",
+                   .choices = {"inherit", "linear", "nearest"}});
 }
 
 } // namespace slash::world

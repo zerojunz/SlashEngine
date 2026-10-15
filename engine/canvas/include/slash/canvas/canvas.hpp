@@ -2,6 +2,7 @@
 
 #include "slash/asset/assets.hpp"
 #include "slash/canvas/material.hpp"
+#include "slash/canvas/tilemap.hpp"
 #include "slash/core/result.hpp"
 #include "slash/render/device.hpp"
 #include "slash/world/components.hpp"
@@ -16,12 +17,13 @@
 #include <unordered_map>
 #include <utility>
 
-// 2D drawing, as Godot's canvas: Sprite2D and AnimatedSprite2D entities drawn through a render
-// device, in world pixels with y down.
+// 2D drawing, as Godot's canvas: Sprite2D, AnimatedSprite2D and TileMapLayer entities drawn
+// through a render device, in world pixels with y down.
 namespace slash::canvas {
 
 // Asset types: "texture" (.png and .bmp files as render::Image), "sprite_frames" (.frames.json
-// files as SpriteFrames) and "material" (.material.json files as CanvasMaterial).
+// files as SpriteFrames), "material" (.material.json files as CanvasMaterial) and "tile_set"
+// (.tileset.json files as TileSet).
 void add_asset_types(asset::Assets& assets);
 
 // The "animated_sprite_2d" system, which plays each AnimatedSprite2D on its Sprite2D. It reads
@@ -65,8 +67,8 @@ struct CanvasOptions {
 // frame is interpolation of the way from the tick before to the last one.
 [[nodiscard]] double material_time(std::uint64_t tick, double tick_seconds, double interpolation);
 
-// Draws a world's sprites. Textures and materials load through the assets, by path, and reload
-// when their files change.
+// Draws a world's sprites and tile map layers. Textures, materials and tile sets load through the
+// assets, by path, and reload when their files change.
 class CanvasRenderer {
 public:
     CanvasRenderer(render::RenderDevice& device, asset::Assets& assets);
@@ -76,18 +78,22 @@ public:
     CanvasRenderer(CanvasRenderer&&) = delete;
     CanvasRenderer& operator=(CanvasRenderer&&) = delete;
 
-    // Remembers every sprite's transform. Call it just before each tick, so frames between
-    // ticks can draw sprites part of the way from where they were to where they are.
+    // Remembers every sprite's and layer's transform. Call it just before each tick, so frames
+    // between ticks can draw them part of the way from where they were to where they are.
     void before_tick(const world::World& world);
 
-    // Draws one frame: the target cleared, then every visible sprite. A sprite that can't draw,
-    // such as one whose texture or material is missing, or whose material_params name a param
-    // the material doesn't have, is left out with one warning in the log. On the null device a
-    // window frame checks and counts the sprites but draws nothing.
+    // Draws one frame: the target cleared, then every visible sprite and tile map layer, in
+    // z_index order, then the order entities were made. A layer draws its cells row by row, each
+    // tile's region centered on its cell, moved by the entity's Transform2D if it has one. A
+    // sprite or tile that can't draw, such as one whose texture or material is missing, or whose
+    // material_params name a param the material doesn't have, is left out with one warning in the
+    // log. On the null device a window frame checks and counts them but draws nothing.
     [[nodiscard]] Result<void> draw(const world::World& world, const CanvasOptions& options);
 
     // Sprites the last frame drew.
     [[nodiscard]] std::size_t sprites_drawn() const noexcept { return sprites_drawn_; }
+    // Tiles the last frame drew, over every layer.
+    [[nodiscard]] std::size_t tiles_drawn() const noexcept { return tiles_drawn_; }
 
 private:
     struct Texture {
@@ -103,15 +109,32 @@ private:
     // The material a sprite draws with, its params and the time filled in.
     Result<render::Material> material(const world::Sprite2D& sprite, render::Filter filter,
                                       double time);
-    void warn_once(const std::string& key, std::string_view message, std::string_view what);
+    // A layer's cells, decoded again only when the layer or its tile set changes.
+    struct LayerCells {
+        std::uint64_t set_version = 0;
+        world::TileMapLayer layer;
+        Cells cells;
+        std::string error; // why the cells don't decode, or ""
+        bool seen = false;
+    };
+
+    // The tile set at a path.
+    Result<const TileSet*> tile_set(const std::string& path);
+    const LayerCells& cells(entt::entity entity, const world::TileMapLayer& layer,
+                            const TileSet& set, std::uint64_t set_version);
+    void warn_once(const std::string& key, std::string_view message, std::string_view what,
+                   std::string_view event = "a sprite can't draw");
 
     render::RenderDevice* device_;
     asset::Assets* assets_;
     std::map<std::pair<std::string, render::Filter>, Texture> textures_;
     std::map<std::string, asset::Handle<CanvasMaterial>, std::less<>> materials_;
+    std::map<std::string, asset::Handle<TileSet>, std::less<>> tile_sets_;
+    std::unordered_map<entt::entity, LayerCells> layer_cells_;
     std::unordered_map<entt::entity, world::Transform2D> previous_;
     std::set<std::string, std::less<>> warned_;
     std::size_t sprites_drawn_ = 0;
+    std::size_t tiles_drawn_ = 0;
 };
 
 } // namespace slash::canvas
