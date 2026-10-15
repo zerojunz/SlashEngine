@@ -461,6 +461,97 @@ TEST_CASE("world snapshots show what changed and restore it") {
     CHECK(engine.ok("world.diff", R"({"from": "moved"})") == parse("{}"));
 }
 
+TEST_CASE("events.subscribe queues entity, command and game events") {
+    Engine engine;
+    CHECK(engine.fails("events.read", R"({"subscription": "events_1"})", command::code::kNotFound)
+              .message == "/subscription: no subscription is named \"events_1\"; start one with "
+                          "events.subscribe");
+    CHECK(engine.ok("events.subscribe") == parse(R"({"subscription": "events_1"})"));
+    CHECK(engine.ok("events.subscribe",
+                    R"({"kinds": ["entity.created", "entity.destroyed"], "ids": ["coin"]})") ==
+          parse(R"({"subscription": "events_2"})"));
+
+    engine.ok("entity.create", R"({"id": "coin", "components": {"Transform2D": {}}})");
+    engine.ok("entity.create", R"({"id": "wall"})");
+    engine.ok("component.set", R"({"id": "coin", "components": {"Transform2D": {"rotation": 1}}})");
+    // Gameplay code emits its own events.
+    engine.session->world().add_system("pickup", [](world::World& w, double /*seconds*/) {
+        if (const entt::entity coin = w.find("coin"); coin != entt::null) {
+            w.emit("coin_collected", "coin", parse(R"({"value": 5})"));
+            w.destroy(coin);
+        }
+    });
+    engine.ok("step");
+    // Failed commands and dry runs change nothing, so they queue nothing.
+    engine.fails("entity.create", R"({"id": "wall"})", command::code::kInvalidArgument);
+    engine.ok("entity.create", R"({"id": "ghost", "dry_run": true})");
+
+    CHECK(engine.ok("events.read", R"({"subscription": "events_1"})") == parse(R"({
+        "dropped": 0, "more": false, "events": [
+        {"seq": 1, "tick": 0, "kind": "entity.created", "id": "coin"},
+        {"seq": 2, "tick": 0, "kind": "command", "command": "entity.create",
+         "changes": {"added": ["coin"], "changed": {"coin": {"Transform2D": {}}}}},
+        {"seq": 3, "tick": 0, "kind": "entity.created", "id": "wall"},
+        {"seq": 4, "tick": 0, "kind": "command", "command": "entity.create",
+         "changes": {"added": ["wall"]}},
+        {"seq": 5, "tick": 0, "kind": "command", "command": "component.set",
+         "changes": {"changed": {"coin": {"Transform2D": {"rotation": 1}}}}},
+        {"seq": 6, "tick": 0, "kind": "coin_collected", "id": "coin", "data": {"value": 5}},
+        {"seq": 7, "tick": 0, "kind": "entity.destroyed", "id": "coin"},
+        {"seq": 8, "tick": 1, "kind": "command", "command": "step",
+         "changes": {"removed": ["coin"]}}
+    ]})"));
+    // The filtered subscription saw only the coin coming and going.
+    const json::Value coin = engine.ok("events.read", R"({"subscription": "events_2"})");
+    REQUIRE(coin.find("events")->as_array().size() == 2);
+    CHECK(coin.find("events")->as_array()[1] ==
+          parse(R"({"seq": 7, "tick": 0, "kind": "entity.destroyed", "id": "coin"})"));
+    CHECK(engine.ok("events.read", R"({"subscription": "events_1"})").find("events")->size() == 0);
+
+    // Undo reports what it put back; a new scene reports one change, not every entity.
+    engine.ok("undo");
+    engine.ok("scene.new");
+    const json::Value later =
+        engine.ok("events.read", R"({"subscription": "events_1", "limit": 1})");
+    CHECK(later.find("more")->as_bool());
+    CHECK(*later.find("events") == parse(R"([{"seq": 9, "tick": 1, "kind": "command",
+        "command": "undo", "changes": {"added": ["coin"],
+        "changed": {"coin": {"Transform2D": {"rotation": 1}}}}}])"));
+    CHECK(*engine.ok("events.read", R"({"subscription": "events_1"})").find("events") ==
+          parse(R"([{"seq": 10, "tick": 1, "kind": "command", "command": "scene.new",
+              "changes": {"removed": ["coin", "wall"]}}])"));
+
+    // A full queue drops the oldest events and says how many.
+    const std::string created = engine.ok("events.subscribe", R"({"kinds": ["entity.created"]})")
+                                    .find("subscription")
+                                    ->as_string();
+    json::Array creates;
+    for (int i = 0; i <= static_cast<int>(command::Session::kMaxQueuedEvents); ++i) {
+        json::Value item;
+        item["command"] = "entity.create";
+        creates.push_back(std::move(item));
+    }
+    json::Value batch;
+    batch["commands"] = json::Array(creates.begin(), creates.begin() + 1000);
+    REQUIRE(engine.session->call("batch", batch).ok);
+    REQUIRE(engine.session->call("entity.create", json::Value()).ok);
+    const json::Value full =
+        engine.ok("events.read", R"({"subscription": ")" + created + R"(", "limit": 1000})");
+    CHECK(full.find("dropped")->as_int() == 1);
+    CHECK(full.find("events")->as_array().front().find("id")->as_string() == "entity_2");
+
+    CHECK(engine.ok("events.unsubscribe", R"({"subscription": "events_2"})") ==
+          parse(R"({"unsubscribed": "events_2"})"));
+    CHECK(engine.fails("events.read", R"({"subscription": "event_1"})", command::code::kNotFound)
+              .message == "/subscription: no subscription is named \"event_1\"; did you mean "
+                          "\"events_1\"?");
+    CHECK(engine
+              .fails("events.subscribe", R"({"kinds": ["entity.create"]})",
+                     command::code::kInvalidParams)
+              .message == "/kinds/0: unknown event kind \"entity.create\"; did you mean "
+                          "\"entity.created\"?");
+}
+
 TEST_CASE("sessions only run commands their capabilities allow") {
     command::SessionOptions options;
     options.capabilities = {Capability::Read};
