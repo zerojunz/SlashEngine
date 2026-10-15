@@ -74,9 +74,8 @@ Result<std::unique_ptr<Game>> Game::start(const GameOptions& options) {
         return platform.error();
     }
 
-    auto game =
-        std::unique_ptr<Game>(new Game(std::move(project).value(), std::move(platform).value()));
-    game->world_.set_file_reader(folder_reader(data_dir));
+    auto game = std::unique_ptr<Game>(
+        new Game(std::move(project).value(), std::move(platform).value(), data_dir));
     if (auto loaded = world::load_scene(game->world_, scene.value()); !loaded) {
         return make_error(loaded.error().code,
                           game->project_.main_scene + ": " + loaded.error().message);
@@ -93,10 +92,13 @@ Result<std::unique_ptr<Game>> Game::start(const GameOptions& options) {
     return game;
 }
 
-Game::Game(Project project, platform::Platform platform)
-    : project_(std::move(project)), world_(components_), platform_(std::move(platform)) {
+Game::Game(Project project, platform::Platform platform, const std::string& data_dir)
+    : project_(std::move(project)), assets_(asset::folder_source(data_dir)), world_(components_),
+      platform_(std::move(platform)) {
     // The world only keeps a pointer to the registry, so filling it afterwards is fine.
     world::register_builtin_components(components_);
+    world_.set_file_reader(
+        [this](std::string_view path) { return assets_.read(path, world::kPrefabType); });
 }
 
 Game::~Game() = default;

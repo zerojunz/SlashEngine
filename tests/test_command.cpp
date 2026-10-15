@@ -657,22 +657,27 @@ TEST_CASE("entities extend prefabs, and prefab.save writes them") {
     CHECK(*missing.data.find("path") == "/extends");
     CHECK((engine.session->world().find("x") == entt::null));
 
-    // Each command reads prefab files again, so edits show up in new instances.
+    // Editing a prefab file updates its instances before the next command, keeping their
+    // overrides: grunt keeps its own current health and loses the Transform2D the prefab dropped.
     REQUIRE(slash::platform::write_file(root + "/prefabs/enemy.prefab.json",
                                         R"({"format": 1, "components": {
                                             "Health": {"current": 80, "max": 80}}})")
                 .ok());
     engine.ok("entity.create", R"({"id": "fresh", "extends": "prefabs/enemy.prefab.json"})");
     CHECK(engine.ok("entity.get", R"({"id": "fresh"})").find("components")->size() == 1);
+    const json::Value reloaded = parse(R"({
+        "id": "grunt", "extends": "prefabs/enemy.prefab.json",
+        "components": {"Health": {"current": 20.0, "max": 80.0}}})");
+    CHECK(engine.ok("entity.get", R"({"id": "grunt", "omit_defaults": true})") == reloaded);
+    CHECK(engine.scene().find("grunt")->find("components")->size() == 1);
 
-    // Undo restores instances from the prefab they were made with, without reading the file.
+    // Undo restores instances with the prefab they had, without reading the file.
     std::filesystem::remove(root + "/prefabs/enemy.prefab.json");
     engine.ok("entity.destroy", R"({"id": "grunt"})");
     engine.ok("undo");
-    CHECK(engine.ok("entity.get", R"({"id": "grunt", "omit_defaults": true})") == parse(R"({
-        "id": "grunt", "extends": "prefabs/enemy.prefab.json",
-        "components": {"Health": {"current": 20.0, "max": 50.0},
-                       "Transform2D": {"rotation": 1.0}}})"));
+    CHECK(engine.ok("entity.get", R"({"id": "grunt", "omit_defaults": true})") == reloaded);
+    CHECK(engine.ok("asset.list", R"({"type": "prefab"})") == parse(R"({"assets": [
+        {"path": "prefabs/enemy.prefab.json", "type": "prefab", "refs": 2, "version": 3}]})"));
     const json::Value dry = engine.ok("component.set", R"({"id": "grunt", "dry_run": true,
         "components": {"Health": {"max": 60}}})");
     CHECK(*dry.find("changes") == parse(R"({"changed": {"grunt": {"Health": {"max": 60.0}}}})"));
@@ -727,6 +732,68 @@ TEST_CASE("entities extend prefabs, and prefab.save writes them") {
               ->find("Health")
               ->find("max")
               ->as_double() == 9.0);
+    std::filesystem::remove_all(root);
+}
+
+TEST_CASE("changed files reload, and prefab instances update with their overrides") {
+    const std::string root = "command_reload_project";
+    std::filesystem::remove_all(root);
+    REQUIRE(slash::platform::create_directories(root + "/prefabs").ok());
+    REQUIRE(slash::platform::create_directories(root + "/data").ok());
+    REQUIRE(slash::platform::write_file(root + "/prefabs/enemy.prefab.json",
+                                        R"({"format": 1, "components": {"Health": {"max": 50}}})")
+                .ok());
+    REQUIRE(slash::platform::write_file(root + "/data/tuning.json", R"({"speed": 3})").ok());
+    command::SessionOptions options;
+    options.project_root = root;
+    Engine engine(options);
+
+    // Gameplay code loads assets through the session's asset store.
+    auto tuning = engine.session->assets().load<json::Value>("data/tuning.json");
+    REQUIRE(tuning.ok());
+    engine.ok("entity.create", R"({"id": "grunt", "extends": "prefabs/enemy.prefab.json",
+                                   "components": {"Health": {"current": 20}}})");
+    engine.ok("events.subscribe", R"({"kinds": ["asset.reloaded", "command"]})");
+
+    REQUIRE(slash::platform::write_file(root + "/prefabs/enemy.prefab.json",
+                                        R"({"format": 1, "components": {"Health": {"max": 90},
+                                            "Transform2D": {"rotation": 2}}})")
+                .ok());
+    REQUIRE(slash::platform::write_file(root + "/data/tuning.json", R"({"speed": 70})").ok());
+    CHECK(engine.ok("asset.list") == parse(R"({"assets": [
+        {"path": "data/tuning.json", "type": "json", "refs": 1, "version": 2},
+        {"path": "prefabs/enemy.prefab.json", "type": "prefab", "refs": 1, "version": 2}]})"));
+    CHECK(tuning.value()->find("speed")->as_int() == 70);
+    CHECK(engine.ok("entity.get", R"({"id": "grunt", "omit_defaults": true})") == parse(R"({
+        "id": "grunt", "extends": "prefabs/enemy.prefab.json",
+        "components": {"Health": {"current": 20.0, "max": 90.0},
+                       "Transform2D": {"rotation": 2.0}}})"));
+    CHECK(engine.ok("events.read", R"({"subscription": "events_1"})") == parse(R"({
+        "dropped": 0, "more": false, "events": [
+        {"seq": 1, "tick": 0, "kind": "asset.reloaded",
+         "data": {"path": "data/tuning.json", "type": "json", "version": 2}},
+        {"seq": 2, "tick": 0, "kind": "asset.reloaded",
+         "data": {"path": "prefabs/enemy.prefab.json", "type": "prefab", "version": 2}},
+        {"seq": 3, "tick": 0, "kind": "command", "command": "asset.reload",
+         "changes": {"changed": {"grunt": {"Health": {"max": 90.0},
+                                           "Transform2D": {"rotation": 2.0}}}}}
+    ]})"));
+    // The reload is not an undo step: undo reverts the entity.create before it.
+    CHECK(engine.session->undo_labels() == std::vector<std::string>{"entity.create"});
+
+    // A prefab that no longer loads leaves its instances as they are.
+    REQUIRE(
+        slash::platform::write_file(root + "/prefabs/enemy.prefab.json", "{\"format\": 1,").ok());
+    const json::Value events = engine.ok("events.read", R"({"subscription": "events_1"})");
+    REQUIRE(events.find("events")->size() == 1);
+    const json::Value& failed = *events.find("events")->as_array()[0].find("data");
+    CHECK(failed.find("path")->as_string() == "prefabs/enemy.prefab.json");
+    CHECK(contains(failed.find("error")->as_string(), "is not valid"));
+    CHECK(engine.ok("entity.get", R"({"id": "grunt", "components": ["Health"]})")
+              .find("components")
+              ->find("Health")
+              ->find("max")
+              ->as_double() == 90.0);
     std::filesystem::remove_all(root);
 }
 
