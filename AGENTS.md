@@ -340,6 +340,19 @@ into atlas pages. A font path of `""` is Roboto, built into the engine from the 
 dependency (no font file is committed). Glyph advances are whole pixels except in distance
 field fonts, as Godot's are without subpixel positioning.
 
+Each paragraph is ordered by the Unicode Bidirectional Algorithm with SheenBidi and split into
+runs by script, as Godot's `TextServerAdvanced`; glyphs are stored per line in drawing order,
+and right-to-left lines (`Line::rtl`) hang their trailing spaces off the left and are trimmed
+there. A run shapes with the font, then the clusters it lacks with its `.font.json` file's
+`fallbacks` (ordered by `language_support` and `script_support` for the text's
+`LayoutOptions::language` and script), then with fonts installed on the machine
+(`platform::system_fonts_for`: CoreText, DirectWrite, fontconfig loaded with `dlopen`, Android's
+font list; none on the web), counted in `TextLayout::system` and turned off by
+`gui.allow_system_fallback`. Tests and examples that print text layout turn them off so their
+output is the same on every machine, and make the fonts they need with `text::box_font` (a
+TrueType font of box glyphs) rather than committing font files. `Control.layout_direction`
+mirrors layout as Godot's `is_layout_rtl`; `examples/text-languages` is a menu in Arabic.
+
 `engine/ui` is UI, as Godot's Control nodes. `Control` places a rect in its parent's (the
 entity listed in a `Control`'s `children`, or the viewport) by anchors, offsets and grow
 directions, turned and scaled around `pivot_offset`; `Label`, `ColorRect`, `Panel`,

@@ -1,0 +1,126 @@
+{
+  "entities": {
+    "buttons": {
+      "components": {
+        "BoxContainer": {},
+        "Control": {
+          "children": ["start", "quit"]
+        }
+      }
+    },
+    "greeting": {
+      "components": {
+        "Control": {
+          "anchor_bottom": 1.0,
+          "anchor_top": 1.0,
+          "grow_vertical": "begin",
+          "offset_bottom": -40.0,
+          "offset_left": 16.0,
+          "offset_top": -40.0
+        },
+        "Label": {
+          "text": "שלום, world"
+        }
+      }
+    },
+    "loading": {
+      "components": {
+        "Control": {
+          "custom_minimum_size": [0.0, 24.0]
+        },
+        "ProgressBar": {
+          "value": 30.0
+        }
+      }
+    },
+    "menu": {
+      "components": {
+        "BoxContainer": {
+          "vertical": true
+        },
+        "Control": {
+          "anchor_bottom": 1.0,
+          "anchor_right": 1.0,
+          "children": ["title", "buttons", "loading", "version"],
+          "layout_direction": "rtl",
+          "offset_bottom": -64.0,
+          "offset_left": 16.0,
+          "offset_right": -16.0,
+          "offset_top": 16.0
+        }
+      }
+    },
+    "quit": {
+      "components": {
+        "Button": {
+          "text": "خروج"
+        },
+        "Control": {}
+      }
+    },
+    "sign": {
+      "components": {
+        "Control": {
+          "anchor_bottom": 1.0,
+          "anchor_top": 1.0,
+          "grow_vertical": "begin",
+          "offset_bottom": -12.0,
+          "offset_left": 16.0,
+          "offset_top": -12.0
+        },
+        "Label": {
+          "language": "ja",
+          "text": "出口 Exit"
+        }
+      }
+    },
+    "sign_chinese": {
+      "components": {
+        "Control": {
+          "anchor_bottom": 1.0,
+          "anchor_left": 1.0,
+          "anchor_right": 1.0,
+          "anchor_top": 1.0,
+          "grow_horizontal": "begin",
+          "grow_vertical": "begin",
+          "offset_bottom": -12.0,
+          "offset_left": -16.0,
+          "offset_right": -16.0,
+          "offset_top": -12.0
+        },
+        "Label": {
+          "language": "zh-Hant",
+          "text": "出口"
+        }
+      }
+    },
+    "start": {
+      "components": {
+        "Button": {
+          "text": "ابدأ"
+        },
+        "Control": {}
+      }
+    },
+    "title": {
+      "components": {
+        "Control": {
+          "theme_override_font_sizes": {
+            "font_size": 24
+          }
+        },
+        "Label": {
+          "text": "القائمة الرئيسية"
+        }
+      }
+    },
+    "version": {
+      "components": {
+        "Label": {
+          "text": "الإصدار 1.2 (beta)"
+        }
+      }
+    }
+  },
+  "format": 1
+}

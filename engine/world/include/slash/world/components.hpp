@@ -502,6 +502,10 @@ struct Control {
     // Whether it takes focus from clicks and the keyboard ("all"), clicks only ("click") or
     // never ("none"); "" takes its type's: all for buttons, none for the rest.
     std::string focus_mode;
+    // Which way it lays out: "inherited" (its parent's; left to right at the root), "ltr" or
+    // "rtl", which mirrors its anchors, offsets and grow directions, its children's order in
+    // containers and its text's alignment, as Godot's.
+    std::string layout_direction = "inherited";
     std::map<std::string, Vec4> theme_override_colors;
     std::map<std::string, int> theme_override_constants;
     std::map<std::string, std::string> theme_override_fonts;
@@ -541,7 +545,7 @@ SLASH_COMPONENT(Control, children, anchor_left, anchor_top, anchor_right, anchor
                 size_flags_horizontal, size_flags_vertical, size_flags_stretch_ratio,
                 focus_neighbor_left, focus_neighbor_top, focus_neighbor_right,
                 focus_neighbor_bottom, focus_next, focus_previous, focus_mode, mouse_filter,
-                visible, modulate, self_modulate, z_index, texture_filter, theme,
+                layout_direction, visible, modulate, self_modulate, z_index, texture_filter, theme,
                 theme_type_variation, theme_override_colors, theme_override_constants,
                 theme_override_fonts, theme_override_font_sizes, theme_override_styles)
 
@@ -556,6 +560,11 @@ struct Label {
     std::string text_overrun_behavior = "no_trimming";
     std::string ellipsis_char = "\u2026";
     std::string visible_characters_behavior = "chars_before_shaping";
+    // The text's base direction: "auto" (from its first strong character), "ltr", "rtl" or
+    // "inherited" (the control's layout direction).
+    std::string text_direction = "auto";
+    // BCP 47, such as "ar" or "zh-Hant"; "" for none.
+    std::string language{}; // NOLINT(readability-redundant-member-init)
     int lines_skipped = 0;
     int max_lines_visible = -1;  // -1 for all
     int visible_characters = -1; // -1 for all
@@ -566,7 +575,7 @@ struct Label {
 };
 SLASH_COMPONENT(Label, text, horizontal_alignment, vertical_alignment, autowrap_mode, clip_text,
                 text_overrun_behavior, ellipsis_char, uppercase, lines_skipped, max_lines_visible,
-                visible_characters, visible_characters_behavior)
+                visible_characters, visible_characters_behavior, text_direction, language)
 
 // A rect of one color, as Godot's ColorRect.
 struct ColorRect {
@@ -648,7 +657,9 @@ struct Button {
     std::string vertical_icon_alignment = "center"; // "top", "center" or "bottom"
     std::string action_mode = "release";            // "press" or "release"
     std::string button_group; // toggle buttons with the same group name: at most one is pressed
-    bool flat = false;        // draw no style box, only the text and icon
+    std::string text_direction = "auto"; // as Label's
+    std::string language{};              // NOLINT(readability-redundant-member-init)
+    bool flat = false;                   // draw no style box, only the text and icon
     bool clip_text = false;
     bool expand_icon = false;
     bool disabled = false;
@@ -662,7 +673,7 @@ struct Button {
 SLASH_COMPONENT(Button, text, icon, flat, alignment, text_overrun_behavior, autowrap_mode,
                 clip_text, icon_alignment, vertical_icon_alignment, expand_icon, disabled,
                 toggle_mode, button_pressed, action_mode, button_mask, keep_pressed_outside,
-                button_group, shortcut, shortcut_feedback)
+                button_group, shortcut, shortcut_feedback, text_direction, language)
 
 // A button drawn with a texture per state, as Godot's TextureButton.
 struct TextureButton {

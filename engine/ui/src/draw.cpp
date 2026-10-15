@@ -617,13 +617,9 @@ void draw_label_pass(Drawer& drawer, DrawList& list, text::Fonts& fonts, const L
         // Where each space between words is, for fill's stretching.
         spaces.clear();
         if (stretch != 0.0F) {
-            std::uint32_t end = line.count;
-            while (end > 0 && label.text.glyphs[line.first + end - 1].space) {
-                --end;
-            }
-            for (std::uint32_t g = 0; g < end; ++g) {
+            for (std::uint32_t g = 0; g < line.count; ++g) {
                 const text::Glyph& glyph = label.text.glyphs[line.first + g];
-                if (glyph.space) {
+                if (text::stretches(line, glyph)) {
                     spaces.push_back(glyph.x);
                 }
             }

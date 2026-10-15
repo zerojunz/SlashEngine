@@ -305,6 +305,17 @@ which gameplay code reads each tick and agents subscribe to. An agent clicks and
 disabled) and which control has focus and which is hovered. The
 [UI buttons example](../examples/ui-buttons/) is a title menu worked by mouse, keys and touch.
 
+Text in every language follows Godot's text server. **BiDi** (the Unicode Bidirectional
+Algorithm) orders each paragraph: Arabic and Hebrew go right to left, with English words and
+numbers in them still left to right, and a label's `text_direction` can set the paragraph's
+direction. A control's **layout direction** (`layout_direction` `rtl`) mirrors it and everything
+in it, so an Arabic menu's anchors, rows and alignment start at the right. A character a font
+lacks comes from its **fallback fonts**, listed in its `.font.json` file and tried in order
+(those that say they are for the text's `language` and script first), then from fonts installed
+on the machine, which `ui.layout` counts in `system_glyphs` since other machines may lack them.
+The [text languages example](../examples/text-languages/) is a menu in Arabic laid out right to
+left, with Hebrew, Japanese and Chinese text.
+
 How often frames are drawn follows Godot. The world ticks at a fixed rate (`tick_hz`), while frames
 come as fast as the **V-Sync mode** lets them (`window.vsync_mode`: wait for each refresh, present
 at once, mailbox or adaptive) and no faster than the **frame cap** (`max_fps`, none by default). So
@@ -490,6 +501,7 @@ OpenAI-compatible servers (including local ones), Anthropic and Gemini; see the
 | Animation | A `.anim.json` file's named set of tracks, which an `AnimationPlayer` plays on its entity's fields |
 | Autotiling | Picking each tile so its edges connect to its neighbors' terrains, as `tilemap.paint` does |
 | Asset | A file a game loads by project path into a shared, reference-counted handle |
+| BiDi | The Unicode Bidirectional Algorithm, which orders text that mixes right-to-left scripts such as Arabic with left-to-right ones |
 | Binding | A key, mouse button, gamepad button or stick direction that presses an action |
 | Button group | Toggle buttons with the same `button_group` name, of which at most one is on |
 | Blend mode | How a sprite's color combines with what is under it: `mix`, `add`, `sub`, `mul` or `premul_alpha` |
@@ -511,6 +523,7 @@ OpenAI-compatible servers (including local ones), Anthropic and Gemini; see the
 | Export | A build of a project for one platform, ready for players |
 | Flipbook | An animation that shows a sprite's frames one after another, from a `.frames.json` file |
 | Focus | The one control that gets the keyboard's and gamepad's `ui_*` actions first, which the arrow keys and Tab move |
+| Fallback font | A font a `.font.json` file lists for the characters it lacks, tried in order |
 | Font | A `.ttf` or `.otf` file, or a `.font.json` file naming one with settings |
 | Front end | A way to reach the commands: MCP, JSON-RPC, REST or the CLI |
 | Hot reload | Reloading edited files, and updating prefab instances, while the game runs |
@@ -520,6 +533,7 @@ OpenAI-compatible servers (including local ones), Anthropic and Gemini; see the
 | Journal | `storyboard/journal.jsonl`: who changed which storyboard entries, when and why |
 | JSON Pointer | A path to a value inside JSON, such as `/entities/player/components` (RFC 6901) |
 | Key | A track's value, or event, at one time in an animation |
+| Layout direction | Which way a control lays out: `rtl` mirrors its anchors, offsets, containers and alignment |
 | Legend | A tile map layer's keys, each standing for one tile of its tile set |
 | Light mask | Bits saying which lights reach a sprite or tile layer: those whose cull mask shares one |
 | Mouse filter | Whether a click or tap stops at a control, goes on to its parent too, or passes it by |

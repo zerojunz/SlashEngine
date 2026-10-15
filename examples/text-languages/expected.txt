@@ -1,0 +1,27 @@
+wrote fonts/roboto.ttf
+wrote fonts/arabic.ttf
+wrote fonts/hebrew.ttf
+wrote fonts/japanese.ttf
+wrote fonts/chinese.ttf
+scene.open {"path":"main.scene.json"}
+{"entities":10,"path":"main.scene.json"}
+ui.layout {}
+{"controls":[{"id":"greeting","lines":["שלום, world"],"rect":[16,178,86,22],"rtl":true},{"id":"menu","rect":[16,16,368,160]},{"id":"title","lines":["القائمة الرئيسية"],"rect":[16,16,368,33],"rtl":true},{"id":"buttons","rect":[16,53,368,30]},{"draw_mode":"normal","id":"start","lines":["ابدأ"],"rect":[336,53,48,30],"rtl":true},{"draw_mode":"normal","id":"quit","lines":["خروج"],"rect":[284,53,48,30],"rtl":true},{"id":"loading","lines":["30%"],"rect":[16,87,368,26]},{"id":"version","lines":["الإصدار 1.2 (beta)"],"rect":[16,117,368,22],"rtl":true},{"id":"sign","lines":["出口 Exit"],"rect":[16,206,50,22]},{"id":"sign_chinese","lines":["出口"],"rect":[364,206,20,22]}],"viewport":[400,240]}
+title: fonts/arabic.ttf, fonts/roboto.ttf, fonts/arabic.ttf
+version: fonts/roboto.ttf, fonts/arabic.ttf
+greeting: fonts/roboto.ttf, fonts/hebrew.ttf
+sign: fonts/japanese.ttf, fonts/roboto.ttf
+sign_chinese: fonts/chinese.ttf
+text.measure {"font":"fonts/ui.font.json","text":"الإصدار 1.2 (beta)"}
+{"ascent":17,"line_height":22,"lines":["الإصدار 1.2 (beta)"],"rtl":true,"size":[142,22]}
+text.measure {"direction":"rtl","font":"fonts/ui.font.json","text":"Score: 120"}
+{"ascent":17,"line_height":22,"lines":["Score: 120"],"rtl":true,"size":[75,22]}
+text.measure {"font":"fonts/roboto.ttf","text":"مرحبا"}
+{"ascent":17,"line_height":22,"lines":["مرحبا"],"missing_glyphs":5,"rtl":true,"size":[35,22]}
+component.set {"components":{"Control":{"layout_direction":"ltr"}},"id":"menu"}
+{"changed":{"Control":{"layout_direction":"ltr"}},"id":"menu"}
+ui.layout {"ids":["menu","title","start","quit"]}
+{"controls":[{"id":"menu","rect":[16,16,368,160]},{"id":"title","lines":["القائمة الرئيسية"],"rect":[16,16,368,33],"rtl":true},{"draw_mode":"normal","id":"start","lines":["ابدأ"],"rect":[16,53,48,30],"rtl":true},{"draw_mode":"normal","id":"quit","lines":["خروج"],"rect":[68,53,48,30],"rtl":true}],"viewport":[400,240]}
+undo {}
+{"can_redo":1,"can_undo":0,"undone":"component.set"}
+controls drawn: 8, glyphs drawn: 60
