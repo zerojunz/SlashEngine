@@ -63,7 +63,11 @@ public:
     [[nodiscard]] asset::Assets& assets() noexcept { return assets_; }
     [[nodiscard]] bool headless() const noexcept { return platform_.headless(); }
     // The device drawing to the window: the null device when headless or no GPU backend works.
+    // Its set_vsync changes V-Sync while the game runs, e.g. from an options menu.
     [[nodiscard]] render::RenderDevice& renderer() noexcept { return *renderer_; }
+    // The run loop: its set_max_fps changes the frame cap, and frame_stats says how evenly
+    // frames arrive.
+    [[nodiscard]] platform::Loop& loop() noexcept { return *loop_; }
 
 private:
     Game(Project project, platform::Platform platform, const std::string& data_dir);

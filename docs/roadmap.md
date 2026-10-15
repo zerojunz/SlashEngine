@@ -23,8 +23,9 @@ schema it generates from its own components, and serves every engine action as a
 MCP, JSON-RPC, a localhost REST API and the command line, including while a game runs. A game is
 a folder with a `project.json`, and `slash-cli export` builds it for macOS, Windows, Linux, the
 web, Android or iOS, signs it and can test the result headless. The rest of milestone 4, now in
-progress, builds every platform from one Mac. Games draw through a GPU render device but only
-clear their window so far; sprites and the rest of the 2D renderer follow in milestone 5.
+progress, builds every platform from one Mac. Games draw through a GPU render device, with
+Godot's V-Sync modes and frame cap, but only clear their window so far; sprites and the rest of
+the 2D renderer follow in milestone 5.
 
 ## The path to launch
 
@@ -148,15 +149,17 @@ rendering on top.
       `rendering.clear_color`
 - [ ] A web backend behind `RenderDevice`, since SDL3's GPU API has none: WebGPU, with WebGL2
       for browsers without it. Web games run with the null device until then
-- [ ] Refresh rates and frame pacing, following Godot's settings: the display's modes and
-      refresh rates as data; V-Sync modes (on, off, adaptive, mailbox) and a frame cap (30, 60,
-      120, 240 or unlimited) in `project.json`, changeable while the game runs; rendering
-      interpolated between fixed ticks so high refresh rates look smooth; variable refresh rate
-      (G-Sync, FreeSync, ProMotion) left working by using the right present mode; 120 Hz on
-      phones that support it; frame pacing stats in `perf.stats`
+- [x] Refresh rates and frame pacing, following Godot's settings: the displays, their modes and
+      refresh rates as data (`display.list`); V-Sync modes (disabled, enabled, adaptive,
+      mailbox) and a frame cap (`max_fps`, 0 for none) in `project.json`, changeable while the
+      game runs (`display.set`); variable refresh rate (G-Sync, FreeSync, ProMotion) left working
+      by keeping V-Sync's present mode; 120 Hz on iPhones and Android phones that support it;
+      frame pacing stats in `perf.stats`. The loop reports how far real time is into the next
+      tick, for interpolated drawing
 - [ ] Materials: HLSL shaders plus a JSON material graph agents write directly, starting with
       2D (canvas) materials; milestone 7 adds the PBR inputs
-- [ ] Sprites, sprite sheets and flipbooks
+- [ ] Sprites, sprite sheets and flipbooks, drawn interpolated between fixed ticks so high
+      refresh rates look smooth
 - [ ] Keyframe animation tracks on any reflected property, like Godot's AnimationPlayer
 - [ ] Tilemap layers with terrain autotiling
 - [ ] 2D lights, occluders and normal-mapped sprites
@@ -186,7 +189,8 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
 - [ ] `build.check`: compiles only the changed gameplay files and returns errors as data (file,
       line, message and the compiler's suggested fix), with no build log to read
 - [ ] Job system, so systems run in parallel before the 3D work in milestone 7 needs it
-- [ ] Profiling: Tracy, a `perf.stats` command and a per-system memory report
+- [ ] Profiling: Tracy, per-system timings in `perf.stats` (which reports frame pacing since
+      milestone 5) and a per-system memory report
 - [ ] `ai::Provider` with OpenAI-compatible, Anthropic and Gemini adapters
 - [ ] `ReplayProvider` so tests that use a model run offline
 - [ ] A benchmark of standard agent tasks that counts calls and tokens
@@ -372,12 +376,12 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Particles | CPU and GPU particles, particle graphs in text | 5 | Planned |
 | Audio | miniaudio: buses, effects, 3D spatial audio | 5 | Planned |
 | Input | Rebindable action maps over SDL3, injectable by agents | 5 | Planned |
-| Refresh rates and frame pacing | V-Sync modes, frame cap, display refresh rates, variable refresh rate, rendering interpolated between fixed ticks | 5 | Planned |
+| Refresh rates and frame pacing | V-Sync modes, frame cap, display refresh rates, variable refresh rate, rendering interpolated between fixed ticks | 5 | In part: done except interpolated drawing, which comes with sprites |
 | UI | Retained UI with flexbox layout and themes, defined in text | 5 | Planned |
 | Text and fonts | FreeType, HarfBuzz, MSDF fonts, BiDi, IME input, fallback fonts | 5 | Planned |
 | Navigation | Recast and Detour, 2D and 3D, avoidance | 7 | Planned |
 | Asset import | glTF 2.0, FBX, OBJ, PNG, JPG, KTX2, WAV, OGG, MP3, and `.blend` through the artist's own Blender | 7 | Planned |
-| Profiling | Tracy, plus `perf.stats` over the command API | 6 | Planned |
+| Profiling | Tracy, plus `perf.stats` over the command API | 5, 6 | In part: `perf.stats` reports frame pacing; Tracy and per-system timings are planned for 6 |
 | Asset generation and library | Generated assets saved once and shared by every project and teammate, searched before generating, ranked by agent feedback; 3D models as parametric recipes, cleaned-up generated meshes or imported files, combined into complex assets with variants, reviewed automatically | 6, 7 | Planned: images and audio in 6, 3D in 7 |
 | Global illumination | Baked lightmaps and probe-based GI | 7 | Planned |
 | Sky and volumetrics | Physical sky, volumetric fog | 7 | Planned |

@@ -72,6 +72,13 @@ if(SLASH_BUILD_TOOLS)
 
     add_test(NAME cli_headless_needs_ticks COMMAND slash-cli run --headless)
     set_tests_properties(cli_headless_needs_ticks PROPERTIES WILL_FAIL TRUE)
+    add_test(NAME cli_run_frame_settings
+        COMMAND slash-cli run --headless --ticks 5 --vsync mailbox --max-fps 30)
+    set_tests_properties(cli_run_frame_settings PROPERTIES PASS_REGULAR_EXPRESSION "\"ticks\":5")
+    add_test(NAME cli_run_bad_vsync COMMAND slash-cli run --headless --ticks 5 --vsync on)
+    set_tests_properties(cli_run_bad_vsync PROPERTIES WILL_FAIL TRUE)
+    add_test(NAME cli_run_bad_max_fps COMMAND slash-cli run --headless --ticks 5 --max-fps 1001)
+    set_tests_properties(cli_run_bad_max_fps PROPERTIES WILL_FAIL TRUE)
 
     # Exercises the real-time windowed loop on machines with no display. SDL's "dummy" video
     # driver works on every platform; "offscreen" needs EGL, which macOS lacks.

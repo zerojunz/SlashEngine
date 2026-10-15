@@ -3,6 +3,7 @@
 #include "slash/platform/platform.hpp"
 #include "slash/platform/process.hpp"
 #include "slash/platform/run.hpp"
+#include "slash/render/device.hpp"
 #include "slash/runtime/game.hpp"
 #include "slash/runtime/project.hpp"
 #include "slash/world/components.hpp"
@@ -49,11 +50,16 @@ TEST_CASE("a minimal project gets the defaults") {
     CHECK(project.value().bundle_id() == "com.example.spacepong2");
     CHECK(project.value().clear_color == std::array<float, 4>{0.3F, 0.3F, 0.3F, 1.0F});
     CHECK(project.value().rendering_driver == "auto");
+    CHECK(project.value().vsync_mode == "enabled");
+    CHECK(project.value().max_fps == 0);
 
     project = runtime::parse_project(parse(R"({"format": 1, "name": "?!", "id": "org.me.game",
-        "main_scene": "a.scene.json", "window": {"width": 320}, "tick_hz": 30,
-        "rendering": {"clear_color": [0, 0.5, 1, 1], "driver": "null"}})"));
+        "main_scene": "a.scene.json", "window": {"width": 320, "vsync_mode": "mailbox"},
+        "tick_hz": 30, "max_fps": 120, "rendering": {"clear_color": [0, 0.5, 1, 1],
+        "driver": "null"}})"));
     REQUIRE(project.ok());
+    CHECK(project.value().vsync_mode == "mailbox");
+    CHECK(project.value().max_fps == 120);
     CHECK(project.value().clear_color == std::array<float, 4>{0.0F, 0.5F, 1.0F, 1.0F});
     CHECK(project.value().rendering_driver == "null");
     CHECK(project.value().binary_name() == "Game");
@@ -76,6 +82,11 @@ TEST_CASE("project files are checked field by field") {
     CHECK(error_paths("{" + base + R"(, "window": {"width": 0}})") ==
           std::vector<std::string>{"/window/width"});
     CHECK(error_paths("{" + base + R"(, "tick_hz": 0})") == std::vector<std::string>{"/tick_hz"});
+    CHECK(error_paths("{" + base + R"(, "window": {"vsync_mode": "on"}})") ==
+          std::vector<std::string>{"/window/vsync_mode"});
+    CHECK(error_paths("{" + base + R"(, "max_fps": 1001})") ==
+          std::vector<std::string>{"/max_fps"});
+    CHECK(error_paths("{" + base + R"(, "max_fps": -1})") == std::vector<std::string>{"/max_fps"});
     CHECK(error_paths("{" + base + R"(, "rendering": {"clear_color": [0, 0, 2, 1]}})") ==
           std::vector<std::string>{"/rendering/clear_color/2"});
     CHECK(error_paths("{" + base + R"(, "rendering": {"clear_color": [0, 0, 0]}})") ==
@@ -143,6 +154,21 @@ TEST_CASE("a game loads its main scene and runs headless") {
           100.0F);
     CHECK_FALSE(summary.find("quit_requested")->as_bool());
     CHECK_FALSE(game.value()->frame());
+}
+
+TEST_CASE("a game starts with the project's V-Sync mode and frame cap") {
+    const std::string root = "runtime_frame_settings";
+    REQUIRE(platform::create_directories(root).ok());
+    REQUIRE(
+        platform::write_file(root + "/main.scene.json", R"({"entities": {}, "format": 1})").ok());
+    REQUIRE(platform::write_file(root + "/project.json",
+                                 R"({"format": 1, "name": "G", "main_scene": "main.scene.json",
+                                     "window": {"vsync_mode": "disabled"}, "max_fps": 30})")
+                .ok());
+    auto game = runtime::Game::start({.data_dir = root, .headless = true, .max_ticks = 1});
+    REQUIRE_MESSAGE(game.ok(), (game.ok() ? std::string() : game.error().message));
+    CHECK(game.value()->loop().max_fps() == 30);
+    CHECK(game.value()->renderer().vsync() == slash::render::VsyncMode::Disabled);
 }
 
 TEST_CASE("a game explains what is missing") {

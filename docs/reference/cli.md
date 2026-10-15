@@ -42,6 +42,8 @@ slash-cli run [options]
 | `--headless` | Run with no window or GPU. Requires `--ticks` |
 | `--ticks <n>` | Stop after `n` fixed ticks |
 | `--hz <rate>` | Fixed tick rate in Hz (default 60) |
+| `--vsync <mode>` | `disabled`, `enabled` (default), `adaptive` or `mailbox`; see [project-format.md](project-format.md) |
+| `--max-fps <n>` | Frames per second at most, 0 to 1000; `0` (default) means no cap |
 | `--scene <file>` | Load a `.scene.json` file before the first tick |
 | `--save <file>` | Save the scene to this file after the last tick |
 | `--serve` | Serve the running game over HTTP between ticks (see [serve](#serve)) |
@@ -66,7 +68,9 @@ window shows Godot's default gray.
 
 With `--serve`, the result also carries the server's `url`, and the game takes the `play` and
 `pause` commands: while paused it keeps serving requests but does not step the world, and
-`--ticks` still counts the loop's ticks.
+`--ticks` still counts the loop's ticks. It also takes
+[`display.list`, `display.set` and `perf.stats`](commands.md#display), which list the displays,
+change V-Sync and the frame cap while it runs, and report frame pacing.
 
 Every 15 ticks it checks the files the game has loaded and reloads the ones that changed: an
 edited prefab updates its instances and keeps their overrides (see

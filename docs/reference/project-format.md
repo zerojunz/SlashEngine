@@ -29,10 +29,21 @@ checks it.
 | `tick_hz` | No | `60` | Fixed simulation ticks per second, above 0 and at most 1000 |
 | `window.width` | No | `1280` | Initial window width in pixels, 1 to 16384 |
 | `window.height` | No | `720` | Initial window height in pixels, 1 to 16384 |
+| `window.vsync_mode` | No | `enabled` | How frames wait for the display, as in Godot. `enabled` waits for each refresh, so nothing tears. `disabled` presents at once: the lowest latency, but it may tear. `mailbox` shows the newest finished frame at each refresh: low latency with no tearing. `adaptive` waits unless a frame is late. A mode the GPU or window lacks falls back to `enabled`; SDL's GPU API has no adaptive mode yet, so `adaptive` always does |
+| `max_fps` | No | `0` | Frames per second at most, 0 to 1000, e.g. 30, 60, 120 or 240. `0` means no cap, so V-Sync alone paces frames. Headless runs ignore it |
 | `rendering.clear_color` | No | `[0.3, 0.3, 0.3, 1]` | What the window shows behind everything, as `[r, g, b, a]` from 0 to 1. The default is Godot's gray |
 | `rendering.driver` | No | `auto` | The GPU backend. `auto` takes the first that works: Metal on Apple platforms, Direct3D 12 then Vulkan on Windows, Vulkan on Linux and Android. `vulkan`, `metal` or `d3d12` asks for one, and `null` draws nothing. If none starts, the game logs a warning and runs with the null device, which is also what web games do for now |
 
 Unknown keys are errors, with a "did you mean" suggestion for a misspelled one.
+
+A running game can change `vsync_mode` and `max_fps` with
+[`display.set`](commands.md#displayset), and its own code with `RenderDevice::set_vsync` and
+`Loop::set_max_fps`, e.g. from an options menu. For variable refresh rate (G-Sync, FreeSync,
+ProMotion), keep V-Sync enabled and, as Godot suggests, cap the frame rate a little below the
+display's refresh rate. Exports ask phones for their fastest refresh rate: iOS apps set
+`CADisableMinimumFrameDurationOnPhone`, so iPhones with ProMotion run at 120 Hz, and Android apps
+pick the display's fastest mode at its current resolution. On the web the browser calls each
+frame at the display's rate, and a frame cap sets how often it calls instead.
 
 ## Export presets
 
