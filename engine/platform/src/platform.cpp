@@ -146,6 +146,14 @@ std::vector<Display> Platform::displays() const {
     return out;
 }
 
+WindowSize Platform::window_size() const {
+    WindowSize size;
+    if (window_ != nullptr && !SDL_GetWindowSize(window_, &size.width, &size.height)) {
+        size = {};
+    }
+    return size;
+}
+
 std::string_view Platform::video_driver() const {
     if (headless_) {
         return "none";

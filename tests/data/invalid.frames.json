@@ -1,0 +1,7 @@
+{
+  "animations": {
+    "idle": {"frames": [0, 1]},
+    "walk": {"frames": [0, 4], "hframes": 4, "texture": "hero.png"}
+  },
+  "format": 1
+}

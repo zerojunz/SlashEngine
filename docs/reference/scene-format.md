@@ -77,6 +77,23 @@ A reference must name an entity that exists in the same scene.
 | | `rotation` | `Quat` | `[0, 0, 0, 1]` | Unit quaternion [x, y, z, w]; each element from -1 to 1 |
 | | `scale` | `Vec3` | `[1, 1, 1]` | Scale factor on each axis |
 | `StoryRef` | `ids` | `std::vector<std::string>` | `[]` | The [storyboard](storyboard-format.md) entries this entity stands for, e.g. `["character/mira"]` |
+| `Sprite2D` | `texture` | `std::string` | `""` | Project path of a PNG or BMP file; `""` draws nothing |
+| | `centered` | `bool` | `true` | Center the texture on the position; `false` puts its top left corner there |
+| | `offset` | `Vec2` | `[0, 0]` | Moves the texture from the position, in pixels |
+| | `flip_h`, `flip_v` | `bool` | `false` | Mirror the texture left to right, or top to bottom, in place |
+| | `hframes`, `vframes` | `int` | `1` | Columns and rows of frames in a sprite sheet, 1 to 16384 |
+| | `frame` | `int` | `0` | The sheet's frame to draw, counted along rows from 0 |
+| | `region` | `Vec4` | `[0, 0, 0, 0]` | Part of the texture to use, as [x, y, width, height] in pixels, before splitting it into frames; a zero size uses the whole texture |
+| | `modulate` | `Vec4` | `[1, 1, 1, 1]` | Color the texture is multiplied by, as [r, g, b, a] from 0 to 1 |
+| | `z_index` | `int` | `0` | Higher draws on top, -4096 to 4096; equal values draw in the order the entities were made |
+| | `visible` | `bool` | `true` | Draw it |
+| | `texture_filter` | `std::string` | `"inherit"` | `"linear"`, `"nearest"` (sharp pixel art) or `"inherit"`, which uses the project's `rendering.texture_filter` |
+| `AnimatedSprite2D` | `sprite_frames` | `std::string` | `""` | Project path of a [`.frames.json`](#sprite-frames) file |
+| | `animation` | `std::string` | `"default"` | Name of the animation to play |
+| | `playing` | `bool` | `true` | Advance the animation each tick |
+| | `speed_scale` | `float` | `1` | Multiplies the animation's frames per second; negative plays backwards |
+| | `frame` | `int` | `0` | The animation's current frame, from 0 |
+| | `frame_progress` | `float` | `0` | How far through the current frame, from 0 to 1 |
 
 `engine.describe` lists every registered component with its defaults, including ones a game adds.
 
@@ -199,3 +216,56 @@ instance overrides.
 - Exports copy and validate every prefab with the scenes.
 - `entity.create` with `"extends"` makes an instance and `prefab.save` writes an entity to a
   prefab file (see the [command reference](commands.md)).
+
+## Sprite frames
+
+A `.frames.json` file holds named flipbook animations, like Godot's SpriteFrames resource. An
+entity with `AnimatedSprite2D` plays one of them on its `Sprite2D`, adding a `Sprite2D` if it
+has none: each tick the `animated_sprite_2d` system moves the animation on and sets the sprite's
+`texture`, `hframes`, `vframes` and `frame`. `slash-cli schema frames` prints the schema, and
+`slash-cli scene validate` and `scene format` accept `.frames.json` files.
+
+```json
+{
+  "animations": {
+    "idle": {
+      "fps": 2,
+      "frames": ["sprites/idle_0.png", "sprites/idle_1.png"]
+    },
+    "jump": {
+      "fps": 10,
+      "frames": [2, 3],
+      "hframes": 4,
+      "loop": false,
+      "texture": "sprites/hero.png"
+    },
+    "walk": {
+      "fps": 8,
+      "hframes": 4,
+      "texture": "sprites/hero.png"
+    }
+  },
+  "format": 1
+}
+```
+
+| Key | Required | Meaning |
+| --- | --- | --- |
+| `format` | Yes | Format version. Must be `1` |
+| `animations` | Yes | Animations keyed by name |
+| `animations/<name>/frames` | No | The frames in order. Each is a texture path (the whole image) or a frame number in the animation's sheet, counted along rows from 0. Left out, every frame of the sheet in order |
+| `animations/<name>/texture` | No | The sprite sheet that frame numbers pick from |
+| `animations/<name>/hframes`, `vframes` | No | Columns and rows of frames in the sheet, 1 to 16384 (default 1) |
+| `animations/<name>/fps` | No | Frames per second, 0 or more (default 5) |
+| `animations/<name>/loop` | No | Start again after the last frame (default `true`) |
+
+- A frame changes every `1 / (fps * speed_scale)` seconds of game time, so animations play at
+  the same speed at any tick rate. A negative `speed_scale` plays backwards.
+- An animation that doesn't loop stops on its last frame (its first, when playing backwards),
+  sets `playing` to `false` and emits an `animation_finished` event with
+  `{"animation": "<name>"}`, which `events.subscribe` can wait for.
+- A frame number needs the animation's `texture`, and must be inside its sheet. An animation
+  needs `frames`, or a `texture` to play every frame of.
+- An unknown `animation` name logs one warning, with the closest name ("did you mean"), and the
+  sprite keeps its last frame.
+- Files reload when they change, like every asset.

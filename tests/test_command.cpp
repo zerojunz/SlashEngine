@@ -1152,10 +1152,14 @@ TEST_CASE("engine.describe lists systems in the order they run") {
     world.add_system("movement", [](world::World& /*w*/, double /*dt*/) {},
                      {.doc = "Moves things by their velocity."});
     world.add_system("input", [](world::World& /*w*/, double /*dt*/) {}, {.priority = -1});
-    CHECK(*engine.ok("engine.describe").find("systems") == parse(R"(["input", "movement"])"));
+    // Every session plays AnimatedSprite2D with a built-in system that runs late.
+    CHECK(*engine.ok("engine.describe").find("systems") ==
+          parse(R"(["input", "movement", "animated_sprite_2d"])"));
     CHECK(*engine.ok("engine.describe", R"({"full": true})").find("systems") == parse(R"([
         {"name": "input", "priority": -1},
-        {"name": "movement", "doc": "Moves things by their velocity.", "priority": 0}
+        {"name": "movement", "doc": "Moves things by their velocity.", "priority": 0},
+        {"name": "animated_sprite_2d",
+         "doc": "Plays each AnimatedSprite2D's animation on its Sprite2D.", "priority": 1000}
     ])"));
 }
 
@@ -1257,6 +1261,8 @@ TEST_CASE("schema.get returns scene, component and command schemas") {
           "SlashEngine scene");
     CHECK(engine.ok("schema.get", R"({"kind": "storyboard"})").find("title")->as_string() ==
           "SlashEngine storyboard file");
+    CHECK(engine.ok("schema.get", R"({"kind": "frames"})").find("title")->as_string() ==
+          "SlashEngine sprite frames");
 
     const json::Value health =
         engine.ok("schema.get", R"({"kind": "component", "name": "Health"})");

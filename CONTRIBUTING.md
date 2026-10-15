@@ -85,7 +85,7 @@ If you edited a scene file by hand, validate it and rewrite it in canonical form
   `kPascalCase` constants.
 - **Layout.** Headers in `engine/<module>/include/slash/<module>/`, sources in
   `engine/<module>/src/`. The modules are `core`, `platform`, `render`, `asset`, `world`,
-  `storyboard`, `command`, `server` and `runtime`.
+  `canvas`, `storyboard`, `command`, `server` and `runtime`.
 - **Formatting.** clang-format with the repo's `.clang-format` (4-space indent, 100 columns).
 - **Tests.** Every behavior change comes with a test in `tests/`, and tests must pass headless.
 - **Examples.** Every new feature comes with a small working example in

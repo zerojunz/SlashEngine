@@ -5,6 +5,7 @@
 #include "ios.hpp"
 #include "steps.hpp"
 
+#include "slash/canvas/sprite_frames.hpp"
 #include "slash/core/log.hpp"
 #include "slash/core/text.hpp"
 #include "slash/exporter/android.hpp"
@@ -12,6 +13,7 @@
 #include "slash/exporter/toolchains.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/platform/process.hpp"
+#include "slash/render/image.hpp"
 #include "slash/runtime/project.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
@@ -23,6 +25,7 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <system_error>
 #include <utility>
 #include <vector>
@@ -116,7 +119,51 @@ bool skipped_folder(const fs::path& name) {
     return text.starts_with(".") || text == "build" || text == "game";
 }
 
-// Copies project.json and every scene and prefab into data, validating each on the way.
+// The files a game reads at run time: scenes, prefabs and the assets sprites draw.
+enum class DataFile : std::uint8_t { None, Scene, Prefab, SpriteFrames, Texture };
+
+DataFile data_file(std::string_view name) {
+    if (name.ends_with(world::kPrefabSuffix)) {
+        return DataFile::Prefab;
+    }
+    if (name.ends_with(world::kSceneSuffix)) {
+        return DataFile::Scene;
+    }
+    if (name.ends_with(canvas::kSpriteFramesSuffix)) {
+        return DataFile::SpriteFrames;
+    }
+    if (name.ends_with(".png") || name.ends_with(".bmp")) {
+        return DataFile::Texture;
+    }
+    return DataFile::None;
+}
+
+// Every problem in one of a game's files; none for a file it can use.
+std::vector<json::ValidationError> check_data_file(DataFile kind, std::string_view text,
+                                                   const world::ComponentRegistry& components,
+                                                   const world::FileReader& reader) {
+    if (kind == DataFile::Texture) {
+        if (auto image = render::decode_image(text); !image) {
+            return {{"", image.error().message}};
+        }
+        return {};
+    }
+    auto parsed = json::parse(text);
+    if (!parsed) {
+        return {{"", parsed.error().message}};
+    }
+    switch (kind) {
+    case DataFile::Prefab:
+        return world::validate_prefab(components, parsed.value(), reader);
+    case DataFile::SpriteFrames:
+        return canvas::validate_sprite_frames(parsed.value());
+    default:
+        return world::validate_scene(components, parsed.value(), reader);
+    }
+}
+
+// Copies project.json and every scene, prefab, texture and .frames.json file into data,
+// checking each on the way.
 bool stage_data(const fs::path& project_dir, const runtime::Project& project, const fs::path& data,
                 Failure& failure) {
     std::error_code error;
@@ -146,24 +193,17 @@ bool stage_data(const fs::path& project_dir, const runtime::Project& project, co
             }
             continue;
         }
-        const std::string name = entry.path().filename().string();
-        const bool prefab = name.ends_with(world::kPrefabSuffix);
-        if (!prefab && !name.ends_with(world::kSceneSuffix)) {
+        const DataFile kind = data_file(entry.path().filename().string());
+        if (kind == DataFile::None) {
             continue;
         }
         const fs::path relative = entry.path().lexically_relative(project_dir);
         const std::string file = relative.generic_string();
         found_main = found_main || file == project.main_scene;
         auto text = platform::read_file(entry.path().string());
-        std::vector<json::ValidationError> errors;
-        if (!text) {
-            errors.push_back({"", text.error().message});
-        } else if (auto parsed = json::parse(text.value()); !parsed) {
-            errors.push_back({"", parsed.error().message});
-        } else {
-            errors = prefab ? world::validate_prefab(components, parsed.value(), reader)
-                            : world::validate_scene(components, parsed.value(), reader);
-        }
+        const std::vector<json::ValidationError> errors =
+            text ? check_data_file(kind, text.value(), components, reader)
+                 : std::vector<json::ValidationError>{{"", text.error().message}};
         for (const json::ValidationError& problem : errors) {
             json::Value item;
             item["file"] = file;
