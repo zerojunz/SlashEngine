@@ -4,6 +4,7 @@
 
 #include <SDL3/SDL.h>
 
+#include <algorithm>
 #include <utility>
 
 namespace slash::platform {
@@ -96,6 +97,53 @@ Events Platform::poll_events() {
 
 double Platform::now_seconds() const {
     return static_cast<double>(SDL_GetTicksNS()) / 1e9;
+}
+
+std::vector<Display> Platform::displays() const {
+    std::vector<Display> out;
+    if (headless_) {
+        return out;
+    }
+    const auto to_mode = [](const SDL_DisplayMode& mode) {
+        return DisplayMode{.width = mode.w,
+                           .height = mode.h,
+                           .refresh_rate = mode.refresh_rate,
+                           .pixel_density = mode.pixel_density};
+    };
+    const SDL_DisplayID primary = SDL_GetPrimaryDisplay();
+    const SDL_DisplayID with_window = window_ != nullptr ? SDL_GetDisplayForWindow(window_) : 0;
+    int count = 0;
+    SDL_DisplayID* ids = SDL_GetDisplays(&count);
+    for (int i = 0; ids != nullptr && i < count; ++i) {
+        const SDL_DisplayID id = ids[i];
+        Display display;
+        display.id = id;
+        const char* name = SDL_GetDisplayName(id);
+        display.name = name != nullptr ? name : "";
+        display.primary = id == primary;
+        display.has_window = id == with_window;
+        if (SDL_Rect bounds; SDL_GetDisplayBounds(id, &bounds)) {
+            display.x = bounds.x;
+            display.y = bounds.y;
+            display.width = bounds.w;
+            display.height = bounds.h;
+        }
+        display.content_scale = SDL_GetDisplayContentScale(id);
+        if (const SDL_DisplayMode* mode = SDL_GetCurrentDisplayMode(id); mode != nullptr) {
+            display.mode = to_mode(*mode);
+        }
+        int mode_count = 0;
+        SDL_DisplayMode** modes = SDL_GetFullscreenDisplayModes(id, &mode_count);
+        for (int m = 0; modes != nullptr && m < mode_count; ++m) {
+            display.modes.push_back(to_mode(*modes[m]));
+        }
+        // The list and its modes are one allocation.
+        SDL_free(reinterpret_cast<void*>(modes));
+        out.push_back(std::move(display));
+    }
+    SDL_free(ids);
+    std::stable_partition(out.begin(), out.end(), [](const Display& d) { return d.primary; });
+    return out;
 }
 
 std::string_view Platform::video_driver() const {

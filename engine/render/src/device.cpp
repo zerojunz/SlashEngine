@@ -204,6 +204,12 @@ public:
         return image;
     }
 
+    VsyncMode set_vsync(VsyncMode mode) override {
+        vsync_ = mode;
+        return vsync_;
+    }
+    [[nodiscard]] VsyncMode vsync() const override { return vsync_; }
+
     [[nodiscard]] Stats stats() const override {
         Stats stats = stats_;
         stats.textures = static_cast<std::uint32_t>(textures_.size());
@@ -222,10 +228,27 @@ private:
     TextureId target_ = TextureId::None;
     std::size_t frame_vertices_ = 0;
     std::optional<TextureId> last_texture_;
+    VsyncMode vsync_ = VsyncMode::Enabled;
     Stats stats_;
 };
 
+constexpr std::array<std::string_view, 4> kVsyncModes = {"disabled", "enabled", "adaptive",
+                                                         "mailbox"};
+
 } // namespace
+
+std::string_view vsync_mode_name(VsyncMode mode) {
+    return kVsyncModes.at(static_cast<std::size_t>(mode));
+}
+
+std::optional<VsyncMode> parse_vsync_mode(std::string_view name) {
+    for (std::size_t i = 0; i < kVsyncModes.size(); ++i) {
+        if (kVsyncModes.at(i) == name) {
+            return static_cast<VsyncMode>(i);
+        }
+    }
+    return std::nullopt;
+}
 
 std::string_view backend_name(Backend backend) {
     switch (backend) {

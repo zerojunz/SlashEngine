@@ -2,8 +2,10 @@
 
 #include "slash/core/result.hpp"
 
+#include <cstdint>
 #include <string>
 #include <string_view>
+#include <vector>
 
 struct SDL_Window;
 
@@ -19,6 +21,27 @@ struct Config {
 
 struct Events {
     bool quit_requested = false;
+};
+
+struct DisplayMode {
+    int width = 0; // in screen coordinates; pixels are these times pixel_density
+    int height = 0;
+    float refresh_rate = 0.0F; // Hz, or 0 when the system doesn't say
+    float pixel_density = 1.0F;
+};
+
+struct Display {
+    std::uint32_t id = 0;
+    std::string name;
+    bool primary = false;
+    bool has_window = false; // the game's window is on it
+    int x = 0;               // bounds in screen coordinates
+    int y = 0;
+    int width = 0;
+    int height = 0;
+    float content_scale = 1.0F;     // the system's UI scale, e.g. 2 on a Retina display
+    DisplayMode mode;               // the current mode
+    std::vector<DisplayMode> modes; // its fullscreen modes, largest and fastest first
 };
 
 // Owns the SDL3 platform layer and, unless headless, the main window. Only one Platform may
@@ -46,6 +69,9 @@ public:
 
     // The SDL video driver in use (e.g. "cocoa", "wayland"), or "none" when headless.
     [[nodiscard]] std::string_view video_driver() const;
+
+    // The connected displays, primary first; none when headless.
+    [[nodiscard]] std::vector<Display> displays() const;
 
 private:
     Platform(SDL_Window* window, bool headless) noexcept;

@@ -80,8 +80,9 @@ Result<std::unique_ptr<Game>> Game::start(const GameOptions& options) {
         return make_error(loaded.error().code,
                           game->project_.main_scene + ": " + loaded.error().message);
     }
-    auto loop = platform::Loop::create(
-        game->platform_, {.tick_hz = game->project_.tick_hz, .max_ticks = options.max_ticks});
+    auto loop = platform::Loop::create(game->platform_, {.tick_hz = game->project_.tick_hz,
+                                                         .max_ticks = options.max_ticks,
+                                                         .max_fps = game->project_.max_fps});
     if (!loop) {
         return loop.error();
     }
@@ -92,6 +93,9 @@ Result<std::unique_ptr<Game>> Game::start(const GameOptions& options) {
             : render::create_device_or_null({.window = game->platform_.window(),
                                              .driver = game->project_.rendering_driver,
                                              .debug = false});
+    // The schema only allows known names, so the mode always parses.
+    game->renderer_->set_vsync(
+        render::parse_vsync_mode(game->project_.vsync_mode).value_or(render::VsyncMode::Enabled));
     log::info("game started", {{"name", game->project_.name},
                                {"scene", game->project_.main_scene},
                                {"entities", game->world_.size()},

@@ -63,6 +63,8 @@ Usage:
       --headless                     Run with no window or GPU
       --ticks <n>                    Stop after n fixed ticks (required with --headless)
       --hz <rate>                    Fixed tick rate in Hz (default 60)
+      --vsync <mode>                 disabled, enabled (default), adaptive or mailbox
+      --max-fps <n>                  Frames per second at most; 0 (default) means no cap
       --scene <file>                 Load a .scene.json file before the first tick
       --save <file>                  Save the scene to this file after the last tick
       --serve                        Serve the running game over HTTP (see serve)
@@ -310,6 +312,7 @@ int cmd_run(const std::vector<std::string>& args) {
     slash::platform::Config config;
     config.title = "SlashEngine";
     slash::platform::RunOptions options;
+    slash::render::VsyncMode vsync = slash::render::VsyncMode::Enabled;
     std::string scene_path;
     std::string save_path;
     bool serve = false;
@@ -330,6 +333,21 @@ int cmd_run(const std::vector<std::string>& args) {
             if (!has_value || !parse_double(args[++i], options.tick_hz)) {
                 return usage_error("--hz needs a number");
             }
+        } else if (arg == "--vsync") {
+            const auto mode = has_value ? slash::render::parse_vsync_mode(args[++i])
+                                        : std::optional<slash::render::VsyncMode>();
+            if (!mode) {
+                return usage_error("--vsync needs disabled, enabled, adaptive or mailbox");
+            }
+            vsync = *mode;
+        } else if (arg == "--max-fps") {
+            std::uint64_t max_fps = 0;
+            if (!has_value || !parse_u64(args[++i], max_fps) ||
+                max_fps > static_cast<std::uint64_t>(slash::platform::kMaxFps)) {
+                return usage_error("--max-fps needs a number from 0 to " +
+                                   std::to_string(slash::platform::kMaxFps));
+            }
+            options.max_fps = static_cast<int>(max_fps);
         } else if (arg == "--scene" || arg == "--save") {
             if (!has_value) {
                 return usage_error(arg + " needs a file path");
@@ -389,7 +407,16 @@ int cmd_run(const std::vector<std::string>& args) {
             ? slash::render::create_null_device()
             : slash::render::create_device_or_null(
                   {.window = platform.value().window(), .driver = "auto", .debug = false});
+    renderer->set_vsync(vsync);
     bool draw_failed = false;
+    auto loop = slash::platform::Loop::create(platform.value(), options);
+    if (!loop) {
+        return failure("run failed", loop.error());
+    }
+    // Displays, V-Sync, the frame cap and frame pacing, for agents driving the game with --serve.
+    command::register_live_commands(
+        engine.commands,
+        {.platform = &platform.value(), .loop = &loop.value(), .renderer = renderer.get()});
 
     // With --serve, requests run on this thread between ticks, so they never race the game, and
     // pause stops the world while the loop keeps serving.
@@ -405,8 +432,20 @@ int cmd_run(const std::vector<std::string>& args) {
         endpoint_file.emplace(session_options.project_root, server->endpoint());
     }
 
-    auto stats = slash::platform::run(
-        platform.value(), options,
+    // The null device draws nothing, so it gets no frame callback and the loop yields instead.
+    slash::platform::FrameFn draw_frame;
+    if (renderer->backend() != slash::render::Backend::Null) {
+        draw_frame = [&] {
+            auto drawn =
+                slash::render::draw_empty_frame(*renderer, slash::render::kDefaultClearColor);
+            if (!drawn && !draw_failed) {
+                draw_failed = true;
+                slash::log::warn("drawing a frame failed", {{"error", drawn.error().message}});
+            }
+        };
+    }
+    const slash::platform::RunStats stats = slash::platform::run(
+        loop.value(),
         [&](std::uint64_t tick, double tick_seconds) {
             // Hot reload: pick up edited assets and prefabs.
             if (tick % kAssetPollTicks == 0) {
@@ -419,19 +458,9 @@ int cmd_run(const std::vector<std::string>& args) {
                 game.step(tick_seconds);
             }
         },
-        [&] {
-            auto drawn =
-                slash::render::draw_empty_frame(*renderer, slash::render::kDefaultClearColor);
-            if (!drawn && !draw_failed) {
-                draw_failed = true;
-                slash::log::warn("drawing a frame failed", {{"error", drawn.error().message}});
-            }
-        });
+        draw_frame);
     if (server) {
         server->stop();
-    }
-    if (!stats) {
-        return failure("run failed", stats.error());
     }
 
     if (!save_path.empty()) {
@@ -442,8 +471,8 @@ int cmd_run(const std::vector<std::string>& args) {
     }
 
     json::Value result;
-    result["ticks"] = stats.value().ticks;
-    result["quit_requested"] = stats.value().quit_requested;
+    result["ticks"] = stats.ticks;
+    result["quit_requested"] = stats.quit_requested;
     result["headless"] = config.headless;
     result["renderer"] = slash::render::backend_name(renderer->backend());
     result["entities"] = game.size();
