@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#include <string>
 
 // Checks both devices make, so the null device fails exactly where a GPU device would.
 namespace slash::render::detail {
@@ -38,15 +39,93 @@ template <typename Known>
             return checked;
         }
     }
+    const auto check = [&](TextureId texture) -> Result<void> {
+        if (texture == TextureId::None) {
+            return {};
+        }
+        if (!known(texture)) {
+            return unknown_texture(texture);
+        }
+        if (texture == target) {
+            return target_in_use(texture);
+        }
+        return {};
+    };
     for (const MaterialTexture& slot : material.textures) {
-        if (slot.texture == TextureId::None) {
+        if (auto checked = check(slot.texture); !checked) {
+            return checked;
+        }
+    }
+    if (auto checked = check(material.shading.normal_map); !checked) {
+        return checked;
+    }
+    return check(material.shading.specular_map);
+}
+
+// That the frame's lighting textures still exist when a draw needs them.
+template <typename Known>
+[[nodiscard]] Result<void> check_lighting_textures(const Lighting& lighting, const Known& known) {
+    for (const TextureId texture : {lighting.atlas, lighting.shadow_map}) {
+        if (texture != TextureId::None && !known(texture)) {
+            return unknown_texture(texture);
+        }
+    }
+    return {};
+}
+
+// The frame's lights, and that their textures exist and aren't the frame's target. size gives a
+// known texture's width and height.
+template <typename Known, typename Size>
+[[nodiscard]] Result<void> check_lighting(const Lighting& lighting, TextureId target,
+                                          const Known& known, const Size& size) {
+    if (lighting.lights.size() > kMaxLights) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "a frame takes up to " + std::to_string(kMaxLights) + " lights, not " +
+                              std::to_string(lighting.lights.size()));
+    }
+    for (std::size_t i = 0; i < lighting.lights.size(); ++i) {
+        const Light& light = lighting.lights[i];
+        if (light.blend != BlendMode::Add && light.blend != BlendMode::Sub &&
+            light.blend != BlendMode::Mix) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "light " + std::to_string(i) + " blends with " +
+                                  std::string(blend_mode_name(light.blend)) +
+                                  "; lights add, sub or mix");
+        }
+        if (light.shadow_row >= 0 && (!(light.shadow_far > 0.0F) || !(light.shadow_span > 0.0F))) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "light " + std::to_string(i) +
+                                  " has shadows, so its shadow_far and shadow_span are above 0");
+        }
+    }
+    for (const TextureId texture : {lighting.atlas, lighting.shadow_map}) {
+        if (texture == TextureId::None) {
             continue;
         }
-        if (!known(slot.texture)) {
-            return unknown_texture(slot.texture);
+        if (!known(texture)) {
+            return unknown_texture(texture);
         }
-        if (slot.texture == target) {
-            return target_in_use(slot.texture);
+        if (texture == target) {
+            return target_in_use(texture);
+        }
+    }
+    for (std::size_t i = 0; i < lighting.lights.size(); ++i) {
+        const std::int32_t row = lighting.lights[i].shadow_row;
+        if (row < 0) {
+            continue;
+        }
+        if (lighting.shadow_map == TextureId::None) {
+            return make_error(ErrorCode::InvalidArgument, "light " + std::to_string(i) +
+                                                              " has shadows but the frame has no "
+                                                              "shadow map");
+        }
+        const auto [width, height] = size(lighting.shadow_map);
+        if (width != kShadowMapWidth || static_cast<std::uint32_t>(row) >= height) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "light " + std::to_string(i) + "'s shadow row " +
+                                  std::to_string(row) + " is outside the " + std::to_string(width) +
+                                  "x" + std::to_string(height) + " shadow map, which is " +
+                                  std::to_string(kShadowMapWidth) + " texels wide");
         }
     }
     return {};

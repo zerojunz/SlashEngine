@@ -147,6 +147,11 @@ CanvasRenderer::~CanvasRenderer() {
     for (const auto& [key, texture] : textures_) {
         device_->destroy_texture(texture.id);
     }
+    for (const render::TextureId texture : {atlas_, shadow_map_}) {
+        if (texture != render::TextureId::None) {
+            device_->destroy_texture(texture);
+        }
+    }
 }
 
 void CanvasRenderer::before_tick(const world::World& world) {
@@ -158,6 +163,18 @@ void CanvasRenderer::before_tick(const world::World& world) {
     }
     for (const auto [entity, transform, layer] :
          ecs.view<const world::Transform2D, const world::TileMapLayer>().each()) {
+        previous_.emplace(entity, transform);
+    }
+    for (const auto [entity, transform, light] :
+         ecs.view<const world::Transform2D, const world::PointLight2D>().each()) {
+        previous_.emplace(entity, transform);
+    }
+    for (const auto [entity, transform, light] :
+         ecs.view<const world::Transform2D, const world::DirectionalLight2D>().each()) {
+        previous_.emplace(entity, transform);
+    }
+    for (const auto [entity, transform, occluder] :
+         ecs.view<const world::Transform2D, const world::LightOccluder2D>().each()) {
         previous_.emplace(entity, transform);
     }
 }
@@ -198,6 +215,137 @@ const CanvasRenderer::LayerCells& CanvasRenderer::cells(entt::entity entity,
         cached.cells = decoded ? std::move(decoded).value() : Cells{};
     }
     return cached;
+}
+
+Result<const render::Image*> CanvasRenderer::light_image(const std::string& path) {
+    auto it = light_images_.find(path);
+    if (it == light_images_.end()) {
+        auto loaded = assets_->load<render::Image>(path);
+        if (!loaded) {
+            return loaded.error();
+        }
+        it = light_images_.emplace(path, std::move(loaded).value()).first;
+    }
+    return it->second.get();
+}
+
+render::Lighting CanvasRenderer::lighting(const world::World& world,
+                                          const TransformOf& transform_of) {
+    constexpr std::string_view kEvent = "a light can't shine";
+    const auto images = [this](const std::string& path) { return light_image(path); };
+    std::vector<LightProblem> problems;
+    SceneLighting scene = collect_lighting(world, images, transform_of, problems, &shadow_cache_);
+    const auto name_of = [&](entt::entity entity) {
+        const std::string_view id = world.id_of(entity);
+        return id.empty() ? "entity " + std::to_string(entt::to_entity(entity)) : std::string(id);
+    };
+    for (const LightProblem& problem : problems) {
+        warn_once(name_of(problem.entity), problem.message, "id", kEvent);
+    }
+    lit_ = scene.lit;
+    render::Lighting out;
+    if (!scene.lit) {
+        // Nothing lights the world now: let the light textures go.
+        for (render::TextureId* texture : {&atlas_, &shadow_map_}) {
+            if (*texture != render::TextureId::None) {
+                device_->destroy_texture(*texture);
+                *texture = render::TextureId::None;
+            }
+        }
+        atlas_key_.clear();
+        atlas_rects_.clear();
+        shadow_rows_ = 0;
+        shadow_pixels_.clear();
+        return out;
+    }
+    out.ambient = {
+        .r = scene.ambient[0], .g = scene.ambient[1], .b = scene.ambient[2], .a = scene.ambient[3]};
+
+    // The atlas, packed again when a light texture comes, goes or changes.
+    std::vector<std::pair<std::string, std::uint64_t>> key;
+    for (const SceneLight& light : scene.lights) {
+        if (light.light.kind != render::LightKind::Point) {
+            continue;
+        }
+        const std::uint64_t version =
+            light.texture.empty() ? 0 : light_images_.at(light.texture).version();
+        if (std::ranges::find(key, std::pair{light.texture, version}) == key.end()) {
+            key.emplace_back(light.texture, version);
+        }
+    }
+    if (key != atlas_key_) {
+        if (atlas_ != render::TextureId::None) {
+            device_->destroy_texture(atlas_);
+            atlas_ = render::TextureId::None;
+        }
+        atlas_key_.clear();
+        atlas_rects_.clear();
+        if (!key.empty()) {
+            auto atlas = pack_light_atlas(scene.lights, images);
+            if (!atlas) {
+                warn_once("atlas", atlas.error().message, "lights", kEvent);
+            } else if (auto made = device_->create_texture({.width = atlas.value().width,
+                                                            .height = atlas.value().height,
+                                                            .filter = render::Filter::Linear,
+                                                            .render_target = false},
+                                                           atlas.value().pixels);
+                       !made) {
+                warn_once("atlas", made.error().message, "lights", kEvent);
+            } else {
+                atlas_ = made.value();
+                atlas_key_ = key;
+                for (const SceneLight& light : scene.lights) {
+                    atlas_rects_[light.texture] = light.light.atlas_rect;
+                }
+            }
+        }
+    }
+    for (SceneLight& light : scene.lights) {
+        if (light.light.kind != render::LightKind::Point) {
+            out.lights.push_back(light.light);
+        } else if (const auto rect = atlas_rects_.find(light.texture); rect != atlas_rects_.end()) {
+            light.light.atlas_rect = rect->second;
+            out.lights.push_back(light.light);
+        }
+    }
+    out.atlas = atlas_;
+
+    // The shadow map, uploaded when its rows change.
+    if (scene.shadow_rows != shadow_rows_ && shadow_map_ != render::TextureId::None) {
+        device_->destroy_texture(shadow_map_);
+        shadow_map_ = render::TextureId::None;
+        shadow_pixels_.clear();
+    }
+    shadow_rows_ = scene.shadow_rows;
+    if (scene.shadow_rows > 0) {
+        Result<void> uploaded;
+        if (shadow_map_ == render::TextureId::None) {
+            auto made = device_->create_texture({.width = render::kShadowMapWidth,
+                                                 .height = scene.shadow_rows,
+                                                 .filter = render::Filter::Nearest,
+                                                 .render_target = false},
+                                                scene.shadow_pixels);
+            if (made) {
+                shadow_map_ = made.value();
+            } else {
+                uploaded = made.error();
+            }
+        } else if (scene.shadow_pixels != shadow_pixels_) {
+            uploaded = device_->update_texture(shadow_map_, scene.shadow_pixels);
+        }
+        if (!uploaded || shadow_map_ == render::TextureId::None) {
+            if (!uploaded) {
+                warn_once("shadow map", uploaded.error().message, "lights", kEvent);
+            }
+            for (render::Light& light : out.lights) {
+                light.shadow_row = -1;
+            }
+        } else {
+            shadow_pixels_ = std::move(scene.shadow_pixels);
+            out.shadow_map = shadow_map_;
+        }
+    }
+    return out;
 }
 
 Result<const CanvasRenderer::Texture*> CanvasRenderer::texture(const std::string& path,
@@ -244,7 +392,8 @@ Result<const CanvasRenderer::Texture*> CanvasRenderer::texture(const std::string
 }
 
 Result<render::Material> CanvasRenderer::material(const world::Sprite2D& sprite,
-                                                  render::Filter filter, double time) {
+                                                  render::Filter filter, double time,
+                                                  render::LightMode* light_mode) {
     auto it = materials_.find(sprite.material);
     if (it == materials_.end()) {
         auto loaded = assets_->load<CanvasMaterial>(sprite.material);
@@ -261,6 +410,7 @@ Result<render::Material> CanvasRenderer::material(const world::Sprite2D& sprite,
     }
     render::Material out;
     out.blend = instance.value().blend;
+    *light_mode = instance.value().light_mode;
     out.program = std::move(instance.value().program);
     for (std::size_t slot = 0; slot < out.textures.size(); ++slot) {
         const MaterialTextureRef& ref = instance.value().textures.at(slot);
@@ -304,6 +454,17 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         }
         return current;
     };
+    const render::Lighting lights = lighting(world, transform_of);
+    // How lights shade a sprite or layer: not at all in an unlit world.
+    const auto shading_for = [&](render::LightMode mode, int light_mask, int z_index) {
+        render::Shading shading;
+        if (lit_) {
+            shading.mode = mode;
+            shading.light_mask = static_cast<std::uint32_t>(std::max(light_mask, 0));
+            shading.z_index = z_index;
+        }
+        return shading;
+    };
     for (const auto [entity, current, sprite] :
          ecs.view<const world::Transform2D, const world::Sprite2D>().each()) {
         if (!sprite.visible || sprite.texture.empty()) {
@@ -316,13 +477,33 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             continue;
         }
         render::Material material;
+        render::LightMode light_mode = render::LightMode::Normal;
         if (!sprite.material.empty()) {
-            auto made = this->material(sprite, filter, options.time);
+            auto made = this->material(sprite, filter, options.time, &light_mode);
             if (!made) {
                 warn_once(sprite.material, made.error().message, "material");
                 continue;
             }
             material = std::move(made).value();
+        }
+        material.shading = shading_for(light_mode, sprite.light_mask, sprite.z_index);
+        if (material.shading.mode != render::LightMode::Unshaded) {
+            // Normal and specular maps, left out with a warning if they don't load.
+            for (const auto& [path, slot] :
+                 {std::pair{&sprite.normal_texture, &material.shading.normal_map},
+                  std::pair{&sprite.specular_texture, &material.shading.specular_map}}) {
+                if (path->empty()) {
+                    continue;
+                }
+                if (auto map = this->texture(*path, filter); map) {
+                    *slot = map.value()->id;
+                } else {
+                    warn_once(*path, map.error().message, "texture");
+                }
+            }
+            material.shading.specular = {sprite.specular_color.x, sprite.specular_color.y,
+                                         sprite.specular_color.z,
+                                         sprite.specular_color.w * sprite.specular_shininess};
         }
         auto quad = sprite_quad(sprite, transform_of(entity, current), texture.value()->width,
                                 texture.value()->height);
@@ -405,13 +586,16 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
                 continue;
             }
             if (run == kNoRun || items[run].texture != texture.value()->id) {
+                render::Material material;
+                material.shading =
+                    shading_for(render::LightMode::Normal, layer.light_mask, layer.z_index);
                 items.push_back({.z_index = layer.z_index,
                                  .order = static_cast<std::uint32_t>(entt::to_entity(entity)),
                                  .part = part++,
                                  .texture = texture.value()->id,
                                  .first = vertices.size(),
                                  .count = 0,
-                                 .material = {}});
+                                 .material = std::move(material)});
                 run = items.size() - 1;
             }
             // The tile's region, centered on its cell.
@@ -446,14 +630,19 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
 
     // The null device stands in for a window it doesn't have, as draw_empty_frame allows: the
     // sprites and tiles are checked and counted, and nothing is drawn.
+    const std::size_t shadows = static_cast<std::size_t>(std::ranges::count_if(
+        lights.lights, [](const render::Light& l) { return l.shadow_row >= 0; }));
     if (options.target == render::TextureId::None && device_->backend() == render::Backend::Null) {
         sprites_drawn_ = sprites;
         tiles_drawn_ = tiles;
+        lights_drawn_ = lights.lights.size();
+        shadows_drawn_ = shadows;
         return {};
     }
     render::Frame frame;
     frame.target = options.target;
     frame.clear = options.clear;
+    frame.lighting = lights;
     if (options.width > 0.0F && options.height > 0.0F) {
         frame.view = render::pixel_projection(options.width, options.height);
     }
@@ -470,6 +659,8 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
     }
     sprites_drawn_ = began.value() ? sprites : 0;
     tiles_drawn_ = began.value() ? tiles : 0;
+    lights_drawn_ = began.value() ? lights.lights.size() : 0;
+    shadows_drawn_ = began.value() ? shadows : 0;
     return device_->end_frame();
 }
 

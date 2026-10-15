@@ -93,6 +93,11 @@ A reference must name an entity that exists in the same scene.
 | | `texture_filter` | `std::string` | `"inherit"` | `"linear"`, `"nearest"` (sharp pixel art) or `"inherit"`, which uses the project's `rendering.texture_filter` |
 | | `material` | `std::string` | `""` | Project path of a [`.material.json`](#materials) file, which colors the sprite's pixels; `""` draws the texture as it is |
 | | `material_params` | `std::map<std::string, json::Value>` | `{}` | Values for the material's params by name, replacing their defaults, e.g. `{"flash": 1}` |
+| | `light_mask` | `int` | `1` | [Lit](#2d-lights) by lights whose `range_item_cull_mask` shares a bit, 0 to 1048575 (Godot's 20 layers) |
+| | `normal_texture` | `std::string` | `""` | Project path of a normal map laid out as the texture: OpenGL style, green up, blue toward the viewer. Lights need a `height` to show it |
+| | `specular_texture` | `std::string` | `""` | Project path of a specular map laid out as the texture: highlight color and, in alpha, shininess. Needs a `normal_texture` |
+| | `specular_color` | `Vec4` | `[1, 1, 1, 1]` | Multiplies the specular map's color |
+| | `specular_shininess` | `float` | `1` | Multiplies the specular map's shininess, 0 to 1 |
 | `AnimatedSprite2D` | `sprite_frames` | `std::string` | `""` | Project path of a [`.frames.json`](#sprite-frames) file |
 | | `animation` | `std::string` | `"default"` | Name of the animation to play |
 | | `playing` | `bool` | `true` | Advance the animation each tick |
@@ -113,6 +118,31 @@ A reference must name an entity that exists in the same scene.
 | | `visible` | `bool` | `true` | Draw it |
 | | `modulate` | `Vec4` | `[1, 1, 1, 1]` | Color every tile is multiplied by, as [r, g, b, a] from 0 to 1 |
 | | `texture_filter` | `std::string` | `"inherit"` | `"linear"`, `"nearest"` (sharp pixel art) or `"inherit"`, which uses the project's `rendering.texture_filter` |
+| | `light_mask` | `int` | `1` | [Lit](#2d-lights) by lights whose `range_item_cull_mask` shares a bit |
+| `PointLight2D` | `enabled` | `bool` | `true` | Shine |
+| | `texture` | `std::string` | `""` | Project path of a PNG or BMP file whose color and alpha shape the light; `""` is a soft round light 256 pixels across |
+| | `texture_scale` | `float` | `1` | Scales the texture |
+| | `offset` | `Vec2` | `[0, 0]` | Moves the texture from the light, in pixels |
+| | `color` | `Vec4` | `[1, 1, 1, 1]` | The light's color, as [r, g, b, a] from 0 to 1 |
+| | `energy` | `float` | `1` | Multiplies the color |
+| | `blend_mode` | `std::string` | `"add"` | How the light changes what it lights: `add` brightens, `sub` darkens and `mix` blends toward its color |
+| | `height` | `float` | `0` | Pixels above the plane, for normal maps: at 0 it lights them only from the side |
+| | `range_z_min`, `range_z_max` | `int` | `-1024`, `1024` | Lights sprites and layers whose `z_index` is in this range |
+| | `range_item_cull_mask` | `int` | `1` | Lights sprites and layers whose `light_mask` shares a bit |
+| | `shadow_enabled` | `bool` | `false` | `LightOccluder2D` polygons cast shadows from it |
+| | `shadow_color` | `Vec4` | `[0, 0, 0, 0]` | What shadowed pixels get instead of the light; alpha is times the light's |
+| | `shadow_filter` | `std::string` | `"none"` | Shadow edges: hard (`none`), or softened over 5 or 13 samples (`pcf5`, `pcf13`) |
+| | `shadow_filter_smooth` | `float` | `0` | Spreads the filter's samples further apart |
+| | `shadow_item_cull_mask` | `int` | `1` | Occluders whose `occluder_light_mask` shares a bit cast shadows |
+| `DirectionalLight2D` | `enabled`, `color`, `energy`, `blend_mode` | | | As `PointLight2D`'s. It lights everything, down the screen turned by its `Transform2D` rotation |
+| | `height` | `float` | `0` | For normal maps: from 0, along the plane, to 1, straight down onto it |
+| | `max_distance` | `float` | `10000` | How far shadows reach past their occluders, in pixels |
+| | `range_*`, `shadow_*` | | | As `PointLight2D`'s |
+| `LightOccluder2D` | `polygon` | `std::vector<Vec2>` | `[]` | Points as [x, y] in pixels, placed by the entity's `Transform2D` |
+| | `closed` | `bool` | `true` | Join the last point to the first |
+| | `cull_mode` | `std::string` | `"disabled"` | `clockwise` or `counter_clockwise` leaves out edges that run that way around the light, as seen on screen |
+| | `occluder_light_mask` | `int` | `1` | Casts shadows from lights whose `shadow_item_cull_mask` shares a bit |
+| `CanvasModulate` | `color` | `Vec4` | `[1, 1, 1, 1]` | Tints everything lit: the light a scene has where no light reaches. One per scene |
 
 `engine.describe` lists every registered component with its defaults, including ones a game adds.
 
@@ -326,6 +356,7 @@ returns the colors a material draws. [examples/materials](../../examples/materia
 | `params/<name>/filter` | No | Textures: `inherit` (the sprite's filter, the default), `linear` or `nearest` |
 | `params/<name>/doc` | No | What the param does, for whoever sets it |
 | `blend` | No | How the color combines with what is under it, as Godot's blend modes: `mix` (default), `add`, `sub`, `mul` or `premul_alpha` |
+| `light_mode` | No | How [2D lights](#2d-lights) shade it, as Godot's: `normal` (default), `unshaded` (lights and `CanvasModulate` leave it alone) or `light_only` (visible only where lights reach) |
 
 An arg is a number, an array of 2 to 4 numbers, a node written in place, or a name: a node in
 `nodes`, a param, or an input. A name can pick components after a dot, from `xyzw` or `rgba`:
@@ -544,3 +575,45 @@ the rows that changed:
   can't draw, or a tile outside its texture, logs one warning and draws the rest.
 - Square tiles only for now; isometric and hexagonal shapes are on the
   [roadmap](../roadmap.md).
+
+## 2D lights
+
+Lights follow Godot's 2D lighting. Draws are unshaded until a scene has an enabled light or a
+`CanvasModulate`. Then each lit pixel of a sprite or tile layer starts from the color its
+material made, times the `CanvasModulate` color (the ambient light, white if there is none), and
+each light whose `range_item_cull_mask` shares a bit with the draw's `light_mask`, and whose z
+range holds its `z_index`, adds its color times that pixel color, subtracts it or mixes toward
+it. [examples/lights-2d](../../examples/lights-2d/) has a torch, the moon, a shadow and a normal
+map.
+
+```json
+"torch": {
+  "components": {
+    "PointLight2D": {"color": [1.0, 0.75, 0.45, 1.0], "energy": 1.4, "shadow_enabled": true},
+    "Transform2D": {"position": [96.0, 90.0]}
+  }
+}
+```
+
+- A `PointLight2D`'s texture is centered on it (plus `offset`), `texture_scale` times its size
+  and turned and scaled by its `Transform2D`; it reaches only where the texture does. The light
+  adds `color` × `energy` × the texture's color and alpha.
+- A `DirectionalLight2D` reaches everywhere. At rotation 0 its light travels down the screen;
+  positive rotations turn it clockwise.
+- With a `normal_texture`, a pixel takes a light by the angle between its normal and the light:
+  for a point light, toward its position raised `height` pixels; for a directional light, its
+  direction tipped `height` of the way toward the viewer. A `specular_texture` adds Blinn-Phong
+  highlights. Without a normal map, a pixel faces the viewer and takes each light whole.
+- `LightOccluder2D` polygons cast shadows from lights with `shadow_enabled`, when its
+  `occluder_light_mask` shares a bit with the light's `shadow_item_cull_mask`. Shadows begin at
+  the first edge a ray from the light crosses, so an occluder with `cull_mode` `disabled`
+  shadows its own sprite. For a polygon wound clockwise on screen, `counter_clockwise` leaves
+  out the edges facing the light, so the shadow starts at its far side and its sprite is lit.
+  A directional light's shadows reach `max_distance` pixels past their occluders.
+- A frame takes up to 64 lights, in the order their entities were made; more, a light whose
+  texture doesn't load, or a second `CanvasModulate` is left out with one warning in the log.
+- A material's `light_mode` opts a sprite out of lighting (`unshaded`, for glowing signs and UI)
+  or shows it only where lights reach (`light_only`).
+- [`light.sample`](commands.md#lightsample) computes the color a white pixel gets at points, and
+  which lights reach them, the way the GPU does, so an agent checks lighting without a
+  screenshot.

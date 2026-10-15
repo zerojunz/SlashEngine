@@ -143,7 +143,17 @@ public:
         if (!it->second.desc.render_target) {
             return detail::not_a_render_target(frame.target);
         }
+        if (auto checked = detail::check_lighting(
+                frame.lighting, frame.target, [&](TextureId id) { return textures_.contains(id); },
+                [&](TextureId id) {
+                    const TextureDesc& desc = textures_.at(id).desc;
+                    return std::pair{desc.width, desc.height};
+                });
+            !checked) {
+            return checked.error();
+        }
         it->second.cleared = detail::to_rgba8(frame.clear);
+        lighting_ = frame.lighting;
         in_frame_ = true;
         target_ = frame.target;
         frame_vertices_ = 0;
@@ -168,6 +178,11 @@ public:
             return checked;
         }
         if (auto checked = check_vertices(vertices, frame_vertices_); !checked) {
+            return checked;
+        }
+        if (auto checked = detail::check_lighting_textures(
+                lighting_, [&](TextureId id) { return textures_.contains(id); });
+            !checked) {
             return checked;
         }
         if (vertices.empty()) {
@@ -239,6 +254,7 @@ private:
     std::size_t frame_vertices_ = 0;
     std::optional<TextureId> last_texture_;
     Material last_material_;
+    Lighting lighting_;
     VsyncMode vsync_ = VsyncMode::Enabled;
     Stats stats_;
 };

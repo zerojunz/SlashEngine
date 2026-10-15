@@ -62,6 +62,7 @@ as `entity.get`, reject it as an unknown param.
 | Materials | [`material.eval`](#materialeval) |
 | Animations | [`animation.eval`](#animationeval) |
 | Tile maps | [`tilemap.paint`](#tilemappaint), [`tilemap.set`](#tilemapset), [`tilemap.get`](#tilemapget) |
+| Lights | [`light.sample`](#lightsample) |
 | Storyboard | [`storyboard.query`](#storyboardquery), [`storyboard.brief`](#storyboardbrief), [`storyboard.check`](#storyboardcheck), [`storyboard.edit`](#storyboardedit) |
 | Components | [`component.set`](#componentset), [`component.remove`](#componentremove) |
 | Query | [`world.query`](#worldquery) |
@@ -93,7 +94,7 @@ Needs: `read`.
 ```
 
 ```json
-{"capabilities":["read","edit","run","filesystem","build"],"commands":["animation.eval","asset.list","batch","component.remove","component.set","engine.describe","entity.create","entity.destroy","entity.get","events.read","events.subscribe","events.unsubscribe","export.run","history.get","log.tail","material.eval","prefab.save","redo","run.until","scene.get","scene.new","scene.open","scene.save","schema.get","step","storyboard.brief","storyboard.check","storyboard.edit","storyboard.query","tilemap.get","tilemap.paint","tilemap.set","undo","world.diff","world.query","world.restore","world.snapshot"],"components":[{"defaults":{"position":[0.0,0.0],"rotation":0.0,"scale":[1.0,1.0]},"doc":"Position, rotation and scale in 2D. Units are pixels and y points down.","name":"Transform2D"},{"defaults":{"position":[0.0,0.0,0.0],"rotation":[0.0,0.0,0.0,1.0],"scale":[1.0,1.0,1.0]},"doc":"Position, rotation and scale in 3D. Units are meters and y points up.","name":"Transform3D"},{"defaults":{"ids":[]},"doc":"The storyboard entries this entity stands for.","name":"StoryRef"},{"defaults":{"centered":true,"flip_h":false,"flip_v":false,"frame":0,"hframes":1,"material":"","material_params":{},"modulate":[1.0,1.0,1.0,1.0],"offset":[0.0,0.0],"region":[0.0,0.0,0.0,0.0],"texture":"","texture_filter":"inherit","vframes":1,"visible":true,"z_index":0},"doc":"A texture drawn at the entity's Transform2D. Sprites draw in order of z_index, then in the order their entities were made.","name":"Sprite2D"},{"defaults":{"animation":"default","frame":0,"frame_progress":0.0,"playing":true,"speed_scale":1.0,"sprite_frames":""},"doc":"Plays an animation from a .frames.json file on the entity's Sprite2D, which it adds if missing. Emits animation_finished when an animation that doesn't loop ends.","name":"AnimatedSprite2D"},{"defaults":{"animation":"","backwards":false,"library":"","playing":true,"speed_scale":1.0,"time":0.0},"doc":"Plays a keyframe animation from a .anim.json file on the entity's components. Emits animation_finished when an animation that doesn't loop ends, and the events of its event tracks.","name":"AnimationPlayer"},{"defaults":{"legend":{},"modulate":[1.0,1.0,1.0,1.0],"origin":[0,0],"rows":[],"texture_filter":"inherit","tile_set":"","visible":true,"z_index":0},"doc":"A grid of tiles from a .tileset.json file, drawn at the entity's Transform2D if it has one. Cells are text: rows of legend keys, \".\" for empty. Edit them with tilemap.paint and tilemap.set.","name":"TileMapLayer"}],"engine":{"name":"SlashEngine","version":"0.1.0"},"scene":{"entities":0,"path":"","tick":0},"systems":["animation_player","animated_sprite_2d"]}
+{"capabilities":["read","edit","run","filesystem","build"],"commands":["animation.eval","asset.list","batch","component.remove","component.set","engine.describe","entity.create","entity.destroy","entity.get","events.read","events.subscribe","events.unsubscribe","export.run","history.get","light.sample","log.tail","material.eval","prefab.save","redo","run.until","scene.get","scene.new","scene.open","scene.save","schema.get","step","storyboard.brief","storyboard.check","storyboard.edit","storyboard.query","tilemap.get","tilemap.paint","tilemap.set","undo","world.diff","world.query","world.restore","world.snapshot"],"components":[{"defaults":{"position":[0.0,0.0],"rotation":0.0,"scale":[1.0,1.0]},"doc":"Position, rotation and scale in 2D. Units are pixels and y points down.","name":"Transform2D"},{"defaults":{"position":[0.0,0.0,0.0],"rotation":[0.0,0.0,0.0,1.0],"scale":[1.0,1.0,1.0]},"doc":"Position, rotation and scale in 3D. Units are meters and y points up.","name":"Transform3D"},{"defaults":{"ids":[]},"doc":"The storyboard entries this entity stands for.","name":"StoryRef"},{"defaults":{"centered":true,"flip_h":false,"flip_v":false,"frame":0,"hframes":1,"light_mask":1,"material":"","material_params":{},"modulate":[1.0,1.0,1.0,1.0],"normal_texture":"","offset":[0.0,0.0],"region":[0.0,0.0,0.0,0.0],"specular_color":[1.0,1.0,1.0,1.0],"specular_shininess":1.0,"specular_texture":"","texture":"","texture_filter":"inherit","vframes":1,"visible":true,"z_index":0},"doc":"A texture drawn at the entity's Transform2D. Sprites draw in order of z_index, then in the order their entities were made.","name":"Sprite2D"},{"defaults":{"animation":"default","frame":0,"frame_progress":0.0,"playing":true,"speed_scale":1.0,"sprite_frames":""},"doc":"Plays an animation from a .frames.json file on the entity's Sprite2D, which it adds if missing. Emits animation_finished when an animation that doesn't loop ends.","name":"AnimatedSprite2D"},{"defaults":{"animation":"","backwards":false,"library":"","playing":true,"speed_scale":1.0,"time":0.0},"doc":"Plays a keyframe animation from a .anim.json file on the entity's components. Emits animation_finished when an animation that doesn't loop ends, and the events of its event tracks.","name":"AnimationPlayer"},{"defaults":{"legend":{},"light_mask":1,"modulate":[1.0,1.0,1.0,1.0],"origin":[0,0],"rows":[],"texture_filter":"inherit","tile_set":"","visible":true,"z_index":0},"doc":"A grid of tiles from a .tileset.json file, drawn at the entity's Transform2D if it has one. Cells are text: rows of legend keys, \".\" for empty. Edit them with tilemap.paint and tilemap.set.","name":"TileMapLayer"},{"defaults":{"blend_mode":"add","color":[1.0,1.0,1.0,1.0],"enabled":true,"energy":1.0,"height":0.0,"offset":[0.0,0.0],"range_item_cull_mask":1,"range_z_max":1024,"range_z_min":-1024,"shadow_color":[0.0,0.0,0.0,0.0],"shadow_enabled":false,"shadow_filter":"none","shadow_filter_smooth":0.0,"shadow_item_cull_mask":1,"texture":"","texture_scale":1.0},"doc":"A light shining from the entity's Transform2D through a texture. It lights sprites and tile map layers whose light_mask shares a bit with range_item_cull_mask; with shadow_enabled, LightOccluder2D polygons cast shadows from it.","name":"PointLight2D"},{"defaults":{"blend_mode":"add","color":[1.0,1.0,1.0,1.0],"enabled":true,"energy":1.0,"height":0.0,"max_distance":10000.0,"range_item_cull_mask":1,"range_z_max":1024,"range_z_min":-1024,"shadow_color":[0.0,0.0,0.0,0.0],"shadow_enabled":false,"shadow_filter":"none","shadow_filter_smooth":0.0,"shadow_item_cull_mask":1},"doc":"Light from one direction over everything, such as the sun. It shines down the screen, turned by the entity's Transform2D rotation. Masks, ranges and shadows work as PointLight2D's.","name":"DirectionalLight2D"},{"defaults":{"closed":true,"cull_mode":"disabled","occluder_light_mask":1,"polygon":[]},"doc":"A polygon that casts shadows from lights with shadow_enabled, placed by the entity's Transform2D.","name":"LightOccluder2D"},{"defaults":{"color":[1.0,1.0,1.0,1.0]},"doc":"Tints everything lit: the light a scene has where no light reaches. One per scene.","name":"CanvasModulate"}],"engine":{"name":"SlashEngine","version":"0.1.0"},"scene":{"entities":0,"path":"","tick":0},"systems":["animation_player","animated_sprite_2d"]}
 ```
 
 `scene` describes the open scene: how many entities it has, its path (empty for an unsaved one)
@@ -473,6 +474,45 @@ Needs: `read`.
 
 With `rect`, `origin` is the rect's top left, there is a row for each of its rows, and each row
 ends at its last tile. `legend` holds only the keys the rows use.
+
+## Lights
+
+### light.sample
+
+Returns how lit points are: the color a white pixel of a lit sprite gets there from the scene's
+[2D lights](scene-format.md#2d-lights), computed on the CPU as the GPU shades it, and each light
+that reaches it. A check that needs no screenshot. Given an entity, it samples at its
+`Transform2D` position with its `Sprite2D`'s (or `TileMapLayer`'s) `light_mask` and `z_index`.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `points` | array of `[x, y]` | | The points, 1 to 256 of them. Give `points` or `id` |
+| `id` | string | | An entity with a `Transform2D` |
+| `light_mask` | integer | the entity's, or `1` | The draw's light mask, 0 to 1048575 |
+| `z_index` | integer | the entity's, or `0` | The draw's z index, for the lights' z ranges |
+
+Needs: `read`. In the scene of [examples/lights-2d](../../examples/lights-2d/), a point by the
+torch and one behind the crate from it:
+
+```json
+{"points": [[96, 60], [200, 90]]}
+```
+
+```json
+{"ambient":[0.12,0.12,0.2],"lit":true,"points":[{"color":[1.244,1.02,0.9],"lights":[{"color":[0.125,0.15,0.25],"id":"moon"},{"color":[0.999,0.75,0.45],"id":"torch","shadow":0}]},{"color":[0.245,0.27,0.45],"lights":[{"color":[0.125,0.15,0.25],"id":"moon"},{"color":[0,0,0],"id":"torch","shadow":1}]}]}
+```
+
+- `ambient` is the `CanvasModulate` color, and `lit` says whether anything lights the scene;
+  when nothing does, draws are unshaded and every point is white.
+- Each point's `color` is `[r, g, b]` after the ambient color and every light, before clamping,
+  so a value above 1 means the light is saturated there.
+- `lights` lists the lights that reach the point, in draw order, each with its color there times
+  its alpha (what it adds with `blend_mode` `add`). A light with `shadow_enabled` also has
+  `shadow`, from 0 (lit) to 1 (hidden by occluders). A light whose texture is clear at the point
+  is left out.
+- Normal maps aren't sampled: the pixel faces the viewer. Values are rounded to three decimals.
+- A light that can't shine, such as one whose texture doesn't load, is left out and listed in
+  `warnings` with its entity's ID and why.
 
 ## Storyboard
 

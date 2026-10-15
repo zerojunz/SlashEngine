@@ -8,6 +8,7 @@ add_executable(slash_tests
     test_fixed_step.cpp
     test_json.cpp
     test_json_schema.cpp
+    test_light.cpp
     test_log.cpp
     test_material.cpp
     test_mcp.cpp

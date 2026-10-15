@@ -1,6 +1,7 @@
 #pragma once
 
 #include "slash/core/result.hpp"
+#include "slash/render/light.hpp"
 #include "slash/render/material.hpp"
 
 #include <array>
@@ -22,6 +23,9 @@ struct SDL_Window;
 //   device->draw(render::TextureId::None, vertices); // every three vertices make a triangle
 //   device->draw(texture, vertices, material);       // with a blend mode and material program
 //   device->end_frame();                               // submits and presents
+//
+// A frame can carry lights (light.hpp); draws whose material's shading isn't unshaded are lit by
+// them.
 namespace slash::render {
 
 enum class Backend : std::uint8_t { Null, Vulkan, Metal, D3D12 };
@@ -79,15 +83,45 @@ struct MaterialTexture {
     bool operator==(const MaterialTexture&) const = default;
 };
 
-// How a draw colors its pixels: a blend mode, and a program the material shader runs for each
-// pixel (see material.hpp). The default draws the texture times the vertex color, mixed.
+// How the frame's lights shade a draw (see light.hpp).
+struct Shading {
+    LightMode mode = LightMode::Unshaded;
+    // Lit by lights whose item_cull_mask shares a bit with it and whose z range holds z_index.
+    std::uint32_t light_mask = 1;
+    std::int32_t z_index = 0;
+    // RGB normals, OpenGL style (green up), laid out as the draw's texture; None faces the
+    // viewer.
+    TextureId normal_map = TextureId::None;
+    // Specular color and shininess, laid out likewise, times specular; None has no highlights.
+    TextureId specular_map = TextureId::None;
+    std::array<float, 4> specular{1.0F, 1.0F, 1.0F, 1.0F}; // rgb color, a shininess from 0 to 1
+
+    bool operator==(const Shading&) const = default;
+};
+
+// How a draw colors its pixels: a blend mode, a program the material shader runs for each pixel
+// (see material.hpp) and how lights shade it. The default draws the texture times the vertex
+// color, mixed and unlit.
 struct Material {
     BlendMode blend = BlendMode::Mix;
     // With no code, each pixel is the texture times the vertex color.
     MaterialProgram program;
     std::array<MaterialTexture, kMaterialTextureSlots - 1> textures{};
+    Shading shading;
 
     bool operator==(const Material&) const = default;
+};
+
+// A frame's lights: what lit draws are shaded by.
+struct Lighting {
+    // Multiplies every Normal draw, as Godot's CanvasModulate.
+    Color ambient{.r = 1.0F, .g = 1.0F, .b = 1.0F, .a = 1.0F};
+    std::vector<Light> lights; // up to kMaxLights
+    // Point lights' textures, at their atlas_rect; None is white.
+    TextureId atlas = TextureId::None;
+    // Rows of kShadowMapWidth texels made with encode_shadow_depth, one per shadowed light, in a
+    // texture created with Filter::Nearest.
+    TextureId shadow_map = TextureId::None;
 };
 
 // One corner of a triangle: a position, a texture coordinate from (0, 0) at the texture's top
@@ -111,6 +145,7 @@ struct Frame {
     Color clear;
     // Maps vertex positions to clip space. Left out, positions are pixels of the target.
     std::optional<Mat4> view;
+    Lighting lighting{}; // NOLINT(readability-redundant-member-init): may be left out
 };
 
 // RGBA pixels, 4 bytes each, in rows from the top.

@@ -71,8 +71,9 @@ foreach(stage IN ITEMS vert frag)
     set(msl "${WORKDIR}/${base}.${stage}.msl")
     run(glslang "${GLSLANG}" -D -V -S ${stage} -e ${entry} --auto-sampled-textures "${SOURCE}"
         -o "${spirv}")
-    run(spirv-cross "${SPIRV_CROSS}" --msl --msl-version 20100 --stage ${stage} --entry ${entry}
-        "${spirv}" --output "${msl}")
+    # Metal's texture, sampler and buffer indexes are the HLSL registers, as SDL binds them.
+    run(spirv-cross "${SPIRV_CROSS}" --msl --msl-version 20100 --msl-decoration-binding
+        --stage ${stage} --entry ${entry} "${spirv}" --output "${msl}")
     hex_array("${spirv}" bytes)
     file(READ "${msl}" msl_text)
     string(APPEND body
