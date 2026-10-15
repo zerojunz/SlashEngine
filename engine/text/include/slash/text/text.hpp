@@ -17,10 +17,12 @@
 #include <vector>
 
 // Fonts and text layout, as Godot's text server: fonts are .ttf and .otf files, or .font.json
-// files that name one with settings; HarfBuzz shapes text with them, lines break at line breaks
-// and, when asked, wrap to a width; and glyph images go into atlas pages that FreeType fills
-// (grayscale, the default) or msdfgen does (multichannel signed distance fields, which stay sharp
-// at any size).
+// files that name one with settings and fallbacks; HarfBuzz shapes text with them, characters a
+// font lacks come from its fallbacks and then from fonts installed on the machine, right-to-left
+// and left-to-right text mix in a line by the Unicode Bidirectional Algorithm (SheenBidi), lines
+// break at line breaks and, when asked, wrap to a width; and glyph images go into atlas pages that
+// FreeType fills (grayscale, the default) or msdfgen does (multichannel signed distance fields,
+// which stay sharp at any size).
 //
 //   text::Fonts fonts(assets);
 //   auto layout = fonts.layout("Hello, world", {.font_size = 24,
@@ -47,9 +49,11 @@ enum class Hinting : std::uint8_t {
     Normal, // snapped both ways
 };
 
-// A .font.json file: a font file and how it draws, as Godot's FontFile import options.
+// A .font.json file: a font file and how it draws, as Godot's FontFile import options, with
+// Godot's Font fallbacks and support overrides.
 //
-//   {"format": 1, "font": "fonts/Title.ttf", "multichannel_signed_distance_field": true}
+//   {"format": 1, "font": "fonts/Title.ttf", "multichannel_signed_distance_field": true,
+//    "fallbacks": ["fonts/NotoSansJP.ttf", "fonts/NotoSansArabic.ttf"]}
 struct FontSettings {
     std::string font; // the .ttf or .otf file
     Antialiasing antialiasing = Antialiasing::Grayscale;
@@ -62,6 +66,17 @@ struct FontSettings {
     int msdf_pixel_range = 16;
     // The font size the field is made at.
     int msdf_size = 48;
+    // Fonts (.ttf, .otf or .font.json files) tried in order for characters this one has no
+    // glyph for; theirs come after them.
+    std::vector<std::string> fallbacks;
+    // When no font of the chain has a character, look for one installed on the machine, as
+    // Godot's allow_system_fallback. The first font of a chain decides.
+    bool allow_system_fallback = true;
+    // Whether the font is for a language (BCP 47, such as "ja") or a script (ISO 15924, such as
+    // "Hani"), as Godot's support overrides; "*" stands for any other. Fallbacks for the text's
+    // language and script are tried first; a font says yes to anything it doesn't list.
+    std::map<std::string, bool, std::less<>> language_support;
+    std::map<std::string, bool, std::less<>> script_support;
 
     bool operator==(const FontSettings&) const = default;
 };
@@ -116,9 +131,31 @@ enum class Overrun : std::uint8_t {
     TrimWordEllipsis, // at the last word that fits with an ellipsis after it
 };
 
-// The mode or behavior with Godot's name ("word_smart", "trim_word_ellipsis"), or nullopt.
+// The direction of a paragraph, as Godot's TextServer::Direction: from its first letter that
+// has one (left to right if none does), or set.
+enum class Direction : std::uint8_t {
+    Auto,
+    Ltr,
+    Rtl,
+};
+
+// The mode, behavior or direction with Godot's name ("word_smart", "trim_word_ellipsis",
+// "rtl"), or nullopt.
 [[nodiscard]] std::optional<Autowrap> parse_autowrap(std::string_view name);
 [[nodiscard]] std::optional<Overrun> parse_overrun(std::string_view name);
+[[nodiscard]] std::optional<Direction> parse_direction(std::string_view name);
+
+// A TrueType font whose glyph for each of the characters is a box 600 units wide (a blank for
+// spaces) in 1000 units per em, with a hollow box for any other: placeholder text for tests,
+// examples and prototypes, which write it instead of committing a font file.
+[[nodiscard]] std::vector<std::uint8_t> box_font(std::u32string_view characters,
+                                                 std::string_view family = "Boxes");
+
+// Whether a code has the shape of a BCP 47 language tag (a language of two or three letters,
+// then subtags of one to eight letters and digits: "ja", "zh-Hant", "sr-Latn-RS") or an ISO 15924
+// script code (four letters, the first upper case: "Arab", "Hani").
+[[nodiscard]] bool is_language_code(std::string_view code);
+[[nodiscard]] bool is_script_code(std::string_view code);
 
 struct LayoutOptions {
     std::string font{}; // NOLINT(readability-redundant-member-init): "" is the default font
@@ -126,6 +163,10 @@ struct LayoutOptions {
     Autowrap autowrap = Autowrap::Off;
     // The width lines wrap to when autowrap is on; 0 or less wraps nothing.
     float width = 0.0F;
+    Direction direction = Direction::Auto;
+    // The text's language (BCP 47, such as "ja" or "sr-Latn"), which picks fallback fonts and
+    // the glyphs a font has for it; "" for none.
+    std::string language{}; // NOLINT(readability-redundant-member-init)
 };
 
 struct Glyph {
@@ -139,6 +180,9 @@ struct Glyph {
     bool rtl = false;   // from a right-to-left run, such as Arabic or Hebrew
 };
 
+// Glyphs of a line are in the order they draw, left to right; a right-to-left run's come last
+// character first.
+
 struct Line {
     std::uint32_t first = 0; // its first glyph in TextLayout::glyphs
     std::uint32_t count = 0; // its glyphs, trailing spaces included
@@ -147,7 +191,14 @@ struct Line {
     float width = 0.0F; // without trailing spaces
     // It ends at a line break or the end of the text, not where it wrapped.
     bool paragraph_end = false;
+    // Its paragraph goes right to left, so its text starts at the right: the side it is aligned
+    // to by default, cut from by Fonts::trim, and where trailing spaces hang out of its width.
+    bool rtl = false;
 };
+
+// Whether a Label's fill alignment stretches a glyph of a line: a space between its words, not
+// one of the spaces hanging out of its width at its end.
+[[nodiscard]] bool stretches(const Line& line, const Glyph& glyph);
 
 struct TextLayout {
     std::vector<Glyph> glyphs;
@@ -156,7 +207,10 @@ struct TextLayout {
     std::string font; // the font it was shaped with, for Fonts::trim
     int font_size = kDefaultFontSize;
     float width = 0.0F;        // its widest line
-    std::uint32_t missing = 0; // characters the font has no glyph for, drawn as boxes
+    std::uint32_t missing = 0; // characters no font has a glyph for, drawn as boxes
+    // Characters drawn with fonts installed on the machine rather than the project's, which
+    // other machines (and web exports, which have none) may draw differently or not at all.
+    std::uint32_t system = 0;
 };
 
 // A glyph's image in an atlas page.
@@ -191,6 +245,9 @@ struct FaceInfo {
     bool msdf = false;
     int msdf_pixel_range = 0;
     Antialiasing antialiasing = Antialiasing::Grayscale;
+    std::string path;    // the font file: a project path, "" for the default font, or the
+                         // installed file for a system font
+    bool system = false; // installed on the machine, not the project's
 };
 
 // Fonts, shaping and glyph atlases for a game. Fonts load through assets, by path, and are
@@ -204,17 +261,26 @@ public:
     Fonts(Fonts&&) = delete;
     Fonts& operator=(Fonts&&) = delete;
 
-    // Lays out text with a font: shaped with HarfBuzz, broken into lines at line breaks ("\n",
-    // "\r\n", U+2028, U+2029) and, with autowrap, wrapped to the width. Fails when the font
-    // doesn't load or the size is out of range (1 to kMaxFontSize).
+    // Lays out text with a font: shaped with HarfBuzz, each character with the first font of
+    // the chain (the font, its fallbacks, then installed fonts) that has it, broken into lines
+    // at line breaks ("\n", "\r\n", U+2028, U+2029) and, with autowrap, wrapped to the width,
+    // then each line put in display order by the Unicode Bidirectional Algorithm. Fails when the
+    // font or a fallback doesn't load, or the size is out of range (1 to kMaxFontSize).
     [[nodiscard]] Result<TextLayout> layout(std::string_view text, const LayoutOptions& options);
+
+    // Whether characters the project's fonts lack are looked for in fonts installed on the
+    // machine (for chains whose first font allows it). On by default; turn it off for layouts
+    // that must be the same on every machine, as tests do.
+    void set_system_fallback(bool on);
+    [[nodiscard]] bool system_fallback() const;
 
     // How a font measures at a size.
     [[nodiscard]] Result<FontMetrics> metrics(std::string_view font, int size);
 
     // Cuts a line of a layout to fit a width, as overrun says, putting the ellipsis after it for
-    // the ellipsis modes. Returns whether it cut anything; a line that fits is left alone, unless
-    // force_ellipsis asks for the ellipsis anyway (for the last line shown when more are hidden).
+    // the ellipsis modes: at its end, which is its left for a right-to-left line. Returns whether
+    // it cut anything; a line that fits is left alone, unless force_ellipsis asks for the
+    // ellipsis anyway (for the last line shown when more are hidden).
     bool trim(TextLayout& layout, std::size_t line, float width, Overrun overrun,
               std::string_view ellipsis = "…", bool force_ellipsis = false);
 

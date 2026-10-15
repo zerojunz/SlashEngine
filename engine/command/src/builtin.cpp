@@ -1362,6 +1362,24 @@ json::Array line_texts(const text::TextLayout& layout, std::string_view source, 
     return lines;
 }
 
+// Which of lines [first, last) go right to left: true when all do, a bool per line when some
+// do, null when none do.
+json::Value rtl_lines(const text::TextLayout& layout, std::size_t first, std::size_t last) {
+    last = std::min(last, layout.lines.size());
+    json::Array lines;
+    std::size_t count = 0;
+    for (std::size_t l = first; l < last; ++l) {
+        lines.emplace_back(layout.lines[l].rtl);
+        if (layout.lines[l].rtl) {
+            ++count;
+        }
+    }
+    if (count == 0) {
+        return {};
+    }
+    return count == lines.size() ? json::Value(true) : json::Value(std::move(lines));
+}
+
 Reply ui_layout(Session& session, const json::Value& params) {
     const world::World& world = session.world();
     text::Fonts* fonts = ui::fonts(world);
@@ -1430,11 +1448,18 @@ Reply ui_layout(Session& session, const json::Value& params) {
         if (const ui::LabelText* label = layout.label(placed.entity); label != nullptr) {
             item["lines"] = line_texts(label->text, label->source, label->first, label->last,
                                        label->trimmed, label->ellipsis);
+            if (json::Value rtl = rtl_lines(label->text, label->first, label->last);
+                !rtl.is_null()) {
+                item["rtl"] = std::move(rtl);
+            }
             if (label->overflow) {
                 item["overflow"] = true;
             }
             if (label->text.missing > 0) {
                 item["missing_glyphs"] = static_cast<std::int64_t>(label->text.missing);
+            }
+            if (label->text.system > 0) {
+                item["system_glyphs"] = static_cast<std::int64_t>(label->text.system);
             }
             if (!label->error.empty()) {
                 item["font_error"] = label->error;
@@ -1531,12 +1556,21 @@ Reply text_measure(Session& session, const json::Value& params) {
         return param_error(code::kInvalidParams, "/width",
                            "autowrap_mode needs a width to wrap to");
     }
+    const std::string language = text(params, "language");
+    if (!language.empty() && !text::is_language_code(language)) {
+        return param_error(code::kInvalidParams, "/language",
+                           quoted(language) +
+                               R"( isn't a BCP 47 language tag, such as "ar" or "zh-Hant")");
+    }
     auto measured = fonts->layout(
         source,
         {.font = text(params, "font"),
          .font_size = static_cast<int>(integer(params, "font_size", text::kDefaultFontSize)),
          .autowrap = autowrap,
-         .width = width != nullptr ? static_cast<float>(width->as_double()) : 0.0F});
+         .width = width != nullptr ? static_cast<float>(width->as_double()) : 0.0F,
+         .direction =
+             text::parse_direction(text(params, "direction")).value_or(text::Direction::Auto),
+         .language = language});
     if (!measured) {
         return param_error(code::kInvalidParams, "/font", measured.error().message);
     }
@@ -1548,8 +1582,14 @@ Reply text_measure(Session& session, const json::Value& params) {
     result["line_height"] = rounded(line_height);
     result["ascent"] = rounded(layout.metrics.ascent);
     result["lines"] = line_texts(layout, source, 0, layout.lines.size());
+    if (json::Value rtl = rtl_lines(layout, 0, layout.lines.size()); !rtl.is_null()) {
+        result["rtl"] = std::move(rtl);
+    }
     if (layout.missing > 0) {
         result["missing_glyphs"] = static_cast<std::int64_t>(layout.missing);
+    }
+    if (layout.system > 0) {
+        result["system_glyphs"] = static_cast<std::int64_t>(layout.system);
     }
     return Reply::success(std::move(result));
 }
@@ -3209,10 +3249,10 @@ void register_builtin_commands(Registry& registry) {
     registry.add({
         .name = "ui.layout",
         .description = "Returns where controls are on screen, in drawing order: each one's rect "
-                       "[x, y, w, h], the lines labels, buttons and progress bars show and "
-                       "whether text overflows, each button's draw_mode, the control with focus "
-                       "and the one hovered, and mistakes such as misspelled theme overrides. A "
-                       "check without a screenshot.",
+                       "[x, y, w, h], the lines labels, buttons and progress bars show (rtl when "
+                       "they go right to left) and whether text overflows, each button's "
+                       "draw_mode, the control with focus and the one hovered, and mistakes such "
+                       "as misspelled theme overrides. A check without a screenshot.",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema({
@@ -3266,11 +3306,16 @@ void register_builtin_commands(Registry& registry) {
     json::Value measure_wrap =
         property("string", "Where lines wrap, as Label's autowrap_mode. Default off.");
     measure_wrap["enum"] = json::Array{"off", "arbitrary", "word", "word_smart"};
+    json::Value measure_direction =
+        property("string", "The base direction; auto takes the first letter's. Default auto.");
+    measure_direction["enum"] = json::Array{"auto", "ltr", "rtl"};
     registry.add({
         .name = "text.measure",
         .description = "Returns text's size in a font: [width, height], the line height and "
-                       "each line, wrapped to a width if asked. Height has no line spacing; a "
-                       "Label adds line_spacing (3) between lines.",
+                       "each line, wrapped to a width if asked; rtl when lines go right to "
+                       "left, and how many glyphs the font lacks (missing_glyphs) or came from "
+                       "fonts installed on the machine (system_glyphs). Height has no line "
+                       "spacing; a Label adds line_spacing (3) between lines.",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema(
@@ -3282,6 +3327,9 @@ void register_builtin_commands(Registry& registry) {
                  integer_property("Pixels.", 1, text::kMaxFontSize, text::kDefaultFontSize)},
                 {"autowrap_mode", std::move(measure_wrap)},
                 {"width", std::move(measure_width)},
+                {"direction", std::move(measure_direction)},
+                {"language", property("string", "BCP 47, such as \"ar\" or \"ja\"; picks "
+                                                "fallback fonts and glyphs.")},
             },
             {"text"}),
         .handler = text_measure,

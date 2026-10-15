@@ -38,8 +38,11 @@ ui.layout {"ids":["hint"]}
   fields, which stay sharp at any size, scale and outline. Labels with no font use Roboto, built
   into the engine. `outline_size`, as Godot's, is four times the pixels the outline reaches.
 - Characters a font doesn't have are counted in `missing_glyphs`; Roboto has no Chinese, so the
-  sign's 出口 needs a font that does. Text is shaped with HarfBuzz, so scripts that join letters,
-  such as Arabic, draw as they should.
+  sign's 出口 needs a font that does. Games take such characters from a `.font.json` file's
+  `fallbacks`, then from fonts installed on the machine; this example turns the installed ones
+  off (`"gui": {"allow_system_fallback": false}` in [project.json](project.json)) so its output
+  is the same everywhere. Text is shaped with HarfBuzz, so scripts that join letters, such as
+  Arabic, draw as they should; [text-languages](../text-languages) has more.
 - `text.measure` gives text's size in a font without changing anything, to check that a longer
   score fits before setting it.
 - Controls draw above the world's sprites, by `z_index`, then parents before children. Each label

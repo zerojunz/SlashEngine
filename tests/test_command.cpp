@@ -1520,7 +1520,8 @@ TEST_CASE("ui.layout returns where controls are and the lines labels show") {
     REQUIRE(slash::platform::write_file(root + "/project.json",
                                         R"({"format": 1, "name": "UI", "version": "0.1.0",
                                             "main_scene": "main.scene.json",
-                                            "window": {"width": 400, "height": 300}})")
+                                            "window": {"width": 400, "height": 300},
+                                            "gui": {"allow_system_fallback": false}})")
                 .ok());
     command::SessionOptions options;
     options.project_root = root;
@@ -1631,7 +1632,40 @@ TEST_CASE("text.measure returns text's size and lines in a font") {
     CHECK(engine.ok("text.measure", R"({"text": "Hello world again", "autowrap_mode": "word",
                                         "width": 60, "font_size": 16})")["lines"] ==
           parse(R"(["Hello", "world", "again"])"));
-    CHECK(engine.ok("text.measure", R"({"text": "\u4e00"})")["missing_glyphs"] == parse("1"));
+    {
+        // Characters no font has are counted, unless the machine has a font for them and the
+        // project lets text use it.
+        const std::string root = "measure_test_project";
+        std::filesystem::remove_all(root);
+        REQUIRE(slash::platform::create_directories(root).ok());
+        REQUIRE(slash::platform::write_file(root + "/project.json",
+                                            R"({"format": 1, "name": "M", "version": "0.1.0",
+                                                "main_scene": "main.scene.json",
+                                                "gui": {"allow_system_fallback": false}})")
+                    .ok());
+        command::SessionOptions options;
+        options.project_root = root;
+        Engine strict(options);
+        CHECK(strict.ok("text.measure", R"({"text": "\u4e00"})")["missing_glyphs"] == parse("1"));
+        const json::Value any = engine.ok("text.measure", R"({"text": "\u4e00"})");
+        const bool counted =
+            any.find("missing_glyphs") != nullptr || any.find("system_glyphs") != nullptr;
+        CHECK(counted);
+        // Lines that go right to left are named: a Hebrew paragraph, or any text made to.
+        json::Value hebrew =
+            strict.ok("text.measure", R"({"text": "abc\n\u05e9\u05dc\u05d5\u05dd"})");
+        CHECK(hebrew["rtl"] == parse("[false, true]"));
+        CHECK(hebrew["missing_glyphs"] == parse("4"));
+        CHECK(strict.ok("text.measure", R"({"text": "abc", "direction": "rtl"})")["rtl"] ==
+              parse("true"));
+        CHECK(strict.ok("text.measure", R"({"text": "abc"})").find("rtl") == nullptr);
+        CHECK(strict
+                  .fails("text.measure", R"({"text": "abc", "language": "arabic"})",
+                         command::code::kInvalidParams)
+                  .message ==
+              "/language: \"arabic\" isn't a BCP 47 language tag, such as \"ar\" or \"zh-Hant\"");
+        std::filesystem::remove_all(root);
+    }
     CHECK(engine
               .fails("text.measure", R"({"text": "x", "autowrap_mode": "word"})",
                      command::code::kInvalidParams)

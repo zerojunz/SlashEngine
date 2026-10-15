@@ -280,6 +280,7 @@ A reference must name an entity that exists in the same scene.
 | | `focus_mode` | `std::string` | `""` | Whether clicks and the keyboard or a gamepad give it [focus](#buttons) (`all`), clicks only (`click`) or nothing (`none`); `""` takes its type's: `all` for buttons, `none` for the rest |
 | | `focus_neighbor_left`, `_top`, `_right`, `_bottom` | `entity` | `null` | The control `ui_left`, `ui_up`, `ui_right` or `ui_down` moves focus to; `null` finds the closest one that way |
 | | `focus_next`, `focus_previous` | `entity` | `null` | The control `ui_focus_next` (Tab) or `ui_focus_prev` (Shift+Tab) moves focus to; `null` takes the next or previous in the tree |
+| | `layout_direction` | `std::string` | `"inherited"` | Which way it [lays out](#right-to-left-layout): `ltr`, `rtl` (anchors, offsets, containers and alignment mirrored) or `inherited` from its parent, left to right at the root |
 | `Label` | `text` | `std::string` | `""` | The text; lines break at `"\n"` |
 | | `horizontal_alignment` | `std::string` | `"left"` | Each line's place across the rect: `left`, `center`, `right` or `fill`, which stretches spaces to the width on every line but a wrapped paragraph's last |
 | | `vertical_alignment` | `std::string` | `"top"` | The lines' place down the rect: `top`, `center`, `bottom` or `fill`, which spreads them over it |
@@ -292,6 +293,8 @@ A reference must name an entity that exists in the same scene.
 | | `max_lines_visible` | `int` | `-1` | Lines shown at most; -1 for all |
 | | `visible_characters` | `int` | `-1` | Characters shown from the start, for typing effects; -1 for all |
 | | `visible_characters_behavior` | `std::string` | `"chars_before_shaping"` | `chars_before_shaping` lays out only the visible characters; `chars_after_shaping` lays out all of them and hides the rest, so lines don't move as more show |
+| | `text_direction` | `std::string` | `"auto"` | The text's base direction: `auto` (its first letter's: right to left for Arabic or Hebrew), `ltr`, `rtl`, or `inherited` from the control's `layout_direction` |
+| | `language` | `std::string` | `""` | The text's language as a BCP 47 tag, such as `"ar"`, `"ja"` or `"zh-Hant"`, which picks [fallback fonts](#fonts) and the glyphs a font has for it |
 | `ColorRect` | `color` | `Vec4` | `[1, 1, 1, 1]` | Fills the control's rect, as [r, g, b, a] from 0 to 1 |
 | `Panel` | | | | Draws the theme's `panel` style box in the control's rect |
 | `TextureRect` | `texture` | `std::string` | `""` | Project path of a PNG or BMP file drawn in the rect |
@@ -328,6 +331,7 @@ A reference must name an entity that exists in the same scene.
 | | `button_group` | `std::string` | `""` | Toggle buttons with the same group name are one choice: pressing one turns the others off |
 | | `shortcut` | `std::vector<json>` | `[]` | What else presses it: [bindings](project-format.md#input-actions) such as `{"type": "key", "key": "S", "ctrl": true}`, or actions such as `{"type": "action", "action": "ui_cancel"}` |
 | | `shortcut_feedback` | `bool` | `true` | Draw it `hover_pressed` for 0.2 seconds when its shortcut presses it |
+| | `text_direction`, `language` | `std::string` | `"auto"`, `""` | As `Label`'s |
 | `TextureButton` | `texture_normal` | `std::string` | `""` | Project path of the PNG or BMP file it draws; its size is the button's minimum size |
 | | `texture_pressed`, `texture_hover`, `texture_disabled` | `std::string` | `""` | Drawn instead in those states, when set |
 | | `texture_focused` | `std::string` | `""` | Drawn over the others while it shows focus |
@@ -1010,9 +1014,34 @@ A `Label` lays out its text as Godot's does:
   ellipsis modes.
 - `visible_characters` counts characters (Unicode code points) from the start of the text.
 - Each label draws its shadow's outline, its shadow, its outline, then its text.
-- Characters the font doesn't have are counted in `ui.layout`'s `missing_glyphs`. Text is shaped with HarfBuzz, one run per script; mixing
-  right-to-left and left-to-right text in one line (BiDi) and fallback fonts are on the
-  [roadmap](../roadmap.md).
+- Text is shaped with HarfBuzz, one run per script and direction, and ordered by the Unicode
+  Bidirectional Algorithm (SheenBidi, as Godot's text server): each paragraph goes the way its
+  `text_direction` says, by default its first letter's, and runs inside it the other way (an
+  English word in Arabic, numbers in Hebrew) keep their own order. `ui.layout` says `rtl` for
+  lines that go right to left. Such a line's trailing spaces hang off its left end, and it is
+  trimmed at its left end, with the ellipsis there.
+- Characters a label's font doesn't have come from its [fallback fonts](#fonts), then from fonts
+  installed on the machine; `ui.layout` counts the ones drawn from installed fonts in
+  `system_glyphs` and the ones no font has in `missing_glyphs`.
+
+### Right-to-left layout
+
+`layout_direction` `rtl` lays a control out as if its parent were mirrored, as Godot's
+`is_layout_rtl`; `inherited` (the default) takes the parent's, and left to right at the root.
+
+- Anchors and offsets count from the right edge, and `grow_horizontal` `end` grows to the left:
+  `offset_left` 10 and `offset_right` 110 put a control 10 pixels from its parent's right edge.
+- Containers place their children from the right: a row's first child at its right (`begin`
+  and `end` alignment swap), a grid's first column, a flow's lines. `shrink_begin` across a
+  column is at the right.
+- `Label`'s `left` and `right` alignments swap, and a wrapped right-to-left paragraph's lines
+  that `fill` doesn't stretch start at the right. A label's text direction is its own: Arabic in
+  a left-to-right control goes right to left but is aligned left, as in Godot.
+- `Button` swaps its icon's and its text's `left` and `right`, and draws a state's
+  `<state>_mirrored` style box (`normal_mirrored`, `hover_mirrored` and so on) when a theme sets
+  one. `ProgressBar`'s `begin_to_end` fills from the right.
+- [examples/text-languages](../../examples/text-languages/) is a menu in Arabic laid out right
+  to left.
 
 ### Containers
 
@@ -1148,6 +1177,7 @@ its `theme_override_*` fields, then its [themes](#themes), then the defaults bel
 | | style | `disabled` | flat `[0.1, 0.1, 0.1, 0.3]`, the same shape |
 | | style | `focus` | a `[1, 1, 1, 0.75]` border 2 wide, `expand_margin` 2, no center |
 | | style | `hover_pressed` | none: `pressed` is drawn unless a theme sets it |
+| | style | `normal_mirrored`, `hover_mirrored`, `pressed_mirrored`, `disabled_mirrored`, `hover_pressed_mirrored` | none: drawn in place of the state's box when the button lays out right to left and a theme sets it |
 | | font, font size | `font`, `font_size` | The built-in font, `16` |
 | | color | `font_color`, `font_focus_color` | `[0.875, 0.875, 0.875, 1]`, `[0.95, 0.95, 0.95, 1]` |
 | | color | `font_hover_color` | `[0.95, 0.95, 0.95, 1]` |
@@ -1275,7 +1305,24 @@ names one and says how it draws, as Godot's font import options (`slash-cli sche
 | `multichannel_signed_distance_field` | `false` | Draw from one distance field per glyph, made once, which stays sharp at any size, scale and outline |
 | `msdf_pixel_range` | `16` | How far from the outline the field reaches, in pixels at `msdf_size`; outlines are at most half of it |
 | `msdf_size` | `48` | The font size the field is made at |
+| `fallbacks` | `[]` | Fonts (`.ttf`, `.otf` or `.font.json` files) for the characters this one lacks, tried in order; their own fallbacks follow theirs |
+| `allow_system_fallback` | `true` | Then take characters no fallback has from fonts installed on the machine |
+| `language_support` | `{}` | Whether the font is for a language, by BCP 47 tag, such as `{"ja": true, "*": false}`; `*` is any other |
+| `script_support` | `{}` | Whether the font is for a script, by ISO 15924 code, such as `{"Hani": true}`; `*` is any other |
 
+- Each character is drawn by the first font that has it, as Godot's font fallback picks: the
+  font, then its `fallbacks`, those that say they support the text's script and language first,
+  then those for its script, then the rest, each list in order. A font that doesn't list a
+  language or script supports it. The text's language is the label's or button's `language`;
+  its script is the character's own.
+- Where no fallback has a character and both the font and the project allow it
+  (`gui.allow_system_fallback` in [project.json](project-format.md)), it comes from a font
+  installed on the machine: the one CoreText (macOS, iOS), DirectWrite (Windows), fontconfig
+  (Linux) or the system font list (Android) picks for it. Other machines may lack it, and web
+  exports have none, so `ui.layout` and `text.measure` count such characters in
+  `system_glyphs`. Characters no font has draw as the first font's missing-glyph box and are
+  counted in `missing_glyphs`.
+- Lines are as tall as the tallest font drawn in them.
 - Glyph images are made the first time they are drawn, for each font, size and outline (once
   per glyph with a distance field), and packed into atlas textures.
 - A font that doesn't load is reported by `ui.layout` and `scene validate`, and the label draws

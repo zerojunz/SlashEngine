@@ -1,6 +1,7 @@
 #include "slash/core/text.hpp"
 #include "slash/text/text.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -31,9 +32,50 @@ constexpr std::array<std::pair<std::string_view, Hinting>, 3> kHinting{{
     {"normal", Hinting::Normal},
 }};
 
+// Fallbacks a .font.json file may list.
+constexpr std::int64_t kMaxFallbacks = 64;
+
 bool ends_with(std::string_view text, std::string_view suffix) {
     return text.size() >= suffix.size() && text.substr(text.size() - suffix.size()) == suffix;
 }
+
+bool is_alpha(char c) {
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+}
+
+bool is_alnum(char c) {
+    return is_alpha(c) || (c >= '0' && c <= '9');
+}
+
+} // namespace
+
+bool is_language_code(std::string_view code) {
+    std::size_t start = 0;
+    bool first = true;
+    while (start <= code.size()) {
+        std::size_t end = code.find('-', start);
+        if (end == std::string_view::npos) {
+            end = code.size();
+        }
+        const std::string_view part = code.substr(start, end - start);
+        const std::size_t min = first ? 2 : 1;
+        const std::size_t max = first ? 3 : 8;
+        if (part.size() < min || part.size() > max ||
+            !std::ranges::all_of(part, first ? is_alpha : is_alnum)) {
+            return false;
+        }
+        first = false;
+        start = end + 1;
+    }
+    return true;
+}
+
+bool is_script_code(std::string_view code) {
+    return code.size() == 4 && code[0] >= 'A' && code[0] <= 'Z' &&
+           std::ranges::all_of(code.substr(1), [](char c) { return c >= 'a' && c <= 'z'; });
+}
+
+namespace {
 
 json::Value integer(std::string_view description, std::int64_t minimum, std::int64_t maximum,
                     std::int64_t fallback) {
@@ -218,6 +260,29 @@ json::Value font_schema() {
                 1, 256, defaults.msdf_pixel_range);
     properties["msdf_size"] =
         integer("The font size the field is made at.", 1, 256, defaults.msdf_size);
+    json::Value& fallbacks = properties["fallbacks"];
+    fallbacks["type"] = "array";
+    fallbacks["items"]["type"] = "string";
+    fallbacks["items"]["minLength"] = 1;
+    fallbacks["maxItems"] = kMaxFallbacks;
+    fallbacks["description"] =
+        "Fonts (.ttf, .otf or .font.json) tried in order for characters this one lacks.";
+    properties["allow_system_fallback"]["type"] = "boolean";
+    properties["allow_system_fallback"]["default"] = true;
+    properties["allow_system_fallback"]["description"] =
+        "When no font of the chain has a character, use one installed on the machine.";
+    const auto support = [](std::string_view what) {
+        json::Value value;
+        value["type"] = "object";
+        value["propertyNames"]["minLength"] = 1;
+        value["additionalProperties"]["type"] = "boolean";
+        value["description"] = what;
+        return value;
+    };
+    properties["language_support"] =
+        support(R"(Whether the font is for each language (BCP 47 such as "ja"; "*" for others).)");
+    properties["script_support"] = support(
+        R"(Whether the font is for each script (ISO 15924 such as "Hani"; "*" for others).)");
     return schema;
 }
 
@@ -232,6 +297,37 @@ std::vector<json::ValidationError> validate_font(const json::Value& doc) {
                                    "'/', with no \".\" or \"..\" parts"});
     } else if (!ends_with(font, kFontFileSuffixes[0]) && !ends_with(font, kFontFileSuffixes[1])) {
         errors.push_back({"/font", "expected a .ttf or .otf file"});
+    }
+    if (const json::Value* fallbacks = doc.find("fallbacks"); fallbacks != nullptr) {
+        const json::Array& list = fallbacks->as_array();
+        for (std::size_t i = 0; i < list.size(); ++i) {
+            const std::string& path = list[i].as_string();
+            const std::string at = "/fallbacks/" + std::to_string(i);
+            if (!is_project_path(path)) {
+                errors.push_back({at, "expected a path inside the project folder, separated by "
+                                      "'/', with no \".\" or \"..\" parts"});
+            } else if (!is_font_path(path)) {
+                errors.push_back({at, "expected a .ttf, .otf or .font.json file"});
+            }
+        }
+    }
+    if (const json::Value* languages = doc.find("language_support"); languages != nullptr) {
+        for (const auto& [code, supported] : languages->as_object()) {
+            if (code != "*" && !is_language_code(code)) {
+                errors.push_back({"/language_support/" + json::pointer_escape(code),
+                                  "expected a BCP 47 language code such as \"ja\" or "
+                                  "\"zh-Hant\", or \"*\""});
+            }
+        }
+    }
+    if (const json::Value* scripts = doc.find("script_support"); scripts != nullptr) {
+        for (const auto& [code, supported] : scripts->as_object()) {
+            if (code != "*" && !is_script_code(code)) {
+                errors.push_back({"/script_support/" + json::pointer_escape(code),
+                                  "expected an ISO 15924 script code such as \"Latn\" or "
+                                  "\"Hani\", or \"*\""});
+            }
+        }
     }
     return errors;
 }
@@ -255,6 +351,24 @@ Result<FontSettings> parse_font(const json::Value& doc) {
     }
     if (const json::Value* size = doc.find("msdf_size"); size != nullptr) {
         out.msdf_size = static_cast<int>(size->as_int());
+    }
+    if (const json::Value* fallbacks = doc.find("fallbacks"); fallbacks != nullptr) {
+        for (const json::Value& path : fallbacks->as_array()) {
+            out.fallbacks.push_back(path.as_string());
+        }
+    }
+    if (const json::Value* system = doc.find("allow_system_fallback"); system != nullptr) {
+        out.allow_system_fallback = system->as_bool();
+    }
+    if (const json::Value* languages = doc.find("language_support"); languages != nullptr) {
+        for (const auto& [code, supported] : languages->as_object()) {
+            out.language_support.insert_or_assign(code, supported.as_bool());
+        }
+    }
+    if (const json::Value* scripts = doc.find("script_support"); scripts != nullptr) {
+        for (const auto& [code, supported] : scripts->as_object()) {
+            out.script_support.insert_or_assign(code, supported.as_bool());
+        }
     }
     return out;
 }
@@ -309,6 +423,26 @@ std::optional<Overrun> parse_overrun(std::string_view name) {
         }
     }
     return std::nullopt;
+}
+
+std::optional<Direction> parse_direction(std::string_view name) {
+    static constexpr std::array<std::pair<std::string_view, Direction>, 3> kNames{{
+        {"auto", Direction::Auto},
+        {"ltr", Direction::Ltr},
+        {"rtl", Direction::Rtl},
+    }};
+    for (const auto& [each, direction] : kNames) {
+        if (each == name) {
+            return direction;
+        }
+    }
+    return std::nullopt;
+}
+
+bool stretches(const Line& line, const Glyph& glyph) {
+    // Spaces hanging out of the line sit past its width, or left of 0 on a right-to-left line.
+    const float middle = glyph.x + (glyph.advance * 0.5F);
+    return glyph.space && middle > 0.0F && middle < line.width;
 }
 
 std::span<const std::uint8_t> default_font() {
