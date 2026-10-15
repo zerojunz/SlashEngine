@@ -37,11 +37,10 @@ Session::Session(const world::ComponentRegistry& component_registry,
     : commands_(&command_registry), options_(std::move(session_options)),
       assets_(asset::FileSource{
           .read = [this](std::string_view path) -> Result<std::string> {
-              auto file = resolve_path(path);
-              if (!file) {
+              if (auto file = resolve_path(path); !file) {
                   return file.error();
               }
-              return platform::read_file(file.value());
+              return platform::read_file_in(options_.project_root, path);
           },
           .stamp = [this](std::string_view path) -> std::optional<platform::FileStamp> {
               auto file = resolve_path(path);
@@ -237,6 +236,9 @@ Result<std::string> Session::resolve_path(std::string_view relative) const {
     }
     if (relative.find(':') != std::string_view::npos) {
         return invalid("contains ':'; use a path relative to the project folder");
+    }
+    if (!platform::reserved_device_name(relative).empty()) {
+        return platform::reserved_device_error(relative);
     }
     std::string path(relative);
     std::ranges::replace(path, '\\', '/');

@@ -580,6 +580,12 @@ TEST_CASE("paths stay inside the project folder") {
     }
     CHECK_FALSE(session.resolve_path("").ok());
     CHECK(session.resolve_path("a..b/c.scene.json").ok());
+    // Windows opens a device for these names, so no project uses them.
+    CHECK(session.resolve_path("levels/aux.scene.json").error().code ==
+          slash::ErrorCode::InvalidArgument);
+    const command::Reply saved = engine.fails("scene.save", R"({"path": "levels/aux.scene.json"})",
+                                              command::code::kInvalidArgument);
+    CHECK(contains(saved.message, "a name Windows keeps for a device"));
 }
 
 TEST_CASE("scenes save to and open from the project folder") {

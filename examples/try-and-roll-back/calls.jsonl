@@ -1,0 +1,10 @@
+{"jsonrpc":"2.0","id":1,"method":"batch","params":{"commands":[{"command":"entity.create","params":{"id":"player","components":{"Transform2D":{"position":[64,32]}}}},{"command":"entity.create","params":{"id":"crate","components":{"Transform2D":{"position":[96,32]}}}}]}}
+{"jsonrpc":"2.0","id":2,"method":"entity.destroy","params":{"id":"crate","dry_run":true}}
+{"jsonrpc":"2.0","id":3,"method":"world.snapshot","params":{"name":"before"}}
+{"jsonrpc":"2.0","id":4,"method":"batch","params":{"commands":[{"command":"component.set","params":{"id":"player","components":{"Transform2D":{"position":[80,32]}}}},{"command":"entity.destroy","params":{"id":"crate"}},{"command":"entity.create","params":{"id":"enemy","components":{"Transform2D":{"position":[200,40]}}}}]}}
+{"jsonrpc":"2.0","id":5,"method":"world.diff","params":{"from":"before"}}
+{"jsonrpc":"2.0","id":6,"method":"world.restore","params":{"name":"before"}}
+{"jsonrpc":"2.0","id":7,"method":"world.query"}
+{"jsonrpc":"2.0","id":8,"method":"undo"}
+{"jsonrpc":"2.0","id":9,"method":"world.query"}
+{"jsonrpc":"2.0","id":10,"method":"world.diff","params":{"from":"befor"}}

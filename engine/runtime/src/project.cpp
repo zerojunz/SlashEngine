@@ -242,7 +242,7 @@ world::FileReader folder_reader(std::string folder) {
                               "path \"" + std::string(path) +
                                   "\" is not inside the project folder");
         }
-        return platform::read_file(join_path(folder, path));
+        return platform::read_file_in(folder, path);
     };
 }
 

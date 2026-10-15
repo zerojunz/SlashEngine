@@ -1,0 +1,9 @@
+{"jsonrpc":"2.0","id":1,"method":"events.subscribe","params":{"kinds":["entity.created","entity.destroyed"]}}
+{"jsonrpc":"2.0","id":2,"method":"events.subscribe","params":{"ids":["player"]}}
+{"jsonrpc":"2.0","id":3,"method":"batch","params":{"commands":[{"command":"entity.create","params":{"id":"player","components":{"Transform2D":{}}}},{"command":"entity.create","params":{"id":"enemy"}}]}}
+{"jsonrpc":"2.0","id":4,"method":"component.set","params":{"id":"player","components":{"Transform2D":{"rotation":1}}}}
+{"jsonrpc":"2.0","id":5,"method":"entity.destroy","params":{"id":"enemy"}}
+{"jsonrpc":"2.0","id":6,"method":"events.read","params":{"subscription":"events_1"}}
+{"jsonrpc":"2.0","id":7,"method":"events.read","params":{"subscription":"events_2"}}
+{"jsonrpc":"2.0","id":8,"method":"events.read","params":{"subscription":"events_1"}}
+{"jsonrpc":"2.0","id":9,"method":"events.unsubscribe","params":{"subscription":"events_2"}}

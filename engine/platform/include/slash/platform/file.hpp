@@ -15,6 +15,20 @@ namespace slash::platform {
 
 [[nodiscard]] Result<std::string> read_file(std::string_view path);
 
+// Reads path, relative to folder. If there is no such file, the error is NotFound "no such file"
+// with the closest file of the same type in folder (outside build/) as a "did you mean" hint, so
+// a misspelled path is easy to fix. A path with a reserved_device_name is refused unread.
+[[nodiscard]] Result<std::string> read_file_in(std::string_view folder, std::string_view path);
+
+// The first part of a relative path, such as "con" in "prefabs/con.prefab.json", that Windows
+// keeps for a device: CON, PRN, AUX, NUL, COM1 to COM9 or LPT1 to LPT9, in any case and with any
+// extension. Opening such a file on Windows reaches the device instead and can wait forever for
+// console input, so projects refuse these names on every platform. "" if there is none.
+[[nodiscard]] std::string_view reserved_device_name(std::string_view path);
+
+// The error for a path with a reserved device name.
+[[nodiscard]] Error reserved_device_error(std::string_view path);
+
 // Creates or replaces the file.
 [[nodiscard]] Result<void> write_file(std::string_view path, std::string_view contents);
 

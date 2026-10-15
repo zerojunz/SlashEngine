@@ -1,0 +1,9 @@
+{"id":1,"jsonrpc":"2.0","result":{"subscription":"events_1"}}
+{"id":2,"jsonrpc":"2.0","result":{"subscription":"events_2"}}
+{"id":3,"jsonrpc":"2.0","result":{"results":[{"id":"player"},{"id":"enemy"}]}}
+{"id":4,"jsonrpc":"2.0","result":{"changed":{"Transform2D":{"rotation":1.0}},"id":"player"}}
+{"id":5,"jsonrpc":"2.0","result":{"destroyed":"enemy"}}
+{"id":6,"jsonrpc":"2.0","result":{"dropped":0,"events":[{"id":"player","kind":"entity.created","seq":1,"tick":0},{"id":"enemy","kind":"entity.created","seq":2,"tick":0},{"id":"enemy","kind":"entity.destroyed","seq":5,"tick":0}],"more":false}}
+{"id":7,"jsonrpc":"2.0","result":{"dropped":0,"events":[{"id":"player","kind":"entity.created","seq":1,"tick":0},{"changes":{"added":["enemy","player"],"changed":{"player":{"Transform2D":{}}}},"command":"batch","kind":"command","seq":3,"tick":0},{"changes":{"changed":{"player":{"Transform2D":{"rotation":1.0}}}},"command":"component.set","kind":"command","seq":4,"tick":0}],"more":false}}
+{"id":8,"jsonrpc":"2.0","result":{"dropped":0,"events":[],"more":false}}
+{"id":9,"jsonrpc":"2.0","result":{"unsubscribed":"events_2"}}

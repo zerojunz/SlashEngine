@@ -137,7 +137,7 @@ rendering on top.
       errors, and changes nothing
 - [x] Snapshots and semantic diffs: `world.snapshot`, `world.diff` (entities and fields added,
       removed or changed, by ID) and `world.restore`
-- [ ] Verified examples: every feature from here on ships with a small working example in
+- [x] Verified examples: every feature from here on ships with a small working example in
       `examples/` that CI builds and runs headless, so agents copy code that is known to work
 - [ ] A license check on every pull request, against a manifest of pinned dependencies, before
       this milestone adds Box2D, miniaudio, FreeType and HarfBuzz
@@ -414,7 +414,7 @@ calls and tokens ([design section 6](design.md#6-cheap-for-agents-to-use)).
 | `storyboard.brief`: only the facts a task needs, and what changed since the agent last looked | 5 | Done |
 | Dry runs: see what an edit would change before making it | 5 | Done |
 | `world.snapshot` and `world.diff`: try something, see exactly what changed, roll back | 5 | Done |
-| Verified examples for every feature, built and run in CI | 5 | Planned |
+| Verified examples for every feature, built and run in CI | 5 | Done |
 | `run.until`: run headless until a condition holds instead of polling | 5 | Planned |
 | `replay.seek`: query any earlier tick of a recorded run | 5 | Planned |
 | `build.check`: C++ compile errors as data from an incremental build | 6 | Planned |
