@@ -54,7 +54,11 @@ private:
     bool finished_ = false;
 };
 
+// Called once per frame, after its ticks, e.g. to draw it.
+using FrameFn = std::function<void()>;
+
 // Runs a Loop to the end on this thread. Windowed runs yield between frames instead of spinning.
-Result<RunStats> run(Platform& platform, const RunOptions& options, const TickFn& on_tick);
+Result<RunStats> run(Platform& platform, const RunOptions& options, const TickFn& on_tick,
+                     const FrameFn& on_frame = {});
 
 } // namespace slash::platform

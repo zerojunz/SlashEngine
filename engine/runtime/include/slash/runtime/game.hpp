@@ -5,6 +5,7 @@
 #include "slash/core/result.hpp"
 #include "slash/platform/platform.hpp"
 #include "slash/platform/run.hpp"
+#include "slash/render/device.hpp"
 #include "slash/runtime/project.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/world.hpp"
@@ -37,7 +38,8 @@ inline constexpr std::string_view kGameUsage =
 // errors; other arguments are ignored, since some launchers add their own (Xcode, Finder).
 [[nodiscard]] Result<GameOptions> parse_game_args(const std::vector<std::string>& args);
 
-// A running game: a project's main scene loaded into a world, ticked on the platform's loop.
+// A running game: a project's main scene loaded into a world, ticked on the platform's loop and
+// drawn to its window.
 class Game {
 public:
     [[nodiscard]] static Result<std::unique_ptr<Game>> start(const GameOptions& options);
@@ -52,7 +54,7 @@ public:
     bool frame();
     void request_quit() noexcept;
 
-    // What ran: {"entities", "headless", "name", "quit_requested", "scene", "ticks"}.
+    // What ran: {"entities", "headless", "name", "quit_requested", "renderer", "scene", "ticks"}.
     [[nodiscard]] json::Value summary() const;
 
     [[nodiscard]] const Project& project() const noexcept { return project_; }
@@ -60,16 +62,22 @@ public:
     // Assets from the data folder, for gameplay code; prefab files are read through it too.
     [[nodiscard]] asset::Assets& assets() noexcept { return assets_; }
     [[nodiscard]] bool headless() const noexcept { return platform_.headless(); }
+    // The device drawing to the window: the null device when headless or no GPU backend works.
+    [[nodiscard]] render::RenderDevice& renderer() noexcept { return *renderer_; }
 
 private:
     Game(Project project, platform::Platform platform, const std::string& data_dir);
+    void draw();
 
     Project project_;
     asset::Assets assets_;
     world::ComponentRegistry components_;
     world::World world_;
     platform::Platform platform_;
+    // Declared after the platform, so it lets go of the window before the window closes.
+    std::unique_ptr<render::RenderDevice> renderer_;
     std::unique_ptr<platform::Loop> loop_;
+    bool draw_failed_ = false;
 };
 
 } // namespace slash::runtime

@@ -6,6 +6,7 @@
 #include "slash/core/text.hpp"
 #include "slash/world/scene.hpp"
 
+#include <array>
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -20,7 +21,8 @@
 //   }
 //
 // Optional fields: "id" (reverse-DNS identifier for bundles and stores), "version"
-// ("major.minor.patch"), "window" ({"width", "height"}) and "tick_hz".
+// ("major.minor.patch"), "window" ({"width", "height"}), "tick_hz" and "rendering"
+// ({"clear_color", "driver"}).
 namespace slash::runtime {
 
 inline constexpr std::string_view kProjectFile = "project.json";
@@ -34,6 +36,10 @@ struct Project {
     int window_width = 1280;
     int window_height = 720;
     double tick_hz = 60.0;
+    // What the window shows behind everything, as RGBA from 0 to 1: Godot's default gray.
+    std::array<float, 4> clear_color{0.3F, 0.3F, 0.3F, 1.0F};
+    // The GPU backend: "auto", "vulkan", "metal", "d3d12" or "null" (draws nothing).
+    std::string rendering_driver = "auto";
 
     // The identifier to use: id, or the default derived from the name.
     [[nodiscard]] std::string bundle_id() const;
