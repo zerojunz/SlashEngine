@@ -15,7 +15,9 @@
         }
       }
     },
-    "spawn_point": {}
+    "spawn_point": {
+      "extends": "prefabs/marker.prefab.json"
+    }
   },
   "format": 1
 }

@@ -255,4 +255,15 @@ std::string join_path(std::string_view folder, std::string_view relative) {
     return path;
 }
 
+world::FileReader folder_reader(std::string folder) {
+    return [folder = std::move(folder)](std::string_view path) -> Result<std::string> {
+        if (!is_project_path(path)) {
+            return make_error(ErrorCode::PermissionDenied,
+                              "path \"" + std::string(path) +
+                                  "\" is not inside the project folder");
+        }
+        return platform::read_file(join_path(folder, path));
+    };
+}
+
 } // namespace slash::runtime

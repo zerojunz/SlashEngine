@@ -7,6 +7,7 @@
 #include <entt/entity/registry.hpp>
 #include <functional>
 #include <map>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -21,6 +22,20 @@ class World;
 struct EntityId {
     std::string value;
 };
+
+// Reads a file by its path relative to the project folder. Worlds use one to load prefabs.
+using FileReader = std::function<Result<std::string>(std::string_view path)>;
+
+// Links an entity to the .prefab.json file it extends. base holds the prefab's components,
+// resolved through every "extends" and shared by all its instances; saving writes only the
+// fields that differ from it.
+struct PrefabLink {
+    std::string path;
+    std::shared_ptr<const json::Value> base;
+};
+
+// The prefab each entity extends, by entity ID.
+using PrefabLinks = std::map<std::string, PrefabLink, std::less<>>;
 
 // A system runs once per fixed tick. Systems run in order of priority, then in the order they
 // were added.
@@ -126,6 +141,19 @@ public:
     // with IDs come and go, and emitted events. Sessions set it to serve events.subscribe.
     void set_event_listener(EventListener listener) { listener_ = std::move(listener); }
 
+    // Where prefab files come from. Without a reader, entities cannot extend prefabs.
+    void set_file_reader(FileReader reader) { reader_ = std::move(reader); }
+    [[nodiscard]] const FileReader& file_reader() const noexcept { return reader_; }
+    // The prefab an entity extends, or nullptr.
+    [[nodiscard]] const PrefabLink* prefab_of(entt::entity entity) const;
+    // The prefab each entity with an ID extends.
+    [[nodiscard]] PrefabLinks prefab_links() const;
+    // Prefabs resolved so far, by path, so every instance shares one copy (see resolve_prefab).
+    // Sessions forget them before each command, so edited prefab files are read again.
+    [[nodiscard]] std::shared_ptr<const json::Value> cached_prefab(std::string_view path) const;
+    void cache_prefab(std::string path, std::shared_ptr<const json::Value> components);
+    void forget_prefabs() { prefabs_.clear(); }
+
     // IDs are 1 to 64 characters, each a letter, digit, '_' or '-'.
     [[nodiscard]] static bool is_valid_id(std::string_view id);
 
@@ -145,6 +173,8 @@ private:
     entt::registry registry_;
     std::vector<NamedSystem> systems_;
     EventListener listener_;
+    FileReader reader_;
+    std::map<std::string, std::shared_ptr<const json::Value>, std::less<>> prefabs_;
     std::uint64_t tick_ = 0;
     std::uint64_t next_generated_id_ = 1;
     bool stepping_ = false;

@@ -1,9 +1,10 @@
 # Scene format
 
-Scenes are `.scene.json` files. This page describes format version 1. The authoritative schema is
-generated from the registered components and printed by `slash-cli schema scene` (or the
-`schema.get` command with `{"kind": "scene"}`, or the MCP resource `slash://schema/scene`), so it
-always matches the engine you are running.
+Scenes are `.scene.json` files and prefabs are `.prefab.json` files. This page describes format
+version 1. The authoritative schemas are generated from the registered components and printed by
+`slash-cli schema scene` and `slash-cli schema prefab` (or the `schema.get` command with
+`{"kind": "scene"}`, or the MCP resource `slash://schema/scene`), so they always match the engine
+you are running.
 
 ## Shape
 
@@ -35,8 +36,10 @@ always matches the engine you are running.
 | --- | --- | --- |
 | `format` | Yes | Format version. Must be `1` |
 | `entities` | Yes | Entities keyed by stable ID |
-| `entities.<id>.components` | No | Components keyed by type name. Left out, the entity has none |
-| `entities.<id>.components.<Type>.<field>` | No | A field value. Left out, the field keeps its default |
+| `entities.<id>.extends` | No | A `.prefab.json` file the entity starts from (see [Prefabs](#prefabs)) |
+| `entities.<id>.components` | No | Components keyed by type name. Left out, the entity has none, or its prefab's |
+| `entities.<id>.components.<Type>` | No | The component's fields, or `null` to remove a component the prefab has |
+| `entities.<id>.components.<Type>.<field>` | No | A field value. Left out, the field keeps its default, or its prefab's value |
 
 No other keys are allowed at any level: an unknown key is an error, with a "did you mean"
 suggestion when it is close to a valid one.
@@ -135,7 +138,62 @@ An invalid scene never loads partly: the open scene stays as it was.
 - Don't edit a scene file by hand while a server has it open: the server holds the scene in
   memory and its next `scene.save` overwrites the edit.
 
-## Coming later
+## Prefabs
 
-Prefabs: an entity will be able to `"extends"` a `.prefab.json` file and override its fields, so
-one file change updates every instance. See the [roadmap](../roadmap.md).
+A prefab is one entity's components in a `.prefab.json` file, like a Godot scene that other
+scenes instance. An entity that `"extends"` it starts with the prefab's components, and its own
+fields override the prefab's. With `Health` as a game's component, `prefabs/enemy.prefab.json`:
+
+```json
+{
+  "components": {
+    "Health": {
+      "current": 50.0,
+      "max": 50.0
+    },
+    "Transform2D": {
+      "scale": [2.0, 2.0]
+    }
+  },
+  "format": 1
+}
+```
+
+and an entity in a scene:
+
+```json
+"enemy_01": {
+  "components": {
+    "Health": {
+      "current": 20.0
+    },
+    "Transform2D": {
+      "position": [200.0, 40.0]
+    }
+  },
+  "extends": "prefabs/enemy.prefab.json"
+}
+```
+
+`enemy_01` has `Health` with `current` 20 and `max` 50, and a `Transform2D` at `[200, 40]` with
+the prefab's scale. A `null` component removes one the prefab has: `"Health": null` gives an
+instance no `Health`. Changing the prefab file changes every instance, except for the fields an
+instance overrides.
+
+| Key | Required | Meaning |
+| --- | --- | --- |
+| `format` | Yes | Format version. Must be `1` |
+| `components` | No | Components keyed by type name, as in a scene entity |
+| `extends` | No | Another prefab this one starts from, so prefabs can build on each other |
+
+- Paths are relative to the project folder and use `/`, such as `"prefabs/enemy.prefab.json"`;
+  they cannot leave the folder or contain `.` or `..` parts.
+- Saving writes only what differs from the prefab: a field equal to the prefab's value is left
+  out, even when the prefab's value is not the default.
+- A missing prefab, a prefab that extends itself through a chain, or a `null` that names a
+  component the prefab lacks is a load error at the entity's `/extends` or component path.
+- `slash-cli scene validate` and `scene format` accept `.prefab.json` files too. They read the
+  prefabs a file extends from its project: the nearest folder above it with a `project.json`.
+- Exports copy and validate every prefab with the scenes.
+- `entity.create` with `"extends"` makes an instance and `prefab.save` writes an entity to a
+  prefab file (see the [command reference](commands.md)).

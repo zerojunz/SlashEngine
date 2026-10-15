@@ -53,14 +53,20 @@ success, 1 runtime failure, 2 usage error. On a machine with no display, set
 Scenes are `.scene.json` files: entities keyed by stable ID, each with its components. Fields
 equal to their defaults are left out. `tests/data/basic.scene.json` is a small example.
 
+An entity can `"extends"` a `.prefab.json` file (one entity's components, path relative to the
+project) and override its fields; a `null` component removes one the prefab has. Saving writes
+only what differs from the prefab. `entity.create` takes `"extends"`, and `prefab.save` writes an
+entity to a prefab file. `tests/data/game` has an example.
+
 ```bash
-$cli schema scene                                   # JSON Schema for scene files
+$cli schema scene                                   # JSON Schema for scene files (also: prefab)
 $cli scene validate tests/data/basic.scene.json     # every error, with its JSON Pointer path
 $cli scene format level.scene.json                  # rewrite in canonical form
 $cli scene format --check level.scene.json          # exit 1 if not canonical
 ```
 
-Validate after editing a scene by hand, and format before committing one.
+Validate after editing a scene or prefab by hand, and format before committing one. Both
+commands take `.prefab.json` files too.
 
 ## Commands, MCP and JSON-RPC
 
@@ -132,9 +138,9 @@ $cli project validate tests/data/game
 $cli export linux --project path/to/game --test        # build, lay out and run headless
 ```
 
-`slash-cli export <preset>` validates the project, its presets and every scene, stages them as the
-game's data, configures `export/CMakeLists.txt` with the engine sources, builds, signs and installs
-into `<project>/build/export/<preset>`. Its work folder and full build log are in
+`slash-cli export <preset>` validates the project, its presets and every scene and prefab, stages
+them as the game's data, configures `export/CMakeLists.txt` with the engine sources, builds, signs
+and installs into `<project>/build/export/<preset>`. Its work folder and full build log are in
 `<project>/.slash/export/<preset>/`; a failure reports the step and the end of the log. A Mac
 builds every platform: macOS and iOS with Xcode's tools, Windows and Linux with llvm-mingw and a
 glibc 2.31 Debian sysroot that the first such export downloads (`$cli toolchain install` gets
