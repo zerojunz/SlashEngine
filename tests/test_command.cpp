@@ -561,6 +561,56 @@ TEST_CASE("step advances the simulation and undo reverts it") {
     CHECK(y() == doctest::Approx(0.0));
 }
 
+TEST_CASE("engine.describe lists systems in the order they run") {
+    Engine engine;
+    world::World& world = engine.session->world();
+    world.add_system("movement", [](world::World& /*w*/, double /*dt*/) {},
+                     {.doc = "Moves things by their velocity."});
+    world.add_system("input", [](world::World& /*w*/, double /*dt*/) {}, {.priority = -1});
+    CHECK(*engine.ok("engine.describe").find("systems") == parse(R"(["input", "movement"])"));
+    CHECK(*engine.ok("engine.describe", R"({"full": true})").find("systems") == parse(R"([
+        {"name": "input", "priority": -1},
+        {"name": "movement", "doc": "Moves things by their velocity.", "priority": 0}
+    ])"));
+}
+
+TEST_CASE("play and pause set whether a running game ticks") {
+    Engine plain;
+    // Sessions with no clock of their own have no play or pause; they use step.
+    plain.fails("play", "{}", command::code::kMethodNotFound);
+    CHECK(plain.ok("engine.describe").find("scene")->find("playing") == nullptr);
+
+    world::ComponentRegistry components;
+    world::register_builtin_components(components);
+    command::Registry commands;
+    command::register_builtin_commands(commands);
+    command::register_run_commands(commands);
+    command::SessionOptions options;
+    options.capture_logs = false;
+    command::Session session(components, commands, options);
+    CHECK_FALSE(session.playing());
+    command::Reply reply = session.call("play", json::Value());
+    REQUIRE(reply.ok);
+    CHECK(reply.value == parse(R"({"playing": true, "tick": 0})"));
+    CHECK(session.playing());
+    CHECK(session.call("engine.describe", json::Value())
+              .value.find("scene")
+              ->find("playing")
+              ->as_bool());
+    REQUIRE(session.call("step", parse(R"({"ticks": 2})")).ok);
+    reply = session.call("pause", json::Value());
+    CHECK(reply.value == parse(R"({"playing": false, "tick": 2})"));
+    CHECK_FALSE(session.playing());
+    // Neither changes the world, so there is nothing to undo.
+    CHECK(session.undo_labels() == std::vector<std::string>{"step"});
+
+    command::SessionOptions read_only;
+    read_only.capture_logs = false;
+    read_only.capabilities = {Capability::Read};
+    command::Session observer(components, commands, read_only);
+    CHECK(observer.call("play", json::Value()).code == command::code::kPermissionDenied);
+}
+
 TEST_CASE("schema.get returns scene, component and command schemas") {
     Engine engine;
     CHECK(engine.ok("schema.get", R"({"kind": "scene"})").find("title")->as_string() ==

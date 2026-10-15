@@ -56,14 +56,14 @@ as `entity.get`, reject it as an unknown param.
 | Components | [`component.set`](#componentset), [`component.remove`](#componentremove) |
 | Query | [`world.query`](#worldquery) |
 | Snapshots | [`world.snapshot`](#worldsnapshot), [`world.diff`](#worlddiff), [`world.restore`](#worldrestore) |
-| Run | [`step`](#step) |
+| Run | [`step`](#step), [`play`](#play), [`pause`](#pause) |
 | History | [`undo`](#undo), [`redo`](#redo), [`history.get`](#historyget) |
 | Several at once | [`batch`](#batch) |
 | Observe | [`log.tail`](#logtail) |
 | Export | [`export.run`](#exportrun) |
 
-Planned commands from the [roadmap](../roadmap.md), not yet available: `input.inject`, `frame.capture`, `replay.run`, `play`, `pause`, `asset.list`,
-`events.subscribe` and `perf.stats`.
+Planned commands from the [roadmap](../roadmap.md), not yet available: `input.inject`, `frame.capture`, `replay.run`, `asset.list`, `events.subscribe` and
+`perf.stats`.
 
 ## Describe
 
@@ -87,7 +87,14 @@ Needs: `read`.
 ```
 
 `scene` describes the open scene: how many entities it has, its path (empty for an unsaved one)
-and the current tick.
+and the current tick. In a running game, which has [`play`](#play) and [`pause`](#pause), it also
+says whether the game is `playing`.
+
+`systems` lists the systems in the order they run. With `"full": true`, each is an object:
+
+```json
+{"name":"movement","doc":"Moves things by their velocity.","priority":0}
+```
 
 ### schema.get
 
@@ -441,6 +448,27 @@ Needs: `run`. Takes `dry_run`.
 ```
 
 `tick` is the world's tick counter after the step. Undo restores entities but not the counter.
+
+### play
+
+Starts the game ticking in real time, running every system each tick. No params. Needs: `run`.
+Only a running game (`slash-cli run --serve`, or `slash-mcp --live` connected to one) has `play`
+and `pause`; other sessions advance the world with `step`. A running game starts playing.
+
+```json
+{"playing":true,"tick":123}
+```
+
+### pause
+
+Stops the game ticking, so the world holds still while you inspect or edit it. The game keeps
+serving requests, and `step` still advances it. No params. Needs: `run`.
+
+```json
+{"playing":false,"tick":123}
+```
+
+`play` and `pause` change nothing in the world, so there is nothing to undo.
 
 ## History
 

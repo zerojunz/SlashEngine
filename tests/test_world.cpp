@@ -71,3 +71,25 @@ TEST_CASE("systems run in the order they were added, once per step") {
           std::vector<std::string>{"input 0 0.500000", "physics", "input 1 0.500000", "physics"});
     CHECK(world.system_names() == std::vector<std::string_view>{"input", "physics"});
 }
+
+TEST_CASE("systems run in order of priority, then in the order they were added") {
+    const ComponentRegistry registry;
+    World world(registry);
+    std::vector<std::string> calls;
+    const auto record = [&](std::string name) {
+        return [&calls, name](World& /*w*/, double /*dt*/) { calls.push_back(name); };
+    };
+    world.add_system("render", record("render"), {.doc = "Draws.", .priority = 100});
+    world.add_system("movement", record("movement"));
+    world.add_system("input", record("input"), {.priority = -10});
+    world.add_system("collisions", record("collisions"));
+    world.step(0.5);
+    CHECK(calls == std::vector<std::string>{"input", "movement", "collisions", "render"});
+
+    const std::vector<slash::world::SystemInfo> systems = world.systems();
+    REQUIRE(systems.size() == 4);
+    CHECK(systems.back().name == "render");
+    CHECK(systems.back().doc == "Draws.");
+    CHECK(systems.back().priority == 100);
+    CHECK(systems.front().priority == -10);
+}
