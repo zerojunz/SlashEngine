@@ -80,10 +80,12 @@ edited prefab updates its instances and keeps their overrides (see
 ### scene validate
 
 Checks a scene, a `.prefab.json` file, a [`.frames.json`](scene-format.md#sprite-frames) file, a
-[`.material.json`](scene-format.md#materials) file or a [`.anim.json`](scene-format.md#animations)
-file and lists every error, each with its JSON Pointer path.
-Exit code 1 if the file is invalid. The [prefabs](scene-format.md#prefabs) a file extends are read
-from its project: the nearest folder above it with a `project.json`, else the current folder.
+[`.material.json`](scene-format.md#materials) file, a [`.anim.json`](scene-format.md#animations)
+file or a [`.tileset.json`](scene-format.md#tile-sets) file and lists every error, each with its
+JSON Pointer path.
+Exit code 1 if the file is invalid. The [prefabs](scene-format.md#prefabs) a file extends and the
+tile sets its layers use are read from its project: the nearest folder above it with a
+`project.json`, else the current folder.
 
 ```bash
 slash-cli scene validate <file>
@@ -94,11 +96,18 @@ slash-cli scene validate <file>
 ```
 
 For a prefab the result counts its `components` instead of `entities`, for a `.frames.json` or
-`.anim.json` file its `animations`, and for a `.material.json` file the `instructions` its graph
-compiles to, of the 64 a material can run:
+`.anim.json` file its `animations`, for a `.tileset.json` file its `tiles`, and for a
+`.material.json` file the `instructions` its graph compiles to, of the 64 a material can run:
 
 ```json
 {"instructions":5,"valid":true}
+```
+
+Each [`TileMapLayer`](scene-format.md#tile-map-layers) in a scene or prefab must use a tile set
+that loads, and its legend and rows must name tiles there:
+
+```json
+{"errors":[{"message":"the tile set has no tile named \"watr\"; did you mean \"water\"?","path":"/entities/map/components/TileMapLayer/legend/w"}],"valid":false}
 ```
 
 When the project has a
@@ -110,8 +119,8 @@ When the project has a
 
 ### scene format
 
-Rewrites a scene, prefab, `.frames.json`, `.material.json` or `.anim.json` file in
-[canonical form](scene-format.md#canonical-form).
+Rewrites a scene, prefab, `.frames.json`, `.material.json`, `.anim.json` or `.tileset.json` file
+in [canonical form](scene-format.md#canonical-form).
 
 ```bash
 slash-cli scene format <file>
@@ -123,7 +132,8 @@ slash-cli scene format --check <file>    # change nothing; exit 1 if not canonic
 Prints a JSON Schema: for scene or prefab files (generated from the registered components), for
 [`.frames.json` files](scene-format.md#sprite-frames), for
 [`.material.json` files](scene-format.md#materials), for
-[`.anim.json` files](scene-format.md#animations), for [storyboard files](storyboard-format.md),
+[`.anim.json` files](scene-format.md#animations), for
+[`.tileset.json` files](scene-format.md#tile-sets), for [storyboard files](storyboard-format.md),
 for [`project.json`](project-format.md) or for [`export_presets.json`](project-format.md#export-presets).
 
 ```bash
@@ -132,6 +142,7 @@ slash-cli schema prefab
 slash-cli schema frames
 slash-cli schema material
 slash-cli schema animation
+slash-cli schema tileset
 slash-cli schema storyboard
 slash-cli schema project
 slash-cli schema presets

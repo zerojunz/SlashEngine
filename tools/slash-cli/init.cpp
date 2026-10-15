@@ -116,6 +116,9 @@ environment variables, never from the file.
   (`slash-cli schema material`), node graphs that color a sprite's pixels. Exports ship them all.
 - `animations/` (or any folder): `.anim.json` keyframe animations (`slash-cli schema animation`)
   that `AnimationPlayer` plays on an entity's fields. Check one with `animation_eval`.
+- `tiles/` (or any folder): `.tileset.json` tile sets (`slash-cli schema tileset`) that cut atlas
+  textures into tiles and name the terrains they connect. A `TileMapLayer` draws them; paint one
+  with `tilemap_paint` rather than editing its rows by hand.
 - `storyboard/`: the game's facts as typed entries (`slash-cli schema storyboard`), and
   `journal.jsonl`, the record of who changed them. Commit both.
 )";

@@ -1,0 +1,25 @@
+{
+  "format": 1,
+  "sources": {
+    "ground": {
+      "texture": "ground.png",
+      "tiles": {
+        "0,0": {
+          "name": "grass",
+          "peering": {
+            "n": "water"
+          },
+          "terrain": "gras"
+        }
+      }
+    }
+  },
+  "terrain_sets": {
+    "ground": {
+      "terrains": [
+        "grass",
+        "water"
+      ]
+    }
+  }
+}

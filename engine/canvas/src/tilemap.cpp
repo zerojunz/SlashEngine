@@ -1,0 +1,961 @@
+#include "slash/canvas/tilemap.hpp"
+
+#include "slash/core/text.hpp"
+
+#include <algorithm>
+#include <charconv>
+#include <climits>
+#include <cstddef>
+#include <cstdint>
+#include <optional>
+#include <set>
+#include <string>
+#include <system_error>
+#include <utility>
+
+namespace slash::canvas {
+namespace {
+
+constexpr std::array<std::string_view, 3> kModeNames = {"match_corners_and_sides", "match_corners",
+                                                        "match_sides"};
+// A texture is at most 16384 pixels on a side.
+constexpr std::int64_t kMaxPixels = 16384;
+constexpr std::size_t kMaxKeyLength = 3;
+constexpr std::size_t kKeyCount = kKeyCharacters.size();
+
+json::Value property(std::string_view type, std::string_view description) {
+    json::Value out;
+    out["type"] = type;
+    out["description"] = description;
+    return out;
+}
+
+json::Value pair(std::string_view description, std::int64_t minimum) {
+    json::Value item;
+    item["type"] = "integer";
+    item["minimum"] = minimum;
+    item["maximum"] = kMaxPixels;
+    json::Value out = property("array", description);
+    out["items"] = std::move(item);
+    out["minItems"] = 2;
+    out["maxItems"] = 2;
+    return out;
+}
+
+json::Value schema() {
+    json::Value peering_bit;
+    peering_bit["type"] = json::Array{"string", "null"};
+    json::Value tile;
+    tile["type"] = "object";
+    tile["additionalProperties"] = false;
+    tile["properties"]["name"] =
+        property("string", "What legends and tilemap.set call it; unique in the file, no ':'.");
+    tile["properties"]["name"]["minLength"] = 1;
+    tile["properties"]["terrain"] = property("string", "The terrain it paints.");
+    tile["properties"]["terrain"]["minLength"] = 1;
+    tile["properties"]["peering"] =
+        property("object", "The terrain each neighbor must have for the tile to fit, by "
+                           "direction: n, ne, e, se, s, sw, w, nw. Left out, the tile's own "
+                           "terrain; null, none.");
+    tile["properties"]["peering"]["additionalProperties"] = false;
+    for (const std::string_view name : kNeighborNames) {
+        tile["properties"]["peering"]["properties"][name] = peering_bit;
+    }
+    tile["properties"]["probability"] =
+        property("number", "How often terrain painting picks it over tiles that fit as well.");
+    tile["properties"]["probability"]["minimum"] = 0;
+    tile["properties"]["probability"]["default"] = 1;
+
+    json::Value source;
+    source["type"] = "object";
+    source["additionalProperties"] = false;
+    source["required"] = json::Array{"texture"};
+    source["properties"]["texture"] = property("string", "The atlas texture.");
+    source["properties"]["texture"]["minLength"] = 1;
+    source["properties"]["region_size"] =
+        pair("Each tile's width and height in the texture, in pixels; tile_size if left out.", 1);
+    source["properties"]["margins"] = pair("Pixels before the first column and row.", 0);
+    source["properties"]["margins"]["default"] = json::Array{0, 0};
+    source["properties"]["separation"] = pair("Pixels between columns and rows.", 0);
+    source["properties"]["separation"]["default"] = json::Array{0, 0};
+    source["properties"]["tiles"] =
+        property("object", R"(Tiles by "column,row" in the texture's grid, as "2,0".)");
+    source["properties"]["tiles"]["additionalProperties"]["$ref"] = "#/$defs/tile";
+
+    json::Value terrain_set;
+    terrain_set["type"] = "object";
+    terrain_set["additionalProperties"] = false;
+    terrain_set["required"] = json::Array{"terrains"};
+    terrain_set["properties"]["mode"] =
+        property("string", "How tiles connect: by all eight neighbors, the four at their "
+                           "corners or the four at their sides.");
+    json::Array modes;
+    for (const std::string_view mode : kModeNames) {
+        modes.emplace_back(mode);
+    }
+    terrain_set["properties"]["mode"]["enum"] = std::move(modes);
+    terrain_set["properties"]["mode"]["default"] = kModeNames.front();
+    terrain_set["properties"]["terrains"] = property("array", "Terrain names, unique in the file.");
+    terrain_set["properties"]["terrains"]["minItems"] = 1;
+    terrain_set["properties"]["terrains"]["items"]["type"] = "string";
+    terrain_set["properties"]["terrains"]["items"]["minLength"] = 1;
+
+    json::Value out;
+    out["$schema"] = "https://json-schema.org/draft/2020-12/schema";
+    out["title"] = "SlashEngine tile set";
+    out["description"] = "Atlas textures cut into tiles, and the terrains that connect them, "
+                         "like Godot's TileSet. TileMapLayer draws them.";
+    out["type"] = "object";
+    out["additionalProperties"] = false;
+    out["required"] = json::Array{"format", "sources"};
+    out["properties"]["format"]["const"] = 1;
+    out["properties"]["format"]["description"] = "Format version. Must be 1.";
+    out["properties"]["tile_size"] = pair("A cell's width and height, in pixels.", 1);
+    out["properties"]["tile_size"]["default"] = json::Array{16, 16};
+    out["properties"]["terrain_sets"] =
+        property("object", "Terrain sets by name, each with the terrains whose tiles connect.");
+    out["properties"]["terrain_sets"]["additionalProperties"]["$ref"] = "#/$defs/terrain_set";
+    out["properties"]["sources"] = property("object", "Atlas sources by name.");
+    out["properties"]["sources"]["minProperties"] = 1;
+    out["properties"]["sources"]["additionalProperties"]["$ref"] = "#/$defs/source";
+    out["$defs"]["terrain_set"] = std::move(terrain_set);
+    out["$defs"]["source"] = std::move(source);
+    out["$defs"]["tile"] = std::move(tile);
+    return out;
+}
+
+std::string quoted(std::string_view text) {
+    return "\"" + std::string(text) + "\"";
+}
+
+template <typename Range>
+void add_hint(std::string& message, std::string_view name, const Range& candidates) {
+    if (const std::string_view hint = closest_match(name, candidates); !hint.empty()) {
+        message += "; did you mean " + quoted(hint) + "?";
+    }
+}
+
+// "column,row", as "2,0", within a texture's largest grid.
+std::optional<Vec2i> parse_atlas(std::string_view text) {
+    const std::size_t comma = text.find(',');
+    if (comma == std::string_view::npos) {
+        return std::nullopt;
+    }
+    const auto number = [](std::string_view part) -> std::optional<int> {
+        int value = 0;
+        if (part.empty() || part.front() < '0' || part.front() > '9') {
+            return std::nullopt;
+        }
+        const auto [end, error] = std::from_chars(part.data(), part.data() + part.size(), value);
+        if (error != std::errc{} || end != part.data() + part.size() || value >= kMaxPixels) {
+            return std::nullopt;
+        }
+        return value;
+    };
+    const std::optional<int> column = number(text.substr(0, comma));
+    const std::optional<int> row = number(text.substr(comma + 1));
+    if (!column || !row) {
+        return std::nullopt;
+    }
+    return Vec2i{*column, *row};
+}
+
+std::string atlas_text(Vec2i atlas) {
+    return std::to_string(atlas.x) + "," + std::to_string(atlas.y);
+}
+
+Vec2i pair_of(const json::Value* value, Vec2i fallback) {
+    if (value == nullptr) {
+        return fallback;
+    }
+    const json::Array& items = value->as_array();
+    return {static_cast<int>(items[0].as_int()), static_cast<int>(items[1].as_int())};
+}
+
+bool is_corner(std::size_t bit) {
+    return bit % 2 == 1;
+}
+
+// Whether a terrain set's mode connects tiles by this neighbor.
+bool connects(TerrainMode mode, std::size_t bit) {
+    switch (mode) {
+    case TerrainMode::Corners:
+        return is_corner(bit);
+    case TerrainMode::Sides:
+        return !is_corner(bit);
+    case TerrainMode::CornersAndSides:
+        break;
+    }
+    return true;
+}
+
+std::string_view connected_bits(TerrainMode mode) {
+    switch (mode) {
+    case TerrainMode::Corners:
+        return "ne, se, sw and nw";
+    case TerrainMode::Sides:
+        return "n, e, s and w";
+    case TerrainMode::CornersAndSides:
+        break;
+    }
+    return "all eight";
+}
+
+TerrainMode parse_mode(std::string_view name) {
+    return static_cast<TerrainMode>(std::ranges::find(kModeNames, name) - kModeNames.begin());
+}
+
+std::string path_error() {
+    return "expected a path inside the project folder, separated by '/', with no \".\" or "
+           "\"..\" parts";
+}
+
+// Checks a document the schema accepted, collecting every error.
+class Checker {
+public:
+    explicit Checker(const json::Value& doc) : doc_(doc) {}
+
+    std::vector<json::ValidationError> run() {
+        if (const json::Value* sets = doc_.find("terrain_sets"); sets != nullptr) {
+            for (const auto& [name, set] : sets->as_object()) {
+                check_terrain_set(name, set);
+            }
+        }
+        for (const auto& [name, source] : doc_.find("sources")->as_object()) {
+            check_source(name, source);
+        }
+        return std::move(errors_);
+    }
+
+private:
+    struct TerrainInfo {
+        std::string set;
+        TerrainMode mode = TerrainMode::CornersAndSides;
+    };
+
+    void fail(std::string path, std::string message) {
+        errors_.push_back({std::move(path), std::move(message)});
+    }
+
+    void check_terrain_set(const std::string& name, const json::Value& set) {
+        const std::string at = "/terrain_sets/" + json::pointer_escape(name);
+        if (name.empty()) {
+            fail(at, "name the terrain set");
+        }
+        const json::Value* mode = set.find("mode");
+        const TerrainMode parsed =
+            mode != nullptr ? parse_mode(mode->as_string()) : TerrainMode::CornersAndSides;
+        const json::Array& terrains = set.find("terrains")->as_array();
+        for (std::size_t i = 0; i < terrains.size(); ++i) {
+            const std::string& terrain = terrains[i].as_string();
+            const auto [it, added] =
+                terrains_.try_emplace(terrain, TerrainInfo{.set = name, .mode = parsed});
+            if (!added) {
+                fail(at + "/terrains/" + std::to_string(i),
+                     quoted(terrain) + " is already a terrain, in the set " +
+                         quoted(it->second.set) + "; terrain names are unique in the file");
+            }
+        }
+    }
+
+    // The terrain a name refers to, or nullptr after reporting it.
+    const TerrainInfo* terrain(const std::string& name, const std::string& at) {
+        const auto it = terrains_.find(name);
+        if (it != terrains_.end()) {
+            return &it->second;
+        }
+        std::vector<std::string_view> names;
+        names.reserve(terrains_.size());
+        for (const auto& [known, info] : terrains_) {
+            names.emplace_back(known);
+        }
+        std::string message = "no terrain set has a terrain named " + quoted(name);
+        add_hint(message, name, names);
+        fail(at, std::move(message));
+        return nullptr;
+    }
+
+    void check_source(const std::string& name, const json::Value& source) {
+        const std::string at = "/sources/" + json::pointer_escape(name);
+        if (name.empty()) {
+            fail(at, "name the source");
+        }
+        if (!is_project_path(source.find("texture")->as_string())) {
+            fail(at + "/texture", path_error());
+        }
+        const json::Value* tiles = source.find("tiles");
+        if (tiles == nullptr) {
+            return;
+        }
+        for (const auto& [key, tile] : tiles->as_object()) {
+            const std::string tile_at = at + "/tiles/" + json::pointer_escape(key);
+            if (!parse_atlas(key)) {
+                fail(tile_at, R"(tiles are keyed by "column,row" in the texture's grid, as "2,0")");
+                continue;
+            }
+            std::string where = name;
+            where += ':';
+            where += key;
+            check_tile(where, tile, tile_at);
+        }
+    }
+
+    void check_tile(const std::string& where, const json::Value& tile, const std::string& at) {
+        if (const json::Value* name = tile.find("name"); name != nullptr) {
+            const std::string& text = name->as_string();
+            if (text.find(':') != std::string::npos) {
+                fail(at + "/name", R"(a tile name has no ':', which "source:column,row" uses)");
+            } else if (const auto [it, added] = names_.try_emplace(text, where); !added) {
+                fail(at + "/name", "another tile is named " + quoted(text) + ": " + it->second);
+            }
+        }
+        const json::Value* terrain_name = tile.find("terrain");
+        const json::Value* peering = tile.find("peering");
+        if (terrain_name == nullptr) {
+            if (peering != nullptr) {
+                fail(at + "/peering", R"(only a tile with a "terrain" has "peering")");
+            }
+            return;
+        }
+        const TerrainInfo* info = terrain(terrain_name->as_string(), at + "/terrain");
+        if (info == nullptr || peering == nullptr) {
+            return;
+        }
+        for (const auto& [bit, value] : peering->as_object()) {
+            std::string bit_at = at;
+            bit_at += "/peering/";
+            bit_at += bit;
+            const auto index = static_cast<std::size_t>(std::ranges::find(kNeighborNames, bit) -
+                                                        kNeighborNames.begin());
+            if (!connects(info->mode, index)) {
+                fail(bit_at, "the terrain set " + quoted(info->set) + " is " +
+                                 std::string(kModeNames.at(static_cast<std::size_t>(info->mode))) +
+                                 ", which connects tiles by " +
+                                 std::string(connected_bits(info->mode)) + " only");
+                continue;
+            }
+            if (value.is_null()) {
+                continue;
+            }
+            const TerrainInfo* other = terrain(value.as_string(), bit_at);
+            if (other != nullptr && other->set != info->set) {
+                fail(bit_at, quoted(value.as_string()) + " is in the terrain set " +
+                                 quoted(other->set) +
+                                 "; peering names terrains of the tile's "
+                                 "own set, " +
+                                 quoted(info->set));
+            }
+        }
+    }
+
+    const json::Value& doc_;
+    std::map<std::string, TerrainInfo, std::less<>> terrains_;
+    std::map<std::string, std::string, std::less<>> names_; // tile name -> "source:x,y"
+    std::vector<json::ValidationError> errors_;
+};
+
+bool valid_key(std::string_view key) {
+    return !key.empty() && key.size() <= kMaxKeyLength && std::ranges::all_of(key, [](char c) {
+        return kKeyCharacters.find(c) != std::string_view::npos;
+    });
+}
+
+bool empty_key(std::string_view key) {
+    return std::ranges::all_of(key, [](char c) { return c == '.'; });
+}
+
+// Decodes a layer's cells into out, if given, collecting errors; stops at the first if asked.
+void decode(const world::TileMapLayer& layer, const TileSet& set, Cells* out,
+            std::vector<json::ValidationError>& errors, bool first_only) {
+    const auto stop = [&] { return first_only && !errors.empty(); };
+    std::string_view first_key;
+    std::map<std::string, std::optional<TileRef>, std::less<>> keys;
+    bool lengths_ok = true;
+    for (const auto& [key, value] : layer.legend) {
+        const std::string at = "/legend/" + json::pointer_escape(key);
+        if (!valid_key(key)) {
+            errors.push_back({at, "a key is one to three letters, digits or punctuation marks "
+                                  "other than '.', '\"' and backslash"});
+            lengths_ok = false;
+        } else if (first_key.empty()) {
+            first_key = key;
+        } else if (key.size() != first_key.size()) {
+            errors.push_back({at, "keys are all the same length: " + quoted(key) + " is " +
+                                      std::to_string(key.size()) + " characters, " +
+                                      quoted(first_key) + " " + std::to_string(first_key.size())});
+            lengths_ok = false;
+        }
+        auto tile = find_tile(set, value);
+        if (!tile) {
+            errors.push_back({at, tile.error().message});
+            keys.emplace(key, std::nullopt);
+        } else {
+            keys.emplace(key, std::move(tile).value());
+        }
+        if (stop()) {
+            return;
+        }
+    }
+    if (!lengths_ok) {
+        return; // the rows can't be split into keys
+    }
+    const std::size_t length = std::max<std::size_t>(first_key.size(), 1);
+    if (layer.origin.x < kMinCell || layer.origin.x > kMaxCell || layer.origin.y < kMinCell ||
+        layer.origin.y > kMaxCell) {
+        errors.push_back({"/origin", "cells are from -32768 to 32767 in each direction"});
+        return;
+    }
+    for (std::size_t i = 0; i < layer.rows.size(); ++i) {
+        const std::string& row = layer.rows[i];
+        const std::string at = "/rows/" + std::to_string(i);
+        if (row.size() % length != 0) {
+            errors.push_back({at, "is " + std::to_string(row.size()) +
+                                      " characters, not a whole number of " +
+                                      std::to_string(length) + "-character keys"});
+        } else if (static_cast<std::int64_t>(layer.origin.y) + static_cast<std::int64_t>(i) >
+                       kMaxCell ||
+                   static_cast<std::int64_t>(layer.origin.x) +
+                           static_cast<std::int64_t>(row.size() / length) - 1 >
+                       kMaxCell) {
+            errors.push_back({at, "reaches past 32767, the last column or row cells can be in"});
+        } else {
+            for (std::size_t column = 0; column * length < row.size(); ++column) {
+                const std::string_view key = std::string_view(row).substr(column * length, length);
+                if (empty_key(key)) {
+                    continue;
+                }
+                const auto it = keys.find(key);
+                if (it == keys.end()) {
+                    errors.push_back({at, "column " + std::to_string(column) + ": " + quoted(key) +
+                                              " is not in the legend"});
+                    break;
+                }
+                if (out != nullptr && it->second) {
+                    out->insert_or_assign(layer.origin +
+                                              Vec2i{static_cast<int>(column), static_cast<int>(i)},
+                                          *it->second);
+                }
+            }
+        }
+        if (stop()) {
+            return;
+        }
+    }
+}
+
+// The key a new tile gets: the start of its name if that is free, else the first free key.
+std::string new_key(std::string_view text, std::size_t length,
+                    const std::set<std::string, std::less<>>& taken) {
+    if (text.find(':') == std::string_view::npos && text.size() >= length) {
+        std::string start(text.substr(0, length));
+        if (valid_key(start) && !taken.contains(start)) {
+            return start;
+        }
+        if (length == 1 && start.front() >= 'a' && start.front() <= 'z') {
+            start.front() = static_cast<char>(start.front() - 'a' + 'A');
+            if (!taken.contains(start)) {
+                return start;
+            }
+        }
+    }
+    // Every key of this length, in kKeyCharacters order.
+    std::size_t combinations = 1;
+    for (std::size_t i = 0; i < length; ++i) {
+        combinations *= kKeyCount;
+    }
+    std::string key(length, ' ');
+    for (std::size_t n = 0; n < combinations; ++n) {
+        std::size_t rest = n;
+        for (std::size_t i = length; i-- > 0;) {
+            key[i] = kKeyCharacters[rest % kKeyCount];
+            rest /= kKeyCount;
+        }
+        if (!taken.contains(key)) {
+            return key;
+        }
+    }
+    SLASH_ASSERT(false, "no legend key left");
+    return key;
+}
+
+// A cell's place in the hash that picks between tiles that fit equally well.
+double position_hash(Vec2i cell) {
+    std::uint64_t x = (static_cast<std::uint64_t>(static_cast<std::uint32_t>(cell.x)) << 32U) |
+                      static_cast<std::uint32_t>(cell.y);
+    // splitmix64's finalizer.
+    x += 0x9E3779B97F4A7C15ULL;
+    x = (x ^ (x >> 30U)) * 0xBF58476D1CE4E5B9ULL;
+    x = (x ^ (x >> 27U)) * 0x94D049BB133111EBULL;
+    x ^= x >> 31U;
+    constexpr double kScale = 1.0 / 9007199254740992.0; // 2^-53
+    return static_cast<double>(x >> 11U) * kScale;
+}
+
+struct Candidate {
+    TileRef ref;
+    const TileData* data = nullptr;
+};
+
+world::TileMapLayer layer_from_json(const json::Value& component) {
+    world::TileMapLayer layer;
+    if (const json::Value* value = component.find("tile_set"); value != nullptr) {
+        layer.tile_set = value->as_string();
+    }
+    if (const json::Value* value = component.find("origin"); value != nullptr) {
+        layer.origin = pair_of(value, {});
+    }
+    if (const json::Value* value = component.find("legend"); value != nullptr) {
+        for (const auto& [key, tile] : value->as_object()) {
+            layer.legend.emplace(key, tile.as_string());
+        }
+    }
+    if (const json::Value* value = component.find("rows"); value != nullptr) {
+        for (const json::Value& row : value->as_array()) {
+            layer.rows.push_back(row.as_string());
+        }
+    }
+    return layer;
+}
+
+} // namespace
+
+const TileData* TileSet::find(const TileRef& tile) const {
+    const auto source = sources.find(tile.source);
+    if (source == sources.end()) {
+        return nullptr;
+    }
+    const auto found = source->second.tiles.find(tile.atlas);
+    return found == source->second.tiles.end() ? nullptr : &found->second;
+}
+
+int TileSet::terrain(std::string_view name) const {
+    for (std::size_t i = 0; i < terrains.size(); ++i) {
+        if (terrains[i].name == name) {
+            return static_cast<int>(i);
+        }
+    }
+    return -1;
+}
+
+std::string_view terrain_mode_name(TerrainMode mode) {
+    return kModeNames.at(static_cast<std::size_t>(mode));
+}
+
+json::Value tileset_schema() {
+    return schema();
+}
+
+std::vector<json::ValidationError> validate_tileset(const json::Value& doc) {
+    std::vector<json::ValidationError> errors = json::validate(doc, schema());
+    if (!errors.empty()) {
+        return errors;
+    }
+    return Checker(doc).run();
+}
+
+Result<TileSet> parse_tileset(const json::Value& doc) {
+    if (const auto errors = validate_tileset(doc); !errors.empty()) {
+        const json::ValidationError& first = errors.front();
+        return make_error(ErrorCode::InvalidArgument,
+                          (first.path.empty() ? std::string("root") : first.path) + ": " +
+                              first.message);
+    }
+    TileSet set;
+    set.tile_size = pair_of(doc.find("tile_size"), set.tile_size);
+    if (const json::Value* sets = doc.find("terrain_sets"); sets != nullptr) {
+        for (const auto& [name, json_set] : sets->as_object()) {
+            const json::Value* mode = json_set.find("mode");
+            set.terrain_sets.push_back({.name = name,
+                                        .mode = mode != nullptr ? parse_mode(mode->as_string())
+                                                                : TerrainMode::CornersAndSides});
+            for (const json::Value& terrain : json_set.find("terrains")->as_array()) {
+                set.terrains.push_back({.name = terrain.as_string(),
+                                        .set = static_cast<int>(set.terrain_sets.size() - 1)});
+            }
+        }
+    }
+    for (const auto& [name, json_source] : doc.find("sources")->as_object()) {
+        AtlasSource source;
+        source.texture = json_source.find("texture")->as_string();
+        source.region_size = pair_of(json_source.find("region_size"), set.tile_size);
+        source.margins = pair_of(json_source.find("margins"), {});
+        source.separation = pair_of(json_source.find("separation"), {});
+        if (const json::Value* tiles = json_source.find("tiles"); tiles != nullptr) {
+            for (const auto& [key, json_tile] : tiles->as_object()) {
+                const Vec2i atlas = parse_atlas(key).value_or(Vec2i{});
+                TileData tile;
+                if (const json::Value* value = json_tile.find("name"); value != nullptr) {
+                    tile.name = value->as_string();
+                    set.names.emplace(tile.name, TileRef{.source = name, .atlas = atlas});
+                }
+                if (const json::Value* value = json_tile.find("terrain"); value != nullptr) {
+                    tile.terrain = set.terrain(value->as_string());
+                    const TerrainMode mode =
+                        set.terrain_sets
+                            .at(static_cast<std::size_t>(
+                                set.terrains.at(static_cast<std::size_t>(tile.terrain)).set))
+                            .mode;
+                    const json::Value* peering = json_tile.find("peering");
+                    for (std::size_t bit = 0; bit < kNeighborNames.size(); ++bit) {
+                        if (!connects(mode, bit)) {
+                            continue;
+                        }
+                        const json::Value* value_bit =
+                            peering != nullptr ? peering->find(kNeighborNames.at(bit)) : nullptr;
+                        if (value_bit == nullptr) {
+                            tile.peering.at(bit) = tile.terrain;
+                        } else if (!value_bit->is_null()) {
+                            tile.peering.at(bit) = set.terrain(value_bit->as_string());
+                        }
+                    }
+                }
+                if (const json::Value* value = json_tile.find("probability"); value != nullptr) {
+                    tile.probability = value->as_double();
+                }
+                source.tiles.emplace(atlas, std::move(tile));
+            }
+        }
+        set.sources.emplace(name, std::move(source));
+    }
+    return set;
+}
+
+Result<TileRef> find_tile(const TileSet& set, std::string_view text) {
+    const std::size_t colon = text.rfind(':');
+    if (colon == std::string_view::npos) {
+        if (const auto it = set.names.find(text); it != set.names.end()) {
+            return it->second;
+        }
+        std::vector<std::string_view> names;
+        names.reserve(set.names.size());
+        for (const auto& [name, tile] : set.names) {
+            names.emplace_back(name);
+        }
+        std::string message = "the tile set has no tile named " + quoted(text);
+        add_hint(message, text, names);
+        return make_error(ErrorCode::NotFound, std::move(message));
+    }
+    const std::string_view source_name = text.substr(0, colon);
+    const auto source = set.sources.find(source_name);
+    if (source == set.sources.end()) {
+        std::vector<std::string_view> names;
+        names.reserve(set.sources.size());
+        for (const auto& [name, unused] : set.sources) {
+            names.emplace_back(name);
+        }
+        std::string message = "the tile set has no source " + quoted(source_name);
+        add_hint(message, source_name, names);
+        return make_error(ErrorCode::NotFound, std::move(message));
+    }
+    const std::optional<Vec2i> atlas = parse_atlas(text.substr(colon + 1));
+    if (!atlas) {
+        return make_error(ErrorCode::InvalidArgument,
+                          quoted(text) + " is neither a tile name nor \"source:column,row\", as "
+                                         "\"ground:2,0\"");
+    }
+    if (!source->second.tiles.contains(*atlas)) {
+        return make_error(ErrorCode::NotFound, "the source " + quoted(source_name) +
+                                                   " has no tile at " + atlas_text(*atlas));
+    }
+    return TileRef{.source = std::string(source_name), .atlas = *atlas};
+}
+
+std::string tile_text(const TileSet& set, const TileRef& tile) {
+    if (const TileData* data = set.find(tile); data != nullptr && !data->name.empty()) {
+        return data->name;
+    }
+    return tile.source + ":" + atlas_text(tile.atlas);
+}
+
+std::array<int, 4> tile_region(const AtlasSource& source, Vec2i atlas) {
+    return {source.margins.x + (atlas.x * (source.region_size.x + source.separation.x)),
+            source.margins.y + (atlas.y * (source.region_size.y + source.separation.y)),
+            source.region_size.x, source.region_size.y};
+}
+
+Result<Cells> decode_cells(const world::TileMapLayer& layer, const TileSet& set) {
+    Cells cells;
+    std::vector<json::ValidationError> errors;
+    decode(layer, set, &cells, errors, true);
+    if (!errors.empty()) {
+        return make_error(ErrorCode::InvalidArgument,
+                          errors.front().path + ": " + errors.front().message);
+    }
+    return cells;
+}
+
+std::vector<json::ValidationError> validate_cells(const world::TileMapLayer& layer,
+                                                  const TileSet& set) {
+    std::vector<json::ValidationError> errors;
+    decode(layer, set, nullptr, errors, false);
+    return errors;
+}
+
+void encode_cells(const Cells& cells, const TileSet& set, world::TileMapLayer& layer) {
+    if (cells.empty()) {
+        layer.origin = {};
+        layer.legend.clear();
+        layer.rows.clear();
+        return;
+    }
+    // The tiles in use, the most used first, each with its key.
+    std::vector<std::string> order;
+    std::map<std::string, std::string, std::less<>> key_of;
+    std::map<std::string, std::size_t, std::less<>> uses;
+    int min_x = INT_MAX;
+    for (const auto& [cell, tile] : cells) {
+        min_x = std::min(min_x, cell.x);
+        std::string text = tile_text(set, tile);
+        ++uses[text];
+        if (key_of.try_emplace(text).second) {
+            order.push_back(std::move(text));
+        }
+    }
+    std::ranges::stable_sort(order, [&](const std::string& a, const std::string& b) {
+        return uses.find(a)->second > uses.find(b)->second;
+    });
+    std::size_t length = 1;
+    for (std::size_t capacity = kKeyCount; capacity < order.size(); capacity *= kKeyCount) {
+        ++length;
+    }
+    std::set<std::string, std::less<>> taken;
+    for (const auto& [key, value] : layer.legend) {
+        if (key.size() != length || !valid_key(key)) {
+            continue;
+        }
+        auto tile = find_tile(set, value);
+        if (!tile) {
+            continue;
+        }
+        const auto it = key_of.find(tile_text(set, tile.value()));
+        if (it != key_of.end() && it->second.empty()) {
+            it->second = key;
+            taken.insert(key);
+        }
+    }
+    for (const std::string& text : order) {
+        std::string& key = key_of.find(text)->second;
+        if (key.empty()) {
+            key = new_key(text, length, taken);
+            taken.insert(key);
+        }
+    }
+
+    const int min_y = cells.begin()->first.y;
+    const int max_y = cells.rbegin()->first.y;
+    layer.origin = {min_x, min_y};
+    layer.legend.clear();
+    for (const auto& [text, key] : key_of) {
+        layer.legend.emplace(key, text);
+    }
+    layer.rows.assign(static_cast<std::size_t>(max_y - min_y) + 1, std::string());
+    for (const auto& [cell, tile] : cells) {
+        std::string& row = layer.rows[static_cast<std::size_t>(cell.y - min_y)];
+        const std::size_t at = static_cast<std::size_t>(cell.x - min_x) * length;
+        row.append(at - row.size(), '.');
+        row += key_of.find(tile_text(set, tile))->second;
+    }
+}
+
+Result<std::size_t> paint_terrain(Cells& cells, const TileSet& set, std::span<const Vec2i> painted,
+                                  int terrain) {
+    if (terrain < -1 || terrain >= static_cast<int>(set.terrains.size())) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "the tile set has no terrain " + std::to_string(terrain));
+    }
+    // The tiles of each terrain, in source and then grid order.
+    std::vector<std::vector<Candidate>> candidates(set.terrains.size());
+    for (const auto& [name, source] : set.sources) {
+        for (const auto& [atlas, tile] : source.tiles) {
+            if (tile.terrain >= 0) {
+                candidates.at(static_cast<std::size_t>(tile.terrain))
+                    .push_back({.ref = {.source = name, .atlas = atlas}, .data = &tile});
+            }
+        }
+    }
+    if (terrain >= 0 && candidates.at(static_cast<std::size_t>(terrain)).empty()) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "no tile has the terrain " +
+                              quoted(set.terrains.at(static_cast<std::size_t>(terrain)).name));
+    }
+    const std::set<Vec2i, CellOrder> paint(painted.begin(), painted.end());
+    const auto terrain_at = [&](Vec2i cell) {
+        if (paint.contains(cell)) {
+            return terrain;
+        }
+        const auto it = cells.find(cell);
+        if (it == cells.end()) {
+            return -1;
+        }
+        const TileData* data = set.find(it->second);
+        return data != nullptr ? data->terrain : -1;
+    };
+    // The painted cells, and the terrain tiles around them that must fit them.
+    std::set<Vec2i, CellOrder> affected = paint;
+    for (const Vec2i cell : paint) {
+        for (const Vec2i offset : kNeighborOffsets) {
+            const Vec2i next = cell + offset;
+            if (next.x >= kMinCell && next.x <= kMaxCell && next.y >= kMinCell &&
+                next.y <= kMaxCell && terrain_at(next) >= 0) {
+                affected.insert(next);
+            }
+        }
+    }
+
+    Cells picked;
+    std::set<Vec2i, CellOrder> erased;
+    for (const Vec2i cell : affected) {
+        const int own = terrain_at(cell);
+        if (own < 0) {
+            erased.insert(cell);
+            continue;
+        }
+        const int set_index = set.terrains.at(static_cast<std::size_t>(own)).set;
+        const TerrainMode mode = set.terrain_sets.at(static_cast<std::size_t>(set_index)).mode;
+        std::array<int, 8> around{};
+        for (std::size_t bit = 0; bit < around.size(); ++bit) {
+            const int found = terrain_at(cell + kNeighborOffsets.at(bit));
+            around.at(bit) =
+                found >= 0 && set.terrains.at(static_cast<std::size_t>(found)).set == set_index
+                    ? found
+                    : -1;
+        }
+        // A side wants its neighbor's terrain. A corner wants its own terrain only where both
+        // sides beside it and the cell across it have that terrain; else what breaks the run.
+        std::array<int, 8> wanted = around;
+        for (std::size_t bit = 1; bit < wanted.size(); bit += 2) {
+            const int before = around.at(bit - 1);
+            const int after = around.at((bit + 1) % around.size());
+            if (before != own) {
+                wanted.at(bit) = before;
+            } else if (after != own) {
+                wanted.at(bit) = after;
+            }
+        }
+        // A wrong bit costs 2 where the tile joins its own terrain and the neighbor doesn't, or
+        // the other way round, so it shows a seam; 1 where both differ from it, as water for
+        // no terrain.
+        std::size_t best = SIZE_MAX;
+        std::vector<const Candidate*> fits;
+        for (const Candidate& candidate : candidates.at(static_cast<std::size_t>(own))) {
+            std::size_t cost = 0;
+            for (std::size_t bit = 0; bit < wanted.size(); ++bit) {
+                const int has = candidate.data->peering.at(bit);
+                const int want = wanted.at(bit);
+                if (connects(mode, bit) && has != want) {
+                    cost += (has == own) != (want == own) ? 2 : 1;
+                }
+            }
+            if (cost < best) {
+                best = cost;
+                fits.clear();
+            }
+            if (cost == best) {
+                fits.push_back(&candidate);
+            }
+        }
+        double total = 0.0;
+        for (const Candidate* fit : fits) {
+            total += fit->data->probability;
+        }
+        const Candidate* chosen = fits.front();
+        if (total > 0.0) {
+            const double roll = position_hash(cell) * total;
+            double sum = 0.0;
+            for (const Candidate* fit : fits) {
+                sum += fit->data->probability;
+                if (fit->data->probability > 0.0 && roll < sum) {
+                    chosen = fit;
+                    break;
+                }
+            }
+        }
+        picked.emplace(cell, chosen->ref);
+    }
+
+    std::size_t changed = 0;
+    for (const Vec2i cell : erased) {
+        changed += cells.erase(cell);
+    }
+    for (auto& [cell, tile] : picked) {
+        const auto it = cells.find(cell);
+        if (it == cells.end() || !(it->second == tile)) {
+            ++changed;
+            cells.insert_or_assign(cell, std::move(tile));
+        }
+    }
+    return changed;
+}
+
+std::vector<json::ValidationError> check_tile_layers(const json::Value& doc,
+                                                     const world::FileReader& reader) {
+    std::vector<json::ValidationError> errors;
+    if (!reader) {
+        return errors;
+    }
+    std::map<std::string, Result<TileSet>, std::less<>> loaded;
+    const auto load = [&](const std::string& path) -> const Result<TileSet>& {
+        if (const auto it = loaded.find(path); it != loaded.end()) {
+            return it->second;
+        }
+        const auto parse = [&]() -> Result<TileSet> {
+            auto text = reader(path);
+            if (!text) {
+                return text.error();
+            }
+            auto parsed = json::parse(text.value());
+            if (!parsed) {
+                return parsed.error();
+            }
+            return parse_tileset(parsed.value());
+        };
+        return loaded.emplace(path, parse()).first->second;
+    };
+    const auto check = [&](const json::Value& components, const std::string& at, bool extends) {
+        const json::Value* component = components.find("TileMapLayer");
+        if (component == nullptr || !component->is_object()) {
+            return;
+        }
+        // Parts from a prefab are checked there.
+        if (extends &&
+            (component->find("tile_set") == nullptr || component->find("legend") == nullptr ||
+             component->find("rows") == nullptr)) {
+            return;
+        }
+        const world::TileMapLayer layer = layer_from_json(*component);
+        if (layer.tile_set.empty()) {
+            if (!layer.legend.empty() || !layer.rows.empty()) {
+                errors.push_back({at + "/tile_set", "a layer with cells needs a tile set"});
+            }
+            return;
+        }
+        if (!layer.tile_set.ends_with(kTileSetSuffix)) {
+            errors.push_back(
+                {at + "/tile_set",
+                 "tile sets are .tileset.json files, as \"tiles/ground.tileset.json\""});
+            return;
+        }
+        const Result<TileSet>& set = load(layer.tile_set);
+        if (!set) {
+            errors.push_back({at + "/tile_set", layer.tile_set + ": " + set.error().message});
+            return;
+        }
+        for (json::ValidationError& error : validate_cells(layer, set.value())) {
+            errors.push_back({at + error.path, std::move(error.message)});
+        }
+    };
+    if (const json::Value* entities = doc.find("entities"); entities != nullptr) {
+        for (const auto& [id, entity] : entities->as_object()) {
+            if (const json::Value* components = entity.find("components"); components != nullptr) {
+                check(*components,
+                      "/entities/" + json::pointer_escape(id) + "/components/TileMapLayer",
+                      entity.find("extends") != nullptr);
+            }
+        }
+    } else if (const json::Value* components = doc.find("components"); components != nullptr) {
+        check(*components, "/components/TileMapLayer", doc.find("extends") != nullptr);
+    }
+    return errors;
+}
+
+} // namespace slash::canvas

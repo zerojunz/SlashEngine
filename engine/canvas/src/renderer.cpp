@@ -156,13 +156,48 @@ void CanvasRenderer::before_tick(const world::World& world) {
          ecs.view<const world::Transform2D, const world::Sprite2D>().each()) {
         previous_.emplace(entity, transform);
     }
+    for (const auto [entity, transform, layer] :
+         ecs.view<const world::Transform2D, const world::TileMapLayer>().each()) {
+        previous_.emplace(entity, transform);
+    }
 }
 
 void CanvasRenderer::warn_once(const std::string& key, std::string_view message,
-                               std::string_view what) {
+                               std::string_view what, std::string_view event) {
     if (warned_.insert(key + "\n" + std::string(message)).second) {
-        log::warn("a sprite can't draw", {{what, key}, {"error", message}});
+        log::warn(event, {{what, key}, {"error", message}});
     }
+}
+
+Result<const TileSet*> CanvasRenderer::tile_set(const std::string& path) {
+    auto it = tile_sets_.find(path);
+    if (it == tile_sets_.end()) {
+        auto loaded = assets_->load<TileSet>(path);
+        if (!loaded) {
+            return loaded.error();
+        }
+        it = tile_sets_.emplace(path, std::move(loaded).value()).first;
+    }
+    return it->second.get();
+}
+
+const CanvasRenderer::LayerCells& CanvasRenderer::cells(entt::entity entity,
+                                                        const world::TileMapLayer& layer,
+                                                        const TileSet& set,
+                                                        std::uint64_t set_version) {
+    auto [it, added] = layer_cells_.try_emplace(entity);
+    LayerCells& cached = it->second;
+    cached.seen = true;
+    if (added || cached.set_version != set_version || cached.layer.tile_set != layer.tile_set ||
+        !(cached.layer.origin == layer.origin) || cached.layer.legend != layer.legend ||
+        cached.layer.rows != layer.rows) {
+        cached.set_version = set_version;
+        cached.layer = layer;
+        auto decoded = decode_cells(layer, set);
+        cached.error = decoded ? std::string() : decoded.error().message;
+        cached.cells = decoded ? std::move(decoded).value() : Cells{};
+    }
+    return cached;
 }
 
 Result<const CanvasRenderer::Texture*> CanvasRenderer::texture(const std::string& path,
@@ -242,15 +277,33 @@ Result<render::Material> CanvasRenderer::material(const world::Sprite2D& sprite,
 }
 
 Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions& options) {
+    // A sprite, or a run of a layer's tiles with one texture: vertices from first, in order.
     struct Item {
         int z_index = 0;
         std::uint32_t order = 0;
+        std::uint32_t part = 0;
         render::TextureId texture = render::TextureId::None;
-        std::array<render::Vertex2D, 6> quad{};
+        std::size_t first = 0;
+        std::size_t count = 0;
         render::Material material;
     };
     std::vector<Item> items;
+    std::vector<render::Vertex2D> vertices;
+    std::size_t sprites = 0;
+    std::size_t tiles = 0;
     const auto& ecs = world.ecs();
+    const auto name_of = [&](entt::entity entity) {
+        const std::string_view id = world.id_of(entity);
+        return id.empty() ? "entity " + std::to_string(entt::to_entity(entity)) : std::string(id);
+    };
+    const auto transform_of = [&](entt::entity entity, const world::Transform2D& current) {
+        if (options.interpolation < 1.0) {
+            if (const auto before = previous_.find(entity); before != previous_.end()) {
+                return interpolate(before->second, current, options.interpolation);
+            }
+        }
+        return current;
+    };
     for (const auto [entity, current, sprite] :
          ecs.view<const world::Transform2D, const world::Sprite2D>().each()) {
         if (!sprite.visible || sprite.texture.empty()) {
@@ -271,34 +324,131 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             }
             material = std::move(made).value();
         }
-        world::Transform2D transform = current;
-        if (options.interpolation < 1.0) {
-            if (const auto before = previous_.find(entity); before != previous_.end()) {
-                transform = interpolate(before->second, current, options.interpolation);
-            }
-        }
-        auto quad = sprite_quad(sprite, transform, texture.value()->width, texture.value()->height);
+        auto quad = sprite_quad(sprite, transform_of(entity, current), texture.value()->width,
+                                texture.value()->height);
         if (!quad) {
-            const std::string_view id = world.id_of(entity);
-            warn_once(id.empty() ? "entity " + std::to_string(entt::to_entity(entity))
-                                 : std::string(id),
-                      quad.error().message, "id");
+            warn_once(name_of(entity), quad.error().message, "id");
             continue;
         }
         items.push_back({.z_index = sprite.z_index,
                          .order = static_cast<std::uint32_t>(entt::to_entity(entity)),
+                         .part = 0,
                          .texture = texture.value()->id,
-                         .quad = quad.value(),
+                         .first = vertices.size(),
+                         .count = quad.value().size(),
                          .material = std::move(material)});
+        vertices.insert(vertices.end(), quad.value().begin(), quad.value().end());
+        ++sprites;
     }
+
+    for (auto& [entity, cached] : layer_cells_) {
+        cached.seen = false;
+    }
+    for (const auto [entity, layer] : ecs.view<const world::TileMapLayer>().each()) {
+        if (!layer.visible || layer.tile_set.empty() || layer.rows.empty()) {
+            continue;
+        }
+        constexpr std::string_view kEvent = "a tile map layer can't draw";
+        auto set = tile_set(layer.tile_set);
+        if (!set) {
+            warn_once(layer.tile_set, set.error().message, "tile_set", kEvent);
+            continue;
+        }
+        const LayerCells& cached =
+            cells(entity, layer, *set.value(), tile_sets_.at(layer.tile_set).version());
+        if (!cached.error.empty()) {
+            warn_once(name_of(entity), "TileMapLayer" + cached.error, "id", kEvent);
+            continue;
+        }
+        world::Transform2D transform;
+        if (const auto* current = ecs.try_get<world::Transform2D>(entity); current != nullptr) {
+            transform = transform_of(entity, *current);
+        }
+        const float cos_r = std::cos(transform.rotation);
+        const float sin_r = std::sin(transform.rotation);
+        const std::array<std::uint8_t, 4> rgba{to_byte(layer.modulate.x), to_byte(layer.modulate.y),
+                                               to_byte(layer.modulate.z),
+                                               to_byte(layer.modulate.w)};
+        const auto corner = [&](float x, float y, float u, float v) {
+            const float sx = x * transform.scale.x;
+            const float sy = y * transform.scale.y;
+            return render::Vertex2D{.x = transform.position.x + (sx * cos_r) - (sy * sin_r),
+                                    .y = transform.position.y + (sx * sin_r) + (sy * cos_r),
+                                    .u = u,
+                                    .v = v,
+                                    .rgba = rgba};
+        };
+        const render::Filter filter = resolve_filter(layer.texture_filter, options.texture_filter);
+        const Vec2i size = set.value()->tile_size;
+        // Tiles go in runs with one texture; each run is one draw.
+        constexpr std::size_t kNoRun = SIZE_MAX;
+        std::size_t run = kNoRun;
+        std::uint32_t part = 0;
+        for (const auto& [cell, tile] : cached.cells) {
+            const AtlasSource& source = set.value()->sources.find(tile.source)->second;
+            auto texture = this->texture(source.texture, filter);
+            if (!texture) {
+                warn_once(source.texture, texture.error().message, "texture", kEvent);
+                continue;
+            }
+            const auto [rx, ry, rw, rh] = tile_region(source, tile.atlas);
+            const auto width = static_cast<int>(texture.value()->width);
+            const auto height = static_cast<int>(texture.value()->height);
+            if (rx + rw > width || ry + rh > height) {
+                warn_once(layer.tile_set,
+                          "the tile " + tile.source + ":" + std::to_string(tile.atlas.x) + "," +
+                              std::to_string(tile.atlas.y) + " at [" + std::to_string(rx) + ", " +
+                              std::to_string(ry) + ", " + std::to_string(rw) + ", " +
+                              std::to_string(rh) + "] goes outside the " + std::to_string(width) +
+                              "x" + std::to_string(height) + " texture " + source.texture,
+                          "tile_set", kEvent);
+                continue;
+            }
+            if (run == kNoRun || items[run].texture != texture.value()->id) {
+                items.push_back({.z_index = layer.z_index,
+                                 .order = static_cast<std::uint32_t>(entt::to_entity(entity)),
+                                 .part = part++,
+                                 .texture = texture.value()->id,
+                                 .first = vertices.size(),
+                                 .count = 0,
+                                 .material = {}});
+                run = items.size() - 1;
+            }
+            // The tile's region, centered on its cell.
+            const float cx = (static_cast<float>(cell.x) + 0.5F) * static_cast<float>(size.x);
+            const float cy = (static_cast<float>(cell.y) + 0.5F) * static_cast<float>(size.y);
+            const float x0 = cx - (static_cast<float>(rw) / 2.0F);
+            const float y0 = cy - (static_cast<float>(rh) / 2.0F);
+            const float x1 = x0 + static_cast<float>(rw);
+            const float y1 = y0 + static_cast<float>(rh);
+            const float u0 = static_cast<float>(rx) / static_cast<float>(width);
+            const float v0 = static_cast<float>(ry) / static_cast<float>(height);
+            const float u1 = static_cast<float>(rx + rw) / static_cast<float>(width);
+            const float v1 = static_cast<float>(ry + rh) / static_cast<float>(height);
+            const render::Vertex2D top_left = corner(x0, y0, u0, v0);
+            const render::Vertex2D top_right = corner(x1, y0, u1, v0);
+            const render::Vertex2D bottom_left = corner(x0, y1, u0, v1);
+            const render::Vertex2D bottom_right = corner(x1, y1, u1, v1);
+            vertices.insert(vertices.end(), {top_left, top_right, bottom_left, top_right,
+                                             bottom_right, bottom_left});
+            items[run].count += 6;
+            ++tiles;
+        }
+    }
+    std::erase_if(layer_cells_, [](const auto& entry) { return !entry.second.seen; });
+
     std::ranges::sort(items, [](const Item& a, const Item& b) {
-        return a.z_index != b.z_index ? a.z_index < b.z_index : a.order < b.order;
+        if (a.z_index != b.z_index) {
+            return a.z_index < b.z_index;
+        }
+        return a.order != b.order ? a.order < b.order : a.part < b.part;
     });
 
     // The null device stands in for a window it doesn't have, as draw_empty_frame allows: the
-    // sprites are checked and counted, and nothing is drawn.
+    // sprites and tiles are checked and counted, and nothing is drawn.
     if (options.target == render::TextureId::None && device_->backend() == render::Backend::Null) {
-        sprites_drawn_ = items.size();
+        sprites_drawn_ = sprites;
+        tiles_drawn_ = tiles;
         return {};
     }
     render::Frame frame;
@@ -312,12 +462,14 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         return began.error();
     }
     for (const Item& item : items) {
-        if (auto drawn = device_->draw(item.texture, item.quad, item.material); !drawn) {
+        const std::span<const render::Vertex2D> span(vertices.data() + item.first, item.count);
+        if (auto drawn = device_->draw(item.texture, span, item.material); !drawn) {
             (void)device_->end_frame();
             return drawn.error();
         }
     }
-    sprites_drawn_ = began.value() ? items.size() : 0;
+    sprites_drawn_ = began.value() ? sprites : 0;
+    tiles_drawn_ = began.value() ? tiles : 0;
     return device_->end_frame();
 }
 

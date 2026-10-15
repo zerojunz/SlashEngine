@@ -59,25 +59,26 @@ only what differs from the prefab. `entity.create` takes `"extends"`, and `prefa
 entity to a prefab file. `tests/data/game` has an example.
 
 ```bash
-$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation)
+$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, tileset)
 $cli scene validate tests/data/basic.scene.json     # every error, with its JSON Pointer path
 $cli scene format level.scene.json                  # rewrite in canonical form
 $cli scene format --check level.scene.json          # exit 1 if not canonical
 ```
 
 Validate after editing a scene or prefab by hand, and format before committing one. Both
-commands take `.prefab.json`, `.frames.json`, `.material.json` and `.anim.json` files too.
+commands take `.prefab.json`, `.frames.json`, `.material.json`, `.anim.json` and `.tileset.json`
+files too; validating a scene also checks each tile map layer against its tile set.
 
 ## Assets and hot reload
 
 `engine/asset` loads files by project path into shared, reference-counted handles
 (`assets.load<json::Value>("data/tuning.json")`); `.json`, `.txt` and `.csv` load out of the box,
-`canvas::add_asset_types` adds textures (`.png`, `.bmp`), `.frames.json` and `.material.json`
-files, `animation::add_asset_types` adds `.anim.json` files, and games add types with
-`add_type`. Sessions and games own an `asset::Assets`, and prefab
-files are read through it. `Session::poll_assets()` reloads changed files and updates prefab
-instances (keeping overrides); every command polls first, and `slash-cli run` and `serve` poll
-between ticks. `asset.list` shows what is loaded, and subscribers get `asset.reloaded` events.
+`canvas::add_asset_types` adds textures (`.png`, `.bmp`), `.frames.json`, `.material.json` and
+`.tileset.json` files, `animation::add_asset_types` adds `.anim.json` files, and games add types
+with `add_type`. Sessions and games own an `asset::Assets`, and prefab files are read through it.
+`Session::poll_assets()` reloads changed files and updates prefab instances (keeping overrides);
+every command polls first, and `slash-cli run` and `serve` poll between ticks. `asset.list` shows
+what is loaded, and subscribers get `asset.reloaded` events.
 
 ## Storyboard
 
@@ -239,6 +240,16 @@ instructions over 32 registers, which `material.hlsl` interprets on the GPU and 
 runs on the CPU for `material.eval`. A new op goes in all three, with a case in the test that
 runs every op on both. `examples/materials` has three materials.
 
+Tile maps follow Godot's TileSet and TileMapLayer (`tilemap.hpp` in `engine/canvas`). A
+`.tileset.json` file (`$cli schema tileset`) cuts atlas textures into tiles and names terrain
+sets; a terrain tile's `peering` names the terrain each side and corner must touch. A
+`TileMapLayer` stores its cells as text: `origin`, a `legend` of short keys and `rows` of keys,
+`.` for empty, which `decode_cells` and `encode_cells` read and write in canonical form.
+`paint_terrain` picks connecting tiles for painted cells and their neighbors; the commands are
+`tilemap.paint`, `tilemap.set` and `tilemap.get`. `CanvasRenderer` draws layers in runs of one
+texture (`tiles_drawn()`), and `check_tile_layers` checks a scene's layers for `scene validate`
+and exports. `examples/tilemaps` paints an island with a pond.
+
 Shaders are HLSL in `engine/render/shaders/`. Their SPIR-V and MSL are committed in
 `engine/render/src/*_shaders.hpp`, so only someone changing a shader needs glslang and
 SPIRV-Cross (`glslang-tools` and `spirv-cross` on Debian and Ubuntu, `glslang` and `spirv-cross`
@@ -333,7 +344,8 @@ CI rejects unformatted code and any clang-tidy finding.
   files and folder listings, child processes), `render` (the render device over SDL3's GPU API,
   the null device, HLSL shaders), `asset` (asset handles, loaders, hot reload),
   `world` (EnTT world, components, scenes and prefabs), `canvas` (sprites, `.frames.json`
-  animations, `.material.json` materials and drawing them), `animation` (`.anim.json` keyframe
+  animations, `.material.json` materials, `.tileset.json` tile maps and drawing them),
+  `animation` (`.anim.json` keyframe
   animations and the system that plays them), `storyboard` (storyboard kinds, files, versions,
   queries, edits, briefs and checks), `command` (commands, sessions with undo, JSON-RPC and MCP),
   `server` (localhost HTTP over a session) and `runtime` (project files and the game executable).
