@@ -1604,7 +1604,8 @@ Reply input_state(Session& session, const json::Value& params) {
         const json::Array& items = names->as_array();
         for (std::size_t i = 0; i < items.size(); ++i) {
             if (!map.has_action(items[i].as_string())) {
-                errors.push_back(unknown_action(map, items[i].as_string(), item_path("/actions", i)));
+                errors.push_back(
+                    unknown_action(map, items[i].as_string(), item_path("/actions", i)));
             }
             actions.push_back(items[i].as_string());
         }

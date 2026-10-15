@@ -34,9 +34,9 @@ public:
 private:
     int finger_index(std::uint64_t finger, bool add);
 
-    std::map<std::uint32_t, int> devices_;     // SDL joystick ID to device number
-    std::map<int, SDL_Gamepad*> gamepads_;     // device number to the open gamepad
-    std::map<std::uint64_t, int> fingers_;     // SDL finger ID to finger index
+    std::map<std::uint32_t, int> devices_; // SDL joystick ID to device number
+    std::map<int, SDL_Gamepad*> gamepads_; // device number to the open gamepad
+    std::map<std::uint64_t, int> fingers_; // SDL finger ID to finger index
 };
 
 } // namespace slash::input

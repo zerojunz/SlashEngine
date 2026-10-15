@@ -38,7 +38,7 @@ enum class EventType : std::uint8_t {
 
 // Keyboard keys, by Godot's names ("A", "Space", "Left", "Kp Enter"). A physical key is where
 // the key sits on a US QWERTY keyboard, whatever the layout says.
-enum class Key : std::uint16_t {
+enum class Key : std::uint8_t {
     None,
     Escape,
     Tab,
@@ -303,7 +303,7 @@ struct Event {
     // JoypadMotion: where the axis is. A binding's axis_value says which way, -1 or 1.
     float axis_value = 0.0F;
 
-    std::string action; // Action: the action's name
+    std::string action;    // Action: the action's name
     float strength = 1.0F; // Action: how hard, from 0 to 1
 
     friend bool operator==(const Event&, const Event&) = default;
@@ -376,7 +376,7 @@ public:
     [[nodiscard]] std::vector<std::string_view> names() const;
 
     // The first of an action's bindings that matches event, with its index, as Godot's
-    // InputMap::event_get_index. An Action event matches its own action.
+    // InputMap::event_get_index. An Action event matches its own action, with the largest index.
     struct Found {
         std::size_t index = 0;
         Match match;

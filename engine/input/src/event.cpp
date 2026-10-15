@@ -18,32 +18,185 @@ namespace {
 
 // Godot's key names (core/os/keyboard.cpp), in the order of the Key enum.
 constexpr std::array<std::string_view, 150> kKeyNames{{
-    "", "Escape", "Tab", "Backspace", "Enter", "Kp Enter", "Insert", "Delete", "Pause", "Print",
-    "SysReq", "Clear", "Home", "End", "Left", "Up", "Right", "Down", "PageUp", "PageDown", "Shift",
-    "Ctrl", "Meta", "Alt", "CapsLock", "NumLock", "ScrollLock", "F1", "F2", "F3", "F4", "F5", "F6",
-    "F7", "F8", "F9", "F10", "F11", "F12", "F13", "F14", "F15", "F16", "F17", "F18", "F19", "F20",
-    "F21", "F22", "F23", "F24", "Kp Multiply", "Kp Divide", "Kp Subtract", "Kp Period", "Kp Add",
-    "Kp 0", "Kp 1", "Kp 2", "Kp 3", "Kp 4", "Kp 5", "Kp 6", "Kp 7", "Kp 8", "Kp 9", "Menu", "Help",
-    "Back", "Forward", "Stop", "Refresh", "VolumeDown", "VolumeMute", "VolumeUp", "MediaPlay",
-    "MediaStop", "MediaPrevious", "MediaNext", "MediaRecord", "Search", "Space", "Exclam",
-    "QuoteDbl", "NumberSign", "Dollar", "Percent", "Ampersand", "Apostrophe", "ParenLeft",
-    "ParenRight", "Asterisk", "Plus", "Comma", "Minus", "Period", "Slash", "0", "1", "2", "3", "4",
-    "5", "6", "7", "8", "9", "Colon", "Semicolon", "Less", "Equal", "Greater", "Question", "At",
-    "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S",
-    "T", "U", "V", "W", "X", "Y", "Z", "BracketLeft", "BackSlash", "BracketRight", "AsciiCircum",
-    "UnderScore", "QuoteLeft", "BraceLeft", "Bar", "BraceRight", "AsciiTilde",
+    "",
+    "Escape",
+    "Tab",
+    "Backspace",
+    "Enter",
+    "Kp Enter",
+    "Insert",
+    "Delete",
+    "Pause",
+    "Print",
+    "SysReq",
+    "Clear",
+    "Home",
+    "End",
+    "Left",
+    "Up",
+    "Right",
+    "Down",
+    "PageUp",
+    "PageDown",
+    "Shift",
+    "Ctrl",
+    "Meta",
+    "Alt",
+    "CapsLock",
+    "NumLock",
+    "ScrollLock",
+    "F1",
+    "F2",
+    "F3",
+    "F4",
+    "F5",
+    "F6",
+    "F7",
+    "F8",
+    "F9",
+    "F10",
+    "F11",
+    "F12",
+    "F13",
+    "F14",
+    "F15",
+    "F16",
+    "F17",
+    "F18",
+    "F19",
+    "F20",
+    "F21",
+    "F22",
+    "F23",
+    "F24",
+    "Kp Multiply",
+    "Kp Divide",
+    "Kp Subtract",
+    "Kp Period",
+    "Kp Add",
+    "Kp 0",
+    "Kp 1",
+    "Kp 2",
+    "Kp 3",
+    "Kp 4",
+    "Kp 5",
+    "Kp 6",
+    "Kp 7",
+    "Kp 8",
+    "Kp 9",
+    "Menu",
+    "Help",
+    "Back",
+    "Forward",
+    "Stop",
+    "Refresh",
+    "VolumeDown",
+    "VolumeMute",
+    "VolumeUp",
+    "MediaPlay",
+    "MediaStop",
+    "MediaPrevious",
+    "MediaNext",
+    "MediaRecord",
+    "Search",
+    "Space",
+    "Exclam",
+    "QuoteDbl",
+    "NumberSign",
+    "Dollar",
+    "Percent",
+    "Ampersand",
+    "Apostrophe",
+    "ParenLeft",
+    "ParenRight",
+    "Asterisk",
+    "Plus",
+    "Comma",
+    "Minus",
+    "Period",
+    "Slash",
+    "0",
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
+    "6",
+    "7",
+    "8",
+    "9",
+    "Colon",
+    "Semicolon",
+    "Less",
+    "Equal",
+    "Greater",
+    "Question",
+    "At",
+    "A",
+    "B",
+    "C",
+    "D",
+    "E",
+    "F",
+    "G",
+    "H",
+    "I",
+    "J",
+    "K",
+    "L",
+    "M",
+    "N",
+    "O",
+    "P",
+    "Q",
+    "R",
+    "S",
+    "T",
+    "U",
+    "V",
+    "W",
+    "X",
+    "Y",
+    "Z",
+    "BracketLeft",
+    "BackSlash",
+    "BracketRight",
+    "AsciiCircum",
+    "UnderScore",
+    "QuoteLeft",
+    "BraceLeft",
+    "Bar",
+    "BraceRight",
+    "AsciiTilde",
 }};
 
 constexpr std::array<std::string_view, 10> kMouseButtons{
-    "",          "left",       "right",       "middle",   "wheel_up",
+    "",           "left",       "right",       "middle",   "wheel_up",
     "wheel_down", "wheel_left", "wheel_right", "xbutton1", "xbutton2",
 };
 
 constexpr std::array<std::string_view, 21> kJoyButtons{
-    "a",         "b",          "x",          "y",           "back",          "guide",
-    "start",     "left_stick", "right_stick", "left_shoulder", "right_shoulder", "dpad_up",
-    "dpad_down", "dpad_left",  "dpad_right", "misc1",       "paddle1",       "paddle2",
-    "paddle3",   "paddle4",    "touchpad",
+    "a",
+    "b",
+    "x",
+    "y",
+    "back",
+    "guide",
+    "start",
+    "left_stick",
+    "right_stick",
+    "left_shoulder",
+    "right_shoulder",
+    "dpad_up",
+    "dpad_down",
+    "dpad_left",
+    "dpad_right",
+    "misc1",
+    "paddle1",
+    "paddle2",
+    "paddle3",
+    "paddle4",
+    "touchpad",
 };
 
 constexpr std::array<std::string_view, 6> kJoyAxes{
@@ -51,8 +204,8 @@ constexpr std::array<std::string_view, 6> kJoyAxes{
 };
 
 constexpr std::array<std::string_view, 8> kTypes{
-    "key",          "mouse_button",  "mouse_motion", "screen_touch",
-    "screen_drag",  "joypad_button", "joypad_motion", "action",
+    "key",         "mouse_button",  "mouse_motion",  "screen_touch",
+    "screen_drag", "joypad_button", "joypad_motion", "action",
 };
 
 constexpr std::size_t kMaxDevice = 63;
@@ -64,8 +217,7 @@ constexpr std::uint16_t bit(EventType type) {
 }
 constexpr std::uint16_t kAnyType = 0xFF;
 constexpr std::uint16_t kBindingTypes = bit(EventType::Key) | bit(EventType::MouseButton) |
-                                        bit(EventType::JoypadButton) |
-                                        bit(EventType::JoypadMotion);
+                                        bit(EventType::JoypadButton) | bit(EventType::JoypadMotion);
 constexpr std::uint16_t kPressTypes = bit(EventType::Key) | bit(EventType::MouseButton) |
                                       bit(EventType::ScreenTouch) | bit(EventType::JoypadButton) |
                                       bit(EventType::Action);
@@ -174,8 +326,8 @@ json::Value point_property(std::string_view description) {
 
 EventType type_of(const json::Value& doc) {
     const json::Value* type = doc.find("type");
-    const auto found = type != nullptr && type->is_string() ? index_of(kTypes, type->as_string())
-                                                            : std::nullopt;
+    const auto found =
+        type != nullptr && type->is_string() ? index_of(kTypes, type->as_string()) : std::nullopt;
     return static_cast<EventType>(found.value_or(0));
 }
 
@@ -308,9 +460,8 @@ json::Value event_schema(Use use) {
         properties["echo"] = boolean_property("key: a repeat while the key is held.");
         properties["double_click"] = boolean_property("mouse_button: a double click.");
         properties["double_tap"] = boolean_property("screen_touch: a double tap.");
-        properties["factor"] =
-            number_property("mouse_button: how far a wheel turned, in steps (default 1).", 0.0,
-                            1000.0);
+        properties["factor"] = number_property(
+            "mouse_button: how far a wheel turned, in steps (default 1).", 0.0, 1000.0);
         properties["position"] = point_property(
             "mouse_button, mouse_motion, screen_touch and screen_drag: [x, y] in window "
             "pixels from the top left.");
@@ -346,14 +497,20 @@ std::vector<json::ValidationError> validate_event(const json::Value& doc, Use us
     const std::string name(type_name(type));
     const std::string kind = binding ? name + " bindings" : name + " events";
     for (const auto& [member, value] : doc.as_object()) {
-        const auto field = std::ranges::find(kFields, member, &Field::name);
-        if (field == kFields.end()) {
+        const Field* field = nullptr;
+        for (const Field& candidate : kFields) {
+            if (candidate.name == member) {
+                field = &candidate;
+                break;
+            }
+        }
+        if (field == nullptr) {
             continue;
         }
         const std::uint16_t types = binding ? field->binding_types : field->event_types;
         if ((types & bit(type)) == 0) {
-            errors.push_back({path + "/" + json::pointer_escape(member),
-                              kind + " have no " + quoted(member)});
+            errors.push_back(
+                {path + "/" + json::pointer_escape(member), kind + " have no " + quoted(member)});
         }
     }
     const auto require = [&](std::string_view member) {
@@ -365,15 +522,15 @@ std::vector<json::ValidationError> validate_event(const json::Value& doc, Use us
                                 const auto& candidates) {
         const json::Value* value = doc.find(member);
         if (value != nullptr && !is_known(value->as_string())) {
-            errors.push_back({path + "/" + std::string(member),
-                              unknown(what, value->as_string(), candidates)});
+            errors.push_back(
+                {path + "/" + std::string(member), unknown(what, value->as_string(), candidates)});
         }
     };
     const auto is_key = [](std::string_view text) { return parse_key(text).has_value(); };
     switch (type) {
     case EventType::Key:
         if (doc.find("key") == nullptr && doc.find("physical_key") == nullptr) {
-            errors.push_back({path, kind + " need \"key\" or \"physical_key\""});
+            errors.push_back({path, kind + R"( need "key" or "physical_key")"});
         }
         check_name("key", is_key, "key", key_names());
         check_name("physical_key", is_key, "key", key_names());
@@ -621,9 +778,9 @@ std::optional<Match> match(const Event& binding, const Event& event, float deadz
         Match result;
         result.pressed = same_direction && amount >= deadzone;
         if (result.pressed) {
-            result.strength =
-                deadzone >= 1.0F ? 1.0F : std::clamp((amount - deadzone) / (1.0F - deadzone),
-                                                     0.0F, 1.0F);
+            result.strength = deadzone >= 1.0F
+                                  ? 1.0F
+                                  : std::clamp((amount - deadzone) / (1.0F - deadzone), 0.0F, 1.0F);
         }
         result.raw_strength = same_direction ? amount : 0.0F;
         return result;

@@ -9,3 +9,7 @@ target_link_libraries(slash_input
     PUBLIC slash::core slash::world
     PRIVATE SDL3::SDL3-static)
 slash_engine_target(slash_input)
+# Strengths and vectors come out the same on every platform: no fused multiply-adds, which arm64
+# compilers would otherwise emit and x86-64 ones not.
+target_compile_options(slash_input PRIVATE
+    $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>)

@@ -206,10 +206,12 @@ Key key_from_keycode(SDL_Keycode code) {
 // Where a key sits on a US QWERTY keyboard, whatever the layout says.
 Key key_from_scancode(SDL_Scancode code) {
     if (code >= SDL_SCANCODE_A && code <= SDL_SCANCODE_Z) {
-        return static_cast<Key>(static_cast<unsigned>(Key::A) + static_cast<unsigned>(code - SDL_SCANCODE_A));
+        return static_cast<Key>(static_cast<unsigned>(Key::A) +
+                                static_cast<unsigned>(code - SDL_SCANCODE_A));
     }
     if (code >= SDL_SCANCODE_1 && code <= SDL_SCANCODE_9) {
-        return static_cast<Key>(static_cast<unsigned>(Key::Key1) + static_cast<unsigned>(code - SDL_SCANCODE_1));
+        return static_cast<Key>(static_cast<unsigned>(Key::Key1) +
+                                static_cast<unsigned>(code - SDL_SCANCODE_1));
     }
     switch (code) {
     case SDL_SCANCODE_0:
@@ -243,7 +245,8 @@ Key key_from_scancode(SDL_Scancode code) {
         break;
     }
     if (code >= SDL_SCANCODE_KP_1 && code <= SDL_SCANCODE_KP_9) {
-        return static_cast<Key>(static_cast<unsigned>(Key::Kp1) + static_cast<unsigned>(code - SDL_SCANCODE_KP_1));
+        return static_cast<Key>(static_cast<unsigned>(Key::Kp1) +
+                                static_cast<unsigned>(code - SDL_SCANCODE_KP_1));
     }
     // The rest are the same key whatever the layout.
     return key_from_keycode(SDL_GetKeyFromScancode(code, SDL_KMOD_NONE, false));
@@ -386,8 +389,8 @@ void SdlReader::read(const SDL_Event& event, world::World& world) {
                   position);
         }
         if (x != 0.0F) {
-            wheel(world, x > 0.0F ? MouseButton::WheelRight : MouseButton::WheelLeft,
-                  std::abs(x), position);
+            wheel(world, x > 0.0F ? MouseButton::WheelRight : MouseButton::WheelLeft, std::abs(x),
+                  position);
         }
         return;
     }
