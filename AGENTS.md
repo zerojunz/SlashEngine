@@ -113,7 +113,8 @@ The URL and token are written to `.slash/server.json` (owner-only on macOS and L
 on exit.
 
 Requests are queued and run only when the session's owner calls `Server::poll()`, so commands
-never race the game loop. Tests drive the server from a helper thread while the test thread polls;
+never race the game loop. A running game adds `play` and `pause`; while paused it keeps serving
+but stops stepping the world. Tests drive the server from a helper thread while the test thread polls;
 see `tests/test_server.cpp`.
 
 ## Game projects and exports

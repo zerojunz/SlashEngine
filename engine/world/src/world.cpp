@@ -1,6 +1,7 @@
 #include "slash/world/world.hpp"
 
 #include <algorithm>
+#include <functional>
 #include <utility>
 
 namespace slash::world {
@@ -74,10 +75,26 @@ std::vector<std::string_view> World::ids() const {
     return out;
 }
 
-void World::add_system(std::string name, System system) {
+void World::add_system(std::string name, System system, SystemOptions options) {
     SLASH_ASSERT(system != nullptr, "add_system needs a callable system");
     SLASH_ASSERT(!stepping_, "systems cannot be added while the world is stepping");
-    systems_.push_back({std::move(name), std::move(system)});
+    SLASH_ASSERT(std::ranges::none_of(systems_,
+                                      [&](const NamedSystem& added) { return added.name == name; }),
+                 "two systems have the same name");
+    // After every system with the same or a lower priority, so equal priorities keep their order.
+    const auto position =
+        std::ranges::upper_bound(systems_, options.priority, std::less<>(),
+                                 [](const NamedSystem& added) { return added.options.priority; });
+    systems_.insert(position, {std::move(name), std::move(system), std::move(options)});
+}
+
+std::vector<SystemInfo> World::systems() const {
+    std::vector<SystemInfo> out;
+    out.reserve(systems_.size());
+    for (const NamedSystem& system : systems_) {
+        out.push_back({system.name, system.options.doc, system.options.priority});
+    }
+    return out;
 }
 
 std::vector<std::string_view> World::system_names() const {

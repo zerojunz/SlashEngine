@@ -214,15 +214,17 @@ json::Value error_json(const command::Reply& reply) {
 }
 
 // The engine's components and commands, and a session over them. A running game leaves out
-// export.run, which would stall its loop for minutes.
+// export.run, which would stall its loop for minutes, and adds play and pause.
 struct Engine {
     world::ComponentRegistry components = make_registry();
     command::Registry commands;
     std::unique_ptr<command::Session> session;
 
-    explicit Engine(const command::SessionOptions& options, bool exports = true) {
+    explicit Engine(const command::SessionOptions& options, bool running = false) {
         command::register_builtin_commands(commands);
-        if (exports) {
+        if (running) {
+            command::register_run_commands(commands);
+        } else {
             slash::exporter::register_export_commands(commands);
         }
         command::SessionOptions session_options = options;
@@ -349,7 +351,7 @@ int cmd_run(const std::vector<std::string>& args) {
         return usage_error("--port and --token need --serve");
     }
 
-    Engine engine(session_options, /*exports=*/false);
+    Engine engine(session_options, /*running=*/true);
     world::World& game = engine.session->world();
     if (!scene_path.empty()) {
         auto text = slash::platform::read_file(scene_path);
@@ -378,7 +380,9 @@ int cmd_run(const std::vector<std::string>& args) {
         return failure("could not start the platform", platform.error());
     }
 
-    // With --serve, requests run on this thread between ticks, so they never race the game.
+    // With --serve, requests run on this thread between ticks, so they never race the game, and
+    // pause stops the world while the loop keeps serving.
+    engine.session->set_playing(true);
     std::unique_ptr<slash::server::Server> server;
     std::optional<EndpointFile> endpoint_file;
     if (serve) {
@@ -395,7 +399,9 @@ int cmd_run(const std::vector<std::string>& args) {
                                           if (server) {
                                               server->poll();
                                           }
-                                          game.step(tick_seconds);
+                                          if (engine.session->playing()) {
+                                              game.step(tick_seconds);
+                                          }
                                       });
     if (server) {
         server->stop();

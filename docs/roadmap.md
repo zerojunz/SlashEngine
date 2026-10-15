@@ -108,9 +108,9 @@ Exit: an empty project exports to all six platforms and passes headless tests on
 Foundations first, in the order Godot built them: the run loop, scenes and resources, then
 rendering on top.
 
-- [ ] Systems registered with the world, run in a fixed order each tick; `engine.describe`
+- [x] Systems registered with the world, run in a fixed order each tick; `engine.describe`
       already returns an empty `systems` list for them
-- [ ] Run control commands: `play` and `pause`
+- [x] Run control commands: `play` and `pause`
 - [ ] `events.subscribe` for a stream of world events
 - [ ] Prefabs: an entity `"extends"` a `.prefab.json` file and overrides fields
 - [ ] Asset handles with reference counting and hot reload, and an `asset.list` command

@@ -21,8 +21,23 @@ struct EntityId {
     std::string value;
 };
 
-// A system runs once per fixed tick, in the order systems were added.
+// A system runs once per fixed tick. Systems run in order of priority, then in the order they
+// were added.
 using System = std::function<void(World& world, double tick_seconds)>;
+
+struct SystemOptions {
+    // What the system does, one sentence. engine.describe returns it.
+    std::string doc{}; // NOLINT(readability-redundant-member-init)
+    // Lower priorities run first, as with Godot's process_priority.
+    int priority = 0;
+};
+
+// A system as engine.describe lists it.
+struct SystemInfo {
+    std::string_view name;
+    std::string_view doc;
+    int priority = 0;
+};
 
 // The simulation state: an EnTT registry plus stable entity IDs and an ordered list of systems.
 // Game code reads and writes components through ecs(); entities should be created through
@@ -67,7 +82,10 @@ public:
     // Every entity ID, sorted.
     [[nodiscard]] std::vector<std::string_view> ids() const;
 
-    void add_system(std::string name, System system);
+    // Adds a system. Names must be unique; IDs such as "movement" or "physics2d" read best.
+    void add_system(std::string name, System system, SystemOptions options = {});
+    // Every system, in the order they run.
+    [[nodiscard]] std::vector<SystemInfo> systems() const;
     [[nodiscard]] std::vector<std::string_view> system_names() const;
 
     // Runs every system once and advances the tick counter.
@@ -93,6 +111,7 @@ private:
     struct NamedSystem {
         std::string name;
         System run;
+        SystemOptions options;
     };
 
     void on_id_destroyed(entt::registry& registry, entt::entity entity);

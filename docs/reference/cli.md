@@ -60,7 +60,9 @@ slash-cli run --headless --ticks 60 --scene tests/data/basic.scene.json
 {"entities":3,"headless":true,"quit_requested":false,"ticks":60}
 ```
 
-With `--serve`, the result also carries the server's `url`.
+With `--serve`, the result also carries the server's `url`, and the game takes the `play` and
+`pause` commands: while paused it keeps serving requests but does not step the world, and
+`--ticks` still counts the loop's ticks.
 
 ### scene validate
 
