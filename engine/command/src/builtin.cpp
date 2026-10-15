@@ -1165,7 +1165,11 @@ Reply light_sample(Session& session, const json::Value& params) {
     }
     render::ShadeItem item;
     std::vector<std::array<float, 2>> positions;
-    if (!id.empty()) {
+    if (points != nullptr) {
+        for (const json::Value& point : points->as_array()) {
+            positions.push_back(floats<2>(point));
+        }
+    } else {
         const entt::entity entity = world.find(id);
         if (entity == entt::null) {
             return unknown_entity(world, id, "/id");
@@ -1182,10 +1186,6 @@ Reply light_sample(Session& session, const json::Value& params) {
         } else if (const auto* layer = ecs.try_get<world::TileMapLayer>(entity); layer != nullptr) {
             item.light_mask = static_cast<std::uint32_t>(layer->light_mask);
             item.z_index = layer->z_index;
-        }
-    } else {
-        for (const json::Value& point : points->as_array()) {
-            positions.push_back(floats<2>(point));
         }
     }
     if (const json::Value* mask = params.find("light_mask"); mask != nullptr) {
