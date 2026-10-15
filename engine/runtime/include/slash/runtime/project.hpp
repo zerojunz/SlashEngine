@@ -22,7 +22,7 @@
 //
 // Optional fields: "id" (reverse-DNS identifier for bundles and stores), "version"
 // ("major.minor.patch"), "window" ({"width", "height", "vsync_mode"}), "tick_hz", "max_fps" and
-// "rendering" ({"clear_color", "driver"}).
+// "rendering" ({"clear_color", "driver", "texture_filter", "interpolation"}).
 namespace slash::runtime {
 
 inline constexpr std::string_view kProjectFile = "project.json";
@@ -42,6 +42,10 @@ struct Project {
     int max_fps = 0;
     // What the window shows behind everything, as RGBA from 0 to 1: Godot's default gray.
     std::array<float, 4> clear_color{0.3F, 0.3F, 0.3F, 1.0F};
+    // How sprites that inherit their filter are sampled: "linear" or "nearest".
+    std::string texture_filter = "linear";
+    // Draw sprites between fixed ticks, interpolated.
+    bool interpolation = true;
     // The GPU backend: "auto", "vulkan", "metal", "d3d12" or "null" (draws nothing).
     std::string rendering_driver = "auto";
 

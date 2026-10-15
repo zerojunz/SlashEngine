@@ -97,6 +97,13 @@ json::Value ComponentType::schema(SchemaBuilder& builder) const {
                 property["description"] = meta->doc;
             }
             apply_range(property, *meta);
+            if (!meta->choices.empty()) {
+                json::Array choices;
+                for (const std::string& choice : meta->choices) {
+                    choices.emplace_back(choice);
+                }
+                property["enum"] = std::move(choices);
+            }
         }
     }
     return reference;

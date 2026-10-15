@@ -1,0 +1,43 @@
+{
+  "entities": {
+    "ghost": {
+      "components": {
+        "Sprite2D": {
+          "hframes": 4,
+          "texture": "hero.png",
+          "visible": false
+        },
+        "Transform2D": {
+          "position": [64.0, 64.0]
+        }
+      }
+    },
+    "hero": {
+      "components": {
+        "AnimatedSprite2D": {
+          "animation": "walk",
+          "sprite_frames": "hero.frames.json"
+        },
+        "Transform2D": {
+          "position": [40.0, 48.0]
+        }
+      }
+    },
+    "sign": {
+      "components": {
+        "Sprite2D": {
+          "flip_h": true,
+          "frame": 3,
+          "hframes": 4,
+          "texture": "hero.png",
+          "z_index": -1
+        },
+        "Transform2D": {
+          "position": [96.0, 32.0],
+          "scale": [2.0, 2.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

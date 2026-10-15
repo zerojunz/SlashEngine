@@ -96,6 +96,7 @@ Result<std::unique_ptr<Game>> Game::start(const GameOptions& options) {
     // The schema only allows known names, so the mode always parses.
     game->renderer_->set_vsync(
         render::parse_vsync_mode(game->project_.vsync_mode).value_or(render::VsyncMode::Enabled));
+    game->canvas_ = std::make_unique<canvas::CanvasRenderer>(*game->renderer_, game->assets_);
     log::info("game started", {{"name", game->project_.name},
                                {"scene", game->project_.main_scene},
                                {"entities", game->world_.size()},
@@ -110,14 +111,19 @@ Game::Game(Project project, platform::Platform platform, const std::string& data
     world::register_builtin_components(components_);
     world_.set_file_reader(
         [this](std::string_view path) { return assets_.read(path, world::kPrefabType); });
+    canvas::install(world_, assets_);
 }
 
 Game::~Game() = default;
 
 bool Game::frame() {
-    const bool running = loop_->frame(
-        [this](std::uint64_t /*tick*/, double tick_seconds) { world_.step(tick_seconds); });
-    if (running) {
+    const std::uint64_t ticks = loop_->stats().ticks;
+    const bool running = loop_->frame([this](std::uint64_t /*tick*/, double tick_seconds) {
+        canvas_->before_tick(world_);
+        world_.step(tick_seconds);
+    });
+    // The frame that runs the last tick is drawn too.
+    if (running || loop_->stats().ticks != ticks) {
         draw();
     }
     return running;
@@ -125,7 +131,18 @@ bool Game::frame() {
 
 void Game::draw() {
     const auto& [r, g, b, a] = project_.clear_color;
-    auto drawn = render::draw_empty_frame(*renderer_, {.r = r, .g = g, .b = b, .a = a});
+    const platform::WindowSize window = platform_.window_size();
+    canvas::CanvasOptions options;
+    options.clear = {.r = r, .g = g, .b = b, .a = a};
+    // World pixels are the window's screen coordinates, on high-density displays too.
+    options.width = static_cast<float>(window.width);
+    options.height = static_cast<float>(window.height);
+    // Headless frames run one tick each, so there is nothing between ticks to draw.
+    options.interpolation =
+        project_.interpolation && !platform_.headless() ? loop_->interpolation() : 1.0;
+    options.texture_filter =
+        project_.texture_filter == "nearest" ? render::Filter::Nearest : render::Filter::Linear;
+    auto drawn = canvas_->draw(world_, options);
     // One warning, not one per frame.
     if (!drawn && !draw_failed_) {
         draw_failed_ = true;
@@ -146,6 +163,7 @@ json::Value Game::summary() const {
     summary["quit_requested"] = loop_->stats().quit_requested;
     summary["headless"] = platform_.headless();
     summary["renderer"] = render::backend_name(renderer_->backend());
+    summary["sprites"] = canvas_->sprites_drawn();
     return summary;
 }
 

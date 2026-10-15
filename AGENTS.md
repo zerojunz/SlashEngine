@@ -59,20 +59,21 @@ only what differs from the prefab. `entity.create` takes `"extends"`, and `prefa
 entity to a prefab file. `tests/data/game` has an example.
 
 ```bash
-$cli schema scene                                   # JSON Schema for scene files (also: prefab)
+$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames)
 $cli scene validate tests/data/basic.scene.json     # every error, with its JSON Pointer path
 $cli scene format level.scene.json                  # rewrite in canonical form
 $cli scene format --check level.scene.json          # exit 1 if not canonical
 ```
 
 Validate after editing a scene or prefab by hand, and format before committing one. Both
-commands take `.prefab.json` files too.
+commands take `.prefab.json` and `.frames.json` files too.
 
 ## Assets and hot reload
 
 `engine/asset` loads files by project path into shared, reference-counted handles
-(`assets.load<json::Value>("data/tuning.json")`); `.json`, `.txt` and `.csv` load out of the box
-and games add types with `add_type`. Sessions and games own an `asset::Assets`, and prefab files
+(`assets.load<json::Value>("data/tuning.json")`); `.json`, `.txt` and `.csv` load out of the box,
+`canvas::add_asset_types` adds textures (`.png`, `.bmp`) and `.frames.json` files, and games add
+types with `add_type`. Sessions and games own an `asset::Assets`, and prefab files
 are read through it. `Session::poll_assets()` reloads changed files and updates prefab instances
 (keeping overrides); every command polls first, and `slash-cli run` and `serve` poll between
 ticks. `asset.list` shows what is loaded, and subscribers get `asset.reloaded` events.
@@ -165,19 +166,19 @@ $cli project validate tests/data/game
 $cli export linux --project path/to/game --test        # build, lay out and run headless
 ```
 
-`slash-cli export <preset>` validates the project, its presets and every scene and prefab, stages
-them as the game's data, configures `export/CMakeLists.txt` with the engine sources, builds, signs
-and installs into `<project>/build/export/<preset>`. Its work folder and full build log are in
-`<project>/.slash/export/<preset>/`; a failure reports the step and the end of the log. A Mac
-builds every platform: macOS and iOS with Xcode's tools, Windows and Linux with llvm-mingw and a
-glibc 2.31 Debian sysroot that the first such export downloads (`$cli toolchain install` gets
-them ahead of time, into `SLASH_TOOLCHAINS_DIR` or `~/.slash/toolchains`). Linux machines build
-Linux and Windows the same way, and Windows machines build Windows with MSVC. Web exports need
-Emscripten (`EMSDK` set) and Android exports the Android SDK, NDK and a JDK on any host. CI
-exports and runs an empty game for macOS, Windows, Linux, web, Android (on an emulator) and iOS
-(in the Simulator) on every PR, cross-exports Windows and Linux (x86_64 and arm64) from macOS and
-runs them on Windows and Ubuntu 20.04, and `slash-cli init` writes the per-platform workflow into
-new games.
+`slash-cli export <preset>` validates the project, its presets and every scene, prefab, texture and
+`.frames.json` file, stages them as the game's data, configures `export/CMakeLists.txt` with the
+engine sources, builds, signs and installs into `<project>/build/export/<preset>`. Its work folder
+and full build log are in `<project>/.slash/export/<preset>/`; a failure reports the step and the
+end of the log. A Mac builds every platform: macOS and iOS with Xcode's tools, Windows and Linux
+with llvm-mingw and a glibc 2.31 Debian sysroot that the first such export downloads
+(`$cli toolchain install` gets them ahead of time, into `SLASH_TOOLCHAINS_DIR` or
+`~/.slash/toolchains`). Linux machines build Linux and Windows the same way, and Windows machines
+build Windows with MSVC. Web exports need Emscripten (`EMSDK` set) and Android exports the Android
+SDK, NDK and a JDK on any host. CI exports and runs an empty game for macOS, Windows, Linux, web,
+Android (on an emulator) and iOS (in the Simulator) on every PR, cross-exports Windows and Linux
+(x86_64 and arm64) from macOS and runs them on Windows and Ubuntu 20.04, and `slash-cli init` writes
+the per-platform workflow into new games.
 
 The export code is the `tools/exporter` library, shared by slash-cli and slash-mcp. It also
 registers `export.run`, the one command that needs the `build` capability; a running game leaves
@@ -217,8 +218,17 @@ marked 10.0), Android 11 (API level 30, targeting 36), and Chrome 85, Firefox 79
 `engine/render` is the renderer's device layer: `render::RenderDevice`, a dozen calls over SDL3's
 GPU API (Metal, Direct3D 12 or Vulkan), and a null device for headless runs that checks every
 call the same way but draws nothing. `create_device_or_null` falls back to it, with a warning,
-where no backend starts. Games and `slash-cli run` clear their window to the project's
-`rendering.clear_color`; `examples/draw-offscreen` draws into a texture and reads it back.
+where no backend starts. `examples/draw-offscreen` draws into a texture and reads it back.
+
+`engine/canvas` is 2D drawing, as Godot's canvas. `Sprite2D` draws a texture, or a frame of a
+sprite sheet, at the entity's `Transform2D`, in `z_index` order, then the order entities were
+made. `AnimatedSprite2D` plays a `.frames.json` file's animations on it through the
+`animated_sprite_2d` system (`$cli schema frames`; `animation_finished` events). `canvas::install`
+adds the asset types and the system to a world; sessions and games call it. `CanvasRenderer`
+draws a world through a render device over the project's `rendering.clear_color`: games and
+`slash-cli run` call `before_tick` before each tick and draw between ticks with
+`Loop::interpolation()`, so sprites move smoothly at any frame rate. On the null device it checks
+and counts sprites but draws nothing. `examples/sprites` plays and draws a scene's sprites.
 
 Shaders are HLSL in `engine/render/shaders/`. Their SPIR-V and MSL are committed in
 `engine/render/src/*_shaders.hpp`, so only someone changing a shader needs glslang and
@@ -300,11 +310,11 @@ CI rejects unformatted code and any clang-tidy finding.
   Modules: `core` (Result, logging, JSON, reflection, math), `platform` (SDL3 window, run loop,
   files and folder listings, child processes), `render` (the render device over SDL3's GPU API,
   the null device, HLSL shaders), `asset` (asset handles, loaders, hot reload),
-  `world` (EnTT world, components, scenes and prefabs), `storyboard` (storyboard kinds, files,
-  versions, queries, edits, briefs and checks), `command` (commands, sessions with undo, JSON-RPC
-  and MCP), `server` (localhost HTTP over a session) and `runtime` (project files and the game
-  executable). Tool-only libraries such as `tools/exporter` use the same layout and may use
-  exceptions.
+  `world` (EnTT world, components, scenes and prefabs), `canvas` (sprites, `.frames.json`
+  animations and drawing them), `storyboard` (storyboard kinds, files, versions, queries, edits,
+  briefs and checks), `command` (commands, sessions with undo, JSON-RPC and MCP), `server`
+  (localhost HTTP over a session) and `runtime` (project files and the game executable).
+  Tool-only libraries such as `tools/exporter` use the same layout and may use exceptions.
 - New dependencies are pinned in `cmake/dependencies.json` (repository, tag, SPDX license and
   the license file's SHA-256), fetched with `slash_add_dependency` in `cmake/Dependencies.cmake`
   and listed in `THIRD_PARTY.md`. Only permissive licenses (MIT, BSD, zlib, Apache 2.0, Boost,

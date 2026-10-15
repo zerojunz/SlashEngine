@@ -4,6 +4,7 @@
 #include "slash/platform/process.hpp"
 #include "slash/platform/run.hpp"
 #include "slash/render/device.hpp"
+#include "slash/render/image.hpp"
 #include "slash/runtime/game.hpp"
 #include "slash/runtime/project.hpp"
 #include "slash/world/components.hpp"
@@ -169,6 +170,42 @@ TEST_CASE("a game starts with the project's V-Sync mode and frame cap") {
     REQUIRE_MESSAGE(game.ok(), (game.ok() ? std::string() : game.error().message));
     CHECK(game.value()->loop().max_fps() == 30);
     CHECK(game.value()->renderer().vsync() == slash::render::VsyncMode::Disabled);
+}
+
+TEST_CASE("a headless game plays animations and counts the sprites it would draw") {
+    const std::string root = "runtime_sprites";
+    REQUIRE(platform::create_directories(root).ok());
+    slash::render::Image image;
+    image.width = 4;
+    image.height = 2;
+    image.pixels.assign(4 * 2 * 4, 255);
+    REQUIRE(
+        platform::write_file(root + "/hero.png", slash::render::encode_png(image).value()).ok());
+    REQUIRE(platform::write_file(root + "/hero.frames.json",
+                                 R"({"format": 1, "animations": {"default": {
+                                     "texture": "hero.png", "hframes": 2, "fps": 30}}})")
+                .ok());
+    REQUIRE(platform::write_file(root + "/main.scene.json", R"({"entities": {
+        "hero": {"components": {"Transform2D": {}, "AnimatedSprite2D": {
+            "sprite_frames": "hero.frames.json"}}},
+        "rock": {"components": {"Transform2D": {}, "Sprite2D": {"texture": "hero.png"}}},
+        "ghost": {"components": {"Transform2D": {}, "Sprite2D": {"texture": "gone.png"}}}
+    }, "format": 1})")
+                .ok());
+    REQUIRE(platform::write_file(root + "/project.json",
+                                 R"({"format": 1, "name": "G", "main_scene": "main.scene.json"})")
+                .ok());
+    auto game = runtime::Game::start({.data_dir = root, .headless = true, .max_ticks = 3});
+    REQUIRE_MESSAGE(game.ok(), (game.ok() ? std::string() : game.error().message));
+    while (game.value()->frame()) {
+    }
+    // The hero and the rock; the ghost's texture is missing, so it is left out with a warning.
+    CHECK(game.value()->summary().find("sprites")->as_int() == 2);
+    // Three ticks of 1/60 s at 30 frames per second: frame 1, halfway through.
+    const auto& world = game.value()->world();
+    const entt::entity hero = world.find("hero");
+    CHECK(world.ecs().get<slash::world::AnimatedSprite2D>(hero).frame == 1);
+    CHECK(world.ecs().get<slash::world::Sprite2D>(hero).frame == 1);
 }
 
 TEST_CASE("a game explains what is missing") {

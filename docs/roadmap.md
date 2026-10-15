@@ -23,9 +23,9 @@ schema it generates from its own components, and serves every engine action as a
 MCP, JSON-RPC, a localhost REST API and the command line, including while a game runs. A game is
 a folder with a `project.json`, and `slash-cli export` builds it for macOS, Windows, Linux, the
 web, Android or iOS, signs it and can test the result headless. The rest of milestone 4, now in
-progress, builds every platform from one Mac. Games draw through a GPU render device, with
-Godot's V-Sync modes and frame cap, but only clear their window so far; sprites and the rest of
-the 2D renderer follow in milestone 5.
+progress, builds every platform from one Mac. Games draw sprites and flipbook animations through
+a GPU render device, smoothly between fixed ticks and with Godot's V-Sync modes and frame cap;
+the rest of the 2D renderer follows in milestone 5.
 
 ## The path to launch
 
@@ -158,8 +158,11 @@ rendering on top.
       tick, for interpolated drawing
 - [ ] Materials: HLSL shaders plus a JSON material graph agents write directly, starting with
       2D (canvas) materials; milestone 7 adds the PBR inputs
-- [ ] Sprites, sprite sheets and flipbooks, drawn interpolated between fixed ticks so high
-      refresh rates look smooth
+- [x] Sprites, sprite sheets and flipbooks, as in Godot: `Sprite2D` (frames, regions, flips,
+      tint, `z_index`) and `AnimatedSprite2D` playing `.frames.json` files (Godot's
+      SpriteFrames), drawn in order and interpolated between fixed ticks so high refresh rates
+      look smooth. Textures are PNG or BMP assets that hot reload, and exports ship and check
+      them with the frames files
 - [ ] Keyframe animation tracks on any reflected property, like Godot's AnimationPlayer
 - [ ] Tilemap layers with terrain autotiling
 - [ ] 2D lights, occluders and normal-mapped sprites
@@ -361,7 +364,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Editor | No GUI editor: MCP and REST command API, debug overlay, frame capture | 3, 5 | In part: the command API is done; frame capture and the overlay are planned for 5 |
 | Gameplay code | C++ with hot reload; plugins as C++ modules with a stable C ABI | 6 | Planned |
 | Scenes and prefabs | JSON scenes, prefabs with overrides, on EnTT | 2, 5 | Done |
-| 2D sprites and animation | Batched sprites, sprite sheets, flipbooks | 5 | Planned |
+| 2D sprites and animation | Batched sprites, sprite sheets, flipbooks | 5 | Done |
 | Tilemaps | Tilemap layers with terrain autotiling, stored as text | 5 | Planned |
 | 2D lighting | 2D lights, occluders, normal-mapped sprites | 5 | Planned |
 | 2D physics | Box2D v3 | 5 | Planned |
@@ -376,7 +379,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Particles | CPU and GPU particles, particle graphs in text | 5 | Planned |
 | Audio | miniaudio: buses, effects, 3D spatial audio | 5 | Planned |
 | Input | Rebindable action maps over SDL3, injectable by agents | 5 | Planned |
-| Refresh rates and frame pacing | V-Sync modes, frame cap, display refresh rates, variable refresh rate, rendering interpolated between fixed ticks | 5 | In part: done except interpolated drawing, which comes with sprites |
+| Refresh rates and frame pacing | V-Sync modes, frame cap, display refresh rates, variable refresh rate, rendering interpolated between fixed ticks | 5 | Done |
 | UI | Retained UI with flexbox layout and themes, defined in text | 5 | Planned |
 | Text and fonts | FreeType, HarfBuzz, MSDF fonts, BiDi, IME input, fallback fonts | 5 | Planned |
 | Navigation | Recast and Detour, 2D and 3D, avoidance | 7 | Planned |
