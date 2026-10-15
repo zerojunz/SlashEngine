@@ -1,8 +1,10 @@
 # Third-party software
 
 SlashEngine is licensed under Apache 2.0 (see `LICENSE`). It uses the following third-party
-software, each under a permissive license. Dependencies are fetched at build time at the pinned
-versions in `cmake/Dependencies.cmake` unless noted as vendored.
+software, each under a permissive license. Dependencies are fetched at build time unless noted as
+vendored. `cmake/dependencies.json` pins each one to an exact tag with its SPDX license and the
+SHA-256 of its license file, and the `licenses` test fails a pull request that adds a dependency
+or license not allowed here, or whose license text changed without review.
 
 | Name | Version | License | Used for | How it is included |
 | --- | --- | --- | --- | --- |

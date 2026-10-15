@@ -28,6 +28,29 @@ slash_target_warnings(slash_tests)
 
 add_test(NAME unit COMMAND slash_tests WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 
+# Every dependency this build fetched is pinned in cmake/dependencies.json with an allowed license
+# and the license text that was reviewed; see cmake/check_licenses.cmake.
+set(license_args "")
+foreach(dependency IN LISTS SLASH_DEPENDENCIES)
+    list(APPEND license_args "-DSOURCE_${dependency}=${${dependency}_SOURCE_DIR}")
+endforeach()
+list(JOIN SLASH_DEPENDENCIES "|" fetched_dependencies)
+add_test(NAME licenses
+    COMMAND ${CMAKE_COMMAND} -DROOT=${PROJECT_SOURCE_DIR} -DDEPENDENCIES=${fetched_dependencies}
+        ${license_args} -P ${PROJECT_SOURCE_DIR}/cmake/check_licenses.cmake)
+# A fixture that breaks every rule, to show the check catches each one.
+set(license_fixture ${CMAKE_CURRENT_SOURCE_DIR}/data/licenses)
+add_test(NAME licenses_fixture
+    COMMAND ${CMAKE_COMMAND} -DROOT=${license_fixture}
+        "-DDEPENDENCIES=good|changed|copyleft|branch|extra"
+        -DSOURCE_good=${license_fixture}/sources/good
+        -DSOURCE_changed=${license_fixture}/sources/changed
+        -DSOURCE_copyleft=${license_fixture}/sources/none
+        -DSOURCE_branch=${license_fixture}/sources/good
+        -P ${PROJECT_SOURCE_DIR}/cmake/check_licenses.cmake)
+set_tests_properties(licenses_fixture PROPERTIES PASS_REGULAR_EXPRESSION
+    "branch is pinned to the branch .main.*license of changed v2[.]0 is not the reviewed text.*copyleft is under .GPL-3[.]0-only OR LGPL-2[.]1-only., which is not allowed.*no row linking https://example[.]com/copyleft.*copyleft v1[.]0 has no COPYING.*extra is fetched but not in.*cmake/gone[.]cmake is listed as vendored but does not exist.*engine/copied[.]c carries a copyleft notice.*tools/CMakeLists[.]txt fetches code without")
+
 if(SLASH_BUILD_TOOLS)
     set(scenes ${CMAKE_CURRENT_SOURCE_DIR}/data)
 

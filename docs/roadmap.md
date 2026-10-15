@@ -139,7 +139,7 @@ rendering on top.
       removed or changed, by ID) and `world.restore`
 - [x] Verified examples: every feature from here on ships with a small working example in
       `examples/` that CI builds and runs headless, so agents copy code that is known to work
-- [ ] A license check on every pull request, against a manifest of pinned dependencies, before
+- [x] A license check on every pull request, against a manifest of pinned dependencies, before
       this milestone adds Box2D, miniaudio, FreeType and HarfBuzz
 - [ ] Renderer foundation: `RenderDevice` over SDL3's GPU API, a null backend for headless runs,
       HLSL shaders cross-compiled with SDL_shadercross
