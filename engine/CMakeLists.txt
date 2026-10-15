@@ -1,5 +1,6 @@
 add_subdirectory(core)
 add_subdirectory(platform)
+add_subdirectory(asset)
 add_subdirectory(world)
 add_subdirectory(command)
 add_subdirectory(server)

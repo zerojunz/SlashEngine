@@ -113,7 +113,7 @@ rendering on top.
 - [x] Run control commands: `play` and `pause`
 - [x] `events.subscribe` for a stream of world events
 - [x] Prefabs: an entity `"extends"` a `.prefab.json` file and overrides fields
-- [ ] Asset handles with reference counting and hot reload, and an `asset.list` command
+- [x] Asset handles with reference counting and hot reload, and an `asset.list` command
 - [ ] Storyboard: the game's style, world, story, design rules, names, decisions and open work
       as typed files in the project, so every agent works from the same facts
       ([design](design.md#storyboard))

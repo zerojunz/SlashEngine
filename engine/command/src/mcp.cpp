@@ -25,6 +25,7 @@ constexpr std::string_view kInstructions =
 - Add "dry_run": true to any edit or batch to see what it would change without changing anything. world_snapshot, then world_diff later, lists every entity and field that changed; world_restore goes back.
 - world_query returns only entity IDs unless you pass include. Filter with where, e.g. {"component": "Transform2D", "field": "position.y", "op": ">", "value": 100}.
 - component_set returns only the fields that changed.
+- Edited files reload on their own before each call: prefab instances update and keep their overrides. asset_list shows what is loaded.
 - Errors give the JSON Pointer of the bad value and suggest the right name when one is misspelled, so fix it and retry.
 - Paths are relative to the project folder. Call scene_save when you are done.)";
 

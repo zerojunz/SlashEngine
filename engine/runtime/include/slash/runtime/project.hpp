@@ -3,6 +3,7 @@
 #include "slash/core/json.hpp"
 #include "slash/core/json_schema.hpp"
 #include "slash/core/result.hpp"
+#include "slash/core/text.hpp"
 #include "slash/world/scene.hpp"
 
 #include <cstdint>
@@ -57,9 +58,8 @@ struct Project {
 // A new project with this name and main scene, written in canonical form.
 [[nodiscard]] json::Value new_project(std::string_view name, std::string_view main_scene);
 
-// Whether path names a file inside a project: relative, separated by '/', with no "." or ".."
-// segments, and no backslash or ':'.
-[[nodiscard]] bool is_project_path(std::string_view path);
+// Whether path names a file inside a project (see slash/core/text.hpp).
+using slash::is_project_path;
 
 // Joins a folder and a project-relative path with '/'.
 [[nodiscard]] std::string join_path(std::string_view folder, std::string_view relative);

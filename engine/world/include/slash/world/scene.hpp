@@ -46,6 +46,8 @@ namespace slash::world {
 inline constexpr std::int64_t kSceneFormat = 1;
 inline constexpr std::string_view kSceneSuffix = ".scene.json";
 inline constexpr std::string_view kPrefabSuffix = ".prefab.json";
+// The asset type name prefab files are read under (asset::Assets::read).
+inline constexpr std::string_view kPrefabType = "prefab";
 
 // The JSON Schema for scene files with these components.
 [[nodiscard]] json::Value scene_schema(const ComponentRegistry& components);
@@ -84,6 +86,15 @@ validate_prefab(const ComponentRegistry& components, const json::Value& prefab,
 // Gives an entity a prefab's components and links it to the prefab.
 [[nodiscard]] Result<void> instantiate_prefab(World& world, entt::entity entity,
                                               std::string_view path);
+
+// Reads every prefab the world's entities extend again and updates the instances of those that
+// changed, keeping each instance's own overrides, as Godot does when an instanced scene changes.
+// A prefab that no longer loads leaves its instances as they are.
+struct PrefabReload {
+    std::vector<std::string> changed;          // IDs of entities whose components changed, sorted
+    std::vector<json::ValidationError> errors; // {prefab path, why it did not load}
+};
+[[nodiscard]] PrefabReload reload_prefabs(World& world);
 
 // One entity in prefab-file form: its components, or for an entity that extends a prefab, that
 // "extends" and only what differs from it.

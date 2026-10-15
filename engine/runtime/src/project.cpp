@@ -226,26 +226,6 @@ json::Value new_project(std::string_view name, std::string_view main_scene) {
     return project;
 }
 
-bool is_project_path(std::string_view path) {
-    if (path.empty() || path.front() == '/' || path.find('\\') != std::string_view::npos ||
-        path.find(':') != std::string_view::npos) {
-        return false;
-    }
-    std::size_t start = 0;
-    while (start <= path.size()) {
-        std::size_t end = path.find('/', start);
-        if (end == std::string_view::npos) {
-            end = path.size();
-        }
-        const std::string_view segment = path.substr(start, end - start);
-        if (segment.empty() || segment == "." || segment == "..") {
-            return false;
-        }
-        start = end + 1;
-    }
-    return true;
-}
-
 std::string join_path(std::string_view folder, std::string_view relative) {
     std::string path(folder);
     if (!path.empty() && path.back() != '/' && path.back() != '\\') {

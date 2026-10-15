@@ -509,3 +509,60 @@ TEST_CASE("diff_scenes compares entities through their prefabs") {
           parse(R"({"changed": {"e": {"Enemy": {}, "Health": {"current": 50.0, "max": 50.0},
                                       "Transform2D": {"rotation": 1.0}}}})"));
 }
+
+TEST_CASE("reload_prefabs updates instances and keeps their overrides") {
+    const auto registry = make_registry();
+    std::map<std::string, std::string, std::less<>> files{
+        {"base.prefab.json", R"({"format": 1, "components": {"Health": {"max": 200}}})"},
+        {"boss.prefab.json", R"({"format": 1, "extends": "base.prefab.json",
+                                 "components": {"Health": {"current": 150}, "Enemy": {}}})"},
+    };
+    World world(registry);
+    world.set_file_reader([&files](std::string_view path) -> slash::Result<std::string> {
+        const auto it = files.find(path);
+        if (it == files.end()) {
+            return slash::make_error(slash::ErrorCode::NotFound, "no such file");
+        }
+        return it->second;
+    });
+    REQUIRE(world::load_scene(world, parse(R"({"format": 1, "entities": {
+        "boss": {"extends": "boss.prefab.json", "components": {"Health": {"current": 99}}},
+        "twin": {"extends": "boss.prefab.json"},
+        "plain": {"components": {"Health": {}}}}})"))
+                .ok());
+    CHECK(world::reload_prefabs(world).changed.empty());
+
+    // The base prefab changes: every instance down the chain picks it up.
+    files["base.prefab.json"] =
+        R"({"format": 1, "components": {"Health": {"max": 300}, "Velocity": {"linear": [1, 0]}}})";
+    world::PrefabReload reload = world::reload_prefabs(world);
+    CHECK(reload.errors.empty());
+    CHECK(reload.changed == std::vector<std::string>{"boss", "twin"});
+    const auto boss = world.find("boss");
+    CHECK(world.ecs().get<demo::Health>(boss).current == 99.0F);
+    CHECK(world.ecs().get<demo::Health>(boss).max == 300.0F);
+    CHECK(world.ecs().get<demo::Velocity>(boss).linear.x == 1.0F);
+    CHECK(world.ecs().get<demo::Health>(world.find("twin")).current == 150.0F);
+    CHECK(world.prefab_of(boss)->base == world.prefab_of(world.find("twin"))->base);
+    // Saving still writes only the overrides.
+    CHECK(*world::save_scene(world).find("entities")->find("boss") ==
+          parse(R"({"extends": "boss.prefab.json", "components": {"Health": {"current": 99.0}}})"));
+
+    // Fields and components the prefab drops go back to their defaults or away.
+    files["boss.prefab.json"] = R"({"format": 1, "extends": "base.prefab.json"})";
+    files["base.prefab.json"] = R"({"format": 1, "components": {"Health": {}}})";
+    reload = world::reload_prefabs(world);
+    CHECK(reload.changed == std::vector<std::string>{"boss", "twin"});
+    CHECK(world.ecs().get<demo::Health>(boss).max == 100.0F);
+    CHECK(world.ecs().get<demo::Health>(boss).current == 99.0F);
+    CHECK_FALSE(world.ecs().all_of<demo::Enemy>(boss));
+    CHECK_FALSE(world.ecs().all_of<demo::Velocity>(boss));
+
+    // A prefab that no longer loads leaves its instances alone.
+    files["boss.prefab.json"] = "{";
+    reload = world::reload_prefabs(world);
+    CHECK(reload.changed.empty());
+    REQUIRE(reload.errors.size() == 1);
+    CHECK(reload.errors[0].path == "boss.prefab.json");
+    CHECK(world.ecs().get<demo::Health>(boss).current == 99.0F);
+}

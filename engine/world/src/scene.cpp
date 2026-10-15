@@ -1,9 +1,11 @@
 #include "slash/world/scene.hpp"
 
+#include "slash/core/text.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/world.hpp"
 
 #include <algorithm>
+#include <map>
 #include <string>
 #include <utility>
 #include <vector>
@@ -81,32 +83,13 @@ std::string stray_null_message(std::string_view name, std::string_view prefab) {
                 : "\"" + std::string(prefab) + "\" has no \"" + std::string(name) + "\"");
 }
 
-// Whether path is relative, separated by '/', with no empty, "." or ".." parts, so it names the
-// same file in the editor and in an exported game.
-bool is_relative_path(std::string_view path) {
-    if (path.empty() || path.front() == '/' ||
-        path.find_first_of("\\:") != std::string_view::npos) {
-        return false;
-    }
-    std::size_t start = 0;
-    while (start <= path.size()) {
-        const std::size_t end = std::min(path.find('/', start), path.size());
-        const std::string_view part = path.substr(start, end - start);
-        if (part.empty() || part == "." || part == "..") {
-            return false;
-        }
-        start = end + 1;
-    }
-    return true;
-}
-
 Result<std::shared_ptr<const json::Value>> resolve(World& world, std::string_view path,
                                                    std::vector<std::string>& chain) {
     if (auto cached = world.cached_prefab(path); cached != nullptr) {
         return cached;
     }
     const std::string name(path);
-    if (!is_relative_path(path)) {
+    if (!is_project_path(path)) {
         return make_error(ErrorCode::InvalidArgument,
                           "expected a path inside the project folder, separated by '/', with no "
                           "\".\" or \"..\" parts, got \"" +
@@ -568,6 +551,63 @@ Result<void> instantiate_prefab(World& world, entt::entity entity, std::string_v
     }
     world.ecs().emplace_or_replace<PrefabLink>(entity, std::string(path), base.value());
     return {};
+}
+
+PrefabReload reload_prefabs(World& world) {
+    PrefabReload reload;
+    world.forget_prefabs();
+    std::map<std::string, std::vector<entt::entity>, std::less<>> instances;
+    for (const auto [entity, link] : world.ecs().view<const PrefabLink>().each()) {
+        instances[link.path].push_back(entity);
+    }
+    for (const auto& [path, entities] : instances) {
+        auto resolved = resolve_prefab(world, path);
+        if (!resolved) {
+            reload.errors.push_back({path, resolved.error().message});
+            continue;
+        }
+        const std::shared_ptr<const json::Value>& base = resolved.value();
+        for (const entt::entity entity : entities) {
+            auto& link = world.ecs().get<PrefabLink>(entity);
+            if (*link.base == *base) {
+                link.base = base;
+                continue;
+            }
+            const json::Value overrides = saved_components(world, entity, link.base.get());
+            const json::Value target = effective_components(base.get(), &overrides);
+            bool changed = false;
+            for (const auto& type : world.components().types()) {
+                const json::Value* fields = target.find(type->name());
+                if (fields == nullptr) {
+                    if (type->has(world, entity)) {
+                        type->remove(world, entity);
+                        changed = true;
+                    }
+                    continue;
+                }
+                // Every field, so ones the prefab no longer sets go back to their defaults.
+                json::Value values = type->defaults();
+                for (const auto& [field, value] : fields->as_object()) {
+                    values[field] = value;
+                }
+                if (type->has(world, entity) && type->get(world, entity) == values) {
+                    continue;
+                }
+                std::string at = "/components/" + type->name();
+                if (auto assigned = type->assign(world, entity, values, at); !assigned) {
+                    reload.errors.push_back({path, at + ": " + assigned.error().message});
+                    continue;
+                }
+                changed = true;
+            }
+            link.base = base;
+            if (const std::string_view id = world.id_of(entity); changed && !id.empty()) {
+                reload.changed.emplace_back(id);
+            }
+        }
+    }
+    std::ranges::sort(reload.changed);
+    return reload;
 }
 
 json::Value save_prefab(const World& world, entt::entity entity) {
