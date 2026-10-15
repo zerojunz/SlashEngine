@@ -1,5 +1,6 @@
 add_executable(slash_tests
     test_main.cpp
+    test_animation.cpp
     test_asset.cpp
     test_canvas.cpp
     test_command.cpp
@@ -21,7 +22,7 @@ add_executable(slash_tests
     test_storyboard.cpp
     test_world.cpp)
 target_link_libraries(slash_tests PRIVATE
-    slash::asset slash::canvas slash::command slash::core slash::exporter slash::platform slash::render
+    slash::animation slash::asset slash::canvas slash::command slash::core slash::exporter slash::platform slash::render
     slash::runtime slash::server slash::storyboard slash::world doctest::doctest SDL3::SDL3-static)
 # doctest forward-declares std::ostream by default, which breaks string_view checks on recent
 # MSVC standard libraries; include the real headers instead.
@@ -163,6 +164,23 @@ if(SLASH_BUILD_TOOLS)
         COMMAND slash-cli scene validate ${scenes}/invalid.material.json)
     set_tests_properties(cli_scene_validate_invalid_material PROPERTIES
         PASS_REGULAR_EXPRESSION "\"message\":\"no op \\\\\"mull\\\\\"; did you mean \\\\\"mul\\\\\"[?]\",\"path\":\"/color/op\"")
+
+    add_test(NAME cli_schema_animation COMMAND slash-cli schema animation)
+    set_tests_properties(cli_schema_animation PROPERTIES
+        PASS_REGULAR_EXPRESSION "\"title\": \"SlashEngine animation library\"")
+    # The keyframe animation example's library, which must stay valid and canonical.
+    set(animation_file ${PROJECT_SOURCE_DIR}/examples/keyframe-animation/hero.anim.json)
+    add_test(NAME cli_scene_validate_animation COMMAND slash-cli scene validate ${animation_file})
+    set_tests_properties(cli_scene_validate_animation PROPERTIES
+        PASS_REGULAR_EXPRESSION "{\"animations\":2,\"valid\":true}")
+    add_test(NAME cli_scene_format_animation
+        COMMAND slash-cli scene format --check ${animation_file})
+    set_tests_properties(cli_scene_format_animation PROPERTIES
+        PASS_REGULAR_EXPRESSION "{\"canonical\":true}")
+    add_test(NAME cli_scene_validate_invalid_animation
+        COMMAND slash-cli scene validate ${scenes}/invalid.anim.json)
+    set_tests_properties(cli_scene_validate_invalid_animation PROPERTIES
+        PASS_REGULAR_EXPRESSION "\"message\":\"Transform2D has no field \\\\\"positon\\\\\"; did you mean \\\\\"position\\\\\"[?]\",\"path\":\"/animations/bob/tracks/0/path\"")
 
     add_test(NAME cli_schema_storyboard COMMAND slash-cli schema storyboard)
     set_tests_properties(cli_schema_storyboard PROPERTIES

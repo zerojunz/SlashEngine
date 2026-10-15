@@ -1,0 +1,11 @@
+{"id":1,"jsonrpc":"2.0","result":{"entities":1,"path":"main.scene.json"}}
+{"id":2,"jsonrpc":"2.0","result":{"length":0.5,"loop":"linear","tracks":{"Sprite2D/frame":[0,1,2,3],"Sprite2D/offset/y":[0,-2,-4,-2]}}}
+{"id":3,"jsonrpc":"2.0","result":{"length":0.4,"loop":"none","tracks":{"Sprite2D/frame":[4,5,5,0],"Sprite2D/modulate":[[1,0.2,0.2,1],[1,0.55,0.55,1],[1,0.8,0.8,1],[1,1,1,1]]}}}
+{"error":{"code":-32001,"data":{"path":"/animation"},"message":"/animation: hero.anim.json has no animation \"hitt\"; did you mean \"hit\"?"},"id":4,"jsonrpc":"2.0"}
+{"id":5,"jsonrpc":"2.0","result":{"subscription":"events_1"}}
+{"id":6,"jsonrpc":"2.0","result":{"tick":31,"ticks":31}}
+{"id":7,"jsonrpc":"2.0","result":{"dropped":0,"events":[{"data":{"foot":"left"},"id":"hero","kind":"footstep","seq":1,"tick":0},{"data":{"foot":"right"},"id":"hero","kind":"footstep","seq":2,"tick":14},{"data":{"foot":"left"},"id":"hero","kind":"footstep","seq":3,"tick":30}],"more":false}}
+{"id":8,"jsonrpc":"2.0","result":{"changed":{"AnimationPlayer":{"animation":"hit","time":0.0}},"id":"hero"}}
+{"id":9,"jsonrpc":"2.0","result":{"tick":55,"ticks":24}}
+{"id":10,"jsonrpc":"2.0","result":{"dropped":0,"events":[{"data":{"animation":"hit"},"id":"hero","kind":"animation_finished","seq":4,"tick":54}],"more":false}}
+{"id":11,"jsonrpc":"2.0","result":{"components":{"AnimationPlayer":{"animation":"hit","backwards":false,"library":"hero.anim.json","playing":false,"speed_scale":1.0,"time":0.4},"Sprite2D":{"centered":true,"flip_h":false,"flip_v":false,"frame":0,"hframes":8,"material":"","material_params":{},"modulate":[1.0,1.0,1.0,1.0],"offset":[0.0,-0.050962962],"region":[0.0,0.0,0.0,0.0],"texture":"","texture_filter":"inherit","vframes":1,"visible":true,"z_index":0},"Transform2D":{"position":[64.0,48.0],"rotation":0.0,"scale":[1.0,1.0]}},"id":"hero"}}

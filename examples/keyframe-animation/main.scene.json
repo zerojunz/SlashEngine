@@ -1,0 +1,19 @@
+{
+  "entities": {
+    "hero": {
+      "components": {
+        "AnimationPlayer": {
+          "animation": "walk",
+          "library": "hero.anim.json"
+        },
+        "Sprite2D": {
+          "hframes": 8
+        },
+        "Transform2D": {
+          "position": [64.0, 48.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

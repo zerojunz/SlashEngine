@@ -28,6 +28,7 @@ constexpr std::string_view kInstructions =
 - To test gameplay, run_until steps the game until an entity matches with/where (or none does) and returns the tick and the matches, instead of a step and a query per tick.
 - The storyboard holds the game's facts (characters, places, story, rules, names, decisions, open work). Before a task, storyboard_brief with the scenes or entities it touches, and use those facts instead of guessing; record new ones with storyboard_edit (pass the version you read); after it, storyboard_check.
 - Sprite2D draws a texture or one frame of a sprite sheet; AnimatedSprite2D plays an animation from a .frames.json file on it (schema_get kind "frames"). Sprite2D's material is a .material.json node graph (schema_get kind "material"); material_eval returns the colors it draws, so you can check it without a screenshot.
+- AnimationPlayer plays keyframe animations from a .anim.json file (schema_get kind "animation"): tracks set any component field, such as "Sprite2D/modulate" or "Transform2D/position/y", and event tracks emit events. animation_eval returns the values at any times, so you can check an animation without playing it.
 - In a running game, perf_stats reports fps and frame times, and display_set changes V-Sync and the frame cap.
 - Edited files reload on their own before each call: prefab instances update and keep their overrides. asset_list shows what is loaded.
 - Errors give the JSON Pointer of the bad value and suggest the right name when one is misspelled, so fix it and retry.

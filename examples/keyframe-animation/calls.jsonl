@@ -1,0 +1,11 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"animation.eval","params":{"id":"hero","times":[0,0.125,0.25,0.375]}}
+{"jsonrpc":"2.0","id":3,"method":"animation.eval","params":{"id":"hero","animation":"hit","times":[0,0.1,0.2,0.4],"tracks":["Sprite2D/modulate","Sprite2D/frame"]}}
+{"jsonrpc":"2.0","id":4,"method":"animation.eval","params":{"id":"hero","animation":"hitt","times":[0]}}
+{"jsonrpc":"2.0","id":5,"method":"events.subscribe","params":{"kinds":["footstep","animation_finished"]}}
+{"jsonrpc":"2.0","id":6,"method":"step","params":{"ticks":31}}
+{"jsonrpc":"2.0","id":7,"method":"events.read","params":{"subscription":"events_1"}}
+{"jsonrpc":"2.0","id":8,"method":"component.set","params":{"id":"hero","components":{"AnimationPlayer":{"animation":"hit","time":0}}}}
+{"jsonrpc":"2.0","id":9,"method":"step","params":{"ticks":24}}
+{"jsonrpc":"2.0","id":10,"method":"events.read","params":{"subscription":"events_1"}}
+{"jsonrpc":"2.0","id":11,"method":"entity.get","params":{"id":"hero","components":["AnimationPlayer","Sprite2D","Transform2D"]}}

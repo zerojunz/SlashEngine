@@ -52,6 +52,7 @@ The code follows the same split, one CMake library per module under `engine/`:
 | `asset` | Asset handles, loaders and hot reload |
 | `world` | The EnTT world, components, the component registry, scenes and prefabs |
 | `canvas` | 2D drawing, as Godot's canvas: sprites, `.frames.json` animations, `.material.json` materials and the renderer that draws them |
+| `animation` | Keyframe animation, as Godot's AnimationPlayer: `.anim.json` files and the system that plays them |
 | `storyboard` | Storyboard files: kinds, checks, versions, queries and edits |
 | `command` | Commands, sessions with undo, JSON-RPC and MCP |
 | `server` | The localhost HTTP server over a session |
@@ -71,7 +72,9 @@ An **entity** is a thing in the world, named by a stable **ID** such as `"player
 undo, so agents can refer to entities by name instead of by an index that changes.
 
 A **component** is a plain C++ struct of data attached to an entity. An entity has at most one of
-each component type. The engine ships two today:
+each component type. The transforms place every entity; the
+[built-in components](reference/scene-format.md#built-in-components) also draw sprites, play
+animations and link entities to the storyboard:
 
 | Component | Fields | Units |
 | --- | --- | --- |
@@ -89,8 +92,9 @@ reference to another entity, a `std::vector` of these, or a nested struct declar
 A **system** is code that updates components every tick, added with `World::add_system` and an
 optional doc string and priority. Systems run in order of priority, lowest first as with Godot's
 `process_priority`, and in the order they were added when priorities are equal. `engine.describe`
-lists them in that order. The engine has no built-in systems yet; they arrive with the feature
-milestones (2D physics, animation, particles).
+lists them in that order. The built-in systems play animations: `animation_player` runs
+`AnimationPlayer` components, then `animated_sprite_2d` runs `AnimatedSprite2D` flipbooks. More
+arrive with the feature milestones (2D physics, particles).
 
 ## Scenes
 
@@ -119,8 +123,8 @@ even after the file changes.
 An **asset** is a file a game loads by project path, like a Godot resource: a JSON table, a CSV
 file, a texture and, once audio arrives, sounds. Loading one returns a **handle**; every handle to
 the same path shares one copy, which stays loaded while any handle exists. `.json`, `.txt`,
-`.csv`, `.png`, `.bmp`, `.frames.json` and `.material.json` files load out of the box, and a game
-can add its own types.
+`.csv`, `.png`, `.bmp`, `.frames.json`, `.material.json` and `.anim.json` files load out of the
+box, and a game can add its own types.
 
 **Hot reload** keeps an agent's edit-and-check loop short. Before every command, and between
 ticks in `slash-cli run` and `slash-cli serve`, the session checks the files it has loaded. A
@@ -209,6 +213,15 @@ loads to a short program that one shader, compiled ahead of time like the rest, 
 so a game needs no shader compiler and a material reloads at once. The same program runs on the
 CPU for `material.eval`, which returns the colors a material draws: an agent checks its work
 without a screenshot. The [materials example](../examples/materials/) has three.
+
+**Keyframe animation** follows Godot's AnimationPlayer. A `.anim.json` file holds animations by
+name, each a length, a loop mode and **tracks**. A value track sets one component field, or one
+part of it such as `Sprite2D/modulate/a`, from **keys** at times, eased between them (linear,
+cubic, with Godot's easing curves); an event track emits an event as playback passes each key.
+An entity's `AnimationPlayer` plays one animation on its own components, so the same file
+animates any field of any component, a game's own included. `animation.eval` returns the values
+an animation sets at any times, so an agent checks it without stepping the game. The
+[keyframe animation example](../examples/keyframe-animation/) plays a walk cycle and a hit.
 
 How often frames are drawn follows Godot. The world ticks at a fixed rate (`tick_hz`), while frames
 come as fast as the **V-Sync mode** lets them (`window.vsync_mode`: wait for each refresh, present
@@ -389,6 +402,7 @@ OpenAI-compatible servers (including local ones), Anthropic and Gemini; see the
 
 | Term | Meaning |
 | --- | --- |
+| Animation | A `.anim.json` file's named set of tracks, which an `AnimationPlayer` plays on its entity's fields |
 | Asset | A file a game loads by project path into a shared, reference-counted handle |
 | Blend mode | How a sprite's color combines with what is under it: `mix`, `add`, `sub`, `mul` or `premul_alpha` |
 | Canonical form | The one way a scene is written: sorted keys, two-space indent, defaults left out |
@@ -409,6 +423,7 @@ OpenAI-compatible servers (including local ones), Anthropic and Gemini; see the
 | ID | An entity's stable name: 1 to 64 letters, digits, `_` or `-` |
 | Journal | `storyboard/journal.jsonl`: who changed which storyboard entries, when and why |
 | JSON Pointer | A path to a value inside JSON, such as `/entities/player/components` (RFC 6901) |
+| Key | A track's value, or event, at one time in an animation |
 | Main scene | The scene a game loads at startup, named in `project.json` |
 | Material | A `.material.json` node graph that colors a sprite's pixels, with params each sprite sets |
 | Prefab | One entity's components in a `.prefab.json` file, which entities extend and override |
@@ -425,4 +440,5 @@ OpenAI-compatible servers (including local ones), Anthropic and Gemini; see the
 | System | Code that updates components every tick, in order of priority |
 | Tick | One fixed simulation step, 1/60 s by default |
 | Tool name | A command's MCP name, with `_` in place of `.` |
+| Track | One field an animation sets, or one kind of event it emits, over time, as keys |
 | World | Every entity in a running game, held in EnTT |
