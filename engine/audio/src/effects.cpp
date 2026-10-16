@@ -960,9 +960,10 @@ public:
           keep_hf_hz_(std::max(params("keep_hf_hz"), 1.0F)), drive_(params("drive")),
           post_gain_(params("post_gain")) {
         if (const json::Value* mode = params.find("mode"); mode != nullptr) {
-            if (const auto* const it = std::ranges::find(kDistortionModes, mode->as_string());
-                it != kDistortionModes.end()) {
-                mode_ = static_cast<std::size_t>(it - kDistortionModes.begin());
+            const auto index = static_cast<std::size_t>(
+                std::ranges::find(kDistortionModes, mode->as_string()) - kDistortionModes.begin());
+            if (index < kDistortionModes.size()) {
+                mode_ = index;
             }
         }
     }
@@ -1532,13 +1533,15 @@ json::Value effect_schema() {
 }
 
 Result<std::unique_ptr<EffectInstance>> make_effect(const EffectSlot& slot, MixContext& context) {
-    const auto* const it = std::ranges::find(kTypes, slot.type, &EffectType::name);
-    if (it == kTypes.end()) {
+    const auto index = static_cast<std::size_t>(
+        std::ranges::find(kTypes, slot.type, &EffectType::name) - kTypes.begin());
+    if (index == kTypes.size()) {
         return make_error(ErrorCode::InvalidArgument,
                           "\"" + slot.type + "\" is not an audio effect type");
     }
-    const Params params(slot.params, it->settings);
-    return it->make(params, context);
+    const EffectType& type = kTypes.at(index);
+    const Params params(slot.params, type.settings);
+    return type.make(params, context);
 }
 
 } // namespace slash::audio
