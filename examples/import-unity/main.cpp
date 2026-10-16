@@ -2,14 +2,15 @@
 //
 // unity/ holds "Pond Hop", a small Unity 2D game as Unity saves it: project settings, a scene
 // that instances three prefabs (one of them a prefab variant) and has a tile map, sprites and
-// their import settings, tile assets, an Animator controller and its clips, a physics material,
-// an Input System actions file and three C# scripts. One call converts it. Its scene and
-// prefabs become .scene.json files beside the originals, the prefabs staying prefabs that the
-// scene instances; its sprites, tile map, cameras, 2D physics, animation and sounds become
-// SlashEngine's components, measured in pixels, the tile map's sprites a tile set and the
-// controller an animation library; its player, physics, time, sorting and input settings
-// become project.json; and each script, and the controller's state machine, a storyboard task
-// to port it to C++, since SlashEngine games are plain C++. The report lists what didn't convert,
+// their import settings, tile assets, an Animator controller and its clips, an audio mixer, a
+// physics material, an Input System actions file and three C# scripts. One call converts it.
+// Its scene and prefabs become .scene.json files beside the originals, the prefabs staying
+// prefabs that the scene instances; its sprites, tile map, cameras, 2D physics and joints,
+// animation and sounds become SlashEngine's components, measured in pixels, the tile map's
+// sprites a tile set, the controller an animation library and the mixer a bus layout; its
+// player, physics, time, sorting and input settings become project.json; and each script, and
+// the controller's state machine, a storyboard task to port it to C++, since SlashEngine games
+// are plain C++. The report lists what didn't convert,
 // and why. Games ship PNG and WAV files made in other tools; this example makes its textures and
 // sounds in code (without libm, so they are the same everywhere), so the repository holds no images
 // or sounds.
@@ -131,17 +132,19 @@ int main() {
     agent.call("project.import", R"({"source": "unity"})");
 
     // The scene, the frog and gold coin prefabs, the bank's tile set, the frog's animation
-    // library, the looping music and the project's settings.
+    // library, the mixer's buses, the looping music and the project's settings.
     print_file("unity/Assets/Scenes/Pond.scene.json");
     print_file("unity/Assets/Prefabs/Frog.scene.json");
     print_file("unity/Assets/Prefabs/Gold Coin.scene.json");
     print_file("unity/Assets/tiles.tileset.json");
     print_file("unity/Assets/Animations/Frog.anim.json");
+    print_file("unity/Assets/Audio/Pond.bus_layout.json");
     print_file("unity/Assets/Audio/pond.loop.audio.json");
     print_file("project.json");
 
-    // The converted scene opens and runs: the frog falls onto the ground and rests there. Its
-    // Animator's first state plays: a second in, it has ribbited, and it blinks at 1.75 s.
+    // The converted scene opens and runs: the frog falls onto the ground and rests there, and
+    // the lantern swings on its hinge. The frog's Animator's first state plays: a second in, it
+    // has ribbited, and it blinks at 1.75 s.
     agent.call("scene.open", R"({"path": "unity/Assets/Scenes/Pond.scene.json"})");
     agent.call("events.subscribe", R"({"kinds": ["Ribbit"]})");
     agent.call("step", R"({"ticks": 60})");

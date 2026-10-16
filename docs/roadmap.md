@@ -347,8 +347,10 @@ rendering on top.
   - [x] Unity's Animator controllers and animation clips: an animation library per
         controller, an animation per state, curves keyed for SlashEngine's tracks, and the state
         machine as a storyboard task
-  - [ ] Unity's audio mixers, uGUI, 2D joints, 2D lights, and isometric and hexagonal tile
-        maps
+  - [x] Unity's audio mixers and 2D joints: one bus layout from every mixer's groups, with
+        their effects and Duck Volume sends as sidechains, and hinge, spring and slider joints as
+        Godot's pin, spring and groove joints
+  - [ ] Unity's uGUI, 2D lights, and isometric and hexagonal tile maps
   - [ ] Exported games (a Godot `.pck`, a Unity build) unpacked back into a project, for games
         the user made or has the rights to. Nothing breaks encryption or DRM, and GPL tools such
         as AssetRipper run as separate programs, never linked
