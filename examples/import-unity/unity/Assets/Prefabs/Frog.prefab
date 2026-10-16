@@ -14,6 +14,7 @@ GameObject:
   - component: {fileID: 4300000000000000005}
   - component: {fileID: 4300000000000000006}
   - component: {fileID: 4300000000000000007}
+  - component: {fileID: 4300000000000000008}
   m_Layer: 6
   m_Name: Frog
   m_TagString: Player
@@ -254,6 +255,27 @@ MonoBehaviour:
   moveSpeed: 4
   croak: {fileID: 4300000000000000006}
   feet: {fileID: 4300000000000000012}
+--- !u!95 &4300000000000000008
+Animator:
+  serializedVersion: 5
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4300000000000000001}
+  m_Enabled: 1
+  m_Avatar: {fileID: 0}
+  m_Controller: {fileID: 9100000, guid: af5b6e7a8c9d4ea3e5f6a7b8c9daeb5c, type: 2}
+  m_CullingMode: 0
+  m_UpdateMode: 0
+  m_ApplyRootMotion: 0
+  m_LinearVelocityBlending: 0
+  m_StabilizeFeet: 0
+  m_WarningMessage: 
+  m_HasTransformHierarchy: 1
+  m_AllowConstantClipSamplingOptimization: 1
+  m_KeepAnimatorStateOnDisable: 0
+  m_WriteDefaultValuesOnDisable: 0
 --- !u!1 &4300000000000000011
 GameObject:
   m_ObjectHideFlags: 0
