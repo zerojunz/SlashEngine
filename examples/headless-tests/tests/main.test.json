@@ -1,0 +1,104 @@
+{
+  "scene": "main.scene.json",
+  "tests": {
+    "coin_sees_the_crate": {
+      "steps": [
+        {
+          "command": "events.subscribe",
+          "params": {
+            "kinds": ["body_entered"]
+          }
+        },
+        {
+          "command": "step",
+          "params": {
+            "ticks": 60
+          }
+        },
+        {
+          "command": "events.read",
+          "expect": {
+            "events": [
+              {
+                "data": {
+                  "body": "crate"
+                },
+                "id": "coin",
+                "kind": "body_entered"
+              }
+            ]
+          },
+          "params": {
+            "subscription": "events_1"
+          }
+        }
+      ]
+    },
+    "crate_lands": {
+      "steps": [
+        {
+          "command": "run.until",
+          "expect": {
+            "entities": ["crate"],
+            "matched": true
+          },
+          "params": {
+            "ticks": 600,
+            "where": [
+              {
+                "component": "RigidBody2D",
+                "field": "sleeping",
+                "value": true
+              }
+            ]
+          }
+        },
+        {
+          "command": "world.query",
+          "expect": {
+            "entities": ["crate"]
+          },
+          "params": {
+            "where": [
+              {
+                "component": "Transform2D",
+                "field": "position.y",
+                "op": ">=",
+                "value": 151.9
+              }
+            ],
+            "with": ["RigidBody2D"]
+          }
+        }
+      ]
+    },
+    "sound_button_toggles": {
+      "steps": [
+        {
+          "command": "ui.press",
+          "params": {
+            "id": "sound"
+          }
+        },
+        {
+          "command": "step"
+        },
+        {
+          "command": "world.query",
+          "expect": {
+            "entities": ["sound"]
+          },
+          "params": {
+            "where": [
+              {
+                "component": "Button",
+                "field": "button_pressed",
+                "value": true
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

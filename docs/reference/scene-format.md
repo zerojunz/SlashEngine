@@ -1702,3 +1702,56 @@ A timeline entry is one of:
 A hash is FNV-1a 64 of the entities' compact JSON (the scene form, keys sorted), as 16 lowercase
 hex digits. Ticks only grow: steps don't overlap, entries come in order and every tick is
 between the start's and the end's.
+
+## Tests
+
+A `.test.json` file holds headless tests, which [`test.run`](commands.md#testrun) and
+`slash-cli test` run. Keep them anywhere in the project (games made by `slash-cli init` use
+`tests/`); `slash-cli schema test` prints the schema and `slash-cli scene validate` checks one.
+
+```json
+{
+  "scene": "main.scene.json",
+  "tests": {
+    "crate_lands": {
+      "steps": [
+        {
+          "command": "run.until",
+          "expect": {"entities": ["crate"], "matched": true},
+          "params": {"ticks": 600, "where": [{"component": "RigidBody2D", "field": "sleeping", "value": true}]}
+        }
+      ]
+    },
+    "sound_button_toggles": {
+      "steps": [
+        {"command": "ui.press", "params": {"id": "sound"}},
+        {"command": "step"},
+        {
+          "command": "world.query",
+          "expect": {"entities": ["sound"]},
+          "params": {"where": [{"component": "Button", "field": "button_pressed", "value": true}]}
+        }
+      ]
+    }
+  }
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `scene` | The scene file every test starts from, relative to the project. With none, tests start from an empty world |
+| `tests` | Tests by name. Each has `steps` and, to start from another scene than the file's, its own `scene` |
+
+A step is a command call, as [`batch`](commands.md#batch) takes one: `command`, `params`, and
+`expect`, what its reply must hold.
+
+- An object needs only the members `expect` names, each holding what it says.
+- An array needs the same number of items, each holding what its counterpart says.
+- Any other value must be equal; numbers compare by value, so `2` holds `2.0`.
+
+Each test opens its scene file in a session of its own, with no undo history, at tick 0, and
+runs its steps in order. It fails at its first failed check: a step's command failing, a reply
+not holding what the step expects, or a warning or an error logged while the scene opened or a
+step ran. Tests can't write files: `scene.save`, `prefab.save`, `storyboard.edit`,
+`replay.record`, and `frame.capture` or `audio.capture` with a `path` fail, and `export.run`
+isn't there. A test also can't run `test.run`.

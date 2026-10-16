@@ -74,6 +74,7 @@ as `entity.get`, reject it as an unknown param.
 | Snapshots | [`world.snapshot`](#worldsnapshot), [`world.diff`](#worlddiff), [`world.restore`](#worldrestore) |
 | Run | [`step`](#step), [`run.until`](#rununtil), [`play`](#play), [`pause`](#pause) |
 | Replays | [`replay.record`](#replayrecord), [`replay.stop`](#replaystop), [`replay.run`](#replayrun), [`replay.seek`](#replayseek) |
+| Tests | [`test.run`](#testrun) |
 | History | [`undo`](#undo), [`redo`](#redo), [`history.get`](#historyget) |
 | Several at once | [`batch`](#batch) |
 | Observe | [`events.subscribe`](#eventssubscribe), [`events.read`](#eventsread), [`events.unsubscribe`](#eventsunsubscribe), [`log.tail`](#logtail), [`frame.capture`](#framecapture) |
@@ -118,12 +119,12 @@ Returns a JSON Schema: for scene, prefab, [`.frames.json`](scene-format.md#sprit
 [`.material.json`](scene-format.md#materials), [`.anim.json`](scene-format.md#animations),
 [`.tileset.json`](scene-format.md#tile-sets), [`.font.json`](scene-format.md#fonts),
 [`.theme.json`](scene-format.md#themes), [`.audio.json`](scene-format.md#audio-streams),
-[`.bus_layout.json`](scene-format.md#bus-layouts), [`.replay.json`](scene-format.md#replays) or
-storyboard files, one component or one command.
+[`.bus_layout.json`](scene-format.md#bus-layouts), [`.replay.json`](scene-format.md#replays),
+[`.test.json`](scene-format.md#tests) or storyboard files, one component or one command.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `kind` | `"scene"`, `"prefab"`, `"frames"`, `"material"`, `"animation"`, `"tileset"`, `"font"`, `"theme"`, `"audio"`, `"bus_layout"`, `"replay"`, `"storyboard"`, `"component"` or `"command"` | required | Which schema |
+| `kind` | `"scene"`, `"prefab"`, `"frames"`, `"material"`, `"animation"`, `"tileset"`, `"font"`, `"theme"`, `"audio"`, `"bus_layout"`, `"replay"`, `"test"`, `"storyboard"`, `"component"` or `"command"` | required | Which schema |
 | `name` | string | | Component or command name, for `component` and `command` |
 
 Needs: `read`.
@@ -1674,6 +1675,57 @@ taken), then the tick before:
 
 ```json
 {"end":150,"matched":true,"start":0,"tick":95}
+```
+
+## Tests
+
+### test.run
+
+Runs the project's [`.test.json` tests](scene-format.md#tests) headless and returns only the
+checks that failed, so checking a change takes one call and no logs or screenshots. Each test
+opens its scene file in a session of its own and runs its steps; it fails at the first step
+whose command fails, whose reply doesn't hold what the step expects, or during which a warning
+or an error is logged. The session that runs `test.run` keeps its world and history, and tests
+can't write files. Tests start from scene files, so save a scene before testing an edit.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `paths` | string array | every `.test.json` file | Test files and folders in the project; `build/` is skipped |
+| `tests` | string array | all | Run only the tests with these names |
+
+Needs: `run`, `filesystem`. With neither `paths` nor `tests`, it also runs
+[`storyboard.check`](#storyboardcheck) and adds its errors. A name in `tests` that no test has
+fails with `-32001` and the closest name.
+
+The result counts the tests run and those that passed, and lists each failed check:
+
+| Field | Meaning |
+| --- | --- |
+| `file` | The test file, or for a storyboard error the file it is in |
+| `test` | The test's name |
+| `path` | JSON Pointer into the file: the expected value that didn't match, the bad param of a command that failed (`/tests/<name>/steps/<i>/params/...`), the step during which something was logged, or the scene that didn't open |
+| `message` | What was wrong, quoting long values cut short |
+| `tick` | The test's world's tick when it failed, after the step |
+| `log` | The warning or error logged, as its log line's fields |
+
+A test file that doesn't parse or match the schema is a failed check too, with `file`, `path`
+and `message`, and the other files still run.
+
+From [examples/headless-tests](../../examples/headless-tests/), with the floor's shape disabled
+so the crate falls forever:
+
+```json
+{"tests": ["crate_lands"]}
+```
+
+```json
+{"failed":[{"file":"tests/main.test.json","message":"expected 1 item, got 0 items: []","path":"/tests/crate_lands/steps/0/expect/entities","test":"crate_lands","tick":600}],"passed":0,"tests":1}
+```
+
+With every check passing:
+
+```json
+{"failed":[],"passed":3,"tests":3}
 ```
 
 ## History

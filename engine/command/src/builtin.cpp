@@ -12,6 +12,7 @@
 #include "slash/canvas/tilemap.hpp"
 #include "slash/command/replay.hpp"
 #include "slash/command/session.hpp"
+#include "slash/command/test.hpp"
 #include "slash/core/assert.hpp"
 #include "slash/core/json_schema.hpp"
 #include "slash/core/log.hpp"
@@ -395,6 +396,9 @@ Reply schema_get(Session& session, const json::Value& params) {
     if (kind == "replay") {
         return Reply::success(replay_schema());
     }
+    if (kind == "test") {
+        return Reply::success(test_schema());
+    }
     if (name.empty()) {
         return param_error(code::kInvalidParams, "/name",
                            "name is required when kind is " + quoted(kind));
@@ -487,17 +491,6 @@ Reply scene_open(Session& session, const json::Value& params) {
     return Reply::success(std::move(result));
 }
 
-// Writes a file, creating its folder if needed.
-Result<void> write_file(const std::string& full, const std::string& contents) {
-    if (const std::size_t slash = full.find_last_of('/');
-        slash != std::string::npos && slash > 0 && !platform::exists(full.substr(0, slash))) {
-        if (auto made = platform::create_directories(full.substr(0, slash)); !made) {
-            return made.error();
-        }
-    }
-    return platform::write_file(full, contents);
-}
-
 Reply scene_save(Session& session, const json::Value& params) {
     std::string path = text(params, "path");
     if (path.empty()) {
@@ -514,7 +507,7 @@ Reply scene_save(Session& session, const json::Value& params) {
     }
     const std::string contents = json::write(world::save_scene(session.world())) + "\n";
     if (!session.dry_running()) {
-        if (auto written = write_file(file.value(), contents); !written) {
+        if (auto written = session.write_file(file.value(), contents); !written) {
             return Reply::failure(written.error());
         }
     }
@@ -629,7 +622,7 @@ Reply prefab_save(Session& session, const json::Value& params) {
     auto base = world::resolve_prefab(scratch, path);
     SLASH_ASSERT(base.ok(), "a validated prefab failed to resolve");
     if (!session.dry_running()) {
-        if (auto written = write_file(file.value(), contents); !written) {
+        if (auto written = session.write_file(file.value(), contents); !written) {
             return Reply::failure(written.error());
         }
     }
@@ -2014,7 +2007,7 @@ Reply audio_capture(Session& session, const json::Value& params) {
         if (!session.dry_running()) {
             const std::string wav =
                 audio::encode_wav(capture.frames, audio_server(session).mix_rate());
-            if (auto written = write_file(file.value(), wav); !written) {
+            if (auto written = session.write_file(file.value(), wav); !written) {
                 return Reply::failure(written.error());
             }
         }
@@ -2380,7 +2373,7 @@ Reply frame_capture(Session& session, const json::Value& params) {
                 return param_error(file.error(), "/path");
             }
             if (!session.dry_running()) {
-                if (auto written = write_file(file.value(), png.value()); !written) {
+                if (auto written = session.write_file(file.value(), png.value()); !written) {
                     return Reply::failure(written.error());
                 }
             }
@@ -3362,15 +3355,15 @@ void register_builtin_commands(Registry& registry) {
                                           "those files, \"component\" for "
                                           "one component's fields, \"command\" for a command's "
                                           "params.");
-    kind["enum"] = json::Array{"scene",   "prefab",     "frames",    "material", "animation",
-                               "tileset", "font",       "theme",     "audio",    "bus_layout",
-                               "replay",  "storyboard", "component", "command"};
+    kind["enum"] = json::Array{"scene",   "prefab", "frames",     "material",  "animation",
+                               "tileset", "font",   "theme",      "audio",     "bus_layout",
+                               "replay",  "test",   "storyboard", "component", "command"};
     registry.add({
         .name = "schema.get",
         .description = "Returns a JSON Schema: for scene, prefab, .frames.json, .material.json, "
                        ".anim.json, .tileset.json, .font.json, .theme.json, .audio.json, "
-                       ".bus_layout.json, .replay.json or storyboard files, one component or "
-                       "one command.",
+                       ".bus_layout.json, .replay.json, .test.json or storyboard files, one "
+                       "component or one command.",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema(
@@ -4325,6 +4318,7 @@ void register_builtin_commands(Registry& registry) {
     });
 
     register_replay_commands(registry);
+    register_test_commands(registry);
 }
 
 void register_run_commands(Registry& registry) {
