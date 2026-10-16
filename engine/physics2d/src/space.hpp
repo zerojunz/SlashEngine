@@ -3,6 +3,7 @@
 #include "slash/core/assert.hpp"
 #include "slash/physics2d/physics2d.hpp"
 #include "slash/world/components.hpp"
+#include "slash/world/tree2d.hpp"
 
 #include <algorithm>
 #include <array>
@@ -236,11 +237,12 @@ public:
 private:
     void create_world();
     void remove_stale(world::World& world);
-    void sync_body(world::World& world, entt::entity entity, Kind kind);
+    void sync(world::World& world, const world::Tree2D& tree);
+    void sync_body(world::World& world, const world::Tree2D& tree, entt::entity entity, Kind kind);
     void build_shapes(world::World& world, Body& body, const ShapeKey& key);
-    void sync_joints(world::World& world);
-    void read_back(world::World& world);
-    void move_characters(world::World& world, float seconds);
+    void sync_joints(world::World& world, const world::Tree2D& tree);
+    void read_back(world::World& world, const world::Tree2D& tree);
+    void move_characters(world::World& world, const world::Tree2D& tree, float seconds);
     void emit_events(world::World& world);
     void destroy(Body& body);
 

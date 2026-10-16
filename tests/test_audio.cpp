@@ -757,8 +757,7 @@ TEST_CASE("an AudioStreamPlayer2D pans and fades with its distance from the list
     sounds.world.ecs().emplace<world::Transform2D>(listener);
     const entt::entity hum =
         sounds.add("hum", "AudioStreamPlayer2D", R"({"stream": "hum.wav", "autoplay": true})");
-    sounds.world.ecs().emplace<world::Transform2D>(hum,
-                                                   world::Transform2D{.position = {-400.0F, 0.0F}});
+    sounds.world.ecs().emplace<world::Transform2D>(hum).position = {-400.0F, 0.0F};
     sounds.step();
     // Godot's _update_panning: fades over max_distance and pans by where it is on the screen,
     // at half the project's panning strength.
@@ -789,6 +788,28 @@ TEST_CASE("an AudioStreamPlayer2D pans and fades with its distance from the list
                                                                 viewport.y / 2.0F};
     sounds.step();
     check_frame(sounds.player("hum")->volume, 0.5F, 0.5F);
+}
+
+TEST_CASE("an AudioStreamPlayer2D inside another entity is heard from where it is") {
+    Sounds sounds;
+    sounds.files.write("hum.wav", steady_wav(kRate, {0.5F, 0.5F}));
+    const entt::entity listener = sounds.add("ears", "AudioListener2D", R"({"current": true})");
+    sounds.world.ecs().emplace<world::Transform2D>(listener);
+    // A cart 200 pixels left, doubled, carries the hum 100 of its pixels further left.
+    const entt::entity cart = sounds.world.create("cart").value();
+    auto& carried = sounds.world.ecs().emplace<world::Transform2D>(cart);
+    carried.position = {-200.0F, 0.0F};
+    carried.scale = {2.0F, 2.0F};
+    const entt::entity hum =
+        sounds.add("hum", "AudioStreamPlayer2D", R"({"stream": "hum.wav", "autoplay": true})");
+    sounds.world.ecs().emplace<world::Transform2D>(hum).position = {-100.0F, 0.0F};
+    carried.children = {hum};
+    sounds.step();
+    // As heard 400 pixels left.
+    const float screen = slash::ui::settings(sounds.world).viewport.x;
+    const float fade = 1.0F - (400.0F / 2000.0F);
+    const float pan = 0.5F + (-400.0F / screen * 0.5F * 0.5F);
+    check_frame(sounds.player("hum")->volume, (1.0F - pan) * fade, pan * fade);
 }
 
 TEST_CASE("buses come from the project's .bus_layout.json, reloaded when it changes") {

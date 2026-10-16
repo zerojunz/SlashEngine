@@ -105,9 +105,9 @@ bool has_any(const entt::registry& registry) {
     return (!registry.view<Components>().empty() || ...);
 }
 
-Transform2D transform_of(const entt::registry& registry, entt::entity entity) {
-    const auto* transform = registry.try_get<Transform2D>(entity);
-    return transform != nullptr ? *transform : Transform2D{};
+// Where an entity is after its parents: bodies, areas and joints are placed by it.
+Transform2D transform_of(const world::Tree2D& tree, entt::entity entity) {
+    return tree.global(entity);
 }
 
 struct BodyFields {
@@ -157,7 +157,8 @@ BodyFields fields_of(const entt::registry& registry, entt::entity entity, Kind k
     return {};
 }
 
-ShapeKey shape_key_of(const entt::registry& registry, entt::entity entity, Kind kind) {
+ShapeKey shape_key_of(const entt::registry& registry, const world::Tree2D& tree,
+                      entt::entity entity, Kind kind) {
     ShapeKey key;
     if (const auto* shape = registry.try_get<CollisionShape2D>(entity); shape != nullptr) {
         key.shape = *shape;
@@ -165,7 +166,7 @@ ShapeKey shape_key_of(const entt::registry& registry, entt::entity entity, Kind 
     if (const auto* polygon = registry.try_get<CollisionPolygon2D>(entity); polygon != nullptr) {
         key.polygon = *polygon;
     }
-    key.scale = transform_of(registry, entity).scale;
+    key.scale = transform_of(tree, entity).scale;
     const BodyFields fields = fields_of(registry, entity, kind);
     key.layer = fields.layer;
     key.mask = fields.mask;
@@ -491,10 +492,11 @@ void Space::build_shapes(world::World& world, Body& body, const ShapeKey& key) {
     }
 }
 
-void Space::sync_body(world::World& world, entt::entity entity, Kind kind) {
+void Space::sync_body(world::World& world, const world::Tree2D& tree, entt::entity entity,
+                      Kind kind) {
     entt::registry& registry = world.ecs();
-    const Transform2D transform = transform_of(registry, entity);
-    const ShapeKey shape_key = shape_key_of(registry, entity, kind);
+    const Transform2D transform = transform_of(tree, entity);
+    const ShapeKey shape_key = shape_key_of(registry, tree, entity, kind);
 
     std::unique_ptr<Body>* found = bodies_.find(entity);
     if (found == nullptr) {
@@ -591,7 +593,7 @@ void Space::sync_body(world::World& world, entt::entity entity, Kind kind) {
     }
 }
 
-void Space::sync_joints(world::World& world) {
+void Space::sync_joints(world::World& world, const world::Tree2D& tree) {
     entt::registry& registry = world.ecs();
     // Joints whose entity is gone.
     joints_.erase_if([&](entt::entity entity, const Joint& joint) {
@@ -615,7 +617,7 @@ void Space::sync_joints(world::World& world) {
 
     const auto place = [&](entt::entity entity, const JointKey& key, entt::entity node_a,
                            entt::entity node_b) {
-        const Transform2D transform = transform_of(registry, entity);
+        const Transform2D transform = transform_of(tree, entity);
         const b2BodyId body_a = body_id(node_a, true);
         const b2BodyId body_b = body_id(node_b, false);
         if (const Joint* existing = joints_.find(entity); existing != nullptr) {
@@ -720,6 +722,11 @@ void Space::sync_joints(world::World& world) {
 }
 
 void Space::sync(world::World& world) {
+    const world::Tree2D tree(world);
+    sync(world, tree);
+}
+
+void Space::sync(world::World& world, const world::Tree2D& tree) {
     entt::registry& registry = world.ecs();
     if (!b2World_IsValid(world_)) {
         if (!has_any<RigidBody2D, CharacterBody2D, AnimatableBody2D, StaticBody2D, Area2D>(
@@ -734,7 +741,7 @@ void Space::sync(world::World& world) {
     const auto each = [&]<typename Component>(Kind kind) {
         for (const entt::entity entity : registry.view<Component>()) {
             if (kind_of(registry, entity) == kind) {
-                sync_body(world, entity, kind);
+                sync_body(world, tree, entity, kind);
             }
         }
     };
@@ -743,34 +750,67 @@ void Space::sync(world::World& world) {
     each.template operator()<AnimatableBody2D>(Kind::Animatable);
     each.template operator()<StaticBody2D>(Kind::Static);
     each.template operator()<Area2D>(Kind::Area);
-    sync_joints(world);
+    sync_joints(world, tree);
 }
 
-void Space::read_back(world::World& world) {
+void Space::read_back(world::World& world, const world::Tree2D& tree) {
     entt::registry& registry = world.ecs();
     const b2BodyEvents events = b2World_GetBodyEvents(world_);
+    std::vector<const b2BodyMoveEvent*> moves;
+    moves.reserve(static_cast<std::size_t>(events.moveCount));
     for (int i = 0; i < events.moveCount; ++i) {
-        const b2BodyMoveEvent& event = events.moveEvents[i];
+        moves.push_back(&events.moveEvents[i]);
+    }
+    if (tree.nested()) {
+        // Parents first, so a body inside another is placed in its parent's new space.
+        const auto depth = [&](const b2BodyMoveEvent* event) {
+            const auto* body = static_cast<const Body*>(event->userData);
+            std::size_t count = 0;
+            if (body != nullptr) {
+                for (entt::entity up = tree.parent(body->entity); up != entt::null;
+                     up = tree.parent(up)) {
+                    ++count;
+                }
+            }
+            return count;
+        };
+        std::ranges::stable_sort(moves, {}, depth);
+    }
+    for (const b2BodyMoveEvent* move : moves) {
+        const b2BodyMoveEvent& event = *move;
         auto* body = static_cast<Body*>(event.userData);
         if (body == nullptr || body->kind != Kind::Rigid || !world.valid(body->entity)) {
             continue;
         }
-        auto& transform = registry.get_or_emplace<Transform2D>(body->entity);
+        Vec2 position = from_b2(event.transform.p);
+        float rotation = b2Rot_GetAngle(event.transform.q);
+        if (tree.parent(body->entity) == entt::null) {
+            auto& transform = registry.get_or_emplace<Transform2D>(body->entity);
+            transform.position = position;
+            transform.rotation = rotation;
+        } else {
+            // As Godot sets a body's global transform: its own is what puts it there. The body
+            // keeps the global transform that comes back, rounding and all, so the next sync
+            // doesn't take the rounding for a move.
+            tree.set_global_position(world, body->entity, position);
+            tree.set_global_rotation(world, body->entity, rotation);
+            const Transform2D placed = tree.global(body->entity);
+            position = placed.position;
+            rotation = placed.rotation;
+        }
         auto& rigid = registry.get<RigidBody2D>(body->entity);
-        transform.position = from_b2(event.transform.p);
-        transform.rotation = b2Rot_GetAngle(event.transform.q);
         rigid.linear_velocity = from_b2(b2Body_GetLinearVelocity(body->id));
         rigid.angular_velocity = b2Body_GetAngularVelocity(body->id);
         rigid.sleeping = event.fellAsleep;
-        body->position = transform.position;
-        body->rotation = transform.rotation;
+        body->position = position;
+        body->rotation = rotation;
         body->linear_velocity = rigid.linear_velocity;
         body->angular_velocity = rigid.angular_velocity;
         body->sleeping = rigid.sleeping;
     }
 }
 
-void Space::move_characters(world::World& world, float seconds) {
+void Space::move_characters(world::World& world, const world::Tree2D& tree, float seconds) {
     entt::registry& registry = world.ecs();
     for (const entt::entity entity : registry.view<CharacterBody2D>()) {
         const auto* found = bodies_.find(entity);
@@ -778,9 +818,18 @@ void Space::move_characters(world::World& world, float seconds) {
             continue;
         }
         Body& body = **found;
-        auto& transform = registry.get_or_emplace<Transform2D>(entity);
+        auto& own = registry.get_or_emplace<Transform2D>(entity);
+        // A character inside another entity moves in the world, then is put back in its
+        // parent's space.
+        const bool nested = tree.parent(entity) != entt::null;
+        Transform2D placed = nested ? tree.global(entity) : Transform2D{};
+        Transform2D& transform = nested ? placed : own;
         auto& character = registry.get<CharacterBody2D>(entity);
         move_character(world, world_, body, transform, character, seconds);
+        if (nested) {
+            tree.set_global_position(world, entity, placed.position);
+            placed.position = tree.global(entity).position; // as the next sync will see it
+        }
         if (transform.position != body.position || transform.rotation != body.rotation) {
             b2Body_SetTransform(body.id, to_b2(transform.position), b2MakeRot(transform.rotation));
             body.position = transform.position;
@@ -790,7 +839,8 @@ void Space::move_characters(world::World& world, float seconds) {
 }
 
 void Space::step(world::World& world, float seconds) {
-    sync(world);
+    const world::Tree2D tree(world);
+    sync(world, tree);
     if (!b2World_IsValid(world_)) {
         impulses_.clear();
         return;
@@ -803,7 +853,7 @@ void Space::step(world::World& world, float seconds) {
             !registry.get<AnimatableBody2D>(entity).sync_to_physics) {
             continue;
         }
-        const Transform2D transform = transform_of(registry, entity);
+        const Transform2D transform = transform_of(tree, entity);
         if (transform.position != body->position || transform.rotation != body->rotation) {
             b2Body_SetTargetTransform(
                 body->id, {to_b2(transform.position), b2MakeRot(transform.rotation)}, seconds);
@@ -844,8 +894,8 @@ void Space::step(world::World& world, float seconds) {
     impulses_.clear();
 
     b2World_Step(world_, seconds, kSubSteps);
-    read_back(world);
-    move_characters(world, seconds);
+    read_back(world, tree);
+    move_characters(world, tree, seconds);
     emit_events(world);
 }
 

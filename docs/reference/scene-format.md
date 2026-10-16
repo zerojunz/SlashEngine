@@ -73,9 +73,11 @@ A reference must name an entity that exists in the same scene.
 
 | Component | Field | Type | Default | Meaning |
 | --- | --- | --- | --- | --- |
-| `Transform2D` | `position` | `Vec2` | `[0, 0]` | Position in pixels, as [x, y]; y points down |
+| `Transform2D` | `position` | `Vec2` | `[0, 0]` | Position in pixels, as [x, y], in its [parent's](#parent-transforms) space; y points down |
 | | `rotation` | `float` | `0` | Rotation in radians; positive turns clockwise |
 | | `scale` | `Vec2` | `[1, 1]` | Scale factor on each axis |
+| | `skew` | `float` | `0` | Radians its y axis leans from square to its x axis, -1.569 to 1.569 (under 89.9 degrees), as Godot's `skew` |
+| | `children` | Array of entity references | `[]` | Entities with a `Transform2D` placed in its space, in drawing order; each has one parent ([parent transforms](#parent-transforms)) |
 | `Transform3D` | `position` | `Vec3` | `[0, 0, 0]` | Position in meters, as [x, y, z]; y points up |
 | | `rotation` | `Quat` | `[0, 0, 0, 1]` | Unit quaternion [x, y, z, w]; each element from -1 to 1 |
 | | `scale` | `Vec3` | `[1, 1, 1]` | Scale factor on each axis |
@@ -87,9 +89,9 @@ A reference must name an entity that exists in the same scene.
 | | `hframes`, `vframes` | `int` | `1` | Columns and rows of frames in a sprite sheet, 1 to 16384 |
 | | `frame` | `int` | `0` | The sheet's frame to draw, counted along rows from 0 |
 | | `region` | `Vec4` | `[0, 0, 0, 0]` | Part of the texture to use, as [x, y, width, height] in pixels, before splitting it into frames; a zero size uses the whole texture |
-| | `modulate` | `Vec4` | `[1, 1, 1, 1]` | Color the texture is multiplied by, as [r, g, b, a] from 0 to 1 |
-| | `z_index` | `int` | `0` | Higher draws on top, -4096 to 4096; equal values draw in the order the entities were made |
-| | `visible` | `bool` | `true` | Draw it |
+| | `modulate` | `Vec4` | `[1, 1, 1, 1]` | Color the texture and its children are multiplied by, as [r, g, b, a] from 0 to 1 |
+| | `z_index` | `int` | `0` | Higher draws on top, -4096 to 4096, added to its parents'; equal values draw in tree order: the roots in the order the entities were made, each followed by its children |
+| | `visible` | `bool` | `true` | Draw it and its children |
 | | `texture_filter` | `std::string` | `"inherit"` | `"linear"`, `"nearest"` (sharp pixel art) or `"inherit"`, which uses the project's `rendering.texture_filter` |
 | | `material` | `std::string` | `""` | Project path of a [`.material.json`](#materials) file, which colors the sprite's pixels; `""` draws the texture as it is |
 | | `material_params` | `std::map<std::string, json::Value>` | `{}` | Values for the material's params by name, replacing their defaults, e.g. `{"flash": 1}` |
@@ -114,9 +116,9 @@ A reference must name an entity that exists in the same scene.
 | | `origin` | `Vec2i` | `[0, 0]` | The cell the first key of the first row stands for, as [column, row] |
 | | `legend` | `std::map<std::string, std::string>` | `{}` | The tile each key in `rows` stands for, by name or as `"source:column,row"` |
 | | `rows` | `std::vector<std::string>` | `[]` | The [cells](#tile-map-layers), one string of keys per row from `origin` rightward; `.` is an empty cell |
-| | `z_index` | `int` | `0` | Higher draws on top, -4096 to 4096; layers and sprites draw in one order |
-| | `visible` | `bool` | `true` | Draw it |
-| | `modulate` | `Vec4` | `[1, 1, 1, 1]` | Color every tile is multiplied by, as [r, g, b, a] from 0 to 1 |
+| | `z_index` | `int` | `0` | Higher draws on top, -4096 to 4096, added to its parents'; layers and sprites draw in one order |
+| | `visible` | `bool` | `true` | Draw it and its children |
+| | `modulate` | `Vec4` | `[1, 1, 1, 1]` | Color every tile and its children are multiplied by, as [r, g, b, a] from 0 to 1 |
 | | `texture_filter` | `std::string` | `"inherit"` | `"linear"`, `"nearest"` (sharp pixel art) or `"inherit"`, which uses the project's `rendering.texture_filter` |
 | | `light_mask` | `int` | `1` | [Lit](#2d-lights) by lights whose `range_item_cull_mask` shares a bit |
 | `PointLight2D` | `enabled` | `bool` | `true` | Shine |
@@ -444,6 +446,50 @@ A reference must name an entity that exists in the same scene.
 | `AudioListener2D` | `current` | `bool` | `false` | Hear `AudioStreamPlayer2D` sounds from this entity's `Transform2D`, turned with it. The first current one by ID is used; with none, the middle of the viewport |
 
 `engine.describe` lists every registered component with its defaults, including ones a game adds.
+
+## Parent transforms
+
+An entity listed in another's `Transform2D` `children` is placed in its parent's space, as a
+Godot Node2D is in its parent's: its `position`, `rotation`, `scale` and `skew` are its own, and
+its global transform is its parent's global transform times its own (Godot's
+`get_global_transform`). An entity no one lists is a root, placed in the world.
+[examples/parent-transforms](../../examples/parent-transforms/) has a boat with a mast, a flag, a
+cannon and a deck.
+
+```json
+"boat": {"components": {"Transform2D": {"children": ["mast"], "position": [120.0, 120.0]}}},
+"mast": {"components": {"Transform2D": {"children": ["flag"], "position": [-4.0, -18.0]}}},
+"flag": {"components": {"Transform2D": {"position": [6.0, -9.0]}}}
+```
+
+- **Drawing.** Each root draws in the order entities were made, followed by its children in the
+  order its list gives and theirs after them, so a child draws over its parent. `z_index` is
+  added to the parents' (Godot's `z_as_relative`), and the sum is held to -4096 to 4096. A
+  parent's `Sprite2D` or `TileMapLayer` passes on its `visible` and `modulate` (`self_modulate`
+  stays its own); a `CPUParticles2D` passes on `visible` and `z_index`. Sprites, tile layers,
+  particles, occluders and lights draw where their global transforms put them.
+- **Physics.** Bodies, areas and joints are where their global transforms put them, and a parent
+  that moves moves the bodies in it. The physics step writes a `RigidBody2D`'s motion back as
+  Godot sets a body's global transform: its own transform becomes what puts it where Box2D says.
+  A `CharacterBody2D` slides in the world and is put back in its parent's space. A body's shapes
+  are its own entity's `CollisionShape2D` and `CollisionPolygon2D`; shapes in child entities
+  aren't added to it yet. Shapes and light textures don't lean with `skew`.
+- **Sound and particles.** `AudioStreamPlayer2D`, `AudioListener2D` and `CPUParticles2D` work
+  from global transforms; particles with `local_coords` move with the emitter's.
+- **Rules.** A child needs a `Transform2D`, has one parent and is never its own ancestor. `scene
+  validate` reports each broken rule at the entry's JSON Pointer, and a command that would break
+  one fails and changes nothing, as Godot's `add_child` refuses:
+
+  ```json
+  {"code":-32002,"data":{"path":"/entities/flag/components/Transform2D/children/0"},"message":"/entities/flag/components/Transform2D/children/0: \"boat\" is an ancestor of \"flag\", so it can't be its child"}
+  ```
+
+- **Commands.** [`entity.get`](commands.md#entityget) adds a child's `parent` and `global`
+  transform. [`entity.destroy`](commands.md#entitydestroy) destroys the entity's `Transform2D` and
+  `Control` children with it, as Godot frees a node's children, and takes destroyed entities out
+  of the lists of parents that stay.
+- **Not yet.** Godot's `top_level`, `z_as_relative` off, a body's shapes in child entities, and
+  Node2D and Control entities in one tree.
 
 ## Canonical form
 

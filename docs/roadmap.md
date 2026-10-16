@@ -115,6 +115,11 @@ rendering on top.
 - [x] Run control commands: `play` and `pause`
 - [x] `events.subscribe` for a stream of world events
 - [x] Prefabs: an entity `"extends"` a `.prefab.json` file and overrides fields
+- [x] Parent transforms, as Godot's Node2D children: entities in a `Transform2D`'s `children`
+      move, turn, scale (and skew) with it and draw after it with its `z_index`, visibility
+      and tint; physics, lights, particles and sound use global transforms; loops and second
+      parents are refused; `entity.destroy` takes children along
+  - [ ] A body's shapes in child entities, `top_level` and `z_as_relative` off
 - [x] Asset handles with reference counting and hot reload, and an `asset.list` command
 - [ ] Storyboard: the game's style, world, story, design rules, names, decisions and open work
       as typed files in the project, so every agent works from the same facts

@@ -9,6 +9,7 @@
 #include "slash/core/text.hpp"
 #include "slash/ui/ui.hpp"
 #include "slash/world/components.hpp"
+#include "slash/world/tree2d.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -209,7 +210,7 @@ struct Listener {
     float rotation = 0.0F;
 };
 
-Listener find_listener(const world::World& world) {
+Listener find_listener(const world::World& world, const world::Tree2D& tree) {
     Listener listener;
     std::string best;
     const auto& ecs = world.ecs();
@@ -223,9 +224,10 @@ Listener find_listener(const world::World& world) {
         }
         best = key;
         listener.found = true;
-        const auto* transform = ecs.try_get<world::Transform2D>(entity);
-        listener.position = transform != nullptr ? transform->position : Vec2{};
-        listener.rotation = transform != nullptr ? transform->rotation : 0.0F;
+        // Where it is after its parents.
+        const world::Transform2D placed = tree.global(entity);
+        listener.position = placed.position;
+        listener.rotation = placed.rotation;
     }
     return listener;
 }
@@ -265,18 +267,17 @@ Frame volume_2d(const world::AudioStreamPlayer2D& player, Vec2 global_pos, const
     return {l * multiplier, r * multiplier};
 }
 
-Frame volume_of(const world::AudioStreamPlayer& player, const world::World& /*world*/,
+Frame volume_of(const world::AudioStreamPlayer& player, const world::Tree2D& /*tree*/,
                 entt::entity /*entity*/, const Listener& /*listener*/, const Settings& /*settings*/,
                 Vec2 /*screen*/) {
     const float volume = db_to_linear(player.volume_db);
     return {volume, volume};
 }
 
-Frame volume_of(const world::AudioStreamPlayer2D& player, const world::World& world,
+Frame volume_of(const world::AudioStreamPlayer2D& player, const world::Tree2D& tree,
                 entt::entity entity, const Listener& listener, const Settings& settings,
                 Vec2 screen) {
-    const auto* transform = world.ecs().try_get<world::Transform2D>(entity);
-    return volume_2d(player, transform != nullptr ? transform->position : Vec2{}, listener, screen,
+    return volume_2d(player, tree.global(entity).position, listener, screen,
                      settings.panning_strength_2d);
 }
 
@@ -310,8 +311,9 @@ void start_voice(State& state, PlayerState& player, const T& component, std::str
 }
 
 template <typename T>
-void reconcile(State& state, world::World& world, std::string_view kind, const Listener& listener,
-               Vec2 screen, const std::map<std::string, std::vector<Request>>& requests) {
+void reconcile(State& state, world::World& world, const world::Tree2D& tree, std::string_view kind,
+               const Listener& listener, Vec2 screen,
+               const std::map<std::string, std::vector<Request>>& requests) {
     auto& ecs = world.ecs();
     for (const entt::entity entity : ecs.view<T>()) {
         T& component = ecs.get<T>(entity);
@@ -321,7 +323,7 @@ void reconcile(State& state, world::World& world, std::string_view kind, const L
         player.id = world.id_of(entity);
         player.entity = entity;
         player.seen = true;
-        player.volume = volume_of(component, world, entity, listener, state.settings, screen);
+        player.volume = volume_of(component, tree, entity, listener, state.settings, screen);
         player.bus = component.bus;
         const float pitch = component.pitch_scale > 0.0F ? component.pitch_scale : 1.0F;
 
@@ -383,10 +385,12 @@ void run(State& state, world::World& world, double tick_seconds) {
     for (auto& [key, player] : state.players) {
         player.seen = false;
     }
-    const Listener listener = find_listener(world);
+    const world::Tree2D tree(world);
+    const Listener listener = find_listener(world, tree);
     const Vec2 screen = ui::settings(world).viewport;
-    reconcile<world::AudioStreamPlayer>(state, world, kPlayer, listener, screen, requests);
-    reconcile<world::AudioStreamPlayer2D>(state, world, kPlayer2D, listener, screen, requests);
+    reconcile<world::AudioStreamPlayer>(state, world, tree, kPlayer, listener, screen, requests);
+    reconcile<world::AudioStreamPlayer2D>(state, world, tree, kPlayer2D, listener, screen,
+                                          requests);
     // A player whose entity or component went away stops, as Godot's on NOTIFICATION_PREDELETE.
     std::erase_if(state.players, [&](auto& entry) {
         if (!entry.second.seen) {

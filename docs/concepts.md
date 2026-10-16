@@ -83,10 +83,13 @@ maps, play animations and link entities to the storyboard:
 
 | Component | Fields | Units |
 | --- | --- | --- |
-| `Transform2D` | `position` [x, y], `rotation`, `scale` [x, y] | Pixels; y points down; rotation in radians, clockwise |
+| `Transform2D` | `position` [x, y], `rotation`, `scale` [x, y], `skew`, `children` | Pixels; y points down; rotation in radians, clockwise |
 | `Transform3D` | `position` [x, y, z], `rotation` quaternion [x, y, z, w], `scale` [x, y, z] | Meters; y points up |
 
-Units and axes follow Godot. Components are **reflected**: one `SLASH_COMPONENT(Type, fields...)`
+Units and axes follow Godot. As with Godot's Node2D, the entities in a `Transform2D`'s `children`
+are placed in its space: they move, turn, scale and draw with it, and a parent's `z_index`,
+visibility and tint pass down ([parent transforms](reference/scene-format.md#parent-transforms)).
+Components are **reflected**: one `SLASH_COMPONENT(Type, fields...)`
 line lets the engine save, load, validate and describe the struct. Registering a component with
 the **component registry** adds its docs and value ranges, and from then on it appears in scene
 files, the scene schema, `engine.describe` and every command, with no other glue. Field types can
@@ -610,6 +613,7 @@ OpenAI-compatible servers (including local ones), Anthropic and Gemini; see the
 | Font | A `.ttf` or `.otf` file, or a `.font.json` file naming one with settings |
 | Frame summary | What the window shows, listed thing by thing as data: rects, how much shows, what is hidden and why |
 | Front end | A way to reach the commands: MCP, JSON-RPC, REST or the CLI |
+| Global transform | Where an entity is in the world: its parents' transforms, then its own |
 | Hot reload | Reloading edited files, and updating prefab instances, while the game runs |
 | Input event | A key, mouse, touch, gamepad or action event, queued for the next tick |
 | Interpolation | Drawing sprites part of the way between two ticks, so motion is smooth at any frame rate |
@@ -625,6 +629,7 @@ OpenAI-compatible servers (including local ones), Anthropic and Gemini; see the
 | Material | A `.material.json` node graph that colors a sprite's pixels, with params each sprite sets |
 | Normal map | A texture whose colors give each pixel of a sprite its own facing, so light falls on it by angle |
 | Occluder | A polygon that casts shadows from 2D lights (`LightOccluder2D`) |
+| Parent | The entity whose `Transform2D` lists another in its `children`, placing it in its space |
 | Peering | The terrain a tile's side or corner must touch for the tile to fit, as Godot's terrain peering bits |
 | Prefab | One entity's components in a `.prefab.json` file, which entities extend and override |
 | Project | A game's folder: `project.json` plus its scenes |
