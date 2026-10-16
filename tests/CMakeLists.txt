@@ -36,6 +36,7 @@ add_executable(slash_tests
     test_tilemap.cpp
     test_ui.cpp
     test_ui_containers.cpp
+    test_ui_controls.cpp
     test_world.cpp)
 target_link_libraries(slash_tests PRIVATE
     slash::animation slash::asset slash::audio slash::canvas slash::command slash::core slash::debug slash::exporter slash::input slash::physics2d

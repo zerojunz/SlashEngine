@@ -175,10 +175,18 @@ public:
 private:
     struct Texture {
         asset::Handle<render::Image> image;
+        const render::Image* builtin = nullptr; // a "builtin:" icon (ui.hpp) instead of a file
         render::TextureId id = render::TextureId::None;
         std::uint64_t version = 0;
         std::uint32_t width = 0;
         std::uint32_t height = 0;
+
+        [[nodiscard]] const render::Image& pixels() const {
+            return builtin != nullptr ? *builtin : *image;
+        }
+        [[nodiscard]] std::uint64_t image_version() const {
+            return builtin != nullptr ? 1 : image.version();
+        }
     };
 
     // The GPU texture for a path and filter, made or updated from the loaded image.

@@ -373,20 +373,27 @@ Result<const CanvasRenderer::Texture*> CanvasRenderer::texture(const std::string
     const auto key = std::make_pair(path, filter);
     auto it = textures_.find(key);
     if (it == textures_.end()) {
-        auto image = assets_->load<render::Image>(path);
-        if (!image) {
-            return image.error();
-        }
         Texture entry;
-        entry.image = std::move(image).value();
+        if (path.starts_with(ui::kBuiltinPrefix)) {
+            entry.builtin = ui::builtin_icon(path);
+            if (entry.builtin == nullptr) {
+                return make_error(ErrorCode::NotFound, "no built-in icon \"" + path + "\"");
+            }
+        } else {
+            auto image = assets_->load<render::Image>(path);
+            if (!image) {
+                return image.error();
+            }
+            entry.image = std::move(image).value();
+        }
         it = textures_.emplace(key, std::move(entry)).first;
     }
     Texture& entry = it->second;
-    if (entry.id != render::TextureId::None && entry.version == entry.image.version()) {
+    if (entry.id != render::TextureId::None && entry.version == entry.image_version()) {
         return &entry;
     }
     // New, or its file changed since it was made.
-    const render::Image& image = *entry.image;
+    const render::Image& image = entry.pixels();
     if (entry.id != render::TextureId::None &&
         (entry.width != image.width || entry.height != image.height)) {
         device_->destroy_texture(entry.id);
@@ -405,7 +412,7 @@ Result<const CanvasRenderer::Texture*> CanvasRenderer::texture(const std::string
     } else if (auto updated = device_->update_texture(entry.id, image.pixels); !updated) {
         return updated.error();
     }
-    entry.version = entry.image.version();
+    entry.version = entry.image_version();
     entry.width = image.width;
     entry.height = image.height;
     return &entry;
@@ -916,7 +923,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
                 if (found == textures_.end()) {
                     continue;
                 }
-                const render::Image& image = *found->second.image;
+                const render::Image& image = found->second.pixels();
                 piece.pixels = image.pixels.data();
                 piece.width = image.width;
                 piece.height = image.height;

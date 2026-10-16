@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <map>
 #include <memory>
 #include <optional>
@@ -44,6 +45,7 @@ Known known_items(const std::vector<std::string_view>& classes) {
             known.items.constants.insert(items->constants.begin(), items->constants.end());
             known.items.fonts.insert(items->fonts.begin(), items->fonts.end());
             known.items.font_sizes.insert(items->font_sizes.begin(), items->font_sizes.end());
+            known.items.icons.insert(items->icons.begin(), items->icons.end());
             known.items.styles.insert(items->styles.begin(), items->styles.end());
         }
         if (i > 0) {
@@ -138,8 +140,8 @@ bool is_control(const world::World& world, entt::entity entity) {
                 .any_of<world::Control, world::Label, world::ColorRect, world::Panel,
                         world::TextureRect, world::NinePatchRect, world::ProgressBar>(entity) ||
             world.ecs()
-                .any_of<world::Button, world::TextureButton, world::LineEdit, world::TextEdit>(
-                    entity) ||
+                .any_of<world::Button, world::CheckBox, world::CheckButton, world::TextureButton,
+                        world::LineEdit, world::TextEdit, world::Slider>(entity) ||
             world.ecs()
                 .any_of<world::BoxContainer, world::GridContainer, world::MarginContainer,
                         world::CenterContainer, world::FlowContainer, world::PanelContainer>(
@@ -151,6 +153,12 @@ std::vector<std::string_view> control_classes(const world::World& world, entt::e
     const auto& ecs = world.ecs();
     if (ecs.all_of<world::Button>(entity)) {
         classes.emplace_back("Button");
+    }
+    if (ecs.all_of<world::CheckBox>(entity)) {
+        classes.emplace_back("CheckBox");
+    }
+    if (ecs.all_of<world::CheckButton>(entity)) {
+        classes.emplace_back("CheckButton");
     }
     if (ecs.all_of<world::TextureButton>(entity)) {
         classes.emplace_back("TextureButton");
@@ -179,6 +187,9 @@ std::vector<std::string_view> control_classes(const world::World& world, entt::e
     if (ecs.all_of<world::ProgressBar>(entity)) {
         classes.emplace_back("ProgressBar");
     }
+    if (const auto* slider = ecs.try_get<world::Slider>(entity); slider != nullptr) {
+        classes.emplace_back(slider->vertical ? "VSlider" : "HSlider");
+    }
     if (const auto* box = ecs.try_get<world::BoxContainer>(entity); box != nullptr) {
         classes.emplace_back(box->vertical ? "VBoxContainer" : "HBoxContainer");
     }
@@ -201,6 +212,110 @@ std::vector<std::string_view> control_classes(const world::World& world, entt::e
         classes.emplace_back("Control");
     }
     return classes;
+}
+
+const world::Button* button_of(const world::World& world, entt::entity entity) {
+    if (!world.valid(entity)) {
+        return nullptr;
+    }
+    const auto& ecs = world.ecs();
+    if (const auto* button = ecs.try_get<world::Button>(entity); button != nullptr) {
+        return button;
+    }
+    if (const auto* box = ecs.try_get<world::CheckBox>(entity); box != nullptr) {
+        return box;
+    }
+    return ecs.try_get<world::CheckButton>(entity);
+}
+
+world::Button* button_of(world::World& world, entt::entity entity) {
+    if (!world.valid(entity)) {
+        return nullptr;
+    }
+    auto& ecs = world.ecs();
+    if (auto* button = ecs.try_get<world::Button>(entity); button != nullptr) {
+        return button;
+    }
+    if (auto* box = ecs.try_get<world::CheckBox>(entity); box != nullptr) {
+        return box;
+    }
+    return ecs.try_get<world::CheckButton>(entity);
+}
+
+std::string_view button_type(const world::World& world, entt::entity entity) {
+    if (!world.valid(entity)) {
+        return "";
+    }
+    const auto& ecs = world.ecs();
+    if (ecs.all_of<world::Button>(entity)) {
+        return "Button";
+    }
+    if (ecs.all_of<world::CheckBox>(entity)) {
+        return "CheckBox";
+    }
+    return ecs.all_of<world::CheckButton>(entity) ? "CheckButton" : "";
+}
+
+Range range_of(const world::Slider& slider) {
+    Range range{.min = slider.min_value,
+                .max = std::max(slider.max_value, slider.min_value),
+                .step = slider.step,
+                .page = 0.0,
+                .value = 0.0,
+                .rounded = slider.rounded,
+                .allow_greater = slider.allow_greater,
+                .allow_lesser = slider.allow_lesser};
+    range.page = std::clamp(slider.page, 0.0, range.max - range.min);
+    range.value = range_value(range, slider.value);
+    return range;
+}
+
+double range_value(const Range& range, double value) {
+    if (std::isnan(value)) {
+        return value;
+    }
+    if (range.step > 0.0) {
+        // Math::snapped, from min unless min is too big to snap from. Godot rounds in decimal
+        // (R128) so steps such as 0.1 give 0.3, not 0.30000000000000004: a step that is one
+        // over a whole number divides by that number instead of multiplying.
+        const double from = std::abs(range.min) > range.step * 1e14 ? 0.0 : range.min;
+        const double steps = std::floor(((value - from) / range.step) + 0.5);
+        const double per = std::round(1.0 / range.step);
+        if (range.step < 1.0 && per > 0.0 && std::abs((per * range.step) - 1.0) < 1e-12) {
+            value = ((from * per) + steps) / per;
+        } else {
+            value = (steps * range.step) + from;
+        }
+    }
+    if (range.rounded) {
+        value = std::round(value);
+    }
+    if (!range.allow_greater && value > range.max - range.page) {
+        value = range.max - range.page;
+    }
+    if (!range.allow_lesser && value < range.min) {
+        value = range.min;
+    }
+    return value;
+}
+
+double range_ratio(const Range& range) {
+    // Math::is_equal_approx: equal within 0.00001 of their size, or of 1 when smaller.
+    const double tolerance = std::max(0.00001 * std::abs(range.max), 0.00001);
+    if (range.max == range.min || std::abs(range.max - range.min) < tolerance) {
+        return 1.0;
+    }
+    const double value = std::clamp(range.value, range.min, range.max);
+    return std::clamp((value - range.min) / (range.max - range.min), 0.0, 1.0);
+}
+
+double range_from_ratio(const Range& range, double ratio) {
+    const double percent = (range.max - range.min) * ratio;
+    double value = percent + range.min;
+    if (range.step > 0.0) {
+        value = (std::round(percent / range.step) * range.step) + range.min;
+    }
+    return std::clamp(value, range.min, range.max);
 }
 
 std::string_view control_class(const world::World& world, entt::entity entity) {
@@ -269,8 +384,8 @@ std::vector<Problem> check(const world::World& world, text::Fonts& fonts) {
         if (const auto* label = ecs.try_get<world::Label>(entity); label != nullptr) {
             check_language("Label", label->language);
         }
-        if (const auto* button = ecs.try_get<world::Button>(entity); button != nullptr) {
-            check_language("Button", button->language);
+        if (const world::Button* button = button_of(world, entity); button != nullptr) {
+            check_language(button_type(world, entity), button->language);
         }
         if (const auto* edit = ecs.try_get<world::LineEdit>(entity); edit != nullptr) {
             check_language("LineEdit", edit->language);
@@ -280,7 +395,8 @@ std::vector<Problem> check(const world::World& world, text::Fonts& fonts) {
                                     .message = "a secret character is one character; the "
                                                "others are left out"});
             }
-            if (ecs.any_of<world::Label, world::Button, world::TextureButton>(entity)) {
+            if (ecs.any_of<world::Label, world::TextureButton>(entity) ||
+                button_of(world, entity) != nullptr) {
                 problems.push_back(
                     {.id = id,
                      .path = "/components/LineEdit",
@@ -290,8 +406,8 @@ std::vector<Problem> check(const world::World& world, text::Fonts& fonts) {
         }
         if (const auto* edit = ecs.try_get<world::TextEdit>(entity); edit != nullptr) {
             check_language("TextEdit", edit->language);
-            if (ecs.any_of<world::Label, world::Button, world::TextureButton, world::LineEdit>(
-                    entity)) {
+            if (ecs.any_of<world::Label, world::TextureButton, world::LineEdit>(entity) ||
+                button_of(world, entity) != nullptr) {
                 problems.push_back(
                     {.id = id,
                      .path = "/components/TextEdit",
@@ -313,8 +429,29 @@ std::vector<Problem> check(const world::World& world, text::Fonts& fonts) {
                     [](const ThemeItems& t) -> const auto& { return t.fonts; });
         check_names(problems, id, "theme_override_font_sizes", control->theme_override_font_sizes,
                     known, [](const ThemeItems& t) -> const auto& { return t.font_sizes; });
+        check_names(problems, id, "theme_override_icons", control->theme_override_icons, known,
+                    [](const ThemeItems& t) -> const auto& { return t.icons; });
         check_names(problems, id, "theme_override_styles", control->theme_override_styles, known,
                     [](const ThemeItems& t) -> const auto& { return t.styles; });
+        for (const auto& [name, path] : control->theme_override_icons) {
+            const std::string at =
+                "/components/Control/theme_override_icons/" + json::pointer_escape(name);
+            if (std::string error = icon_path_error(path); !error.empty()) {
+                problems.push_back({.id = id, .path = at, .message = std::move(error)});
+                continue;
+            }
+            if (path.empty() || builtin_icon(path) != nullptr) {
+                continue;
+            }
+            auto error = texture_errors.find(path);
+            if (error == texture_errors.end()) {
+                auto loaded = fonts.assets().load<render::Image>(path);
+                error = texture_errors.emplace(path, loaded ? "" : loaded.error().message).first;
+            }
+            if (!error->second.empty()) {
+                problems.push_back({.id = id, .path = at, .message = error->second});
+            }
+        }
         for (const auto& [name, path] : control->theme_override_fonts) {
             auto error = font_errors.find(path);
             if (error == font_errors.end()) {

@@ -1164,7 +1164,7 @@ TEST_CASE("engine.describe lists systems in the order they run") {
     CHECK(*engine.ok("engine.describe", R"({"full": true})").find("systems") == parse(R"([
         {"name": "input", "doc": "Applies the input events queued since the last tick.",
          "priority": -1000},
-        {"name": "gui", "doc": "Sends input events to controls: hover, focus and button presses.",
+        {"name": "gui", "doc": "Sends input events to controls: hover, focus, buttons, sliders and text fields.",
          "priority": -900},
         {"name": "controls", "priority": -1},
         {"name": "movement", "doc": "Moves things by their velocity.", "priority": 0},

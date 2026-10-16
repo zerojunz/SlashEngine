@@ -363,6 +363,16 @@ which gameplay code reads each tick and agents subscribe to. An agent clicks and
 disabled) and which control has focus and which is hovered. The
 [UI buttons example](../examples/ui-buttons/) is a title menu worked by mouse, keys and touch.
 
+**Check boxes** (`CheckBox`) and **check buttons** (`CheckButton`, a switch) are toggle buttons
+that draw an **icon** beside their text instead of a box; check boxes in a button group draw as
+radio buttons. A **slider** (`Slider`, Godot's `HSlider` or `VSlider` with `vertical`) holds a
+value between a minimum and a maximum, always a multiple of its **step**: a click moves its
+grabber there, dragging moves it, and the wheel, arrow keys and gamepads step it, each change
+emitting `value_changed`. Icons are theme items like colors and style boxes; Godot's default
+ones are drawn by the engine, named `builtin:checked`, `builtin:toggle_on` and so on, so a game
+needs no image files for them. The [UI settings example](../examples/ui-settings/) is a
+settings screen.
+
 Text in every language follows Godot's text server. **BiDi** (the Unicode Bidirectional
 Algorithm) orders each paragraph: Arabic and Hebrew go right to left, with English words and
 numbers in them still left to right, and a label's `text_direction` can set the paragraph's
@@ -568,6 +578,7 @@ OpenAI-compatible servers (including local ones), Anthropic and Gemini; see the
 | Blend mode | How a sprite's color combines with what is under it: `mix`, `add`, `sub`, `mul` or `premul_alpha` |
 | Canonical form | The one way a scene is written: sorted keys, two-space indent, defaults left out |
 | Capability | A permission a session grants: `read`, `edit`, `run`, `filesystem` or `build` |
+| Check box | A toggle button drawn with a box beside its text (`CheckBox`), or a switch (`CheckButton`); in a button group, a radio button |
 | Command | A named action with a params schema, capabilities and an effect |
 | Command registry | The list of commands every front end is generated from |
 | Component | A reflected C++ struct of data attached to an entity |
@@ -616,6 +627,7 @@ OpenAI-compatible servers (including local ones), Anthropic and Gemini; see the
 | Shadow map | A texture with one row per shadowed light, holding how far away the nearest occluder is in each direction |
 | Shortcut | A binding or action that presses a button from anywhere, such as Escape for Quit |
 | Size flags | How a container's child fills its cell: fill it, expand into spare room, or sit at the start, center or end |
+| Slider | A control holding a value between a minimum and a maximum on its step, set by dragging its grabber, clicks, the wheel, keys and gamepads (`Slider`) |
 | Software device | The render device that draws on the CPU, the same on every machine, which `frame.capture` uses |
 | Sprite | A texture, or one frame of a sprite sheet, drawn at an entity's `Transform2D` (`Sprite2D`) |
 | Sprite sheet | One texture holding a grid of frames, `hframes` across and `vframes` down |
@@ -626,7 +638,7 @@ OpenAI-compatible servers (including local ones), Anthropic and Gemini; see the
 | Terrain | A kind of ground in a tile set, such as grass or water, whose tiles autotiling connects |
 | Test | A scene and command calls with what their replies must hold, in a `.test.json` file, which `test.run` runs headless |
 | Theme | A `.theme.json` file of theme items by control type, used by a control and everything in it, or by the whole game (`gui.theme`) |
-| Theme item | A named color, constant, font, font size or style box a control draws with, set by its `theme_override_*` fields or a theme |
+| Theme item | A named color, constant, font, font size, icon or style box a control draws with, set by its `theme_override_*` fields or a theme |
 | Tick | One fixed simulation step, 1/60 s by default |
 | Tile set | A `.tileset.json` file: atlas textures cut into tiles, and the terrains that connect them |
 | Tile map layer | A grid of tiles from a tile set, kept as rows of legend keys (`TileMapLayer`) |
