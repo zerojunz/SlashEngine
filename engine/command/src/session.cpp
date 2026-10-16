@@ -412,6 +412,20 @@ Result<std::string> Session::resolve_path(std::string_view relative) const {
     return root + path;
 }
 
+Result<void> Session::write_file(const std::string& full, std::string_view contents) const {
+    if (!options_.write_files) {
+        return make_error(ErrorCode::PermissionDenied,
+                          "tests don't write files, so the project stays as it was");
+    }
+    if (const std::size_t slash = full.find_last_of('/');
+        slash != std::string::npos && slash > 0 && !platform::exists(full.substr(0, slash))) {
+        if (auto made = platform::create_directories(full.substr(0, slash)); !made) {
+            return made.error();
+        }
+    }
+    return platform::write_file(full, contents);
+}
+
 Reply Session::undo() {
     if (undo_.empty()) {
         return Reply::failure(code::kInvalidArgument, "nothing to undo");
@@ -594,13 +608,7 @@ Result<void> Session::commit_files() {
             text = now.value().value_or(std::string());
         }
         text += file.append;
-        if (const std::size_t slash = resolved.value().rfind('/'); slash != std::string::npos) {
-            if (auto created = platform::create_directories(resolved.value().substr(0, slash));
-                !created) {
-                return created.error();
-            }
-        }
-        if (auto written = platform::write_file(resolved.value(), text); !written) {
+        if (auto written = write_file(resolved.value(), text); !written) {
             return written.error();
         }
     }

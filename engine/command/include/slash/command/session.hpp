@@ -31,6 +31,9 @@ struct SessionOptions {
     // Keep recent log lines for log.tail. The session installs a log sink that also forwards
     // every line to stderr, and restores the default sink when it is destroyed.
     bool capture_logs = true;
+    // Whether commands may write files. Sessions that run tests don't, so a test leaves the
+    // project as it was: a command that would write a file fails instead.
+    bool write_files = true;
 };
 
 // One editing session: a world, the commands that act on it, undo history and recent logs.
@@ -84,6 +87,9 @@ public:
 
     // Resolves a path inside the project folder. Rejects absolute paths and any ".." segment.
     [[nodiscard]] Result<std::string> resolve_path(std::string_view relative) const;
+    // Writes a file at a path resolve_path gave, creating its folder if needed, unless the
+    // session doesn't write files (SessionOptions::write_files).
+    [[nodiscard]] Result<void> write_file(const std::string& full, std::string_view contents) const;
 
     // Assets loaded from the project folder, and the prefab files the world reads through them.
     [[nodiscard]] asset::Assets& assets() noexcept { return assets_; }

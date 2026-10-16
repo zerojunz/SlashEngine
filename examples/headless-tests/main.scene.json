@@ -1,0 +1,53 @@
+{
+  "entities": {
+    "coin": {
+      "components": {
+        "Area2D": {},
+        "CollisionShape2D": {
+          "radius": 8.0,
+          "shape": "circle"
+        },
+        "Transform2D": {
+          "position": [160.0, 110.0]
+        }
+      }
+    },
+    "crate": {
+      "components": {
+        "CollisionShape2D": {
+          "size": [16.0, 16.0]
+        },
+        "RigidBody2D": {},
+        "Transform2D": {
+          "position": [160.0, 40.0]
+        }
+      }
+    },
+    "floor": {
+      "components": {
+        "CollisionShape2D": {
+          "size": [320.0, 20.0]
+        },
+        "StaticBody2D": {},
+        "Transform2D": {
+          "position": [160.0, 170.0]
+        }
+      }
+    },
+    "sound": {
+      "components": {
+        "Button": {
+          "text": "Sound",
+          "toggle_mode": true
+        },
+        "Control": {
+          "offset_bottom": 32.0,
+          "offset_left": 8.0,
+          "offset_right": 88.0,
+          "offset_top": 8.0
+        }
+      }
+    }
+  },
+  "format": 1
+}

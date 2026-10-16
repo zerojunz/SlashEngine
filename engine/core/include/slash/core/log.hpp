@@ -47,6 +47,9 @@ using Sink = std::function<void(Level level, std::string_view line)>;
 
 void set_sink(Sink sink);
 void reset_sink();
+// The sink lines go to now. Code that watches lines for a while sets a sink that passes each
+// line on to this one, then puts it back.
+[[nodiscard]] Sink sink();
 void set_min_level(Level level);
 [[nodiscard]] Level min_level();
 

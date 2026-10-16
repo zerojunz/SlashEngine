@@ -5,7 +5,8 @@ add_library(slash_command
     src/mcp.cpp
     src/replay.cpp
     src/rpc.cpp
-    src/session.cpp)
+    src/session.cpp
+    src/test.cpp)
 add_library(slash::command ALIAS slash_command)
 
 target_include_directories(slash_command PUBLIC include)

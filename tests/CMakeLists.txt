@@ -29,6 +29,7 @@ add_executable(slash_tests
     test_scene.cpp
     test_server.cpp
     test_storyboard.cpp
+    test_test_run.cpp
     test_text.cpp
     test_text_edit.cpp
     test_tilemap.cpp
@@ -379,6 +380,20 @@ if(SLASH_BUILD_TOOLS)
     add_test(NAME cli_schema_replay COMMAND slash-cli schema replay)
     set_tests_properties(cli_schema_replay PROPERTIES
         PASS_REGULAR_EXPRESSION "\"title\": \"SlashEngine replay\"")
+    add_test(NAME cli_schema_test COMMAND slash-cli schema test)
+    set_tests_properties(cli_schema_test PROPERTIES
+        PASS_REGULAR_EXPRESSION "\"title\": \"SlashEngine tests\"")
+
+    # slash-cli test prints only the checks that failed, and exits 1 when one did.
+    add_test(NAME cli_test_failed
+        COMMAND slash-cli test failing.test.json --project ${scenes})
+    set_tests_properties(cli_test_failed PROPERTIES
+        PASS_REGULAR_EXPRESSION "\"message\":\"expected 2, got 1\",\"path\":\"/tests/one_tick/steps/0/expect/tick\"")
+    add_test(NAME cli_test_failed_exit COMMAND slash-cli test failing.test.json --project ${scenes})
+    set_tests_properties(cli_test_failed_exit PROPERTIES WILL_FAIL TRUE)
+    add_test(NAME cli_test_validate COMMAND slash-cli scene validate ${scenes}/failing.test.json)
+    set_tests_properties(cli_test_validate PROPERTIES
+        PASS_REGULAR_EXPRESSION "{\"tests\":1,\"valid\":true}")
 
     # One-shot engine commands.
     add_test(NAME cli_call_describe COMMAND slash-cli call engine.describe)
@@ -532,4 +547,9 @@ if(SLASH_BUILD_TOOLS)
     set_tests_properties(cli_init_project_valid PROPERTIES
         FIXTURES_REQUIRED init_project
         PASS_REGULAR_EXPRESSION "^{\"valid\":true}")
+    # Its starter test passes.
+    add_test(NAME cli_init_tests_pass COMMAND slash-cli test --project ${init_project})
+    set_tests_properties(cli_init_tests_pass PROPERTIES
+        FIXTURES_REQUIRED init_project
+        PASS_REGULAR_EXPRESSION "^{\"failed\":\\[\\],\"passed\":1,\"tests\":1}")
 endif()
