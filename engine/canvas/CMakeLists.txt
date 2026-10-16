@@ -12,7 +12,8 @@ add_library(slash_canvas
 add_library(slash::canvas ALIAS slash_canvas)
 
 target_include_directories(slash_canvas PUBLIC include)
-target_link_libraries(slash_canvas PUBLIC slash::asset slash::core slash::render slash::ui slash::world)
+target_link_libraries(slash_canvas
+    PUBLIC slash::asset slash::core slash::physics2d slash::render slash::ui slash::world)
 slash_engine_target(slash_canvas)
 # Particles move the same on every platform: no fused multiply-adds, which arm64 compilers
 # would otherwise emit and x86-64 ones not.

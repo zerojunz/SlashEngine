@@ -9,6 +9,8 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
+#include <memory>
 #include <optional>
 #include <vector>
 
@@ -16,6 +18,10 @@
 // StaticBody2D, AnimatableBody2D, RigidBody2D, CharacterBody2D and Area2D make an entity a body or
 // an area, CollisionShape2D and CollisionPolygon2D give it shapes, and PinJoint2D,
 // DampedSpringJoint2D and GrooveJoint2D join two bodies.
+//
+// A TileMapLayer is solid where its tiles have collision polygons, as Godot's tile physics:
+// canvas::install hands this module the polygons (set_tile_shape_source), since tile sets are
+// the canvas module's.
 //
 // The "physics2d" system keeps a Box2D world in step with the components: each tick it creates,
 // changes and removes bodies to match them, moves character bodies, steps the world and writes
@@ -61,6 +67,8 @@ struct RayHit {
     Vec2 point;
     Vec2 normal;           // the surface's, toward the ray's start
     float fraction = 0.0F; // how far along the ray, from 0 to 1
+    // The cell hit, when the entity is a TileMapLayer.
+    std::optional<Vec2i> cell{}; // NOLINT(readability-redundant-member-init)
 };
 
 // The first thing a ray from from to to hits, as Godot's intersect_ray. Shapes the ray starts
@@ -87,6 +95,30 @@ struct Contacts {
     std::vector<entt::entity> areas;
 };
 [[nodiscard]] Contacts contacts(world::World& world, entt::entity entity);
+
+// A collision polygon of one cell of a TileMapLayer, in pixels in the layer's own space, with
+// its tile set physics layer's settings.
+struct TileShape {
+    Vec2i cell;
+    std::vector<Vec2> points;
+    std::uint32_t collision_layer = 1;
+    std::uint32_t collision_mask = 1;
+    float friction = 1.0F;
+    float bounce = 0.0F;
+    bool one_way = false;
+    float one_way_margin = 1.0F;
+};
+using TileShapes = std::shared_ptr<const std::vector<TileShape>>;
+// A TileMapLayer's shapes, or nullptr for none; the same pointer while they haven't changed, so
+// the layer's body is rebuilt only when they do.
+using TileShapeSource = std::function<TileShapes(const world::World& world, entt::entity layer)>;
+
+// Where a world's TileMapLayer components get their shapes: canvas::install sets it. Each layer
+// whose collision_enabled is on and that has shapes becomes one static body, in the order the
+// layers were made, after every other body.
+void set_tile_shape_source(world::World& world, TileShapeSource source);
+// The shapes a layer has, as the source gives them; nullptr if it has none or there's no source.
+[[nodiscard]] TileShapes tile_shapes(const world::World& world, entt::entity layer);
 
 // Pushes a rigid body at the next physics step, as Godot's apply_impulse: impulse in
 // kilogram-pixels per second, at offset pixels from its position.

@@ -200,8 +200,11 @@ rendering on top.
       `tilemap.paint` paints terrain and picks the tiles that connect, `tilemap.set` places
       tiles and `tilemap.get` reads them; layers draw in runs of one texture, and validation and
       exports check every layer against its tile set
+- [x] Alternative tiles and turned cells, as Godot's: a tile's numbered alternatives with their
+      own flips, transpose, color and collision, and cells that flip or transpose their tile
+      (`slope:h`), drawing and colliding turned
 - [ ] Isometric and hexagonal tile shapes, Godot's other TileSet layouts, with their terrain
-      peering bits, and alternative tiles (flipped, transposed) for tile sets that reuse art
+      peering bits
 - [x] 2D lights, occluders and normal-mapped sprites, as Godot's: `PointLight2D` (textured,
       with a height for normal maps), `DirectionalLight2D` and `CanvasModulate`, with light masks,
       z ranges and add, sub and mix blending; `LightOccluder2D` shadows with cull modes and PCF
@@ -216,8 +219,11 @@ rendering on top.
       capsule, segment and convex shapes, concave `CollisionPolygon2D`, collision layers and
       masks, pin, spring and groove joints, and `physics.raycast`, `physics.overlap` and
       `physics.contacts`. Results are the same on every platform
-- [ ] More of Godot's 2D physics: collision polygons on tile set tiles, `Area2D` gravity and
-      damping overrides, `StaticBody2D` constant velocities, and `CharacterBody2D`'s
+- [x] Tile collision, as Godot's TileSet physics layers: collision polygons on tiles (one-way
+      too), physics layers with a collision layer, mask, friction and bounce, each
+      `TileMapLayer` a static body rebuilt when it changes, and `physics.raycast` reporting the
+      cell it hit
+- [ ] More of Godot's 2D physics: `Area2D` gravity and damping overrides, `StaticBody2D` constant velocities, and `CharacterBody2D`'s
       `floor_block_on_wall`, `floor_constant_speed`, `wall_min_slide_angle` and `safe_margin`
 - [x] CPU particles, as Godot's `CPUParticles2D`: emission shapes, directions and spread,
       gravity, linear, radial and tangential acceleration, orbits, damping, angles and spin,
@@ -328,6 +334,8 @@ rendering on top.
   - [x] Godot's `TileSet` resources, `TileMapLayer` nodes and the old `TileMap`'s layers,
         themes, `LabelSettings` resources and audio bus layouts, with the project's theme and
         buses
+  - [x] Godot's tile physics layers, collision polygons, alternative tiles and flipped or
+        transposed cells
   - [x] Godot's `AnimationPlayer` nodes and their animation libraries, with value, bezier and
         method tracks, through track targets
   - [x] Unity projects: 2D scenes, prefabs (nested prefabs and variants staying instances),
@@ -560,9 +568,9 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Gameplay code | C++ with hot reload; plugins as C++ modules with a stable C ABI | 6 | Planned |
 | Scenes and prefabs | JSON scenes, prefabs and instanced scenes with overrides, on EnTT | 2, 5 | Done |
 | 2D sprites and animation | Batched sprites, sprite sheets, flipbooks | 5 | Done |
-| Tilemaps | Tilemap layers with terrain autotiling, stored as text | 5 | In part: square tiles are done; isometric and hexagonal shapes in 5 |
+| Tilemaps | Tilemap layers with terrain autotiling, stored as text | 5 | In part: square tiles, alternatives, turned cells and collision are done; isometric and hexagonal shapes in 5 |
 | 2D lighting | 2D lights, occluders, normal-mapped sprites | 5 | Done |
-| 2D physics | Box2D v3: bodies, areas, joints, character movement and queries | 5 | In part: tile set collision and area overrides in 5 |
+| 2D physics | Box2D v3: bodies, areas, joints, character movement and queries | 5 | In part: tile collision is done; area overrides in 5 |
 | 3D physics | Jolt: rigid bodies, joints, character controller, vehicles | 7 | Planned |
 | 3D renderer | Clustered forward+ with PBR, plus a low-end path for web and mobile | 7 | Planned |
 | Shadows | Cascaded, omni and spot shadow maps | 7 | Planned |

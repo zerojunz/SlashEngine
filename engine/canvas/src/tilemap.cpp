@@ -1,5 +1,6 @@
 #include "slash/canvas/tilemap.hpp"
 
+#include "slash/canvas/debug_draw.hpp"
 #include "slash/core/text.hpp"
 
 #include <algorithm>
@@ -21,6 +22,8 @@ constexpr std::array<std::string_view, 3> kModeNames = {"match_corners_and_sides
 // A texture is at most 16384 pixels on a side.
 constexpr std::int64_t kMaxPixels = 16384;
 constexpr std::size_t kMaxKeyLength = 3;
+// Godot keeps alternative IDs below its transform flags, bit 12 up.
+constexpr int kMaxAlternative = 4095;
 constexpr std::size_t kKeyCount = kKeyCharacters.size();
 
 json::Value property(std::string_view type, std::string_view description) {
@@ -65,6 +68,78 @@ json::Value schema() {
         property("number", "How often terrain painting picks it over tiles that fit as well.");
     tile["properties"]["probability"]["minimum"] = 0;
     tile["properties"]["probability"]["default"] = 1;
+    tile["properties"]["collision"] =
+        property("array", "Polygons that make the tile solid, each in a physics layer.");
+    tile["properties"]["collision"]["items"]["$ref"] = "#/$defs/polygon";
+    tile["properties"]["alternatives"] =
+        property("object", R"(Other versions of the tile by number from 1, as "1"; legends )"
+                           R"(name them as "crate:1".)");
+    tile["properties"]["alternatives"]["additionalProperties"]["$ref"] = "#/$defs/alternative";
+
+    json::Value point;
+    point["type"] = "array";
+    point["items"]["type"] = "number";
+    point["minItems"] = 2;
+    point["maxItems"] = 2;
+    json::Value polygon;
+    polygon["type"] = "object";
+    polygon["additionalProperties"] = false;
+    polygon["required"] = json::Array{"points"};
+    polygon["properties"]["points"] =
+        property("array", "Corners in pixels from the tile's center, x right and y down.");
+    polygon["properties"]["points"]["items"] = std::move(point);
+    polygon["properties"]["points"]["minItems"] = 3;
+    polygon["properties"]["layer"] = property("integer", "Its physics layer, from 0.");
+    polygon["properties"]["layer"]["minimum"] = 0;
+    polygon["properties"]["layer"]["default"] = 0;
+    polygon["properties"]["one_way"] =
+        property("boolean", "Only stops what comes from above (the tile's -y).");
+    polygon["properties"]["one_way"]["default"] = false;
+    polygon["properties"]["one_way_margin"] =
+        property("number", "How deep a body can be in a one-way polygon and still land on it.");
+    polygon["properties"]["one_way_margin"]["minimum"] = 0;
+    polygon["properties"]["one_way_margin"]["default"] = 1;
+
+    json::Value alternative;
+    alternative["type"] = "object";
+    alternative["additionalProperties"] = false;
+    alternative["properties"]["flip_h"] = property("boolean", "Draws flipped horizontally.");
+    alternative["properties"]["flip_h"]["default"] = false;
+    alternative["properties"]["flip_v"] = property("boolean", "Draws flipped vertically.");
+    alternative["properties"]["flip_v"]["default"] = false;
+    alternative["properties"]["transpose"] =
+        property("boolean", "Draws with x and y swapped, before flipping.");
+    alternative["properties"]["transpose"]["default"] = false;
+    alternative["properties"]["modulate"] = property("array", "Tint, as RGBA from 0 to 1.");
+    alternative["properties"]["modulate"]["items"]["type"] = "number";
+    alternative["properties"]["modulate"]["minItems"] = 4;
+    alternative["properties"]["modulate"]["maxItems"] = 4;
+    alternative["properties"]["modulate"]["default"] = json::Array{1, 1, 1, 1};
+    alternative["properties"]["collision"] =
+        property("array", "Its own collision polygons, as the tile's; none if left out.");
+    alternative["properties"]["collision"]["items"]["$ref"] = "#/$defs/polygon";
+
+    json::Value physics_layer;
+    physics_layer["type"] = "object";
+    physics_layer["additionalProperties"] = false;
+    physics_layer["properties"]["collision_layer"] =
+        property("integer", "The layers its polygons are in, as bits.");
+    physics_layer["properties"]["collision_layer"]["minimum"] = 0;
+    physics_layer["properties"]["collision_layer"]["maximum"] = std::int64_t{UINT32_MAX};
+    physics_layer["properties"]["collision_layer"]["default"] = 1;
+    physics_layer["properties"]["collision_mask"] =
+        property("integer", "The layers its polygons collide with, as bits.");
+    physics_layer["properties"]["collision_mask"]["minimum"] = 0;
+    physics_layer["properties"]["collision_mask"]["maximum"] = std::int64_t{UINT32_MAX};
+    physics_layer["properties"]["collision_mask"]["default"] = 1;
+    physics_layer["properties"]["friction"] =
+        property("number", "Friction, as a physics material's.");
+    physics_layer["properties"]["friction"]["minimum"] = 0;
+    physics_layer["properties"]["friction"]["default"] = 1;
+    physics_layer["properties"]["bounce"] = property("number", "Bounce, from 0 to 1.");
+    physics_layer["properties"]["bounce"]["minimum"] = 0;
+    physics_layer["properties"]["bounce"]["maximum"] = 1;
+    physics_layer["properties"]["bounce"]["default"] = 0;
 
     json::Value source;
     source["type"] = "object";
@@ -112,6 +187,9 @@ json::Value schema() {
     out["properties"]["format"]["description"] = "Format version. Must be 1.";
     out["properties"]["tile_size"] = pair("A cell's width and height, in pixels.", 1);
     out["properties"]["tile_size"]["default"] = json::Array{16, 16};
+    out["properties"]["physics_layers"] = property(
+        "array", "Physics layers by number from 0: what tiles' collision polygons collide as.");
+    out["properties"]["physics_layers"]["items"]["$ref"] = "#/$defs/physics_layer";
     out["properties"]["terrain_sets"] =
         property("object", "Terrain sets by name, each with the terrains whose tiles connect.");
     out["properties"]["terrain_sets"]["additionalProperties"]["$ref"] = "#/$defs/terrain_set";
@@ -121,6 +199,9 @@ json::Value schema() {
     out["$defs"]["terrain_set"] = std::move(terrain_set);
     out["$defs"]["source"] = std::move(source);
     out["$defs"]["tile"] = std::move(tile);
+    out["$defs"]["polygon"] = std::move(polygon);
+    out["$defs"]["alternative"] = std::move(alternative);
+    out["$defs"]["physics_layer"] = std::move(physics_layer);
     return out;
 }
 
@@ -158,6 +239,19 @@ std::optional<Vec2i> parse_atlas(std::string_view text) {
         return std::nullopt;
     }
     return Vec2i{*column, *row};
+}
+
+// An alternative's number, "1" up to kMaxAlternative, with no leading zeros.
+std::optional<int> parse_alternative(std::string_view text) {
+    int value = 0;
+    if (text.empty() || text.front() < '1' || text.front() > '9') {
+        return std::nullopt;
+    }
+    const auto [end, error] = std::from_chars(text.data(), text.data() + text.size(), value);
+    if (error != std::errc{} || end != text.data() + text.size() || value > kMaxAlternative) {
+        return std::nullopt;
+    }
+    return value;
 }
 
 std::string atlas_text(Vec2i atlas) {
@@ -216,6 +310,9 @@ public:
     explicit Checker(const json::Value& doc) : doc_(doc) {}
 
     std::vector<json::ValidationError> run() {
+        if (const json::Value* layers = doc_.find("physics_layers"); layers != nullptr) {
+            physics_layers_ = layers->as_array().size();
+        }
         if (const json::Value* sets = doc_.find("terrain_sets"); sets != nullptr) {
             for (const auto& [name, set] : sets->as_object()) {
                 check_terrain_set(name, set);
@@ -300,7 +397,49 @@ private:
         }
     }
 
+    void check_polygons(const json::Value& polygons, const std::string& at) {
+        const json::Array& items = polygons.as_array();
+        for (std::size_t i = 0; i < items.size(); ++i) {
+            const std::string polygon_at = at + "/" + std::to_string(i);
+            const json::Value* layer = items[i].find("layer");
+            if (static_cast<std::uint64_t>(layer != nullptr ? layer->as_int() : 0) >=
+                physics_layers_) {
+                fail(polygon_at + "/layer",
+                     physics_layers_ == 0
+                         ? std::string("the tile set has no physics layers; add one to "
+                                       "physics_layers")
+                         : "the tile set has physics layers 0 to " +
+                               std::to_string(physics_layers_ - 1));
+            }
+            std::vector<Vec2> points;
+            for (const json::Value& point : items[i].find("points")->as_array()) {
+                points.push_back({static_cast<float>(point.as_array()[0].as_double()),
+                                  static_cast<float>(point.as_array()[1].as_double())});
+            }
+            if (triangulate(points).empty()) {
+                fail(polygon_at + "/points", "the polygon has no area or crosses itself");
+            }
+        }
+    }
+
     void check_tile(const std::string& where, const json::Value& tile, const std::string& at) {
+        if (const json::Value* collision = tile.find("collision"); collision != nullptr) {
+            check_polygons(*collision, at + "/collision");
+        }
+        if (const json::Value* alternatives = tile.find("alternatives"); alternatives != nullptr) {
+            for (const auto& [key, alternative] : alternatives->as_object()) {
+                const std::string alternative_at =
+                    at + "/alternatives/" + json::pointer_escape(key);
+                if (!parse_alternative(key)) {
+                    fail(alternative_at, "alternatives are numbered from 1 to " +
+                                             std::to_string(kMaxAlternative) + ", as \"1\"");
+                }
+                if (const json::Value* collision = alternative.find("collision");
+                    collision != nullptr) {
+                    check_polygons(*collision, alternative_at + "/collision");
+                }
+            }
+        }
         if (const json::Value* name = tile.find("name"); name != nullptr) {
             const std::string& text = name->as_string();
             if (text.find(':') != std::string::npos) {
@@ -349,6 +488,7 @@ private:
     }
 
     const json::Value& doc_;
+    std::size_t physics_layers_ = 0;
     std::map<std::string, TerrainInfo, std::less<>> terrains_;
     std::map<std::string, std::string, std::less<>> names_; // tile name -> "source:x,y"
     std::vector<json::ValidationError> errors_;
@@ -444,10 +584,10 @@ void decode(const world::TileMapLayer& layer, const TileSet& set, Cells* out,
 }
 
 // The key a new tile gets: the start of its name if that is free, else the first free key.
-std::string new_key(std::string_view text, std::size_t length,
+std::string new_key(std::string_view name, std::size_t length,
                     const std::set<std::string, std::less<>>& taken) {
-    if (text.find(':') == std::string_view::npos && text.size() >= length) {
-        std::string start(text.substr(0, length));
+    if (name.size() >= length) {
+        std::string start(name.substr(0, length));
         if (valid_key(start) && !taken.contains(start)) {
             return start;
         }
@@ -496,6 +636,33 @@ struct Candidate {
     const TileData* data = nullptr;
 };
 
+std::vector<TilePolygon> polygons_of(const json::Value& polygons) {
+    std::vector<TilePolygon> out;
+    for (const json::Value& item : polygons.as_array()) {
+        TilePolygon polygon;
+        for (const json::Value& point : item.find("points")->as_array()) {
+            polygon.points.push_back({static_cast<float>(point.as_array()[0].as_double()),
+                                      static_cast<float>(point.as_array()[1].as_double())});
+        }
+        if (const json::Value* value = item.find("layer"); value != nullptr) {
+            polygon.layer = static_cast<int>(value->as_int());
+        }
+        if (const json::Value* value = item.find("one_way"); value != nullptr) {
+            polygon.one_way = value->as_bool();
+        }
+        if (const json::Value* value = item.find("one_way_margin"); value != nullptr) {
+            polygon.one_way_margin = static_cast<float>(value->as_double());
+        }
+        out.push_back(std::move(polygon));
+    }
+    return out;
+}
+
+bool flag(const json::Value& object, std::string_view key) {
+    const json::Value* value = object.find(key);
+    return value != nullptr && value->as_bool();
+}
+
 world::TileMapLayer layer_from_json(const json::Value& component) {
     world::TileMapLayer layer;
     if (const json::Value* value = component.find("tile_set"); value != nullptr) {
@@ -526,6 +693,15 @@ const TileData* TileSet::find(const TileRef& tile) const {
     }
     const auto found = source->second.tiles.find(tile.atlas);
     return found == source->second.tiles.end() ? nullptr : &found->second;
+}
+
+const AlternativeTile* TileSet::alternative(const TileRef& tile) const {
+    const TileData* data = find(tile);
+    if (data == nullptr || tile.alternative == 0) {
+        return nullptr;
+    }
+    const auto found = data->alternatives.find(tile.alternative);
+    return found == data->alternatives.end() ? nullptr : &found->second;
 }
 
 int TileSet::terrain(std::string_view name) const {
@@ -562,6 +738,24 @@ Result<TileSet> parse_tileset(const json::Value& doc) {
     }
     TileSet set;
     set.tile_size = pair_of(doc.find("tile_size"), set.tile_size);
+    if (const json::Value* layers = doc.find("physics_layers"); layers != nullptr) {
+        for (const json::Value& json_layer : layers->as_array()) {
+            PhysicsLayer layer;
+            if (const json::Value* value = json_layer.find("collision_layer"); value != nullptr) {
+                layer.collision_layer = static_cast<std::uint32_t>(value->as_int());
+            }
+            if (const json::Value* value = json_layer.find("collision_mask"); value != nullptr) {
+                layer.collision_mask = static_cast<std::uint32_t>(value->as_int());
+            }
+            if (const json::Value* value = json_layer.find("friction"); value != nullptr) {
+                layer.friction = static_cast<float>(value->as_double());
+            }
+            if (const json::Value* value = json_layer.find("bounce"); value != nullptr) {
+                layer.bounce = static_cast<float>(value->as_double());
+            }
+            set.physics_layers.push_back(layer);
+        }
+    }
     if (const json::Value* sets = doc.find("terrain_sets"); sets != nullptr) {
         for (const auto& [name, json_set] : sets->as_object()) {
             const json::Value* mode = json_set.find("mode");
@@ -612,6 +806,31 @@ Result<TileSet> parse_tileset(const json::Value& doc) {
                 if (const json::Value* value = json_tile.find("probability"); value != nullptr) {
                     tile.probability = value->as_double();
                 }
+                if (const json::Value* value = json_tile.find("collision"); value != nullptr) {
+                    tile.collision = polygons_of(*value);
+                }
+                if (const json::Value* value = json_tile.find("alternatives"); value != nullptr) {
+                    for (const auto& [number, json_alternative] : value->as_object()) {
+                        AlternativeTile alternative;
+                        alternative.flip_h = flag(json_alternative, "flip_h");
+                        alternative.flip_v = flag(json_alternative, "flip_v");
+                        alternative.transpose = flag(json_alternative, "transpose");
+                        if (const json::Value* modulate = json_alternative.find("modulate");
+                            modulate != nullptr) {
+                            const json::Array& rgba = modulate->as_array();
+                            alternative.modulate = {static_cast<float>(rgba[0].as_double()),
+                                                    static_cast<float>(rgba[1].as_double()),
+                                                    static_cast<float>(rgba[2].as_double()),
+                                                    static_cast<float>(rgba[3].as_double())};
+                        }
+                        if (const json::Value* collision = json_alternative.find("collision");
+                            collision != nullptr) {
+                            alternative.collision = polygons_of(*collision);
+                        }
+                        tile.alternatives.emplace(parse_alternative(number).value_or(1),
+                                                  std::move(alternative));
+                    }
+                }
                 source.tiles.emplace(atlas, std::move(tile));
             }
         }
@@ -621,50 +840,198 @@ Result<TileSet> parse_tileset(const json::Value& doc) {
 }
 
 Result<TileRef> find_tile(const TileSet& set, std::string_view text) {
-    const std::size_t colon = text.rfind(':');
+    // The turns and the alternative come last; what is left names the tile.
+    std::string_view base = text;
+    bool flip_h = false;
+    bool flip_v = false;
+    bool transpose = false;
+    int alternative = 0;
+    const auto last_part = [&] {
+        const std::size_t colon = base.rfind(':');
+        return colon == std::string_view::npos ? std::string_view() : base.substr(colon + 1);
+    };
+    if (const std::string_view turns = last_part();
+        !turns.empty() && turns.find_first_not_of("hvt") == std::string_view::npos) {
+        constexpr std::array<std::string_view, 7> kTurns = {"h", "v", "t", "hv", "ht", "vt", "hvt"};
+        if (std::ranges::find(kTurns, turns) == kTurns.end()) {
+            return make_error(ErrorCode::InvalidArgument,
+                              quoted(text) + ": a cell's turns are h, v and t, each at most once "
+                                             "and in that order, as \"crate:hv\"");
+        }
+        flip_h = turns.find('h') != std::string_view::npos;
+        flip_v = turns.find('v') != std::string_view::npos;
+        transpose = turns.find('t') != std::string_view::npos;
+        base = base.substr(0, base.size() - turns.size() - 1);
+    }
+    if (const std::string_view number = last_part();
+        !number.empty() && number.find_first_not_of("0123456789") == std::string_view::npos) {
+        const std::optional<int> parsed = parse_alternative(number);
+        if (!parsed && number != "0") {
+            return make_error(ErrorCode::InvalidArgument,
+                              quoted(text) + ": alternatives are numbered from 1 to " +
+                                  std::to_string(kMaxAlternative));
+        }
+        alternative = parsed.value_or(0);
+        base = base.substr(0, base.size() - number.size() - 1);
+    }
+
+    TileRef out;
+    const std::size_t colon = base.find(':');
     if (colon == std::string_view::npos) {
-        if (const auto it = set.names.find(text); it != set.names.end()) {
-            return it->second;
+        const auto it = set.names.find(base);
+        if (it == set.names.end() && set.sources.contains(base)) {
+            return make_error(ErrorCode::InvalidArgument,
+                              quoted(text) +
+                                  " is neither a tile name nor \"source:column,row\", as "
+                                  "\"ground:2,0\"");
         }
-        std::vector<std::string_view> names;
-        names.reserve(set.names.size());
-        for (const auto& [name, tile] : set.names) {
-            names.emplace_back(name);
+        if (it == set.names.end()) {
+            std::vector<std::string_view> names;
+            names.reserve(set.names.size());
+            for (const auto& [name, tile] : set.names) {
+                names.emplace_back(name);
+            }
+            std::string message = "the tile set has no tile named " + quoted(base);
+            add_hint(message, base, names);
+            return make_error(ErrorCode::NotFound, std::move(message));
         }
-        std::string message = "the tile set has no tile named " + quoted(text);
-        add_hint(message, text, names);
+        out = it->second;
+    } else {
+        const std::string_view source_name = base.substr(0, colon);
+        const auto source = set.sources.find(source_name);
+        if (source == set.sources.end()) {
+            std::vector<std::string_view> names;
+            names.reserve(set.sources.size());
+            for (const auto& [name, unused] : set.sources) {
+                names.emplace_back(name);
+            }
+            std::string message = "the tile set has no source " + quoted(source_name);
+            add_hint(message, source_name, names);
+            return make_error(ErrorCode::NotFound, std::move(message));
+        }
+        const std::optional<Vec2i> atlas = parse_atlas(base.substr(colon + 1));
+        if (!atlas) {
+            return make_error(ErrorCode::InvalidArgument,
+                              quoted(text) +
+                                  " is neither a tile name nor \"source:column,row\", as "
+                                  "\"ground:2,0\", with an alternative and turns after it, as "
+                                  "\"ground:2,0:1:hv\"");
+        }
+        if (!source->second.tiles.contains(*atlas)) {
+            return make_error(ErrorCode::NotFound, "the source " + quoted(source_name) +
+                                                       " has no tile at " + atlas_text(*atlas));
+        }
+        out.source = std::string(source_name);
+        out.atlas = *atlas;
+    }
+    if (alternative != 0 && !set.find(out)->alternatives.contains(alternative)) {
+        std::string message =
+            "the tile " + quoted(base) + " has no alternative " + std::to_string(alternative);
+        const auto& alternatives = set.find(out)->alternatives;
+        if (alternatives.empty()) {
+            message += "; it has none";
+        } else {
+            message += "; it has " + std::to_string(alternatives.begin()->first) + " to " +
+                       std::to_string(alternatives.rbegin()->first);
+        }
         return make_error(ErrorCode::NotFound, std::move(message));
     }
-    const std::string_view source_name = text.substr(0, colon);
-    const auto source = set.sources.find(source_name);
-    if (source == set.sources.end()) {
-        std::vector<std::string_view> names;
-        names.reserve(set.sources.size());
-        for (const auto& [name, unused] : set.sources) {
-            names.emplace_back(name);
-        }
-        std::string message = "the tile set has no source " + quoted(source_name);
-        add_hint(message, source_name, names);
-        return make_error(ErrorCode::NotFound, std::move(message));
-    }
-    const std::optional<Vec2i> atlas = parse_atlas(text.substr(colon + 1));
-    if (!atlas) {
-        return make_error(ErrorCode::InvalidArgument,
-                          quoted(text) + " is neither a tile name nor \"source:column,row\", as "
-                                         "\"ground:2,0\"");
-    }
-    if (!source->second.tiles.contains(*atlas)) {
-        return make_error(ErrorCode::NotFound, "the source " + quoted(source_name) +
-                                                   " has no tile at " + atlas_text(*atlas));
-    }
-    return TileRef{.source = std::string(source_name), .atlas = *atlas};
+    out.alternative = alternative;
+    out.flip_h = flip_h;
+    out.flip_v = flip_v;
+    out.transpose = transpose;
+    return out;
 }
 
 std::string tile_text(const TileSet& set, const TileRef& tile) {
+    std::string out;
     if (const TileData* data = set.find(tile); data != nullptr && !data->name.empty()) {
-        return data->name;
+        out = data->name;
+    } else {
+        out = tile.source + ":" + atlas_text(tile.atlas);
     }
-    return tile.source + ":" + atlas_text(tile.atlas);
+    if (tile.alternative != 0) {
+        out += ":" + std::to_string(tile.alternative);
+    }
+    if (tile.flip_h || tile.flip_v || tile.transpose) {
+        out += ':';
+        if (tile.flip_h) {
+            out += 'h';
+        }
+        if (tile.flip_v) {
+            out += 'v';
+        }
+        if (tile.transpose) {
+            out += 't';
+        }
+    }
+    return out;
+}
+
+TileLook tile_look(const TileSet& set, const TileRef& tile) {
+    TileLook out{.flip_h = tile.flip_h,
+                 .flip_v = tile.flip_v,
+                 .transpose = tile.transpose,
+                 .modulate = {1.0F, 1.0F, 1.0F, 1.0F}};
+    if (const AlternativeTile* alternative = set.alternative(tile); alternative != nullptr) {
+        out.flip_h = out.flip_h != alternative->flip_h;
+        out.flip_v = out.flip_v != alternative->flip_v;
+        out.transpose = out.transpose != alternative->transpose;
+        out.modulate = alternative->modulate;
+    }
+    return out;
+}
+
+std::vector<TilePolygon> tile_collision(const TileSet& set, const TileRef& tile) {
+    const TileData* data = set.find(tile);
+    if (data == nullptr) {
+        return {};
+    }
+    const AlternativeTile* alternative = set.alternative(tile);
+    std::vector<TilePolygon> out =
+        alternative != nullptr ? alternative->collision : data->collision;
+    for (TilePolygon& polygon : out) {
+        for (Vec2& point : polygon.points) {
+            if (tile.transpose) {
+                point = {point.y, point.x};
+            }
+            if (tile.flip_h) {
+                point.x = -point.x;
+            }
+            if (tile.flip_v) {
+                point.y = -point.y;
+            }
+        }
+    }
+    return out;
+}
+
+std::vector<physics2d::TileShape> tile_shapes(const TileSet& set, const Cells& cells) {
+    std::vector<physics2d::TileShape> out;
+    for (const auto& [cell, tile] : cells) {
+        const Vec2 center{(static_cast<float>(cell.x) + 0.5F) * static_cast<float>(set.tile_size.x),
+                          (static_cast<float>(cell.y) + 0.5F) *
+                              static_cast<float>(set.tile_size.y)};
+        for (TilePolygon& polygon : tile_collision(set, tile)) {
+            if (polygon.layer < 0 ||
+                static_cast<std::size_t>(polygon.layer) >= set.physics_layers.size()) {
+                continue;
+            }
+            const PhysicsLayer& layer = set.physics_layers[static_cast<std::size_t>(polygon.layer)];
+            for (Vec2& point : polygon.points) {
+                point = point + center;
+            }
+            out.push_back({.cell = cell,
+                           .points = std::move(polygon.points),
+                           .collision_layer = layer.collision_layer,
+                           .collision_mask = layer.collision_mask,
+                           .friction = layer.friction,
+                           .bounce = layer.bounce,
+                           .one_way = polygon.one_way,
+                           .one_way_margin = polygon.one_way_margin});
+        }
+    }
+    return out;
 }
 
 std::array<int, 4> tile_region(const AtlasSource& source, Vec2i atlas) {
@@ -702,12 +1069,15 @@ void encode_cells(const Cells& cells, const TileSet& set, world::TileMapLayer& l
     std::vector<std::string> order;
     std::map<std::string, std::string, std::less<>> key_of;
     std::map<std::string, std::size_t, std::less<>> uses;
+    std::map<std::string, std::string_view, std::less<>> name_of; // "" for a tile with none
     int min_x = INT_MAX;
     for (const auto& [cell, tile] : cells) {
         min_x = std::min(min_x, cell.x);
         std::string text = tile_text(set, tile);
         ++uses[text];
         if (key_of.try_emplace(text).second) {
+            const TileData* data = set.find(tile);
+            name_of.emplace(text, data != nullptr ? std::string_view(data->name) : "");
             order.push_back(std::move(text));
         }
     }
@@ -736,7 +1106,7 @@ void encode_cells(const Cells& cells, const TileSet& set, world::TileMapLayer& l
     for (const std::string& text : order) {
         std::string& key = key_of.find(text)->second;
         if (key.empty()) {
-            key = new_key(text, length, taken);
+            key = new_key(name_of.find(text)->second, length, taken);
             taken.insert(key);
         }
     }

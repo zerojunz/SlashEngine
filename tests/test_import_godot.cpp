@@ -124,7 +124,7 @@ json::Value unsupported(const json::Value& report, std::string_view what) {
     return nullptr;
 }
 
-// A converted tile map layer's cells, as "source:column,row" by "x,y".
+// A converted tile map layer's cells, as "source:column,row" and any suffix by "x,y".
 std::map<std::string, std::string> cells_of(const std::map<std::string, std::string>& files,
                                             const json::Value& component) {
     const std::string& path = component.find("tile_set")->as_string();
@@ -146,8 +146,13 @@ std::map<std::string, std::string> cells_of(const std::map<std::string, std::str
     REQUIRE(cells.ok());
     std::map<std::string, std::string> out;
     for (const auto& [cell, tile] : cells.value()) {
+        // As tile_text writes an unnamed tile, with its alternative and turns.
         out[std::to_string(cell.x) + "," + std::to_string(cell.y)] =
-            tile.source + ":" + std::to_string(tile.atlas.x) + "," + std::to_string(tile.atlas.y);
+            tile.source + ":" + std::to_string(tile.atlas.x) + "," + std::to_string(tile.atlas.y) +
+            slash::canvas::tile_text(set.value(), tile)
+                .substr(slash::canvas::tile_text(set.value(),
+                                                 {.source = tile.source, .atlas = tile.atlas})
+                            .size());
     }
     return out;
 }
@@ -322,7 +327,7 @@ color_ramp = SubResource("Gradient_1")
 
 [node name="Tiles" type="TileMapLayer" parent="World"]
 tile_set = ExtResource("4_tiles")
-tile_map_data = PackedByteArray("AAAAAAAAAAAAAAAAAAABAAAAAAABAAAAAAD//wIAAAABAAAAAQA=")
+tile_map_data = PackedByteArray("AAAAAAAAAAAAAAAAAAABAAAAAAABAAAAAAD//wIAAAABAAAAAQADAAAAAAAAAAEAAFA=")
 self_modulate = Color(1, 1, 1, 0.5)
 
 [node name="Old" type="TileMap" parent="World"]
@@ -383,9 +388,13 @@ max_columns = 2
 )";
 
 // A tile set with two terrains connected by their sides, an alternative tile and collision.
-constexpr std::string_view kTileSet = R"([gd_resource type="TileSet" load_steps=3 format=3]
+constexpr std::string_view kTileSet = R"([gd_resource type="TileSet" load_steps=4 format=3]
 
 [ext_resource type="Texture2D" path="res://art/tiles.png" id="1_tex"]
+
+[sub_resource type="PhysicsMaterial" id="PhysicsMaterial_1"]
+friction = 0.25
+bounce = 0.5
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_1"]
 texture = ExtResource("1_tex")
@@ -402,10 +411,18 @@ texture = ExtResource("1_tex")
 1:0/0/terrains_peering_bit/left_side = 1
 1:0/0/terrains_peering_bit/top_side = 1
 1:0/1 = 1
+1:0/1/flip_v = true
+1:0/1/modulate = Color(1, 0.5, 0.5, 1)
+1:0/1/z_index = 1
+1:0/1/physics_layer_0/angular_velocity = 0.0
 2:0/0 = 0
 2:0/0/probability = 0.5
 0:1/0 = 0
 0:1/0/physics_layer_0/polygon_0/points = PackedVector2Array(-8, -8, 8, -8, 8, 8, -8, 8)
+0:1/0/physics_layer_1/polygon_0/points = PackedVector2Array(-8, -8, 8, -8, 8, -4, -8, -4)
+0:1/0/physics_layer_1/polygon_0/one_way = true
+0:1/0/physics_layer_0/linear_velocity = Vector2(0, 0)
+0:1/0/physics_layer_1/angular_velocity = 1.0
 
 [resource]
 terrain_set_0/mode = 2
@@ -414,6 +431,9 @@ terrain_set_0/terrain_0/color = Color(0.2, 0.8, 0.2, 1)
 terrain_set_0/terrain_1/name = "Water"
 terrain_set_0/terrain_1/color = Color(0.2, 0.2, 0.8, 1)
 physics_layer_0/collision_layer = 1
+physics_layer_1/collision_layer = 4
+physics_layer_1/collision_mask = 3
+physics_layer_1/physics_material = SubResource("PhysicsMaterial_1")
 sources/0 = SubResource("TileSetAtlasSource_1")
 )";
 
@@ -831,23 +851,33 @@ TEST_CASE("importing Godot tile maps, themes and bus layouts writes their SlashE
     CHECK(parse(files.at(tileset)) == parse(R"({
         "format": 1,
         "terrain_sets": {"set_0": {"mode": "match_sides", "terrains": ["Grass", "Water"]}},
+        "physics_layers": [{"collision_layer": 1},
+                           {"collision_layer": 4, "collision_mask": 3, "friction": 0.25,
+                            "bounce": 0.5}],
         "sources": {"tiles": {"texture": "godot/art/tiles.png", "tiles": {
             "0,0": {"terrain": "Grass", "peering": {"n": null, "s": "Water", "w": null}},
-            "1,0": {"terrain": "Water"},
+            "1,0": {"terrain": "Water",
+                    "alternatives": {"1": {"flip_v": true, "modulate": [1.0, 0.5, 0.5, 1.0]}}},
             "2,0": {"probability": 0.5},
-            "0,1": {}}}}})"));
-    CHECK(unsupported(plan.report, "tile collision").find("where")->as_string() ==
-          "tiles/terrain.tres");
+            "0,1": {"collision": [
+                {"points": [[-8.0, -8.0], [8.0, -8.0], [8.0, 8.0], [-8.0, 8.0]]},
+                {"layer": 1, "one_way": true,
+                 "points": [[-8.0, -8.0], [8.0, -8.0], [8.0, -4.0], [-8.0, -4.0]]}]}}}}})"));
+    CHECK(
+        unsupported(plan.report, "alternative tile property z_index").find("where")->as_string() ==
+        "tiles/terrain.tres: TileSetAtlasSource_1");
+    // Godot 4.0 and 4.1 save zero velocities too; only others are reported.
+    CHECK(unsupported(plan.report, "tile constant velocities").find("count")->as_int() == 1);
 
-    // A TileMapLayer's cells; the alternative tile is drawn as its base tile.
+    // A TileMapLayer's cells, with an alternative tile and a cell flipped and transposed.
     const json::Value tiles = entity(files, level, "tiles");
     CHECK(tiles.find("TileMapLayer")->find("tile_set")->as_string() == tileset);
     CHECK(*tiles.find("TileMapLayer")->find("modulate") == parse("[1.0, 1.0, 1.0, 0.5]"));
     CHECK(cells_of(files, *tiles.find("TileMapLayer")) ==
-          std::map<std::string, std::string>{
-              {"0,0", "tiles:0,0"}, {"1,0", "tiles:1,0"}, {"-1,2", "tiles:1,0"}});
-    CHECK(unsupported(plan.report, "alternative tiles").find("where")->as_string() ==
-          "scenes/level.tscn: World/Tiles");
+          std::map<std::string, std::string>{{"0,0", "tiles:0,0"},
+                                             {"1,0", "tiles:1,0"},
+                                             {"-1,2", "tiles:1,0:1"},
+                                             {"3,0", "tiles:0,1:ht"}});
 
     // An old TileMap's layers are entities under it, each with its own settings.
     const json::Value old = entity(files, level, "old");

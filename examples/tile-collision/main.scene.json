@@ -1,0 +1,72 @@
+{
+  "entities": {
+    "ghost_test": {
+      "components": {
+        "CollisionShape2D": {
+          "radius": 6.0,
+          "shape": "circle"
+        },
+        "RigidBody2D": {},
+        "Transform2D": {
+          "position": [136.0, 60.0]
+        }
+      }
+    },
+    "jumper": {
+      "components": {
+        "CollisionShape2D": {
+          "radius": 6.0,
+          "shape": "circle"
+        },
+        "RigidBody2D": {},
+        "Transform2D": {
+          "position": [104.0, 40.0]
+        }
+      }
+    },
+    "level": {
+      "components": {
+        "TileMapLayer": {
+          "legend": {
+            "#": "block",
+            "/": "slope",
+            "=": "ledge",
+            "^": "spring",
+            "~": "block:1"
+          },
+          "origin": [0, 2],
+          "rows": ["........===", "", "", "#", "#...#.^.~../", "############"],
+          "texture_filter": "nearest",
+          "tile_set": "level.tileset.json"
+        }
+      }
+    },
+    "riser": {
+      "components": {
+        "CollisionShape2D": {
+          "radius": 6.0,
+          "shape": "circle"
+        },
+        "RigidBody2D": {
+          "linear_velocity": [0.0, -360.0]
+        },
+        "Transform2D": {
+          "position": [152.0, 72.0]
+        }
+      }
+    },
+    "roller": {
+      "components": {
+        "CollisionShape2D": {
+          "radius": 6.0,
+          "shape": "circle"
+        },
+        "RigidBody2D": {},
+        "Transform2D": {
+          "position": [24.0, 60.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

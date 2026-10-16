@@ -20,6 +20,7 @@ inline constexpr Vec4 kCollisionColor{0.0F, 0.6F, 0.7F, 0.42F};
 struct CollisionShapes {
     std::vector<render::Vertex2D> vertices; // triangles in world pixels, to draw untextured
     std::size_t shapes = 0;                 // CollisionShape2D and CollisionPolygon2D drawn
+    std::size_t tiles = 0;                  // tile collision polygons drawn
 };
 
 // Every CollisionShape2D and CollisionPolygon2D in the world, placed as 2D physics places them
@@ -32,6 +33,8 @@ struct CollisionShapes {
 //   - A disabled one is gray, as bright as the color's brightest channel, at half its alpha.
 //   - One-way collision adds Godot's arrow down the shape's +y: the color inverted for a shape
 //     (darker when disabled), the color made opaque for a polygon.
+// Under them, each TileMapLayer's tile collision polygons (physics2d::tile_shapes) fill with the
+// color, with no outline, as Godot's TileMapLayer draws them.
 [[nodiscard]] CollisionShapes collision_shapes(const world::World& world,
                                                const TransformOf& transform_of = {},
                                                Vec4 color = kCollisionColor);
