@@ -223,16 +223,16 @@ A reference must name an entity that exists in the same scene.
 | | `disable_collision` | `bool` | `true` | The two bodies don't collide with each other. Every joint has it |
 | | `angular_limit_enabled` | `bool` | `false` | Limit how far `node_b` turns from `node_a` |
 | | `angular_limit_lower`, `angular_limit_upper` | `float` | `0` | The limits in radians, from -3.1 to 0 and from 0 to 3.1 |
-| | `motor_enabled` | `bool` | `false` | Turn `node_b` at `motor_target_velocity` |
+| | `motor_enabled` | `bool` | `false` | Turn `node_b` at `motor_target_velocity`; past an angle limit it stops pushing, as Godot's |
 | | `motor_target_velocity` | `float` | `0` | In radians per second |
 | `DampedSpringJoint2D` | `node_a`, `node_b`, `disable_collision` | | | As `PinJoint2D`'s; a spring from `node_a` at the entity's `Transform2D` to `node_b` |
-| | `length` | `float` | `50` | Where `node_b` is attached, in pixels along the entity's y axis |
+| | `length` | `float` | `50` | Where `node_b` is attached, in the entity's pixels along its y axis (its scale stretches it) |
 | | `rest_length` | `float` | `0` | The length it pulls toward; 0 is `length` |
 | | `stiffness` | `float` | `20` | How hard it pulls |
 | | `damping` | `float` | `1` | How fast it settles |
 | `GrooveJoint2D` | `node_a`, `node_b`, `disable_collision` | | | As `PinJoint2D`'s; `node_b` slides along a groove of `node_a`'s and turns freely |
-| | `length` | `float` | `50` | The groove's length in pixels, from the entity's `Transform2D` along its y axis |
-| | `initial_offset` | `float` | `25` | Where `node_b` starts along the groove, in pixels |
+| | `length` | `float` | `50` | The groove's length in the entity's pixels, from its `Transform2D` along its y axis (its scale stretches it) |
+| | `initial_offset` | `float` | `25` | Where `node_b` starts along the groove, in the entity's pixels |
 | `CPUParticles2D` | `emitting` | `bool` | `true` | Emit new [particles](#particles); setting it again restarts a `one_shot` |
 | | `amount` | `int` | `8` | Particles alive at most, 1 to 65536: each cycle emits this many |
 | | `lifetime` | `float` | `1` | Seconds each particle lives and each cycle lasts, from 0.001 |
@@ -1243,7 +1243,9 @@ animation; gravity and damping come from `physics_2d` in [`project.json`](projec
   with `build_mode` `segments`. A shape with no area, or a polygon that crosses itself, is left
   out with one warning in the log.
 - A joint joins `node_a` and `node_b` at its own entity's `Transform2D`, as Godot's joints are
-  placed by their node; a `null` `node_a` joins `node_b` to the world.
+  placed by their node; a `null` `node_a` joins `node_b` to the world. It is made where the
+  entity is once both bodies exist, and stays there when a parent carries the entity away, as
+  Godot's; changing the entity's own `Transform2D` makes it again there.
 - Results are the same on every platform for the same scene and ticks, so tests and replays
   can check exact positions.
 - [`physics.raycast`](commands.md#physicsraycast), [`physics.overlap`](commands.md#physicsoverlap)

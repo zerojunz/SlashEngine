@@ -649,14 +649,15 @@ void Space::sync_joints(world::World& world, const world::Tree2D& tree) {
 
     const auto place = [&](entt::entity entity, const JointKey& key, entt::entity node_a,
                            entt::entity node_b) {
-        const Transform2D transform = transform_of(tree, entity);
+        const auto* own_transform = registry.try_get<Transform2D>(entity);
+        const Transform2D own = own_transform != nullptr ? *own_transform : Transform2D{};
         const b2BodyId body_a = body_id(node_a, true);
         const b2BodyId body_b = body_id(node_b, false);
         if (const Joint* existing = joints_.find(entity); existing != nullptr) {
             const Joint& joint = *existing;
-            if (b2Joint_IsValid(joint.id) && joint.key == key &&
-                joint.position == transform.position && joint.rotation == transform.rotation &&
-                B2_ID_EQUALS(joint.body_a, body_a) && B2_ID_EQUALS(joint.body_b, body_b)) {
+            if (b2Joint_IsValid(joint.id) && joint.key == key && joint.position == own.position &&
+                joint.rotation == own.rotation && B2_ID_EQUALS(joint.body_a, body_a) &&
+                B2_ID_EQUALS(joint.body_b, body_b)) {
                 return;
             }
             if (b2Joint_IsValid(joint.id)) {
@@ -669,12 +670,15 @@ void Space::sync_joints(world::World& world, const world::Tree2D& tree) {
         }
         Joint joint{.id = b2_nullJointId,
                     .key = key,
-                    .position = transform.position,
-                    .rotation = transform.rotation,
+                    .position = own.position,
+                    .rotation = own.rotation,
                     .body_a = body_a,
                     .body_b = body_b};
-        const b2Vec2 origin = to_b2(transform.position);
-        const b2Vec2 y_axis = b2RotateVector(b2MakeRot(transform.rotation), {0.0F, 1.0F});
+        // Points along the joint's y axis in its own space, after its parents', as Godot's
+        // get_global_transform().xform(Vector2(0, distance)).
+        const world::Affine2D global = tree.global_affine(entity);
+        const b2Vec2 origin = to_b2(global.origin);
+        const auto along = [&](float distance) { return to_b2(global.apply({0.0F, distance})); };
         if (const auto* pin = std::get_if<PinJoint2D>(&key); pin != nullptr) {
             b2RevoluteJointDef def = b2DefaultRevoluteJointDef();
             def.bodyIdA = body_a;
@@ -703,10 +707,10 @@ void Space::sync_joints(world::World& world, const world::Tree2D& tree) {
             b2DistanceJointDef def = b2DefaultDistanceJointDef();
             def.bodyIdA = body_a;
             def.bodyIdB = body_b;
+            const b2Vec2 end = along(spring->length);
             def.localAnchorA = b2Body_GetLocalPoint(body_a, origin);
-            def.localAnchorB =
-                b2Body_GetLocalPoint(body_b, b2MulAdd(origin, spring->length, y_axis));
-            def.length = spring->rest_length > 0.0F ? spring->rest_length : spring->length;
+            def.localAnchorB = b2Body_GetLocalPoint(body_b, end);
+            def.length = spring->rest_length > 0.0F ? spring->rest_length : b2Distance(origin, end);
             def.enableSpring = true;
             def.hertz = std::sqrt(stiffness / mass) / (2.0F * std::numbers::pi_v<float>);
             def.dampingRatio =
@@ -718,14 +722,19 @@ void Space::sync_joints(world::World& world, const world::Tree2D& tree) {
             b2WheelJointDef def = b2DefaultWheelJointDef();
             def.bodyIdA = body_a;
             def.bodyIdB = body_b;
+            const b2Vec2 groove_end = along(std::max(groove->length, 0.0F));
             def.localAnchorA = b2Body_GetLocalPoint(body_a, origin);
-            def.localAnchorB =
-                b2Body_GetLocalPoint(body_b, b2MulAdd(origin, groove->initial_offset, y_axis));
-            def.localAxisA = b2Body_GetLocalVector(body_a, y_axis);
+            def.localAnchorB = b2Body_GetLocalPoint(body_b, along(groove->initial_offset));
+            b2Vec2 axis = b2Sub(groove_end, origin);
+            const float groove_length = b2Length(axis);
+            if (groove_length <= 0.0F) {
+                axis = b2Sub(along(1.0F), origin);
+            }
+            def.localAxisA = b2Body_GetLocalVector(body_a, b2Normalize(axis));
             def.enableSpring = false;
             def.enableLimit = true;
             def.lowerTranslation = 0.0F;
-            def.upperTranslation = std::max(groove->length, 0.0F);
+            def.upperTranslation = groove_length;
             def.enableMotor = false;
             def.collideConnected = !groove->disable_collision;
             joint.id = b2CreateWheelJoint(world_, &def);
@@ -750,6 +759,22 @@ void Space::sync_joints(world::World& world, const world::Tree2D& tree) {
         }
         const auto& groove = registry.get<GrooveJoint2D>(entity);
         place(entity, groove, groove.node_a, groove.node_b);
+    }
+    // Past a limit a pin's motor stops pushing, as in Godot's GodotPinJoint2D::solve, so it
+    // can't drive through the limit.
+    for (const entt::entity entity : registry.view<PinJoint2D>()) {
+        const auto& pin = registry.get<PinJoint2D>(entity);
+        const Joint* joint = joints_.find(entity);
+        if (!pin.motor_enabled || !pin.angular_limit_enabled || joint == nullptr ||
+            !b2Joint_IsValid(joint->id)) {
+            continue;
+        }
+        const float angle = b2RevoluteJoint_GetAngle(joint->id);
+        const bool past = angle > std::clamp(pin.angular_limit_upper, 0.0F, kMaxJointAngle) ||
+                          angle < std::clamp(pin.angular_limit_lower, -kMaxJointAngle, 0.0F);
+        if (b2RevoluteJoint_IsMotorEnabled(joint->id) == past) {
+            b2RevoluteJoint_EnableMotor(joint->id, !past);
+        }
     }
 }
 
