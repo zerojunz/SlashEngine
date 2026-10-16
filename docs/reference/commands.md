@@ -67,6 +67,7 @@ as `entity.get`, reject it as an unknown param.
 | Lights | [`light.sample`](#lightsample) |
 | UI and text | [`ui.layout`](#uilayout), [`ui.theme`](#uitheme), [`ui.press`](#uipress), [`ui.focus`](#uifocus), [`ui.clipboard`](#uiclipboard), [`text.measure`](#textmeasure) |
 | Input | [`input.inject`](#inputinject), [`input.state`](#inputstate), [`input.actions`](#inputactions) |
+| Audio | [`audio.state`](#audiostate), [`audio.capture`](#audiocapture), [`audio.play`](#audioplay), [`audio.stop`](#audiostop), [`audio.set_bus`](#audioset_bus) |
 | Storyboard | [`storyboard.query`](#storyboardquery), [`storyboard.brief`](#storyboardbrief), [`storyboard.check`](#storyboardcheck), [`storyboard.edit`](#storyboardedit) |
 | Components | [`component.set`](#componentset), [`component.remove`](#componentremove) |
 | Query | [`world.query`](#worldquery) |
@@ -116,11 +117,13 @@ says whether the game is `playing`.
 Returns a JSON Schema: for scene, prefab, [`.frames.json`](scene-format.md#sprite-frames),
 [`.material.json`](scene-format.md#materials), [`.anim.json`](scene-format.md#animations),
 [`.tileset.json`](scene-format.md#tile-sets), [`.font.json`](scene-format.md#fonts),
-[`.theme.json`](scene-format.md#themes) or storyboard files, one component or one command.
+[`.theme.json`](scene-format.md#themes), [`.audio.json`](scene-format.md#audio-streams),
+[`.bus_layout.json`](scene-format.md#bus-layouts) or storyboard files, one component or one
+command.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `kind` | `"scene"`, `"prefab"`, `"frames"`, `"material"`, `"animation"`, `"tileset"`, `"font"`, `"theme"`, `"storyboard"`, `"component"` or `"command"` | required | Which schema |
+| `kind` | `"scene"`, `"prefab"`, `"frames"`, `"material"`, `"animation"`, `"tileset"`, `"font"`, `"theme"`, `"audio"`, `"bus_layout"`, `"storyboard"`, `"component"` or `"command"` | required | Which schema |
 | `name` | string | | Component or command name, for `component` and `command` |
 
 Needs: `read`.
@@ -988,6 +991,144 @@ Needs: `read`.
 
 Bindings are written as in `project.json`. A game that rebinds actions while it runs, e.g. from
 an options menu, shows its bindings as they are now.
+
+## Audio
+
+Sound follows Godot's AudioServer: [players](scene-format.md#audio) mix into the buses of the
+project's [bus layout](scene-format.md#bus-layouts), each with its volume and
+[effects](scene-format.md#effects), and every bus sends to Master, which plays on the speakers.
+Sessions mix sound as they step but play it nowhere, so an agent hears a game by measuring it:
+`audio.state` shows the buses' levels and what each player is doing, and `audio.capture`
+measures what a bus played, or writes it to a `.wav` file. Levels are in dB to a tenth, with
+`null` for silence. The examples here are from [examples/audio](../../examples/audio/).
+
+### audio.state
+
+Returns the buses, with their volume, the peak level of the last mix step and what is turned
+on, and each player with an ID.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `ids` | array of strings | all | Only these players |
+
+Needs: `read`. With the footsteps playing:
+
+```json
+{"ids": ["footsteps"]}
+```
+
+```json
+{"buses":[{"name":"Master","peak_db":-5.4,"volume_db":0},{"effects":[{"enabled":false,"type":"low_pass_filter"}],"name":"Music","peak_db":-12,"volume_db":-6},{"effects":[{"type":"hard_limiter"}],"name":"Sfx","peak_db":-10.9,"volume_db":0}],"mix_rate":44100,"players":[{"bus":"Sfx","id":"footsteps","kind":"AudioStreamPlayer2D","length":0.1,"position":0.0493,"stream":"audio/steps.audio.json","voices":1,"volume":[0.5203,0.3797]}]}
+```
+
+- A bus lists `solo`, `mute` and `bypass_effects` when they are on, `send` when it isn't
+  Master, and its effects in order, with `"enabled": false` for those turned off.
+- `peak_db` is the louder channel's peak over the last mix step, after the bus's volume and
+  effects, or `null` when the bus was silent.
+- `voices` is how many playbacks of the player are mixing (up to its `max_polyphony`);
+  `position` (of the newest one) and `length` are in seconds. A randomizer's `length` is that
+  of the sound playing, and a player that hasn't played one has none.
+- `volume` is the `[left, right]` gain mixed in: the player's `volume_db`, then for an
+  `AudioStreamPlayer2D` its fade with distance and its pan from the listener.
+- `paused` is listed when `stream_paused` holds the player, and `error` when its stream did not
+  load, such as a missing or corrupt file.
+
+### audio.capture
+
+Measures what a bus played over the last seconds: its peak and RMS level and the peak of each
+slice of that time, oldest first, which shows a sound starting, fading or stopping. With `path`
+it also writes the sound to a 16-bit `.wav` file, to listen to.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `bus` | string | `"Master"` | The bus |
+| `seconds` | number, 0 to 10 | `1` | How far back |
+| `slices` | integer, 0 to 100 | `10` | Equal slices to report the peak of |
+| `path` | string | | A `.wav` file to write, relative to the project |
+
+Needs: `read`, and `filesystem` with `path`. The footstep click fading over a twentieth of a
+second:
+
+```json
+{"bus": "Sfx", "seconds": 0.05, "slices": 5}
+```
+
+```json
+{"peak_db":-7.6,"rms_db":-11.4,"seconds":0.05,"slices":[-7.6,-7.9,-8.8,-9.9,-11.1]}
+```
+
+Sessions keep the last 10 seconds of each bus; `seconds` in the reply is how much there was,
+which is less right after a scene opens. A name that is no bus is an error with the closest one,
+and so is a `path` that doesn't end in `.wav`. In a dry-run `batch`, `path` writes nothing.
+
+### audio.play
+
+Plays an `AudioStreamPlayer` or `AudioStreamPlayer2D` at the next tick, as Godot's `play()`: with
+`max_polyphony` 1 it starts over, with more another voice joins, up to that many.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `id` | string | required | The player's entity |
+| `from` | number | `0` | Seconds into the stream |
+
+Needs: `run`. Changes no entities until the next `step`, so there is nothing to undo; a failed
+`batch` takes the play back.
+
+```json
+{"id": "footsteps"}
+```
+
+```json
+{"tick":6}
+```
+
+`tick` is the tick it plays at, which the next `step` runs; the player's `playing` turns on then.
+An ID that names no entity is an error with the closest one, and so is an entity with neither
+player component. Setting `playing` to `true` with [`component.set`](#componentset) plays it
+too.
+
+### audio.stop
+
+Stops an `AudioStreamPlayer` or `AudioStreamPlayer2D` at the next tick, as Godot's `stop()`,
+fading every voice out over one mix step so it doesn't click.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `id` | string | required | The player's entity |
+
+Needs: `run`. Like `audio.play`, it returns `{"tick": ...}` and a failed `batch` takes it back.
+
+### audio.set_bus
+
+Changes a bus while the game runs, as Godot's `AudioServer` setters, e.g. from an options menu:
+its volume, mute, solo, effect bypass, or whether one of its effects is on. The
+[bus layout file](scene-format.md#bus-layouts) is unchanged, and a reload of it starts the buses
+over from the file.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `bus` | string | required | The bus |
+| `volume_db` | number, -80 to 24 | | Its gain in dB |
+| `mute` | boolean | | Silences it |
+| `solo` | boolean | | Plays only solo buses and the buses they send to |
+| `bypass_effects` | boolean | | Skips its effects |
+| `effect` | integer, 0 to 15 | | An effect's index on the bus, with `enabled` |
+| `enabled` | boolean | | Turns that effect on or off |
+
+Needs: `run`. Changes no entities, so there is nothing to undo; a failed command, `batch` or dry
+run puts the buses back.
+
+```json
+{"bus": "Music", "mute": true}
+```
+
+```json
+{"effects":[{"enabled":false,"type":"low_pass_filter"}],"mute":true,"name":"Music","peak_db":-12,"volume_db":-6}
+```
+
+The reply is the bus, as `audio.state` lists it. Volume changes ramp over one mix step. A bus
+name or effect index that doesn't exist is an error, and so are `effect` without `enabled` and
+`enabled` without `effect`.
 
 ## Storyboard
 

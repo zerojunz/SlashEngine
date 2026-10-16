@@ -1,0 +1,41 @@
+wrote audio/theme.wav, audio/step_left.wav and audio/step_right.wav
+scene.open {"path":"main.scene.json"}
+{"entities":3,"path":"main.scene.json"}
+events.subscribe {"kinds":["finished"]}
+{"subscription":"events_1"}
+step {"ticks":6}
+{"tick":6,"ticks":6}
+audio.state {}
+{"buses":[{"name":"Master","peak_db":-12,"volume_db":0},{"effects":[{"enabled":false,"type":"low_pass_filter"}],"name":"Music","peak_db":-12,"volume_db":-6},{"effects":[{"type":"hard_limiter"}],"name":"Sfx","peak_db":null,"volume_db":0}],"mix_rate":44100,"players":[{"bus":"Sfx","id":"footsteps","kind":"AudioStreamPlayer2D","stream":"audio/steps.audio.json","voices":0,"volume":[0.5203,0.3797]},{"bus":"Music","id":"music","kind":"AudioStreamPlayer","length":2,"position":0.1074,"stream":"audio/theme.wav","voices":1,"volume":[1,1]}]}
+audio.play {"id":"footsteps"}
+{"tick":6}
+step {"ticks":3}
+{"tick":9,"ticks":3}
+audio.state {"ids":["footsteps"]}
+{"buses":[{"name":"Master","peak_db":-5.4,"volume_db":0},{"effects":[{"enabled":false,"type":"low_pass_filter"}],"name":"Music","peak_db":-12,"volume_db":-6},{"effects":[{"type":"hard_limiter"}],"name":"Sfx","peak_db":-10.9,"volume_db":0}],"mix_rate":44100,"players":[{"bus":"Sfx","id":"footsteps","kind":"AudioStreamPlayer2D","length":0.1,"position":0.0493,"stream":"audio/steps.audio.json","voices":1,"volume":[0.5203,0.3797]}]}
+audio.capture {"bus":"Sfx","seconds":0.05,"slices":5}
+{"peak_db":-7.6,"rms_db":-11.4,"seconds":0.05,"slices":[-7.6,-7.9,-8.8,-9.9,-11.1]}
+step {"ticks":6}
+{"tick":15,"ticks":6}
+events.read {"subscription":"events_1"}
+{"dropped":0,"events":[{"data":{"component":"AudioStreamPlayer2D"},"id":"footsteps","kind":"finished","seq":1,"tick":11}],"more":false}
+component.set {"components":{"Transform2D":{"position":[520,180]}},"id":"footsteps"}
+{"changed":{"Transform2D":{"position":[520.0,180.0]}},"id":"footsteps"}
+audio.play {"id":"footsteps"}
+{"tick":15}
+step {"ticks":1}
+{"tick":16,"ticks":1}
+audio.state {"ids":["footsteps"]}
+{"buses":[{"name":"Master","peak_db":-3.6,"volume_db":0},{"effects":[{"enabled":false,"type":"low_pass_filter"}],"name":"Music","peak_db":-12,"volume_db":-6},{"effects":[{"type":"hard_limiter"}],"name":"Sfx","peak_db":-7.6,"volume_db":0}],"mix_rate":44100,"players":[{"bus":"Sfx","id":"footsteps","kind":"AudioStreamPlayer2D","length":0.1,"position":0.0145,"stream":"audio/steps.audio.json","voices":1,"volume":[0.3797,0.5203]}]}
+audio.set_bus {"bus":"Music","mute":true}
+{"effects":[{"enabled":false,"type":"low_pass_filter"}],"mute":true,"name":"Music","peak_db":-12,"volume_db":-6}
+step {"ticks":2}
+{"tick":18,"ticks":2}
+audio.capture {"seconds":0.01,"slices":0}
+{"peak_db":-11.1,"rms_db":-12.9,"seconds":0.01,"slices":[]}
+audio.set_bus {"bus":"Music","mute":false}
+{"effects":[{"enabled":false,"type":"low_pass_filter"}],"name":"Music","peak_db":null,"volume_db":-6}
+step {"ticks":30}
+{"tick":48,"ticks":30}
+audio.capture {"path":"build/master.wav","seconds":0.5}
+{"path":"build/master.wav","peak_db":-6.2,"rms_db":-11.8,"seconds":0.5,"slices":[-6.2,-11,-12,-12,-12,-12,-12,-12,-12,-12]}

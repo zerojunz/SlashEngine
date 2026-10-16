@@ -15,6 +15,7 @@ or license not allowed here, or whose license text changed without review.
 | [FreeType](https://github.com/freetype/freetype) | VER-2-14-3 | FreeType License (FTL), or GPL 2.0 at the user's choice; SlashEngine uses it under the FTL | Loading fonts and drawing glyph images | Fetched, linked statically |
 | [HarfBuzz](https://github.com/harfbuzz/harfbuzz) | 14.5.0 | MIT ("Old MIT" and MIT) | Text shaping | Fetched, linked statically |
 | [SheenBidi](https://github.com/Tehreer/SheenBidi) | v3.0.0 | Apache 2.0 | The Unicode Bidirectional Algorithm and script runs, for right-to-left text | Fetched, linked statically |
+| [miniaudio](https://github.com/mackron/miniaudio) | 0.11.25 | MIT-0 or Unlicense (public domain), at the user's choice; its bundled stb_vorbis is MIT or public domain | Decoding .wav, .mp3 and (with stb_vorbis from its `extras`) .ogg sound files | Fetched, its decoders linked statically |
 | [msdfgen](https://github.com/Chlumsky/msdfgen) | v1.13 | MIT | Multichannel signed distance fields for fonts | Fetched, its core linked statically |
 | [Roboto](https://github.com/googlefonts/roboto) | v2.138 | Apache 2.0 | The default font | Fetched, Roboto Regular embedded in the engine |
 | [cpp-httplib](https://github.com/yhirose/cpp-httplib) | v0.58.0 | MIT | Localhost HTTP server for the REST mirror and MCP over HTTP | Fetched, header-only |

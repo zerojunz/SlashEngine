@@ -1,3 +1,4 @@
+#include "slash/audio/audio.hpp"
 #include "slash/command/builtin.hpp"
 #include "slash/command/command.hpp"
 #include "slash/command/session.hpp"
@@ -771,6 +772,56 @@ TEST_CASE("exports ship fonts and themes and check them, and the controls of sce
     CHECK(std::filesystem::exists(data / "fonts" / "roboto.ttf"));
     CHECK(std::filesystem::exists(data / "fonts" / "title.font.json"));
     CHECK(std::filesystem::exists(data / "ui" / "game.theme.json"));
+    std::filesystem::remove_all(folder);
+}
+
+TEST_CASE("exports ship sounds, .audio.json and .bus_layout.json files and check them first") {
+    const std::filesystem::path folder = "exporter_audio_project";
+    std::filesystem::remove_all(folder);
+    std::filesystem::create_directories(folder / "audio");
+    const auto write = [&](const std::string& path, std::string_view text) {
+        REQUIRE(slash::platform::write_file((folder / path).string(), text).ok());
+    };
+    write("project.json", R"({"format": 1, "name": "Sounds", "main_scene": "main.scene.json",
+        "audio": {"bus_layout": "audio/main.bus_layout.json"}})");
+    write("main.scene.json", R"({"format": 1, "entities": {}})");
+    const std::vector<slash::audio::Frame> beep(100, slash::audio::Frame{0.5F, 0.5F});
+    write("audio/beep.wav", slash::audio::encode_wav(beep, 44100));
+    write("audio/broken.ogg", "not a sound");
+    write(
+        "audio/steps.audio.json",
+        R"({"format": 1, "streams": [{"stream": "audio/beep.wav"}], "playback_mode": "shuffle"})");
+    write("audio/main.bus_layout.json",
+          R"({"format": 1, "buses": [{"name": "Master"}, {"name": "Sfx", "send": "Sfxx"}]})");
+
+#if defined(__APPLE__)
+    const std::string host = "macos";
+#elif defined(_WIN32)
+    const std::string host = "windows";
+#else
+    const std::string host = "linux";
+#endif
+    exporter::ExportOptions options;
+    options.target = host;
+    options.project = folder.string();
+    const exporter::ExportResult result = exporter::export_game(options);
+    CHECK_FALSE(result.ok);
+    const json::Value* error = result.json.find("error");
+    REQUIRE(error != nullptr);
+    CHECK(error->find("step")->as_string() == "validate");
+    REQUIRE(error->find("errors") != nullptr);
+    std::vector<std::string> problems;
+    for (const json::Value& problem : error->find("errors")->as_array()) {
+        problems.push_back(problem.find("file")->as_string() + " " +
+                           problem.find("path")->as_string());
+    }
+    std::ranges::sort(problems); // folders list in any order
+    CHECK(problems == std::vector<std::string>{"audio/broken.ogg ",
+                                               "audio/main.bus_layout.json /buses/1/send",
+                                               "audio/steps.audio.json /playback_mode"});
+    const std::filesystem::path data = folder / ".slash" / "export" / host / "data";
+    CHECK(std::filesystem::exists(data / "audio" / "beep.wav"));
+    CHECK(std::filesystem::exists(data / "audio" / "main.bus_layout.json"));
     std::filesystem::remove_all(folder);
 }
 

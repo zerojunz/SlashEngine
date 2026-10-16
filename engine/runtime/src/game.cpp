@@ -122,8 +122,18 @@ Game::Game(Project project, platform::Platform platform, const std::string& data
     animation::install(world_, assets_);
     physics2d::install(world_, project_.physics_2d);
     input::install(world_, project_.input, project_.input_devices);
+    audio::install(world_, assets_, project_.audio);
     platform_.set_event_handler([this](const SDL_Event& event) { handle_event(event); });
     if (!platform_.headless()) {
+        // Each tick's sound goes to the speakers; with no output device the game stays silent.
+        auto output =
+            audio::SdlOutput::open(project_.audio.mix_rate, project_.audio.output_latency);
+        if (output) {
+            audio_output_ = std::move(output).value();
+            audio::set_sink(world_, audio_output_->sink());
+        } else {
+            log::warn("no sound", {{"error", output.error().message}});
+        }
         // LineEdits cut, copy and paste with the system's clipboard.
         ui::set_clipboard_backend(
             world_,
@@ -132,7 +142,9 @@ Game::Game(Project project, platform::Platform platform, const std::string& data
     }
 }
 
-Game::~Game() = default;
+Game::~Game() {
+    audio::set_sink(world_, nullptr);
+}
 
 bool Game::frame() {
     const std::uint64_t ticks = loop_->stats().ticks;

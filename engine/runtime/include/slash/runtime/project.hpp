@@ -1,5 +1,6 @@
 #pragma once
 
+#include "slash/audio/audio.hpp"
 #include "slash/core/json.hpp"
 #include "slash/core/json_schema.hpp"
 #include "slash/core/result.hpp"
@@ -25,7 +26,8 @@
 // Optional fields: "id" (reverse-DNS identifier for bundles and stores), "version"
 // ("major.minor.patch"), "window" ({"width", "height", "vsync_mode"}), "tick_hz", "max_fps",
 // "rendering" ({"clear_color", "driver", "texture_filter", "interpolation"}), "physics_2d",
-// "gui" ({"theme"}), "input" (actions by name) and "input_devices" ({"pointing"}).
+// "gui" ({"theme"}), "input" (actions by name), "input_devices" ({"pointing"}) and "audio"
+// ({"bus_layout", "mix_rate", "output_latency", "panning_strength_2d"}).
 namespace slash::runtime {
 
 inline constexpr std::string_view kProjectFile = "project.json";
@@ -62,6 +64,8 @@ struct Project {
     input::Map input = input::Map::with_defaults();
     // How touches and the mouse stand in for each other.
     input::Settings input_devices;
+    // The bus layout, mix rate, output latency and 2D panning strength.
+    audio::Settings audio;
 
     // The identifier to use: id, or the default derived from the name.
     [[nodiscard]] std::string bundle_id() const;

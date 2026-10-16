@@ -249,7 +249,17 @@ rendering on top.
       typing over, IME composition, and the caret, selection and lines in view in `ui.layout`
 - [ ] Line numbers and other gutters, syntax highlighting, search and scroll bars that can be
       dragged, as Godot's `CodeEdit` and `ScrollBar`
-- [ ] Audio on miniaudio
+- [x] Audio, as Godot's AudioServer, on miniaudio's decoders: `.wav`, `.ogg` and `.mp3`
+      sounds, `.audio.json` loops and randomizers, `AudioStreamPlayer` and
+      `AudioStreamPlayer2D` with polyphony, pitch, pausing, distance and panning from an
+      `AudioListener2D`, `.bus_layout.json` buses with volume, mute, solo, sends and 20 of
+      Godot's effects (filters, EQs, delay, reverb, chorus, phaser, distortion, compressor,
+      limiter, panner and stereo enhance), mixed by the fixed ticks so runs sound the same.
+      `audio.state`, `audio.play`, `audio.stop`, `audio.set_bus` and `audio.capture` (levels in
+      dB, or a `.wav` file) let agents hear a game without speakers
+- [ ] More of Godot's audio: `Area2D` bus and reverb overrides, pitch shift, the spectrum
+      analyzer, record and capture effects, interactive music (playlists, synchronized and
+      interactive streams), generated and polyphonic streams, and microphone input
 - [ ] `frame.capture` (PNG) and replays (`replay.run`)
 - [ ] Time travel: `replay.seek` jumps a recorded run to any tick, where every query command
       works, so a bug can be reproduced and inspected at the moment it happened
@@ -313,6 +323,8 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
 - [ ] 3D physics on Jolt: rigid bodies, joints, character controller, vehicles
 - [ ] Skinned meshes, animation blending, state machines, root motion, two-bone and FABRIK IK
 - [ ] Navigation on Recast and Detour, in 2D and 3D, with avoidance
+- [ ] 3D audio, as Godot's `AudioStreamPlayer3D` and `AudioListener3D`: attenuation models,
+      Doppler, emission angles, `Area3D` reverb and up to 7.1 speakers
 - [ ] Heightmap terrain; CSG and grid-based tile placement
 - [ ] Import of glTF 2.0, FBX, OBJ, PNG, JPG, KTX2, WAV, OGG and MP3, plus Blender `.blend`
       files the way Godot does it: the engine runs the artist's own Blender in the background to
@@ -453,11 +465,11 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Skeletal animation | Skinned meshes, blending, root motion | 7 | Planned |
 | Animation blending | Blend trees and state machines in text, two-bone and FABRIK IK | 7 | Planned |
 | Particles | CPU and GPU particles, particle graphs in text | 5 | In part: CPU particles are done; GPU particles in 5 |
-| Audio | miniaudio: buses, effects, 3D spatial audio | 5 | Planned |
+| Audio | miniaudio: buses, effects, 3D spatial audio | 5, 7 | In part: 2D players, buses and effects are done; area overrides, pitch shift and interactive music in 5, 3D audio in 7 |
 | Input | Rebindable action maps over SDL3, injectable by agents | 5 | Done |
 | Refresh rates and frame pacing | V-Sync modes, frame cap, display refresh rates, variable refresh rate, rendering interpolated between fixed ticks | 5 | Done |
-| UI | Retained UI with flexbox layout and themes, defined in text | 5 | In part: controls that draw, containers, themes, style boxes, buttons and focus are done; check boxes, option buttons, sliders, scrolling and text fields in 5 |
-| Text and fonts | FreeType, HarfBuzz, MSDF fonts, BiDi, IME input, fallback fonts | 5 | In part: FreeType, HarfBuzz, MSDF fonts, BiDi and fallback fonts are done; IME input in 5 |
+| UI | Retained UI with flexbox layout and themes, defined in text | 5 | In part: controls that draw, containers, themes, style boxes, buttons, focus and text fields are done; check boxes, option buttons, sliders and scrolling in 5 |
+| Text and fonts | FreeType, HarfBuzz, MSDF fonts, BiDi, IME input, fallback fonts | 5 | Done |
 | Navigation | Recast and Detour, 2D and 3D, avoidance | 7 | Planned |
 | Asset import | glTF 2.0, FBX, OBJ, PNG, JPG, KTX2, WAV, OGG, MP3, and `.blend` through the artist's own Blender | 7 | Planned |
 | Profiling | Tracy, plus `perf.stats` over the command API | 5, 6 | In part: `perf.stats` reports frame pacing; Tracy and per-system timings are planned for 6 |
