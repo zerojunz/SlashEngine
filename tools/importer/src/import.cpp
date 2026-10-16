@@ -1,6 +1,7 @@
 #include "slash/importer/import.hpp"
 
 #include "godot_import.hpp"
+#include "unity_import.hpp"
 
 #include "slash/platform/file.hpp"
 #include "slash/runtime/project.hpp"
@@ -32,11 +33,15 @@ Result<ImportPlan> plan_import(const ImportOptions& options) {
     if (error || !fs::is_directory(source, error)) {
         return Error{.code = ErrorCode::NotFound, .message = "no folder at " + options.source};
     }
-    if (!fs::exists(source / "project.godot", error)) {
+    const bool godot = fs::exists(source / "project.godot", error);
+    const bool unity = !godot && fs::exists(source / "ProjectSettings/ProjectVersion.txt", error) &&
+                       fs::is_directory(source / "Assets", error);
+    if (!godot && !unity) {
         return Error{.code = ErrorCode::InvalidArgument,
-                     .message = "no project.godot in " + options.source +
-                                ": only Godot 4 projects can be imported for now (Unity and "
-                                "Unreal are on the roadmap)"};
+                     .message = "no Godot or Unity project in " + options.source +
+                                ": a Godot 4 project has project.godot, a Unity project Assets/ "
+                                "and ProjectSettings/ProjectVersion.txt (Unreal is on the "
+                                "roadmap)"};
     }
     // A source inside the destination stays where it is and is used from there; any other is
     // copied in.
@@ -47,9 +52,14 @@ Result<ImportPlan> plan_import(const ImportOptions& options) {
     if (contained && inside != ".") {
         prefix = inside + "/";
     }
-    return plan_godot(source.generic_string() + "/", prefix, !contained,
-                      read_optional(destination / runtime::kProjectFile),
-                      read_optional(destination / storyboard::file_path("work")));
+    auto existing_project = read_optional(destination / runtime::kProjectFile);
+    auto existing_work = read_optional(destination / storyboard::file_path("work"));
+    if (unity) {
+        return plan_unity(source.generic_string() + "/", prefix, !contained, existing_project,
+                          existing_work);
+    }
+    return plan_godot(source.generic_string() + "/", prefix, !contained, existing_project,
+                      existing_work);
 }
 
 Result<ImportPlan> import_project(const ImportOptions& options) {

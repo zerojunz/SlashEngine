@@ -11,6 +11,7 @@ add_executable(slash_tests
     test_fixed_step.cpp
     test_frame_summary.cpp
     test_import_godot.cpp
+    test_import_unity.cpp
     test_gui.cpp
     test_input.cpp
     test_json.cpp

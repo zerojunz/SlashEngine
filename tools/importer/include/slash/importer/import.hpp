@@ -7,13 +7,14 @@
 #include <utility>
 #include <vector>
 
-// Converts games made with other engines into SlashEngine projects. Only Godot 4 projects for
-// now: their scenes, sprite frames, assets, input map and settings are converted, and each
-// script becomes a storyboard task to port it to C++.
+// Converts games made with other engines into SlashEngine projects: Godot 4 and Unity (2018.3 and
+// later) projects. Their scenes, prefabs, resources, assets, input and settings are converted,
+// and each script becomes a storyboard task to port it to C++.
 namespace slash::importer {
 
 struct ImportOptions {
-    // The other engine's project folder: for Godot, the folder holding project.godot.
+    // The other engine's project folder: for Godot, the folder holding project.godot; for Unity,
+    // the folder holding Assets/ and ProjectSettings/.
     std::string source;
     // The SlashEngine project folder to write into. When it holds the source, the source's assets
     // stay where they are and are used from there; otherwise they are copied in under the paths

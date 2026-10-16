@@ -1,0 +1,176 @@
+# Importing Unity projects
+
+[`project.import`](commands.md#projectimport) and [`slash-cli import`](cli.md#import) convert a
+Unity project's 2D game into a SlashEngine project in one pass: its scenes and prefabs, sprites,
+cameras, 2D physics, sounds, input and settings. Scripts don't convert, since SlashEngine games
+are plain C++: each becomes a storyboard task to port it, with what the port needs.
+[examples/import-unity](../../examples/import-unity/) imports a small platformer.
+
+A folder imports as a Unity project when it has `Assets/` and
+`ProjectSettings/ProjectVersion.txt`. Projects saved by Unity 2018.3 or later import (prefabs
+were saved another way before); open an older project in a newer Unity and save it there first.
+Unity must have saved the project's assets as text, its default ("Force Text" asset
+serialization).
+
+## What an import writes
+
+| File | From |
+| --- | --- |
+| `<scene>.scene.json` beside each `<scene>.unity` | The scene's GameObjects, as entities and components |
+| `<prefab>.scene.json` beside each `<prefab>.prefab` | The prefab, as a scene with a `root` that other scenes instance |
+| `<clip>.loop.audio.json` beside a sound | A sound an `AudioSource` loops |
+| `project.json` | The player, time, physics, quality and input settings, merged into the project's own if it has one |
+| `storyboard/work.json` | A task per C# script, merged into the project's own tasks |
+| `import/unity.json` | The full report: every object's entity, what each script needs, tags, layers and everything that didn't convert |
+
+Textures (`.png`, `.bmp`), sounds (`.wav`, `.ogg`, `.mp3`), fonts (`.ttf`, `.otf`) and data files
+(`.json`, `.txt`, `.csv`) are used as they are. When the Unity folder is inside the project, they
+stay where they are and the converted files go beside the originals (`Assets/Art/a.png` in
+`unity/` is `unity/Assets/Art/a.png`). When it is anywhere else, they and the scripts are copied
+in at their paths in the Unity project (`Assets/Art/a.png`). Folders ending in `~` and scripts
+in `Editor/` folders are skipped. Assets are found by the GUIDs in their `.meta` files, so a
+reference to a moved asset still resolves.
+
+Importing again rewrites the converted files and keeps each task's status and the project's other
+settings.
+
+## Units
+
+Unity measures in units with y up; SlashEngine in pixels with y down. The import takes the
+project's pixels per unit from its sprites: the `Pixels Per Unit` most sprite textures use (100
+when there are none), reported as `pixels_per_unit`. Positions, sizes, offsets, radii, distances
+and gravity are multiplied by it, y is negated, and angles turn the other way. A 2D object turns
+about z only; a rotation about x or y is reported and dropped.
+
+## Scenes and prefabs
+
+Each GameObject becomes an entity named after it in snake case: `Lily Pad` is `lily_pad`. A name
+that is taken is prefixed with its parent's ID, then numbered, in the hierarchy's order. The
+report maps every object's path (`Frog/Feet`) to its entity. Objects nest through their parent's
+`Transform2D` `children`, in the hierarchy's order.
+
+Prefabs stay prefabs. A prefab becomes a scene with a `root`, and an instance of it an entity
+that extends that scene, holding only what the instance overrides; the prefab's other objects
+come with it under the instance's ID (`frog/feet`). Overrides, removed components and removed
+GameObjects apply as in Unity: a removed object is a `null` entry, a removed component a `null`
+component. Objects a scene adds under an instance's objects are the scene's own entities.
+Prefabs inside prefabs stay nested, and a prefab variant extends the prefab it varies.
+
+An inactive GameObject (`m_IsActive: 0`, or under one) converts hidden, with its shapes disabled
+and its sounds not playing, and is reported, since entities have no inactive state.
+
+| Unity component | Components |
+| --- | --- |
+| `Transform` | `Transform2D` |
+| `SpriteRenderer` | `Sprite2D` (see [sprites](#sprites)) |
+| `Camera` (orthographic) | `Camera2D` |
+| `AudioListener` | `AudioListener2D` |
+| `AudioSource` | `AudioStreamPlayer`, or `AudioStreamPlayer2D` when its spatial blend is above 0 |
+| `Rigidbody2D` and colliders | A body and shapes (see [physics](#physics)) |
+| `PlatformEffector2D` | `one_way_collision` on the shapes it affects |
+| `MonoBehaviour` of a project script | Nothing: a storyboard task (see [scripts](#scripts)) |
+
+## Sprites
+
+| SpriteRenderer | Sprite2D |
+| --- | --- |
+| `m_Sprite` | `texture`, and `region` for a sprite cut from a sheet (Unity's rects go up from the bottom; regions go down from the top) |
+| The sprite's pivot | `offset`: Unity places a sprite by its pivot, Sprite2D by its center |
+| `m_FlipX`, `m_FlipY` | `flip_h`, `flip_v` (and the offset flips with them, since Unity flips about the pivot) |
+| `m_Color` | `modulate` |
+| Sorting layer and `m_SortingOrder` | `z_index`: the order with one sorting layer; with several, each layer a band of up to 1000 (the Default layer at 0), reported in `sorting_layers` |
+| `m_Enabled` | `visible` |
+| The texture's filter mode | `texture_filter`, when it differs from the project's (`rendering.texture_filter` is what most textures use) |
+
+Unity's sprites don't pass their order, visibility or color to the objects under them, and
+Sprite2D's do, as Godot's do. So an object with children draws its sprite on a child entity of its
+own (`<entity>_sprite`), and so does a sprite whose texture has another pixels per unit than the
+project's, scaled to match. Sliced and tiled sprites draw as simple ones, materials and sprite
+masks don't convert, and each is reported.
+
+## Cameras
+
+An orthographic camera becomes a `Camera2D` whose `zoom` shows what Unity's orthographic size
+does at the project's window height: `window height / (2 * size * pixels per unit)`. The clear
+color of the main scene's `MainCamera` becomes `rendering.clear_color`. Perspective cameras,
+viewport rects and render textures are reported.
+
+## Physics
+
+| Unity | SlashEngine |
+| --- | --- |
+| `Rigidbody2D`, Dynamic | `RigidBody2D`: mass, gravity scale, linear and angular drag as damping, frozen rotation as `lock_rotation`, continuous detection, sleeping |
+| `Rigidbody2D`, Kinematic | `AnimatableBody2D` |
+| `Rigidbody2D`, Static | `StaticBody2D` |
+| Colliders with no `Rigidbody2D` above | `StaticBody2D` |
+| Colliders whose parent has the `Rigidbody2D` | Shapes on the object, which the parent's body takes |
+| Trigger colliders | `Area2D`: on the object when it has no body, else a `trigger` child entity |
+| `BoxCollider2D`, `CircleCollider2D`, `CapsuleCollider2D` | `CollisionShape2D`: rectangle, circle, capsule |
+| `PolygonCollider2D` | `CollisionPolygon2D`, one per path |
+| `EdgeCollider2D` | A segment `CollisionShape2D` per edge |
+| `PhysicsMaterial2D` | `friction` and `bounce` (at most 1, as Box2D clamps it) |
+| The GameObject's layer | `collision_layer`: the layer's bit |
+| The layer collision matrix | `collision_mask`: the layers the layer collides with |
+
+An object holds one `CollisionShape2D` and one `CollisionPolygon2D`; more shapes go on `shape_2`,
+`shape_3` and so on, child entities the body takes. A collider two or more levels under its
+`Rigidbody2D` becomes an `AnimatableBody2D` that follows its parent, since bodies take shapes from
+their own children only, and is reported. `CompositeCollider2D`s, frozen positions and auto mass
+are reported. `physics_2d` gets the project's gravity and no damping, as Unity has no damping but
+each body's own.
+
+## Sounds
+
+An `AudioSource` plays its clip with `volume_db` from its volume, `pitch_scale` from its pitch and
+`autoplay` from Play On Awake. A looping source plays a `<clip>.loop.audio.json` file that loops
+the sound. A spatial source becomes an `AudioStreamPlayer2D` with `max_distance` from its max
+distance; rolloff other than linear, and output to an audio mixer group, are reported.
+
+## Project settings
+
+| Unity | `project.json` |
+| --- | --- |
+| Player: Product Name | `name` |
+| Player: Version | `version` |
+| Player: Default Screen Width and Height | `window.width`, `window.height` |
+| The first enabled scene in the build settings (else the first scene) | `main_scene` |
+| Time: Fixed Timestep | `tick_hz` |
+| Physics 2D: Gravity | `physics_2d.gravity` and `gravity_vector` |
+| Quality: the current level's VSync Count | `window.vsync_mode` |
+| Input Manager axes and Input System actions | `input` (see [input](#input)) |
+
+## Input
+
+The Input Manager's axes (when Active Input Handling includes it) become actions named after
+them: an axis with negative buttons becomes `<name>/negative` and `<name>/positive`, and a
+joystick axis binds a stick's motion to both. Keys, mouse buttons and joystick buttons (`space`,
+`left ctrl`, `mouse 0`, `joystick 2 button 4`, `[5]`) bind to their Godot equivalents; mouse
+movement axes are reported.
+
+Each `.inputactions` file's actions become `<map>/<action>`. A 2D vector composite's parts, and a
+stick or D-pad bound whole, become `<map>/<action>/up`, `down`, `left` and `right`; a 1D axis
+composite's become `/negative` and `/positive`. Keyboard bindings bind physical keys. Interactions
+(hold, tap), invert processors, other composites and devices other than the keyboard, mouse,
+touch and gamepads are reported.
+
+## Scripts
+
+Each C# script that a scene or prefab uses becomes a storyboard task, `task/port-<name>`, linked
+to the script and to the scenes that use it, with what it declares: its classes, public and
+`[SerializeField]` fields and methods. The report's `scripts` holds, for each object using a
+script, the values its fields were given: numbers and strings as they are, references to objects
+as entity IDs (`"frog"`, or `"frog#AudioSource"` for a component other than its Transform) and
+references to assets as their paths. The scripts stay where they are, linked from the tasks.
+
+Components from Unity's packages convert where SlashEngine has them and are reported where it
+doesn't: uGUI and TextMesh Pro components convert in a later import, the event system isn't
+needed (the gui system sends input to controls itself), and other package scripts are named in
+the report.
+
+## Not yet converted
+
+Tile maps, Animator controllers and animation clips, audio mixers, uGUI, 2D joints, 2D lights
+and particle systems convert in later imports; until then each is reported where it is used.
+Materials and shaders, 3D (milestone 7) and Timeline don't convert. Everything that didn't
+convert is in the report's `unsupported`, once per kind with how many and the first place it was
+seen.

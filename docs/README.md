@@ -18,6 +18,7 @@ real commands and real output, and no screenshots.
 | Record a game's characters, story, rules or decisions | [reference/storyboard-format.md](reference/storyboard-format.md) |
 | Set up a game's `project.json` | [reference/project-format.md](reference/project-format.md) |
 | Bring a game over from Godot | [reference/godot-import.md](reference/godot-import.md) |
+| Bring a game over from Unity | [reference/unity-import.md](reference/unity-import.md) |
 | Call the engine over HTTP, JSON-RPC or MCP | [reference/protocols.md](reference/protocols.md) |
 | Read the full design and the reasons behind it | [design.md](design.md) |
 | Work on the engine's own code | [../AGENTS.md](../AGENTS.md) |
