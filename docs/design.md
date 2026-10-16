@@ -220,7 +220,7 @@ The HTTP server runs inside the game, so an agent can inspect and change a world
 | Query | `world.query`, `entity.get`, `asset.list` | Read state with filters, e.g. all entities with `Health < 10` |
 | Edit | `entity.create`, `component.set`, `scene.save`, `undo` | Change the world or the files on disk |
 | Run | `play`, `pause`, `step(n)`, `run.until`, `input.inject`, `replay.run`, `replay.seek`, `test.run` | Drive the simulation deterministically |
-| Observe | `frame.capture`, `log.tail`, `events.subscribe`, `perf.stats`, `debug.overlay` | See and measure what happened |
+| Observe | `frame.capture`, `frame.summary`, `log.tail`, `events.subscribe`, `perf.stats`, `debug.overlay` | See and measure what happened |
 
 ### 4. Observability and safety
 
@@ -272,7 +272,7 @@ Agents can't be forced to prefer a tool, but they reliably use what the project 
 | Errors carry the JSON Pointer of the bad value and a "did you mean" hint | A docs lookup per mistake | 2 and 3 |
 | `slash-cli init` and the MCP instructions point agents at the tools | Agents falling back to hand edits | 3 |
 | `test.run` steps the game headless through `.test.json` tests and returns only the checks that failed | Screenshots and log reading | 5 |
-| Frame summaries list what is on screen as data; PNG captures stay available | Image tokens | 5 |
+| `frame.summary` lists what is on screen as data, with a text map; PNG captures stay available | Image tokens | 5 |
 | `storyboard.brief` returns only the facts a task touches and what changed since the agent last looked | Re-reading design notes, and mistakes from guessing | 5 |
 | `"dry_run": true` on any edit or `batch` returns what would change and any errors, changing nothing | Undoing failed experiments | 5 |
 | `world.snapshot`, `world.diff` and `world.restore` show exactly which entities and fields changed, by ID | Re-querying the world to see what an edit did | 5 |
@@ -427,7 +427,7 @@ SlashEngine/
 2. **Core and world.** Reflection macro, EnTT integration, JSON scene load and save with schema validation, headless runner.
 3. **Commands.** Command registry, undo, JSON-RPC server, `slash-mcp`, REST mirror, `slash-cli`. Exit: Claude Code, Codex and Cursor each open, edit and save a scene over MCP.
 4. **Export pipeline.** `slash-cli export` and toolchain install for all six platforms, plus the CI workflow. Exit: an empty project exports and passes headless tests everywhere. It comes this early so every later feature stays exportable. Built in two parts: (a) project files, the game runtime and exports for macOS, Windows, Linux and web on their own hosts, tested in CI; (b) iOS and Android, cross toolchains from a Mac, export presets with signing, and the `export.run` command.
-5. **2D feature set.** Systems, play and pause, event subscriptions, prefabs, asset handles with hot reload, the storyboard, dry runs, world snapshots and diffs, verified examples and the CI license check first; then the renderer, materials, sprites, keyframe animation, tilemaps, 2D lights, Box2D physics, particles, UI and text with IME input, audio, input injection, frame capture, replays with time travel, `run.until`, the debug overlay and `test.run`. Exit: an agent builds `samples/pong` and exports it to all six platforms.
+5. **2D feature set.** Systems, play and pause, event subscriptions, prefabs, asset handles with hot reload, the storyboard, dry runs, world snapshots and diffs, verified examples and the CI license check first; then the renderer, materials, sprites, keyframe animation, tilemaps, 2D lights, Box2D physics, particles, UI and text with IME input, audio, input injection, frame capture, replays with time travel, `run.until`, the debug overlay, `test.run` and frame summaries. Exit: an agent builds `samples/pong` and exports it to all six platforms.
 6. **Hot reload, AI and profiling.** Hot-reloadable C++ game module with `build.check`, `api.search`, `playtest.run` with tuning sweeps, `ai::Provider` with three adapters and `ReplayProvider`, the asset library and generator for images and audio, storyboard review by a model and the project map, the job system, Tracy, `perf.stats` and the per-system memory report.
 7. **3D feature set.** Forward+ PBR renderer, shadows, post-processing, GI, sky, decals, LODs, Jolt physics, skeletal animation and blending, navigation, terrain, CSG, glTF and FBX import, and 3D in the asset library: parametric models, game-ready cleanup, automatic review, rigging and scene assembly. Exit: an agent builds a small 3D sample end to end.
 8. **Systems and platform services.** Networking, XR, localization, video, accessibility, and analytics, ads and in-app purchases behind one API with a headless test backend.

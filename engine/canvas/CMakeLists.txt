@@ -7,6 +7,7 @@ add_library(slash_canvas
     src/particles.cpp
     src/renderer.cpp
     src/sprite_frames.cpp
+    src/summary.cpp
     src/tilemap.cpp)
 add_library(slash::canvas ALIAS slash_canvas)
 

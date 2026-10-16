@@ -77,7 +77,7 @@ as `entity.get`, reject it as an unknown param.
 | Tests | [`test.run`](#testrun) |
 | History | [`undo`](#undo), [`redo`](#redo), [`history.get`](#historyget) |
 | Several at once | [`batch`](#batch) |
-| Observe | [`events.subscribe`](#eventssubscribe), [`events.read`](#eventsread), [`events.unsubscribe`](#eventsunsubscribe), [`log.tail`](#logtail), [`frame.capture`](#framecapture) |
+| Observe | [`events.subscribe`](#eventssubscribe), [`events.read`](#eventsread), [`events.unsubscribe`](#eventsunsubscribe), [`log.tail`](#logtail), [`frame.capture`](#framecapture), [`frame.summary`](#framesummary) |
 | Display | [`display.list`](#displaylist), [`display.set`](#displayset), [`perf.stats`](#perfstats), [`debug.overlay`](#debugoverlay) |
 | Export | [`export.run`](#exportrun) |
 
@@ -1914,6 +1914,78 @@ Needs: `read`, and `filesystem` with `path`. A HUD with a health bar at 75%:
 Over MCP, `png` is sent as an image content block rather than as text. A point or region outside
 the window is an error at its path, and so is a `path` that doesn't end in `.png`. In a dry-run
 `batch`, `path` writes nothing.
+
+### frame.summary
+
+Says what the window shows now, as data instead of an image: what `frame.capture` would draw,
+read thing by thing. Each sprite, tile map layer, `CPUParticles2D` and control that shows is
+listed in drawing order, bottom first, with how much of it shows when not all of it does, and
+what doesn't show is listed by why. Costs far fewer tokens than an image and needs no vision.
+Nothing changes. [examples/frame-summary](../../examples/frame-summary/) calls it.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `ids` | array of entity IDs | all | Only these entities in the lists |
+| `region` | `[x, y, width, height]` | the whole window | Only this part of the window, in window pixels |
+| `map` | `[columns, rows]`, each 1 to 160 | | Add a text picture of the window (or region) |
+| `limit` | integer, 1 to 1000 | `100` | At most this many entries in each list |
+
+Needs: `read`. A player half behind a bush, a coin past the right edge, a ghost faded out and a
+pause button with focus:
+
+```json
+{"ids": ["player", "coin", "ghost", "pause"]}
+```
+
+```json
+{"clear":["ghost"],"drawn":[{"id":"player","kind":"Sprite2D","rect":[82,136,16,24],"shown":0.54},{"focused":true,"id":"pause","kind":"Button","rect":[130,4,60,30],"text":"Pause"}],"offscreen":["coin"],"viewport":[320,180]}
+```
+
+With `"map": [40, 12]` over the whole frame, the reply adds:
+
+```json
+{"map":{"legend":{"P":"player","b":"bush","g":"ground","h":"health","p":"pause","s":"score"},
+        "rows":["................pppppppp................",
+                ".sssss..ss......pppppppp...hhhhhhhhhhhh.",
+                "........................................",
+                "...",
+                "...........bbbbb........................",
+                "..........Pbbbbbb.......................",
+                "gggggggggggggggggggggggggggggggggggggggg"]}}
+```
+
+- `drawn` lists what shows: `id`, `kind` (`Sprite2D`, `TileMapLayer`, `CPUParticles2D` or the
+  control's type, such as `Label` or `Button`) and `rect`, its bounds in window pixels to a
+  tenth, `[x, y, width, height]`, not cut to the window: a control's rect as
+  [`ui.layout`](#uilayout) places it, else the bounds of what it drew. `shown`, from 0.01 to
+  0.99, is the share of its pixels that show when not all of them do: the rest are outside the
+  window (or region) or under something drawn after it.
+- What each shows: an `AnimatedSprite2D`'s `animation` and `frame`, a sprite sheet's `frame`, a
+  layer's `tiles` and an emitter's `particles` (how many drew), and a control's `text` as laid
+  out (lines joined with `\n`, cut short with its ellipsis, only the characters
+  `visible_characters` shows), a button's `draw_mode` when it isn't `"normal"` and `focused`.
+- `covered` lists what is in the window but wholly under what was drawn after it, `offscreen`
+  what drew only outside the window (left out with a `region`) and `clear` what drew no pixel
+  that can be seen, such as a sprite whose `modulate` alpha is below 0.25. Each is left out when
+  empty.
+- `problems` lists what can't draw as written, with the JSON Pointer of the field in the entity:
+  a missing texture, material or tile set, a frame outside its sheet, and the mistakes
+  [`ui.layout`](#uilayout) reports.
+- `map` is `{"legend": {...}, "rows": [...]}`, like a `TileMapLayer`'s cells: each row is
+  `columns` keys, each key what shows at the cell's center, `.` for nothing (the clear color).
+  Keys are the start of each ID where that is free, one character while there are few enough
+  things on the map, else two.
+- `truncated` is `true` when `limit` left entries out.
+
+A thing's pixels are those where its alpha (its texture's there times its color's) is at least
+0.25, and it shows at a pixel when at least a quarter of the pixel's color comes from it, as
+blending mixes it under what was drawn after it: a sprite under a panel of alpha 0.6 still
+shows, one under a panel of alpha 0.9 is covered. The map shows the last thing drawn that shows
+at each cell's center. Materials and lights aren't run, so a sprite a material makes clear, or
+one in the dark, still counts as showing. The part of each thing in the window (or region) is
+read at every pixel up to 64 pixels across and down, and at evenly spaced pixels beyond, so
+`shown` is exact for small things and close for large ones. A `region` outside the window is an error at its path, and so is an unknown ID, with the
+closest one.
 
 ## Display
 

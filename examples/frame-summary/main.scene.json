@@ -1,0 +1,124 @@
+{
+  "entities": {
+    "bush": {
+      "components": {
+        "Sprite2D": {
+          "texture": "bush.png",
+          "z_index": 1
+        },
+        "Transform2D": {
+          "position": [112.0, 144.0]
+        }
+      }
+    },
+    "coin": {
+      "components": {
+        "Sprite2D": {
+          "texture": "coin.png"
+        },
+        "Transform2D": {
+          "position": [360.0, 120.0]
+        }
+      }
+    },
+    "ghost": {
+      "components": {
+        "Sprite2D": {
+          "modulate": [1.0, 1.0, 1.0, 0.0],
+          "texture": "player.png"
+        },
+        "Transform2D": {
+          "position": [200.0, 148.0]
+        }
+      }
+    },
+    "ground": {
+      "components": {
+        "TileMapLayer": {
+          "legend": {
+            "g": "grass"
+          },
+          "origin": [0, 10],
+          "rows": ["gggggggggggggggggggg", "gggggggggggggggggggg"],
+          "tile_set": "ground.tileset.json"
+        }
+      }
+    },
+    "health": {
+      "components": {
+        "Control": {
+          "offset_bottom": 20.0,
+          "offset_left": 220.0,
+          "offset_right": 312.0,
+          "offset_top": 8.0
+        },
+        "ProgressBar": {
+          "value": 60.0
+        }
+      }
+    },
+    "pause": {
+      "components": {
+        "Button": {
+          "text": "Pause"
+        },
+        "Control": {
+          "offset_bottom": 26.0,
+          "offset_left": 130.0,
+          "offset_right": 190.0,
+          "offset_top": 4.0
+        }
+      }
+    },
+    "player": {
+      "components": {
+        "Sprite2D": {
+          "texture": "player.png"
+        },
+        "Transform2D": {
+          "position": [90.0, 148.0]
+        }
+      }
+    },
+    "score": {
+      "components": {
+        "Control": {
+          "offset_bottom": 22.0,
+          "offset_left": 8.0,
+          "offset_right": 108.0,
+          "offset_top": 6.0
+        },
+        "Label": {
+          "text": "Score 120"
+        }
+      }
+    },
+    "sign": {
+      "components": {
+        "Sprite2D": {
+          "texture": "sign.png"
+        },
+        "Transform2D": {
+          "position": [40.0, 148.0]
+        }
+      }
+    },
+    "sparks": {
+      "components": {
+        "CPUParticles2D": {
+          "amount": 6,
+          "gravity": [0.0, 0.0],
+          "initial_velocity_max": 30.0,
+          "initial_velocity_min": 20.0,
+          "scale_amount_max": 3.0,
+          "scale_amount_min": 3.0,
+          "spread": 180.0
+        },
+        "Transform2D": {
+          "position": [250.0, 140.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

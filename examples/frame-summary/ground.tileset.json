@@ -1,0 +1,14 @@
+{
+  "format": 1,
+  "sources": {
+    "ground": {
+      "texture": "ground.png",
+      "tiles": {
+        "0,0": {
+          "name": "grass"
+        }
+      }
+    }
+  },
+  "tile_size": [16, 16]
+}
