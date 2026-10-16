@@ -3,7 +3,9 @@
 #include "slash/input/input.hpp"
 
 #include <cstdint>
+#include <functional>
 #include <map>
+#include <utility>
 #include <vector>
 
 union SDL_Event;
@@ -31,6 +33,10 @@ public:
 
     void read(const SDL_Event& event, world::World& world);
 
+    // Sees each input event before it is queued; the ones it returns true for are taken, and
+    // not queued. The debug overlay takes the clicks on its panel this way.
+    void set_filter(std::function<bool(const Event&)> filter) { filter_ = std::move(filter); }
+
     // Turns SDL's text input on or off for a window, with the on-screen keyboard and the input
     // method's position a text field asks for. Changes only what differs from the last call.
     void set_text_input(SDL_Window* window, const TextInput& request);
@@ -45,6 +51,7 @@ private:
     std::map<int, SDL_Gamepad*> gamepads_; // device number to the open gamepad
     std::map<std::uint64_t, int> fingers_; // SDL finger ID to finger index
     TextInput text_input_;                 // the last request applied
+    std::function<bool(const Event&)> filter_;
 };
 
 } // namespace slash::input

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "slash/asset/assets.hpp"
+#include "slash/canvas/debug_draw.hpp"
 #include "slash/canvas/light.hpp"
 #include "slash/canvas/material.hpp"
 #include "slash/canvas/tilemap.hpp"
@@ -67,6 +68,12 @@ struct CanvasOptions {
     // Seconds of game time, which materials read as time. Callers pass the moment the frame
     // shows, between ticks too; see material_time.
     double time = 0.0;
+    // Draw every collision shape over the world, as Godot's Visible Collision Shapes
+    // (debug_draw.hpp).
+    bool collisions = false;
+    // Another world whose controls draw over everything, laid out in the same viewport with
+    // this world's fonts, such as the debug overlay's.
+    const world::World* overlay = nullptr;
 };
 
 // The time a frame shows, for CanvasOptions::time: tick ticks of tick_seconds have run, and the
@@ -90,9 +97,10 @@ public:
     void before_tick(const world::World& world);
 
     // Draws one frame: the target cleared, then every visible sprite, tile map layer and
-    // CPUParticles2D, in z_index order, then the order entities were made, then every visible
-    // control (ui.hpp) over them, laid out in a viewport of the options' width and height, or
-    // ui::settings' when they are 0. A layer draws its
+    // CPUParticles2D, in z_index order, then the order entities were made, then the collision
+    // shapes if the options ask, then every visible control (ui.hpp) over them, laid out in a
+    // viewport of the options' width and height, or ui::settings' when they are 0, then the
+    // overlay's controls. A layer draws its
     // cells row by row, each tile's region centered on its cell, moved by the entity's
     // Transform2D if it has one. Particles draw as their emitter's draw_order says, each its
     // texture's frame (or a white pixel) centered on it, turned, scaled and colored. A
@@ -120,6 +128,8 @@ public:
     [[nodiscard]] std::size_t controls_drawn() const noexcept { return controls_drawn_; }
     [[nodiscard]] std::size_t glyphs_drawn() const noexcept { return glyphs_drawn_; }
     [[nodiscard]] std::size_t boxes_drawn() const noexcept { return boxes_drawn_; }
+    // Collision shapes the last frame drew.
+    [[nodiscard]] std::size_t shapes_drawn() const noexcept { return shapes_drawn_; }
 
 private:
     struct Texture {
@@ -183,6 +193,7 @@ private:
     std::size_t controls_drawn_ = 0;
     std::size_t glyphs_drawn_ = 0;
     std::size_t boxes_drawn_ = 0;
+    std::size_t shapes_drawn_ = 0;
     // Fonts for worlds ui wasn't installed in.
     std::unique_ptr<text::Fonts> fonts_;
     // The glyph atlas pages on the GPU, the fonts they came from and the versions uploaded.
@@ -209,6 +220,8 @@ struct CaptureOptions {
     // Seconds of game time materials read; below 0, the world's tick times the settings'
     // tick_seconds.
     double time = -1.0;
+    // Draw the collision shapes too, as CanvasOptions::collisions.
+    bool collisions = false;
 };
 
 struct Capture {
@@ -219,6 +232,7 @@ struct Capture {
     std::size_t particles = 0;
     std::size_t lights = 0;
     std::size_t controls = 0;
+    std::size_t shapes = 0;
 };
 
 // Draws the world as a window of ui::settings' viewport size would show it, with Settings'

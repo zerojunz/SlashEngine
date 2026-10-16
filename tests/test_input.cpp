@@ -638,6 +638,22 @@ TEST_CASE("SdlReader turns SDL events into input events") {
     in.step();
     CHECK_FALSE(input::is_key_pressed(in.world, input::Key::Z));
     CHECK(reader.gamepads() == 0);
+
+    // A filter sees each event first and keeps the ones it takes out of the world: here the
+    // wheel's press, not its release.
+    std::vector<input::Event> seen;
+    reader.set_filter([&](const input::Event& event) {
+        seen.push_back(event);
+        return event.type == input::EventType::MouseButton && event.pressed;
+    });
+    reader.read(scroll, in.world);
+    reader.read(key, in.world);
+    in.step();
+    REQUIRE(seen.size() == 3);
+    const auto filtered = input::events(in.world);
+    REQUIRE(filtered.size() == 2);
+    CHECK_FALSE(filtered[0].pressed);
+    CHECK(filtered[1].key == input::Key::Z);
 }
 
 namespace {

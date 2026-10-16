@@ -47,6 +47,8 @@ slash-cli run [options]
 | `--scene <file>` | Load a `.scene.json` file before the first tick |
 | `--save <file>` | Save the scene to this file after the last tick |
 | `--record <file>` | Record the run to a [`.replay.json`](scene-format.md#replays) file inside the project, written when the game stops |
+| `--debug-overlay` | Show the [debug panel](#the-debug-overlay) from the start; F3 shows and hides it |
+| `--debug-collisions` | Draw every collision shape over the world, as Godot's `--debug-collisions` |
 | `--serve` | Serve the running game over HTTP between ticks (see [serve](#serve)) |
 | `--port <n>` | Port for `--serve` (default: any free port) |
 | `--token <token>` | Bearer token for `--serve` (default: random) |
@@ -75,8 +77,9 @@ and the game runs silent. Headless runs mix sound but play it nowhere.
 With `--serve`, the result also carries the server's `url`, and the game takes the `play` and
 `pause` commands: while paused it keeps serving requests but does not step the world, and
 `--ticks` still counts the loop's ticks. It also takes
-[`display.list`, `display.set` and `perf.stats`](commands.md#display), which list the displays,
-change V-Sync and the frame cap while it runs, and report frame pacing.
+[`display.list`, `display.set`, `perf.stats` and `debug.overlay`](commands.md#display), which
+list the displays, change V-Sync and the frame cap while it runs, report frame pacing and show
+the debug overlay.
 
 Every 15 ticks it checks the files the game has loaded and reloads the ones that changed: an
 edited prefab updates its instances and keeps their overrides (see
@@ -95,6 +98,26 @@ slash-cli call replay.run '{"path": "runs/basic.replay.json"}'
 {"entities":3,"headless":true,"quit_requested":false,"renderer":"null","replay":{"commands":0,"inputs":0,"path":"runs/basic.replay.json","ticks":90},"ticks":90}
 {"end":90,"matched":true,"start":0,"tick":90}
 ```
+
+#### The debug overlay
+
+F3 shows and hides a panel in the window's top left corner, for the person watching the game:
+
+- the frame rate and average frame time, the tick, and whether the game plays or is paused;
+- the entity count and what the last frame drew (sprites, tiles, particles, lights, controls
+  and collision shapes);
+- the mouse's position over the game, with the IDs of the bodies and areas whose shapes are
+  under it;
+- Pause (Play while paused), Step and Shapes buttons.
+
+The buttons run the `pause`, `play` and `step` commands through the game's session, as an agent
+would, so a recording keeps the steps and `undo` takes one back. Shapes draws every
+`CollisionShape2D` and `CollisionPolygon2D` over the world as Godot's Visible Collision Shapes
+does, whether or not the panel shows. The game never sees F3, or clicks and touches on the
+panel. An agent shows the panel and the shapes with
+[`debug.overlay`](commands.md#debugoverlay), and sees the shapes itself in
+[`frame.capture`](commands.md#framecapture) with `collisions`. Headless runs draw nothing, so
+the flags change nothing there.
 
 ### scene validate
 
