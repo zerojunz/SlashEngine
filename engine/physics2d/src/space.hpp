@@ -221,10 +221,12 @@ struct Body {
 
 using JointKey = std::variant<world::PinJoint2D, world::DampedSpringJoint2D, world::GrooveJoint2D>;
 
+// A joint, made where its entity was then. As Godot's, it stays there when a parent carries the
+// entity away; moving the entity's own Transform2D makes it again.
 struct Joint {
     b2JointId id = b2_nullJointId;
     JointKey key;
-    Vec2 position;
+    Vec2 position; // the entity's own Transform2D when the joint was made
     float rotation = 0.0F;
     b2BodyId body_a = b2_nullBodyId;
     b2BodyId body_b = b2_nullBodyId;

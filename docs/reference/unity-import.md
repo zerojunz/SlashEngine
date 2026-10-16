@@ -2,7 +2,7 @@
 
 [`project.import`](commands.md#projectimport) and [`slash-cli import`](cli.md#import) convert a
 Unity project's 2D game into a SlashEngine project in one pass: its scenes and prefabs, sprites,
-tile maps, animation, cameras, 2D physics, sounds, input and settings. Scripts don't convert,
+tile maps, animation, cameras, 2D physics and joints, sounds and audio mixers, input and settings. Scripts don't convert,
 since SlashEngine games are plain C++: each becomes a storyboard task to port it, with what the
 port needs, as does each Animator controller's state machine.
 [examples/import-unity](../../examples/import-unity/) imports a small platformer.
@@ -22,6 +22,7 @@ serialization).
 | `<clip>.loop.audio.json` beside a sound | A sound an `AudioSource` loops |
 | `Assets/tiles.tileset.json` | The sprites tile maps show, as a tile set (`tiles_2.tileset.json` and on for tile maps of other cell sizes or physics) |
 | `<controller>.anim.json` beside each `.controller` and `.overrideController` | The controller's states, as an animation library |
+| `<mixer>.bus_layout.json` beside the main `.mixer` | Every audio mixer's groups, as one bus layout |
 | `project.json` | The player, time, physics, quality and input settings, merged into the project's own if it has one |
 | `storyboard/work.json` | A task per C# script and per state machine, merged into the project's own tasks |
 | `import/unity.json` | The full report: every object's entity, what each script needs, tags, layers and everything that didn't convert |
@@ -70,8 +71,9 @@ and its sounds not playing, and is reported, since entities have no inactive sta
 | `Grid` | Nothing: its cell size is the tile set's `tile_size` |
 | `Camera` (orthographic) | `Camera2D` |
 | `AudioListener` | `AudioListener2D` |
-| `AudioSource` | `AudioStreamPlayer`, or `AudioStreamPlayer2D` when its spatial blend is above 0 |
+| `AudioSource` | `AudioStreamPlayer`, or `AudioStreamPlayer2D` when its spatial blend is above 0 (see [sounds](#sounds)) |
 | `Rigidbody2D` and colliders | A body and shapes (see [physics](#physics)) |
+| `HingeJoint2D`, `SpringJoint2D`, `SliderJoint2D` | `PinJoint2D`, `DampedSpringJoint2D`, `GrooveJoint2D` on a child entity (see [joints](#joints)) |
 | `PlatformEffector2D` | `one_way_collision` on the shapes it affects |
 | `MonoBehaviour` of a project script | Nothing: a storyboard task (see [scripts](#scripts)) |
 
@@ -196,12 +198,73 @@ their own children only, and is reported. `CompositeCollider2D`s, frozen positio
 are reported. `physics_2d` gets the project's gravity and no damping, as Unity has no damping but
 each body's own.
 
+## Joints
+
+Each joint becomes a child entity of its object, `hinge`, `spring` or `slider` (`hinge_2` and on
+for more of a kind), holding Godot's joint between the connected body as `node_a` (the world when
+there is none) and the object's own body as `node_b`. A joint is made where its entity is when the
+scene starts, and stays there when the body carries the entity off, as Godot's.
+
+| Unity | SlashEngine |
+| --- | --- |
+| `HingeJoint2D` | `PinJoint2D` at the anchor. Angle limits are `angular_limit_lower` and `angular_limit_upper` in radians, and the motor's speed is `motor_target_velocity` in radians per second; past a limit the motor stops pushing, as Godot's |
+| `SpringJoint2D` | `DampedSpringJoint2D` from the connected anchor to the anchor, its `length` the distance between them; a set distance is `rest_length`. Unity's frequency and damping ratio become the `stiffness` and `damping` that give them for the two bodies' masses |
+| `SliderJoint2D` | `GrooveJoint2D` along the slider's angle through the connected anchor, from its lower translation limit to its upper; `initial_offset` is where the body starts on it |
+| `m_EnableCollision` | `disable_collision: false` |
+
+A connected anchor Unity configures itself is the anchor, where the joint starts; one set by hand
+is in the connected body's space, or the world's. A hinge whose two anchors are apart pins the
+bodies where its own anchor is, and is reported. Limits on one side of where a hinge starts are
+widened to include it (Godot's limits go from at most 0 to at least 0), and a spring with
+frequency 0 (rigid in Unity) is a stiff one at 15 Hz; both are reported. A slider without limits
+gets a groove 20000 pixels long, and the body on a groove turns freely unless its `Rigidbody2D`
+freezes rotation; both are reported, as is a slider's motor (a groove has none).
+
+Disabled joints, joints on objects without a `Rigidbody2D`, break forces and torques (joints don't
+break; gameplay code can destroy one) and the other joints (`DistanceJoint2D`, `FixedJoint2D`,
+`FrictionJoint2D`, `RelativeJoint2D`, `TargetJoint2D`, `WheelJoint2D`) are reported.
+
 ## Sounds
 
 An `AudioSource` plays its clip with `volume_db` from its volume, `pitch_scale` from its pitch and
 `autoplay` from Play On Awake. A looping source plays a `<clip>.loop.audio.json` file that loops
 the sound. A spatial source becomes an `AudioStreamPlayer2D` with `max_distance` from its max
-distance; rolloff other than linear, and output to an audio mixer group, are reported.
+distance; rolloff other than linear is reported. A source that outputs to an audio mixer group
+plays on that group's bus.
+
+## Audio mixers
+
+The project's `.mixer` files become one [bus layout](scene-format.md#bus-layouts), named after the
+main mixer (`Main.mixer` becomes `Main.bus_layout.json`) and set as `audio.bus_layout`. The main
+mixer is the one that outputs to no other mixer's group, the one with the most groups when
+several don't; its Master group is the Master bus. Each group becomes a bus named after it
+(`Music 2` and on when a name is taken), sending to its parent's bus. Another mixer's Master group
+becomes a bus named after the mixer, sending to the bus of the group the mixer outputs to (Master
+when it outputs nowhere). The report's `bus_layout` names, for each mixer, the bus each group
+(`Master/Music`) became.
+
+A group's volume, mute, solo and bypass come from the mixer's start snapshot, and so do its
+effects' settings:
+
+| Unity effect | Bus effect |
+| --- | --- |
+| Lowpass, Highpass | `low_pass_filter`, `high_pass_filter`: cutoff and resonance (at most 1, as Godot's; more is reported) |
+| Lowpass Simple, Highpass Simple | `low_pass_filter`, `high_pass_filter` |
+| Echo | `delay`: its feedback repeats each echo, quieter by the decay; with decay 0, one tap at the wet level. Delays go up to 1500 ms |
+| Distortion | `distortion` in `waveshape` mode, the waveshaper Unity's is |
+| Chorus | `chorus` with three voices, one per tap |
+| Compressor | `compressor`: threshold, attack, release and make-up gain, at a ratio of 2.5 |
+| Duck Volume | `compressor` with the bus that sends to it as its `sidechain`; with no send it does nothing and isn't converted |
+| SFX Reverb | `reverb`: the decay time as `room_size`, the high-frequency ratio as `damping`, the dry and room levels, and the reflection and reverb delays as `predelay_msec` |
+| Attenuation | The bus's `volume_db` |
+| Send to a Duck Volume | The Duck Volume's `sidechain` |
+| A bypassed effect | `enabled: false` |
+
+Godot's compressor attacks within 2 ms, so a slower attack is reported. Each bus sends to one bus,
+so a Send to a Receive is reported, as are effects after a group's Attenuation (a bus runs its
+effects before its volume), effects' wet levels (they run fully wet), a group's pitch, Flange,
+Normalize, ParamEQ, Pitch Shifter and audio plugins' effects. Snapshots other than the start one
+and exposed parameters are reported too: gameplay code (or `audio.set_bus`) sets buses instead.
 
 ## Project settings
 
@@ -214,6 +277,7 @@ distance; rolloff other than linear, and output to an audio mixer group, are rep
 | Time: Fixed Timestep | `tick_hz` |
 | Physics 2D: Gravity | `physics_2d.gravity` and `gravity_vector` |
 | Quality: the current level's VSync Count | `window.vsync_mode` |
+| The main audio mixer | `audio.bus_layout` (see [audio mixers](#audio-mixers)) |
 | Input Manager axes and Input System actions | `input` (see [input](#input)) |
 
 ## Input
@@ -246,8 +310,7 @@ the report.
 
 ## Not yet converted
 
-Audio mixers, uGUI, 2D joints, 2D lights, particle systems and isometric and hexagonal tile maps
-convert in later imports; until then each is reported where it is used.
+uGUI, 2D lights, particle systems and isometric and hexagonal tile maps convert in later imports; until then each is reported where it is used.
 Materials and shaders, 3D (milestone 7) and Timeline don't convert. Everything that didn't
 convert is in the report's `unsupported`, once per kind with how many and the first place it was
 seen.

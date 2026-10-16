@@ -361,7 +361,8 @@ struct Area2D {
 SLASH_COMPONENT(Area2D, collision_layer, collision_mask, monitoring, monitorable)
 
 // Pins two bodies together at the entity's Transform2D, letting them turn, as Godot's
-// PinJoint2D. A missing node_a pins node_b to the world.
+// PinJoint2D. A missing node_a pins node_b to the world. Every joint is made where its entity is
+// once both bodies exist and stays there when a parent carries the entity away, as Godot's.
 struct PinJoint2D {
     entt::entity node_a{entt::null};
     entt::entity node_b{entt::null};
@@ -377,8 +378,8 @@ struct PinJoint2D {
 SLASH_COMPONENT(PinJoint2D, node_a, node_b, disable_collision, angular_limit_enabled,
                 angular_limit_lower, angular_limit_upper, motor_enabled, motor_target_velocity)
 
-// A spring from node_a at the entity's Transform2D to node_b, length pixels along the entity's
-// y axis, as Godot's DampedSpringJoint2D.
+// A spring from node_a at the entity's Transform2D to node_b, length of the entity's pixels
+// along its y axis (so its scale stretches it), as Godot's DampedSpringJoint2D.
 struct DampedSpringJoint2D {
     entt::entity node_a{entt::null};
     entt::entity node_b{entt::null};
@@ -393,8 +394,8 @@ struct DampedSpringJoint2D {
 SLASH_COMPONENT(DampedSpringJoint2D, node_a, node_b, disable_collision, length, rest_length,
                 stiffness, damping)
 
-// Keeps node_b on a groove of node_a's, from the entity's Transform2D length pixels along its y
-// axis, as Godot's GrooveJoint2D; node_b slides along it and turns freely.
+// Keeps node_b on a groove of node_a's, from the entity's Transform2D length of its pixels along
+// its y axis, as Godot's GrooveJoint2D; node_b slides along it and turns freely.
 struct GrooveJoint2D {
     entt::entity node_a{entt::null};
     entt::entity node_b{entt::null};

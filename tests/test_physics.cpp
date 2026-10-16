@@ -3,6 +3,7 @@
 #include "slash/physics2d/physics2d.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
+#include "slash/world/tree2d.hpp"
 #include "slash/world/world.hpp"
 
 #include <doctest/doctest.h>
@@ -535,6 +536,57 @@ TEST_CASE("joints pin, spring and slide bodies") {
     physics.world.destroy(pin);
     physics.step(60);
     CHECK(physics.position("bob").y > 150.0F);
+}
+
+TEST_CASE("a joint stays where it was made when a parent carries it") {
+    Physics physics;
+    // A pendulum whose pin is the bob's own child, 100 pixels left of it at (0, 0), as Godot
+    // scenes often keep a joint: the bob swinging away doesn't take the pin along.
+    const entt::entity bob = physics.crate("bob", {100.0F, 0.0F}, 10.0F);
+    const entt::entity pin = physics.add("pin", {-100.0F, 0.0F});
+    physics.get<world::Transform2D>("bob").children.push_back(pin);
+    physics.world.ecs().emplace<world::PinJoint2D>(pin, world::PinJoint2D{.node_b = bob});
+    physics.step(120);
+    const auto distance = [](Vec2 a, Vec2 b) { return std::hypot(a.x - b.x, a.y - b.y); };
+    CHECK(distance(physics.position("bob"), {0.0F, 0.0F}) == doctest::Approx(100.0F).epsilon(0.01));
+    CHECK(physics.position("bob").y > 50.0F);
+
+    // Moving the pin itself makes the joint again where it now is: 50 pixels from the bob.
+    physics.get<world::Transform2D>("pin").position = {-50.0F, 0.0F};
+    const Vec2 pivot = world::Tree2D(physics.world).global(pin).position;
+    physics.step(120);
+    CHECK(distance(physics.position("bob"), pivot) == doctest::Approx(50.0F).epsilon(0.02));
+
+    // A joint's lengths are in its own space, as Godot's: scaled twice, a 50 pixel groove from
+    // (500, 0) reaches 100 pixels down, and the bead starts 25 * 2 along it.
+    physics.crate("bead", {500.0F, 50.0F}, 10.0F);
+    const entt::entity groove = physics.add("groove", {500.0F, 0.0F});
+    physics.get<world::Transform2D>("groove").scale = {2.0F, 2.0F};
+    physics.world.ecs().emplace<world::GrooveJoint2D>(
+        groove, world::GrooveJoint2D{.node_b = physics.world.find("bead")});
+    physics.step(120);
+    CHECK(physics.position("bead").x == doctest::Approx(500.0F).epsilon(0.002));
+    CHECK(physics.position("bead").y == doctest::Approx(100.0F).epsilon(0.002));
+}
+
+TEST_CASE("a pin's motor turns its body up to the limit and no further") {
+    Physics physics(physics2d::Settings{.gravity = 0.0F,
+                                        .gravity_vector = {0.0F, 1.0F},
+                                        .linear_damp = 0.0F,
+                                        .angular_damp = 0.0F});
+    const entt::entity door = physics.crate("door", {0.0F, 0.0F}, 20.0F);
+    const entt::entity hinge = physics.add("hinge", {0.0F, 0.0F});
+    physics.world.ecs().emplace<world::PinJoint2D>(
+        hinge, world::PinJoint2D{.node_b = door,
+                                 .angular_limit_enabled = true,
+                                 .angular_limit_lower = -0.5F,
+                                 .angular_limit_upper = 1.0F,
+                                 .motor_enabled = true,
+                                 .motor_target_velocity = 2.0F});
+    physics.step(30);
+    CHECK(physics.get<world::Transform2D>("door").rotation == doctest::Approx(1.0F).epsilon(0.05));
+    physics.step(120);
+    CHECK(physics.get<world::Transform2D>("door").rotation == doctest::Approx(1.0F).epsilon(0.05));
 }
 
 TEST_CASE("impulses, forces, freezing and removing bodies") {
