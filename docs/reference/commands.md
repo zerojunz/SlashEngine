@@ -2140,25 +2140,29 @@ Needs: `read`; it changes nothing in the world, and a recording leaves it out.
 
 ### project.import
 
-Converts a Godot 4 project, in a folder inside this project, into this project, as
-[`slash-cli import`](cli.md#import) does. Its scenes become `.scene.json` files beside the
-originals, its `SpriteFrames` `.frames.json` files, each `AnimationPlayer`'s animation
-libraries a `.anim.json` file, its tile sets `.tileset.json` files, its themes `.theme.json`
-files, its bus layouts `.bus_layout.json` files and its settings and input map `project.json`;
-its textures, sounds and fonts are used where they are. Each script becomes a
-storyboard task to port it to C++. [godot-import.md](godot-import.md) says what converts to
-what. Registered by `slash-cli` and `slash-mcp`.
+Converts a Godot 4 or Unity project, in a folder inside this project, into this project, as
+[`slash-cli import`](cli.md#import) does. A Godot project's scenes become `.scene.json` files
+beside the originals, its `SpriteFrames` `.frames.json` files, each `AnimationPlayer`'s
+animation libraries a `.anim.json` file, its tile sets `.tileset.json` files, its themes
+`.theme.json` files, its bus layouts `.bus_layout.json` files and its settings and input map
+`project.json`. A Unity project's scenes and prefabs become `.scene.json` files beside the
+originals (prefabs that scenes instance), its sprites, cameras, 2D physics and sounds
+components measured in pixels, and its player, time, physics and input settings
+`project.json`. Textures, sounds and fonts are used where they are. Each script becomes a
+storyboard task to port it to C++. [godot-import.md](godot-import.md) and
+[unity-import.md](unity-import.md) say what converts to what. Registered by `slash-cli` and
+`slash-mcp`.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `source` | string | required | The folder holding the Godot project's `project.godot` |
+| `source` | string | required | The folder holding the Godot project's `project.godot`, or the Unity project's `Assets/` and `ProjectSettings/` |
 | `dry_run` | boolean | `false` | Return the report and the files it would write; write nothing |
 
 Needs: `read`, `filesystem`. It writes files and changes no scene, so there is nothing to undo;
 importing again rewrites the converted files and keeps each task's status. The result counts
 what converted, lists each script's task, and lists what didn't convert, once per kind with how
 many, the first place it was seen and why. The full report, with the values scripts need, is
-written to `import/godot.json`.
+written to `import/godot.json` or `import/unity.json`.
 
 From [examples/import-godot](../../examples/import-godot/):
 
@@ -2170,9 +2174,21 @@ From [examples/import-godot](../../examples/import-godot/):
 {"converted":{"animation_libraries":1,"assets":6,"bus_layouts":1,"input_actions":3,"scenes":2,"sprite_frames":2,"themes":1,"tile_sets":1},"engine":"godot","files":11,"main_scene":"godot/main.scene.json","project":"Coin Run","report":"import/godot.json","scripts":[{"entities":0,"script":"godot/game_state.gd","task":"task/port-game-state"},{"entities":1,"script":"godot/main.gd","task":"task/port-main"},{"entities":2,"script":"godot/player.gd","task":"task/port-player"}],"unsupported":[{"count":1,"what":"autoload","where":"project.godot: GameState","why":"autoloads are gameplay code; see the storyboard task"},{"count":1,"what":"file type .svg","where":"icon.svg","why":"textures are PNG or BMP files; save it as PNG"},{"count":1,"what":"node type Timer","where":"main.tscn: Timer","why":"timers are gameplay code: count the ticks in a C++ system"}]}
 ```
 
+From [examples/import-unity](../../examples/import-unity/), where `pixels_per_unit` is the
+scale Unity's units convert at:
+
+```json
+{"source": "unity"}
+```
+
+```json
+{"converted":{"assets":7,"input_actions":12,"prefabs":3,"scenes":1},"engine":"unity","files":8,"main_scene":"unity/Assets/Scenes/Pond.scene.json","pixels_per_unit":32.0,"project":"Pond Hop","report":"import/unity.json","scripts":[{"entities":1,"script":"unity/Assets/Scripts/CameraFollow.cs","task":"task/port-camera-follow"},{"entities":6,"script":"unity/Assets/Scripts/Coin.cs","task":"task/port-coin"},{"entities":2,"script":"unity/Assets/Scripts/Frog.cs","task":"task/port-frog"}],"unity_version":"2022.3.20f1","unsupported":[{"count":1,"what":"inactive object","where":"Assets/Scenes/Pond.unity: Coin (2)","why":"converted hidden, with its shapes disabled; there is no inactive state, so its other components still run"},{"count":1,"what":"input axis Mouse X","where":"ProjectSettings/InputManager.asset","why":"mouse movement axes: read the mouse's motion in code"},{"count":1,"what":"input binding","where":"Assets/Input/Controls.inputactions: Player/Croak","why":"\"<XRController>/trigger\": XRController bindings"},{"count":1,"what":"input interaction","where":"Assets/Input/Controls.inputactions: Player/Croak","why":"Hold: gameplay code times holds and taps"}]}
+```
+
 With `dry_run`, `files` lists the paths it would write instead of counting them. A missing
-folder fails with `-32001`, a folder with no `project.godot` or a Godot 3 project with `-32002`,
-and a path outside the project with `-32003`; `data.path` is `/source`.
+folder fails with `-32001`; a folder that is neither a Godot nor a Unity project, a Godot 3
+project or a project from before Unity 2018.3 with `-32002`; and a path outside the project with
+`-32003`; `data.path` is `/source`.
 
 ## Export
 

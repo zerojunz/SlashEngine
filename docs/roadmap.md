@@ -330,8 +330,12 @@ rendering on top.
         buses
   - [x] Godot's `AnimationPlayer` nodes and their animation libraries, with value, bezier and
         method tracks, through track targets
-  - [ ] Unity projects: 2D scenes and prefabs, sprites and their animations, tilemaps, UI,
-        audio mixers and the input system's actions; C# scripts become tasks the same way
+  - [x] Unity projects: 2D scenes, prefabs (nested prefabs and variants staying instances),
+        sprites, cameras, 2D physics, sounds, both input systems and project settings, measured
+        in pixels. Each C# script becomes a storyboard task, with the values each object gave
+        it in the report
+  - [ ] Unity's tile maps, Animator controllers and animation clips, audio mixers, uGUI, 2D
+        joints and 2D lights
   - [ ] Exported games (a Godot `.pck`, a Unity build) unpacked back into a project, for games
         the user made or has the rights to. Nothing breaks encryption or DRM, and GPL tools such
         as AssetRipper run as separate programs, never linked
