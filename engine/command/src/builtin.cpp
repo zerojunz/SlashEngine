@@ -85,10 +85,11 @@ json::Value any_property(std::string_view description) {
     return schema;
 }
 
+// An entity ID: up to 64 characters, or 255 for one an instanced scene brings ("hero/sprite").
 json::Value id_property(std::string_view description) {
     json::Value schema = property("string", description);
     schema["minLength"] = 1;
-    schema["maxLength"] = 64;
+    schema["maxLength"] = 255;
     return schema;
 }
 
@@ -509,6 +510,20 @@ Reply scene_save(Session& session, const json::Value& params) {
     if (!file) {
         return param_error(file.error(), "/path");
     }
+    if (const json::Value* root = params.find("root"); root != nullptr) {
+        const std::string& id = root->as_string();
+        if (id.empty()) {
+            session.world().set_scene_root({});
+        } else if (session.world().find(id) == entt::null) {
+            return unknown_entity(session.world(), id, "/root");
+        } else if (id.find('/') != std::string::npos) {
+            return param_error(code::kInvalidArgument, "/root",
+                               quoted(id) + " comes from an instanced scene; the root is an "
+                                            "entity of the scene's own");
+        } else {
+            session.world().set_scene_root(id);
+        }
+    }
     const std::string contents = json::write(world::save_scene(session.world())) + "\n";
     if (!session.dry_running()) {
         if (auto written = session.write_file(file.value(), contents); !written) {
@@ -519,6 +534,9 @@ Reply scene_save(Session& session, const json::Value& params) {
     json::Value result;
     result["path"] = path;
     result["entities"] = session.world().size();
+    if (!session.world().scene_root().empty()) {
+        result["root"] = session.world().scene_root();
+    }
     return Reply::success(std::move(result));
 }
 
@@ -569,9 +587,10 @@ Reply entity_destroy(Session& session, const json::Value& params) {
     }
     auto& ecs = world.ecs();
     // As Godot frees a node's children with it: the entities in its Transform2D and Control
-    // children go too, and theirs.
+    // children go too, and theirs, and those its instanced scene brought.
     std::vector<entt::entity> doomed{entity};
     std::unordered_set<entt::entity> seen{entity};
+    const std::vector<std::string_view> ids = world.ids();
     for (std::size_t i = 0; i < doomed.size(); ++i) {
         const auto add = [&](const std::vector<entt::entity>& children) {
             for (const entt::entity child : children) {
@@ -586,6 +605,15 @@ Reply entity_destroy(Session& session, const json::Value& params) {
         }
         if (const auto* control = ecs.try_get<world::Control>(doomed[i]); control != nullptr) {
             add(control->children);
+        }
+        if (const std::string_view own = world.id_of(doomed[i]); !own.empty()) {
+            const std::string prefix = std::string(own) + "/";
+            for (auto it = std::ranges::lower_bound(ids, std::string_view(prefix));
+                 it != ids.end() && it->starts_with(prefix); ++it) {
+                if (const entt::entity part = world.find(*it); seen.insert(part).second) {
+                    doomed.push_back(part);
+                }
+            }
         }
     }
     // They leave the lists of the parents that stay.
@@ -656,6 +684,17 @@ Reply prefab_save(Session& session, const json::Value& params) {
     const entt::entity entity = session.world().find(id);
     if (entity == entt::null) {
         return unknown_entity(session.world(), id, "/id");
+    }
+    if (id.find('/') != std::string::npos) {
+        return param_error(code::kInvalidArgument, "/id",
+                           quoted(id) + " comes from an instanced scene; a prefab file holds an "
+                                        "entity of the scene's own");
+    }
+    if (const world::PrefabLink* link = session.world().prefab_of(entity);
+        link != nullptr && link->path.ends_with(world::kSceneSuffix)) {
+        return param_error(code::kInvalidArgument, "/id",
+                           quoted(id) + " is an instance of " + quoted(link->path) +
+                               ", which brings other entities; a prefab file holds one");
     }
     const std::string path = text(params, "path");
     if (!path.ends_with(world::kPrefabSuffix) || path.size() == world::kPrefabSuffix.size()) {
@@ -3859,23 +3898,30 @@ void register_builtin_commands(Registry& registry) {
                        "folders as needed.",
         .capabilities = {Read, Filesystem},
         .effect = Effect::Read,
-        .params = params_schema({{"path", property("string", "File relative to the project "
-                                                             "folder. Defaults to the scene's "
-                                                             "current file.")}}),
+        .params = params_schema(
+            {{"path", property("string", "File relative to the project folder. Defaults to "
+                                         "the scene's current file.")},
+             {"root", property("string", "The entity an instance of this scene becomes "
+                                         "when another scene's entity extends it, kept "
+                                         "for later saves; \"\" for none.")}}),
         .handler = scene_save,
     });
 
+    json::Value entity_id =
+        id_property("Stable ID: 1 to 64 letters, digits, '_' or '-'. Generated if left out.");
+    entity_id["maxLength"] = 64;
     registry.add({
         .name = "entity.create",
-        .description = "Creates an entity, optionally from a prefab and with components. Returns "
-                       "its ID.",
+        .description = "Creates an entity, optionally from a prefab or scene and with components. "
+                       "Returns its ID.",
         .capabilities = {Edit},
         .effect = Effect::Edit,
         .params = params_schema({
-            {"id", id_property("Stable ID: 1 to 64 letters, digits, '_' or '-'. Generated if "
-                               "left out.")},
+            {"id", entity_id},
             {"extends", property("string", "A .prefab.json file to start from, e.g. "
-                                           "\"prefabs/enemy.prefab.json\".")},
+                                           "\"prefabs/enemy.prefab.json\", or a .scene.json file "
+                                           "with a root, whose other entities come too as "
+                                           "\"<id>/<their id>\".")},
             {"components",
              components_property("Components keyed by type name, e.g. {\"Transform2D\": "
                                  "{\"position\": [64, 32]}}. Fields left out keep their "
@@ -3887,7 +3933,8 @@ void register_builtin_commands(Registry& registry) {
     registry.add({
         .name = "entity.destroy",
         .description = "Destroys an entity and its components, and the entities in its "
-                       "Transform2D or Control children, listed as descendants.",
+                       "Transform2D or Control children or its instanced scene, listed as "
+                       "descendants.",
         .capabilities = {Edit},
         .effect = Effect::Edit,
         .params = params_schema({{"id", id_property("Entity ID.")}}, {"id"}),

@@ -130,6 +130,11 @@ only what differs and editing the prefab changes every instance. Prefabs can ext
 prefabs. Undo and snapshots keep the prefab each entity was made from, so they restore it exactly
 even after the file changes.
 
+An **instanced scene** is a whole scene used as a prefab, as Godot instances a PackedScene. An
+entity that `"extends"` a `.scene.json` file with a `"root"` becomes that root, and the scene's
+other entities come with it under the instance's ID (`hero/sprite`, `hero/gun/muzzle`). The
+instance holds only its overrides, per entity, and editing the scene changes every instance.
+
 ## Assets
 
 An **asset** is a file a game loads by project path, like a Godot resource: a JSON table, a CSV

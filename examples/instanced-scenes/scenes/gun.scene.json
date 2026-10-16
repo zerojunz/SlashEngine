@@ -1,0 +1,23 @@
+{
+  "entities": {
+    "gun": {
+      "components": {
+        "Sprite2D": {
+          "modulate": [0.5, 0.5, 0.5, 1.0]
+        },
+        "Transform2D": {
+          "children": ["muzzle"]
+        }
+      }
+    },
+    "muzzle": {
+      "components": {
+        "Transform2D": {
+          "position": [6.0, 0.0]
+        }
+      }
+    }
+  },
+  "format": 1,
+  "root": "gun"
+}

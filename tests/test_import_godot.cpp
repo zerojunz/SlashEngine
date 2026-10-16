@@ -12,6 +12,7 @@
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/scene.hpp"
+#include "slash/world/world.hpp"
 
 #include <doctest/doctest.h>
 
@@ -69,15 +70,46 @@ std::map<std::string, std::string> files_of(const importer::ImportPlan& plan) {
     return files;
 }
 
-// The components of one entity of a planned scene.
+// Reads the files a plan writes, so its scenes can instance the scenes it writes.
+slash::world::FileReader reader_of(const std::map<std::string, std::string>& files) {
+    return [&files](std::string_view path) -> slash::Result<std::string> {
+        const auto it = files.find(std::string(path));
+        if (it == files.end()) {
+            return slash::make_error(slash::ErrorCode::NotFound, "no such file");
+        }
+        return it->second;
+    };
+}
+
+// The components one entity of a planned scene ends up with, with what it extends and its
+// overrides applied.
 json::Value entity(const std::map<std::string, std::string>& files, const std::string& scene,
                    std::string_view id) {
+    REQUIRE(files.contains(scene));
+    slash::world::ComponentRegistry components;
+    slash::world::register_builtin_components(components);
+    slash::world::World world(components);
+    world.set_file_reader(reader_of(files));
+    REQUIRE(slash::world::load_scene(world, parse(files.at(scene))));
+    const entt::entity found = world.find(id);
+    REQUIRE_MESSAGE(world.valid(found), id);
+    json::Value result = json::Object{};
+    for (const auto& type : components.types()) {
+        if (type->has(world, found)) {
+            result[type->name()] = type->save(world, found);
+        }
+    }
+    return result;
+}
+
+// One entity's entry in a planned scene's file.
+json::Value entry(const std::map<std::string, std::string>& files, const std::string& scene,
+                  std::string_view id) {
     REQUIRE(files.contains(scene));
     const json::Value document = parse(files.at(scene));
     const json::Value* found = document.find("entities")->find(id);
     REQUIRE_MESSAGE(found != nullptr, id);
-    const json::Value* components = found->find("components");
-    return components != nullptr ? *components : json::Value(json::Object{});
+    return *found;
 }
 
 // The report's unsupported entry for what, or null.
@@ -491,8 +523,11 @@ TEST_CASE("importing a Godot scene maps its nodes to entities and components") {
     slash::world::register_builtin_components(components);
     for (const auto& [path, contents] : files) {
         if (path.ends_with(slash::world::kSceneSuffix)) {
-            CHECK_MESSAGE(slash::world::validate_scene(components, parse(contents)).empty(), path);
-            CHECK(slash::world::format_scene(components, contents).value() == contents);
+            CHECK_MESSAGE(
+                slash::world::validate_scene(components, parse(contents), reader_of(files)).empty(),
+                path);
+            CHECK(slash::world::format_scene(components, contents, reader_of(files)).value() ==
+                  contents);
         }
     }
 
@@ -516,21 +551,30 @@ TEST_CASE("importing a Godot scene maps its nodes to entities and components") {
               ->as_string()
               .find("CollisionPolygon2D") != std::string::npos);
 
-    // An instanced scene is inlined, with its overrides, under the instance's ID.
+    // An instanced scene's root extends the scene's file, and the nodes it brings have IDs under
+    // the instance's; the level holds only its overrides.
+    CHECK(entry(files, level, "enemy") == parse(R"({"extends": "godot/scenes/enemy.scene.json",
+                    "components": {"Transform2D": {"position": [100.0, 50.0]}}})"));
+    CHECK(entry(files, level, "enemy/sprite") ==
+          parse(R"({"components": {"Sprite2D": {"flip_h": true}}})"));
+    const json::Value level_file = parse(files.at(level));
+    CHECK(level_file.find("entities")->find("enemy2/sprite") == nullptr);
+    const json::Value enemy_file = parse(files.at("godot/scenes/enemy.scene.json"));
+    CHECK(enemy_file.find("root")->as_string() == "enemy");
     const json::Value enemy = entity(files, level, "enemy");
     CHECK(enemy.find("RigidBody2D")->find("mass")->as_double() == 2.0);
     CHECK(*enemy.find("Transform2D")->find("position") == parse("[100.0, 50.0]"));
     CHECK(*enemy.find("Transform2D")->find("children") ==
-          parse(R"(["enemy_sprite", "enemy_shape"])"));
-    const json::Value sprite = entity(files, level, "enemy_sprite");
+          parse(R"(["enemy/sprite", "enemy/shape"])"));
+    const json::Value sprite = entity(files, level, "enemy/sprite");
     CHECK(sprite.find("Sprite2D")->find("flip_h")->as_bool());
     CHECK(sprite.find("Sprite2D")->find("texture")->as_string() == "godot/art/enemy.png");
     CHECK(*sprite.find("Sprite2D")->find("region") == parse("[0.0, 0.0, 16.0, 16.0]"));
     CHECK(sprite.find("Sprite2D")->find("texture_filter")->as_string() == "nearest");
     CHECK(*sprite.find("Sprite2D")->find("modulate") == parse("[1.0, 0.5, 0.5, 0.5]"));
-    CHECK(entity(files, level, "enemy2_sprite").find("Sprite2D")->find("flip_h") == nullptr);
+    CHECK(entity(files, level, "enemy2/sprite").find("Sprite2D")->find("flip_h") == nullptr);
     CHECK(
-        entity(files, level, "enemy_shape").find("CollisionShape2D")->find("shape")->as_string() ==
+        entity(files, level, "enemy/shape").find("CollisionShape2D")->find("shape")->as_string() ==
         "circle");
 
     // Node paths become entity IDs.
