@@ -339,8 +339,12 @@ constexpr std::array kNodeTypes{
 };
 
 const NodeType* find_node_type(std::string_view godot) {
-    const auto* it = std::ranges::find(kNodeTypes, godot, &NodeType::godot);
-    return it != kNodeTypes.end() ? &*it : nullptr;
+    for (const NodeType& type : kNodeTypes) {
+        if (type.godot == godot) {
+            return &type;
+        }
+    }
+    return nullptr;
 }
 
 // The family of a node type that doesn't convert, by its name and the properties it sets.

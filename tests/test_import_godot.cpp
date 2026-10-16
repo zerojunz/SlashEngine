@@ -666,8 +666,8 @@ TEST_CASE("a Godot project outside the destination is copied in") {
     auto result =
         importer::import_project({.source = source.string(), .destination = destination.string()});
     REQUIRE_MESSAGE(result.ok(), (result.ok() ? std::string() : result.error().message));
-    CHECK(result.value().find("files")->as_int() > 0);
-    CHECK(result.value().find("main_scene")->as_string() == "scenes/level.scene.json");
+    CHECK(result.value().report.find("files")->as_int() > 0);
+    CHECK(result.value().report.find("main_scene")->as_string() == "scenes/level.scene.json");
     CHECK(fs::exists(destination / "art/enemy.png"));
     CHECK(fs::exists(destination / "enemy.gd"));
     CHECK(fs::exists(destination / "scenes/level.scene.json"));
