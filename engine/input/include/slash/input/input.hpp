@@ -538,4 +538,15 @@ struct Snapshot {
 [[nodiscard]] Snapshot save(const world::World& world);
 void restore(world::World& world, const Snapshot& snapshot);
 
+// Input queued from outside the world's systems (the platform's events, input.inject), for
+// recording replays: an event as push got it, or a release_pressed when release_all is set.
+struct Recorded {
+    Event event;
+    bool release_all = false;
+};
+using Recorder = std::function<void(const Recorded& input)>;
+// Calls recorder for each push and release_pressed made while the world isn't stepping; an empty
+// one stops.
+void set_recorder(world::World& world, Recorder recorder);
+
 } // namespace slash::input

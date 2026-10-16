@@ -121,6 +121,20 @@ public:
     // Runs every system once and advances the tick counter.
     void step(double tick_seconds);
     [[nodiscard]] std::uint64_t tick() const noexcept { return tick_; }
+    // True while step runs the systems, so code can tell their work from the platform's and
+    // commands'.
+    [[nodiscard]] bool stepping() const noexcept { return stepping_; }
+    // Called at the start of each step, before the systems, with the tick's length; for
+    // recording replays. An empty listener stops.
+    using StepListener = std::function<void(World& world, double tick_seconds)>;
+    void set_step_listener(StepListener listener) { step_listener_ = std::move(listener); }
+
+    // What systems keep between ticks outside components (held input, focus, particles, physics
+    // contacts, playing sounds) is forgotten by reset_state, so the world plays on as a new world
+    // would with the same entities. Replays start so. Modules that keep such state add a reset
+    // when they install.
+    void add_reset(std::function<void(World&)> reset);
+    void reset_state();
 
     // The counters a saved scene leaves out. Sessions put them back when they roll back a failed
     // command or a dry run, so the next generated ID and tick are the same as if it never ran.
@@ -172,6 +186,8 @@ private:
     std::map<std::string, entt::entity, std::less<>> by_id_;
     entt::registry registry_;
     std::vector<NamedSystem> systems_;
+    std::vector<std::function<void(World&)>> resets_;
+    StepListener step_listener_;
     EventListener listener_;
     FileReader reader_;
     std::map<std::string, std::shared_ptr<const json::Value>, std::less<>> prefabs_;

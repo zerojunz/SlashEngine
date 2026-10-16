@@ -231,6 +231,7 @@ void install(world::World& world, const Settings& settings) {
     }
     auto space = std::make_shared<Space>(settings);
     world.ecs().ctx().emplace<std::shared_ptr<Space>>(space);
+    world.add_reset([space](world::World& /*world*/) { space->reset(); });
     world.add_system(
         "physics2d",
         [space](world::World& w, double tick_seconds) {

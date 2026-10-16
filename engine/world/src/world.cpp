@@ -108,12 +108,26 @@ std::vector<std::string_view> World::system_names() const {
 }
 
 void World::step(double tick_seconds) {
+    if (step_listener_) {
+        step_listener_(*this, tick_seconds);
+    }
     stepping_ = true;
     for (const NamedSystem& system : systems_) {
         system.run(*this, tick_seconds);
     }
     stepping_ = false;
     ++tick_;
+}
+
+void World::add_reset(std::function<void(World&)> reset) {
+    resets_.push_back(std::move(reset));
+}
+
+void World::reset_state() {
+    SLASH_ASSERT(!stepping_, "the world cannot be reset while it is stepping");
+    for (const auto& reset : resets_) {
+        reset(*this);
+    }
 }
 
 bool World::is_valid_id(std::string_view id) {

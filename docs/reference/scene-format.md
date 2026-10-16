@@ -1653,3 +1653,52 @@ name one, as can a randomizer's `streams`.
   fields.
 - A randomizer's choices come from the player's entity ID and how many times it has played,
   so a scene makes the same picks every run.
+
+## Replays
+
+A `.replay.json` file is a run recorded with [`replay.record`](commands.md#replayrecord) or
+`slash-cli run --record`, which [`replay.run`](commands.md#replayrun) plays back. Engines write
+them; `slash-cli schema replay` prints the schema and `slash-cli scene validate` checks one.
+
+```json
+{
+  "checks": [{"hash": "5f3a0c2b9d4e8a17", "tick": 120}],
+  "end": {"tick": 150, "world": {"entities": {...}, "format": 1}},
+  "format": 1,
+  "prefabs": {"prefabs/crate.prefab.json": {"RigidBody2D": {}, "CollisionShape2D": {"size": [24.0, 24.0]}}},
+  "scene": "main.scene.json",
+  "start": {"next_id": 1, "tick": 0, "viewport": [320.0, 180.0], "world": {"entities": {...}, "format": 1}},
+  "steps": [{"count": 150, "seconds": 0.016666666666666666, "tick": 0}],
+  "timeline": [
+    {"input": [{"key": "D", "pressed": true, "type": "key"}], "tick": 20},
+    {"command": "component.set", "hash": "0b6d1e95c7a2f348", "params": {...}, "tick": 40},
+    {"command": "undo", "next_id": 1, "tick": 70, "world": {"entities": {...}, "format": 1}}
+  ]
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `format` | Must be 1 |
+| `scene` | The scene file open when the recording started, or `""` |
+| `start` | The world's `tick`, the number in its next generated ID (`next_id`), the UI `viewport` and the entities (`world`, as a scene file holds them) when the recording started |
+| `prefabs` | The components of each prefab the entities extend, by path, so the file plays back after the prefab files change |
+| `steps` | The ticks the host stepped outside commands, in runs: `tick` (the first), `count` and `seconds` (each tick's length) |
+| `timeline` | What happened from outside the systems, in order, each before the step of its `tick` |
+| `checks` | A hash of the entities before every 60th tick the host stepped |
+| `end` | The world's `tick` and the entities when the recording stopped |
+
+A timeline entry is one of:
+
+- `input`: events the platform queued, as [`input.inject`](commands.md#inputinject) takes them, or
+  `{"type": "release_all"}` when the window lost focus.
+- `command` with `params`: a command to run again, and the `hash` of the entities after it.
+- `command` with `world`: what the command left, to put back, with `next_id`, `end_tick` if it
+  stepped, `path` for a scene it opened and `prefabs` whose files changed since the start. Undo,
+  redo, `world.restore`, `scene.open`, `scene.new`, hot reloads (`"command": "asset.reload"`) and
+  batches holding any of them are kept this way.
+- `viewport`: the size the host set the UI viewport to, as a window does when it is resized.
+
+A hash is FNV-1a 64 of the entities' compact JSON (the scene form, keys sorted), as 16 lowercase
+hex digits. Ticks only grow: steps don't overlap, entries come in order and every tick is
+between the start's and the end's.

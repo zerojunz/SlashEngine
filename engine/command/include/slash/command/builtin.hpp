@@ -30,6 +30,7 @@ class Session;
 //   batch                                           run many commands as one, all or nothing
 //   events.subscribe, events.read, events.unsubscribe  queued world events
 //   log.tail                                        recent log lines
+//   replay.record, replay.stop, replay.run          record a run and play it back (replay.hpp)
 void register_builtin_commands(Registry& registry);
 
 // Adds play and pause, for hosts that tick the world on their own clock and step it only while

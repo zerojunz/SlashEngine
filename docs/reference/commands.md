@@ -32,7 +32,7 @@ Rules that apply to every command (see [concepts.md](../concepts.md#sessions)):
 
 Add `"dry_run": true` to the params of any command that changes the world (`scene.new`,
 `scene.open`, `entity.create`, `entity.destroy`, `component.set`, `component.remove`, `step`,
-`run.until`, `world.restore`, `storyboard.edit` and `batch`) to see what it would do. The command runs, then
+`run.until`, `world.restore`, `storyboard.edit`, `replay.run` and `batch`) to see what it would do. The command runs, then
 the world, the scene's path, the next generated ID and the tick counter are put back, and no undo
 step is recorded. An error is returned as usual. The result holds the command's own result and the
 changes, in the same form as [`world.diff`](#worlddiff):
@@ -73,13 +73,14 @@ as `entity.get`, reject it as an unknown param.
 | Query | [`world.query`](#worldquery) |
 | Snapshots | [`world.snapshot`](#worldsnapshot), [`world.diff`](#worlddiff), [`world.restore`](#worldrestore) |
 | Run | [`step`](#step), [`run.until`](#rununtil), [`play`](#play), [`pause`](#pause) |
+| Replays | [`replay.record`](#replayrecord), [`replay.stop`](#replaystop), [`replay.run`](#replayrun) |
 | History | [`undo`](#undo), [`redo`](#redo), [`history.get`](#historyget) |
 | Several at once | [`batch`](#batch) |
 | Observe | [`events.subscribe`](#eventssubscribe), [`events.read`](#eventsread), [`events.unsubscribe`](#eventsunsubscribe), [`log.tail`](#logtail), [`frame.capture`](#framecapture) |
 | Display | [`display.list`](#displaylist), [`display.set`](#displayset), [`perf.stats`](#perfstats) |
 | Export | [`export.run`](#exportrun) |
 
-Planned commands from the [roadmap](../roadmap.md), not yet available: `replay.run`.
+Planned commands from the [roadmap](../roadmap.md), not yet available: `replay.seek`.
 
 ## Describe
 
@@ -118,12 +119,12 @@ Returns a JSON Schema: for scene, prefab, [`.frames.json`](scene-format.md#sprit
 [`.material.json`](scene-format.md#materials), [`.anim.json`](scene-format.md#animations),
 [`.tileset.json`](scene-format.md#tile-sets), [`.font.json`](scene-format.md#fonts),
 [`.theme.json`](scene-format.md#themes), [`.audio.json`](scene-format.md#audio-streams),
-[`.bus_layout.json`](scene-format.md#bus-layouts) or storyboard files, one component or one
-command.
+[`.bus_layout.json`](scene-format.md#bus-layouts), [`.replay.json`](scene-format.md#replays) or
+storyboard files, one component or one command.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `kind` | `"scene"`, `"prefab"`, `"frames"`, `"material"`, `"animation"`, `"tileset"`, `"font"`, `"theme"`, `"audio"`, `"bus_layout"`, `"storyboard"`, `"component"` or `"command"` | required | Which schema |
+| `kind` | `"scene"`, `"prefab"`, `"frames"`, `"material"`, `"animation"`, `"tileset"`, `"font"`, `"theme"`, `"audio"`, `"bus_layout"`, `"replay"`, `"storyboard"`, `"component"` or `"command"` | required | Which schema |
 | `name` | string | | Component or command name, for `component` and `command` |
 
 Needs: `read`.
@@ -1541,6 +1542,89 @@ serving requests, and `step` still advances it. No params. Needs: `run`.
 ```
 
 `play` and `pause` change nothing in the world, so there is nothing to undo.
+
+## Replays
+
+A replay is a run recorded into a [`.replay.json`](scene-format.md#replays) file: the entities it
+started from, then each tick the host stepped, the input it queued and the commands that changed
+the world, in order. Playing it back in any session lands on the same world, so a player's bug
+report or an agent's play session can be stepped through again, queried at any tick and kept as
+a test. [examples/replays](../../examples/replays/) records a run and plays it back.
+
+Recording starts the world afresh, as playback does: held input, focus, hover, particles,
+physics contacts and playing sounds start over, and the entities are stored again in the order a
+replay puts them back. Gameplay systems that keep state outside components add a reset with
+`World::add_reset` so they replay exactly. What a recording leaves out: commands that only read,
+dry runs, failed commands, `play`, `pause`, `display.set` and `storyboard.edit`. `undo`, `redo`,
+`world.restore`, `scene.open`, `scene.new`, hot-reloaded prefabs and batches holding any of these
+are kept as the entities they left, since playback has neither the history nor the files.
+Text pasted from the system clipboard in a window is not kept.
+
+### replay.record
+
+Starts recording the session's world to a `.replay.json` file, written by `replay.stop`.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `path` | string | required | The file, inside the project, ending in `.replay.json` |
+
+Needs: `read`, `filesystem`. One recording runs at a time, and not inside a batch.
+`slash-cli run --record <file>` records a whole played run the same way.
+
+```json
+{"path": "replays/run.replay.json"}
+```
+
+```json
+{"recording":"replays/run.replay.json","tick":0}
+```
+
+### replay.stop
+
+Stops recording and writes the file. No params. Needs: `filesystem`. Returns the path and how
+many ticks, kept commands and input events it holds.
+
+```json
+{"commands":0,"inputs":6,"path":"replays/run.replay.json","ticks":150}
+```
+
+### replay.run
+
+Plays a replay back: puts back the entities it started from with its tick counter and next
+generated ID, starts the world afresh, then steps the same ticks with the same input and
+commands, to its end or to `tick`. It replaces the world, like `scene.open`, and clears the undo
+history.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `path` | string | required | The `.replay.json` file |
+| `tick` | integer | the end | Stop here instead: everything recorded before this tick's step has happened. A command that steps past it, such as `step`, stops where it did |
+
+Needs: `edit`, `run`, `filesystem`. Takes `dry_run`. Refused while a recording runs.
+
+The result holds `tick` (the world's tick now), `end` (the recording's last tick) and `matched`:
+whether every hash the recording took on the way matched, and at its end the entities too. A
+hash is taken after each kept command and before every 60th tick the host stepped. When the run
+went another way, `diverged` is the first tick where a hash differed, `changes` (at the end) is
+what differs from the recorded end in the form of [`world.diff`](#worlddiff), and `failed`
+names a command that failed, where playback stopped. A file that is not a valid replay is
+refused with every error's JSON Pointer in `file_errors`.
+
+From [examples/replays](../../examples/replays/):
+
+```json
+{"path": "replays/run.replay.json", "tick": 55}
+```
+
+```json
+{"end":150,"matched":true,"tick":55}
+```
+
+With a lower jump in the game's code, the hero no longer clears the crate:
+
+```json
+{"changes":{"added":["coin"],"changed":{"coin":{...},"hero":{"Transform2D":{...}}}},"diverged":60,"end":150,"matched":false,"tick":150}
+```
 
 ## History
 

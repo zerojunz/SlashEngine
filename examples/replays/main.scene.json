@@ -1,0 +1,58 @@
+{
+  "entities": {
+    "coin": {
+      "components": {
+        "Area2D": {
+          "collision_mask": 2
+        },
+        "CollisionShape2D": {
+          "radius": 6.0,
+          "shape": "circle"
+        },
+        "Transform2D": {
+          "position": [160.0, 140.0]
+        }
+      }
+    },
+    "crate": {
+      "components": {
+        "CollisionShape2D": {
+          "size": [24.0, 24.0]
+        },
+        "RigidBody2D": {
+          "mass": 2.0
+        },
+        "Transform2D": {
+          "position": [110.0, 148.0]
+        }
+      }
+    },
+    "ground": {
+      "components": {
+        "CollisionShape2D": {
+          "size": [320.0, 20.0]
+        },
+        "StaticBody2D": {},
+        "Transform2D": {
+          "position": [160.0, 170.0]
+        }
+      }
+    },
+    "hero": {
+      "components": {
+        "CharacterBody2D": {
+          "collision_layer": 2
+        },
+        "CollisionShape2D": {
+          "height": 32.0,
+          "radius": 8.0,
+          "shape": "capsule"
+        },
+        "Transform2D": {
+          "position": [40.0, 130.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

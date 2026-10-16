@@ -3,6 +3,7 @@ add_library(slash_command
     src/command.cpp
     src/live.cpp
     src/mcp.cpp
+    src/replay.cpp
     src/rpc.cpp
     src/session.cpp)
 add_library(slash::command ALIAS slash_command)

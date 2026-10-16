@@ -8,6 +8,7 @@
 #include "slash/canvas/particles.hpp"
 #include "slash/canvas/sprite_frames.hpp"
 #include "slash/canvas/tilemap.hpp"
+#include "slash/command/replay.hpp"
 #include "slash/command/session.hpp"
 #include "slash/core/assert.hpp"
 #include "slash/core/json_schema.hpp"
@@ -387,6 +388,9 @@ Reply schema_get(Session& session, const json::Value& params) {
     }
     if (kind == "bus_layout") {
         return Reply::success(audio::bus_layout_schema());
+    }
+    if (kind == "replay") {
+        return Reply::success(replay_schema());
     }
     if (name.empty()) {
         return param_error(code::kInvalidParams, "/name",
@@ -3341,18 +3345,20 @@ void register_builtin_commands(Registry& registry) {
                                           "\"material\" (.material.json), \"animation\" "
                                           "(.anim.json), \"tileset\" (.tileset.json), \"font\" "
                                           "(.font.json), \"theme\" (.theme.json), \"audio\" "
-                                          "(.audio.json), \"bus_layout\" (.bus_layout.json) or "
-                                          "\"storyboard\" for those files, \"component\" for "
+                                          "(.audio.json), \"bus_layout\" (.bus_layout.json), "
+                                          "\"replay\" (.replay.json) or \"storyboard\" for "
+                                          "those files, \"component\" for "
                                           "one component's fields, \"command\" for a command's "
                                           "params.");
-    kind["enum"] =
-        json::Array{"scene", "prefab", "frames",     "material",   "animation", "tileset", "font",
-                    "theme", "audio",  "bus_layout", "storyboard", "component", "command"};
+    kind["enum"] = json::Array{"scene",   "prefab",     "frames",    "material", "animation",
+                               "tileset", "font",       "theme",     "audio",    "bus_layout",
+                               "replay",  "storyboard", "component", "command"};
     registry.add({
         .name = "schema.get",
         .description = "Returns a JSON Schema: for scene, prefab, .frames.json, .material.json, "
                        ".anim.json, .tileset.json, .font.json, .theme.json, .audio.json, "
-                       ".bus_layout.json or storyboard files, one component or one command.",
+                       ".bus_layout.json, .replay.json or storyboard files, one component or "
+                       "one command.",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema(
@@ -4316,6 +4322,8 @@ void register_builtin_commands(Registry& registry) {
         }),
         .handler = log_tail,
     });
+
+    register_replay_commands(registry);
 }
 
 void register_run_commands(Registry& registry) {

@@ -187,6 +187,21 @@ deterministic, which lets agents and CI repeat a run and get the same result. `s
 ticks the world in a window or headless; the `step` command advances it a given number of ticks
 from any front end, and `run.until` until a condition on the entities holds.
 
+### Replays
+
+Because runs repeat, a run can be recorded and played back. `replay.record` (or
+`slash-cli run --record`) writes a **replay**, a `.replay.json` file: the entities at the start,
+each tick the host stepped, the input it queued and the commands that changed the world, in
+order, with a hash of the world every 60 ticks and after each command. `replay.run` plays it
+back in any session and says whether it matched, and if not, the first tick it went another way
+and what differs at the end. With `"tick"` it stops partway, so every query works on the world
+as it was then. A player's bug report becomes a run an agent can step through, and a recorded
+run becomes a test that fails when a change alters it.
+
+Recording and playback both start the world afresh: what systems keep outside components (held
+input, focus, particles, physics contacts, playing sounds) starts over, through the resets
+modules add with `World::add_reset`. A gameplay system that keeps its own state does the same.
+
 ## Input
 
 Input follows Godot. Keys, mouse buttons and motion, touches and gamepads arrive as **input
@@ -573,6 +588,7 @@ OpenAI-compatible servers (including local ones), Anthropic and Gemini; see the
 | Project | A game's folder: `project.json` plus its scenes |
 | Project folder | The folder all command paths are relative to |
 | Reflection | Field metadata from `SLASH_COMPONENT` or `SLASH_REFLECT` that drives saving, schemas and commands |
+| Replay | A run recorded into a `.replay.json` file, which `replay.run` plays back exactly |
 | Resource | Read-only data an MCP client can fetch: the scene, its schema or the logs |
 | Scene | A world saved as a `.scene.json` file |
 | Session | One world with its open scene path, undo history and recent logs |

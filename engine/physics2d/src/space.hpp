@@ -1,5 +1,6 @@
 #pragma once
 
+#include "slash/core/assert.hpp"
 #include "slash/physics2d/physics2d.hpp"
 #include "slash/world/components.hpp"
 
@@ -14,6 +15,8 @@
 #include <set>
 #include <string>
 #include <tuple>
+#include <unordered_map>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -33,6 +36,64 @@ inline constexpr std::uint64_t kShapeBit = std::uint64_t{1} << 32U;
 inline constexpr std::uint64_t kQueryBit = std::uint64_t{1} << 33U;
 
 enum class Kind : std::uint8_t { Rigid, Character, Animatable, Static, Area };
+
+// Values by entity, kept in the order they were added. Box2D's results depend on the order of
+// the calls made to it, and the same entities have other handles in another session (EnTT
+// reuses them after a clear), so the space goes through its bodies and joints in this order,
+// never by handle: the same world then steps the same in every session.
+template <typename T>
+class EntityMap {
+public:
+    using Entry = std::pair<entt::entity, T>;
+
+    [[nodiscard]] T* find(entt::entity entity) {
+        const auto found = index_.find(entity);
+        return found != index_.end() ? &entries_[found->second].second : nullptr;
+    }
+    [[nodiscard]] const T* find(entt::entity entity) const {
+        const auto found = index_.find(entity);
+        return found != index_.end() ? &entries_[found->second].second : nullptr;
+    }
+    T& emplace(entt::entity entity, T value) {
+        SLASH_ASSERT(!index_.contains(entity), "an entity is in the map once");
+        index_.emplace(entity, entries_.size());
+        return entries_.emplace_back(entity, std::move(value)).second;
+    }
+    // Removes the entries remove(entity, value) picks, asking in order.
+    template <typename Remove>
+    void erase_if(Remove remove) {
+        std::size_t kept = 0;
+        for (Entry& entry : entries_) {
+            if (!remove(entry.first, entry.second)) {
+                if (&entries_[kept] != &entry) {
+                    entries_[kept] = std::move(entry);
+                }
+                ++kept;
+            }
+        }
+        entries_.resize(kept);
+        index_.clear();
+        for (std::size_t i = 0; i < entries_.size(); ++i) {
+            index_.emplace(entries_[i].first, i);
+        }
+    }
+    void erase(entt::entity entity) {
+        erase_if([entity](entt::entity other, const T& /*value*/) { return other == entity; });
+    }
+    void clear() {
+        entries_.clear();
+        index_.clear();
+    }
+
+    [[nodiscard]] auto begin() { return entries_.begin(); }
+    [[nodiscard]] auto end() { return entries_.end(); }
+    [[nodiscard]] auto begin() const { return entries_.begin(); }
+    [[nodiscard]] auto end() const { return entries_.end(); }
+
+private:
+    std::vector<Entry> entries_;
+    std::unordered_map<entt::entity, std::size_t> index_;
+};
 
 inline b2Vec2 to_b2(Vec2 v) {
     return {v.x, v.y};
@@ -153,6 +214,9 @@ public:
     Space& operator=(Space&&) = delete;
 
     void set_settings(const Settings& settings);
+    // Forgets the Box2D world, its bodies and contacts; the next sync builds them again from the
+    // components, as in a new world.
+    void reset();
 
     // Makes the Box2D world match the components: queries call it so they see edits made since
     // the last step.
@@ -183,8 +247,8 @@ private:
     Settings settings_;
     b2WorldId world_ = b2_nullWorldId;
     b2BodyId ground_ = b2_nullBodyId; // what joints with no node_a hold on to
-    std::map<entt::entity, std::unique_ptr<Body>> bodies_;
-    std::map<entt::entity, Joint> joints_;
+    EntityMap<std::unique_ptr<Body>> bodies_;
+    EntityMap<Joint> joints_;
     std::vector<Impulse> impulses_;
     // Who touched whom after the last step, by entity ID, for entered and exited events:
     // (entity, other, other is an area).
