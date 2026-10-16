@@ -36,7 +36,8 @@ void register_physics_components(ComponentRegistry& registry) {
 
     registry.add<CollisionShape2D>()
         .set_doc("A shape of the entity's physics body or area, moved by position and rotation "
-                 "and scaled by its Transform2D.")
+                 "and scaled by its Transform2D. On an entity with no body or area, a shape of "
+                 "its parent's.")
         .describe("shape", {.doc = "Which shape; the fields after it size it.",
                             .choices = {"rectangle", "circle", "capsule", "segment", "polygon"}})
         .describe("size", {.doc = "Rectangle width and height, in pixels.", .min = 0})
@@ -53,8 +54,8 @@ void register_physics_components(ComponentRegistry& registry) {
         .describe("one_way_collision_margin", one_way_margin);
 
     registry.add<CollisionPolygon2D>()
-        .set_doc("A polygon shape of the entity's physics body or area: any simple polygon, "
-                 "filled or only its edges.")
+        .set_doc("A polygon shape of the entity's physics body or area (its parent's, on an "
+                 "entity with neither): any simple polygon, filled or only its edges.")
         .describe("polygon", {.doc = "Points as [x, y] in pixels, from the entity."})
         .describe("build_mode", {.doc = "\"solids\" fills it, split into convex parts; "
                                         "\"segments\" makes only its edges solid.",

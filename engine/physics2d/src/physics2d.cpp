@@ -129,8 +129,10 @@ float closest_hit(b2ShapeId shape, b2Vec2 point, b2Vec2 normal, float fraction, 
 // A shape's outlines for Box2D's overlap test, each at most B2_MAX_POLYGON_VERTICES points.
 std::vector<b2ShapeProxy> proxies(const world::CollisionShape2D& shape, Vec2 position,
                                   float rotation) {
-    const detail::ShapePlacement place{
-        .rotation = b2MakeRot(shape.rotation), .position = shape.position, .scale = {1.0F, 1.0F}};
+    const detail::ShapePlacement place{.rotation = b2MakeRot(shape.rotation),
+                                       .position = shape.position,
+                                       .scale = {1.0F, 1.0F},
+                                       .owner = std::nullopt};
     const b2Transform transform{.p = to_b2(position), .q = b2MakeRot(rotation)};
     const auto point = [&](Vec2 local) { return b2TransformPoint(transform, place.point(local)); };
     std::vector<b2ShapeProxy> out;
