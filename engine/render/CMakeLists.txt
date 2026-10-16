@@ -4,7 +4,8 @@ add_library(slash_render
     src/hlsl_compiler.cpp
     src/image.cpp
     src/light.cpp
-    src/material.cpp)
+    src/material.cpp
+    src/software_device.cpp)
 add_library(slash::render ALIAS slash_render)
 
 target_include_directories(slash_render PUBLIC include)

@@ -2,6 +2,7 @@
 
 #include "slash/animation/animation.hpp"
 #include "slash/audio/audio.hpp"
+#include "slash/canvas/canvas.hpp"
 #include "slash/canvas/light.hpp"
 #include "slash/canvas/material.hpp"
 #include "slash/canvas/particles.hpp"
@@ -2237,6 +2238,152 @@ Reply light_sample(Session& session, const json::Value& params) {
     return Reply::success(std::move(result));
 }
 
+// ---- Frames ----
+
+constexpr double kMinCaptureScale = 0.05;
+constexpr double kMaxCaptureScale = 4.0;
+
+// Part of an image: x, y, width and height in its pixels, inside it.
+render::Image crop(const render::Image& image, std::uint32_t x, std::uint32_t y,
+                   std::uint32_t width, std::uint32_t height) {
+    render::Image out{.width = width, .height = height, .pixels = {}};
+    out.pixels.reserve(std::size_t{width} * height * 4);
+    for (std::uint32_t row = y; row < y + height; ++row) {
+        const auto begin = image.pixels.begin() +
+                           static_cast<std::ptrdiff_t>(((std::size_t{row} * image.width) + x) * 4);
+        out.pixels.insert(out.pixels.end(), begin,
+                          begin + static_cast<std::ptrdiff_t>(std::size_t{width} * 4));
+    }
+    return out;
+}
+
+Reply frame_capture(Session& session, const json::Value& params) {
+    const std::string path = text(params, "path");
+    if (!path.empty()) {
+        if (!session.allowed(Capability::Filesystem)) {
+            json::Value data;
+            data["capability"] = "filesystem";
+            data["path"] = "/path";
+            return Reply::failure(code::kPermissionDenied,
+                                  "/path: writing a file needs the \"filesystem\" capability, "
+                                  "which this session does not grant",
+                                  std::move(data));
+        }
+        if (!path.ends_with(".png") || path.size() == 4) {
+            return param_error(code::kInvalidArgument, "/path",
+                               R"(captures are .png files, e.g. "build/frame.png")");
+        }
+    }
+    const json::Value* scale_param = params.find("scale");
+    const double scale = scale_param != nullptr ? scale_param->as_double() : 1.0;
+    const json::Value* time = params.find("time");
+    world::World& world = session.world();
+    const Vec2 viewport = ui::settings(world).viewport;
+    const std::string size_text = std::to_string(static_cast<int>(viewport.x)) + "x" +
+                                  std::to_string(static_cast<int>(viewport.y));
+
+    // Points and the region are window pixels, checked before drawing.
+    std::vector<std::array<float, 2>> points;
+    if (const json::Value* given = params.find("points"); given != nullptr) {
+        for (std::size_t i = 0; i < given->as_array().size(); ++i) {
+            const auto point = floats<2>(given->as_array()[i]);
+            if (!(point[0] >= 0.0F) || !(point[1] >= 0.0F) || point[0] >= viewport.x ||
+                point[1] >= viewport.y) {
+                return param_error(code::kInvalidArgument, "/points/" + std::to_string(i),
+                                   "outside the " + size_text + " window");
+            }
+            points.push_back(point);
+        }
+    }
+    std::optional<std::array<float, 4>> region;
+    if (const json::Value* given = params.find("region"); given != nullptr) {
+        const auto rect = floats<4>(*given);
+        if (!(rect[0] >= 0.0F) || !(rect[1] >= 0.0F) || !(rect[2] > 0.0F) || !(rect[3] > 0.0F) ||
+            rect[0] + rect[2] > viewport.x || rect[1] + rect[3] > viewport.y) {
+            return param_error(code::kInvalidArgument, "/region",
+                               "[x, y, width, height] inside the " + size_text + " window");
+        }
+        region = rect;
+    }
+
+    auto captured = canvas::capture(
+        world, session.assets(),
+        {.scale = static_cast<float>(scale), .time = time != nullptr ? time->as_double() : -1.0});
+    if (!captured) {
+        return param_error(captured.error(), scale_param != nullptr ? "/scale" : "");
+    }
+    const canvas::Capture& capture = captured.value();
+    const render::Image& full = capture.image;
+    // A window pixel's place in the image, kept inside it.
+    const auto pixel = [&](float at, std::uint32_t size) {
+        const auto scaled = static_cast<std::int64_t>(std::floor(static_cast<double>(at) * scale));
+        return static_cast<std::uint32_t>(std::clamp<std::int64_t>(scaled, 0, size - 1));
+    };
+
+    json::Value result;
+    render::Image image = full;
+    if (region) {
+        const std::uint32_t x = pixel((*region)[0], full.width);
+        const std::uint32_t y = pixel((*region)[1], full.height);
+        const auto right = static_cast<std::uint32_t>(
+            std::clamp<double>(std::ceil(static_cast<double>((*region)[0] + (*region)[2]) * scale),
+                               x + 1.0, full.width));
+        const auto bottom = static_cast<std::uint32_t>(
+            std::clamp<double>(std::ceil(static_cast<double>((*region)[1] + (*region)[3]) * scale),
+                               y + 1.0, full.height));
+        image = crop(full, x, y, right - x, bottom - y);
+    }
+    result["width"] = image.width;
+    result["height"] = image.height;
+    json::Value drawn = json::Object{};
+    for (const auto& [name, count] :
+         {std::pair{"sprites", capture.sprites}, std::pair{"tiles", capture.tiles},
+          std::pair{"particles", capture.particles}, std::pair{"lights", capture.lights},
+          std::pair{"controls", capture.controls}}) {
+        if (count > 0) {
+            drawn[name] = count;
+        }
+    }
+    result["drawn"] = std::move(drawn);
+    if (!points.empty()) {
+        json::Array colors;
+        for (const auto& point : points) {
+            const std::size_t at = ((std::size_t{pixel(point[1], full.height)} * full.width) +
+                                    pixel(point[0], full.width)) *
+                                   4;
+            json::Array color;
+            for (std::size_t channel = 0; channel < 4; ++channel) {
+                color.push_back(color_value(full.pixels[at + channel] / 255.0));
+            }
+            colors.emplace_back(std::move(color));
+        }
+        result["colors"] = std::move(colors);
+    }
+    const bool want_image = params.find("image") != nullptr && params.find("image")->as_bool();
+    if (!path.empty() || want_image) {
+        auto png = render::encode_png(image);
+        if (!png) {
+            return Reply::failure(png.error());
+        }
+        if (!path.empty()) {
+            auto file = session.resolve_path(path);
+            if (!file) {
+                return param_error(file.error(), "/path");
+            }
+            if (!session.dry_running()) {
+                if (auto written = write_file(file.value(), png.value()); !written) {
+                    return Reply::failure(written.error());
+                }
+            }
+            result["path"] = path;
+        }
+        if (want_image) {
+            result["png"] = base64_encode(png.value());
+        }
+    }
+    return Reply::success(std::move(result));
+}
+
 // ---- Storyboard ----
 
 // The storyboard's entries, or a failure listing every problem in its files.
@@ -3499,6 +3646,46 @@ void register_builtin_commands(Registry& registry) {
                                          kMinZIndex, kMaxZIndex, 0)},
         }),
         .handler = light_sample,
+    });
+
+    json::Value capture_point = property("array", "[x, y]");
+    capture_point["items"]["type"] = "number";
+    capture_point["minItems"] = 2;
+    capture_point["maxItems"] = 2;
+    json::Value capture_points =
+        property("array", "Window pixels as [x, y] to return the colors of.");
+    capture_points["items"] = std::move(capture_point);
+    capture_points["minItems"] = 1;
+    capture_points["maxItems"] = 256;
+    json::Value capture_region =
+        property("array", "Only this part of the window: [x, y, width, height] in pixels.");
+    capture_region["items"]["type"] = "number";
+    capture_region["minItems"] = 4;
+    capture_region["maxItems"] = 4;
+    json::Value capture_scale =
+        property("number", "Image pixels per window pixel, e.g. 0.5 for half size. Default: 1.");
+    capture_scale["minimum"] = kMinCaptureScale;
+    capture_scale["maximum"] = kMaxCaptureScale;
+    json::Value capture_time =
+        property("number", "Seconds of game time materials read. Default: the tick's.");
+    capture_time["minimum"] = 0;
+    registry.add({
+        .name = "frame.capture",
+        .description = "Draws the frame the window shows now, on the CPU, the same on every "
+                       "machine. Returns its size and what it drew; \"image\" returns it as a "
+                       "PNG to look at, \"path\" saves one (needs the filesystem capability) and "
+                       "\"points\" returns the colors of pixels.",
+        .capabilities = {Read},
+        .effect = Effect::Read,
+        .params = params_schema({
+            {"image", property("boolean", "Return the PNG, base64, as \"png\".")},
+            {"path", property("string", "A .png file to write.")},
+            {"points", std::move(capture_points)},
+            {"region", std::move(capture_region)},
+            {"scale", std::move(capture_scale)},
+            {"time", std::move(capture_time)},
+        }),
+        .handler = frame_capture,
     });
 
     json::Value physics_point = property("array", "[x, y]");

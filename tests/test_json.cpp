@@ -1,4 +1,5 @@
 #include "slash/core/json.hpp"
+#include "slash/core/text.hpp"
 
 #include <doctest/doctest.h>
 
@@ -98,4 +99,15 @@ TEST_CASE("numbers compare by value") {
 
 TEST_CASE("pointer_escape escapes tilde and slash") {
     CHECK(json::pointer_escape("a/b~c") == "a~1b~0c");
+}
+
+TEST_CASE("base64_encode writes RFC 4648's test vectors") {
+    CHECK(slash::base64_encode("").empty());
+    CHECK(slash::base64_encode("f") == "Zg==");
+    CHECK(slash::base64_encode("fo") == "Zm8=");
+    CHECK(slash::base64_encode("foo") == "Zm9v");
+    CHECK(slash::base64_encode("foob") == "Zm9vYg==");
+    CHECK(slash::base64_encode("fooba") == "Zm9vYmE=");
+    CHECK(slash::base64_encode("foobar") == "Zm9vYmFy");
+    CHECK(slash::base64_encode(std::string("\xff\xfe\x00\x3e\x3f", 5)) == "//4APj8=");
 }

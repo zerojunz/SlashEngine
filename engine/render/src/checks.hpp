@@ -13,7 +13,7 @@
 // Checks both devices make, so the null device fails exactly where a GPU device would.
 namespace slash::render::detail {
 
-inline constexpr std::uint32_t kMaxTextureSize = 16384;
+using render::kMaxTextureSize;
 // The most vertices one frame can draw: 1.4 million triangles.
 inline constexpr std::size_t kMaxFrameVertices = std::size_t{1} << 22;
 

@@ -28,9 +28,9 @@ struct SDL_Window;
 // them.
 namespace slash::render {
 
-enum class Backend : std::uint8_t { Null, Vulkan, Metal, D3D12 };
+enum class Backend : std::uint8_t { Null, Vulkan, Metal, D3D12, Software };
 
-// "null", "vulkan", "metal" or "d3d12".
+// "null", "vulkan", "metal", "d3d12" or "software".
 [[nodiscard]] std::string_view backend_name(Backend backend);
 
 // Straight (not premultiplied) RGBA, each from 0 to 1.
@@ -57,6 +57,9 @@ enum class VsyncMode : std::uint8_t {
 
 // What a window shows behind everything: Godot's default clear color.
 inline constexpr Color kDefaultClearColor{.r = 0.3F, .g = 0.3F, .b = 0.3F, .a = 1.0F};
+
+// The widest and tallest texture every GPU takes.
+inline constexpr std::uint32_t kMaxTextureSize = 16384;
 
 // A texture. None draws as plain white, and as a frame's target it means the window.
 // NOLINTNEXTLINE(performance-enum-size): ids count up, past 255
@@ -244,7 +247,7 @@ struct DeviceOptions {
 [[nodiscard]] Result<std::unique_ptr<RenderDevice>> create_device(const DeviceOptions& options);
 
 // A frame of only the clear color, drawn to the window: what a window shows until there is
-// something to draw. Does nothing on the null device, which has no window.
+// something to draw. Does nothing on the null and software devices, which have no window.
 [[nodiscard]] Result<void> draw_empty_frame(RenderDevice& device, const Color& clear);
 
 // create_device, or the null device with a logged warning if that fails, so a game still runs
@@ -254,5 +257,11 @@ struct DeviceOptions {
 // The null device: it keeps textures and counts frames and triangles but draws nothing. Reading a
 // render target returns the color its last frame cleared it to.
 [[nodiscard]] std::unique_ptr<RenderDevice> create_null_device();
+
+// The software device: it draws on the CPU, into render-target textures only, as the GPU device's
+// shaders would, with their CPU twins (run_program, shade and distance_field_coverage), and
+// covers the same pixels a GPU does. Much slower than a GPU, but it needs none and draws the same
+// on every machine, so frame captures use it.
+[[nodiscard]] std::unique_ptr<RenderDevice> create_software_device();
 
 } // namespace slash::render

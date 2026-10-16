@@ -40,4 +40,7 @@ void append_utf8(std::string& out, char32_t character);
 // ".." segments, and no backslash or ':'. Such a path names the same file on every platform.
 [[nodiscard]] bool is_project_path(std::string_view path);
 
+// Bytes as base64 text (RFC 4648, with padding), as JSON carries images.
+[[nodiscard]] std::string base64_encode(std::string_view bytes);
+
 } // namespace slash

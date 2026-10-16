@@ -104,6 +104,16 @@ std::unique_ptr<RenderDevice> gpu_device() {
     return std::move(device).value();
 }
 
+// The devices that draw pixels: the software device, and a GPU device where one works.
+std::vector<std::unique_ptr<RenderDevice>> drawing_devices() {
+    std::vector<std::unique_ptr<RenderDevice>> devices;
+    devices.push_back(slash::render::create_software_device());
+    if (auto gpu = gpu_device(); gpu != nullptr) {
+        devices.push_back(std::move(gpu));
+    }
+    return devices;
+}
+
 Image render(RenderDevice& device, TextureId target, const Frame& frame,
              const std::vector<std::pair<TextureId, std::vector<Vertex2D>>>& draws) {
     Frame with_target = frame;
@@ -315,146 +325,145 @@ TEST_CASE("draws with different materials are separate GPU draws") {
     REQUIRE(device->end_frame().ok());
     CHECK(device->stats().draws == 4);
 
-    auto gpu = gpu_device();
-    if (gpu == nullptr) {
-        return;
+    for (const auto& gpu : drawing_devices()) {
+        CAPTURE(slash::render::backend_name(gpu->backend()));
+        auto gpu_target = gpu->create_texture(target_desc(4));
+        REQUIRE(gpu_target.ok());
+        REQUIRE(gpu->begin_frame({.target = gpu_target.value(), .clear = {}, .view = {}}).ok());
+        REQUIRE(gpu->draw(TextureId::None, rect(0, 0, 1, 1), glow).ok());
+        REQUIRE(gpu->draw(TextureId::None, rect(1, 0, 2, 1), glow).ok());
+        REQUIRE(gpu->draw(TextureId::None, rect(2, 0, 3, 1), tinted).ok());
+        REQUIRE(gpu->draw(TextureId::None, rect(3, 0, 4, 1), tinted).ok());
+        REQUIRE(gpu->draw(TextureId::None, rect(0, 1, 1, 2), other_tint).ok());
+        REQUIRE(gpu->draw(TextureId::None, rect(1, 1, 2, 2)).ok());
+        REQUIRE(gpu->end_frame().ok());
+        CHECK(gpu->stats().draws == 4);
+        auto drawn = gpu->read_texture(gpu_target.value());
+        REQUIRE(drawn.ok());
+        CHECK(pixel_is(drawn.value(), 3, 0, {255, 128, 128, 255}).empty());
+        CHECK(pixel_is(drawn.value(), 0, 1, {255, 64, 128, 255}).empty());
     }
-    auto gpu_target = gpu->create_texture(target_desc(4));
-    REQUIRE(gpu_target.ok());
-    REQUIRE(gpu->begin_frame({.target = gpu_target.value(), .clear = {}, .view = {}}).ok());
-    REQUIRE(gpu->draw(TextureId::None, rect(0, 0, 1, 1), glow).ok());
-    REQUIRE(gpu->draw(TextureId::None, rect(1, 0, 2, 1), glow).ok());
-    REQUIRE(gpu->draw(TextureId::None, rect(2, 0, 3, 1), tinted).ok());
-    REQUIRE(gpu->draw(TextureId::None, rect(3, 0, 4, 1), tinted).ok());
-    REQUIRE(gpu->draw(TextureId::None, rect(0, 1, 1, 2), other_tint).ok());
-    REQUIRE(gpu->draw(TextureId::None, rect(1, 1, 2, 2)).ok());
-    REQUIRE(gpu->end_frame().ok());
-    CHECK(gpu->stats().draws == 4);
-    auto drawn = gpu->read_texture(gpu_target.value());
-    REQUIRE(drawn.ok());
-    CHECK(pixel_is(drawn.value(), 3, 0, {255, 128, 128, 255}).empty());
-    CHECK(pixel_is(drawn.value(), 0, 1, {255, 64, 128, 255}).empty());
 }
 
-TEST_CASE("the GPU device runs every material op as run_program does") {
-    auto device = gpu_device();
-    if (device == nullptr) {
-        return;
-    }
-    constexpr std::uint32_t kSize = 8;
-    auto target = device->create_texture(target_desc(kSize));
-    REQUIRE(target.ok());
-    // Slot 0: red, green / blue, white. Slot 1: a 4x1 gradient that repeats.
-    const Image quarters{
-        .width = 2,
-        .height = 2,
-        .pixels = {255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255}};
-    const Image gradient{
-        .width = 4,
-        .height = 1,
-        .pixels = {0, 0, 0, 255, 85, 40, 20, 255, 170, 80, 40, 255, 255, 120, 60, 255}};
-    auto texture0 = device->create_texture(
-        {.width = 2, .height = 2, .filter = Filter::Nearest, .render_target = false},
-        quarters.pixels);
-    auto texture1 = device->create_texture(
-        {.width = 4, .height = 1, .filter = Filter::Linear, .render_target = false},
-        gradient.pixels);
-    REQUIRE(texture0.ok());
-    REQUIRE(texture1.ok());
-    const auto sampler = [&](std::uint32_t slot, float u, float v) {
-        return slot == 1 ? slash::render::sample_image(gradient, Filter::Linear, true, u, v)
-                         : slash::render::sample_image(quarters, Filter::Nearest, false, u, v);
-    };
+TEST_CASE("the software and GPU devices run every material op as run_program does") {
+    for (const auto& device : drawing_devices()) {
+        CAPTURE(slash::render::backend_name(device->backend()));
+        constexpr std::uint32_t kSize = 8;
+        auto target = device->create_texture(target_desc(kSize));
+        REQUIRE(target.ok());
+        // Slot 0: red, green / blue, white. Slot 1: a 4x1 gradient that repeats.
+        const Image quarters{
+            .width = 2,
+            .height = 2,
+            .pixels = {255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255}};
+        const Image gradient{
+            .width = 4,
+            .height = 1,
+            .pixels = {0, 0, 0, 255, 85, 40, 20, 255, 170, 80, 40, 255, 255, 120, 60, 255}};
+        auto texture0 = device->create_texture(
+            {.width = 2, .height = 2, .filter = Filter::Nearest, .render_target = false},
+            quarters.pixels);
+        auto texture1 = device->create_texture(
+            {.width = 4, .height = 1, .filter = Filter::Linear, .render_target = false},
+            gradient.pixels);
+        REQUIRE(texture0.ok());
+        REQUIRE(texture1.ok());
+        const auto sampler = [&](std::uint32_t slot, float u, float v) {
+            return slot == 1 ? slash::render::sample_image(gradient, Filter::Linear, true, u, v)
+                             : slash::render::sample_image(quarters, Filter::Nearest, false, u, v);
+        };
 
-    std::vector<std::pair<std::string, MaterialProgram>> programs;
-    for (std::uint32_t number = 0; number < slash::render::kOpCount; ++number) {
-        const auto op = static_cast<Op>(number);
-        std::uint32_t aux = 0;
-        if (op == Op::Dot || op == Op::Length || op == Op::Distance || op == Op::Normalize) {
-            aux = 3;
-        } else if (op == Op::Merge) {
-            aux = 0b0101;
+        std::vector<std::pair<std::string, MaterialProgram>> programs;
+        for (std::uint32_t number = 0; number < slash::render::kOpCount; ++number) {
+            const auto op = static_cast<Op>(number);
+            std::uint32_t aux = 0;
+            if (op == Op::Dot || op == Op::Length || op == Op::Distance || op == Op::Normalize) {
+                aux = 3;
+            } else if (op == Op::Merge) {
+                aux = 0b0101;
+            }
+            programs.emplace_back("op " + std::to_string(number), one_op(op, aux));
         }
-        programs.emplace_back("op " + std::to_string(number), one_op(op, aux));
-    }
-    // Sampling both slots, the second at twice the coordinate so it repeats.
-    MaterialProgram sample0 = one_op(Op::Sample, 0);
-    MaterialProgram sample1 = one_op(Op::Sample, 1);
-    sample1.code.insert(sample1.code.begin(), instruction(Op::Add, 5, operand(0), operand(0)));
-    sample1.code[1].a = operand(5);
-    programs.emplace_back("sample slot 0", sample0);
-    programs.emplace_back("sample slot 1, repeating", sample1);
-    // frag_coord over the target's size, and texel times 4.
-    MaterialProgram frag;
-    frag.constants = {{0.125F, 0.125F, 0.125F, 0.125F}, {1.0F, 1.0F, 1.0F, 1.0F}};
-    frag.code = {instruction(Op::Mul, 4, operand(2), operand(32)),
-                 instruction(Op::Mul, 5, operand(3), operand(32)),
-                 instruction(Op::Merge, 4, operand(4), operand(5, {0, 0, 0, 0}), 0, 0b0100),
-                 instruction(Op::Merge, 0, operand(4), operand(33), 0, 0b1000)};
-    programs.emplace_back("frag_coord and texel", frag);
+        // Sampling both slots, the second at twice the coordinate so it repeats.
+        MaterialProgram sample0 = one_op(Op::Sample, 0);
+        MaterialProgram sample1 = one_op(Op::Sample, 1);
+        sample1.code.insert(sample1.code.begin(), instruction(Op::Add, 5, operand(0), operand(0)));
+        sample1.code[1].a = operand(5);
+        programs.emplace_back("sample slot 0", sample0);
+        programs.emplace_back("sample slot 1, repeating", sample1);
+        // frag_coord over the target's size, and texel times 4.
+        MaterialProgram frag;
+        frag.constants = {{0.125F, 0.125F, 0.125F, 0.125F}, {1.0F, 1.0F, 1.0F, 1.0F}};
+        frag.code = {instruction(Op::Mul, 4, operand(2), operand(32)),
+                     instruction(Op::Mul, 5, operand(3), operand(32)),
+                     instruction(Op::Merge, 4, operand(4), operand(5, {0, 0, 0, 0}), 0, 0b0100),
+                     instruction(Op::Merge, 0, operand(4), operand(33), 0, 0b1000)};
+        programs.emplace_back("frag_coord and texel", frag);
 
-    for (const auto& [name, program] : programs) {
-        CAPTURE(name);
-        REQUIRE(slash::render::check_program(program).ok());
-        Material material;
-        material.program = program;
-        material.textures[0] = {.texture = texture1.value(), .repeat = true};
-        REQUIRE(device->begin_frame({.target = target.value(), .clear = {}, .view = {}}).ok());
-        REQUIRE(
-            device->draw(texture0.value(), rect(0, 0, kSize, kSize, {230, 102, 179, 255}), material)
-                .ok());
-        REQUIRE(device->end_frame().ok());
-        auto drawn = device->read_texture(target.value());
-        REQUIRE(drawn.ok());
-        for (std::uint32_t y = 0; y < kSize; y += 3) {
-            for (std::uint32_t x = 0; x < kSize; x += 3) {
-                const slash::render::PixelInput input{
-                    .uv = {(static_cast<float>(x) + 0.5F) / kSize,
-                           (static_cast<float>(y) + 0.5F) / kSize},
-                    .color = {230.0F / 255.0F, 102.0F / 255.0F, 179.0F / 255.0F, 1.0F},
-                    .frag_coord = {static_cast<float>(x) + 0.5F, static_cast<float>(y) + 0.5F},
-                    .texel = {0.5F, 0.5F}};
-                const auto expected =
-                    saturated(slash::render::run_program(program, input, sampler));
-                const auto byte = [](float channel) {
-                    return static_cast<std::uint8_t>(std::lround(channel * 255.0F));
-                };
-                CHECK(pixel_is(drawn.value(), x, y,
-                               {byte(expected[0]), byte(expected[1]), byte(expected[2]), 255})
-                          .empty());
+        for (const auto& [name, program] : programs) {
+            CAPTURE(name);
+            REQUIRE(slash::render::check_program(program).ok());
+            Material material;
+            material.program = program;
+            material.textures[0] = {.texture = texture1.value(), .repeat = true};
+            REQUIRE(device->begin_frame({.target = target.value(), .clear = {}, .view = {}}).ok());
+            REQUIRE(device
+                        ->draw(texture0.value(), rect(0, 0, kSize, kSize, {230, 102, 179, 255}),
+                               material)
+                        .ok());
+            REQUIRE(device->end_frame().ok());
+            auto drawn = device->read_texture(target.value());
+            REQUIRE(drawn.ok());
+            for (std::uint32_t y = 0; y < kSize; y += 3) {
+                for (std::uint32_t x = 0; x < kSize; x += 3) {
+                    const slash::render::PixelInput input{
+                        .uv = {(static_cast<float>(x) + 0.5F) / kSize,
+                               (static_cast<float>(y) + 0.5F) / kSize},
+                        .color = {230.0F / 255.0F, 102.0F / 255.0F, 179.0F / 255.0F, 1.0F},
+                        .frag_coord = {static_cast<float>(x) + 0.5F, static_cast<float>(y) + 0.5F},
+                        .texel = {0.5F, 0.5F}};
+                    const auto expected =
+                        saturated(slash::render::run_program(program, input, sampler));
+                    const auto byte = [](float channel) {
+                        return static_cast<std::uint8_t>(std::lround(channel * 255.0F));
+                    };
+                    CHECK(pixel_is(drawn.value(), x, y,
+                                   {byte(expected[0]), byte(expected[1]), byte(expected[2]), 255})
+                              .empty());
+                }
             }
         }
     }
 }
 
 TEST_CASE("blend modes combine colors as Godot's do") {
-    auto device = gpu_device();
-    if (device == nullptr) {
-        return;
-    }
-    auto target = device->create_texture(target_desc(2));
-    REQUIRE(target.ok());
-    const std::vector<std::pair<BlendMode, Rgba>> expected{
-        {BlendMode::Mix, {90, 115, 204, 255}},
-        {BlendMode::Add, {115, 166, 255, 255}},
-        {BlendMode::Sub, {0, 38, 25, 191}},
-        {BlendMode::Mul, {26, 51, 153, 128}},
-        {BlendMode::PremulAlpha, {153, 179, 255, 255}},
-    };
-    for (const auto& [blend, rgba] : expected) {
-        CAPTURE(slash::render::blend_mode_name(blend));
-        Material material;
-        material.blend = blend;
-        REQUIRE(device
+    for (const auto& device : drawing_devices()) {
+        CAPTURE(slash::render::backend_name(device->backend()));
+        auto target = device->create_texture(target_desc(2));
+        REQUIRE(target.ok());
+        const std::vector<std::pair<BlendMode, Rgba>> expected{
+            {BlendMode::Mix, {90, 115, 204, 255}},
+            {BlendMode::Add, {115, 166, 255, 255}},
+            {BlendMode::Sub, {0, 38, 25, 191}},
+            {BlendMode::Mul, {26, 51, 153, 128}},
+            {BlendMode::PremulAlpha, {153, 179, 255, 255}},
+        };
+        for (const auto& [blend, rgba] : expected) {
+            CAPTURE(slash::render::blend_mode_name(blend));
+            Material material;
+            material.blend = blend;
+            REQUIRE(
+                device
                     ->begin_frame(
                         {.target = target.value(), .clear = {0.2F, 0.4F, 0.6F, 1.0F}, .view = {}})
                     .ok());
-        REQUIRE(
-            device->draw(TextureId::None, rect(0, 0, 2, 2, {128, 128, 255, 128}), material).ok());
-        REQUIRE(device->end_frame().ok());
-        auto image = device->read_texture(target.value());
-        REQUIRE(image.ok());
-        CHECK(pixel_is(image.value(), 1, 1, rgba).empty());
+            REQUIRE(device->draw(TextureId::None, rect(0, 0, 2, 2, {128, 128, 255, 128}), material)
+                        .ok());
+            REQUIRE(device->end_frame().ok());
+            auto image = device->read_texture(target.value());
+            REQUIRE(image.ok());
+            CHECK(pixel_is(image.value(), 1, 1, rgba).empty());
+        }
     }
 }
 
@@ -519,89 +528,99 @@ TEST_CASE("pixel_projection maps a target's pixels to clip space") {
     CHECK(clip(100, 50) == std::array<float, 2>{0.0F, 0.0F});
 }
 
-TEST_CASE("the GPU device draws, blends, samples and reads back pixels") {
-    auto device = gpu_device();
-    if (device == nullptr) {
-        return;
-    }
-    auto target = device->create_texture(target_desc(8));
-    REQUIRE(target.ok());
+TEST_CASE("the software and GPU devices draw, blend, sample and read back pixels") {
+    for (const auto& device : drawing_devices()) {
+        CAPTURE(slash::render::backend_name(device->backend()));
+        auto target = device->create_texture(target_desc(8));
+        REQUIRE(target.ok());
 
-    SUBCASE("a new render target is transparent black") {
-        auto image = device->read_texture(target.value());
-        REQUIRE(image.ok());
-        CHECK(pixel_is(image.value(), 3, 3, {0, 0, 0, 0}).empty());
-    }
+        // A new render target is transparent black.
+        {
+            auto image = device->read_texture(target.value());
+            REQUIRE(image.ok());
+            CHECK(pixel_is(image.value(), 3, 3, {0, 0, 0, 0}).empty());
+        }
 
-    SUBCASE("clearing and drawing plain color") {
-        const Image image = render(*device, target.value(),
-                                   {.target = {}, .clear = {0.25F, 0.5F, 0.75F, 1.0F}, .view = {}},
-                                   {{TextureId::None, rect(0, 0, 4, 8, {255, 0, 0, 255})}});
-        CHECK(pixel_is(image, 1, 1, {255, 0, 0, 255}).empty());
-        CHECK(pixel_is(image, 3, 7, {255, 0, 0, 255}).empty());
-        CHECK(pixel_is(image, 4, 0, {64, 128, 191, 255}).empty());
-        CHECK(pixel_is(image, 7, 7, {64, 128, 191, 255}).empty());
-    }
+        // Clearing and drawing plain color.
+        {
+            const Image image =
+                render(*device, target.value(),
+                       {.target = {}, .clear = {0.25F, 0.5F, 0.75F, 1.0F}, .view = {}},
+                       {{TextureId::None, rect(0, 0, 4, 8, {255, 0, 0, 255})}});
+            CHECK(pixel_is(image, 1, 1, {255, 0, 0, 255}).empty());
+            CHECK(pixel_is(image, 3, 7, {255, 0, 0, 255}).empty());
+            CHECK(pixel_is(image, 4, 0, {64, 128, 191, 255}).empty());
+            CHECK(pixel_is(image, 7, 7, {64, 128, 191, 255}).empty());
+        }
 
-    SUBCASE("blending straight alpha over the clear color") {
-        const Image image = render(*device, target.value(),
-                                   {.target = {}, .clear = {0.0F, 0.0F, 0.0F, 1.0F}, .view = {}},
-                                   {{TextureId::None, rect(0, 0, 8, 8, {255, 255, 255, 128})}});
-        CHECK(pixel_is(image, 4, 4, {128, 128, 128, 255}).empty());
-    }
+        // Blending straight alpha over the clear color.
+        {
+            const Image image =
+                render(*device, target.value(),
+                       {.target = {}, .clear = {0.0F, 0.0F, 0.0F, 1.0F}, .view = {}},
+                       {{TextureId::None, rect(0, 0, 8, 8, {255, 255, 255, 128})}});
+            CHECK(pixel_is(image, 4, 4, {128, 128, 128, 255}).empty());
+        }
 
-    SUBCASE("sampling a texture with nearest filtering") {
-        // Red, green / blue, white: each texel fills a quarter of the target.
-        const std::vector<std::uint8_t> texels{255, 0, 0,   255, 0,   255, 0,   255,
-                                               0,   0, 255, 255, 255, 255, 255, 255};
-        auto texture = device->create_texture(
-            {.width = 2, .height = 2, .filter = Filter::Nearest, .render_target = false}, texels);
-        REQUIRE(texture.ok());
-        Image image = render(*device, target.value(), {}, {{texture.value(), rect(0, 0, 8, 8)}});
-        CHECK(pixel_is(image, 1, 1, {255, 0, 0, 255}).empty());
-        CHECK(pixel_is(image, 6, 1, {0, 255, 0, 255}).empty());
-        CHECK(pixel_is(image, 1, 6, {0, 0, 255, 255}).empty());
-        CHECK(pixel_is(image, 6, 6, {255, 255, 255, 255}).empty());
+        // Sampling a texture with nearest filtering.
+        {
+            // Red, green / blue, white: each texel fills a quarter of the target.
+            const std::vector<std::uint8_t> texels{255, 0, 0,   255, 0,   255, 0,   255,
+                                                   0,   0, 255, 255, 255, 255, 255, 255};
+            auto texture = device->create_texture(
+                {.width = 2, .height = 2, .filter = Filter::Nearest, .render_target = false},
+                texels);
+            REQUIRE(texture.ok());
+            Image image =
+                render(*device, target.value(), {}, {{texture.value(), rect(0, 0, 8, 8)}});
+            CHECK(pixel_is(image, 1, 1, {255, 0, 0, 255}).empty());
+            CHECK(pixel_is(image, 6, 1, {0, 255, 0, 255}).empty());
+            CHECK(pixel_is(image, 1, 6, {0, 0, 255, 255}).empty());
+            CHECK(pixel_is(image, 6, 6, {255, 255, 255, 255}).empty());
 
-        // The vertex color multiplies the texture, and an update shows in the next frame.
-        const std::vector<std::uint8_t> gray{200, 200, 200, 255, 200, 200, 200, 255,
-                                             200, 200, 200, 255, 200, 200, 200, 255};
-        REQUIRE(device->update_texture(texture.value(), gray).ok());
-        image = render(*device, target.value(), {},
-                       {{texture.value(), rect(0, 0, 8, 8, {255, 128, 0, 255})}});
-        CHECK(pixel_is(image, 5, 5, {200, 100, 0, 255}).empty());
-    }
+            // The vertex color multiplies the texture, and an update shows in the next frame.
+            const std::vector<std::uint8_t> gray{200, 200, 200, 255, 200, 200, 200, 255,
+                                                 200, 200, 200, 255, 200, 200, 200, 255};
+            REQUIRE(device->update_texture(texture.value(), gray).ok());
+            image = render(*device, target.value(), {},
+                           {{texture.value(), rect(0, 0, 8, 8, {255, 128, 0, 255})}});
+            CHECK(pixel_is(image, 5, 5, {200, 100, 0, 255}).empty());
+        }
 
-    SUBCASE("a view matrix that moves everything 4 pixels right") {
-        // Not symmetric, so a transposed upload would put the shift in w and draw nothing here.
-        Mat4 view = pixel_projection(8.0F, 8.0F);
-        view[12] += view[0] * 4.0F;
-        const Image image =
-            render(*device, target.value(), {.target = {}, .clear = {}, .view = view},
-                   {{TextureId::None, rect(0, 0, 4, 8, {0, 255, 0, 255})}});
-        CHECK(pixel_is(image, 1, 4, {0, 0, 0, 255}).empty());
-        CHECK(pixel_is(image, 6, 4, {0, 255, 0, 255}).empty());
-    }
+        // A view matrix that moves everything 4 pixels right.
+        {
+            // Not symmetric, so a transposed upload would put the shift in w and draw nothing here.
+            Mat4 view = pixel_projection(8.0F, 8.0F);
+            view[12] += view[0] * 4.0F;
+            const Image image =
+                render(*device, target.value(), {.target = {}, .clear = {}, .view = view},
+                       {{TextureId::None, rect(0, 0, 4, 8, {0, 255, 0, 255})}});
+            CHECK(pixel_is(image, 1, 4, {0, 0, 0, 255}).empty());
+            CHECK(pixel_is(image, 6, 4, {0, 255, 0, 255}).empty());
+        }
 
-    SUBCASE("batching draws and destroying a texture mid-frame") {
-        auto texture = device->create_texture(
-            {.width = 1, .height = 1, .filter = Filter::Linear, .render_target = false},
-            std::vector<std::uint8_t>{0, 0, 255, 255});
-        REQUIRE(texture.ok());
-        REQUIRE(device->begin_frame({.target = target.value(), .clear = {}, .view = {}}).ok());
-        REQUIRE(device->draw(TextureId::None, rect(0, 0, 8, 4)).ok());
-        REQUIRE(device->draw(TextureId::None, rect(0, 4, 4, 8, {255, 0, 0, 255})).ok());
-        REQUIRE(device->draw(texture.value(), rect(4, 4, 8, 8)).ok());
-        device->destroy_texture(texture.value()); // still drawn: it goes after the frame
-        REQUIRE(device->end_frame().ok());
-        auto image = device->read_texture(target.value());
-        REQUIRE(image.ok());
-        CHECK(pixel_is(image.value(), 2, 2, {255, 255, 255, 255}).empty());
-        CHECK(pixel_is(image.value(), 2, 6, {255, 0, 0, 255}).empty());
-        CHECK(pixel_is(image.value(), 6, 6, {0, 0, 255, 255}).empty());
-        CHECK(device->stats().draws == 2);
-        CHECK(device->stats().triangles == 6);
-        CHECK(device->stats().textures == 1);
+        // Batching draws and destroying a texture mid-frame.
+        {
+            auto texture = device->create_texture(
+                {.width = 1, .height = 1, .filter = Filter::Linear, .render_target = false},
+                std::vector<std::uint8_t>{0, 0, 255, 255});
+            REQUIRE(texture.ok());
+            const slash::render::Stats before = device->stats();
+            REQUIRE(device->begin_frame({.target = target.value(), .clear = {}, .view = {}}).ok());
+            REQUIRE(device->draw(TextureId::None, rect(0, 0, 8, 4)).ok());
+            REQUIRE(device->draw(TextureId::None, rect(0, 4, 4, 8, {255, 0, 0, 255})).ok());
+            REQUIRE(device->draw(texture.value(), rect(4, 4, 8, 8)).ok());
+            device->destroy_texture(texture.value()); // still drawn: it goes after the frame
+            REQUIRE(device->end_frame().ok());
+            auto image = device->read_texture(target.value());
+            REQUIRE(image.ok());
+            CHECK(pixel_is(image.value(), 2, 2, {255, 255, 255, 255}).empty());
+            CHECK(pixel_is(image.value(), 2, 6, {255, 0, 0, 255}).empty());
+            CHECK(pixel_is(image.value(), 6, 6, {0, 0, 255, 255}).empty());
+            CHECK(device->stats().draws - before.draws == 2);
+            CHECK(device->stats().triangles - before.triangles == 6);
+            CHECK(device->stats().textures == before.textures - 1);
+        }
     }
 }
 
@@ -623,52 +642,51 @@ TEST_CASE("distance_field_coverage reads a multichannel distance field as Godot 
     CHECK(distance_field_coverage({0.4F, 0.4F, 0.4F, 0.2F}, outlined, 1.0F) == 0.0F);
 }
 
-TEST_CASE("the GPU device draws distance fields as distance_field_coverage does") {
-    auto device = gpu_device();
-    if (device == nullptr) {
-        return;
-    }
-    constexpr std::uint32_t kSize = 8;
-    auto target = device->create_texture(target_desc(kSize));
-    REQUIRE(target.ok());
-    // A field near the edge everywhere, so most pixels are partly covered; red, green and blue
-    // differ so the median matters, and alpha is lower, for outlines.
-    std::vector<std::uint8_t> texels;
-    for (std::uint32_t y = 0; y < kSize; ++y) {
-        for (std::uint32_t x = 0; x < kSize; ++x) {
-            const auto base = static_cast<std::uint8_t>(112 + (x * 3) + y);
-            texels.insert(texels.end(), {static_cast<std::uint8_t>(base + 10), base,
-                                         static_cast<std::uint8_t>(base - 10),
-                                         static_cast<std::uint8_t>(base - 20)});
-        }
-    }
-    auto texture = device->create_texture(
-        {.width = kSize, .height = kSize, .filter = Filter::Nearest, .render_target = false},
-        texels);
-    REQUIRE(texture.ok());
-
-    for (const float outline : {0.0F, 1.0F}) {
-        CAPTURE(outline);
-        Material material;
-        material.field = {.pixel_range = 4.0F, .outline = outline};
-        auto began = device->begin_frame(
-            {.target = target.value(), .clear = {0.0F, 0.0F, 0.0F, 1.0F}, .view = {}});
-        REQUIRE(began.ok());
-        REQUIRE(device->draw(texture.value(), rect(0, 0, kSize, kSize), material).ok());
-        REQUIRE(device->end_frame().ok());
-        auto image = device->read_texture(target.value());
-        REQUIRE(image.ok());
+TEST_CASE("the software and GPU devices draw distance fields as distance_field_coverage does") {
+    for (const auto& device : drawing_devices()) {
+        CAPTURE(slash::render::backend_name(device->backend()));
+        constexpr std::uint32_t kSize = 8;
+        auto target = device->create_texture(target_desc(kSize));
+        REQUIRE(target.ok());
+        // A field near the edge everywhere, so most pixels are partly covered; red, green and blue
+        // differ so the median matters, and alpha is lower, for outlines.
+        std::vector<std::uint8_t> texels;
         for (std::uint32_t y = 0; y < kSize; ++y) {
             for (std::uint32_t x = 0; x < kSize; ++x) {
-                const std::size_t at = (std::size_t{y} * kSize + x) * 4;
-                const std::array<float, 4> texel{static_cast<float>(texels[at]) / 255.0F,
-                                                 static_cast<float>(texels[at + 1]) / 255.0F,
-                                                 static_cast<float>(texels[at + 2]) / 255.0F,
-                                                 static_cast<float>(texels[at + 3]) / 255.0F};
-                // White over black, so each pixel is the coverage.
-                const auto gray = static_cast<std::uint8_t>(
-                    std::lround(distance_field_coverage(texel, material.field, 1.0F) * 255.0F));
-                CHECK(pixel_is(image.value(), x, y, {gray, gray, gray, 255}).empty());
+                const auto base = static_cast<std::uint8_t>(112 + (x * 3) + y);
+                texels.insert(texels.end(), {static_cast<std::uint8_t>(base + 10), base,
+                                             static_cast<std::uint8_t>(base - 10),
+                                             static_cast<std::uint8_t>(base - 20)});
+            }
+        }
+        auto texture = device->create_texture(
+            {.width = kSize, .height = kSize, .filter = Filter::Nearest, .render_target = false},
+            texels);
+        REQUIRE(texture.ok());
+
+        for (const float outline : {0.0F, 1.0F}) {
+            CAPTURE(outline);
+            Material material;
+            material.field = {.pixel_range = 4.0F, .outline = outline};
+            auto began = device->begin_frame(
+                {.target = target.value(), .clear = {0.0F, 0.0F, 0.0F, 1.0F}, .view = {}});
+            REQUIRE(began.ok());
+            REQUIRE(device->draw(texture.value(), rect(0, 0, kSize, kSize), material).ok());
+            REQUIRE(device->end_frame().ok());
+            auto image = device->read_texture(target.value());
+            REQUIRE(image.ok());
+            for (std::uint32_t y = 0; y < kSize; ++y) {
+                for (std::uint32_t x = 0; x < kSize; ++x) {
+                    const std::size_t at = (std::size_t{y} * kSize + x) * 4;
+                    const std::array<float, 4> texel{static_cast<float>(texels[at]) / 255.0F,
+                                                     static_cast<float>(texels[at + 1]) / 255.0F,
+                                                     static_cast<float>(texels[at + 2]) / 255.0F,
+                                                     static_cast<float>(texels[at + 3]) / 255.0F};
+                    // White over black, so each pixel is the coverage.
+                    const auto gray = static_cast<std::uint8_t>(
+                        std::lround(distance_field_coverage(texel, material.field, 1.0F) * 255.0F));
+                    CHECK(pixel_is(image.value(), x, y, {gray, gray, gray, 255}).empty());
+                }
             }
         }
     }
@@ -702,6 +720,71 @@ TEST_CASE("the GPU device refuses the same mistakes as the null device") {
     check_refusals(*device);
     CHECK(error_of(device->begin_frame({.target = TextureId::None, .clear = {}, .view = {}})) ==
           "this device has no window; draw to a render-target texture");
+}
+
+TEST_CASE("the software device refuses the same mistakes as the null device") {
+    auto device = slash::render::create_software_device();
+    CHECK(device->backend() == slash::render::Backend::Software);
+    CHECK(slash::render::backend_name(device->backend()) == "software");
+    check_refusals(*device);
+    CHECK(error_of(device->begin_frame({.target = TextureId::None, .clear = {}, .view = {}})) ==
+          "the software device has no window; draw to a render-target texture");
+}
+
+TEST_CASE("the software device covers the pixels a GPU does") {
+    auto device = slash::render::create_software_device();
+    auto target = device->create_texture(target_desc(8));
+    REQUIRE(target.ok());
+    const Frame black{.target = {}, .clear = {0.0F, 0.0F, 0.0F, 1.0F}, .view = {}};
+
+    // Pixel centers on a top or left edge are inside; on a bottom or right edge, outside.
+    Image image =
+        render(*device, target.value(), black, {{TextureId::None, rect(0.5F, 0.5F, 2.5F, 2.5F)}});
+    CHECK(pixel_is(image, 0, 0, {255, 255, 255, 255}).empty());
+    CHECK(pixel_is(image, 1, 1, {255, 255, 255, 255}).empty());
+    CHECK(pixel_is(image, 2, 1, {0, 0, 0, 255}).empty());
+    CHECK(pixel_is(image, 1, 2, {0, 0, 0, 255}).empty());
+
+    // Triangles that share an edge cover each pixel on it once: added at half alpha, nothing
+    // is added twice.
+    Material add;
+    add.blend = BlendMode::Add;
+    REQUIRE(device->begin_frame({.target = target.value(), .clear = black.clear, .view = {}}).ok());
+    REQUIRE(device->draw(TextureId::None, rect(0, 0, 8, 8, {255, 255, 255, 128}), add).ok());
+    REQUIRE(device->end_frame().ok());
+    image = device->read_texture(target.value()).value();
+    for (std::uint32_t i = 0; i < 8; ++i) {
+        CHECK(pixel_is(image, i, i, {128, 128, 128, 255}).empty());
+        CHECK(pixel_is(image, 7 - i, i, {128, 128, 128, 255}).empty());
+    }
+
+    // Slivers and edges through pixel centers land on the same pixels as on a GPU.
+    const auto corner = [](float x, float y) {
+        return Vertex2D{.x = x, .y = y, .u = 0.0F, .v = 0.0F, .rgba = {255, 255, 255, 255}};
+    };
+    const std::vector<Vertex2D> triangles{
+        corner(0.3F, 0.2F), corner(7.9F, 1.1F), corner(2.2F, 7.6F), // thin and slanted
+        corner(5.5F, 0.5F), corner(7.5F, 7.5F), corner(5.5F, 7.5F), // edges through centers
+        corner(1.0F, 4.5F), corner(1.0F, 7.0F), corner(4.0F, 4.5F), // wound the other way
+        corner(6.1F, 0.1F), corner(6.3F, 0.1F), corner(6.2F, 3.9F), // narrower than a pixel
+    };
+    image = render(*device, target.value(), black, {{TextureId::None, triangles}});
+    auto gpu = gpu_device();
+    if (gpu == nullptr) {
+        return;
+    }
+    auto gpu_target = gpu->create_texture(target_desc(8));
+    REQUIRE(gpu_target.ok());
+    const Image expected = render(*gpu, gpu_target.value(), black, {{TextureId::None, triangles}});
+    for (std::uint32_t y = 0; y < 8; ++y) {
+        for (std::uint32_t x = 0; x < 8; ++x) {
+            const std::size_t at = (std::size_t{y} * 8 + x) * 4;
+            CHECK(pixel_is(image, x, y,
+                           {expected.pixels[at], expected.pixels[at + 1], expected.pixels[at + 2],
+                            expected.pixels[at + 3]})
+                      .empty());
+        }
+    }
 }
 
 TEST_CASE("V-Sync modes have Godot's names") {

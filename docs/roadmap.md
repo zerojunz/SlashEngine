@@ -260,7 +260,11 @@ rendering on top.
 - [ ] More of Godot's audio: `Area2D` bus and reverb overrides, pitch shift, the spectrum
       analyzer, record and capture effects, interactive music (playlists, synchronized and
       interactive streams), generated and polyphonic streams, and microphone input
-- [ ] `frame.capture` (PNG) and replays (`replay.run`)
+- [x] `frame.capture`: the frame the window shows, drawn on the CPU by a software render
+      device that shades as the GPU device does, so the pixels are the same on every machine;
+      returns pixel colors, a PNG (an image block over MCP) or a file, for a region and at a
+      scale
+- [ ] Replays (`replay.run`)
 - [ ] Time travel: `replay.seek` jumps a recorded run to any tick, where every query command
       works, so a bug can be reproduced and inspected at the moment it happened
 - [ ] Debug overlay, drawn with the UI and text above
@@ -449,7 +453,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 
 | Area | SlashEngine approach | Milestone | Status |
 | --- | --- | --- | --- |
-| Editor | No GUI editor: MCP and REST command API, debug overlay, frame capture | 3, 5 | In part: the command API is done; frame capture and the overlay are planned for 5 |
+| Editor | No GUI editor: MCP and REST command API, debug overlay, frame capture | 3, 5 | In part: the command API and frame capture are done; the overlay is planned for 5 |
 | Gameplay code | C++ with hot reload; plugins as C++ modules with a stable C ABI | 6 | Planned |
 | Scenes and prefabs | JSON scenes, prefabs with overrides, on EnTT | 2, 5 | Done |
 | 2D sprites and animation | Batched sprites, sprite sheets, flipbooks | 5 | Done |

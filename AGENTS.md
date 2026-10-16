@@ -226,6 +226,14 @@ GPU API (Metal, Direct3D 12 or Vulkan), and a null device for headless runs that
 call the same way but draws nothing. `create_device_or_null` falls back to it, with a warning,
 where no backend starts. `examples/draw-offscreen` draws into a texture and reads it back.
 
+`create_software_device` (`src/software_device.cpp`) draws on the CPU, into render targets
+only: it batches as the GPU device does, rasterizes with the GPU's fill rules and shades with
+the CPU twins (`run_program`, `render::shade`, `distance_field_coverage`, `sample_image`), so its
+pixels are the same on every machine. The GPU tests draw on it too, and hold both devices to the
+same pixels; a change to how the GPU device draws goes in both. `canvas::capture` draws a world's
+frame on it at the viewport size, and backs `frame.capture` (pixel colors, a PNG or a file; MCP
+sends the PNG as an image). `examples/frame-capture` checks a HUD by its pixels.
+
 `engine/canvas` is 2D drawing, as Godot's canvas. `Sprite2D` draws a texture, or a frame of a
 sprite sheet, at the entity's `Transform2D`, in `z_index` order, then the order entities were
 made. `AnimatedSprite2D` plays a `.frames.json` file's animations on it through the
@@ -507,7 +515,7 @@ CI rejects unformatted code and any clang-tidy finding.
 - Headers live in `engine/<module>/include/slash/<module>/`, sources in `engine/<module>/src/`.
   Modules: `core` (Result, logging, JSON, reflection, math), `platform` (SDL3 window, run loop,
   files and folder listings, child processes), `render` (the render device over SDL3's GPU API,
-  the null device, HLSL shaders, material programs and 2D light shading), `asset` (asset handles, loaders, hot reload),
+  the software and null devices, HLSL shaders, material programs and 2D light shading), `asset` (asset handles, loaders, hot reload),
   `world` (EnTT world, components, scenes and prefabs), `input` (input events, action maps,
   the input state and reading SDL's events), `audio` (sound files and streams, the mixer, buses
   and effects, players and SDL's audio output), `canvas` (sprites, `.frames.json`

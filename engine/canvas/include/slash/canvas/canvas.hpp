@@ -190,4 +190,43 @@ private:
     std::vector<std::pair<render::TextureId, std::uint64_t>> pages_;
 };
 
+// How a project's frames look, from project.json: what capture draws with.
+struct Settings {
+    // rendering.clear_color.
+    render::Color clear_color = render::kDefaultClearColor;
+    // rendering.texture_filter, for sprites whose texture_filter is "inherit".
+    render::Filter texture_filter = render::Filter::Linear;
+    // Seconds per tick (1 / tick_hz), for the time materials read.
+    double tick_seconds = 1.0 / 60.0;
+};
+void set_settings(world::World& world, const Settings& settings);
+// The settings given to the world, or the defaults.
+[[nodiscard]] Settings settings(const world::World& world);
+
+struct CaptureOptions {
+    // Image pixels per world pixel: 0.5 halves the width and height.
+    float scale = 1.0F;
+    // Seconds of game time materials read; below 0, the world's tick times the settings'
+    // tick_seconds.
+    double time = -1.0;
+};
+
+struct Capture {
+    render::Image image;
+    // What CanvasRenderer drew.
+    std::size_t sprites = 0;
+    std::size_t tiles = 0;
+    std::size_t particles = 0;
+    std::size_t lights = 0;
+    std::size_t controls = 0;
+};
+
+// Draws the world as a window of ui::settings' viewport size would show it, with Settings'
+// clear color and filter, into an image that size times the scale. It draws on the software
+// device (render::create_software_device), so it needs no GPU and draws the same on every
+// machine. The device and the textures it made stay in the world for the next capture, and are
+// made again for other assets.
+[[nodiscard]] Result<Capture> capture(world::World& world, asset::Assets& assets,
+                                      const CaptureOptions& options = {});
+
 } // namespace slash::canvas
