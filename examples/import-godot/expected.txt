@@ -1,14 +1,17 @@
 project.import {"dry_run":true,"source":"godot"}
 {
   "converted": {
-    "assets": 5,
+    "assets": 6,
+    "bus_layouts": 1,
     "input_actions": 3,
     "scenes": 2,
-    "sprite_frames": 2
+    "sprite_frames": 2,
+    "themes": 1,
+    "tile_sets": 1
   },
   "dry_run": true,
   "engine": "godot",
-  "files": ["project.json", "godot/player_frames.frames.json", "godot/player.scene.json", "godot/main_sprite_frames_coin.frames.json", "godot/main.scene.json", "storyboard/work.json", "import/godot.json"],
+  "files": ["godot/ui_theme.theme.json", "godot/default_bus_layout.bus_layout.json", "project.json", "godot/player_frames.frames.json", "godot/player.scene.json", "godot/tiles.tileset.json", "godot/main_sprite_frames_coin.frames.json", "godot/main.scene.json", "storyboard/work.json", "import/godot.json"],
   "main_scene": "godot/main.scene.json",
   "project": "Coin Run",
   "report": "import/godot.json",
@@ -53,13 +56,16 @@ project.import {"dry_run":true,"source":"godot"}
 project.import {"source":"godot"}
 {
   "converted": {
-    "assets": 5,
+    "assets": 6,
+    "bus_layouts": 1,
     "input_actions": 3,
     "scenes": 2,
-    "sprite_frames": 2
+    "sprite_frames": 2,
+    "themes": 1,
+    "tile_sets": 1
   },
   "engine": "godot",
-  "files": 7,
+  "files": 10,
   "main_scene": "godot/main.scene.json",
   "project": "Coin Run",
   "report": "import/godot.json",
@@ -153,8 +159,23 @@ project.import {"source":"godot"}
     "main": {
       "components": {
         "Transform2D": {
-          "children": ["ground", "player", "coin"]
+          "children": ["ground", "platforms", "player", "coin"]
         }
+      }
+    },
+    "platforms": {
+      "components": {
+        "TileMapLayer": {
+          "legend": {
+            "a": "tiles:0,0",
+            "b": "tiles:1,0",
+            "c": "tiles:2,0"
+          },
+          "origin": [10, 6],
+          "rows": ["abc"],
+          "tile_set": "godot/tiles.tileset.json"
+        },
+        "Transform2D": {}
       }
     },
     "player": {
@@ -211,9 +232,101 @@ project.import {"source":"godot"}
   },
   "format": 1
 }
---- project.json
+--- godot/tiles.tileset.json
 {
   "format": 1,
+  "sources": {
+    "tiles": {
+      "texture": "godot/art/tiles.png",
+      "tiles": {
+        "0,0": {
+          "peering": {
+            "n": null,
+            "s": null,
+            "w": null
+          },
+          "terrain": "Grass"
+        },
+        "1,0": {
+          "peering": {
+            "n": null,
+            "s": null
+          },
+          "terrain": "Grass"
+        },
+        "2,0": {
+          "peering": {
+            "e": null,
+            "n": null,
+            "s": null
+          },
+          "terrain": "Grass"
+        }
+      }
+    }
+  },
+  "terrain_sets": {
+    "set_0": {
+      "mode": "match_sides",
+      "terrains": ["Grass"]
+    }
+  }
+}
+--- godot/ui_theme.theme.json
+{
+  "default_font_size": 12,
+  "format": 1,
+  "types": {
+    "Label": {
+      "colors": {
+        "font_outline_color": [0.1, 0.05, 0.0, 1.0]
+      },
+      "constants": {
+        "outline_size": 2
+      }
+    }
+  }
+}
+--- godot/default_bus_layout.bus_layout.json
+{
+  "buses": [
+    {
+      "name": "Master"
+    },
+    {
+      "effects": [
+        {
+          "room_size": 0.5,
+          "type": "reverb",
+          "wet": 0.25
+        }
+      ],
+      "name": "Music",
+      "volume_db": -6.0
+    },
+    {
+      "effects": [
+        {
+          "cutoff_hz": 4000.0,
+          "enabled": false,
+          "type": "low_pass_filter"
+        }
+      ],
+      "name": "SFX"
+    }
+  ],
+  "format": 1
+}
+--- project.json
+{
+  "audio": {
+    "bus_layout": "godot/default_bus_layout.bus_layout.json",
+    "panning_strength_2d": 0.5
+  },
+  "format": 1,
+  "gui": {
+    "theme": "godot/ui_theme.theme.json"
+  },
   "input": {
     "jump": {
       "deadzone": 0.5,
@@ -272,7 +385,7 @@ project.import {"source":"godot"}
 }
 scene.open {"path":"godot/main.scene.json"}
 {
-  "entities": 14,
+  "entities": 15,
   "path": "godot/main.scene.json"
 }
 step {"ticks":25}

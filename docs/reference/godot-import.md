@@ -15,6 +15,9 @@ Godot 4 and save it there first; Godot converts it.
 | --- | --- |
 | `<scene>.scene.json` beside each `<scene>.tscn` | The scene's nodes, as entities and components |
 | `<name>.frames.json` | Each `SpriteFrames` resource: a `.tres` file's beside it, a scene's own as `<scene>_<id>.frames.json` |
+| `<name>.tileset.json` | Each `TileSet` resource, named the same way |
+| `<name>.theme.json` | Each `Theme` resource, named the same way |
+| `<name>.bus_layout.json` | Each `AudioBusLayout` resource, such as `default_bus_layout.tres` |
 | `project.json` | `project.godot`'s settings and input map, merged into the project's own if it has one |
 | `storyboard/work.json` | A task per script, merged into the project's own tasks |
 | `import/godot.json` | The full report: every node's entity, what each script needs and everything that didn't convert |
@@ -59,6 +62,8 @@ their children in place. Controls draw on the screen above the world, as in a `C
 | `HFlowContainer`, `VFlowContainer`, `FlowContainer` | `Control` and `FlowContainer` |
 | `HSlider`, `VSlider` | `Control` and `Slider` |
 | `HScrollBar`, `VScrollBar` | `Control` and `ScrollBar` |
+| `TileMapLayer` | `Transform2D` and `TileMapLayer` |
+| `TileMap` | `Transform2D` and `TileMapLayer`, and an entity per layer (see [tile maps](#tile-sets-and-tile-maps)) |
 
 Each property goes to the field of the same name: `position`, `rotation`, `scale` and `skew` to
 `Transform2D`, `offset_left` to `Control`, `texture` to `Sprite2D`. Values convert by the field's
@@ -67,8 +72,8 @@ type:
 - Enums are stored as numbers in Godot and names here, so `horizontal_alignment = 1` is
   `"center"` and `size_flags_horizontal = 3` is `"expand_fill"`.
 - `NodePath`s name entities: a joint's `node_a = NodePath("../Floor")` is `"floor"`.
-- Textures, sounds and fonts are project paths, and a `SpriteFrames` resource is its
-  `.frames.json` file.
+- Textures, sounds and fonts are project paths, and a `SpriteFrames`, `TileSet` or `Theme`
+  resource is the file it converts to, so a control's `theme` names a `.theme.json` file.
 - `theme_override_colors/font_color` and the other theme overrides go in `Control`'s maps;
   `theme_override_styles` take `StyleBoxFlat`, `StyleBoxTexture` and `StyleBoxEmpty`
   resources in a theme's form.
@@ -78,6 +83,46 @@ type:
   points and color ramps; a label's theme overrides; a body's `friction` and `bounce`.
 - `region_enabled` and `region_rect` are `Sprite2D`'s `region`; `self_modulate` multiplies
   into its `modulate`; an `AnimatedSprite2D` plays only with `autoplay`, as in Godot.
+
+## Tile sets and tile maps
+
+A `TileSet` becomes a [`.tileset.json` file](scene-format.md#tile-sets) and keeps Godot's tile
+size, atlas sources and terrains:
+
+- Each `TileSetAtlasSource` is a source named after its texture (`tiles.png` is `tiles`), with
+  its texture, region size, margins and separation. Each tile is keyed by its column and row
+  (`"2,0"` for Godot's `2:0`) and keeps its probability.
+- Each terrain set is `set_<n>`, with its mode and its terrains' names; a name used in two sets
+  gets the set's number added, since names are unique in the file.
+- A tile's terrain and its peering bits become `terrain` and `peering`: `right_side` is `e`,
+  `bottom_right_corner` is `se` and so on round the tile, a bit with no terrain is `null`, and a
+  bit with the tile's own terrain is left out.
+
+A `TileMapLayer` node's `tile_map_data` becomes its layer's `origin`, `legend` and `rows`, so
+`tilemap.get`, `tilemap.paint` and `tilemap.set` edit the cells as Godot left them. A cell that
+uses an alternative tile gets the base tile, and the report says so.
+
+The old `TileMap` node (Godot 4.0 to 4.2) keeps its tile set on its own `TileMapLayer` and puts
+each layer on an entity of its own, in its `Transform2D` children, drawn before its other
+children as Godot draws its layers. A layer's `modulate`, `z_index` and `enabled` go on that
+entity, so they don't reach the node's children. A `TileMap` with one layer that sets none of
+them keeps its cells on the node, with no extra entity. Layers are named after the node and the
+layer: `Ground` in `Level` is `level_ground`.
+
+## Themes and bus layouts
+
+A `Theme` becomes a [`.theme.json` file](scene-format.md#themes): its `default_font`,
+`default_font_size`, each type's `base_type` and its colors, constants, font sizes, fonts,
+icons and style boxes, which take the same form as `theme_override_styles`. The project's
+`gui/theme/custom` becomes `gui.theme`, and a control's `theme` names the file.
+
+An `AudioBusLayout` becomes a [`.bus_layout.json` file](scene-format.md#bus-layouts): each bus's
+name, volume, solo, mute, bypass and send, and its effects in order, each with its settings and
+whether it is enabled. Effects convert to the effect of the same name: `AudioEffectLowPassFilter`
+is `low_pass_filter`, a filter's `db` is 6, 12, 18 or 24 instead of Godot's 0 to 3, a distortion's
+`mode` is a name, and a chorus's `voice/1/...` settings are `voices`. Godot uses
+`res://default_bus_layout.tres` unless `audio/buses/default_bus_layout` names another, and the
+one it would use becomes `audio.bus_layout`.
 
 An instanced scene stays an instance, as in Godot: its `.scene.json` file names its root, and
 the instance's entity extends that file ([instanced scenes](scene-format.md#instanced-scenes)),
@@ -98,6 +143,10 @@ left out and reported, so one bad value can't stop a scene.
 | `physics/2d/default_gravity`, `default_gravity_vector`, `default_linear_damp`, `default_angular_damp` | `physics_2d` |
 | `rendering/environment/defaults/default_clear_color` | `rendering.clear_color` |
 | `rendering/textures/canvas_textures/default_texture_filter` | `rendering.texture_filter` |
+| `gui/theme/custom` | `gui.theme`, the theme's `.theme.json` file |
+| `audio/buses/default_bus_layout` | `audio.bus_layout`, the layout's `.bus_layout.json` file |
+| `audio/driver/mix_rate`, `audio/driver/output_latency` | `audio.mix_rate`, `audio.output_latency` |
+| `audio/general/2d_panning_strength` | `audio.panning_strength_2d` |
 | `[input]` | `input` |
 
 Each input action keeps its deadzone and its keys (`physical_keycode` as `physical_key`,
@@ -139,9 +188,13 @@ The report lists each of these once per kind, with how many and where it was fir
 
 | What | Why, and when |
 | --- | --- |
-| `TileMapLayer`, `TileMap`, `TileSet` | The importer's next step |
 | `AnimationPlayer`, `AnimationTree`, `Animation` resources | The importer's next step (`AnimationTree` with milestone 7's blending) |
-| Themes, `gui/theme/custom` and `AudioBusLayout` | The importer's next step |
+| Tile collision, navigation, occlusion and custom data layers | Tile sets hold no collision yet; add bodies over the tiles |
+| Isometric and hexagonal tiles, tiles larger than one cell, animated tiles | Tiles are square and one cell each; an animated tile shows its first frame |
+| Alternative tiles (flipped, turned) and scene collection sources | A cell shows its base tile; place scenes as entities |
+| Y-sorting tile map layers | Layers draw in order, by `z_index` |
+| `gui/theme/custom_font` | Set `default_font` in the project's theme |
+| Audio effects with no SlashEngine equivalent, such as `AudioEffectRecord` | Left out of the bus, which keeps its other effects |
 | C++ skeletons for scripts | With gameplay code in game projects, milestone 6 |
 | Timers and other gameplay nodes | Gameplay code: their values are kept in the report |
 | `display/window/stretch/mode` | Stretching isn't supported yet |

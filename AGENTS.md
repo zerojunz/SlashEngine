@@ -293,13 +293,14 @@ is Godot 4 (Unity, then Unreal, are on the roadmap). It registers `project.impor
 `slash-cli import <folder>` and slash-mcp serve; `--dry-run` and `"dry_run": true` return the
 report and the files it would write. `src/godot_text.cpp` parses Godot's text formats
 (`.tscn`, `.tres`, `project.godot`) and `src/godot_import.cpp` converts them: a `.scene.json`
-beside each `.tscn`, a `.frames.json` per `SpriteFrames`, `project.godot`'s settings and input
-map merged into `project.json`, and a storyboard task per script (`task/port-<name>`) to port it
-to C++. Properties convert by the target field's reflected type, Godot's enum numbers through
-its `choices`, and a value that fails the scene schema is left out and reported, so one bad
-value can't stop a scene. Everything that didn't convert goes in `import/godot.json`, once per
-kind. `docs/reference/godot-import.md` maps each node and setting; `examples/import-godot`
-imports a small platformer.
+beside each `.tscn`, a `.frames.json` per `SpriteFrames`, a `.tileset.json` per `TileSet`, a
+`.theme.json` per `Theme`, a `.bus_layout.json` per `AudioBusLayout`, `project.godot`'s settings
+and input map merged into `project.json`, and a storyboard task per script (`task/port-<name>`)
+to port it to C++. Properties convert by the target field's reflected type, Godot's enum numbers
+through its `choices`, and a value that fails its file's schema (scene, tile set, theme or bus
+layout) is left out and reported, so one bad value can't stop a file. Everything that didn't
+convert goes in `import/godot.json`, once per kind. `docs/reference/godot-import.md` maps each
+node and setting; `examples/import-godot` imports a small platformer.
 
 ## Rendering
 

@@ -10,5 +10,6 @@ add_library(slash::importer ALIAS slash_importer)
 target_include_directories(slash_importer PUBLIC include)
 target_link_libraries(slash_importer
     PUBLIC slash::command slash::core
-    PRIVATE slash::platform slash::runtime slash::storyboard slash::world)
+    PRIVATE slash::audio slash::canvas slash::platform slash::runtime slash::storyboard slash::ui
+            slash::world)
 slash_target_warnings(slash_importer)
