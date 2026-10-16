@@ -342,8 +342,10 @@ rendering on top.
         sprites, cameras, 2D physics, sounds, both input systems and project settings, measured
         in pixels. Each C# script becomes a storyboard task, with the values each object gave
         it in the report
-  - [ ] Unity's tile maps, Animator controllers and animation clips, audio mixers, uGUI, 2D
-        joints and 2D lights
+  - [x] Unity's rectangular tile maps: a tile set from the sprites cells show, with polygons
+        from sprites' physics shapes, alternatives for cell colors and turns from cell matrices
+  - [ ] Unity's Animator controllers and animation clips, audio mixers, uGUI, 2D joints, 2D
+        lights, and isometric and hexagonal tile maps
   - [ ] Exported games (a Godot `.pck`, a Unity build) unpacked back into a project, for games
         the user made or has the rights to. Nothing breaks encryption or DRM, and GPL tools such
         as AssetRipper run as separate programs, never linked

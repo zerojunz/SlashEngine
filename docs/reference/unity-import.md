@@ -2,7 +2,7 @@
 
 [`project.import`](commands.md#projectimport) and [`slash-cli import`](cli.md#import) convert a
 Unity project's 2D game into a SlashEngine project in one pass: its scenes and prefabs, sprites,
-cameras, 2D physics, sounds, input and settings. Scripts don't convert, since SlashEngine games
+tile maps, cameras, 2D physics, sounds, input and settings. Scripts don't convert, since SlashEngine games
 are plain C++: each becomes a storyboard task to port it, with what the port needs.
 [examples/import-unity](../../examples/import-unity/) imports a small platformer.
 
@@ -19,6 +19,7 @@ serialization).
 | `<scene>.scene.json` beside each `<scene>.unity` | The scene's GameObjects, as entities and components |
 | `<prefab>.scene.json` beside each `<prefab>.prefab` | The prefab, as a scene with a `root` that other scenes instance |
 | `<clip>.loop.audio.json` beside a sound | A sound an `AudioSource` loops |
+| `Assets/tiles.tileset.json` | The sprites tile maps show, as a tile set (`tiles_2.tileset.json` and on for tile maps of other cell sizes or physics) |
 | `project.json` | The player, time, physics, quality and input settings, merged into the project's own if it has one |
 | `storyboard/work.json` | A task per C# script, merged into the project's own tasks |
 | `import/unity.json` | The full report: every object's entity, what each script needs, tags, layers and everything that didn't convert |
@@ -63,6 +64,8 @@ and its sounds not playing, and is reported, since entities have no inactive sta
 | --- | --- |
 | `Transform` | `Transform2D` |
 | `SpriteRenderer` | `Sprite2D` (see [sprites](#sprites)) |
+| `Tilemap`, `TilemapRenderer`, `TilemapCollider2D` | `TileMapLayer` (see [tile maps](#tile-maps)) |
+| `Grid` | Nothing: its cell size is the tile set's `tile_size` |
 | `Camera` (orthographic) | `Camera2D` |
 | `AudioListener` | `AudioListener2D` |
 | `AudioSource` | `AudioStreamPlayer`, or `AudioStreamPlayer2D` when its spatial blend is above 0 |
@@ -87,6 +90,39 @@ Sprite2D's do, as Godot's do. So an object with children draws its sprite on a c
 own (`<entity>_sprite`), and so does a sprite whose texture has another pixels per unit than the
 project's, scaled to match. Sliced and tiled sprites draw as simple ones, materials and sprite
 masks don't convert, and each is reported.
+
+## Tile maps
+
+Each `Tilemap` becomes a `TileMapLayer` on its entity, and the sprites its cells show become
+tiles of a [tile set](scene-format.md#tile-sets) the import writes, `Assets/tiles.tileset.json`.
+Tile maps whose `Grid` cells are the same size in pixels share one tile set; one whose collider
+has other physics gets a set of its own (`tiles_2.tileset.json`).
+
+- A texture's sprites of one size that fall on a grid, as Unity's Sprite Editor slices them, are
+  one atlas source named after the texture, with its margins and separation; a sprite off the
+  grid is a source of its own. A tile is named after its sprite in snake case.
+- Unity's cell `(x, y)` is cell `(x, -y - 1)`, since Unity's cells go up from y 0 and rows go
+  down.
+- A cell's matrix becomes its turns: a mirrored cell is `:h` or `:v`, and a quarter turn
+  counterclockwise `:vt`, as Godot's cell transform flags. A scaled or skewed matrix, or an
+  offset, is reported and drawn without it.
+- A cell's color and collider type pick the tile's look; each look other than the first a cell
+  showed becomes an alternative tile (`ground:1`) with its own `modulate` and collision.
+- With a `TilemapCollider2D`, a tile's collision polygons come from its collider type: the
+  sprite's custom physics shape (pixels around the sprite's middle, y flipped), or the cell's
+  square for the Grid type. A sprite with no custom shape, whose physics shape Unity makes from its pixels, gets
+  its rectangle, reported. The collider's physics material (else its `Rigidbody2D`'s, else the
+  project's default) gives the tile set's physics layer its friction and bounce, the object's
+  layer its collision layer and mask, and a one-way `PlatformEffector2D` makes the polygons
+  one-way. A layer without a collider, or a trigger one, has `collision_enabled: false`.
+- The renderer's sorting layer and order are the layer's `z_index`, the Tilemap's color its
+  `modulate`, and the texture's filter mode its `texture_filter` when it differs from the
+  project's. A tile map without a `TilemapRenderer` is hidden.
+- The report's `tile_assets` names, for each tile asset (`.asset`), the tile set and tile it
+  became. Scripted tiles (rule tiles, animated tiles) keep the sprite each cell shows and are
+  reported, as are isometric and hexagonal grids, which don't convert, and a tile map moved by a
+  dynamic or kinematic `Rigidbody2D`. A `CompositeCollider2D` needs nothing, since a layer's
+  tiles are one static body.
 
 ## Cameras
 
@@ -169,8 +205,8 @@ the report.
 
 ## Not yet converted
 
-Tile maps, Animator controllers and animation clips, audio mixers, uGUI, 2D joints, 2D lights
-and particle systems convert in later imports; until then each is reported where it is used.
+Animator controllers and animation clips, audio mixers, uGUI, 2D joints, 2D lights, particle
+systems and isometric and hexagonal tile maps convert in later imports; until then each is reported where it is used.
 Materials and shaders, 3D (milestone 7) and Timeline don't convert. Everything that didn't
 convert is in the report's `unsupported`, once per kind with how many and the first place it was
 seen.

@@ -2,6 +2,8 @@
 
 #include "common.hpp"
 
+#include "slash/canvas/debug_draw.hpp"
+#include "slash/canvas/tilemap.hpp"
 #include "slash/core/json.hpp"
 #include "slash/importer/unity_yaml.hpp"
 #include "slash/platform/file.hpp"
@@ -18,11 +20,13 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <deque>
 #include <functional>
 #include <iterator>
 #include <map>
 #include <memory>
 #include <numbers>
+#include <numeric>
 #include <optional>
 #include <set>
 #include <string>
@@ -68,6 +72,13 @@ constexpr int kSpriteRenderer = 212;
 constexpr int kRectTransform = 224;
 constexpr int kPlatformEffector2D = 251;
 constexpr int kPrefabInstance = 1001;
+constexpr int kTilemapCollider2D = 19719996;
+constexpr int kGrid = 156049354;
+constexpr int kTilemapRenderer = 483693784;
+constexpr int kTilemap = 1839735485;
+// The script of Unity's own Tile class, which tile assets name; other tiles are scripted.
+constexpr std::string_view kTileScriptGuid = "0000000000000000e000000000000000";
+constexpr std::int64_t kTileScriptId = 13312;
 
 constexpr std::string_view kUiWhy = "Unity UI converts in a later import (on the roadmap)";
 constexpr std::string_view kEventWhy =
@@ -794,6 +805,9 @@ public:
                 (void)convert_file(file, 0);
             }
         }
+        for (const TileSetOut& set : tile_sets_) {
+            write_tile_set(set); // with the physics a later tile map gave it
+        }
         json::Value project = convert_project(existing_project);
         convert_input(project);
         write_project(std::move(project));
@@ -1024,8 +1038,11 @@ private:
 
     // --- Textures and sprites ---
 
+    using Outline = std::vector<std::array<double, 2>>;
+
     struct Sprite {
         std::string texture;            // its texture's path in the destination
+        std::string name;               // the sprite's, or the texture's for a single sprite
         std::array<double, 4> region{}; // x, y, width and height in pixels, from the top left
         bool whole = true;              // the whole texture
         double width = 0.0;
@@ -1034,13 +1051,33 @@ private:
         double pivot_y = 0.5;
         double ppu = 100.0;
         std::string filter;
+        // Its physics shape: outlines in pixels around the middle of its rect, y up.
+        std::vector<Outline> shape;
+        bool fallback_shape = true; // Unity makes one from the alpha when it has none
     };
 
     struct Texture {
         bool ok = false;
         std::string why;
+        std::string path; // in the Unity project
+        int width = 0;
+        int height = 0;
         std::map<std::int64_t, Sprite> sprites; // by file ID
     };
+
+    static std::vector<Outline> outlines(const Node* node) {
+        std::vector<Outline> out;
+        for (const Node& path : node != nullptr ? node->items : std::vector<Node>{}) {
+            Outline outline;
+            for (const Node& p : path.items) {
+                outline.push_back({p.number_at("x"), p.number_at("y")});
+            }
+            if (!outline.empty()) {
+                out.push_back(std::move(outline));
+            }
+        }
+        return out;
+    }
 
     const Texture& texture(const std::string& guid) {
         auto [it, inserted] = textures_.try_emplace(guid);
@@ -1069,6 +1106,9 @@ private:
             return out;
         }
         const auto [width, height] = *size;
+        out.path = asset->path;
+        out.width = width;
+        out.height = height;
         const Node empty;
         const Node* importer = asset->meta.get("TextureImporter");
         if (importer == nullptr) {
@@ -1082,6 +1122,7 @@ private:
         }
         base.filter =
             importer->integer_at("textureSettings.filterMode", 1) == 0 ? "nearest" : "linear";
+        base.fallback_shape = importer->flag_at("spriteGenerateFallbackPhysicsShape", true);
         const Node* sheet = importer->path("spriteSheet.sprites");
         if (importer->integer_at("spriteMode", 1) == 2 && sheet != nullptr) {
             // Each sprite's file ID: its internalID, or (before Unity 2019.3) the ID its name has
@@ -1105,6 +1146,8 @@ private:
             for (std::size_t i = 0; i < sheet->items.size(); ++i) {
                 const Node& entry = sheet->items[i];
                 Sprite sprite = base;
+                sprite.name = entry.string_at("name");
+                sprite.shape = outlines(entry.get("physicsShape"));
                 const double x = entry.number_at("rect.x");
                 const double y = entry.number_at("rect.y");
                 sprite.width = entry.number_at("rect.width");
@@ -1125,6 +1168,8 @@ private:
             }
         } else {
             Sprite sprite = base;
+            sprite.name = file_stem(asset->path);
+            sprite.shape = outlines(importer->path("spriteSheet.physicsShape"));
             sprite.width = width;
             sprite.height = height;
             std::tie(sprite.pivot_x, sprite.pivot_y) =
@@ -1696,6 +1741,8 @@ private:
         std::vector<const Component*> colliders;
         const Component* rigidbody = nullptr;
         const Component* effector = nullptr;
+        const Component* composite = nullptr;
+        TileMapParts tiles;
         for (const Component& component : go.components) {
             switch (component.class_id) {
             case kTransform:
@@ -1729,8 +1776,18 @@ private:
                 colliders.push_back(&component);
                 break;
             case kCompositeCollider2D:
-                problems_.add("component CompositeCollider2D", ctx.where,
-                              "the colliders it merges stay separate shapes");
+                composite = &component;
+                break;
+            case kGrid:
+                break; // read by the tile maps under it
+            case kTilemap:
+                tiles.tilemap = &component;
+                break;
+            case kTilemapRenderer:
+                tiles.renderer = &component;
+                break;
+            case kTilemapCollider2D:
+                tiles.collider = &component;
                 break;
             case kPlatformEffector2D:
                 effector = &component;
@@ -1744,6 +1801,22 @@ private:
                 break;
             }
         }
+        if (tiles.collider != nullptr && tiles.tilemap == nullptr) {
+            problems_.add("TilemapCollider2D without a Tilemap", ctx.where);
+            tiles.collider = nullptr;
+        }
+        if (tiles.tilemap != nullptr) {
+            tiles.effector = effector;
+            tiles.composite = composite;
+            if (tiles.collider != nullptr && colliders.empty()) {
+                tiles.rigidbody = std::exchange(rigidbody, nullptr); // the layer is the body
+            }
+            tile_map(ctx, tiles, out);
+        }
+        if (composite != nullptr && tiles.collider == nullptr) {
+            problems_.add("component CompositeCollider2D", ctx.where,
+                          "the colliders it merges stay separate shapes");
+        }
         physics(ctx, rigidbody, colliders, effector, out);
         return out;
     }
@@ -1754,10 +1827,6 @@ private:
         }
         if (type == "Animator" || type == "Animation") {
             return "Unity animation converts in a later import (on the roadmap)";
-        }
-        if (type == "Tilemap" || type == "TilemapRenderer" || type == "Grid" ||
-            type == "TilemapCollider2D") {
-            return "Unity tile maps convert in a later import (on the roadmap)";
         }
         if (type == "SortingGroup") {
             return "sprites under it keep their own z_index";
@@ -2380,6 +2449,670 @@ private:
                                                       : "trigger_" + std::to_string(trigger_count),
                                    std::move(added));
         }
+    }
+
+    // --- Tile maps ---
+
+    // The components of a Tilemap's object that make up a tile map layer.
+    struct TileMapParts {
+        const Component* tilemap = nullptr;
+        const Component* renderer = nullptr;
+        const Component* collider = nullptr;
+        const Component* rigidbody = nullptr;
+        const Component* effector = nullptr;
+        const Component* composite = nullptr;
+    };
+
+    // What a cell gives its tile besides the sprite: Unity's collider type (0 none, 1 the
+    // sprite's physics shape, 2 the cell) and a color.
+    struct TileLook {
+        std::int64_t collider = 1;
+        std::array<double, 4> color{1.0, 1.0, 1.0, 1.0};
+
+        auto operator<=>(const TileLook&) const = default;
+    };
+
+    // A tile of a tile set the import writes: one sprite, and an alternative for each other look
+    // cells give it, as Godot's alternative tiles.
+    struct TileOut {
+        const Sprite* sprite = nullptr;
+        std::string source;
+        std::array<std::int64_t, 2> atlas{};
+        std::string name;
+        TileLook base;
+        std::map<TileLook, int> alternatives;
+        std::map<std::int64_t, json::Array> collision; // polygons by collider type
+    };
+
+    // The physics a tile map's collider gives its tile set's physics layer.
+    struct TilePhysics {
+        std::int64_t layer = 1;
+        std::int64_t mask = 1;
+        double friction = 1.0;
+        double bounce = 0.0;
+        bool one_way = false;
+
+        auto operator<=>(const TilePhysics&) const = default;
+    };
+
+    // A grid of one texture's sprites of one size, as an atlas source cuts it; an empty source
+    // means they don't fall on one, so each sprite gets a source of its own.
+    struct TileGrid {
+        std::string source;
+        std::array<std::int64_t, 2> step{};
+        std::array<std::int64_t, 2> margins{};
+    };
+
+    // A .tileset.json file the import writes: the tiles of the tile maps whose cells are its size
+    // in pixels and whose colliders have its physics, by sprite.
+    struct TileSetOut {
+        std::string path;
+        std::array<std::int64_t, 2> cell{};
+        std::optional<TilePhysics> physics;
+        std::map<std::string, json::Value> sources; // atlas sources by name, without their tiles
+        std::map<std::string, TileGrid> grids;      // by "<guid> <width>x<height>"
+        std::map<std::pair<std::string, std::int64_t>, TileOut> tiles; // by texture GUID, file ID
+        std::set<std::string> names;                                   // the tiles'
+    };
+
+    TileSetOut& tile_set_for(std::array<std::int64_t, 2> cell,
+                             const std::optional<TilePhysics>& physics) {
+        for (TileSetOut& set : tile_sets_) {
+            if (set.cell == cell && (!physics || !set.physics || *set.physics == *physics)) {
+                if (physics && !set.physics) {
+                    set.physics = physics;
+                }
+                return set;
+            }
+        }
+        TileSetOut& set = tile_sets_.emplace_back();
+        set.cell = cell;
+        set.physics = physics;
+        return set;
+    }
+
+    // A source's name, unique in its tile set.
+    static std::string source_name(const TileSetOut& set, std::string name) {
+        if (name.empty()) {
+            name = "source";
+        }
+        std::string candidate = name;
+        for (int n = 2; set.sources.contains(candidate); ++n) {
+            candidate = name + "_" + std::to_string(n);
+        }
+        return candidate;
+    }
+
+    // The atlas source holding a sprite, and the sprite's column and row in it.
+    std::pair<std::string, std::array<std::int64_t, 2>> tile_source(TileSetOut& set,
+                                                                    const std::string& guid,
+                                                                    const Sprite& sprite,
+                                                                    const std::string& where) {
+        const Texture& sheet = texture(guid);
+        const auto rect_of = [](const Sprite& s) {
+            return s.whole ? std::array<double, 4>{0.0, 0.0, s.width, s.height} : s.region;
+        };
+        const auto whole = [](double v) { return std::abs(v - std::round(v)) < 1e-6; };
+        const std::array<double, 4> rect = rect_of(sprite);
+        const std::int64_t width = std::llround(rect[2]);
+        const std::int64_t height = std::llround(rect[3]);
+        const std::string key = guid + " " + std::to_string(width) + "x" + std::to_string(height);
+        auto grid = set.grids.find(key);
+        if (grid == set.grids.end()) {
+            // Sprites sliced by Unity's grid fall on one: a step between columns and rows (the
+            // gap between neighbors seen most), and a margin before the first. Sprites off it get
+            // sources of their own.
+            std::vector<std::array<std::int64_t, 2>> corners;
+            for (const auto& [id, other] : sheet.sprites) {
+                const std::array<double, 4> r = rect_of(other);
+                if (std::llround(r[2]) == width && std::llround(r[3]) == height && whole(r[0]) &&
+                    whole(r[1])) {
+                    corners.push_back({std::llround(r[0]), std::llround(r[1])});
+                }
+            }
+            TileGrid out;
+            const auto axis = [&](std::size_t i, std::int64_t size) {
+                std::set<std::int64_t> values;
+                for (const auto& corner : corners) {
+                    values.insert(corner.at(i));
+                }
+                std::map<std::int64_t, int> gaps;
+                for (auto it = values.begin(); std::next(it) != values.end(); ++it) {
+                    if (const std::int64_t gap = *std::next(it) - *it; gap >= size) {
+                        ++gaps[gap];
+                    }
+                }
+                std::int64_t step = size;
+                int seen = 0;
+                for (const auto& [gap, count] : gaps) {
+                    if (count > seen) {
+                        step = gap;
+                        seen = count;
+                    }
+                }
+                out.step.at(i) = step;
+                out.margins.at(i) = values.empty() ? 0 : *values.begin() % step;
+            };
+            if (!corners.empty() && width > 0 && height > 0 && whole(rect[2]) && whole(rect[3])) {
+                axis(0, width);
+                axis(1, height);
+                json::Value source;
+                source["texture"] = sprite.texture;
+                if (width != set.cell[0] || height != set.cell[1]) {
+                    source["region_size"] = json::Array{width, height};
+                }
+                if (out.margins[0] != 0 || out.margins[1] != 0) {
+                    source["margins"] = json::Array{out.margins[0], out.margins[1]};
+                }
+                if (out.step[0] != width || out.step[1] != height) {
+                    source["separation"] = json::Array{out.step[0] - width, out.step[1] - height};
+                }
+                std::string name = snake_case(file_stem(sheet.path));
+                if (std::ranges::any_of(set.grids, [&](const auto& entry) {
+                        return entry.first.starts_with(guid + " ");
+                    })) {
+                    name += "_" + std::to_string(width) + "x" + std::to_string(height);
+                }
+                out.source = source_name(set, name);
+                set.sources[out.source] = std::move(source);
+            }
+            grid = set.grids.emplace(key, std::move(out)).first;
+        }
+        const TileGrid& found = grid->second;
+        const std::int64_t left = std::llround(rect[0]);
+        const std::int64_t top = std::llround(rect[1]);
+        if (!found.source.empty() && whole(rect[0]) && whole(rect[1]) &&
+            (left - found.margins[0]) % found.step[0] == 0 &&
+            (top - found.margins[1]) % found.step[1] == 0) {
+            return {found.source,
+                    {(left - found.margins[0]) / found.step[0],
+                     (top - found.margins[1]) / found.step[1]}};
+        }
+        // A source of its own, its margins at the sprite.
+        if (!whole(rect[0]) || !whole(rect[1]) || !whole(rect[2]) || !whole(rect[3])) {
+            problems_.add("tile sprite rect between pixels", where,
+                          "its tile takes the nearest whole pixels");
+        }
+        json::Value source;
+        source["texture"] = sprite.texture;
+        if (width != set.cell[0] || height != set.cell[1]) {
+            source["region_size"] =
+                json::Array{std::max<std::int64_t>(width, 1), std::max<std::int64_t>(height, 1)};
+        }
+        source["margins"] = json::Array{std::llround(rect[0]), std::llround(rect[1])};
+        const std::string name =
+            source_name(set, snake_case(file_stem(sheet.path)) + "_" + snake_case(sprite.name));
+        set.sources[name] = std::move(source);
+        return {name, {0, 0}};
+    }
+
+    // A tile's collision polygons for a Unity collider type, in pixels around its middle.
+    json::Array tile_polygons(const TileSetOut& set, const Sprite& sprite, std::int64_t collider,
+                              const std::string& where) {
+        json::Array out;
+        std::vector<Outline> shapes;
+        if (collider == 2) {
+            const double x = static_cast<double>(set.cell[0]) / 2.0;
+            const double y = static_cast<double>(set.cell[1]) / 2.0;
+            shapes.push_back({{-x, y}, {x, y}, {x, -y}, {-x, -y}});
+        } else if (collider == 1) {
+            const double scale = ppu_ / sprite.ppu;
+            for (const Outline& outline : sprite.shape) {
+                Outline scaled;
+                for (const auto& [x, y] : outline) {
+                    scaled.push_back({x * scale, y * scale});
+                }
+                shapes.push_back(std::move(scaled));
+            }
+            if (shapes.empty() && sprite.fallback_shape) {
+                problems_.add("tile physics shape from the sprite's alpha", where,
+                              "Unity makes it from the pixels; the tile's polygon is the sprite's "
+                              "rectangle");
+                const double x = sprite.width * scale / 2.0;
+                const double y = sprite.height * scale / 2.0;
+                shapes.push_back({{-x, y}, {x, y}, {x, -y}, {-x, -y}});
+            }
+        }
+        for (const Outline& outline : shapes) {
+            std::vector<Vec2> points;
+            json::Array polygon;
+            for (const auto& [x, y] : outline) {
+                // Unity's y points up.
+                points.push_back({static_cast<float>(x), static_cast<float>(-y)});
+                polygon.push_back(pair(tidy(x), tidy(-y)));
+            }
+            if (points.size() < 3 || canvas::triangulate(points).empty()) {
+                problems_.add("tile physics shape with no area or crossing itself", where,
+                              "left out");
+                continue;
+            }
+            json::Value item;
+            item["points"] = std::move(polygon);
+            out.push_back(std::move(item));
+        }
+        return out;
+    }
+
+    // The tile, and its alternative, that a cell showing this sprite with this look has.
+    std::pair<const TileOut*, int> tile_for(TileSetOut& set, const ObjectRef& ref,
+                                            const Sprite& sprite, const TileLook& look,
+                                            const std::string& where) {
+        auto [it, added] = set.tiles.try_emplace({ref.guid, ref.file_id});
+        TileOut& tile = it->second;
+        if (added) {
+            if (set.path.empty()) {
+                // Tile sets hold every tile map's tiles, whatever textures they come from.
+                const auto number = std::ranges::count_if(
+                    tile_sets_, [](const TileSetOut& other) { return !other.path.empty(); });
+                set.path =
+                    destination("Assets/tiles" +
+                                (number == 0 ? std::string() : "_" + std::to_string(number + 1)) +
+                                std::string(canvas::kTileSetSuffix));
+            }
+            tile.sprite = &sprite;
+            std::tie(tile.source, tile.atlas) = tile_source(set, ref.guid, sprite, where);
+            tile.name = take(set.names, sprite.name.empty() ? "tile" : snake_case(sprite.name));
+            tile.base = TileLook{.collider = look.collider};
+            if (std::abs(sprite.pivot_x - 0.5) > 1e-6 || std::abs(sprite.pivot_y - 0.5) > 1e-6) {
+                problems_.add("tile sprite pivot off its middle", where,
+                              "tiles draw centered on their cells");
+            }
+            if (std::abs(sprite.ppu - ppu_) > 1e-6) {
+                problems_.add("tile sprite with other pixels per unit", where,
+                              "a tile draws at its size in pixels, unscaled");
+            }
+        }
+        if (!tile.collision.contains(look.collider)) {
+            tile.collision[look.collider] = tile_polygons(set, sprite, look.collider, where);
+        }
+        if (look == tile.base) {
+            return {&tile, 0};
+        }
+        const auto [alternative, inserted] =
+            tile.alternatives.try_emplace(look, static_cast<int>(tile.alternatives.size()) + 1);
+        return {&tile, alternative->second};
+    }
+
+    [[nodiscard]] json::Value tile_set_doc(const TileSetOut& set) const {
+        json::Value doc;
+        doc["format"] = 1;
+        if (set.cell != std::array<std::int64_t, 2>{16, 16}) {
+            doc["tile_size"] = json::Array{set.cell[0], set.cell[1]};
+        }
+        json::Value sources = json::Object{};
+        for (const auto& [name, source] : set.sources) {
+            sources[name] = source;
+        }
+        bool polygons = false;
+        const auto collision = [&](const TileOut& tile, const TileLook& look) {
+            const auto found = tile.collision.find(look.collider);
+            json::Array out = found != tile.collision.end() ? found->second : json::Array{};
+            for (json::Value& polygon : out) {
+                if (set.physics && set.physics->one_way) {
+                    polygon["one_way"] = true;
+                }
+            }
+            polygons = polygons || !out.empty();
+            return out;
+        };
+        for (const auto& [key, tile] : set.tiles) {
+            json::Value out;
+            out["name"] = tile.name;
+            if (json::Array base = collision(tile, tile.base); !base.empty()) {
+                out["collision"] = std::move(base);
+            }
+            for (const auto& [look, number] : tile.alternatives) {
+                json::Value alternative = json::Object{};
+                if (look.color != std::array<double, 4>{1.0, 1.0, 1.0, 1.0}) {
+                    alternative["modulate"] =
+                        json::Array{look.color[0], look.color[1], look.color[2], look.color[3]};
+                }
+                if (json::Array own = collision(tile, look); !own.empty()) {
+                    alternative["collision"] = std::move(own);
+                }
+                out["alternatives"][std::to_string(number)] = std::move(alternative);
+            }
+            sources[tile.source]["tiles"][std::to_string(tile.atlas[0]) + "," +
+                                          std::to_string(tile.atlas[1])] = std::move(out);
+        }
+        if (polygons) {
+            // Only what differs from a physics layer's defaults.
+            json::Value layer = json::Object{};
+            const TilePhysics physics = set.physics.value_or(TilePhysics{});
+            if (physics.layer != 1) {
+                layer["collision_layer"] = physics.layer;
+            }
+            if (physics.mask != 1) {
+                layer["collision_mask"] = physics.mask;
+            }
+            if (physics.friction != 1.0) {
+                layer["friction"] = physics.friction;
+            }
+            if (physics.bounce != 0.0) {
+                layer["bounce"] = physics.bounce;
+            }
+            doc["physics_layers"] = json::Array{std::move(layer)};
+        }
+        doc["sources"] = std::move(sources);
+        return doc;
+    }
+
+    // Writes a tile set as it is now, replacing what an earlier tile map wrote.
+    void write_tile_set(const TileSetOut& set) {
+        if (set.path.empty()) {
+            return;
+        }
+        const std::string text = json::write(tile_set_doc(set)) + "\n";
+        for (auto& [planned, contents] : plan_.files) {
+            if (planned == set.path) {
+                contents = text;
+                return;
+            }
+        }
+        add_file(set.path, text);
+    }
+
+    // A cell's matrix as its tile's turns, as Godot's cell transform flags: flip_h, flip_v and
+    // transpose, the axes swapped before the flips. nullopt for a matrix that scales, skews or
+    // turns by other than quarter turns.
+    static std::optional<std::array<bool, 3>> tile_turns(const Node* matrix) {
+        if (matrix == nullptr) {
+            return std::array<bool, 3>{};
+        }
+        // Unity's y points up and SlashEngine's down.
+        const std::array<double, 4> m{matrix->number_at("e00", 1.0), -matrix->number_at("e01"),
+                                      -matrix->number_at("e10"), matrix->number_at("e11", 1.0)};
+        for (int bits = 0; bits < 8; ++bits) {
+            const bool flip_h = (bits & 1) != 0;
+            const bool flip_v = (bits & 2) != 0;
+            const bool transpose = (bits & 4) != 0;
+            const double h = flip_h ? -1.0 : 1.0;
+            const double v = flip_v ? -1.0 : 1.0;
+            const std::array<double, 4> t = transpose ? std::array<double, 4>{0.0, h, v, 0.0}
+                                                      : std::array<double, 4>{h, 0.0, 0.0, v};
+            bool same = true;
+            for (std::size_t i = 0; i < 4; ++i) {
+                same = same && std::abs(m.at(i) - t.at(i)) < 1e-3;
+            }
+            if (same) {
+                return std::array<bool, 3>{flip_h, flip_v, transpose};
+            }
+        }
+        return std::nullopt;
+    }
+
+    // Whether a tile asset is one of Unity's own Tiles; rule tiles, animated tiles and other
+    // scripted tiles aren't.
+    bool plain_tile(const ObjectRef& ref) {
+        if (const auto known = plain_tiles_.find(ref.guid); known != plain_tiles_.end()) {
+            return known->second;
+        }
+        bool plain = true;
+        if (const Asset* asset = asset_of(ref.guid); asset != nullptr) {
+            if (auto text = platform::read_file(source_ + asset->path); text) {
+                if (auto objects = unity::parse_file(text.value()); objects) {
+                    for (const Object& object : objects.value()) {
+                        if (object.file_id == ref.file_id) {
+                            const auto script = ref_at(object.body, "m_Script");
+                            plain = script && script->guid == kTileScriptGuid &&
+                                    script->file_id == kTileScriptId;
+                        }
+                    }
+                }
+            }
+        }
+        plain_tiles_[ref.guid] = plain;
+        return plain;
+    }
+
+    void tile_map(const Context& ctx, const TileMapParts& parts, Converted& out) {
+        const GameObject& go = ctx.file->objects[static_cast<std::size_t>(ctx.index)];
+        // The Grid is on the tile map's parent.
+        const Node* grid = nullptr;
+        if (go.parent >= 0) {
+            for (const Component& component :
+                 ctx.file->objects[static_cast<std::size_t>(go.parent)].components) {
+                if (component.class_id == kGrid) {
+                    grid = &component.body;
+                }
+            }
+        }
+        const Node none;
+        if (grid == nullptr) {
+            problems_.add("Tilemap without a Grid above it", ctx.where, "its cells are 1 unit");
+            grid = &none;
+        }
+        if (grid->integer_at("m_CellLayout", 0) != 0) {
+            problems_.add("isometric or hexagonal tile map", ctx.where,
+                          "only rectangular grids convert; isometric and hexagonal tile maps are "
+                          "on the roadmap");
+            return;
+        }
+        if (grid->integer_at("m_CellSwizzle", 0) != 0) {
+            problems_.add("grid cell swizzle", ctx.where,
+                          "tile maps lie in the xy plane; this one isn't converted");
+            return;
+        }
+        if (grid->number_at("m_CellGap.x") != 0.0 || grid->number_at("m_CellGap.y") != 0.0) {
+            problems_.add("grid cell gap", ctx.where, "cells touch");
+        }
+        const double cell_x = std::abs(grid->number_at("m_CellSize.x", 1.0)) * ppu_;
+        const double cell_y = std::abs(grid->number_at("m_CellSize.y", 1.0)) * ppu_;
+        const std::array<std::int64_t, 2> cell{std::max<std::int64_t>(std::llround(cell_x), 1),
+                                               std::max<std::int64_t>(std::llround(cell_y), 1)};
+        if (std::abs(cell_x - static_cast<double>(cell[0])) > 1e-6 ||
+            std::abs(cell_y - static_cast<double>(cell[1])) > 1e-6) {
+            problems_.add("grid cell size between whole pixels", ctx.where,
+                          "tiles are whole pixels; the size is rounded");
+        }
+        const Node& body = parts.tilemap->body;
+        if (std::abs(body.number_at("m_TileAnchor.x", 0.5) - 0.5) > 1e-6 ||
+            std::abs(body.number_at("m_TileAnchor.y", 0.5) - 0.5) > 1e-6) {
+            problems_.add("tile anchor off the middle of the cell", ctx.where,
+                          "tiles draw centered on their cells");
+        }
+        if (body.integer_at("m_TileOrientation", 0) != 0) {
+            problems_.add("tile orientation", ctx.where, "tiles lie in the xy plane");
+        }
+
+        // The collider's physics, for the tile set's physics layer.
+        std::optional<TilePhysics> physics;
+        bool solid = false;
+        if (parts.collider != nullptr) {
+            const Node& collider = parts.collider->body;
+            solid = collider.flag_at("m_Enabled", true) && ctx.active;
+            if (collider.flag_at("m_IsTrigger")) {
+                problems_.add("trigger TilemapCollider2D", ctx.where,
+                              "tile map layers are solid or not; it collides with nothing");
+                solid = false;
+            }
+            if (collider.number_at("m_Offset.x") != 0.0 ||
+                collider.number_at("m_Offset.y") != 0.0) {
+                problems_.add("TilemapCollider2D offset", ctx.where,
+                              "the tiles' polygons stay on their tiles");
+            }
+            const std::int64_t layer =
+                std::clamp<std::int64_t>(go.body.integer_at("m_Layer", 0), 0, 31);
+            Material material = default_material_;
+            if (const auto ref = ref_at(collider, "m_Material"); ref && !ref->guid.empty()) {
+                material = physics_material(ref->guid);
+            } else if (parts.rigidbody != nullptr) {
+                if (const auto own = ref_at(parts.rigidbody->body, "m_Material");
+                    own && !own->guid.empty()) {
+                    material = physics_material(own->guid);
+                }
+            }
+            physics =
+                TilePhysics{.layer = std::int64_t{1} << layer,
+                            .mask = std::int64_t{layer_masks_.at(static_cast<std::size_t>(layer))},
+                            .friction = material.friction,
+                            .bounce = material.bounce,
+                            .one_way = parts.effector != nullptr &&
+                                       parts.effector->body.flag_at("m_UseOneWay", true) &&
+                                       (collider.flag_at("m_UsedByEffector") ||
+                                        (parts.composite != nullptr &&
+                                         parts.composite->body.flag_at("m_UsedByEffector")))};
+            if (parts.rigidbody != nullptr &&
+                parts.rigidbody->body.integer_at("m_BodyType", 0) != 2) {
+                problems_.add("tile map moved by a Rigidbody2D", ctx.where,
+                              "tile map layers are static bodies; it stays where it is");
+            }
+        }
+        TileSetOut& set = tile_set_for(cell, physics);
+
+        // Each cell's tile, from the arrays the cells index.
+        const auto entry = [&](std::string_view array, std::int64_t index) -> const Node* {
+            const Node* list = body.get(array);
+            if (list == nullptr || index < 0 ||
+                static_cast<std::size_t>(index) >= list->items.size()) {
+                return nullptr;
+            }
+            return list->items[static_cast<std::size_t>(index)].get("m_Data");
+        };
+        struct Placed {
+            const TileOut* tile = nullptr;
+            int alternative = 0;
+            std::array<bool, 3> turns{};
+        };
+        std::map<std::pair<std::int64_t, std::int64_t>, Placed> placed;
+        std::string filter;
+        const Node* tiles = body.get("m_Tiles");
+        for (const Node& item : tiles != nullptr ? tiles->items : std::vector<Node>{}) {
+            const Node* data = item.get("second");
+            if (data == nullptr) {
+                continue;
+            }
+            if (item.integer_at("first.z", 0) != 0) {
+                problems_.add("tiles above or below z 0", ctx.where,
+                              "a layer holds one tile per cell; the last one wins");
+            }
+            const auto asset = [&]() -> std::optional<ObjectRef> {
+                const Node* ref = entry("m_TileAssetArray", data->integer_at("m_TileIndex", -1));
+                return ref != nullptr ? unity::object_ref(*ref) : std::nullopt;
+            }();
+            if (asset && !asset->null() && !plain_tile(*asset)) {
+                problems_.add("scripted tiles (rule tiles, animated tiles)", ctx.where,
+                              "each cell keeps the sprite it shows");
+            }
+            const Node* sprite_ref =
+                entry("m_TileSpriteArray", data->integer_at("m_TileSpriteIndex", -1));
+            const auto ref = sprite_ref != nullptr ? unity::object_ref(*sprite_ref) : std::nullopt;
+            if (!ref || ref->null()) {
+                problems_.add("tiles without a sprite", ctx.where,
+                              "left out, with any collision they had");
+                continue;
+            }
+            std::string why;
+            const Sprite* sprite = this->sprite(*ref, why);
+            if (sprite == nullptr) {
+                problems_.add("tile sprite", ctx.where, why);
+                continue;
+            }
+            TileLook look;
+            look.collider = static_cast<std::int64_t>(
+                (static_cast<std::uint64_t>(data->integer_at("m_AllTileFlags", 0)) >> 30U) & 3U);
+            if (const Node* color =
+                    entry("m_TileColorArray", data->integer_at("m_TileColorIndex", -1))) {
+                look.color = {color->number_at("r", 1.0), color->number_at("g", 1.0),
+                              color->number_at("b", 1.0), color->number_at("a", 1.0)};
+            }
+            const Node* matrix =
+                entry("m_TileMatrixArray", data->integer_at("m_TileMatrixIndex", -1));
+            auto turns = tile_turns(matrix);
+            if (!turns) {
+                problems_.add("tiles scaled or turned other than by quarter turns", ctx.where,
+                              "drawn unturned");
+                turns = std::array<bool, 3>{};
+            }
+            if (matrix != nullptr &&
+                (matrix->number_at("e03") != 0.0 || matrix->number_at("e13") != 0.0)) {
+                problems_.add("tile offsets", ctx.where, "tiles draw centered on their cells");
+            }
+            const auto [tile, alternative] = tile_for(set, *ref, *sprite, look, ctx.where);
+            if (filter.empty()) {
+                filter = sprite->filter;
+            }
+            // Unity's cells go up from y 0; rows go down.
+            const std::int64_t x = item.integer_at("first.x", 0);
+            const std::int64_t y = item.integer_at("first.y", 0);
+            placed[{x, -y - 1}] = Placed{.tile = tile, .alternative = alternative, .turns = *turns};
+            if (asset && !asset->null()) {
+                if (const Asset* file = asset_of(asset->guid); file != nullptr) {
+                    tile_assets_.try_emplace(
+                        destination(file->path),
+                        std::pair{set.path, alternative == 0
+                                                ? tile->name
+                                                : tile->name + ":" + std::to_string(alternative)});
+                }
+            }
+        }
+
+        json::Value layer = json::Object{};
+        if (!set.path.empty()) {
+            layer["tile_set"] = set.path;
+            const json::Value doc = tile_set_doc(set);
+            auto parsed = canvas::parse_tileset(doc);
+            if (!parsed) {
+                problems_.add("tile map cells", ctx.where, parsed.error().message);
+            } else {
+                canvas::Cells cells;
+                for (const auto& [at, cell_tile] : placed) {
+                    cells[{static_cast<int>(at.first), static_cast<int>(at.second)}] =
+                        canvas::TileRef{.source = cell_tile.tile->source,
+                                        .atlas = {static_cast<int>(cell_tile.tile->atlas[0]),
+                                                  static_cast<int>(cell_tile.tile->atlas[1])},
+                                        .alternative = cell_tile.alternative,
+                                        .flip_h = cell_tile.turns[0],
+                                        .flip_v = cell_tile.turns[1],
+                                        .transpose = cell_tile.turns[2]};
+                }
+                world::TileMapLayer encoded;
+                canvas::encode_cells(cells, parsed.value(), encoded);
+                layer["origin"] = json::Array{encoded.origin.x, encoded.origin.y};
+                json::Object legend;
+                for (const auto& [key, text] : encoded.legend) {
+                    legend.emplace(key, text);
+                }
+                layer["legend"] = std::move(legend);
+                json::Array rows;
+                for (const std::string& row : encoded.rows) {
+                    rows.emplace_back(row);
+                }
+                layer["rows"] = std::move(rows);
+            }
+            write_tile_set(set);
+        }
+        if (parts.renderer != nullptr) {
+            const Node& renderer = parts.renderer->body;
+            layer["z_index"] = z_index(renderer, ctx.where);
+            layer["visible"] = renderer.flag_at("m_Enabled", true) && ctx.active;
+            if (const Node* materials = renderer.get("m_Materials");
+                materials != nullptr && !materials->items.empty()) {
+                if (const auto material = unity::object_ref(materials->items.front());
+                    material && asset_of(material->guid) != nullptr) {
+                    problems_.add("material", ctx.where,
+                                  "materials and shaders don't convert; the tiles draw with the "
+                                  "default material");
+                }
+            }
+            if (renderer.integer_at("m_MaskInteraction", 0) != 0) {
+                problems_.add("sprite mask interaction", ctx.where,
+                              "sprite masks aren't supported");
+            }
+        } else {
+            layer["visible"] = false; // a Tilemap draws through its TilemapRenderer
+        }
+        if (const Node* color = body.get("m_Color")) {
+            layer["modulate"] = json::Array{color->number_at("r", 1.0), color->number_at("g", 1.0),
+                                            color->number_at("b", 1.0), color->number_at("a", 1.0)};
+        }
+        const std::string project_filter =
+            nearest_textures_ > linear_textures_ ? "nearest" : "linear";
+        if (!filter.empty() && filter != project_filter) {
+            layer["texture_filter"] = filter;
+        }
+        layer["collision_enabled"] = solid;
+        out.components["TileMapLayer"] = std::move(layer);
     }
 
     // --- Writing scenes ---
@@ -3040,6 +3773,16 @@ private:
             }
             report["sorting_layers"] = std::move(sorting);
         }
+        if (!tile_assets_.empty()) {
+            json::Value tiles = json::Object{};
+            for (const auto& [asset, use] : tile_assets_) {
+                json::Value item;
+                item["tile_set"] = use.first;
+                item["tile"] = use.second;
+                tiles[asset] = std::move(item);
+            }
+            report["tile_assets"] = std::move(tiles);
+        }
         json::Array unsupported = problems_.to_json();
         report["unsupported"] = unsupported;
         add_file(std::string(kReportFile), json::write(report) + "\n");
@@ -3054,6 +3797,8 @@ private:
         out["pixels_per_unit"] = ppu_;
         out["converted"]["scenes"] = scenes_;
         out["converted"]["prefabs"] = prefabs_;
+        out["converted"]["tile_sets"] = static_cast<std::int64_t>(std::ranges::count_if(
+            tile_sets_, [](const TileSetOut& set) { return !set.path.empty(); }));
         out["converted"]["input_actions"] = input_actions_;
         out["converted"]["assets"] = assets_;
         out["scripts"] = std::move(summary);
@@ -3105,6 +3850,9 @@ private:
     int prefabs_ = 0;
     int input_actions_ = 0;
     int assets_ = 0;
+    std::deque<TileSetOut> tile_sets_;
+    std::map<std::string, bool> plain_tiles_;                                // by tile asset GUID
+    std::map<std::string, std::pair<std::string, std::string>> tile_assets_; // tile set, tile
 };
 
 } // namespace
