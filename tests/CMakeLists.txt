@@ -27,6 +27,7 @@ add_executable(slash_tests
     test_server.cpp
     test_storyboard.cpp
     test_text.cpp
+    test_text_edit.cpp
     test_tilemap.cpp
     test_ui.cpp
     test_ui_containers.cpp

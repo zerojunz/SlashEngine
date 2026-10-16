@@ -167,6 +167,10 @@ struct LayoutOptions {
     // The text's language (BCP 47, such as "ja" or "sr-Latn"), which picks fallback fonts and
     // the glyphs a font has for it; "" for none.
     std::string language{}; // NOLINT(readability-redundant-member-init)
+    // Where tabs stop, as Godot's TextParagraph tab_stops: each tab reaches the next stop after
+    // the text since the last tab, the stops' widths taken in turn. None leaves tabs as the font
+    // has them.
+    std::vector<float> tab_stops{}; // NOLINT(readability-redundant-member-init)
 };
 
 struct Glyph {

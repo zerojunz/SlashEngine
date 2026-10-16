@@ -185,8 +185,18 @@ TEST_CASE("text editing actions use Ctrl on a PC, and Command and Option on a Ma
     CHECK(pc.find("ui_text_backspace_all_to_left")->events.empty());
     CHECK(
         mac.find_event("ui_text_backspace_all_to_left", key(Key::Backspace, {.meta = true}), true));
+    // TextEdit's: new lines, indenting, scrolling and focus mode.
+    CHECK(pc.find_event("ui_text_newline", key(Key::Enter, {}), true));
+    CHECK(pc.find_event("ui_text_newline_blank", key(Key::Enter, {.ctrl = true}), true));
+    CHECK(mac.find_event("ui_text_newline_above", key(Key::Enter, {.shift = true, .meta = true}),
+                         true));
+    CHECK(pc.find_event("ui_text_indent", key(Key::Tab, {}), true));
+    CHECK(pc.find_event("ui_text_scroll_down", key(Key::Down, {.ctrl = true}), true));
+    CHECK(mac.find_event("ui_text_scroll_down", key(Key::Down, {.alt = true, .meta = true}), true));
+    CHECK(pc.find_event("ui_focus_mode", key(Key::M, {.ctrl = true}), true));
     CHECK(input::is_text_action("ui_text_submit"));
     CHECK(input::is_text_action("ui_paste"));
+    CHECK(input::is_text_action("ui_focus_mode"));
     CHECK_FALSE(input::is_text_action("ui_accept"));
     // project.json's actions go over the keyboard's.
     auto map = input::parse_map(parse(R"({"ui_copy": {"events": [

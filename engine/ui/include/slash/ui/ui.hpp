@@ -247,6 +247,59 @@ struct LineEditView {
     float caret_x = 0.0F;
 };
 
+// A TextEdit as laid out: its theme items and what it shows. Lines and columns count from 0,
+// columns in characters (code points); rows are lines as wrapped.
+struct TextEditView {
+    StyleBox normal;
+    StyleBox read_only;
+    StyleBox focus;
+    std::string font;
+    int font_size = text::kDefaultFontSize;
+    Vec4 font_color;
+    Vec4 font_selected_color; // transparent: selected text keeps its color
+    Vec4 font_readonly_color;
+    Vec4 font_placeholder_color;
+    Vec4 font_outline_color;
+    Vec4 caret_color;
+    Vec4 caret_background_color;
+    Vec4 selection_color;
+    Vec4 current_line_color;
+    Vec4 background_color;
+    int line_spacing = 4;
+    int outline_size = 0;
+    int caret_width = 1;
+    int wrap_offset = 10;
+    // Its scroll bars' theme items, as VScrollBar's and HScrollBar's.
+    StyleBox v_scroll;
+    StyleBox v_grabber;
+    int v_padding_left = 0;
+    int v_padding_right = 0;
+    StyleBox h_scroll;
+    StyleBox h_grabber;
+    int h_padding_top = 0;
+    int h_padding_bottom = 0;
+    bool rtl = false;  // laid out right to left
+    std::string error; // why its font didn't load, so the default font drew it
+    // What it shows: the first and last lines with a row in view, the rows in all, how far it
+    // is scrolled and whether each scroll bar shows, and where the caret draws in its rect.
+    int first_visible_line = 0;
+    int last_visible_line = 0;
+    int total_rows = 1;
+    double scroll_vertical = 0.0;
+    int scroll_horizontal = 0;
+    bool v_scroll_visible = false;
+    bool h_scroll_visible = false;
+    Vec2 caret_position; // on the caret's row's baseline, plus its descent
+    bool caret_visible = false;
+    float font_height = 0.0F; // the font's height, for the input method's area
+    // The caret and the selection it shows, and what an input method is composing.
+    int caret_line = 0;
+    int caret_column = 0;
+    std::optional<std::array<int, 4>> selection; // from line and column, to line and column
+    std::string ime;
+    bool placeholder = false; // it shows its placeholder text
+};
+
 // What one control the layout can't place properly is doing wrong.
 struct Problem {
     std::string id;
@@ -269,7 +322,9 @@ struct Layout {
     std::map<entt::entity, LabelText> percentages;  // each ProgressBar's percentage
     std::map<entt::entity, ButtonState> buttons;    // each Button and TextureButton
     std::map<entt::entity, LineEditView> line_edits;
-    // What each control draws over its text: a LineEdit's caret and composition underline.
+    std::map<entt::entity, TextEditView> text_edits;
+    // What each control draws over its text: a LineEdit's or TextEdit's caret and composition
+    // underline, and a TextEdit's scroll bars.
     std::map<entt::entity, std::vector<Box>> overlays;
 
     [[nodiscard]] const Placed* find(entt::entity entity) const;
@@ -373,7 +428,9 @@ struct UiEvent {
     std::string kind;
     std::string id;          // the control's entity ID
     bool toggled_on = false; // for toggled and editing_toggled
-    std::string text;        // for text_changed, text_submitted and text_change_rejected
+    std::string text;  // for a LineEdit's text_changed, text_submitted and text_change_rejected
+    int from_line = 0; // for lines_edited_from
+    int to_line = 0;
 };
 
 // The UI events of the tick the "gui" system last ran (inside a system: this tick), in order.

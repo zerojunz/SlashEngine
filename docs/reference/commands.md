@@ -703,6 +703,20 @@ the sign on a smaller window:
   `selection` (`[from, to)` in characters) while text is selected, `ime` while an input method
   is composing, `placeholder` while the placeholder shows, and `visible` (`[from, to)` of what
   it shows) when text is scrolled out of the field. A font that doesn't load is `font_error`.
+- A `TextEdit`'s `lines` are its rows in view, with an input method's composition at the caret
+  or its placeholder. It has `text_edit`, from
+  [examples/text-editor](../../examples/text-editor/):
+
+  ```json
+  {"focused":true,"id":"letter","lines":["Meet me at the old lighthouse before","the tide turns.","","\tBring the lantern.","Kai"],"rect":[16,38,288,124],"text_edit":{"caret":[4,3],"rows":7,"v_scroll_bar":true,"visible_lines":[1,4]}}
+  ```
+
+  `caret` is `[line, column]`, from 0, the column counting characters; `selection`
+  (`[[line, column], [line, column]]`, in text order) is listed while text is selected, `ime`
+  while an input method is composing, `placeholder` while the placeholder shows,
+  `visible_lines` (the first and last lines with a row in view) when some are scrolled out,
+  `rows` when wrapping makes more rows than lines, `v_scroll_bar` and `h_scroll_bar` while
+  they show, and `font_error` for a font that doesn't load.
 - `problems` lists, for each control, a `children` entry that can't be laid out (no such
   entity, not a control, the control itself, a second parent or a loop), a second container on
   one entity, a theme override name its type doesn't have, with the closest one, a style box
@@ -710,8 +724,9 @@ the sign on a smaller window:
   defines, a font or texture that doesn't load, a button `shortcut` entry that isn't a binding
   or names no action, a `button_group` on a button without `toggle_mode`, a `Label` on a button
   entity (a button draws its own text), two buttons on one entity, a `focus_*` field that
-  names no control, a `LineEdit` with a `Label` or button on its entity and a
-  `secret_character` longer than one character. Each has the
+  names no control, a `LineEdit` with a `Label` or button on its entity, a
+  `secret_character` longer than one character and a `TextEdit` with a `Label`, button or
+  `LineEdit` on its entity. Each has the
   control's `id`, the JSON Pointer `path` of the value in the entity and a `message`:
 
 ```json

@@ -364,6 +364,29 @@ TEST_CASE("box fonts are placeholder fonts made in code") {
     CHECK(fonts.face_info(layout.glyphs[0].face).path == "boxes.ttf");
 }
 
+TEST_CASE("tab stops set each tab's advance as Godot's shaped_text_tab_align") {
+    MemoryFiles files;
+    files.write("boxes.ttf", bytes_of(text::box_font(U"abc ")));
+    asset::Assets assets(files.source());
+    text::add_asset_types(assets);
+    text::Fonts fonts(assets);
+    fonts.set_system_fallback(false);
+    // Each tab reaches the next stop after the text since the last tab: boxes are 12 pixels.
+    const auto x_of_last = [&](std::string_view source, std::vector<float> stops) {
+        const text::TextLayout layout = lay_out(
+            fonts, source, {.font = "boxes.ttf", .font_size = 20, .tab_stops = std::move(stops)});
+        REQUIRE_FALSE(layout.glyphs.empty());
+        return layout.glyphs.back().x;
+    };
+    CHECK(x_of_last("a\tb", {20.0F}) == 20.0F);
+    CHECK(x_of_last("aa\tb", {20.0F}) == 40.0F);
+    CHECK(x_of_last("\t\tb", {20.0F}) == 40.0F);
+    // Stops are taken in turn.
+    CHECK(x_of_last("a\tb\tc", {20.0F, 30.0F}) == 50.0F);
+    // A stop that isn't positive leaves tabs as the font has them.
+    CHECK(x_of_last("a\tb", {0.0F}) == x_of_last("a\tb", {}));
+}
+
 TEST_CASE("text in both directions is ordered as the Unicode Bidirectional Algorithm says") {
     MemoryFiles files;
     files.write("roboto.ttf", default_font_bytes());

@@ -242,8 +242,13 @@ rendering on top.
       caret; on-screen keyboards on phones by `virtual_keyboard_type`; Godot's text editing
       actions with Mac and PC shortcuts; and `input.inject` `text` and `ime` events,
       `ui.clipboard` and the text field's caret and selection in `ui.layout`
-- [ ] `TextEdit`: text fields of several lines, as Godot's, with wrapping, scrolling and line
-      numbers
+- [x] `TextEdit`: text fields of several lines, as Godot's: typing and new lines, word
+      wrapping, scrolling by wheel, finger and keys with the view following the caret and scroll
+      bars drawn, Godot's undo history, the caret by character, word, row and page, selection by
+      keys, clicks, double and triple clicks and drags, copying and pasting whole lines, tabs,
+      typing over, IME composition, and the caret, selection and lines in view in `ui.layout`
+- [ ] Line numbers and other gutters, syntax highlighting, search and scroll bars that can be
+      dragged, as Godot's `CodeEdit` and `ScrollBar`
 - [ ] Audio on miniaudio
 - [ ] `frame.capture` (PNG) and replays (`replay.run`)
 - [ ] Time travel: `replay.seek` jumps a recorded run to any tick, where every query command

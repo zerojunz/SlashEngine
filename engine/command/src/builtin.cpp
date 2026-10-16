@@ -1412,6 +1412,45 @@ json::Value line_edit_json(const world::World& world, entt::entity entity,
     return out;
 }
 
+// A TextEdit as ui.layout reports it: its caret and selection as [line, column], what an input
+// method is composing, whether it shows its placeholder, the first and last lines in view when
+// they aren't all of them, its rows when wrapping makes more of them than lines, and which
+// scroll bars show.
+json::Value text_edit_json(const world::World& world, entt::entity entity,
+                           const ui::TextEditView& view) {
+    const auto& edit = world.ecs().get<world::TextEdit>(entity);
+    json::Value out;
+    out["caret"] = json::Array{view.caret_line, view.caret_column};
+    if (view.selection) {
+        const std::array<int, 4>& range = *view.selection;
+        out["selection"] =
+            json::Array{json::Array{range[0], range[1]}, json::Array{range[2], range[3]}};
+    }
+    if (!view.ime.empty()) {
+        out["ime"] = view.ime;
+    }
+    if (view.placeholder) {
+        out["placeholder"] = true;
+    }
+    const auto lines = static_cast<int>(std::ranges::count(edit.text, '\n')) + 1;
+    if (view.first_visible_line != 0 || view.last_visible_line != lines - 1) {
+        out["visible_lines"] = json::Array{view.first_visible_line, view.last_visible_line};
+    }
+    if (view.total_rows != lines) {
+        out["rows"] = view.total_rows;
+    }
+    if (view.v_scroll_visible) {
+        out["v_scroll_bar"] = true;
+    }
+    if (view.h_scroll_visible) {
+        out["h_scroll_bar"] = true;
+    }
+    if (!view.error.empty()) {
+        out["font_error"] = view.error;
+    }
+    return out;
+}
+
 Reply ui_layout(Session& session, const json::Value& params) {
     const world::World& world = session.world();
     text::Fonts* fonts = ui::fonts(world);
@@ -1480,6 +1519,10 @@ Reply ui_layout(Session& session, const json::Value& params) {
         if (const auto edit = layout.line_edits.find(placed.entity);
             edit != layout.line_edits.end()) {
             item["line_edit"] = line_edit_json(world, placed.entity, edit->second);
+        }
+        if (const auto edit = layout.text_edits.find(placed.entity);
+            edit != layout.text_edits.end()) {
+            item["text_edit"] = text_edit_json(world, placed.entity, edit->second);
         }
         if (const ui::LabelText* label = layout.label(placed.entity); label != nullptr) {
             item["lines"] = line_texts(label->text, label->source, label->first, label->last,
@@ -3299,9 +3342,9 @@ void register_builtin_commands(Registry& registry) {
     registry.add({
         .name = "ui.layout",
         .description = "Returns where controls are on screen, in drawing order: each one's rect "
-                       "[x, y, w, h], the lines labels, buttons, progress bars and LineEdits show "
-                       "(rtl when they go right to left) and whether text overflows, each "
-                       "button's draw_mode, each LineEdit's caret, selection and editing state, "
+                       "[x, y, w, h], the lines labels, buttons, progress bars and text fields "
+                       "show (rtl when they go right to left) and whether text overflows, each "
+                       "button's draw_mode, each LineEdit's and TextEdit's caret and selection, "
                        "the control with focus and the one hovered, and mistakes such as "
                        "misspelled theme overrides. A check without a screenshot.",
         .capabilities = {Read},
