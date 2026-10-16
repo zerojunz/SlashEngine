@@ -188,6 +188,14 @@ void CanvasRenderer::before_tick(const world::World& world) {
          ecs.view<const world::Transform2D, const world::CPUParticles2D>().each()) {
         previous_.emplace(entity, transform);
     }
+    for (const auto [entity, transform, shape] :
+         ecs.view<const world::Transform2D, const world::CollisionShape2D>().each()) {
+        previous_.emplace(entity, transform);
+    }
+    for (const auto [entity, transform, polygon] :
+         ecs.view<const world::Transform2D, const world::CollisionPolygon2D>().each()) {
+        previous_.emplace(entity, transform);
+    }
 }
 
 void CanvasRenderer::warn_once(const std::string& key, std::string_view message,
@@ -768,7 +776,13 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         return a.order != b.order ? a.order < b.order : a.part < b.part;
     });
 
-    // Controls, over the world.
+    // Collision shapes, over the world.
+    CollisionShapes shapes;
+    if (options.collisions) {
+        shapes = collision_shapes(world, transform_of);
+    }
+
+    // Controls, over the world, then the overlay's.
     text::Fonts* fonts = ui::fonts(world);
     if (fonts == nullptr) {
         if (fonts_ == nullptr) {
@@ -782,20 +796,31 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
                               : ui::settings(world).viewport;
     const ui::DrawList controls =
         ui::draw_calls(ui::layout(world, *fonts, viewport), world, *fonts);
+    ui::DrawList overlay;
+    if (options.overlay != nullptr) {
+        overlay = ui::draw_calls(ui::layout(*options.overlay, *fonts, viewport), *options.overlay,
+                                 *fonts);
+    }
     // Their textures, made now so the null device checks them too; a call whose texture doesn't
     // load draws nothing (layout leaves out the boxes whose textures don't).
-    std::vector<std::optional<render::TextureId>> control_textures(controls.calls.size());
-    for (std::size_t i = 0; i < controls.calls.size(); ++i) {
-        const ui::DrawCall& call = controls.calls[i];
-        if (call.source != ui::DrawCall::Source::Texture) {
-            control_textures[i] = render::TextureId::None;
-            continue;
+    const auto textures_of = [&](const ui::DrawList& list) {
+        std::vector<std::optional<render::TextureId>> made(list.calls.size());
+        for (std::size_t i = 0; i < list.calls.size(); ++i) {
+            const ui::DrawCall& call = list.calls[i];
+            if (call.source != ui::DrawCall::Source::Texture) {
+                made[i] = render::TextureId::None;
+                continue;
+            }
+            if (auto loaded =
+                    texture(call.texture, resolve_filter(call.filter, options.texture_filter));
+                loaded) {
+                made[i] = loaded.value()->id;
+            }
         }
-        auto made = texture(call.texture, resolve_filter(call.filter, options.texture_filter));
-        if (made) {
-            control_textures[i] = made.value()->id;
-        }
-    }
+        return made;
+    };
+    const std::vector<std::optional<render::TextureId>> control_textures = textures_of(controls);
+    const std::vector<std::optional<render::TextureId>> overlay_textures = textures_of(overlay);
 
     // The null device stands in for a window it doesn't have, as draw_empty_frame allows: the
     // sprites and tiles are checked and counted, and nothing is drawn.
@@ -810,6 +835,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         controls_drawn_ = controls.controls;
         glyphs_drawn_ = controls.glyphs;
         boxes_drawn_ = controls.boxes;
+        shapes_drawn_ = shapes.shapes;
         return {};
     }
     render::Frame frame;
@@ -823,33 +849,50 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
     if (!began) {
         return began.error();
     }
+    const auto failed = [&](const Error& error) -> Result<void> {
+        (void)device_->end_frame();
+        return error;
+    };
     for (const Item& item : items) {
         const std::span<const render::Vertex2D> span(vertices.data() + item.first, item.count);
         if (auto drawn = device_->draw(item.texture, span, item.material); !drawn) {
-            (void)device_->end_frame();
-            return drawn.error();
+            return failed(drawn.error());
         }
     }
-    for (std::size_t i = 0; i < controls.calls.size(); ++i) {
-        const ui::DrawCall& call = controls.calls[i];
-        if (!control_textures[i]) {
-            continue;
+    if (!shapes.vertices.empty()) {
+        if (auto drawn = device_->draw(render::TextureId::None, shapes.vertices); !drawn) {
+            return failed(drawn.error());
         }
-        render::TextureId texture = *control_textures[i];
-        if (call.source == ui::DrawCall::Source::Atlas) {
-            auto page = atlas_page(*fonts, call.page);
-            if (!page) {
-                (void)device_->end_frame();
-                return page.error();
+    }
+    const auto draw_controls =
+        [&](const ui::DrawList& list,
+            const std::vector<std::optional<render::TextureId>>& textures) -> Result<void> {
+        for (std::size_t i = 0; i < list.calls.size(); ++i) {
+            const ui::DrawCall& call = list.calls[i];
+            if (!textures[i]) {
+                continue;
             }
-            texture = page.value();
+            render::TextureId texture = *textures[i];
+            if (call.source == ui::DrawCall::Source::Atlas) {
+                auto page = atlas_page(*fonts, call.page);
+                if (!page) {
+                    return page.error();
+                }
+                texture = page.value();
+            }
+            render::Material material;
+            material.field = call.field;
+            if (auto drawn = device_->draw(texture, call.vertices, material); !drawn) {
+                return drawn.error();
+            }
         }
-        render::Material material;
-        material.field = call.field;
-        if (auto drawn = device_->draw(texture, call.vertices, material); !drawn) {
-            (void)device_->end_frame();
-            return drawn.error();
-        }
+        return {};
+    };
+    if (auto drawn = draw_controls(controls, control_textures); !drawn) {
+        return failed(drawn.error());
+    }
+    if (auto drawn = draw_controls(overlay, overlay_textures); !drawn) {
+        return failed(drawn.error());
     }
     controls_drawn_ = began.value() ? controls.controls : 0;
     glyphs_drawn_ = began.value() ? controls.glyphs : 0;
@@ -859,6 +902,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
     particles_drawn_ = began.value() ? particles : 0;
     lights_drawn_ = began.value() ? lights.lights.size() : 0;
     shadows_drawn_ = began.value() ? shadows : 0;
+    shapes_drawn_ = began.value() ? shapes.shapes : 0;
     return device_->end_frame();
 }
 

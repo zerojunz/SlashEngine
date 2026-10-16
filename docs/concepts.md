@@ -17,7 +17,8 @@ do through them counts as a bug:
 4. **An agent can observe the result.** Commands return structured JSON, logs are JSON lines,
    and `frame.capture` draws what the window shows; later milestones add frame summaries.
 
-There is no GUI editor. People use a text editor, their agent and (later) a debug overlay.
+There is no GUI editor. People use a text editor, their agent and the debug overlay that F3
+shows in `slash-cli run`.
 Gameplay code is plain C++; there is no scripting language. Where a design choice is open, the
 engine follows Godot's approach.
 

@@ -1076,3 +1076,297 @@ TEST_CASE("lights shade sprites on the software device and a GPU, as their masks
         CHECK(near(pixel(image.value(), 20, 24), {255, 128, 128, 255}));
     }
 }
+
+TEST_CASE("triangulate fills simple polygons wound either way, and nothing without an area") {
+    const std::vector<slash::Vec2> square{{0, 0}, {10, 0}, {10, 10}, {0, 10}};
+    CHECK(canvas::triangulate(square).size() == 6);
+    // An L, both ways round: 6 points make 4 triangles covering its area.
+    std::vector<slash::Vec2> ell{{0, 0}, {20, 0}, {20, 10}, {10, 10}, {10, 20}, {0, 20}};
+    // The area the triangles cover, and whether each has some.
+    const auto area = [](const std::vector<slash::Vec2>& points) {
+        const std::vector<std::uint32_t> triangles = canvas::triangulate(points);
+        float total = 0.0F;
+        for (std::size_t i = 0; i < triangles.size(); i += 3) {
+            const slash::Vec2 a = points[triangles[i]];
+            const slash::Vec2 b = points[triangles[i + 1]];
+            const slash::Vec2 c = points[triangles[i + 2]];
+            const float twice = std::abs(((b.x - a.x) * (c.y - a.y)) - ((b.y - a.y) * (c.x - a.x)));
+            CHECK(twice > 0.0F);
+            total += twice / 2.0F;
+        }
+        return total;
+    };
+    CHECK(canvas::triangulate(ell).size() == 12);
+    CHECK(area(ell) == doctest::Approx(300.0F));
+    std::ranges::reverse(ell);
+    CHECK(canvas::triangulate(ell).size() == 12);
+    CHECK(area(ell) == doctest::Approx(300.0F));
+    // A point in line with its neighbors, or on another, makes no empty triangle.
+    CHECK(area({{0, 0}, {5, 0}, {10, 0}, {10, 10}, {0, 10}}) == doctest::Approx(100.0F));
+    CHECK(area({{0, 0}, {10, 0}, {10, 0}, {10, 10}, {0, 10}}) == doctest::Approx(100.0F));
+    // No area: a line, a bow tie whose halves cancel, too few points.
+    CHECK(canvas::triangulate(std::vector<slash::Vec2>{{0, 0}, {5, 5}, {10, 10}}).empty());
+    CHECK(
+        canvas::triangulate(std::vector<slash::Vec2>{{0, 0}, {10, 10}, {10, 0}, {0, 10}}).empty());
+    CHECK(canvas::triangulate(std::vector<slash::Vec2>{{0, 0}, {5, 5}}).empty());
+}
+
+TEST_CASE("collision_shapes draws each shape as Godot's Visible Collision Shapes") {
+    Scene scene;
+    const auto byte = [](float channel) {
+        return static_cast<std::uint8_t>(std::lround(std::clamp(channel, 0.0F, 1.0F) * 255.0F));
+    };
+    const auto rgba = [&](slash::Vec4 color) {
+        return Rgba{byte(color.x), byte(color.y), byte(color.z), byte(color.w)};
+    };
+    const slash::Vec4 debug = canvas::kCollisionColor;
+    const Rgba fill = rgba(debug);
+    const Rgba edge = rgba({debug.x, debug.y, debug.z, 1.0F});
+    // The box of a run of vertices.
+    struct Box {
+        float left = 1e9F;
+        float top = 1e9F;
+        float right = -1e9F;
+        float bottom = -1e9F;
+    };
+    const auto box_of = [](std::span<const render::Vertex2D> vertices) {
+        Box box;
+        for (const render::Vertex2D& vertex : vertices) {
+            box.left = std::min(box.left, vertex.x);
+            box.top = std::min(box.top, vertex.y);
+            box.right = std::max(box.right, vertex.x);
+            box.bottom = std::max(box.bottom, vertex.y);
+        }
+        return box;
+    };
+
+    SUBCASE("a rectangle fills two triangles and has a one-pixel outline") {
+        scene.create("crate", R"({"Transform2D": {"position": [100, 50]},
+                              "CollisionShape2D": {"size": [20, 10]}})");
+        const canvas::CollisionShapes drawn = canvas::collision_shapes(scene.world);
+        CHECK(drawn.shapes == 1);
+        REQUIRE(drawn.vertices.size() == 6 + (4 * 6));
+        CHECK(drawn.vertices[0].rgba == fill);
+        CHECK(drawn.vertices[6].rgba == edge);
+        const Box filled = box_of(std::span(drawn.vertices).first(6));
+        CHECK(filled.left == 90.0F);
+        CHECK(filled.right == 110.0F);
+        CHECK(filled.top == 45.0F);
+        CHECK(filled.bottom == 55.0F);
+        const Box outline = box_of(std::span(drawn.vertices).subspan(6));
+        CHECK(outline.left == 89.5F);
+        CHECK(outline.bottom == 55.5F);
+    }
+
+    SUBCASE("shapes are placed as physics places them: moved, turned, then scaled") {
+        // The shape sits 10 right of the body; the body is turned a quarter turn and doubled
+        // across, so the shape ends up 20 below it, 20 high and 10 wide.
+        scene.create("body", R"({"Transform2D": {"position": [100, 50], "rotation": 1.5707964,
+                                                 "scale": [2, 1]},
+                             "CollisionShape2D": {"size": [10, 10], "position": [10, 0]}})");
+        const canvas::CollisionShapes drawn = canvas::collision_shapes(scene.world);
+        const Box filled = box_of(std::span(drawn.vertices).first(6));
+        CHECK(filled.left == doctest::Approx(95.0F));
+        CHECK(filled.right == doctest::Approx(105.0F));
+        CHECK(filled.top == doctest::Approx(60.0F));
+        CHECK(filled.bottom == doctest::Approx(80.0F));
+    }
+
+    SUBCASE("circles have 24 points and capsules 26, their radii scaled by the larger axis") {
+        scene.create("ball", R"({"Transform2D": {"position": [50, 50], "scale": [2, 1]},
+                             "CollisionShape2D": {"shape": "circle", "radius": 5}})");
+        scene.create("pill", R"({"Transform2D": {"position": [200, 50]},
+                             "CollisionShape2D": {"shape": "capsule", "radius": 5,
+                                                  "height": 30}})");
+        const canvas::CollisionShapes drawn = canvas::collision_shapes(scene.world);
+        CHECK(drawn.shapes == 2);
+        // 22 triangles and 24 edges, then 24 triangles and 26 edges.
+        constexpr std::size_t kCircle = (22 * 3) + (24 * 6);
+        constexpr std::size_t kCapsule = (24 * 3) + (26 * 6);
+        REQUIRE(drawn.vertices.size() == kCircle + kCapsule);
+        const Box ball = box_of(std::span(drawn.vertices).first(22 * 3));
+        CHECK(ball.left == doctest::Approx(40.0F));
+        CHECK(ball.right == doctest::Approx(60.0F));
+        CHECK(ball.top == doctest::Approx(40.0F).epsilon(0.01));
+        const Box pill = box_of(std::span(drawn.vertices).subspan(kCircle, 24 * 3));
+        CHECK(pill.left == doctest::Approx(195.0F));
+        CHECK(pill.right == doctest::Approx(205.0F));
+        CHECK(pill.top == doctest::Approx(35.0F));
+        CHECK(pill.bottom == doctest::Approx(65.0F));
+    }
+
+    SUBCASE("a segment is a line 3 wide, and a polygon shape fills its convex hull") {
+        scene.create("rail", R"({"CollisionShape2D": {"shape": "segment", "a": [0, 10],
+                                                      "b": [40, 10]}})");
+        // The middle point is inside the hull, so a triangle is left.
+        scene.create("wedge", R"({"CollisionShape2D": {"shape": "polygon",
+                                    "points": [[0, 0], [30, 0], [10, 5], [0, 30]]}})");
+        const canvas::CollisionShapes drawn = canvas::collision_shapes(scene.world);
+        REQUIRE(drawn.vertices.size() == 6 + 3 + (3 * 6));
+        CHECK(drawn.vertices[0].rgba == fill);
+        const Box rail = box_of(std::span(drawn.vertices).first(6));
+        CHECK(rail.top == 8.5F);
+        CHECK(rail.bottom == 11.5F);
+        CHECK(rail.right == 40.0F);
+    }
+
+    SUBCASE("a disabled shape is gray at half alpha, and one-way collision adds an arrow") {
+        scene.create("ledge", R"({"CollisionShape2D": {"disabled": true,
+                                                       "one_way_collision": true}})");
+        const canvas::CollisionShapes drawn = canvas::collision_shapes(scene.world);
+        REQUIRE(drawn.vertices.size() == 6 + 24 + 6 + 3);
+        CHECK(drawn.vertices[0].rgba == rgba({0.7F, 0.7F, 0.7F, 0.21F}));
+        CHECK(drawn.vertices[6].rgba == rgba({0.7F, 0.7F, 0.7F, 1.0F}));
+        // The arrow: the color inverted, darkened a quarter, from the origin down to a tip at 28.
+        const slash::Vec4 tip{(1.0F - debug.x) * 0.75F, (1.0F - debug.y) * 0.75F,
+                              (1.0F - debug.z) * 0.75F, debug.w};
+        CHECK(drawn.vertices[30].rgba == rgba(tip));
+        const Box arrow = box_of(std::span(drawn.vertices).subspan(30));
+        CHECK(arrow.top == 0.0F);
+        CHECK(arrow.bottom == 28.0F);
+        CHECK(arrow.left == doctest::Approx(-5.656854F));
+        CHECK(arrow.right == doctest::Approx(5.656854F));
+    }
+
+    SUBCASE("a CollisionPolygon2D fills any simple polygon and has a red outline") {
+        scene.create("ground", R"({"Transform2D": {"position": [10, 10]},
+                               "CollisionPolygon2D": {
+                                 "polygon": [[0, 0], [20, 0], [20, 10], [10, 10], [10, 20],
+                                             [0, 20]],
+                                 "one_way_collision": true}})");
+        const canvas::CollisionShapes drawn = canvas::collision_shapes(scene.world);
+        CHECK(drawn.shapes == 1);
+        REQUIRE(drawn.vertices.size() == 12 + (6 * 6) + 6 + 3);
+        CHECK(drawn.vertices[0].rgba == fill);
+        CHECK(drawn.vertices[12].rgba == rgba({0.9F, 0.2F, 0.0F, 1.0F}));
+        // Its arrow is the color made opaque, 3 wide.
+        CHECK(drawn.vertices[48].rgba == edge);
+        const Box arrow = box_of(std::span(drawn.vertices).subspan(48, 6));
+        CHECK(arrow.left == 8.5F);
+        CHECK(arrow.right == 11.5F);
+        CHECK(arrow.bottom == 30.0F);
+    }
+
+    SUBCASE("shapes draw in the order entities were made, where transform_of puts them") {
+        scene.create("first", R"({"Transform2D": {"position": [0, 0]},
+                              "CollisionShape2D": {"shape": "segment", "a": [0, 0],
+                                                   "b": [10, 0]}})");
+        scene.create("second", R"({"CollisionPolygon2D": {"polygon": [[0, 0], [5, 0], [0, 5]]},
+                               "CollisionShape2D": {"shape": "segment", "a": [0, 5],
+                                                    "b": [10, 5]}})");
+        const canvas::CollisionShapes drawn =
+            canvas::collision_shapes(scene.world, [](entt::entity, const world::Transform2D& at) {
+                world::Transform2D moved = at;
+                moved.position.x += 100.0F;
+                return moved;
+            });
+        CHECK(drawn.shapes == 3);
+        REQUIRE(drawn.vertices.size() == 6 + 6 + 3 + (3 * 6));
+        CHECK(box_of(std::span(drawn.vertices).first(6)).left == 100.0F);
+        // The second entity's shape, then its polygon.
+        CHECK(box_of(std::span(drawn.vertices).subspan(6, 6)).top == 3.5F);
+        CHECK(drawn.vertices[12].rgba == fill);
+        // With no Transform2D, an entity's shapes sit at the origin.
+        CHECK(box_of(std::span(drawn.vertices).subspan(6, 6)).left == 0.0F);
+    }
+}
+
+TEST_CASE("capture and the canvas draw collision shapes over the world only when asked") {
+    Scene scene;
+    slash::ui::Settings ui;
+    ui.viewport = {64.0F, 48.0F};
+    slash::ui::set_settings(scene.world, ui);
+    canvas::Settings settings;
+    settings.clear_color = {.r = 0.0F, .g = 0.0F, .b = 0.0F, .a = 1.0F};
+    canvas::set_settings(scene.world, settings);
+    scene.files.write("white.png", strip_png({{255, 255, 255, 255}}, 8));
+    // A white sprite under the right half of the box: shapes draw over sprites.
+    scene.create("box", R"({"Transform2D": {"position": [16.5, 16.5]},
+                        "CollisionShape2D": {"size": [20, 10]}})");
+    scene.create("wall", R"({"Transform2D": {"position": [24, 16]},
+                         "Sprite2D": {"texture": "white.png", "z_index": 5}})");
+    const auto near = [](Rgba got, Rgba want) {
+        for (std::size_t i = 0; i < 4; ++i) {
+            if (std::abs(int{got[i]} - int{want[i]}) > 2) {
+                return false;
+            }
+        }
+        return true;
+    };
+
+    auto plain = canvas::capture(scene.world, scene.assets);
+    REQUIRE(plain.ok());
+    CHECK(plain.value().shapes == 0);
+    CHECK(pixel(plain.value().image, 12, 16) == Rgba{0, 0, 0, 255});
+
+    auto shown = canvas::capture(scene.world, scene.assets, {.collisions = true});
+    REQUIRE(shown.ok());
+    CHECK(shown.value().shapes == 1);
+    // The fill is 42% of (0, 0.6, 0.7) over black, and over the white sprite.
+    CHECK(near(pixel(shown.value().image, 12, 16), {0, 64, 75, 255}));
+    CHECK(near(pixel(shown.value().image, 24, 16), {148, 212, 223, 255}));
+    // The outline is opaque, one pixel wide along x = 6.5; the pixel left of it is clear.
+    CHECK(near(pixel(shown.value().image, 6, 16), {0, 153, 179, 255}));
+    CHECK(pixel(shown.value().image, 5, 16) == Rgba{0, 0, 0, 255});
+}
+
+TEST_CASE("collision shapes draw over sprites, and an overlay's controls over everything, on the "
+          "software device and a GPU") {
+    for (const auto& device : drawing_devices()) {
+        CAPTURE(slash::render::backend_name(device->backend()));
+        Scene scene;
+        scene.files.write("white.png", strip_png({{255, 255, 255, 255}}, 8));
+        scene.create("box", R"({"Transform2D": {"position": [16.5, 16.5]},
+                            "CollisionShape2D": {"size": [20, 10]}})");
+        scene.create("wall", R"({"Transform2D": {"position": [24, 16]},
+                             "Sprite2D": {"texture": "white.png", "z_index": 5}})");
+        // The game's control, and the overlay's over it in the bottom right corner.
+        scene.create("hud", R"({"Control": {"offset_left": 32, "offset_top": 32,
+                                            "offset_right": 48, "offset_bottom": 48},
+                            "ColorRect": {"color": [1, 0, 0, 1]}})");
+        Scene overlay;
+        overlay.create("panel", R"({"Control": {"offset_left": 40, "offset_top": 40,
+                                                "offset_right": 48, "offset_bottom": 48},
+                                    "ColorRect": {"color": [0, 0, 1, 1]}})");
+        auto target = device->create_texture(
+            {.width = 48, .height = 48, .filter = render::Filter::Nearest, .render_target = true});
+        REQUIRE(target.ok());
+        canvas::CanvasRenderer renderer(*device, scene.assets);
+        canvas::CanvasOptions options;
+        options.target = target.value();
+        options.clear = {.r = 0.0F, .g = 0.0F, .b = 0.0F, .a = 1.0F};
+        options.width = 48.0F;
+        options.height = 48.0F;
+        options.collisions = true;
+        options.overlay = &overlay.world;
+        REQUIRE(renderer.draw(scene.world, options).ok());
+        CHECK(renderer.shapes_drawn() == 1);
+        CHECK(renderer.controls_drawn() == 1);
+        auto image = device->read_texture(target.value());
+        REQUIRE(image.ok());
+        const auto near = [](Rgba got, Rgba want) {
+            for (std::size_t i = 0; i < 4; ++i) {
+                if (std::abs(int{got[i]} - int{want[i]}) > 2) {
+                    return false;
+                }
+            }
+            return true;
+        };
+        CHECK(near(pixel(image.value(), 12, 16), {0, 64, 75, 255}));
+        CHECK(near(pixel(image.value(), 24, 16), {148, 212, 223, 255}));
+        CHECK(near(pixel(image.value(), 6, 16), {0, 153, 179, 255}));
+        CHECK(pixel(image.value(), 5, 16) == Rgba{0, 0, 0, 255});
+        CHECK(pixel(image.value(), 36, 36) == Rgba{255, 0, 0, 255});
+        CHECK(pixel(image.value(), 44, 44) == Rgba{0, 0, 255, 255});
+
+        // Between ticks, shapes move with their entities.
+        renderer.before_tick(scene.world);
+        scene.world.ecs().get<world::Transform2D>(scene.world.find("box")).position.y = 32.5F;
+        options.interpolation = 0.5;
+        REQUIRE(renderer.draw(scene.world, options).ok());
+        image = device->read_texture(target.value());
+        REQUIRE(image.ok());
+        CHECK(near(pixel(image.value(), 12, 26), {0, 64, 75, 255})); // y spans 19.5..29.5
+        CHECK(pixel(image.value(), 12, 16) == Rgba{0, 0, 0, 255});
+    }
+}

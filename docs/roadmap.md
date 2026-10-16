@@ -273,7 +273,11 @@ rendering on top.
       the first tick a condition holds, where every query command works, so a bug can be
       reproduced and inspected at the moment it happened. Forward goes on from where it is;
       back plays from the start
-- [ ] Debug overlay, drawn with the UI and text above
+- [x] Debug overlay, drawn with the UI and text above: F3 in `slash-cli run` shows frame stats,
+      the tick, what was drawn and the bodies under the mouse, with Pause, Step and Shapes
+      buttons that run the same commands an agent would; collision shapes drawn as Godot's
+      Visible Collision Shapes (`--debug-collisions`, `frame.capture`'s `collisions`), and
+      `debug.overlay` for agents
 - [ ] A test command that steps a game headless and returns only the checks that failed
 - [x] Watch conditions: `run.until` steps a game headless until a condition on component
       fields holds (say, the player below the floor) or a tick limit passes, and returns the
@@ -459,7 +463,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 
 | Area | SlashEngine approach | Milestone | Status |
 | --- | --- | --- | --- |
-| Editor | No GUI editor: MCP and REST command API, debug overlay, frame capture | 3, 5 | In part: the command API and frame capture are done; the overlay is planned for 5 |
+| Editor | No GUI editor: MCP and REST command API, debug overlay, frame capture | 3, 5 | Done |
 | Gameplay code | C++ with hot reload; plugins as C++ modules with a stable C ABI | 6 | Planned |
 | Scenes and prefabs | JSON scenes, prefabs with overrides, on EnTT | 2, 5 | Done |
 | 2D sprites and animation | Batched sprites, sprite sheets, flipbooks | 5 | Done |
