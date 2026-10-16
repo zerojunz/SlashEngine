@@ -203,6 +203,10 @@ std::vector<std::string_view> control_classes(const world::World& world, entt::e
     return classes;
 }
 
+std::string_view control_class(const world::World& world, entt::entity entity) {
+    return control_classes(world, entity).front();
+}
+
 const Placed* Layout::find(entt::entity entity) const {
     const auto found = index.find(entity);
     return found != index.end() ? &controls[found->second] : nullptr;

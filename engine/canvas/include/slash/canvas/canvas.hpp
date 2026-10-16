@@ -8,6 +8,7 @@
 #include "slash/core/result.hpp"
 #include "slash/render/device.hpp"
 #include "slash/text/text.hpp"
+#include "slash/ui/ui.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/world.hpp"
 
@@ -15,6 +16,7 @@
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <string_view>
@@ -53,6 +55,42 @@ sprite_quad(const world::Sprite2D& sprite, const world::Transform2D& transform,
 [[nodiscard]] world::Transform2D interpolate(const world::Transform2D& from,
                                              const world::Transform2D& to, double alpha);
 
+// ---- What a frame drew, for frame summaries ----
+
+// One draw of a frame's: triangles in viewport pixels, three vertices each, over a texture's
+// straight-alpha RGBA pixels, or white when there are none.
+struct FramePiece {
+    const std::uint8_t* pixels = nullptr;
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+    render::DistanceField field; // glyphs drawn from a distance field
+    std::vector<render::Vertex2D> vertices;
+};
+
+// Something a frame drew: a sprite, a tile map layer, a CPUParticles2D's particles or a control.
+struct FrameItem {
+    enum class Kind : std::uint8_t { Sprite, Tiles, Particles, Control };
+    Kind kind = Kind::Sprite;
+    entt::entity entity = entt::null;
+    std::size_t count = 0; // tiles or particles drawn
+    std::vector<FramePiece> pieces;
+};
+
+// Something that should have drawn and couldn't, such as a sprite whose texture is missing.
+struct FrameProblem {
+    entt::entity entity = entt::null;
+    std::string path; // JSON Pointer in the entity, e.g. "/components/Sprite2D/texture"
+    std::string message;
+};
+
+// What a frame drew, in drawing order, for CanvasOptions::contents. The pixels are the
+// renderer's textures' and the world's fonts': read them before anything loads again.
+struct FrameContents {
+    std::vector<FrameItem> items;
+    std::vector<FrameProblem> problems;
+    ui::Layout layout; // the controls as laid out
+};
+
 struct CanvasOptions {
     render::TextureId target = render::TextureId::None; // None draws to the window
     render::Color clear = render::kDefaultClearColor;
@@ -74,6 +112,9 @@ struct CanvasOptions {
     // Another world whose controls draw over everything, laid out in the same viewport with
     // this world's fonts, such as the debug overlay's.
     const world::World* overlay = nullptr;
+    // When set, filled with what the frame draws of the world: its items, what couldn't draw
+    // and the controls' layout. Collision shapes and the overlay are left out.
+    FrameContents* contents = nullptr;
 };
 
 // The time a frame shows, for CanvasOptions::time: tick ticks of tick_seconds have run, and the
@@ -242,5 +283,55 @@ struct Capture {
 // made again for other assets.
 [[nodiscard]] Result<Capture> capture(world::World& world, asset::Assets& assets,
                                       const CaptureOptions& options = {});
+
+// ---- Frame summaries ----
+
+// A thing shows at a pixel when at least this share of the pixel's color comes from it: its
+// alpha there times what the things drawn over it let through.
+inline constexpr float kShownShare = 0.25F;
+
+struct SummaryOptions {
+    // The part of the window to summarize, [x, y, width, height] in its pixels; none for all
+    // of it.
+    std::optional<std::array<float, 4>> region;
+    // The map's columns and rows; 0 for no map.
+    int columns = 0;
+    int rows = 0;
+};
+
+// Something a frame shows.
+struct Shown {
+    std::size_t item = 0; // in FrameSummary::contents.items
+    // Its bounds in window pixels, [x, y, width, height], not cut to the window: a control's
+    // rect as ui::layout places it, else the bounds of what it drew.
+    std::array<float, 4> rect{};
+    // The share of its pixels that show: inside the window (or region) and not under anything
+    // drawn after it.
+    float shown = 1.0F;
+};
+
+// What a frame shows, as data instead of an image.
+struct FrameSummary {
+    FrameContents contents;
+    std::vector<Shown> shown;                     // what shows, in drawing order
+    std::vector<std::size_t> offscreen;           // items drawn only outside the window
+    std::vector<std::size_t> covered;             // items in it but under what was drawn after them
+    std::vector<std::size_t> clear;               // items with no pixel that shows: all transparent
+    std::vector<std::vector<std::ptrdiff_t>> map; // rows of cells: the place in shown of what
+                                                  // shows at each cell's center, or -1
+};
+
+// Summarizes the frame a window of ui::settings' viewport size would show: what CanvasRenderer
+// draws there, with how much of each thing shows. A thing's pixels are those where its alpha
+// (its texture's times its color's) is kShownShare or more, and it shows at those where its
+// share of the color is too, as blending mixes it; materials and lights aren't run, so a
+// material that makes its sprite clear still counts. Things are sampled at pixel centers: the
+// part in the window (or region) at every pixel up to 64 pixels across and down and at evenly
+// spaced pixels beyond, and all of it the same way for the share outside. The map
+// shows the last thing drawn that shows at each cell's center. With a region, things that show
+// nothing in it are left out, and offscreen stays empty. Like capture, it keeps what it needs in
+// the world for the next summary.
+[[nodiscard]] Result<FrameSummary> summarize(world::World& world, asset::Assets& assets,
+                                             const SummaryOptions& options = {});
 
 } // namespace slash::canvas

@@ -284,6 +284,15 @@ same pixels; a change to how the GPU device draws goes in both. `canvas::capture
 frame on it at the viewport size, and backs `frame.capture` (pixel colors, a PNG or a file; MCP
 sends the PNG as an image). `examples/frame-capture` checks a HUD by its pixels.
 
+`frame.summary` reads the same frame as data. `CanvasOptions::contents` has `CanvasRenderer::draw`
+fill a `canvas::FrameContents`: each sprite, layer, emitter and control drawn, as triangles in
+window pixels over their textures' pixels (`ui::DrawList::spans` says which control drew which
+vertices), and what couldn't draw. `canvas::summarize` (`src/summary.cpp`) draws on the null
+device with it, then samples each thing's pixels against what was drawn after it, by texture
+alpha times vertex alpha, to say how much shows, and fills the map. A change to what the
+renderer draws shows up in summaries with no other change. `examples/frame-summary` walks a
+player behind a bush and off the screen.
+
 `engine/canvas` is 2D drawing, as Godot's canvas. `Sprite2D` draws a texture, or a frame of a
 sprite sheet, at the entity's `Transform2D`, in `z_index` order, then the order entities were
 made. `AnimatedSprite2D` plays a `.frames.json` file's animations on it through the

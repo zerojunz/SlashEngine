@@ -287,7 +287,10 @@ rendering on top.
 - [x] Watch conditions: `run.until` steps a game headless until a condition on component
       fields holds (say, the player below the floor) or a tick limit passes, and returns the
       tick and the matching entities
-- [ ] Frame summaries: what is on screen as data instead of an image
+- [x] Frame summaries: `frame.summary` says what the window shows as data instead of an image:
+      each sprite, tile map layer, particle emitter and control that shows, in drawing order,
+      with its rect, its text and how much of it shows; what is covered, offscreen or clear;
+      what can't draw; and, with `map`, a text picture of the frame
 
 Exit: an agent builds `samples/pong` end to end and exports it to all six platforms.
 
@@ -529,7 +532,7 @@ calls and tokens ([design section 6](design.md#6-cheap-for-agents-to-use)).
 | Errors carry the JSON Pointer of the bad value and a "did you mean" hint | 2, 3 | Done |
 | `slash-cli init` and the MCP server's instructions point agents at the tools | 3 | Done |
 | A test command that returns only the checks that failed | 5 | Done |
-| Frame summaries as data instead of screenshots | 5 | Planned |
+| Frame summaries as data instead of screenshots | 5 | Done |
 | `storyboard.brief`: only the facts a task needs, and what changed since the agent last looked | 5 | Done |
 | Dry runs: see what an edit would change before making it | 5 | Done |
 | `world.snapshot` and `world.diff`: try something, see exactly what changed, roll back | 5 | Done |
