@@ -115,6 +115,10 @@ rendering on top.
 - [x] Run control commands: `play` and `pause`
 - [x] `events.subscribe` for a stream of world events
 - [x] Prefabs: an entity `"extends"` a `.prefab.json` file and overrides fields
+  - [x] Instanced scenes, as Godot's PackedScene: an entity `"extends"` a `.scene.json` file
+        with a `root` and the scene's other entities come with it, with IDs under the
+        instance's (`hero/gun/muzzle`), overrides and `null` per entity, nested instances, and
+        edits to the scene reaching every instance
 - [x] Parent transforms, as Godot's Node2D children: entities in a `Transform2D`'s `children`
       move, turn, scale (and skew) with it and draw after it with its `z_index`, visibility
       and tint; physics, lights, particles and sound use global transforms; loops and second
@@ -315,13 +319,11 @@ rendering on top.
 - [ ] Importing games made with other engines: `project.import` (and `slash-cli import`)
       converts another engine's project into this one in one call and reports what didn't
       convert and why. Godot first, then Unity; Unreal follows the 3D work in milestone 7
-  - [x] Godot 4 projects: scenes (nodes to entities and components, instanced scenes copied in
-        with their overrides), `SpriteFrames`, textures, sounds and fonts, the input map and
+  - [x] Godot 4 projects: scenes (nodes to entities and components), `SpriteFrames`, textures, sounds and fonts, the input map and
         project settings. Each GDScript or C# script becomes a storyboard task to port it to
         C++, and a report keeps what the port needs: the values each node gave its exported
         variables, signal connections, groups, autoloads and the entity of every node path
-  - [ ] Godot scenes that instance other scenes become prefabs of several entities, instead of
-        copies
+  - [x] Godot scenes that instance other scenes stay instances, holding only their overrides
   - [ ] Godot's `TileMapLayer` and `TileSet`, `AnimationPlayer` libraries, themes and
         `LabelSettings` resources, and audio bus layouts
   - [ ] Unity projects: 2D scenes and prefabs, sprites and their animations, tilemaps, UI,
@@ -381,6 +383,19 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
 - [ ] Cascaded, omni and spot shadows
 - [ ] Post-processing: tonemap, bloom, SSAO, SSR, depth of field, auto exposure, color grading
 - [ ] Baked lightmaps and probe-based global illumination
+- [ ] Render scale and upscalers, as Godot's `scaling_3d` setting: bilinear, FSR 1 and FSR 2/3
+      (AMD's FidelityFX code, MIT) on every backend and MetalFX on Apple, set in `project.json`
+      and changeable while a game runs; a `render::Upscaler` interface lets a game add DLSS, XeSS
+      or FSR 4 with its vendor's SDK, outside the repo, since those ship only as closed binaries
+  - [ ] FSR 3 frame generation, once the render device controls presenting frames
+- [ ] Hardware ray tracing: acceleration structures and ray queries in `render::RenderDevice`,
+      native on Vulkan, Direct3D 12 and Metal beside SDL3's GPU API (which has none), with a CPU
+      twin on the software device; ray-traced shadows, reflections, ambient occlusion and GI,
+      falling back to the raster and probe paths where the hardware has none (the web, older
+      phones)
+- [ ] Path tracing: a GPU path tracer that bakes the lightmaps above, as Godot's LightmapGI
+      does, and renders progressive reference stills that `frame.capture` can return, so agents
+      compare the real-time frame with ground truth
 - [ ] Physical sky and volumetric fog; clustered decals
 - [ ] Generated LODs with meshoptimizer and occlusion culling
 - [ ] 3D physics on Jolt: rigid bodies, joints, character controller, vehicles
@@ -518,7 +533,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | --- | --- | --- | --- |
 | Editor | No GUI editor: MCP and REST command API, debug overlay, frame capture | 3, 5 | Done |
 | Gameplay code | C++ with hot reload; plugins as C++ modules with a stable C ABI | 6 | Planned |
-| Scenes and prefabs | JSON scenes, prefabs with overrides, on EnTT | 2, 5 | Done |
+| Scenes and prefabs | JSON scenes, prefabs and instanced scenes with overrides, on EnTT | 2, 5 | Done |
 | 2D sprites and animation | Batched sprites, sprite sheets, flipbooks | 5 | Done |
 | Tilemaps | Tilemap layers with terrain autotiling, stored as text | 5 | In part: square tiles are done; isometric and hexagonal shapes in 5 |
 | 2D lighting | 2D lights, occluders, normal-mapped sprites | 5 | Done |
@@ -542,6 +557,9 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Profiling | Tracy, plus `perf.stats` over the command API | 5, 6 | In part: `perf.stats` reports frame pacing; Tracy and per-system timings are planned for 6 |
 | Asset generation and library | Generated assets saved once and shared by every project and teammate, searched before generating, ranked by agent feedback; 3D models as parametric recipes, cleaned-up generated meshes or imported files, combined into complex assets with variants, reviewed automatically | 6, 7 | Planned: images and audio in 6, 3D in 7 |
 | Global illumination | Baked lightmaps and probe-based GI | 7 | Planned |
+| Ray tracing | Acceleration structures and ray queries in the render device on Vulkan, Direct3D 12 and Metal: ray-traced shadows, reflections, AO and GI, with raster and probe fallbacks | 7 | Planned |
+| Path tracing | A GPU path tracer for baked lightmaps and progressive reference stills | 7 | Planned |
+| Upscaling and frame generation | Render scale with FSR 1, FSR 2/3 and MetalFX built in, FSR 3 frame generation, DLSS, XeSS and FSR 4 as adapters outside the repo | 7 | Planned |
 | Sky and volumetrics | Physical sky, volumetric fog | 7 | Planned |
 | Decals | Clustered decals | 7 | Planned |
 | Networking | ENet transport, replication driven by reflection, WebSocket for web | 8 | Planned |
