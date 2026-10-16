@@ -1088,8 +1088,11 @@ void register_builtin_components(ComponentRegistry& registry) {
         .describe("origin", {.doc = "The cell the first key of the first row stands for, as "
                                     "[column, row]."})
         .describe("legend", {.doc = "The tile each key stands for: a tile's name or "
-                                    "\"source:column,row\". Keys are 1 to 3 characters, all "
-                                    "the same length."})
+                                    "\"source:column,row\", then optionally \":\" and an "
+                                    "alternative's number and \":\" and turns, letters h, v, "
+                                    "t (flip horizontally, vertically, transpose), as "
+                                    "\"crate:1:hv\". Keys are 1 to 3 characters, all the same "
+                                    "length."})
         .describe("rows", {.doc = "Cells from the origin, one string of keys per row, \".\" for "
                                   "an empty cell."})
         .describe("z_index",
@@ -1103,7 +1106,9 @@ void register_builtin_components(ComponentRegistry& registry) {
                   {.doc = "How tiles are sampled when scaled: \"nearest\" keeps pixel art "
                           "sharp. \"inherit\" uses the project's rendering.texture_filter.",
                    .choices = {"inherit", "linear", "nearest"}})
-        .describe("light_mask", light_mask);
+        .describe("light_mask", light_mask)
+        .describe("collision_enabled", {.doc = "Its tiles' collision polygons are solid in 2D "
+                                               "physics."});
 
     registry.add<PointLight2D>()
         .set_doc("A light shining from the entity's Transform2D through a texture. It lights "

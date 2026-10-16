@@ -28,6 +28,7 @@
 #include <optional>
 #include <ranges>
 #include <set>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -1523,6 +1524,7 @@ private:
         // Terrain sets by index: their modes and their terrains' names by index.
         std::map<std::int64_t, std::int64_t> modes;
         std::map<std::pair<std::int64_t, std::int64_t>, std::string> terrains;
+        std::map<std::int64_t, json::Value> physics; // physics layers by index
         std::vector<std::pair<std::int64_t, const Value*>> sources;
         for (const auto& [name, value] : resource.properties) {
             const std::vector<std::string_view> parts = split_path(name);
@@ -1560,9 +1562,28 @@ private:
                     problems_.add("TileSet." + name, where);
                 }
             } else if (parts[0].starts_with("physics_layer_")) {
-                problems_.add("tile collision", where,
-                              "tile set collision is on the roadmap; add bodies over the tiles "
-                              "meanwhile");
+                const auto index =
+                    parse_int(parts[0].substr(std::string_view("physics_layer_").size()));
+                const std::string_view field = parts.size() == 2 ? parts[1] : "";
+                if (index && *index >= 0 &&
+                    (field == "collision_layer" || field == "collision_mask")) {
+                    physics[*index][std::string(field)] = static_cast<std::int64_t>(value.number());
+                } else if (index && *index >= 0 && field == "physics_material") {
+                    json::Value& layer = physics[*index];
+                    if (const auto [material, owner] = resource_section(value, file);
+                        material != nullptr) {
+                        for (const char* number_field : {"friction", "bounce"}) {
+                            if (const Value* number = material->property(number_field);
+                                number != nullptr && number->is_number()) {
+                                layer[number_field] = std::string_view(number_field) == "bounce"
+                                                          ? std::clamp(number->number(), 0.0, 1.0)
+                                                          : std::max(number->number(), 0.0);
+                            }
+                        }
+                    }
+                } else {
+                    problems_.add("TileSet." + name, where);
+                }
             } else if (parts[0].starts_with("navigation_layer_") ||
                        parts[0].starts_with("occlusion_layer_") ||
                        parts[0].starts_with("custom_data_layer_")) {
@@ -1575,6 +1596,15 @@ private:
         }
         if (tile_size != std::array<std::int64_t, 2>{16, 16}) {
             doc["tile_size"] = json::Array{tile_size[0], tile_size[1]};
+        }
+        if (!physics.empty()) {
+            json::Array layers;
+            for (std::int64_t index = 0; index <= physics.rbegin()->first; ++index) {
+                const auto found = physics.find(index);
+                layers.push_back(found != physics.end() ? found->second
+                                                        : json::Value(json::Object{}));
+            }
+            doc["physics_layers"] = std::move(layers);
         }
         // Terrain names must be unique in the file; Godot's need only be unique in their set.
         std::set<std::string> taken;
@@ -1652,11 +1682,71 @@ private:
         }
         source["texture"] = texture_path;
         std::array<std::int64_t, 2> region{16, 16}; // Godot's default, whatever the tile size
+        // A collision polygon by physics layer and polygon number.
+        using Polygons = std::map<std::pair<std::int64_t, std::int64_t>, json::Value>;
         struct Tile {
             json::Value json;
             std::int64_t set = -1;
             std::int64_t terrain = -1;
             std::map<std::size_t, std::int64_t> bits;
+            Polygons polygons;
+            std::map<std::int64_t, json::Value> alternatives;
+            std::map<std::int64_t, Polygons> alternative_polygons;
+        };
+        // A tile's "physics_layer_N/..." property: polygons go into polygons, and constant
+        // velocities other than zero are reported. False if it is another property.
+        const auto physics_property = [&](std::span<const std::string_view> path,
+                                          const Value& value, Polygons& polygons) {
+            if (path.size() == 2 && path[0].starts_with("physics_layer_")) {
+                if (path[1] == "linear_velocity" || path[1] == "angular_velocity") {
+                    const auto numbers = value.numbers().value_or(std::vector<double>{});
+                    if (value.number() != 0.0 ||
+                        std::ranges::any_of(numbers, [](double n) { return n != 0.0; })) {
+                        problems_.add("tile constant velocities", where,
+                                      "tiles' bodies stand still; move the layer instead");
+                    }
+                    return true;
+                }
+                return path[1] == "polygons_count";
+            }
+            if (path.size() != 3 || !path[0].starts_with("physics_layer_") ||
+                !path[1].starts_with("polygon_")) {
+                return false;
+            }
+            const auto layer = parse_int(path[0].substr(std::string_view("physics_layer_").size()));
+            const auto polygon = parse_int(path[1].substr(std::string_view("polygon_").size()));
+            if (!layer || !polygon) {
+                return false;
+            }
+            json::Value& out = polygons[{*layer, *polygon}];
+            if (path[2] == "points") {
+                json::Array points;
+                const auto numbers = value.numbers().value_or(std::vector<double>{});
+                for (std::size_t i = 0; i + 1 < numbers.size(); i += 2) {
+                    points.emplace_back(json::Array{numbers[i], numbers[i + 1]});
+                }
+                out["points"] = std::move(points);
+            } else if (path[2] == "one_way") {
+                out["one_way"] = value.boolean;
+            } else if (path[2] == "one_way_margin") {
+                out["one_way_margin"] = std::max(value.number(), 0.0);
+            } else {
+                return false;
+            }
+            if (*layer != 0) {
+                out["layer"] = *layer;
+            }
+            return true;
+        };
+        // Polygons as a collision array, in Godot's order; those with no points are left out.
+        const auto collision = [](const Polygons& polygons) {
+            json::Array out;
+            for (const auto& [index, polygon] : polygons) {
+                if (polygon.find("points") != nullptr) {
+                    out.push_back(polygon);
+                }
+            }
+            return out;
         };
         std::map<std::pair<std::int64_t, std::int64_t>, Tile> tiles; // by row, then column
         for (const auto& [name, value] : section.properties) {
@@ -1700,8 +1790,37 @@ private:
                 }
             } else if (rest.starts_with("animation_")) {
                 problems_.add("animated tiles", where, "each tile shows its first frame");
-            } else if (rest == "next_alternative_id" || parts[0] != "0") {
-                // Alternative tiles: cells that use one get its base tile.
+            } else if (rest == "next_alternative_id") {
+                continue;
+            } else if (parts[0] != "0") {
+                // An alternative tile: "column:row/1 = 1" makes it, then its own properties.
+                const auto alternative = parse_int(parts[0]);
+                if (!alternative || *alternative < 1 || *alternative > 4095) {
+                    problems_.add("TileSetAtlasSource." + name, where);
+                    continue;
+                }
+                json::Value& own = tile.alternatives[*alternative];
+                if (own.is_null()) {
+                    own = json::Object{};
+                }
+                const std::span<const std::string_view> path(parts.begin() + 1, parts.end());
+                if (path.empty()) {
+                    continue;
+                }
+                if (path.size() == 1 &&
+                    (path[0] == "flip_h" || path[0] == "flip_v" || path[0] == "transpose")) {
+                    if (value.boolean) {
+                        own[std::string(path[0])] = true;
+                    }
+                } else if (path.size() == 1 && path[0] == "modulate") {
+                    if (const auto rgba = value.numbers(); rgba && rgba->size() == 4) {
+                        own["modulate"] =
+                            json::Array{rgba->at(0), rgba->at(1), rgba->at(2), rgba->at(3)};
+                    }
+                } else if (!physics_property(path, value,
+                                             tile.alternative_polygons[*alternative])) {
+                    problems_.add("alternative tile property " + std::string(path[0]), where);
+                }
             } else if (parts.size() == 2 && parts[1] == "terrain_set") {
                 tile.set = static_cast<std::int64_t>(value.number());
             } else if (parts.size() == 2 && parts[1] == "terrain") {
@@ -1712,11 +1831,9 @@ private:
                 }
             } else if (parts.size() == 2 && parts[1] == "probability") {
                 tile.json["probability"] = value.number();
-            } else if (parts.size() > 1 && parts[1].starts_with("physics_layer_")) {
-                problems_.add("tile collision", where,
-                              "tile set collision is on the roadmap; add bodies over the tiles "
-                              "meanwhile");
-            } else if (parts.size() > 1) {
+            } else if (parts.size() > 1 &&
+                       !physics_property(std::span<const std::string_view>(parts).subspan(1), value,
+                                         tile.polygons)) {
                 problems_.add("tile property " + std::string(parts[1]), where);
             }
         }
@@ -1747,6 +1864,16 @@ private:
                     tile.json["peering"] = std::move(peering);
                 }
             }
+            if (json::Array polygons = collision(tile.polygons); !polygons.empty()) {
+                tile.json["collision"] = std::move(polygons);
+            }
+            for (auto& [number, alternative] : tile.alternatives) {
+                if (json::Array polygons = collision(tile.alternative_polygons[number]);
+                    !polygons.empty()) {
+                    alternative["collision"] = std::move(polygons);
+                }
+                tile.json["alternatives"][std::to_string(number)] = std::move(alternative);
+            }
             if (tile.json.is_null()) {
                 tile.json = json::Object{}; // a plain tile
             }
@@ -1766,17 +1893,23 @@ private:
         canvas::Cells converted;
         for (const GodotCell& cell : cells) {
             const auto source = tiles.sources.find(cell.source);
-            const canvas::TileRef tile{.source = source != tiles.sources.end() ? source->second
-                                                                               : std::string(),
-                                       .atlas = {cell.atlas_x, cell.atlas_y}};
+            // Godot keeps a cell's flips above its alternative's number: TRANSFORM_FLIP_H
+            // (bit 12), TRANSFORM_FLIP_V and TRANSFORM_TRANSPOSE.
+            canvas::TileRef tile{.source =
+                                     source != tiles.sources.end() ? source->second : std::string(),
+                                 .atlas = {cell.atlas_x, cell.atlas_y},
+                                 .alternative = cell.alternative & 0x0FFF,
+                                 .flip_h = (cell.alternative & 0x1000) != 0,
+                                 .flip_v = (cell.alternative & 0x2000) != 0,
+                                 .transpose = (cell.alternative & 0x4000) != 0};
             if (source == tiles.sources.end() || tiles.set->find(tile) == nullptr) {
                 problems_.add("cells with tiles missing from their tile set", where);
                 continue;
             }
-            if (cell.alternative != 0) {
-                problems_.add("alternative tiles", where,
-                              "flipped, turned and other alternative tiles draw as their base "
-                              "tile");
+            if (tile.alternative != 0 && tiles.set->alternative(tile) == nullptr) {
+                problems_.add("cells with alternative tiles missing from their tile set", where,
+                              "they show the base tile");
+                tile.alternative = 0;
             }
             converted[{cell.x, cell.y}] = tile;
         }

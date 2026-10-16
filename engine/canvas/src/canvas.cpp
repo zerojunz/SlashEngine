@@ -7,6 +7,7 @@
 #include "slash/core/json.hpp"
 #include "slash/core/log.hpp"
 #include "slash/core/text.hpp"
+#include "slash/physics2d/physics2d.hpp"
 #include "slash/render/image.hpp"
 #include "slash/ui/ui.hpp"
 
@@ -17,6 +18,7 @@
 #include <memory>
 #include <set>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace slash::canvas {
@@ -182,7 +184,68 @@ void add_asset_types(asset::Assets& assets) {
         });
 }
 
+// Gives 2D physics each TileMapLayer's shapes, made again only when the layer's cells or its
+// tile set change.
+struct TileShapeCache {
+    struct Entry {
+        std::string tile_set;
+        Vec2i origin;
+        std::map<std::string, std::string> legend;
+        std::vector<std::string> rows;
+        std::uint64_t version = 0;
+        physics2d::TileShapes shapes;
+    };
+    asset::Assets* assets = nullptr;
+    std::map<std::string, asset::Handle<TileSet>, std::less<>> sets;
+    std::unordered_map<entt::entity, Entry> entries;
+
+    physics2d::TileShapes shapes(const world::World& world, entt::entity entity) {
+        const auto* layer = world.ecs().try_get<world::TileMapLayer>(entity);
+        if (layer == nullptr || layer->tile_set.empty() || layer->rows.empty()) {
+            return nullptr;
+        }
+        auto found = sets.find(layer->tile_set);
+        if (found == sets.end()) {
+            auto loaded = assets->load<TileSet>(layer->tile_set);
+            if (!loaded) {
+                return nullptr; // the renderer, validation and exports report it
+            }
+            found = sets.emplace(layer->tile_set, std::move(loaded).value()).first;
+        }
+        const asset::Handle<TileSet>& set = found->second;
+        Entry& entry = entries[entity];
+        if (entry.shapes != nullptr && entry.version == set.version() &&
+            entry.tile_set == layer->tile_set && entry.origin == layer->origin &&
+            entry.legend == layer->legend && entry.rows == layer->rows) {
+            return entry.shapes;
+        }
+        auto cells = decode_cells(*layer, *set);
+        entry = {.tile_set = layer->tile_set,
+                 .origin = layer->origin,
+                 .legend = layer->legend,
+                 .rows = layer->rows,
+                 .version = set.version(),
+                 .shapes = cells ? std::make_shared<const std::vector<physics2d::TileShape>>(
+                                       tile_shapes(*set, cells.value()))
+                                 : std::make_shared<const std::vector<physics2d::TileShape>>()};
+        // Entries of layers that are gone.
+        const std::size_t layers = world.ecs().view<const world::TileMapLayer>().size();
+        if (entries.size() > (2 * layers) + 8) {
+            std::erase_if(entries, [&](const auto& pair) {
+                return !world.valid(pair.first) ||
+                       !world.ecs().all_of<world::TileMapLayer>(pair.first);
+            });
+        }
+        return entries[entity].shapes;
+    }
+};
+
 void add_systems(world::World& world, asset::Assets& assets) {
+    auto tiles = std::make_shared<TileShapeCache>();
+    tiles->assets = &assets;
+    physics2d::set_tile_shape_source(world, [tiles](const world::World& w, entt::entity entity) {
+        return tiles->shapes(w, entity);
+    });
     auto state = std::make_shared<AnimationState>();
     state->assets = &assets;
     world.add_system(

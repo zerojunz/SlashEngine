@@ -38,7 +38,8 @@ void add_asset_types(asset::Assets& assets);
 
 // The "animated_sprite_2d" system, which plays each AnimatedSprite2D on its Sprite2D, the
 // "camera_2d" system (camera2d.hpp), for a screen of ui::settings' viewport size, and the
-// "cpu_particles_2d" system (particles.hpp). The first reads .frames.json files through assets,
+// "cpu_particles_2d" system (particles.hpp), and gives 2D physics the shapes of TileMapLayer
+// cells (physics2d::set_tile_shape_source). The first and the last read files through assets,
 // which must outlive the world.
 void add_systems(world::World& world, asset::Assets& assets);
 

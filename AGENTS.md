@@ -369,7 +369,10 @@ sets; a terrain tile's `peering` names the terrain each side and corner must tou
 `paint_terrain` picks connecting tiles for painted cells and their neighbors; the commands are
 `tilemap.paint`, `tilemap.set` and `tilemap.get`. `CanvasRenderer` draws layers in runs of one
 texture (`tiles_drawn()`), and `check_tile_layers` checks a scene's layers for `scene validate`
-and exports. `examples/tilemaps` paints an island with a pond.
+and exports. `examples/tilemaps` paints an island with a pond. Tiles have Godot's physics layers,
+collision polygons and alternative tiles, and a cell can turn its tile with `:h`, `:v` and `:t`
+after the tile (`slope:h`, `rock:1:ht`), as Godot's cell transform flags; drawing and collision
+turn together (`tile_look`, `tile_collision`). `examples/tile-collision` rolls balls on tiles.
 
 2D lights follow Godot's: `PointLight2D`, `DirectionalLight2D`, `LightOccluder2D` and
 `CanvasModulate`, with `Sprite2D`'s `light_mask`, `normal_texture` and `specular_texture` and a
@@ -431,7 +434,10 @@ character bodies with `move_and_slide` (`src/character.cpp`) and emits `body_ent
 (`b2SetLengthUnitsPerMeter(64)`), and Godot's rules are kept where Box2D differs: layers and
 masks collide when either mask matches, one-way shapes, and waking what rests on a moved body.
 `project.json`'s `physics_2d` sets gravity and damping. `physics.raycast`, `physics.overlap` and
-`physics.contacts` (and `physics2d::raycast` and the rest in C++) ask what is where. Results
+`physics.contacts` (and `physics2d::raycast` and the rest in C++) ask what is where. Each
+`TileMapLayer` with collision polygons is a static body: physics2d asks for its shapes through
+the `TileShapeSource` that `canvas::add_systems` sets (`set_tile_shape_source`), so physics2d
+doesn't depend on canvas, and rebuilds the body when they change. Results
 must be the same on every platform: `physics2d` and the examples build with
 `-ffp-contract=off`, and angles go through Box2D's own `b2ComputeCosSin`, not libm.
 `examples/physics-2d` has every kind of body.

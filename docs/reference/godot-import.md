@@ -89,7 +89,7 @@ type:
 ## Tile sets and tile maps
 
 A `TileSet` becomes a [`.tileset.json` file](scene-format.md#tile-sets) and keeps Godot's tile
-size, atlas sources and terrains:
+size, atlas sources, terrains, physics layers, collision polygons and alternative tiles:
 
 - Each `TileSetAtlasSource` is a source named after its texture (`tiles.png` is `tiles`), with
   its texture, region size, margins and separation. Each tile is keyed by its column and row
@@ -99,10 +99,16 @@ size, atlas sources and terrains:
 - A tile's terrain and its peering bits become `terrain` and `peering`: `right_side` is `e`,
   `bottom_right_corner` is `se` and so on round the tile, a bit with no terrain is `null`, and a
   bit with the tile's own terrain is left out.
+- Each physics layer keeps its collision layer and mask, and its physics material's friction and
+  bounce. A tile's polygons on it become its
+  [`collision`](scene-format.md#tile-collision), with `one_way` and `one_way_margin`.
+- Each alternative tile (`2:0/1`) becomes one of the tile's
+  [`alternatives`](scene-format.md#alternative-tiles-and-turned-cells), with its flips, transpose,
+  modulate and own polygons.
 
 A `TileMapLayer` node's `tile_map_data` becomes its layer's `origin`, `legend` and `rows`, so
-`tilemap.get`, `tilemap.paint` and `tilemap.set` edit the cells as Godot left them. A cell that
-uses an alternative tile gets the base tile, and the report says so.
+`tilemap.get`, `tilemap.paint` and `tilemap.set` edit the cells as Godot left them. A cell keeps
+its alternative tile and its flip and transpose flags as turns: `"tiles:1,0:1"`, `"tiles:0,1:ht"`.
 
 The old `TileMap` node (Godot 4.0 to 4.2) keeps its tile set on its own `TileMapLayer` and puts
 each layer on an entity of its own, in its `Transform2D` children, drawn before its other
@@ -217,9 +223,9 @@ The report lists each of these once per kind, with how many and where it was fir
 | Bezier handles, the capture update mode, blend times and markers | A bezier track plays cubic through its keys, a capture track as continuous, and animations switch without blending |
 | Tracks on a control's `position` or `size` | Animate its offsets instead |
 | Animation libraries no `AnimationPlayer` plays | A track's fields depend on the node it animates |
-| Tile collision, navigation, occlusion and custom data layers | Tile sets hold no collision yet; add bodies over the tiles |
+| Tile navigation, occlusion and custom data layers, and tiles' constant velocities | Tile sets hold collision only; add `LightOccluder2D` entities for shadows, and move a layer rather than give its tiles a velocity |
 | Isometric and hexagonal tiles, tiles larger than one cell, animated tiles | Tiles are square and one cell each; an animated tile shows its first frame |
-| Alternative tiles (flipped, turned) and scene collection sources | A cell shows its base tile; place scenes as entities |
+| Alternative tiles' other properties, such as `z_index` and `texture_origin`, and scene collection sources | An alternative keeps its flips, color and collision; place scenes as entities |
 | Y-sorting tile map layers | Layers draw in order, by `z_index` |
 | `gui/theme/custom_font` | Set `default_font` in the project's theme |
 | Audio effects with no SlashEngine equivalent, such as `AudioEffectRecord` | Left out of the bus, which keeps its other effects |

@@ -1,0 +1,39 @@
+wrote blocks.png: 64x16, 4 tiles
+scene.open {"path":"main.scene.json"}
+{"entities":5,"path":"main.scene.json"}
+tilemap.set {"cells":[[1,6]],"id":"level","tile":"slope:h"}
+{"changed":1,"id":"level"}
+tilemap.get {"id":"level"}
+{"legend":{"#":"block","/":"slope","=":"ledge","^":"spring","s":"slope:h","~":"block:1"},"origin":[0,2],"rows":["........===","","","#","#s..#.^.~../","############"]}
+  ........===
+  
+  
+  #
+  #s..#.^.~../
+  ############
+tick 30:
+  roller     at (49.9, 105.8), moving (106.3, 2.9)
+  jumper     at (104.0, 73.7), moving (0.0, -119.7)
+  ghost_test at (136.0, 106.0), moving (0.0, 0.0)
+  riser      at (152.0, 18.0), moving (0.0, 135.6)
+tick 60:
+  roller     at (58.0, 106.0), moving (-0.0, 0.0)
+  jumper     at (104.0, 84.4), moving (0.0, -90.7)
+  ghost_test at (136.0, 106.0), moving (0.0, 0.0)
+  riser      at (152.0, 26.0), moving (0.0, 0.0)
+tick 90:
+  roller     at (58.0, 106.0), moving (0.0, 0.0)
+  jumper     at (104.0, 90.6), moving (0.0, 57.6)
+  ghost_test at (136.0, 106.0), moving (0.0, 0.0)
+  riser      at (152.0, 26.0), moving (0.0, 0.0)
+tick 120:
+  roller     at (58.0, 106.0), moving (0.0, 0.0)
+  jumper     at (104.0, 98.0), moving (0.0, 0.0)
+  ghost_test at (136.0, 106.0), moving (0.0, 0.0)
+  riser      at (152.0, 26.0), moving (0.0, 0.0)
+physics.raycast {"from":[72,0],"to":[72,128]}
+{"hit":{"cell":[4,6],"fraction":0.75,"id":"level","normal":[0,-1],"point":[72,96]}}
+tilemap.set {"cells":[[0,0]],"id":"level","tile":"block:2"}
+"/tile: the tile \"block\" has no alternative 2; it has 1 to 1"
+tilemap.set {"cells":[[0,0]],"id":"level","tile":"slope:hh"}
+"/tile: \"slope:hh\": a cell's turns are h, v and t, each at most once and in that order, as \"crate:hv\""

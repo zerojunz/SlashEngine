@@ -1,0 +1,75 @@
+{
+  "format": 1,
+  "physics_layers": [
+    {},
+    {
+      "bounce": 0.75,
+      "friction": 0.2
+    }
+  ],
+  "sources": {
+    "blocks": {
+      "texture": "blocks.png",
+      "tiles": {
+        "0,0": {
+          "alternatives": {
+            "1": {
+              "modulate": [1, 1, 1, 0.4]
+            }
+          },
+          "collision": [
+            {
+              "points": [
+                [-8, -8],
+                [8, -8],
+                [8, 8],
+                [-8, 8]
+              ]
+            }
+          ],
+          "name": "block"
+        },
+        "1,0": {
+          "collision": [
+            {
+              "points": [
+                [-8, 8],
+                [8, -8],
+                [8, 8]
+              ]
+            }
+          ],
+          "name": "slope"
+        },
+        "2,0": {
+          "collision": [
+            {
+              "one_way": true,
+              "points": [
+                [-8, -8],
+                [8, -8],
+                [8, -4],
+                [-8, -4]
+              ]
+            }
+          ],
+          "name": "ledge"
+        },
+        "3,0": {
+          "collision": [
+            {
+              "layer": 1,
+              "points": [
+                [-8, 0],
+                [8, 0],
+                [8, 8],
+                [-8, 8]
+              ]
+            }
+          ],
+          "name": "spring"
+        }
+      }
+    }
+  }
+}
