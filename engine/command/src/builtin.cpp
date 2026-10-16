@@ -33,6 +33,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <charconv>
 #include <cmath>
 #include <cstddef>
@@ -2386,6 +2387,305 @@ Reply frame_capture(Session& session, const json::Value& params) {
     return Reply::success(std::move(result));
 }
 
+// ---- Frame summaries ----
+
+constexpr std::int64_t kDefaultSummaryLimit = 100;
+// A map is at most this many cells across and down.
+constexpr std::int64_t kMaxMapCells = 160;
+
+// Window pixels to a tenth, fine enough to place things and short in replies.
+json::Value tenths(float value) {
+    constexpr double kScale = 10.0;
+    return short_number(std::round(static_cast<double>(value) * kScale) / kScale);
+}
+
+// Legend keys for a frame summary's map: letters, digits and punctuation, never "." (nothing
+// shows) or characters JSON strings escape.
+constexpr std::string_view kMapKeys =
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#$%&*+-=@^~!?:;,<>/|()[]{}_'`";
+
+// A key for each name, in order: the start of the name where that is free, then the same in the
+// other case, else the first free key. Keys are one character while there are enough of them,
+// then two.
+std::vector<std::string> map_keys(const std::vector<std::string>& names) {
+    const std::size_t length = names.size() <= kMapKeys.size() ? 1 : 2;
+    std::set<std::string, std::less<>> taken;
+    std::vector<std::string> keys;
+    const auto valid = [](std::string_view key) {
+        return std::ranges::all_of(
+            key, [](char c) { return kMapKeys.find(c) != std::string_view::npos; });
+    };
+    for (const std::string& name : names) {
+        std::string key;
+        if (name.size() >= length) {
+            const std::string start = name.substr(0, length);
+            std::string other = start;
+            for (char& c : other) {
+                const auto byte = static_cast<unsigned char>(c);
+                c = static_cast<char>(std::islower(byte) != 0 ? std::toupper(byte)
+                                                              : std::tolower(byte));
+            }
+            for (const std::string& candidate : {start, other}) {
+                if (key.empty() && valid(candidate) && !taken.contains(candidate)) {
+                    key = candidate;
+                }
+            }
+        }
+        for (std::size_t n = 0; key.empty(); ++n) {
+            std::string candidate;
+            std::size_t rest = n;
+            for (std::size_t i = 0; i < length; ++i) {
+                candidate.insert(candidate.begin(), kMapKeys[rest % kMapKeys.size()]);
+                rest /= kMapKeys.size();
+            }
+            if (!taken.contains(candidate)) {
+                key = candidate;
+            }
+        }
+        taken.insert(key);
+        keys.push_back(std::move(key));
+    }
+    return keys;
+}
+
+// What a control shows as text: its lines as laid out, those cut short ending with the
+// ellipsis, as far as visible_characters lets them show.
+std::string shown_text(const ui::LabelText& label) {
+    std::string out;
+    for (std::size_t l = label.first; l < label.last && l < label.text.lines.size(); ++l) {
+        const text::Line& line = label.text.lines[l];
+        const std::size_t start = line.start;
+        const std::size_t end =
+            std::min<std::size_t>(line.end, std::max(label.visible_bytes, start));
+        std::string_view shown = std::string_view(label.source).substr(start, end - start);
+        while (!shown.empty() &&
+               (shown.back() == ' ' || shown.back() == '\t' || shown.back() == '\n')) {
+            shown.remove_suffix(1);
+        }
+        if (!out.empty() || l > label.first) {
+            out += '\n';
+        }
+        out += shown;
+        if (end == line.end && std::ranges::find(label.trimmed, l) != label.trimmed.end()) {
+            out += label.ellipsis;
+        }
+    }
+    while (!out.empty() && out.back() == '\n') {
+        out.pop_back();
+    }
+    return out;
+}
+
+Reply frame_summary(Session& session, const json::Value& params) {
+    world::World& world = session.world();
+    const Vec2 viewport = ui::settings(world).viewport;
+    const std::string size_text = std::to_string(static_cast<int>(viewport.x)) + "x" +
+                                  std::to_string(static_cast<int>(viewport.y));
+    canvas::SummaryOptions options;
+    if (const json::Value* given = params.find("region"); given != nullptr) {
+        const auto rect = floats<4>(*given);
+        if (!(rect[0] >= 0.0F) || !(rect[1] >= 0.0F) || !(rect[2] > 0.0F) || !(rect[3] > 0.0F) ||
+            rect[0] + rect[2] > viewport.x || rect[1] + rect[3] > viewport.y) {
+            return param_error(code::kInvalidArgument, "/region",
+                               "[x, y, width, height] inside the " + size_text + " window");
+        }
+        options.region = rect;
+    }
+    if (const json::Value* map = params.find("map"); map != nullptr) {
+        options.columns = static_cast<int>(map->as_array()[0].as_int());
+        options.rows = static_cast<int>(map->as_array()[1].as_int());
+    }
+    std::set<entt::entity> wanted;
+    if (const json::Value* ids = params.find("ids"); ids != nullptr) {
+        const json::Array& list = ids->as_array();
+        for (std::size_t i = 0; i < list.size(); ++i) {
+            const entt::entity entity = world.find(list[i].as_string());
+            if (entity == entt::null) {
+                return unknown_entity(world, list[i].as_string(), "/ids/" + std::to_string(i));
+            }
+            wanted.insert(entity);
+        }
+    }
+    const auto limit = static_cast<std::size_t>(integer(params, "limit", kDefaultSummaryLimit));
+
+    auto summarized = canvas::summarize(world, session.assets(), options);
+    if (!summarized) {
+        return Reply::failure(summarized.error());
+    }
+    const canvas::FrameSummary& summary = summarized.value();
+    const std::vector<canvas::FrameItem>& items = summary.contents.items;
+    const ui::Layout& layout = summary.contents.layout;
+    const auto name_of = [&](entt::entity entity) {
+        const std::string_view id = world.id_of(entity);
+        return id.empty() ? "entity " + std::to_string(entt::to_entity(entity)) : std::string(id);
+    };
+    const auto kind_of = [&](const canvas::FrameItem& item) -> std::string_view {
+        switch (item.kind) {
+        case canvas::FrameItem::Kind::Sprite:
+            return "Sprite2D";
+        case canvas::FrameItem::Kind::Tiles:
+            return "TileMapLayer";
+        case canvas::FrameItem::Kind::Particles:
+            return "CPUParticles2D";
+        case canvas::FrameItem::Kind::Control:
+            break;
+        }
+        return ui::control_class(world, item.entity);
+    };
+    const auto included = [&](entt::entity entity) {
+        return wanted.empty() || wanted.contains(entity);
+    };
+    bool truncated = false;
+
+    json::Value result;
+    result["viewport"] = point_value(viewport);
+    const entt::entity focused = ui::focus_owner(world);
+    json::Array drawn;
+    for (const canvas::Shown& shown : summary.shown) {
+        const canvas::FrameItem& item = items[shown.item];
+        if (!included(item.entity)) {
+            continue;
+        }
+        if (drawn.size() >= limit) {
+            truncated = true;
+            break;
+        }
+        json::Value each;
+        each["id"] = name_of(item.entity);
+        each["kind"] = kind_of(item);
+        each["rect"] = json::Array{tenths(shown.rect[0]), tenths(shown.rect[1]),
+                                   tenths(shown.rect[2]), tenths(shown.rect[3])};
+        const double fraction = std::round(static_cast<double>(shown.shown) * 100.0) / 100.0;
+        if (fraction < 1.0) {
+            each["shown"] = short_number(std::max(fraction, 0.01));
+        }
+        const auto& ecs = world.ecs();
+        switch (item.kind) {
+        case canvas::FrameItem::Kind::Sprite:
+            if (const auto* animated = ecs.try_get<world::AnimatedSprite2D>(item.entity);
+                animated != nullptr) {
+                each["animation"] = animated->animation;
+                each["frame"] = animated->frame;
+            } else if (const auto* sprite = ecs.try_get<world::Sprite2D>(item.entity);
+                       sprite != nullptr && sprite->hframes * sprite->vframes > 1) {
+                each["frame"] = sprite->frame;
+            }
+            break;
+        case canvas::FrameItem::Kind::Tiles:
+            each["tiles"] = static_cast<std::int64_t>(item.count);
+            break;
+        case canvas::FrameItem::Kind::Particles:
+            each["particles"] = static_cast<std::int64_t>(item.count);
+            break;
+        case canvas::FrameItem::Kind::Control: {
+            if (const ui::LabelText* label = layout.label(item.entity); label != nullptr) {
+                if (std::string text = shown_text(*label); !text.empty()) {
+                    each["text"] = std::move(text);
+                }
+            } else if (const auto percent = layout.percentages.find(item.entity);
+                       percent != layout.percentages.end()) {
+                each["text"] = percent->second.source;
+            }
+            if (const auto button = layout.buttons.find(item.entity);
+                button != layout.buttons.end() && button->second.mode != ui::DrawMode::Normal) {
+                each["draw_mode"] = ui::draw_mode_name(button->second.mode);
+            }
+            if (item.entity == focused) {
+                each["focused"] = true;
+            }
+            break;
+        }
+        }
+        drawn.push_back(std::move(each));
+    }
+    result["drawn"] = std::move(drawn);
+    for (const auto& [name, list] :
+         {std::pair{"covered", &summary.covered}, std::pair{"offscreen", &summary.offscreen},
+          std::pair{"clear", &summary.clear}}) {
+        json::Array ids;
+        for (const std::size_t index : *list) {
+            if (!included(items[index].entity)) {
+                continue;
+            }
+            if (ids.size() >= limit) {
+                truncated = true;
+                break;
+            }
+            ids.emplace_back(name_of(items[index].entity));
+        }
+        if (!ids.empty()) {
+            result[name] = std::move(ids);
+        }
+    }
+
+    // What can't draw as written: the world's sprites, layers and particles, then controls.
+    json::Array problems;
+    const auto add_problem = [&](entt::entity entity, std::string id, std::string path,
+                                 std::string message) {
+        if (!included(entity)) {
+            return;
+        }
+        json::Value each;
+        each["id"] = std::move(id);
+        each["path"] = std::move(path);
+        each["message"] = std::move(message);
+        problems.push_back(std::move(each));
+    };
+    for (const canvas::FrameProblem& problem : summary.contents.problems) {
+        add_problem(problem.entity, name_of(problem.entity), problem.path, problem.message);
+    }
+    text::Fonts* fonts = ui::fonts(world);
+    SLASH_ASSERT(fonts != nullptr, "sessions install ui");
+    for (const ui::Problem& problem : ui::check(world, *fonts)) {
+        add_problem(world.find(problem.id), problem.id, problem.path, problem.message);
+    }
+    if (!problems.empty()) {
+        result["problems"] = std::move(problems);
+    }
+
+    if (!summary.map.empty()) {
+        // Keys for what shows on the map, in the order it first shows, reading across.
+        std::vector<std::ptrdiff_t> order;
+        for (const std::vector<std::ptrdiff_t>& row : summary.map) {
+            for (const std::ptrdiff_t cell : row) {
+                if (cell >= 0 && std::ranges::find(order, cell) == order.end()) {
+                    order.push_back(cell);
+                }
+            }
+        }
+        std::vector<std::string> names;
+        names.reserve(order.size());
+        for (const std::ptrdiff_t cell : order) {
+            names.push_back(
+                name_of(items[summary.shown[static_cast<std::size_t>(cell)].item].entity));
+        }
+        const std::vector<std::string> keys = map_keys(names);
+        std::map<std::ptrdiff_t, std::string_view> key_of;
+        json::Value legend = json::Object{};
+        for (std::size_t i = 0; i < order.size(); ++i) {
+            key_of.emplace(order[i], keys[i]);
+            legend[keys[i]] = names[i];
+        }
+        const std::size_t length = keys.empty() ? 1 : keys.front().size();
+        json::Array rows;
+        for (const std::vector<std::ptrdiff_t>& row : summary.map) {
+            std::string line;
+            for (const std::ptrdiff_t cell : row) {
+                line += cell < 0 ? std::string(length, '.') : std::string(key_of.at(cell));
+            }
+            rows.emplace_back(std::move(line));
+        }
+        json::Value map;
+        map["legend"] = std::move(legend);
+        map["rows"] = std::move(rows);
+        result["map"] = std::move(map);
+    }
+    if (truncated) {
+        result["truncated"] = true;
+    }
+    return Reply::success(std::move(result));
+}
+
 // ---- Storyboard ----
 
 // The storyboard's entries, or a failure listing every problem in its files.
@@ -3700,6 +4000,38 @@ void register_builtin_commands(Registry& registry) {
             {"time", std::move(capture_time)},
         }),
         .handler = frame_capture,
+    });
+
+    json::Value summary_region =
+        property("array", "Only this part of the window: [x, y, width, height] in pixels.");
+    summary_region["items"]["type"] = "number";
+    summary_region["minItems"] = 4;
+    summary_region["maxItems"] = 4;
+    json::Value summary_map = property(
+        "array", "Add a text picture of the frame (or region), [columns, rows]: each cell is the "
+                 "legend key of what shows at its center, \".\" for nothing.");
+    summary_map["items"]["type"] = "integer";
+    summary_map["items"]["minimum"] = 1;
+    summary_map["items"]["maximum"] = kMaxMapCells;
+    summary_map["minItems"] = 2;
+    summary_map["maxItems"] = 2;
+    registry.add({
+        .name = "frame.summary",
+        .description = "Says what the window shows now, as data instead of an image: each sprite, "
+                       "tile map layer, particle emitter and control that shows, in drawing "
+                       "order, with its rect in window pixels, its text, and how much of it shows "
+                       "when not all; what is covered, offscreen or transparent; and what can't "
+                       "draw.",
+        .capabilities = {Read},
+        .effect = Effect::Read,
+        .params = params_schema({
+            {"ids", names_property("Only these entities. Default: all.")},
+            {"limit", integer_property("At most this many entries in each list. Default: 100.", 1,
+                                       1000, kDefaultSummaryLimit)},
+            {"map", std::move(summary_map)},
+            {"region", std::move(summary_region)},
+        }),
+        .handler = frame_summary,
     });
 
     json::Value physics_point = property("array", "[x, y]");

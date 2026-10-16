@@ -75,6 +75,9 @@ void set_viewport(world::World& world, Vec2 viewport);
 // Whether an entity is a control: it has Control or one of the UI components that draw in or lay
 // out one (Label, ColorRect, Panel, a container and so on).
 [[nodiscard]] bool is_control(const world::World& world, entt::entity entity);
+// The control type an entity draws as, as Godot's class: "Button", "Label", "VBoxContainer" for
+// a vertical BoxContainer and so on, or "Control" when it has only a Control.
+[[nodiscard]] std::string_view control_class(const world::World& world, entt::entity entity);
 
 // A style box, as Godot's StyleBox: what a panel or a bar draws behind its content, and the
 // margins its content keeps. Flat ones are rects with rounded corners, borders and a shadow
@@ -406,12 +409,21 @@ struct DrawCall {
     std::vector<render::Vertex2D> vertices;
 };
 
+// Which control drew which vertices: calls[call].vertices [first, first + count).
+struct DrawSpan {
+    entt::entity entity = entt::null;
+    std::size_t call = 0;
+    std::size_t first = 0;
+    std::size_t count = 0;
+};
+
 // What drawing a layout takes, in order: draws in a row with the same texture are merged.
 struct DrawList {
     std::vector<DrawCall> calls;
-    std::size_t controls = 0; // controls drawn
-    std::size_t glyphs = 0;   // glyph images drawn, outlines and shadows included
-    std::size_t boxes = 0;    // style boxes and textures drawn
+    std::vector<DrawSpan> spans; // in drawing order
+    std::size_t controls = 0;    // controls drawn
+    std::size_t glyphs = 0;      // glyph images drawn, outlines and shadows included
+    std::size_t boxes = 0;       // style boxes and textures drawn
 };
 [[nodiscard]] DrawList draw_calls(const Layout& layout, const world::World& world,
                                   text::Fonts& fonts);

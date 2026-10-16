@@ -8,6 +8,7 @@ add_executable(slash_tests
     test_debug.cpp
     test_exporter.cpp
     test_fixed_step.cpp
+    test_frame_summary.cpp
     test_gui.cpp
     test_input.cpp
     test_json.cpp

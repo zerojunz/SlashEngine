@@ -684,6 +684,9 @@ DrawList draw_calls(const Layout& layout, const world::World& world, text::Fonts
         const Vec4 tint =
             times(placed.modulate, (control != nullptr ? *control : kDefaultControl).self_modulate);
         const Rect bounds{0.0F, 0.0F, placed.size.x, placed.size.y};
+        const std::size_t calls_before = list.calls.size();
+        const std::size_t vertices_before =
+            list.calls.empty() ? 0 : list.calls.back().vertices.size();
         bool drawn = false;
         if (const auto found = layout.boxes.find(placed.entity); found != layout.boxes.end()) {
             for (const Box& box : found->second) {
@@ -730,6 +733,16 @@ DrawList draw_calls(const Layout& layout, const world::World& world, text::Fonts
         }
         if (drawn) {
             ++list.controls;
+        }
+        // What it added: the rest of the call it may have gone on with, then its own calls.
+        for (std::size_t call = calls_before == 0 ? 0 : calls_before - 1; call < list.calls.size();
+             ++call) {
+            const std::size_t first = call + 1 == calls_before ? vertices_before : 0;
+            const std::size_t end = list.calls[call].vertices.size();
+            if (end > first) {
+                list.spans.push_back(
+                    {.entity = placed.entity, .call = call, .first = first, .count = end - first});
+            }
         }
     }
     return list;

@@ -15,7 +15,7 @@ do through them counts as a bug:
 3. **Every action is a command.** One registry of commands is the only way to change a world, and
    it is served the same way over MCP, JSON-RPC, REST and the command line.
 4. **An agent can observe the result.** Commands return structured JSON, logs are JSON lines,
-   and `frame.capture` draws what the window shows; later milestones add frame summaries.
+   `frame.capture` draws what the window shows and `frame.summary` lists it as data.
 
 There is no GUI editor. People use a text editor, their agent and the debug overlay that F3
 shows in `slash-cli run`.
@@ -267,6 +267,12 @@ GPU device's shaders, so it gives the same pixels on every machine. `frame.captu
 frame the window shows on it, returning pixel colors, a PNG to look at or a file: that is how an
 agent checks what a player sees with no window or GPU. Tests draw on both devices and hold them
 to the same pixels.
+
+A **frame summary** (`frame.summary`) reads the same frame thing by thing instead of pixel by
+pixel: each sprite, tile map layer, particle emitter and control that shows, where it is and how
+much of it shows, what is covered, offscreen or transparent, and what can't draw, with a text
+map of the window if asked. It answers "can the player see the coin?" in a few dozen tokens,
+where an image costs hundreds and needs a model that sees.
 
 Shaders are written once in HLSL. Vulkan's SPIR-V and Metal's MSL are compiled ahead of time
 and committed, so building the engine needs no shader tools, and Direct3D 12 compiles the HLSL at
@@ -581,6 +587,7 @@ OpenAI-compatible servers (including local ones), Anthropic and Gemini; see the
 | Focus | The one control that gets the keyboard's and gamepad's `ui_*` actions first, which the arrow keys and Tab move |
 | Fallback font | A font a `.font.json` file lists for the characters it lacks, tried in order |
 | Font | A `.ttf` or `.otf` file, or a `.font.json` file naming one with settings |
+| Frame summary | What the window shows, listed thing by thing as data: rects, how much shows, what is hidden and why |
 | Front end | A way to reach the commands: MCP, JSON-RPC, REST or the CLI |
 | Hot reload | Reloading edited files, and updating prefab instances, while the game runs |
 | Input event | A key, mouse, touch, gamepad or action event, queued for the next tick |

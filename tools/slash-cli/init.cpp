@@ -195,8 +195,9 @@ description: Build or change scenes in this SlashEngine game through the slashen
    ```
 
 5. Check the result with `world_query` (IDs only unless you pass `include`) or `entity_get`. To
-   see what a player would, call `frame_capture` with `points` (pixel colors) or with
-   `"image": true` and a small `scale`.
+   see what a player would, call `frame_summary`: what shows where, what is covered, offscreen
+   or can't draw, and with `map` a text picture. Use `frame_capture` with `points` (pixel colors)
+   or `"image": true` and a small `scale` only when colors matter.
 6. If something is wrong, `undo` reverts the whole batch.
 7. Call `scene_save`, then `test_run`: it runs the tests in `tests/` and `storyboard_check`, and
    returns only the checks that failed.
