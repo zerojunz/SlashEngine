@@ -71,16 +71,17 @@ void register_import_commands(command::Registry& registry) {
     params["additionalProperties"] = false;
     params["required"] = json::Array{"source"};
     params["properties"]["source"] =
-        property("string", "Folder in the project holding a Godot 4 project (its project.godot).");
+        property("string", "Folder holding a Godot 4 project (with project.godot) or a Unity "
+                           "project (with Assets/ and ProjectSettings/).");
     params["properties"]["dry_run"] =
         property("boolean", "Return the report and the files it would write; write nothing.");
 
     registry.add({
         .name = "project.import",
         .description =
-            "Converts a Godot 4 project's scenes, resources, input map and settings into "
-            "this project, using its assets where they are. Each script becomes a "
-            "storyboard task to port it to C++. Reports what didn't convert.",
+            "Converts a Godot 4 or Unity project's scenes, prefabs, resources, input and "
+            "settings into this project, using its assets where they are. Each script "
+            "becomes a storyboard task to port it to C++. Reports what didn't convert.",
         .capabilities = {Capability::Read, Capability::Filesystem},
         .effect = command::Effect::Read,
         .params = std::move(params),

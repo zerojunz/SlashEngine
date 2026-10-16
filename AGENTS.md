@@ -288,8 +288,8 @@ marked 10.0), Android 11 (API level 30, targeting 36), and Chrome 85, Firefox 79
 
 ## Importing games from other engines
 
-`tools/importer` converts a game made in another engine into a SlashEngine project; for now that
-is Godot 4 (Unity, then Unreal, are on the roadmap). It registers `project.import`, which
+`tools/importer` converts a game made in another engine into a SlashEngine project: Godot 4 and
+Unity (Unreal is on the roadmap). It registers `project.import`, which
 `slash-cli import <folder>` and slash-mcp serve; `--dry-run` and `"dry_run": true` return the
 report and the files it would write. `src/godot_text.cpp` parses Godot's text formats
 (`.tscn`, `.tres`, `project.godot`) and `src/godot_import.cpp` converts them: a `.scene.json`
@@ -302,6 +302,17 @@ through its `choices`, and a value that fails its file's schema (scene, tile set
 layout or animation) is left out and reported, so one bad value can't stop a file. Everything that didn't
 convert goes in `import/godot.json`, once per kind. `docs/reference/godot-import.md` maps each
 node and setting; `examples/import-godot` imports a small platformer.
+
+`src/unity_yaml.cpp` reads Unity's YAML (scenes, prefabs, assets, settings and `.meta` files)
+and `src/unity_import.cpp` converts a project with `Assets/` and `ProjectSettings/`: a
+`.scene.json` beside each `.unity` and `.prefab` file, prefabs staying prefabs that scenes
+instance (an instance's objects take Unity's IDs, `(instance ^ source) & 0x7FFFFFFFFFFFFFFF`,
+and stripped objects resolve to what they stand for), units scaled to pixels by the pixels per
+unit most sprites use, settings and both input systems merged into `project.json`, and a task
+per C# script. Objects a prefab brings are written whole, so `format_scene` keeps only what
+differs. `src/common.cpp` holds what both importers share: paths, the report and the tasks.
+`docs/reference/unity-import.md` maps each component and setting; `examples/import-unity`
+imports a small platformer.
 
 ## Rendering
 
