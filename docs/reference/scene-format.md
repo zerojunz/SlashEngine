@@ -263,6 +263,7 @@ A reference must name an entity that exists in the same scene.
 | | `scale` | `Vec2` | `[1, 1]` | Drawn scaled around `pivot_offset`; layout doesn't change |
 | | `pivot_offset` | `Vec2` | `[0, 0]` | The point it turns and scales around, from its top-left corner |
 | | `visible` | `bool` | `true` | Draw it and its children |
+| | `clip_contents` | `bool` | `false` | Cut off its drawing and its children's at its rect, and let the pointer reach only the part of its children inside it ([scrolling](#scrolling)); a `ScrollContainer` always does |
 | | `modulate` | `Vec4` | `[1, 1, 1, 1]` | Tints it and its children, as [r, g, b, a] |
 | | `self_modulate` | `Vec4` | `[1, 1, 1, 1]` | Tints it only |
 | | `z_index` | `int` | `0` | Draws over controls with a lower one, added to its parent's; -4096 to 4096 |
@@ -325,6 +326,13 @@ A reference must name an entity that exists in the same scene.
 | | `ticks_on_borders` | `bool` | `false` | Draw the first and last ticks, at its ends |
 | | `ticks_position` | `std::string` | `"bottom_right"` | Where the ticks are: `bottom_right` (below, or right of a vertical one), `top_left`, `both` or `center` |
 | | `vertical` | `bool` | `false` | Godot's `VSlider`: its minimum at the bottom; otherwise an `HSlider` |
+| `ScrollBar` | `value` | `double` | `0` | The [scroll bar](#scrolling)'s value, between `min_value` and `max_value - page` |
+| | `min_value`, `max_value` | `double` | `0`, `100` | The values at its ends |
+| | `page` | `double` | `0` | The part of the range in view: the grabber is this share of the bar long, and a click beside it moves the value this much |
+| | `step` | `double` | `0` | The value is a multiple of it from `min_value`; 0 for any value |
+| | `custom_step` | `float` | `-1` | What the `ui_*` actions and its arrows step it by; -1 for `step` |
+| | `rounded`, `allow_greater`, `allow_lesser` | `bool` | `false` | As `Slider`'s |
+| | `vertical` | `bool` | `false` | Godot's `VScrollBar`; otherwise an `HScrollBar` |
 | `Button` | `text` | `std::string` | `""` | The [button](#buttons)'s text; lines break at `"\n"` |
 | | `icon` | `std::string` | `""` | Project path of a PNG or BMP file drawn beside the text |
 | | `flat` | `bool` | `false` | Draw no style box, only the text and icon |
@@ -414,6 +422,13 @@ A reference must name an entity that exists in the same scene.
 | | `last_wrap_alignment` | `std::string` | `"inherit"` | Where the last line's children go when it isn't full: `inherit` (as `alignment`), `begin`, `center` or `end` |
 | | `reverse_fill` | `bool` | `false` | Fill rows from the bottom up, or columns from the right |
 | `PanelContainer` | | | | Draws the theme's `panel` style box and fits its children inside its margins |
+| `ScrollContainer` | `horizontal_scroll_mode`, `vertical_scroll_mode` | `std::string` | `"auto"` | How it [scrolls](#scrolling) on each axis: `disabled` (no scrolling: it is as big as its children), `auto` (a scroll bar when they don't fit), `always`, `never` (scrolls, with no bar) or `reserve` (as `auto`, with room kept for the bar) |
+| | `scroll_horizontal`, `scroll_vertical` | `int` | `0` | Pixels scrolled right and down; held to what its children leave at the next tick |
+| | `scroll_horizontal_custom_step`, `scroll_vertical_custom_step` | `float` | `-1` | What its scroll bars step by; -1 for their own |
+| | `scroll_deadzone` | `int` | `0` | Pixels a touch moves before it drags the scroll |
+| | `follow_focus` | `bool` | `false` | Scroll to show a control inside it that gets focus |
+| | `scroll_horizontal_by_default` | `bool` | `false` | The wheel scrolls across, and Shift with the wheel down |
+| | `draw_focus_border` | `bool` | `false` | Draw its `focus` style box while it or a control inside it has focus |
 | `AudioStreamPlayer` | `stream` | `std::string` | `""` | Project path of a `.wav`, `.ogg`, `.mp3` or [`.audio.json`](#audio-streams) file; `""` plays nothing |
 | | `volume_db` | `float` | `0` | Volume in dB, -80 or more |
 | | `pitch_scale` | `float` | `1` | Speed and pitch, times the sound's own, 0.01 to 16 |
@@ -1135,6 +1150,7 @@ Godot's code, so a layout comes out as it would in Godot, to the pixel.
 | `MarginContainer` | Each in its whole rect less its margins | `margin_left`, `margin_top`, `margin_right`, `margin_bottom` (0) |
 | `CenterContainer` | Each at its minimum size in its center | |
 | `PanelContainer` | Each in its rect less its `panel` style box's margins, drawn under them | |
+| `ScrollContainer` | Each at its minimum size, or as wide or tall as the visible area on an axis it expands on, moved by the [scroll](#scrolling) | `scrollbar_margin_*`, `scrollbar_h_separation`, `scrollbar_v_separation` |
 
 - A container is at least as big as its children need: a box the sum of their minimum sizes
   along it plus the separations, a grid its columns' and rows', a margin or panel container its
@@ -1279,6 +1295,47 @@ button draws the `_mirrored` ones.
   `editable`). Its minimum size is the track's width and the grabber's height (the other way
   round for a vertical one).
 - Not yet: `exp_edit`, `custom_step`, theme sounds and `share` between ranges.
+
+### Scrolling
+
+`ScrollContainer` is Godot's: it shows its children through its rect, moved by its scroll, with
+scroll bars when they don't fit. `ScrollBar` is Godot's `HScrollBar`, or `VScrollBar` with
+`vertical`, on its own. `Control.clip_contents` cuts any control's children off at its rect.
+
+```json
+"log": {"components": {
+  "Control": {"children": ["quests"], "offset_right": 160, "offset_bottom": 164},
+  "ScrollContainer": {"follow_focus": true, "horizontal_scroll_mode": "disabled"}}}
+```
+
+- Each child takes its minimum size, or the whole visible width or height on an axis where its
+  size flags expand, then moves left and up by `scroll_horizontal` and `scroll_vertical`.
+  Scrolling goes as far as the biggest child leaves: `ui.layout`'s `scroll_max`. A scroll set
+  from outside the UI, such as with `component.set`, is held to that at the next tick.
+- With `auto`, a scroll bar shows on an axis whose children don't fit, along the right edge (the
+  left one right to left) or the bottom, and the bars take room from the view. `always` shows
+  it anyway, `reserve` keeps its room even while hidden, `never` scrolls with no bar and
+  `disabled` doesn't scroll: the container grows to its children's size on that axis.
+- The wheel scrolls an eighth of the visible height a turn (Shift, or
+  `scroll_horizontal_by_default`, sideways); what it can't scroll goes on to the container
+  outside. Buttons and other controls inside let wheel events through, as Godot's
+  `force_pass_scroll_events` does.
+- A finger scrolls it by dragging past `scroll_deadzone` (`scroll_started`), and it glides on
+  when let go, slowing by 1000 pixels a second each second, until it stops or reaches an end
+  (`scroll_ended`). Touches start on the container itself or a child that passes the pointer
+  (`mouse_filter` `pass`); a button stops them, as in Godot.
+- With `follow_focus`, a control inside that gets focus is scrolled into view, the inner
+  container first when they nest.
+- A scroll bar's grabber is `page`'s share of the bar long. A click before or after it moves the
+  value a page; dragging it moves the value with the pointer; the wheel moves it an eighth of a
+  page. Each change emits `value_changed` with `{"value": number}` and `scrolling`. A
+  container's own bars work the same and move its scroll, emitting nothing; `ui.layout` lists
+  which are showing.
+- A clipping control (`clip_contents`, or any `ScrollContainer`) draws its children only inside
+  its rect, and the pointer reaches only what shows. `ui.layout` gives a control partly cut off
+  a `shown_rect` and one cut off entirely `clipped`; `frame.summary` lists those under
+  `clipped` and counts only what shows.
+- Not yet: scroll hints (`scroll_hint_mode`) and a scroll bar's smooth scrolling.
 
 ### Text fields
 
@@ -1473,9 +1530,16 @@ its `theme_override_*` fields, then its [themes](#themes), then the defaults bel
 | | constant | `outline_size` | `0` |
 | | constant | `caret_width` | `1` |
 | | constant | `wrap_offset` | `10`, pixels left free at the right of wrapped rows |
-| `HScrollBar`, `VScrollBar` (a TextEdit's) | style | `scroll` | flat `[0.1, 0.1, 0.1, 0.6]`, `corner_radius` 10, `content_margin` 4 across it |
+| `HScrollBar`, `VScrollBar` | style | `scroll` | flat `[0.1, 0.1, 0.1, 0.6]`, `corner_radius` 10, `content_margin` 4 across it |
+| | style | `scroll_focus` | as `Button`'s `focus` |
 | | style | `grabber` | flat `[1, 1, 1, 0.4]`, `corner_radius` 10, `content_margin` 4 |
-| `ScrollBar` (`HScrollBar`, `VScrollBar`) | constant | `padding_left`, `padding_top`, `padding_right`, `padding_bottom` | `0` |
+| | style | `grabber_highlight`, `grabber_pressed` | the same shape, `[1, 1, 1, 0.75]` while hovered and `[0.75, 0.75, 0.75, 0.75]` while dragged |
+| | icon | `increment`, `increment_highlight`, `increment_pressed`, `decrement`, `decrement_highlight`, `decrement_pressed` | `""`: no arrows |
+| | constant | `padding_top`, `padding_bottom` (`HScrollBar`), `padding_left`, `padding_right` (`VScrollBar`) | `0` |
+| `ScrollContainer` | style | `panel` | empty: it draws nothing behind its children |
+| | style | `focus` | a `[1, 1, 1, 0.75]` border 2 wide, `expand_margin` 4, no center, drawn with `draw_focus_border` |
+| | constant | `scrollbar_margin_left`, `scrollbar_margin_top`, `scrollbar_margin_right`, `scrollbar_margin_bottom` | `-1`: the `panel` style box's margin on that side; the gap between the bars and its edges |
+| | constant | `scrollbar_h_separation`, `scrollbar_v_separation` | `0`, between the vertical or horizontal bar and the children |
 | `BoxContainer` (`HBoxContainer`, `VBoxContainer`) | constant | `separation` | `4` |
 | `GridContainer`, `FlowContainer` (`HFlowContainer`, `VFlowContainer`) | constant | `h_separation`, `v_separation` | `4` |
 | `MarginContainer` | constant | `margin_left`, `margin_top`, `margin_right`, `margin_bottom` | `0` |

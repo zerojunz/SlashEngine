@@ -197,6 +197,10 @@ struct Placed {
     int z = 0;                             // its z_index plus its parents'
     // Its texture_filter, or the nearest parent's that isn't "inherit"; "inherit" if none is.
     std::string texture_filter = "inherit";
+    // The part of the viewport it draws in, [left, top, right, bottom]: what the controls
+    // around it that clip leave, and its own rect too when it clips; nullopt when none clips.
+    std::optional<Vec4> clip;
+    bool clips = false; // it clips itself and its children: clip_contents, or a ScrollContainer
 };
 
 // A style box a control draws, and where in its rect.
@@ -228,6 +232,40 @@ struct SliderState {
     bool center_grabber = false;
     bool highlighted = false; // hovered or focused while editable, so drawn highlighted
     bool rtl = false;         // laid out right to left, so a horizontal one runs from the right
+};
+
+// A scroll bar as laid out, as ScrollBar measures itself: a ScrollBar's, or one of a
+// ScrollContainer's. Lengths run along it: across a horizontal one, down a vertical one.
+struct ScrollBarView {
+    Vec2 position; // in its control's rect
+    Vec2 size;
+    bool vertical = false;
+    bool visible = false; // a ScrollContainer hides a bar it doesn't need
+    // Its range, as Range keeps it: max_value at least min_value, page at most the span.
+    double min_value = 0.0;
+    double max_value = 0.0;
+    double page = 0.0;
+    double step = 0.0;
+    double value = 0.0;
+    double ratio = 0.0;
+    double custom_step = -1.0; // what its arrows and the ui_* actions step by; -1 for step
+    float decrement = 0.0F;    // its decrement icon's length, as a click finds it
+    float increment = 0.0F;
+    float begin = 0.0F;          // its scroll style's margin at its start
+    double area = 0.0;           // the length the grabber moves along, as get_area_size
+    double grabber_offset = 0.0; // from the start of the area
+    double grabber_size = 0.0;
+};
+
+// A ScrollContainer as laid out: its scroll bars, how far it is scrolled, and the part of its
+// rect its children show in, less the bars.
+struct ScrollView {
+    ScrollBarView h;
+    ScrollBarView v;
+    Vec2 scroll;     // [scroll_horizontal, scroll_vertical] in range, in whole pixels
+    Vec2 scroll_max; // how far each can go
+    Vec2 visible_position;
+    Vec2 visible_size;
 };
 
 // A LineEdit as laid out: its theme items and what it shows.
@@ -336,11 +374,16 @@ struct Layout {
     std::map<entt::entity, LabelText> percentages;  // each ProgressBar's percentage
     std::map<entt::entity, ButtonState> buttons;    // each button
     std::map<entt::entity, SliderState> sliders;
+    std::map<entt::entity, ScrollBarView> scroll_bars; // each ScrollBar's
+    std::map<entt::entity, ScrollView> scrolls;        // each ScrollContainer's
     std::map<entt::entity, LineEditView> line_edits;
     std::map<entt::entity, TextEditView> text_edits;
     // What each control draws over its text: a LineEdit's or TextEdit's caret and composition
     // underline, and a TextEdit's scroll bars.
     std::map<entt::entity, std::vector<Box>> overlays;
+    // What each control draws over its children, after the last of them with its z: a
+    // ScrollContainer's scroll bars and focus border.
+    std::map<entt::entity, std::vector<Box>> over_children;
 
     [[nodiscard]] const Placed* find(entt::entity entity) const;
     [[nodiscard]] const LabelText* label(entt::entity entity) const;
@@ -439,13 +482,21 @@ struct DrawSpan {
     std::size_t count = 0;
 };
 
+// A control's triangles as they would draw if nothing clipped them, for a control a clip cut.
+struct UncutDraw {
+    entt::entity entity = entt::null;
+    DrawCall call;
+};
+
 // What drawing a layout takes, in order: draws in a row with the same texture are merged.
+// Controls draw cut to their clip.
 struct DrawList {
     std::vector<DrawCall> calls;
-    std::vector<DrawSpan> spans; // in drawing order
-    std::size_t controls = 0;    // controls drawn
-    std::size_t glyphs = 0;      // glyph images drawn, outlines and shadows included
-    std::size_t boxes = 0;       // style boxes and textures drawn
+    std::vector<DrawSpan> spans;  // in drawing order
+    std::vector<UncutDraw> uncut; // the controls clips cut, as they would draw whole
+    std::size_t controls = 0;     // controls drawn
+    std::size_t glyphs = 0;       // glyph images drawn, outlines and shadows included
+    std::size_t boxes = 0;        // style boxes and textures drawn
 };
 [[nodiscard]] DrawList draw_calls(const Layout& layout, const world::World& world,
                                   text::Fonts& fonts);
@@ -455,8 +506,10 @@ struct DrawList {
 // Something controls did, as Godot's signals: "pressed", "toggled", "button_down" and
 // "button_up" from buttons; "text_changed", "text_submitted", "text_change_rejected" and
 // "editing_toggled" from LineEdits; "value_changed", "drag_started" and "drag_ended" from
-// sliders; and "mouse_entered", "mouse_exited", "focus_entered" and "focus_exited" from any
-// control. Each is a world event (World::emit) too, with data {"toggled_on": bool} for toggled
+// sliders; "value_changed" and "scrolling" from scroll bars; "scroll_started" and
+// "scroll_ended" from scroll containers; and "mouse_entered", "mouse_exited", "focus_entered"
+// and "focus_exited" from any control. Each is a world event (World::emit) too, with data
+// {"toggled_on": bool} for toggled
 // and editing_toggled, {"text": string} for text_changed and text_submitted,
 // {"rejected_substring": string} for text_change_rejected, {"value": number} for value_changed
 // and {"value_changed": bool} for drag_ended.

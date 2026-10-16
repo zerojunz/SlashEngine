@@ -1,0 +1,151 @@
+{
+  "entities": {
+    "island": {
+      "components": {
+        "ColorRect": {
+          "color": [0.3, 0.6, 0.3, 1.0]
+        },
+        "Control": {
+          "offset_bottom": 140.0,
+          "offset_left": 64.0,
+          "offset_right": 200.0,
+          "offset_top": 40.0
+        }
+      }
+    },
+    "log": {
+      "components": {
+        "Control": {
+          "children": ["quests"],
+          "offset_bottom": 172.0,
+          "offset_left": 8.0,
+          "offset_right": 168.0,
+          "offset_top": 8.0
+        },
+        "ScrollContainer": {
+          "follow_focus": true,
+          "horizontal_scroll_mode": "disabled"
+        }
+      }
+    },
+    "map": {
+      "components": {
+        "Control": {
+          "children": ["island"],
+          "clip_contents": true,
+          "offset_bottom": 100.0,
+          "offset_left": 184.0,
+          "offset_right": 312.0,
+          "offset_top": 8.0
+        },
+        "Panel": {}
+      }
+    },
+    "quest_1": {
+      "components": {
+        "Button": {
+          "text": "The Lost Ring"
+        },
+        "Control": {}
+      }
+    },
+    "quest_10": {
+      "components": {
+        "Button": {
+          "text": "Home Again"
+        },
+        "Control": {}
+      }
+    },
+    "quest_2": {
+      "components": {
+        "Button": {
+          "text": "Wolves at the Mill"
+        },
+        "Control": {}
+      }
+    },
+    "quest_3": {
+      "components": {
+        "Button": {
+          "text": "A Letter for Mira"
+        },
+        "Control": {}
+      }
+    },
+    "quest_4": {
+      "components": {
+        "Button": {
+          "text": "The Old Lighthouse"
+        },
+        "Control": {}
+      }
+    },
+    "quest_5": {
+      "components": {
+        "Button": {
+          "text": "Herbs for the Healer"
+        },
+        "Control": {}
+      }
+    },
+    "quest_6": {
+      "components": {
+        "Button": {
+          "text": "Bandit Camp"
+        },
+        "Control": {}
+      }
+    },
+    "quest_7": {
+      "components": {
+        "Button": {
+          "text": "The Sunken Bell"
+        },
+        "Control": {}
+      }
+    },
+    "quest_8": {
+      "components": {
+        "Button": {
+          "text": "Rats in the Cellar"
+        },
+        "Control": {}
+      }
+    },
+    "quest_9": {
+      "components": {
+        "Button": {
+          "text": "The Silver Key"
+        },
+        "Control": {}
+      }
+    },
+    "quests": {
+      "components": {
+        "BoxContainer": {
+          "vertical": true
+        },
+        "Control": {
+          "children": ["quest_1", "quest_2", "quest_3", "quest_4", "quest_5", "quest_6", "quest_7", "quest_8", "quest_9", "quest_10"],
+          "size_flags_horizontal": "expand_fill"
+        }
+      }
+    },
+    "zoom": {
+      "components": {
+        "Control": {
+          "offset_bottom": 120.0,
+          "offset_left": 184.0,
+          "offset_right": 312.0,
+          "offset_top": 112.0
+        },
+        "ScrollBar": {
+          "page": 25.0,
+          "step": 1.0
+        }
+      }
+    }
+  },
+  "format": 1
+}

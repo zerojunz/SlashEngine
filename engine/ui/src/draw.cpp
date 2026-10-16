@@ -6,6 +6,8 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
+#include <map>
 #include <numbers>
 #include <optional>
 #include <vector>
@@ -670,79 +672,279 @@ void draw_label_pass(Drawer& drawer, DrawList& list, text::Fonts& fonts, const L
     }
 }
 
+// ---- Clipping, as a scissor cuts what an item with clip_contents and its children draw ----
+
+// A vertex with its color as numbers, for cutting triangles between vertices.
+struct Corner {
+    float x = 0.0F;
+    float y = 0.0F;
+    float u = 0.0F;
+    float v = 0.0F;
+    std::array<float, 4> rgba{};
+};
+
+Corner corner_of(const render::Vertex2D& vertex) {
+    return {.x = vertex.x,
+            .y = vertex.y,
+            .u = vertex.u,
+            .v = vertex.v,
+            .rgba = {static_cast<float>(vertex.rgba[0]), static_cast<float>(vertex.rgba[1]),
+                     static_cast<float>(vertex.rgba[2]), static_cast<float>(vertex.rgba[3])}};
+}
+
+render::Vertex2D vertex_of(const Corner& corner) {
+    const auto byte = [](float value) {
+        return static_cast<std::uint8_t>(std::lround(std::clamp(value, 0.0F, 255.0F)));
+    };
+    return {.x = corner.x,
+            .y = corner.y,
+            .u = corner.u,
+            .v = corner.v,
+            .rgba = {byte(corner.rgba[0]), byte(corner.rgba[1]), byte(corner.rgba[2]),
+                     byte(corner.rgba[3])}};
+}
+
+Corner between(const Corner& a, const Corner& b, float t) {
+    const auto mix = [t](float from, float to) { return from + ((to - from) * t); };
+    return {.x = mix(a.x, b.x),
+            .y = mix(a.y, b.y),
+            .u = mix(a.u, b.u),
+            .v = mix(a.v, b.v),
+            .rgba = {mix(a.rgba[0], b.rgba[0]), mix(a.rgba[1], b.rgba[1]),
+                     mix(a.rgba[2], b.rgba[2]), mix(a.rgba[3], b.rgba[3])}};
+}
+
+// Cuts triangles, three vertices each, to a rect in viewport pixels [left, top, right,
+// bottom]: those inside stay as they are, those outside go, and those across an edge are cut
+// to the polygon inside it (Sutherland and Hodgman's way) and drawn as a fan. Returns whether
+// any was cut or dropped.
+bool clip_triangles(std::vector<render::Vertex2D>& vertices, Vec4 clip) {
+    const auto inside = [&](const render::Vertex2D& v) {
+        return v.x >= clip.x && v.x <= clip.z && v.y >= clip.y && v.y <= clip.w;
+    };
+    std::vector<render::Vertex2D> out;
+    out.reserve(vertices.size());
+    bool cut = false;
+    std::vector<Corner> polygon;
+    std::vector<Corner> next;
+    for (std::size_t first = 0; first + 3 <= vertices.size(); first += 3) {
+        const render::Vertex2D* triangle = &vertices[first];
+        if (inside(triangle[0]) && inside(triangle[1]) && inside(triangle[2])) {
+            out.insert(out.end(), triangle, triangle + 3);
+            continue;
+        }
+        cut = true;
+        polygon = {corner_of(triangle[0]), corner_of(triangle[1]), corner_of(triangle[2])};
+        // Each edge: the part of the polygon on its inner side.
+        for (int edge = 0; edge < 4 && !polygon.empty(); ++edge) {
+            const auto distance = [&](const Corner& c) {
+                switch (edge) {
+                case 0:
+                    return c.x - clip.x;
+                case 1:
+                    return clip.z - c.x;
+                case 2:
+                    return c.y - clip.y;
+                default:
+                    return clip.w - c.y;
+                }
+            };
+            next.clear();
+            for (std::size_t i = 0; i < polygon.size(); ++i) {
+                const Corner& a = polygon[i];
+                const Corner& b = polygon[(i + 1) % polygon.size()];
+                const float da = distance(a);
+                const float db = distance(b);
+                if (da >= 0.0F) {
+                    next.push_back(a);
+                }
+                if ((da >= 0.0F) != (db >= 0.0F)) {
+                    next.push_back(between(a, b, da / (da - db)));
+                }
+            }
+            std::swap(polygon, next);
+        }
+        for (std::size_t i = 1; i + 1 < polygon.size(); ++i) {
+            out.insert(out.end(),
+                       {vertex_of(polygon[0]), vertex_of(polygon[i]), vertex_of(polygon[i + 1])});
+        }
+    }
+    if (cut) {
+        vertices = std::move(out);
+    }
+    return cut;
+}
+
+// Where each control's drawing over its children goes: after the last control drawn within it
+// at its z, which come right after it in drawing order. Controls inside others come first.
+std::map<std::size_t, std::vector<std::size_t>> over_children_order(const Layout& layout) {
+    std::map<std::size_t, std::vector<std::size_t>> order;
+    const auto within = [&](entt::entity entity, entt::entity ancestor) {
+        for (const Placed* at = layout.find(entity); at != nullptr; at = layout.find(at->parent)) {
+            if (at->parent == ancestor) {
+                return true;
+            }
+        }
+        return false;
+    };
+    for (const auto& [entity, boxes] : layout.over_children) {
+        const auto found = layout.index.find(entity);
+        if (found == layout.index.end()) {
+            continue;
+        }
+        const std::size_t own = found->second;
+        const int z = layout.controls[own].z;
+        std::size_t last = own;
+        while (last + 1 < layout.controls.size() && layout.controls[last + 1].z == z &&
+               within(layout.controls[last + 1].entity, entity)) {
+            ++last;
+        }
+        order[last].push_back(own);
+    }
+    for (auto& [last, controls] : order) {
+        std::ranges::sort(controls, std::greater<>());
+    }
+    return order;
+}
+
 } // namespace
 
 DrawList draw_calls(const Layout& layout, const world::World& world, text::Fonts& fonts) {
     DrawList list;
     Drawer drawer(list);
     const auto& ecs = world.ecs();
-    for (const Placed& placed : layout.controls) {
-        if (!placed.visible || !world.valid(placed.entity)) {
-            continue;
-        }
-        const auto* control = ecs.try_get<world::Control>(placed.entity);
-        const Vec4 tint =
-            times(placed.modulate, (control != nullptr ? *control : kDefaultControl).self_modulate);
-        const Rect bounds{0.0F, 0.0F, placed.size.x, placed.size.y};
-        const std::size_t calls_before = list.calls.size();
-        const std::size_t vertices_before =
-            list.calls.empty() ? 0 : list.calls.back().vertices.size();
-        bool drawn = false;
-        if (const auto found = layout.boxes.find(placed.entity); found != layout.boxes.end()) {
-            for (const Box& box : found->second) {
-                if (box.style.type == StyleBox::Type::Texture) {
-                    draw_texture(drawer, box, placed, tint);
-                } else {
-                    draw_flat(drawer, box, placed, tint);
+    const std::map<std::size_t, std::vector<std::size_t>> over = over_children_order(layout);
+    std::vector<bool> counted(layout.controls.size(), false);
+    // What a control drew since calls_before (and vertices_before of the call before it), cut
+    // to its clip, as spans.
+    const auto finish = [&](const Placed& placed, std::size_t calls_before,
+                            std::size_t vertices_before) {
+        const std::size_t from = calls_before == 0 ? 0 : calls_before - 1;
+        if (placed.clip) {
+            for (std::size_t call = from; call < list.calls.size(); ++call) {
+                const std::size_t first = call + 1 == calls_before ? vertices_before : 0;
+                std::vector<render::Vertex2D>& all = list.calls[call].vertices;
+                if (all.size() <= first) {
+                    continue;
                 }
-                ++list.boxes;
+                const auto start = all.begin() + static_cast<std::ptrdiff_t>(first);
+                std::vector<render::Vertex2D> part(start, all.end());
+                const std::vector<render::Vertex2D> whole = part;
+                if (!clip_triangles(part, *placed.clip)) {
+                    continue;
+                }
+                all.erase(start, all.end());
+                all.insert(all.end(), part.begin(), part.end());
+                DrawCall uncut = list.calls[call];
+                uncut.vertices = whole;
+                list.uncut.push_back({.entity = placed.entity, .call = std::move(uncut)});
             }
-            drawn = true;
-        }
-        if (const auto found = layout.percentages.find(placed.entity);
-            found != layout.percentages.end()) {
-            const LabelText& percent = found->second;
-            if (percent.outline_size > 0 && percent.outline_color.w > 0.0F) {
-                draw_label_pass(drawer, list, fonts, percent, placed, tint, Pass::Outline,
-                                std::nullopt);
+            // Its own calls that it cut down to nothing.
+            for (std::size_t call = list.calls.size(); call > calls_before; --call) {
+                if (list.calls[call - 1].vertices.empty()) {
+                    list.calls.erase(list.calls.begin() + static_cast<std::ptrdiff_t>(call - 1));
+                }
             }
-            draw_label_pass(drawer, list, fonts, percent, placed, tint, Pass::Text, std::nullopt);
-        }
-        if (const LabelText* label = layout.label(placed.entity); label != nullptr) {
-            const std::optional<Rect> clip = label->clip ? std::optional(bounds) : std::nullopt;
-            if (label->shadow_color.w != 0.0F && label->shadow_outline_size > 0) {
-                draw_label_pass(drawer, list, fonts, *label, placed, tint, Pass::ShadowOutline,
-                                clip);
-            }
-            if (label->shadow_color.w > 0.0F) {
-                draw_label_pass(drawer, list, fonts, *label, placed, tint, Pass::Shadow, clip);
-            }
-            if (label->outline_size > 0 && label->outline_color.w != 0.0F) {
-                draw_label_pass(drawer, list, fonts, *label, placed, tint, Pass::Outline, clip);
-            }
-            draw_label_pass(drawer, list, fonts, *label, placed, tint, Pass::Text, clip);
-            drawn = true;
-        }
-        if (const auto found = layout.overlays.find(placed.entity);
-            found != layout.overlays.end()) {
-            for (const Box& box : found->second) {
-                draw_flat(drawer, box, placed, tint);
-                ++list.boxes;
-            }
-            drawn = true;
-        }
-        if (drawn) {
-            ++list.controls;
         }
         // What it added: the rest of the call it may have gone on with, then its own calls.
-        for (std::size_t call = calls_before == 0 ? 0 : calls_before - 1; call < list.calls.size();
-             ++call) {
+        for (std::size_t call = from; call < list.calls.size(); ++call) {
             const std::size_t first = call + 1 == calls_before ? vertices_before : 0;
             const std::size_t end = list.calls[call].vertices.size();
             if (end > first) {
                 list.spans.push_back(
                     {.entity = placed.entity, .call = call, .first = first, .count = end - first});
             }
+        }
+    };
+    const auto vertices_now = [&] {
+        return list.calls.empty() ? std::size_t{0} : list.calls.back().vertices.size();
+    };
+    for (std::size_t index = 0; index < layout.controls.size(); ++index) {
+        const Placed& placed = layout.controls[index];
+        if (placed.visible && world.valid(placed.entity)) {
+            const auto* control = ecs.try_get<world::Control>(placed.entity);
+            const Vec4 tint = times(
+                placed.modulate, (control != nullptr ? *control : kDefaultControl).self_modulate);
+            const Rect bounds{0.0F, 0.0F, placed.size.x, placed.size.y};
+            const std::size_t calls_before = list.calls.size();
+            const std::size_t vertices_before = vertices_now();
+            bool drawn = false;
+            if (const auto found = layout.boxes.find(placed.entity); found != layout.boxes.end()) {
+                for (const Box& box : found->second) {
+                    if (box.style.type == StyleBox::Type::Texture) {
+                        draw_texture(drawer, box, placed, tint);
+                    } else {
+                        draw_flat(drawer, box, placed, tint);
+                    }
+                    ++list.boxes;
+                }
+                drawn = true;
+            }
+            if (const auto found = layout.percentages.find(placed.entity);
+                found != layout.percentages.end()) {
+                const LabelText& percent = found->second;
+                if (percent.outline_size > 0 && percent.outline_color.w > 0.0F) {
+                    draw_label_pass(drawer, list, fonts, percent, placed, tint, Pass::Outline,
+                                    std::nullopt);
+                }
+                draw_label_pass(drawer, list, fonts, percent, placed, tint, Pass::Text,
+                                std::nullopt);
+            }
+            if (const LabelText* label = layout.label(placed.entity); label != nullptr) {
+                const std::optional<Rect> clip = label->clip ? std::optional(bounds) : std::nullopt;
+                if (label->shadow_color.w != 0.0F && label->shadow_outline_size > 0) {
+                    draw_label_pass(drawer, list, fonts, *label, placed, tint, Pass::ShadowOutline,
+                                    clip);
+                }
+                if (label->shadow_color.w > 0.0F) {
+                    draw_label_pass(drawer, list, fonts, *label, placed, tint, Pass::Shadow, clip);
+                }
+                if (label->outline_size > 0 && label->outline_color.w != 0.0F) {
+                    draw_label_pass(drawer, list, fonts, *label, placed, tint, Pass::Outline, clip);
+                }
+                draw_label_pass(drawer, list, fonts, *label, placed, tint, Pass::Text, clip);
+                drawn = true;
+            }
+            if (const auto found = layout.overlays.find(placed.entity);
+                found != layout.overlays.end()) {
+                for (const Box& box : found->second) {
+                    draw_flat(drawer, box, placed, tint);
+                    ++list.boxes;
+                }
+                drawn = true;
+            }
+            if (drawn) {
+                ++list.controls;
+                counted[index] = true;
+            }
+            finish(placed, calls_before, vertices_before);
+        }
+        // Then what the controls this one ends draw over their children, as Godot draws a
+        // ScrollContainer's scroll bars, which are its last children.
+        const auto after = over.find(index);
+        if (after == over.end()) {
+            continue;
+        }
+        for (const std::size_t own : after->second) {
+            const Placed& container = layout.controls[own];
+            if (!container.visible || !world.valid(container.entity)) {
+                continue;
+            }
+            const std::size_t calls_before = list.calls.size();
+            const std::size_t vertices_before = vertices_now();
+            for (const Box& box : layout.over_children.at(container.entity)) {
+                if (box.style.type == StyleBox::Type::Texture) {
+                    draw_texture(drawer, box, container, container.modulate);
+                } else {
+                    draw_flat(drawer, box, container, container.modulate);
+                }
+                ++list.boxes;
+            }
+            if (!counted[own]) {
+                ++list.controls;
+                counted[own] = true;
+            }
+            finish(container, calls_before, vertices_before);
         }
     }
     return list;

@@ -20,7 +20,7 @@ namespace slash::ui {
 namespace {
 
 // Each control type and the type it is built on, as Godot's classes.
-constexpr std::array<std::pair<std::string_view, std::string_view>, 32> kTypes{{
+constexpr std::array<std::pair<std::string_view, std::string_view>, 33> kTypes{{
     {"Control", ""},
     {"Label", "Control"},
     {"BaseButton", "Control"},
@@ -53,6 +53,7 @@ constexpr std::array<std::pair<std::string_view, std::string_view>, 32> kTypes{{
     {"HFlowContainer", "FlowContainer"},
     {"VFlowContainer", "FlowContainer"},
     {"PanelContainer", "Container"},
+    {"ScrollContainer", "Container"},
 }};
 
 constexpr std::array<std::string_view, 6> kKinds{"colors",     "constants", "fonts",
@@ -215,16 +216,46 @@ const std::map<std::string, ThemeItems, std::less<>>& own_defaults() {
             {"line_spacing", 4}, {"outline_size", 0}, {"caret_width", 1}, {"wrap_offset", 10}};
         text_edit.fonts = {{"font", ""}};
         text_edit.font_sizes = {{"font_size", text::kDefaultFontSize}};
-        // Scroll bars: a TextEdit's, which it draws but doesn't let the pointer drag yet.
-        themes["ScrollBar"].constants = {
-            {"padding_left", 0}, {"padding_top", 0}, {"padding_right", 0}, {"padding_bottom", 0}};
+        // Scroll bars: a track and a rounded grabber, with no arrows.
         const StyleBox grabber = flat_style(style_progress_color, 4.0F, 10);
-        themes["HScrollBar"].styles = {
-            {"scroll", flat_style(style_normal_color, {0.0F, 4.0F, 0.0F, 4.0F}, 10)},
-            {"grabber", grabber}};
-        themes["VScrollBar"].styles = {
-            {"scroll", flat_style(style_normal_color, {4.0F, 0.0F, 4.0F, 0.0F}, 10)},
-            {"grabber", grabber}};
+        const StyleBox grabber_highlight = flat_style(style_focus_color, 4.0F, 10);
+        const StyleBox grabber_pressed =
+            flat_style({style_focus_color.x * 0.75F, style_focus_color.y * 0.75F,
+                        style_focus_color.z * 0.75F, style_focus_color.w},
+                       4.0F, 10);
+        themes["ScrollBar"].constants = {{"icon_max_size", 0}};
+        for (const std::string_view type : {"HScrollBar", "VScrollBar"}) {
+            ThemeItems& bar = themes[std::string(type)];
+            const bool vertical = type == "VScrollBar";
+            bar.styles = {{"scroll", flat_style(style_normal_color,
+                                                vertical ? std::array{4.0F, 0.0F, 4.0F, 0.0F}
+                                                         : std::array{0.0F, 4.0F, 0.0F, 4.0F},
+                                                10)},
+                          {"scroll_focus", focus},
+                          {"grabber", grabber},
+                          {"grabber_highlight", grabber_highlight},
+                          {"grabber_pressed", grabber_pressed}};
+            for (const std::string_view icon : {"increment", "decrement"}) {
+                for (const std::string_view state : {"", "_highlight", "_pressed"}) {
+                    bar.icons.emplace(std::string(icon) + std::string(state), "");
+                }
+            }
+            bar.constants = vertical ? std::map<std::string, int, std::less<>>{{"padding_left", 0},
+                                                                               {"padding_right", 0}}
+                                     : std::map<std::string, int, std::less<>>{
+                                           {"padding_top", 0}, {"padding_bottom", 0}};
+        }
+        // Scroll containers draw nothing of their own but a focus outline, if asked to.
+        ThemeItems& scroll = themes["ScrollContainer"];
+        StyleBox empty_panel;
+        empty_panel.type = StyleBox::Type::Empty;
+        StyleBox scroll_focus = flat_style(style_focus_color, kMargin, kCornerRadius, false, 2);
+        scroll_focus.border_color = style_focus_color;
+        scroll_focus.expand_margin.fill(4.0F);
+        scroll.styles = {{"panel", empty_panel}, {"focus", scroll_focus}};
+        scroll.constants = {{"scrollbar_margin_left", -1},  {"scrollbar_margin_top", -1},
+                            {"scrollbar_margin_right", -1}, {"scrollbar_margin_bottom", -1},
+                            {"scrollbar_h_separation", 0},  {"scrollbar_v_separation", 0}};
         // Sliders: a track, the part of it before the grabber filled in, and a round grabber.
         for (const std::string_view type : {"HSlider", "VSlider"}) {
             ThemeItems& slider = themes[std::string(type)];
