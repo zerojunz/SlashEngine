@@ -11,6 +11,7 @@
 #include <memory>
 #include <ranges>
 #include <span>
+#include <utility>
 #include <vector>
 
 namespace slash::canvas {
@@ -288,9 +289,10 @@ Result<FrameSummary> summarize(world::World& world, asset::Assets& assets,
         area = {.x0 = x, .y0 = y, .x1 = x + width, .y1 = y + height};
     }
 
-    // What each item drew and where; those that reach the area are sampled.
+    // What each item drew and where; those that reach the area are sampled, their triangles in
+    // drawing order.
     std::vector<Bounds> drawn(items.size());
-    std::vector<Triangle> triangles;
+    std::vector<std::pair<std::size_t, Triangle>> ordered;
     Bounds reach;
     for (std::size_t i = 0; i < items.size(); ++i) {
         for (const FramePiece& piece : items[i].pieces) {
@@ -304,22 +306,43 @@ Result<FrameSummary> summarize(world::World& world, asset::Assets& assets,
         reach.add(drawn[i]);
         for (const FramePiece& piece : items[i].pieces) {
             for (std::size_t first = 0; first + 3 <= piece.vertices.size(); first += 3) {
-                triangles.push_back(
-                    {.item = i, .piece = &piece, .corners = &piece.vertices[first]});
+                ordered.emplace_back(
+                    piece.order,
+                    Triangle{.item = i, .piece = &piece, .corners = &piece.vertices[first]});
             }
         }
+    }
+    std::ranges::stable_sort(ordered, {}, &std::pair<std::size_t, Triangle>::first);
+    std::vector<Triangle> triangles;
+    triangles.reserve(ordered.size());
+    for (const auto& [order, triangle] : ordered) {
+        triangles.push_back(triangle);
     }
     const Bins bins(reach, triangles);
 
     // How much of each item shows, by its pixels: drawn, in the area, and not under another.
     // The part in the area is sampled on its own, so a large thing that reaches far outside it
     // is read as closely there as a small one.
-    enum class Fate : std::uint8_t { Unseen, Shown, Offscreen, Covered, Clear };
+    enum class Fate : std::uint8_t { Unseen, Shown, Offscreen, Covered, Clear, Clipped };
     std::vector<Fate> fates(items.size(), Fate::Unseen);
     std::vector<float> shares(items.size(), 0.0F);
     for (std::size_t i = 0; i < items.size(); ++i) {
         const Bounds& bounds = drawn[i];
+        // A control's pixels as it would draw whole, for one a clip cut.
+        Bounds whole;
+        std::vector<Triangle> uncut;
+        for (const FramePiece& piece : items[i].uncut) {
+            for (std::size_t first = 0; first + 3 <= piece.vertices.size(); first += 3) {
+                uncut.push_back({.item = i, .piece = &piece, .corners = &piece.vertices[first]});
+                for (std::size_t corner = first; corner < first + 3; ++corner) {
+                    whole.add(piece.vertices[corner].x, piece.vertices[corner].y);
+                }
+            }
+        }
         if (bounds.empty()) {
+            if (!whole.empty() && (!options.region || whole.touches(area))) {
+                fates[i] = Fate::Clipped;
+            }
             continue;
         }
         if (!bounds.touches(area)) {
@@ -333,14 +356,12 @@ Result<FrameSummary> summarize(world::World& world, asset::Assets& assets,
             own = 0.0F;
             through = 1.0F;
             layers_at(bins, x, y, [&](std::size_t item, float alpha) {
-                if (item > i) {
-                    through *= 1.0F - alpha;
-                    return true;
-                }
                 if (item == i) {
                     own = alpha;
+                    return false;
                 }
-                return false;
+                through *= 1.0F - alpha;
+                return true;
             });
         };
         const Bounds inner{.x0 = std::max(bounds.x0, area.x0),
@@ -374,6 +395,22 @@ Result<FrameSummary> summarize(world::World& world, asset::Assets& assets,
                 float through = 1.0F;
                 layers(x, y, own, through);
                 if (own >= kShownShare) {
+                    count += 1.0F;
+                }
+            });
+            all = std::max(all, count * weight);
+        }
+        if (!uncut.empty()) {
+            // Cut by a clip: its share is of all it would draw.
+            const Bins own_bins(whole, uncut);
+            float count = 0.0F;
+            const float weight = sample(whole, [&](float x, float y) {
+                float alpha = 0.0F;
+                layers_at(own_bins, x, y, [&](std::size_t, float a) {
+                    alpha = a;
+                    return false;
+                });
+                if (alpha >= kShownShare) {
                     count += 1.0F;
                 }
             });
@@ -421,6 +458,13 @@ Result<FrameSummary> summarize(world::World& world, asset::Assets& assets,
                 if (const ui::Placed* placed = summary.contents.layout.find(items[i].entity);
                     placed != nullptr) {
                     rect = control_rect(*placed);
+                    if (placed->clip) {
+                        // The part its clip leaves.
+                        rect.x0 = std::clamp(rect.x0, placed->clip->x, placed->clip->z);
+                        rect.y0 = std::clamp(rect.y0, placed->clip->y, placed->clip->w);
+                        rect.x1 = std::clamp(rect.x1, placed->clip->x, placed->clip->z);
+                        rect.y1 = std::clamp(rect.y1, placed->clip->y, placed->clip->w);
+                    }
                 }
             }
             place[i] = static_cast<std::ptrdiff_t>(summary.shown.size());
@@ -438,6 +482,9 @@ Result<FrameSummary> summarize(world::World& world, asset::Assets& assets,
             break;
         case Fate::Clear:
             summary.clear.push_back(i);
+            break;
+        case Fate::Clipped:
+            summary.clipped.push_back(i);
             break;
         case Fate::Unseen:
             break;

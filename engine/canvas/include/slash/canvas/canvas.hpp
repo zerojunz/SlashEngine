@@ -65,15 +65,21 @@ struct FramePiece {
     std::uint32_t height = 0;
     render::DistanceField field; // glyphs drawn from a distance field
     std::vector<render::Vertex2D> vertices;
+    std::size_t order = 0; // where it drew among the frame's pieces
 };
 
 // Something a frame drew: a sprite, a tile map layer, a CPUParticles2D's particles or a control.
+// A control's pieces are cut to its clip, and what it draws over its children (a
+// ScrollContainer's scroll bars) draws after them.
 struct FrameItem {
     enum class Kind : std::uint8_t { Sprite, Tiles, Particles, Control };
     Kind kind = Kind::Sprite;
     entt::entity entity = entt::null;
     std::size_t count = 0; // tiles or particles drawn
     std::vector<FramePiece> pieces;
+    // For a control a clip cut: its pieces as they would draw whole. A control cut away entirely
+    // has these and no pieces.
+    std::vector<FramePiece> uncut;
 };
 
 // Something that should have drawn and couldn't, such as a sprite whose texture is missing.
@@ -321,10 +327,12 @@ struct Shown {
 // What a frame shows, as data instead of an image.
 struct FrameSummary {
     FrameContents contents;
-    std::vector<Shown> shown;                     // what shows, in drawing order
-    std::vector<std::size_t> offscreen;           // items drawn only outside the window
-    std::vector<std::size_t> covered;             // items in it but under what was drawn after them
-    std::vector<std::size_t> clear;               // items with no pixel that shows: all transparent
+    std::vector<Shown> shown;           // what shows, in drawing order
+    std::vector<std::size_t> offscreen; // items drawn only outside the window
+    std::vector<std::size_t> covered;   // items in it but under what was drawn after them
+    std::vector<std::size_t> clear;     // items with no pixel that shows: all transparent
+    std::vector<std::size_t>
+        clipped; // controls a clip cut away, as a ScrollContainer scrolled past
     std::vector<std::vector<std::ptrdiff_t>> map; // rows of cells: the place in shown of what
                                                   // shows at each cell's center, or -1
 };

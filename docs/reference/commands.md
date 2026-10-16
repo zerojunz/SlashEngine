@@ -661,9 +661,10 @@ torch and one behind the crate from it:
 Returns where [controls](scene-format.md#ui-and-text) are on screen, in drawing order, with the
 lines each label, button, progress bar and text field shows, how each
 [button](scene-format.md#buttons) draws, each [slider](scene-format.md#sliders)'s value, where
-each [text field](scene-format.md#text-fields)'s
-caret and selection are, which control has focus and which is hovered, and the mistakes that keep
-controls from laying out or working as written. A check that needs no screenshot.
+each [text field](scene-format.md#text-fields)'s caret and selection are, how far each
+[scroll container](scene-format.md#scrolling) is scrolled and what its clip cuts off, which
+control has focus and which is hovered, and the mistakes that keep controls from laying out or
+working as written. A check that needs no screenshot.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -697,7 +698,14 @@ the sign on a smaller window:
   button its shortcut just pressed draws `"hover_pressed"` for 0.2 seconds. The control with focus has `"focused": true`, and the one under the mouse
   `"hovered": true`.
 - A `Slider` has `value`, on its step and in range, and `ratio`, how far along it is from 0 to
-  1, e.g. `{"id": "volume", "ratio": 0.8, "rect": [66, 147, 226, 16], "value": 80}`.
+  1, e.g. `{"id": "volume", "ratio": 0.8, "rect": [66, 147, 226, 16], "value": 80}`. A
+  `ScrollBar` has them too.
+- A `ScrollContainer` has `scroll`, `[horizontal, vertical]` pixels scrolled, `scroll_max`, how
+  far each can go, and `scroll_bars`, the bars showing (`"horizontal"`, `"vertical"`), from
+  [examples/ui-scrolling](../../examples/ui-scrolling/):
+  `{"id": "log", "rect": [8, 8, 160, 164], "scroll": [0, 41], "scroll_bars": ["vertical"], "scroll_max": [0, 172]}`.
+- A control a [clipping](scene-format.md#scrolling) parent cuts off has `shown_rect`, the part
+  that shows, or `"clipped": true` when none of it does; `rect` is still where it is.
 - A `LineEdit`'s `lines` are what it shows: its text with an input method's composition at the
   caret, a secret field's dots, or its placeholder. It has `line_edit`, from
   [examples/text-input](../../examples/text-input/):
@@ -1961,18 +1969,20 @@ With `"map": [40, 12]` over the whole frame, the reply adds:
 - `drawn` lists what shows: `id`, `kind` (`Sprite2D`, `TileMapLayer`, `CPUParticles2D` or the
   control's type, such as `Label` or `Button`) and `rect`, its bounds in window pixels to a
   tenth, `[x, y, width, height]`, not cut to the window: a control's rect as
-  [`ui.layout`](#uilayout) places it, else the bounds of what it drew. `shown`, from 0.01 to
-  0.99, is the share of its pixels that show when not all of them do: the rest are outside the
-  window (or region) or under something drawn after it.
+  [`ui.layout`](#uilayout) places it (only the part its clip leaves, inside a
+  `ScrollContainer` or a parent with `clip_contents`), else the bounds of what it drew. `shown`,
+  from 0.01 to 0.99, is the share of its pixels that show when not all of them do: the rest are
+  outside the window (or region), under something drawn after it or cut off by a clip.
 - What each shows: an `AnimatedSprite2D`'s `animation` and `frame`, a sprite sheet's `frame`, a
   layer's `tiles` and an emitter's `particles` (how many drew), and a control's `text` as laid
   out (lines joined with `\n`, cut short with its ellipsis, only the characters
-  `visible_characters` shows), a button's `draw_mode` when it isn't `"normal"`, a slider's
-  `value` and `focused`.
+  `visible_characters` shows), a button's `draw_mode` when it isn't `"normal"`, a slider's or
+  scroll bar's `value`, a scroll container's `scroll` and `focused`.
 - `covered` lists what is in the window but wholly under what was drawn after it, `offscreen`
   what drew only outside the window (left out with a `region`) and `clear` what drew no pixel
-  that can be seen, such as a sprite whose `modulate` alpha is below 0.25. Each is left out when
-  empty.
+  that can be seen, such as a sprite whose `modulate` alpha is below 0.25. `clipped` lists
+  controls cut off entirely by a clip, such as the rows a `ScrollContainer` is scrolled past.
+  Each is left out when empty.
 - `problems` lists what can't draw as written, with the JSON Pointer of the field in the entity:
   a missing texture, material or tile set, a frame outside its sheet, and the mistakes
   [`ui.layout`](#uilayout) reports.
