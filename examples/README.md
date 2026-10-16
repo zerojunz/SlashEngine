@@ -15,7 +15,7 @@ engine. Copy from them.
 | [events](events/) | `events.subscribe` and `events.read` to hear what changed |
 | [run-until](run-until/) | `run.until`: run a game headless until something happens, in one call |
 | [storyboard](storyboard/) | Briefing before a task, editing facts with versions, and checking after |
-| [import-godot](import-godot/) | `project.import` (`slash-cli import`): a Godot 4 platformer's scenes, sprite frames, input map and settings converted in one call, its scripts turned into storyboard tasks to port to C++, and the report of what didn't convert |
+| [import-godot](import-godot/) | `project.import` (`slash-cli import`): a Godot 4 platformer's scenes, sprite frames, tile set, theme, buses, input map and settings converted in one call, its scripts turned into storyboard tasks to port to C++, and the report of what didn't convert |
 | [draw-offscreen](draw-offscreen/) | The renderer's device: drawing into a texture and reading the pixels back |
 | [frame-pacing](frame-pacing/) | V-Sync, the frame cap and frame pacing: `display.list`, `display.set` and `perf.stats` |
 | [parent-transforms](parent-transforms/) | Entities in another's `Transform2D` `children`: placed in its space, drawn after it with its `z_index`, visibility and tint, bodies moved with it, `entity.get`'s `parent` and `global`, refused loops and `entity.destroy` taking children along |

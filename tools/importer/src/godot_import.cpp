@@ -1,11 +1,14 @@
 #include "godot_import.hpp"
 
+#include "slash/audio/audio.hpp"
+#include "slash/canvas/tilemap.hpp"
 #include "slash/core/json.hpp"
 #include "slash/core/text.hpp"
 #include "slash/importer/godot_text.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/runtime/project.hpp"
 #include "slash/storyboard/storyboard.hpp"
+#include "slash/ui/ui.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/scene.hpp"
@@ -15,6 +18,7 @@
 #include <charconv>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <memory>
 #include <optional>
@@ -180,6 +184,139 @@ std::optional<std::pair<int, int>> png_size(std::string_view bytes) {
     return std::pair{read(16), read(20)};
 }
 
+// A whole number, all of text, or nullopt.
+std::optional<std::int64_t> parse_int(std::string_view text) {
+    std::int64_t value = 0;
+    const auto [end, error] = std::from_chars(text.data(), text.data() + text.size(), value);
+    if (text.empty() || error != std::errc() || end != text.data() + text.size()) {
+        return std::nullopt;
+    }
+    return value;
+}
+
+// text split at each '/'.
+std::vector<std::string_view> split_path(std::string_view text) {
+    std::vector<std::string_view> parts;
+    std::size_t start = 0;
+    while (start <= text.size()) {
+        const std::size_t end = std::min(text.find('/', start), text.size());
+        parts.push_back(text.substr(start, end - start));
+        start = end + 1;
+    }
+    return parts;
+}
+
+// --- Tile data ---------------------------------------------------------------------------------
+
+// A cell as Godot stores it: where it is and which tile of which source fills it.
+struct GodotCell {
+    int x = 0;
+    int y = 0;
+    int source = 0;
+    int atlas_x = 0;
+    int atlas_y = 0;
+    int alternative = 0;
+};
+
+std::uint16_t read_u16(std::string_view bytes, std::size_t at) {
+    return static_cast<std::uint16_t>(static_cast<unsigned char>(bytes[at]) |
+                                      (static_cast<unsigned char>(bytes[at + 1]) << 8U));
+}
+
+// Cells of 12 bytes each, little-endian: x and y as signed 16-bit numbers, then the source ID,
+// the atlas column and row and the alternative tile, as tile_map_layer.cpp and tile_map.cpp
+// write them.
+std::optional<std::vector<GodotCell>> decode_godot_cells(std::string_view bytes) {
+    constexpr std::size_t kCellSize = 12;
+    if (bytes.size() % kCellSize != 0) {
+        return std::nullopt;
+    }
+    std::vector<GodotCell> cells;
+    cells.reserve(bytes.size() / kCellSize);
+    for (std::size_t at = 0; at < bytes.size(); at += kCellSize) {
+        cells.push_back({.x = static_cast<std::int16_t>(read_u16(bytes, at)),
+                         .y = static_cast<std::int16_t>(read_u16(bytes, at + 2)),
+                         .source = read_u16(bytes, at + 4),
+                         .atlas_x = read_u16(bytes, at + 6),
+                         .atlas_y = read_u16(bytes, at + 8),
+                         .alternative = read_u16(bytes, at + 10)});
+    }
+    return cells;
+}
+
+// A PackedByteArray's bytes: base64 text since Godot 4.3, numbers before it.
+std::optional<std::string> byte_array(const Value& value) {
+    if (!value.is_call("PackedByteArray")) {
+        return std::nullopt;
+    }
+    if (value.items.empty()) {
+        return std::string();
+    }
+    if (value.items.size() == 1 && value.items.front().is_string()) {
+        return base64_decode(value.items.front().text);
+    }
+    std::string bytes;
+    for (const Value& item : value.items) {
+        if (item.kind != Value::Kind::Int || item.integer < 0 || item.integer > 255) {
+            return std::nullopt;
+        }
+        bytes += static_cast<char>(item.integer);
+    }
+    return bytes;
+}
+
+// A TileMapLayer's tile_map_data: a 16-bit format number, then its cells.
+std::optional<std::vector<GodotCell>> layer_cells(const Value& value) {
+    const auto bytes = byte_array(value);
+    if (!bytes) {
+        return std::nullopt;
+    }
+    if (bytes->empty()) {
+        return std::vector<GodotCell>{};
+    }
+    if (bytes->size() < 2 || read_u16(*bytes, 0) != 0) {
+        return std::nullopt;
+    }
+    return decode_godot_cells(std::string_view(*bytes).substr(2));
+}
+
+// A TileMap layer's tile_data, in the format TileMap saves as format = 2: three 32-bit
+// numbers per cell, holding the same 12 bytes.
+std::optional<std::vector<GodotCell>> tile_map_cells(const Value& value) {
+    const auto numbers = value.numbers();
+    if (!numbers) {
+        return std::nullopt;
+    }
+    std::string bytes;
+    for (const double number : *numbers) {
+        const auto word = static_cast<std::uint32_t>(static_cast<std::int64_t>(number));
+        for (unsigned shift = 0; shift < 32; shift += 8) {
+            bytes += static_cast<char>((word >> shift) & 0xFFU);
+        }
+    }
+    return decode_godot_cells(bytes);
+}
+
+// Godot's terrain peering bits of square tiles, as kNeighborNames indexes them.
+std::optional<std::size_t> peering_direction(std::string_view godot) {
+    constexpr std::array<std::string_view, 8> kBits{
+        "top_side",    "top_right_corner",   "right_side", "bottom_right_corner",
+        "bottom_side", "bottom_left_corner", "left_side",  "top_left_corner"};
+    for (std::size_t direction = 0; direction < kBits.size(); ++direction) {
+        if (kBits.at(direction) == godot) {
+            return direction;
+        }
+    }
+    return std::nullopt;
+}
+
+// Whether a terrain set's mode connects tiles by a direction, as canvas's terrain painting does:
+// Godot's modes match corners and sides (0), corners (1) or sides (2).
+bool connects(std::int64_t mode, std::size_t direction) {
+    const bool corner = direction % 2 == 1;
+    return mode == 1 ? corner : mode != 2 || !corner;
+}
+
 // --- Reports -----------------------------------------------------------------------------------
 
 // What couldn't come along, counted by what it is, with the first place it was seen.
@@ -309,6 +446,8 @@ constexpr std::array kNodeTypes{
     NodeType{"AudioStreamPlayer2D", Family::Node2D, "AudioStreamPlayer2D", ""},
     NodeType{"AudioListener2D", Family::Node2D, "AudioListener2D", ""},
     NodeType{"AudioStreamPlayer", Family::Plain, "AudioStreamPlayer", ""},
+    NodeType{"TileMapLayer", Family::Node2D, "TileMapLayer", ""},
+    NodeType{"TileMap", Family::Node2D, "TileMapLayer", ""},
     NodeType{"Control", Family::Control, "", ""},
     NodeType{"Label", Family::Control, "Label", ""},
     NodeType{"ColorRect", Family::Control, "ColorRect", ""},
@@ -382,10 +521,6 @@ std::string unsupported_node(std::string_view type) {
         type == "CSGBox3D") {
         return "3D comes with milestone 7";
     }
-    if (type == "TileMapLayer" || type == "TileMap") {
-        return "tile maps convert in the next importer step; rebuild the layer with tilemap.paint "
-               "meanwhile";
-    }
     if (type == "AnimationPlayer" || type == "AnimationTree") {
         return "animations convert in the next importer step";
     }
@@ -411,6 +546,10 @@ bool ignored_property(std::string_view name) {
         std::string_view{"process_callback"},
         std::string_view{"_import_path"},
         std::string_view{"script"},
+        std::string_view{"rendering_quadrant_size"},
+        std::string_view{"cell_quadrant_size"},
+        std::string_view{"collision_visibility_mode"},
+        std::string_view{"navigation_visibility_mode"},
     };
     return name.starts_with("metadata/") || name.starts_with("editor_") ||
            name.starts_with("process_thread_") || contains(kIgnored, name);
@@ -775,17 +914,26 @@ public:
         }
         convert_project(settings.value(), existing_project);
         for (const auto& [path, text_file] : text_files_) {
+            const std::string& type = text_file->type;
             if (extension_of(path) == ".tscn") {
                 convert_scene(*text_file);
-            } else if (text_file->type == "SpriteFrames" && text_file->resource != nullptr) {
-                (void)frames_file(*text_file, *text_file->resource, without_extension(path));
-            } else if (!text_file->type.empty()) {
-                resources_seen_[text_file->type].push_back(path);
+            } else if (text_file->resource != nullptr &&
+                       (type == "SpriteFrames" || type == "TileSet" || type == "Theme")) {
+                std::string why;
+                (void)converted_resource(*text_file->resource, *text_file, why);
+            } else if (text_file->resource != nullptr && type == "AudioBusLayout") {
+                (void)bus_layout_file(*text_file);
+            } else if (!type.empty()) {
+                resources_seen_[type].push_back(path);
             }
         }
+        // A resource file nothing converted used, of a type nothing converted.
         for (const auto& [type, paths] : resources_seen_) {
-            if (type != "SpriteFrames" && !resources_used_.contains(type)) {
-                for (const std::string& path : paths) {
+            if (resources_used_.contains(type)) {
+                continue;
+            }
+            for (const std::string& path : paths) {
+                if (!resources_read_.contains(path)) {
                     problems_.add("resource " + type, path, resource_why(type));
                 }
             }
@@ -816,6 +964,18 @@ private:
 
     [[nodiscard]] std::string destination(std::string_view res) const {
         return prefix_ + strip_res(res);
+    }
+
+    // The parsed .tres or .tscn file a res:// or uid:// path names, with its [resource], or
+    // nullptr.
+    const TextFile* res_file(const std::string& reference) {
+        std::string path = strip_res(reference);
+        if (path.starts_with("uid://") && uids_.contains(path)) {
+            path = uids_[path];
+        }
+        const auto it = text_files_.find(path);
+        return it != text_files_.end() && it->second->resource != nullptr ? it->second.get()
+                                                                          : nullptr;
     }
 
     // Parses every .tscn and .tres file and learns the UIDs Godot refers to files by.
@@ -917,15 +1077,6 @@ private:
     }
 
     static std::string resource_why(std::string_view type) {
-        if (type == "TileSet") {
-            return "tile sets convert in the next importer step";
-        }
-        if (type == "Theme" || type == "LabelSettings") {
-            return "themes convert in the next importer step";
-        }
-        if (type == "AudioBusLayout") {
-            return "bus layouts convert in the next importer step";
-        }
         if (type == "Animation" || type == "AnimationLibrary") {
             return "animations convert in the next importer step";
         }
@@ -1022,17 +1173,42 @@ private:
                           "the window shows the game at its own size; stretching isn't "
                           "supported yet");
         }
-        for (const auto& [key, why] :
-             {std::pair{std::string_view{"theme/custom"}, std::string_view{"themes convert in "
-                                                                           "the next importer "
-                                                                           "step"}}}) {
-            if (setting("gui", key) != nullptr) {
-                problems_.add("setting gui/" + std::string(key), "project.godot", std::string(why));
+        if (const Value* theme = setting("gui", "theme/custom");
+            theme != nullptr && theme->is_string() && !theme->text.empty()) {
+            const TextFile* file = res_file(theme->text);
+            std::string why = "not a Theme resource";
+            const std::string path = file != nullptr && file->type == "Theme"
+                                         ? converted_resource(*file->resource, *file, why)
+                                         : "";
+            if (path.empty()) {
+                problems_.add("setting gui/theme/custom", "project.godot", why);
+            } else {
+                project["gui"]["theme"] = path;
             }
         }
-        if (setting("audio", "buses/default_bus_layout") != nullptr) {
+        if (setting("gui", "theme/custom_font") != nullptr) {
+            problems_.add("setting gui/theme/custom_font", "project.godot",
+                          "set default_font in the project's theme instead");
+        }
+        // Godot uses res://default_bus_layout.tres when the setting names no other file.
+        const Value* layout = setting("audio", "buses/default_bus_layout");
+        const TextFile* buses = res_file(layout != nullptr && layout->is_string()
+                                             ? layout->text
+                                             : std::string("res://default_bus_layout.tres"));
+        if (buses != nullptr && buses->type == "AudioBusLayout") {
+            project["audio"]["bus_layout"] = bus_layout_file(*buses);
+        } else if (layout != nullptr) {
             problems_.add("setting audio/buses/default_bus_layout", "project.godot",
-                          "bus layouts convert in the next importer step");
+                          "not an AudioBusLayout resource");
+        }
+        if (const Value* rate = number("audio", "driver/mix_rate")) {
+            project["audio"]["mix_rate"] = static_cast<std::int64_t>(rate->number());
+        }
+        if (const Value* latency = number("audio", "driver/output_latency")) {
+            project["audio"]["output_latency"] = latency->number();
+        }
+        if (const Value* strength = number("audio", "general/2d_panning_strength")) {
+            project["audio"]["panning_strength_2d"] = strength->number();
         }
         convert_input(settings, project);
         for (const Section& section : settings) {
@@ -1466,9 +1642,8 @@ private:
             }
             if (extension == ".tres") {
                 const auto it = text_files_.find(path);
-                if (it != text_files_.end() && it->second->type == "SpriteFrames" &&
-                    it->second->resource != nullptr) {
-                    return frames_file(*it->second, *it->second->resource, without_extension(path));
+                if (it != text_files_.end() && it->second->resource != nullptr) {
+                    return converted_resource(*it->second->resource, *it->second, why);
                 }
                 why = it != text_files_.end() ? it->second->type + " resources"
                                               : "a missing resource";
@@ -1486,16 +1661,692 @@ private:
                 why = "a missing sub-resource";
                 return {};
             }
-            const std::string type = sub->second->field_string("type");
-            if (type == "SpriteFrames") {
-                return frames_file(file, *sub->second,
-                                   without_extension(file.path) + "_" + snake_case(id));
-            }
-            why = type + " resources";
-            return {};
+            return converted_resource(*sub->second, file, why);
         }
         why = reference.text + " references";
         return {};
+    }
+
+    // The file a resource converts to, written once: sprite frames, a tile set or a theme. A
+    // .tres file's becomes a file beside it, a scene's own one "<scene>_<id>". "" with why for
+    // other types.
+    std::string converted_resource(const Section& section, const TextFile& file, std::string& why) {
+        const std::string type = resource_type(section, file);
+        const std::string base = resource_base(section, file);
+        if (type == "SpriteFrames") {
+            return frames_file(file, section, base);
+        }
+        if (type == "TileSet") {
+            std::string path = tile_set_file(file, section, base).path;
+            if (path.empty()) {
+                why = "a tile set with no atlas source that converts";
+            }
+            return path;
+        }
+        if (type == "Theme") {
+            return theme_file(file, section, base);
+        }
+        why = type + " resources";
+        return {};
+    }
+
+    // The path a resource's converted file is named after, without its suffix.
+    static std::string resource_base(const Section& section, const TextFile& file) {
+        return section.tag == "resource"
+                   ? without_extension(file.path)
+                   : without_extension(file.path) + "_" + snake_case(section.field_string("id"));
+    }
+
+    // Where a resource is declared, for reports.
+    static std::string resource_where(const Section& section, const TextFile& file) {
+        return section.tag == "resource" ? file.path
+                                         : file.path + ": " + section.field_string("id");
+    }
+
+    // Keeps only what validates, reporting the rest, so one bad value can't stop a file.
+    template <typename Validate>
+    void keep_valid(json::Value& doc, const std::string& path, Validate validate) {
+        for (int pass = 0; pass < 64; ++pass) {
+            const std::vector<json::ValidationError> errors = validate(doc);
+            if (errors.empty()) {
+                return;
+            }
+            for (const json::ValidationError& error : errors) {
+                problems_.add("invalid value", path + ": " + error.path, error.message);
+                if (!remove_pointer(doc, error.path)) {
+                    return;
+                }
+            }
+        }
+    }
+
+    // --- Tile sets and tile maps ---
+
+    // A tile set as converted: its file, its sources' names by Godot's source IDs, and what it
+    // holds, for writing cells.
+    struct TileSetFile {
+        std::string path;
+        std::map<std::int64_t, std::string> sources;
+        std::optional<canvas::TileSet> set;
+    };
+
+    // Writes a TileSet resource as a .tileset.json file once.
+    TileSetFile& tile_set_file(const TextFile& file, const Section& resource,
+                               const std::string& base) {
+        const std::string key = file.path + "#" + base;
+        if (const auto done = tile_sets_.find(key); done != tile_sets_.end()) {
+            return done->second;
+        }
+        TileSetFile& out = tile_sets_[key];
+        out.path = destination(base + std::string(canvas::kTileSetSuffix));
+        resources_used_.insert("TileSet");
+        const std::string where = resource_where(resource, file);
+        json::Value doc;
+        doc["format"] = 1;
+        std::array<std::int64_t, 2> tile_size{16, 16};
+        // Terrain sets by index: their modes and their terrains' names by index.
+        std::map<std::int64_t, std::int64_t> modes;
+        std::map<std::pair<std::int64_t, std::int64_t>, std::string> terrains;
+        std::vector<std::pair<std::int64_t, const Value*>> sources;
+        for (const auto& [name, value] : resource.properties) {
+            const std::vector<std::string_view> parts = split_path(name);
+            if (name == "resource_name" || name == "resource_local_to_scene") {
+                continue;
+            }
+            if (name == "tile_size") {
+                if (const auto xy = value.numbers(); xy && xy->size() == 2) {
+                    tile_size = {static_cast<std::int64_t>(xy->at(0)),
+                                 static_cast<std::int64_t>(xy->at(1))};
+                }
+            } else if (name == "tile_shape") {
+                if (value.number() != 0.0) {
+                    problems_.add("tile shape", where,
+                                  "only square tiles convert; isometric and hexagonal tile maps "
+                                  "are on the roadmap");
+                }
+            } else if (parts.size() == 2 && parts[0] == "sources") {
+                if (const auto id = parse_int(parts[1])) {
+                    sources.emplace_back(*id, &value);
+                }
+            } else if (parts[0].starts_with("terrain_set_")) {
+                const std::int64_t set =
+                    parse_int(parts[0].substr(std::string_view("terrain_set_").size()))
+                        .value_or(-1);
+                const bool named = parts.size() == 3 && parts[1].starts_with("terrain_");
+                if (set >= 0 && parts.size() == 2 && parts[1] == "mode") {
+                    modes[set] = static_cast<std::int64_t>(value.number());
+                } else if (set >= 0 && named && parts[2] == "name") {
+                    if (const auto terrain =
+                            parse_int(parts[1].substr(std::string_view("terrain_").size()))) {
+                        terrains[{set, *terrain}] = value.text;
+                    }
+                } else if (set < 0 || !named || parts[2] != "color") {
+                    problems_.add("TileSet." + name, where);
+                }
+            } else if (parts[0].starts_with("physics_layer_")) {
+                problems_.add("tile collision", where,
+                              "tile set collision is on the roadmap; add bodies over the tiles "
+                              "meanwhile");
+            } else if (parts[0].starts_with("navigation_layer_") ||
+                       parts[0].starts_with("occlusion_layer_") ||
+                       parts[0].starts_with("custom_data_layer_")) {
+                problems_.add("tile set " + std::string(parts[0].substr(0, parts[0].rfind('_'))) +
+                                  "s",
+                              where);
+            } else {
+                problems_.add("TileSet." + name, where);
+            }
+        }
+        if (tile_size != std::array<std::int64_t, 2>{16, 16}) {
+            doc["tile_size"] = json::Array{tile_size[0], tile_size[1]};
+        }
+        // Terrain names must be unique in the file; Godot's need only be unique in their set.
+        std::set<std::string> taken;
+        for (auto& [index, name] : terrains) {
+            if (name.empty()) {
+                name =
+                    "terrain_" + std::to_string(index.first) + "_" + std::to_string(index.second);
+            }
+            if (!taken.insert(name).second) {
+                name += "_" + std::to_string(index.first);
+                taken.insert(name);
+            }
+            json::Value& set = doc["terrain_sets"]["set_" + std::to_string(index.first)];
+            set["terrains"].push_back(name);
+            static constexpr std::array<std::string_view, 3> kModes{"match_corners_and_sides",
+                                                                    "match_corners", "match_sides"};
+            const std::int64_t mode = modes[index.first];
+            if (mode > 0 && mode < 3) {
+                set["mode"] = kModes.at(static_cast<std::size_t>(mode));
+            }
+        }
+        std::set<std::string> names;
+        for (const auto& [id, reference] : sources) {
+            const auto [section, owner] = resource_section(*reference, file);
+            const std::string type = section != nullptr ? resource_type(*section, *owner) : "";
+            if (type != "TileSetAtlasSource") {
+                problems_.add("tile set source " + (type.empty() ? "missing" : type), where,
+                              type == "TileSetScenesCollectionSource"
+                                  ? "scene tiles: place the scenes as entities instead"
+                                  : "");
+                continue;
+            }
+            json::Value source = atlas_source(*section, *owner, tile_size, terrains, modes);
+            if (source.is_null()) {
+                continue;
+            }
+            std::string name = snake_case(file_stem(source.find("texture")->as_string()));
+            if (name.empty() || names.contains(name)) {
+                name = "source_" + std::to_string(id);
+            }
+            names.insert(name);
+            out.sources[id] = name;
+            doc["sources"][name] = std::move(source);
+        }
+        if (doc.find("sources") == nullptr) {
+            problems_.add("tile set with no atlas sources", where);
+            out.path.clear();
+            return out;
+        }
+        keep_valid(doc, out.path,
+                   [](const json::Value& value) { return canvas::validate_tileset(value); });
+        if (auto parsed = canvas::parse_tileset(doc); parsed) {
+            out.set = std::move(parsed.value());
+        }
+        add_file(out.path, json::write(doc) + "\n");
+        ++tile_set_files_;
+        return out;
+    }
+
+    // One of a tile set's atlas sources, or null if its texture can't come along.
+    json::Value
+    atlas_source(const Section& section, const TextFile& file,
+                 const std::array<std::int64_t, 2>& tile_size,
+                 const std::map<std::pair<std::int64_t, std::int64_t>, std::string>& terrains,
+                 const std::map<std::int64_t, std::int64_t>& modes) {
+        const std::string where = resource_where(section, file);
+        json::Value source;
+        std::string why;
+        const Value* texture = section.property("texture");
+        const std::string texture_path =
+            texture != nullptr ? resource_path(*texture, file, why) : "";
+        if (texture_path.empty()) {
+            problems_.add("tile set source texture", where, why.empty() ? "no texture" : why);
+            return nullptr;
+        }
+        source["texture"] = texture_path;
+        std::array<std::int64_t, 2> region{16, 16}; // Godot's default, whatever the tile size
+        struct Tile {
+            json::Value json;
+            std::int64_t set = -1;
+            std::int64_t terrain = -1;
+            std::map<std::size_t, std::int64_t> bits;
+        };
+        std::map<std::pair<std::int64_t, std::int64_t>, Tile> tiles; // by row, then column
+        for (const auto& [name, value] : section.properties) {
+            if (name == "texture" || name == "use_texture_padding" || name == "resource_name" ||
+                name == "resource_local_to_scene") {
+                continue;
+            }
+            if (name == "texture_region_size" || name == "margins" || name == "separation") {
+                const auto xy = value.numbers();
+                if (!xy || xy->size() != 2) {
+                    continue;
+                }
+                const std::array<std::int64_t, 2> pair{static_cast<std::int64_t>(xy->at(0)),
+                                                       static_cast<std::int64_t>(xy->at(1))};
+                if (name == "texture_region_size") {
+                    region = pair;
+                } else if (pair[0] != 0 || pair[1] != 0) {
+                    source[name] = json::Array{pair[0], pair[1]};
+                }
+                continue;
+            }
+            // "column:row/0/terrain" and the like.
+            const std::size_t colon = name.find(':');
+            const std::size_t slash = name.find('/');
+            const auto column = parse_int(std::string_view(name).substr(0, colon));
+            const auto row =
+                colon < slash
+                    ? parse_int(std::string_view(name).substr(colon + 1, slash - colon - 1))
+                    : std::nullopt;
+            if (!column || !row || slash == std::string::npos) {
+                problems_.add("TileSetAtlasSource." + name, where);
+                continue;
+            }
+            const std::string_view rest = std::string_view(name).substr(slash + 1);
+            const std::vector<std::string_view> parts = split_path(rest);
+            Tile& tile = tiles[{*row, *column}];
+            if (rest == "size_in_atlas") {
+                if (const auto xy = value.numbers(); xy && (xy->at(0) != 1.0 || xy->at(1) != 1.0)) {
+                    problems_.add("tiles larger than one cell", where,
+                                  "each tile covers one cell; split the tile in the texture");
+                }
+            } else if (rest.starts_with("animation_")) {
+                problems_.add("animated tiles", where, "each tile shows its first frame");
+            } else if (rest == "next_alternative_id" || parts[0] != "0") {
+                // Alternative tiles: cells that use one get its base tile.
+            } else if (parts.size() == 2 && parts[1] == "terrain_set") {
+                tile.set = static_cast<std::int64_t>(value.number());
+            } else if (parts.size() == 2 && parts[1] == "terrain") {
+                tile.terrain = static_cast<std::int64_t>(value.number());
+            } else if (parts.size() == 3 && parts[1] == "terrains_peering_bit") {
+                if (const auto direction = peering_direction(parts[2])) {
+                    tile.bits[*direction] = static_cast<std::int64_t>(value.number());
+                }
+            } else if (parts.size() == 2 && parts[1] == "probability") {
+                tile.json["probability"] = value.number();
+            } else if (parts.size() > 1 && parts[1].starts_with("physics_layer_")) {
+                problems_.add("tile collision", where,
+                              "tile set collision is on the roadmap; add bodies over the tiles "
+                              "meanwhile");
+            } else if (parts.size() > 1) {
+                problems_.add("tile property " + std::string(parts[1]), where);
+            }
+        }
+        if (region != tile_size) {
+            source["region_size"] = json::Array{region[0], region[1]};
+        }
+        for (auto& [coords, tile] : tiles) {
+            const auto own = terrains.find({tile.set, tile.terrain});
+            if (own != terrains.end()) {
+                tile.json["terrain"] = own->second;
+                const auto mode = modes.find(tile.set);
+                json::Value peering = json::Object{};
+                for (std::size_t direction = 0; direction < canvas::kNeighborNames.size();
+                     ++direction) {
+                    if (!connects(mode != modes.end() ? mode->second : 0, direction)) {
+                        continue;
+                    }
+                    const auto bit = tile.bits.find(direction);
+                    const std::int64_t terrain = bit != tile.bits.end() ? bit->second : -1;
+                    if (terrain == tile.terrain) {
+                        continue; // left out: the tile's own terrain
+                    }
+                    const auto other = terrains.find({tile.set, terrain});
+                    peering[canvas::kNeighborNames.at(direction)] =
+                        other != terrains.end() ? json::Value(other->second) : json::Value(nullptr);
+                }
+                if (peering.size() > 0) {
+                    tile.json["peering"] = std::move(peering);
+                }
+            }
+            if (tile.json.is_null()) {
+                tile.json = json::Object{}; // a plain tile
+            }
+            source["tiles"][std::to_string(coords.second) + "," + std::to_string(coords.first)] =
+                std::move(tile.json);
+        }
+        return source;
+    }
+
+    // Godot's cells as a TileMapLayer's origin, legend and rows, through the tile set they use.
+    void write_cells(const std::vector<GodotCell>& cells, const TileSetFile& tiles,
+                     json::Value& layer, const std::string& where) {
+        if (!tiles.set) {
+            problems_.add("tile map cells", where, "its tile set didn't convert");
+            return;
+        }
+        canvas::Cells converted;
+        for (const GodotCell& cell : cells) {
+            const auto source = tiles.sources.find(cell.source);
+            const canvas::TileRef tile{.source = source != tiles.sources.end() ? source->second
+                                                                               : std::string(),
+                                       .atlas = {cell.atlas_x, cell.atlas_y}};
+            if (source == tiles.sources.end() || tiles.set->find(tile) == nullptr) {
+                problems_.add("cells with tiles missing from their tile set", where);
+                continue;
+            }
+            if (cell.alternative != 0) {
+                problems_.add("alternative tiles", where,
+                              "flipped, turned and other alternative tiles draw as their base "
+                              "tile");
+            }
+            converted[{cell.x, cell.y}] = tile;
+        }
+        world::TileMapLayer encoded;
+        canvas::encode_cells(converted, *tiles.set, encoded);
+        layer["origin"] = json::Array{encoded.origin.x, encoded.origin.y};
+        json::Object legend;
+        for (const auto& [key, tile] : encoded.legend) {
+            legend.emplace(key, tile);
+        }
+        layer["legend"] = std::move(legend);
+        json::Array rows;
+        for (const std::string& row : encoded.rows) {
+            rows.emplace_back(row);
+        }
+        layer["rows"] = std::move(rows);
+    }
+
+    // The tile set a node's tile_set property names, or nullptr.
+    const TileSetFile* node_tile_set(const Node& node) {
+        const Property* property = node.find("tile_set");
+        if (property == nullptr) {
+            problems_.add("tile map with no tile set", node.declared);
+            return nullptr;
+        }
+        const auto [section, owner] = resource_section(*property->value, *property->file);
+        if (section == nullptr || resource_type(*section, *owner) != "TileSet") {
+            return nullptr; // reported with the tile_set property
+        }
+        const TileSetFile& tiles = tile_set_file(*owner, *section, resource_base(*section, *owner));
+        return tiles.path.empty() ? nullptr : &tiles;
+    }
+
+    // A TileMap's layers. Each is an entity in the node's Transform2D children, drawn before
+    // them as Godot draws its layers, with the node's tile set and its own settings; a layer
+    // with no settings of its own that would reach the node's children goes on the node itself.
+    // layer_id gives a layer's entity ID from its index and name.
+    void convert_tile_map(const Node& node, json::Object& components,
+                          std::vector<std::pair<std::string, json::Value>>& extra,
+                          const std::function<std::string(std::int64_t, std::string)>& layer_id) {
+        if (const Property* format = node.find("format");
+            format != nullptr && format->value->number() != 2.0) {
+            problems_.add("TileMap data format", node.declared,
+                          "an old format: open the scene in Godot 4 and save it again");
+            return;
+        }
+        std::map<std::int64_t, std::map<std::string, const Property*>> layers;
+        for (const Property& property : node.properties) {
+            const std::vector<std::string_view> parts = split_path(property.name);
+            if (parts.size() == 2 && parts[0].starts_with("layer_") &&
+                node.find(property.name) == &property) {
+                if (const auto index = parse_int(parts[0].substr(6))) {
+                    layers[*index][std::string(parts[1])] = &property;
+                }
+            }
+        }
+        const TileSetFile* tiles = nullptr;
+        json::Value& own = components["TileMapLayer"];
+        for (const auto& [index, values] : layers) {
+            json::Value layer = json::Object{};
+            const std::string where = node.declared + " layer " + std::to_string(index);
+            for (const auto& [key, property] : values) {
+                const Value& value = *property->value;
+                if (key == "tile_data") {
+                    const auto cells = tile_map_cells(value);
+                    if (!cells) {
+                        problems_.add("TileMap layer data", where, "not whole cells");
+                        continue;
+                    }
+                    if (tiles == nullptr && !cells->empty()) {
+                        tiles = node_tile_set(node);
+                    }
+                    if (tiles != nullptr) {
+                        write_cells(*cells, *tiles, layer, where);
+                    }
+                } else if (key == "enabled") {
+                    if (value.kind == Value::Kind::Bool && !value.boolean) {
+                        layer["visible"] = false;
+                    }
+                } else if (key == "modulate") {
+                    if (const auto color = value.numbers(); color && color->size() == 4) {
+                        layer["modulate"] =
+                            json::Array{color->at(0), color->at(1), color->at(2), color->at(3)};
+                    }
+                } else if (key == "z_index" && value.is_number()) {
+                    layer["z_index"] = static_cast<std::int64_t>(value.number());
+                } else if (key != "name" && key != "navigation_enabled") {
+                    problems_.add("TileMap layer " + key, where);
+                }
+            }
+            const bool settings = layer.find("visible") != nullptr ||
+                                  layer.find("modulate") != nullptr ||
+                                  layer.find("z_index") != nullptr;
+            if (index == 0 && layers.size() == 1 && !settings) {
+                for (auto& [field, item] : layer.as_object()) {
+                    own[field] = std::move(item);
+                }
+                continue;
+            }
+            for (const char* shared : {"tile_set", "texture_filter", "light_mask"}) {
+                if (const json::Value* item = own.find(shared); item != nullptr) {
+                    layer[shared] = *item;
+                }
+            }
+            std::string name = "layer_" + std::to_string(index);
+            if (const auto found = values.find("name");
+                found != values.end() && found->second->value->is_string() &&
+                !snake_case(found->second->value->text).empty()) {
+                name = snake_case(found->second->value->text);
+            }
+            std::string id = layer_id(index, node.id + "_" + name);
+            json::Value entity;
+            entity["components"]["Transform2D"] = json::Object{};
+            entity["components"]["TileMapLayer"] = std::move(layer);
+            components["Transform2D"]["children"].push_back(id);
+            extra.emplace_back(std::move(id), std::move(entity));
+        }
+    }
+
+    // --- Themes and bus layouts ---
+
+    // Writes a Theme resource as a .theme.json file once and returns its path.
+    std::string theme_file(const TextFile& file, const Section& resource, const std::string& base) {
+        const std::string key = file.path + "#" + base;
+        if (const auto done = themes_written_.find(key); done != themes_written_.end()) {
+            return done->second;
+        }
+        const std::string path = destination(base + std::string(ui::kThemeSuffix));
+        themes_written_[key] = path;
+        resources_used_.insert("Theme");
+        const std::string where = resource_where(resource, file);
+        json::Value doc;
+        doc["format"] = 1;
+        for (const auto& [name, value] : resource.properties) {
+            if (name == "resource_name" || name == "resource_local_to_scene") {
+                continue;
+            }
+            std::string why;
+            const std::vector<std::string_view> parts = split_path(name);
+            if (name == "default_font") {
+                if (std::string font = resource_path(value, file, why); !font.empty()) {
+                    doc["default_font"] = std::move(font);
+                } else {
+                    problems_.add("Theme.default_font", where, why);
+                }
+            } else if (name == "default_font_size" && value.is_number()) {
+                doc["default_font_size"] = static_cast<std::int64_t>(value.number());
+            } else if (parts.size() == 2 && parts[1] == "base_type" && value.is_string()) {
+                doc["types"][std::string(parts[0])]["base_type"] = value.text;
+            } else if (parts.size() == 3) {
+                const std::string kind(parts[1]);
+                std::optional<json::Value> item;
+                if (kind == "colors") {
+                    item = guess(value, file, why);
+                } else if ((kind == "constants" || kind == "font_sizes") && value.is_number()) {
+                    item = json::Value(static_cast<std::int64_t>(value.number()));
+                } else if (kind == "fonts" || kind == "icons") {
+                    if (std::string item_path = resource_path(value, file, why);
+                        !item_path.empty()) {
+                        item = json::Value(std::move(item_path));
+                    }
+                } else if (kind == "styles") {
+                    item = style_box(value, file, why);
+                }
+                if (item) {
+                    doc["types"][std::string(parts[0])][kind][std::string(parts[2])] =
+                        std::move(*item);
+                } else {
+                    std::string item_where = where;
+                    item_where.append(": ").append(name);
+                    problems_.add("theme item " + kind, item_where, why);
+                }
+            } else {
+                problems_.add("Theme." + name, where);
+            }
+        }
+        keep_valid(doc, path, [](const json::Value& value) { return ui::validate_theme(value); });
+        add_file(path, json::write(doc) + "\n");
+        ++theme_files_;
+        return path;
+    }
+
+    // Writes an AudioBusLayout resource as a .bus_layout.json file once and returns its path.
+    std::string bus_layout_file(const TextFile& file) {
+        const std::string path =
+            destination(without_extension(file.path) + std::string(audio::kBusLayoutSuffix));
+        if (!bus_layouts_written_.insert(file.path).second) {
+            return path;
+        }
+        resources_used_.insert("AudioBusLayout");
+        std::map<std::int64_t, json::Value> buses;
+        struct Slot {
+            const Value* effect = nullptr;
+            bool enabled = true;
+        };
+        std::map<std::int64_t, std::map<std::int64_t, Slot>> effects; // by bus, then slot
+        for (const auto& [name, value] : file.resource->properties) {
+            const std::vector<std::string_view> parts = split_path(name);
+            const auto index =
+                parts.size() >= 3 && parts[0] == "bus" ? parse_int(parts[1]) : std::nullopt;
+            if (!index) {
+                if (name != "resource_name" && name != "resource_local_to_scene") {
+                    problems_.add("AudioBusLayout." + name, file.path);
+                }
+                continue;
+            }
+            json::Value& bus = buses[*index];
+            const std::string_view field = parts[2];
+            if (parts.size() == 5 && field == "effect") {
+                const auto slot = parse_int(parts[3]);
+                if (slot && parts[4] == "effect") {
+                    effects[*index][*slot].effect = &value;
+                } else if (slot && parts[4] == "enabled") {
+                    effects[*index][*slot].enabled =
+                        value.kind != Value::Kind::Bool || value.boolean;
+                }
+            } else if (field == "name" || field == "send") {
+                if (value.is_string() && !value.text.empty()) {
+                    bus[std::string(field)] = value.text;
+                }
+            } else if (field == "solo" || field == "mute" || field == "bypass_fx") {
+                if (value.kind == Value::Kind::Bool && value.boolean) {
+                    bus[field == "bypass_fx" ? "bypass_effects" : std::string(field)] = true;
+                }
+            } else if (field == "volume_db" && value.is_number()) {
+                if (value.number() != 0.0) {
+                    bus["volume_db"] = value.number();
+                }
+            } else if (parts.size() == 3) {
+                problems_.add("bus property " + std::string(field), file.path);
+            }
+        }
+        json::Array list;
+        buses[0]; // Master, which Godot always has
+        for (auto& [index, bus] : buses) {
+            if (bus.find("name") == nullptr) {
+                bus["name"] = index == 0 ? std::string("Master") : "Bus " + std::to_string(index);
+            }
+            const json::Value* send = bus.find("send");
+            if (index == 0 || (send != nullptr && send->as_string() == "Master")) {
+                bus.as_object().erase("send");
+            }
+            for (const auto& [slot, effect] : effects[index]) {
+                std::string why = "no effect";
+                auto converted = effect.effect != nullptr ? audio_effect(*effect.effect, file, why)
+                                                          : std::nullopt;
+                if (!converted) {
+                    problems_.add("audio effect", file.path + ": bus " + std::to_string(index),
+                                  why);
+                    continue;
+                }
+                if (!effect.enabled) {
+                    (*converted)["enabled"] = false;
+                }
+                bus["effects"].push_back(std::move(*converted));
+            }
+            list.push_back(std::move(bus));
+        }
+        json::Value doc;
+        doc["format"] = 1;
+        doc["buses"] = std::move(list);
+        keep_valid(doc, path,
+                   [](const json::Value& value) { return audio::validate_bus_layout(value); });
+        add_file(path, json::write(doc) + "\n");
+        ++bus_layout_files_;
+        return path;
+    }
+
+    // One of Godot's audio effects as a bus layout's effect, or nullopt with why.
+    std::optional<json::Value> audio_effect(const Value& reference, const TextFile& file,
+                                            std::string& why) {
+        const auto [section, owner] = resource_section(reference, file);
+        if (section == nullptr) {
+            why = "a missing effect";
+            return std::nullopt;
+        }
+        static const std::map<std::string, std::string, std::less<>> kTypes{
+            {"AudioEffectAmplify", "amplify"},
+            {"AudioEffectLowPassFilter", "low_pass_filter"},
+            {"AudioEffectHighPassFilter", "high_pass_filter"},
+            {"AudioEffectBandPassFilter", "band_pass_filter"},
+            {"AudioEffectNotchFilter", "notch_filter"},
+            {"AudioEffectBandLimitFilter", "band_limit_filter"},
+            {"AudioEffectLowShelfFilter", "low_shelf_filter"},
+            {"AudioEffectHighShelfFilter", "high_shelf_filter"},
+            {"AudioEffectEQ6", "eq6"},
+            {"AudioEffectEQ10", "eq10"},
+            {"AudioEffectEQ21", "eq21"},
+            {"AudioEffectDelay", "delay"},
+            {"AudioEffectReverb", "reverb"},
+            {"AudioEffectChorus", "chorus"},
+            {"AudioEffectPhaser", "phaser"},
+            {"AudioEffectDistortion", "distortion"},
+            {"AudioEffectCompressor", "compressor"},
+            {"AudioEffectHardLimiter", "hard_limiter"},
+            {"AudioEffectPanner", "panner"},
+            {"AudioEffectStereoEnhance", "stereo_enhance"},
+        };
+        const std::string type = resource_type(*section, *owner);
+        const auto found = kTypes.find(type);
+        if (found == kTypes.end()) {
+            why = type + " has no SlashEngine equivalent yet";
+            return std::nullopt;
+        }
+        json::Value effect;
+        effect["type"] = found->second;
+        static constexpr std::array<std::string_view, 5> kDistortion{"clip", "atan", "lofi",
+                                                                     "overdrive", "waveshape"};
+        for (const auto& [name, value] : section->properties) {
+            const std::vector<std::string_view> parts = split_path(name);
+            if (name == "resource_name" || name == "resource_local_to_scene") {
+                continue;
+            }
+            if (name == "db" && value.kind == Value::Kind::Int) {
+                effect["db"] = (value.integer + 1) * 6; // Godot's FilterDB counts stages from 0
+            } else if (name == "mode" && type == "AudioEffectDistortion" &&
+                       value.kind == Value::Kind::Int && value.integer >= 0 && value.integer < 5) {
+                effect["mode"] = kDistortion.at(static_cast<std::size_t>(value.integer));
+            } else if (parts.size() == 2 && parts[0] == "band_db") {
+                effect["band_db"][std::string(parts[1])] = value.number();
+            } else if (parts.size() == 3 && parts[0] == "voice") {
+                const std::int64_t voice = parse_int(parts[1]).value_or(0); // from 1 to 4
+                if (voice < 1 || voice > 4) {
+                    continue;
+                }
+                json::Value& voices = effect["voices"];
+                while (std::cmp_less(voices.size(), voice)) {
+                    voices.push_back(json::Object{});
+                }
+                voices.as_array()[static_cast<std::size_t>(voice - 1)][std::string(parts[2])] =
+                    value.number();
+            } else if (value.kind == Value::Kind::Bool) {
+                effect[name] = value.boolean;
+            } else if (value.kind == Value::Kind::Int && name == "voice_count") {
+                effect[name] = value.integer;
+            } else if (value.is_number()) {
+                effect[name] = value.number();
+            } else if (value.is_string()) {
+                effect[name] = value.text;
+            } else {
+                std::string what = type;
+                what.append(".").append(name);
+                problems_.add(what, resource_where(*section, *owner));
+            }
+        }
+        return effect;
     }
 
     // The section a resource reference names: a sub-resource, or an external .tres file's
@@ -1512,6 +2363,7 @@ private:
             if (const auto ext = file.ext.find(id); ext != file.ext.end()) {
                 if (const auto it = text_files_.find(ext->second.path);
                     it != text_files_.end() && it->second->resource != nullptr) {
+                    resources_read_.insert(ext->second.path);
                     return {it->second->resource, it->second.get()};
                 }
             }
@@ -1987,11 +2839,42 @@ private:
             convert_label_settings(value, file, components["Control"], node);
             return true;
         }
-        if (name == "self_modulate" && components.contains("Sprite2D")) {
-            // Sprite2D has one tint; Godot multiplies the two for the sprite itself.
+        if (components.contains("TileMapLayer") && node.type == "TileMapLayer") {
+            if (name == "tile_map_data") {
+                const auto cells = layer_cells(value);
+                if (!cells) {
+                    problems_.add("TileMapLayer data", node.declared,
+                                  "a format this importer can't read: save the scene in Godot 4.3 "
+                                  "or later");
+                } else if (!cells->empty()) {
+                    if (const TileSetFile* tiles = node_tile_set(node); tiles != nullptr) {
+                        write_cells(*cells, *tiles, components["TileMapLayer"], node.declared);
+                    }
+                }
+                return true;
+            }
+            if (name == "enabled") {
+                if (value.kind == Value::Kind::Bool && !value.boolean) {
+                    components["TileMapLayer"]["visible"] = false;
+                }
+                return true;
+            }
+        }
+        if (node.type == "TileMap" && (name == "format" || name.starts_with("layer_"))) {
+            return true; // convert_tile_map reads them
+        }
+        const char* tinted = nullptr;
+        if (components.contains("Sprite2D")) {
+            tinted = "Sprite2D";
+        } else if (components.contains("TileMapLayer")) {
+            tinted = "TileMapLayer";
+        }
+        if (name == "self_modulate" && tinted != nullptr) {
+            // Sprite2D and TileMapLayer have one tint; Godot multiplies the two for the node
+            // itself.
             const auto color = value.numbers();
             if (color && color->size() == 4) {
-                json::Value& sprite = components["Sprite2D"];
+                json::Value& sprite = components[tinted];
                 json::Array tint{1.0, 1.0, 1.0, 1.0};
                 if (const json::Value* modulate = sprite.find("modulate"); modulate != nullptr) {
                     tint = modulate->as_array();
@@ -2078,6 +2961,7 @@ private:
             problems_.add("label settings", node.declared, "a missing LabelSettings resource");
             return;
         }
+        resources_used_.insert("LabelSettings");
         static const std::map<std::string, std::pair<std::string, std::string>, std::less<>> kItems{
             {"font", {"theme_override_fonts", "font"}},
             {"font_size", {"theme_override_font_sizes", "font_size"}},
@@ -2132,6 +3016,42 @@ private:
             }
             return make_error(ErrorCode::NotFound, "not converted");
         };
+    }
+
+    // The ID of an entity a node adds beside its own, such as a TileMap's layer, by a key
+    // unique in the node: for a node an instance brings, the ID the scene it instances gave it,
+    // under the instance's; else wanted, made unique in the scene.
+    std::string added_id(const std::vector<Node>& nodes, const Node& node, const std::string& key,
+                         std::string wanted, std::set<std::string>& taken,
+                         const std::string& scene) {
+        const Node* owner = node.instanced != nullptr ? &node : nullptr;
+        if (owner == nullptr && node.instance_root >= 0) {
+            owner = &nodes[static_cast<std::size_t>(node.instance_root)];
+        }
+        std::string id;
+        if (owner != nullptr && owner->instanced != nullptr) {
+            std::string relative = ".";
+            if (owner != &node) {
+                relative =
+                    owner->path == "." ? node.path : node.path.substr(owner->path.size() + 1);
+            }
+            if (const auto ids = scene_ids_.find(owner->instanced->path); ids != scene_ids_.end()) {
+                if (const auto found = ids->second.find(relative + ":" + key);
+                    found != ids->second.end()) {
+                    id = owner->id + "/" + found->second;
+                }
+            }
+        }
+        if (id.empty()) {
+            wanted.resize(std::min<std::size_t>(wanted.size(), 64));
+            id = wanted;
+            for (int n = 2; taken.contains(id); ++n) {
+                id = wanted.substr(0, 60) + "_" + std::to_string(n);
+            }
+        }
+        taken.insert(id);
+        scene_ids_[scene][node.path + ":" + key] = id;
+        return id;
     }
 
     void convert_scene(const TextFile& file) {
@@ -2191,6 +3111,11 @@ private:
 
         json::Object entities;
         json::Value record;
+        std::set<std::string> taken;
+        for (const Node& node : nodes) {
+            taken.insert(node.id);
+        }
+        std::vector<std::pair<std::string, json::Value>> added; // entities beyond the nodes'
         for (std::size_t i = 0; i < nodes.size(); ++i) {
             const Node& node = nodes[i];
             scene.node = &node;
@@ -2265,6 +3190,13 @@ private:
                 }
                 problems_.add(node.type + "." + property.name, node.declared);
             }
+            if (node.type == "TileMap") {
+                convert_tile_map(node, components, added,
+                                 [&](std::int64_t index, std::string wanted) {
+                                     return added_id(nodes, node, "layer_" + std::to_string(index),
+                                                     std::move(wanted), taken, file.path);
+                                 });
+            }
             if (type == nullptr) {
                 json::Value& kept = record["unconverted"][node.id];
                 kept["type"] = node.type;
@@ -2287,6 +3219,9 @@ private:
                 entity["extends"] = scene_destination(*node.instanced);
             }
             entities.emplace(node.id, std::move(entity));
+        }
+        for (auto& [id, entity] : added) {
+            entities.emplace(id, std::move(entity));
         }
 
         // Children: Node2D under Node2D through Transform2D, Control under Control through
@@ -2355,7 +3290,18 @@ private:
         const world::FileReader reader = planned_files();
         // Leave out what doesn't validate, so one bad value can't stop the scene.
         for (int pass = 0; pass < 64; ++pass) {
-            const auto errors = world::validate_scene(components_, converted, reader);
+            auto errors = world::validate_scene(components_, converted, reader);
+            if (errors.empty()) {
+                // A layer whose cells don't fit its tile set loses the whole component, not a
+                // row, which would move the rows after it.
+                errors = canvas::check_tile_layers(converted, reader);
+                for (json::ValidationError& error : errors) {
+                    constexpr std::string_view kLayer = "/components/TileMapLayer";
+                    if (const auto at = error.path.find(kLayer); at != std::string::npos) {
+                        error.path.resize(at + kLayer.size());
+                    }
+                }
+            }
             if (errors.empty()) {
                 break;
             }
@@ -2536,6 +3482,9 @@ private:
         }
         out["converted"]["scenes"] = scenes_;
         out["converted"]["sprite_frames"] = frames_files_;
+        out["converted"]["tile_sets"] = tile_set_files_;
+        out["converted"]["themes"] = theme_files_;
+        out["converted"]["bus_layouts"] = bus_layout_files_;
         out["converted"]["input_actions"] = input_actions_;
         out["converted"]["assets"] = assets_;
         out["scripts"] = std::move(summary);
@@ -2552,7 +3501,11 @@ private:
     std::map<std::string, std::string> uids_;
     std::map<std::string, std::vector<std::string>> resources_seen_; // .tres files by type
     std::set<std::string> resources_used_;
+    std::set<std::string> resources_read_; // .tres files a converted value read
     std::map<std::string, std::string> frames_written_;
+    std::map<std::string, TileSetFile> tile_sets_;
+    std::map<std::string, std::string> themes_written_;
+    std::set<std::string> bus_layouts_written_;
     std::map<std::string, ScriptRecord> scripts_; // by res path
     std::map<std::string, std::string> task_of_;
     std::set<std::string> task_ids_;
@@ -2568,6 +3521,9 @@ private:
     std::string main_scene_;
     int scenes_ = 0;
     int frames_files_ = 0;
+    int tile_set_files_ = 0;
+    int theme_files_ = 0;
+    int bus_layout_files_ = 0;
     int input_actions_ = 0;
     int assets_ = 0;
 };

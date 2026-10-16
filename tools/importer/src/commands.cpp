@@ -77,9 +77,10 @@ void register_import_commands(command::Registry& registry) {
 
     registry.add({
         .name = "project.import",
-        .description = "Converts a Godot 4 project's scenes, sprite frames, input map and settings "
-                       "into this project, using its assets where they are. Each script becomes a "
-                       "storyboard task to port it to C++. Reports what didn't convert.",
+        .description =
+            "Converts a Godot 4 project's scenes, resources, input map and settings into "
+            "this project, using its assets where they are. Each script becomes a "
+            "storyboard task to port it to C++. Reports what didn't convert.",
         .capabilities = {Capability::Read, Capability::Filesystem},
         .effect = command::Effect::Read,
         .params = std::move(params),

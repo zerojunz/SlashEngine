@@ -1,0 +1,6 @@
+[gd_resource type="Theme" format=3 uid="uid://bui0theme"]
+
+[resource]
+default_font_size = 12
+Label/colors/font_outline_color = Color(0.1, 0.05, 0, 1)
+Label/constants/outline_size = 2

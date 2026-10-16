@@ -2141,8 +2141,9 @@ Needs: `read`; it changes nothing in the world, and a recording leaves it out.
 
 Converts a Godot 4 project, in a folder inside this project, into this project, as
 [`slash-cli import`](cli.md#import) does. Its scenes become `.scene.json` files beside the
-originals, its `SpriteFrames` `.frames.json` files and its settings and input map
-`project.json`; its textures, sounds and fonts are used where they are. Each script becomes a
+originals, its `SpriteFrames` `.frames.json` files, its tile sets `.tileset.json` files, its
+themes `.theme.json` files, its bus layouts `.bus_layout.json` files and its settings and input
+map `project.json`; its textures, sounds and fonts are used where they are. Each script becomes a
 storyboard task to port it to C++. [godot-import.md](godot-import.md) says what converts to
 what. Registered by `slash-cli` and `slash-mcp`.
 
@@ -2164,7 +2165,7 @@ From [examples/import-godot](../../examples/import-godot/):
 ```
 
 ```json
-{"converted":{"assets":5,"input_actions":3,"scenes":2,"sprite_frames":2},"engine":"godot","files":7,"main_scene":"godot/main.scene.json","project":"Coin Run","report":"import/godot.json","scripts":[{"entities":0,"script":"godot/game_state.gd","task":"task/port-game-state"},{"entities":1,"script":"godot/main.gd","task":"task/port-main"},{"entities":2,"script":"godot/player.gd","task":"task/port-player"}],"unsupported":[{"count":1,"what":"autoload","where":"project.godot: GameState","why":"autoloads are gameplay code; see the storyboard task"},{"count":1,"what":"file type .svg","where":"icon.svg","why":"textures are PNG or BMP files; save it as PNG"},{"count":1,"what":"node type Timer","where":"main.tscn: Timer","why":"timers are gameplay code: count the ticks in a C++ system"}]}
+{"converted":{"assets":6,"bus_layouts":1,"input_actions":3,"scenes":2,"sprite_frames":2,"themes":1,"tile_sets":1},"engine":"godot","files":10,"main_scene":"godot/main.scene.json","project":"Coin Run","report":"import/godot.json","scripts":[{"entities":0,"script":"godot/game_state.gd","task":"task/port-game-state"},{"entities":1,"script":"godot/main.gd","task":"task/port-main"},{"entities":2,"script":"godot/player.gd","task":"task/port-player"}],"unsupported":[{"count":1,"what":"autoload","where":"project.godot: GameState","why":"autoloads are gameplay code; see the storyboard task"},{"count":1,"what":"file type .svg","where":"icon.svg","why":"textures are PNG or BMP files; save it as PNG"},{"count":1,"what":"node type Timer","where":"main.tscn: Timer","why":"timers are gameplay code: count the ticks in a C++ system"}]}
 ```
 
 With `dry_run`, `files` lists the paths it would write instead of counting them. A missing
