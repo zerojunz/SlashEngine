@@ -839,12 +839,15 @@ TEST_CASE("input.inject types into a TextEdit, and ui.layout reports its caret a
               {"id": "notes", "rect": [20, 20, 300, 100],
                "text_edit": {"caret": [0, 0], "placeholder": true}, "lines": ["Notes"]}]})"));
     s.ok("ui.focus", R"({"id": "notes"})");
+    // A word left with Shift selects it: Ctrl+Shift+Left on a PC, Option+Shift+Left on a Mac,
+    // as the session binds the host's keyboard.
+    const std::string word = input::host_keyboard() == input::Keyboard::Mac ? "alt" : "ctrl";
     s.ok("input.inject", R"({"events": [{"type": "text", "text": "Dear Mira,"},
                                        {"type": "action", "action": "ui_text_newline",
                                         "pressed": true},
                                        {"type": "text", "text": "See you"},
-                                       {"type": "key", "key": "Left", "ctrl": true,
-                                        "shift": true, "pressed": true}]})");
+                                       {"type": "key", "key": "Left", ")" +
+                             word + R"(": true, "shift": true, "pressed": true}]})");
     s.ok("step");
     CHECK(s.ok("ui.layout", R"({"ids": ["notes"]})") ==
           parse(R"({"viewport": [1280, 720], "controls": [
