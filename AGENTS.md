@@ -279,6 +279,21 @@ version is 10.0; llvm-mingw builds keep 6.0, since Windows 11 won't start a MinG
 marked 10.0), Android 11 (API level 30, targeting 36), and Chrome 85, Firefox 79 and Safari 15
 (pinned in `export/CMakeLists.txt`).
 
+## Importing games from other engines
+
+`tools/importer` converts a game made in another engine into a SlashEngine project; for now that
+is Godot 4 (Unity, then Unreal, are on the roadmap). It registers `project.import`, which
+`slash-cli import <folder>` and slash-mcp serve; `--dry-run` and `"dry_run": true` return the
+report and the files it would write. `src/godot_text.cpp` parses Godot's text formats
+(`.tscn`, `.tres`, `project.godot`) and `src/godot_import.cpp` converts them: a `.scene.json`
+beside each `.tscn`, a `.frames.json` per `SpriteFrames`, `project.godot`'s settings and input
+map merged into `project.json`, and a storyboard task per script (`task/port-<name>`) to port it
+to C++. Properties convert by the target field's reflected type, Godot's enum numbers through
+its `choices`, and a value that fails the scene schema is left out and reported, so one bad
+value can't stop a scene. Everything that didn't convert goes in `import/godot.json`, once per
+kind. `docs/reference/godot-import.md` maps each node and setting; `examples/import-godot`
+imports a small platformer.
+
 ## Rendering
 
 `engine/render` is the renderer's device layer: `render::RenderDevice`, a dozen calls over SDL3's
@@ -623,7 +638,8 @@ CI rejects unformatted code and any clang-tidy finding.
   queries, edits, briefs and checks), `command` (commands, sessions with undo, JSON-RPC and MCP),
   `debug` (the debug overlay over a running game), `server` (localhost HTTP over a session) and
   `runtime` (project files and the game executable).
-  Tool-only libraries such as `tools/exporter` use the same layout and may use exceptions.
+  Tool-only libraries such as `tools/exporter` and `tools/importer` use the same layout and
+  may use exceptions.
 - New dependencies are pinned in `cmake/dependencies.json` (repository, tag, SPDX license and
   the license file's SHA-256), fetched with `slash_add_dependency` in `cmake/Dependencies.cmake`
   and listed in `THIRD_PARTY.md`. Only permissive licenses (MIT and its variants, BSD, zlib,

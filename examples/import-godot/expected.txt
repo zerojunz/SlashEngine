@@ -1,0 +1,386 @@
+project.import {"dry_run":true,"source":"godot"}
+{
+  "converted": {
+    "assets": 5,
+    "input_actions": 3,
+    "scenes": 2,
+    "sprite_frames": 2
+  },
+  "dry_run": true,
+  "engine": "godot",
+  "files": ["project.json", "godot/player_frames.frames.json", "godot/main_sprite_frames_coin.frames.json", "godot/main.scene.json", "godot/player.scene.json", "storyboard/work.json", "import/godot.json"],
+  "main_scene": "godot/main.scene.json",
+  "project": "Coin Run",
+  "report": "import/godot.json",
+  "scripts": [
+    {
+      "entities": 0,
+      "script": "godot/game_state.gd",
+      "task": "task/port-game-state"
+    },
+    {
+      "entities": 1,
+      "script": "godot/main.gd",
+      "task": "task/port-main"
+    },
+    {
+      "entities": 2,
+      "script": "godot/player.gd",
+      "task": "task/port-player"
+    }
+  ],
+  "unsupported": [
+    {
+      "count": 1,
+      "what": "autoload",
+      "where": "project.godot: GameState",
+      "why": "autoloads are gameplay code; see the storyboard task"
+    },
+    {
+      "count": 1,
+      "what": "file type .svg",
+      "where": "icon.svg",
+      "why": "textures are PNG or BMP files; save it as PNG"
+    },
+    {
+      "count": 1,
+      "what": "node type Timer",
+      "where": "main.tscn: Timer",
+      "why": "timers are gameplay code: count the ticks in a C++ system"
+    }
+  ]
+}
+project.import {"source":"godot"}
+{
+  "converted": {
+    "assets": 5,
+    "input_actions": 3,
+    "scenes": 2,
+    "sprite_frames": 2
+  },
+  "engine": "godot",
+  "files": 7,
+  "main_scene": "godot/main.scene.json",
+  "project": "Coin Run",
+  "report": "import/godot.json",
+  "scripts": [
+    {
+      "entities": 0,
+      "script": "godot/game_state.gd",
+      "task": "task/port-game-state"
+    },
+    {
+      "entities": 1,
+      "script": "godot/main.gd",
+      "task": "task/port-main"
+    },
+    {
+      "entities": 2,
+      "script": "godot/player.gd",
+      "task": "task/port-player"
+    }
+  ],
+  "unsupported": [
+    {
+      "count": 1,
+      "what": "autoload",
+      "where": "project.godot: GameState",
+      "why": "autoloads are gameplay code; see the storyboard task"
+    },
+    {
+      "count": 1,
+      "what": "file type .svg",
+      "where": "icon.svg",
+      "why": "textures are PNG or BMP files; save it as PNG"
+    },
+    {
+      "count": 1,
+      "what": "node type Timer",
+      "where": "main.tscn: Timer",
+      "why": "timers are gameplay code: count the ticks in a C++ system"
+    }
+  ]
+}
+--- godot/main.scene.json
+{
+  "entities": {
+    "animated_sprite2d": {
+      "components": {
+        "AnimatedSprite2D": {
+          "animation": "spin",
+          "sprite_frames": "godot/main_sprite_frames_coin.frames.json"
+        },
+        "Sprite2D": {},
+        "Transform2D": {}
+      }
+    },
+    "coin": {
+      "components": {
+        "Area2D": {},
+        "Transform2D": {
+          "children": ["animated_sprite2d", "coin_collision_shape2d"],
+          "position": [200.0, 140.0]
+        }
+      }
+    },
+    "coin_collision_shape2d": {
+      "components": {
+        "CollisionShape2D": {
+          "radius": 5.0,
+          "shape": "circle"
+        },
+        "Transform2D": {}
+      }
+    },
+    "collision_shape2d": {
+      "components": {
+        "CollisionShape2D": {
+          "size": [640.0, 20.0]
+        },
+        "Transform2D": {}
+      }
+    },
+    "ground": {
+      "components": {
+        "StaticBody2D": {},
+        "Transform2D": {
+          "children": ["sprite2d", "collision_shape2d"],
+          "position": [320.0, 170.0]
+        }
+      }
+    },
+    "hud": {},
+    "main": {
+      "components": {
+        "Transform2D": {
+          "children": ["ground", "player", "coin"]
+        }
+      }
+    },
+    "player": {
+      "components": {
+        "CharacterBody2D": {
+          "collision_mask": 3
+        },
+        "Transform2D": {
+          "children": ["player_animated_sprite2d", "player_collision_shape2d", "player_camera2d"],
+          "position": [40.0, 152.0]
+        }
+      }
+    },
+    "player_animated_sprite2d": {
+      "components": {
+        "AnimatedSprite2D": {
+          "animation": "idle",
+          "playing": false,
+          "sprite_frames": "godot/player_frames.frames.json"
+        },
+        "Sprite2D": {},
+        "Transform2D": {}
+      }
+    },
+    "player_camera2d": {
+      "components": {
+        "Camera2D": {
+          "limit_bottom": 180,
+          "limit_left": 0,
+          "limit_right": 640,
+          "limit_top": 0,
+          "position_smoothing_enabled": true
+        },
+        "Transform2D": {
+          "position": [0.0, -32.0]
+        }
+      }
+    },
+    "player_collision_shape2d": {
+      "components": {
+        "CollisionShape2D": {
+          "height": 16.0,
+          "radius": 5.0,
+          "shape": "capsule"
+        },
+        "Transform2D": {}
+      }
+    },
+    "score": {
+      "components": {
+        "Control": {
+          "offset_bottom": 24.0,
+          "offset_left": 8.0,
+          "offset_right": 120.0,
+          "offset_top": 6.0,
+          "theme_override_colors": {
+            "font_color": [1.0, 0.85, 0.2, 1.0]
+          },
+          "theme_override_font_sizes": {
+            "font_size": 12
+          }
+        },
+        "Label": {
+          "text": "Coins: 0"
+        }
+      }
+    },
+    "sprite2d": {
+      "components": {
+        "Sprite2D": {
+          "texture": "godot/art/ground.png"
+        },
+        "Transform2D": {}
+      }
+    },
+    "timer": {}
+  },
+  "format": 1
+}
+--- godot/player_frames.frames.json
+{
+  "animations": {
+    "idle": {
+      "fps": 5.0,
+      "frames": ["godot/art/player_idle.png"]
+    },
+    "walk": {
+      "fps": 8.0,
+      "frames": ["godot/art/player_walk_0.png", "godot/art/player_walk_1.png"]
+    }
+  },
+  "format": 1
+}
+--- project.json
+{
+  "format": 1,
+  "input": {
+    "jump": {
+      "deadzone": 0.5,
+      "events": [
+        {
+          "physical_key": "Space",
+          "type": "key"
+        },
+        {
+          "button": "a",
+          "type": "joypad_button"
+        }
+      ]
+    },
+    "move_left": {
+      "deadzone": 0.2,
+      "events": [
+        {
+          "physical_key": "A",
+          "type": "key"
+        },
+        {
+          "key": "Left",
+          "type": "key"
+        }
+      ]
+    },
+    "move_right": {
+      "deadzone": 0.2,
+      "events": [
+        {
+          "physical_key": "D",
+          "type": "key"
+        },
+        {
+          "key": "Right",
+          "type": "key"
+        }
+      ]
+    }
+  },
+  "main_scene": "godot/main.scene.json",
+  "name": "Coin Run",
+  "physics_2d": {
+    "gravity": 900.0
+  },
+  "rendering": {
+    "clear_color": [0.1, 0.12, 0.2, 1.0],
+    "texture_filter": "nearest"
+  },
+  "version": "0.1.0",
+  "window": {
+    "height": 180,
+    "width": 320
+  }
+}
+scene.open {"path":"godot/main.scene.json"}
+{
+  "entities": 14,
+  "path": "godot/main.scene.json"
+}
+step {"ticks":25}
+{
+  "tick": 25,
+  "ticks": 25
+}
+world.query {"include":["AnimatedSprite2D"],"with":["AnimatedSprite2D"]}
+{
+  "count": 2,
+  "entities": [
+    {
+      "components": {
+        "AnimatedSprite2D": {
+          "animation": "spin",
+          "frame": 2,
+          "frame_progress": 0.50000024,
+          "playing": true,
+          "speed_scale": 1.0,
+          "sprite_frames": "godot/main_sprite_frames_coin.frames.json"
+        }
+      },
+      "id": "animated_sprite2d"
+    },
+    {
+      "components": {
+        "AnimatedSprite2D": {
+          "animation": "idle",
+          "frame": 0,
+          "frame_progress": 0.0,
+          "playing": false,
+          "speed_scale": 1.0,
+          "sprite_frames": "godot/player_frames.frames.json"
+        }
+      },
+      "id": "player_animated_sprite2d"
+    }
+  ],
+  "truncated": false
+}
+storyboard.query {"kind":"task"}
+{
+  "entries": [
+    {
+      "fields": {
+        "name": "Port game_state.gd to C++",
+        "summary": "GDScript from Godot: write what it does as C++ components and systems."
+      },
+      "id": "task/port-game-state",
+      "version": "fe0d52be"
+    },
+    {
+      "fields": {
+        "name": "Port main.gd to C++",
+        "summary": "GDScript from Godot: write what it does as C++ components and systems."
+      },
+      "id": "task/port-main",
+      "version": "c00a9a81"
+    },
+    {
+      "fields": {
+        "name": "Port player.gd to C++",
+        "summary": "GDScript from Godot: write what it does as C++ components and systems."
+      },
+      "id": "task/port-player",
+      "version": "4888530f"
+    }
+  ],
+  "seq": 0
+}
+storyboard.check {}
+{
+  "valid": true
+}

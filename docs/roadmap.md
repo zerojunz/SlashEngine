@@ -312,12 +312,32 @@ rendering on top.
       each sprite, tile map layer, particle emitter and control that shows, in drawing order,
       with its rect, its text and how much of it shows; what is covered, offscreen or clear;
       what can't draw; and, with `map`, a text picture of the frame
+- [ ] Importing games made with other engines: `project.import` (and `slash-cli import`)
+      converts another engine's project into this one in one call and reports what didn't
+      convert and why. Godot first, then Unity; Unreal follows the 3D work in milestone 7
+  - [x] Godot 4 projects: scenes (nodes to entities and components, instanced scenes copied in
+        with their overrides), `SpriteFrames`, textures, sounds and fonts, the input map and
+        project settings. Each GDScript or C# script becomes a storyboard task to port it to
+        C++, and a report keeps what the port needs: the values each node gave its exported
+        variables, signal connections, groups, autoloads and the entity of every node path
+  - [ ] Godot scenes that instance other scenes become prefabs of several entities, instead of
+        copies
+  - [ ] Godot's `TileMapLayer` and `TileSet`, `AnimationPlayer` libraries, themes and
+        `LabelSettings` resources, and audio bus layouts
+  - [ ] Unity projects: 2D scenes and prefabs, sprites and their animations, tilemaps, UI,
+        audio mixers and the input system's actions; C# scripts become tasks the same way
+  - [ ] Exported games (a Godot `.pck`, a Unity build) unpacked back into a project, for games
+        the user made or has the rights to. Nothing breaks encryption or DRM, and GPL tools such
+        as AssetRipper run as separate programs, never linked
 
 Exit: an agent builds `samples/pong` end to end and exports it to all six platforms.
 
 ### Milestone 6: Hot reload, AI and profiling (Planned)
 
 - [ ] Gameplay as a C++ shared library that reloads on rebuild and keeps world state
+- [ ] Imported scripts as C++ skeletons: `project.import` writes a component for each script's
+      exported variables, events for its signals and a system with its functions for the agent
+      to fill in, beside the storyboard task
 - [ ] `build.check`: compiles only the changed gameplay files and returns errors as data (file,
       line, message and the compiler's suggested fix), with no build log to read
 - [ ] Job system, so systems run in parallel before the 3D work in milestone 7 needs it
@@ -372,6 +392,10 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
 - [ ] Import of glTF 2.0, FBX, OBJ, PNG, JPG, KTX2, WAV, OGG and MP3, plus Blender `.blend`
       files the way Godot does it: the engine runs the artist's own Blender in the background to
       convert them to glTF, so no Blender code is linked or shipped
+- [ ] 3D scenes in `project.import` from Godot and Unity projects, and Unreal Engine projects
+      imported through the user's own Unreal Editor: its project files are a closed binary
+      format, so the editor exports the levels and assets and the importer converts what it
+      writes. GameMaker and RPG Maker projects come after
 - [ ] 3D in the asset library and generator ([design](design.md#3d-assets))
   - [ ] Parametric models: agents write a `.model.json` recipe of shapes, CSG on Manifold,
         extrusions, lathes, bevels and arrays, and the engine builds the mesh; the library keeps
