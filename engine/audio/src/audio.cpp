@@ -8,6 +8,7 @@
 #include "slash/core/math.hpp"
 #include "slash/core/text.hpp"
 #include "slash/ui/ui.hpp"
+#include "slash/world/camera2d.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/tree2d.hpp"
 
@@ -203,15 +204,23 @@ std::uint32_t seed_of(std::string_view key, std::uint32_t plays) {
     return h;
 }
 
-// Where 2D sounds are heard from: the first current AudioListener2D by ID.
+// Where 2D sounds are heard from: the first current AudioListener2D by ID, and the current
+// Camera2D's view.
 struct Listener {
     bool found = false;
     Vec2 position;
     float rotation = 0.0F;
+    world::Affine2D canvas; // world to screen pixels, as Godot's canvas transform
+    Vec2 scale{1.0F, 1.0F}; // the canvas transform's scale
 };
 
-Listener find_listener(const world::World& world, const world::Tree2D& tree) {
+Listener find_listener(const world::World& world, const world::Tree2D& tree, Vec2 screen) {
     Listener listener;
+    if (const world::CameraView view = world::camera_view(world, tree, screen);
+        view.camera != entt::null) {
+        listener.canvas = view.canvas;
+        listener.scale = world::parts(view.canvas).scale;
+    }
     std::string best;
     const auto& ecs = world.ecs();
     for (const entt::entity entity : ecs.view<world::AudioListener2D>()) {
@@ -232,7 +241,7 @@ Listener find_listener(const world::World& world, const world::Tree2D& tree) {
     return listener;
 }
 
-// Godot's AudioStreamPlayer2D::_update_panning, for one viewport with no camera.
+// Godot's AudioStreamPlayer2D::_update_panning, for one viewport.
 Frame volume_2d(const world::AudioStreamPlayer2D& player, Vec2 global_pos, const Listener& listener,
                 Vec2 screen_size, float global_panning_strength) {
     Vec2 listener_in_global;
@@ -242,10 +251,15 @@ Frame volume_2d(const world::AudioStreamPlayer2D& player, Vec2 global_pos, const
         const Vec2 d{global_pos.x - listener.position.x, global_pos.y - listener.position.y};
         const Vec2 cs = cos_sin(-listener.rotation);
         relative_to_listener = {d.x * cs.x - d.y * cs.y, d.x * cs.y + d.y * cs.x};
+        // As the default listener's, scaled with the canvas.
+        relative_to_listener = {relative_to_listener.x * listener.scale.x,
+                                relative_to_listener.y * listener.scale.y};
     } else {
-        listener_in_global = {screen_size.x * 0.5F, screen_size.y * 0.5F};
-        relative_to_listener = {global_pos.x - listener_in_global.x,
-                                global_pos.y - listener_in_global.y};
+        // The middle of the screen, wherever the camera puts it.
+        const Vec2 middle{screen_size.x * 0.5F, screen_size.y * 0.5F};
+        listener_in_global = listener.canvas.inverse().apply(middle);
+        const Vec2 on_screen = listener.canvas.apply(global_pos);
+        relative_to_listener = {on_screen.x - middle.x, on_screen.y - middle.y};
     }
     const float dx = global_pos.x - listener_in_global.x;
     const float dy = global_pos.y - listener_in_global.y;
@@ -386,8 +400,8 @@ void run(State& state, world::World& world, double tick_seconds) {
         player.seen = false;
     }
     const world::Tree2D tree(world);
-    const Listener listener = find_listener(world, tree);
     const Vec2 screen = ui::settings(world).viewport;
+    const Listener listener = find_listener(world, tree, screen);
     reconcile<world::AudioStreamPlayer>(state, world, tree, kPlayer, listener, screen, requests);
     reconcile<world::AudioStreamPlayer2D>(state, world, tree, kPlayer2D, listener, screen,
                                           requests);

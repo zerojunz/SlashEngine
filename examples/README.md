@@ -17,6 +17,7 @@ engine. Copy from them.
 | [draw-offscreen](draw-offscreen/) | The renderer's device: drawing into a texture and reading the pixels back |
 | [frame-pacing](frame-pacing/) | V-Sync, the frame cap and frame pacing: `display.list`, `display.set` and `perf.stats` |
 | [parent-transforms](parent-transforms/) | Entities in another's `Transform2D` `children`: placed in its space, drawn after it with its `z_index`, visibility and tint, bodies moved with it, `entity.get`'s `parent` and `global`, refused loops and `entity.destroy` taking children along |
+| [camera-2d](camera-2d/) | `Camera2D`: a view that follows the player with drag margins and smoothing, stays inside the level's limits and zooms in, with the coin counter staying put and `frame.summary`'s `camera` |
 | [sprites](sprites/) | `Sprite2D`, sprite sheets and `AnimatedSprite2D` flipbooks from a `.frames.json` file, drawn offscreen |
 | [materials](materials/) | `.material.json` node graphs that color sprites, their params and blend modes, and `material.eval` |
 | [keyframe-animation](keyframe-animation/) | `AnimationPlayer` and `.anim.json` files: tracks for any field, easing, loops, event keys and `animation.eval` |

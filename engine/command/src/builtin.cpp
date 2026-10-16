@@ -26,6 +26,7 @@
 #include "slash/storyboard/storyboard.hpp"
 #include "slash/text/text.hpp"
 #include "slash/ui/ui.hpp"
+#include "slash/world/camera2d.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/scene.hpp"
@@ -2649,6 +2650,24 @@ Reply frame_summary(Session& session, const json::Value& params) {
 
     json::Value result;
     result["viewport"] = point_value(viewport);
+    // The camera, and the part of the world the window shows through it: the bounds of its
+    // corners in the world.
+    if (const world::CameraView& view = summary.contents.camera; view.camera != entt::null) {
+        const world::Affine2D to_world = view.canvas.inverse();
+        Vec2 low{std::numeric_limits<float>::max(), std::numeric_limits<float>::max()};
+        Vec2 high{std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest()};
+        for (const Vec2 corner :
+             {Vec2{0.0F, 0.0F}, Vec2{viewport.x, 0.0F}, Vec2{0.0F, viewport.y}, viewport}) {
+            const Vec2 at = to_world.apply(corner);
+            low = {std::min(low.x, at.x), std::min(low.y, at.y)};
+            high = {std::max(high.x, at.x), std::max(high.y, at.y)};
+        }
+        json::Value camera;
+        camera["id"] = name_of(view.camera);
+        camera["rect"] = json::Array{tenths(low.x), tenths(low.y), tenths(high.x - low.x),
+                                     tenths(high.y - low.y)};
+        result["camera"] = std::move(camera);
+    }
     const entt::entity focused = ui::focus_owner(world);
     json::Array drawn;
     for (const canvas::Shown& shown : summary.shown) {
@@ -4146,7 +4165,7 @@ void register_builtin_commands(Registry& registry) {
                        "tile map layer, particle emitter and control that shows, in drawing "
                        "order, with its rect in window pixels, its text, and how much of it shows "
                        "when not all; what is covered, offscreen, transparent or clipped away; "
-                       "and what can't draw.",
+                       "what can't draw; and the camera with the world rect it shows.",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema({
