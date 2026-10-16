@@ -181,6 +181,8 @@ description: Build or change scenes in this SlashEngine game through the slashen
 A run recorded with `slash-cli run --record bug.replay.json` (or `replay_record` and
 `replay_stop`) plays back exactly with `replay_run`: pass `tick` to stop where a bug happens and
 query the world there, and rerun it after a fix to see whether and where the run now differs.
+`replay_seek` then moves through it: `ticks` steps forward or back, and `with`/`where` finds the
+first tick something happens (say, the player's position.y > 600).
 
 Do not edit `.scene.json` files by hand while the server runs: it holds the open scene and would
 overwrite the edit on the next save.

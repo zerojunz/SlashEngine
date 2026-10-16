@@ -363,7 +363,7 @@ if(SLASH_BUILD_TOOLS)
         COMMAND slash-cli call replay.run "{\"path\":\"runs/basic.replay.json\"}"
             --project ${replay_project})
     set_tests_properties(cli_call_replay_run PROPERTIES
-        PASS_REGULAR_EXPRESSION "{\"end\":90,\"matched\":true,\"tick\":90}"
+        PASS_REGULAR_EXPRESSION "{\"end\":90,\"matched\":true,\"start\":0,\"tick\":90}"
         FIXTURES_REQUIRED recorded_run)
     # A path relative to the current folder, whose folder doesn't exist yet.
     add_test(NAME cli_run_record_relative

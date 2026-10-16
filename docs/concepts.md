@@ -195,8 +195,10 @@ each tick the host stepped, the input it queued and the commands that changed th
 order, with a hash of the world every 60 ticks and after each command. `replay.run` plays it
 back in any session and says whether it matched, and if not, the first tick it went another way
 and what differs at the end. With `"tick"` it stops partway, so every query works on the world
-as it was then. A player's bug report becomes a run an agent can step through, and a recorded
-run becomes a test that fails when a change alters it.
+as it was then. `replay.seek` moves the playback from there: to a tick, by a number of ticks, or
+to the first tick where an entity matches a condition. Forward goes on from where it is; back
+plays the run again from its start. A player's bug report becomes a run an agent can step
+through, and a recorded run becomes a test that fails when a change alters it.
 
 Recording and playback both start the world afresh: what systems keep outside components (held
 input, focus, particles, physics contacts, playing sounds) starts over, through the resets

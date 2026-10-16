@@ -269,8 +269,10 @@ rendering on top.
       `replay.run` plays it back exactly in any session, stops at a tick, and reports the first
       tick a changed game goes another way and what differs at the end. 2D physics steps the
       same in every session that holds the same world
-- [ ] Time travel: `replay.seek` jumps a recorded run to any tick, where every query command
-      works, so a bug can be reproduced and inspected at the moment it happened
+- [x] Time travel: `replay.seek` jumps a recorded run to any tick, by a number of ticks or to
+      the first tick a condition holds, where every query command works, so a bug can be
+      reproduced and inspected at the moment it happened. Forward goes on from where it is;
+      back plays from the start
 - [ ] Debug overlay, drawn with the UI and text above
 - [ ] A test command that steps a game headless and returns only the checks that failed
 - [x] Watch conditions: `run.until` steps a game headless until a condition on component
@@ -524,7 +526,7 @@ calls and tokens ([design section 6](design.md#6-cheap-for-agents-to-use)).
 | `world.snapshot` and `world.diff`: try something, see exactly what changed, roll back | 5 | Done |
 | Verified examples for every feature, built and run in CI | 5 | Done |
 | `run.until`: run headless until a condition holds instead of polling | 5 | Done |
-| `replay.seek`: query any earlier tick of a recorded run | 5 | Planned |
+| `replay.seek`: query any earlier tick of a recorded run | 5 | Done |
 | `build.check`: C++ compile errors as data from an incremental build | 6 | Planned |
 | `api.search`: real signatures and examples instead of guessed function names | 6 | Planned |
 | `playtest.run`: many headless bot runs and tuning sweeps in one call | 6 | Planned |
