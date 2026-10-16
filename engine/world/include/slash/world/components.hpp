@@ -185,6 +185,42 @@ struct CanvasModulate {
 };
 SLASH_COMPONENT(CanvasModulate, color)
 
+// The part of the 2D world the window shows, as Godot's Camera2D, from where its Transform2D
+// places it (see camera2d.hpp). The first enabled one in drawing order is current; with none,
+// the window shows world pixels from [0, 0]. Controls stay put on the screen, as in a Godot
+// CanvasLayer.
+struct Camera2D {
+    bool enabled = true;
+    std::string anchor_mode = "drag_center"; // or "fixed_top_left"
+    bool ignore_rotation = true;
+    Vec2 offset;
+    Vec2 zoom{1.0F, 1.0F};
+    bool limit_enabled = true;
+    int limit_left = -10000000;
+    int limit_top = -10000000;
+    int limit_right = 10000000;
+    int limit_bottom = 10000000;
+    bool limit_smoothed = false;
+    bool position_smoothing_enabled = false;
+    float position_smoothing_speed = 5.0F;
+    bool rotation_smoothing_enabled = false;
+    float rotation_smoothing_speed = 5.0F;
+    bool drag_horizontal_enabled = false;
+    bool drag_vertical_enabled = false;
+    float drag_horizontal_offset = 0.0F;
+    float drag_vertical_offset = 0.0F;
+    float drag_left_margin = 0.2F;
+    float drag_top_margin = 0.2F;
+    float drag_right_margin = 0.2F;
+    float drag_bottom_margin = 0.2F;
+};
+SLASH_COMPONENT(Camera2D, enabled, anchor_mode, ignore_rotation, offset, zoom, limit_enabled,
+                limit_left, limit_top, limit_right, limit_bottom, limit_smoothed,
+                position_smoothing_enabled, position_smoothing_speed, rotation_smoothing_enabled,
+                rotation_smoothing_speed, drag_horizontal_enabled, drag_vertical_enabled,
+                drag_horizontal_offset, drag_vertical_offset, drag_left_margin, drag_top_margin,
+                drag_right_margin, drag_bottom_margin)
+
 // ---- 2D physics, as Godot's: a body component makes its entity a physics body, placed by its
 // Transform2D, and the entity's CollisionShape2D and CollisionPolygon2D give it shapes. Units are
 // pixels, seconds, radians and kilograms; layers and masks are Godot's 32 physics layers, and two

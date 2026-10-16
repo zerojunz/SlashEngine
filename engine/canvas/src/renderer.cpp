@@ -217,6 +217,7 @@ void CanvasRenderer::before_tick(const world::World& world) {
     keep(ecs.view<const world::Transform2D, const world::CPUParticles2D>());
     keep(ecs.view<const world::Transform2D, const world::CollisionShape2D>());
     keep(ecs.view<const world::Transform2D, const world::CollisionPolygon2D>());
+    previous_view_ = world::camera_view(world, tree, ui::settings(world).viewport);
 }
 
 void CanvasRenderer::warn_once(const std::string& key, std::string_view message,
@@ -555,6 +556,37 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
                 {.entity = entity, .path = std::move(path), .message = std::move(message)});
         }
     };
+    // The viewport, which controls are laid out in and the camera fills.
+    const Vec2 viewport = options.width > 0.0F && options.height > 0.0F
+                              ? Vec2{options.width, options.height}
+                              : ui::settings(world).viewport;
+    // What the world is seen through: the current camera's view, part of the way from the one
+    // before the last tick, as Godot interpolates its canvas transform.
+    world::CameraView view = world::camera_view(world, tree, viewport);
+    if (options.interpolation < 1.0 && view.camera != entt::null &&
+        view.camera == previous_view_.camera) {
+        view.canvas = world::affine(interpolate(world::parts(previous_view_.canvas),
+                                                world::parts(view.canvas), options.interpolation));
+    }
+    std::optional<render::Mat4> camera;
+    if (view.camera != entt::null) {
+        camera = render::Mat4{view.canvas.x.x,
+                              view.canvas.x.y,
+                              0.0F,
+                              0.0F,
+                              view.canvas.y.x,
+                              view.canvas.y.y,
+                              0.0F,
+                              0.0F,
+                              0.0F,
+                              0.0F,
+                              1.0F,
+                              0.0F,
+                              view.canvas.origin.x,
+                              view.canvas.origin.y,
+                              0.0F,
+                              1.0F};
+    }
     const render::Lighting lights = lighting(world, transform_of);
     // How lights shade a sprite or layer: not at all in an unlit world.
     const auto shading_for = [&](render::LightMode mode, int light_mask, int z_index) {
@@ -880,6 +912,9 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         }
         return a.order != b.order ? a.order < b.order : a.part < b.part;
     });
+    for (Item& item : items) {
+        item.material.transform = camera;
+    }
 
     // Collision shapes, over the world.
     CollisionShapes shapes;
@@ -896,9 +931,6 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         }
         fonts = fonts_.get();
     }
-    const Vec2 viewport = options.width > 0.0F && options.height > 0.0F
-                              ? Vec2{options.width, options.height}
-                              : ui::settings(world).viewport;
     ui::Layout layout = ui::layout(world, *fonts, viewport);
     const ui::DrawList controls = ui::draw_calls(layout, world, *fonts);
     ui::DrawList overlay;
@@ -942,13 +974,21 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             FrameItem& out = add(item.kind, item.entity);
             out.count += item.drawn;
             const auto from = vertices.begin() + static_cast<std::ptrdiff_t>(item.first);
-            out.pieces.push_back(
-                {.pixels = item.image != nullptr ? item.image->pixels.data() : nullptr,
-                 .width = item.image != nullptr ? item.image->width : 0,
-                 .height = item.image != nullptr ? item.image->height : 0,
-                 .field = {},
-                 .vertices = {from, from + static_cast<std::ptrdiff_t>(item.count)},
-                 .order = order++});
+            FramePiece& piece = out.pieces.emplace_back(
+                FramePiece{.pixels = item.image != nullptr ? item.image->pixels.data() : nullptr,
+                           .width = item.image != nullptr ? item.image->width : 0,
+                           .height = item.image != nullptr ? item.image->height : 0,
+                           .field = {},
+                           .vertices = {from, from + static_cast<std::ptrdiff_t>(item.count)},
+                           .order = order++});
+            // In viewport pixels, as the camera shows them.
+            if (camera) {
+                for (render::Vertex2D& vertex : piece.vertices) {
+                    const Vec2 placed = view.canvas.apply({vertex.x, vertex.y});
+                    vertex.x = placed.x;
+                    vertex.y = placed.y;
+                }
+            }
         }
         // A control draws as one item, though what it draws over its children comes later.
         std::unordered_map<entt::entity, std::size_t> control_items;
@@ -1011,6 +1051,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             }
         }
         contents->layout = std::move(layout);
+        contents->camera = view;
     }
 
     // The null device stands in for a window it doesn't have, as draw_empty_frame allows: the
@@ -1051,7 +1092,10 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         }
     }
     if (!shapes.vertices.empty()) {
-        if (auto drawn = device_->draw(render::TextureId::None, shapes.vertices); !drawn) {
+        render::Material material;
+        material.transform = camera;
+        if (auto drawn = device_->draw(render::TextureId::None, shapes.vertices, material);
+            !drawn) {
             return failed(drawn.error());
         }
     }

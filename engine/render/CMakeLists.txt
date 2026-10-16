@@ -13,6 +13,10 @@ target_link_libraries(slash_render
     PUBLIC slash::core
     PRIVATE SDL3::SDL3-static)
 slash_engine_target(slash_render)
+# The software device draws the same pixels on every platform: no fused multiply-adds, which
+# arm64 compilers would otherwise emit and x86-64 ones not.
+set_source_files_properties(src/device.cpp src/software_device.cpp PROPERTIES
+    COMPILE_OPTIONS "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>")
 
 # Regenerates src/*_shaders.hpp from shaders/*.hlsl. The headers are committed, so only someone
 # changing a shader needs glslang and SPIRV-Cross.
