@@ -118,13 +118,14 @@ A reference must name an entity that exists in the same scene.
 | | `targets` | `std::map<std::string, entt::entity>` | `{}` | The entity each track [`target`](#animations) names, by name; `null` leaves that target's tracks unplayed |
 | `TileMapLayer` | `tile_set` | `std::string` | `""` | Project path of a [`.tileset.json`](#tile-sets) file |
 | | `origin` | `Vec2i` | `[0, 0]` | The cell the first key of the first row stands for, as [column, row] |
-| | `legend` | `std::map<std::string, std::string>` | `{}` | The tile each key in `rows` stands for, by name or as `"source:column,row"` |
+| | `legend` | `std::map<std::string, std::string>` | `{}` | The tile each key in `rows` stands for, by name or as `"source:column,row"`, then `:<alternative>` and `:<turns>` if any ([turned cells](#alternative-tiles-and-turned-cells)) |
 | | `rows` | `std::vector<std::string>` | `[]` | The [cells](#tile-map-layers), one string of keys per row from `origin` rightward; `.` is an empty cell |
 | | `z_index` | `int` | `0` | Higher draws on top, -4096 to 4096, added to its parents'; layers and sprites draw in one order |
 | | `visible` | `bool` | `true` | Draw it and its children |
 | | `modulate` | `Vec4` | `[1, 1, 1, 1]` | Color every tile and its children are multiplied by, as [r, g, b, a] from 0 to 1 |
 | | `texture_filter` | `std::string` | `"inherit"` | `"linear"`, `"nearest"` (sharp pixel art) or `"inherit"`, which uses the project's `rendering.texture_filter` |
 | | `light_mask` | `int` | `1` | [Lit](#2d-lights) by lights whose `range_item_cull_mask` shares a bit |
+| | `collision_enabled` | `bool` | `true` | Its tiles' [collision polygons](#tile-collision) make it a static body in 2D physics |
 | `PointLight2D` | `enabled` | `bool` | `true` | Shine |
 | | `texture` | `std::string` | `""` | Project path of a PNG or BMP file whose color and alpha shape the light; `""` is a soft round light 256 pixels across |
 | | `texture_scale` | `float` | `1` | Scales the texture |
@@ -955,8 +956,8 @@ entity, so animate `Sprite2D/offset` to move a sprite around its entity instead.
 
 ## Tile sets
 
-A `.tileset.json` file cuts atlas textures into tiles and names the terrains that connect them,
-like Godot's `TileSet` with `TileSetAtlasSource`s. A [`TileMapLayer`](#tile-map-layers) draws
+A `.tileset.json` file cuts atlas textures into tiles, names the terrains that connect them and
+gives tiles collision polygons, like Godot's `TileSet` with `TileSetAtlasSource`s. A [`TileMapLayer`](#tile-map-layers) draws
 its tiles. `slash-cli schema tileset` prints the schema, `slash-cli scene validate` and
 `scene format` accept `.tileset.json` files, and exports check and ship them.
 [examples/tilemaps](../../examples/tilemaps/) has one with grass, water and the tiles between.
@@ -966,6 +967,7 @@ its tiles. `slash-cli schema tileset` prints the schema, `slash-cli scene valida
   "format": 1,
   "tile_size": [16, 16],
   "terrain_sets": {"ground": {"terrains": ["grass", "water"]}},
+  "physics_layers": [{"friction": 0.8}],
   "sources": {
     "ground": {
       "texture": "tiles/ground.png",
@@ -974,7 +976,9 @@ its tiles. `slash-cli schema tileset` prints the schema, `slash-cli scene valida
         "1,0": {"name": "grass_n", "terrain": "grass",
                 "peering": {"n": "water", "ne": "water", "nw": "water"}},
         "3,0": {"name": "water", "terrain": "water"},
-        "3,2": {"name": "rock"}
+        "3,2": {"name": "rock",
+                "collision": [{"points": [[-8, -8], [8, -8], [8, 8], [-8, 8]]}],
+                "alternatives": {"1": {"modulate": [1, 1, 1, 0.5]}}}
       }
     }
   }
@@ -988,6 +992,10 @@ its tiles. `slash-cli schema tileset` prints the schema, `slash-cli scene valida
 | `terrain_sets` | No | Terrain sets by name |
 | `terrain_sets/<name>/mode` | No | How tiles connect, as Godot's terrain modes: `match_corners_and_sides` (default) by all eight neighbors, `match_corners` by the four at their corners, `match_sides` by the four at their sides |
 | `terrain_sets/<name>/terrains` | Yes | Terrain names, unique in the file |
+| `physics_layers` | No | Physics layers, as Godot's: each tile's collision polygons are on one, by index from 0 |
+| `physics_layers/<n>/collision_layer` | No | The layer bits its polygons are on; default `1` |
+| `physics_layers/<n>/collision_mask` | No | The layer bits its polygons collide with; default `1` |
+| `physics_layers/<n>/friction`, `bounce` | No | Its physics material, as Godot's `PhysicsMaterial`: friction from 0 (default `1`) and bounce from 0 to 1 (default `0`) |
 | `sources` | Yes | Atlas sources by name, at least one |
 | `sources/<name>/texture` | Yes | Project path of a PNG or BMP file |
 | `sources/<name>/region_size` | No | Each tile's width and height in the texture; default `tile_size` |
@@ -998,6 +1006,8 @@ its tiles. `slash-cli schema tileset` prints the schema, `slash-cli scene valida
 | `tiles/<cell>/terrain` | No | The terrain it paints |
 | `tiles/<cell>/peering` | No | The terrain each neighbor must have for the tile to fit, by direction: `n`, `ne`, `e`, `se`, `s`, `sw`, `w`, `nw`, as Godot's terrain peering bits. A direction left out must have the tile's own terrain; `null` means none |
 | `tiles/<cell>/probability` | No | How often painting picks the tile over others that fit as well; default `1`, and `0` only when nothing else fits |
+| `tiles/<cell>/collision` | No | Its [collision polygons](#tile-collision) |
+| `tiles/<cell>/alternatives` | No | [Alternative tiles](#alternative-tiles-and-turned-cells) by number, from `"1"` to `"4095"` |
 
 A tile's pixels start at `margins + column × (region_size + separation)` on each axis. Peering
 names only directions the terrain set's mode connects by, and only terrains of the tile's own
@@ -1045,6 +1055,56 @@ the rows that changed:
   can't draw, or a tile outside its texture, logs one warning and draws the rest.
 - Square tiles only for now; isometric and hexagonal shapes are on the
   [roadmap](../roadmap.md).
+
+### Tile collision
+
+A tile's `collision` lists polygons in pixels around the tile's center (`[-8, -8]` is a 16-pixel
+tile's top left), as Godot's tile physics polygons. A [`TileMapLayer`](#tile-map-layers) whose
+tiles have them is one static body in [2D physics](#2d-physics), each cell's polygons placed at
+its center. [examples/tile-collision](../../examples/tile-collision/) rolls, bounces and drops
+balls on a level of tiles.
+
+```json
+"0,0": {"name": "ledge",
+        "collision": [{"points": [[-8, -8], [8, -8], [8, -4], [-8, -4]], "one_way": true}]}
+```
+
+| Key | Required | Meaning |
+| --- | --- | --- |
+| `collision/<n>/points` | Yes | The polygon's corners as `[x, y]`, at least three; a concave polygon is split into convex pieces |
+| `collision/<n>/layer` | No | The physics layer it is on, by index; default `0` |
+| `collision/<n>/one_way` | No | Stop only what comes from the tile's -y side (after the cell's turns), as a shape with `one_way_collision` |
+| `collision/<n>/one_way_margin` | No | How deep in it, in pixels, something may be and still pass; default `1` |
+
+- Polygons collide by their physics layer's `collision_layer` and `collision_mask`, as any
+  body's shapes, with its friction and bounce. As in Godot, a tile set needs a physics layer
+  before its tiles have polygons: a polygon on a physics layer the tile set doesn't have, with
+  no area, or crossing itself fails validation.
+- The layer's body follows its entity's `Transform2D`, and its parents'. Editing cells,
+  `tile_set` or the tile set file rebuilds it, and `collision_enabled: false` removes it.
+- [`physics.raycast`](commands.md#physicsraycast) reports the `cell` a ray hit beside the layer's
+  `id`; `physics.overlap` and `physics.contacts` report the layer's ID. The debug overlay's
+  collision shapes draw tile polygons.
+
+### Alternative tiles and turned cells
+
+A tile's `alternatives` are other versions of it, numbered from 1, as Godot's alternative tiles.
+Each has its own flips, color and collision, and a legend or `tilemap.set` names one after the
+tile: `"rock:1"` or `"ground:3,2:1"`.
+
+| Key | Required | Meaning |
+| --- | --- | --- |
+| `alternatives/<n>/flip_h`, `flip_v` | No | Draw it mirrored left to right, top to bottom |
+| `alternatives/<n>/transpose` | No | Draw it with its axes swapped, before the flips |
+| `alternatives/<n>/modulate` | No | Color it is multiplied by, as [r, g, b, a] from 0 to 1 |
+| `alternatives/<n>/collision` | No | Its own collision polygons, as a tile's; an alternative without them has none |
+
+A cell can also turn whatever tile it holds, as Godot's cell transform flags: after the tile, and
+its alternative if any, `:h` flips it left to right, `:v` top to bottom and `:t` swaps its axes,
+written in that order (`"slope:h"`, `"rock:1:hv"`, `"ground:3,2:vt"`). A quarter turn clockwise
+is `:ht`, counterclockwise `:vt`. The tile draws turned, its collision polygons turn with it, and
+an alternative's own flips combine with the cell's. Commands give each turned or alternative tile
+a legend key of its own.
 
 ## 2D camera
 

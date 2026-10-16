@@ -9,6 +9,7 @@
 #include <limits>
 #include <numbers>
 #include <span>
+#include <string>
 #include <string_view>
 #include <utility>
 
@@ -26,6 +27,7 @@ using world::GrooveJoint2D;
 using world::PinJoint2D;
 using world::RigidBody2D;
 using world::StaticBody2D;
+using world::TileMapLayer;
 using world::Transform2D;
 
 // Box2D substeps per tick, as its documentation recommends.
@@ -280,6 +282,7 @@ void Space::reset() {
         b2DestroyWorld(world_);
     }
     bodies_.clear();
+    tiles_.clear();
     joints_.clear();
     world_ = b2_nullWorldId;
     ground_ = b2_nullBodyId;
@@ -310,6 +313,9 @@ void Space::set_settings(const Settings& settings) {
 
 const Body* Space::body(entt::entity entity) const {
     const auto* found = bodies_.find(entity);
+    if (found == nullptr) {
+        found = tiles_.find(entity);
+    }
     return found != nullptr ? found->get() : nullptr;
 }
 
@@ -747,6 +753,142 @@ void Space::sync_joints(world::World& world, const world::Tree2D& tree) {
     }
 }
 
+void Space::build_tile_shapes(world::World& world, Body& body, TileShapes tiles, Vec2 scale) {
+    const bool rebuilt = !body.shapes.empty();
+    if (rebuilt) {
+        wake_near(world_, body.id, b2Body_ComputeAABB(body.id));
+    }
+    for (const b2ShapeId shape : body.shapes) {
+        if (b2Shape_IsValid(shape)) {
+            b2DestroyShape(shape, false);
+        }
+    }
+    body.shapes.clear();
+    body.tiles = std::move(tiles);
+    body.shape_key.scale = scale;
+    body.info.clear();
+    body.info.reserve(body.tiles->size()); // Box2D's shapes point into it
+    bool warned = false;
+    for (const TileShape& tile : *body.tiles) {
+        ShapeInfo& info = body.info.emplace_back(ShapeInfo{.entity = body.entity,
+                                                           .kind = Kind::Static,
+                                                           .layer = tile.collision_layer,
+                                                           .mask = tile.collision_mask,
+                                                           .monitorable = true,
+                                                           .one_way = tile.one_way,
+                                                           .one_way_margin = tile.one_way_margin,
+                                                           .one_way_up = {0.0F, -1.0F},
+                                                           .cell = tile.cell});
+        b2ShapeDef def = b2DefaultShapeDef();
+        def.material.friction = tile.friction;
+        def.material.restitution = tile.bounce;
+        def.density = 1.0F;
+        def.enableSensorEvents = true;
+        def.updateBodyMass = false;
+        def.filter.categoryBits = tile.collision_layer | kShapeBit;
+        def.filter.maskBits = ~std::uint64_t{0};
+        def.enablePreSolveEvents = tile.one_way;
+        def.userData = &info;
+        std::vector<Vec2> points;
+        points.reserve(tile.points.size());
+        for (const Vec2 point : tile.points) {
+            points.push_back({point.x * scale.x, point.y * scale.y});
+        }
+        auto pieces = decompose(points, B2_MAX_POLYGON_VERTICES);
+        if (!pieces) {
+            if (!warned) {
+                warn_shape(world, body.entity,
+                           "the tile at [" + std::to_string(tile.cell.x) + ", " +
+                               std::to_string(tile.cell.y) + "]: " + pieces.error().message);
+                warned = true;
+            }
+            continue;
+        }
+        for (const Polygon& piece : pieces.value()) {
+            std::vector<b2Vec2> corners;
+            corners.reserve(piece.size());
+            for (const Vec2 point : piece) {
+                corners.push_back(to_b2(point));
+            }
+            const b2Hull hull = b2ComputeHull(corners.data(), static_cast<int>(corners.size()));
+            if (hull.count == 0) {
+                continue; // a sliver too thin for Box2D; its neighbors cover it
+            }
+            const b2Polygon polygon = b2MakePolygon(&hull, 0.0F);
+            body.shapes.push_back(b2CreatePolygonShape(body.id, &def, &polygon));
+        }
+    }
+    if (rebuilt && !body.shapes.empty()) {
+        wake_near(world_, body.id, b2Body_ComputeAABB(body.id));
+    }
+}
+
+void Space::sync_tiles(world::World& world, const world::Tree2D& tree) {
+    entt::registry& registry = world.ecs();
+    const auto* source = registry.ctx().find<TileShapeSource>();
+    const auto shapes_of = [&](entt::entity entity) -> TileShapes {
+        if (source == nullptr || !*source || !world.valid(entity) ||
+            !registry.all_of<TileMapLayer>(entity) ||
+            !registry.get<TileMapLayer>(entity).collision_enabled) {
+            return nullptr;
+        }
+        const TileShapes shapes = (*source)(world, entity);
+        return shapes != nullptr && !shapes->empty() ? shapes : nullptr;
+    };
+    std::vector<std::pair<entt::entity, TileShapes>> layers;
+    if (source != nullptr) {
+        for (const entt::entity entity : registry.view<TileMapLayer>()) {
+            if (TileShapes shapes = shapes_of(entity); shapes != nullptr) {
+                layers.emplace_back(entity, std::move(shapes));
+            }
+        }
+    }
+    tiles_.erase_if([&](entt::entity entity, const std::unique_ptr<Body>& body) {
+        const bool kept = std::ranges::any_of(
+            layers, [entity](const auto& layer) { return layer.first == entity; });
+        if (!kept) {
+            if (!body->shapes.empty()) {
+                wake_near(world_, body->id, b2Body_ComputeAABB(body->id));
+            }
+            removed_.insert(body->name);
+            destroy(*body);
+        }
+        return !kept;
+    });
+    for (auto& [entity, shapes] : layers) {
+        const Transform2D transform = transform_of(tree, entity);
+        std::unique_ptr<Body>* found = tiles_.find(entity);
+        if (found == nullptr) {
+            auto body = std::make_unique<Body>();
+            body->entity = entity;
+            body->name = world.id_of(entity);
+            body->kind = Kind::Static;
+            b2BodyDef def = b2DefaultBodyDef();
+            def.type = b2_staticBody;
+            def.position = to_b2(transform.position);
+            def.rotation = b2MakeRot(transform.rotation);
+            def.userData = body.get();
+            body->id = b2CreateBody(world_, &def);
+            body->position = transform.position;
+            body->rotation = transform.rotation;
+            found = &tiles_.emplace(entity, std::move(body));
+            build_tile_shapes(world, **found, std::move(shapes), transform.scale);
+            continue;
+        }
+        Body& body = **found;
+        if (body.tiles != shapes || body.shape_key.scale != transform.scale) {
+            build_tile_shapes(world, body, std::move(shapes), transform.scale);
+        }
+        if (transform.position != body.position || transform.rotation != body.rotation) {
+            const b2AABB before = b2Body_ComputeAABB(body.id);
+            b2Body_SetTransform(body.id, to_b2(transform.position), b2MakeRot(transform.rotation));
+            body.position = transform.position;
+            body.rotation = transform.rotation;
+            wake_near(world_, body.id, b2AABB_Union(before, b2Body_ComputeAABB(body.id)));
+        }
+    }
+}
+
 void Space::sync(world::World& world) {
     const world::Tree2D tree(world);
     sync(world, tree);
@@ -755,7 +897,10 @@ void Space::sync(world::World& world) {
 void Space::sync(world::World& world, const world::Tree2D& tree) {
     entt::registry& registry = world.ecs();
     if (!b2World_IsValid(world_)) {
-        if (!has_any<RigidBody2D, CharacterBody2D, AnimatableBody2D, StaticBody2D, Area2D>(
+        const bool tiles =
+            registry.ctx().contains<TileShapeSource>() && has_any<TileMapLayer>(registry);
+        if (!tiles &&
+            !has_any<RigidBody2D, CharacterBody2D, AnimatableBody2D, StaticBody2D, Area2D>(
                 registry)) {
             return;
         }
@@ -776,6 +921,7 @@ void Space::sync(world::World& world, const world::Tree2D& tree) {
     each.template operator()<AnimatableBody2D>(Kind::Animatable);
     each.template operator()<StaticBody2D>(Kind::Static);
     each.template operator()<Area2D>(Kind::Area);
+    sync_tiles(world, tree);
     sync_joints(world, tree);
 }
 

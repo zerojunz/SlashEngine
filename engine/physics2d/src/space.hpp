@@ -151,6 +151,7 @@ struct ShapeInfo {
     bool one_way = false;
     float one_way_margin = 1.0F;
     b2Vec2 one_way_up{0.0F, -1.0F}; // in the body's frame
+    std::optional<Vec2i> cell{};    // NOLINT(readability-redundant-member-init): a tile's cell
 };
 
 // An entity's shapes in a body: the body's own, or a child entity's with no body of its own.
@@ -214,6 +215,8 @@ struct Body {
     // Characters: the body the last move stood on or slid along, for its platform velocity.
     entt::entity platform = entt::null;
     b2BodyId platform_body = b2_nullBodyId;
+    // Tile map layers: the shapes the body was built from.
+    TileShapes tiles;
 };
 
 using JointKey = std::variant<world::PinJoint2D, world::DampedSpringJoint2D, world::GrooveJoint2D>;
@@ -258,6 +261,7 @@ public:
 
     // The Box2D world, or a null ID while no entity has a body.
     [[nodiscard]] b2WorldId id() const noexcept { return world_; }
+    // A body's or a tile map layer's, or nullptr.
     [[nodiscard]] const Body* body(entt::entity entity) const;
 
     void queue(const Impulse& impulse) { impulses_.push_back(impulse); }
@@ -271,6 +275,8 @@ private:
     void sync_body(world::World& world, const world::Tree2D& tree, entt::entity entity, Kind kind);
     void build_shapes(world::World& world, Body& body, const ShapeKey& key);
     void sync_joints(world::World& world, const world::Tree2D& tree);
+    void sync_tiles(world::World& world, const world::Tree2D& tree);
+    void build_tile_shapes(world::World& world, Body& body, TileShapes tiles, Vec2 scale);
     void read_back(world::World& world, const world::Tree2D& tree);
     void move_characters(world::World& world, const world::Tree2D& tree, float seconds);
     void emit_events(world::World& world);
@@ -280,6 +286,7 @@ private:
     b2WorldId world_ = b2_nullWorldId;
     b2BodyId ground_ = b2_nullBodyId; // what joints with no node_a hold on to
     EntityMap<std::unique_ptr<Body>> bodies_;
+    EntityMap<std::unique_ptr<Body>> tiles_; // tile map layers' static bodies
     EntityMap<Joint> joints_;
     std::vector<Impulse> impulses_;
     // Who touched whom after the last step, by entity ID, for entered and exited events:

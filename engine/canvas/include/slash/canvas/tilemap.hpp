@@ -4,6 +4,7 @@
 #include "slash/core/json_schema.hpp"
 #include "slash/core/math.hpp"
 #include "slash/core/result.hpp"
+#include "slash/physics2d/physics2d.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/world.hpp"
 
@@ -41,6 +42,11 @@
 // terrain peering bits; a neighbor left out must have the tile's own terrain, and null means no
 // terrain. A TileMapLayer holds its cells as text, rows of legend keys (see decode_cells), and
 // paint_terrain picks the tiles that connect, as Godot's terrain painting does.
+//
+// As in Godot, a tile set's "physics_layers" give tiles collision: each tile's "collision"
+// polygons, in pixels from the tile's center, make a layer's cells solid through 2D physics. A
+// tile's "alternatives" are its other versions, flipped, transposed or tinted, by number from 1;
+// and any cell can flip or transpose its tile, as Godot's runtime tile transforms do.
 namespace slash::canvas {
 
 inline constexpr std::string_view kTileSetSuffix = ".tileset.json";
@@ -63,12 +69,40 @@ struct CellOrder {
     }
 };
 
-// A tile: its atlas source and its column and row there.
+// A tile: its atlas source, its column and row there and its alternative (0 for the tile
+// itself), and how the cell turns it, as Godot's TRANSFORM_FLIP_H, TRANSFORM_FLIP_V and
+// TRANSFORM_TRANSPOSE: transposed (x and y swapped) first, then flipped.
 struct TileRef {
     std::string source;
     Vec2i atlas;
+    int alternative = 0;
+    bool flip_h = false;
+    bool flip_v = false;
+    bool transpose = false;
 
     friend bool operator==(const TileRef&, const TileRef&) = default;
+};
+
+// A polygon that makes a tile solid in one of its tile set's physics layers, as Godot's
+// TileData collision polygons.
+struct TilePolygon {
+    int layer = 0;            // into TileSet::physics_layers
+    std::vector<Vec2> points; // in pixels from the tile's center
+    bool one_way = false;
+    float one_way_margin = 1.0F;
+
+    friend bool operator==(const TilePolygon&, const TilePolygon&) = default;
+};
+
+// Another version of a tile, as Godot's alternative tiles: its own look and its own collision
+// polygons (none unless it gives some). Its flips change only how it draws, as in Godot; a
+// cell's turns flip the polygons too.
+struct AlternativeTile {
+    bool flip_h = false;
+    bool flip_v = false;
+    bool transpose = false;
+    Vec4 modulate{1.0F, 1.0F, 1.0F, 1.0F};
+    std::vector<TilePolygon> collision;
 };
 
 struct TileData {
@@ -78,6 +112,16 @@ struct TileData {
     std::array<int, 8> peering{-1, -1, -1, -1, -1, -1, -1, -1};
     // How often autotiling picks this tile over others that fit as well.
     double probability = 1.0;
+    std::vector<TilePolygon> collision;
+    std::map<int, AlternativeTile> alternatives; // by number, from 1
+};
+
+// A tile set's physics layer, as Godot's: what its tiles' polygons collide as, and with.
+struct PhysicsLayer {
+    std::uint32_t collision_layer = 1;
+    std::uint32_t collision_mask = 1;
+    float friction = 1.0F;
+    float bounce = 0.0F;
 };
 
 struct AtlasSource {
@@ -100,13 +144,16 @@ struct TerrainSet {
 
 struct TileSet {
     Vec2i tile_size{16, 16}; // a cell's size, in pixels
+    std::vector<PhysicsLayer> physics_layers;
     std::map<std::string, AtlasSource, std::less<>> sources;
     std::vector<TerrainSet> terrain_sets;
     std::vector<Terrain> terrains;
     std::map<std::string, TileRef, std::less<>> names; // tiles that have a name
 
-    // A tile's data, or nullptr if the set has no such tile.
+    // A tile's data, or nullptr if the set has no such tile. An alternative's is its tile's.
     [[nodiscard]] const TileData* find(const TileRef& tile) const;
+    // A tile's alternative, or nullptr for alternative 0 or one the tile doesn't have.
+    [[nodiscard]] const AlternativeTile* alternative(const TileRef& tile) const;
     // A terrain's index, or -1.
     [[nodiscard]] int terrain(std::string_view name) const;
 };
@@ -122,11 +169,30 @@ struct TileSet {
 // The tile set in a .tileset.json document, or its first error.
 [[nodiscard]] Result<TileSet> parse_tileset(const json::Value& doc);
 
-// A tile by name or as "source:x,y"; the error says what is wrong, with "did you mean".
+// A tile by name or as "source:x,y", then optionally ":" and an alternative's number, then ":"
+// and how the cell turns it, letters in this order: h (flipped horizontally), v (flipped
+// vertically), t (transposed). "crate", "ground:2,0", "crate:1", "crate:hv" and
+// "ground:2,0:1:t" are tiles. The error says what is wrong, with "did you mean".
 [[nodiscard]] Result<TileRef> find_tile(const TileSet& set, std::string_view text);
 
-// How legends write a tile: its name, or "source:x,y" when it has none.
+// How legends write a tile, as find_tile reads it: its name, or "source:x,y" when it has none,
+// then its alternative if not 0 and its turns if any.
 [[nodiscard]] std::string tile_text(const TileSet& set, const TileRef& tile);
+
+// How a tile draws in a cell: its alternative's flips with the cell's, and its alternative's
+// modulate.
+struct TileLook {
+    bool flip_h = false;
+    bool flip_v = false;
+    bool transpose = false;
+    Vec4 modulate{1.0F, 1.0F, 1.0F, 1.0F};
+};
+[[nodiscard]] TileLook tile_look(const TileSet& set, const TileRef& tile);
+
+// A tile's collision polygons as a cell places them, in pixels from the cell's center: the
+// tile's or its alternative's, transposed then flipped as the cell turns it (Godot's
+// TileData::get_transformed_vertices).
+[[nodiscard]] std::vector<TilePolygon> tile_collision(const TileSet& set, const TileRef& tile);
 
 // The pixels a tile takes in its atlas texture, as [x, y, width, height].
 [[nodiscard]] std::array<int, 4> tile_region(const AtlasSource& source, Vec2i atlas);
@@ -166,6 +232,11 @@ void encode_cells(const Cells& cells, const TileSet& set, world::TileMapLayer& l
 // tiles. -1 erases the cells. Returns how many cells changed.
 [[nodiscard]] Result<std::size_t> paint_terrain(Cells& cells, const TileSet& set,
                                                 std::span<const Vec2i> painted, int terrain);
+
+// What 2D physics makes a layer's cells into: each cell's tile's collision polygons
+// (tile_collision), moved to the cell's center, with their physics layers' settings, in the
+// order of the cells and then of the polygons.
+[[nodiscard]] std::vector<physics2d::TileShape> tile_shapes(const TileSet& set, const Cells& cells);
 
 // Every error in the TileMapLayer components of a scene or prefab document the schema accepted:
 // each layer's tile set must load through reader, and its legend and rows name tiles there.

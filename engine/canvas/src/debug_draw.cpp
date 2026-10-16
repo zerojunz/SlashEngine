@@ -1,5 +1,6 @@
 #include "slash/canvas/debug_draw.hpp"
 
+#include "slash/physics2d/physics2d.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/tree2d.hpp"
 
@@ -275,11 +276,46 @@ CollisionShapes collision_shapes(const world::World& world, const TransformOf& t
     }
     std::ranges::sort(entities, {}, [](entt::entity entity) { return entt::to_entity(entity); });
     const world::Tree2D tree(world);
-    for (const entt::entity entity : entities) {
+    const auto transform_for = [&](entt::entity entity) {
         world::Transform2D transform;
         if (const auto* current = ecs.try_get<world::Transform2D>(entity); current != nullptr) {
             transform = transform_of ? transform_of(entity, *current) : tree.global(entity);
         }
+        return transform;
+    };
+
+    // Tile map layers' polygons, filled, as TileMapLayer::_physics_draw_cell_debug draws them.
+    std::vector<entt::entity> layers;
+    for (const auto entity : ecs.view<const world::TileMapLayer>()) {
+        if (ecs.get<world::TileMapLayer>(entity).collision_enabled) {
+            layers.push_back(entity);
+        }
+    }
+    std::ranges::sort(layers, {}, [](entt::entity entity) { return entt::to_entity(entity); });
+    for (const entt::entity entity : layers) {
+        const physics2d::TileShapes tiles = physics2d::tile_shapes(world, entity);
+        if (tiles == nullptr) {
+            continue;
+        }
+        const world::Transform2D transform = transform_for(entity);
+        const Place place{.position = {},
+                          .shape_axis = {1.0F, 0.0F},
+                          .scale = transform.scale,
+                          .origin = transform.position,
+                          .body_axis = cos_sin(transform.rotation)};
+        for (const physics2d::TileShape& tile : *tiles) {
+            std::vector<Vec2> points;
+            points.reserve(tile.points.size());
+            for (const Vec2 point : tile.points) {
+                points.push_back(place(point));
+            }
+            paint.fill(points, color);
+            ++drawn.tiles;
+        }
+    }
+
+    for (const entt::entity entity : entities) {
+        const world::Transform2D transform = transform_for(entity);
         Place place{.position = {},
                     .shape_axis = {1.0F, 0.0F},
                     .scale = transform.scale,
