@@ -401,6 +401,16 @@ is and which on-screen keyboard to show (`SdlReader::set_text_input`), and
 it. `examples/text-input` is a sign-up form typed into with `input.inject`'s `text` and `ime`
 events.
 
+`TextEdit` is Godot's text field of several lines. `src/text_edit.cpp` is its geometry, shared
+with the layout: `TextArea` holds the lines shaped and wrapped (tabs every four spaces through
+`text::LayoutOptions::tab_stops`) and ports Godot's viewport, scroll bar, hit test, minimum size
+and drawing code. `src/text_editor.cpp` is the editing: `gui_input`, the caret and selection
+calls and Godot's undo history (operations chained into complex steps, typing merged until a
+three-second pause). `TextEdit.text`, `caret_line`, `caret_column` and the scroll are the truth;
+`TextEditState` keeps the rest in the gui state, and text set from outside goes in as Godot's
+`set_text`, as an undoable step. `text_changed` and `caret_changed` are deferred to the end of
+the tick, as Godot defers them. `examples/text-editor` writes a letter.
+
 ## Input
 
 `engine/input` is input, as Godot's InputEvent, InputMap and Input. Events (`input::Event`: key,

@@ -112,7 +112,8 @@ has a deadzone of 0.5 and Godot's bindings.
 | `ui_left`, `ui_right`, `ui_up`, `ui_down` | The arrow keys, the D-pad and the left stick |
 | `ui_page_up`, `ui_page_down`, `ui_home`, `ui_end` | PageUp, PageDown, Home, End |
 
-[Text fields](scene-format.md#text-fields) edit with Godot's built-in text actions, bound to Ctrl
+[Text fields](scene-format.md#text-fields) and [`TextEdit`s](scene-format.md#text-fields-of-several-lines)
+edit with Godot's built-in text actions, bound to Ctrl
 on Windows, Linux, Android and the web, and to Command (and Option for words) on macOS and iOS,
 as Godot's `.macos` bindings. `input.state` and `input.actions` list them only when asked by
 name.
@@ -133,6 +134,14 @@ name.
 | `ui_text_select_all` | Ctrl+A | Command+A |
 | `ui_text_clear_carets_and_selection` | Escape | The same |
 | `ui_swap_input_direction` | Ctrl+` | Command+` |
+| `ui_text_newline` (TextEdit) | Enter, Kp Enter, with or without Shift | The same |
+| `ui_text_newline_blank`, `ui_text_newline_above` (TextEdit) | Ctrl+Enter, Ctrl+Shift+Enter (and Kp Enter) | Command instead of Ctrl |
+| `ui_text_indent`, `ui_text_dedent` (TextEdit) | Tab, Shift+Tab | The same |
+| `ui_text_scroll_up`, `ui_text_scroll_down` (TextEdit) | Ctrl+Up, Ctrl+Down | Command+Option+Up, Command+Option+Down |
+| `ui_text_select_word_under_caret` (TextEdit) | Alt+G | Ctrl+Command+G |
+| `ui_text_toggle_insert_mode` (TextEdit) | Insert | The same |
+| `ui_focus_mode` (TextEdit) | Ctrl+M | The same |
+| `ui_menu` | Menu | The same |
 
 `project validate` checks every binding, naming a misspelled key, button or axis with the closest
 one. Games read keys, the mouse, touches and gamepads from SDL; gamepads connect and disconnect as

@@ -747,6 +747,54 @@ SLASH_COMPONENT(LineEdit, text, placeholder_text, alignment, max_length, editabl
                 caret_blink, caret_blink_interval, caret_column, caret_force_displayed,
                 caret_mid_grapheme, secret, secret_character, text_direction, language)
 
+// A text field of several lines, as Godot's TextEdit: typed into while it has focus, with one
+// caret, selection, undo, the clipboard, line wrapping and scrolling.
+struct TextEdit {
+    std::string text;
+    std::string placeholder_text; // shown, dimmed, while the text is empty
+    bool editable = true;
+    bool backspace_deletes_composite_character_enabled = false;
+    bool shortcut_keys_enabled = true;
+    bool selecting_enabled = true;
+    bool deselect_on_focus_loss_enabled = true;
+    bool empty_selection_clipboard_enabled = true; // cut and copy take the line
+    std::string wrap_mode = "none";                // "none" or "boundary"
+    std::string autowrap_mode = "word_smart";      // "arbitrary", "word" or "word_smart"
+    bool tab_input_mode = true;                    // Tab types a tab instead of moving focus
+    bool virtual_keyboard_enabled = true;
+    bool virtual_keyboard_show_on_focus = true;
+    bool scroll_past_end_of_file = false;
+    double scroll_vertical = 0.0; // lines scrolled down, wrapped rows counted
+    int scroll_horizontal = 0;    // pixels scrolled right
+    bool scroll_fit_content_height = false;
+    bool scroll_fit_content_width = false;
+    std::string caret_type = "line"; // "line" or "block"
+    bool caret_blink = false;
+    float caret_blink_interval = 0.65F;
+    bool caret_draw_when_editable_disabled = false;
+    bool caret_move_on_right_click = true;
+    bool caret_mid_grapheme = false;
+    int caret_line = 0;   // the caret's line, from 0
+    int caret_column = 0; // characters before the caret in its line
+    bool highlight_current_line = false;
+    bool draw_tabs = false;
+    bool draw_spaces = false;
+    std::string text_direction = "auto"; // as Label's
+    std::string language{};              // NOLINT(readability-redundant-member-init)
+
+    friend bool operator==(const TextEdit&, const TextEdit&) = default;
+};
+SLASH_COMPONENT(TextEdit, text, placeholder_text, editable,
+                backspace_deletes_composite_character_enabled, shortcut_keys_enabled,
+                selecting_enabled, deselect_on_focus_loss_enabled,
+                empty_selection_clipboard_enabled, wrap_mode, autowrap_mode, tab_input_mode,
+                virtual_keyboard_enabled, virtual_keyboard_show_on_focus, scroll_past_end_of_file,
+                scroll_vertical, scroll_horizontal, scroll_fit_content_height,
+                scroll_fit_content_width, caret_type, caret_blink, caret_blink_interval,
+                caret_draw_when_editable_disabled, caret_move_on_right_click, caret_mid_grapheme,
+                caret_line, caret_column, highlight_current_line, draw_tabs, draw_spaces,
+                text_direction, language)
+
 // Containers place the controls in their children lists, which ignore their anchors and
 // offsets and are sized by their minimum sizes and size flags. An entity has at most one.
 
