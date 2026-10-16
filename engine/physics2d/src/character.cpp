@@ -135,16 +135,16 @@ std::optional<MoverShape> polygon_mover(std::span<const b2Vec2> points) {
     return mover;
 }
 
-// The shape a character moves as: its CollisionShape2D, else the convex hull of its
+// One source's shape to move as: its CollisionShape2D, else the convex hull of its
 // CollisionPolygon2D; none if it has neither.
-std::optional<MoverShape> mover_shape(const entt::registry& registry, entt::entity entity,
-                                      const Transform2D& transform) {
+std::optional<MoverShape> mover_shape(const ShapeSource& source, const Transform2D& transform) {
     const b2Rot turn = b2MakeRot(transform.rotation);
-    const auto* shape = registry.try_get<CollisionShape2D>(entity);
-    if (shape != nullptr && !shape->disabled) {
+    const std::optional<CollisionShape2D>& shape = source.shape;
+    if (shape && !shape->disabled) {
         const ShapePlacement place{.rotation = b2MakeRot(shape->rotation),
                                    .position = shape->position,
-                                   .scale = transform.scale};
+                                   .scale = transform.scale,
+                                   .owner = source.owner};
         const auto point = [&](Vec2 local) { return b2RotateVector(turn, place.point(local)); };
         if (shape->shape == "circle") {
             return shape->radius > 0.0F
@@ -185,10 +185,12 @@ std::optional<MoverShape> mover_shape(const entt::registry& registry, entt::enti
         }
         return polygon_mover(points);
     }
-    const auto* polygon = registry.try_get<CollisionPolygon2D>(entity);
-    if (polygon != nullptr && !polygon->disabled) {
-        const ShapePlacement place{
-            .rotation = b2Rot_identity, .position = {}, .scale = transform.scale};
+    const std::optional<CollisionPolygon2D>& polygon = source.polygon;
+    if (polygon && !polygon->disabled) {
+        const ShapePlacement place{.rotation = b2Rot_identity,
+                                   .position = {},
+                                   .scale = transform.scale,
+                                   .owner = source.owner};
         std::vector<Vec2> outline;
         outline.reserve(polygon->polygon.size());
         for (const Vec2 local : polygon->polygon) {
@@ -199,6 +201,17 @@ std::optional<MoverShape> mover_shape(const entt::registry& registry, entt::enti
             points.push_back(to_b2(corner));
         }
         return polygon_mover(points);
+    }
+    return std::nullopt;
+}
+
+// The shape a character moves as: the first of its shapes (its own, then its children's) that
+// isn't disabled, a CollisionPolygon2D as its convex hull; none if it has none.
+std::optional<MoverShape> mover_shape(const ShapeKey& key, const Transform2D& transform) {
+    for (const ShapeSource& source : key.sources) {
+        if (auto mover = mover_shape(source, transform)) {
+            return mover;
+        }
     }
     return std::nullopt;
 }
@@ -813,9 +826,9 @@ private:
 
 } // namespace
 
-void move_character(world::World& world, b2WorldId space, Body& body, Transform2D& transform,
-                    CharacterBody2D& character, float seconds) {
-    const std::optional<MoverShape> shape = mover_shape(world.ecs(), body.entity, transform);
+void move_character(b2WorldId space, Body& body, Transform2D& transform, CharacterBody2D& character,
+                    float seconds) {
+    const std::optional<MoverShape> shape = mover_shape(body.shape_key, transform);
     if (!shape) {
         // With no shape it hits nothing.
         transform.position = transform.position + (character.velocity * seconds);

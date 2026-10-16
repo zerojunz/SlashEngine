@@ -105,19 +105,39 @@ inline Vec2 from_b2(b2Vec2 v) {
 }
 
 // Places a point of a shape, given in the shape's own space, in the body's: moved and turned by
-// the shape's position and rotation, then scaled by the entity's scale.
+// the shape's position and rotation, placed by the child entity that holds it if it isn't the
+// body's own, then scaled by the body's scale.
 struct ShapePlacement {
     b2Rot rotation = b2Rot_identity;
     Vec2 position;
     Vec2 scale{1.0F, 1.0F};
+    std::optional<world::Affine2D> owner; // a child entity's transform in the body's space
 
     [[nodiscard]] b2Vec2 point(Vec2 local) const {
-        const b2Vec2 turned = b2Add(to_b2(position), b2RotateVector(rotation, to_b2(local)));
+        b2Vec2 turned = b2Add(to_b2(position), b2RotateVector(rotation, to_b2(local)));
+        if (owner) {
+            turned = to_b2(owner->apply(from_b2(turned)));
+        }
         return {turned.x * scale.x, turned.y * scale.y};
     }
     // Radii scale by the larger axis.
     [[nodiscard]] float radius(float value) const {
-        return value * std::max(std::abs(scale.x), std::abs(scale.y));
+        float factor = std::max(std::abs(scale.x), std::abs(scale.y));
+        if (owner) {
+            const auto length = [](Vec2 v) { return std::sqrt((v.x * v.x) + (v.y * v.y)); };
+            factor *= std::max(length(owner->x), length(owner->y));
+        }
+        return value * factor;
+    }
+    // The shape's up, for one-way collision, in the body's frame.
+    [[nodiscard]] b2Vec2 up() const {
+        b2Vec2 turned = b2RotateVector(rotation, {0.0F, -1.0F});
+        if (owner) {
+            const Vec2 placed{(owner->x.x * turned.x) + (owner->y.x * turned.y),
+                              (owner->x.y * turned.x) + (owner->y.y * turned.y)};
+            turned = b2Normalize(to_b2(placed));
+        }
+        return turned;
     }
 };
 
@@ -133,10 +153,19 @@ struct ShapeInfo {
     b2Vec2 one_way_up{0.0F, -1.0F}; // in the body's frame
 };
 
-// What a body's shapes are made from; a change rebuilds them.
-struct ShapeKey {
+// An entity's shapes in a body: the body's own, or a child entity's with no body of its own.
+struct ShapeSource {
+    entt::entity entity = entt::null;
     std::optional<world::CollisionShape2D> shape;
     std::optional<world::CollisionPolygon2D> polygon;
+    std::optional<world::Affine2D> owner; // the child's transform; none for the body's own
+
+    friend bool operator==(const ShapeSource&, const ShapeSource&) = default;
+};
+
+// What a body's shapes are made from; a change rebuilds them.
+struct ShapeKey {
+    std::vector<ShapeSource> sources; // the body's own first, then its children's in order
     Vec2 scale{1.0F, 1.0F};
     std::uint32_t layer = 1;
     std::uint32_t mask = 1;
@@ -168,8 +197,9 @@ struct Body {
     std::string name; // the entity's ID
     Kind kind = Kind::Static;
     b2BodyId id = b2_nullBodyId;
-    // [0] for CollisionShape2D, [1] for CollisionPolygon2D.
-    std::array<ShapeInfo, 2> info{};
+    // Two for each of shape_key's sources: its CollisionShape2D, then its CollisionPolygon2D.
+    // Box2D's shapes point into it, so it is sized before they are made.
+    std::vector<ShapeInfo> info;
     std::vector<b2ShapeId> shapes;
     ShapeKey shape_key;
     RigidKey rigid_key;
@@ -269,7 +299,7 @@ inline const ShapeInfo* info_of(b2ShapeId shape) {
 [[nodiscard]] Space* find_space(world::World& world);
 
 // Moves a character one tick, as Godot's move_and_slide (character.cpp).
-void move_character(world::World& world, b2WorldId space, Body& body, world::Transform2D& transform,
+void move_character(b2WorldId space, Body& body, world::Transform2D& transform,
                     world::CharacterBody2D& character, float seconds);
 
 } // namespace slash::physics2d::detail

@@ -599,3 +599,83 @@ TEST_CASE("the same scene simulates the same every time") {
     };
     CHECK(run() == run());
 }
+
+TEST_CASE("a body takes the shapes of child entities with no body of their own, as Godot's") {
+    Physics physics;
+    // A wall with no shape of its own, built of two bricks: one beside it, one turned and
+    // doubled further along.
+    const entt::entity wall = physics.add("wall", {100.0F, 100.0F});
+    physics.world.ecs().emplace<world::StaticBody2D>(wall);
+    const entt::entity near = physics.add("near", {0.0F, 0.0F});
+    physics.world.ecs().emplace<world::CollisionShape2D>(near, rectangle({20.0F, 20.0F}));
+    const entt::entity far = physics.add("far", {60.0F, 0.0F});
+    physics.get<world::Transform2D>("far").rotation = std::numbers::pi_v<float> / 4.0F;
+    physics.get<world::Transform2D>("far").scale = {2.0F, 2.0F};
+    physics.world.ecs().emplace<world::CollisionShape2D>(far, rectangle({10.0F, 10.0F}));
+    physics.get<world::Transform2D>("wall").children = {near, far};
+    physics.step();
+
+    // Hits name the body. The far brick is a diamond 20 * sqrt(2) pixels across its corners.
+    auto hit = physics2d::raycast(physics.world, {100.0F, 0.0F}, {100.0F, 200.0F});
+    REQUIRE(hit.has_value());
+    CHECK(hit->entity == wall);
+    CHECK(hit->point.y == doctest::Approx(90.0F));
+    hit = physics2d::raycast(physics.world, {160.0F, 0.0F}, {160.0F, 200.0F});
+    REQUIRE(hit.has_value());
+    CHECK(hit->entity == wall);
+    CHECK(hit->point.y == doctest::Approx(100.0F - (10.0F * std::numbers::sqrt2_v<float>)));
+    CHECK_FALSE(physics2d::raycast(physics.world, {130.0F, 0.0F}, {130.0F, 200.0F}).has_value());
+
+    // Moving a brick moves its shape.
+    physics.get<world::Transform2D>("near").position = {-40.0F, 0.0F};
+    physics.step();
+    CHECK_FALSE(physics2d::raycast(physics.world, {100.0F, 0.0F}, {100.0F, 200.0F}).has_value());
+    hit = physics2d::raycast(physics.world, {60.0F, 0.0F}, {60.0F, 200.0F});
+    REQUIRE(hit.has_value());
+    CHECK(hit->entity == wall);
+
+    // A child that is a body keeps its shapes.
+    physics.world.ecs().emplace<world::StaticBody2D>(near);
+    physics.step();
+    hit = physics2d::raycast(physics.world, {60.0F, 0.0F}, {60.0F, 200.0F});
+    REQUIRE(hit.has_value());
+    CHECK(hit->entity == near);
+}
+
+TEST_CASE("rigid bodies, characters and areas use their children's shapes") {
+    Physics physics;
+    // A floor whose shape is a child's, and a crate whose shape is a child's, 10 pixels round.
+    const entt::entity floor = physics.add("floor", {0.0F, 200.0F});
+    physics.world.ecs().emplace<world::StaticBody2D>(floor);
+    const entt::entity slab = physics.add("slab", {});
+    physics.world.ecs().emplace<world::CollisionShape2D>(slab, rectangle({400.0F, 20.0F}));
+    physics.get<world::Transform2D>("floor").children = {slab};
+    const entt::entity ball = physics.add("ball", {-100.0F, 100.0F});
+    physics.world.ecs().emplace<world::RigidBody2D>(ball);
+    const entt::entity round = physics.add("round", {0.0F, 0.0F});
+    physics.world.ecs().emplace<world::CollisionShape2D>(round, circle(10.0F));
+    physics.get<world::Transform2D>("ball").children = {round};
+    physics.step(120);
+    CHECK(physics.position("ball").y == doctest::Approx(180.0F).epsilon(0.002));
+
+    // A character stands on it on its child's shape.
+    const entt::entity hero = physics.add("hero", {100.0F, 100.0F});
+    physics.world.ecs().emplace<world::CharacterBody2D>(hero);
+    const entt::entity feet = physics.add("feet", {0.0F, 10.0F});
+    physics.world.ecs().emplace<world::CollisionShape2D>(feet, rectangle({20.0F, 20.0F}));
+    physics.get<world::Transform2D>("hero").children = {feet};
+    physics.step(60, [&] { physics.fall("hero"); });
+    CHECK(physics.get<world::CharacterBody2D>("hero").on_floor);
+    CHECK(physics.position("hero").y == doctest::Approx(170.0F).epsilon(0.002));
+
+    // An area's child shape reports what enters it.
+    physics.events.clear();
+    const entt::entity zone = physics.add("zone", {-100.0F, 0.0F});
+    physics.world.ecs().emplace<world::Area2D>(zone);
+    const entt::entity field = physics.add("field", {0.0F, 175.0F});
+    physics.world.ecs().emplace<world::CollisionShape2D>(field, rectangle({20.0F, 20.0F}));
+    physics.get<world::Transform2D>("zone").children = {field};
+    physics.step();
+    CHECK(physics.event_list() == Ids{R"(body_entered zone {"body":"ball"})"});
+    CHECK(physics.ids(physics2d::contacts(physics.world, ball).areas) == Ids{"zone"});
+}

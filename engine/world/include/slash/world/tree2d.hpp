@@ -24,6 +24,8 @@ struct Affine2D {
     [[nodiscard]] Affine2D operator*(const Affine2D& o) const;
     // The transform that undoes this one, as Godot's affine_inverse; itself if it can't be undone.
     [[nodiscard]] Affine2D inverse() const;
+
+    friend bool operator==(const Affine2D&, const Affine2D&) = default;
 };
 
 // A Transform2D's matrix, as Godot's Transform2D(rotation, scale, skew, position). Its children
