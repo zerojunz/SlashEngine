@@ -1,5 +1,7 @@
 #include "godot_import.hpp"
 
+#include "common.hpp"
+
 #include "slash/animation/animation.hpp"
 #include "slash/audio/audio.hpp"
 #include "slash/canvas/tilemap.hpp"
@@ -51,161 +53,17 @@ std::string strip_res(std::string_view path) {
     return std::string(path);
 }
 
-std::string lowercase(std::string_view text) {
-    std::string out(text);
-    for (char& c : out) {
-        if (c >= 'A' && c <= 'Z') {
-            c = static_cast<char>(c - 'A' + 'a');
-        }
-    }
-    return out;
-}
-
-std::size_t extension_start(std::string_view path) {
-    const std::size_t slash = path.find_last_of('/');
-    const std::size_t dot = path.find_last_of('.');
-    if (dot == std::string_view::npos || (slash != std::string_view::npos && dot < slash)) {
-        return path.size();
-    }
-    return dot;
-}
-
-// ".png" for "a/b.PNG", "" with none.
-std::string extension_of(std::string_view path) {
-    return lowercase(path.substr(extension_start(path)));
-}
-
-std::string without_extension(std::string_view path) {
-    return std::string(path.substr(0, extension_start(path)));
-}
-
-std::string file_stem(std::string_view path) {
-    const std::string bare = without_extension(path);
-    const std::size_t slash = bare.find_last_of('/');
-    return slash == std::string::npos ? bare : bare.substr(slash + 1);
-}
-
-bool is_upper(char c) {
-    return c >= 'A' && c <= 'Z';
-}
-bool is_lower(char c) {
-    return c >= 'a' && c <= 'z';
-}
-bool is_digit(char c) {
-    return c >= '0' && c <= '9';
-}
-
-// A node name as an entity ID: "PlayerSprite" -> "player_sprite", "HUDLabel" -> "hud_label",
-// "Sprite2D" -> "sprite2d", "Enemy 3" -> "enemy_3".
-std::string snake_case(std::string_view name, std::size_t limit = 64) {
-    std::string out;
-    for (std::size_t i = 0; i < name.size(); ++i) {
-        const char c = name[i];
-        if (is_upper(c)) {
-            const char previous = i > 0 ? name[i - 1] : '\0';
-            const char next = i + 1 < name.size() ? name[i + 1] : '\0';
-            const bool word = is_lower(previous) || (is_upper(previous) && is_lower(next));
-            if (word && !out.empty() && out.back() != '_') {
-                out += '_';
-            }
-            out += static_cast<char>(c - 'A' + 'a');
-        } else if (is_lower(c) || is_digit(c) || c == '-') {
-            out += c;
-        } else if (!out.empty() && out.back() != '_') {
-            out += '_';
-        }
-    }
-    if (out.size() > limit) {
-        out.resize(limit);
-    }
-    while (!out.empty() && out.back() == '_') {
-        out.pop_back();
-    }
-    return out.empty() ? "node" : out;
-}
-
-template <typename Range, typename T>
-bool contains(const Range& range, const T& value) {
-    return std::ranges::find(range, value) != std::ranges::end(range);
-}
-
-bool is_texture_file(std::string_view extension) {
-    return extension == ".png" || extension == ".bmp";
-}
-bool is_sound_file(std::string_view extension) {
-    return extension == ".wav" || extension == ".ogg" || extension == ".mp3";
-}
-bool is_font_file(std::string_view extension) {
-    return extension == ".ttf" || extension == ".otf";
-}
-bool is_data_file(std::string_view extension) {
-    return extension == ".json" || extension == ".txt" || extension == ".csv";
-}
 bool is_script_file(std::string_view extension) {
     return extension == ".gd" || extension == ".cs";
 }
 
 // Why a file Godot uses can't come along, by extension, or "".
 std::string unsupported_file(std::string_view extension) {
-    if (extension == ".svg" || extension == ".jpg" || extension == ".jpeg" ||
-        extension == ".webp" || extension == ".tga" || extension == ".exr" || extension == ".hdr" ||
-        extension == ".ktx" || extension == ".dds") {
-        return "textures are PNG or BMP files; save it as PNG";
-    }
-    if (extension == ".woff" || extension == ".woff2" || extension == ".fnt" ||
-        extension == ".pfb" || extension == ".pfm") {
-        return "fonts are TTF or OTF files";
-    }
     if (extension == ".gdshader" || extension == ".gdshaderinc") {
         return "a game's own shaders are on the roadmap; canvas materials are .material.json "
                "graphs";
     }
-    if (extension == ".glb" || extension == ".gltf" || extension == ".obj" || extension == ".fbx" ||
-        extension == ".blend" || extension == ".dae") {
-        return "3D comes with milestone 7";
-    }
-    if (extension == ".ogv") {
-        return "video isn't supported yet";
-    }
-    return {};
-}
-
-// The pixel size of a PNG file, from its IHDR chunk.
-std::optional<std::pair<int, int>> png_size(std::string_view bytes) {
-    constexpr std::size_t kHeader = 24;
-    if (bytes.size() < kHeader || bytes.substr(1, 3) != "PNG" || bytes.substr(12, 4) != "IHDR") {
-        return std::nullopt;
-    }
-    const auto read = [&](std::size_t at) {
-        std::uint32_t value = 0;
-        for (std::size_t i = 0; i < 4; ++i) {
-            value = (value << 8U) | static_cast<unsigned char>(bytes[at + i]);
-        }
-        return static_cast<int>(value);
-    };
-    return std::pair{read(16), read(20)};
-}
-
-// A whole number, all of text, or nullopt.
-std::optional<std::int64_t> parse_int(std::string_view text) {
-    std::int64_t value = 0;
-    const auto [end, error] = std::from_chars(text.data(), text.data() + text.size(), value);
-    if (text.empty() || error != std::errc() || end != text.data() + text.size()) {
-        return std::nullopt;
-    }
-    return value;
-}
-
-// text split at each separator.
-std::vector<std::string_view> split_path(std::string_view text, char separator = '/') {
-    std::vector<std::string_view> parts;
-    std::size_t start = 0;
-    while (start <= text.size()) {
-        const std::size_t end = std::min(text.find(separator, start), text.size());
-        parts.push_back(text.substr(start, end - start));
-        start = end + 1;
-    }
-    return parts;
+    return unsupported_asset(extension);
 }
 
 // --- Tile data ---------------------------------------------------------------------------------
@@ -318,50 +176,6 @@ bool connects(std::int64_t mode, std::size_t direction) {
     const bool corner = direction % 2 == 1;
     return mode == 1 ? corner : mode != 2 || !corner;
 }
-
-// --- Reports -----------------------------------------------------------------------------------
-
-// What couldn't come along, counted by what it is, with the first place it was seen.
-class Problems {
-public:
-    void add(const std::string& what, const std::string& where, const std::string& why = {}) {
-        Entry& entry = entries_[what];
-        if (entry.count++ == 0) {
-            entry.where = where;
-            entry.why = why;
-        }
-    }
-
-    [[nodiscard]] json::Array to_json() const {
-        std::vector<std::pair<std::string, const Entry*>> sorted;
-        sorted.reserve(entries_.size());
-        for (const auto& [what, entry] : entries_) {
-            sorted.emplace_back(what, &entry);
-        }
-        std::ranges::stable_sort(
-            sorted, [](const auto& a, const auto& b) { return a.second->count > b.second->count; });
-        json::Array out;
-        for (const auto& [what, entry] : sorted) {
-            json::Value item;
-            item["what"] = what;
-            item["count"] = entry->count;
-            item["where"] = entry->where;
-            if (!entry->why.empty()) {
-                item["why"] = entry->why;
-            }
-            out.push_back(std::move(item));
-        }
-        return out;
-    }
-
-private:
-    struct Entry {
-        int count = 0;
-        std::string where;
-        std::string why;
-    };
-    std::map<std::string, Entry> entries_;
-};
 
 // --- Godot files -------------------------------------------------------------------------------
 
@@ -854,17 +668,6 @@ ScriptOutline outline_script(std::string_view text) {
     return outline;
 }
 
-std::string join(const std::vector<std::string>& items, std::string_view separator) {
-    std::string out;
-    for (const std::string& item : items) {
-        if (!out.empty()) {
-            out += separator;
-        }
-        out += item;
-    }
-    return out;
-}
-
 // A scene's use of a script: the entity and the values its node set.
 struct ScriptUse {
     std::string scene;
@@ -1306,62 +1109,6 @@ private:
             }
         }
     }
-
-    // An array index in a JSON Pointer, or nullopt.
-    static std::optional<std::size_t> pointer_index(std::string_view part) {
-        std::size_t index = 0;
-        const auto [end, error] = std::from_chars(part.data(), part.data() + part.size(), index);
-        if (part.empty() || error != std::errc() || end != part.data() + part.size()) {
-            return std::nullopt;
-        }
-        return index;
-    }
-
-    // Removes the value at a JSON Pointer; false if there is none to remove.
-    static bool remove_pointer(json::Value& root, std::string_view pointer) {
-        if (pointer.empty() || pointer.front() != '/') {
-            return false;
-        }
-        std::vector<std::string> parts;
-        std::size_t start = 1;
-        while (start <= pointer.size()) {
-            const std::size_t end = std::min(pointer.find('/', start), pointer.size());
-            std::string part(pointer.substr(start, end - start));
-            for (std::size_t at = part.find('~'); at != std::string::npos;
-                 at = part.find('~', at + 1)) {
-                part.replace(at, 2, part.compare(at, 2, "~1") == 0 ? "/" : "~");
-            }
-            parts.push_back(std::move(part));
-            start = end + 1;
-        }
-        json::Value* parent = &root;
-        for (std::size_t i = 0; i + 1 < parts.size(); ++i) {
-            if (parent->is_object()) {
-                parent = parent->find(parts[i]);
-            } else if (const auto index = pointer_index(parts[i]); parent->is_array() && index) {
-                parent = *index < parent->as_array().size() ? &parent->as_array()[*index] : nullptr;
-            } else {
-                parent = nullptr;
-            }
-            if (parent == nullptr) {
-                return false;
-            }
-        }
-        const std::string& last = parts.back();
-        if (parent->is_object()) {
-            return parent->as_object().erase(last) > 0;
-        }
-        if (const auto index = pointer_index(last); parent->is_array() && index) {
-            auto& items = parent->as_array();
-            if (*index < items.size()) {
-                items.erase(items.begin() + static_cast<std::ptrdiff_t>(*index));
-                return true;
-            }
-        }
-        return false;
-    }
-
-    // --- Scenes ---
 
     // Adds the nodes of file to nodes, under prefix (a node path, "." for the scene's root),
     // instancing the scenes it instances. Returns the index of its root, or -1.
@@ -3881,53 +3628,16 @@ private:
 
     // --- Tasks and the report ---
 
-    std::string task_id(const std::string& script) {
-        std::string base = "task/port-" + snake_case(file_stem(script), 56);
-        for (char& c : base) {
-            if (c == '_') {
-                c = '-';
-            }
-        }
-        std::string id = base;
-        for (int n = 2; task_ids_.contains(id); ++n) {
-            id = base + "-" + std::to_string(n);
-        }
-        task_ids_.insert(id);
-        return id;
-    }
-
     void write_tasks(const std::optional<std::string>& existing) {
-        json::Object entries;
-        if (existing) {
-            if (auto parsed = json::parse(*existing); parsed && parsed.value().is_object()) {
-                if (const json::Value* list = parsed.value().find("entries");
-                    list != nullptr && list->is_object()) {
-                    entries = list->as_object();
-                }
-            }
-        }
-        for (const auto& [id, entry] : entries) {
-            task_ids_.insert(id);
-        }
-        for (auto& [script, record] : scripts_) {
-            std::string id;
-            for (const auto& [existing_id, entry] : entries) {
-                const json::Value* links = entry.find("links");
-                if (links != nullptr && links->is_array() && !links->as_array().empty() &&
-                    links->as_array().front().is_string() &&
-                    links->as_array().front().as_string() == destination(script)) {
-                    id = existing_id; // imported before: update it, keeping its status
-                }
-            }
-            if (id.empty()) {
-                id = task_id(script);
-            }
-            task_of_[script] = id;
-            json::Value task = entries.contains(id) ? entries[id] : json::Value(json::Object{});
+        std::vector<PortTask> tasks;
+        for (const auto& [script, record] : scripts_) {
             const bool csharp = extension_of(script) == ".cs";
-            task["name"] = "Port " + script + " to C++";
-            task["summary"] = std::string(csharp ? "C#" : "GDScript") +
-                              " from Godot: write what it does as C++ components and systems.";
+            PortTask task;
+            task.link = destination(script);
+            task.name = "Port " + script + " to C++";
+            task.summary = std::string(csharp ? "C#" : "GDScript") +
+                           " from Godot: write what it does as C++ components and systems.";
+            task.engine = "godot";
             std::string text;
             if (auto source = platform::read_file(source_ + script); source && !csharp) {
                 const ScriptOutline outline = outline_script(source.value());
@@ -3948,12 +3658,9 @@ private:
                 }
             }
             std::vector<std::string> uses;
-            json::Array links{destination(script)};
             for (const ScriptUse& use : record.uses) {
                 uses.push_back(use.entity + " in " + use.scene);
-                if (!contains(links, json::Value(use.scene))) {
-                    links.emplace_back(use.scene);
-                }
+                task.links.push_back(use.scene);
             }
             if (!uses.empty()) {
                 text += " Used by " + join(uses, ", ") + ".";
@@ -3966,16 +3673,16 @@ private:
             text += " The values each entity's node set, its signal connections and node paths "
                     "are in " +
                     std::string(kReportFile) + ".";
-            task["text"] = trim(text);
-            task["links"] = std::move(links);
-            task["tags"] = json::Array{"godot", "import"};
-            if (task.find("status") == nullptr) {
-                task["status"] = "open";
-            }
-            entries[id] = std::move(task);
+            task.text = trim(text);
+            tasks.push_back(std::move(task));
         }
-        if (!scripts_.empty()) {
-            add_file(storyboard::file_path("work"), storyboard::format_file(entries));
+        PortTasks written = write_port_tasks(existing, tasks);
+        std::size_t index = 0;
+        for (const auto& [script, record] : scripts_) {
+            task_of_[script] = written.ids[index++];
+        }
+        if (!written.file.empty()) {
+            add_file(storyboard::file_path("work"), std::move(written.file));
         }
     }
 
@@ -4070,7 +3777,6 @@ private:
     std::map<std::string, LibraryFile> libraries_written_; // by file name, without its suffix
     std::map<std::string, ScriptRecord> scripts_;          // by res path
     std::map<std::string, std::string> task_of_;
-    std::set<std::string> task_ids_;
     std::map<std::string, std::string> autoloads_;
     std::map<std::string, std::vector<std::string>> groups_;
     std::map<std::string, json::Value> report_scenes_;

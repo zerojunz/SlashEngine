@@ -1,0 +1,588 @@
+project.import {"dry_run":true,"source":"unity"}
+{
+  "converted": {
+    "assets": 7,
+    "input_actions": 12,
+    "prefabs": 3,
+    "scenes": 1
+  },
+  "dry_run": true,
+  "engine": "unity",
+  "files": ["unity/Assets/Prefabs/Coin.scene.json", "unity/Assets/Prefabs/Frog.scene.json", "unity/Assets/Prefabs/Gold Coin.scene.json", "unity/Assets/Audio/pond.loop.audio.json", "unity/Assets/Scenes/Pond.scene.json", "project.json", "storyboard/work.json", "import/unity.json"],
+  "main_scene": "unity/Assets/Scenes/Pond.scene.json",
+  "pixels_per_unit": 32.0,
+  "project": "Pond Hop",
+  "report": "import/unity.json",
+  "scripts": [
+    {
+      "entities": 1,
+      "script": "unity/Assets/Scripts/CameraFollow.cs",
+      "task": "task/port-camera-follow"
+    },
+    {
+      "entities": 6,
+      "script": "unity/Assets/Scripts/Coin.cs",
+      "task": "task/port-coin"
+    },
+    {
+      "entities": 2,
+      "script": "unity/Assets/Scripts/Frog.cs",
+      "task": "task/port-frog"
+    }
+  ],
+  "unity_version": "2022.3.20f1",
+  "unsupported": [
+    {
+      "count": 1,
+      "what": "inactive object",
+      "where": "Assets/Scenes/Pond.unity: Coin (2)",
+      "why": "converted hidden, with its shapes disabled; there is no inactive state, so its other components still run"
+    },
+    {
+      "count": 1,
+      "what": "input axis Mouse X",
+      "where": "ProjectSettings/InputManager.asset",
+      "why": "mouse movement axes: read the mouse's motion in code"
+    },
+    {
+      "count": 1,
+      "what": "input binding",
+      "where": "Assets/Input/Controls.inputactions: Player/Croak",
+      "why": "\"<XRController>/trigger\": XRController bindings"
+    },
+    {
+      "count": 1,
+      "what": "input interaction",
+      "where": "Assets/Input/Controls.inputactions: Player/Croak",
+      "why": "Hold: gameplay code times holds and taps"
+    }
+  ]
+}
+project.import {"source":"unity"}
+{
+  "converted": {
+    "assets": 7,
+    "input_actions": 12,
+    "prefabs": 3,
+    "scenes": 1
+  },
+  "engine": "unity",
+  "files": 8,
+  "main_scene": "unity/Assets/Scenes/Pond.scene.json",
+  "pixels_per_unit": 32.0,
+  "project": "Pond Hop",
+  "report": "import/unity.json",
+  "scripts": [
+    {
+      "entities": 1,
+      "script": "unity/Assets/Scripts/CameraFollow.cs",
+      "task": "task/port-camera-follow"
+    },
+    {
+      "entities": 6,
+      "script": "unity/Assets/Scripts/Coin.cs",
+      "task": "task/port-coin"
+    },
+    {
+      "entities": 2,
+      "script": "unity/Assets/Scripts/Frog.cs",
+      "task": "task/port-frog"
+    }
+  ],
+  "unity_version": "2022.3.20f1",
+  "unsupported": [
+    {
+      "count": 1,
+      "what": "inactive object",
+      "where": "Assets/Scenes/Pond.unity: Coin (2)",
+      "why": "converted hidden, with its shapes disabled; there is no inactive state, so its other components still run"
+    },
+    {
+      "count": 1,
+      "what": "input axis Mouse X",
+      "where": "ProjectSettings/InputManager.asset",
+      "why": "mouse movement axes: read the mouse's motion in code"
+    },
+    {
+      "count": 1,
+      "what": "input binding",
+      "where": "Assets/Input/Controls.inputactions: Player/Croak",
+      "why": "\"<XRController>/trigger\": XRController bindings"
+    },
+    {
+      "count": 1,
+      "what": "input interaction",
+      "where": "Assets/Input/Controls.inputactions: Player/Croak",
+      "why": "Hold: gameplay code times holds and taps"
+    }
+  ]
+}
+--- unity/Assets/Scenes/Pond.scene.json
+{
+  "entities": {
+    "coin": {
+      "components": {
+        "Transform2D": {
+          "position": [0.0, 128.0]
+        }
+      },
+      "extends": "unity/Assets/Prefabs/Coin.scene.json"
+    },
+    "coin_1": {
+      "components": {
+        "Transform2D": {
+          "position": [32.0, 128.0]
+        }
+      },
+      "extends": "unity/Assets/Prefabs/Coin.scene.json"
+    },
+    "coin_2": {
+      "components": {
+        "CollisionShape2D": {
+          "disabled": true
+        },
+        "Sprite2D": {
+          "visible": false
+        },
+        "Transform2D": {
+          "position": [-32.0, 128.0]
+        }
+      },
+      "extends": "unity/Assets/Prefabs/Coin.scene.json"
+    },
+    "frog": {
+      "components": {
+        "Transform2D": {
+          "children": ["frog/frog_sprite", "frog/feet", "hat"],
+          "position": [-96.0, 112.0]
+        }
+      },
+      "extends": "unity/Assets/Prefabs/Frog.scene.json"
+    },
+    "gold_coin": {
+      "components": {
+        "Transform2D": {
+          "position": [96.0, 48.0]
+        }
+      },
+      "extends": "unity/Assets/Prefabs/Gold Coin.scene.json"
+    },
+    "ground": {
+      "components": {
+        "CollisionShape2D": {
+          "size": [640.0, 32.0]
+        },
+        "StaticBody2D": {
+          "collision_mask": 4294967295,
+          "friction": 0.05
+        },
+        "Transform2D": {
+          "children": ["ground_shape_2"],
+          "position": [0.0, 164.0]
+        }
+      }
+    },
+    "ground_shape_2": {
+      "components": {
+        "CollisionShape2D": {
+          "position": [-312.0, -96.0],
+          "size": [16.0, 160.0]
+        },
+        "Transform2D": {}
+      }
+    },
+    "hat": {
+      "components": {
+        "Transform2D": {
+          "children": ["hat_sprite"],
+          "position": [0.0, -16.0]
+        }
+      }
+    },
+    "hat_sprite": {
+      "components": {
+        "Sprite2D": {
+          "modulate": [0.9, 0.2, 0.2, 1.0],
+          "texture": "unity/Assets/Sprites/hat.png",
+          "z_index": 1001
+        },
+        "Transform2D": {
+          "scale": [0.5, 0.5]
+        }
+      }
+    },
+    "lily_pad": {
+      "components": {
+        "CollisionShape2D": {
+          "one_way_collision": true,
+          "position": [0.0, -4.0],
+          "size": [64.0, 8.0]
+        },
+        "Sprite2D": {
+          "offset": [0.0, -8.0],
+          "texture": "unity/Assets/Sprites/lily_pad.png",
+          "z_index": -1
+        },
+        "StaticBody2D": {
+          "collision_mask": 4294967295,
+          "friction": 0.4
+        },
+        "Transform2D": {
+          "position": [96.0, 80.0]
+        }
+      }
+    },
+    "main_camera": {
+      "components": {
+        "AudioListener2D": {
+          "current": true
+        },
+        "Camera2D": {},
+        "Transform2D": {}
+      }
+    },
+    "music": {
+      "components": {
+        "AudioStreamPlayer": {
+          "autoplay": true,
+          "stream": "unity/Assets/Audio/pond.loop.audio.json",
+          "volume_db": -6.0206
+        },
+        "Transform2D": {}
+      }
+    },
+    "sky": {
+      "components": {
+        "Sprite2D": {
+          "texture": "unity/Assets/Sprites/sky.png",
+          "texture_filter": "linear",
+          "z_index": -1000
+        },
+        "Transform2D": {}
+      }
+    }
+  },
+  "format": 1
+}
+--- unity/Assets/Prefabs/Frog.scene.json
+{
+  "entities": {
+    "feet": {
+      "components": {
+        "Area2D": {
+          "collision_layer": 64,
+          "collision_mask": 4294967295
+        },
+        "CollisionShape2D": {
+          "size": [16.0, 4.0]
+        },
+        "Transform2D": {
+          "position": [0.0, 16.0]
+        }
+      }
+    },
+    "frog": {
+      "components": {
+        "AudioStreamPlayer2D": {
+          "max_distance": 640.0,
+          "stream": "unity/Assets/Audio/croak.wav"
+        },
+        "CollisionShape2D": {
+          "height": 32.0,
+          "radius": 12.0,
+          "shape": "capsule"
+        },
+        "RigidBody2D": {
+          "angular_damp": 0.05,
+          "collision_layer": 64,
+          "collision_mask": 4294967295,
+          "continuous_cd": "cast_shape",
+          "friction": 0.4,
+          "lock_rotation": true
+        },
+        "Transform2D": {
+          "children": ["frog_sprite", "feet"]
+        }
+      }
+    },
+    "frog_sprite": {
+      "components": {
+        "Sprite2D": {
+          "offset": [0.0, -8.0],
+          "texture": "unity/Assets/Sprites/frog.png",
+          "z_index": 1000
+        },
+        "Transform2D": {}
+      }
+    }
+  },
+  "format": 1,
+  "root": "frog"
+}
+--- unity/Assets/Prefabs/Gold Coin.scene.json
+{
+  "entities": {
+    "gold_coin": {
+      "components": {
+        "Sprite2D": {
+          "modulate": [1.0, 1.0, 0.5, 1.0],
+          "region": [16.0, 16.0, 16.0, 16.0]
+        }
+      },
+      "extends": "unity/Assets/Prefabs/Coin.scene.json"
+    }
+  },
+  "format": 1,
+  "root": "gold_coin"
+}
+--- unity/Assets/Audio/pond.loop.audio.json
+{
+  "format": 1,
+  "loop_mode": "forward",
+  "source": "unity/Assets/Audio/pond.wav"
+}
+--- project.json
+{
+  "format": 1,
+  "input": {
+    "Cancel": {
+      "events": [
+        {
+          "key": "Escape",
+          "type": "key"
+        },
+        {
+          "button": "b",
+          "type": "joypad_button"
+        }
+      ]
+    },
+    "Croak": {
+      "events": [
+        {
+          "key": "C",
+          "type": "key"
+        },
+        {
+          "button": "right",
+          "type": "mouse_button"
+        }
+      ]
+    },
+    "Horizontal/negative": {
+      "events": [
+        {
+          "key": "Left",
+          "type": "key"
+        },
+        {
+          "key": "A",
+          "type": "key"
+        },
+        {
+          "axis": "left_x",
+          "axis_value": -1,
+          "type": "joypad_motion"
+        }
+      ]
+    },
+    "Horizontal/positive": {
+      "events": [
+        {
+          "key": "Right",
+          "type": "key"
+        },
+        {
+          "key": "D",
+          "type": "key"
+        },
+        {
+          "axis": "left_x",
+          "axis_value": 1,
+          "type": "joypad_motion"
+        }
+      ]
+    },
+    "Jump": {
+      "events": [
+        {
+          "key": "Space",
+          "type": "key"
+        },
+        {
+          "button": "a",
+          "type": "joypad_button"
+        }
+      ]
+    },
+    "Player/Croak": {
+      "events": [
+        {
+          "physical_key": "C",
+          "type": "key"
+        }
+      ]
+    },
+    "Player/Jump": {
+      "events": [
+        {
+          "physical_key": "Space",
+          "type": "key"
+        },
+        {
+          "button": "a",
+          "type": "joypad_button"
+        }
+      ]
+    },
+    "Player/Move/down": {
+      "events": [
+        {
+          "physical_key": "S",
+          "type": "key"
+        },
+        {
+          "axis": "left_y",
+          "axis_value": 1,
+          "type": "joypad_motion"
+        }
+      ]
+    },
+    "Player/Move/left": {
+      "events": [
+        {
+          "physical_key": "A",
+          "type": "key"
+        },
+        {
+          "axis": "left_x",
+          "axis_value": -1,
+          "type": "joypad_motion"
+        }
+      ]
+    },
+    "Player/Move/right": {
+      "events": [
+        {
+          "physical_key": "D",
+          "type": "key"
+        },
+        {
+          "axis": "left_x",
+          "axis_value": 1,
+          "type": "joypad_motion"
+        }
+      ]
+    },
+    "Player/Move/up": {
+      "events": [
+        {
+          "physical_key": "W",
+          "type": "key"
+        },
+        {
+          "axis": "left_y",
+          "axis_value": -1,
+          "type": "joypad_motion"
+        }
+      ]
+    },
+    "Submit": {
+      "events": [
+        {
+          "key": "Enter",
+          "type": "key"
+        },
+        {
+          "button": "a",
+          "type": "joypad_button"
+        }
+      ]
+    }
+  },
+  "main_scene": "unity/Assets/Scenes/Pond.scene.json",
+  "name": "Pond Hop",
+  "physics_2d": {
+    "angular_damp": 0.0,
+    "gravity": 480.0,
+    "gravity_vector": [0.0, 1.0],
+    "linear_damp": 0.0
+  },
+  "rendering": {
+    "clear_color": [0.42, 0.68, 0.86, 1.0],
+    "texture_filter": "nearest"
+  },
+  "tick_hz": 60.0,
+  "version": "1.2.0",
+  "window": {
+    "height": 360,
+    "width": 640
+  }
+}
+scene.open {"path":"unity/Assets/Scenes/Pond.scene.json"}
+{
+  "entities": 15,
+  "path": "unity/Assets/Scenes/Pond.scene.json"
+}
+step {"ticks":60}
+{
+  "tick": 60,
+  "ticks": 60
+}
+world.query {"include":["Transform2D"],"with":["RigidBody2D"]}
+{
+  "count": 1,
+  "entities": [
+    {
+      "components": {
+        "Transform2D": {
+          "children": ["frog/frog_sprite", "frog/feet", "hat"],
+          "position": [-96.0, 132.00687],
+          "rotation": 0.0,
+          "scale": [1.0, 1.0],
+          "skew": 0.0
+        }
+      },
+      "id": "frog"
+    }
+  ],
+  "truncated": false
+}
+physics.overlap {"collide_with_areas":true,"position":[-16,128],"shape":{"shape":"rectangle","size":[96,16]}}
+{
+  "ids": ["coin", "coin_1"]
+}
+storyboard.query {"kind":"task"}
+{
+  "entries": [
+    {
+      "fields": {
+        "name": "Port Assets/Scripts/CameraFollow.cs to C++",
+        "summary": "C# from Unity: write what it does as C++ components and systems."
+      },
+      "id": "task/port-camera-follow",
+      "version": "8c906fef"
+    },
+    {
+      "fields": {
+        "name": "Port Assets/Scripts/Coin.cs to C++",
+        "summary": "C# from Unity: write what it does as C++ components and systems."
+      },
+      "id": "task/port-coin",
+      "version": "e14dacdd"
+    },
+    {
+      "fields": {
+        "name": "Port Assets/Scripts/Frog.cs to C++",
+        "summary": "C# from Unity: write what it does as C++ components and systems."
+      },
+      "id": "task/port-frog",
+      "version": "b5a05b24"
+    }
+  ],
+  "seq": 0
+}
+storyboard.check {}
+{
+  "valid": true
+}

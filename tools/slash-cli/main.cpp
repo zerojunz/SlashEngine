@@ -126,9 +126,10 @@ Usage:
       --force                        Replace files that already exist
       --mcp-command <cmd>            How agents launch slash-mcp (default "slash-mcp")
   slash-cli import <folder>          Convert a Godot 4 project (the folder with project.godot)
-                                     into the project: scenes, sprite frames, input map and
-                                     settings; each script becomes a storyboard task. A folder
-                                     outside the project is copied in
+                                     or a Unity project (the folder with Assets/) into the
+                                     project: scenes, prefabs, sprites, input and settings;
+                                     each script becomes a storyboard task. A folder outside
+                                     the project is copied in
       --project <dir>                Project folder to import into (default ".")
       --dry-run                      Print the report and the files it would write; write
                                      nothing
@@ -1228,7 +1229,7 @@ int cmd_import(const std::vector<std::string>& args) {
         }
     }
     if (options.source.empty()) {
-        return usage_error("import needs the folder of a Godot 4 project, with its project.godot");
+        return usage_error("import needs the folder of a Godot 4 or Unity project");
     }
     if (dry_run) {
         auto plan = slash::importer::plan_import(options);
