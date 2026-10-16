@@ -5,6 +5,7 @@ add_executable(slash_tests
     test_audio.cpp
     test_canvas.cpp
     test_command.cpp
+    test_debug.cpp
     test_exporter.cpp
     test_fixed_step.cpp
     test_gui.cpp
@@ -35,7 +36,7 @@ add_executable(slash_tests
     test_ui_containers.cpp
     test_world.cpp)
 target_link_libraries(slash_tests PRIVATE
-    slash::animation slash::asset slash::audio slash::canvas slash::command slash::core slash::exporter slash::input slash::physics2d
+    slash::animation slash::asset slash::audio slash::canvas slash::command slash::core slash::debug slash::exporter slash::input slash::physics2d
     slash::platform slash::render slash::runtime slash::server slash::storyboard slash::text slash::ui slash::world doctest::doctest SDL3::SDL3-static)
 # doctest forward-declares std::ostream by default, which breaks string_view checks on recent
 # MSVC standard libraries; include the real headers instead.

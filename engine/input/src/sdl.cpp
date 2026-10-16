@@ -296,7 +296,8 @@ Vec2 window_size(SDL_WindowID id) {
     return {static_cast<float>(width), static_cast<float>(height)};
 }
 
-void wheel(world::World& world, MouseButton button, float amount, Vec2 position) {
+template <typename Queue>
+void wheel(const Queue& queue, MouseButton button, float amount, Vec2 position) {
     Event event;
     event.type = EventType::MouseButton;
     event.button = button;
@@ -304,9 +305,9 @@ void wheel(world::World& world, MouseButton button, float amount, Vec2 position)
     event.position = position;
     event.modifiers = modifiers_of(SDL_GetModState());
     event.pressed = true;
-    push(world, event);
+    queue(event);
     event.pressed = false;
-    push(world, event);
+    queue(event);
 }
 
 } // namespace
@@ -334,6 +335,11 @@ int SdlReader::finger_index(std::uint64_t finger, bool add) {
 }
 
 void SdlReader::read(const SDL_Event& event, world::World& world) {
+    const auto queue = [&](Event input) {
+        if (!filter_ || !filter_(input)) {
+            push(world, std::move(input));
+        }
+    };
     switch (event.type) {
     case SDL_EVENT_KEY_DOWN:
     case SDL_EVENT_KEY_UP: {
@@ -347,7 +353,7 @@ void SdlReader::read(const SDL_Event& event, world::World& world) {
         key.pressed = event.key.down;
         key.echo = event.key.repeat;
         key.modifiers = modifiers_of(event.key.mod);
-        push(world, key);
+        queue(key);
         return;
     }
     case SDL_EVENT_MOUSE_BUTTON_DOWN:
@@ -363,7 +369,7 @@ void SdlReader::read(const SDL_Event& event, world::World& world) {
         click.double_click = event.button.down && event.button.clicks == 2;
         click.position = {event.button.x, event.button.y};
         click.modifiers = modifiers_of(SDL_GetModState());
-        push(world, click);
+        queue(click);
         return;
     }
     case SDL_EVENT_MOUSE_MOTION: {
@@ -374,7 +380,7 @@ void SdlReader::read(const SDL_Event& event, world::World& world) {
         motion.type = EventType::MouseMotion;
         motion.position = {event.motion.x, event.motion.y};
         motion.relative = Vec2{event.motion.xrel, event.motion.yrel};
-        push(world, motion);
+        queue(motion);
         return;
     }
     case SDL_EVENT_MOUSE_WHEEL: {
@@ -386,11 +392,11 @@ void SdlReader::read(const SDL_Event& event, world::World& world) {
         const float y = event.wheel.y * flip;
         const Vec2 position{event.wheel.mouse_x, event.wheel.mouse_y};
         if (y != 0.0F) {
-            wheel(world, y > 0.0F ? MouseButton::WheelUp : MouseButton::WheelDown, std::abs(y),
+            wheel(queue, y > 0.0F ? MouseButton::WheelUp : MouseButton::WheelDown, std::abs(y),
                   position);
         }
         if (x != 0.0F) {
-            wheel(world, x > 0.0F ? MouseButton::WheelRight : MouseButton::WheelLeft, std::abs(x),
+            wheel(queue, x > 0.0F ? MouseButton::WheelRight : MouseButton::WheelLeft, std::abs(x),
                   position);
         }
         return;
@@ -421,7 +427,7 @@ void SdlReader::read(const SDL_Event& event, world::World& world) {
                 fingers_.erase(event.tfinger.fingerID);
             }
         }
-        push(world, touch);
+        queue(touch);
         return;
     }
     case SDL_EVENT_GAMEPAD_ADDED: {
@@ -456,12 +462,12 @@ void SdlReader::read(const SDL_Event& event, world::World& world) {
         release.type = EventType::JoypadButton;
         for (unsigned button = 0; button <= static_cast<unsigned>(JoyButton::Touchpad); ++button) {
             release.joy_button = static_cast<JoyButton>(button);
-            push(world, release);
+            queue(release);
         }
         release.type = EventType::JoypadMotion;
         for (unsigned axis = 0; axis <= static_cast<unsigned>(JoyAxis::TriggerRight); ++axis) {
             release.axis = static_cast<JoyAxis>(axis);
-            push(world, release);
+            queue(release);
         }
         log::info("gamepad disconnected", {{"device", device}});
         return;
@@ -478,7 +484,7 @@ void SdlReader::read(const SDL_Event& event, world::World& world) {
         button.device = found->second;
         button.joy_button = static_cast<JoyButton>(event.gbutton.button);
         button.pressed = event.gbutton.down;
-        push(world, button);
+        queue(button);
         return;
     }
     case SDL_EVENT_GAMEPAD_AXIS_MOTION: {
@@ -493,13 +499,13 @@ void SdlReader::read(const SDL_Event& event, world::World& world) {
         motion.axis = static_cast<JoyAxis>(event.gaxis.axis);
         motion.axis_value =
             std::clamp(static_cast<float>(event.gaxis.value) / 32767.0F, -1.0F, 1.0F);
-        push(world, motion);
+        queue(motion);
         return;
     }
     case SDL_EVENT_TEXT_INPUT:
         if (event.text.text != nullptr) {
             for (Event& typed : text_events(event.text.text)) {
-                push(world, std::move(typed));
+                queue(std::move(typed));
             }
         }
         return;
@@ -512,7 +518,7 @@ void SdlReader::read(const SDL_Event& event, world::World& world) {
         ime.selection_start = event.edit.start >= 0 ? std::min(event.edit.start, length) : length;
         ime.selection_length =
             event.edit.length >= 0 ? std::min(event.edit.length, length - ime.selection_start) : 0;
-        push(world, std::move(ime));
+        queue(std::move(ime));
         return;
     }
     case SDL_EVENT_WINDOW_FOCUS_LOST:

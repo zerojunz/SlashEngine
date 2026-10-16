@@ -77,7 +77,7 @@ as `entity.get`, reject it as an unknown param.
 | History | [`undo`](#undo), [`redo`](#redo), [`history.get`](#historyget) |
 | Several at once | [`batch`](#batch) |
 | Observe | [`events.subscribe`](#eventssubscribe), [`events.read`](#eventsread), [`events.unsubscribe`](#eventsunsubscribe), [`log.tail`](#logtail), [`frame.capture`](#framecapture) |
-| Display | [`display.list`](#displaylist), [`display.set`](#displayset), [`perf.stats`](#perfstats) |
+| Display | [`display.list`](#displaylist), [`display.set`](#displayset), [`perf.stats`](#perfstats), [`debug.overlay`](#debugoverlay) |
 | Export | [`export.run`](#exportrun) |
 
 
@@ -1830,7 +1830,8 @@ only the lines logged while it is open, so a fresh one returns `{"lines":[]}`.
 ### frame.capture
 
 Draws the frame the window shows now, on the CPU: the world's sprites, tile maps, particles and
-lights, then the controls, over the project's `rendering.clear_color`, at the window size
+lights, then the collision shapes if asked, then the controls, over the project's
+`rendering.clear_color`, at the window size
 (`window.width` and `height` in `project.json`). The software device that draws it shades with
 the same code as the GPU device's shaders, so the pixels are the same on every machine and with
 no GPU. Nothing changes. [examples/frame-capture](../../examples/frame-capture/) calls it.
@@ -1843,6 +1844,7 @@ no GPU. Nothing changes. [examples/frame-capture](../../examples/frame-capture/)
 | `image` | boolean | `false` | Return the image as a base64 PNG in `png` |
 | `path` | string | | A `.png` file to write, relative to the project |
 | `time` | number | the tick's | Seconds of game time for materials' `time` nodes |
+| `collisions` | boolean | `false` | Draw every `CollisionShape2D` and `CollisionPolygon2D` over the world, as Godot's Visible Collision Shapes |
 
 Needs: `read`, and `filesystem` with `path`. A HUD with a health bar at 75%:
 
@@ -1855,7 +1857,7 @@ Needs: `read`, and `filesystem` with `path`. A HUD with a health bar at 75%:
 ```
 
 `width` and `height` are the image's, after `region` and `scale`. `drawn` counts what was drawn
-(`sprites`, `tiles`, `particles`, `lights` and `controls`), leaving out zeros. `colors` are
+(`sprites`, `tiles`, `particles`, `lights`, `controls` and `shapes`), leaving out zeros. `colors` are
 `[r, g, b, a]` from 0 to 1, one per point, read from the whole window whatever `region` says.
 Over MCP, `png` is sent as an image content block rather than as text. A point or region outside
 the window is an error at its path, and so is a `path` that doesn't end in `.png`. In a dry-run
@@ -1864,9 +1866,9 @@ the window is an error at its path, and so is a `path` that doesn't end in `.png
 ## Display
 
 A game served with `slash-cli run --serve` (or reached through `slash-mcp --live`) also has these
-three, for its displays, how it presents frames and how evenly they arrive. Other sessions have
-no window or loop, so they leave them out. [examples/frame-pacing](../../examples/frame-pacing/)
-calls all three.
+four, for its displays, how it presents frames, how evenly they arrive and its debug overlay.
+Other sessions have no window or loop, so they leave them out.
+[examples/frame-pacing](../../examples/frame-pacing/) calls the first three.
 
 ### display.list
 
@@ -1928,6 +1930,33 @@ Frame pacing over the last 120 frames, with the settings that shape it. No param
 because the frame before was late. `frames` and `ticks` also count from the start, and
 `renderer` names the render device (`null` when nothing is drawn). A headless game runs one tick
 per frame and never waits, so its frame times only show how long its ticks take.
+
+### debug.overlay
+
+Shows or hides the debug panel of a game run with `slash-cli run`, and the collision shapes it
+draws, for the person watching the window. The panel shows the frame rate and frame time, the
+tick and whether the game plays, the entity count and what the last frame drew, and the mouse's
+position with the IDs of the bodies and areas whose shapes are under it. Its Pause, Step and
+Shapes buttons run `pause`, `play` and `step` through the session, as an agent would, and toggle
+the shapes. F3 shows and hides it too, and `--debug-overlay` and `--debug-collisions` turn it and
+the shapes on from the start ([cli.md](cli.md)). An agent sees the same shapes with
+`frame.capture`'s `collisions`. [examples/debug-overlay](../../examples/debug-overlay/) uses
+both.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `visible` | boolean | unchanged | Show the panel |
+| `collisions` | boolean | unchanged | Draw the collision shapes, whether or not the panel shows |
+
+Needs: `read`; it changes nothing in the world, and a recording leaves it out.
+
+```json
+{"collisions": true}
+```
+
+```json
+{"collisions":true,"visible":false}
+```
 
 ## Export
 

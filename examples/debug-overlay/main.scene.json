@@ -1,0 +1,92 @@
+{
+  "entities": {
+    "coin": {
+      "components": {
+        "Area2D": {},
+        "CollisionShape2D": {
+          "shape": "circle"
+        },
+        "Transform2D": {
+          "position": [240.0, 260.0]
+        }
+      }
+    },
+    "crate": {
+      "components": {
+        "CollisionShape2D": {
+          "size": [24.0, 24.0]
+        },
+        "RigidBody2D": {},
+        "Transform2D": {
+          "position": [360.0, 100.0]
+        }
+      }
+    },
+    "gate": {
+      "components": {
+        "CollisionShape2D": {
+          "disabled": true,
+          "height": 60.0,
+          "radius": 8.0,
+          "shape": "capsule"
+        },
+        "StaticBody2D": {},
+        "Transform2D": {
+          "position": [600.0, 280.0]
+        }
+      }
+    },
+    "ground": {
+      "components": {
+        "CollisionShape2D": {
+          "size": [640.0, 40.0]
+        },
+        "StaticBody2D": {},
+        "Transform2D": {
+          "position": [320.0, 340.0]
+        }
+      }
+    },
+    "hill": {
+      "components": {
+        "CollisionPolygon2D": {
+          "polygon": [
+            [-100.0, 0.0],
+            [-40.0, -70.0],
+            [0.0, -35.0],
+            [40.0, -70.0],
+            [100.0, 0.0]
+          ]
+        },
+        "StaticBody2D": {},
+        "Transform2D": {
+          "position": [480.0, 320.0]
+        }
+      }
+    },
+    "ledge": {
+      "components": {
+        "CollisionShape2D": {
+          "one_way_collision": true,
+          "size": [120.0, 8.0]
+        },
+        "StaticBody2D": {},
+        "Transform2D": {
+          "position": [360.0, 220.0]
+        }
+      }
+    },
+    "score": {
+      "components": {
+        "Control": {
+          "offset_left": 560.0,
+          "offset_top": 12.0
+        },
+        "Label": {
+          "text": "Score 0"
+        }
+      }
+    }
+  },
+  "format": 1
+}

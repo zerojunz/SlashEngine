@@ -2313,9 +2313,11 @@ Reply frame_capture(Session& session, const json::Value& params) {
         region = rect;
     }
 
-    auto captured = canvas::capture(
-        world, session.assets(),
-        {.scale = static_cast<float>(scale), .time = time != nullptr ? time->as_double() : -1.0});
+    const json::Value* collisions = params.find("collisions");
+    auto captured = canvas::capture(world, session.assets(),
+                                    {.scale = static_cast<float>(scale),
+                                     .time = time != nullptr ? time->as_double() : -1.0,
+                                     .collisions = collisions != nullptr && collisions->as_bool()});
     if (!captured) {
         return param_error(captured.error(), scale_param != nullptr ? "/scale" : "");
     }
@@ -2346,7 +2348,7 @@ Reply frame_capture(Session& session, const json::Value& params) {
     for (const auto& [name, count] :
          {std::pair{"sprites", capture.sprites}, std::pair{"tiles", capture.tiles},
           std::pair{"particles", capture.particles}, std::pair{"lights", capture.lights},
-          std::pair{"controls", capture.controls}}) {
+          std::pair{"controls", capture.controls}, std::pair{"shapes", capture.shapes}}) {
         if (count > 0) {
             drawn[name] = count;
         }
@@ -3694,6 +3696,9 @@ void register_builtin_commands(Registry& registry) {
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema({
+            {"collisions",
+             property("boolean", "Draw collision shapes over the world, as Godot's Visible "
+                                 "Collision Shapes.")},
             {"image", property("boolean", "Return the PNG, base64, as \"png\".")},
             {"path", property("string", "A .png file to write.")},
             {"points", std::move(capture_points)},

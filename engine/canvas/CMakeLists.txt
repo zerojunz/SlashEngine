@@ -1,6 +1,7 @@
 add_library(slash_canvas
     src/canvas.cpp
     src/capture.cpp
+    src/debug_draw.cpp
     src/light.cpp
     src/material.cpp
     src/particles.cpp

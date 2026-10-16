@@ -1,0 +1,33 @@
+scene.open {"path":"main.scene.json"}
+{"entities":7,"path":"main.scene.json"}
+-- an agent looks at the collision shapes in a captured frame
+step {"ticks":45}
+{"tick":45,"ticks":45}
+frame.capture {"points":[[360,204],[600,40]]}
+{"colors":[[0.102,0.122,0.2,1],[0.102,0.122,0.2,1]],"drawn":{"controls":1},"height":360,"width":640}
+frame.capture {"collisions":true,"points":[[360,204],[360,236],[480,300],[240,260],[600,280],[600,40]]}
+{"colors":[[0.059,0.322,0.412,1],[0.478,0.239,0.243,1],[0.059,0.322,0.412,1],[0.059,0.322,0.412,1],[0.227,0.243,0.306,1],[0.102,0.122,0.2,1]],"drawn":{"controls":1,"shapes":6},"height":360,"width":640}
+-- a person watching the game presses F3
+  | 60 fps · 16.7 ms · tick 46 · playing
+  | 7 entities · 1 control
+-- the mouse moves over the crate
+  | 60 fps · 16.7 ms · tick 47 · playing
+  | 7 entities · 1 control
+  | mouse 360, 204: crate
+-- Pause, then Step twice
+  | 60 fps · 16.7 ms · tick 48 · paused
+  | 7 entities · 1 control
+  | mouse 360, 204: crate
+  | 60 fps · 16.7 ms · tick 50 · paused
+  | 7 entities · 1 control
+  | mouse 360, 204: crate
+history.get {}
+{"redo":[],"undo":["step","step","step"]}
+-- Shapes, then Play
+  | 60 fps · 16.7 ms · tick 51 · playing
+  | 7 entities · 1 control · 6 shapes
+  | mouse 360, 204: crate
+-- an agent hides the panel and leaves the shapes on
+debug.overlay {"visible":false}
+{"collisions":true,"visible":false}
+shapes drawn: 6

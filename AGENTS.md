@@ -177,6 +177,21 @@ iterates entities in an order that matters uses registry storage order, never ha
 (`EntityMap` in `engine/physics2d/src/space.hpp`), so a replay steps the same in every session.
 `examples/replays` records a run, plays it back and seeks the moment the coin is taken.
 
+## Debug overlay
+
+`engine/debug` is the panel a person watching `slash-cli run` sees: `debug::Overlay` keeps
+its controls in a world of its own (an embedded scene in `src/overlay.cpp`), takes F3 and the
+pointer on its panel through `SdlReader::set_filter` before the game sees them, and in
+`update` runs its Pause, Step and Shapes buttons as the `pause`, `play` and `step` commands
+through the game's session, then shows the frame stats, the tick, what `CanvasRenderer`
+drew and the bodies under the mouse (`physics2d::overlap_point`). `CanvasOptions::overlay`
+draws its controls last, laid out with the game's fonts so the glyph pages stay put. Collision
+shapes are `canvas::collision_shapes` (`engine/canvas/src/debug_draw.cpp`), ports of Godot's
+`CollisionShape2D` and `CollisionPolygon2D` debug drawing placed as `physics2d` places shapes;
+`CanvasOptions::collisions` and `frame.capture`'s `collisions` draw them. `--debug-overlay`,
+`--debug-collisions` and the `debug.overlay` command turn them on. `examples/debug-overlay`
+captures the shapes and works the panel.
+
 ## Game projects and exports
 
 A game is a folder with a `project.json` (name, version, main scene; `$cli schema project`) and
@@ -545,7 +560,8 @@ CI rejects unformatted code and any clang-tidy finding.
   animations and the system that plays them),
   `physics2d` (2D bodies, areas, joints and queries on Box2D), `storyboard` (storyboard kinds, files, versions,
   queries, edits, briefs and checks), `command` (commands, sessions with undo, JSON-RPC and MCP),
-  `server` (localhost HTTP over a session) and `runtime` (project files and the game executable).
+  `debug` (the debug overlay over a running game), `server` (localhost HTTP over a session) and
+  `runtime` (project files and the game executable).
   Tool-only libraries such as `tools/exporter` use the same layout and may use exceptions.
 - New dependencies are pinned in `cmake/dependencies.json` (repository, tag, SPDX license and
   the license file's SHA-256), fetched with `slash_add_dependency` in `cmake/Dependencies.cmake`

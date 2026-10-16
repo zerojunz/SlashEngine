@@ -83,6 +83,7 @@ Result<Capture> capture(world::World& world, asset::Assets& assets, const Captur
     draw.texture_filter = frame.texture_filter;
     draw.time =
         options.time >= 0.0 ? options.time : material_time(world.tick(), frame.tick_seconds, 1.0);
+    draw.collisions = options.collisions;
     if (auto drawn = capturer.renderer->draw(world, draw); !drawn) {
         return drawn.error();
     }
@@ -96,7 +97,8 @@ Result<Capture> capture(world::World& world, asset::Assets& assets, const Captur
                    .tiles = renderer.tiles_drawn(),
                    .particles = renderer.particles_drawn(),
                    .lights = renderer.lights_drawn(),
-                   .controls = renderer.controls_drawn()};
+                   .controls = renderer.controls_drawn(),
+                   .shapes = renderer.shapes_drawn()};
 }
 
 } // namespace slash::canvas
