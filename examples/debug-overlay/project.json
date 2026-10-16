@@ -1,0 +1,13 @@
+{
+  "format": 1,
+  "main_scene": "main.scene.json",
+  "name": "Debug Overlay",
+  "rendering": {
+    "clear_color": [0.1, 0.12, 0.2, 1.0]
+  },
+  "version": "1.0.0",
+  "window": {
+    "height": 360,
+    "width": 640
+  }
+}

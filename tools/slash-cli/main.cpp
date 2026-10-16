@@ -17,6 +17,7 @@
 #include "slash/core/json.hpp"
 #include "slash/core/log.hpp"
 #include "slash/core/version.hpp"
+#include "slash/debug/overlay.hpp"
 #include "slash/exporter/commands.hpp"
 #include "slash/exporter/export.hpp"
 #include "slash/exporter/presets.hpp"
@@ -79,6 +80,8 @@ Usage:
       --save <file>                  Save the scene to this file after the last tick
       --record <file>                Record the run to a .replay.json file in the project,
                                      for replay.run
+      --debug-overlay                Show the debug panel (F3 shows and hides it)
+      --debug-collisions             Draw collision shapes over the world
       --serve                        Serve the running game over HTTP (see serve)
       --port <n>                     Port for --serve (default: any free port)
       --token <token>                Bearer token for --serve (default: random)
@@ -337,6 +340,8 @@ int cmd_run(const std::vector<std::string>& args) {
     std::string record_path;
     bool serve = false;
     bool server_args = false;
+    bool debug_overlay = false;
+    bool debug_collisions = false;
     command::SessionOptions session_options;
     slash::server::ServerOptions server_options;
 
@@ -376,6 +381,10 @@ int cmd_run(const std::vector<std::string>& args) {
             (arg == "--record" ? record_path : path) = args[++i];
         } else if (arg == "--serve") {
             serve = true;
+        } else if (arg == "--debug-overlay") {
+            debug_overlay = true;
+        } else if (arg == "--debug-collisions") {
+            debug_collisions = true;
         } else if (arg == "--project") {
             if (!has_value) {
                 return usage_error("--project needs a folder");
@@ -435,9 +444,17 @@ int cmd_run(const std::vector<std::string>& args) {
     if (!platform) {
         return failure("could not start the platform", platform.error());
     }
+    // The debug panel and collision shapes, for the person watching; debug.overlay lets an agent
+    // show them.
+    slash::debug::Overlay overlay(engine.session->assets());
+    overlay.set_visible(debug_overlay);
+    overlay.set_collisions(debug_collisions);
+    slash::debug::register_commands(engine.commands, overlay);
     // Keys, the mouse, touches and gamepads, queued for the next tick. Made after the platform,
-    // so it closes the gamepads before SDL quits.
+    // so it closes the gamepads before SDL quits. The overlay sees them first.
     slash::input::SdlReader input_reader;
+    input_reader.set_filter(
+        [&](const slash::input::Event& event) { return overlay.handle(event); });
     platform.value().set_event_handler(
         [&](const SDL_Event& event) { input_reader.read(event, game); });
     if (!config.headless) {
@@ -503,6 +520,8 @@ int cmd_run(const std::vector<std::string>& args) {
             canvas_options.interpolation = loop.value().interpolation();
             canvas_options.time = slash::canvas::material_time(
                 game.tick(), 1.0 / loop.value().tick_hz(), canvas_options.interpolation);
+            canvas_options.collisions = overlay.collisions();
+            canvas_options.overlay = overlay.world();
             auto drawn = canvas.draw(game, canvas_options);
             if (!drawn && !draw_failed) {
                 draw_failed = true;
@@ -531,8 +550,16 @@ int cmd_run(const std::vector<std::string>& args) {
             // Controls are laid out in the window drawn, so clicks land on what is shown.
             if (const slash::platform::WindowSize window = platform.value().window_size();
                 window.width > 0) {
-                slash::ui::set_viewport(
-                    game, {static_cast<float>(window.width), static_cast<float>(window.height)});
+                const slash::Vec2 viewport{static_cast<float>(window.width),
+                                           static_cast<float>(window.height)};
+                slash::ui::set_viewport(game, viewport);
+                // The panel's buttons pause, play and step through the session.
+                const slash::platform::FrameStats frames = loop.value().frame_stats();
+                overlay.update(*engine.session,
+                               {.fps = frames.fps,
+                                .frame_ms = frames.frame_ms_avg,
+                                .tick_seconds = tick_seconds},
+                               canvas, viewport);
             }
             if (engine.session->playing()) {
                 game.step(tick_seconds);

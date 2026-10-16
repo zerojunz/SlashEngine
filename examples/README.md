@@ -33,6 +33,7 @@ engine. Copy from them.
 | [audio](audio/) | `AudioStreamPlayer` and `AudioStreamPlayer2D`: a `.bus_layout.json` file's buses and effects, a randomizer in a `.audio.json` file, panning and fading by distance, the `finished` event, and `audio.state`, `audio.play`, `audio.set_bus` and `audio.capture` |
 | [frame-capture](frame-capture/) | `frame.capture`: what the window shows, drawn on the CPU the same on every machine, as pixel colors, a PNG to look at or a file |
 | [replays](replays/) | `replay.record`, `replay.stop`, `replay.run` and `replay.seek`: record a played run to a `.replay.json` file, play it back exactly in another session, seek the moment something happened and the tick before, and see where a changed game first differs |
+| [debug-overlay](debug-overlay/) | The F3 panel over a running game (frame stats, Pause, Step, the bodies under the mouse) and collision shapes drawn as Godot's Visible Collision Shapes, in the panel and in `frame.capture` |
 
 ## What an example holds
 
