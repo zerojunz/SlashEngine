@@ -160,11 +160,29 @@ BodyFields fields_of(const entt::registry& registry, entt::entity entity, Kind k
 ShapeKey shape_key_of(const entt::registry& registry, const world::Tree2D& tree,
                       entt::entity entity, Kind kind) {
     ShapeKey key;
-    if (const auto* shape = registry.try_get<CollisionShape2D>(entity); shape != nullptr) {
-        key.shape = *shape;
-    }
-    if (const auto* polygon = registry.try_get<CollisionPolygon2D>(entity); polygon != nullptr) {
-        key.polygon = *polygon;
+    const auto add = [&](entt::entity owner, std::optional<world::Affine2D> frame) {
+        ShapeSource source{.entity = owner, .shape = {}, .polygon = {}, .owner = frame};
+        if (const auto* shape = registry.try_get<CollisionShape2D>(owner); shape != nullptr) {
+            source.shape = *shape;
+        }
+        if (const auto* polygon = registry.try_get<CollisionPolygon2D>(owner); polygon != nullptr) {
+            source.polygon = *polygon;
+        }
+        if (source.shape || source.polygon) {
+            key.sources.push_back(std::move(source));
+        }
+    };
+    add(entity, std::nullopt);
+    // As a Godot CollisionObject2D takes the shapes of its CollisionShape2D and
+    // CollisionPolygon2D children: child entities with shapes and no body of their own, placed
+    // by their own transforms.
+    if (const auto* transform = registry.try_get<Transform2D>(entity);
+        transform != nullptr && tree.nested()) {
+        for (const entt::entity child : transform->children) {
+            if (tree.parent(child) == entity && !kind_of(registry, child).has_value()) {
+                add(child, world::affine(registry.get<Transform2D>(child)));
+            }
+        }
     }
     key.scale = transform_of(tree, entity).scale;
     const BodyFields fields = fields_of(registry, entity, kind);
@@ -341,18 +359,16 @@ void Space::build_shapes(world::World& world, Body& body, const ShapeKey& key) {
     body.shape_key = key;
 
     const bool area = body.kind == Kind::Area;
-    for (ShapeInfo& info : body.info) {
-        info = ShapeInfo{.entity = body.entity,
-                         .kind = body.kind,
-                         .layer = key.layer,
-                         .mask = key.mask,
-                         .monitorable = key.monitorable,
-                         .one_way = false,
-                         .one_way_margin = 1.0F,
-                         .one_way_up = {0.0F, -1.0F}};
-    }
+    body.info.assign(key.sources.size() * 2, ShapeInfo{.entity = body.entity,
+                                                       .kind = body.kind,
+                                                       .layer = key.layer,
+                                                       .mask = key.mask,
+                                                       .monitorable = key.monitorable,
+                                                       .one_way = false,
+                                                       .one_way_margin = 1.0F,
+                                                       .one_way_up = {0.0F, -1.0F}});
 
-    const auto shape_def = [&](ShapeInfo& info, bool one_way, float margin, b2Rot rotation) {
+    const auto shape_def = [&](ShapeInfo& info, bool one_way, float margin, b2Vec2 up) {
         b2ShapeDef def = b2DefaultShapeDef();
         def.material.friction = key.friction;
         def.material.restitution = key.bounce;
@@ -366,7 +382,7 @@ void Space::build_shapes(world::World& world, Body& body, const ShapeKey& key) {
         if (one_way && !area) {
             info.one_way = true;
             info.one_way_margin = margin;
-            info.one_way_up = b2RotateVector(rotation, {0.0F, -1.0F});
+            info.one_way_up = up;
             def.enablePreSolveEvents = true;
         }
         def.userData = &info;
@@ -386,99 +402,109 @@ void Space::build_shapes(world::World& world, Body& body, const ShapeKey& key) {
         return true;
     };
 
-    if (key.shape && !key.shape->disabled) {
-        const CollisionShape2D& shape = *key.shape;
-        const ShapePlacement place{
-            .rotation = b2MakeRot(shape.rotation), .position = shape.position, .scale = key.scale};
-        const b2ShapeDef def = shape_def(body.info[0], shape.one_way_collision,
-                                         shape.one_way_collision_margin, place.rotation);
-        if (shape.shape == "circle") {
-            const b2Circle circle{.center = place.point({}), .radius = place.radius(shape.radius)};
-            if (circle.radius > 0.0F) {
-                body.shapes.push_back(b2CreateCircleShape(body.id, &def, &circle));
-            } else {
-                warn_shape(world, body.entity, "the circle has no radius");
-            }
-        } else if (shape.shape == "capsule") {
-            const float half = std::max(0.0F, (shape.height * 0.5F) - shape.radius);
-            const b2Capsule capsule{.center1 = place.point({0.0F, -half}),
-                                    .center2 = place.point({0.0F, half}),
-                                    .radius = place.radius(shape.radius)};
-            if (capsule.radius <= 0.0F) {
-                warn_shape(world, body.entity, "the capsule has no radius");
-            } else if (b2Distance(capsule.center1, capsule.center2) <= kLinearSlop) {
-                const b2Circle circle{.center = place.point({}), .radius = capsule.radius};
-                body.shapes.push_back(b2CreateCircleShape(body.id, &def, &circle));
-            } else {
-                body.shapes.push_back(b2CreateCapsuleShape(body.id, &def, &capsule));
-            }
-        } else if (shape.shape == "segment") {
-            const b2Segment segment{.point1 = place.point(shape.a), .point2 = place.point(shape.b)};
-            if (b2Distance(segment.point1, segment.point2) > kLinearSlop) {
-                body.shapes.push_back(b2CreateSegmentShape(body.id, &def, &segment));
-            } else {
-                warn_shape(world, body.entity, "the segment has no length");
-            }
-        } else if (shape.shape == "polygon") {
-            std::vector<Vec2> points;
-            points.reserve(shape.points.size());
-            for (const Vec2 point : shape.points) {
-                points.push_back(from_b2(place.point(point)));
-            }
-            const Polygon hull = convex_hull(points);
-            bool added = hull.size() >= 3;
-            for (const Polygon& piece : split_convex(hull, B2_MAX_POLYGON_VERTICES)) {
-                std::vector<b2Vec2> corners;
-                for (const Vec2 point : piece) {
-                    corners.push_back(to_b2(point));
+    for (std::size_t index = 0; index < key.sources.size(); ++index) {
+        const ShapeSource& source = key.sources[index];
+        if (source.shape && !source.shape->disabled) {
+            const CollisionShape2D& shape = *source.shape;
+            const ShapePlacement place{.rotation = b2MakeRot(shape.rotation),
+                                       .position = shape.position,
+                                       .scale = key.scale,
+                                       .owner = source.owner};
+            const b2ShapeDef def = shape_def(body.info[index * 2], shape.one_way_collision,
+                                             shape.one_way_collision_margin, place.up());
+            if (shape.shape == "circle") {
+                const b2Circle circle{.center = place.point({}),
+                                      .radius = place.radius(shape.radius)};
+                if (circle.radius > 0.0F) {
+                    body.shapes.push_back(b2CreateCircleShape(body.id, &def, &circle));
+                } else {
+                    warn_shape(world, source.entity, "the circle has no radius");
                 }
-                added = add_polygon(corners, def) && added;
-            }
-            if (!added) {
-                warn_shape(world, body.entity, "the polygon has no area");
-            }
-        } else {
-            const float hx = shape.size.x * 0.5F;
-            const float hy = shape.size.y * 0.5F;
-            const std::array<b2Vec2, 4> corners{place.point({-hx, -hy}), place.point({hx, -hy}),
-                                                place.point({hx, hy}), place.point({-hx, hy})};
-            if (!add_polygon(corners, def)) {
-                warn_shape(world, body.entity, "the rectangle has no area");
-            }
-        }
-    }
-
-    if (key.polygon && !key.polygon->disabled) {
-        const CollisionPolygon2D& polygon = *key.polygon;
-        const ShapePlacement place{.rotation = b2Rot_identity, .position = {}, .scale = key.scale};
-        const b2ShapeDef def = shape_def(body.info[1], polygon.one_way_collision,
-                                         polygon.one_way_collision_margin, b2Rot_identity);
-        std::vector<Vec2> points;
-        points.reserve(polygon.polygon.size());
-        for (const Vec2 point : polygon.polygon) {
-            points.push_back(from_b2(place.point(point)));
-        }
-        if (polygon.build_mode == "segments") {
-            for (std::size_t i = 0; i < points.size() && points.size() >= 2; ++i) {
-                const b2Segment segment{.point1 = to_b2(points[i]),
-                                        .point2 = to_b2(points[(i + 1) % points.size()])};
-                if (b2Distance(segment.point1, segment.point2) > kLinearSlop &&
-                    (points.size() > 2 || i == 0)) {
+            } else if (shape.shape == "capsule") {
+                const float half = std::max(0.0F, (shape.height * 0.5F) - shape.radius);
+                const b2Capsule capsule{.center1 = place.point({0.0F, -half}),
+                                        .center2 = place.point({0.0F, half}),
+                                        .radius = place.radius(shape.radius)};
+                if (capsule.radius <= 0.0F) {
+                    warn_shape(world, source.entity, "the capsule has no radius");
+                } else if (b2Distance(capsule.center1, capsule.center2) <= kLinearSlop) {
+                    const b2Circle circle{.center = place.point({}), .radius = capsule.radius};
+                    body.shapes.push_back(b2CreateCircleShape(body.id, &def, &circle));
+                } else {
+                    body.shapes.push_back(b2CreateCapsuleShape(body.id, &def, &capsule));
+                }
+            } else if (shape.shape == "segment") {
+                const b2Segment segment{.point1 = place.point(shape.a),
+                                        .point2 = place.point(shape.b)};
+                if (b2Distance(segment.point1, segment.point2) > kLinearSlop) {
                     body.shapes.push_back(b2CreateSegmentShape(body.id, &def, &segment));
+                } else {
+                    warn_shape(world, source.entity, "the segment has no length");
                 }
-            }
-        } else {
-            auto pieces = decompose(points, B2_MAX_POLYGON_VERTICES);
-            if (!pieces) {
-                warn_shape(world, body.entity, pieces.error().message);
-            } else {
-                for (const Polygon& piece : pieces.value()) {
+            } else if (shape.shape == "polygon") {
+                std::vector<Vec2> points;
+                points.reserve(shape.points.size());
+                for (const Vec2 point : shape.points) {
+                    points.push_back(from_b2(place.point(point)));
+                }
+                const Polygon hull = convex_hull(points);
+                bool added = hull.size() >= 3;
+                for (const Polygon& piece : split_convex(hull, B2_MAX_POLYGON_VERTICES)) {
                     std::vector<b2Vec2> corners;
                     for (const Vec2 point : piece) {
                         corners.push_back(to_b2(point));
                     }
-                    // Slivers too thin for Box2D are left out; their neighbors cover them.
-                    add_polygon(corners, def);
+                    added = add_polygon(corners, def) && added;
+                }
+                if (!added) {
+                    warn_shape(world, source.entity, "the polygon has no area");
+                }
+            } else {
+                const float hx = shape.size.x * 0.5F;
+                const float hy = shape.size.y * 0.5F;
+                const std::array<b2Vec2, 4> corners{place.point({-hx, -hy}), place.point({hx, -hy}),
+                                                    place.point({hx, hy}), place.point({-hx, hy})};
+                if (!add_polygon(corners, def)) {
+                    warn_shape(world, source.entity, "the rectangle has no area");
+                }
+            }
+        }
+
+        if (source.polygon && !source.polygon->disabled) {
+            const CollisionPolygon2D& polygon = *source.polygon;
+            const ShapePlacement place{.rotation = b2Rot_identity,
+                                       .position = {},
+                                       .scale = key.scale,
+                                       .owner = source.owner};
+            const b2ShapeDef def = shape_def(body.info[(index * 2) + 1], polygon.one_way_collision,
+                                             polygon.one_way_collision_margin, place.up());
+            std::vector<Vec2> points;
+            points.reserve(polygon.polygon.size());
+            for (const Vec2 point : polygon.polygon) {
+                points.push_back(from_b2(place.point(point)));
+            }
+            if (polygon.build_mode == "segments") {
+                for (std::size_t i = 0; i < points.size() && points.size() >= 2; ++i) {
+                    const b2Segment segment{.point1 = to_b2(points[i]),
+                                            .point2 = to_b2(points[(i + 1) % points.size()])};
+                    if (b2Distance(segment.point1, segment.point2) > kLinearSlop &&
+                        (points.size() > 2 || i == 0)) {
+                        body.shapes.push_back(b2CreateSegmentShape(body.id, &def, &segment));
+                    }
+                }
+            } else {
+                auto pieces = decompose(points, B2_MAX_POLYGON_VERTICES);
+                if (!pieces) {
+                    warn_shape(world, source.entity, pieces.error().message);
+                } else {
+                    for (const Polygon& piece : pieces.value()) {
+                        std::vector<b2Vec2> corners;
+                        for (const Vec2 point : piece) {
+                            corners.push_back(to_b2(point));
+                        }
+                        // Slivers too thin for Box2D are left out; their neighbors cover them.
+                        add_polygon(corners, def);
+                    }
                 }
             }
         }
@@ -825,7 +851,7 @@ void Space::move_characters(world::World& world, const world::Tree2D& tree, floa
         Transform2D placed = nested ? tree.global(entity) : Transform2D{};
         Transform2D& transform = nested ? placed : own;
         auto& character = registry.get<CharacterBody2D>(entity);
-        move_character(world, world_, body, transform, character, seconds);
+        move_character(world_, body, transform, character, seconds);
         if (nested) {
             tree.set_global_position(world, entity, placed.position);
             placed.position = tree.global(entity).position; // as the next sync will see it
@@ -943,7 +969,7 @@ void area_overlaps(const Body& area, std::vector<std::pair<entt::entity, bool>>&
             }
             const ShapeInfo* other = info_of(visitor);
             if (other == nullptr || other->entity == area.entity ||
-                (area.info[0].mask & other->layer) == 0U ||
+                (area.shape_key.mask & other->layer) == 0U ||
                 (other->kind == Kind::Area && !other->monitorable)) {
                 continue;
             }
