@@ -308,8 +308,9 @@ and `src/unity_import.cpp` converts a project with `Assets/` and `ProjectSetting
 `.scene.json` beside each `.unity` and `.prefab` file, prefabs staying prefabs that scenes
 instance (an instance's objects take Unity's IDs, `(instance ^ source) & 0x7FFFFFFFFFFFFFFF`,
 and stripped objects resolve to what they stand for), units scaled to pixels by the pixels per
-unit most sprites use, settings and both input systems merged into `project.json`, and a task
-per C# script. Objects a prefab brings are written whole, so `format_scene` keeps only what
+unit most sprites use, tile maps as `TileMapLayer`s over a `.tileset.json` cut from the sprites
+their cells show, settings and both input systems merged into `project.json`, and a task per C#
+script. Objects a prefab brings are written whole, so `format_scene` keeps only what
 differs. `src/common.cpp` holds what both importers share: paths, the report and the tasks.
 `docs/reference/unity-import.md` maps each component and setting; `examples/import-unity`
 imports a small platformer.

@@ -520,6 +520,138 @@ void write_prefabs(const fs::path& folder) {
     write(folder / "Assets/Scenes/Yard.unity.meta", meta("a100000000000000000000000000000c"));
 }
 
+constexpr std::string_view kTilesPng = "a100000000000000000000000000000d";
+constexpr std::string_view kGroundTile = "a100000000000000000000000000000e";
+constexpr std::string_view kSlopeTile = "a100000000000000000000000000000f";
+constexpr std::string_view kRuleTile = "a1000000000000000000000000000010";
+
+// A tile asset: Unity's own Tile, or a scripted tile of a package.
+void write_tile(const fs::path& path, std::string_view guid, std::string_view script,
+                std::int64_t sprite) {
+    write(path,
+          std::string(kHeader) + "--- !u!114 &11400000\nMonoBehaviour:\n" + std::string(kSource) +
+              "  m_GameObject: {fileID: 0}\n  m_Enabled: 1\n  m_Script: " + std::string(script) +
+              "\n  m_Name: " + path.stem().string() + "\n  m_Sprite: " + ref(sprite, kTilesPng) +
+              "\n  m_ColliderType: 1\n");
+    write(path.string() + ".meta",
+          meta(guid, "NativeFormatImporter", "  mainObjectFileID: 11400000\n"));
+}
+
+// One of a Tilemap's cells: indexes into its arrays of tile assets, sprites, matrices and
+// colors, and flags whose top two bits are the collider type.
+std::string tile_cell(int x, int y, int asset, int sprite, int matrix, int color,
+                      std::int64_t flags) {
+    return "  - first: {x: " + std::to_string(x) + ", y: " + std::to_string(y) +
+           ", z: 0}\n    second:\n      serializedVersion: 2\n      m_TileIndex: " +
+           std::to_string(asset) + "\n      m_TileSpriteIndex: " + std::to_string(sprite) +
+           "\n      m_TileMatrixIndex: " + std::to_string(matrix) +
+           "\n      m_TileColorIndex: " + std::to_string(color) +
+           "\n      m_TileObjectToInstantiateIndex: 65535\n      dummyAlignment: 0\n"
+           "      m_AllTileFlags: " +
+           id(flags) + "\n";
+}
+
+std::string tile_matrix(int e00, int e01, int e10, int e11) {
+    return "  - m_RefCount: 1\n    m_Data:\n      e00: " + std::to_string(e00) +
+           "\n      e01: " + std::to_string(e01) +
+           "\n      e02: 0\n      e03: 0\n      e10: " + std::to_string(e10) +
+           "\n      e11: " + std::to_string(e11) +
+           "\n      e12: 0\n      e13: 0\n      e20: 0\n      e21: 0\n      e22: 1\n"
+           "      e23: 0\n      e30: 0\n      e31: 0\n      e32: 0\n      e33: 1\n";
+}
+
+// "Level": a sheet of three tiles (a block, a slope with a physics shape and a plank), tile
+// assets, and a scene with a rectangular tile map on a Grid and an isometric one.
+void write_tiles(const fs::path& folder) {
+    write_png(folder / "Assets/Art/tiles.png", 48, 16);
+    const auto sprite = [](std::string_view name, int x, std::string_view shape, int id) {
+        return "    - serializedVersion: 2\n      name: " + std::string(name) +
+               "\n      rect:\n        serializedVersion: 2\n        x: " + std::to_string(x) +
+               "\n        y: 0\n        width: 16\n        height: 16\n      alignment: 0\n"
+               "      pivot: {x: 0.5, y: 0.5}\n      physicsShape:" +
+               std::string(shape) + "\n      internalID: " + std::to_string(id) + "\n";
+    };
+    write(folder / "Assets/Art/tiles.png.meta",
+          texture_meta(kTilesPng, 16,
+                       "  spriteMode: 2\n  spriteGenerateFallbackPhysicsShape: 0\n"
+                       "  spriteSheet:\n    serializedVersion: 2\n    sprites:\n" +
+                           sprite("Ground", 0, " []", 1001) +
+                           // Unity's physics shapes are in pixels around the sprite's middle,
+                           // with y up: a slope rising to the right.
+                           sprite("Slope", 16,
+                                  "\n      - - {x: -8, y: -8}\n        - {x: 8, y: -8}\n"
+                                  "        - {x: 8, y: 8}",
+                                  1002) +
+                           sprite("Plank", 32, " []", 1003)));
+    constexpr std::string_view kTileScript =
+        "{fileID: 13312, guid: 0000000000000000e000000000000000, type: 0}";
+    write_tile(folder / "Assets/Tiles/Ground.asset", kGroundTile, kTileScript, 1001);
+    write_tile(folder / "Assets/Tiles/Slope.asset", kSlopeTile, kTileScript, 1002);
+    write_tile(folder / "Assets/Tiles/Rule.asset", kRuleTile,
+               "{fileID: 11500000, guid: 9d1514134bc4fbd41bb739b1b9a49231, type: 3}", 1003);
+
+    // Collider types: none, the sprite's physics shape, the cell.
+    constexpr std::int64_t kNone = 1;
+    constexpr std::int64_t kSprite = (std::int64_t{1} << 30) + 1;
+    constexpr std::int64_t kCell = (std::int64_t{2} << 30) + 1;
+    constexpr std::string_view kGrid = "  m_CellSize: {x: 1, y: 1, z: 0}\n"
+                                       "  m_CellGap: {x: 0, y: 0, z: 0}\n";
+    std::string scene(kHeader);
+    scene += game_object(3000, "Grid", {3001, 3002});
+    scene += transform(3001, 3000, "{x: 0, y: 0, z: 0}", 0, {3101});
+    scene += component(156049354, "Grid", 3002, 3000,
+                       std::string(kGrid) + "  m_CellLayout: 0\n  m_CellSwizzle: 0\n");
+    scene += game_object(3100, "Ground", {3101, 3102, 3103, 3104});
+    scene += transform(3101, 3100, "{x: 0, y: 0, z: 0}", 3001);
+    // Unity's cells go up from y 0, each an index into the arrays below them.
+    scene += component(
+        1839735485, "Tilemap", 3102, 3100,
+        "  m_Tiles:\n" + tile_cell(0, 0, 0, 0, 0, 0, kCell) + // a block
+            tile_cell(1, 0, 0, 0, 0, 1, kCell) +              // tinted
+            tile_cell(2, 0, 1, 1, 0, 0, kSprite) +            // a slope
+            tile_cell(-1, 0, 1, 1, 1, 0, kSprite) +           // flipped
+            tile_cell(2, 1, 1, 1, 2, 0, kSprite) +            // turned counterclockwise
+            tile_cell(0, 1, 2, 2, 0, 0, kNone) +              // a rule tile's plank
+            tile_cell(1, 1, 0, 0, 0, 0, kNone) +              // a block with no collider
+            "  m_AnimatedTiles: {}\n  m_TileAssetArray:\n"
+            "  - m_RefCount: 3\n    m_Data: " +
+            ref(11400000, kGroundTile, 2) +
+            "\n  - m_RefCount: 3\n    m_Data: " + ref(11400000, kSlopeTile, 2) +
+            "\n  - m_RefCount: 1\n    m_Data: " + ref(11400000, kRuleTile, 2) +
+            "\n  m_TileSpriteArray:\n  - m_RefCount: 3\n    m_Data: " + ref(1001, kTilesPng) +
+            "\n  - m_RefCount: 3\n    m_Data: " + ref(1002, kTilesPng) +
+            "\n  - m_RefCount: 1\n    m_Data: " + ref(1003, kTilesPng) +
+            "\n  m_TileMatrixArray:\n" + tile_matrix(1, 0, 0, 1) + tile_matrix(-1, 0, 0, 1) +
+            tile_matrix(0, -1, 1, 0) +
+            "  m_TileColorArray:\n  - m_RefCount: 6\n"
+            "    m_Data: {r: 1, g: 1, b: 1, a: 1}\n  - m_RefCount: 1\n"
+            "    m_Data: {r: 1, g: 0.5, b: 0.5, a: 1}\n"
+            "  m_Color: {r: 1, g: 1, b: 1, a: 1}\n"
+            "  m_TileAnchor: {x: 0.5, y: 0.5, z: 0}\n  m_TileOrientation: 0\n");
+    scene += component(483693784, "TilemapRenderer", 3103, 3100,
+                       "  m_Materials:\n  - {fileID: 10754, guid: "
+                       "0000000000000000f000000000000000, type: 0}\n"
+                       "  m_SortingLayerID: 0\n  m_SortingOrder: 2\n  m_MaskInteraction: 0\n");
+    scene += component(19719996, "TilemapCollider2D", 3104, 3100,
+                       "  m_Density: 1\n  m_Material: " + ref(6200000, kBouncy, 2) +
+                           "\n  m_IsTrigger: 0\n  m_UsedByEffector: 0\n"
+                           "  m_Offset: {x: 0, y: 0}\n");
+    scene += game_object(3200, "Iso", {3201, 3202});
+    scene += transform(3201, 3200, "{x: 0, y: 0, z: 0}", 0, {3301});
+    scene += component(156049354, "Grid", 3202, 3200,
+                       std::string(kGrid) + "  m_CellLayout: 2\n  m_CellSwizzle: 0\n");
+    scene += game_object(3300, "Iso Tiles", {3301, 3302});
+    scene += transform(3301, 3300, "{x: 0, y: 0, z: 0}", 3201);
+    scene += component(
+        1839735485, "Tilemap", 3302, 3300,
+        "  m_Tiles:\n" + tile_cell(0, 0, 0, 0, 0, 0, kNone) +
+            "  m_TileAssetArray:\n  - m_RefCount: 1\n    m_Data: " + ref(11400000, kGroundTile, 2) +
+            "\n  m_TileSpriteArray:\n  - m_RefCount: 1\n    m_Data: " + ref(1001, kTilesPng) +
+            "\n");
+    write(folder / "Assets/Scenes/Level.unity", scene);
+    write(folder / "Assets/Scenes/Level.unity.meta", meta("a1000000000000000000000000000011"));
+}
+
 fs::path make_project(const fs::path& folder) {
     fs::remove_all(folder);
     write_settings(folder);
@@ -942,4 +1074,109 @@ TEST_CASE("project.import converts a Unity project in the session's project") {
     CHECK(
         session.call("scene.open", parse(R"({"path": "unity/Assets/Scenes/Yard.scene.json"})")).ok);
     CHECK(session.call("storyboard.check", parse("{}")).value.find("valid")->as_bool());
+}
+
+TEST_CASE("Unity tile maps become tile map layers, their sprites a tile set") {
+    const fs::path project = "import_unity_tiles";
+    fs::remove_all(project);
+    make_project(project / "unity");
+    write_tiles(project / "unity");
+    auto imported = importer::import_project(
+        {.source = (project / "unity").string(), .destination = project.string()});
+    REQUIRE_MESSAGE(imported.ok(), (imported.ok() ? std::string() : imported.error().message));
+    const auto files = files_of(imported.value());
+    const std::string level = "unity/Assets/Scenes/Level.scene.json";
+    const std::string tiles = "unity/Assets/tiles.tileset.json";
+    CHECK(imported.value().report.find("converted")->find("tile_sets")->as_int() == 1);
+
+    // The sheet's sprites fall on a grid, so they are one atlas source. A cell's collider type
+    // and color pick an alternative of its tile: the tinted block is alternative 1, the block
+    // with no collider alternative 2. The collider's physics material is the physics layer's.
+    CHECK(parse(files.at(tiles)) == parse(R"({
+        "format": 1,
+        "physics_layers": [{"collision_mask": 4294967295, "friction": 0.2, "bounce": 1.0}],
+        "sources": {"tiles": {"texture": "unity/Assets/Art/tiles.png", "tiles": {
+            "0,0": {"name": "ground",
+                    "collision": [{"points": [[-8.0, -8.0], [8.0, -8.0], [8.0, 8.0],
+                                              [-8.0, 8.0]]}],
+                    "alternatives": {
+                        "1": {"modulate": [1.0, 0.5, 0.5, 1.0],
+                              "collision": [{"points": [[-8.0, -8.0], [8.0, -8.0], [8.0, 8.0],
+                                                        [-8.0, 8.0]]}]},
+                        "2": {}}},
+            "1,0": {"name": "slope",
+                    "collision": [{"points": [[-8.0, 8.0], [8.0, 8.0], [8.0, -8.0]]}]},
+            "2,0": {"name": "plank"}}}}
+    })"));
+
+    // Unity's cell (x, y) is (x, -y - 1) here, rows going down; a flip and a quarter turn
+    // counterclockwise are the cells' turns.
+    const json::Value ground = entity(files, level, "ground");
+    const json::Value& layer = *ground.find("TileMapLayer");
+    CHECK(layer.find("tile_set")->as_string() == tiles);
+    CHECK(*layer.find("origin") == parse("[-1, -2]"));
+    CHECK(layer.find("z_index")->as_int() == 2);
+    CHECK(layer.find("collision_enabled") == nullptr);
+    std::map<std::pair<int, int>, std::string> cells;
+    const json::Value& rows = *layer.find("rows");
+    for (std::size_t row = 0; row < rows.size(); ++row) {
+        const std::string& keys = rows.as_array()[row].as_string();
+        for (std::size_t column = 0; column < keys.size(); ++column) {
+            if (keys[column] != '.') {
+                cells[{static_cast<int>(column) - 1, static_cast<int>(row) - 2}] =
+                    layer.find("legend")->find(std::string(1, keys[column]))->as_string();
+            }
+        }
+    }
+    CHECK(cells == std::map<std::pair<int, int>, std::string>{{{0, -1}, "ground"},
+                                                              {{1, -1}, "ground:1"},
+                                                              {{2, -1}, "slope"},
+                                                              {{-1, -1}, "slope:h"},
+                                                              {{2, -2}, "slope:vt"},
+                                                              {{0, -2}, "plank"},
+                                                              {{1, -2}, "ground:2"}});
+    CHECK(*entity(files, level, "grid").find("Transform2D") ==
+          parse(R"({"children": ["ground"]})"));
+
+    const json::Value report = parse(files.at("import/unity.json"));
+    CHECK(
+        *report.find("tile_assets") ==
+        parse(R"({"unity/Assets/Tiles/Ground.asset": {"tile_set": "unity/Assets/tiles.tileset.json",
+                                                        "tile": "ground"},
+                    "unity/Assets/Tiles/Slope.asset": {"tile_set": "unity/Assets/tiles.tileset.json",
+                                                       "tile": "slope"},
+                    "unity/Assets/Tiles/Rule.asset": {"tile_set": "unity/Assets/tiles.tileset.json",
+                                                      "tile": "plank"}})"));
+    CHECK(unsupported(report, "scripted tiles (rule tiles, animated tiles)")
+              .find("where")
+              ->as_string() == "Assets/Scenes/Level.unity: Grid/Ground");
+    CHECK(unsupported(report, "isometric or hexagonal tile map").find("where")->as_string() ==
+          "Assets/Scenes/Level.unity: Iso/Iso Tiles");
+    CHECK(entity(files, level, "iso_tiles").find("TileMapLayer") == nullptr);
+
+    // The tiles are solid where their polygons are: a ray down through the plank, which has
+    // none, stops on the block under it, and one through the flipped slope on its face.
+    slash::world::ComponentRegistry components;
+    slash::world::register_builtin_components(components);
+    command::Registry commands;
+    command::register_builtin_commands(commands);
+    command::SessionOptions options;
+    options.project_root = project.string();
+    options.capture_logs = false;
+    command::Session session(components, commands, options);
+    const command::Reply opened =
+        session.call("scene.open", parse(R"({"path": "unity/Assets/Scenes/Level.scene.json"})"));
+    REQUIRE_MESSAGE(opened.ok, opened.message);
+    REQUIRE(session.call("step", parse(R"({"ticks": 1})")).ok);
+    const command::Reply block =
+        session.call("physics.raycast", parse(R"({"from": [8, -40], "to": [8, 40]})"));
+    REQUIRE_MESSAGE(block.ok, block.message);
+    CHECK(*block.value.find("hit")->find("cell") == parse("[0, -1]"));
+    CHECK(block.value.find("hit")->find("point")->as_array()[1].as_double() ==
+          doctest::Approx(-16.0));
+    const command::Reply slope =
+        session.call("physics.raycast", parse(R"({"from": [-4, -40], "to": [-4, 40]})"));
+    CHECK(*slope.value.find("hit")->find("cell") == parse("[-1, -1]"));
+    CHECK(slope.value.find("hit")->find("point")->as_array()[1].as_double() ==
+          doctest::Approx(-4.0).epsilon(0.01));
 }
