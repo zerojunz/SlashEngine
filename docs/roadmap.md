@@ -264,7 +264,11 @@ rendering on top.
       device that shades as the GPU device does, so the pixels are the same on every machine;
       returns pixel colors, a PNG (an image block over MCP) or a file, for a region and at a
       scale
-- [ ] Replays (`replay.run`)
+- [x] Replays: `replay.record` (or `slash-cli run --record`) writes a `.replay.json` file of a
+      run (the start, the ticks stepped, input and commands, with hashes along the way);
+      `replay.run` plays it back exactly in any session, stops at a tick, and reports the first
+      tick a changed game goes another way and what differs at the end. 2D physics steps the
+      same in every session that holds the same world
 - [ ] Time travel: `replay.seek` jumps a recorded run to any tick, where every query command
       works, so a bug can be reproduced and inspected at the moment it happened
 - [ ] Debug overlay, drawn with the UI and text above

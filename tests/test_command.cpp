@@ -15,6 +15,7 @@
 
 #include <doctest/doctest.h>
 
+#include <cstdint>
 #include <filesystem>
 #include <memory>
 #include <string>
@@ -2116,4 +2117,29 @@ TEST_CASE("audio commands play players, report buses and capture what was heard"
     Engine reader(options);
     reader.fails("audio.capture", R"({"path": "x.wav"})", command::code::kPermissionDenied);
     CHECK(reader.ok("audio.capture").find("seconds")->as_double() == 0.0);
+}
+
+TEST_CASE("the call listener hears each command that ran, with the tick it started at") {
+    Engine engine;
+    std::vector<std::string> heard;
+    engine.session->set_call_listener(
+        [&](std::string_view name, const json::Value& params, std::uint64_t tick) {
+            heard.push_back(std::to_string(tick) + " " + std::string(name) + " " +
+                            json::write(params, json::Style::Compact));
+        });
+    engine.ok("entity.create", R"({"id": "a"})");
+    engine.ok("step", R"({"ticks": 3})");
+    engine.ok("entity.get", R"({"id": "a"})");
+    // Not failures, dry runs or the commands inside a batch.
+    engine.fails("entity.get", R"({"id": "b"})", command::code::kNotFound);
+    engine.ok("entity.create", R"({"id": "b", "dry_run": true})");
+    engine.ok("batch", R"({"commands": [{"command": "entity.destroy", "params": {"id": "a"}}]})");
+    CHECK(heard ==
+          std::vector<std::string>{
+              R"(0 entity.create {"id":"a"})", R"(0 step {"ticks":3})",
+              R"(3 entity.get {"id":"a"})",
+              R"(3 batch {"commands":[{"command":"entity.destroy","params":{"id":"a"}}]})"});
+    engine.session->set_call_listener({});
+    engine.ok("step");
+    CHECK(heard.size() == 4);
 }

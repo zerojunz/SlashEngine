@@ -2689,6 +2689,14 @@ void install_gui(world::World& world) {
         return;
     }
     world.ecs().ctx().emplace<Handle>(std::make_shared<GuiState>());
+    // Focus, hover, presses and edits start over; the clipboard stays, as the system's does.
+    world.add_reset([](world::World& in_world) {
+        if (GuiState* state = state_of(in_world); state != nullptr) {
+            GuiState fresh;
+            fresh.clipboard = std::move(state->clipboard);
+            *state = std::move(fresh);
+        }
+    });
     world.add_system("gui", run,
                      {.doc = "Sends input events to controls: hover, focus and button presses.",
                       .priority = -900});

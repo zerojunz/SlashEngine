@@ -46,10 +46,11 @@ slash-cli run [options]
 | `--max-fps <n>` | Frames per second at most, 0 to 1000; `0` (default) means no cap |
 | `--scene <file>` | Load a `.scene.json` file before the first tick |
 | `--save <file>` | Save the scene to this file after the last tick |
+| `--record <file>` | Record the run to a [`.replay.json`](scene-format.md#replays) file inside the project, written when the game stops |
 | `--serve` | Serve the running game over HTTP between ticks (see [serve](#serve)) |
 | `--port <n>` | Port for `--serve` (default: any free port) |
 | `--token <token>` | Bearer token for `--serve` (default: random) |
-| `--project <dir>` | Project folder for `--serve` (default `.`) |
+| `--project <dir>` | Project folder for `--serve` and `--record` (default `.`) |
 
 Without `--headless` it opens a window and runs until the window is closed or `--ticks` is
 reached. With no display, set `SDL_VIDEO_DRIVER=dummy` to run the windowed path anyway.
@@ -81,14 +82,29 @@ Every 15 ticks it checks the files the game has loaded and reloads the ones that
 edited prefab updates its instances and keeps their overrides (see
 [hot reload](../concepts.md#assets)).
 
+With `--record`, everything the player and any served agent do is recorded from the first tick,
+and the result carries the [`replay.stop`](commands.md#replaystop) reply as `replay`.
+[`replay.run`](commands.md#replayrun) plays the file back in any session:
+
+```bash
+slash-cli run --headless --ticks 90 --scene tests/data/basic.scene.json --record runs/basic.replay.json
+slash-cli call replay.run '{"path": "runs/basic.replay.json"}'
+```
+
+```json
+{"entities":3,"headless":true,"quit_requested":false,"renderer":"null","replay":{"commands":0,"inputs":0,"path":"runs/basic.replay.json","ticks":90},"ticks":90}
+{"end":90,"matched":true,"tick":90}
+```
+
 ### scene validate
 
 Checks a scene, a `.prefab.json` file, a [`.frames.json`](scene-format.md#sprite-frames) file, a
 [`.material.json`](scene-format.md#materials) file, a [`.anim.json`](scene-format.md#animations)
 file, a [`.tileset.json`](scene-format.md#tile-sets) file, a [`.font.json`](scene-format.md#fonts)
 file, a [`.theme.json`](scene-format.md#themes) file, an
-[`.audio.json`](scene-format.md#audio-streams) file or a
-[`.bus_layout.json`](scene-format.md#bus-layouts) file and lists every error, each with its JSON
+[`.audio.json`](scene-format.md#audio-streams) file, a
+[`.bus_layout.json`](scene-format.md#bus-layouts) file or a
+[`.replay.json`](scene-format.md#replays) file and lists every error, each with its JSON
 Pointer path. Exit code 1 if the file is invalid. The [prefabs](scene-format.md#prefabs) a file
 extends, the tile sets its layers use and the project's window size and theme are read from its
 project: the nearest folder above it with a `project.json`, else the current folder.
@@ -103,8 +119,8 @@ slash-cli scene validate <file>
 
 For a prefab the result counts its `components` instead of `entities`, for a `.frames.json` or
 `.anim.json` file its `animations`, for a `.tileset.json` file its `tiles`, for a `.theme.json`
-file its `types`, for a `.bus_layout.json` file its `buses`, for a `.font.json` or `.audio.json`
-file nothing more, and for a `.material.json` file the
+file its `types`, for a `.bus_layout.json` file its `buses`, for a `.replay.json` file the
+`ticks` it covers, for a `.font.json` or `.audio.json` file nothing more, and for a `.material.json` file the
 `instructions` its graph compiles to, of the 64 a material can run:
 
 ```json
@@ -151,7 +167,7 @@ When the project has a
 ### scene format
 
 Rewrites a scene, prefab, `.frames.json`, `.material.json`, `.anim.json`, `.tileset.json`,
-`.font.json`, `.theme.json`, `.audio.json` or `.bus_layout.json` file in [canonical form](scene-format.md#canonical-form).
+`.font.json`, `.theme.json`, `.audio.json`, `.bus_layout.json` or `.replay.json` file in [canonical form](scene-format.md#canonical-form).
 
 ```bash
 slash-cli scene format <file>
@@ -167,7 +183,8 @@ Prints a JSON Schema: for scene or prefab files (generated from the registered c
 [`.tileset.json` files](scene-format.md#tile-sets), for [`.font.json` files](scene-format.md#fonts),
 for [`.theme.json` files](scene-format.md#themes), for
 [`.audio.json` files](scene-format.md#audio-streams), for
-[`.bus_layout.json` files](scene-format.md#bus-layouts), for [storyboard files](storyboard-format.md),
+[`.bus_layout.json` files](scene-format.md#bus-layouts), for
+[`.replay.json` files](scene-format.md#replays), for [storyboard files](storyboard-format.md),
 for [`project.json`](project-format.md) or for [`export_presets.json`](project-format.md#export-presets).
 
 ```bash
@@ -181,6 +198,7 @@ slash-cli schema font
 slash-cli schema theme
 slash-cli schema audio
 slash-cli schema bus_layout
+slash-cli schema replay
 slash-cli schema storyboard
 slash-cli schema project
 slash-cli schema presets

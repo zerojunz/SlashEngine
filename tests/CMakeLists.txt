@@ -21,6 +21,7 @@ add_executable(slash_tests
     test_platform.cpp
     test_reflect.cpp
     test_render.cpp
+    test_replay.cpp
     test_result.cpp
     test_rpc.cpp
     test_runtime.cpp
@@ -339,6 +340,44 @@ if(SLASH_BUILD_TOOLS)
         COMMAND ${CMAKE_COMMAND} -E compare_files
             ${scenes}/basic.scene.json ${CMAKE_CURRENT_BINARY_DIR}/roundtrip.scene.json)
     set_tests_properties(cli_run_scene_roundtrip PROPERTIES FIXTURES_REQUIRED roundtrip_scene)
+
+    # Record a headless run into a project, check the file, then play it back to the same end.
+    set(replay_project ${CMAKE_CURRENT_BINARY_DIR}/cli_replay_project)
+    add_test(NAME cli_run_record
+        COMMAND slash-cli run --headless --ticks 90 --scene ${scenes}/basic.scene.json
+            --project ${replay_project} --record ${replay_project}/runs/basic.replay.json)
+    set_tests_properties(cli_run_record PROPERTIES
+        PASS_REGULAR_EXPRESSION "\"replay\":{\"commands\":0,\"inputs\":0,\"path\":\"runs/basic.replay.json\",\"ticks\":90}"
+        FIXTURES_SETUP recorded_run)
+    add_test(NAME cli_scene_validate_replay
+        COMMAND slash-cli scene validate ${replay_project}/runs/basic.replay.json)
+    set_tests_properties(cli_scene_validate_replay PROPERTIES
+        PASS_REGULAR_EXPRESSION "{\"ticks\":90,\"valid\":true}"
+        FIXTURES_REQUIRED recorded_run)
+    add_test(NAME cli_scene_format_replay
+        COMMAND slash-cli scene format --check ${replay_project}/runs/basic.replay.json)
+    set_tests_properties(cli_scene_format_replay PROPERTIES
+        PASS_REGULAR_EXPRESSION "{\"canonical\":true}"
+        FIXTURES_REQUIRED recorded_run)
+    add_test(NAME cli_call_replay_run
+        COMMAND slash-cli call replay.run "{\"path\":\"runs/basic.replay.json\"}"
+            --project ${replay_project})
+    set_tests_properties(cli_call_replay_run PROPERTIES
+        PASS_REGULAR_EXPRESSION "{\"end\":90,\"matched\":true,\"tick\":90}"
+        FIXTURES_REQUIRED recorded_run)
+    # A path relative to the current folder, whose folder doesn't exist yet.
+    add_test(NAME cli_run_record_relative
+        COMMAND slash-cli run --headless --ticks 3 --record runs/relative.replay.json
+        WORKING_DIRECTORY ${replay_project})
+    set_tests_properties(cli_run_record_relative PROPERTIES
+        PASS_REGULAR_EXPRESSION "\"path\":\"runs/relative.replay.json\""
+        FIXTURES_REQUIRED recorded_run)
+    add_test(NAME cli_run_record_outside_project
+        COMMAND slash-cli run --headless --ticks 1 --record ../outside.replay.json)
+    set_tests_properties(cli_run_record_outside_project PROPERTIES WILL_FAIL TRUE)
+    add_test(NAME cli_schema_replay COMMAND slash-cli schema replay)
+    set_tests_properties(cli_schema_replay PROPERTIES
+        PASS_REGULAR_EXPRESSION "\"title\": \"SlashEngine replay\"")
 
     # One-shot engine commands.
     add_test(NAME cli_call_describe COMMAND slash-cli call engine.describe)
