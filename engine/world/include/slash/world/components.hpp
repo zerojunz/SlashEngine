@@ -108,18 +108,20 @@ SLASH_COMPONENT(AnimationPlayer, library, animation, playing, speed_scale, time,
 // of keys, each key standing for the tile the legend names, and "." for an empty cell. The
 // tilemap commands keep them in canonical form, so most edits go through them.
 struct TileMapLayer {
-    std::string tile_set;                      // project path of a .tileset.json file
-    Vec2i origin;                              // the cell the first key of the first row stands for
-    std::map<std::string, std::string> legend; // key -> tile: a tile's name or "source:x,y"
+    std::string tile_set; // project path of a .tileset.json file
+    Vec2i origin;         // the cell the first key of the first row stands for
+    // key -> tile: a tile's name or "source:x,y", then ":alternative" and ":turns" if any
+    std::map<std::string, std::string> legend;
     std::vector<std::string> rows;
     int z_index = 0;
     bool visible = true;
     Vec4 modulate{1.0F, 1.0F, 1.0F, 1.0F};
     std::string texture_filter = "inherit"; // "linear", "nearest" or "inherit"
     int light_mask = 1;                     // lit by lights sharing a bit
+    bool collision_enabled = true;          // its tiles' collision polygons are solid
 };
 SLASH_COMPONENT(TileMapLayer, tile_set, origin, legend, rows, z_index, visible, modulate,
-                texture_filter, light_mask)
+                texture_filter, light_mask, collision_enabled)
 
 // A light shining from the entity's Transform2D (or the origin) through a texture, as Godot's
 // PointLight2D. It lights the sprites and tile map layers whose light_mask shares a bit with

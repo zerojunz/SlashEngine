@@ -122,7 +122,8 @@ float closest_hit(b2ShapeId shape, b2Vec2 point, b2Vec2 normal, float fraction, 
     query.hit = RayHit{.entity = info->entity,
                        .point = from_b2(point),
                        .normal = from_b2(normal),
-                       .fraction = fraction};
+                       .fraction = fraction,
+                       .cell = info->cell};
     return fraction;
 }
 
@@ -289,6 +290,18 @@ std::vector<entt::entity> overlap_shape(world::World& world, const world::Collis
 Contacts contacts(world::World& world, entt::entity entity) {
     Space* space = synced(world);
     return space != nullptr ? space->contacts(world, entity) : Contacts{};
+}
+
+void set_tile_shape_source(world::World& world, TileShapeSource source) {
+    world.ecs().ctx().insert_or_assign<TileShapeSource>(std::move(source));
+}
+
+TileShapes tile_shapes(const world::World& world, entt::entity layer) {
+    const auto* source = world.ecs().ctx().find<TileShapeSource>();
+    if (source == nullptr || !*source || !world.valid(layer)) {
+        return nullptr;
+    }
+    return (*source)(world, layer);
 }
 
 void apply_impulse(world::World& world, entt::entity entity, Vec2 impulse, Vec2 offset) {

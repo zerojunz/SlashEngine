@@ -4,6 +4,7 @@
 #include "slash/ui/ui.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <memory>
@@ -12,6 +13,7 @@
 #include <string>
 #include <tuple>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace slash::canvas {
@@ -824,10 +826,10 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             transform.skew == 0.0F ? cos_r : std::cos(transform.rotation + transform.skew);
         const float sin_k =
             transform.skew == 0.0F ? sin_r : std::sin(transform.rotation + transform.skew);
-        const std::array<std::uint8_t, 4> rgba{to_byte(layer.modulate.x * from_parents.modulate.x),
-                                               to_byte(layer.modulate.y * from_parents.modulate.y),
-                                               to_byte(layer.modulate.z * from_parents.modulate.z),
-                                               to_byte(layer.modulate.w * from_parents.modulate.w)};
+        const Vec4 tint{
+            layer.modulate.x * from_parents.modulate.x, layer.modulate.y * from_parents.modulate.y,
+            layer.modulate.z * from_parents.modulate.z, layer.modulate.w * from_parents.modulate.w};
+        std::array<std::uint8_t, 4> rgba{};
         const auto corner = [&](float x, float y, float u, float v) {
             const float sx = x * transform.scale.x;
             const float sy = y * transform.scale.y;
@@ -882,21 +884,43 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
                                  .drawn = 0});
                 run = items.size() - 1;
             }
-            // The tile's region, centered on its cell.
+            // The tile's region, centered on its cell, turned as Godot's draw_tile turns it:
+            // transposed (the texture's x and y swapped), then flipped.
+            const TileLook look = tile_look(*set.value(), tile);
+            rgba = {to_byte(tint.x * look.modulate.x), to_byte(tint.y * look.modulate.y),
+                    to_byte(tint.z * look.modulate.z), to_byte(tint.w * look.modulate.w)};
+            const auto dw = static_cast<float>(look.transpose ? rh : rw);
+            const auto dh = static_cast<float>(look.transpose ? rw : rh);
             const float cx = (static_cast<float>(cell.x) + 0.5F) * static_cast<float>(size.x);
             const float cy = (static_cast<float>(cell.y) + 0.5F) * static_cast<float>(size.y);
-            const float x0 = cx - (static_cast<float>(rw) / 2.0F);
-            const float y0 = cy - (static_cast<float>(rh) / 2.0F);
-            const float x1 = x0 + static_cast<float>(rw);
-            const float y1 = y0 + static_cast<float>(rh);
-            const float u0 = static_cast<float>(rx) / static_cast<float>(width);
-            const float v0 = static_cast<float>(ry) / static_cast<float>(height);
-            const float u1 = static_cast<float>(rx + rw) / static_cast<float>(width);
-            const float v1 = static_cast<float>(ry + rh) / static_cast<float>(height);
-            const render::Vertex2D top_left = corner(x0, y0, u0, v0);
-            const render::Vertex2D top_right = corner(x1, y0, u1, v0);
-            const render::Vertex2D bottom_left = corner(x0, y1, u0, v1);
-            const render::Vertex2D bottom_right = corner(x1, y1, u1, v1);
+            const float x0 = cx - (dw / 2.0F);
+            const float y0 = cy - (dh / 2.0F);
+            const float x1 = x0 + dw;
+            const float y1 = y0 + dh;
+            float u0 = static_cast<float>(rx) / static_cast<float>(width);
+            float v0 = static_cast<float>(ry) / static_cast<float>(height);
+            float u1 = static_cast<float>(rx + rw) / static_cast<float>(width);
+            float v1 = static_cast<float>(ry + rh) / static_cast<float>(height);
+            // Flips swap the texture's coordinates along the drawn x (u, or v when transposed)
+            // and the drawn y (v, or u).
+            if ((look.flip_h && !look.transpose) || (look.flip_v && look.transpose)) {
+                std::swap(u0, u1);
+            }
+            if ((look.flip_v && !look.transpose) || (look.flip_h && look.transpose)) {
+                std::swap(v0, v1);
+            }
+            const auto uv = [&](bool right, bool bottom) {
+                return look.transpose ? std::array<float, 2>{bottom ? u1 : u0, right ? v1 : v0}
+                                      : std::array<float, 2>{right ? u1 : u0, bottom ? v1 : v0};
+            };
+            const auto at = [&](float x, float y, bool right, bool bottom) {
+                const auto [u, v] = uv(right, bottom);
+                return corner(x, y, u, v);
+            };
+            const render::Vertex2D top_left = at(x0, y0, false, false);
+            const render::Vertex2D top_right = at(x1, y0, true, false);
+            const render::Vertex2D bottom_left = at(x0, y1, false, true);
+            const render::Vertex2D bottom_right = at(x1, y1, true, true);
             vertices.insert(vertices.end(), {top_left, top_right, bottom_left, top_right,
                                              bottom_right, bottom_left});
             items[run].count += 6;

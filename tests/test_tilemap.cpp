@@ -1,8 +1,10 @@
 #include "slash/asset/assets.hpp"
 #include "slash/canvas/canvas.hpp"
+#include "slash/canvas/debug_draw.hpp"
 #include "slash/canvas/tilemap.hpp"
 #include "slash/core/json.hpp"
 #include "slash/core/log.hpp"
+#include "slash/physics2d/physics2d.hpp"
 #include "slash/platform/process.hpp"
 #include "slash/render/device.hpp"
 #include "slash/render/image.hpp"
@@ -28,6 +30,7 @@ namespace canvas = slash::canvas;
 namespace json = slash::json;
 namespace render = slash::render;
 namespace world = slash::world;
+using slash::Vec2;
 using slash::Vec2i;
 
 namespace {
@@ -620,4 +623,293 @@ TEST_CASE("tiles draw centered on their cells, moved by the layer's transform, o
     CHECK(pixel(image.value(), 12, 20) == Rgba{0, 255, 0, 255});
     CHECK(pixel(image.value(), 9, 20) == Rgba{0, 0, 0, 255});
     CHECK(pixel(image.value(), 12, 17) == Rgba{0, 0, 0, 255});
+}
+
+namespace {
+
+// Two tiles that are solid in physics layer 0: a block, and a ledge 4 pixels thick that only
+// stops what lands on it. The block's alternative 1 is a slope with its own polygon.
+constexpr std::string_view kSolid = R"({
+  "format": 1,
+  "tile_size": [16, 16],
+  "physics_layers": [{"collision_layer": 2, "collision_mask": 1, "friction": 0.5}],
+  "sources": {
+    "main": {"texture": "tiles.png", "region_size": [8, 8], "tiles": {
+      "0,0": {"name": "block", "collision": [{"points": [[-8, -8], [8, -8], [8, 8], [-8, 8]]}],
+              "alternatives": {"1": {"flip_h": true, "modulate": [0, 1, 1, 1],
+                                     "collision": [{"points": [[-8, 8], [8, -8], [8, 8]]}]}}},
+      "1,0": {"name": "ledge", "collision": [{"points": [[-8, -8], [8, -8], [8, -4], [-8, -4]],
+                                              "one_way": true}]}}}}})";
+
+canvas::TileSet solid() {
+    auto set = canvas::parse_tileset(parse(kSolid));
+    REQUIRE(set.ok());
+    return std::move(set).value();
+}
+
+std::string points_text(const std::vector<Vec2>& points) {
+    std::string out;
+    for (const Vec2 point : points) {
+        out += (out.empty() ? "" : " ") + std::to_string(static_cast<int>(point.x)) + "," +
+               std::to_string(static_cast<int>(point.y));
+    }
+    return out;
+}
+
+} // namespace
+
+TEST_CASE("tile sets give tiles collision polygons and alternatives, all checked") {
+    CHECK(first_error(kSolid) == "(valid)");
+    const auto set = solid();
+    REQUIRE(set.physics_layers.size() == 1);
+    CHECK(set.physics_layers[0].collision_layer == 2);
+    CHECK(set.physics_layers[0].friction == doctest::Approx(0.5));
+    CHECK(set.physics_layers[0].bounce == 0.0F);
+    const canvas::TileData* block = set.find({.source = "main", .atlas = {0, 0}});
+    REQUIRE(block != nullptr);
+    REQUIRE(block->collision.size() == 1);
+    CHECK(points_text(block->collision[0].points) == "-8,-8 8,-8 8,8 -8,8");
+    REQUIRE(block->alternatives.contains(1));
+    CHECK(block->alternatives.at(1).flip_h);
+    CHECK(block->alternatives.at(1).collision.size() == 1);
+    CHECK(set.find({.source = "main", .atlas = {1, 0}})->collision[0].one_way);
+
+    const auto with = [](std::string_view from, std::string_view to) {
+        std::string text(kSolid);
+        const std::size_t at = text.find(from);
+        REQUIRE(at != std::string::npos);
+        text.replace(at, from.size(), to);
+        return text;
+    };
+    CHECK(
+        first_error(with(
+            R"("physics_layers": [{"collision_layer": 2, "collision_mask": 1, "friction": 0.5}],)",
+            "")) ==
+        "/sources/main/tiles/0,0/collision/0/layer: the tile set has no physics layers; add one "
+        "to physics_layers");
+    CHECK(first_error(with(R"({"points": [[-8, -8], [8, -8], [8, 8], [-8, 8]]})",
+                           R"({"layer": 1, "points": [[-8, -8], [8, -8], [8, 8], [-8, 8]]})")) ==
+          "/sources/main/tiles/0,0/collision/0/layer: the tile set has physics layers 0 to 0");
+    CHECK(first_error(with("[[-8, -8], [8, -8], [8, 8], [-8, 8]]",
+                           "[[-8, -8], [8, 8], [8, -8], [-8, 8]]")) ==
+          "/sources/main/tiles/0,0/collision/0/points: the polygon has no area or crosses itself");
+    CHECK(
+        first_error(with(R"("alternatives": {"1":)", R"("alternatives": {"0":)")) ==
+        R"(/sources/main/tiles/0,0/alternatives/0: alternatives are numbered from 1 to 4095, as "1")");
+    CHECK(first_error(with(R"("flip_h": true)", R"("flip_x": true)"))
+              .starts_with("/sources/main/tiles/0,0/alternatives/1"));
+}
+
+TEST_CASE("cells name a tile's alternative and turns after the tile") {
+    const auto set = solid();
+    const auto ref = [&](std::string_view text) {
+        auto found = canvas::find_tile(set, text);
+        REQUIRE_MESSAGE(found.ok(), found.error().message);
+        return std::move(found).value();
+    };
+    const auto error = [&](std::string_view text) {
+        auto found = canvas::find_tile(set, text);
+        return found.ok() ? std::string("(found)") : found.error().message;
+    };
+    const canvas::TileRef flipped = ref("block:hv");
+    CHECK(flipped.atlas == Vec2i{0, 0});
+    CHECK(flipped.alternative == 0);
+    CHECK(flipped.flip_h);
+    CHECK(flipped.flip_v);
+    CHECK_FALSE(flipped.transpose);
+    const canvas::TileRef turned = ref("main:0,0:1:t");
+    CHECK(turned.alternative == 1);
+    CHECK(turned.transpose);
+    CHECK_FALSE(turned.flip_h);
+    CHECK(ref("block:0") == ref("block"));
+    CHECK(canvas::tile_text(set, turned) == "block:1:t");
+    CHECK(canvas::tile_text(set, ref("ledge:hvt")) == "ledge:hvt");
+    CHECK(canvas::tile_text(set, ref("ledge")) == "ledge");
+
+    CHECK(
+        error("block:vh") ==
+        R"("block:vh": a cell's turns are h, v and t, each at most once and in that order, as "crate:hv")");
+    CHECK(error("block:2") == R"(the tile "block" has no alternative 2; it has 1 to 1)");
+    CHECK(error("ledge:1") == R"(the tile "ledge" has no alternative 1; it has none)");
+    CHECK(error("blok:h") == R"(the tile set has no tile named "blok"; did you mean "block"?)");
+    CHECK(error("main:9,9:h") == R"(the source "main" has no tile at 9,9)");
+
+    // Turned tiles are their own legend entries, keyed by the tile's name where it is free.
+    world::TileMapLayer layer;
+    layer.tile_set = "solid.tileset.json";
+    canvas::Cells cells;
+    cells[{0, 0}] = ref("block");
+    cells[{1, 0}] = ref("block");
+    cells[{2, 0}] = ref("block:h");
+    cells[{3, 0}] = ref("block:1");
+    canvas::encode_cells(cells, set, layer);
+    CHECK(layer.legend ==
+          std::map<std::string, std::string>{{"b", "block"}, {"B", "block:h"}, {"a", "block:1"}});
+    CHECK(layer.rows == std::vector<std::string>{"bbBa"});
+    auto decoded = canvas::decode_cells(layer, set);
+    REQUIRE(decoded.ok());
+    CHECK(decoded.value() == cells);
+}
+
+TEST_CASE("a tile's collision turns with its cell, as Godot's tile physics turns it") {
+    const auto set = solid();
+    const auto polygon = [&](std::string_view text) {
+        auto found = canvas::find_tile(set, text);
+        REQUIRE(found.ok());
+        const auto polygons = canvas::tile_collision(set, found.value());
+        REQUIRE(polygons.size() == 1);
+        return points_text(polygons[0].points);
+    };
+    CHECK(polygon("ledge") == "-8,-8 8,-8 8,-4 -8,-4");
+    CHECK(polygon("ledge:v") == "-8,8 8,8 8,4 -8,4");
+    CHECK(polygon("ledge:h") == "8,-8 -8,-8 -8,-4 8,-4");
+    // Transposed, then flipped: the ledge stands along the tile's left side, then its right.
+    CHECK(polygon("ledge:t") == "-8,-8 -8,8 -4,8 -4,-8");
+    CHECK(polygon("ledge:ht") == "8,-8 8,8 4,8 4,-8");
+    // The alternative has its own polygon, which its own flip_h doesn't flip, as in Godot.
+    CHECK(polygon("block:1") == "-8,8 8,-8 8,8");
+    CHECK(polygon("block:1:h") == "8,8 -8,-8 -8,8");
+
+    canvas::Cells cells;
+    cells[{2, 1}] = canvas::find_tile(set, "block").value();
+    cells[{3, 1}] = canvas::find_tile(set, "ledge").value();
+    const auto shapes = canvas::tile_shapes(set, cells);
+    REQUIRE(shapes.size() == 2);
+    CHECK(shapes[0].cell == Vec2i{2, 1});
+    CHECK(points_text(shapes[0].points) == "32,16 48,16 48,32 32,32");
+    CHECK(shapes[0].collision_layer == 2);
+    CHECK(shapes[0].collision_mask == 1);
+    CHECK(shapes[0].friction == doctest::Approx(0.5));
+    CHECK_FALSE(shapes[0].one_way);
+    CHECK(shapes[1].one_way);
+    CHECK(points_text(shapes[1].points) == "48,16 64,16 64,20 48,20");
+}
+
+TEST_CASE("turned and alternative tiles draw as Godot's draw_tile draws them") {
+    // An 8x8 tile in four colors: red top left, green top right, blue bottom left, white
+    // bottom right. Each cell below is 8x8 too, so each quarter is a 4x4 square.
+    const Rgba red{255, 0, 0, 255};
+    const Rgba green{0, 255, 0, 255};
+    const Rgba blue{0, 0, 255, 255};
+    const Rgba white{255, 255, 255, 255};
+    const Rgba black{0, 0, 0, 255};
+    std::vector<std::unique_ptr<render::RenderDevice>> devices;
+    devices.push_back(render::create_software_device());
+    if (auto gpu = gpu_device(); gpu != nullptr) {
+        devices.push_back(std::move(gpu));
+    }
+    for (const auto& device : devices) {
+        CAPTURE(render::backend_name(device->backend()));
+        Scene scene;
+        scene.files.write("quarters.png", grid_png({{red, green}, {blue, white}}, 4));
+        scene.files.write("quarters.tileset.json", R"({"format": 1, "tile_size": [8, 8],
+            "sources": {"q": {"texture": "quarters.png", "tiles": {"0,0": {"name": "q",
+                "alternatives": {"1": {"flip_h": true, "modulate": [0, 1, 1, 1]}}}}}}})");
+        scene.create("map", R"({"TileMapLayer": {"tile_set": "quarters.tileset.json",
+            "texture_filter": "nearest",
+            "legend": {"a": "q", "b": "q:h", "c": "q:v", "d": "q:t", "e": "q:ht", "f": "q:1",
+                       "g": "q:1:h"},
+            "rows": ["abcd", "efg"]}})");
+        auto target = device->create_texture(
+            {.width = 32, .height = 16, .filter = render::Filter::Nearest, .render_target = true});
+        REQUIRE(target.ok());
+        canvas::CanvasRenderer renderer(*device, scene.assets);
+        canvas::CanvasOptions options;
+        options.target = target.value();
+        options.clear = {.r = 0.0F, .g = 0.0F, .b = 0.0F, .a = 1.0F};
+        REQUIRE(renderer.draw(scene.world, options).ok());
+        CHECK(renderer.tiles_drawn() == 7);
+        auto image = device->read_texture(target.value());
+        REQUIRE(image.ok());
+        // The four quarters of the cell at column, row: top left, top right, bottom left,
+        // bottom right.
+        const auto quarters = [&](std::uint32_t column, std::uint32_t row) {
+            const std::uint32_t x = column * 8;
+            const std::uint32_t y = row * 8;
+            return std::array<Rgba, 4>{
+                pixel(image.value(), x + 2, y + 2), pixel(image.value(), x + 6, y + 2),
+                pixel(image.value(), x + 2, y + 6), pixel(image.value(), x + 6, y + 6)};
+        };
+        using Quarters = std::array<Rgba, 4>;
+        CHECK(quarters(0, 0) == Quarters{red, green, blue, white});
+        CHECK(quarters(1, 0) == Quarters{green, red, white, blue}); // flipped horizontally
+        CHECK(quarters(2, 0) == Quarters{blue, white, red, green}); // flipped vertically
+        CHECK(quarters(3, 0) == Quarters{red, blue, green, white}); // transposed
+        CHECK(quarters(0, 1) == Quarters{blue, red, white, green}); // turned right
+        // The alternative flips and tints out red; the cell's flip undoes its flip.
+        const Rgba cyan{0, 255, 255, 255};
+        CHECK(quarters(1, 1) == Quarters{green, black, cyan, blue});
+        CHECK(quarters(2, 1) == Quarters{black, green, blue, cyan});
+    }
+}
+
+TEST_CASE("tile map layers are solid where their tiles have collision polygons") {
+    Scene scene;
+    slash::physics2d::install(scene.world);
+    scene.files.write("solid.tileset.json", std::string(kSolid));
+    // Five blocks from x 0 to 80, y 32 to 48, and a ledge row above them on the right.
+    const entt::entity ground = scene.create("ground", R"({"TileMapLayer": {
+        "tile_set": "solid.tileset.json", "origin": [0, 2], "legend": {"b": "block"},
+        "rows": ["bbbbb"]}})");
+    scene.create("ledges", R"({"TileMapLayer": {"tile_set": "solid.tileset.json",
+        "origin": [6, 1], "legend": {"l": "ledge"}, "rows": ["ll"]}})");
+    scene.create("ball", R"({"Transform2D": {"position": [40, 0]}, "RigidBody2D": {},
+        "CollisionShape2D": {"shape": "circle", "radius": 4}})");
+    scene.create("riser", R"({"Transform2D": {"position": [112, 40]},
+        "RigidBody2D": {"gravity_scale": 0, "linear_velocity": [0, -300]},
+        "CollisionShape2D": {"shape": "circle", "radius": 4}})");
+    scene.create("lander", R"({"Transform2D": {"position": [104, 0]}, "RigidBody2D": {},
+        "CollisionShape2D": {"shape": "circle", "radius": 4}})");
+    const auto y_of = [&](std::string_view id) {
+        return scene.world.ecs().get<world::Transform2D>(scene.world.find(id)).position.y;
+    };
+    for (int tick = 0; tick < 120; ++tick) {
+        scene.world.step(1.0 / 60.0);
+    }
+    // The ball rests on the blocks, the lander on a ledge (16 to 20); the riser came up
+    // through the one-way ledge.
+    CHECK(y_of("ball") == doctest::Approx(28.0).epsilon(0.02));
+    CHECK(y_of("lander") == doctest::Approx(12.0).epsilon(0.05));
+    CHECK(y_of("riser") < 0.0F);
+
+    // A ray finds the layer and the cell it hit.
+    auto hit = slash::physics2d::raycast(scene.world, {8, 0}, {8, 100});
+    REQUIRE(hit.has_value());
+    CHECK(scene.world.id_of(hit->entity) == "ground");
+    CHECK(hit->point.y == doctest::Approx(32.0));
+    REQUIRE(hit->cell.has_value());
+    CHECK(*hit->cell == Vec2i{0, 2});
+
+    // Debug drawing fills each tile's polygon.
+    CHECK(canvas::collision_shapes(scene.world).tiles == 7);
+    CHECK(canvas::collision_shapes(scene.world).shapes == 3);
+
+    // Moving the layer moves its body; painting cells rebuilds it.
+    auto& map = scene.world.ecs().get<world::TileMapLayer>(ground);
+    scene.world.ecs().emplace<world::Transform2D>(ground).position = {0, 16};
+    hit = slash::physics2d::raycast(scene.world, {8, 0}, {8, 100});
+    REQUIRE(hit.has_value());
+    CHECK(hit->point.y == doctest::Approx(48.0));
+    map.rows = {"b...b"};
+    hit = slash::physics2d::raycast(scene.world, {24, 0}, {24, 100});
+    CHECK_FALSE(hit.has_value());
+    CHECK(canvas::collision_shapes(scene.world).tiles == 4);
+
+    // A layer with collision off isn't solid, and the ball falls.
+    map.rows = {"bbbbb"};
+    map.collision_enabled = false;
+    for (int tick = 0; tick < 30; ++tick) {
+        scene.world.step(1.0 / 60.0);
+    }
+    CHECK(y_of("ball") > 60.0F);
+    CHECK(canvas::collision_shapes(scene.world).tiles == 2);
+
+    // Editing the tile set rebuilds the shapes: the ledge becomes solid from below too.
+    std::string edited(kSolid);
+    edited.replace(edited.find(R"("one_way": true)"), 15, R"("one_way": false)");
+    scene.files.write("solid.tileset.json", edited);
+    CHECK(scene.assets.poll().size() == 1);
+    auto shapes = slash::physics2d::tile_shapes(scene.world, scene.world.find("ledges"));
+    REQUIRE(shapes != nullptr);
+    CHECK_FALSE(shapes->front().one_way);
 }

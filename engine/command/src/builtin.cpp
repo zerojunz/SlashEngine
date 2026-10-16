@@ -1329,6 +1329,9 @@ Reply physics_raycast(Session& session, const json::Value& params) {
     found["point"] = point_value(hit->point);
     found["normal"] = point_value(hit->normal);
     found["fraction"] = rounded(hit->fraction);
+    if (hit->cell) {
+        found["cell"] = json::Array{hit->cell->x, hit->cell->y};
+    }
     return Reply::success(std::move(result));
 }
 
@@ -4085,7 +4088,9 @@ void register_builtin_commands(Registry& registry) {
     tile_rect["prefixItems"] = json::Array{coordinate, coordinate, extent, extent};
     tile_rect["minItems"] = 4;
     tile_rect["maxItems"] = 4;
-    json::Value tile = any_property("A tile by name or as \"source:column,row\"; null erases.");
+    json::Value tile = any_property("A tile by name or as \"source:column,row\", then "
+                                    "\":<alternative>\" and \":<turns>\" (h, v, t) if any, as "
+                                    "\"crate:1:hv\"; null erases.");
     tile["type"] = json::Array{"string", "null"};
     json::Value terrain = any_property("A terrain name; null erases.");
     terrain["type"] = json::Array{"string", "null"};
@@ -4253,7 +4258,8 @@ void register_builtin_commands(Registry& registry) {
     registry.add({
         .name = "physics.raycast",
         .description = "Returns the first body (or area) a ray from from to to hits: its id, the "
-                       "point, the surface normal and how far along. hit is null if none.",
+                       "point, the surface normal, how far along and, for a tile map layer, the "
+                       "cell. hit is null if none.",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params =
