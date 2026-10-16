@@ -1,0 +1,29 @@
+{
+  "entities": {
+    "body": {
+      "components": {
+        "Sprite2D": {
+          "modulate": [0.2, 0.6, 1.0, 1.0]
+        },
+        "Transform2D": {}
+      }
+    },
+    "gun": {
+      "components": {
+        "Transform2D": {
+          "position": [8.0, 0.0]
+        }
+      },
+      "extends": "scenes/gun.scene.json"
+    },
+    "player": {
+      "components": {
+        "Transform2D": {
+          "children": ["body", "gun"]
+        }
+      }
+    }
+  },
+  "format": 1,
+  "root": "player"
+}

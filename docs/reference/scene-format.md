@@ -36,7 +36,9 @@ you are running.
 | --- | --- | --- |
 | `format` | Yes | Format version. Must be `1` |
 | `entities` | Yes | Entities keyed by stable ID |
-| `entities.<id>.extends` | No | A `.prefab.json` file the entity starts from (see [Prefabs](#prefabs)) |
+| `root` | No | The entity an instance of this scene becomes (see [Instanced scenes](#instanced-scenes)) |
+| `entities.<id>` | | An object, or `null` to leave out an entity an instanced scene brings |
+| `entities.<id>.extends` | No | A `.prefab.json` file, or a `.scene.json` file with a `root`, the entity starts from (see [Prefabs](#prefabs)) |
 | `entities.<id>.components` | No | Components keyed by type name. Left out, the entity has none, or its prefab's |
 | `entities.<id>.components.<Type>` | No | The component's fields, or `null` to remove a component the prefab has |
 | `entities.<id>.components.<Type>.<field>` | No | A field value. Left out, the field keeps its default, or its prefab's value |
@@ -48,7 +50,8 @@ suggestion when it is close to a valid one.
 
 Entity IDs are 1 to 64 characters from `A-Z`, `a-z`, `0-9`, `_` and `-`, such as `player` or
 `enemy_03`. They are stable: saving, loading and undo keep them, and commands refer to entities by
-them.
+them. The entities an [instanced scene](#instanced-scenes) brings have IDs under the instance's,
+joined with `/`, such as `hero/sprite` or `hero/gun/muzzle`, up to 255 characters.
 
 ## Field values
 
@@ -570,9 +573,10 @@ An invalid scene never loads partly: the open scene stays as it was.
 
 ## Prefabs
 
-A prefab is one entity's components in a `.prefab.json` file, like a Godot scene that other
-scenes instance. An entity that `"extends"` it starts with the prefab's components, and its own
-fields override the prefab's. With `Health` as a game's component, `prefabs/enemy.prefab.json`:
+A prefab is one entity's components in a `.prefab.json` file, like a Godot scene of one node
+that other scenes instance; for several entities, instance a scene
+([instanced scenes](#instanced-scenes)). An entity that `"extends"` it starts with the prefab's
+components, and its own fields override the prefab's. With `Health` as a game's component, `prefabs/enemy.prefab.json`:
 
 ```json
 {
@@ -628,6 +632,84 @@ instance overrides.
 - Exports copy and validate every prefab with the scenes.
 - `entity.create` with `"extends"` makes an instance and `prefab.save` writes an entity to a
   prefab file (see the [command reference](commands.md)).
+
+## Instanced scenes
+
+A scene can be instanced by other scenes, as Godot's PackedScene: an entity that `"extends"` a
+`.scene.json` file becomes the scene's root entity, and the scene's other entities come with it.
+A scene names its root in `"root"`, which `scene.save` sets
+([commands](commands.md#scenesave)). `scenes/player.scene.json`:
+
+```json
+{
+  "entities": {
+    "gun": {
+      "components": {
+        "Transform2D": {
+          "position": [8.0, 0.0]
+        }
+      }
+    },
+    "player": {
+      "components": {
+        "Transform2D": {
+          "children": ["sprite", "gun"]
+        }
+      }
+    },
+    "sprite": {
+      "components": {
+        "Sprite2D": {
+          "texture": "art/player.png"
+        }
+      }
+    }
+  },
+  "format": 1,
+  "root": "player"
+}
+```
+
+and a level that instances it:
+
+```json
+"hero": {
+  "components": {
+    "Transform2D": {
+      "position": [64.0, 32.0]
+    }
+  },
+  "extends": "scenes/player.scene.json"
+},
+"hero/sprite": {
+  "components": {
+    "Sprite2D": {
+      "flip_h": true
+    }
+  }
+},
+"hero/gun": null
+```
+
+`hero` has the player's components with its own position. The scene's other entities are
+`hero/sprite` and `hero/gun`: the instance's ID, `/`, and their ID in the scene. References
+inside the scene follow them, so `hero`'s `Transform2D` `children` are `hero/sprite` and
+`hero/gun`, and a joint's `node_a` naming `sprite` names `hero/sprite`.
+
+- An entry keyed with `/` holds only that entity's overrides, as an instance's own entry does,
+  and `null` leaves the entity out. It cannot have `extends`: the instanced scene decides that.
+  An entry for an entity no instanced scene brings is a load error that says why.
+- A scene can instance scenes in turn, so IDs nest: a gun scene instanced as `gun` in the player
+  scene gives `hero/gun/muzzle`. Scenes that instance each other in a loop are a load error.
+- Saving writes the instance's `extends` and overrides, an entry for each brought entity that
+  differs from the scene, and `null` for each one destroyed.
+- Changing the scene file changes every instance, keeping their overrides; entities added to the
+  scene appear in each instance, and removed ones go.
+- `entity.create` with `"extends"` makes an instance, and `entity.destroy` on an instance takes
+  the entities it brought. A prefab file holds one entity, so it can extend another prefab but
+  not a scene, and `prefab.save` refuses an instance of a scene.
+- Only a scene with a `"root"` can be instanced. The root must be an entity of its own, not one
+  an instanced scene brings.
 
 ## Sprite frames
 
