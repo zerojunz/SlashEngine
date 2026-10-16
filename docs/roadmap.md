@@ -324,8 +324,10 @@ rendering on top.
         C++, and a report keeps what the port needs: the values each node gave its exported
         variables, signal connections, groups, autoloads and the entity of every node path
   - [x] Godot scenes that instance other scenes stay instances, holding only their overrides
-  - [ ] Godot's `TileMapLayer` and `TileSet`, `AnimationPlayer` libraries, themes and
-        `LabelSettings` resources, and audio bus layouts
+  - [x] Godot's `TileSet` resources, `TileMapLayer` nodes and the old `TileMap`'s layers,
+        themes, `LabelSettings` resources and audio bus layouts, with the project's theme and
+        buses
+  - [ ] Godot's `AnimationPlayer` nodes and their animation libraries
   - [ ] Unity projects: 2D scenes and prefabs, sprites and their animations, tilemaps, UI,
         audio mixers and the input system's actions; C# scripts become tasks the same way
   - [ ] Exported games (a Godot `.pck`, a Unity build) unpacked back into a project, for games

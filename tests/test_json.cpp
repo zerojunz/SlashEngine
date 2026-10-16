@@ -101,6 +101,20 @@ TEST_CASE("pointer_escape escapes tilde and slash") {
     CHECK(json::pointer_escape("a/b~c") == "a~1b~0c");
 }
 
+TEST_CASE("base64_decode reads RFC 4648's test vectors, padded or not") {
+    CHECK(slash::base64_decode("").value().empty());
+    CHECK(slash::base64_decode("Zg==").value() == "f");
+    CHECK(slash::base64_decode("Zm8=").value() == "fo");
+    CHECK(slash::base64_decode("Zm9v").value() == "foo");
+    CHECK(slash::base64_decode("Zm9vYg").value() == "foob");
+    CHECK(slash::base64_decode("Zm9vYmE=").value() == "fooba");
+    CHECK(slash::base64_decode("Zm9vYmFy").value() == "foobar");
+    const std::string bytes{"\x00\xff\x10\x80", 4};
+    CHECK(slash::base64_decode(slash::base64_encode(bytes)).value() == bytes);
+    CHECK(!slash::base64_decode("Zm9v!").has_value());
+    CHECK(!slash::base64_decode("Z").has_value());
+}
+
 TEST_CASE("base64_encode writes RFC 4648's test vectors") {
     CHECK(slash::base64_encode("").empty());
     CHECK(slash::base64_encode("f") == "Zg==");

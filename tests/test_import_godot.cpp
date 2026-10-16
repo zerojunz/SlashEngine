@@ -1,3 +1,4 @@
+#include "slash/canvas/tilemap.hpp"
 #include "slash/command/builtin.hpp"
 #include "slash/command/command.hpp"
 #include "slash/command/session.hpp"
@@ -122,6 +123,34 @@ json::Value unsupported(const json::Value& report, std::string_view what) {
     return nullptr;
 }
 
+// A converted tile map layer's cells, as "source:column,row" by "x,y".
+std::map<std::string, std::string> cells_of(const std::map<std::string, std::string>& files,
+                                            const json::Value& component) {
+    const std::string& path = component.find("tile_set")->as_string();
+    REQUIRE(files.contains(path));
+    auto set = slash::canvas::parse_tileset(parse(files.at(path)));
+    REQUIRE(set.ok());
+    slash::world::TileMapLayer layer;
+    if (const json::Value* origin = component.find("origin"); origin != nullptr) {
+        layer.origin = {static_cast<int>(origin->as_array().at(0).as_int()),
+                        static_cast<int>(origin->as_array().at(1).as_int())};
+    }
+    for (const auto& [key, tile] : component.find("legend")->as_object()) {
+        layer.legend[key] = tile.as_string();
+    }
+    for (const json::Value& row : component.find("rows")->as_array()) {
+        layer.rows.push_back(row.as_string());
+    }
+    auto cells = slash::canvas::decode_cells(layer, set.value());
+    REQUIRE(cells.ok());
+    std::map<std::string, std::string> out;
+    for (const auto& [cell, tile] : cells.value()) {
+        out[std::to_string(cell.x) + "," + std::to_string(cell.y)] =
+            tile.source + ":" + std::to_string(tile.atlas.x) + "," + std::to_string(tile.atlas.y);
+    }
+    return out;
+}
+
 constexpr std::string_view kProject = R"(; Engine configuration file.
 
 config_version=5
@@ -136,6 +165,11 @@ config/features=PackedStringArray("4.4", "Forward Plus")
 [autoload]
 
 Music="*res://autoload/music.gd"
+
+[audio]
+
+driver/mix_rate=48000
+general/2d_panning_strength=0.8
 
 [display]
 
@@ -204,6 +238,8 @@ constexpr std::string_view kLevel = R"([gd_scene load_steps=12 format=3 uid="uid
 [ext_resource type="PackedScene" uid="uid://enemy0scene" path="res://scenes/old_enemy_path.tscn" id="1_enemy"]
 [ext_resource type="Script" path="res://level.gd" id="2_script"]
 [ext_resource type="Texture2D" path="res://art/sheet.png" id="3_sheet"]
+[ext_resource type="TileSet" path="res://tiles/terrain.tres" id="4_tiles"]
+[ext_resource type="Theme" path="res://ui/theme.tres" id="5_theme"]
 
 [sub_resource type="PhysicsMaterial" id="PhysicsMaterial_1"]
 friction = 0.2
@@ -284,7 +320,20 @@ scale_amount_curve = SubResource("Curve_1")
 color_ramp = SubResource("Gradient_1")
 
 [node name="Tiles" type="TileMapLayer" parent="World"]
-tile_map_data = PackedByteArray(0, 0)
+tile_set = ExtResource("4_tiles")
+tile_map_data = PackedByteArray("AAAAAAAAAAAAAAAAAAABAAAAAAABAAAAAAD//wIAAAABAAAAAQA=")
+self_modulate = Color(1, 1, 1, 0.5)
+
+[node name="Old" type="TileMap" parent="World"]
+tile_set = ExtResource("4_tiles")
+format = 2
+layer_0/name = "Ground"
+layer_0/tile_data = PackedInt32Array(0, 0, 0, 65538, 131072, 0)
+layer_1/name = "Top"
+layer_1/modulate = Color(1, 1, 1, 0.5)
+layer_1/z_index = 2
+layer_1/y_sort_enabled = true
+layer_1/tile_data = PackedInt32Array(-65536, 65536, 0)
 
 [node name="Music" type="AudioStreamPlayer" parent="."]
 volume_db = -6.0
@@ -299,6 +348,7 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 alignment = 1
+theme = ExtResource("5_theme")
 theme_override_constants/separation = 8
 
 [node name="Title" type="Label" parent="UI/Menu"]
@@ -331,6 +381,117 @@ max_columns = 2
 [connection signal="pressed" from="UI/Menu/Play" to="." method="_on_play_pressed"]
 )";
 
+// A tile set with two terrains connected by their sides, an alternative tile and collision.
+constexpr std::string_view kTileSet = R"([gd_resource type="TileSet" load_steps=3 format=3]
+
+[ext_resource type="Texture2D" path="res://art/tiles.png" id="1_tex"]
+
+[sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_1"]
+texture = ExtResource("1_tex")
+0:0/0 = 0
+0:0/0/terrain_set = 0
+0:0/0/terrain = 0
+0:0/0/terrains_peering_bit/right_side = 0
+0:0/0/terrains_peering_bit/bottom_side = 1
+1:0/0 = 0
+1:0/0/terrain_set = 0
+1:0/0/terrain = 1
+1:0/0/terrains_peering_bit/right_side = 1
+1:0/0/terrains_peering_bit/bottom_side = 1
+1:0/0/terrains_peering_bit/left_side = 1
+1:0/0/terrains_peering_bit/top_side = 1
+1:0/1 = 1
+2:0/0 = 0
+2:0/0/probability = 0.5
+0:1/0 = 0
+0:1/0/physics_layer_0/polygon_0/points = PackedVector2Array(-8, -8, 8, -8, 8, 8, -8, 8)
+
+[resource]
+terrain_set_0/mode = 2
+terrain_set_0/terrain_0/name = "Grass"
+terrain_set_0/terrain_0/color = Color(0.2, 0.8, 0.2, 1)
+terrain_set_0/terrain_1/name = "Water"
+terrain_set_0/terrain_1/color = Color(0.2, 0.2, 0.8, 1)
+physics_layer_0/collision_layer = 1
+sources/0 = SubResource("TileSetAtlasSource_1")
+)";
+
+constexpr std::string_view kTheme = R"([gd_resource type="Theme" load_steps=3 format=3]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_b"]
+bg_color = Color(0.2, 0.3, 0.4, 1)
+corner_radius_top_left = 4
+
+[sub_resource type="StyleBoxLine" id="StyleBoxLine_1"]
+thickness = 2
+
+[resource]
+default_font_size = 18
+Button/colors/font_color = Color(1, 0.9, 0.5, 1)
+Button/constants/h_separation = 6
+Button/styles/normal = SubResource("StyleBoxFlat_b")
+Panel/styles/panel = SubResource("StyleBoxLine_1")
+Title/base_type = &"Label"
+Title/font_sizes/font_size = 24
+)";
+
+// Godot uses res://default_bus_layout.tres with no setting naming it.
+constexpr std::string_view kBusLayout = R"([gd_resource type="AudioBusLayout" load_steps=6 format=3]
+
+[sub_resource type="AudioEffectReverb" id="AudioEffectReverb_1"]
+resource_name = "Reverb"
+room_size = 0.6
+wet = 0.4
+
+[sub_resource type="AudioEffectLowPassFilter" id="AudioEffectLowPassFilter_1"]
+resource_name = "LowPassFilter"
+cutoff_hz = 1200.0
+db = 1
+
+[sub_resource type="AudioEffectChorus" id="AudioEffectChorus_1"]
+resource_name = "Chorus"
+voice_count = 3
+voice/1/delay_ms = 10.0
+voice/3/pan = 0.25
+
+[sub_resource type="AudioEffectEQ6" id="AudioEffectEQ6_1"]
+resource_name = "EQ6"
+band_db/100_hz = -3.0
+
+[sub_resource type="AudioEffectRecord" id="AudioEffectRecord_1"]
+resource_name = "Record"
+
+[resource]
+bus/0/name = &"Master"
+bus/0/solo = false
+bus/0/mute = false
+bus/0/bypass_fx = false
+bus/0/volume_db = -1.0
+bus/0/send = &""
+bus/1/name = &"Music"
+bus/1/solo = false
+bus/1/mute = false
+bus/1/bypass_fx = false
+bus/1/volume_db = -3.0
+bus/1/send = &"Master"
+bus/1/effect/0/effect = SubResource("AudioEffectReverb_1")
+bus/1/effect/0/enabled = true
+bus/1/effect/1/effect = SubResource("AudioEffectLowPassFilter_1")
+bus/1/effect/1/enabled = false
+bus/2/name = &"SFX"
+bus/2/solo = false
+bus/2/mute = true
+bus/2/bypass_fx = false
+bus/2/volume_db = 0.0
+bus/2/send = &"Music"
+bus/2/effect/0/effect = SubResource("AudioEffectChorus_1")
+bus/2/effect/0/enabled = true
+bus/2/effect/1/effect = SubResource("AudioEffectEQ6_1")
+bus/2/effect/1/enabled = true
+bus/2/effect/2/effect = SubResource("AudioEffectRecord_1")
+bus/2/effect/2/enabled = true
+)";
+
 // A Godot project in a folder of the build tree, with its textures.
 fs::path make_project(const fs::path& folder) {
     fs::remove_all(folder);
@@ -343,12 +504,15 @@ fs::path make_project(const fs::path& folder) {
           "\nfunc hit(amount: int) -> void:\n\thealth -= amount\n");
     write(folder / "level.gd", "extends Node\n\nfunc _on_play_pressed() -> void:\n\tpass\n");
     write(folder / "autoload/music.gd", "extends Node\n");
-    write(folder / "ui/theme.tres", "[gd_resource type=\"Theme\" format=3]\n\n[resource]\n");
+    write(folder / "ui/theme.tres", kTheme);
+    write(folder / "tiles/terrain.tres", kTileSet);
+    write(folder / "default_bus_layout.tres", kBusLayout);
     write(folder / "shaders/glow.gdshader", "shader_type canvas_item;\n");
     write(folder / ".godot/imported/enemy.png-1234.ctex", "binary");
     write(folder / "addons/plugin/plugin.gd", "extends EditorPlugin\n");
     write_png(folder / "art/enemy.png", 16, 16);
     write_png(folder / "art/sheet.png", 32, 16);
+    write_png(folder / "art/tiles.png", 64, 32);
     return folder;
 }
 
@@ -497,10 +661,12 @@ TEST_CASE("importing a Godot project converts its settings and input map") {
     CHECK(unsupported(report, "input binding").find("why")->as_string() ==
           "InputEventScreenTouch bindings");
     CHECK(!unsupported(report, "setting display/window/stretch/mode").is_null());
-    CHECK(!unsupported(report, "setting gui/theme/custom").is_null());
+    CHECK(settings.find("gui")->find("theme")->as_string() == "godot/ui/theme.theme.json");
+    CHECK(*settings.find("audio") ==
+          parse(R"({"bus_layout": "godot/default_bus_layout.bus_layout.json",
+                                              "mix_rate": 48000, "panning_strength_2d": 0.8})"));
     CHECK(unsupported(report, "file type .gdshader").find("where")->as_string() ==
           "shaders/glow.gdshader");
-    CHECK(unsupported(report, "resource Theme").find("where")->as_string() == "ui/theme.tres");
     // Godot's own folders and add-ons stay out.
     for (const auto& [path, contents] : files) {
         CHECK(path.find(".godot") == std::string::npos);
@@ -536,7 +702,8 @@ TEST_CASE("importing a Godot scene maps its nodes to entities and components") {
     CHECK(*entity(files, level, "level").find("Transform2D")->find("children") ==
           parse(R"(["world", "ui"])"));
     CHECK(*entity(files, level, "world").find("Transform2D")->find("children") ==
-          parse(R"(["floor", "enemy", "enemy2", "pin", "crate", "torch", "sparks", "tiles"])"));
+          parse(R"(["floor", "enemy", "enemy2", "pin", "crate", "torch", "sparks", "tiles",
+                    "old"])"));
 
     // Physics materials, shapes and their nodes' transforms.
     const json::Value floor = entity(files, level, "floor");
@@ -631,8 +798,6 @@ TEST_CASE("importing a Godot scene maps its nodes to entities and components") {
           parse(R"({"max_value": 10.0, "vertical": true})"));
 
     // What doesn't convert is reported once by kind, and kept in the report for porting.
-    CHECK(unsupported(plan.report, "node type TileMapLayer").find("where")->as_string() ==
-          "scenes/level.tscn: World/Tiles");
     CHECK(!unsupported(plan.report, "node type ItemList").is_null());
     CHECK(unsupported(plan.report, "ItemList.max_columns").is_null());
     CHECK(!unsupported(plan.report, "Node2D under a Control").is_null());
@@ -643,6 +808,144 @@ TEST_CASE("importing a Godot scene maps its nodes to entities and components") {
     CHECK(record.find("entities")->find("UI/Menu/Play")->as_string() == "play");
     CHECK(*record.find("unconverted")->find("items") ==
           parse(R"({"type": "ItemList", "values": {"max_columns": 2}})"));
+}
+
+TEST_CASE("importing Godot tile maps, themes and bus layouts writes their SlashEngine files") {
+    const fs::path project = "import_godot_resources";
+    fs::remove_all(project);
+    make_project(project / "godot");
+    const importer::ImportPlan plan = plan_inside(project);
+    const auto files = files_of(plan);
+    CHECK(*plan.report.find("converted") ==
+          parse(R"({"scenes": 2, "sprite_frames": 0, "tile_sets": 1, "themes": 1,
+                    "bus_layouts": 1, "input_actions": 1, "assets": 3})"));
+    const std::string level = "godot/scenes/level.scene.json";
+
+    // The tile set: its terrains by set, and each tile's terrain and the terrain each side must
+    // touch, left out where it is the tile's own.
+    const std::string tileset = "godot/tiles/terrain.tileset.json";
+    REQUIRE(files.contains(tileset));
+    CHECK(slash::canvas::validate_tileset(parse(files.at(tileset))).empty());
+    CHECK(parse(files.at(tileset)) == parse(R"({
+        "format": 1,
+        "terrain_sets": {"set_0": {"mode": "match_sides", "terrains": ["Grass", "Water"]}},
+        "sources": {"tiles": {"texture": "godot/art/tiles.png", "tiles": {
+            "0,0": {"terrain": "Grass", "peering": {"n": null, "s": "Water", "w": null}},
+            "1,0": {"terrain": "Water"},
+            "2,0": {"probability": 0.5},
+            "0,1": {}}}}})"));
+    CHECK(unsupported(plan.report, "tile collision").find("where")->as_string() ==
+          "tiles/terrain.tres");
+
+    // A TileMapLayer's cells; the alternative tile is drawn as its base tile.
+    const json::Value tiles = entity(files, level, "tiles");
+    CHECK(tiles.find("TileMapLayer")->find("tile_set")->as_string() == tileset);
+    CHECK(*tiles.find("TileMapLayer")->find("modulate") == parse("[1.0, 1.0, 1.0, 0.5]"));
+    CHECK(cells_of(files, *tiles.find("TileMapLayer")) ==
+          std::map<std::string, std::string>{
+              {"0,0", "tiles:0,0"}, {"1,0", "tiles:1,0"}, {"-1,2", "tiles:1,0"}});
+    CHECK(unsupported(plan.report, "alternative tiles").find("where")->as_string() ==
+          "scenes/level.tscn: World/Tiles");
+
+    // An old TileMap's layers are entities under it, each with its own settings.
+    const json::Value old = entity(files, level, "old");
+    CHECK(*old.find("TileMapLayer") ==
+          parse(R"({"tile_set": "godot/tiles/terrain.tileset.json"})"));
+    CHECK(*old.find("Transform2D")->find("children") == parse(R"(["old_ground", "old_top"])"));
+    CHECK(cells_of(files, *entity(files, level, "old_ground").find("TileMapLayer")) ==
+          std::map<std::string, std::string>{{"0,0", "tiles:0,0"}, {"2,1", "tiles:2,0"}});
+    const json::Value top = entity(files, level, "old_top");
+    CHECK(top.find("TileMapLayer")->find("z_index")->as_int() == 2);
+    CHECK(*top.find("TileMapLayer")->find("modulate") == parse("[1.0, 1.0, 1.0, 0.5]"));
+    CHECK(cells_of(files, *top.find("TileMapLayer")) ==
+          std::map<std::string, std::string>{{"0,-1", "tiles:1,0"}});
+    CHECK(!unsupported(plan.report, "TileMap layer y_sort_enabled").is_null());
+    // Every scene's tile map layers fit their tile sets.
+    CHECK(slash::canvas::check_tile_layers(parse(files.at(level)), reader_of(files)).empty());
+
+    // The theme, used by the project and by a control.
+    const std::string theme = "godot/ui/theme.theme.json";
+    REQUIRE(files.contains(theme));
+    CHECK(parse(files.at(theme)) == parse(R"({
+        "format": 1,
+        "default_font_size": 18,
+        "types": {
+            "Button": {"colors": {"font_color": [1.0, 0.9, 0.5, 1.0]},
+                       "constants": {"h_separation": 6},
+                       "styles": {"normal": {"type": "flat", "bg_color": [0.2, 0.3, 0.4, 1.0],
+                                             "corner_radius_top_left": 4}}},
+            "Title": {"base_type": "Label", "font_sizes": {"font_size": 24}}}})"));
+    CHECK(unsupported(plan.report, "theme item styles").find("why")->as_string() ==
+          "StyleBoxLine style boxes");
+    CHECK(entity(files, level, "menu").find("Control")->find("theme")->as_string() == theme);
+
+    // The bus layout, with each effect in SlashEngine's form.
+    const std::string buses = "godot/default_bus_layout.bus_layout.json";
+    REQUIRE(files.contains(buses));
+    CHECK(parse(files.at(buses)) == parse(R"({
+        "format": 1,
+        "buses": [
+            {"name": "Master", "volume_db": -1.0},
+            {"name": "Music", "volume_db": -3.0, "effects": [
+                {"type": "reverb", "room_size": 0.6, "wet": 0.4},
+                {"type": "low_pass_filter", "cutoff_hz": 1200.0, "db": 12, "enabled": false}]},
+            {"name": "SFX", "mute": true, "send": "Music", "effects": [
+                {"type": "chorus", "voice_count": 3,
+                 "voices": [{"delay_ms": 10.0}, {}, {"pan": 0.25}]},
+                {"type": "eq6", "band_db": {"100_hz": -3.0}}]}]})"));
+    CHECK(unsupported(plan.report, "audio effect").find("why")->as_string() ==
+          "AudioEffectRecord has no SlashEngine equivalent yet");
+    // Nothing these files hold is reported as an unconverted resource.
+    CHECK(unsupported(plan.report, "resource Theme").is_null());
+    CHECK(unsupported(plan.report, "resource TileSet").is_null());
+    CHECK(unsupported(plan.report, "resource AudioBusLayout").is_null());
+}
+
+TEST_CASE("an instanced Godot TileMap keeps its layers' entities under the instance") {
+    const fs::path project = "import_godot_tile_instances";
+    fs::remove_all(project);
+    write(project / "godot/project.godot",
+          "config_version=5\n\n[application]\n\nconfig/name=\"Rooms\"\n");
+    write(project / "godot/tiles/terrain.tres", kTileSet);
+    write_png(project / "godot/art/tiles.png", 64, 32);
+    write(project / "godot/room.tscn", R"([gd_scene format=3]
+
+[ext_resource type="TileSet" path="res://tiles/terrain.tres" id="1_tiles"]
+
+[node name="Room" type="TileMap"]
+tile_set = ExtResource("1_tiles")
+format = 2
+layer_0/name = "Ground"
+layer_0/tile_data = PackedInt32Array(0, 0, 0)
+layer_1/name = "Top"
+layer_1/tile_data = PackedInt32Array(65536, 65536, 0)
+)");
+    write(project / "godot/house.tscn", R"([gd_scene format=3]
+
+[ext_resource type="PackedScene" path="res://room.tscn" id="1_room"]
+
+[node name="House" type="Node2D"]
+
+[node name="Room1" parent="." instance=ExtResource("1_room")]
+layer_1/modulate = Color(1, 0, 0, 1)
+
+[node name="Room2" parent="." instance=ExtResource("1_room")]
+position = Vector2(64, 0)
+)");
+    const importer::ImportPlan plan = plan_inside(project);
+    const auto files = files_of(plan);
+    const std::string house = "godot/house.scene.json";
+    REQUIRE(files.contains(house));
+    CHECK(*entity(files, "godot/room.scene.json", "room").find("Transform2D")->find("children") ==
+          parse(R"(["room_ground", "room_top"])"));
+    // The layers are the instance's parts; the house holds only what it changes.
+    CHECK(*entity(files, house, "room1").find("Transform2D")->find("children") ==
+          parse(R"(["room1/room_ground", "room1/room_top"])"));
+    CHECK(entry(files, house, "room1/room_top") ==
+          parse(R"({"components": {"TileMapLayer": {"modulate": [1.0, 0.0, 0.0, 1.0]}}})"));
+    CHECK(parse(files.at(house)).find("entities")->find("room2/room_top") == nullptr);
+    CHECK(cells_of(files, *entity(files, house, "room2/room_top").find("TileMapLayer")) ==
+          std::map<std::string, std::string>{{"0,1", "tiles:1,0"}});
 }
 
 TEST_CASE("importing a Godot project turns each script into a storyboard task") {

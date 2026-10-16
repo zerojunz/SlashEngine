@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -42,5 +43,7 @@ void append_utf8(std::string& out, char32_t character);
 
 // Bytes as base64 text (RFC 4648, with padding), as JSON carries images.
 [[nodiscard]] std::string base64_encode(std::string_view bytes);
+// The bytes base64 text stands for, padded or not; nullopt if it isn't base64.
+[[nodiscard]] std::optional<std::string> base64_decode(std::string_view text);
 
 } // namespace slash

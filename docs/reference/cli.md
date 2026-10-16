@@ -374,8 +374,9 @@ An existing `.gitignore` is never replaced, even with `--force`: `init` adds the
 
 ### import
 
-Converts a game made with Godot 4 into a SlashEngine project: its scenes, sprite frames, input
-map and settings, with each script turned into a storyboard task to port it to C++. It runs
+Converts a game made with Godot 4 into a SlashEngine project: its scenes, sprite frames, tile
+sets, themes, bus layouts, input map and settings, with each script turned into a storyboard task
+to port it to C++. It runs
 [`project.import`](commands.md#projectimport) and prints the same report;
 [godot-import.md](godot-import.md) says what converts to what.
 
