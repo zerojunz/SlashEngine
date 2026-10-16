@@ -455,6 +455,16 @@ events too. `ui::layout` lays buttons out by `ui::draw_mode` (`layout.buttons`),
 `ui.focus` drive them, and `ui::check_buttons` catches bad shortcuts, groups and focus fields.
 `examples/ui-buttons` is a title menu worked by mouse, keys and touch.
 
+`CheckBox` and `CheckButton` are structs derived from `Button` (reflection reads a base's
+fields), so `button_of` serves every button type; layout adds their icon and Godot's internal
+margin on its side (`CheckWork` in `src/layout.cpp`). `Slider` is Godot's `HSlider` and
+`VSlider` over `Range`: `range_of`, `range_value` and `range_ratio` in `src/ui.cpp` follow
+`Range::_calc_value`, `get_as_ratio` and `set_as_ratio`, `slider_input` in `src/gui.cpp` follows
+`Slider::gui_input`, and `track_sliders` snaps values set from outside and emits their
+`value_changed`. Theme `icons` name PNG files or Godot's default icons, which `src/icons.cpp`
+draws in code from the same shapes (`ui::builtin_icon`, `builtin:` paths, which
+`CanvasRenderer` uploads like files). `examples/ui-settings` is a settings screen.
+
 Text fields are Godot's `LineEdit`. The gui system edits them (`Editor` in `src/gui.cpp`, which
 follows `LineEdit::gui_input`, its undo stack and its caret and selection calls) from key events
 with a `unicode` character, `ime` events and the `ui_text_*`, `ui_cut`/`copy`/`paste` and

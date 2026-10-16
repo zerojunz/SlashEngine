@@ -270,6 +270,7 @@ A reference must name an entity that exists in the same scene.
 | | `theme_override_constants` | `std::map<std::string, int>` | `{}` | Theme constants by name, e.g. `{"outline_size": 4}` |
 | | `theme_override_fonts` | `std::map<std::string, std::string>` | `{}` | Theme fonts by name: a `.ttf`, `.otf` or [`.font.json`](#fonts) file, e.g. `{"font": "fonts/title.ttf"}` |
 | | `theme_override_font_sizes` | `std::map<std::string, int>` | `{}` | Theme font sizes in pixels by name, 1 to 1024, e.g. `{"font_size": 32}` |
+| | `theme_override_icons` | `std::map<std::string, std::string>` | `{}` | Theme icons by name: a PNG or BMP file, a [built-in icon](#theme-items) such as `"builtin:checked"`, or `""` for none, e.g. `{"checked": "ui/tick.png"}` |
 | | `theme_override_styles` | `std::map<std::string, json>` | `{}` | Theme [style boxes](#style-boxes) by name, e.g. `{"panel": {"bg_color": [0.1, 0.1, 0.2, 1], "corner_radius": 8}}` |
 | | `theme` | `std::string` | `""` | A [`.theme.json`](#themes) file whose items it and its children use before the project's theme |
 | | `theme_type_variation` | `std::string` | `""` | A theme type to look its items up in before its own: a variation with a `base_type`, e.g. `"Header"` |
@@ -312,6 +313,18 @@ A reference must name an entity that exists in the same scene.
 | | `allow_greater`, `allow_lesser` | `bool` | `false` | Let the value go past `max_value` or `min_value`; the bar stops at full or empty, the percentage doesn't |
 | | `fill_mode` | `std::string` | `"begin_to_end"` | Which way it fills: `begin_to_end`, `end_to_begin`, `top_to_bottom` or `bottom_to_top` |
 | | `show_percentage` | `bool` | `true` | Draw the percentage, rounded, centered on the bar |
+| `Slider` | `value` | `double` | `0` | The [slider](#sliders)'s value, between `min_value` and `max_value`, a multiple of `step` from `min_value` |
+| | `min_value`, `max_value` | `double` | `0`, `100` | The values at its ends |
+| | `step` | `double` | `1` | The value is a multiple of it, and the arrow keys and wheel move it this much; 0 for any value |
+| | `page` | `double` | `0` | The value stays this much under `max_value` |
+| | `rounded` | `bool` | `false` | The value is a whole number |
+| | `allow_greater`, `allow_lesser` | `bool` | `false` | Let the value go past `max_value` or `min_value` when set; the grabber stops at the end |
+| | `editable` | `bool` | `true` | The pointer, keys and gamepads move it; otherwise it draws dimmed |
+| | `scrollable` | `bool` | `true` | The mouse wheel steps it |
+| | `tick_count` | `int` | `0` | Ticks drawn along it, evenly spaced from end to end; 0 to 4096 |
+| | `ticks_on_borders` | `bool` | `false` | Draw the first and last ticks, at its ends |
+| | `ticks_position` | `std::string` | `"bottom_right"` | Where the ticks are: `bottom_right` (below, or right of a vertical one), `top_left`, `both` or `center` |
+| | `vertical` | `bool` | `false` | Godot's `VSlider`: its minimum at the bottom; otherwise an `HSlider` |
 | `Button` | `text` | `std::string` | `""` | The [button](#buttons)'s text; lines break at `"\n"` |
 | | `icon` | `std::string` | `""` | Project path of a PNG or BMP file drawn beside the text |
 | | `flat` | `bool` | `false` | Draw no style box, only the text and icon |
@@ -339,6 +352,8 @@ A reference must name an entity that exists in the same scene.
 | | `stretch_mode` | `std::string` | `"keep"` | How the texture fills the button, as `TextureRect`'s: `scale`, `tile`, `keep`, `keep_centered`, `keep_aspect`, `keep_aspect_centered` or `keep_aspect_covered` |
 | | `flip_h`, `flip_v` | `bool` | `false` | Draw it mirrored left to right, or upside down |
 | | `disabled` … `shortcut_feedback` | | | As `Button`'s |
+| `CheckBox` | `text` … `language` | | | As `Button`'s, but `toggle_mode` is `true` and `alignment` `"left"`: a [check box](#check-boxes) drawn with a box before its text, or a radio button in a `button_group` |
+| `CheckButton` | `text` … `language` | | | As `CheckBox`'s, drawn with a switch after its text |
 | `LineEdit` | `text` | `std::string` | `""` | The [text field](#text-fields)'s one line; line breaks show as spaces |
 | | `placeholder_text` | `std::string` | `""` | Shown, dimmed, while the text is empty |
 | | `alignment` | `std::string` | `"left"` | The text's place across the field: `left`, `center`, `right` or `fill` (as `left`) |
@@ -1155,9 +1170,9 @@ Godot's code, so a layout comes out as it would in Godot, to the pixel.
 
 ### Buttons
 
-`Button` and `TextureButton` are Godot's: the `gui` system (priority -900, right after `input`)
-sends each tick's [input events](commands.md#inputinject) to controls as Godot's viewport does,
-and buttons answer them as Godot's `BaseButton`.
+`Button`, `TextureButton` and the [check boxes](#check-boxes) are Godot's: the `gui` system
+(priority -900, right after `input`) sends each tick's [input events](commands.md#inputinject)
+to controls as Godot's viewport does, and buttons answer them as Godot's `BaseButton`.
 
 ```json
 "quit": {
@@ -1207,6 +1222,63 @@ and buttons answer them as Godot's `BaseButton`.
 - Not yet: tooltips, drag and drop, cursor shapes, theme sounds, `allow_unpress` groups and a
   click mask for `TextureButton`. Hiding a button while it is held lets go of it without
   pressing it.
+
+### Check boxes
+
+`CheckBox` and `CheckButton` are Godot's: toggle buttons with every field of `Button`
+(`toggle_mode` starts `true` and `alignment` `"left"`), pressed, toggled and grouped as buttons
+are. Instead of a style box they draw an icon beside their text, from their
+[theme items](#theme-items): a check box a box before the text, `checked` or `unchecked`, or
+`radio_checked` or `radio_unchecked` when it is in a `button_group`; a check button a switch
+after it, `checked` or `unchecked` (Godot's `toggle_on` and `toggle_off`). Disabled, they draw
+the `_disabled` icons; laid out right to left, the icon goes to the other side, and a check
+button draws the `_mirrored` ones.
+
+```json
+"vsync": {"components": {"CheckButton": {"button_pressed": true, "text": "V-Sync"}, "Control": {}}}
+```
+
+- A check box is as big as its text, plus `h_separation` and the largest of its icons, plus its
+  style boxes' margins (4 on each side, 6 left and right for a check button), so a check box
+  that says "Sound" is 28 pixels wider than a `Label` that does.
+- The icon is drawn at its own size, `icon_max_width` aside, at the left margin of the `normal`
+  style box (the right one, at the other end), and centered down the button plus
+  `check_v_offset`; a check box rounds that down to a whole pixel, as Godot's does.
+- The default icons are Godot's, drawn by the engine in the same shapes and colors, so no
+  image files are needed; their names start with `builtin:` (`builtin:checked`,
+  `builtin:toggle_on_mirrored`), and a theme or `theme_override_icons` can name them or a PNG.
+  `ui.theme` lists the icons a control uses and where each comes from.
+
+### Sliders
+
+`Slider` is Godot's `HSlider`, or `VSlider` with `vertical`: a value between `min_value` and
+`max_value` that the pointer, keys and gamepads move, as Godot's `Slider` and `Range`.
+
+```json
+"volume": {"components": {"Control": {"size_flags_horizontal": "expand_fill"},
+  "Slider": {"step": 5, "tick_count": 5, "ticks_on_borders": true, "value": 80}}}
+```
+
+- The value is always on its step: a multiple of `step` from `min_value` (Godot's
+  `Math::snapped`, so steps such as 0.1 give 0.3, not 0.30000000000000004), rounded with
+  `rounded`, and no more than `max_value - page` or less than `min_value` unless
+  `allow_greater` or `allow_lesser`. The `gui` system snaps a value set any other way, such as
+  with `component.set`, at the next tick.
+- A left click moves the middle of the grabber to the pointer and starts a drag
+  (`drag_started`, then `value_changed` even if the value stayed); moving drags the grabber with
+  the pointer, and letting go emits `drag_ended` with `{"value_changed": bool}`, whether the
+  drag changed it. The wheel steps it, and gives it focus.
+- With focus, `ui_left` and `ui_right` (or `ui_down` and `ui_up` for a vertical one) step it by
+  `step`, mirrored right to left, and `ui_home` and `ui_end` move it to its ends. A gamepad held
+  that way steps it again after half a second, then 20 times a second.
+- Each change emits `value_changed` with `{"value": number}`. A change made any other way
+  emits it at the next tick, once however many times the value changed.
+- It draws as Godot's: its `slider` style box across it, `grabber_area` (or
+  `grabber_area_highlight` while hovered or focused) up to the grabber, `tick_count` `tick`
+  icons along it, and the `grabber` icon (`grabber_highlight`, `grabber_disabled` when not
+  `editable`). Its minimum size is the track's width and the grabber's height (the other way
+  round for a vertical one).
+- Not yet: `exp_edit`, `custom_step`, theme sounds and `share` between ranges.
 
 ### Text fields
 
@@ -1351,6 +1423,27 @@ its `theme_override_*` fields, then its [themes](#themes), then the defaults bel
 | | constant | `icon_max_width` | `0`, no limit |
 | | constant | `align_to_largest_stylebox` | `0`; 1 keeps the text in place as the style changes |
 | `Button`, `TextureButton` | constant | `click_margin` | `0`, pixels round the rect that still hit it |
+| `CheckBox`, `CheckButton` | style | `normal`, `pressed`, `hover`, `hover_pressed`, `disabled` | empty, `content_margin` 4 (a check button's 6 left and right) |
+| | style | `focus` | as `Button`'s |
+| | font, font size, color | `font`, `font_size`, `font_*_color` | as `Button`'s |
+| | constant | `h_separation` | `4`, between the icon and the text |
+| | constant | `check_v_offset` | `0`, pixels to move the icon down |
+| | constant | `outline_size` | `0` |
+| `CheckBox` | icon | `checked`, `unchecked` | `builtin:checked`, `builtin:unchecked`: a 16-pixel rounded box, white with a dark check mark, or dark and empty |
+| | icon | `radio_checked`, `radio_unchecked` | `builtin:radio_checked`, `builtin:radio_unchecked`: a 16-pixel circle with a dot, or empty |
+| | icon | `checked_disabled`, `unchecked_disabled`, `radio_checked_disabled`, `radio_unchecked_disabled` | the same, fainter (`builtin:` and the item's name) |
+| | color | `checkbox_checked_color`, `checkbox_unchecked_color` | `[1, 1, 1, 1]`, tinting the icon |
+| `CheckButton` | icon | `checked`, `unchecked` | `builtin:toggle_on`, `builtin:toggle_off`: a 32 x 16 switch with its knob at the right, or dark at the left |
+| | icon | `checked_disabled`, `unchecked_disabled` | `builtin:toggle_on_disabled`, `builtin:toggle_off_disabled` |
+| | icon | `checked_mirrored`, `unchecked_mirrored`, `checked_disabled_mirrored`, `unchecked_disabled_mirrored` | the same switches the other way round, for right to left (`builtin:toggle_on_mirrored` and so on) |
+| | color | `button_checked_color`, `button_unchecked_color` | `[1, 1, 1, 1]`, tinting the icon |
+| `HSlider`, `VSlider` | style | `slider` | flat `[0.1, 0.1, 0.1, 0.6]`, `corner_radius` 4, `content_margin` 4: the track |
+| | style | `grabber_area`, `grabber_area_highlight` | flat `[1, 1, 1, 0.4]` and `[1, 1, 1, 0.75]`, the same shape: the track up to the grabber |
+| | icon | `grabber`, `grabber_highlight`, `grabber_disabled` | `builtin:slider_grabber`, `builtin:slider_grabber_hl`, `builtin:slider_grabber_disabled`: a 16-pixel white circle at 0.75, 1 and 0.37 |
+| | icon | `tick` | `builtin:hslider_tick` (4 x 8) or `builtin:vslider_tick` (8 x 4) |
+| | constant | `center_grabber` | `0`; 1 lets the grabber's middle reach the ends |
+| | constant | `grabber_offset`, `tick_offset` | `0`, pixels to move the grabber and ticks across the track |
+| | constant | `grabber_max_size`, `tick_max_size` | `0`, no limit: the largest the icon is drawn, keeping its aspect |
 | `LineEdit` | style | `normal` | flat `[0.1, 0.1, 0.1, 0.6]`, `corner_radius` 3, `content_margin` 4, a `[0, 0, 0, 0.6]` bottom border 2 wide |
 | | style | `read_only` | flat `[0.1, 0.1, 0.1, 0.3]`, the same shape, a `[0, 0, 0, 0.3]` bottom border |
 | | style | `focus` | as `Button`'s |
@@ -1421,7 +1514,7 @@ A theme is a `.theme.json` file of items by control type, as Godot's `Theme` res
 | `format` | Must be 1 |
 | `default_font` | The font of every type in this theme that names none: a `.ttf`, `.otf` or `.font.json` file |
 | `default_font_size` | The font size of every type in this theme that names none |
-| `types` | Items by type: `colors`, `constants`, `fonts`, `font_sizes` and `styles`, each by name |
+| `types` | Items by type: `colors`, `constants`, `fonts`, `font_sizes`, `icons` and `styles`, each by name |
 
 - A type is a control type, with Godot's class names (`Label`, `VBoxContainer`, `Container`,
   `Range` and so on), or a variation: a name with a `base_type`, which can be another
@@ -1434,8 +1527,8 @@ A theme is a `.theme.json` file of items by control type, as Godot's `Theme` res
   ([project.json](project-format.md)), then in Godot's default theme. In each theme a type's
   own item comes before the theme's `default_font` and `default_font_size`.
 - `scene validate` checks a theme file for unknown types and item names (with the closest
-  ones), base types that lead nowhere or round in a loop, style boxes and font paths. A theme
-  that doesn't load, and a `theme_type_variation` no theme defines, are reported by
+  ones), base types that lead nowhere or round in a loop, style boxes, icons and font paths. A
+  theme that doesn't load, and a `theme_type_variation` no theme defines, are reported by
   `ui.layout` and `scene validate` on the control.
 - Themes reload when their files change, as every asset does.
 

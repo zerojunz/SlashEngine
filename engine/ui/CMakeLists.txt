@@ -1,6 +1,7 @@
 add_library(slash_ui
     src/draw.cpp
     src/gui.cpp
+    src/icons.cpp
     src/layout.cpp
     src/line_edit.cpp
     src/style.cpp

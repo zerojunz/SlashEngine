@@ -54,6 +54,22 @@ struct ButtonStatus {
     double feedback = 0.0; // seconds its shortcut's highlight has left
 };
 
+constexpr double kSliderRepeatDelay = 0.5; // Slider's DEFAULT_GAMEPAD_EVENT_DELAY_MS, in seconds
+
+// What Slider keeps between events, for one slider: its drag (its grab) and the value it last
+// had, so a change from anywhere emits value_changed, as Range::set_value does.
+struct SliderStatus {
+    bool active = false;                // being dragged
+    double pos = 0.0;                   // where along it the drag started
+    double uvalue = 0.0;                // its ratio then
+    double before = 0.0;                // its ratio before the drag, for drag_ended's value_changed
+    double known = 0.0;                 // its value as last seen
+    bool known_set = false;             // known has been seen
+    bool repeating = false;             // a gamepad direction steps it while held
+    bool repeat_rtl = false;            // and it runs from the right
+    double repeat = kSliderRepeatDelay; // seconds until it steps again
+};
+
 [[nodiscard]] bool idle(const ButtonStatus& status) {
     return !status.hovering && !status.press_attempt && !status.pressing_inside &&
            !status.pressed_down_with_focus && status.touch_index == -1 && status.feedback <= 0.0;
@@ -76,6 +92,7 @@ struct GuiState {
     std::vector<std::string> presses;                             // press() calls for the next tick
     std::map<std::string, EditState, std::less<>> edits;          // each LineEdit's
     std::map<std::string, TextEditState, std::less<>> text_edits; // each TextEdit's
+    std::map<std::string, SliderStatus, std::less<>> sliders;     // each Slider's
     std::string clipboard;       // the world's clipboard, which a backend shares with the system's
     bool focus_by_arrow = false; // an arrow key is moving focus, so a LineEdit won't edit
 };
@@ -103,7 +120,8 @@ enum class Filter : std::uint8_t { Stop, Pass, Ignore };
 enum class Focus : std::uint8_t { None, Click, All };
 
 bool is_button(const world::World& world, entt::entity entity) {
-    return world.ecs().any_of<world::Button, world::TextureButton>(entity);
+    return button_of(world, entity) != nullptr ||
+           (world.valid(entity) && world.ecs().all_of<world::TextureButton>(entity));
 }
 
 bool is_container(const world::World& world, entt::entity entity) {
@@ -144,7 +162,8 @@ Focus focus_mode(const world::World& world, entt::entity entity) {
     if (mode == "none") {
         return Focus::None;
     }
-    return is_button(world, entity) || world.ecs().any_of<world::LineEdit, world::TextEdit>(entity)
+    return is_button(world, entity) ||
+                   world.ecs().any_of<world::LineEdit, world::TextEdit, world::Slider>(entity)
                ? Focus::All
                : Focus::None;
 }
@@ -179,21 +198,20 @@ std::optional<Base> base_of(const world::World& world, entt::entity entity) {
     if (!world.valid(entity)) {
         return std::nullopt;
     }
-    const auto& ecs = world.ecs();
-    if (const auto* button = ecs.try_get<world::Button>(entity); button != nullptr) {
+    if (const world::Button* button = button_of(world, entity); button != nullptr) {
         return base_from(*button);
     }
-    if (const auto* button = ecs.try_get<world::TextureButton>(entity); button != nullptr) {
+    if (const auto* button = world.ecs().try_get<world::TextureButton>(entity); button != nullptr) {
         return base_from(*button);
     }
     return std::nullopt;
 }
 
 void set_button_pressed(world::World& world, entt::entity entity, bool pressed) {
-    auto& ecs = world.ecs();
-    if (auto* button = ecs.try_get<world::Button>(entity); button != nullptr) {
+    if (world::Button* button = button_of(world, entity); button != nullptr) {
         button->button_pressed = pressed;
-    } else if (auto* texture = ecs.try_get<world::TextureButton>(entity); texture != nullptr) {
+    } else if (auto* texture = world.ecs().try_get<world::TextureButton>(entity);
+               texture != nullptr) {
         texture->button_pressed = pressed;
     }
 }
@@ -301,13 +319,35 @@ void emit(world::World& world, GuiState& state, std::string_view kind, const std
                         .toggled_on = toggled.value_or(false),
                         .text = {},
                         .from_line = 0,
-                        .to_line = 0};
+                        .to_line = 0,
+                        .value = 0.0,
+                        .value_changed = false};
     (state.tick == world.tick() ? state.events : state.next).push_back(event);
     json::Value data;
     if (toggled) {
         data = json::Object{{"toggled_on", *toggled}};
     }
     world.emit(std::string(kind), id, std::move(data));
+}
+
+// A slider's value_changed, or its drag_ended with whether the drag changed its value.
+void emit_value(world::World& world, GuiState& state, std::string_view kind, const std::string& id,
+                double value, bool changed = false) {
+    if (id.empty()) {
+        return;
+    }
+    const bool ended = kind == "drag_ended";
+    const UiEvent event{.kind = std::string(kind),
+                        .id = id,
+                        .toggled_on = false,
+                        .text = {},
+                        .from_line = 0,
+                        .to_line = 0,
+                        .value = ended ? 0.0 : value,
+                        .value_changed = ended && changed};
+    (state.tick == world.tick() ? state.events : state.next).push_back(event);
+    world.emit(std::string(kind), id,
+               ended ? json::Object{{"value_changed", changed}} : json::Object{{"value", value}});
 }
 
 // A button's status, made with its disabled state as it is now.
@@ -338,7 +378,9 @@ void emit_text(world::World& world, GuiState& state, std::string_view kind, cons
                         .toggled_on = false,
                         .text = text,
                         .from_line = 0,
-                        .to_line = 0};
+                        .to_line = 0,
+                        .value = 0.0,
+                        .value_changed = false};
     (state.tick == world.tick() ? state.events : state.next).push_back(event);
     world.emit(std::string(kind), id, json::Object{{std::string(key), text}});
 }
@@ -986,7 +1028,9 @@ void emit_text_edit(world::World& world, GuiState& state, const std::string& id,
                             .toggled_on = false,
                             .text = {},
                             .from_line = signal.from_line,
-                            .to_line = signal.to_line};
+                            .to_line = signal.to_line,
+                            .value = 0.0,
+                            .value_changed = false};
         (state.tick == world.tick() ? state.events : state.next).push_back(event);
         world.emit(signal.kind, id,
                    json::Object{{"from_line", signal.from_line}, {"to_line", signal.to_line}});
@@ -1108,6 +1152,8 @@ void unpress_group(world::World& world, GuiState& state, entt::entity entity) {
         }
     };
     collect(world.ecs().view<world::Button>());
+    collect(world.ecs().view<world::CheckBox>());
+    collect(world.ecs().view<world::CheckButton>());
     collect(world.ecs().view<world::TextureButton>());
     std::ranges::sort(group, [](entt::entity a, entt::entity b) {
         return entt::to_entity(a) < entt::to_entity(b);
@@ -1140,6 +1186,132 @@ void fire(world::World& world, GuiState& state, entt::entity entity) {
         emit(world, state, "toggled", id, now && now->button_pressed);
     }
     emit(world, state, "pressed", id);
+}
+
+// ---- Sliders ----
+
+// Godot's Slider: a held gamepad direction steps it again after half a second, then 20 times a
+// second.
+constexpr double kRepeatDelay = kSliderRepeatDelay;
+constexpr double kRepeatRate = 1.0 / 20.0;
+
+// Range::set_value on a slider: its value kept in range, written and value_changed emitted when
+// it changes; with quiet, written only, as with set_block_signals.
+void set_slider_value(world::World& world, GuiState& state, entt::entity entity, double value,
+                      bool quiet = false) {
+    auto* slider = world.ecs().try_get<world::Slider>(entity);
+    if (slider == nullptr) {
+        return;
+    }
+    const Range range = range_of(*slider);
+    const double next = range_value(range, value);
+    if (next == range.value || (std::isnan(next) && std::isnan(range.value))) {
+        return;
+    }
+    slider->value = next;
+    const std::string id(world.id_of(entity));
+    SliderStatus& status = state.sliders[id];
+    status.known = next;
+    status.known_set = true;
+    if (!quiet) {
+        emit_value(world, state, "value_changed", id, next);
+    }
+}
+
+[[nodiscard]] Range slider_range(const world::World& world, entt::entity entity) {
+    const auto* slider = world.ecs().try_get<world::Slider>(entity);
+    return slider != nullptr ? range_of(*slider) : Range{};
+}
+
+// Range::set_as_ratio.
+void set_slider_ratio(world::World& world, GuiState& state, entt::entity entity, double ratio,
+                      bool quiet = false) {
+    set_slider_value(world, state, entity, range_from_ratio(slider_range(world, entity), ratio),
+                     quiet);
+}
+
+// Keeps each slider's value in range and on its step, as Range::set_value does, and emits
+// value_changed for each one whose value changed since the gui system last saw it, by anything
+// (a command, gameplay code); and drags end on sliders that can no longer be dragged.
+void track_sliders(world::World& world, GuiState& state) {
+    std::set<std::string, std::less<>> seen;
+    for (auto [entity, slider] : world.ecs().view<world::Slider>().each()) {
+        const double value = range_of(slider).value;
+        if (value != slider.value && !(std::isnan(value) && std::isnan(slider.value))) {
+            slider.value = value;
+        }
+        const std::string_view id = world.id_of(entity);
+        if (id.empty()) {
+            continue;
+        }
+        seen.emplace(id);
+        SliderStatus& status = state.sliders[std::string(id)];
+        if (!status.known_set) {
+            status.known = value;
+            status.known_set = true;
+        } else if (value != status.known && !(std::isnan(value) && std::isnan(status.known))) {
+            status.known = value;
+            emit_value(world, state, "value_changed", std::string(id), value);
+        }
+        if (!slider.editable) {
+            status.active = false;
+        }
+    }
+    std::erase_if(state.sliders, [&](const auto& each) { return !seen.contains(each.first); });
+}
+
+// Slider's NOTIFICATION_INTERNAL_PROCESS: a held gamepad direction steps it on repeat.
+void repeat_sliders(world::World& world, GuiState& state, double tick_seconds) {
+    for (auto& [id, status] : state.sliders) {
+        if (!status.repeating) {
+            continue;
+        }
+        const entt::entity entity = world.find(id);
+        const auto* slider =
+            entity != entt::null ? world.ecs().try_get<world::Slider>(entity) : nullptr;
+        if (slider == nullptr) {
+            status.repeating = false;
+            continue;
+        }
+        const auto released = [&](std::string_view action) {
+            return input::is_action_just_released(world, action);
+        };
+        if (released("ui_left") || released("ui_right") || released("ui_up") ||
+            released("ui_down")) {
+            status.repeat = kRepeatDelay;
+            status.repeating = false;
+            continue;
+        }
+        status.repeat -= tick_seconds;
+        if (status.repeat > 0.0) {
+            continue;
+        }
+        status.repeat += kRepeatRate;
+        const double step = slider->step;
+        const bool rtl = status.repeat_rtl;
+        const auto held = [&](std::string_view action) {
+            return input::is_action_pressed(world, action);
+        };
+        const auto nudge = [&](double by) {
+            const double value = range_of(*world.ecs().try_get<world::Slider>(entity)).value;
+            set_slider_value(world, state, entity, value + by);
+        };
+        if (!slider->vertical) {
+            if (held("ui_left")) {
+                nudge(rtl ? step : -step);
+            }
+            if (held("ui_right")) {
+                nudge(rtl ? -step : step);
+            }
+        } else {
+            if (held("ui_down")) {
+                nudge(-step);
+            }
+            if (held("ui_up")) {
+                nudge(step);
+            }
+        }
+    }
 }
 
 // Whether one of a button's shortcuts matches an event, as Shortcut::matches_event: bindings
@@ -1454,6 +1626,9 @@ private:
         }
         if (is_text_edit(entity)) {
             text_edit_event(entity, event);
+        }
+        if (world_.ecs().all_of<world::Slider>(entity) && !world_.id_of(entity).empty()) {
+            slider_input(entity, event);
         }
     }
 
@@ -1951,6 +2126,128 @@ private:
         }
     }
 
+    // Slider::gui_input: a press moves the grabber to the pointer and starts a drag, motion drags
+    // it, the wheel and the ui_* actions step it.
+    void slider_input(entt::entity entity, const input::Event& event) {
+        const auto* slider = world_.ecs().try_get<world::Slider>(entity);
+        const auto view = layout_.sliders.find(entity);
+        const Placed* at = placed(entity);
+        if (slider == nullptr || !slider->editable || view == layout_.sliders.end() ||
+            at == nullptr) {
+            return;
+        }
+        const std::string slider_id = id(entity);
+        const bool vertical = slider->vertical;
+        const bool rtl = view->second.rtl;
+        const Vec2 grabber = view->second.center_grabber ? Vec2{} : view->second.grabber;
+        const auto ratio = [&] { return range_ratio(slider_range(world_, entity)); };
+        if (event.type == input::EventType::MouseButton) {
+            if (event.button == input::MouseButton::Left) {
+                SliderStatus& status = state_.sliders[slider_id];
+                if (event.pressed) {
+                    const Vec2 local = to_local(entity, event.position).value_or(Vec2{});
+                    status.pos = vertical ? local.y : local.x;
+                    status.before = ratio();
+                    emit(world_, state_, "drag_started", slider_id);
+                    const float length = vertical ? at->size.y - grabber.y : at->size.x - grabber.x;
+                    if (length > 0.0F) {
+                        if (vertical) {
+                            set_slider_ratio(world_, state_, entity,
+                                             1.0 - ((status.pos - (grabber.y / 2.0)) / length),
+                                             true);
+                        } else {
+                            const double v = (status.pos - (grabber.x / 2.0)) / length;
+                            set_slider_ratio(world_, state_, entity, rtl ? 1.0 - v : v, true);
+                        }
+                    }
+                    SliderStatus& now = state_.sliders[slider_id];
+                    now.active = true;
+                    now.uvalue = ratio();
+                    // _notify_shared_value_changed: emitted even when the value stayed.
+                    emit_value(world_, state_, "value_changed", slider_id,
+                               slider_range(world_, entity).value);
+                } else {
+                    status.active = false;
+                    // Math::is_equal_approx.
+                    const double after = ratio();
+                    const double tolerance = std::max(0.00001 * std::abs(status.before), 0.00001);
+                    const bool changed =
+                        status.before != after && std::abs(status.before - after) >= tolerance;
+                    emit_value(world_, state_, "drag_ended", slider_id, 0.0, changed);
+                }
+            } else if (slider->scrollable && event.pressed &&
+                       (event.button == input::MouseButton::WheelUp ||
+                        event.button == input::MouseButton::WheelDown)) {
+                if (focusable(entity)) {
+                    grab(world_, state_, slider_id, state_.hide_focus);
+                }
+                const Range range = slider_range(world_, entity);
+                const double by =
+                    event.button == input::MouseButton::WheelUp ? range.step : -range.step;
+                set_slider_value(world_, state_, entity, range.value + by);
+            }
+            return;
+        }
+        if (event.type == input::EventType::MouseMotion) {
+            const SliderStatus& status = state_.sliders[slider_id];
+            if (!status.active) {
+                return;
+            }
+            const Vec2 local = to_local(entity, event.position).value_or(Vec2{});
+            double motion = (vertical ? local.y : local.x) - status.pos;
+            if (vertical || rtl) {
+                motion = -motion;
+            }
+            const double size = vertical ? std::trunc(at->size.y) : std::trunc(at->size.x);
+            const double area = size - (vertical ? grabber.y : grabber.x);
+            if (area <= 0.0) {
+                return;
+            }
+            set_slider_ratio(world_, state_, entity, status.uvalue + (motion / area));
+            return;
+        }
+        const bool joypad = event.type == input::EventType::JoypadMotion ||
+                            event.type == input::EventType::JoypadButton;
+        // is_action_just_pressed_by_event: a stick or button that just went that way.
+        const auto just = [&](std::string_view action) {
+            return event.type == input::EventType::JoypadButton ? !event.echo
+                                                                : just_pushed_.contains(action);
+        };
+        const Range range = slider_range(world_, entity);
+        // One step one way or the other; false if the action isn't for this orientation.
+        const auto step = [&](std::string_view action, bool horizontal, double by) {
+            if (horizontal == vertical) {
+                return false;
+            }
+            if (joypad) {
+                if (!just(action)) {
+                    return false;
+                }
+                SliderStatus& status = state_.sliders[slider_id];
+                status.repeating = true;
+                status.repeat_rtl = rtl;
+            }
+            set_slider_value(world_, state_, entity, range.value + by);
+            handled_ = true;
+            return true;
+        };
+        if (action_pressed(event, "ui_left", true, false)) {
+            step("ui_left", true, rtl ? range.step : -range.step);
+        } else if (action_pressed(event, "ui_right", true, false)) {
+            step("ui_right", true, rtl ? -range.step : range.step);
+        } else if (action_pressed(event, "ui_up", true, false)) {
+            step("ui_up", false, range.step);
+        } else if (action_pressed(event, "ui_down", true, false)) {
+            step("ui_down", false, -range.step);
+        } else if (is_action(event, "ui_home", true) && is_pressed(event)) {
+            set_slider_value(world_, state_, entity, range.min);
+            handled_ = true;
+        } else if (is_action(event, "ui_end", true) && is_pressed(event)) {
+            set_slider_value(world_, state_, entity, range.max);
+            handled_ = true;
+        }
+    }
+
     // BaseButton::on_action_event.
     void on_action_event(entt::entity entity, const input::Event& event) {
         const std::optional<Base> base = base_of(world_, entity);
@@ -2116,6 +2413,7 @@ private:
                 }
             }
         }
+        just_pushed_ = just_pushed;
         if (const entt::entity focus = find(state_.key_focus); focus != entt::null) {
             gui_input(focus, event);
             if (handled_) {
@@ -2455,6 +2753,7 @@ private:
     std::unordered_map<entt::entity, std::vector<entt::entity>> kids_;
     double now_ = 0.0; // seconds of world time, for triple clicks
     bool handled_ = false;
+    std::set<std::string_view> just_pushed_; // actions a stick just pushed, for the event sent
     struct CachedArea {
         std::unique_ptr<TextArea> area;
         std::string text; // the text it was shaped for
@@ -2638,6 +2937,7 @@ void run(world::World& world, double tick_seconds) {
     state->events = std::move(state->next);
     state->next.clear();
     upkeep(world, *state, tick_seconds);
+    track_sliders(world, *state);
     const std::span<const input::Event> events = input::events(std::as_const(world));
     const std::vector<std::string> presses = std::move(state->presses);
     state->presses.clear();
@@ -2655,6 +2955,7 @@ void run(world::World& world, double tick_seconds) {
             fire(world, *state, entity);
         }
     }
+    repeat_sliders(world, *state, tick_seconds);
     std::erase_if(state->buttons, [](const auto& each) { return idle(each.second); });
     // LineEdit's deferred _text_changed: one text_changed a tick, and one step to undo.
     for (auto& [id, edit] : state->edits) {
@@ -2697,9 +2998,10 @@ void install_gui(world::World& world) {
             *state = std::move(fresh);
         }
     });
-    world.add_system("gui", run,
-                     {.doc = "Sends input events to controls: hover, focus and button presses.",
-                      .priority = -900});
+    world.add_system(
+        "gui", run,
+        {.doc = "Sends input events to controls: hover, focus, buttons, sliders and text fields.",
+         .priority = -900});
 }
 
 std::string_view draw_mode_name(DrawMode mode) {
@@ -2768,6 +3070,29 @@ DrawMode draw_mode(const world::World& world, entt::entity button) {
         }
     }
     return pressing ? DrawMode::Pressed : DrawMode::Normal;
+}
+
+bool is_pressed(const world::World& world, entt::entity button) {
+    const std::optional<Base> base = base_of(world, button);
+    if (!base) {
+        return false;
+    }
+    if (base->toggle_mode) {
+        return base->button_pressed;
+    }
+    const GuiState* state = state_of(world);
+    if (state == nullptr) {
+        return false;
+    }
+    const auto found = state->buttons.find(world.id_of(button));
+    return found != state->buttons.end() && found->second.press_attempt;
+}
+
+bool is_hovered(const world::World& world, entt::entity control) {
+    const GuiState* state = state_of(world);
+    const std::string_view id = world.id_of(control);
+    return state != nullptr && !id.empty() &&
+           std::ranges::find(state->mouse_over_hierarchy, id) != state->mouse_over_hierarchy.end();
 }
 
 entt::entity focus_owner(const world::World& world) {
@@ -3012,22 +3337,25 @@ void check_buttons(const world::World& world, std::vector<Problem>& problems) {
         }
     };
     for (const auto& [id, entity] : entities) {
-        const auto* button = ecs.try_get<world::Button>(entity);
-        const auto* texture = ecs.try_get<world::TextureButton>(entity);
-        if (button != nullptr) {
-            check_shortcut(id, "Button", button->shortcut);
-            check_group(id, "Button", *button);
+        std::vector<std::string_view> types; // the buttons it has
+        const auto check = [&](std::string_view type, const auto* button) {
+            if (button != nullptr) {
+                types.push_back(type);
+                check_shortcut(id, type, button->shortcut);
+                check_group(id, type, *button);
+            }
+        };
+        check("Button", ecs.try_get<world::Button>(entity));
+        check("CheckBox", ecs.try_get<world::CheckBox>(entity));
+        check("CheckButton", ecs.try_get<world::CheckButton>(entity));
+        check("TextureButton", ecs.try_get<world::TextureButton>(entity));
+        if (types.size() > 1) {
+            problems.push_back(
+                {.id = id,
+                 .path = "/components/" + std::string(types[1]),
+                 .message = "an entity is one button; it has a " + std::string(types[0]) + " too"});
         }
-        if (texture != nullptr) {
-            check_shortcut(id, "TextureButton", texture->shortcut);
-            check_group(id, "TextureButton", *texture);
-        }
-        if (button != nullptr && texture != nullptr) {
-            problems.push_back({.id = id,
-                                .path = "/components/TextureButton",
-                                .message = "an entity is one button; it has a Button too"});
-        }
-        if ((button != nullptr || texture != nullptr) && ecs.all_of<world::Label>(entity)) {
+        if (!types.empty() && ecs.all_of<world::Label>(entity)) {
             problems.push_back(
                 {.id = id,
                  .path = "/components/Label",

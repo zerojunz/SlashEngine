@@ -559,6 +559,7 @@ struct Control {
     std::map<std::string, int> theme_override_constants;
     std::map<std::string, std::string> theme_override_fonts;
     std::map<std::string, int> theme_override_font_sizes;
+    std::map<std::string, std::string> theme_override_icons;  // as in a theme
     std::map<std::string, json::Value> theme_override_styles; // style boxes, as in a theme
     Vec4 modulate{1.0F, 1.0F, 1.0F, 1.0F};
     Vec4 self_modulate{1.0F, 1.0F, 1.0F, 1.0F};
@@ -596,7 +597,8 @@ SLASH_COMPONENT(Control, children, anchor_left, anchor_top, anchor_right, anchor
                 focus_neighbor_bottom, focus_next, focus_previous, focus_mode, mouse_filter,
                 layout_direction, visible, modulate, self_modulate, z_index, texture_filter, theme,
                 theme_type_variation, theme_override_colors, theme_override_constants,
-                theme_override_fonts, theme_override_font_sizes, theme_override_styles)
+                theme_override_fonts, theme_override_font_sizes, theme_override_icons,
+                theme_override_styles)
 
 // Text in a control's rect, as Godot's Label. Its font, size, colors, outline and shadow are
 // theme items, set per label with Control's theme_override_* fields.
@@ -688,6 +690,32 @@ struct ProgressBar {
 SLASH_COMPONENT(ProgressBar, min_value, max_value, step, value, allow_greater, allow_lesser,
                 fill_mode, show_percentage)
 
+// A grabber dragged along a track to pick a value between a minimum and a maximum, as Godot's
+// HSlider, or VSlider when vertical. Clicking the track moves the grabber there, the mouse wheel
+// steps it, and so do the ui_* actions while it has focus. It emits value_changed (data
+// {"value"}), drag_started and drag_ended (data {"value_changed": bool}).
+struct Slider {
+    std::string ticks_position = "bottom_right"; // "bottom_right", "top_left", "both" or "center"
+    double min_value = 0.0;
+    double max_value = 100.0;
+    double step = 1.0; // the value is rounded to a multiple of this from min_value; 0 for none
+    double page = 0.0; // the value stays this far below max_value
+    double value = 0.0;
+    int tick_count = 0;
+    bool rounded = false; // round the value to a whole number
+    bool allow_greater = false;
+    bool allow_lesser = false;
+    bool editable = true;   // the pointer and keys move it
+    bool scrollable = true; // the mouse wheel moves it
+    bool ticks_on_borders = false;
+    bool vertical = false;
+
+    friend bool operator==(const Slider&, const Slider&) = default;
+};
+SLASH_COMPONENT(Slider, min_value, max_value, step, page, value, rounded, allow_greater,
+                allow_lesser, editable, scrollable, tick_count, ticks_on_borders, ticks_position,
+                vertical)
+
 // Buttons, as Godot's BaseButton: pressed by a click or tap released over them (or as the press
 // starts, with action_mode "press"), by ui_accept while focused, or by a shortcut. They emit
 // world events: pressed, toggled (data {"toggled_on": bool}), button_down and button_up.
@@ -720,6 +748,38 @@ struct Button {
     friend bool operator==(const Button&, const Button&) = default;
 };
 SLASH_COMPONENT(Button, text, icon, flat, alignment, text_overrun_behavior, autowrap_mode,
+                clip_text, icon_alignment, vertical_icon_alignment, expand_icon, disabled,
+                toggle_mode, button_pressed, action_mode, button_mask, keep_pressed_outside,
+                button_group, shortcut, shortcut_feedback, text_direction, language)
+
+// A toggle button with a box beside its text that shows whether it is on, as Godot's CheckBox:
+// a round one when it is in a button_group, as a radio button. Its icons (checked, unchecked,
+// radio_checked, radio_unchecked and their _disabled ones) are theme items.
+struct CheckBox : Button {
+    CheckBox() {
+        toggle_mode = true;
+        alignment = "left";
+    }
+
+    friend bool operator==(const CheckBox&, const CheckBox&) = default;
+};
+SLASH_COMPONENT(CheckBox, text, icon, flat, alignment, text_overrun_behavior, autowrap_mode,
+                clip_text, icon_alignment, vertical_icon_alignment, expand_icon, disabled,
+                toggle_mode, button_pressed, action_mode, button_mask, keep_pressed_outside,
+                button_group, shortcut, shortcut_feedback, text_direction, language)
+
+// A toggle button with a switch at its end that shows whether it is on, as Godot's
+// CheckButton. Its icons (checked, unchecked, their _disabled ones and _mirrored ones for right
+// to left) are theme items.
+struct CheckButton : Button {
+    CheckButton() {
+        toggle_mode = true;
+        alignment = "left";
+    }
+
+    friend bool operator==(const CheckButton&, const CheckButton&) = default;
+};
+SLASH_COMPONENT(CheckButton, text, icon, flat, alignment, text_overrun_behavior, autowrap_mode,
                 clip_text, icon_alignment, vertical_icon_alignment, expand_icon, disabled,
                 toggle_mode, button_pressed, action_mode, button_mask, keep_pressed_outside,
                 button_group, shortcut, shortcut_feedback, text_direction, language)

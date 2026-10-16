@@ -27,7 +27,7 @@
 
 // UI, as Godot's Control nodes: Control places a rect in its parent's by anchors and offsets,
 // containers place their children, and Label, Panel, TextureRect and the rest draw in it. Theme
-// items (colors, constants, fonts, font sizes and style boxes) come from each control's
+// items (colors, constants, fonts, font sizes, icons and style boxes) come from each control's
 // overrides, the .theme.json themes of it and its parents, the project's theme and Godot's
 // default theme. layout() places every control of a world in a viewport, and draw_calls() turns
 // that into triangles for the canvas renderer, which draws them above the world. Text comes from
@@ -213,10 +213,21 @@ enum class DrawMode : std::uint8_t { Normal, Pressed, Hover, Disabled, HoverPres
 // "normal", "pressed", "hover", "disabled" or "hover_pressed".
 [[nodiscard]] std::string_view draw_mode_name(DrawMode mode);
 
-// A Button's or TextureButton's state as laid out.
+// A button's state as laid out: a Button's, CheckBox's, CheckButton's or TextureButton's.
 struct ButtonState {
     DrawMode mode = DrawMode::Normal;
     float click_margin = 0.0F; // pixels around its rect that still hit it
+};
+
+// A Slider as laid out: its value as kept in range, and what dragging it needs, as
+// Slider::gui_input reads it.
+struct SliderState {
+    double value = 0.0; // rounded to its step and kept between its minimum and maximum
+    double ratio = 0.0; // how far along it is, from 0 to 1
+    Vec2 grabber;       // its grabber_highlight icon's size
+    bool center_grabber = false;
+    bool highlighted = false; // hovered or focused while editable, so drawn highlighted
+    bool rtl = false;         // laid out right to left, so a horizontal one runs from the right
 };
 
 // A LineEdit as laid out: its theme items and what it shows.
@@ -323,7 +334,8 @@ struct Layout {
     std::map<entt::entity, LabelText> labels;       // each Label's text
     std::map<entt::entity, std::vector<Box>> boxes; // what each control draws under its text
     std::map<entt::entity, LabelText> percentages;  // each ProgressBar's percentage
-    std::map<entt::entity, ButtonState> buttons;    // each Button and TextureButton
+    std::map<entt::entity, ButtonState> buttons;    // each button
+    std::map<entt::entity, SliderState> sliders;
     std::map<entt::entity, LineEditView> line_edits;
     std::map<entt::entity, TextEditView> text_edits;
     // What each control draws over its text: a LineEdit's or TextEdit's caret and composition
@@ -337,12 +349,14 @@ struct Layout {
 // Places every control of a world in a viewport of the given size.
 [[nodiscard]] Layout layout(const world::World& world, text::Fonts& fonts, Vec2 viewport);
 
-// Theme items by name: colors, constants, fonts, font sizes and style boxes.
+// Theme items by name: colors, constants, fonts, font sizes, icons and style boxes.
 struct ThemeItems {
     std::map<std::string, Vec4, std::less<>> colors;
     std::map<std::string, int, std::less<>> constants;
     std::map<std::string, std::string, std::less<>> fonts; // "" is the default font
     std::map<std::string, int, std::less<>> font_sizes;
+    // A PNG or BMP file, a built-in icon ("builtin:checked"), or "" for none.
+    std::map<std::string, std::string, std::less<>> icons;
     std::map<std::string, StyleBox, std::less<>> styles;
 };
 // The theme items a control type has in Godot's default theme, its base types' included: a
@@ -377,7 +391,7 @@ struct Theme {
 // One theme item a control uses, and where its value comes from: "override", a theme file's
 // path, or "default".
 struct ThemeItem {
-    std::string kind; // "colors", "constants", "fonts", "font_sizes" or "styles"
+    std::string kind; // "colors", "constants", "fonts", "font_sizes", "icons" or "styles"
     std::string name;
     json::Value value;
     std::string from;
@@ -385,6 +399,14 @@ struct ThemeItem {
 // Every theme item an entity's components use, by kind then name.
 [[nodiscard]] std::vector<ThemeItem> theme_items(const world::World& world, text::Fonts& fonts,
                                                  entt::entity entity);
+
+// Icons built into the engine, as Godot's default theme draws them from its SVG files: theme
+// icons name them as "builtin:" and the name, e.g. "builtin:radio_checked".
+inline constexpr std::string_view kBuiltinPrefix = "builtin:";
+// A built-in icon by its whole path ("builtin:checked"), or nullptr.
+[[nodiscard]] const render::Image* builtin_icon(std::string_view path);
+// Every built-in icon's name, without the prefix.
+[[nodiscard]] const std::vector<std::string_view>& builtin_icon_names();
 
 // Mistakes in a world's controls: a child listed by two controls or by itself, a child that
 // isn't a control, two containers on one entity, a theme override with a name its type doesn't
@@ -432,10 +454,12 @@ struct DrawList {
 
 // Something controls did, as Godot's signals: "pressed", "toggled", "button_down" and
 // "button_up" from buttons; "text_changed", "text_submitted", "text_change_rejected" and
-// "editing_toggled" from LineEdits; and "mouse_entered", "mouse_exited", "focus_entered" and
-// "focus_exited" from any control. Each is a world event (World::emit) too, with data
-// {"toggled_on": bool} for toggled and editing_toggled, {"text": string} for text_changed and
-// text_submitted and {"rejected_substring": string} for text_change_rejected.
+// "editing_toggled" from LineEdits; "value_changed", "drag_started" and "drag_ended" from
+// sliders; and "mouse_entered", "mouse_exited", "focus_entered" and "focus_exited" from any
+// control. Each is a world event (World::emit) too, with data {"toggled_on": bool} for toggled
+// and editing_toggled, {"text": string} for text_changed and text_submitted,
+// {"rejected_substring": string} for text_change_rejected, {"value": number} for value_changed
+// and {"value_changed": bool} for drag_ended.
 struct UiEvent {
     std::string kind;
     std::string id;          // the control's entity ID
@@ -443,6 +467,8 @@ struct UiEvent {
     std::string text;  // for a LineEdit's text_changed, text_submitted and text_change_rejected
     int from_line = 0; // for lines_edited_from
     int to_line = 0;
+    double value = 0.0;         // for value_changed
+    bool value_changed = false; // for drag_ended: the drag changed the value
 };
 
 // The UI events of the tick the "gui" system last ran (inside a system: this tick), in order.
