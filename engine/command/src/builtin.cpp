@@ -1,5 +1,7 @@
 #include "slash/command/builtin.hpp"
 
+#include "selection.hpp"
+
 #include "slash/animation/animation.hpp"
 #include "slash/audio/audio.hpp"
 #include "slash/canvas/canvas.hpp"
@@ -48,9 +50,10 @@
 namespace slash::command {
 namespace {
 
+using detail::Condition;
+using detail::Selection;
 using world::ComponentType;
 
-constexpr std::int64_t kDefaultQueryLimit = 100;
 // run.until gives up after this many ticks unless told otherwise: ten seconds at 60 ticks a second.
 constexpr std::int64_t kDefaultUntilTicks = 600;
 constexpr std::int64_t kDefaultLogLines = 50;
@@ -2787,13 +2790,6 @@ Reply component_remove(Session& session, const json::Value& params) {
 
 // ---- Queries ----
 
-struct Condition {
-    const ComponentType* type = nullptr;
-    std::vector<std::string> segments; // field name, then array indices or nested field names
-    std::string op;
-    json::Value value;
-};
-
 std::vector<std::string> split_field(std::string_view field) {
     std::vector<std::string> segments;
     std::size_t start = 0;
@@ -2871,19 +2867,10 @@ bool matches(const world::World& world, entt::entity entity, const Condition& co
     return compare(*value, condition.op, condition.value);
 }
 
-// What world.query and run.until select: entities with all of `with`, none of `without` and
-// meeting every `where` condition, returned as IDs or with the components `include` names.
-struct Selection {
-    std::vector<const ComponentType*> with;
-    std::vector<const ComponentType*> without;
-    std::vector<Condition> conditions;
-    std::vector<const ComponentType*> included;
-    bool with_components = false;
-    bool omit_defaults = false;
-    std::size_t limit = kDefaultQueryLimit;
-};
+} // namespace
 
-// Reads a selection from params, or returns the error for a bad one.
+namespace detail {
+
 std::optional<Reply> parse_selection(const world::ComponentRegistry& components,
                                      const json::Value& params, Selection& out) {
     if (auto failed = lookup_components(components, params.find("with"), "/with", out.with)) {
@@ -2945,7 +2932,12 @@ bool selects(const world::World& world, entt::entity entity, const Selection& se
                                [&](const Condition& c) { return matches(world, entity, c); });
 }
 
-// {"count", "entities", "truncated"} for the entities a selection picks now.
+bool any_selected(const world::World& world, const Selection& selection) {
+    const auto ids = world.ids();
+    return std::ranges::any_of(
+        ids, [&](std::string_view id) { return selects(world, world.find(id), selection); });
+}
+
 json::Value select(const world::World& world, const Selection& selection) {
     std::size_t count = 0;
     json::Array entities;
@@ -2974,6 +2966,13 @@ json::Value select(const world::World& world, const Selection& selection) {
     result["entities"] = std::move(entities);
     return result;
 }
+
+} // namespace detail
+
+namespace {
+
+using detail::parse_selection;
+using detail::select;
 
 Reply world_query(Session& session, const json::Value& params) {
     Selection selection;
@@ -3016,12 +3015,7 @@ Reply run_until(Session& session, const json::Value& params) {
     const json::Value* seconds = params.find("tick_seconds");
     const double tick_seconds = seconds != nullptr ? seconds->as_double() : kDefaultTickSeconds;
     world::World& world = session.world();
-    const auto holds = [&] {
-        const auto ids = world.ids();
-        const bool any = std::ranges::any_of(
-            ids, [&](std::string_view id) { return selects(world, world.find(id), selection); });
-        return any != until_none;
-    };
+    const auto holds = [&] { return detail::any_selected(world, selection) != until_none; };
     std::int64_t ticks = 0;
     bool matched = holds();
     while (!matched && ticks < max_ticks) {
@@ -3308,6 +3302,22 @@ json::Value include_schema() {
     schema["anyOf"] = json::Array{std::move(boolean), std::move(names)};
     return schema;
 }
+
+} // namespace
+
+json::Object detail::selection_properties() {
+    return {
+        {"with", names_property("Only entities with all of these components.")},
+        {"without", names_property("Only entities with none of these components.")},
+        {"where", where_schema()},
+        {"include", include_schema()},
+        {"omit_defaults", property("boolean", "Leave out fields equal to their defaults.")},
+        {"limit", integer_property("Most entities to return; count still covers all.", 1, 10000,
+                                   kDefaultQueryLimit)},
+    };
+}
+
+namespace {
 
 json::Value batch_schema() {
     json::Value item = params_schema(
@@ -4139,15 +4149,7 @@ void register_builtin_commands(Registry& registry) {
                        "include asks for components, plus the total count.",
         .capabilities = {Read},
         .effect = Effect::Read,
-        .params = params_schema({
-            {"with", names_property("Only entities with all of these components.")},
-            {"without", names_property("Only entities with none of these components.")},
-            {"where", where_schema()},
-            {"include", include_schema()},
-            {"omit_defaults", omit_defaults},
-            {"limit", integer_property("Most entities to return; count still covers all.", 1, 10000,
-                                       kDefaultQueryLimit)},
-        }),
+        .params = params_schema(detail::selection_properties()),
         .handler = world_query,
     });
 
@@ -4175,6 +4177,11 @@ void register_builtin_commands(Registry& registry) {
     json::Value until = property("string", "Stop when any entity matches, or when none does.");
     until["enum"] = json::Array{"any", "none"};
     until["default"] = "any";
+    json::Object until_params = detail::selection_properties();
+    until_params.emplace("until", std::move(until));
+    until_params.emplace("ticks",
+                         integer_property("Most ticks to run.", 1, 100000, kDefaultUntilTicks));
+    until_params.emplace("tick_seconds", std::move(until_seconds));
     registry.add({
         .name = "run.until",
         .description = "Steps the simulation until an entity matches with/without/where (e.g. "
@@ -4182,18 +4189,7 @@ void register_builtin_commands(Registry& registry) {
                        "whether it matched, the tick and the matching entities.",
         .capabilities = {Run},
         .effect = Effect::Edit,
-        .params = params_schema({
-            {"with", names_property("Only entities with all of these components.")},
-            {"without", names_property("Only entities with none of these components.")},
-            {"where", where_schema()},
-            {"until", std::move(until)},
-            {"ticks", integer_property("Most ticks to run.", 1, 100000, kDefaultUntilTicks)},
-            {"tick_seconds", std::move(until_seconds)},
-            {"include", include_schema()},
-            {"omit_defaults", omit_defaults},
-            {"limit", integer_property("Most entities to return; count still covers all.", 1, 10000,
-                                       kDefaultQueryLimit)},
-        }),
+        .params = params_schema(std::move(until_params)),
         .handler = run_until,
     });
 

@@ -93,7 +93,7 @@ slash-cli call replay.run '{"path": "runs/basic.replay.json"}'
 
 ```json
 {"entities":3,"headless":true,"quit_requested":false,"renderer":"null","replay":{"commands":0,"inputs":0,"path":"runs/basic.replay.json","ticks":90},"ticks":90}
-{"end":90,"matched":true,"tick":90}
+{"end":90,"matched":true,"start":0,"tick":90}
 ```
 
 ### scene validate

@@ -32,7 +32,7 @@ Rules that apply to every command (see [concepts.md](../concepts.md#sessions)):
 
 Add `"dry_run": true` to the params of any command that changes the world (`scene.new`,
 `scene.open`, `entity.create`, `entity.destroy`, `component.set`, `component.remove`, `step`,
-`run.until`, `world.restore`, `storyboard.edit`, `replay.run` and `batch`) to see what it would do. The command runs, then
+`run.until`, `world.restore`, `storyboard.edit`, `replay.run`, `replay.seek` and `batch`) to see what it would do. The command runs, then
 the world, the scene's path, the next generated ID and the tick counter are put back, and no undo
 step is recorded. An error is returned as usual. The result holds the command's own result and the
 changes, in the same form as [`world.diff`](#worlddiff):
@@ -73,14 +73,13 @@ as `entity.get`, reject it as an unknown param.
 | Query | [`world.query`](#worldquery) |
 | Snapshots | [`world.snapshot`](#worldsnapshot), [`world.diff`](#worlddiff), [`world.restore`](#worldrestore) |
 | Run | [`step`](#step), [`run.until`](#rununtil), [`play`](#play), [`pause`](#pause) |
-| Replays | [`replay.record`](#replayrecord), [`replay.stop`](#replaystop), [`replay.run`](#replayrun) |
+| Replays | [`replay.record`](#replayrecord), [`replay.stop`](#replaystop), [`replay.run`](#replayrun), [`replay.seek`](#replayseek) |
 | History | [`undo`](#undo), [`redo`](#redo), [`history.get`](#historyget) |
 | Several at once | [`batch`](#batch) |
 | Observe | [`events.subscribe`](#eventssubscribe), [`events.read`](#eventsread), [`events.unsubscribe`](#eventsunsubscribe), [`log.tail`](#logtail), [`frame.capture`](#framecapture) |
 | Display | [`display.list`](#displaylist), [`display.set`](#displayset), [`perf.stats`](#perfstats) |
 | Export | [`export.run`](#exportrun) |
 
-Planned commands from the [roadmap](../roadmap.md), not yet available: `replay.seek`.
 
 ## Describe
 
@@ -1549,7 +1548,8 @@ A replay is a run recorded into a [`.replay.json`](scene-format.md#replays) file
 started from, then each tick the host stepped, the input it queued and the commands that changed
 the world, in order. Playing it back in any session lands on the same world, so a player's bug
 report or an agent's play session can be stepped through again, queried at any tick and kept as
-a test. [examples/replays](../../examples/replays/) records a run and plays it back.
+a test. [examples/replays](../../examples/replays/) records a run, plays it back and seeks the
+moment something happened.
 
 Recording starts the world afresh, as playback does: held input, focus, hover, particles,
 physics contacts and playing sounds start over, and the entities are stored again in the order a
@@ -1602,7 +1602,8 @@ history.
 
 Needs: `edit`, `run`, `filesystem`. Takes `dry_run`. Refused while a recording runs.
 
-The result holds `tick` (the world's tick now), `end` (the recording's last tick) and `matched`:
+The result holds `tick` (the world's tick now), `start` and `end` (the recording's first and last
+ticks) and `matched`:
 whether every hash the recording took on the way matched, and at its end the entities too. A
 hash is taken after each kept command and before every 60th tick the host stepped. When the run
 went another way, `diverged` is the first tick where a hash differed, `changes` (at the end) is
@@ -1617,13 +1618,62 @@ From [examples/replays](../../examples/replays/):
 ```
 
 ```json
-{"end":150,"matched":true,"tick":55}
+{"end":150,"matched":true,"start":0,"tick":55}
 ```
 
 With a lower jump in the game's code, the hero no longer clears the crate:
 
 ```json
-{"changes":{"added":["coin"],"changed":{"coin":{...},"hero":{"Transform2D":{...}}}},"diverged":60,"end":150,"matched":false,"tick":150}
+{"changes":{"added":["coin"],"changed":{"coin":{...},"hero":{"Transform2D":{...}}}},"diverged":60,"end":150,"matched":false,"start":0,"tick":150}
+```
+
+### replay.seek
+
+Moves a replay's playback to a tick, by a number of ticks, or to the first tick where an entity
+matches a condition, so a bug can be looked at the moment it happens and the ticks around it.
+Going forward goes on from where the last `replay.run` or `replay.seek` left the world, which is
+exact and costs only the ticks between. Going back plays the run again from its start, since
+physics contacts and other state outside the components can't be put back. So does going
+forward after anything else changed the world: a command other than a query, ticks the host
+stepped or input it queued. It replaces the world, like `replay.run`, and clears the undo
+history.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `path` | string | the one playing | The `.replay.json` file |
+| `tick` | integer | | Go to this tick. With a search, the last tick to search |
+| `ticks` | integer | | Move this many ticks from where the playback is; negative goes back |
+| `with`, `without`, `where` | as in [`world.query`](#worldquery) | | Search for the first tick where an entity matches |
+| `until` | `"any"` or `"none"` | `"any"` | Find a tick where any entity matches, or where none does |
+| `from` | integer | the start | Where a search starts |
+| `include`, `omit_defaults`, `limit` | as in [`world.query`](#worldquery) | | What to return about the matching entities |
+
+Needs: `edit`, `run`, `filesystem`. Takes `dry_run`. Refused while a recording runs. Give
+`tick`, `ticks` or a search; `tick` and `ticks` can't go together, nor `ticks` and a search.
+
+The world at a tick has had everything recorded at that tick happen, as in `replay.run`: a
+command that steps, such as `step`, takes the playback to where it stopped. A search checks
+each tick from `from` up to `tick` (the end if left out) and stops at the first that holds. The
+result is `replay.run`'s, plus, for a search, `world.query`'s for the entities that match and
+`found`.
+
+From [examples/replays](../../examples/replays/), the first tick with no `Area2D` left (the coin
+taken), then the tick before:
+
+```json
+{"with": ["Area2D"], "until": "none"}
+```
+
+```json
+{"count":0,"end":150,"entities":[],"found":true,"matched":true,"start":0,"tick":96,"truncated":false}
+```
+
+```json
+{"ticks": -1}
+```
+
+```json
+{"end":150,"matched":true,"start":0,"tick":95}
 ```
 
 ## History

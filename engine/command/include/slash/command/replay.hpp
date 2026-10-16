@@ -42,7 +42,7 @@ Result<json::Value> start_recording(Session& session, std::string path);
 Result<json::Value> stop_recording(Session& session);
 [[nodiscard]] bool recording(const Session& session);
 
-// Adds replay.record, replay.stop and replay.run.
+// Adds replay.record, replay.stop, replay.run and replay.seek.
 void register_replay_commands(Registry& registry);
 
 } // namespace slash::command

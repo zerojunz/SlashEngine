@@ -68,6 +68,10 @@ public:
     // How many commands are running: 0 between commands, 1 inside one, more inside a batch.
     // What the world does while it is above 0 is a command's doing.
     [[nodiscard]] int depth() const noexcept { return depth_; }
+    // Counts what may have changed the world from outside its systems: each outermost call of a
+    // command that isn't a Read, as it starts, and each poll that reloaded a file. Code that
+    // keeps state about the world can tell from it whether anything else ran since.
+    [[nodiscard]] std::uint64_t revision() const noexcept { return revision_; }
 
     [[nodiscard]] world::World& world() noexcept { return world_; }
     [[nodiscard]] const world::World& world() const noexcept { return world_; }
@@ -232,7 +236,8 @@ private:
     std::deque<Snapshot> undo_;
     std::deque<Snapshot> redo_;
     std::map<std::string, SavedWorld, std::less<>> snapshots_;
-    int depth_ = 0;         // how many commands are running (more than one inside a batch)
+    int depth_ = 0; // how many commands are running (more than one inside a batch)
+    std::uint64_t revision_ = 0;
     bool edited_ = false;   // an Edit command succeeded during the outermost call
     bool replaced_ = false; // a Replace command succeeded during the outermost call
     bool dry_running_ = false;

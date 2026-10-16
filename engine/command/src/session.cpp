@@ -250,6 +250,9 @@ Reply Session::call_command(std::string_view name, const json::Value& params) {
     if (depth_ == 0) {
         poll_assets();
         world_.forget_prefabs();
+        if (command->effect != Effect::Read) {
+            ++revision_;
+        }
     }
 
     // Nested calls are snapshotted, recorded and rolled back by the outermost call.
@@ -686,6 +689,7 @@ void Session::poll_assets() {
     if (changes.empty()) {
         return;
     }
+    ++revision_;
     std::optional<SavedWorld> before;
     world::PrefabReload reload;
     if (std::ranges::any_of(changes, [](const asset::Assets::Change& change) {

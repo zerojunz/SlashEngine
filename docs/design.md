@@ -219,7 +219,7 @@ The HTTP server runs inside the game, so an agent can inspect and change a world
 | Describe | `engine.describe`, `schema.get` | Learn what exists and how to call it |
 | Query | `world.query`, `entity.get`, `asset.list` | Read state with filters, e.g. all entities with `Health < 10` |
 | Edit | `entity.create`, `component.set`, `scene.save`, `undo` | Change the world or the files on disk |
-| Run | `play`, `pause`, `step(n)`, `run.until`, `input.inject`, `replay.run` | Drive the simulation deterministically |
+| Run | `play`, `pause`, `step(n)`, `run.until`, `input.inject`, `replay.run`, `replay.seek` | Drive the simulation deterministically |
 | Observe | `frame.capture`, `log.tail`, `events.subscribe`, `perf.stats` | See and measure what happened |
 
 ### 4. Observability and safety
