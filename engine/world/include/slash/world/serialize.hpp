@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <entt/core/type_info.hpp>
 #include <entt/entity/entity.hpp>
+#include <functional>
 #include <limits>
 #include <map>
 #include <string>
@@ -123,6 +124,14 @@ template <typename T>
 // The JSON Schema for a type.
 template <typename T>
 [[nodiscard]] json::Value schema_of(SchemaBuilder& builder);
+
+// Maps one entity ID to another, as when an instanced scene's IDs become the instance's.
+using EntityRename = std::function<std::string(const std::string& id)>;
+
+// Renames the entity references in a value written as JSON for type T, which may leave out
+// fields, as saved components do. Values of the wrong shape are left alone.
+template <typename T>
+void rename_entities(json::Value& json, const EntityRename& rename);
 
 template <typename T>
 json::Value to_json(const World& world, const T& value) {
@@ -323,6 +332,37 @@ Result<void> from_json(World& world, const json::Value& json, T& out, std::strin
                                                "slash/world/serialize.hpp for supported types");
     }
     return {};
+}
+
+template <typename T>
+void rename_entities(json::Value& json, const EntityRename& rename) {
+    if constexpr (std::is_same_v<T, entt::entity>) {
+        if (json.is_string()) {
+            json = rename(json.as_string());
+        }
+    } else if constexpr (detail::IsVector<T>::value) {
+        if (json.is_array()) {
+            for (json::Value& item : json.as_array()) {
+                rename_entities<typename T::value_type>(item, rename);
+            }
+        }
+    } else if constexpr (detail::IsStringMap<T>::value) {
+        if (json.is_object()) {
+            for (auto& [key, item] : json.as_object()) {
+                rename_entities<typename T::mapped_type>(item, rename);
+            }
+        }
+    } else if constexpr (reflect::Reflected<T> && !detail::FloatArrayType<T> &&
+                         !detail::IntArrayType<T>) {
+        if (json.is_object()) {
+            reflect::for_each_field<T>([&](const auto& field) {
+                using Member = typename std::remove_cvref_t<decltype(field)>::member_type;
+                if (json::Value* member = json.find(field.name); member != nullptr) {
+                    rename_entities<Member>(*member, rename);
+                }
+            });
+        }
+    }
 }
 
 template <typename T>

@@ -8,7 +8,7 @@ project.import {"dry_run":true,"source":"godot"}
   },
   "dry_run": true,
   "engine": "godot",
-  "files": ["project.json", "godot/player_frames.frames.json", "godot/main_sprite_frames_coin.frames.json", "godot/main.scene.json", "godot/player.scene.json", "storyboard/work.json", "import/godot.json"],
+  "files": ["project.json", "godot/player_frames.frames.json", "godot/player.scene.json", "godot/main_sprite_frames_coin.frames.json", "godot/main.scene.json", "storyboard/work.json", "import/godot.json"],
   "main_scene": "godot/main.scene.json",
   "project": "Coin Run",
   "report": "import/godot.json",
@@ -159,49 +159,11 @@ project.import {"source":"godot"}
     },
     "player": {
       "components": {
-        "CharacterBody2D": {
-          "collision_mask": 3
-        },
         "Transform2D": {
-          "children": ["player_animated_sprite2d", "player_collision_shape2d", "player_camera2d"],
           "position": [40.0, 152.0]
         }
-      }
-    },
-    "player_animated_sprite2d": {
-      "components": {
-        "AnimatedSprite2D": {
-          "animation": "idle",
-          "playing": false,
-          "sprite_frames": "godot/player_frames.frames.json"
-        },
-        "Sprite2D": {},
-        "Transform2D": {}
-      }
-    },
-    "player_camera2d": {
-      "components": {
-        "Camera2D": {
-          "limit_bottom": 180,
-          "limit_left": 0,
-          "limit_right": 640,
-          "limit_top": 0,
-          "position_smoothing_enabled": true
-        },
-        "Transform2D": {
-          "position": [0.0, -32.0]
-        }
-      }
-    },
-    "player_collision_shape2d": {
-      "components": {
-        "CollisionShape2D": {
-          "height": 16.0,
-          "radius": 5.0,
-          "shape": "capsule"
-        },
-        "Transform2D": {}
-      }
+      },
+      "extends": "godot/player.scene.json"
     },
     "score": {
       "components": {
@@ -232,7 +194,8 @@ project.import {"source":"godot"}
     },
     "timer": {}
   },
-  "format": 1
+  "format": 1,
+  "root": "main"
 }
 --- godot/player_frames.frames.json
 {
@@ -345,7 +308,7 @@ world.query {"include":["AnimatedSprite2D"],"with":["AnimatedSprite2D"]}
           "sprite_frames": "godot/player_frames.frames.json"
         }
       },
-      "id": "player_animated_sprite2d"
+      "id": "player/animated_sprite2d"
     }
   ],
   "truncated": false
@@ -375,7 +338,7 @@ storyboard.query {"kind":"task"}
         "summary": "GDScript from Godot: write what it does as C++ components and systems."
       },
       "id": "task/port-player",
-      "version": "4888530f"
+      "version": "6f18f34d"
     }
   ],
   "seq": 0

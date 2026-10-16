@@ -946,10 +946,11 @@ std::vector<json::ValidationError> check_tile_layers(const json::Value& doc,
     };
     if (const json::Value* entities = doc.find("entities"); entities != nullptr) {
         for (const auto& [id, entity] : entities->as_object()) {
+            // An entity an instanced scene brings ("hero/map") takes the rest from the scene.
             if (const json::Value* components = entity.find("components"); components != nullptr) {
                 check(*components,
                       "/entities/" + json::pointer_escape(id) + "/components/TileMapLayer",
-                      entity.find("extends") != nullptr);
+                      entity.find("extends") != nullptr || id.find('/') != std::string::npos);
             }
         }
     } else if (const json::Value* components = doc.find("components"); components != nullptr) {

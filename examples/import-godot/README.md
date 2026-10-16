@@ -17,12 +17,13 @@ project.import {"source":"godot"}
 ```
 
 - Each `.tscn` file becomes a `.scene.json` file beside it, a node becoming an entity named after
-  it (`Player/Camera2D` is `player_camera2d`). Node2D nodes nest through `Transform2D`
+  it (`AnimatedSprite2D` is `animated_sprite2d`). Node2D nodes nest through `Transform2D`
   `children`, controls through `Control` `children`, and each node's properties go to the
   components of the same names.
-- The level instances the player scene, so the player's nodes are copied into the level with the
-  level's overrides (`position`, `speed`). The importer's next step makes instanced scenes
-  prefabs instead.
+- The level instances the player scene, and stays an instance: the level's `player` entity
+  extends `player.scene.json` with only the level's overrides (`position`), and the player's
+  nodes come with it as `player/animated_sprite2d`, `player/camera2d` and the rest. Editing the
+  player scene changes the player in every level.
 - `SpriteFrames` become `.frames.json` files: whole textures stay a list of files, and
   `AtlasTexture` regions on one grid become frame numbers of a sheet (the coin).
 - `project.godot`'s name, main scene, window size, physics, clear color, texture filter and input

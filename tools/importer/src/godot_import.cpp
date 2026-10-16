@@ -256,7 +256,8 @@ struct Node {
     std::vector<Property> properties; // later ones win
     std::vector<std::string> groups;
     int parent = -1;
-    int instance_root = -1; // the root of the instanced scene it came with
+    int instance_root = -1;              // the root of the instanced scene it came with
+    const TextFile* instanced = nullptr; // for an instance's root, the scene it instances
     std::vector<int> children;
     std::string id;
 
@@ -1228,6 +1229,7 @@ private:
                     root_node.name = name;
                 }
                 root_node.declared = file.path + ": " + local;
+                root_node.instanced = instanced;
             } else if (section.field("instance_placeholder") != nullptr) {
                 problems_.add("instance placeholder", file.path + ": " + local);
                 continue;
@@ -1288,7 +1290,21 @@ private:
         for (Node& node : nodes) {
             const std::string base = snake_case(node.name);
             if (node.instance_root >= 0) {
-                node.id = take(nodes[static_cast<std::size_t>(node.instance_root)].id + "_" + base);
+                // The instance's ID, '/' and the node's ID in the scene it instances.
+                const Node& owner = nodes[static_cast<std::size_t>(node.instance_root)];
+                const std::string relative =
+                    owner.path == "." ? node.path : node.path.substr(owner.path.size() + 1);
+                std::string local = base;
+                if (owner.instanced != nullptr) {
+                    if (const auto ids = scene_ids_.find(owner.instanced->path);
+                        ids != scene_ids_.end()) {
+                        if (const auto id = ids->second.find(relative); id != ids->second.end()) {
+                            local = id->second;
+                        }
+                    }
+                }
+                node.id = owner.id + "/" + local;
+                used.insert(node.id);
                 continue;
             }
             if (!used.contains(base) || node.parent < 0) {
@@ -2101,7 +2117,40 @@ private:
         }
     }
 
+    // The .scene.json file a .tscn file converts to.
+    [[nodiscard]] std::string scene_destination(const TextFile& file) const {
+        return destination(without_extension(file.path) + std::string(world::kSceneSuffix));
+    }
+
+    // Reads the files this import has written so far, for checking scenes that instance them.
+    [[nodiscard]] world::FileReader planned_files() const {
+        return [this](std::string_view path) -> Result<std::string> {
+            for (const auto& [planned, contents] : plan_.files) {
+                if (planned == path) {
+                    return contents;
+                }
+            }
+            return make_error(ErrorCode::NotFound, "not converted");
+        };
+    }
+
     void convert_scene(const TextFile& file) {
+        if (!scenes_started_.insert(file.path).second) {
+            return;
+        }
+        // The scenes it instances first, so it can extend their converted files.
+        for (const Section& section : file.sections) {
+            const Value* instance = section.tag == "node" ? section.field("instance") : nullptr;
+            if (instance == nullptr) {
+                continue;
+            }
+            if (const auto ext = file.ext.find(instance->string_argument().value_or(""));
+                ext != file.ext.end()) {
+                if (const auto it = text_files_.find(ext->second.path); it != text_files_.end()) {
+                    convert_scene(*it->second);
+                }
+            }
+        }
         std::vector<Node> nodes;
         std::map<std::string, int> by_path;
         std::vector<std::string> stack;
@@ -2111,8 +2160,10 @@ private:
             return;
         }
         assign_ids(nodes);
-        const std::string scene_path =
-            destination(without_extension(file.path) + std::string(world::kSceneSuffix));
+        for (const Node& node : nodes) {
+            scene_ids_[file.path][node.path] = node.id;
+        }
+        const std::string scene_path = scene_destination(file);
         SceneContext scene{.nodes = &nodes,
                            .node = nullptr,
                            .scene = scene_path,
@@ -2129,7 +2180,8 @@ private:
                 problems_.add("node type " + nodes[i].type, nodes[i].declared,
                               unsupported_node(nodes[i].type));
             }
-            const int parent = nodes[i].parent;
+            // An instance's root is placed as the root of the scene it instances is.
+            const int parent = nodes[i].instanced != nullptr ? -1 : nodes[i].parent;
             has_transform[i] =
                 families[i] == Family::Node2D ||
                 (families[i] == Family::Plain && nodes[i].type != "AudioStreamPlayer" &&
@@ -2230,6 +2282,10 @@ private:
             record["entities"][node.path] = node.id;
             json::Value entity;
             entity["components"] = std::move(components);
+            // An instance extends its scene's file; saving leaves out what matches it.
+            if (node.instanced != nullptr) {
+                entity["extends"] = scene_destination(*node.instanced);
+            }
             entities.emplace(node.id, std::move(entity));
         }
 
@@ -2295,9 +2351,11 @@ private:
         json::Value converted;
         converted["format"] = 1;
         converted["entities"] = std::move(entities);
+        converted["root"] = nodes[static_cast<std::size_t>(root)].id;
+        const world::FileReader reader = planned_files();
         // Leave out what doesn't validate, so one bad value can't stop the scene.
         for (int pass = 0; pass < 64; ++pass) {
-            const auto errors = world::validate_scene(components_, converted);
+            const auto errors = world::validate_scene(components_, converted, reader);
             if (errors.empty()) {
                 break;
             }
@@ -2309,7 +2367,7 @@ private:
                 }
             }
         }
-        auto text = world::format_scene(components_, json::write(converted));
+        auto text = world::format_scene(components_, json::write(converted), reader);
         add_file(scene_path, text ? text.value() : json::write(converted) + "\n");
         report_scenes_[file.path] = std::move(record);
         ++scenes_;
@@ -2501,6 +2559,9 @@ private:
     std::map<std::string, std::string> autoloads_;
     std::map<std::string, std::vector<std::string>> groups_;
     std::map<std::string, json::Value> report_scenes_;
+    std::set<std::string> scenes_started_;
+    // Each converted scene's entity IDs, by node path from its root.
+    std::map<std::string, std::map<std::string, std::string>> scene_ids_;
     Problems problems_;
     ImportPlan plan_;
     std::string project_name_;

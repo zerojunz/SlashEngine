@@ -645,6 +645,69 @@ TEST_CASE("scenes save to and open from the project folder") {
     CHECK(engine.session->world().size() == 0);
 }
 
+TEST_CASE("entities instance scenes, which bring their entities") {
+    const std::string root = "command_instance_project";
+    std::filesystem::remove_all(root);
+    REQUIRE(slash::platform::create_directories(root).ok());
+    command::SessionOptions options;
+    options.project_root = root;
+    Engine engine(options);
+
+    // A player scene, saved with the entity its instances become.
+    engine.ok("scene.new", R"({"path": "player.scene.json"})");
+    engine.ok("entity.create", R"({"id": "sprite", "components": {
+        "Transform2D": {"position": [0, -8]}}})");
+    engine.ok("entity.create", R"({"id": "player", "components": {
+        "Transform2D": {"children": ["sprite"]}, "Health": {"max": 50}}})");
+    engine.fails("scene.save", R"({"root": "nobody"})", command::code::kNotFound);
+    CHECK(engine.ok("scene.save", R"({"root": "player"})") ==
+          parse(R"({"path": "player.scene.json", "entities": 2, "root": "player"})"));
+    CHECK(engine.ok("scene.save") ==
+          parse(R"({"path": "player.scene.json", "entities": 2, "root": "player"})"));
+
+    engine.ok("scene.new", R"({"path": "main.scene.json"})");
+    engine.ok("entity.create", R"({"id": "hero", "extends": "player.scene.json",
+                                   "components": {"Transform2D": {"position": [10, 0]}}})");
+    CHECK(engine.ok("entity.get", R"({"id": "hero/sprite", "omit_defaults": true})") == parse(R"({
+        "id": "hero/sprite", "components": {"Transform2D": {"position": [0.0, -8.0]}},
+        "parent": "hero", "global": {"position": [10, -8], "rotation": 0, "scale": [1, 1]}})"));
+    engine.ok("component.set", R"({"id": "hero/sprite", "components": {
+        "Transform2D": {"position": [0, -10]}}})");
+    CHECK(engine.scene() == parse(R"({
+        "hero": {"extends": "player.scene.json",
+                 "components": {"Transform2D": {"position": [10.0, 0.0]}}},
+        "hero/sprite": {"components": {"Transform2D": {"position": [0.0, -10.0]}}}})"));
+
+    // IDs with '/' belong to instances, and prefab files hold entities of a scene's own.
+    engine.fails("entity.create", R"({"id": "hero/hat"})", command::code::kInvalidArgument);
+    engine.fails("prefab.save", R"({"id": "hero", "path": "hero.prefab.json"})",
+                 command::code::kInvalidArgument);
+    engine.fails("prefab.save", R"({"id": "hero/sprite", "path": "sprite.prefab.json"})",
+                 command::code::kInvalidArgument);
+    engine.fails("scene.save", R"({"root": "hero/sprite"})", command::code::kInvalidArgument);
+
+    // Editing the scene file updates the instance before the next command.
+    REQUIRE(slash::platform::write_file(root + "/player.scene.json", R"({"format": 1,
+        "root": "player", "entities": {
+            "player": {"components": {"Transform2D": {"children": ["sprite", "shadow"]}}},
+            "shadow": {"components": {"Transform2D": {"position": [0, 4]}}},
+            "sprite": {"components": {"Transform2D": {"position": [0, -8]}}}}})")
+                .ok());
+    CHECK(*engine.ok("world.query", R"({"with": ["Transform2D"]})").find("entities") ==
+          parse(R"(["hero", "hero/shadow", "hero/sprite"])"));
+
+    // Destroying the instance takes what it brought; undo puts it all back.
+    const json::Value destroyed = engine.ok("entity.destroy", R"({"id": "hero"})");
+    CHECK(destroyed ==
+          parse(R"({"destroyed": "hero", "descendants": ["hero/sprite", "hero/shadow"]})"));
+    CHECK(engine.session->world().size() == 0);
+    engine.ok("undo");
+    CHECK(engine.scene() == parse(R"({
+        "hero": {"extends": "player.scene.json",
+                 "components": {"Transform2D": {"position": [10.0, 0.0]}}},
+        "hero/sprite": {"components": {"Transform2D": {"position": [0.0, -10.0]}}}})"));
+}
+
 TEST_CASE("entities extend prefabs, and prefab.save writes them") {
     const std::string root = "command_prefab_project";
     std::filesystem::remove_all(root);

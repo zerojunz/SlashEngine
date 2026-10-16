@@ -58,6 +58,13 @@ project) and override its fields; a `null` component removes one the prefab has.
 only what differs from the prefab. `entity.create` takes `"extends"`, and `prefab.save` writes an
 entity to a prefab file. `tests/data/game` has an example.
 
+An entity can also `"extends"` a `.scene.json` file that names its `"root"` (`scene.save` takes
+`root`), as Godot instances a PackedScene: it becomes the root, and the scene's other entities
+come with it as `<instance>/<their id>` (`World::create_part`), their references renamed through
+`ComponentType::rename_entities`. Entries keyed with `/` hold overrides or `null`, saving writes
+only what differs, and `entity.destroy` takes them along. `expand` in `engine/world/src/scene.cpp`
+does the loading; `examples/instanced-scenes` has a player with a gun scene inside it.
+
 The entities in a `Transform2D`'s `children` are placed in its space, as Godot's Node2D children:
 `world::Tree2D` (`engine/world/src/tree2d.cpp`, built with `-ffp-contract=off`) gives each one's
 global transform, its parent and its draw order, and everything that places things in the world
