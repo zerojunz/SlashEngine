@@ -372,6 +372,39 @@ commit is unknown.
 An existing `.gitignore` is never replaced, even with `--force`: `init` adds the `.slash/` and
 `build/` lines if they are missing and lists the file under `updated`.
 
+### import
+
+Converts a game made with Godot 4 into a SlashEngine project: its scenes, sprite frames, input
+map and settings, with each script turned into a storyboard task to port it to C++. It runs
+[`project.import`](commands.md#projectimport) and prints the same report;
+[godot-import.md](godot-import.md) says what converts to what.
+
+```bash
+slash-cli import <folder> [options]
+```
+
+| Flag | Meaning |
+| --- | --- |
+| `--project <dir>` | The SlashEngine project to import into (default `.`); it needn't exist yet |
+| `--dry-run` | Print the report and the files it would write; write nothing |
+
+`<folder>` holds the Godot project's `project.godot`. A folder inside the project stays where it
+is: the converted files are written beside the originals and use their textures, sounds and
+fonts. A folder anywhere else is copied in, its assets and scripts keeping the paths they had
+under `res://`. Either way `project.json`, `storyboard/work.json` and the full report,
+`import/godot.json`, are written at the top of the project; an existing `project.json` keeps
+its other settings, and importing again keeps each task's status.
+
+```bash
+slash-cli import ~/games/coin-run-godot --project coin-run
+```
+
+```json
+{"converted":{"assets":5,"input_actions":3,"scenes":2,"sprite_frames":2},"engine":"godot","files":15,"main_scene":"main.scene.json","project":"Coin Run","report":"import/godot.json","scripts":[{"entities":0,"script":"game_state.gd","task":"task/port-game-state"},{"entities":1,"script":"main.gd","task":"task/port-main"},{"entities":2,"script":"player.gd","task":"task/port-player"}],"unsupported":[{"count":1,"what":"autoload","where":"project.godot: GameState","why":"autoloads are gameplay code; see the storyboard task"},{"count":1,"what":"file type .svg","where":"icon.svg","why":"textures are PNG or BMP files; save it as PNG"},{"count":1,"what":"node type Timer","where":"main.tscn: Timer","why":"timers are gameplay code: count the ticks in a C++ system"}]}
+```
+
+It exits 1 if the folder isn't a Godot 4 project.
+
 ### export
 
 Builds a game project for one platform, ready to give to players.

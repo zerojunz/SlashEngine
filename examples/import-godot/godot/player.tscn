@@ -1,0 +1,28 @@
+[gd_scene load_steps=5 format=3 uid="uid://c8player0scene"]
+
+[ext_resource type="Script" uid="uid://dplayer0script" path="res://player.gd" id="1_script"]
+[ext_resource type="SpriteFrames" uid="uid://bplayer0frames" path="res://player_frames.tres" id="2_frames"]
+
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_body"]
+radius = 5.0
+height = 16.0
+
+[node name="Player" type="CharacterBody2D"]
+collision_mask = 3
+script = ExtResource("1_script")
+speed = 120.0
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
+sprite_frames = ExtResource("2_frames")
+animation = &"idle"
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("CapsuleShape2D_body")
+
+[node name="Camera2D" type="Camera2D" parent="."]
+position = Vector2(0, -32)
+limit_left = 0
+limit_top = 0
+limit_right = 640
+limit_bottom = 180
+position_smoothing_enabled = true

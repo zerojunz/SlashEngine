@@ -24,6 +24,7 @@ add_subdirectory(engine)
 
 if(SLASH_BUILD_TOOLS OR SLASH_BUILD_TESTS)
     add_subdirectory(tools/exporter)
+    add_subdirectory(tools/importer)
 endif()
 
 if(SLASH_BUILD_TOOLS)
