@@ -31,10 +31,27 @@ project.import {"dry_run":true,"source":"unity"}
       "entities": 2,
       "script": "unity/Assets/Scripts/Frog.cs",
       "task": "task/port-frog"
+    },
+    {
+      "entities": 1,
+      "script": "unity/Assets/Scripts/Hud.cs",
+      "task": "task/port-hud"
     }
   ],
   "unity_version": "2022.3.20f1",
   "unsupported": [
+    {
+      "count": 1,
+      "what": "component EventSystem",
+      "where": "Assets/Scenes/Pond.unity: EventSystem",
+      "why": "not needed: SlashEngine's gui system sends input to controls itself"
+    },
+    {
+      "count": 1,
+      "what": "component StandaloneInputModule",
+      "where": "Assets/Scenes/Pond.unity: EventSystem",
+      "why": "not needed: SlashEngine's gui system sends input to controls itself"
+    },
     {
       "count": 1,
       "what": "exposed mixer parameters",
@@ -99,10 +116,27 @@ project.import {"source":"unity"}
       "entities": 2,
       "script": "unity/Assets/Scripts/Frog.cs",
       "task": "task/port-frog"
+    },
+    {
+      "entities": 1,
+      "script": "unity/Assets/Scripts/Hud.cs",
+      "task": "task/port-hud"
     }
   ],
   "unity_version": "2022.3.20f1",
   "unsupported": [
+    {
+      "count": 1,
+      "what": "component EventSystem",
+      "where": "Assets/Scenes/Pond.unity: EventSystem",
+      "why": "not needed: SlashEngine's gui system sends input to controls itself"
+    },
+    {
+      "count": 1,
+      "what": "component StandaloneInputModule",
+      "where": "Assets/Scenes/Pond.unity: EventSystem",
+      "why": "not needed: SlashEngine's gui system sends input to controls itself"
+    },
     {
       "count": 1,
       "what": "exposed mixer parameters",
@@ -184,6 +218,50 @@ project.import {"source":"unity"}
       },
       "extends": "unity/Assets/Prefabs/Coin.scene.json"
     },
+    "coins": {
+      "components": {
+        "BoxContainer": {},
+        "Control": {
+          "children": ["icon", "count"],
+          "offset_bottom": 32.0,
+          "offset_left": 8.0,
+          "offset_right": 104.0,
+          "offset_top": 8.0,
+          "theme_override_constants": {
+            "separation": 4
+          }
+        }
+      }
+    },
+    "count": {
+      "components": {
+        "Control": {
+          "custom_minimum_size": [64.0, 24.0],
+          "grow_horizontal": "both",
+          "grow_vertical": "both",
+          "offset_bottom": 24.0,
+          "offset_left": 20.0,
+          "offset_right": 84.0,
+          "size_flags_vertical": "shrink_center",
+          "theme_override_colors": {
+            "font_color": [1.0, 1.0, 1.0, 1.0]
+          },
+          "theme_override_font_sizes": {
+            "font_size": 18
+          }
+        },
+        "Label": {
+          "autowrap_mode": "word_smart",
+          "text": "0",
+          "vertical_alignment": "center"
+        }
+      }
+    },
+    "event_system": {
+      "components": {
+        "Transform2D": {}
+      }
+    },
     "frog": {
       "components": {
         "Transform2D": {
@@ -250,6 +328,68 @@ project.import {"source":"unity"}
         },
         "Transform2D": {
           "scale": [0.5, 0.5]
+        }
+      }
+    },
+    "hint": {
+      "components": {
+        "Control": {
+          "anchor_bottom": 1.0,
+          "anchor_left": 0.5,
+          "anchor_right": 0.5,
+          "anchor_top": 1.0,
+          "grow_horizontal": "both",
+          "grow_vertical": "begin",
+          "offset_bottom": -12.0,
+          "offset_left": -150.0,
+          "offset_right": 150.0,
+          "offset_top": -32.0,
+          "theme_override_colors": {
+            "font_color": [1.0, 1.0, 1.0, 1.0],
+            "font_shadow_color": [0.0, 0.0, 0.0, 0.5]
+          },
+          "theme_override_constants": {
+            "shadow_offset_x": 1,
+            "shadow_offset_y": 1
+          },
+          "theme_override_font_sizes": {
+            "font_size": 14
+          }
+        },
+        "Label": {
+          "autowrap_mode": "word_smart",
+          "clip_text": true,
+          "horizontal_alignment": "center",
+          "text": "Arrows to move, Space to hop",
+          "vertical_alignment": "bottom"
+        }
+      }
+    },
+    "hud": {
+      "components": {
+        "Control": {
+          "anchor_bottom": 1.0,
+          "anchor_right": 1.0,
+          "children": ["coins", "pause", "hint"],
+          "z_index": 10
+        }
+      }
+    },
+    "icon": {
+      "components": {
+        "Control": {
+          "custom_minimum_size": [16.0, 16.0],
+          "grow_horizontal": "both",
+          "grow_vertical": "both",
+          "mouse_filter": "pass",
+          "offset_bottom": 20.0,
+          "offset_right": 16.0,
+          "offset_top": 4.0,
+          "size_flags_vertical": "shrink_center"
+        },
+        "NinePatchRect": {
+          "region_rect": [0.0, 0.0, 16.0, 16.0],
+          "texture": "unity/Assets/Sprites/coins.png"
         }
       }
     },
@@ -324,6 +464,53 @@ project.import {"source":"unity"}
         "Transform2D": {}
       }
     },
+    "pause": {
+      "components": {
+        "Button": {},
+        "Control": {
+          "anchor_left": 1.0,
+          "anchor_right": 1.0,
+          "children": ["text"],
+          "grow_horizontal": "begin",
+          "offset_bottom": 40.0,
+          "offset_left": -40.0,
+          "offset_right": -8.0,
+          "offset_top": 8.0,
+          "theme_override_styles": {
+            "disabled": {
+              "bg_color": [0.7843, 0.7843, 0.7843, 0.4016],
+              "corner_radius": 3,
+              "type": "flat"
+            },
+            "focus": {
+              "bg_color": [0.9608, 0.9608, 0.9608, 0.8],
+              "corner_radius": 3,
+              "type": "flat"
+            },
+            "hover": {
+              "bg_color": [0.9608, 0.9608, 0.9608, 0.8],
+              "corner_radius": 3,
+              "type": "flat"
+            },
+            "hover_pressed": {
+              "bg_color": [0.7843, 0.7843, 0.7843, 0.8],
+              "corner_radius": 3,
+              "type": "flat"
+            },
+            "normal": {
+              "bg_color": [1.0, 1.0, 1.0, 0.8],
+              "corner_radius": 3,
+              "type": "flat"
+            },
+            "pressed": {
+              "bg_color": [0.7843, 0.7843, 0.7843, 0.8],
+              "corner_radius": 3,
+              "type": "flat"
+            }
+          }
+        }
+      }
+    },
     "sky": {
       "components": {
         "Sprite2D": {
@@ -332,6 +519,29 @@ project.import {"source":"unity"}
           "z_index": -1000
         },
         "Transform2D": {}
+      }
+    },
+    "text": {
+      "components": {
+        "Control": {
+          "anchor_bottom": 1.0,
+          "anchor_right": 1.0,
+          "grow_horizontal": "both",
+          "grow_vertical": "both",
+          "theme_override_colors": {
+            "font_color": [0.1961, 0.1961, 0.1961, 1.0]
+          },
+          "theme_override_font_sizes": {
+            "font_size": 16
+          }
+        },
+        "Label": {
+          "autowrap_mode": "word_smart",
+          "clip_text": true,
+          "horizontal_alignment": "center",
+          "text": "II",
+          "vertical_alignment": "center"
+        }
       }
     }
   },
@@ -831,7 +1041,7 @@ project.import {"source":"unity"}
 }
 scene.open {"path":"unity/Assets/Scenes/Pond.scene.json"}
 {
-  "entities": 19,
+  "entities": 27,
   "path": "unity/Assets/Scenes/Pond.scene.json"
 }
 events.subscribe {"kinds":["Ribbit"]}
@@ -851,7 +1061,7 @@ world.query {"include":["Transform2D"],"with":["RigidBody2D"]}
       "components": {
         "Transform2D": {
           "children": ["frog/frog_sprite", "frog/feet", "hat"],
-          "position": [-96.0, 132.00687],
+          "position": [-96.0, 132.00336],
           "rotation": 0.0,
           "scale": [1.0, 1.0],
           "skew": 0.0
@@ -863,8 +1073,8 @@ world.query {"include":["Transform2D"],"with":["RigidBody2D"]}
       "components": {
         "Transform2D": {
           "children": ["lantern_hinge"],
-          "position": [-205.62932, -55.67272],
-          "rotation": 0.47488242,
+          "position": [-204.59196, -56.028595],
+          "rotation": 0.44261828,
           "scale": [1.0, 1.0],
           "skew": 0.0
         }
@@ -902,12 +1112,41 @@ entity.get {"components":["Sprite2D"],"id":"frog/frog_sprite","omit_defaults":tr
     }
   },
   "global": {
-    "position": [-96, 132.0069],
+    "position": [-96, 132.0034],
     "rotation": 0,
     "scale": [1, 1]
   },
   "id": "frog/frog_sprite",
   "parent": "frog"
+}
+ui.layout {"ids":["coins","icon","count","pause","hint"]}
+{
+  "controls": [
+    {
+      "id": "coins",
+      "rect": [8, 8, 96, 24]
+    },
+    {
+      "id": "icon",
+      "rect": [8, 12, 16, 16]
+    },
+    {
+      "id": "count",
+      "lines": ["0"],
+      "rect": [28, 8, 64, 24]
+    },
+    {
+      "draw_mode": "normal",
+      "id": "pause",
+      "rect": [600, 8, 32, 32]
+    },
+    {
+      "id": "hint",
+      "lines": ["Arrows to move, Space to hop"],
+      "rect": [170, 328, 300, 20]
+    }
+  ],
+  "viewport": [640, 360]
 }
 animation.eval {"animation":"Hop","id":"frog","times":[0,0.25],"tracks":["Feet:Transform2D/position/y"]}
 {
@@ -965,6 +1204,14 @@ storyboard.query {"kind":"task"}
       },
       "id": "task/port-frog-anim",
       "version": "57805f8a"
+    },
+    {
+      "fields": {
+        "name": "Port Assets/Scripts/Hud.cs to C++",
+        "summary": "C# from Unity: write what it does as C++ components and systems."
+      },
+      "id": "task/port-hud",
+      "version": "79bc668f"
     }
   ],
   "seq": 0

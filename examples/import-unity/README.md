@@ -3,11 +3,11 @@
 `project.import` converts a Unity project into this one. [unity/](unity/) holds "Pond Hop", a
 small 2D game as Unity 2022.3 saves it: its project settings, a scene
 ([Pond.unity](unity/Assets/Scenes/Pond.unity)) that instances a frog prefab and coin prefabs and
-has a tile map, a prefab variant ([Gold Coin.prefab](unity/Assets/Prefabs/Gold%20Coin.prefab)),
+has a tile map and a HUD canvas, a prefab variant ([Gold Coin.prefab](unity/Assets/Prefabs/Gold%20Coin.prefab)),
 sprites with their import settings, tile assets, an Animator controller
 ([Frog.controller](unity/Assets/Animations/Frog.controller)) and its clips, an audio mixer
 ([Pond.mixer](unity/Assets/Audio/Pond.mixer)), a physics material, an Input System actions file
-and three C# scripts. Unity
+and four C# scripts. Unity
 writes more settings than these files keep; they keep the ones the import reads.
 [main.cpp](main.cpp) makes the textures and sounds, then makes the calls an agent would make over
 MCP or JSON-RPC; [expected.txt](expected.txt) holds the replies and the files the import wrote.
@@ -21,8 +21,9 @@ project.import {"source":"unity"}
  "report": "import/unity.json",
  "scripts": [{"entities": 1, "script": "unity/Assets/Scripts/CameraFollow.cs",
               "task": "task/port-camera-follow"}, ...],
- "unsupported": [{"count": 1, "what": "exposed mixer parameters", "where": "Assets/Audio/Pond.mixer",
-                  "why": "MusicVolume: scripts that set them set buses with audio.set_bus or ..."},
+ "unsupported": [{"count": 1, "what": "component EventSystem",
+                  "where": "Assets/Scenes/Pond.unity: EventSystem",
+                  "why": "not needed: SlashEngine's gui system sends input to controls itself"},
                  ...]}
 ```
 
@@ -49,7 +50,7 @@ project.import {"source":"unity"}
   masks, and physics materials friction and bounce.
 - The lantern hangs from a `HingeJoint2D` with limits of 60 degrees either way, which becomes a
   `PinJoint2D` on a `lantern_hinge` entity under it, pinning it to the world at the hinge's
-  anchor. A second in, it has swung about 27 degrees.
+  anchor. A second in, it has swung about 25 degrees.
 - The `Bank` tile map, on a `Grid`, becomes a `TileMapLayer`, and the sprites its cells show a
   tile set, `tiles.tileset.json`: the `bank.png` sheet is one atlas source of three tiles. The
   slope's custom physics shape is its collision polygon, the dirt and grass, whose cells use the
@@ -70,6 +71,17 @@ project.import {"source":"unity"}
   high-pass filter comes across. Music's Duck Volume, which SFX sends to, becomes a compressor
   with SFX as its sidechain, so the music ducks when the frog croaks. Its exposed `MusicVolume`
   parameter is reported, since gameplay code sets buses itself.
+- The `HUD` canvas becomes controls drawn over the game, as Godot's Control nodes: `hud` covers
+  the window (its `CanvasScaler`'s reference resolution is the window's, so it isn't scaled) and
+  draws above the scene by its sort order. Each rect's anchors, position, size and pivot become
+  a `Control`'s anchors and offsets, so the coin count sits at the top left, the pause button at
+  the top right and the hint along the bottom, as `ui.layout` shows. The coin count's
+  `HorizontalLayoutGroup` is a `BoxContainer` holding the coin's `Image` (a `NinePatchRect`
+  showing the sprite's region of the sheet) and its TextMesh Pro text (a `Label`). The pause
+  button's color tint becomes its style boxes, Unity's rounded built-in sprite a flat style box
+  with rounded corners, and its On Click call to `Hud.TogglePause` a line in the `Hud` script's
+  task. The hint's `Shadow` is the label's shadow. The event system isn't needed: the gui system
+  sends input to controls itself.
 - The player, time, physics and input settings become `project.json`: the name, version, window,
   tick rate, gravity, clear color, texture filter, and both the Input Manager's axes (`Jump`,
   `Horizontal/negative`) and the Input System's actions (`Player/Move/up`).
