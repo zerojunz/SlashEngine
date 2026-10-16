@@ -20,6 +20,20 @@ Result<entt::entity> World::create(std::string_view id) {
                           "invalid entity id \"" + std::string(id) +
                               "\": use 1 to 64 letters, digits, '_' or '-'");
     }
+    return add(id);
+}
+
+Result<entt::entity> World::create_part(std::string_view id) {
+    if (!is_valid_part_id(id)) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "invalid id \"" + std::string(id) +
+                              "\" for an entity an instanced scene brings: use the instance's ID, "
+                              "'/' and its ID in the scene, such as \"hero/sprite\"");
+    }
+    return add(id);
+}
+
+Result<entt::entity> World::add(std::string_view id) {
     if (by_id_.contains(id)) {
         return make_error(ErrorCode::InvalidArgument,
                           "entity id \"" + std::string(id) + "\" is already in use");
@@ -40,14 +54,30 @@ entt::entity World::create() {
 }
 
 void World::destroy(entt::entity entity) {
-    if (registry_.valid(entity)) {
-        registry_.destroy(entity);
+    if (!registry_.valid(entity)) {
+        return;
+    }
+    // The entities its instanced scene brought go with it.
+    std::vector<entt::entity> parts;
+    if (const auto* id = registry_.try_get<EntityId>(entity); id != nullptr) {
+        const std::string prefix = id->value + "/";
+        for (auto it = by_id_.lower_bound(prefix);
+             it != by_id_.end() && it->first.starts_with(prefix); ++it) {
+            parts.push_back(it->second);
+        }
+    }
+    registry_.destroy(entity);
+    for (const entt::entity part : parts) {
+        if (registry_.valid(part)) {
+            registry_.destroy(part);
+        }
     }
 }
 
 void World::clear() {
     registry_.clear();
     by_id_.clear();
+    scene_root_.clear();
 }
 
 bool World::valid(entt::entity entity) const {
@@ -139,6 +169,24 @@ bool World::is_valid_id(std::string_view id) {
         return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
                c == '_' || c == '-';
     });
+}
+
+bool World::is_valid_part_id(std::string_view id) {
+    constexpr std::size_t kMaxLength = 255;
+    if (id.size() > kMaxLength || id.find('/') == std::string_view::npos) {
+        return false;
+    }
+    std::size_t start = 0;
+    while (true) {
+        const std::size_t end = id.find('/', start);
+        if (!is_valid_id(id.substr(start, end == std::string_view::npos ? end : end - start))) {
+            return false;
+        }
+        if (end == std::string_view::npos) {
+            return true;
+        }
+        start = end + 1;
+    }
 }
 
 void World::on_id_destroyed(entt::registry& registry, entt::entity entity) {

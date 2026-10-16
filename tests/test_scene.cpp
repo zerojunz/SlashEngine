@@ -4,6 +4,7 @@
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/scene.hpp"
+#include "slash/world/tree2d.hpp"
 #include "slash/world/world.hpp"
 
 #include <doctest/doctest.h>
@@ -507,7 +508,7 @@ TEST_CASE("prefab errors name the value at fault") {
           "/entities/e/extends: prefab \"bad.prefab.json\" is not valid: "
           "/components/Health/current: expected number, got string");
     CHECK(error(R"({"extends": "enemy.json"})") ==
-          "/entities/e/extends: expected a .prefab.json file, got \"enemy.json\"");
+          "/entities/e/extends: expected a .prefab.json or .scene.json file, got \"enemy.json\"");
     CHECK(error(R"({"extends": "../enemy.prefab.json"})").find("inside the project folder") !=
           std::string::npos);
     CHECK(error(R"({"extends": "enemy.prefab.json", "components": {"Velocity": null}})") ==
@@ -635,4 +636,267 @@ TEST_CASE("reload_prefabs updates instances and keeps their overrides") {
     REQUIRE(reload.errors.size() == 1);
     CHECK(reload.errors[0].path == "boss.prefab.json");
     CHECK(world.ecs().get<demo::Health>(boss).current == 99.0F);
+}
+
+namespace {
+
+// A player scene: a root with a sprite and a gun in its space, and a sound outside it.
+const std::string kPlayerScene = R"({"format": 1, "root": "player", "entities": {
+    "player": {"components": {"Transform2D": {"children": ["sprite", "gun"]},
+                              "Health": {"max": 50}}},
+    "sprite": {"components": {"Transform2D": {"position": [0, -8]}}},
+    "gun": {"components": {"Transform2D": {"position": [4, 0]}, "Follow": {"target": "player"}}},
+    "sfx": {"components": {"Enemy": {}}}}})";
+
+std::vector<std::string> entity_ids(const World& world) {
+    std::vector<std::string> ids;
+    for (const std::string_view id : world.ids()) {
+        ids.emplace_back(id);
+    }
+    return ids;
+}
+
+} // namespace
+
+TEST_CASE("an entity extends a scene and brings the scene's entities") {
+    const auto registry = make_registry();
+    World world(registry);
+    world.set_file_reader(memory_files({{"player.scene.json", kPlayerScene}}));
+    // hero moves, its gun follows from further away, it leaves out the sound, and the camera
+    // follows its sprite.
+    const json::Value scene = parse(R"({"format": 1, "entities": {
+        "camera": {"components": {"Follow": {"target": "hero/sprite"}}},
+        "hero": {"extends": "player.scene.json",
+                 "components": {"Transform2D": {"position": [100.0, 50.0]}}},
+        "hero/gun": {"components": {"Follow": {"distance": 3.0}}},
+        "hero/sfx": null}})");
+    REQUIRE(world::load_scene(world, scene).ok());
+    CHECK(entity_ids(world) ==
+          std::vector<std::string>{"camera", "hero", "hero/gun", "hero/sprite"});
+
+    const auto hero = world.find("hero");
+    const auto gun = world.find("hero/gun");
+    const auto sprite = world.find("hero/sprite");
+    CHECK(world.prefab_of(hero)->path == "player.scene.json");
+    CHECK(world.prefab_of(gun) == nullptr);
+    CHECK(world.ecs().get<demo::Health>(hero).max == 50.0F);
+    // References inside the scene name the instance's entities.
+    CHECK(world.ecs().get<Transform2D>(hero).children == std::vector<entt::entity>{sprite, gun});
+    CHECK(world.ecs().get<demo::Follow>(gun).target == hero);
+    CHECK(world.ecs().get<demo::Follow>(gun).distance == 3.0F);
+    CHECK(world.ecs().get<demo::Follow>(world.find("camera")).target == sprite);
+    CHECK(world::Tree2D(world).global(sprite).position == Vec2{100.0F, 42.0F});
+
+    // Saving writes only what differs from the scene, and the parts left out.
+    CHECK(world::save_scene(world) == scene);
+    world.ecs().get<Transform2D>(sprite).position = {0.0F, -10.0F};
+    world.ecs().get<Transform2D>(hero).children = {sprite};
+    world.destroy(gun);
+    CHECK(*world::save_scene(world).find("entities") == parse(R"({
+        "camera": {"components": {"Follow": {"target": "hero/sprite"}}},
+        "hero": {"extends": "player.scene.json",
+                 "components": {"Transform2D": {"children": ["hero/sprite"],
+                                                "position": [100.0, 50.0]}}},
+        "hero/gun": null,
+        "hero/sfx": null,
+        "hero/sprite": {"components": {"Transform2D": {"position": [0.0, -10.0]}}}})"));
+
+    // The instance's entities go with it.
+    world.destroy(hero);
+    CHECK(entity_ids(world) == std::vector<std::string>{"camera"});
+}
+
+TEST_CASE("instantiate_prefab makes an instance of a scene") {
+    const auto registry = make_registry();
+    World world(registry);
+    world.set_file_reader(memory_files({{"player.scene.json", kPlayerScene}}));
+    const auto hero = world.create("hero").value();
+    REQUIRE(world::instantiate_prefab(world, hero, "player.scene.json").ok());
+    CHECK(entity_ids(world) ==
+          std::vector<std::string>{"hero", "hero/gun", "hero/sfx", "hero/sprite"});
+    CHECK(world.ecs().get<demo::Follow>(world.find("hero/gun")).target == hero);
+    CHECK(world::save_scene(world) ==
+          parse(R"({"format": 1, "entities": {"hero": {"extends": "player.scene.json"}}})"));
+
+    // A second instance needs its own IDs; a taken one fails and changes nothing.
+    const auto twin = world.create("twin").value();
+    REQUIRE(world.create_part("twin/gun").ok());
+    const auto made = world::instantiate_prefab(world, twin, "player.scene.json");
+    REQUIRE_FALSE(made.ok());
+    CHECK(made.error().message == "entity id \"twin/gun\" is already in use");
+    CHECK(entity_ids(world) == std::vector<std::string>{"hero", "hero/gun", "hero/sfx",
+                                                        "hero/sprite", "twin", "twin/gun"});
+    CHECK(world.prefab_of(twin) == nullptr);
+}
+
+TEST_CASE("scenes instance scenes") {
+    const auto registry = make_registry();
+    World world(registry);
+    world.set_file_reader(memory_files({
+        {"gun.scene.json", R"({"format": 1, "root": "gun", "entities": {
+            "gun": {"components": {"Transform2D": {"children": ["muzzle"]}}},
+            "muzzle": {"components": {"Transform2D": {"position": [8, 0]},
+                                      "Follow": {"target": "gun"}}}}})"},
+        {"player.scene.json", R"({"format": 1, "root": "player", "entities": {
+            "player": {"components": {"Transform2D": {"children": ["arm"]}}},
+            "arm": {"extends": "gun.scene.json", "components": {"Transform2D": {"rotation": 1}}},
+            "arm/muzzle": {"components": {"Transform2D": {"position": [12, 0]}}}}})"},
+    }));
+    // The scene an instance extends holds its own instances' entities under their IDs.
+    const auto resolved = world::resolve_prefab(world, "player.scene.json");
+    REQUIRE(resolved.ok());
+    CHECK(*resolved.value() == parse(R"({"root": "player", "entities": {
+        "player": {"Transform2D": {"children": ["arm"]}},
+        "arm": {"Transform2D": {"children": ["arm/muzzle"], "rotation": 1}},
+        "arm/muzzle": {"Transform2D": {"position": [12, 0]}, "Follow": {"target": "arm"}}}})"));
+
+    const json::Value scene = parse(R"({"format": 1, "entities": {
+        "hero": {"extends": "player.scene.json"},
+        "hero/arm/muzzle": {"components": {"Follow": {"distance": 2.0}}}}})");
+    REQUIRE(world::load_scene(world, scene).ok());
+    CHECK(entity_ids(world) == std::vector<std::string>{"hero", "hero/arm", "hero/arm/muzzle"});
+    const auto arm = world.find("hero/arm");
+    const auto muzzle = world.find("hero/arm/muzzle");
+    CHECK(world.ecs().get<Transform2D>(world.find("hero")).children ==
+          std::vector<entt::entity>{arm});
+    CHECK(world.ecs().get<Transform2D>(arm).children == std::vector<entt::entity>{muzzle});
+    CHECK(world.ecs().get<Transform2D>(arm).rotation == 1.0F);
+    CHECK(world.ecs().get<Transform2D>(muzzle).position.x == 12.0F);
+    CHECK(world.ecs().get<demo::Follow>(muzzle).target == arm);
+    CHECK(world.ecs().get<demo::Follow>(muzzle).distance == 2.0F);
+    CHECK(world::save_scene(world) == scene);
+}
+
+TEST_CASE("instanced scene errors name the value at fault") {
+    const auto registry = make_registry();
+    const auto reader = memory_files({
+        {"player.scene.json", kPlayerScene},
+        {"rootless.scene.json", R"({"format": 1, "entities": {"a": {}}})"},
+        {"lost.scene.json", R"({"format": 1, "root": "b", "entities": {"a": {}}})"},
+        {"a.scene.json", R"({"format": 1, "root": "a", "entities": {
+            "a": {}, "b": {"extends": "b.scene.json"}}})"},
+        {"b.scene.json", R"({"format": 1, "root": "b", "entities": {
+            "b": {}, "a": {"extends": "a.scene.json"}}})"},
+        {"wrapper.prefab.json", R"({"format": 1, "extends": "player.scene.json"})"},
+        {"enemy.prefab.json", kEnemyPrefab},
+    });
+    const auto error = [&](const std::string& entities) {
+        return load_error(registry, parse(R"({"format": 1, "entities": {)" + entities + "}}"),
+                          reader);
+    };
+    CHECK(error(R"("e": {"extends": "player.scene.json"})").empty());
+    CHECK(error(R"("e": {"extends": "rootless.scene.json"})") ==
+          "/entities/e/extends: scene \"rootless.scene.json\" has no \"root\": name the entity an "
+          "instance of it becomes (scene.save takes \"root\")");
+    CHECK(error(R"("e": {"extends": "lost.scene.json"})") ==
+          "/entities/e/extends: scene \"lost.scene.json\" is not valid: /root: no entity has the "
+          "id \"b\"");
+    CHECK(error(R"("e": {"extends": "a.scene.json"})") ==
+          "/entities/e/extends: scene \"a.scene.json\" is not valid: /entities/b/extends: scene "
+          "\"b.scene.json\" is not valid: /entities/a/extends: scenes instance each other in a "
+          "loop: \"a.scene.json\" instances \"b.scene.json\" instances \"a.scene.json\"");
+    CHECK(error(R"("e": {"extends": "wrapper.prefab.json"})") ==
+          "/entities/e/extends: prefab \"wrapper.prefab.json\" is not valid: /extends: a prefab "
+          "extends another .prefab.json file; an entity in a scene can extend a scene");
+    CHECK(error(R"("e": {"extends": "player.scene.json"}, "e/hat": {})") ==
+          "/entities/e~1hat: no instanced scene brings an entity \"e/hat\": "
+          "\"player.scene.json\" has no entity \"hat\"");
+    CHECK(error(R"("e": {"extends": "enemy.prefab.json"}, "e/gun": {})") ==
+          "/entities/e~1gun: no instanced scene brings an entity \"e/gun\": \"e\" extends no "
+          "scene");
+    CHECK(error(R"("x/gun": {})") ==
+          "/entities/x~1gun: no instanced scene brings an entity \"x/gun\": there is no entity "
+          "\"x\"");
+    CHECK(error(R"("e": null)") ==
+          "/entities/e: null leaves out an entity an instanced scene brings, but \"e\" is not one");
+    CHECK(error(R"("e": {"extends": "player.scene.json"},
+                   "e/gun": {"extends": "enemy.prefab.json"})") ==
+          "/entities/e~1gun/extends: \"e/gun\" comes from \"player.scene.json\", which decides "
+          "what it extends");
+    CHECK(error(R"("e": {"extends": "player.scene.json"},
+                   "e/gun": {"components": {"Health": null}})") ==
+          "/entities/e~1gun/components/Health: null removes a component the entity has in "
+          "\"player.scene.json\", but it has no \"Health\"");
+    CHECK(error(R"("e": {"extends": "player.scene.json"}, "e//gun": {})") ==
+          "/entities/e~1~1gun: invalid entity id \"e//gun\": use 1 to 64 letters, digits, '_' or "
+          "'-'");
+    CHECK(load_error(registry, parse(R"({"format": 1, "root": "x", "entities": {"a": {}}})"),
+                     reader) == "/root: no entity has the id \"x\"");
+}
+
+TEST_CASE("a scene's root saves and loads") {
+    const auto registry = make_registry();
+    World world(registry);
+    REQUIRE(world::load_scene(world, parse(kPlayerScene)).ok());
+    CHECK(world.scene_root() == "player");
+    CHECK(world::save_scene(world) == parse(kPlayerScene));
+    world.destroy(world.find("player"));
+    CHECK(world::save_scene(world).find("root") == nullptr);
+    world.clear();
+    CHECK(world.scene_root().empty());
+}
+
+TEST_CASE("instanced scenes diff, restore and reload") {
+    const auto registry = make_registry();
+    std::map<std::string, std::string, std::less<>> files{{"player.scene.json", kPlayerScene}};
+    World world(registry);
+    world.set_file_reader([&files](std::string_view path) -> slash::Result<std::string> {
+        const auto it = files.find(path);
+        if (it == files.end()) {
+            return slash::make_error(slash::ErrorCode::NotFound, "no such file");
+        }
+        return it->second;
+    });
+    const json::Value before = parse(R"({"format": 1, "entities": {
+        "hero": {"extends": "player.scene.json"},
+        "hero/sfx": null}})");
+    REQUIRE(world::load_scene(world, before).ok());
+    const world::PrefabLinks links = world.prefab_links();
+    CHECK(links.size() == 1);
+
+    // A diff sees the entities an instance brings through the scene in the links.
+    const json::Value after = parse(R"({"format": 1, "entities": {
+        "hero": {"extends": "player.scene.json"},
+        "hero/gun": {"components": {"Follow": {"distance": 3.0}}},
+        "hero/sprite": null,
+        "hero/sfx": null}})");
+    CHECK(world::diff_scenes(registry, before, after, links, links) ==
+          parse(R"({"removed": ["hero/sprite"],
+                    "changed": {"hero/gun": {"Follow": {"distance": 3.0}}}})"));
+
+    // A copy restores from the links after the file changes.
+    world.ecs().get<demo::Follow>(world.find("hero/gun")).distance = 5.0F;
+    const json::Value saved = world::save_scene(world);
+    files["player.scene.json"] = "{";
+    World copy(registry);
+    REQUIRE(world::restore_scene(copy, saved, links).ok());
+    CHECK(entity_ids(copy) == std::vector<std::string>{"hero", "hero/gun", "hero/sprite"});
+    CHECK(copy.ecs().get<demo::Follow>(copy.find("hero/gun")).distance == 5.0F);
+    CHECK(world::save_scene(copy) == saved);
+
+    // The scene changes: the sprite moves, the gun goes, a shield comes. The instance keeps
+    // leaving out the sound.
+    files["player.scene.json"] = R"({"format": 1, "root": "player", "entities": {
+        "player": {"components": {"Transform2D": {"children": ["sprite", "shield"]},
+                                  "Health": {"max": 50}}},
+        "sprite": {"components": {"Transform2D": {"position": [0, -12]}}},
+        "shield": {"components": {"Follow": {"target": "sprite"}}},
+        "sfx": {"components": {"Enemy": {}}}}})";
+    world.ecs().get<Transform2D>(world.find("hero")).position = {7.0F, 0.0F};
+    const world::PrefabReload reload = world::reload_prefabs(world);
+    CHECK(reload.errors.empty());
+    CHECK(reload.changed ==
+          std::vector<std::string>{"hero", "hero/gun", "hero/shield", "hero/sprite"});
+    CHECK(entity_ids(world) == std::vector<std::string>{"hero", "hero/shield", "hero/sprite"});
+    const auto hero = world.find("hero");
+    const auto sprite = world.find("hero/sprite");
+    const auto shield = world.find("hero/shield");
+    CHECK(world.ecs().get<Transform2D>(hero).position.x == 7.0F);
+    CHECK(world.ecs().get<Transform2D>(hero).children == std::vector<entt::entity>{sprite, shield});
+    CHECK(world.ecs().get<Transform2D>(sprite).position.y == -12.0F);
+    CHECK(world.ecs().get<demo::Follow>(shield).target == sprite);
+    CHECK(world::save_scene(world) == parse(R"({"format": 1, "entities": {
+        "hero": {"extends": "player.scene.json",
+                 "components": {"Transform2D": {"position": [7.0, 0.0]}}},
+        "hero/sfx": null}})"));
 }

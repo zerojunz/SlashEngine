@@ -196,6 +196,7 @@ Writes the open scene to a `.scene.json` file in canonical form, creating folder
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `path` | string | the scene's current file | File to write |
+| `root` | string | the scene's root | The entity an instance of this scene becomes when another scene's entity extends it ([instanced scenes](scene-format.md#instanced-scenes)); `""` for none. Kept for later saves |
 
 Needs: `read`, `filesystem`.
 
@@ -206,6 +207,16 @@ Needs: `read`, `filesystem`.
 ```json
 {"entities":3,"path":"out/level.scene.json"}
 ```
+
+```json
+{"path": "scenes/player.scene.json", "root": "player"}
+```
+
+```json
+{"entities":4,"path":"scenes/player.scene.json","root":"player"}
+```
+
+A `root` no entity has fails with `-32001`, and one an instanced scene brings with `-32002`.
 
 A path outside the project folder fails with `-32003`:
 
@@ -222,7 +233,7 @@ Creates an entity, optionally from a prefab and with components. Returns its ID.
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `id` | string | generated | Stable ID: 1 to 64 letters, digits, `_` or `-` |
-| `extends` | string | | A `.prefab.json` file to start from, e.g. `"prefabs/enemy.prefab.json"` |
+| `extends` | string | | A `.prefab.json` file to start from, e.g. `"prefabs/enemy.prefab.json"`, or a `.scene.json` file with a `root` |
 | `components` | object | | Components keyed by type name. Fields left out keep their defaults, or the prefab's |
 
 Needs: `edit`. Takes `dry_run`.
@@ -240,11 +251,20 @@ error. With `extends`, the entity gets the prefab's components and stays linked 
 the scene writes only the fields that differ from the prefab ([prefabs](scene-format.md#prefabs)).
 Each command reads prefab files afresh, so an edited prefab shows up in the next instance.
 
+With a scene, the entity becomes the scene's root and the scene's other entities come too, as
+`<id>/<their id>` ([instanced scenes](scene-format.md#instanced-scenes)); `entity.get` and
+`component.set` take those IDs. A scene with no `root` fails with `-32002`:
+
+```json
+{"code":-32002,"data":{"path":"/extends"},"message":"/extends: scene \"scenes/level.scene.json\" has no \"root\": name the entity an instance of it becomes (scene.save takes \"root\")"}
+```
+
 ### entity.destroy
 
 Destroys an entity and its components, and the entities in its `Transform2D` or `Control`
-`children`, theirs too, as Godot frees a node's children. They are listed as `descendants`, and
-leave the `children` lists of the parents that stay.
+`children`, theirs too, as Godot frees a node's children, and those its instanced scene brought.
+They are listed as `descendants`, and leave the `children` lists of the parents that stay.
+Destroying one entity an instanced scene brought saves as `null` for it.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -303,7 +323,8 @@ An unknown ID fails with `-32001` (not found):
 
 Writes an entity to a `.prefab.json` file that entities can extend, creating folders as needed.
 An entity that extends a prefab is saved as `extends` plus what differs from it. The entity
-itself is not linked to the new file; `entity.create` with `extends` makes instances.
+itself is not linked to the new file; `entity.create` with `extends` makes instances. A prefab
+holds one entity, so an instance of a scene, or an entity one brought, fails with `-32002`.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |

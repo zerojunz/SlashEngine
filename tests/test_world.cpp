@@ -34,6 +34,28 @@ TEST_CASE("IDs must be well formed and unique") {
     CHECK(World::is_valid_id("Boss-2_final"));
 }
 
+TEST_CASE("an instance's entities have IDs under its own and go with it") {
+    const ComponentRegistry registry;
+    World world(registry);
+    CHECK(World::is_valid_part_id("hero/sprite"));
+    CHECK(World::is_valid_part_id("hero/gun/muzzle"));
+    CHECK_FALSE(World::is_valid_part_id("hero"));
+    CHECK_FALSE(World::is_valid_part_id("hero/"));
+    CHECK_FALSE(World::is_valid_part_id("/sprite"));
+    CHECK_FALSE(World::is_valid_part_id("hero//sprite"));
+    CHECK_FALSE(World::is_valid_part_id("hero/" + std::string(251, 'a')));
+    CHECK_FALSE(world.create("hero/sprite").ok());
+    CHECK_FALSE(world.create_part("hero").ok());
+
+    const entt::entity hero = world.create("hero").value();
+    REQUIRE(world.create_part("hero/sprite").ok());
+    REQUIRE(world.create_part("hero/gun/muzzle").ok());
+    REQUIRE(world.create("hero-2").ok());
+    REQUIRE(world.create("heroine").ok());
+    world.destroy(hero);
+    CHECK(world.ids() == std::vector<std::string_view>{"hero-2", "heroine"});
+}
+
 TEST_CASE("generated IDs skip ones already taken") {
     const ComponentRegistry registry;
     World world(registry);

@@ -34,9 +34,10 @@ Godot version changes.
 ## Scenes
 
 Each node becomes an entity named after it in snake case: `PlayerSprite` is `player_sprite`. A
-name that is taken is prefixed with its parent's ID, then numbered, and the nodes an instanced
-scene brings are prefixed with the instance's ID (`Player/Camera2D` from `player.tscn` is
-`player_camera2d`). The report maps every node path to its entity.
+name that is taken is prefixed with its parent's ID, then numbered. The nodes an instanced scene
+brings keep their IDs from that scene's own `.scene.json` file under the instance's
+(`Player/Camera2D` from `player.tscn` is `player/camera2d`). The report maps every node path to
+its entity.
 
 Node2D nodes nest through their parent's `Transform2D` `children` and controls through their
 parent's `Control` `children`, in Godot's order, so they draw in Godot's order. A root that is a
@@ -78,9 +79,11 @@ type:
 - `region_enabled` and `region_rect` are `Sprite2D`'s `region`; `self_modulate` multiplies
   into its `modulate`; an `AnimatedSprite2D` plays only with `autoplay`, as in Godot.
 
-An instanced scene's nodes are copied into the scene that instances it, with that scene's
-overrides; its own `.scene.json` file is written too. A value that doesn't fit its field is left
-out and reported, so one bad value can't stop a scene.
+An instanced scene stays an instance, as in Godot: its `.scene.json` file names its root, and
+the instance's entity extends that file ([instanced scenes](scene-format.md#instanced-scenes)),
+holding only the properties the instancing scene overrides, on the instance and on the nodes it
+brings. Editing the instanced scene changes every instance. A value that doesn't fit its field is
+left out and reported, so one bad value can't stop a scene.
 
 ## Project settings
 
@@ -122,7 +125,7 @@ connections to its methods, by entity; and the project's autoloads and groups.
   },
   "scenes": {
     "main.tscn": {
-      "entities": {".": "main", "Player": "player", "Player/Camera2D": "player_camera2d"},
+      "entities": {".": "main", "Player": "player", "Player/Camera2D": "player/camera2d"},
       "connections": [{"from": "coin", "method": "_on_coin_body_entered", "signal": "body_entered", "to": "main"}],
       "unconverted": {"timer": {"type": "Timer", "values": {"wait_time": 30.0}}}
     }
@@ -139,7 +142,6 @@ The report lists each of these once per kind, with how many and where it was fir
 | `TileMapLayer`, `TileMap`, `TileSet` | The importer's next step |
 | `AnimationPlayer`, `AnimationTree`, `Animation` resources | The importer's next step (`AnimationTree` with milestone 7's blending) |
 | Themes, `gui/theme/custom` and `AudioBusLayout` | The importer's next step |
-| Scenes instanced as prefabs rather than copies | The importer's next step |
 | C++ skeletons for scripts | With gameplay code in game projects, milestone 6 |
 | Timers and other gameplay nodes | Gameplay code: their values are kept in the report |
 | `display/window/stretch/mode` | Stretching isn't supported yet |

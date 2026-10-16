@@ -26,9 +26,11 @@ struct EntityId {
 // Reads a file by its path relative to the project folder. Worlds use one to load prefabs.
 using FileReader = std::function<Result<std::string>(std::string_view path)>;
 
-// Links an entity to the .prefab.json file it extends. base holds the prefab's components,
-// resolved through every "extends" and shared by all its instances; saving writes only the
-// fields that differ from it.
+// Links an entity to the .prefab.json or .scene.json file it extends, shared by all its instances.
+// For a prefab, base holds its components, resolved through every "extends"; saving writes only
+// the fields that differ from them. For a scene, base holds what an instance brings, in the
+// scene's own IDs: {"root": "<id>", "entities": {"<id>": {<components>}}}, with the scenes its
+// entities extend in turn flattened in under their IDs (see resolve_prefab).
 struct PrefabLink {
     std::string path;
     std::shared_ptr<const json::Value> base;
@@ -89,13 +91,19 @@ public:
     // Creates an entity with the given ID. Fails if the ID is malformed or already in use.
     Result<entt::entity> create(std::string_view id);
 
+    // Creates an entity an instanced scene brings. Its ID is the instance's ID, '/' and its ID in
+    // the scene, such as "hero/sprite" (or "hero/gun/muzzle" through a scene the scene
+    // instances), and it is destroyed with its instance.
+    Result<entt::entity> create_part(std::string_view id);
+
     // Creates an entity with the next free generated ID: "entity_1", "entity_2", ...
     entt::entity create();
 
-    // Destroys an entity and all its components. Does nothing for an invalid entity.
+    // Destroys an entity and all its components, and the entities its instanced scene brought
+    // (those whose IDs start with its ID and '/'). Does nothing for an invalid entity.
     void destroy(entt::entity entity);
 
-    // Destroys every entity. Systems and the tick counter are kept.
+    // Destroys every entity and forgets the scene's root. Systems and the tick counter are kept.
     void clear();
 
     [[nodiscard]] bool valid(entt::entity entity) const;
@@ -168,8 +176,16 @@ public:
     void cache_prefab(std::string path, std::shared_ptr<const json::Value> components);
     void forget_prefabs() { prefabs_.clear(); }
 
+    // The entity an instance of this world's scene becomes when another scene extends it, as
+    // scene files name it in "root"; "" for none. Loading a scene with a root sets it.
+    [[nodiscard]] const std::string& scene_root() const noexcept { return scene_root_; }
+    void set_scene_root(std::string id) { scene_root_ = std::move(id); }
+
     // IDs are 1 to 64 characters, each a letter, digit, '_' or '-'.
     [[nodiscard]] static bool is_valid_id(std::string_view id);
+    // The ID of an entity an instanced scene brings: two or more valid IDs joined by '/', at most
+    // 255 characters in all.
+    [[nodiscard]] static bool is_valid_part_id(std::string_view id);
 
 private:
     struct NamedSystem {
@@ -178,6 +194,7 @@ private:
         SystemOptions options;
     };
 
+    Result<entt::entity> add(std::string_view id);
     void on_id_destroyed(entt::registry& registry, entt::entity entity);
     void notify(std::string kind, std::string_view id, json::Value data);
 
@@ -191,6 +208,7 @@ private:
     EventListener listener_;
     FileReader reader_;
     std::map<std::string, std::shared_ptr<const json::Value>, std::less<>> prefabs_;
+    std::string scene_root_;
     std::uint64_t tick_ = 0;
     std::uint64_t next_generated_id_ = 1;
     bool stepping_ = false;

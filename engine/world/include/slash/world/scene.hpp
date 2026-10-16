@@ -41,6 +41,17 @@
 // component removes one the prefab has. Saving writes only what differs from the prefab, as Godot
 // does for instanced scenes. Prefab paths are relative to the project folder and are read with
 // the world's file reader.
+//
+// An entity can also extend a scene that names its "root", as Godot instances a PackedScene. It
+// becomes the scene's root entity, and the scene's other entities come with it, with IDs under
+// the instance's and the references between them renamed to match:
+//
+//   "hero": {"extends": "scenes/player.scene.json"},
+//   "hero/sprite": {"components": {"Sprite2D": {"flip_h": true}}},
+//   "hero/gun": null
+//
+// An entry keyed with '/' holds the overrides of an entity an instance brings, or null to leave
+// it out. Scenes can instance scenes, so IDs nest ("hero/gun/muzzle").
 namespace slash::world {
 
 inline constexpr std::int64_t kSceneFormat = 1;

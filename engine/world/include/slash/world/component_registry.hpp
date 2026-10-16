@@ -43,6 +43,7 @@ public:
         Result<void> (*assign)(World& world, entt::entity entity, const json::Value& fields,
                                std::string& path);
         json::Value (*schema)(SchemaBuilder& builder);
+        void (*rename)(json::Value& fields, const EntityRename& rename);
     };
 
     ComponentType(std::string type_name, entt::id_type hash, std::vector<std::string> field_names,
@@ -80,6 +81,11 @@ public:
 
     // Adds this component's definition, with docs, defaults and ranges, and returns a $ref to it.
     [[nodiscard]] json::Value schema(SchemaBuilder& builder) const;
+
+    // Renames the entity references in some of this component's fields, as JSON.
+    void rename_entities(json::Value& fields, const EntityRename& rename) const {
+        ops_.rename(fields, rename);
+    }
 
 private:
     std::string name_;
@@ -153,6 +159,8 @@ ComponentType& ComponentRegistry::add() {
             return {};
         },
         .schema = [](SchemaBuilder& builder) { return builder.ref<T>(); },
+        .rename = [](json::Value& fields,
+                     const EntityRename& rename) { world::rename_entities<T>(fields, rename); },
     };
 
     std::vector<std::string> fields;

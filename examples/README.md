@@ -10,6 +10,7 @@ engine. Copy from them.
 | [custom-commands](custom-commands/) | A game's own command with a params schema and undo, served like the built-in ones |
 | [edit-a-scene](edit-a-scene/) | Creating, changing, finding and saving entities, `batch` and `undo` |
 | [prefabs](prefabs/) | Entities that extend a `.prefab.json` file and override fields |
+| [instanced-scenes](instanced-scenes/) | Entities that instance a `.scene.json` file and bring its entities with them: a player scene with a gun scene inside it, its entities' IDs under the instance's, overrides and left-out entities, and an edit to the scene reaching every instance |
 | [try-and-roll-back](try-and-roll-back/) | Dry runs, and `world.snapshot`, `world.diff` and `world.restore` |
 | [events](events/) | `events.subscribe` and `events.read` to hear what changed |
 | [run-until](run-until/) | `run.until`: run a game headless until something happens, in one call |
