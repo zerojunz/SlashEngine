@@ -397,4 +397,7 @@ jobs:
         run: ctest --preset ci -R licenses
 
       - name: Run clang-tidy
-        run: find engine tools examples -name '*.cpp' | xargs clang-tidy-18 -p build/ci --quiet
+        # One clang-tidy per core: run one after another, the files take over half an hour.
+        run: |
+          find engine tools examples -name '*.cpp' \
+            | xargs -P "$(nproc)" -n 8 clang-tidy-18 -p build/ci --quiet
