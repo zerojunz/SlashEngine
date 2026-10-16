@@ -1,12 +1,14 @@
 // Importing a Godot game: project.import converts a Godot 4 project into this one.
 //
 // godot/ holds "Coin Run", a small Godot 4 platformer as Godot saves it: project.godot, two
-// scenes (the level instances the player scene), a SpriteFrames resource and three GDScript
-// files. One call converts it. Its scenes become .scene.json files beside the originals, its
-// sprite frames .frames.json files, its window, physics, rendering and input settings
-// project.json, and each script a storyboard task to port it to C++, since SlashEngine games are
-// plain C++. The report lists what didn't convert, and why. Games ship PNG files made in an image
-// editor; this example draws its textures in code, so the repository holds no images.
+// scenes (the level instances the player scene), a SpriteFrames resource, a tile set, a theme, a
+// bus layout and three GDScript files. One call converts it. Its scenes become .scene.json files
+// beside the originals, its sprite frames .frames.json files, its tile set a .tileset.json file,
+// its theme a .theme.json file, its buses a .bus_layout.json file, its window, physics,
+// rendering, GUI, audio and input settings project.json, and each script a storyboard task to
+// port it to C++, since SlashEngine games are plain C++. The report lists what didn't convert, and
+// why. Games ship PNG files made in an image editor; this example draws its textures in code, so
+// the repository holds no images.
 
 #include "slash/command/builtin.hpp"
 #include "slash/command/command.hpp"
@@ -87,6 +89,7 @@ int main() {
     }
     write_texture("godot/art/ground.png", 640, 20, {90, 160, 70});
     write_texture("godot/art/coins.png", 24, 8, {250, 210, 50});
+    write_texture("godot/art/tiles.png", 48, 16, {70, 130, 60});
     write_texture("godot/art/player_idle.png", 12, 16, {220, 80, 60});
     write_texture("godot/art/player_walk_0.png", 12, 16, {230, 90, 70});
     write_texture("godot/art/player_walk_1.png", 12, 16, {210, 70, 50});
@@ -96,9 +99,13 @@ int main() {
     agent.call("project.import", R"({"source": "godot", "dry_run": true})");
     agent.call("project.import", R"({"source": "godot"})");
 
-    // The level, the player's sprite frames and the task for the player's script.
+    // The level, the player's sprite frames, the platforms' tile set, the theme, the buses and
+    // the project's settings.
     print_file("godot/main.scene.json");
     print_file("godot/player_frames.frames.json");
+    print_file("godot/tiles.tileset.json");
+    print_file("godot/ui_theme.theme.json");
+    print_file("godot/default_bus_layout.bus_layout.json");
     print_file("project.json");
 
     // The converted level opens and runs; the coin spins.

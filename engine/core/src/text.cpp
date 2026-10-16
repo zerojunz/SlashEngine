@@ -128,4 +128,45 @@ std::string base64_encode(std::string_view bytes) {
     return out;
 }
 
+std::optional<std::string> base64_decode(std::string_view text) {
+    while (!text.empty() && text.back() == '=') {
+        text.remove_suffix(1);
+    }
+    if (text.size() % 4 == 1) {
+        return std::nullopt;
+    }
+    const auto sextet = [](char c) -> int {
+        if (c >= 'A' && c <= 'Z') {
+            return c - 'A';
+        }
+        if (c >= 'a' && c <= 'z') {
+            return c - 'a' + 26;
+        }
+        if (c >= '0' && c <= '9') {
+            return c - '0' + 52;
+        }
+        if (c == '+') {
+            return 62;
+        }
+        return c == '/' ? 63 : -1;
+    };
+    std::string out;
+    out.reserve((text.size() * 3) / 4);
+    std::uint32_t group = 0;
+    std::size_t bits = 0;
+    for (const char c : text) {
+        const int value = sextet(c);
+        if (value < 0) {
+            return std::nullopt;
+        }
+        group = (group << 6U) | static_cast<std::uint32_t>(value);
+        bits += 6;
+        if (bits >= 8) {
+            bits -= 8;
+            out += static_cast<char>((group >> bits) & 0xFFU);
+        }
+    }
+    return out;
+}
+
 } // namespace slash
