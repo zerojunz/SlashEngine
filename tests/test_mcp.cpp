@@ -143,6 +143,21 @@ TEST_CASE("tools/call runs the command and returns text and structured content")
     CHECK_FALSE(described.find("isError")->as_bool());
 }
 
+TEST_CASE("a frame.capture image goes to the model as an image block") {
+    Client client;
+    const json::Value captured =
+        client.call_tool("frame_capture", R"({"image": true, "scale": 0.05})");
+    CHECK_FALSE(captured.find("isError")->as_bool());
+    const json::Array& content = captured.find("content")->as_array();
+    REQUIRE(content.size() == 2);
+    const json::Value text = parse(content[0].find("text")->as_string());
+    CHECK(text == parse(R"({"width": 64, "height": 36, "drawn": {}})"));
+    CHECK(content[1].find("type")->as_string() == "image");
+    CHECK(content[1].find("mimeType")->as_string() == "image/png");
+    CHECK(content[1].find("data")->as_string().starts_with("iVBORw0KGgo"));
+    CHECK(*captured.find("structuredContent") == text);
+}
+
 TEST_CASE("tool failures are results the model can read") {
     Client client;
     const json::Value failed = client.call_tool("entity_get", R"({"id": "ghost"})");

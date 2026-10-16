@@ -6,6 +6,7 @@
 #include "slash/platform/process.hpp"
 #include "slash/render/device.hpp"
 #include "slash/render/image.hpp"
+#include "slash/ui/ui.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/world.hpp"
@@ -539,6 +540,16 @@ std::unique_ptr<render::RenderDevice> gpu_device() {
     return std::move(device).value();
 }
 
+// The devices that draw pixels: the software device, and a GPU device where one works.
+std::vector<std::unique_ptr<render::RenderDevice>> drawing_devices() {
+    std::vector<std::unique_ptr<render::RenderDevice>> devices;
+    devices.push_back(render::create_software_device());
+    if (auto gpu = gpu_device(); gpu != nullptr) {
+        devices.push_back(std::move(gpu));
+    }
+    return devices;
+}
+
 Rgba pixel(const render::Image& image, std::uint32_t x, std::uint32_t y) {
     const std::size_t at = ((std::size_t{y} * image.width) + x) * 4;
     return {image.pixels[at], image.pixels[at + 1], image.pixels[at + 2], image.pixels[at + 3]};
@@ -546,168 +557,201 @@ Rgba pixel(const render::Image& image, std::uint32_t x, std::uint32_t y) {
 
 } // namespace
 
-TEST_CASE("sprites draw where Godot would put them, in z order, on a GPU") {
-    auto device = gpu_device();
-    if (device == nullptr) {
-        return;
-    }
-    Scene scene;
-    // Two 8x8 frames: red, then blue.
-    scene.files.write("sheet.png", strip_png({{255, 0, 0, 255}, {0, 0, 255, 255}}, 8));
-    scene.create("red", R"({"Transform2D": {"position": [16, 16]},
+TEST_CASE("sprites draw where Godot would put them, in z order, on the software device and a GPU") {
+    for (const auto& device : drawing_devices()) {
+        CAPTURE(slash::render::backend_name(device->backend()));
+        Scene scene;
+        // Two 8x8 frames: red, then blue.
+        scene.files.write("sheet.png", strip_png({{255, 0, 0, 255}, {0, 0, 255, 255}}, 8));
+        scene.create("red", R"({"Transform2D": {"position": [16, 16]},
                             "Sprite2D": {"texture": "sheet.png", "hframes": 2,
                                          "texture_filter": "nearest", "z_index": 1}})");
-    // Blue, drawn under red where they overlap, mirrored and twice as big.
-    scene.create("blue", R"({"Transform2D": {"position": [24, 24], "scale": [2, 2]},
+        // Blue, drawn under red where they overlap, mirrored and twice as big.
+        scene.create("blue", R"({"Transform2D": {"position": [24, 24], "scale": [2, 2]},
                              "Sprite2D": {"texture": "sheet.png", "hframes": 2, "frame": 1,
                                           "texture_filter": "nearest", "flip_h": true}})");
-    // Half-transparent white over the bottom right corner.
-    scene.create("tint", R"({"Transform2D": {"position": [40, 40]},
+        // Half-transparent white over the bottom right corner.
+        scene.create("tint", R"({"Transform2D": {"position": [40, 40]},
                              "Sprite2D": {"texture": "sheet.png", "hframes": 2, "centered": false,
                                           "texture_filter": "nearest",
                                           "modulate": [1, 1, 1, 0.5], "z_index": 5}})");
-    auto target = device->create_texture(
-        {.width = 48, .height = 48, .filter = render::Filter::Nearest, .render_target = true});
-    REQUIRE(target.ok());
-    canvas::CanvasRenderer renderer(*device, scene.assets);
-    canvas::CanvasOptions options;
-    options.target = target.value();
-    options.clear = {.r = 0.0F, .g = 0.0F, .b = 0.0F, .a = 1.0F};
-    REQUIRE(renderer.draw(scene.world, options).ok());
-    CHECK(renderer.sprites_drawn() == 3);
-    auto image = device->read_texture(target.value());
-    REQUIRE(image.ok());
-    CHECK(pixel(image.value(), 16, 16) == Rgba{255, 0, 0, 255}); // red on top of blue
-    CHECK(pixel(image.value(), 12, 12) == Rgba{255, 0, 0, 255});
-    CHECK(pixel(image.value(), 30, 30) == Rgba{0, 0, 255, 255}); // blue spans 16..32
-    CHECK(pixel(image.value(), 10, 10) == Rgba{0, 0, 0, 255});   // outside both
-    CHECK(pixel(image.value(), 34, 34) == Rgba{0, 0, 0, 255});
-    // Red at half alpha over black, from 40 to 48.
-    const Rgba tinted = pixel(image.value(), 44, 44);
-    CHECK(tinted[0] >= 126);
-    CHECK(tinted[0] <= 129);
-    CHECK(tinted[2] == 0);
+        auto target = device->create_texture(
+            {.width = 48, .height = 48, .filter = render::Filter::Nearest, .render_target = true});
+        REQUIRE(target.ok());
+        canvas::CanvasRenderer renderer(*device, scene.assets);
+        canvas::CanvasOptions options;
+        options.target = target.value();
+        options.clear = {.r = 0.0F, .g = 0.0F, .b = 0.0F, .a = 1.0F};
+        REQUIRE(renderer.draw(scene.world, options).ok());
+        CHECK(renderer.sprites_drawn() == 3);
+        auto image = device->read_texture(target.value());
+        REQUIRE(image.ok());
+        CHECK(pixel(image.value(), 16, 16) == Rgba{255, 0, 0, 255}); // red on top of blue
+        CHECK(pixel(image.value(), 12, 12) == Rgba{255, 0, 0, 255});
+        CHECK(pixel(image.value(), 30, 30) == Rgba{0, 0, 255, 255}); // blue spans 16..32
+        CHECK(pixel(image.value(), 10, 10) == Rgba{0, 0, 0, 255});   // outside both
+        CHECK(pixel(image.value(), 34, 34) == Rgba{0, 0, 0, 255});
+        // Red at half alpha over black, from 40 to 48.
+        const Rgba tinted = pixel(image.value(), 44, 44);
+        CHECK(tinted[0] >= 126);
+        CHECK(tinted[0] <= 129);
+        CHECK(tinted[2] == 0);
 
-    // Halfway between ticks, a sprite is halfway between where it was and where it is.
-    scene.create("mover", R"({"Transform2D": {"position": [4, 44]},
+        // Halfway between ticks, a sprite is halfway between where it was and where it is.
+        scene.create("mover", R"({"Transform2D": {"position": [4, 44]},
                               "Sprite2D": {"texture": "sheet.png", "hframes": 2, "frame": 1,
                                            "texture_filter": "nearest", "z_index": 9}})");
-    renderer.before_tick(scene.world);
-    scene.world.ecs().get<world::Transform2D>(scene.world.find("mover")).position.x = 20.0F;
-    options.interpolation = 0.5;
-    REQUIRE(renderer.draw(scene.world, options).ok());
-    image = device->read_texture(target.value());
-    REQUIRE(image.ok());
-    CHECK(pixel(image.value(), 15, 44) == Rgba{0, 0, 255, 255}); // spans 8..16 at x = 12
-    CHECK(pixel(image.value(), 17, 44) == Rgba{0, 0, 0, 255});
-    CHECK(pixel(image.value(), 7, 44) == Rgba{0, 0, 0, 255});
+        renderer.before_tick(scene.world);
+        scene.world.ecs().get<world::Transform2D>(scene.world.find("mover")).position.x = 20.0F;
+        options.interpolation = 0.5;
+        REQUIRE(renderer.draw(scene.world, options).ok());
+        image = device->read_texture(target.value());
+        REQUIRE(image.ok());
+        CHECK(pixel(image.value(), 15, 44) == Rgba{0, 0, 255, 255}); // spans 8..16 at x = 12
+        CHECK(pixel(image.value(), 17, 44) == Rgba{0, 0, 0, 255});
+        CHECK(pixel(image.value(), 7, 44) == Rgba{0, 0, 0, 255});
+    }
 }
 
-TEST_CASE("particles draw their frame, color and scale on a GPU") {
-    auto device = gpu_device();
-    if (device == nullptr) {
-        return;
-    }
+TEST_CASE("capture draws the viewport on the software device, at any scale") {
     Scene scene;
-    scene.files.write("sheet.png", strip_png({{255, 0, 0, 255}, {0, 0, 255, 255}}, 8));
-    // A white pixel scaled to 8x8 and colored green.
-    scene.create("green", R"({"Transform2D": {"position": [12, 12]},
+    slash::ui::Settings ui;
+    ui.viewport = {64.0F, 32.0F};
+    slash::ui::set_settings(scene.world, ui);
+    canvas::Settings settings;
+    settings.clear_color = {.r = 0.0F, .g = 0.0F, .b = 1.0F, .a = 1.0F};
+    settings.texture_filter = render::Filter::Nearest;
+    canvas::set_settings(scene.world, settings);
+    scene.files.write("red.png", strip_png({{255, 0, 0, 255}}, 8));
+    scene.create("red", R"({"Transform2D": {"position": [16, 16]},
+                        "Sprite2D": {"texture": "red.png"}})");
+
+    auto full = canvas::capture(scene.world, scene.assets);
+    REQUIRE(full.ok());
+    CHECK(full.value().image.width == 64);
+    CHECK(full.value().image.height == 32);
+    CHECK(full.value().sprites == 1);
+    CHECK(pixel(full.value().image, 15, 15) == Rgba{255, 0, 0, 255});
+    CHECK(pixel(full.value().image, 40, 15) == Rgba{0, 0, 255, 255});
+
+    // Half size: the sprite spans 6..10, and the project's nearest filter keeps it sharp.
+    auto half = canvas::capture(scene.world, scene.assets, {.scale = 0.5F});
+    REQUIRE(half.ok());
+    CHECK(half.value().image.width == 32);
+    CHECK(half.value().image.height == 16);
+    CHECK(pixel(half.value().image, 6, 6) == Rgba{255, 0, 0, 255});
+    CHECK(pixel(half.value().image, 10, 6) == Rgba{0, 0, 255, 255});
+
+    const auto huge = canvas::capture(scene.world, scene.assets, {.scale = 1000.0F});
+    REQUIRE_FALSE(huge.ok());
+    CHECK(huge.error().message ==
+          "a capture is 1 to 16384 pixels wide and high; the viewport is 64x32");
+}
+
+TEST_CASE("particles draw their frame, color and scale on the software device and a GPU") {
+    for (const auto& device : drawing_devices()) {
+        CAPTURE(slash::render::backend_name(device->backend()));
+        Scene scene;
+        scene.files.write("sheet.png", strip_png({{255, 0, 0, 255}, {0, 0, 255, 255}}, 8));
+        // A white pixel scaled to 8x8 and colored green.
+        scene.create("green", R"({"Transform2D": {"position": [12, 12]},
                               "CPUParticles2D": {"amount": 1, "gravity": [0, 0],
                                                  "scale_amount_min": 8, "scale_amount_max": 8,
                                                  "color": [0, 1, 0, 1]}})");
-    // The second frame of the sheet, picked by anim_offset.
-    scene.create("blue", R"({"Transform2D": {"position": [36, 36]},
+        // The second frame of the sheet, picked by anim_offset.
+        scene.create("blue", R"({"Transform2D": {"position": [36, 36]},
                              "CPUParticles2D": {"amount": 1, "gravity": [0, 0],
                                                 "texture": "sheet.png", "hframes": 2,
                                                 "texture_filter": "nearest",
                                                 "anim_offset_min": 0.5,
                                                 "anim_offset_max": 0.5}})");
-    scene.world.step(1.0 / 60.0);
-    auto target = device->create_texture(
-        {.width = 48, .height = 48, .filter = render::Filter::Nearest, .render_target = true});
-    REQUIRE(target.ok());
-    canvas::CanvasRenderer renderer(*device, scene.assets);
-    canvas::CanvasOptions options;
-    options.target = target.value();
-    options.clear = {.r = 0.0F, .g = 0.0F, .b = 0.0F, .a = 1.0F};
-    REQUIRE(renderer.draw(scene.world, options).ok());
-    CHECK(renderer.particles_drawn() == 2);
-    auto image = device->read_texture(target.value());
-    REQUIRE(image.ok());
-    CHECK(pixel(image.value(), 9, 9) == Rgba{0, 255, 0, 255}); // spans 8..16
-    CHECK(pixel(image.value(), 15, 15) == Rgba{0, 255, 0, 255});
-    CHECK(pixel(image.value(), 17, 12) == Rgba{0, 0, 0, 255});
-    CHECK(pixel(image.value(), 33, 33) == Rgba{0, 0, 255, 255}); // spans 32..40
-    CHECK(pixel(image.value(), 41, 36) == Rgba{0, 0, 0, 255});
+        scene.world.step(1.0 / 60.0);
+        auto target = device->create_texture(
+            {.width = 48, .height = 48, .filter = render::Filter::Nearest, .render_target = true});
+        REQUIRE(target.ok());
+        canvas::CanvasRenderer renderer(*device, scene.assets);
+        canvas::CanvasOptions options;
+        options.target = target.value();
+        options.clear = {.r = 0.0F, .g = 0.0F, .b = 0.0F, .a = 1.0F};
+        REQUIRE(renderer.draw(scene.world, options).ok());
+        CHECK(renderer.particles_drawn() == 2);
+        auto image = device->read_texture(target.value());
+        REQUIRE(image.ok());
+        CHECK(pixel(image.value(), 9, 9) == Rgba{0, 255, 0, 255}); // spans 8..16
+        CHECK(pixel(image.value(), 15, 15) == Rgba{0, 255, 0, 255});
+        CHECK(pixel(image.value(), 17, 12) == Rgba{0, 0, 0, 255});
+        CHECK(pixel(image.value(), 33, 33) == Rgba{0, 0, 255, 255}); // spans 32..40
+        CHECK(pixel(image.value(), 41, 36) == Rgba{0, 0, 0, 255});
+    }
 }
 
-TEST_CASE("materials color a sprite's pixels on a GPU, and reload when their files change") {
-    auto device = gpu_device();
-    if (device == nullptr) {
-        return;
-    }
-    Scene scene;
-    scene.files.write("red.png", strip_png({{255, 0, 0, 255}}, 8));
-    scene.files.write("stripes.png", strip_png({{0, 255, 0, 255}, {0, 0, 255, 255}}, 1));
-    scene.files.write("flash.material.json", std::string(kFlashMaterial));
-    // The stripes, four times across the sprite.
-    scene.files.write("tiles.material.json", R"({
+TEST_CASE("materials color a sprite's pixels on the software device and a GPU, and reload when "
+          "their files change") {
+    for (const auto& device : drawing_devices()) {
+        CAPTURE(slash::render::backend_name(device->backend()));
+        Scene scene;
+        scene.files.write("red.png", strip_png({{255, 0, 0, 255}}, 8));
+        scene.files.write("stripes.png", strip_png({{0, 255, 0, 255}, {0, 0, 255, 255}}, 1));
+        scene.files.write("flash.material.json", std::string(kFlashMaterial));
+        // The stripes, four times across the sprite.
+        scene.files.write("tiles.material.json", R"({
       "color": {"op": "texture", "args": ["stripes", {"op": "mul", "args": ["uv", 4]}]},
       "format": 1,
       "params": {"stripes": {"type": "texture", "value": "stripes.png", "repeat": true,
                              "filter": "nearest"}}
     })");
-    // Gray, as bright as the fraction of a second.
-    scene.files.write("clock.material.json", R"({
+        // Gray, as bright as the fraction of a second.
+        scene.files.write("clock.material.json", R"({
       "color": {"op": "vec4", "args": [{"op": "vec3", "args": [{"op": "fract", "args": ["time"]}]},
                                        1]},
       "format": 1
     })");
-    scene.create("flash", R"({"Transform2D": {"position": [8, 8]},
+        scene.create("flash", R"({"Transform2D": {"position": [8, 8]},
                               "Sprite2D": {"texture": "red.png", "texture_filter": "nearest",
                                            "material": "flash.material.json",
                                            "material_params": {"flash": 0.5}}})");
-    scene.create("tiles", R"({"Transform2D": {"position": [24, 8]},
+        scene.create("tiles", R"({"Transform2D": {"position": [24, 8]},
                               "Sprite2D": {"texture": "red.png", "texture_filter": "nearest",
                                            "material": "tiles.material.json"}})");
-    scene.create("clock", R"({"Transform2D": {"position": [8, 24]},
+        scene.create("clock", R"({"Transform2D": {"position": [8, 24]},
                               "Sprite2D": {"texture": "red.png", "texture_filter": "nearest",
                                            "material": "clock.material.json"}})");
-    auto target = device->create_texture(
-        {.width = 32, .height = 32, .filter = render::Filter::Nearest, .render_target = true});
-    REQUIRE(target.ok());
-    canvas::CanvasRenderer renderer(*device, scene.assets);
-    canvas::CanvasOptions options;
-    options.target = target.value();
-    options.clear = {.r = 0.0F, .g = 0.0F, .b = 0.0F, .a = 1.0F};
-    options.time = 7.25;
-    REQUIRE(renderer.draw(scene.world, options).ok());
-    CHECK(renderer.sprites_drawn() == 3);
-    auto image = device->read_texture(target.value());
-    REQUIRE(image.ok());
-    const auto near = [](Rgba got, Rgba want) {
-        for (std::size_t i = 0; i < 4; ++i) {
-            if (got.at(i) + 1 < want.at(i) || got.at(i) > want.at(i) + 1) {
-                return false;
+        auto target = device->create_texture(
+            {.width = 32, .height = 32, .filter = render::Filter::Nearest, .render_target = true});
+        REQUIRE(target.ok());
+        canvas::CanvasRenderer renderer(*device, scene.assets);
+        canvas::CanvasOptions options;
+        options.target = target.value();
+        options.clear = {.r = 0.0F, .g = 0.0F, .b = 0.0F, .a = 1.0F};
+        options.time = 7.25;
+        REQUIRE(renderer.draw(scene.world, options).ok());
+        CHECK(renderer.sprites_drawn() == 3);
+        auto image = device->read_texture(target.value());
+        REQUIRE(image.ok());
+        const auto near = [](Rgba got, Rgba want) {
+            for (std::size_t i = 0; i < 4; ++i) {
+                if (got.at(i) + 1 < want.at(i) || got.at(i) > want.at(i) + 1) {
+                    return false;
+                }
             }
-        }
-        return true;
-    };
-    CHECK(near(pixel(image.value(), 8, 8), {255, 128, 128, 255}));
-    CHECK(pixel(image.value(), 20, 8) == Rgba{0, 255, 0, 255});
-    CHECK(pixel(image.value(), 21, 8) == Rgba{0, 0, 255, 255});
-    CHECK(pixel(image.value(), 26, 8) == Rgba{0, 255, 0, 255});
-    CHECK(near(pixel(image.value(), 8, 24), {64, 64, 64, 255}));
+            return true;
+        };
+        CHECK(near(pixel(image.value(), 8, 8), {255, 128, 128, 255}));
+        CHECK(pixel(image.value(), 20, 8) == Rgba{0, 255, 0, 255});
+        CHECK(pixel(image.value(), 21, 8) == Rgba{0, 0, 255, 255});
+        CHECK(pixel(image.value(), 26, 8) == Rgba{0, 255, 0, 255});
+        CHECK(near(pixel(image.value(), 8, 24), {64, 64, 64, 255}));
 
-    // A new flash color, from the file.
-    std::string blue(kFlashMaterial);
-    blue.replace(blue.find("[1, 1, 1, 1]"), 12, "[0, 0, 1, 1]");
-    scene.files.write("flash.material.json", blue);
-    REQUIRE(scene.assets.poll().size() == 1);
-    REQUIRE(renderer.draw(scene.world, options).ok());
-    image = device->read_texture(target.value());
-    REQUIRE(image.ok());
-    CHECK(near(pixel(image.value(), 8, 8), {128, 0, 128, 255}));
+        // A new flash color, from the file.
+        std::string blue(kFlashMaterial);
+        blue.replace(blue.find("[1, 1, 1, 1]"), 12, "[0, 0, 1, 1]");
+        scene.files.write("flash.material.json", blue);
+        REQUIRE(scene.assets.poll().size() == 1);
+        REQUIRE(renderer.draw(scene.world, options).ok());
+        image = device->read_texture(target.value());
+        REQUIRE(image.ok());
+        CHECK(near(pixel(image.value(), 8, 8), {128, 0, 128, 255}));
+    }
 }
 
 // ---- Lights ----
@@ -971,64 +1015,64 @@ TEST_CASE("the canvas counts lights and shadows, and makes their textures only w
     CHECK(device->stats().textures == 2);
 }
 
-TEST_CASE("lights shade sprites on a GPU, as their masks, materials and shadows say") {
-    auto device = gpu_device();
-    if (device == nullptr) {
-        return;
-    }
-    Scene scene;
-    scene.files.write("white.png", strip_png({{255, 255, 255, 255}}, 8));
-    scene.files.write("flat.material.json", R"({"format": 1, "light_mode": "unshaded"})");
-    scene.create("dark", R"({"CanvasModulate": {"color": [0.5, 0.5, 0.5, 1]}})");
-    // A red light over the right half: 16 across and, stretched, 32 down.
-    scene.create("lamp", R"({"Transform2D": {"position": [24, 16], "scale": [1, 2]},
+TEST_CASE("lights shade sprites on the software device and a GPU, as their masks, materials and "
+          "shadows say") {
+    for (const auto& device : drawing_devices()) {
+        CAPTURE(slash::render::backend_name(device->backend()));
+        Scene scene;
+        scene.files.write("white.png", strip_png({{255, 255, 255, 255}}, 8));
+        scene.files.write("flat.material.json", R"({"format": 1, "light_mode": "unshaded"})");
+        scene.create("dark", R"({"CanvasModulate": {"color": [0.5, 0.5, 0.5, 1]}})");
+        // A red light over the right half: 16 across and, stretched, 32 down.
+        scene.create("lamp", R"({"Transform2D": {"position": [24, 16], "scale": [1, 2]},
                              "PointLight2D": {"texture": "white.png", "texture_scale": 2,
                                               "color": [1, 0, 0, 1], "shadow_enabled": true}})");
-    const std::string sprite =
-        R"("Sprite2D": {"texture": "white.png", "texture_filter": "nearest")";
-    scene.create("plain", R"({"Transform2D": {"position": [4, 4]}, )" + sprite + "}}");
-    scene.create("flat", R"({"Transform2D": {"position": [4, 20]}, )" + sprite +
-                             R"(, "material": "flat.material.json"}})");
-    scene.create("lit", R"({"Transform2D": {"position": [20, 4]}, )" + sprite + "}}");
-    const entt::entity masked =
-        scene.create("masked", R"({"Transform2D": {"position": [20, 24]}, )" + sprite +
-                                   R"(, "light_mask": 2}})");
-    auto target = device->create_texture(
-        {.width = 32, .height = 32, .filter = render::Filter::Nearest, .render_target = true});
-    REQUIRE(target.ok());
-    canvas::CanvasRenderer renderer(*device, scene.assets);
-    canvas::CanvasOptions options;
-    options.target = target.value();
-    options.clear = {.r = 0.0F, .g = 0.0F, .b = 0.0F, .a = 1.0F};
-    REQUIRE(renderer.draw(scene.world, options).ok());
-    auto image = device->read_texture(target.value());
-    REQUIRE(image.ok());
-    const auto near = [](Rgba got, Rgba want) {
-        for (std::size_t i = 0; i < 4; ++i) {
-            if (got.at(i) + 1 < want.at(i) || got.at(i) > want.at(i) + 1) {
-                return false;
+        const std::string sprite =
+            R"("Sprite2D": {"texture": "white.png", "texture_filter": "nearest")";
+        scene.create("plain", R"({"Transform2D": {"position": [4, 4]}, )" + sprite + "}}");
+        scene.create("flat", R"({"Transform2D": {"position": [4, 20]}, )" + sprite +
+                                 R"(, "material": "flat.material.json"}})");
+        scene.create("lit", R"({"Transform2D": {"position": [20, 4]}, )" + sprite + "}}");
+        const entt::entity masked =
+            scene.create("masked", R"({"Transform2D": {"position": [20, 24]}, )" + sprite +
+                                       R"(, "light_mask": 2}})");
+        auto target = device->create_texture(
+            {.width = 32, .height = 32, .filter = render::Filter::Nearest, .render_target = true});
+        REQUIRE(target.ok());
+        canvas::CanvasRenderer renderer(*device, scene.assets);
+        canvas::CanvasOptions options;
+        options.target = target.value();
+        options.clear = {.r = 0.0F, .g = 0.0F, .b = 0.0F, .a = 1.0F};
+        REQUIRE(renderer.draw(scene.world, options).ok());
+        auto image = device->read_texture(target.value());
+        REQUIRE(image.ok());
+        const auto near = [](Rgba got, Rgba want) {
+            for (std::size_t i = 0; i < 4; ++i) {
+                if (got.at(i) + 1 < want.at(i) || got.at(i) > want.at(i) + 1) {
+                    return false;
+                }
             }
-        }
-        return true;
-    };
-    CHECK(near(pixel(image.value(), 4, 4), {128, 128, 128, 255}));   // ambient only
-    CHECK(pixel(image.value(), 4, 20) == Rgba{255, 255, 255, 255});  // unshaded
-    CHECK(near(pixel(image.value(), 20, 4), {255, 128, 128, 255}));  // ambient plus red
-    CHECK(near(pixel(image.value(), 20, 24), {128, 128, 128, 255})); // not on the light's mask
+            return true;
+        };
+        CHECK(near(pixel(image.value(), 4, 4), {128, 128, 128, 255}));   // ambient only
+        CHECK(pixel(image.value(), 4, 20) == Rgba{255, 255, 255, 255});  // unshaded
+        CHECK(near(pixel(image.value(), 20, 4), {255, 128, 128, 255}));  // ambient plus red
+        CHECK(near(pixel(image.value(), 20, 24), {128, 128, 128, 255})); // not on the light's mask
 
-    // A wall just under the lamp shadows everything below it.
-    scene.world.ecs().get<world::Sprite2D>(masked).light_mask = 1;
-    scene.create("wall", R"({"Transform2D": {"position": [24, 17]}, "LightOccluder2D": {
+        // A wall just under the lamp shadows everything below it.
+        scene.world.ecs().get<world::Sprite2D>(masked).light_mask = 1;
+        scene.create("wall", R"({"Transform2D": {"position": [24, 17]}, "LightOccluder2D": {
                              "polygon": [[-16, 0], [16, 0]], "closed": false}})");
-    REQUIRE(renderer.draw(scene.world, options).ok());
-    CHECK(renderer.shadows_drawn() == 1);
-    image = device->read_texture(target.value());
-    REQUIRE(image.ok());
-    CHECK(near(pixel(image.value(), 20, 4), {255, 128, 128, 255}));
-    CHECK(near(pixel(image.value(), 20, 24), {128, 128, 128, 255}));
-    scene.world.ecs().remove<world::LightOccluder2D>(scene.world.find("wall"));
-    REQUIRE(renderer.draw(scene.world, options).ok());
-    image = device->read_texture(target.value());
-    REQUIRE(image.ok());
-    CHECK(near(pixel(image.value(), 20, 24), {255, 128, 128, 255}));
+        REQUIRE(renderer.draw(scene.world, options).ok());
+        CHECK(renderer.shadows_drawn() == 1);
+        image = device->read_texture(target.value());
+        REQUIRE(image.ok());
+        CHECK(near(pixel(image.value(), 20, 4), {255, 128, 128, 255}));
+        CHECK(near(pixel(image.value(), 20, 24), {128, 128, 128, 255}));
+        scene.world.ecs().remove<world::LightOccluder2D>(scene.world.find("wall"));
+        REQUIRE(renderer.draw(scene.world, options).ok());
+        image = device->read_texture(target.value());
+        REQUIRE(image.ok());
+        CHECK(near(pixel(image.value(), 20, 24), {255, 128, 128, 255}));
+    }
 }

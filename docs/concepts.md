@@ -14,8 +14,8 @@ do through them counts as a bug:
    JSON Schemas, and `engine.describe` returns them.
 3. **Every action is a command.** One registry of commands is the only way to change a world, and
    it is served the same way over MCP, JSON-RPC, REST and the command line.
-4. **An agent can observe the result.** Commands return structured JSON, logs are JSON lines, and
-   later milestones add frame captures and frame summaries.
+4. **An agent can observe the result.** Commands return structured JSON, logs are JSON lines,
+   and `frame.capture` draws what the window shows; later milestones add frame summaries.
 
 There is no GUI editor. People use a text editor, their agent and (later) a debug overlay.
 Gameplay code is plain C++; there is no scripting language. Where a design choice is open, the
@@ -48,7 +48,7 @@ The code follows the same split, one CMake library per module under `engine/`:
 | --- | --- |
 | `core` | `Result<T>`, JSON logging, JSON parsing and schemas, reflection, math, the fixed-step clock |
 | `platform` | The SDL3 window, the run loop and file access |
-| `render` | The render device: SDL3's GPU API (Vulkan, Metal, Direct3D 12), or the null device for headless runs |
+| `render` | The render device: SDL3's GPU API (Vulkan, Metal, Direct3D 12), the software device that draws on the CPU, or the null device for headless runs |
 | `asset` | Asset handles, loaders and hot reload |
 | `world` | The EnTT world, components, the component registry, scenes and prefabs |
 | `input` | Input, as Godot's: key, mouse, touch and gamepad events from SDL, rebindable actions and the state gameplay code reads |
@@ -233,6 +233,12 @@ machines where no backend starts, use the **null device**: it keeps textures and
 call exactly as the GPU device does, but draws nothing. So code tested headless fails the same
 way on a GPU, and `slash-cli run` and `slash-game` report which device drew in their summary's
 `renderer`.
+
+The **software device** draws on the CPU, into textures only, with the same shading code as the
+GPU device's shaders, so it gives the same pixels on every machine. `frame.capture` draws the
+frame the window shows on it, returning pixel colors, a PNG to look at or a file: that is how an
+agent checks what a player sees with no window or GPU. Tests draw on both devices and hold them
+to the same pixels.
 
 Shaders are written once in HLSL. Vulkan's SPIR-V and Metal's MSL are compiled ahead of time
 and committed, so building the engine needs no shader tools, and Direct3D 12 compiles the HLSL at
@@ -573,6 +579,7 @@ OpenAI-compatible servers (including local ones), Anthropic and Gemini; see the
 | Shadow map | A texture with one row per shadowed light, holding how far away the nearest occluder is in each direction |
 | Shortcut | A binding or action that presses a button from anywhere, such as Escape for Quit |
 | Size flags | How a container's child fills its cell: fill it, expand into spare room, or sit at the start, center or end |
+| Software device | The render device that draws on the CPU, the same on every machine, which `frame.capture` uses |
 | Sprite | A texture, or one frame of a sprite sheet, drawn at an entity's `Transform2D` (`Sprite2D`) |
 | Sprite sheet | One texture holding a grid of frames, `hframes` across and `vframes` down |
 | Storyboard | A game's facts that are not code, as typed entries in `storyboard/*.json` |
