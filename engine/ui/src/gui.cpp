@@ -1,5 +1,6 @@
 #include "internal.hpp"
 #include "line_edit.hpp"
+#include "text_edit.hpp"
 
 #include "slash/core/text.hpp"
 #include "slash/input/input.hpp"
@@ -28,7 +29,8 @@
 // _update_mouse_over), moves focus as Control does (scene/gui/control.cpp:
 // find_next_valid_focus, find_prev_valid_focus and _get_focus_neighbor with the legacy
 // strategy, Godot's default) and presses buttons as BaseButton does
-// (scene/gui/base_button.cpp) and edits text as LineEdit does (scene/gui/line_edit.cpp). Its
+// (scene/gui/base_button.cpp) and edits text as LineEdit and TextEdit do (scene/gui/line_edit.cpp,
+// and text_editor.cpp for TextEdit). Its
 // state is kept by entity ID, since sessions make entities anew when they roll a command back.
 // Drag and drop, tooltips, context menus and cursor shapes aren't here.
 namespace slash::ui {
@@ -71,8 +73,9 @@ struct GuiState {
     std::map<int, std::string> touch_focus;        // the control each finger pressed
     // Sticks holding a focus action, so a held stick moves focus once: (device, axis, action).
     std::set<std::tuple<int, int, std::string>> joy_held;
-    std::vector<std::string> presses;                    // press() calls for the next tick
-    std::map<std::string, EditState, std::less<>> edits; // each LineEdit's
+    std::vector<std::string> presses;                             // press() calls for the next tick
+    std::map<std::string, EditState, std::less<>> edits;          // each LineEdit's
+    std::map<std::string, TextEditState, std::less<>> text_edits; // each TextEdit's
     std::string clipboard;       // the world's clipboard, which a backend shares with the system's
     bool focus_by_arrow = false; // an arrow key is moving focus, so a LineEdit won't edit
 };
@@ -141,8 +144,9 @@ Focus focus_mode(const world::World& world, entt::entity entity) {
     if (mode == "none") {
         return Focus::None;
     }
-    return is_button(world, entity) || world.ecs().all_of<world::LineEdit>(entity) ? Focus::All
-                                                                                   : Focus::None;
+    return is_button(world, entity) || world.ecs().any_of<world::LineEdit, world::TextEdit>(entity)
+               ? Focus::All
+               : Focus::None;
 }
 
 // The BaseButton fields Button and TextureButton share.
@@ -292,8 +296,12 @@ void emit(world::World& world, GuiState& state, std::string_view kind, const std
     if (id.empty()) {
         return;
     }
-    const UiEvent event{
-        .kind = std::string(kind), .id = id, .toggled_on = toggled.value_or(false), .text = {}};
+    const UiEvent event{.kind = std::string(kind),
+                        .id = id,
+                        .toggled_on = toggled.value_or(false),
+                        .text = {},
+                        .from_line = 0,
+                        .to_line = 0};
     (state.tick == world.tick() ? state.events : state.next).push_back(event);
     json::Value data;
     if (toggled) {
@@ -325,7 +333,12 @@ void emit_text(world::World& world, GuiState& state, std::string_view kind, cons
     if (id.empty()) {
         return;
     }
-    const UiEvent event{.kind = std::string(kind), .id = id, .toggled_on = false, .text = text};
+    const UiEvent event{.kind = std::string(kind),
+                        .id = id,
+                        .toggled_on = false,
+                        .text = text,
+                        .from_line = 0,
+                        .to_line = 0};
     (state.tick == world.tick() ? state.events : state.next).push_back(event);
     world.emit(std::string(kind), id, json::Object{{std::string(key), text}});
 }
@@ -958,6 +971,77 @@ void line_edit_focus_exit(world::World& world, GuiState& state, const std::strin
     }
 }
 
+// ---- Multi-line text fields ----
+
+// Records the signals a TextEdit emitted at once: text_set, and lines_edited_from with its lines.
+void emit_text_edit(world::World& world, GuiState& state, const std::string& id,
+                    const std::vector<TextEditSignal>& signals) {
+    for (const TextEditSignal& signal : signals) {
+        if (signal.kind != "lines_edited_from") {
+            emit(world, state, signal.kind, id);
+            continue;
+        }
+        const UiEvent event{.kind = signal.kind,
+                            .id = id,
+                            .toggled_on = false,
+                            .text = {},
+                            .from_line = signal.from_line,
+                            .to_line = signal.to_line};
+        (state.tick == world.tick() ? state.events : state.next).push_back(event);
+        world.emit(signal.kind, id,
+                   json::Object{{"from_line", signal.from_line}, {"to_line", signal.to_line}});
+    }
+}
+
+// A TextEdit's lines shaped at the size and with the theme a layout gave it, or nullopt.
+std::optional<TextArea> text_area(world::World& world, const Layout& layout, entt::entity entity,
+                                  const TextEditState& s) {
+    const auto view = layout.text_edits.find(entity);
+    const Placed* placed = layout.find(entity);
+    text::Fonts* found = fonts(world);
+    const auto* edit = world.ecs().try_get<world::TextEdit>(entity);
+    if (view == layout.text_edits.end() || placed == nullptr || found == nullptr ||
+        edit == nullptr) {
+        return std::nullopt;
+    }
+    return text_area_for(*found, view->second, placed->size, *edit, s);
+}
+
+// TextEdit's NOTIFICATION_FOCUS_ENTER.
+void text_edit_focus_entered(world::World& world, GuiState& state, const std::string& id) {
+    const entt::entity entity = world.find(id);
+    const auto* edit =
+        entity != entt::null ? world.ecs().try_get<world::TextEdit>(entity) : nullptr;
+    if (edit != nullptr) {
+        text_edit_focus_enter(*edit, state.text_edits[id]);
+    }
+}
+
+// NOTIFICATION_FOCUS_EXIT. Committing a composition needs the text laid out.
+void text_edit_focus_exited(world::World& world, GuiState& state, const std::string& id) {
+    const entt::entity entity = world.find(id);
+    auto* edit = entity != entt::null ? world.ecs().try_get<world::TextEdit>(entity) : nullptr;
+    const auto found = state.text_edits.find(id);
+    if (edit == nullptr || found == state.text_edits.end()) {
+        return;
+    }
+    TextEditState& s = found->second;
+    std::vector<TextEditSignal> signals;
+    const TextEditContext context{.world = &world,
+                                  .map = input::map(std::as_const(world)),
+                                  .now = 0.0,
+                                  .focused = false,
+                                  .signals = &signals};
+    std::optional<Layout> placed;
+    if (text::Fonts* fonts_found = fonts(world); fonts_found != nullptr && !s.ime_text.empty()) {
+        placed.emplace(layout(world, *fonts_found, settings(world).viewport));
+    }
+    std::optional<TextArea> area =
+        placed ? text_area(world, *placed, entity, s) : std::optional<TextArea>();
+    text_edit_focus_exit(context, *edit, s, area ? &*area : nullptr);
+    emit_text_edit(world, state, id, signals);
+}
+
 // ---- Focus ----
 
 // BaseButton's NOTIFICATION_FOCUS_EXIT.
@@ -986,6 +1070,7 @@ void release(world::World& world, GuiState& state) {
     emit(world, state, "focus_exited", old);
     button_focus_exit(world, state, old);
     line_edit_focus_exit(world, state, old);
+    text_edit_focus_exited(world, state, old);
 }
 
 // Viewport::_gui_control_grab_focus.
@@ -999,6 +1084,7 @@ void grab(world::World& world, GuiState& state, const std::string& id, bool hide
     state.hide_focus = hide;
     emit(world, state, "focus_entered", id);
     line_edit_focus_enter(world, state, id);
+    text_edit_focus_entered(world, state, id);
 }
 
 // ---- Buttons ----
@@ -1366,6 +1452,74 @@ private:
             event.type != input::EventType::ScreenDrag) {
             line_edit_input(entity, event);
         }
+        if (is_text_edit(entity)) {
+            text_edit_event(entity, event);
+        }
+    }
+
+    [[nodiscard]] bool is_text_edit(entt::entity entity) const {
+        return entity != entt::null && world_.ecs().all_of<world::TextEdit>(entity) &&
+               !world_.id_of(entity).empty();
+    }
+
+    // A TextEdit's lines shaped once a tick and kept in step by the editing: shaped again if
+    // something else changed its text.
+    TextArea* area_of(entt::entity entity, const TextEditState& s) {
+        const std::string& text = world_.ecs().get<world::TextEdit>(entity).text;
+        if (const auto found = areas_.find(entity);
+            found != areas_.end() && found->second.text == text) {
+            return found->second.area.get();
+        }
+        std::optional<TextArea> made = text_area(world_, layout_, entity, s);
+        if (!made) {
+            return nullptr;
+        }
+        CachedArea& cached = areas_[entity];
+        cached.area = std::make_unique<TextArea>(std::move(*made));
+        cached.text = text;
+        return cached.area.get();
+    }
+
+    [[nodiscard]] TextEditContext text_context(const std::string& id,
+                                               std::vector<TextEditSignal>& signals) const {
+        return {.world = &world_,
+                .map = map_,
+                .now = now_,
+                .focused = state_.key_focus == id,
+                .signals = &signals};
+    }
+
+    // Edits a TextEdit with one of the text_edit_* calls, then records its signals.
+    template <typename Call>
+    void edit_text(entt::entity entity, Call&& call) {
+        const std::string id = this->id(entity);
+        TextEditState& s = state_.text_edits[id];
+        TextArea* area = area_of(entity, s);
+        if (area == nullptr) {
+            return;
+        }
+        auto& edit = world_.ecs().get<world::TextEdit>(entity);
+        std::vector<TextEditSignal> signals;
+        const TextEditContext context = text_context(id, signals);
+        std::forward<Call>(call)(context, edit, s, *area);
+        areas_[entity].text = edit.text;
+        emit_text_edit(world_, state_, id, signals);
+    }
+
+    // TextEdit::gui_input.
+    void text_edit_event(entt::entity entity, const input::Event& event) {
+        const Vec2 local = to_local(entity, event.position).value_or(Vec2{});
+        Vec2 relative;
+        if (event.relative) {
+            const Vec2 origin = to_local(entity, {}).value_or(Vec2{});
+            relative = to_local(entity, *event.relative).value_or(Vec2{}) - origin;
+        }
+        edit_text(entity, [&](const TextEditContext& context, world::TextEdit& edit,
+                              TextEditState& s, TextArea& area) {
+            if (text_edit_input(context, edit, s, area, event, local, relative)) {
+                handled_ = true;
+            }
+        });
     }
 
     [[nodiscard]] bool is_line_edit(entt::entity entity) const {
@@ -1696,6 +1850,15 @@ private:
     // MainLoop's NOTIFICATION_OS_IME_UPDATE, for the LineEdit being edited.
     void ime_event(const input::Event& event) {
         const entt::entity focus = find(state_.key_focus);
+        if (is_text_edit(focus)) {
+            edit_text(focus, [&](const TextEditContext& context, world::TextEdit& edit,
+                                 TextEditState& s, TextArea& area) {
+                text_edit_ime_update(context, edit, s, area, to_utf32(event.text),
+                                     event.selection_start, event.selection_length);
+            });
+            handled_ = true;
+            return;
+        }
         if (!is_line_edit(focus)) {
             return;
         }
@@ -1710,6 +1873,15 @@ private:
     // LineEdit::unhandled_key_input: a character typed with modifiers no shortcut took.
     void unhandled_key(const input::Event& event) {
         const entt::entity focus = find(state_.key_focus);
+        if (is_text_edit(focus)) {
+            edit_text(focus, [&](const TextEditContext& context, world::TextEdit& edit,
+                                 TextEditState& s, TextArea& area) {
+                if (text_edit_unhandled_key(context, edit, s, area, event)) {
+                    handled_ = true;
+                }
+            });
+            return;
+        }
         if (!event.pressed || event.unicode < 0x20U || !is_line_edit(focus)) {
             return;
         }
@@ -2283,6 +2455,11 @@ private:
     std::unordered_map<entt::entity, std::vector<entt::entity>> kids_;
     double now_ = 0.0; // seconds of world time, for triple clicks
     bool handled_ = false;
+    struct CachedArea {
+        std::unique_ptr<TextArea> area;
+        std::string text; // the text it was shaped for
+    };
+    std::unordered_map<entt::entity, CachedArea> areas_;
 };
 
 // Drops the state of LineEdits that went away, stops editing one that can no longer be edited,
@@ -2315,17 +2492,82 @@ void edit_upkeep(world::World& world, GuiState& state, double tick_seconds) {
     }
 }
 
+// Drops the state of TextEdits that went away and runs their timers. One whose text or caret
+// changed from outside catches up, as set_text does, and a drag selection held still follows
+// the pointer.
+void text_edit_upkeep(world::World& world, GuiState& state, double tick_seconds) {
+    std::vector<std::string> stale;
+    std::vector<std::string> held;
+    const bool left = input::is_mouse_button_pressed(world, input::MouseButton::Left);
+    for (auto it = state.text_edits.begin(); it != state.text_edits.end();) {
+        const entt::entity entity = world.find(it->first);
+        const auto* edit =
+            entity != entt::null ? world.ecs().try_get<world::TextEdit>(entity) : nullptr;
+        if (edit == nullptr) {
+            it = state.text_edits.erase(it);
+            continue;
+        }
+        TextEditState& s = it->second;
+        if (text_edit_tick(*edit, s, state.key_focus == it->first, tick_seconds, left)) {
+            held.push_back(it->first);
+        }
+        if (s.known && (s.known_text != edit->text || s.caret.line != edit->caret_line ||
+                        s.caret.column != edit->caret_column)) {
+            stale.push_back(it->first);
+        }
+        ++it;
+    }
+    text::Fonts* found = fonts(world);
+    if ((stale.empty() && held.empty()) || found == nullptr) {
+        return;
+    }
+    const Layout placed = layout(world, *found, settings(world).viewport);
+    const input::Map* map = input::map(std::as_const(world));
+    const auto each = [&](const std::string& id, const auto& call) {
+        const entt::entity entity = world.find(id);
+        TextEditState& s = state.text_edits[id];
+        std::optional<TextArea> area = text_area(world, placed, entity, s);
+        if (!area) {
+            return;
+        }
+        std::vector<TextEditSignal> signals;
+        const TextEditContext context{.world = &world,
+                                      .map = map,
+                                      .now = 0.0,
+                                      .focused = state.key_focus == id,
+                                      .signals = &signals};
+        call(context, world.ecs().get<world::TextEdit>(entity), s, *area, entity);
+        emit_text_edit(world, state, id, signals);
+    };
+    for (const std::string& id : stale) {
+        each(id, [](const TextEditContext& context, world::TextEdit& edit, TextEditState& s,
+                    TextArea& area,
+                    entt::entity /*entity*/) { sync_text_edit(context, edit, s, area); });
+    }
+    const Vec2 mouse = input::mouse_position(world);
+    for (const std::string& id : held) {
+        each(id, [&](const TextEditContext& context, world::TextEdit& edit, TextEditState& s,
+                     TextArea& area, entt::entity entity) {
+            const Placed* at = placed.find(entity);
+            const auto local = at != nullptr ? inverse(at->transform) : std::nullopt;
+            text_edit_click_held(context, edit, s, area, local ? local->apply(mouse) : Vec2{});
+        });
+    }
+}
+
 // Drops what refers to controls that went away, were hidden or can no longer have it, as
 // Viewport::_gui_hide_control and _gui_remove_control, BaseButton's visibility and
 // set_disabled do, and runs shortcut highlights down.
 void upkeep(world::World& world, GuiState& state, double tick_seconds) {
     const bool tracking = !state.key_focus.empty() || !state.mouse_focus.empty() ||
                           !state.mouse_over_hierarchy.empty() || !state.touch_focus.empty() ||
-                          !state.buttons.empty() || !state.edits.empty();
+                          !state.buttons.empty() || !state.edits.empty() ||
+                          !state.text_edits.empty();
     if (!tracking) {
         return;
     }
     edit_upkeep(world, state, tick_seconds);
+    text_edit_upkeep(world, state, tick_seconds);
     const Parents parents(world);
     const auto shown = [&](const std::string& id) {
         const entt::entity entity = world.find(id);
@@ -2424,6 +2666,17 @@ void run(world::World& world, double tick_seconds) {
             Editor(world, *state, entity, nullptr).text_changed();
         }
         edit.text_changed_dirty = false;
+    }
+    // TextEdit's deferred text_changed and caret_changed.
+    for (auto& [id, edit] : state->text_edits) {
+        const std::vector<std::string> deferred = std::move(edit.deferred);
+        edit.deferred.clear();
+        if (world.find(id) == entt::null) {
+            continue;
+        }
+        for (const std::string& kind : deferred) {
+            emit(world, *state, kind, id);
+        }
     }
 }
 
@@ -2597,9 +2850,55 @@ std::string ime_text(const world::World& world, entt::entity line_edit) {
     return state != nullptr ? to_utf8(state->ime_text) : std::string();
 }
 
+const TextEditState* text_edit_state(const world::World& world, entt::entity entity) {
+    const GuiState* state = state_of(world);
+    if (state == nullptr || world.id_of(entity).empty()) {
+        return nullptr;
+    }
+    const auto found = state->text_edits.find(world.id_of(entity));
+    return found != state->text_edits.end() ? &found->second : nullptr;
+}
+
+namespace {
+
+// A TextEdit with focus takes text while it's editable, with the input method's area on the
+// caret's line, as _update_ime_window_position.
+input::TextInput text_edit_text_input(const world::World& world, entt::entity focus,
+                                      const world::TextEdit& edit) {
+    input::TextInput out;
+    if (!edit.editable) {
+        return out;
+    }
+    const TextEditState* state = text_edit_state(world, focus);
+    out.active = true;
+    out.show_keyboard = state != nullptr && state->show_keyboard && edit.virtual_keyboard_enabled;
+    out.keyboard = "multiline";
+    if (text::Fonts* found = fonts(world); found != nullptr) {
+        const Layout placed = layout(world, *found, settings(world).viewport);
+        const Placed* at = placed.find(focus);
+        const auto view = placed.text_edits.find(focus);
+        if (at != nullptr && view != placed.text_edits.end()) {
+            const Rect2 rect = global_rect(*at);
+            const float height = view->second.font_height;
+            out.position = {rect.position.x,
+                            rect.position.y + view->second.caret_position.y - height};
+            out.size = {rect.size.x, height};
+            out.caret = static_cast<int>(view->second.caret_position.x);
+        }
+    }
+    return out;
+}
+
+} // namespace
+
 input::TextInput text_input(const world::World& world) {
     input::TextInput out;
     const entt::entity focus = focus_owner(world);
+    if (const auto* text_edit =
+            focus != entt::null ? world.ecs().try_get<world::TextEdit>(focus) : nullptr;
+        text_edit != nullptr) {
+        return text_edit_text_input(world, focus, *text_edit);
+    }
     const auto* edit = focus != entt::null ? world.ecs().try_get<world::LineEdit>(focus) : nullptr;
     const EditState* state = edit != nullptr ? edit_state(world, focus) : nullptr;
     if (state == nullptr || !state->editing) {

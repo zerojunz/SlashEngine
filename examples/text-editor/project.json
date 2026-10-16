@@ -1,0 +1,8 @@
+{
+  "format": 1,
+  "gui": {"allow_system_fallback": false},
+  "main_scene": "main.scene.json",
+  "name": "Text editor",
+  "version": "0.1.0",
+  "window": {"height": 240, "width": 320}
+}

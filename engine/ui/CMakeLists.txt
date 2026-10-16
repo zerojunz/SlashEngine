@@ -4,6 +4,8 @@ add_library(slash_ui
     src/layout.cpp
     src/line_edit.cpp
     src/style.cpp
+    src/text_edit.cpp
+    src/text_editor.cpp
     src/theme.cpp
     src/ui.cpp)
 add_library(slash::ui ALIAS slash_ui)

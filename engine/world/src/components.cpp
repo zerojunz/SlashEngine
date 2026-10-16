@@ -562,6 +562,73 @@ void register_ui_components(ComponentRegistry& registry) {
         .describe("text_direction", text_direction)
         .describe("language", language);
 
+    registry.add<TextEdit>()
+        .set_doc("A text field of several lines, as Godot's TextEdit: a click or focus puts the "
+                 "caret in it; typing, an input method and the on-screen keyboard insert at the "
+                 "caret; ui_text_newline breaks the line; ui_text_* actions move the caret, "
+                 "select, delete and scroll; ui_cut, ui_copy, ui_paste, ui_undo and ui_redo "
+                 "work the clipboard and undo. Emits text_changed, text_set, lines_edited_from "
+                 "{\"from_line\", \"to_line\"} and caret_changed. Theme items: normal, "
+                 "read_only and focus styles, font, font_size, font_color, font_readonly_color, "
+                 "font_selected_color, font_placeholder_color, font_outline_color, outline_size, "
+                 "caret_color, caret_background_color, caret_width, selection_color, "
+                 "current_line_color, background_color and line_spacing.")
+        .describe("text", {.doc = R"(Lines break at "\n".)"})
+        .describe("placeholder_text", {.doc = "Shown, dimmed, while the text is empty."})
+        .describe("editable", {.doc = "Typing changes the text; off, it can still be selected "
+                                      "and copied."})
+        .describe("backspace_deletes_composite_character_enabled",
+                  {.doc = "Backspace deletes a whole character with its accents or an emoji "
+                          "sequence, not one code point."})
+        .describe("shortcut_keys_enabled",
+                  {.doc = "Cut, copy, paste, select all, undo and redo by keyboard shortcut."})
+        .describe("selecting_enabled", {.doc = "Text can be selected."})
+        .describe("deselect_on_focus_loss_enabled", {.doc = "Losing focus drops the selection."})
+        .describe("empty_selection_clipboard_enabled",
+                  {.doc = "Cut and copy with nothing selected take the caret's line."})
+        .describe("wrap_mode", {.doc = "Wrap lines wider than the field (boundary).",
+                                .choices = {"none", "boundary"}})
+        .describe("autowrap_mode",
+                  {.doc = "Where wrapped lines break: between words, inside words too "
+                          "(word_smart), or anywhere.",
+                   .choices = {"arbitrary", "word", "word_smart"}})
+        .describe("tab_input_mode",
+                  {.doc = "Tab types a tab; off, Tab moves focus. ui_focus_mode (Ctrl+M) "
+                          "switches it."})
+        .describe("virtual_keyboard_enabled",
+                  {.doc = "Show the on-screen keyboard while it has focus, on phones and "
+                          "tablets."})
+        .describe("virtual_keyboard_show_on_focus",
+                  {.doc = "Show it as soon as the field takes focus, not only when tapped."})
+        .describe("scroll_past_end_of_file",
+                  {.doc = "Let the last line scroll up to the top of the field."})
+        .describe("scroll_vertical",
+                  {.doc = "Lines scrolled down, wrapped rows counted.", .min = 0.0})
+        .describe("scroll_horizontal", {.doc = "Pixels scrolled right.", .min = 0})
+        .describe("scroll_fit_content_height",
+                  {.doc = "Its minimum height grows to fit every line."})
+        .describe("scroll_fit_content_width",
+                  {.doc = "Its minimum width grows to fit the widest line."})
+        .describe("caret_type", {.doc = "A line between characters, or a block over one.",
+                                 .choices = {"line", "block"}})
+        .describe("caret_blink", {.doc = "The caret blinks."})
+        .describe("caret_blink_interval",
+                  {.doc = "Seconds the caret is shown, then hidden, when it blinks.", .min = 0.001})
+        .describe("caret_draw_when_editable_disabled", {.doc = "Draw the caret when not editable."})
+        .describe("caret_move_on_right_click",
+                  {.doc = "A right click outside the selection moves the caret."})
+        .describe("caret_mid_grapheme",
+                  {.doc = "Let the caret stop between a letter and its accents, or inside an "
+                          "emoji sequence."})
+        .describe("caret_line", {.doc = "The caret's line, from 0.", .min = 0})
+        .describe("caret_column", {.doc = "Characters before the caret in its line.", .min = 0})
+        .describe("highlight_current_line",
+                  {.doc = "Draw current_line_color behind the caret's line."})
+        .describe("draw_tabs", {.doc = "Draw an arrow for each tab."})
+        .describe("draw_spaces", {.doc = "Draw a dot for each space."})
+        .describe("text_direction", text_direction)
+        .describe("language", language);
+
     registry.add<BoxContainer>()
         .set_doc("Lays out its children in a row, or a column when vertical, as Godot's "
                  "HBoxContainer and VBoxContainer: each at its minimum size along it, plus a share "

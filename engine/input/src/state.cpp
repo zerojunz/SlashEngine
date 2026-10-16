@@ -342,8 +342,9 @@ Keyboard host_keyboard() {
 }
 
 bool is_text_action(std::string_view name) {
-    static constexpr std::array<std::string_view, 6> kEditing = {
-        "ui_cut", "ui_copy", "ui_paste", "ui_undo", "ui_redo", "ui_swap_input_direction"};
+    static constexpr std::array<std::string_view, 8> kEditing = {
+        "ui_cut",  "ui_copy",      "ui_paste", "ui_undo", "ui_redo", "ui_swap_input_direction",
+        "ui_menu", "ui_focus_mode"};
     return name.starts_with("ui_text_") ||
            std::find(kEditing.begin(), kEditing.end(), name) != kEditing.end();
 }
@@ -422,6 +423,23 @@ Map Map::with_defaults(Keyboard keyboard) {
     add("ui_text_select_all", {key_binding(Key::A, cmd)});
     add("ui_text_clear_carets_and_selection", {key_binding(Key::Escape)});
     add("ui_swap_input_direction", {key_binding(Key::QuoteLeft, cmd)});
+    // TextEdit's.
+    const Modifiers cmd_alt =
+        mac ? Modifiers{.alt = true, .meta = true} : Modifiers{.ctrl = true, .alt = true};
+    add("ui_text_newline", {key_binding(Key::Enter), key_binding(Key::KpEnter),
+                            key_binding(Key::Enter, shift), key_binding(Key::KpEnter, shift)});
+    add("ui_text_newline_blank", {key_binding(Key::Enter, cmd), key_binding(Key::KpEnter, cmd)});
+    add("ui_text_newline_above",
+        {key_binding(Key::Enter, shift_cmd), key_binding(Key::KpEnter, shift_cmd)});
+    add("ui_text_indent", {key_binding(Key::Tab)});
+    add("ui_text_dedent", {key_binding(Key::Tab, shift)});
+    add("ui_text_scroll_up", {key_binding(Key::Up, mac ? cmd_alt : cmd)});
+    add("ui_text_scroll_down", {key_binding(Key::Down, mac ? cmd_alt : cmd)});
+    add("ui_text_select_word_under_caret",
+        {key_binding(Key::G, mac ? Modifiers{.ctrl = true, .meta = true} : alt)});
+    add("ui_text_toggle_insert_mode", {key_binding(Key::Insert)});
+    add("ui_focus_mode", {key_binding(Key::M, ctrl)});
+    add("ui_menu", {key_binding(Key::Menu)});
     return map;
 }
 

@@ -325,6 +325,32 @@ std::string script_code(hb_script_t script) {
     return {tag.data(), 4};
 }
 
+// Godot's shaped_text_tab_align: each tab's advance reaches the next tab stop after the text
+// since the last tab, going through the paragraph in its direction.
+void align_tabs(Shaped& shaped, std::string_view text, const std::vector<float>& stops) {
+    if (std::ranges::any_of(stops, [](float stop) { return stop <= 0.0F; })) {
+        return;
+    }
+    std::size_t index = 0;
+    double off = 0.0;
+    const bool rtl = (shaped.base % 2U) == 1U;
+    const std::size_t count = shaped.glyphs.size();
+    for (std::size_t k = 0; k < count; ++k) {
+        Glyph& glyph = shaped.glyphs[rtl ? count - 1 - k : k];
+        if (char_at(text, glyph.cluster) == U'\t') {
+            double tab_off = 0.0;
+            while (tab_off <= off) {
+                tab_off += stops[index];
+                index = (index + 1) % stops.size();
+            }
+            glyph.advance = static_cast<float>(tab_off - off);
+            off = 0.0;
+            continue;
+        }
+        off += glyph.advance;
+    }
+}
+
 // Glyphs sharing a cluster: what a line breaks between.
 struct Cluster {
     std::size_t first = 0; // glyph
@@ -1299,7 +1325,14 @@ Result<TextLayout> Fonts::layout(std::string_view text, const LayoutOptions& opt
             continue;
         }
         const std::string_view paragraph = text.substr(start, i - start);
-        const Shaped& shaped = impl_->shape(chain.value(), options.font_size, paragraph, options);
+        const Shaped* found = &impl_->shape(chain.value(), options.font_size, paragraph, options);
+        Shaped aligned;
+        if (!options.tab_stops.empty() && paragraph.find('\t') != std::string_view::npos) {
+            aligned = *found;
+            align_tabs(aligned, paragraph, options.tab_stops);
+            found = &aligned;
+        }
+        const Shaped& shaped = *found;
         const std::size_t first_line = layout.lines.size();
         Impl::break_lines(layout, paragraph, start, shaped.glyphs, (shaped.base % 2U) == 1U,
                           options);

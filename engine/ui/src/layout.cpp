@@ -1,5 +1,6 @@
 #include "internal.hpp"
 #include "line_edit.hpp"
+#include "text_edit.hpp"
 
 #include "slash/core/assert.hpp"
 #include "slash/render/image.hpp"
@@ -11,6 +12,7 @@
 #include <cmath>
 #include <cstddef>
 #include <deque>
+#include <iterator>
 #include <map>
 #include <memory>
 #include <optional>
@@ -44,6 +46,7 @@ constexpr std::size_t kLeft = 0;
 constexpr std::size_t kTop = 1;
 constexpr std::size_t kRight = 2;
 constexpr std::size_t kBottom = 3;
+constexpr float kRoomForAll = 1.0e6F; // a TextEdit's height with room for every row
 
 const world::Control kDefaultControl{};
 
@@ -799,6 +802,10 @@ struct Node {
     std::unique_ptr<LineEditView> edit_view;
     std::optional<Field> field;
     EditState edit;
+    // A TextEdit, its theme items and the gui system's state for it.
+    const world::TextEdit* text_edit = nullptr;
+    std::unique_ptr<TextEditView> text_view;
+    const TextEditState* text_state = nullptr;
 
     // Each pass.
     Vec2 minimum;                 // combined minimum size
@@ -1055,6 +1062,9 @@ struct Builder {
         if (const auto* edit = ecs.try_get<world::LineEdit>(entity); edit != nullptr) {
             start_line_edit(node, *edit, resolver("LineEdit"));
         }
+        if (const auto* edit = ecs.try_get<world::TextEdit>(entity); edit != nullptr) {
+            start_text_edit(node, *edit, resolver("TextEdit"));
+        }
         if (const auto* texture = ecs.try_get<world::TextureButton>(entity); texture != nullptr) {
             node.texture_button = texture;
             const std::array<std::pair<const std::string*, std::string_view>, 5> paths{{
@@ -1152,6 +1162,55 @@ struct Builder {
         if (edit.icon_expand_mode == "fit_to_line_edit") {
             node.depends = Depends::Width;
         }
+    }
+
+    // A TextEdit's theme items, its scroll bars' from the VScrollBar and HScrollBar types (they
+    // are its children in Godot, so its own overrides don't reach them).
+    void start_text_edit(Node& node, const world::TextEdit& edit, const Resolver& theme) {
+        auto view = std::make_unique<TextEditView>();
+        view->normal = theme.style("normal");
+        view->read_only = theme.style("read_only");
+        view->focus = theme.style("focus");
+        view->font = theme.font("font");
+        view->font_size = std::clamp(theme.font_size("font_size"), 1, text::kMaxFontSize);
+        view->font_color = theme.color("font_color");
+        view->font_selected_color = theme.color("font_selected_color");
+        view->font_readonly_color = theme.color("font_readonly_color");
+        view->font_placeholder_color = theme.color("font_placeholder_color");
+        view->font_outline_color = theme.color("font_outline_color");
+        view->caret_color = theme.color("caret_color");
+        view->caret_background_color = theme.color("caret_background_color");
+        view->selection_color = theme.color("selection_color");
+        view->current_line_color = theme.color("current_line_color");
+        view->background_color = theme.color("background_color");
+        view->line_spacing = theme.constant("line_spacing");
+        view->outline_size = theme.constant("outline_size");
+        view->caret_width = theme.constant("caret_width");
+        view->wrap_offset = theme.constant("wrap_offset");
+        static const world::Control kNoOverrides;
+        const Resolver v_bar(node.themes, kNoOverrides, "VScrollBar");
+        view->v_scroll = v_bar.style("scroll");
+        view->v_grabber = v_bar.style("grabber");
+        view->v_padding_left = v_bar.constant("padding_left");
+        view->v_padding_right = v_bar.constant("padding_right");
+        const Resolver h_bar(node.themes, kNoOverrides, "HScrollBar");
+        view->h_scroll = h_bar.style("scroll");
+        view->h_grabber = h_bar.style("grabber");
+        view->h_padding_top = h_bar.constant("padding_top");
+        view->h_padding_bottom = h_bar.constant("padding_bottom");
+        view->rtl = node.rtl;
+        node.text_edit = &edit;
+        node.text_view = std::move(view);
+        node.text_state = text_edit_state(world, node.entity);
+        if (edit.scroll_fit_content_height && edit.wrap_mode == "boundary") {
+            node.depends = Depends::Width;
+        }
+    }
+
+    // The state a TextEdit shows: the gui system's, or a new one.
+    [[nodiscard]] static const TextEditState& text_state_of(const Node& node) {
+        static const TextEditState kFresh;
+        return node.text_state != nullptr ? *node.text_state : kFresh;
     }
 
     void start_bar(Node& node, const world::ProgressBar& bar, const Resolver& theme) {
@@ -1382,6 +1441,24 @@ struct Builder {
         if (node.field && node.line_edit) {
             node.field->resize(size.value_or(Vec2{}));
             minimum = max(minimum, node.field->minimum_size(*node.line_edit));
+        }
+        if (node.text_edit != nullptr) {
+            const world::TextEdit& edit = *node.text_edit;
+            if (edit.scroll_fit_content_height || edit.scroll_fit_content_width) {
+                // Fitting its height, it is measured with room for every row, the size Godot's
+                // TextEdit settles on a frame or two after its minimum size changes.
+                Vec2 at = size.value_or(Vec2{});
+                if (edit.scroll_fit_content_height) {
+                    at.y = kRoomForAll;
+                }
+                const TextArea area =
+                    text_area_for(fonts, *node.text_view, at, edit, text_state_of(node));
+                minimum = max(minimum, area.minimum_size());
+            } else {
+                minimum = max(minimum,
+                              (edit.editable ? node.text_view->normal : node.text_view->read_only)
+                                  .minimum_size());
+            }
         }
         if (node.texture_button != nullptr && !node.texture_button->ignore_texture_size) {
             // TextureButton::get_minimum_size: the normal texture's size, else the pressed
@@ -2089,6 +2166,9 @@ struct Builder {
         if (node.field) {
             finish_line_edit(node, size, boxes);
         }
+        if (node.text_edit != nullptr) {
+            finish_text_edit(node, size, boxes);
+        }
         std::erase_if(boxes, [&](Box& box) { return !keep(box); });
         if (!boxes.empty()) {
             out.boxes.emplace(node.entity, std::move(boxes));
@@ -2130,6 +2210,26 @@ struct Builder {
             out.overlays.emplace(node.entity, std::move(over));
         }
         out.line_edits.emplace(node.entity, std::move(view));
+    }
+
+    // What a TextEdit draws at the size it got.
+    void finish_text_edit(Node& node, Vec2 size, std::vector<Box>& boxes) {
+        const world::TextEdit& edit = *node.text_edit;
+        const TextArea area =
+            text_area_for(fonts, *node.text_view, size, edit, text_state_of(node));
+        TextEditState fallback;
+        const TextEditState& shown = shown_state(edit, node.text_state, area, fallback);
+        TextArea::Draw draw;
+        TextEditView view = *node.text_view;
+        area.draw(edit, shown, has_focus(world, node.entity), draw, view);
+        view.error = area.error();
+        boxes.insert(boxes.end(), std::make_move_iterator(draw.under.begin()),
+                     std::make_move_iterator(draw.under.end()));
+        out.labels.emplace(node.entity, std::move(draw.text));
+        if (!draw.over.empty()) {
+            out.overlays.emplace(node.entity, std::move(draw.over));
+        }
+        out.text_edits.emplace(node.entity, std::move(view));
     }
 
     // A Button's style box, focus box, icon and text, as its NOTIFICATION_DRAW draws them.
