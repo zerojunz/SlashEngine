@@ -59,6 +59,16 @@ public:
     // batch, check everything but write nothing.
     [[nodiscard]] bool dry_running() const noexcept { return dry_running_; }
 
+    // Called after each outermost command that succeeded and was not a dry run, with its name,
+    // its params and the tick it started at, for recording replays; and with "asset.reload"
+    // when poll_assets changed the world. An empty listener stops.
+    using CallListener = std::function<void(std::string_view command, const json::Value& params,
+                                            std::uint64_t tick)>;
+    void set_call_listener(CallListener listener) { call_listener_ = std::move(listener); }
+    // How many commands are running: 0 between commands, 1 inside one, more inside a batch.
+    // What the world does while it is above 0 is a command's doing.
+    [[nodiscard]] int depth() const noexcept { return depth_; }
+
     [[nodiscard]] world::World& world() noexcept { return world_; }
     [[nodiscard]] const world::World& world() const noexcept { return world_; }
     [[nodiscard]] const world::ComponentRegistry& components() const noexcept {
@@ -195,6 +205,7 @@ private:
         std::uint64_t dropped = 0;
     };
 
+    Reply call_command(std::string_view name, const json::Value& params);
     Reply run(const Command& command, const json::Value& params);
     void on_world_event(const world::Event& event);
     void publish(const world::Event& event);
@@ -237,6 +248,7 @@ private:
     std::vector<UndoCall> undo_calls_; // from the command running now
     bool replaying_ = false;           // undo or redo is running a step's calls
     std::string client_;
+    CallListener call_listener_;
     mutable std::mutex logs_mutex_; // the log sink may run on any thread
     std::deque<std::string> logs_;
 };

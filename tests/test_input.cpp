@@ -733,3 +733,39 @@ TEST_CASE("input.actions lists actions and their bindings") {
     REQUIRE_FALSE(typo.ok);
     CHECK(typo.message.find(R"(did you mean "ui_left"?)") != std::string::npos);
 }
+
+TEST_CASE("the input recorder hears what is queued from outside the systems") {
+    Input in;
+    std::vector<std::string> heard;
+    input::set_recorder(in.world, [&](const input::Recorded& recorded) {
+        heard.push_back(recorded.release_all
+                            ? std::string("release_all")
+                            : json::write(input::event_json(recorded.event, input::Use::Event),
+                                          json::Style::Compact));
+    });
+    // A system that queues input: the system will do it again in a replay, so it isn't heard.
+    in.world.add_system("echo",
+                        [](world::World& w, double /*dt*/) { input::action_press(w, "left"); });
+    in.send(R"({"type": "key", "key": "Space", "pressed": true})");
+    input::release_pressed(in.world);
+    in.step();
+    CHECK(heard == std::vector<std::string>{R"({"key":"Space","pressed":true,"type":"key"})",
+                                            "release_all"});
+
+    // Resetting the world's state lets go of everything and empties the queue, but keeps the
+    // actions.
+    in.send(R"({"type": "key", "key": "Space", "pressed": true})");
+    in.step();
+    CHECK(input::is_action_pressed(in.world, "jump"));
+    in.send(R"({"type": "key", "key": "D", "pressed": true})");
+    in.world.reset_state();
+    in.step();
+    CHECK_FALSE(input::is_action_pressed(in.world, "jump"));
+    CHECK_FALSE(input::is_action_pressed(in.world, "right"));
+    CHECK(input::map(in.world)->has_action("jump"));
+
+    CHECK(heard.size() == 4);
+    input::set_recorder(in.world, {});
+    in.send(R"({"type": "key", "key": "Space", "pressed": false})");
+    CHECK(heard.size() == 4);
+}

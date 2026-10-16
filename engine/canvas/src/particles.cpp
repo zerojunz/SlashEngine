@@ -581,6 +581,7 @@ void add_particles_system(world::World& world) {
     }
     auto system = std::make_shared<ParticleSystem>();
     world.ecs().ctx().emplace<std::shared_ptr<ParticleSystem>>(system);
+    world.add_reset([system](world::World& /*world*/) { system->emitters.clear(); });
     world.add_system(
         "cpu_particles_2d",
         [system](world::World& w, double tick_seconds) { system->run_all(w, tick_seconds); },

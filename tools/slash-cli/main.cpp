@@ -11,6 +11,7 @@
 #include "slash/canvas/tilemap.hpp"
 #include "slash/command/builtin.hpp"
 #include "slash/command/command.hpp"
+#include "slash/command/replay.hpp"
 #include "slash/command/rpc.hpp"
 #include "slash/command/session.hpp"
 #include "slash/core/json.hpp"
@@ -76,22 +77,24 @@ Usage:
       --max-fps <n>                  Frames per second at most; 0 (default) means no cap
       --scene <file>                 Load a .scene.json file before the first tick
       --save <file>                  Save the scene to this file after the last tick
+      --record <file>                Record the run to a .replay.json file in the project,
+                                     for replay.run
       --serve                        Serve the running game over HTTP (see serve)
       --port <n>                     Port for --serve (default: any free port)
       --token <token>                Bearer token for --serve (default: random)
-      --project <dir>                Project folder for --serve (default ".")
+      --project <dir>                Project folder for --serve and --record (default ".")
   slash-cli scene validate <file>    Check a scene, .prefab.json, .frames.json,
                                      .material.json, .anim.json, .tileset.json, .font.json,
-                                     .theme.json, .audio.json or .bus_layout.json file; lists
-                                     every error
+                                     .theme.json, .audio.json, .bus_layout.json or
+                                     .replay.json file; lists every error
   slash-cli scene format <file>      Rewrite one of those files in canonical form
       --check                        Only report whether it is canonical; change nothing
   slash-cli schema <name>            Print a JSON Schema: scene, prefab, frames (.frames.json),
                                      material (.material.json), animation (.anim.json),
                                      tileset (.tileset.json), font (.font.json), theme
                                      (.theme.json), audio (.audio.json), bus_layout
-                                     (.bus_layout.json), storyboard, project (project.json) or
-                                     presets (export_presets.json)
+                                     (.bus_layout.json), replay (.replay.json), storyboard,
+                                     project (project.json) or presets (export_presets.json)
   slash-cli project validate [dir]   Check project.json, export_presets.json, the project's
                                      theme, bus layout and storyboard; lists every error
   slash-cli call <command> [params]  Run one engine command and print its result
@@ -331,6 +334,7 @@ int cmd_run(const std::vector<std::string>& args) {
     slash::render::VsyncMode vsync = slash::render::VsyncMode::Enabled;
     std::string scene_path;
     std::string save_path;
+    std::string record_path;
     bool serve = false;
     bool server_args = false;
     command::SessionOptions session_options;
@@ -364,11 +368,12 @@ int cmd_run(const std::vector<std::string>& args) {
                                    std::to_string(slash::platform::kMaxFps));
             }
             options.max_fps = static_cast<int>(max_fps);
-        } else if (arg == "--scene" || arg == "--save") {
+        } else if (arg == "--scene" || arg == "--save" || arg == "--record") {
             if (!has_value) {
                 return usage_error(arg + " needs a file path");
             }
-            (arg == "--scene" ? scene_path : save_path) = args[++i];
+            std::string& path = arg == "--scene" ? scene_path : save_path;
+            (arg == "--record" ? record_path : path) = args[++i];
         } else if (arg == "--serve") {
             serve = true;
         } else if (arg == "--project") {
@@ -387,6 +392,19 @@ int cmd_run(const std::vector<std::string>& args) {
     }
     if (server_args && !serve) {
         return usage_error("--port and --token need --serve");
+    }
+    if (!record_path.empty()) {
+        // Replays are project files, like the scenes they start from. The file and its folder
+        // may not exist yet, so the path is worked out by its text.
+        std::error_code error;
+        const std::filesystem::path full =
+            std::filesystem::absolute(record_path, error).lexically_normal();
+        const std::filesystem::path root =
+            std::filesystem::absolute(session_options.project_root, error).lexically_normal();
+        record_path = full.lexically_relative(root).generic_string();
+        if (error || record_path.empty() || record_path.starts_with("..")) {
+            return usage_error("--record needs a .replay.json file inside the project folder");
+        }
     }
 
     Engine engine(session_options, /*running=*/true);
@@ -492,6 +510,12 @@ int cmd_run(const std::vector<std::string>& args) {
             }
         };
     }
+    // Recording starts at the first tick and is written when the game stops.
+    if (!record_path.empty()) {
+        if (auto started = command::start_recording(*engine.session, record_path); !started) {
+            return failure("could not record", started.error());
+        }
+    }
     const slash::platform::RunStats stats = slash::platform::run(
         loop.value(),
         [&](std::uint64_t tick, double tick_seconds) {
@@ -525,6 +549,16 @@ int cmd_run(const std::vector<std::string>& args) {
     slash::ui::set_clipboard_backend(game, {});
     slash::audio::set_sink(game, nullptr);
 
+    // An agent may have stopped it already with replay.stop.
+    json::Value recorded;
+    if (command::recording(*engine.session)) {
+        auto stopped = command::stop_recording(*engine.session);
+        if (!stopped) {
+            return failure("could not write the replay", stopped.error());
+        }
+        recorded = std::move(stopped).value();
+    }
+
     if (!save_path.empty()) {
         const std::string text = json::write(world::save_scene(game)) + "\n";
         if (auto written = slash::platform::write_file(save_path, text); !written) {
@@ -540,6 +574,9 @@ int cmd_run(const std::vector<std::string>& args) {
     result["entities"] = game.size();
     if (server) {
         result["url"] = server->endpoint().url();
+    }
+    if (!recorded.is_null()) {
+        result["replay"] = std::move(recorded);
     }
     print(result);
     return kExitOk;
@@ -608,6 +645,7 @@ int cmd_scene_validate(const std::string& path) {
     const bool theme = path.ends_with(slash::ui::kThemeSuffix);
     const bool stream = path.ends_with(slash::audio::kStreamSuffix);
     const bool buses = path.ends_with(slash::audio::kBusLayoutSuffix);
+    const bool replay = path.ends_with(command::kReplaySuffix);
     json::Value result;
     auto parsed = json::parse(text.value());
     std::vector<json::ValidationError> errors;
@@ -629,6 +667,8 @@ int cmd_scene_validate(const std::string& path) {
         errors = slash::audio::validate_stream_file(parsed.value());
     } else if (buses) {
         errors = slash::audio::validate_bus_layout(parsed.value());
+    } else if (replay) {
+        errors = command::validate_replay(parsed.value());
     } else {
         errors = prefab ? world::validate_prefab(registry, parsed.value(), prefab_reader(path))
                         : world::validate_scene(registry, parsed.value(), prefab_reader(path));
@@ -640,7 +680,7 @@ int cmd_scene_validate(const std::string& path) {
         }
     }
     if (parsed && !frames && !material && !animation && !tileset && !font && !theme && !stream &&
-        !buses) {
+        !buses && !replay) {
         check_story_refs(path, parsed.value(), errors);
     }
     result["valid"] = errors.empty();
@@ -649,6 +689,12 @@ int cmd_scene_validate(const std::string& path) {
     } else if (font || stream) {
         print(result);
         return kExitOk;
+    } else if (replay) {
+        // How many ticks it covers.
+        const auto tick = [&](std::string_view part) {
+            return parsed.value().find(part)->find("tick")->as_int();
+        };
+        result["ticks"] = tick("end") - tick("start");
     } else if (material) {
         // How much of the material shader's budget the graph uses.
         result["instructions"] =
@@ -688,7 +734,8 @@ int cmd_scene_validate(const std::string& path) {
 }
 
 // A .frames.json, .material.json, .anim.json, .tileset.json, .font.json, .theme.json,
-// .audio.json or .bus_layout.json file in canonical form: checked, then written with sorted keys.
+// .audio.json, .bus_layout.json or .replay.json file in canonical form: checked, then written
+// with sorted keys.
 template <typename Parse>
 slash::Result<std::string> format_checked(std::string_view text, Parse parse) {
     auto parsed = json::parse(text);
@@ -731,6 +778,16 @@ int cmd_scene_format(const std::string& path, bool check) {
         }
         if (path.ends_with(slash::audio::kBusLayoutSuffix)) {
             return format_checked(text.value(), slash::audio::parse_bus_layout);
+        }
+        if (path.ends_with(command::kReplaySuffix)) {
+            return format_checked(text.value(), [](const json::Value& doc) -> slash::Result<void> {
+                const auto errors = command::validate_replay(doc);
+                if (!errors.empty()) {
+                    return slash::make_error(slash::ErrorCode::InvalidArgument,
+                                             errors.front().path + ": " + errors.front().message);
+                }
+                return {};
+            });
         }
         if (path.ends_with(world::kPrefabSuffix)) {
             return world::format_prefab(registry, text.value(), prefab_reader(path));
@@ -783,13 +840,13 @@ int cmd_scene(const std::vector<std::string>& args) {
 }
 
 int cmd_schema(const std::vector<std::string>& args) {
-    constexpr std::array<std::string_view, 13> kKinds = {
-        "scene", "prefab", "frames",     "material",   "animation", "tileset", "font",
-        "theme", "audio",  "bus_layout", "storyboard", "project",   "presets"};
+    constexpr std::array<std::string_view, 14> kKinds = {
+        "scene", "prefab", "frames",     "material", "animation",  "tileset", "font",
+        "theme", "audio",  "bus_layout", "replay",   "storyboard", "project", "presets"};
     if (args.size() != 1 || std::ranges::find(kKinds, args[0]) == kKinds.end()) {
         return usage_error("schema takes one argument: scene, prefab, frames, material, "
-                           "animation, tileset, font, theme, audio, bus_layout, storyboard, "
-                           "project or presets");
+                           "animation, tileset, font, theme, audio, bus_layout, replay, "
+                           "storyboard, project or presets");
     }
     json::Value schema;
     if (args[0] == "scene") {
@@ -812,6 +869,8 @@ int cmd_schema(const std::vector<std::string>& args) {
         schema = slash::audio::stream_file_schema();
     } else if (args[0] == "bus_layout") {
         schema = slash::audio::bus_layout_schema();
+    } else if (args[0] == "replay") {
+        schema = command::replay_schema();
     } else if (args[0] == "storyboard") {
         schema = slash::storyboard::file_schema();
     } else if (args[0] == "project") {

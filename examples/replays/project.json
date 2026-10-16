@@ -1,0 +1,24 @@
+{
+  "format": 1,
+  "input": {
+    "jump": {
+      "events": [
+        {"physical_key": "Space", "type": "key"}
+      ]
+    },
+    "move_left": {
+      "events": [
+        {"physical_key": "A", "type": "key"}
+      ]
+    },
+    "move_right": {
+      "events": [
+        {"physical_key": "D", "type": "key"}
+      ]
+    }
+  },
+  "main_scene": "main.scene.json",
+  "name": "Replays",
+  "version": "0.1.0",
+  "window": {"height": 180, "width": 320}
+}

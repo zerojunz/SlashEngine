@@ -256,6 +256,19 @@ Space::~Space() {
     }
 }
 
+void Space::reset() {
+    if (b2World_IsValid(world_)) {
+        b2DestroyWorld(world_);
+    }
+    bodies_.clear();
+    joints_.clear();
+    world_ = b2_nullWorldId;
+    ground_ = b2_nullBodyId;
+    impulses_.clear();
+    touching_.clear();
+    removed_.clear();
+}
+
 void Space::set_settings(const Settings& settings) {
     const bool gravity_changed = settings.gravity != settings_.gravity ||
                                  settings.gravity_vector != settings_.gravity_vector;
@@ -277,8 +290,8 @@ void Space::set_settings(const Settings& settings) {
 }
 
 const Body* Space::body(entt::entity entity) const {
-    const auto found = bodies_.find(entity);
-    return found != bodies_.end() ? found->second.get() : nullptr;
+    const auto* found = bodies_.find(entity);
+    return found != nullptr ? found->get() : nullptr;
 }
 
 void Space::create_world() {
@@ -303,16 +316,14 @@ void Space::destroy(Body& body) {
 
 void Space::remove_stale(world::World& world) {
     const entt::registry& registry = world.ecs();
-    for (auto it = bodies_.begin(); it != bodies_.end();) {
-        Body& body = *it->second;
-        if (!world.valid(it->first) || kind_of(registry, it->first) != body.kind) {
-            removed_.insert(body.name);
-            destroy(body);
-            it = bodies_.erase(it);
-        } else {
-            ++it;
+    bodies_.erase_if([&](entt::entity entity, const std::unique_ptr<Body>& body) {
+        if (world.valid(entity) && kind_of(registry, entity) == body->kind) {
+            return false;
         }
-    }
+        removed_.insert(body->name);
+        destroy(*body);
+        return true;
+    });
 }
 
 void Space::build_shapes(world::World& world, Body& body, const ShapeKey& key) {
@@ -485,8 +496,8 @@ void Space::sync_body(world::World& world, entt::entity entity, Kind kind) {
     const Transform2D transform = transform_of(registry, entity);
     const ShapeKey shape_key = shape_key_of(registry, entity, kind);
 
-    auto found = bodies_.find(entity);
-    if (found == bodies_.end()) {
+    std::unique_ptr<Body>* found = bodies_.find(entity);
+    if (found == nullptr) {
         auto body = std::make_unique<Body>();
         body->entity = entity;
         body->name = world.id_of(entity);
@@ -510,12 +521,12 @@ void Space::sync_body(world::World& world, entt::entity entity, Kind kind) {
         body->id = b2CreateBody(world_, &def);
         body->position = transform.position;
         body->rotation = transform.rotation;
-        found = bodies_.emplace(entity, std::move(body)).first;
-        build_shapes(world, *found->second, shape_key);
-    } else if (shape_key != found->second->shape_key) {
-        build_shapes(world, *found->second, shape_key);
+        found = &bodies_.emplace(entity, std::move(body));
+        build_shapes(world, **found, shape_key);
+    } else if (shape_key != (*found)->shape_key) {
+        build_shapes(world, **found, shape_key);
     }
-    Body& body = *found->second;
+    Body& body = **found;
 
     if (kind == Kind::Rigid) {
         auto& rigid = registry.get<RigidBody2D>(entity);
@@ -583,19 +594,16 @@ void Space::sync_body(world::World& world, entt::entity entity, Kind kind) {
 void Space::sync_joints(world::World& world) {
     entt::registry& registry = world.ecs();
     // Joints whose entity is gone.
-    for (auto it = joints_.begin(); it != joints_.end();) {
-        const bool kept =
-            world.valid(it->first) &&
-            registry.any_of<PinJoint2D, DampedSpringJoint2D, GrooveJoint2D>(it->first);
-        if (!kept) {
-            if (b2Joint_IsValid(it->second.id)) {
-                b2DestroyJoint(it->second.id);
-            }
-            it = joints_.erase(it);
-        } else {
-            ++it;
+    joints_.erase_if([&](entt::entity entity, const Joint& joint) {
+        if (world.valid(entity) &&
+            registry.any_of<PinJoint2D, DampedSpringJoint2D, GrooveJoint2D>(entity)) {
+            return false;
         }
-    }
+        if (b2Joint_IsValid(joint.id)) {
+            b2DestroyJoint(joint.id);
+        }
+        return true;
+    });
 
     const auto body_id = [&](entt::entity node, bool world_if_null) -> b2BodyId {
         if (node == entt::null) {
@@ -610,9 +618,8 @@ void Space::sync_joints(world::World& world) {
         const Transform2D transform = transform_of(registry, entity);
         const b2BodyId body_a = body_id(node_a, true);
         const b2BodyId body_b = body_id(node_b, false);
-        auto existing = joints_.find(entity);
-        if (existing != joints_.end()) {
-            const Joint& joint = existing->second;
+        if (const Joint* existing = joints_.find(entity); existing != nullptr) {
+            const Joint& joint = *existing;
             if (b2Joint_IsValid(joint.id) && joint.key == key &&
                 joint.position == transform.position && joint.rotation == transform.rotation &&
                 B2_ID_EQUALS(joint.body_a, body_a) && B2_ID_EQUALS(joint.body_b, body_b)) {
@@ -621,7 +628,7 @@ void Space::sync_joints(world::World& world) {
             if (b2Joint_IsValid(joint.id)) {
                 b2DestroyJoint(joint.id);
             }
-            joints_.erase(existing);
+            joints_.erase(entity);
         }
         if (B2_IS_NULL(body_a) || B2_IS_NULL(body_b) || B2_ID_EQUALS(body_a, body_b)) {
             return; // the next sync tries again, once both bodies exist
@@ -766,11 +773,11 @@ void Space::read_back(world::World& world) {
 void Space::move_characters(world::World& world, float seconds) {
     entt::registry& registry = world.ecs();
     for (const entt::entity entity : registry.view<CharacterBody2D>()) {
-        const auto found = bodies_.find(entity);
-        if (found == bodies_.end() || found->second->kind != Kind::Character) {
+        const auto* found = bodies_.find(entity);
+        if (found == nullptr || (*found)->kind != Kind::Character) {
             continue;
         }
-        Body& body = *found->second;
+        Body& body = **found;
         auto& transform = registry.get_or_emplace<Transform2D>(entity);
         auto& character = registry.get<CharacterBody2D>(entity);
         move_character(world, world_, body, transform, character, seconds);

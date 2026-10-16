@@ -199,6 +199,21 @@ Session::~Session() {
 }
 
 Reply Session::call(std::string_view name, const json::Value& params) {
+    const bool outermost = depth_ == 0;
+    const std::uint64_t tick = world_.tick();
+    Reply reply = call_command(name, params);
+    if (outermost && reply.ok && call_listener_) {
+        const json::Value* dry_run = params.is_object() ? params.find("dry_run") : nullptr;
+        if (dry_run == nullptr || !dry_run->is_bool() || !dry_run->as_bool()) {
+            // A copy, since the listener may stop listening.
+            const CallListener listener = call_listener_;
+            listener(name, params.is_null() ? json::Value(json::Object{}) : params, tick);
+        }
+    }
+    return reply;
+}
+
+Reply Session::call_command(std::string_view name, const json::Value& params) {
     const Command* command = commands_->find(name);
     if (command == nullptr) {
         std::vector<std::string_view> names;
@@ -703,6 +718,11 @@ void Session::poll_assets() {
     }
     if (before && !reload.changed.empty()) {
         publish_changes("asset.reload", *before, save());
+    }
+    if (!reload.changed.empty() && call_listener_) {
+        // Replays keep what a reload did to the world, since the files may change again.
+        const CallListener listener = call_listener_;
+        listener("asset.reload", json::Value(json::Object{}), world_.tick());
     }
 }
 
