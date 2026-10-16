@@ -31,6 +31,7 @@ engine. Copy from them.
 | [text-languages](text-languages/) | Right-to-left text and layout (`layout_direction`, `text_direction`), fallback fonts in `.font.json` files, fonts per language, installed fonts and `text::box_font` placeholders |
 | [input-actions](input-actions/) | Rebindable input actions in `project.json`, Godot's `ui_*` actions, sticks with deadzones, taps, touch as a mouse, and `input.inject`, `input.state` and `input.actions` |
 | [audio](audio/) | `AudioStreamPlayer` and `AudioStreamPlayer2D`: a `.bus_layout.json` file's buses and effects, a randomizer in a `.audio.json` file, panning and fading by distance, the `finished` event, and `audio.state`, `audio.play`, `audio.set_bus` and `audio.capture` |
+| [frame-capture](frame-capture/) | `frame.capture`: what the window shows, drawn on the CPU the same on every machine, as pixel colors, a PNG to look at or a file |
 
 ## What an example holds
 

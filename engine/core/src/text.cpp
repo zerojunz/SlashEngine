@@ -105,4 +105,27 @@ bool is_project_path(std::string_view path) {
     return true;
 }
 
+std::string base64_encode(std::string_view bytes) {
+    static constexpr std::string_view kAlphabet =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    std::string out;
+    out.reserve(((bytes.size() + 2) / 3) * 4);
+    for (std::size_t i = 0; i < bytes.size(); i += 3) {
+        const std::size_t left = bytes.size() - i;
+        std::uint32_t group = static_cast<std::uint32_t>(static_cast<unsigned char>(bytes[i]))
+                              << 16U;
+        if (left > 1) {
+            group |= static_cast<std::uint32_t>(static_cast<unsigned char>(bytes[i + 1])) << 8U;
+        }
+        if (left > 2) {
+            group |= static_cast<std::uint32_t>(static_cast<unsigned char>(bytes[i + 2]));
+        }
+        out += kAlphabet[(group >> 18U) & 63U];
+        out += kAlphabet[(group >> 12U) & 63U];
+        out += left > 1 ? kAlphabet[(group >> 6U) & 63U] : '=';
+        out += left > 2 ? kAlphabet[group & 63U] : '=';
+    }
+    return out;
+}
+
 } // namespace slash

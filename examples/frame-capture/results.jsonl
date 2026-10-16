@@ -1,0 +1,8 @@
+{"id":1,"jsonrpc":"2.0","result":{"entities":3,"path":"main.scene.json"}}
+{"id":2,"jsonrpc":"2.0","result":{"drawn":{"controls":3},"height":90,"width":160}}
+{"id":3,"jsonrpc":"2.0","result":{"colors":[[0.2,0.4,0.8,1],[0.302,0.6,0.2,1],[0.502,0.584,0.753,1],[0.169,0.31,0.588,1]],"drawn":{"controls":3},"height":90,"width":160}}
+{"id":4,"jsonrpc":"2.0","result":{"changed":{"ProgressBar":{"value":25.0}},"id":"health"}}
+{"id":5,"jsonrpc":"2.0","result":{"colors":[[0.502,0.584,0.753,1],[0.169,0.31,0.588,1]],"drawn":{"controls":3},"height":90,"width":160}}
+{"id":6,"jsonrpc":"2.0","result":{"drawn":{"controls":3},"height":14,"path":"shots/hud.png","width":40}}
+{"id":7,"jsonrpc":"2.0","result":{"drawn":{"controls":3},"height":2,"png":"iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEUlEQVR4AWMwTjvzH4QZYAwAUI4JkZPsp/YAAAAASUVORK5CYII=","width":2}}
+{"error":{"code":-32002,"data":{"path":"/points/1"},"message":"/points/1: outside the 160x90 window"},"id":8,"jsonrpc":"2.0"}

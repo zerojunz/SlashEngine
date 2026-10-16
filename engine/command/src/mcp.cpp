@@ -38,6 +38,7 @@ constexpr std::string_view kInstructions =
 - Button and TextureButton are Godot's: a click or tap, ui_accept while focused or a shortcut presses them, and they emit pressed, toggled, button_down and button_up events; toggle_mode makes a switch and button_group a set of options. ui_press presses one at the next step and ui_focus gives one focus; or input_inject a click, Tab or arrow keys and step. ui_layout reports each button's draw_mode and which control has focus and is hovered.
 - LineEdit is Godot's text field: a click, Tab or ui_focus starts editing it; input_inject {"type": "text", "text": "..."} types at the caret, {"type": "ime"} events compose as an input method does, and ui_text_* actions, ui_copy, ui_paste and ui_undo edit; Enter emits text_submitted. ui_layout reports its caret_column and selection, and ui_clipboard reads the clipboard. TextEdit is the same for several lines: Enter types a new line, Tab indents when tab_input_mode is on, and ui_layout reports its caret and selection as [line, column] and the lines in view.
 - Sound is Godot's: AudioStreamPlayer and AudioStreamPlayer2D play .wav, .ogg or .mp3 files, or .audio.json files that loop a sound or pick one of several at random (schema_get kind "audio"), through buses with effects from a .bus_layout.json file (schema_get kind "bus_layout") named by project.json's audio.bus_layout. audio_play and audio_stop play and stop one at the next step; audio_state shows the buses' levels and what each player plays, and audio_capture measures what a bus played (peak and RMS dB, slice by slice), so you can check sound without listening.
+- frame_capture draws what the window shows, the same on every machine: "points" returns pixel colors (cheapest), "image": true a PNG you can look at (keep it small with "region" and "scale") and "path" saves one. Prefer the checks above when they answer the question.
 - In a running game, perf_stats reports fps and frame times, and display_set changes V-Sync and the frame cap.
 - Edited files reload on their own before each call: prefab instances update and keep their overrides. asset_list shows what is loaded.
 - Errors give the JSON Pointer of the bad value and suggest the right name when one is misspelled, so fix it and retry.
@@ -206,8 +207,22 @@ Reply Server::call_tool(const json::Value& params) {
     // correct its call.
     json::Value result;
     if (reply.ok) {
-        result["content"] =
-            json::Array{text_content(json::write(reply.value, json::Style::Compact))};
+        // A frame.capture image goes to the model as an image rather than as base64 text.
+        std::string png;
+        if (const json::Value* image = reply.value.is_object() ? reply.value.find("png") : nullptr;
+            image != nullptr && image->is_string()) {
+            png = image->as_string();
+            reply.value.as_object().erase("png");
+        }
+        json::Array content{text_content(json::write(reply.value, json::Style::Compact))};
+        if (!png.empty()) {
+            json::Value block;
+            block["type"] = "image";
+            block["data"] = std::move(png);
+            block["mimeType"] = "image/png";
+            content.push_back(std::move(block));
+        }
+        result["content"] = std::move(content);
         if (reply.value.is_object()) {
             result["structuredContent"] = std::move(reply.value);
         }

@@ -1,0 +1,8 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"frame.capture"}
+{"jsonrpc":"2.0","id":3,"method":"frame.capture","params":{"points":[[80,30],[80,75],[20,14],[68,14]]}}
+{"jsonrpc":"2.0","id":4,"method":"component.set","params":{"id":"health","components":{"ProgressBar":{"show_percentage":false,"value":25}}}}
+{"jsonrpc":"2.0","id":5,"method":"frame.capture","params":{"points":[[20,14],[40,14]]}}
+{"jsonrpc":"2.0","id":6,"method":"frame.capture","params":{"region":[0,0,80,28],"scale":0.5,"path":"shots/hud.png"}}
+{"jsonrpc":"2.0","id":7,"method":"frame.capture","params":{"region":[76,40,8,8],"scale":0.25,"image":true}}
+{"jsonrpc":"2.0","id":8,"method":"frame.capture","params":{"points":[[80,30],[160,30]]}}

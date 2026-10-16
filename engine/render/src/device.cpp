@@ -287,6 +287,8 @@ std::string_view backend_name(Backend backend) {
         return "metal";
     case Backend::D3D12:
         return "d3d12";
+    case Backend::Software:
+        return "software";
     }
     return "null";
 }
@@ -340,7 +342,7 @@ Result<std::unique_ptr<RenderDevice>> create_device(const DeviceOptions& options
 }
 
 Result<void> draw_empty_frame(RenderDevice& device, const Color& clear) {
-    if (device.backend() == Backend::Null) {
+    if (device.backend() == Backend::Null || device.backend() == Backend::Software) {
         return {};
     }
     auto began = device.begin_frame({.target = TextureId::None, .clear = clear, .view = {}});

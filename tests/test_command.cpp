@@ -1759,6 +1759,80 @@ TEST_CASE("light.sample returns how lit points are, and which lights reach them"
     std::filesystem::remove_all(root);
 }
 
+TEST_CASE("frame.capture draws the window on the CPU and returns pixels, a PNG or a file") {
+    const std::string root = "command_capture_project";
+    std::filesystem::remove_all(root);
+    REQUIRE(slash::platform::create_directories(root).ok());
+    REQUIRE(slash::platform::write_file(root + "/project.json", R"({"format": 1, "name": "Capture",
+        "main_scene": "main.scene.json", "version": "1.0.0", "window": {"width": 160, "height": 90},
+        "rendering": {"clear_color": [0, 0, 0.5, 1]}})")
+                .ok());
+    render::Image white;
+    white.width = 4;
+    white.height = 4;
+    white.pixels.assign(std::size_t{4} * 4 * 4, 255);
+    REQUIRE(
+        slash::platform::write_file(root + "/white.png", render::encode_png(white).value()).ok());
+    command::SessionOptions options;
+    options.project_root = root;
+    Engine engine(options);
+
+    // An empty world is the project's clear color.
+    CHECK(engine.ok("frame.capture", R"({"points": [[0, 0]]})") ==
+          parse(R"({"width": 160, "height": 90, "drawn": {}, "colors": [[0, 0, 0.502, 1]]})"));
+
+    // A red 40-pixel square around (40, 30), and a label's background.
+    engine.ok("batch", R"({"commands": [
+        {"command": "entity.create", "params": {"id": "box", "components": {
+            "Transform2D": {"position": [40, 30], "scale": [10, 10]},
+            "Sprite2D": {"texture": "white.png", "modulate": [1, 0, 0, 1]}}}},
+        {"command": "entity.create", "params": {"id": "bar", "components": {
+            "Control": {"offset_left": 100, "offset_top": 60, "offset_right": 160,
+                        "offset_bottom": 90},
+            "ColorRect": {"color": [0, 1, 0, 0.5]}}}}]})");
+    CHECK(engine.ok("frame.capture", R"({"points": [[40, 30], [20, 10], [59.5, 49.5], [60, 50],
+                                                     [130, 80]]})") ==
+          parse(R"({"width": 160, "height": 90, "drawn": {"sprites": 1, "controls": 1},
+                    "colors": [[1, 0, 0, 1], [1, 0, 0, 1], [1, 0, 0, 1], [0, 0, 0.502, 1],
+                               [0, 0.502, 0.251, 1]]})"));
+
+    // A region crops, and scale sizes the image; points stay window pixels.
+    CHECK(engine.ok("frame.capture", R"({"region": [20, 10, 50, 40], "scale": 0.5,
+                                         "points": [[65, 45]]})") ==
+          parse(R"({"width": 25, "height": 20, "drawn": {"sprites": 1, "controls": 1},
+                    "colors": [[0, 0, 0.502, 1]]})"));
+
+    // "image" returns the PNG as base64; MCP clients get it as an image.
+    const json::Value image =
+        engine.ok("frame.capture", R"({"image": true, "region": [20, 10, 40, 40]})");
+    CHECK(image.find("png")->as_string().starts_with("iVBORw0KGgo"));
+
+    // "path" writes the PNG.
+    CHECK(
+        *engine.ok("frame.capture", R"({"path": "shots/frame.png", "scale": 0.25})").find("path") ==
+        parse(R"("shots/frame.png")"));
+    const auto png = slash::platform::read_file(root + "/shots/frame.png");
+    REQUIRE(png.ok());
+    const auto decoded = render::decode_image(png.value());
+    REQUIRE(decoded.ok());
+    CHECK(decoded.value().width == 40);
+    CHECK(decoded.value().height == 23);
+
+    const auto outside = engine.fails("frame.capture", R"({"points": [[0, 0], [160, 0]]})",
+                                      command::code::kInvalidArgument);
+    CHECK(outside.message == "/points/1: outside the 160x90 window");
+    engine.fails("frame.capture", R"({"region": [100, 50, 80, 10]})",
+                 command::code::kInvalidArgument);
+    engine.fails("frame.capture", R"({"path": "frame.jpg"})", command::code::kInvalidArgument);
+    engine.fails("frame.capture", R"({"scale": 8})", command::code::kInvalidParams);
+
+    // Writing a capture needs the filesystem capability.
+    options.capabilities = {Capability::Read};
+    Engine reader(options);
+    reader.fails("frame.capture", R"({"path": "x.png"})", command::code::kPermissionDenied);
+    CHECK(reader.ok("frame.capture").find("width")->as_int() == 160);
+}
+
 TEST_CASE("animation.eval returns the values an animation's tracks set, and step plays them") {
     const std::string root = "animation_test_project";
     std::filesystem::remove_all(root);
