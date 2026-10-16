@@ -51,7 +51,7 @@ struct Physics {
 
     entt::entity add(std::string_view id, Vec2 position) {
         const entt::entity entity = world.create(id).value();
-        world.ecs().emplace<world::Transform2D>(entity, world::Transform2D{.position = position});
+        world.ecs().emplace<world::Transform2D>(entity).position = position;
         return entity;
     }
 

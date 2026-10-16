@@ -16,13 +16,17 @@ namespace slash::world {
 
 class ComponentRegistry;
 
-// Position, rotation and scale in 2D. Units are pixels, and y points down, as in Godot.
+// Position, rotation and scale in 2D. Units are pixels, and y points down, as in Godot. An
+// entity listed in another's children is placed in its parent's space, as Godot's Node2D: its
+// global transform is its parent's global transform, then its own (see tree2d.hpp).
 struct Transform2D {
     Vec2 position;
     float rotation = 0.0F; // radians, clockwise
     Vec2 scale{1.0F, 1.0F};
+    float skew = 0.0F; // radians the y axis leans from square to the x axis, as Godot's skew
+    std::vector<entt::entity> children; // entities placed in its space, in drawing order
 };
-SLASH_COMPONENT(Transform2D, position, rotation, scale)
+SLASH_COMPONENT(Transform2D, position, rotation, scale, skew, children)
 
 // Position, rotation and scale in 3D. Units are meters, and y points up, as in Godot.
 struct Transform3D {

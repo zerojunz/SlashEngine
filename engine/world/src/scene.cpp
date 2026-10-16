@@ -2,6 +2,7 @@
 
 #include "slash/core/text.hpp"
 #include "slash/world/component_registry.hpp"
+#include "slash/world/tree2d.hpp"
 #include "slash/world/world.hpp"
 
 #include <algorithm>
@@ -491,6 +492,11 @@ std::vector<json::ValidationError> validate_scene(const ComponentRegistry& compo
     std::string path;
     if (auto loaded = load_valid(scratch, scene, {}, path); !loaded) {
         errors.push_back({path, loaded.error().message});
+        return errors;
+    }
+    // Each child has one parent, a Transform2D, and isn't its own ancestor.
+    for (TreeProblem& problem : check_tree(scratch)) {
+        errors.push_back({std::move(problem.path), std::move(problem.message)});
     }
     return errors;
 }

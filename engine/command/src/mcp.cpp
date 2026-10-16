@@ -21,6 +21,7 @@ constexpr std::string_view kInstructions =
 - Call engine_describe first: it lists every component with its default field values, and every command.
 - Use batch to run many commands in one call. It is all or nothing, and one undo reverts it.
 - For many similar entities, prefab_save one to a .prefab.json file and entity_create the rest with "extends"; each saves only the fields it overrides.
+- To put an entity in another's space (a gun on a ship), list its ID in the parent's Transform2D children: it moves, turns, scales and draws with the parent. entity_get gives a child's parent and global transform; entity_destroy takes children with it.
 - events_subscribe, then events_read, tells you what changed and what the game emitted since you last looked, without re-querying.
 - Add "dry_run": true to any edit or batch to see what it would change without changing anything. world_snapshot, then world_diff later, lists every entity and field that changed; world_restore goes back.
 - world_query returns only entity IDs unless you pass include. Filter with where, e.g. {"component": "Transform2D", "field": "position.y", "op": ">", "value": 100}.

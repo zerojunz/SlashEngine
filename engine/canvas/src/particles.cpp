@@ -1,6 +1,7 @@
 #include "slash/canvas/particles.hpp"
 
 #include "slash/core/json.hpp"
+#include "slash/world/tree2d.hpp"
 
 #include <algorithm>
 #include <array>
@@ -116,10 +117,19 @@ Vec2 rotate(Vec2 v, Vec2 turn) {
     return {(v.x * turn.x) - (v.y * turn.y), (v.x * turn.y) + (v.y * turn.x)};
 }
 
-// A point or vector from the entity's space into the world's: scaled, turned, then moved.
+// A point or vector from the entity's space into the world's: scaled, skewed, turned, then
+// moved.
 Vec2 to_world(const world::Transform2D& transform, Vec2 local, bool is_point) {
-    const Vec2 out = rotate({local.x * transform.scale.x, local.y * transform.scale.y},
-                            cos_sin(transform.rotation));
+    Vec2 out = rotate({local.x * transform.scale.x, local.y * transform.scale.y},
+                      cos_sin(transform.rotation));
+    if (transform.skew != 0.0F) {
+        // The y axis leans by the skew: x along the rotation, y along rotation + skew.
+        const Vec2 turn = cos_sin(transform.rotation);
+        const Vec2 lean = cos_sin(transform.rotation + transform.skew);
+        const float x = local.x * transform.scale.x;
+        const float y = local.y * transform.scale.y;
+        out = {(x * turn.x) - (y * lean.y), (x * turn.y) + (y * lean.x)};
+    }
     return is_point ? out + transform.position : out;
 }
 
@@ -536,16 +546,17 @@ struct ParticleSystem {
     void run_all(world::World& world, double tick_seconds) {
         auto& ecs = world.ecs();
         std::set<std::string, std::less<>> seen;
+        const world::Tree2D tree(world);
         for (const entt::entity entity : ecs.view<CPUParticles2D>()) {
             auto& component = ecs.get<CPUParticles2D>(entity);
-            const auto* transform = ecs.try_get<world::Transform2D>(entity);
+            // Emitted from where it is after its parents.
+            const world::Transform2D transform = tree.global(entity);
             const std::string_view id = world.id_of(entity);
             const std::string key = key_of(world, entity);
             seen.insert(key);
             Emitter& emitter = emitters[key];
-            if (tick_seconds > 0.0 &&
-                run(emitter, component, transform != nullptr ? *transform : world::Transform2D{},
-                    particle_seed(id, component.seed), tick_seconds, 1)) {
+            if (tick_seconds > 0.0 && run(emitter, component, transform,
+                                          particle_seed(id, component.seed), tick_seconds, 1)) {
                 // As Godot, a one_shot stops emitting when its cycle ends.
                 component.emitting = false;
                 emitter.was_emitting = false;

@@ -59,5 +59,8 @@ struct Quat {
 // The cosine and sine of an angle in radians, computed the same way on every platform, as
 // {cos, sin}. Particles and UI use it instead of libm, whose results differ between platforms.
 [[nodiscard]] Vec2 cos_sin(float radians);
+// The angle of the point [x, y] from the x axis, in radians from -pi to pi, as std::atan2 but
+// the same bits on every platform; 0 for [0, 0].
+[[nodiscard]] float atan2(float y, float x);
 
 } // namespace slash

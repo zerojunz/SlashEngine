@@ -23,8 +23,8 @@ struct CollisionShapes {
 };
 
 // Every CollisionShape2D and CollisionPolygon2D in the world, placed as 2D physics places them
-// (moved and turned by the entity's Transform2D, or transform_of's version of it, and scaled by
-// its scale, radii by the larger axis), in the order entities were made, as Godot's
+// (moved and turned by the entity's global transform, or transform_of's version of it, and
+// scaled by its scale, radii by the larger axis), in the order entities were made, as Godot's
 // CollisionShape2D and CollisionPolygon2D draw themselves:
 //   - A shape fills with the color and has an opaque outline one pixel wide, with Godot's 24
 //     points round a circle and 26 round a capsule; a segment is a line 3 pixels wide.

@@ -204,7 +204,8 @@ TEST_CASE("entity.get and entity.destroy find entities by id") {
 
     const json::Value all = engine.ok("entity.get", R"({"id": "player"})");
     CHECK(*all.find("components")->find("Transform2D") ==
-          parse(R"({"position": [0, 0], "rotation": 1.5, "scale": [1, 1]})"));
+          parse(R"({"position": [0, 0], "rotation": 1.5, "scale": [1, 1], "skew": 0,
+                    "children": []})"));
 
     const json::Value compact =
         engine.ok("entity.get", R"({"id": "player", "components": ["Transform2D"],

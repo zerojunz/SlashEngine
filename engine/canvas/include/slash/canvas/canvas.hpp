@@ -10,6 +10,7 @@
 #include "slash/text/text.hpp"
 #include "slash/ui/ui.hpp"
 #include "slash/world/components.hpp"
+#include "slash/world/tree2d.hpp"
 #include "slash/world/world.hpp"
 
 #include <array>
@@ -43,17 +44,30 @@ void add_systems(world::World& world, asset::Assets& assets);
 void install(world::World& world, asset::Assets& assets);
 
 // The two triangles a sprite draws, in world pixels, for a texture of the given size: the frame
-// it picks from the region and sheet, centered or not, offset, flipped, then scaled, rotated and
-// moved by the transform. Fails, saying why, when there is nothing to draw, such as a frame
-// outside the sheet.
+// it picks from the region and sheet, centered or not, offset, flipped, then scaled, skewed,
+// rotated and moved by the transform. Fails, saying why, when there is nothing to draw, such as
+// a frame outside the sheet.
 [[nodiscard]] Result<std::array<render::Vertex2D, 6>>
 sprite_quad(const world::Sprite2D& sprite, const world::Transform2D& transform,
             std::uint32_t texture_width, std::uint32_t texture_height);
 
 // A transform part of the way from one tick's to the next: alpha 0 is from, 1 is to. Rotation
-// turns the short way round.
+// turns the short way round. Children play no part.
 [[nodiscard]] world::Transform2D interpolate(const world::Transform2D& from,
                                              const world::Transform2D& to, double alpha);
+
+// What a 2D entity takes from the sprites, tile map layers and particles of its parents, as
+// Godot's CanvasItem: their z_index added to its own (Godot's z_as_relative), hidden with them,
+// and tinted by their modulate.
+struct Inherited {
+    int z_index = 0;
+    bool visible = true;
+    Vec4 modulate{1.0F, 1.0F, 1.0F, 1.0F};
+};
+[[nodiscard]] Inherited inherited(const world::World& world, const world::Tree2D& tree,
+                                  entt::entity entity);
+// An entity's z_index with its parents', held to Godot's -4096 to 4096.
+[[nodiscard]] int z_index(int own, const Inherited& from_parents);
 
 // ---- What a frame drew, for frame summaries ----
 
