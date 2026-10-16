@@ -2,6 +2,8 @@
 
 #include "slash/ui/ui.hpp"
 
+#include <array>
+#include <cstdint>
 #include <map>
 #include <string>
 #include <string_view>
@@ -46,6 +48,7 @@ struct Range {
     bool allow_lesser = false;
 };
 [[nodiscard]] Range range_of(const world::Slider& slider);
+[[nodiscard]] Range range_of(const world::ScrollBar& bar);
 // A value as Range::set_value keeps it: rounded to min plus a multiple of step, to a whole
 // number if rounded, then kept between min and max less page unless allowed past them.
 [[nodiscard]] double range_value(const Range& range, double value);
@@ -53,6 +56,23 @@ struct Range {
 [[nodiscard]] double range_ratio(const Range& range);
 // The value a ratio picks, as Range::set_as_ratio.
 [[nodiscard]] double range_from_ratio(const Range& range, double ratio);
+
+// How a scroll bar looks from what the gui system keeps: the part the pointer is over and the
+// part held, as ScrollBar's highlight, decr_active, incr_active and drag.active.
+struct BarLook {
+    int highlight = 0; // 0 none, 1 the decrement arrow, 2 the track, 3 the increment arrow
+    bool decrement_pressed = false;
+    bool increment_pressed = false;
+    bool dragging = false;
+};
+// Which bar: a ScrollBar's own, or a ScrollContainer's horizontal or vertical one.
+enum class Bar : std::uint8_t { Own, Horizontal, Vertical };
+[[nodiscard]] BarLook bar_look(const world::World& world, entt::entity control, Bar bar);
+// The scroll a ScrollContainer asks for, [horizontal, vertical]: the gui system's, which keeps
+// fractions of a pixel, while its component's whole pixels still match it; else the
+// component's.
+[[nodiscard]] std::array<double, 2> wanted_scroll(const world::World& world,
+                                                  entt::entity container);
 
 // Gives the world the gui system and its state (gui.cpp).
 void install_gui(world::World& world);

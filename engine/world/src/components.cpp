@@ -248,6 +248,9 @@ void register_ui_components(ComponentRegistry& registry) {
         .describe("pivot_offset",
                   {.doc = "The point it turns and scales around, from its top-left corner."})
         .describe("visible", {.doc = "Draw it and its children."})
+        .describe("clip_contents",
+                  {.doc = "Cut off its drawing and its children's at its rect; the pointer "
+                          "reaches only the part of them inside it."})
         .describe("modulate", {.doc = "Tints it and its children, as [r, g, b, a].", .min = 0})
         .describe("self_modulate", {.doc = "Tints it only.", .min = 0})
         .describe("z_index", {.doc = "Draws over controls with a lower one, added to its parent's.",
@@ -451,6 +454,34 @@ void register_ui_components(ComponentRegistry& registry) {
                           "horizontal slider and right of a vertical one.",
                    .choices = {"bottom_right", "top_left", "both", "center"}})
         .describe("vertical", {.doc = "Run from bottom to top, as VSlider."});
+
+    registry.add<ScrollBar>()
+        .set_doc("A bar with a grabber that shows how far along a value is and moves it, as "
+                 "Godot's HScrollBar, or VScrollBar when vertical: the grabber's length is "
+                 "page's share of the range. A click before or after the grabber moves the "
+                 "value a page, a drag moves the grabber, the wheel moves it an eighth of a "
+                 "page, and with focus ui_left and ui_right (ui_up and ui_down when vertical), "
+                 "ui_home and ui_end step it. Emits value_changed {\"value\"} and scrolling. "
+                 "Theme items: scroll, scroll_focus, grabber, grabber_highlight and "
+                 "grabber_pressed styles, the icons increment and decrement (and their "
+                 "_highlight and _pressed ones), icon_max_size, and padding constants.")
+        .describe("min_value", {.doc = "The value at the start: the left, or the top."})
+        .describe("max_value", {.doc = "The value at the end; at least min_value."})
+        .describe("step", {.doc = "The value is rounded to min_value plus a multiple of it; 0 for "
+                                  "none.",
+                           .min = 0})
+        .describe("page", {.doc = "The part of the range in view, which the grabber's length "
+                                  "shows; the value stays this far below max_value.",
+                           .min = 0})
+        .describe("value", {.doc = "Kept between min_value and max_value less page unless "
+                                   "allow_greater or allow_lesser."})
+        .describe("rounded", {.doc = "Round the value to a whole number."})
+        .describe("allow_greater", {.doc = "Let value go above max_value."})
+        .describe("allow_lesser", {.doc = "Let value go below min_value."})
+        .describe("custom_step",
+                  {.doc = "What the ui_* actions and its arrows step the value by; -1 for step.",
+                   .min = -1})
+        .describe("vertical", {.doc = "Run from top to bottom, as VScrollBar."});
 
     const FieldMeta button_mask{.doc = "The mouse buttons that press it.",
                                 .choices = {"left", "right", "middle"}};
@@ -719,6 +750,37 @@ void register_ui_components(ComponentRegistry& registry) {
     registry.add<PanelContainer>().set_doc(
         "Draws the theme's panel style box and fits its children inside the style's margins, "
         "as Godot's PanelContainer.");
+
+    const FieldMeta scroll_mode{
+        .doc = "disabled: no scrolling, it is as big as its children that way; auto: a scroll bar "
+               "when they don't fit; always; never: it scrolls with no bar; reserve: as auto, "
+               "with room kept for the bar.",
+        .choices = {"disabled", "auto", "always", "never", "reserve"}};
+    const FieldMeta custom_step{.doc = "What its bar's arrows step by; -1 for none.", .min = -1};
+    registry.add<ScrollContainer>()
+        .set_doc("Shows its children through its rect, scrolled, with scroll bars when they "
+                 "don't fit, as Godot's ScrollContainer. Each child takes its minimum size, or "
+                 "the whole visible width or height on an axis its size flags expand. The "
+                 "wheel, the scroll bars and touch drags scroll it, and it always clips its "
+                 "children. Emits scroll_started and scroll_ended around a touch drag. Theme "
+                 "items: panel and focus styles, scrollbar_margin_left, _top, _right and "
+                 "_bottom (-1 for the panel's margins), scrollbar_h_separation and "
+                 "scrollbar_v_separation; its bars use HScrollBar's and VScrollBar's.")
+        .describe("horizontal_scroll_mode", scroll_mode)
+        .describe("vertical_scroll_mode", scroll_mode)
+        .describe("scroll_horizontal", {.doc = "Pixels scrolled right; kept in range."})
+        .describe("scroll_vertical", {.doc = "Pixels scrolled down; kept in range."})
+        .describe("scroll_horizontal_custom_step", custom_step)
+        .describe("scroll_vertical_custom_step", custom_step)
+        .describe("scroll_deadzone",
+                  {.doc = "Pixels a touch moves before it scrolls, so taps reach the children.",
+                   .min = 0})
+        .describe("follow_focus", {.doc = "Scroll to show a control inside it when it gets focus."})
+        .describe("scroll_horizontal_by_default",
+                  {.doc = "The wheel scrolls across, and Shift with the wheel scrolls down."})
+        .describe("draw_focus_border",
+                  {.doc = "Draw the focus style over it while it or a control inside it has "
+                          "focus, keeping its children inside the style's margins."});
 }
 
 void register_particle_components(ComponentRegistry& registry) {

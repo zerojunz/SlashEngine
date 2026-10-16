@@ -11,6 +11,7 @@
 #include <optional>
 #include <string>
 #include <tuple>
+#include <unordered_map>
 #include <vector>
 
 namespace slash::canvas {
@@ -886,10 +887,11 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             if (contents->items.empty() || contents->items.back().entity != entity ||
                 contents->items.back().kind != kind) {
                 contents->items.push_back(
-                    {.kind = kind, .entity = entity, .count = 0, .pieces = {}});
+                    {.kind = kind, .entity = entity, .count = 0, .pieces = {}, .uncut = {}});
             }
             return contents->items.back();
         };
+        std::size_t order = 0; // pieces in drawing order
         for (const Item& item : items) {
             FrameItem& out = add(item.kind, item.entity);
             out.count += item.drawn;
@@ -899,36 +901,68 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
                  .width = item.image != nullptr ? item.image->width : 0,
                  .height = item.image != nullptr ? item.image->height : 0,
                  .field = {},
-                 .vertices = {from, from + static_cast<std::ptrdiff_t>(item.count)}});
+                 .vertices = {from, from + static_cast<std::ptrdiff_t>(item.count)},
+                 .order = order++});
         }
-        for (const ui::DrawSpan& span : controls.spans) {
-            const ui::DrawCall& call = controls.calls[span.call];
-            if (!control_textures[span.call]) {
-                continue;
+        // A control draws as one item, though what it draws over its children comes later.
+        std::unordered_map<entt::entity, std::size_t> control_items;
+        const auto control_item = [&](entt::entity entity) -> FrameItem& {
+            const auto [found, made] = control_items.try_emplace(entity, contents->items.size());
+            if (made) {
+                contents->items.push_back({.kind = FrameItem::Kind::Control,
+                                           .entity = entity,
+                                           .count = 0,
+                                           .pieces = {},
+                                           .uncut = {}});
             }
-            const auto from = call.vertices.begin() + static_cast<std::ptrdiff_t>(span.first);
+            return contents->items[found->second];
+        };
+        // A piece of a control's: triangles over its call's texture or glyph page, if it has one.
+        const auto control_piece = [&](const ui::DrawCall& call, auto first,
+                                       auto last) -> std::optional<FramePiece> {
             FramePiece piece{.pixels = nullptr,
                              .width = 0,
                              .height = 0,
                              .field = call.field,
-                             .vertices = {from, from + static_cast<std::ptrdiff_t>(span.count)}};
+                             .vertices = {first, last},
+                             .order = order};
             if (call.source == ui::DrawCall::Source::Atlas) {
                 const text::AtlasPage& page = fonts->pages().at(call.page);
                 piece.pixels = page.rgba.data();
                 piece.width = page.width;
                 piece.height = page.height;
             } else if (call.source == ui::DrawCall::Source::Texture) {
-                const auto found = textures_.find(
-                    {call.texture, resolve_filter(call.filter, options.texture_filter)});
-                if (found == textures_.end()) {
-                    continue;
+                auto made =
+                    texture(call.texture, resolve_filter(call.filter, options.texture_filter));
+                if (!made) {
+                    return std::nullopt;
                 }
-                const render::Image& image = found->second.pixels();
+                const render::Image& image = made.value()->pixels();
                 piece.pixels = image.pixels.data();
                 piece.width = image.width;
                 piece.height = image.height;
             }
-            add(FrameItem::Kind::Control, span.entity).pieces.push_back(std::move(piece));
+            return piece;
+        };
+        for (const ui::DrawSpan& span : controls.spans) {
+            const ui::DrawCall& call = controls.calls[span.call];
+            if (!control_textures[span.call]) {
+                continue;
+            }
+            const auto from = call.vertices.begin() + static_cast<std::ptrdiff_t>(span.first);
+            if (auto piece =
+                    control_piece(call, from, from + static_cast<std::ptrdiff_t>(span.count));
+                piece) {
+                ++order;
+                control_item(span.entity).pieces.push_back(std::move(*piece));
+            }
+        }
+        for (const ui::UncutDraw& uncut : controls.uncut) {
+            if (auto piece = control_piece(uncut.call, uncut.call.vertices.begin(),
+                                           uncut.call.vertices.end());
+                piece) {
+                control_item(uncut.entity).uncut.push_back(std::move(*piece));
+            }
         }
         contents->layout = std::move(layout);
     }

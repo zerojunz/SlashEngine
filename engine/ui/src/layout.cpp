@@ -13,6 +13,7 @@
 #include <cstddef>
 #include <deque>
 #include <iterator>
+#include <limits>
 #include <map>
 #include <memory>
 #include <optional>
@@ -838,7 +839,206 @@ struct SliderWork {
     Range range;
 };
 
-enum class Kind : std::uint8_t { None, Box, Grid, Margin, Center, Flow, Panel };
+// A scroll bar's theme items, as ScrollBar's theme cache holds them: HScrollBar's or
+// VScrollBar's.
+struct BarTheme {
+    StyleBox scroll;
+    StyleBox scroll_focus;
+    StyleBox grabber;
+    StyleBox grabber_highlight;
+    StyleBox grabber_pressed;
+    // Its arrows' icons, normal, highlighted and pressed, and their sizes when they load.
+    std::array<std::string, 3> decrement;
+    std::array<std::string, 3> increment;
+    std::array<std::optional<Vec2>, 3> decrement_size;
+    std::array<std::optional<Vec2>, 3> increment_size;
+    int icon_max_size = 0;
+    // Across it: padding_top and padding_bottom for a horizontal bar, padding_left and
+    // padding_right for a vertical one.
+    int padding_before = 0;
+    int padding_after = 0;
+    bool vertical = false;
+};
+
+// A ScrollBar being laid out.
+struct BarWork {
+    BarTheme theme;
+    Range range;
+    float custom_step = -1.0F;
+    BarLook look;
+    bool focused = false;
+};
+
+enum class ScrollMode : std::uint8_t { Disabled, Auto, Always, Never, Reserve };
+
+ScrollMode scroll_mode_of(std::string_view name) {
+    if (name == "disabled") {
+        return ScrollMode::Disabled;
+    }
+    if (name == "always") {
+        return ScrollMode::Always;
+    }
+    if (name == "never") {
+        return ScrollMode::Never;
+    }
+    return name == "reserve" ? ScrollMode::Reserve : ScrollMode::Auto;
+}
+
+// A ScrollContainer being laid out: its theme items, the scroll it asks for, and its bars and
+// scroll as last sorted.
+struct ScrollWork {
+    const world::ScrollContainer* scroll = nullptr;
+    ScrollMode h_mode = ScrollMode::Auto;
+    ScrollMode v_mode = ScrollMode::Auto;
+    StyleBox panel;
+    StyleBox focus;
+    std::array<int, 4> bar_margins{}; // scrollbar_margin_left, _top, _right and _bottom
+    int h_separation = 0;             // scrollbar_h_separation
+    int v_separation = 0;
+    BarTheme h;
+    BarTheme v;
+    BarLook h_look;
+    BarLook v_look;
+    std::array<double, 2> wanted{};
+    bool focus_drawn = false; // draw_focus_border, and it or a control inside it has focus
+    ScrollView view;
+};
+
+float along(Vec2 v, bool vertical) {
+    return vertical ? v.y : v.x;
+}
+
+// A scroll bar icon's size, as ScrollBar::_fit_icon_size fits it to icon_max_size, rounded as
+// its callers round it; none for an icon that doesn't load.
+Vec2 bar_icon(const std::optional<Vec2>& size, int max_size) {
+    const Vec2 icon = size.value_or(Vec2{});
+    const auto largest = static_cast<int>(std::max(icon.x, icon.y));
+    if (max_size <= 0 || largest <= max_size) {
+        return {std::round(icon.x), std::round(icon.y)};
+    }
+    const double scale = static_cast<double>(max_size) / largest;
+    return {static_cast<float>(static_cast<int>(icon.x * scale)),
+            static_cast<float>(static_cast<int>(icon.y * scale))};
+}
+
+// ScrollBar::get_grabber_min_size.
+double grabber_minimum(const BarTheme& theme) {
+    return along(theme.grabber.minimum_size(), theme.vertical);
+}
+
+// ScrollBar::get_minimum_size: its arrows, its track's margins and the smallest grabber along
+// it; the widest of them and its padding across.
+Vec2 bar_minimum(const BarTheme& theme) {
+    const Vec2 increment = bar_icon(theme.increment_size[0], theme.icon_max_size);
+    const Vec2 decrement = bar_icon(theme.decrement_size[0], theme.icon_max_size);
+    const Vec2 track = theme.scroll.minimum_size();
+    const auto padding =
+        static_cast<float>(std::max(theme.padding_before, 0) + std::max(theme.padding_after, 0));
+    const auto grabber = static_cast<float>(grabber_minimum(theme));
+    if (theme.vertical) {
+        return {std::max(increment.x, track.x) + padding,
+                increment.y + decrement.y + track.y + grabber};
+    }
+    return {increment.x + decrement.x + track.x + grabber,
+            std::max(increment.y, track.y) + padding};
+}
+
+// A scroll bar's measures in a rect of its control's, as ScrollBar's get_area_size,
+// get_grabber_size and get_grabber_offset find them.
+ScrollBarView measure_bar(const BarTheme& theme, const Range& range, float custom_step,
+                          Vec2 position, Vec2 size) {
+    const bool vertical = theme.vertical;
+    ScrollBarView view;
+    view.position = position;
+    view.size = size;
+    view.vertical = vertical;
+    view.visible = true;
+    view.min_value = range.min;
+    view.max_value = range.max;
+    view.page = range.page;
+    view.step = range.step;
+    view.value = range.value;
+    view.ratio = range_ratio(range);
+    view.custom_step = custom_step;
+    view.decrement = along(bar_icon(theme.decrement_size[0], theme.icon_max_size), vertical);
+    view.increment = along(bar_icon(theme.increment_size[0], theme.icon_max_size), vertical);
+    view.begin = theme.scroll.margin(vertical ? kTop : kLeft);
+    // The area takes the icons' own sizes, not their fitted ones, as Godot's does.
+    const double grabber = grabber_minimum(theme);
+    view.area = static_cast<double>(along(size, vertical)) -
+                along(theme.scroll.minimum_size(), vertical) -
+                along(theme.increment_size[0].value_or(Vec2{}), vertical) -
+                along(theme.decrement_size[0].value_or(Vec2{}), vertical) - grabber;
+    // The page's share in single precision, as Godot's.
+    const auto span = static_cast<float>(range.max - range.min);
+    if (span > 0.0F) {
+        const float page = range.page > 0.0 ? static_cast<float>(range.page) : 0.0F;
+        view.grabber_size = (static_cast<double>(page / span) * view.area) + grabber;
+    }
+    view.grabber_offset = view.area * view.ratio;
+    return view;
+}
+
+// Which of a bar's three icons it shows: pressed, highlighted or normal.
+std::size_t bar_icon_state(bool pressed, bool highlighted) {
+    if (pressed) {
+        return 2;
+    }
+    return highlighted ? 1 : 0;
+}
+
+// What a scroll bar draws, as its NOTIFICATION_DRAW: its decrement arrow, its track, its
+// increment arrow and its grabber, in its control's rect.
+void scroll_bar_boxes(const BarTheme& theme, const ScrollBarView& view, const BarLook& look,
+                      bool focused, std::vector<Box>& boxes) {
+    const bool vertical = theme.vertical;
+    const std::size_t d = bar_icon_state(look.decrement_pressed, look.highlight == 1);
+    const std::size_t i = bar_icon_state(look.increment_pressed, look.highlight == 3);
+    const Vec2 decrement = bar_icon(theme.decrement_size.at(d), theme.icon_max_size);
+    const Vec2 increment = bar_icon(theme.increment_size.at(i), theme.icon_max_size);
+    const auto icon = [&](const std::string& path, const std::optional<Vec2>& texture, Vec2 at,
+                          Vec2 size) {
+        if (path.empty() || !texture) {
+            return;
+        }
+        Box box{
+            .style = {}, .position = view.position + at, .size = size, .texture_size = *texture};
+        box.style.type = StyleBox::Type::Texture;
+        box.style.texture = path;
+        boxes.push_back(std::move(box));
+    };
+    icon(theme.decrement.at(d), theme.decrement_size.at(d), {}, decrement);
+    Vec2 at = vertical ? Vec2{0.0F, decrement.y} : Vec2{decrement.x, 0.0F};
+    Vec2 area = view.size;
+    (vertical ? area.y : area.x) -= along(increment, vertical) + along(decrement, vertical);
+    boxes.push_back({.style = focused ? theme.scroll_focus : theme.scroll,
+                     .position = view.position + at,
+                     .size = area,
+                     .texture_size = {}});
+    (vertical ? at.y : at.x) += along(area, vertical);
+    icon(theme.increment.at(i), theme.increment_size.at(i), at, increment);
+    const auto before = static_cast<float>(std::max(theme.padding_before, 0));
+    const auto after = static_cast<float>(std::max(theme.padding_after, 0));
+    const auto offset = static_cast<float>(view.grabber_offset);
+    const auto length = static_cast<float>(view.grabber_size);
+    Box grabber{.style = theme.grabber, .position = {}, .size = {}, .texture_size = {}};
+    if (look.dragging) {
+        grabber.style = theme.grabber_pressed;
+    } else if (look.highlight == 2) {
+        grabber.style = theme.grabber_highlight;
+    }
+    if (vertical) {
+        grabber.size = {view.size.x - before - after, length};
+        grabber.position = {before, offset + decrement.y + theme.scroll.margin(kTop)};
+    } else {
+        grabber.size = {length, view.size.y - before - after};
+        grabber.position = {offset + decrement.x + theme.scroll.margin(kLeft), before};
+    }
+    grabber.position = grabber.position + view.position;
+    boxes.push_back(std::move(grabber));
+}
+
+enum class Kind : std::uint8_t { None, Box, Grid, Margin, Center, Flow, Panel, Scroll };
 
 // Which way a control's minimum size depends on its own size.
 enum class Depends : std::uint8_t { None, Width, Height };
@@ -883,6 +1083,8 @@ struct Node {
     std::array<std::optional<Vec2>, 5> button_textures;
     std::optional<ButtonState> button_state;
     std::optional<SliderWork> slider;
+    std::optional<BarWork> scroll_bar; // a ScrollBar's
+    std::optional<ScrollWork> scroll;  // a ScrollContainer's
     // A LineEdit: a copy with its caret column in its text, its theme items, its shaped text and
     // the gui system's state for it.
     std::optional<world::LineEdit> line_edit;
@@ -1116,6 +1318,10 @@ struct Builder {
             node.kind = Kind::Panel;
             node.container_panel = resolver("PanelContainer").style("panel");
             node.panel = node.container_panel;
+        } else if (const auto* scroll = ecs.try_get<world::ScrollContainer>(entity);
+                   scroll != nullptr) {
+            node.kind = Kind::Scroll;
+            start_scroll(node, *scroll, resolver("ScrollContainer"));
         }
         if (ecs.all_of<world::Panel>(entity) && !node.panel) {
             node.panel = resolver("Panel").style("panel");
@@ -1163,6 +1369,15 @@ struct Builder {
         }
         if (const auto* slider = ecs.try_get<world::Slider>(entity); slider != nullptr) {
             start_slider(node, *slider, resolver(slider->vertical ? "VSlider" : "HSlider"));
+        }
+        if (const auto* bar = ecs.try_get<world::ScrollBar>(entity); bar != nullptr) {
+            BarWork& work = node.scroll_bar.emplace();
+            work.theme =
+                bar_theme(resolver(bar->vertical ? "VScrollBar" : "HScrollBar"), bar->vertical);
+            work.range = range_of(*bar);
+            work.custom_step = bar->custom_step;
+            work.look = bar_look(world, entity, Bar::Own);
+            work.focused = shows_focus(world, entity);
         }
         if (const auto* edit = ecs.try_get<world::LineEdit>(entity); edit != nullptr) {
             start_line_edit(node, *edit, resolver("LineEdit"));
@@ -1281,6 +1496,87 @@ struct Builder {
         check.v_offset = theme.constant("check_v_offset");
         // On the icon's side.
         work.internal.at(check_button != rtl ? 1 : 0) = check.largest.x;
+    }
+
+    // A scroll bar's theme items, as ScrollBar's theme cache reads them.
+    BarTheme bar_theme(const Resolver& theme, bool vertical) {
+        BarTheme made;
+        made.vertical = vertical;
+        made.scroll = theme.style("scroll");
+        made.scroll_focus = theme.style("scroll_focus");
+        made.grabber = theme.style("grabber");
+        made.grabber_highlight = theme.style("grabber_highlight");
+        made.grabber_pressed = theme.style("grabber_pressed");
+        static constexpr std::array<std::string_view, 3> kStates{"", "_highlight", "_pressed"};
+        for (std::size_t i = 0; i < kStates.size(); ++i) {
+            made.decrement.at(i) = theme.icon("decrement" + std::string(kStates.at(i)));
+            made.increment.at(i) = theme.icon("increment" + std::string(kStates.at(i)));
+            if (!made.decrement.at(i).empty()) {
+                made.decrement_size.at(i) = texture_size(made.decrement.at(i));
+            }
+            if (!made.increment.at(i).empty()) {
+                made.increment_size.at(i) = texture_size(made.increment.at(i));
+            }
+        }
+        made.icon_max_size = theme.constant("icon_max_size");
+        made.padding_before = theme.constant(vertical ? "padding_left" : "padding_top");
+        made.padding_after = theme.constant(vertical ? "padding_right" : "padding_bottom");
+        return made;
+    }
+
+    // A ScrollContainer's theme items and the scroll it asks for. Its bars take HScrollBar's and
+    // VScrollBar's items from the themes it uses, not its overrides, as Godot's bars are
+    // controls of their own.
+    void start_scroll(Node& node, const world::ScrollContainer& scroll, const Resolver& theme) {
+        ScrollWork& work = node.scroll.emplace();
+        work.scroll = &scroll;
+        work.h_mode = scroll_mode_of(scroll.horizontal_scroll_mode);
+        work.v_mode = scroll_mode_of(scroll.vertical_scroll_mode);
+        work.panel = theme.style("panel");
+        work.focus = theme.style("focus");
+        work.bar_margins = {
+            theme.constant("scrollbar_margin_left"), theme.constant("scrollbar_margin_top"),
+            theme.constant("scrollbar_margin_right"), theme.constant("scrollbar_margin_bottom")};
+        work.h_separation = theme.constant("scrollbar_h_separation");
+        work.v_separation = theme.constant("scrollbar_v_separation");
+        static const world::Control kNoOverrides;
+        work.h = bar_theme(Resolver(node.themes, kNoOverrides, "HScrollBar"), false);
+        work.v = bar_theme(Resolver(node.themes, kNoOverrides, "VScrollBar"), true);
+        work.h_look = bar_look(world, node.entity, Bar::Horizontal);
+        work.v_look = bar_look(world, node.entity, Bar::Vertical);
+        work.wanted = wanted_scroll(world, node.entity);
+        if (scroll.draw_focus_border) {
+            // ScrollContainer::_gui_focus_changed: it or a control inside it shows focus.
+            const entt::entity owner = focus_owner(world);
+            bool inside = false;
+            for (entt::entity at = owner; at != entt::null && !inside;) {
+                inside = at == node.entity;
+                const auto found = parents.find(at);
+                at = found != parents.end() ? found->second : entt::null;
+            }
+            work.focus_drawn = inside && shows_focus(world, owner);
+        }
+        node.panel = work.panel;
+        // With one axis disabled, the scroll bar of the other may take room in its minimum size,
+        // when its children don't fit its size that way.
+        if (work.h_mode == ScrollMode::Disabled && work.v_mode == ScrollMode::Auto) {
+            node.depends = Depends::Height;
+        } else if (work.v_mode == ScrollMode::Disabled && work.h_mode == ScrollMode::Auto) {
+            node.depends = Depends::Width;
+        }
+    }
+
+    // ScrollContainer::_get_margins: its panel's margins, or its focus style's where they are
+    // bigger when it draws the focus border.
+    static std::array<float, 4> scroll_margins(const ScrollWork& work) {
+        std::array<float, 4> margins{};
+        for (std::size_t side = 0; side < margins.size(); ++side) {
+            margins.at(side) = work.panel.margin(side);
+            if (work.scroll->draw_focus_border) {
+                margins.at(side) = std::max(margins.at(side), work.focus.margin(side));
+            }
+        }
+        return margins;
     }
 
     // A Slider's theme items and its value kept in range, as Slider's theme cache and
@@ -1577,8 +1873,37 @@ struct Builder {
             const Vec2 style = node.container_panel->minimum_size();
             return {biggest.x + style.x, biggest.y + style.y};
         }
+        case Kind::Scroll:
+            return scroll_minimum(*node.scroll, biggest, size.value_or(Vec2{}));
         }
         return {};
+    }
+
+    // ScrollContainer::_get_minimum_size: nothing on an axis it scrolls; on a disabled one its
+    // largest child, and the other axis's bar when it shows; and its margins.
+    static Vec2 scroll_minimum(const ScrollWork& work, Vec2 largest, Vec2 size) {
+        const bool v_show = work.v_mode == ScrollMode::Always ||
+                            work.v_mode == ScrollMode::Reserve ||
+                            (work.v_mode == ScrollMode::Auto && largest.y > size.y);
+        const bool h_show = work.h_mode == ScrollMode::Always ||
+                            work.h_mode == ScrollMode::Reserve ||
+                            (work.h_mode == ScrollMode::Auto && largest.x > size.x);
+        Vec2 minimum;
+        if (work.h_mode == ScrollMode::Disabled) {
+            minimum.x = largest.x;
+            if (v_show) {
+                minimum.x += bar_minimum(work.v).x + static_cast<float>(work.h_separation);
+            }
+        }
+        if (work.v_mode == ScrollMode::Disabled) {
+            minimum.y = largest.y;
+            if (h_show) {
+                minimum.y += bar_minimum(work.h).y + static_cast<float>(work.v_separation);
+            }
+        }
+        const std::array<float, 4> margins = scroll_margins(work);
+        return {minimum.x + margins[kLeft] + margins[kRight],
+                minimum.y + margins[kTop] + margins[kBottom]};
     }
 
     // A control's minimum size, as get_combined_minimum_size: each component's minimum and
@@ -1650,6 +1975,9 @@ struct Builder {
                               (edit.editable ? node.text_view->normal : node.text_view->read_only)
                                   .minimum_size());
             }
+        }
+        if (node.scroll_bar) {
+            minimum = max(minimum, bar_minimum(node.scroll_bar->theme));
         }
         if (node.slider) {
             // Slider::get_minimum_size, in whole pixels.
@@ -2071,9 +2399,14 @@ struct Builder {
     }
 
     // Gives each visible child of a container its rect.
-    void sort(const Node& node, Vec2 size) {
+    void sort(Node& node, Vec2 size) {
         switch (node.kind) {
         case Kind::None:
+            return;
+        case Kind::Scroll:
+            if (node.scroll) {
+                sort_scroll(node, *node.scroll, size);
+            }
             return;
         case Kind::Box:
             sort_box(node, size);
@@ -2118,6 +2451,134 @@ struct Builder {
             return;
         }
         }
+    }
+
+    // ScrollContainer::_reposition_children, with _update_scrollbars and
+    // _update_scrollbar_position: which bars show and where, how far it scrolls, and its
+    // children at their minimum sizes, or the visible size on an axis they expand on, moved back
+    // by the scroll.
+    void sort_scroll(Node& node, ScrollWork& work, Vec2 size) {
+        const world::ScrollContainer& scroll = *work.scroll;
+        const bool rtl = node.rtl;
+        const std::array<float, 4> margins = scroll_margins(work);
+        const Vec2 inner{size.x - margins[kLeft] - margins[kRight],
+                         size.y - margins[kTop] - margins[kBottom]};
+        const std::vector<std::size_t> kids = sorted(node);
+        Vec2 largest;
+        for (const std::size_t kid : kids) {
+            largest = max(largest, nodes[kid].minimum);
+        }
+        const Vec2 hmin = bar_minimum(work.h);
+        const Vec2 vmin = bar_minimum(work.v);
+        const auto shows = [](ScrollMode mode, float content, float room) {
+            return mode == ScrollMode::Always ||
+                   ((mode == ScrollMode::Auto || mode == ScrollMode::Reserve) && content > room);
+        };
+        const bool h_visible = shows(work.h_mode, largest.x, inner.x);
+        const bool v_visible = shows(work.v_mode, largest.y, inner.y);
+        // Each bar's range is its largest child's size, of which the room in view is a page.
+        const auto range = [](float content, float page, double wanted) {
+            Range made{.min = 0.0,
+                       .max = std::max(static_cast<double>(content), 0.0),
+                       .step = 0.0,
+                       .page = 0.0,
+                       .value = 0.0,
+                       .rounded = false,
+                       .allow_greater = false,
+                       .allow_lesser = false};
+            made.page = std::clamp(static_cast<double>(page), 0.0, made.max - made.min);
+            made.value = range_value(made, wanted);
+            return made;
+        };
+        const Range h_range =
+            range(largest.x, v_visible ? inner.x - vmin.x : inner.x, work.wanted[0]);
+        const Range v_range =
+            range(largest.y, h_visible ? inner.y - hmin.y : inner.y, work.wanted[1]);
+
+        // The bars go along its far edges, inside its margins or scrollbar_margin_*, each grown
+        // to its minimum size and mirrored right to left as Control::_size_changed places it.
+        const auto edge = [&](std::size_t side, float fallback) {
+            return static_cast<float>(work.bar_margins.at(side) < 0 ? static_cast<int>(fallback)
+                                                                    : work.bar_margins.at(side));
+        };
+        const float left = edge(kLeft, rtl ? margins[kRight] : margins[kLeft]);
+        const float right = edge(kRight, rtl ? margins[kLeft] : margins[kRight]);
+        const float top = edge(kTop, margins[kTop]);
+        const float bottom = edge(kBottom, work.panel.margin(kBottom));
+        const Vec2 h_size = h_visible ? hmin : Vec2{};
+        const Vec2 v_size = v_visible ? vmin : Vec2{};
+        const auto bar_rect = [&](Vec2 from, Vec2 to, Vec2 minimum) {
+            Rect r{from, {std::max(to.x - from.x, minimum.x), std::max(to.y - from.y, minimum.y)}};
+            if (rtl) {
+                r.position.x = size.x - r.position.x - r.size.x;
+            }
+            return r;
+        };
+        const Rect h_rect = bar_rect({left, size.y - h_size.y - bottom},
+                                     {size.x - right - v_size.x, size.y - bottom}, hmin);
+        const Rect v_rect = bar_rect({size.x - v_size.x - right, top},
+                                     {size.x - right, size.y - h_size.y - bottom}, vmin);
+        work.view = {};
+        work.view.h = measure_bar(work.h, h_range, scroll.scroll_horizontal_custom_step,
+                                  h_rect.position, h_rect.size);
+        work.view.h.visible = h_visible;
+        work.view.v = measure_bar(work.v, v_range, scroll.scroll_vertical_custom_step,
+                                  v_rect.position, v_rect.size);
+        work.view.v.visible = v_visible;
+
+        // The room its children have: its rect less its margins and the bars it shows or keeps
+        // room for.
+        Vec2 room = inner;
+        Vec2 offset{margins[kLeft], margins[kTop]};
+        if (h_visible || work.h_mode == ScrollMode::Reserve) {
+            auto height = static_cast<int>(hmin.y + static_cast<float>(work.v_separation));
+            if (work.bar_margins[kBottom] >= 0) {
+                const int scroll_margin = work.bar_margins[kBottom] + height;
+                if (static_cast<float>(scroll_margin) > margins[kBottom]) {
+                    height = static_cast<int>(static_cast<float>(scroll_margin) - margins[kBottom]);
+                }
+            }
+            room.y -= static_cast<float>(height);
+        }
+        if (v_visible || work.v_mode == ScrollMode::Reserve) {
+            auto width = static_cast<int>(vmin.x + static_cast<float>(work.h_separation));
+            if (work.bar_margins[kRight] >= 0) {
+                const int scroll_margin = work.bar_margins[kRight] + width;
+                if (static_cast<float>(scroll_margin) > margins[kRight]) {
+                    width = static_cast<int>(static_cast<float>(scroll_margin) - margins[kRight]);
+                }
+            }
+            room.x -= static_cast<float>(width);
+            if (rtl) {
+                offset.x += static_cast<float>(width);
+            }
+        }
+        // get_h_scroll and get_v_scroll: whole pixels.
+        const Vec2 scrolled{static_cast<float>(static_cast<int>(h_range.value)),
+                            static_cast<float>(static_cast<int>(v_range.value))};
+        for (const std::size_t kid : kids) {
+            const Node& child = nodes[kid];
+            const Vec2 m = child.minimum;
+            Rect r{{-scrolled.x, -scrolled.y}, m};
+            if (flags_of(child.control->size_flags_horizontal).expand) {
+                r.size.x = std::max(room.x, m.x);
+            }
+            if (flags_of(child.control->size_flags_vertical).expand) {
+                r.size.y = std::max(room.y, m.y);
+            }
+            r.position = {std::floor(r.position.x + offset.x), std::floor(r.position.y + offset.y)};
+            fit(kid, r, rtl);
+        }
+
+        // _get_local_visible_rect: its rect less the bars that show.
+        const float side = v_visible ? v_rect.size.x : 0.0F;
+        const float below = h_visible ? h_rect.size.y : 0.0F;
+        work.view.visible_position = {rtl ? side : 0.0F, 0.0F};
+        work.view.visible_size = {size.x - side, size.y - below};
+        work.view.scroll = scrolled;
+        work.view.scroll_max = {
+            static_cast<float>(std::max(h_range.max - h_range.page - h_range.min, 0.0)),
+            static_cast<float>(std::max(v_range.max - v_range.page - v_range.min, 0.0))};
     }
 
     // ---- Placing ----
@@ -2183,6 +2644,34 @@ struct Builder {
         placed.texture_filter = control.texture_filter != "inherit" || parent == nullptr
                                     ? control.texture_filter
                                     : parent->placed.texture_filter;
+        // The clip it draws in, as RendererCanvasCull finds each item's final_clip_rect: its
+        // parent's, cut to its own rect on screen when it clips, rounded to whole pixels.
+        placed.clips = control.clip_contents || node.kind == Kind::Scroll;
+        placed.clip = parent != nullptr ? parent->placed.clip : std::nullopt;
+        if (placed.clips) {
+            float x0 = std::numeric_limits<float>::max();
+            float y0 = x0;
+            float x1 = std::numeric_limits<float>::lowest();
+            float y1 = x1;
+            for (const Vec2 corner :
+                 {Vec2{}, Vec2{width, 0.0F}, Vec2{0.0F, height}, Vec2{width, height}}) {
+                const Vec2 at = placed.transform.apply(corner);
+                x0 = std::min(x0, at.x);
+                y0 = std::min(y0, at.y);
+                x1 = std::max(x1, at.x);
+                y1 = std::max(y1, at.y);
+            }
+            if (placed.clip) {
+                x0 = std::max(x0, placed.clip->x);
+                y0 = std::max(y0, placed.clip->y);
+                x1 = std::min(x1, placed.clip->z);
+                y1 = std::min(y1, placed.clip->w);
+            }
+            const float w = std::max(x1 - x0, 0.0F);
+            const float h = std::max(y1 - y0, 0.0F);
+            const Vec2 at{std::round(x0), std::round(y0)};
+            placed.clip = Vec4{at.x, at.y, at.x + std::round(w), at.y + std::round(h)};
+        }
         for (const std::size_t kid : node.kids) {
             nodes[kid].assigned.reset();
         }
@@ -2374,6 +2863,32 @@ struct Builder {
                                                          .center_grabber = work.center_grabber,
                                                          .highlighted = work.highlighted,
                                                          .rtl = work.rtl});
+        }
+        if (node.scroll_bar) {
+            const BarWork& work = *node.scroll_bar;
+            ScrollBarView view =
+                measure_bar(work.theme, work.range, work.custom_step, Vec2{}, size);
+            scroll_bar_boxes(work.theme, view, work.look, work.focused, boxes);
+            out.scroll_bars.emplace(node.entity, view);
+        }
+        if (node.scroll) {
+            const ScrollWork& work = *node.scroll;
+            std::vector<Box> over;
+            if (work.view.h.visible) {
+                scroll_bar_boxes(work.h, work.view.h, work.h_look, false, over);
+            }
+            if (work.view.v.visible) {
+                scroll_bar_boxes(work.v, work.view.v, work.v_look, false, over);
+            }
+            if (work.focus_drawn) {
+                over.push_back(
+                    {.style = work.focus, .position = {}, .size = size, .texture_size = {}});
+            }
+            std::erase_if(over, [&](Box& box) { return !keep(box); });
+            if (!over.empty()) {
+                out.over_children.emplace(node.entity, std::move(over));
+            }
+            out.scrolls.emplace(node.entity, work.view);
         }
         if (node.field) {
             finish_line_edit(node, size, boxes);

@@ -232,8 +232,9 @@ rendering on top.
       `CheckButton`, `HSlider` and `VSlider` dragged, clicked, scrolled and stepped by keys and
       gamepads with `value_changed`, `drag_started` and `drag_ended`, and theme icons with
       Godot's default ones drawn by the engine (`builtin:` names)
-- [ ] Scrolling, as Godot's: `HScrollBar`, `VScrollBar` and `ScrollContainer` dragged, clicked
-      and scrolled by the wheel, touch and focus, with `clip_contents`
+- [x] Scrolling, as Godot's: `HScrollBar`, `VScrollBar` and `ScrollContainer` dragged, clicked
+      and scrolled by the wheel, touch and focus, with `clip_contents`; `ui.layout` and
+      `frame.summary` report scrolls and what a clip cuts off
 - [ ] The other controls people press and drag, as Godot's: `OptionButton` and `MenuButton`
       with popups, with tooltips and drag and drop
 - [x] Text in every language, as Godot's text server: BiDi (SheenBidi) so right-to-left and

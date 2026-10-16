@@ -586,12 +586,15 @@ struct Control {
     entt::entity focus_next = entt::null;
     entt::entity focus_previous = entt::null;
     bool visible = true;
+    // Cut off its drawing and its children's at its rect, and let the pointer reach only the
+    // part of its children inside it, as Godot's clip_contents. A ScrollContainer always does.
+    bool clip_contents = false;
 
     friend bool operator==(const Control&, const Control&) = default;
 };
 SLASH_COMPONENT(Control, children, anchor_left, anchor_top, anchor_right, anchor_bottom,
                 offset_left, offset_top, offset_right, offset_bottom, grow_horizontal,
-                grow_vertical, custom_minimum_size, rotation, scale, pivot_offset,
+                grow_vertical, clip_contents, custom_minimum_size, rotation, scale, pivot_offset,
                 size_flags_horizontal, size_flags_vertical, size_flags_stretch_ratio,
                 focus_neighbor_left, focus_neighbor_top, focus_neighbor_right,
                 focus_neighbor_bottom, focus_next, focus_previous, focus_mode, mouse_filter,
@@ -715,6 +718,28 @@ struct Slider {
 SLASH_COMPONENT(Slider, min_value, max_value, step, page, value, rounded, allow_greater,
                 allow_lesser, editable, scrollable, tick_count, ticks_on_borders, ticks_position,
                 vertical)
+
+// A bar with a grabber that shows how far along a value is and moves it, as Godot's
+// HScrollBar, or VScrollBar when vertical: the grabber's length is page's share of the range. A
+// click before or after the grabber moves the value a page, dragging the grabber moves it with
+// the pointer, and the wheel moves it an eighth of a page; with focus, the ui_* actions step it.
+// It emits value_changed (data {"value"}) and scrolling, when the pointer or keys move it.
+struct ScrollBar {
+    double min_value = 0.0;
+    double max_value = 100.0;
+    double step = 0.0; // the value is rounded to a multiple of this from min_value; 0 for none
+    double page = 0.0; // the part of the range in view: the grabber's length
+    double value = 0.0;
+    float custom_step = -1.0F; // what the ui_* actions and its arrows step by; -1 for step
+    bool rounded = false;
+    bool allow_greater = false;
+    bool allow_lesser = false;
+    bool vertical = false;
+
+    friend bool operator==(const ScrollBar&, const ScrollBar&) = default;
+};
+SLASH_COMPONENT(ScrollBar, min_value, max_value, step, page, value, rounded, allow_greater,
+                allow_lesser, custom_step, vertical)
 
 // Buttons, as Godot's BaseButton: pressed by a click or tap released over them (or as the press
 // starts, with action_mode "press"), by ui_accept while focused, or by a shortcut. They emit
@@ -957,5 +982,31 @@ struct PanelContainer {
     friend bool operator==(const PanelContainer&, const PanelContainer&) = default;
 };
 SLASH_COMPONENT(PanelContainer)
+
+// Shows its children through its rect, scrolled, with scroll bars when they don't fit, as
+// Godot's ScrollContainer. Each child takes its minimum size, or the whole visible width or
+// height on an axis its size flags expand. The wheel, the scroll bars and touch drags scroll
+// it; it always clips its children. It emits scroll_started and scroll_ended around a drag.
+struct ScrollContainer {
+    // Each axis's: "disabled" (no scrolling: it is as wide as its children), "auto" (a scroll
+    // bar when they don't fit), "always", "never" (scrolls, with no bar) or "reserve" (as auto,
+    // with room kept for the bar).
+    std::string horizontal_scroll_mode = "auto";
+    std::string vertical_scroll_mode = "auto";
+    int scroll_horizontal = 0;                   // pixels scrolled right
+    int scroll_vertical = 0;                     // pixels scrolled down
+    float scroll_horizontal_custom_step = -1.0F; // what its bars' arrows step by; -1 for none
+    float scroll_vertical_custom_step = -1.0F;
+    int scroll_deadzone = 0;                   // pixels a touch moves before it scrolls
+    bool follow_focus = false;                 // scroll to show a control inside it that gets focus
+    bool scroll_horizontal_by_default = false; // the wheel scrolls across, and Shift+wheel down
+    bool draw_focus_border = false;            // draw the focus style while it or a child has focus
+
+    friend bool operator==(const ScrollContainer&, const ScrollContainer&) = default;
+};
+SLASH_COMPONENT(ScrollContainer, follow_focus, draw_focus_border, scroll_horizontal,
+                scroll_vertical, scroll_horizontal_custom_step, scroll_vertical_custom_step,
+                horizontal_scroll_mode, vertical_scroll_mode, scroll_horizontal_by_default,
+                scroll_deadzone)
 
 } // namespace slash::world

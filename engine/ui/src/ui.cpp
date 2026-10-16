@@ -141,11 +141,12 @@ bool is_control(const world::World& world, entt::entity entity) {
                         world::TextureRect, world::NinePatchRect, world::ProgressBar>(entity) ||
             world.ecs()
                 .any_of<world::Button, world::CheckBox, world::CheckButton, world::TextureButton,
-                        world::LineEdit, world::TextEdit, world::Slider>(entity) ||
+                        world::LineEdit, world::TextEdit, world::Slider, world::ScrollBar>(
+                    entity) ||
             world.ecs()
                 .any_of<world::BoxContainer, world::GridContainer, world::MarginContainer,
-                        world::CenterContainer, world::FlowContainer, world::PanelContainer>(
-                    entity));
+                        world::CenterContainer, world::FlowContainer, world::PanelContainer,
+                        world::ScrollContainer>(entity));
 }
 
 std::vector<std::string_view> control_classes(const world::World& world, entt::entity entity) {
@@ -190,6 +191,9 @@ std::vector<std::string_view> control_classes(const world::World& world, entt::e
     if (const auto* slider = ecs.try_get<world::Slider>(entity); slider != nullptr) {
         classes.emplace_back(slider->vertical ? "VSlider" : "HSlider");
     }
+    if (const auto* bar = ecs.try_get<world::ScrollBar>(entity); bar != nullptr) {
+        classes.emplace_back(bar->vertical ? "VScrollBar" : "HScrollBar");
+    }
     if (const auto* box = ecs.try_get<world::BoxContainer>(entity); box != nullptr) {
         classes.emplace_back(box->vertical ? "VBoxContainer" : "HBoxContainer");
     }
@@ -207,6 +211,9 @@ std::vector<std::string_view> control_classes(const world::World& world, entt::e
     }
     if (ecs.all_of<world::PanelContainer>(entity)) {
         classes.emplace_back("PanelContainer");
+    }
+    if (ecs.all_of<world::ScrollContainer>(entity)) {
+        classes.emplace_back("ScrollContainer");
     }
     if (classes.empty()) {
         classes.emplace_back("Control");
@@ -267,6 +274,20 @@ Range range_of(const world::Slider& slider) {
                 .allow_lesser = slider.allow_lesser};
     range.page = std::clamp(slider.page, 0.0, range.max - range.min);
     range.value = range_value(range, slider.value);
+    return range;
+}
+
+Range range_of(const world::ScrollBar& bar) {
+    Range range{.min = bar.min_value,
+                .max = std::max(bar.max_value, bar.min_value),
+                .step = bar.step,
+                .page = 0.0,
+                .value = 0.0,
+                .rounded = bar.rounded,
+                .allow_greater = bar.allow_greater,
+                .allow_lesser = bar.allow_lesser};
+    range.page = std::clamp(bar.page, 0.0, range.max - range.min);
+    range.value = range_value(range, bar.value);
     return range;
 }
 
@@ -348,13 +369,14 @@ std::vector<Problem> check(const world::World& world, text::Fonts& fonts) {
     for (const auto& [id, entity] : entities) {
         const auto& ecs = world.ecs();
         // One container places the children; the first in control_classes' order.
-        const std::array<std::pair<std::string_view, bool>, 6> containers{{
+        const std::array<std::pair<std::string_view, bool>, 7> containers{{
             {"BoxContainer", ecs.all_of<world::BoxContainer>(entity)},
             {"GridContainer", ecs.all_of<world::GridContainer>(entity)},
             {"MarginContainer", ecs.all_of<world::MarginContainer>(entity)},
             {"CenterContainer", ecs.all_of<world::CenterContainer>(entity)},
             {"FlowContainer", ecs.all_of<world::FlowContainer>(entity)},
             {"PanelContainer", ecs.all_of<world::PanelContainer>(entity)},
+            {"ScrollContainer", ecs.all_of<world::ScrollContainer>(entity)},
         }};
         std::string_view first;
         for (const auto& [type, has] : containers) {
