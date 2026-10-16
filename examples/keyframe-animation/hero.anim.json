@@ -47,6 +47,25 @@
             }
           ],
           "path": "Sprite2D/frame"
+        },
+        {
+          "keys": [
+            {
+              "time": 0,
+              "value": 0
+            },
+            {
+              "time": 0.15,
+              "transition": 0.5,
+              "value": 1.6
+            },
+            {
+              "time": 0.4,
+              "value": 0
+            }
+          ],
+          "path": "Transform2D/rotation",
+          "target": "sword"
         }
       ]
     },

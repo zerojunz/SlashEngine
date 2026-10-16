@@ -2,8 +2,8 @@
 
 Animating any component field with keys, as Godot's AnimationPlayer. [hero.anim.json](hero.anim.json)
 holds two animations: `walk`, a loop that bobs the sprite, steps through its frames and emits a
-`footstep` event at each step, and `hit`, a one-shot red flash and squash. The hero in
-[main.scene.json](main.scene.json) has an `AnimationPlayer` playing `walk`.
+`footstep` event at each step, and `hit`, a one-shot red flash and squash that swings the hero's
+sword. The hero in [main.scene.json](main.scene.json) has an `AnimationPlayer` playing `walk`.
 [calls.jsonl](calls.jsonl) checks both with `animation.eval`, plays them with `step` and reads
 their events. [results.jsonl](results.jsonl) holds the responses, line for line.
 
@@ -14,8 +14,12 @@ slash-cli rpc --project . < calls.jsonl
 - A track's `path` is a component, a field and optionally a part of it: `Sprite2D/offset/y`,
   `Sprite2D/modulate`, `Transform2D/scale`. Values are absolute, so the bob moves the sprite's
   offset rather than the entity's position.
+- A track with a `target` acts on another entity, as a Godot track's node path does: the swing
+  turns the `sword`, the hero's child, which the `AnimationPlayer`'s `targets` names. A target
+  missing from `targets` is an error in `slash-cli scene validate main.scene.json`.
 - `animation.eval` returns each track's values at the times asked, without playing anything.
-  `tracks` limits it to the ones you need.
+  `tracks` limits it to the ones you need; a track with a target is `sword:Transform2D/rotation`,
+  as Godot's `Node:property`.
 - Float fields change smoothly between keys (`linear` by default, here `cubic` for the bob); a
   key's `transition` eases the way to the next key, as Godot's easing curve. Integer, string and
   boolean fields such as `Sprite2D/frame` jump from key to key.

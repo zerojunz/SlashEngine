@@ -722,6 +722,9 @@ int cmd_scene_validate(const std::string& path) {
         if (errors.empty()) {
             errors = slash::canvas::check_tile_layers(parsed.value(), prefab_reader(path));
         }
+        if (errors.empty()) {
+            errors = slash::animation::check_players(parsed.value(), prefab_reader(path));
+        }
         if (errors.empty() && !prefab) {
             errors = slash::ui::check_scene(registry, parsed.value(), prefab_reader(path));
         }

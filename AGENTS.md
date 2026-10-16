@@ -85,7 +85,7 @@ $cli scene format --check level.scene.json          # exit 1 if not canonical
 Validate after editing a scene or prefab by hand, and format before committing one. Both
 commands take `.prefab.json`, `.frames.json`, `.material.json`, `.anim.json`, `.tileset.json`,
 `.font.json`, `.theme.json`, `.audio.json`, `.bus_layout.json`, `.replay.json` and `.test.json` files too; validating a scene also checks each tile map layer against its tile
-set and that its controls lay out as written.
+set, each `AnimationPlayer` against its library and that its controls lay out as written.
 
 ## Assets and hot reload
 
@@ -294,11 +294,12 @@ is Godot 4 (Unity, then Unreal, are on the roadmap). It registers `project.impor
 report and the files it would write. `src/godot_text.cpp` parses Godot's text formats
 (`.tscn`, `.tres`, `project.godot`) and `src/godot_import.cpp` converts them: a `.scene.json`
 beside each `.tscn`, a `.frames.json` per `SpriteFrames`, a `.tileset.json` per `TileSet`, a
-`.theme.json` per `Theme`, a `.bus_layout.json` per `AudioBusLayout`, `project.godot`'s settings
+`.theme.json` per `Theme`, a `.bus_layout.json` per `AudioBusLayout`, a `.anim.json` per
+`AnimationPlayer` (tracks keep their node paths as targets), `project.godot`'s settings
 and input map merged into `project.json`, and a storyboard task per script (`task/port-<name>`)
 to port it to C++. Properties convert by the target field's reflected type, Godot's enum numbers
-through its `choices`, and a value that fails its file's schema (scene, tile set, theme or bus
-layout) is left out and reported, so one bad value can't stop a file. Everything that didn't
+through its `choices`, and a value that fails its file's schema (scene, tile set, theme, bus
+layout or animation) is left out and reported, so one bad value can't stop a file. Everything that didn't
 convert goes in `import/godot.json`, once per kind. `docs/reference/godot-import.md` maps each
 node and setting; `examples/import-godot` imports a small platformer.
 
@@ -401,7 +402,9 @@ of the next tick for drawing between ticks.
 interpolation and easing; an event track emits a world event at each key. The
 `animation_player` system (priority 900, before `animated_sprite_2d`) plays each entity's
 `AnimationPlayer` on its own components, through `ComponentType::assign`, so any reflected field
-animates, a game's own included. Keys are passed as Godot passes them: after where playback was,
+animates, a game's own included; a track with a `target` acts on the entity the player's
+`targets` maps it to, as a Godot track's node path does, and `animation::check_players` (run by
+`scene validate` and exports) catches targets missing from `targets`. Keys are passed as Godot passes them: after where playback was,
 up to and including where it got to. `animation.eval` returns a track's values at given times;
 `examples/keyframe-animation` plays a walk cycle and a hit.
 

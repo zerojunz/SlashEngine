@@ -129,7 +129,7 @@ file, a [`.theme.json`](scene-format.md#themes) file, an
 [`.bus_layout.json`](scene-format.md#bus-layouts) file, a
 [`.replay.json`](scene-format.md#replays) file or a [`.test.json`](scene-format.md#tests) file
 and lists every error, each with its JSON Pointer path. Exit code 1 if the file is invalid. The [prefabs](scene-format.md#prefabs) and
-[scenes](scene-format.md#instanced-scenes) a file extends, the tile sets its layers use and the project's window size and theme are read from its
+[scenes](scene-format.md#instanced-scenes) a file extends, the tile sets its layers use, the animation libraries its players use and the project's window size and theme are read from its
 project: the nearest folder above it with a `project.json`, else the current folder.
 
 ```bash
@@ -155,6 +155,13 @@ that loads, and its legend and rows must name tiles there:
 
 ```json
 {"errors":[{"message":"the tile set has no tile named \"watr\"; did you mean \"water\"?","path":"/entities/map/components/TileMapLayer/legend/w"}],"valid":false}
+```
+
+Each [`AnimationPlayer`](scene-format.md#animations) must use a library that loads, with the
+animation it names, and its `targets` must name every target the library's tracks use:
+
+```json
+{"errors":[{"message":"no entity for target \"sword\", which hero.anim.json's tracks name; add it to targets; did you mean \"swrd\"?","path":"/entities/hero/components/AnimationPlayer/targets"}],"valid":false}
 ```
 
 A scene's [controls](scene-format.md#ui-and-text) must lay out as written: each `children`
@@ -374,8 +381,9 @@ An existing `.gitignore` is never replaced, even with `--force`: `init` adds the
 
 ### import
 
-Converts a game made with Godot 4 into a SlashEngine project: its scenes, sprite frames, tile
-sets, themes, bus layouts, input map and settings, with each script turned into a storyboard task
+Converts a game made with Godot 4 into a SlashEngine project: its scenes, sprite frames,
+animations, tile sets, themes, bus layouts, input map and settings, with each script turned into a
+storyboard task
 to port it to C++. It runs
 [`project.import`](commands.md#projectimport) and prints the same report;
 [godot-import.md](godot-import.md) says what converts to what.

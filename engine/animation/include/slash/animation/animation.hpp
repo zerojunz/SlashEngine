@@ -25,7 +25,9 @@
 //         "tracks": [
 //           {"interpolation": "cubic", "path": "Transform2D/position/y",
 //            "keys": [{"time": 0, "value": 0}, {"time": 0.5, "value": -8}]},
-//           {"event": "footstep", "keys": [{"time": 0.25}]}
+//           {"event": "footstep", "keys": [{"time": 0.25}]},
+//           {"target": "sword", "path": "Transform2D/rotation",
+//            "keys": [{"time": 0, "value": 0}, {"time": 0.5, "value": 1.5}]}
 //         ]
 //       }
 //     },
@@ -35,7 +37,8 @@
 // A value track's path is a component and one of its fields, then optionally a part of the
 // field: "Transform2D/position", "Transform2D/position/y", "Sprite2D/modulate/a". Its keys are
 // values that field takes. An event track emits a world event when playback passes each key,
-// with the key's "data".
+// with the key's "data". A track with a "target" acts on the entity the AnimationPlayer's
+// targets map that name to, as a Godot track's node path does, rather than the player's own.
 namespace slash::animation {
 
 inline constexpr std::string_view kAnimationSuffix = ".anim.json";
@@ -62,8 +65,9 @@ struct Key {
 };
 
 struct Track {
-    std::string path;  // a value track's "Component/field[/part...]"
-    std::string event; // an event track's event kind
+    std::string path;   // a value track's "Component/field[/part...]"
+    std::string event;  // an event track's event kind
+    std::string target; // a name in AnimationPlayer::targets; "" for the player's own entity
     Interpolation interpolation = Interpolation::Linear;
     UpdateMode update = UpdateMode::Auto;
     // In a looping animation, move from the last key to the first across the loop's end.
@@ -118,6 +122,12 @@ struct Target {
 // Sets a target's value on an entity, adding the component if the entity has none.
 [[nodiscard]] Result<void> apply(world::World& world, entt::entity entity, const Target& target,
                                  const json::Value& value);
+
+// Every error in a scene's or prefab's AnimationPlayers, each with the JSON Pointer of the bad
+// value: a library that doesn't load, an animation it doesn't have, with "did you mean", and a
+// track target the player's targets leave out. Libraries are read through reader.
+[[nodiscard]] std::vector<json::ValidationError> check_players(const json::Value& doc,
+                                                               const world::FileReader& reader);
 
 // Asset type "animation" (.anim.json files as AnimationLibrary).
 void add_asset_types(asset::Assets& assets);
