@@ -652,6 +652,241 @@ void write_tiles(const fs::path& folder) {
     write(folder / "Assets/Scenes/Level.unity.meta", meta("a1000000000000000000000000000011"));
 }
 
+constexpr std::string_view kFrogPng = "a1000000000000000000000000000012";
+constexpr std::string_view kIdleAnim = "a1000000000000000000000000000013";
+constexpr std::string_view kJumpAnim = "a1000000000000000000000000000014";
+constexpr std::string_view kSitAnim = "a1000000000000000000000000000015";
+constexpr std::string_view kFrogController = "a1000000000000000000000000000016";
+constexpr std::string_view kToadController = "a1000000000000000000000000000017";
+constexpr std::string_view kVectorWeight = "{x: 0.33333334, y: 0.33333334, z: 0.33333334}";
+
+// A key of an animation curve: a number, or for a vector curve each part's.
+std::string anim_key(std::string_view time, std::string_view value, std::string_view in,
+                     std::string_view out, std::string_view weight = "0.33333334") {
+    return "      - serializedVersion: 3\n        time: " + std::string(time) +
+           "\n        value: " + std::string(value) + "\n        inSlope: " + std::string(in) +
+           "\n        outSlope: " + std::string(out) +
+           "\n        tangentMode: 0\n        weightedMode: 0\n        inWeight: " +
+           std::string(weight) + "\n        outWeight: " + std::string(weight) + "\n";
+}
+
+// A curve of a clip, with what it animates.
+std::string anim_curve(std::string_view keys, std::string_view binding) {
+    return "  - curve:\n      serializedVersion: 2\n      m_Curve:\n" + std::string(keys) +
+           "      m_PreInfinity: 2\n      m_PostInfinity: 2\n      m_RotationOrder: 4\n" +
+           std::string(binding);
+}
+
+// A float curve's binding: an attribute of a component class on the object at path.
+std::string anim_binding(std::string_view attribute, std::string_view path, int class_id,
+                         std::string_view script = "{fileID: 0}") {
+    return "    attribute: " + std::string(attribute) + "\n    path: " + std::string(path) +
+           "\n    classID: " + std::to_string(class_id) + "\n    script: " + std::string(script) +
+           "\n";
+}
+
+struct ClipCurves {
+    std::string euler;
+    std::string position;
+    std::string floats;
+    std::string sprites;
+    std::string events;
+};
+
+void write_clip(const fs::path& path, std::string_view guid, std::string_view stop, bool loop,
+                const ClipCurves& curves) {
+    const auto listed = [](const std::string& items) {
+        return items.empty() ? std::string(" []\n") : "\n" + items;
+    };
+    write(path, std::string(kHeader) + "--- !u!74 &7400000\nAnimationClip:\n" +
+                    std::string(kSource) + "  m_Name: " + path.stem().string() +
+                    "\n  serializedVersion: 7\n  m_Legacy: 0\n  m_Compressed: 0\n"
+                    "  m_UseHighQualityCurve: 1\n  m_RotationCurves: []\n"
+                    "  m_CompressedRotationCurves: []\n  m_EulerCurves:" +
+                    listed(curves.euler) + "  m_PositionCurves:" + listed(curves.position) +
+                    "  m_ScaleCurves: []\n  m_FloatCurves:" + listed(curves.floats) +
+                    "  m_PPtrCurves:" + listed(curves.sprites) +
+                    "  m_SampleRate: 12\n  m_WrapMode: 0\n  m_AnimationClipSettings:\n"
+                    "    serializedVersion: 2\n    m_StartTime: 0\n    m_StopTime: " +
+                    std::string(stop) + "\n    m_LoopTime: " + (loop ? "1" : "0") +
+                    "\n  m_EditorCurves: []\n  m_Events:" + listed(curves.events));
+    write(path.string() + ".meta",
+          meta(guid, "NativeFormatImporter", "  mainObjectFileID: 7400000\n"));
+}
+
+std::string animator_state(std::int64_t object, std::string_view name, std::string_view speed,
+                           std::string_view transitions, std::string_view motion) {
+    return "--- !u!1102 &" + id(object) + "\nAnimatorState:\n  serializedVersion: 6\n" +
+           std::string(kSource) + "  m_Name: " + std::string(name) +
+           "\n  m_Speed: " + std::string(speed) +
+           "\n  m_CycleOffset: 0\n  m_Transitions:" + std::string(transitions) +
+           "\n  m_StateMachineBehaviours: []\n  m_WriteDefaultValues: 1\n  m_Mirror: 0\n"
+           "  m_SpeedParameterActive: 0\n  m_MirrorParameterActive: 0\n"
+           "  m_CycleOffsetParameterActive: 0\n  m_TimeParameterActive: 0\n  m_Motion: " +
+           std::string(motion) + "\n  m_Tag: \n";
+}
+
+std::string animator_transition(std::int64_t object, std::string_view conditions,
+                                std::int64_t destination, bool exit_time) {
+    return "--- !u!1101 &" + id(object) + "\nAnimatorStateTransition:\n" + std::string(kSource) +
+           "  m_Name: \n  m_Conditions:" + std::string(conditions) +
+           "\n  m_DstStateMachine: {fileID: 0}\n  m_DstState: " + ref(destination) +
+           "\n  m_Solo: 0\n  m_Mute: 0\n  m_IsExit: 0\n  serializedVersion: 3\n"
+           "  m_TransitionDuration: 0.25\n  m_TransitionOffset: 0\n  m_ExitTime: 1\n"
+           "  m_HasExitTime: " +
+           (exit_time ? "1" : "0") + "\n  m_HasFixedDuration: 1\n";
+}
+
+std::string animator_condition(int mode, std::string_view parameter, std::string_view threshold) {
+    return "\n  - m_ConditionMode: " + std::to_string(mode) +
+           "\n    m_ConditionEvent: " + std::string(parameter) +
+           "\n    m_EventTreshold: " + std::string(threshold);
+}
+
+std::string animator_parameter(std::string_view name, int type, std::string_view value) {
+    return "  - m_Name: " + std::string(name) + "\n    m_Type: " + std::to_string(type) +
+           "\n    m_DefaultFloat: " + (type == 1 ? std::string(value) : "0") +
+           "\n    m_DefaultInt: 0\n    m_DefaultBool: " + (type == 4 ? std::string(value) : "0") +
+           "\n    m_Controller: {fileID: 0}\n";
+}
+
+// "Frogs": a sheet of two frames, clips (idle: a bob, a fade, frames and an event; jump: a turn
+// and a flip; sit), a controller with three states and a second layer, an override controller,
+// and a scene with an Animator on each.
+void write_frogs(const fs::path& folder) {
+    const auto frame = [](std::string_view name, int x, int id) {
+        return "    - serializedVersion: 2\n      name: " + std::string(name) +
+               "\n      rect:\n        serializedVersion: 2\n        x: " + std::to_string(x) +
+               "\n        y: 0\n        width: 16\n        height: 16\n      alignment: 7\n"
+               "      pivot: {x: 0.5, y: 0}\n      internalID: " +
+               std::to_string(id) + "\n";
+    };
+    write_png(folder / "Assets/Art/frog.png", 32, 16);
+    write(folder / "Assets/Art/frog.png.meta",
+          texture_meta(kFrogPng, 16,
+                       "  spriteMode: 2\n  spriteSheet:\n    serializedVersion: 2\n    sprites:\n" +
+                           frame("frog_0", 0, 1001) + frame("frog_1", 16, 1002)));
+
+    // Idle bobs the body up a quarter unit and back, fades it with a curve and swaps its frame
+    // halfway, where it croaks.
+    ClipCurves idle;
+    idle.position = anim_curve(anim_key("0", "{x: 0, y: 0.5, z: 0}", "{x: 0, y: 0.5, z: 0}",
+                                        "{x: 0, y: 0.5, z: 0}", kVectorWeight) +
+                                   anim_key("0.5", "{x: 0, y: 0.75, z: 0}", "{x: 0, y: 0.5, z: 0}",
+                                            "{x: 0, y: -0.5, z: 0}", kVectorWeight) +
+                                   anim_key("1", "{x: 0, y: 0.5, z: 0}", "{x: 0, y: -0.5, z: 0}",
+                                            "{x: 0, y: -0.5, z: 0}", kVectorWeight),
+                               "    path: Body\n");
+    idle.floats = anim_curve(anim_key("0", "1", "0", "0") + anim_key("1", "0.5", "0", "0"),
+                             anim_binding("m_Color.a", "Body", 212));
+    idle.sprites = "  - curve:\n    - time: 0\n      value: " + ref(1001, kFrogPng) +
+                   "\n    - time: 0.5\n      value: " + ref(1002, kFrogPng) +
+                   "\n    attribute: m_Sprite\n    path: Body\n    classID: 212\n"
+                   "    script: {fileID: 0}\n";
+    idle.events = "  - time: 0.5\n    functionName: Croak\n    data: \n"
+                  "    objectReferenceParameter: {fileID: 0}\n    floatParameter: 0\n"
+                  "    intParameter: 2\n    messageOptions: 0\n";
+    write_clip(folder / "Assets/Animations/Idle.anim", kIdleAnim, "1", true, idle);
+
+    // Jump turns the frog a quarter turn counterclockwise and flips its body a quarter of the
+    // way in, with stepped keys, and animates a script's value.
+    ClipCurves jump;
+    jump.euler = anim_curve(anim_key("0", "{x: 0, y: 0, z: 0}", "{x: 0, y: 0, z: 180}",
+                                     "{x: 0, y: 0, z: 180}", kVectorWeight) +
+                                anim_key("0.5", "{x: 0, y: 0, z: 90}", "{x: 0, y: 0, z: 180}",
+                                         "{x: 0, y: 0, z: 180}", kVectorWeight),
+                            "    path: \n");
+    jump.floats = anim_curve(anim_key("0", "0", "Infinity", "Infinity") +
+                                 anim_key("0.25", "1", "Infinity", "Infinity"),
+                             anim_binding("m_FlipX", "Body", 212)) +
+                  anim_curve(anim_key("0", "1", "0", "0"),
+                             anim_binding("power", "", 114, ref(11500000, kCrateCs)));
+    write_clip(folder / "Assets/Animations/Jump.anim", kJumpAnim, "0.5", false, jump);
+
+    ClipCurves sit;
+    sit.position = anim_curve(anim_key("0", "{x: 0, y: 0, z: 0}", "{x: 1, y: 0, z: 0}",
+                                       "{x: 1, y: 0, z: 0}", kVectorWeight) +
+                                  anim_key("1", "{x: 1, y: 0, z: 0}", "{x: 1, y: 0, z: 0}",
+                                           "{x: 1, y: 0, z: 0}", kVectorWeight),
+                              "    path: \n");
+    write_clip(folder / "Assets/Animations/Sit.anim", kSitAnim, "1", true, sit);
+    write_clip(folder / "Assets/Animations/Unused.anim", "a1000000000000000000000000000018", "1",
+               false, {});
+
+    // Idle goes to Jump on the Jump trigger and to Walk, a blend tree, when Speed passes 0.1;
+    // Jump goes back to Idle at its end.
+    const std::string idle_motion = ref(7400000, kIdleAnim, 2);
+    std::string controller(kHeader);
+    controller +=
+        animator_transition(110100001, animator_condition(1, "Jump", "0"), 110200002, false);
+    controller += animator_transition(110100002, " []", 110200001, true);
+    controller +=
+        animator_transition(110100003, animator_condition(3, "Speed", "0.1"), 110200003, false);
+    controller += "--- !u!91 &9100000\nAnimatorController:\n" + std::string(kSource) +
+                  "  m_Name: Frog\n  serializedVersion: 5\n  m_AnimatorParameters:\n" +
+                  animator_parameter("Speed", 1, "0") + animator_parameter("Jump", 9, "0") +
+                  animator_parameter("Grounded", 4, "1") +
+                  "  m_AnimatorLayers:\n  - serializedVersion: 5\n    m_Name: Base Layer\n"
+                  "    m_StateMachine: {fileID: 110700000}\n    m_Mask: {fileID: 0}\n"
+                  "  - serializedVersion: 5\n    m_Name: Face\n"
+                  "    m_StateMachine: {fileID: 110700001}\n    m_Mask: {fileID: 0}\n";
+    controller += animator_state(110200001, "Idle", "1",
+                                 "\n  - {fileID: 110100001}\n  - {fileID: 110100003}", idle_motion);
+    controller += animator_state(110200002, "Jump", "2", "\n  - {fileID: 110100002}",
+                                 ref(7400000, kJumpAnim, 2));
+    controller += animator_state(110200003, "Walk", "1", " []", ref(20600000));
+    controller += "--- !u!1107 &110700000\nAnimatorStateMachine:\n  serializedVersion: 6\n" +
+                  std::string(kSource) +
+                  "  m_Name: Base Layer\n  m_ChildStates:\n  - serializedVersion: 1\n"
+                  "    m_State: {fileID: 110200001}\n  - serializedVersion: 1\n"
+                  "    m_State: {fileID: 110200002}\n  - serializedVersion: 1\n"
+                  "    m_State: {fileID: 110200003}\n  m_ChildStateMachines: []\n"
+                  "  m_AnyStateTransitions: []\n  m_EntryTransitions: []\n"
+                  "  m_DefaultState: {fileID: 110200001}\n";
+    controller += "--- !u!1107 &110700001\nAnimatorStateMachine:\n  serializedVersion: 6\n" +
+                  std::string(kSource) +
+                  "  m_Name: Face\n  m_ChildStates: []\n  m_ChildStateMachines: []\n"
+                  "  m_AnyStateTransitions: []\n  m_EntryTransitions: []\n"
+                  "  m_DefaultState: {fileID: 0}\n";
+    controller += "--- !u!206 &20600000\nBlendTree:\n" + std::string(kSource) +
+                  "  m_Name: Blend Tree\n  m_Childs:\n  - serializedVersion: 2\n    m_Motion: " +
+                  idle_motion + "\n    m_Threshold: 0\n  - serializedVersion: 2\n    m_Motion: " +
+                  ref(7400000, kJumpAnim, 2) + "\n    m_Threshold: 1\n  m_BlendParameter: Speed\n";
+    write(folder / "Assets/Animations/Frog.controller", controller);
+    write(folder / "Assets/Animations/Frog.controller.meta",
+          meta(kFrogController, "NativeFormatImporter", "  mainObjectFileID: 9100000\n"));
+
+    // The toad's controller is the frog's, sitting instead of idling.
+    write(folder / "Assets/Animations/Toad.overrideController",
+          std::string(kHeader) + "--- !u!221 &22100000\nAnimatorOverrideController:\n" +
+              std::string(kSource) +
+              "  m_Name: Toad\n  m_Controller: " + ref(9100000, kFrogController, 2) +
+              "\n  m_Clips:\n  - m_OriginalClip: " + idle_motion +
+              "\n    m_OverrideClip: " + ref(7400000, kSitAnim, 2) + "\n");
+    write(folder / "Assets/Animations/Toad.overrideController.meta",
+          meta(kToadController, "NativeFormatImporter", "  mainObjectFileID: 22100000\n"));
+
+    // The frog's body is a child it animates; the toad has none, and moves by root motion.
+    std::string scene(kHeader);
+    scene += game_object(4000, "Frog", {4001, 4002});
+    scene += transform(4001, 4000, "{x: 0, y: 0, z: 0}", 0, {4101});
+    scene +=
+        component(95, "Animator", 4002, 4000,
+                  "  m_Avatar: {fileID: 0}\n  m_Controller: " + ref(9100000, kFrogController, 2) +
+                      "\n  m_CullingMode: 0\n  m_UpdateMode: 0\n  m_ApplyRootMotion: 0\n");
+    scene += game_object(4100, "Body", {4101, 4102});
+    scene += transform(4101, 4100, "{x: 0, y: 0.5, z: 0}", 4001);
+    scene += sprite_renderer(4102, 4100, ref(1001, kFrogPng));
+    scene += game_object(4200, "Toad", {4201, 4202});
+    scene += transform(4201, 4200, "{x: 3, y: 0, z: 0}");
+    scene +=
+        component(95, "Animator", 4202, 4200,
+                  "  m_Avatar: {fileID: 0}\n  m_Controller: " + ref(22100000, kToadController, 2) +
+                      "\n  m_CullingMode: 0\n  m_UpdateMode: 0\n  m_ApplyRootMotion: 1\n");
+    write(folder / "Assets/Scenes/Frogs.unity", scene);
+    write(folder / "Assets/Scenes/Frogs.unity.meta", meta("a1000000000000000000000000000019"));
+}
+
 fs::path make_project(const fs::path& folder) {
     fs::remove_all(folder);
     write_settings(folder);
@@ -1179,4 +1414,158 @@ TEST_CASE("Unity tile maps become tile map layers, their sprites a tile set") {
     CHECK(*slope.value.find("hit")->find("cell") == parse("[-1, -1]"));
     CHECK(slope.value.find("hit")->find("point")->as_array()[1].as_double() ==
           doctest::Approx(-4.0).epsilon(0.01));
+}
+
+TEST_CASE("Unity Animator controllers become animation libraries, their states animations") {
+    const fs::path project = "import_unity_animation";
+    fs::remove_all(project);
+    make_project(project / "unity");
+    write_frogs(project / "unity");
+    auto imported = importer::import_project(
+        {.source = (project / "unity").string(), .destination = project.string()});
+    REQUIRE_MESSAGE(imported.ok(), (imported.ok() ? std::string() : imported.error().message));
+    const json::Value& plan_report = imported.value().report;
+    CHECK(plan_report.find("converted")->find("animation_libraries")->as_int() == 2);
+    const auto files = files_of(imported.value());
+    const std::string frogs = "unity/Assets/Scenes/Frogs.scene.json";
+    const std::string frog_library = "unity/Assets/Animations/Frog.anim.json";
+    const std::string toad_library = "unity/Assets/Animations/Toad.anim.json";
+
+    // A library per controller, an animation per state of its base layer. Tracks name the
+    // objects they animate by their paths from the Animator's object, and the entity drawing an
+    // object's sprite as "<path>#sprite"; units become pixels, y down, and angles clockwise.
+    const json::Value library = parse(files.at(frog_library));
+    const json::Value& animations = *library.find("animations");
+    CHECK(animations.size() == 3);
+    json::Value idle = *animations.find("Idle");
+    CHECK(idle.find("length")->as_double() == 1.0);
+    CHECK(idle.find("loop")->as_string() == "linear");
+    json::Array& tracks = idle["tracks"].as_array();
+    REQUIRE(tracks.size() == 7);
+    // A curved stretch is keyed every 60th of a second, so the fade keeps Unity's curve.
+    const json::Value fade = tracks[2];
+    CHECK(fade.find("target")->as_string() == "Body#sprite");
+    CHECK(fade.find("path")->as_string() == "Sprite2D/modulate/a");
+    const json::Array& fade_keys = fade.find("keys")->as_array();
+    CHECK(fade_keys.size() == 61);
+    CHECK(fade_keys[30].find("time")->as_double() == doctest::Approx(0.5));
+    CHECK(fade_keys[30].find("value")->as_double() == doctest::Approx(0.75));
+    tracks.erase(tracks.begin() + 2);
+    CHECK(json::Value(tracks) == parse(R"([
+        {"target": "Body", "path": "Transform2D/position/x",
+         "keys": [{"time": 0.0, "value": 0.0}, {"time": 0.5, "value": 0.0},
+                  {"time": 1.0, "value": 0.0}]},
+        {"target": "Body", "path": "Transform2D/position/y",
+         "keys": [{"time": 0.0, "value": -8.0}, {"time": 0.5, "value": -12.0},
+                  {"time": 1.0, "value": -8.0}]},
+        {"target": "Body#sprite", "path": "Sprite2D/offset", "update": "discrete",
+         "keys": [{"time": 0.0, "value": [0.0, -8.0]}, {"time": 0.5, "value": [0.0, -8.0]}]},
+        {"target": "Body#sprite", "path": "Sprite2D/region", "update": "discrete",
+         "keys": [{"time": 0.0, "value": [0.0, 0.0, 16.0, 16.0]},
+                  {"time": 0.5, "value": [16.0, 0.0, 16.0, 16.0]}]},
+        {"target": "Body#sprite", "path": "Sprite2D/texture",
+         "keys": [{"time": 0.0, "value": "unity/Assets/Art/frog.png"},
+                  {"time": 0.5, "value": "unity/Assets/Art/frog.png"}]},
+        {"event": "Croak", "keys": [{"time": 0.5, "data": {"int": 2}}]}
+    ])"));
+    // Jump's state plays at twice the speed; its stepped keys hold.
+    CHECK(*animations.find("Jump") == parse(R"({"length": 0.25, "tracks": [
+        {"path": "Transform2D/rotation",
+         "keys": [{"time": 0.0, "value": 0.0}, {"time": 0.25, "value": -1.570796}]},
+        {"target": "Body#sprite", "path": "Sprite2D/flip_h",
+         "keys": [{"time": 0.0, "value": false}, {"time": 0.125, "value": true}]}
+    ]})"));
+    // A blend tree plays its first motion.
+    CHECK(*animations.find("Walk") == *animations.find("Idle"));
+
+    // An override controller is its controller's states with its clips swapped.
+    const json::Value toad = parse(files.at(toad_library));
+    CHECK(*toad.find("animations")->find("Idle") == parse(R"({"length": 1.0, "loop": "linear",
+        "tracks": [
+        {"path": "Transform2D/position/x",
+         "keys": [{"time": 0.0, "value": 0.0}, {"time": 1.0, "value": 16.0}]},
+        {"path": "Transform2D/position/y",
+         "keys": [{"time": 0.0, "value": 0.0}, {"time": 1.0, "value": 0.0}]}
+    ]})"));
+    CHECK(*toad.find("animations")->find("Jump") == *animations.find("Jump"));
+
+    // Each Animator is an AnimationPlayer playing its first state, with the targets bound to
+    // the entities under it; the toad has no body.
+    const json::Value frog_player = *entity(files, frogs, "frog").find("AnimationPlayer");
+    CHECK(frog_player.find("library")->as_string() == frog_library);
+    CHECK(frog_player.find("animation")->as_string() == "Idle");
+    CHECK(frog_player.find("playing") == nullptr); // true, the default
+    CHECK(*frog_player.find("targets") == parse(R"({"Body": "body", "Body#sprite": "body"})"));
+    const json::Value toad_player = *entity(files, frogs, "toad").find("AnimationPlayer");
+    CHECK(toad_player.find("library")->as_string() == toad_library);
+    CHECK(*toad_player.find("targets") == parse(R"({"Body#sprite": null})"));
+
+    // The state machine, which gameplay code now drives, is a storyboard task per controller.
+    const json::Value work = parse(files.at("storyboard/work.json"));
+    CHECK(slash::storyboard::validate_file("work", work).empty());
+    const json::Value& task = *work.find("entries")->find("task/port-frog-anim");
+    CHECK(task.find("name")->as_string() ==
+          "Port the state machine of Assets/Animations/Frog.controller");
+    CHECK(*task.find("links") == parse(R"(["unity/Assets/Animations/Frog.anim.json",
+                                           "unity/Assets/Scenes/Frogs.scene.json"])"));
+    const std::string& text = task.find("text")->as_string();
+    CHECK(text.find("States, each an animation in the library: Idle, Jump, Walk.") !=
+          std::string::npos);
+    CHECK(text.find("Parameters: Speed (float, 0); Jump (trigger); Grounded (bool, true).") !=
+          std::string::npos);
+    CHECK(text.find("Transitions: Idle to Jump when Jump; Idle to Walk when Speed > 0.1; Jump "
+                    "to Idle when its animation reaches exit time 1.") != std::string::npos);
+    CHECK(text.find("Animation events: Croak at 0.5 s in Idle, Croak at 0.5 s in Walk.") !=
+          std::string::npos);
+    CHECK(text.find("Played by frog in unity/Assets/Scenes/Frogs.scene.json.") !=
+          std::string::npos);
+
+    const json::Value report = parse(files.at("import/unity.json"));
+    CHECK(*report.find("animation_libraries")->find(frog_library) ==
+          parse(R"({"controller": "Assets/Animations/Frog.controller", "first": "Idle",
+                    "used_by": ["frog in unity/Assets/Scenes/Frogs.scene.json"],
+                    "task": "task/port-frog-anim"})"));
+    for (const auto& [what, where] : std::initializer_list<std::pair<std::string, std::string>>{
+             {"Animator layers other than the base layer", "Assets/Animations/Frog.controller"},
+             {"blend tree", "Assets/Animations/Frog.controller: state Walk"},
+             {"animated script value", "Assets/Animations/Jump.anim: power"},
+             {"animated object missing", "Assets/Scenes/Frogs.unity: Toad: Body"},
+             {"Animator root motion", "Assets/Scenes/Frogs.unity: Toad"},
+             {"animation clip no Animator controller plays", "Assets/Animations/Unused.anim"}}) {
+        const json::Value item = unsupported(report, what);
+        REQUIRE_MESSAGE(!item.is_null(), what);
+        CHECK(item.find("where")->as_string() == where);
+    }
+
+    // It plays: 33 ticks in, the body is on its way down from the top of its bob, faded, on its
+    // second frame, and has croaked.
+    slash::world::ComponentRegistry components;
+    slash::world::register_builtin_components(components);
+    command::Registry commands;
+    command::register_builtin_commands(commands);
+    command::SessionOptions options;
+    options.project_root = project.string();
+    options.capture_logs = false;
+    command::Session session(components, commands, options);
+    const command::Reply opened =
+        session.call("scene.open", parse(R"({"path": ")" + frogs + "\"}"));
+    REQUIRE_MESSAGE(opened.ok, opened.message);
+    REQUIRE(session.call("events.subscribe", parse(R"({"kinds": ["Croak"]})")).ok);
+    REQUIRE(session.call("step", parse(R"({"ticks": 33})")).ok);
+    const slash::world::World& world = session.world();
+    const entt::entity body = world.find("body");
+    const auto& moved = world.ecs().get<slash::world::Transform2D>(body);
+    CHECK(moved.position.x == doctest::Approx(0.0));
+    CHECK(moved.position.y == doctest::Approx(-11.6));
+    const auto& drawn = world.ecs().get<slash::world::Sprite2D>(body);
+    CHECK(drawn.region == slash::Vec4{16.0F, 0.0F, 16.0F, 16.0F});
+    CHECK(drawn.modulate.w == doctest::Approx(0.7126).epsilon(0.002));
+    // The toad sits, moving right a unit a second.
+    CHECK(world.ecs().get<slash::world::Transform2D>(world.find("toad")).position.x ==
+          doctest::Approx(8.8));
+    const json::Value croaks =
+        session.call("events.read", parse(R"({"subscription": "events_1"})")).value;
+    REQUIRE(croaks.find("events")->size() == 1);
+    CHECK(croaks.find("events")->as_array()[0].find("id")->as_string() == "frog");
+    CHECK(*croaks.find("events")->as_array()[0].find("data") == parse(R"({"int": 2})"));
 }

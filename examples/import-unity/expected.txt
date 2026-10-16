@@ -1,7 +1,8 @@
 project.import {"dry_run":true,"source":"unity"}
 {
   "converted": {
-    "assets": 8,
+    "animation_libraries": 1,
+    "assets": 9,
     "input_actions": 12,
     "prefabs": 3,
     "scenes": 1,
@@ -9,7 +10,7 @@ project.import {"dry_run":true,"source":"unity"}
   },
   "dry_run": true,
   "engine": "unity",
-  "files": ["unity/Assets/Prefabs/Coin.scene.json", "unity/Assets/Prefabs/Frog.scene.json", "unity/Assets/Prefabs/Gold Coin.scene.json", "unity/Assets/Audio/pond.loop.audio.json", "unity/Assets/tiles.tileset.json", "unity/Assets/Scenes/Pond.scene.json", "project.json", "storyboard/work.json", "import/unity.json"],
+  "files": ["unity/Assets/Prefabs/Coin.scene.json", "unity/Assets/Animations/Frog.anim.json", "unity/Assets/Prefabs/Frog.scene.json", "unity/Assets/Prefabs/Gold Coin.scene.json", "unity/Assets/Audio/pond.loop.audio.json", "unity/Assets/tiles.tileset.json", "unity/Assets/Scenes/Pond.scene.json", "project.json", "storyboard/work.json", "import/unity.json"],
   "main_scene": "unity/Assets/Scenes/Pond.scene.json",
   "pixels_per_unit": 32.0,
   "project": "Pond Hop",
@@ -62,14 +63,15 @@ project.import {"dry_run":true,"source":"unity"}
 project.import {"source":"unity"}
 {
   "converted": {
-    "assets": 8,
+    "animation_libraries": 1,
+    "assets": 9,
     "input_actions": 12,
     "prefabs": 3,
     "scenes": 1,
     "tile_sets": 1
   },
   "engine": "unity",
-  "files": 9,
+  "files": 10,
   "main_scene": "unity/Assets/Scenes/Pond.scene.json",
   "pixels_per_unit": 32.0,
   "project": "Pond Hop",
@@ -309,6 +311,14 @@ project.import {"source":"unity"}
     },
     "frog": {
       "components": {
+        "AnimationPlayer": {
+          "animation": "Idle",
+          "library": "unity/Assets/Animations/Frog.anim.json",
+          "targets": {
+            "#sprite": "frog_sprite",
+            "Feet": "feet"
+          }
+        },
         "AudioStreamPlayer2D": {
           "max_distance": 640.0,
           "stream": "unity/Assets/Audio/croak.wav"
@@ -416,6 +426,143 @@ project.import {"source":"unity"}
     }
   },
   "tile_size": [32, 32]
+}
+--- unity/Assets/Animations/Frog.anim.json
+{
+  "animations": {
+    "Hop": {
+      "length": 0.5,
+      "tracks": [
+        {
+          "keys": [
+            {
+              "time": 0.0,
+              "value": [0.0, -8.0]
+            }
+          ],
+          "path": "Sprite2D/offset",
+          "target": "#sprite",
+          "update": "discrete"
+        },
+        {
+          "keys": [
+            {
+              "time": 0.0,
+              "value": [0.0, 0.0, 0.0, 0.0]
+            }
+          ],
+          "path": "Sprite2D/region",
+          "target": "#sprite",
+          "update": "discrete"
+        },
+        {
+          "keys": [
+            {
+              "time": 0.0,
+              "value": "unity/Assets/Sprites/frog_blink.png"
+            }
+          ],
+          "path": "Sprite2D/texture",
+          "target": "#sprite"
+        },
+        {
+          "keys": [
+            {
+              "time": 0.0,
+              "value": 0.0
+            },
+            {
+              "time": 0.25,
+              "value": 0.0
+            },
+            {
+              "time": 0.5,
+              "value": 0.0
+            }
+          ],
+          "path": "Transform2D/position/x",
+          "target": "Feet"
+        },
+        {
+          "keys": [
+            {
+              "time": 0.0,
+              "value": 16.0
+            },
+            {
+              "time": 0.25,
+              "value": 24.0
+            },
+            {
+              "time": 0.5,
+              "value": 16.0
+            }
+          ],
+          "path": "Transform2D/position/y",
+          "target": "Feet"
+        }
+      ]
+    },
+    "Idle": {
+      "length": 2.0,
+      "loop": "linear",
+      "tracks": [
+        {
+          "keys": [
+            {
+              "time": 0.0,
+              "value": [0.0, -8.0]
+            },
+            {
+              "time": 1.75,
+              "value": [0.0, -8.0]
+            }
+          ],
+          "path": "Sprite2D/offset",
+          "target": "#sprite",
+          "update": "discrete"
+        },
+        {
+          "keys": [
+            {
+              "time": 0.0,
+              "value": [0.0, 0.0, 0.0, 0.0]
+            },
+            {
+              "time": 1.75,
+              "value": [0.0, 0.0, 0.0, 0.0]
+            }
+          ],
+          "path": "Sprite2D/region",
+          "target": "#sprite",
+          "update": "discrete"
+        },
+        {
+          "keys": [
+            {
+              "time": 0.0,
+              "value": "unity/Assets/Sprites/frog.png"
+            },
+            {
+              "time": 1.75,
+              "value": "unity/Assets/Sprites/frog_blink.png"
+            }
+          ],
+          "path": "Sprite2D/texture",
+          "target": "#sprite"
+        },
+        {
+          "event": "Ribbit",
+          "keys": [
+            {
+              "time": 1.0
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "format": 1
 }
 --- unity/Assets/Audio/pond.loop.audio.json
 {
@@ -606,6 +753,10 @@ scene.open {"path":"unity/Assets/Scenes/Pond.scene.json"}
   "entities": 17,
   "path": "unity/Assets/Scenes/Pond.scene.json"
 }
+events.subscribe {"kinds":["Ribbit"]}
+{
+  "subscription": "events_1"
+}
 step {"ticks":60}
 {
   "tick": 60,
@@ -629,6 +780,49 @@ world.query {"include":["Transform2D"],"with":["RigidBody2D"]}
     }
   ],
   "truncated": false
+}
+events.read {"subscription":"events_1"}
+{
+  "dropped": 0,
+  "events": [
+    {
+      "id": "frog",
+      "kind": "Ribbit",
+      "seq": 1,
+      "tick": 59
+    }
+  ],
+  "more": false
+}
+step {"ticks":50}
+{
+  "tick": 110,
+  "ticks": 50
+}
+entity.get {"components":["Sprite2D"],"id":"frog/frog_sprite","omit_defaults":true}
+{
+  "components": {
+    "Sprite2D": {
+      "offset": [0.0, -8.0],
+      "texture": "unity/Assets/Sprites/frog_blink.png",
+      "z_index": 1000
+    }
+  },
+  "global": {
+    "position": [-96, 132.0069],
+    "rotation": 0,
+    "scale": [1, 1]
+  },
+  "id": "frog/frog_sprite",
+  "parent": "frog"
+}
+animation.eval {"animation":"Hop","id":"frog","times":[0,0.25],"tracks":["Feet:Transform2D/position/y"]}
+{
+  "length": 0.5,
+  "loop": "none",
+  "tracks": {
+    "Feet:Transform2D/position/y": [16, 24]
+  }
 }
 physics.raycast {"from":[176,0],"to":[176,200]}
 {
@@ -670,6 +864,14 @@ storyboard.query {"kind":"task"}
       },
       "id": "task/port-frog",
       "version": "b5a05b24"
+    },
+    {
+      "fields": {
+        "name": "Port the state machine of Assets/Animations/Frog.controller",
+        "summary": "Unity Animator controller: pick its animations from gameplay code."
+      },
+      "id": "task/port-frog-anim",
+      "version": "57805f8a"
     }
   ],
   "seq": 0

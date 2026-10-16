@@ -344,8 +344,11 @@ rendering on top.
         it in the report
   - [x] Unity's rectangular tile maps: a tile set from the sprites cells show, with polygons
         from sprites' physics shapes, alternatives for cell colors and turns from cell matrices
-  - [ ] Unity's Animator controllers and animation clips, audio mixers, uGUI, 2D joints, 2D
-        lights, and isometric and hexagonal tile maps
+  - [x] Unity's Animator controllers and animation clips: an animation library per
+        controller, an animation per state, curves keyed for SlashEngine's tracks, and the state
+        machine as a storyboard task
+  - [ ] Unity's audio mixers, uGUI, 2D joints, 2D lights, and isometric and hexagonal tile
+        maps
   - [ ] Exported games (a Godot `.pck`, a Unity build) unpacked back into a project, for games
         the user made or has the rights to. Nothing breaks encryption or DRM, and GPL tools such
         as AssetRipper run as separate programs, never linked

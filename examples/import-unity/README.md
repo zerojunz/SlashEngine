@@ -4,8 +4,9 @@
 small 2D game as Unity 2022.3 saves it: its project settings, a scene
 ([Pond.unity](unity/Assets/Scenes/Pond.unity)) that instances a frog prefab and coin prefabs and
 has a tile map, a prefab variant ([Gold Coin.prefab](unity/Assets/Prefabs/Gold%20Coin.prefab)),
-sprites with their import settings, tile assets, a physics material, an Input System actions file
-and three C# scripts. Unity
+sprites with their import settings, tile assets, an Animator controller
+([Frog.controller](unity/Assets/Animations/Frog.controller)) and its clips, a physics material,
+an Input System actions file and three C# scripts. Unity
 writes more settings than these files keep; they keep the ones the import reads.
 [main.cpp](main.cpp) makes the textures and sounds, then makes the calls an agent would make over
 MCP or JSON-RPC; [expected.txt](expected.txt) holds the replies and the files the import wrote.
@@ -13,8 +14,9 @@ From a shell, `slash-cli import unity` does the same.
 
 ```text
 project.import {"source":"unity"}
-{"converted": {"assets": 8, "input_actions": 12, "prefabs": 3, "scenes": 1, "tile_sets": 1},
- "files": 9, "main_scene": "unity/Assets/Scenes/Pond.scene.json", "pixels_per_unit": 32.0,
+{"converted": {"animation_libraries": 1, "assets": 9, "input_actions": 12, "prefabs": 3,
+               "scenes": 1, "tile_sets": 1},
+ "files": 10, "main_scene": "unity/Assets/Scenes/Pond.scene.json", "pixels_per_unit": 32.0,
  "report": "import/unity.json",
  "scripts": [{"entities": 1, "script": "unity/Assets/Scripts/CameraFollow.cs",
               "task": "task/port-camera-follow"}, ...],
@@ -48,6 +50,14 @@ project.import {"source":"unity"}
   slope's custom physics shape is its collision polygon, the dirt and grass, whose cells use the
   Grid collider type, get the cell's square, and the mirrored slopes at the right are `:h`
   cells. The tiles are solid: a ray down onto the first slope stops halfway up it.
+- The frog's `Animator` becomes an `AnimationPlayer`, and its controller an animation library,
+  `Frog.anim.json`, with an animation per state: `Idle`, which plays first, swaps the frog's
+  sprite to blink and calls `Ribbit` (an event track), and `Hop`, which stretches its feet. The
+  sprite tracks target `#sprite`, the entity drawing the frog's sprite, and the feet track
+  `Feet`, both bound in the player's `targets`. A second in, the frog has ribbited, and at
+  1.75 seconds it blinks. The state machine, Hop on the `Hop` trigger and back to Idle when
+  `Grounded` at the end of the hop, is a storyboard task, since gameplay code picks the
+  animations.
 - An `AudioSource` becomes an `AudioStreamPlayer`, or an `AudioStreamPlayer2D` when it is
   spatial. The music loops, so it plays a `.audio.json` file that loops the sound.
 - The player, time, physics and input settings become `project.json`: the name, version, window,
