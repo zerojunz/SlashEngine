@@ -2638,15 +2638,15 @@ struct Builder {
                 return;
             }
             // A negative size flips the texture, as RenderingServer's texture rects do.
-            Box out{.style = {},
-                    .position = at,
-                    .size = {std::abs(size.x), std::abs(size.y)},
-                    .texture_size = texture};
-            out.style.type = StyleBox::Type::Texture;
-            out.style.texture = path;
-            out.style.flip_h = size.x < 0.0F;
-            out.style.flip_v = size.y < 0.0F;
-            boxes.push_back(std::move(out));
+            Box drawn{.style = {},
+                      .position = at,
+                      .size = {std::abs(size.x), std::abs(size.y)},
+                      .texture_size = texture};
+            drawn.style.type = StyleBox::Type::Texture;
+            drawn.style.texture = path;
+            drawn.style.flip_h = size.x < 0.0F;
+            drawn.style.flip_v = size.y < 0.0F;
+            boxes.push_back(std::move(drawn));
         };
         const std::string& position = slider.ticks_position;
         const bool after = position == "bottom_right" || position == "both";

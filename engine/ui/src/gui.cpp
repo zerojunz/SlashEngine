@@ -3336,7 +3336,10 @@ void check_buttons(const world::World& world, std::vector<Problem>& problems) {
                  .message = "button groups are for toggle buttons; set toggle_mode too"});
         }
     };
-    for (const auto& [id, entity] : entities) {
+    for (const auto& entry : entities) {
+        // Named, not bound, so the lambda below can capture them on every compiler.
+        const std::string& id = entry.first;
+        const entt::entity entity = entry.second;
         std::vector<std::string_view> types; // the buttons it has
         const auto check = [&](std::string_view type, const auto* button) {
             if (button != nullptr) {
