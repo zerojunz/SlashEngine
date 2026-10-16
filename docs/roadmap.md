@@ -350,7 +350,11 @@ rendering on top.
   - [x] Unity's audio mixers and 2D joints: one bus layout from every mixer's groups, with
         their effects and Duck Volume sends as sidechains, and hinge, spring and slider joints as
         Godot's pin, spring and groove joints
-  - [ ] Unity's uGUI, 2D lights, and isometric and hexagonal tile maps
+  - [x] Unity's uGUI and TextMesh Pro: canvases and their scalers, rects as anchors and
+        offsets, images, text, buttons, toggles, sliders, scroll bars, input fields, scroll
+        views, masks and layout groups as Godot's controls and containers, with UI events'
+        calls in their scripts' tasks
+  - [ ] Unity's 2D lights, and isometric and hexagonal tile maps
   - [ ] Exported games (a Godot `.pck`, a Unity build) unpacked back into a project, for games
         the user made or has the rights to. Nothing breaks encryption or DRM, and GPL tools such
         as AssetRipper run as separate programs, never linked

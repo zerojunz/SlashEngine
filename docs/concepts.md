@@ -147,7 +147,9 @@ the same path shares one copy, which stays loaded while any handle exists. `.jso
 ticks in `slash-cli run` and `slash-cli serve`, the session checks the files it has loaded. A
 changed asset reloads in place, so its handles see the new version. A changed prefab updates its
 instances at once, keeping each instance's overrides, as Godot does for instanced scenes. A file
-that no longer loads keeps its last good version, and the error is reported. `asset.list` shows
+that no longer loads keeps its last good version, and the error is reported. A changed
+`project.json` applies its window, rendering, physics, input and audio settings again, so what
+`project.import` or an edit writes there takes effect at the next command. `asset.list` shows
 what is loaded, and `events.subscribe` delivers an `asset.reloaded` event per changed file plus a
 `command` event named `asset.reload` with the changes to the world. A reload is not an undo step.
 

@@ -2,7 +2,8 @@
 
 [`project.import`](commands.md#projectimport) and [`slash-cli import`](cli.md#import) convert a
 Unity project's 2D game into a SlashEngine project in one pass: its scenes and prefabs, sprites,
-tile maps, animation, cameras, 2D physics and joints, sounds and audio mixers, input and settings. Scripts don't convert,
+tile maps, animation, cameras, 2D physics and joints, sounds and audio mixers, UI, input and
+settings. Scripts don't convert,
 since SlashEngine games are plain C++: each becomes a storyboard task to port it, with what the
 port needs, as does each Animator controller's state machine.
 [examples/import-unity](../../examples/import-unity/) imports a small platformer.
@@ -266,6 +267,70 @@ effects before its volume), effects' wet levels (they run fully wet), a group's 
 Normalize, ParamEQ, Pitch Shifter and audio plugins' effects. Snapshots other than the start one
 and exposed parameters are reported too: gameplay code (or `audio.set_bus`) sets buses instead.
 
+## UI
+
+Objects with a `RectTransform` under a `Canvas` (uGUI) become [controls](scene-format.md#ui-and-text):
+each a `Control`, with no `Transform2D`, listing the controls under it in its `children`. A UI
+prefab, whose top object has a `RectTransform` with UI under it, becomes a scene of controls that
+its instances extend.
+
+A screen space canvas at the top of the hierarchy is a control over the window. Its
+`CanvasScaler` gives it a scale: Constant Pixel Size its scale factor, Scale With Screen Size what
+its reference resolution and match give the project's window. A scaled canvas is a control of the
+window's size divided by the scale, with that `scale`, and is reported, since it keeps that scale
+at other window sizes; Constant Physical Size draws at 1:1 and is reported. The canvas's sort
+order, and that of a nested canvas that overrides sorting, is `z_index`. A world space canvas is
+drawn over the screen at its own size, and reported; a canvas under a world object is a control of
+its own. A disabled canvas or inactive object is `visible: false`, and a `CanvasGroup`'s alpha is
+`modulate`.
+
+A rect's anchors become `anchor_*` (Unity's go up from the bottom, Control's down from the top),
+its anchored position, size delta and pivot `offset_*`, and the pivot the grow directions: a
+control smaller than its content grows away from a pivot at an edge, and both ways from one in
+the middle. A turned or scaled rect turns and scales about its pivot (`pivot_offset`).
+
+| Unity | SlashEngine |
+| --- | --- |
+| `Image` without a sprite | `ColorRect` |
+| `Image` of Unity's built-in UI sprites (UISprite, Background, InputFieldBackground, UIMask, Knob) | `Panel` with a flat style box with rounded corners, since Unity's sprites aren't open source |
+| `Image`, simple | `TextureRect` (`keep_aspect_centered` with Preserve Aspect), or a `NinePatchRect` showing the region of a sprite cut from a sheet |
+| `Image`, sliced or tiled | `NinePatchRect` with the sprite's borders as its patch margins, tiled with `tile` |
+| `RawImage` | `TextureRect` |
+| `Text`, `TextMeshProUGUI` | `Label`: text, alignment, wrapping, overflow and uppercase, with the font, size, color and line spacing as theme overrides. A TextMesh Pro font asset draws with its source font file, Unity's built-in Arial with the default font |
+| `Outline`, `Shadow` on text | `font_outline_color` and `outline_size` (Godot strokes a quarter of it each side, so four times the distance), `font_shadow_color` and `shadow_offset_x`, `shadow_offset_y` |
+| `Button` | `Button`, its target graphic's color tint or sprite swap as its `normal`, `hover`, `pressed`, `hover_pressed`, `disabled` and `focus` style boxes; a button whose graphic is another object's is `flat` |
+| `Toggle` | `CheckBox` when it is Unity's default toggle (the built-in background and checkmark), else a `Button` with `toggle_mode`; `button_pressed` from Is On, `button_group` from its `ToggleGroup` |
+| `Slider` | `Slider`: range, value, whole numbers as `step`, and `vertical`. Its background is the `slider` style and its fill the `grabber_area` style, as thick as the background, and a handle sprite the `grabber` icon |
+| `Scrollbar` | `ScrollBar`, its size as `page` and its handle the `grabber` styles |
+| `InputField`, `TMP_InputField` | `LineEdit` (`TextEdit` for Multi Line Newline): text, placeholder, character limit, password, keyboard type and caret blink, the text's font and colors, and the text area's insets as the style boxes' content margins |
+| `ScrollRect` | `ScrollContainer`, its content the child: a direction that doesn't scroll is `disabled`, one without a scroll bar `never`, and Auto Hide `auto` |
+| `Mask`, `RectMask2D` | `clip_contents` |
+| `HorizontalLayoutGroup`, `VerticalLayoutGroup` | `BoxContainer` (`vertical`): child alignment as `alignment`, spacing as `separation`; Control Child Size and Child Force Expand as the children's size flags, a child's own size its minimum where the group doesn't control it |
+| `GridLayoutGroup` | `GridContainer`: columns from its constraint, spacing as `h_separation` and `v_separation`, each child at least the cell size |
+| A layout group's padding | A `MarginContainer`, its child entity `<id>_layout` holding the container and the children |
+| `LayoutElement` | Min and preferred sizes as `custom_minimum_size`, flexible sizes as `expand_fill` and `size_flags_stretch_ratio` |
+| `ContentSizeFitter` | A rect of no size at the pivot, which grows to its content, as controls are at least their minimum size |
+| Explicit navigation, none | `focus_neighbor_*`; `focus_mode: "click"` |
+
+A widget's parts become part of its control: a default toggle's background and checkmark, a
+slider's background, fill and handle, a scroll view's viewport and scroll bars, and an input
+field's text area, text and placeholder. The report maps each to the control's entity, and what
+they hold that isn't a part is lifted into the control's children. A graphic that takes clicks
+has `mouse_filter: "pass"`, so a click reaches the button above it, as in Unity.
+
+A UI event's persistent calls (On Click, On Value Changed, On End Edit) to a project script's
+methods are listed in the script's task with the control's event that makes them: `play in
+Menu.scene.json calls StartGame() on pressed`. Calls to Unity's own components are reported.
+
+Dropdowns are reported until `OptionButton` lands (on the roadmap); their parts stay controls.
+Also reported: filled images (drawn whole), a sliced sprite whose corners Unity draws at another
+size, UI materials, Unity's checkmark and arrow sprites outside a default toggle, a toggle with
+its own sprites (its checkmark shows as it starts: gameplay code shows and hides it on
+`toggled`), `AspectRatioFitter`, reversed layout groups, a grid's start corner, axis and
+alignment, input validation, best fit and auto-sized text, bold and italic styles, animation
+transitions, objects that aren't UI under UI objects and other components on UI objects. The
+`EventSystem` isn't needed: the gui system sends input to controls itself.
+
 ## Project settings
 
 | Unity | `project.json` |
@@ -304,13 +369,15 @@ as entity IDs (`"frog"`, or `"frog#AudioSource"` for a component other than its 
 references to assets as their paths. The scripts stay where they are, linked from the tasks.
 
 Components from Unity's packages convert where SlashEngine has them and are reported where it
-doesn't: uGUI and TextMesh Pro components convert in a later import, the event system isn't
-needed (the gui system sends input to controls itself), and other package scripts are named in
-the report.
+doesn't: uGUI and TextMesh Pro components convert under a canvas (see [UI](#ui)) and are
+reported elsewhere, the event system isn't needed (the gui system sends input to controls
+itself), and other package scripts are named in the report.
 
 ## Not yet converted
 
-uGUI, 2D lights, particle systems and isometric and hexagonal tile maps convert in later imports; until then each is reported where it is used.
+2D lights, particle systems, dropdowns and isometric and hexagonal tile maps convert in later
+imports; until then each is reported where it is used. TextMesh Pro text in the world (not under
+a canvas) is reported too.
 Materials and shaders, 3D (milestone 7) and Timeline don't convert. Everything that didn't
 convert is in the report's `unsupported`, once per kind with how many and the first place it was
 seen.

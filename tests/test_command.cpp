@@ -1652,6 +1652,42 @@ TEST_CASE("ui.layout returns where controls are and the lines labels show") {
     std::filesystem::remove_all(root);
 }
 
+TEST_CASE("a session applies project.json's settings again when the file changes") {
+    const std::string root = "command_project_settings";
+    std::filesystem::remove_all(root);
+    REQUIRE(slash::platform::create_directories(root).ok());
+    command::SessionOptions options;
+    options.project_root = root;
+    Engine engine(options);
+    engine.ok("entity.create", R"({"id": "box", "components": {
+        "Transform2D": {}, "RigidBody2D": {}, "CollisionShape2D": {}}})");
+    engine.fails("input.actions", R"({"names": ["jump"]})", command::code::kInvalidParams);
+
+    // A project.json written after the session started, as project.import writes one, takes
+    // effect at the next command: its window is the viewport, its actions bind and its gravity
+    // pulls.
+    REQUIRE(slash::platform::write_file(root + "/project.json",
+                                        R"({"format": 1, "name": "Late", "version": "0.1.0",
+                                            "main_scene": "main.scene.json",
+                                            "window": {"width": 400, "height": 300},
+                                            "physics_2d": {"gravity": 100, "linear_damp": 0},
+                                            "input": {"jump": {"events": [
+                                                {"type": "key", "key": "Space"}]}}})")
+                .ok());
+    CHECK(engine.ok("ui.layout")["viewport"] == parse("[400, 300]"));
+    CHECK(engine.ok("input.actions", R"({"names": ["jump"]})")["actions"]["jump"]["events"] ==
+          parse(R"([{"key": "Space", "type": "key"}])"));
+    engine.ok("step", R"({"ticks": 60})");
+    const json::Value box =
+        engine.ok("entity.get", R"({"id": "box", "components": ["RigidBody2D"]})");
+    CHECK(box.find("components")
+              ->find("RigidBody2D")
+              ->find("linear_velocity")
+              ->as_array()[1]
+              .as_double() == doctest::Approx(100.0).epsilon(0.01));
+    std::filesystem::remove_all(root);
+}
+
 TEST_CASE("ui.theme returns the theme items a control uses and where each comes from") {
     const std::string root = "ui_theme_project";
     std::filesystem::remove_all(root);

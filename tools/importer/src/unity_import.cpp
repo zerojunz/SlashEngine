@@ -83,7 +83,10 @@ constexpr int kFlareLayer = 124;
 constexpr int kBlendTree = 206;
 constexpr int kSpriteRenderer = 212;
 constexpr int kAnimatorOverrideController = 221;
+constexpr int kCanvasRenderer = 222;
+constexpr int kCanvas = 223;
 constexpr int kRectTransform = 224;
+constexpr int kCanvasGroup = 225;
 constexpr int kSpringJoint2D = 231;
 constexpr int kHingeJoint2D = 233;
 constexpr int kSliderJoint2D = 234;
@@ -100,51 +103,64 @@ constexpr int kTilemap = 1839735485;
 // The script of Unity's own Tile class, which tile assets name; other tiles are scripted.
 constexpr std::string_view kTileScriptGuid = "0000000000000000e000000000000000";
 constexpr std::int64_t kTileScriptId = 13312;
+// Unity's built-in resources: its default font (Arial) and the sprites its default UI controls
+// use, by file ID.
+constexpr std::string_view kBuiltinExtraGuid = "0000000000000000e000000000000000";
+constexpr std::string_view kBuiltinSprites = "0000000000000000f000000000000000";
+constexpr std::int64_t kCheckmarkSprite = 10901;
+constexpr std::int64_t kUiSprite = 10905;
+constexpr std::int64_t kBackgroundSprite = 10907;
+constexpr std::int64_t kInputFieldSprite = 10911;
+constexpr std::int64_t kKnobSprite = 10913;
+constexpr std::int64_t kMaskSprite = 10917;
 
-constexpr std::string_view kUiWhy = "Unity UI converts in a later import (on the roadmap)";
+constexpr std::string_view kUiWhy = "a UI component outside a Canvas; put it under one";
 constexpr std::string_view kEventWhy =
     "not needed: SlashEngine's gui system sends input to controls itself";
 
 // Components of Unity's own packages, by their scripts' GUIDs, which are the same in every
-// project.
+// project. UI ones convert on objects under a Canvas; why says why one doesn't.
 struct KnownScript {
     std::string_view guid;
     std::string_view name;
     std::string_view why;
+    bool ui = false;
 };
 constexpr std::array kKnownScripts{
-    KnownScript{"fe87c0e1cc204ed48ad3b37840f39efc", "Image", kUiWhy},
-    KnownScript{"1344c3c82d62a2a41a3576d8abb8e3ea", "RawImage", kUiWhy},
-    KnownScript{"4e29b1a8efbd4b44bb3f3716e73f07ff", "Button", kUiWhy},
-    KnownScript{"5f7201a12d95ffc409449d95f23cf332", "Text", kUiWhy},
-    KnownScript{"9085046f02f69544eb97fd06b6048fe2", "Toggle", kUiWhy},
-    KnownScript{"2fafe2cfe61f6974895a912c3755e8f1", "ToggleGroup", kUiWhy},
-    KnownScript{"67db9e8f0e2ae9c40bc1e2b64352a6b4", "Slider", kUiWhy},
-    KnownScript{"2a4db7a114972834c8e4117be1d82ba3", "Scrollbar", kUiWhy},
-    KnownScript{"1aa08ab6e0800fa44ae55d278d1423e3", "ScrollRect", kUiWhy},
-    KnownScript{"0d0b652f32a2cc243917e4028fa0f046", "Dropdown", kUiWhy},
-    KnownScript{"d199490a83bb2b844b9695cbf13b01ef", "InputField", kUiWhy},
-    KnownScript{"31a19414c41e5ae4aae2af33fee712f6", "Mask", kUiWhy},
-    KnownScript{"3312d7739989d2b4e91e6319e9a96d76", "RectMask2D", kUiWhy},
-    KnownScript{"30649d3a9faa99c48a7b1166b86bf2a0", "HorizontalLayoutGroup", kUiWhy},
-    KnownScript{"59f8146938fff824cb5fd77236b75775", "VerticalLayoutGroup", kUiWhy},
-    KnownScript{"8a8695521f0d02e499659fee002a26c2", "GridLayoutGroup", kUiWhy},
-    KnownScript{"3245ec927659c4140ac4f8d17403cc18", "ContentSizeFitter", kUiWhy},
-    KnownScript{"86710e43de46f6f4bac7c8e50813a599", "AspectRatioFitter", kUiWhy},
-    KnownScript{"306cc8c2b49d7114eaa3623786fc2126", "LayoutElement", kUiWhy},
-    KnownScript{"0cd44c1031e13a943bb63640046fad76", "CanvasScaler", kUiWhy},
-    KnownScript{"e19747de3f5aca642ab2be37e372fb86", "Outline", kUiWhy},
-    KnownScript{"cfabb0440166ab443bba8876756fdfa9", "Shadow", kUiWhy},
-    KnownScript{"7a98125502f715b4b83cfb77b434e436", "Selectable", kUiWhy},
-    KnownScript{"f4688fdb7df04437aeb418b961361dc5", "TextMeshProUGUI", kUiWhy},
-    KnownScript{"7b743370ac3e4ec2a1668f5455a8ef8a", "TMP_Dropdown", kUiWhy},
-    KnownScript{"2da0c512f12947e489f739169773d7ca", "TMP_InputField", kUiWhy},
-    KnownScript{"d0b148fe25e99eb48b9724523833bab1", "EventTrigger", kUiWhy},
+    KnownScript{"fe87c0e1cc204ed48ad3b37840f39efc", "Image", "", true},
+    KnownScript{"1344c3c82d62a2a41a3576d8abb8e3ea", "RawImage", "", true},
+    KnownScript{"4e29b1a8efbd4b44bb3f3716e73f07ff", "Button", "", true},
+    KnownScript{"5f7201a12d95ffc409449d95f23cf332", "Text", "", true},
+    KnownScript{"9085046f02f69544eb97fd06b6048fe2", "Toggle", "", true},
+    KnownScript{"2fafe2cfe61f6974895a912c3755e8f1", "ToggleGroup", "", true},
+    KnownScript{"67db9e8f0e2ae9c40bc1e2b64352a6b4", "Slider", "", true},
+    KnownScript{"2a4db7a114972834c8e4117be1d82ba3", "Scrollbar", "", true},
+    KnownScript{"1aa08ab6e0800fa44ae55d278d1423e3", "ScrollRect", "", true},
+    KnownScript{"0d0b652f32a2cc243917e4028fa0f046", "Dropdown", "", true},
+    KnownScript{"d199490a83bb2b844b9695cbf13b01ef", "InputField", "", true},
+    KnownScript{"31a19414c41e5ae4aae2af33fee712f6", "Mask", "", true},
+    KnownScript{"3312d7739989d2b4e91e6319e9a96d76", "RectMask2D", "", true},
+    KnownScript{"30649d3a9faa99c48a7b1166b86bf2a0", "HorizontalLayoutGroup", "", true},
+    KnownScript{"59f8146938fff824cb5fd77236b75775", "VerticalLayoutGroup", "", true},
+    KnownScript{"8a8695521f0d02e499659fee002a26c2", "GridLayoutGroup", "", true},
+    KnownScript{"3245ec927659c4140ac4f8d17403cc18", "ContentSizeFitter", "", true},
+    KnownScript{"86710e43de46f6f4bac7c8e50813a599", "AspectRatioFitter", "", true},
+    KnownScript{"306cc8c2b49d7114eaa3623786fc2126", "LayoutElement", "", true},
+    KnownScript{"0cd44c1031e13a943bb63640046fad76", "CanvasScaler", "", true},
+    KnownScript{"e19747de3f5aca642ab2be37e372fb86", "Outline", "", true},
+    KnownScript{"cfabb0440166ab443bba8876756fdfa9", "Shadow", "", true},
+    KnownScript{"7a98125502f715b4b83cfb77b434e436", "Selectable",
+                "a plain Selectable becomes a control that takes no input", true},
+    KnownScript{"f4688fdb7df04437aeb418b961361dc5", "TextMeshProUGUI", "", true},
+    KnownScript{"7b743370ac3e4ec2a1668f5455a8ef8a", "TMP_Dropdown", "", true},
+    KnownScript{"2da0c512f12947e489f739169773d7ca", "TMP_InputField", "", true},
+    KnownScript{"d0b148fe25e99eb48b9724523833bab1", "EventTrigger",
+                "event triggers are gameplay code: it reads the control's events", true},
+    KnownScript{"dc42784cf147c0c48a680349fa168899", "GraphicRaycaster", "", true},
     KnownScript{"9541d86e2fd84c1d9990edf0852d74ab", "TextMeshPro",
                 "text in the world isn't converted yet; use a Label in a Control"},
     KnownScript{"76c392e42b5098c458856cdf6ecaaaa1", "EventSystem", kEventWhy},
     KnownScript{"4f231c4fb786f3946a6b90b886c48677", "StandaloneInputModule", kEventWhy},
-    KnownScript{"dc42784cf147c0c48a680349fa168899", "GraphicRaycaster", kEventWhy},
     KnownScript{"1511ccae7919cfc46b603b9b337fdc94", "BaseInput", kEventWhy},
     KnownScript{"56666c5a40171f54783dd416a44f42bf", "Physics2DRaycaster", kEventWhy},
     KnownScript{"c49b4cc203aa6414fae5c798d1d0e7d6", "PhysicsRaycaster", kEventWhy},
@@ -1087,6 +1103,8 @@ private:
         double pivot_x = 0.5; // from the bottom left, as a fraction of the size, as Unity's
         double pivot_y = 0.5;
         double ppu = 100.0;
+        std::array<double, 4> border{}; // pixels kept at their size when sliced: left, bottom,
+                                        // right and top, as Unity's x, y, z and w
         std::string filter;
         // Its physics shape: outlines in pixels around the middle of its rect, y up.
         std::vector<Outline> shape;
@@ -1193,6 +1211,8 @@ private:
                 sprite.region = {x, static_cast<double>(height) - y - sprite.height, sprite.width,
                                  sprite.height};
                 sprite.whole = false;
+                sprite.border = {entry.number_at("border.x"), entry.number_at("border.y"),
+                                 entry.number_at("border.z"), entry.number_at("border.w")};
                 std::tie(sprite.pivot_x, sprite.pivot_y) =
                     alignment_pivot(entry.integer_at("alignment", 0), entry.get("pivot"));
                 std::int64_t id = entry.integer_at("internalID", 0);
@@ -1209,6 +1229,9 @@ private:
             sprite.shape = outlines(importer->path("spriteSheet.physicsShape"));
             sprite.width = width;
             sprite.height = height;
+            sprite.border = {
+                importer->number_at("spriteBorder.x"), importer->number_at("spriteBorder.y"),
+                importer->number_at("spriteBorder.z"), importer->number_at("spriteBorder.w")};
             std::tie(sprite.pivot_x, sprite.pivot_y) =
                 alignment_pivot(importer->integer_at("alignment", 0), importer->get("spritePivot"));
             out.sprites[kSingleSprite] = std::move(sprite);
@@ -1789,6 +1812,17 @@ private:
         Node body;
     };
 
+    // What a UI object's layout group or scroll view sets on it.
+    struct UiPlacement {
+        bool placed = false;    // in a container
+        bool vertical = false;  // a column's
+        bool from_rect = false; // a scroll view's content: at least its rect's size
+        bool hidden = false;    // a toggle's checkmark, while off
+        std::string size_h = "fill";
+        std::string size_v = "fill";
+        std::array<double, 2> minimum{-1.0, -1.0}; // -1 for none
+    };
+
     struct GameObject {
         std::int64_t id = 0;
         Node body;
@@ -1803,6 +1837,13 @@ private:
         std::string entity;                              // its entity ID in this file's scene
         std::map<std::string, std::string> added; // entities made for it, by what they are for
         bool removed = false;
+        // UI: whether it becomes a control, the control that draws it when it is part of one,
+        // its rect's size in pixels and its canvas's reference pixels per unit.
+        bool ui = false;
+        std::string folded;
+        std::array<double, 2> rect{};
+        double ui_ppu = 100.0;
+        UiPlacement placement;
     };
 
     struct Expanded;
@@ -2274,6 +2315,7 @@ private:
         json::Object components;
         std::vector<std::pair<std::string, json::Object>> added;
         const Component* animator = nullptr;
+        std::string children_to; // the added entity that holds the object's children, if one
     };
 
     struct Context {
@@ -2286,15 +2328,19 @@ private:
     Converted convert_object(const Context& ctx) {
         Converted out;
         const GameObject& go = ctx.file->objects[static_cast<std::size_t>(ctx.index)];
-        if (const Component* transform = transform_of(go)) {
-            out.components["Transform2D"] = transform_2d(transform->body, ctx.where);
-        } else {
-            out.components["Transform2D"] = json::Object{};
-        }
         if (!ctx.active) {
             problems_.add("inactive object", ctx.where,
                           "converted hidden, with its shapes disabled; there is no inactive "
                           "state, so its other components still run");
+        }
+        if (go.ui) {
+            convert_ui_object(ctx, out);
+            return out;
+        }
+        if (const Component* transform = transform_of(go)) {
+            out.components["Transform2D"] = transform_2d(transform->body, ctx.where);
+        } else {
+            out.components["Transform2D"] = json::Object{};
         }
         std::vector<const Component*> colliders;
         const Component* rigidbody = nullptr;
@@ -2389,9 +2435,65 @@ private:
         return out;
     }
 
+    // A UI object: a control, with its other components where they convert.
+    void convert_ui_object(const Context& ctx, Converted& out) {
+        const GameObject& go = ctx.file->objects[static_cast<std::size_t>(ctx.index)];
+        UiParts parts;
+        for (const Component& component : go.components) {
+            switch (component.class_id) {
+            case kRectTransform:
+            case kCanvasRenderer:
+                break;
+            case kCanvas:
+                parts.canvas = &component;
+                break;
+            case kCanvasGroup:
+                parts.group = &component;
+                break;
+            case kAudioSource:
+                audio_source(component, ctx, out);
+                break;
+            case kAnimator:
+                out.animator = &component;
+                break;
+            case kMonoBehaviour: {
+                const KnownScript* known = known_script(component);
+                if (known == nullptr || !known->ui) {
+                    mono_behaviour(component, ctx);
+                } else if (!known->why.empty()) {
+                    problems_.add("component " + std::string(known->name), ctx.where,
+                                  std::string(known->why));
+                } else if (known->name == "Outline" || known->name == "Shadow") {
+                    parts.effects.push_back(&component);
+                } else {
+                    parts.scripts.try_emplace(std::string(known->name), &component);
+                }
+                break;
+            }
+            default:
+                problems_.add("component " + component.type + " on a UI object", ctx.where,
+                              "UI objects become controls, which don't take it");
+                break;
+            }
+        }
+        ui_object(ctx, parts, out);
+        // A 2D player plays where its entity is; a control has no Transform2D, so it plays as
+        // a plain one.
+        if (const auto it = out.components.find("AudioStreamPlayer2D");
+            it != out.components.end()) {
+            json::Value player = std::move(it->second);
+            out.components.erase(it);
+            player.as_object().erase("max_distance");
+            player.as_object().erase("attenuation");
+            player.as_object().erase("panning_strength");
+            out.components["AudioStreamPlayer"] = std::move(player);
+            problems_.add("spatial sound on a UI object", ctx.where, "it plays as a plain one");
+        }
+    }
+
     static std::string component_why(std::string_view type) {
         if (type == "Canvas" || type == "CanvasRenderer" || type == "CanvasGroup") {
-            return std::string(kUiWhy);
+            return "a Canvas's part on an object without a RectTransform";
         }
         if (type == "Animation") {
             return "the legacy Animation component doesn't convert; an Animator's controller does";
@@ -2685,7 +2787,7 @@ private:
             for (const KnownScript& known : kKnownScripts) {
                 if (known.guid == script->guid) {
                     problems_.add("component " + std::string(known.name), ctx.where,
-                                  std::string(known.why));
+                                  std::string(known.ui ? kUiWhy : known.why));
                     return;
                 }
             }
@@ -3045,6 +3147,1736 @@ private:
                                                       : "trigger_" + std::to_string(trigger_count),
                                    std::move(added));
         }
+    }
+
+    // --- UI ---
+
+    using Color = std::array<double, 4>;
+
+    static Color color_at(const Node& body, std::string_view key, Color fallback = {1, 1, 1, 1}) {
+        const Node* node = body.path(key);
+        if (node == nullptr || !node->is_map()) {
+            return fallback;
+        }
+        return {node->number_at("r", fallback[0]), node->number_at("g", fallback[1]),
+                node->number_at("b", fallback[2]), node->number_at("a", fallback[3])};
+    }
+
+    // Two colors multiplied, the second scaled, as Unity tints a graphic; each part at most 1.
+    static Color tinted(const Color& color, const Color& tint, double scale = 1.0) {
+        Color out{};
+        for (std::size_t i = 0; i < 4; ++i) {
+            out[i] = std::clamp(color[i] * tint[i] * scale, 0.0, 1.0);
+        }
+        return out;
+    }
+
+    static double number_in(const json::Value& value, std::string_view key) {
+        const json::Value* found = value.is_object() ? value.find(key) : nullptr;
+        return found != nullptr && found->is_number() ? found->as_double() : 0.0;
+    }
+
+    static json::Value color_json(const Color& color) {
+        return json::Array{tidy(color[0]), tidy(color[1]), tidy(color[2]), tidy(color[3])};
+    }
+
+    // The known package script a component is, or nullptr.
+    static const KnownScript* known_script(const Component& component) {
+        if (component.class_id != kMonoBehaviour) {
+            return nullptr;
+        }
+        const auto script = ref_at(component.body, "m_Script");
+        if (!script) {
+            return nullptr;
+        }
+        const auto* found = std::ranges::find(kKnownScripts, script->guid, &KnownScript::guid);
+        return found != kKnownScripts.end() ? &*found : nullptr;
+    }
+
+    // The object a local reference names, through the component it names, or -1.
+    static int object_at(const Expanded& file, const Node& body, std::string_view key) {
+        const auto ref = ref_at(body, key);
+        if (!ref || ref->null() || !ref->guid.empty()) {
+            return -1;
+        }
+        const std::int64_t id = file.resolve(ref->file_id);
+        if (const auto at = file.components.find(id); at != file.components.end()) {
+            return at->second.first;
+        }
+        if (const auto go = file.by_id.find(id); go != file.by_id.end()) {
+            return go->second;
+        }
+        return -1;
+    }
+
+    // A component a local reference names, or nullptr.
+    static const Component* component_at(const Expanded& file, const Node& body,
+                                         std::string_view key) {
+        const auto ref = ref_at(body, key);
+        if (!ref || ref->null() || !ref->guid.empty()) {
+            return nullptr;
+        }
+        const auto at = file.components.find(file.resolve(ref->file_id));
+        if (at == file.components.end()) {
+            return nullptr;
+        }
+        return &file.objects[static_cast<std::size_t>(at->second.first)]
+                    .components[static_cast<std::size_t>(at->second.second)];
+    }
+
+    // An object's known package script of a name, or nullptr.
+    static const Component* script_of(const GameObject& go, std::string_view name) {
+        for (const Component& component : go.components) {
+            if (const KnownScript* known = known_script(component);
+                known != nullptr && known->name == name) {
+                return &component;
+            }
+        }
+        return nullptr;
+    }
+
+    // Which objects are UI: those with a RectTransform under a Canvas, and the objects of a UI
+    // prefab, whose top object has a RectTransform and UI components under it.
+    void mark_ui(Expanded& file) {
+        const auto rect = [&](const GameObject& go) {
+            const Component* transform = transform_of(go);
+            return transform != nullptr && transform->class_id == kRectTransform;
+        };
+        std::function<bool(int)> has_ui = [&](int index) {
+            const GameObject& go = file.objects[static_cast<std::size_t>(index)];
+            const bool own = std::ranges::any_of(go.components, [](const Component& component) {
+                const KnownScript* known = known_script(component);
+                return component.class_id == kCanvas || (known != nullptr && known->ui);
+            });
+            return own || std::ranges::any_of(go.children, has_ui);
+        };
+        std::function<void(int, bool)> visit = [&](int index, bool parent_ui) {
+            GameObject& go = file.objects[static_cast<std::size_t>(index)];
+            // An instance's objects come from its prefab's, converted on their own before.
+            go.folded.clear();
+            go.rect = {};
+            go.ui_ppu = 100.0;
+            go.placement = {};
+            const bool canvas = std::ranges::any_of(
+                go.components, [](const Component& c) { return c.class_id == kCanvas; });
+            go.ui = rect(go) && (canvas || parent_ui || (go.parent < 0 && has_ui(index)));
+            for (const int child : go.children) {
+                visit(child, go.ui);
+            }
+        };
+        for (const int root : file.roots) {
+            visit(root, false);
+        }
+    }
+
+    // Marks an object and the objects under it as drawn by a control above, which they become
+    // part of; the objects under them that aren't are lifted into that control's children.
+    static void fold(Expanded& file, int index, const std::string& into, bool subtree) {
+        if (index < 0) {
+            return;
+        }
+        GameObject& go = file.objects[static_cast<std::size_t>(index)];
+        go.folded = into;
+        if (subtree) {
+            for (const int child : go.children) {
+                fold(file, child, into, true);
+            }
+        }
+    }
+
+    // Whether an object is under another, at any depth.
+    static bool descends(const Expanded& file, int index, int ancestor) {
+        for (int at = index >= 0 ? file.objects[static_cast<std::size_t>(index)].parent : -1;
+             at >= 0; at = file.objects[static_cast<std::size_t>(at)].parent) {
+            if (at == ancestor) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Whether an object is only a rect, with nothing of its own to draw or do.
+    static bool bare(const GameObject& go) {
+        return std::ranges::all_of(go.components, [](const Component& component) {
+            return component.class_id == kRectTransform || component.class_id == kCanvasRenderer;
+        });
+    }
+
+    // The screen space canvas's scale: what its CanvasScaler gives the project's window.
+    double canvas_scale(const Component* scaler, const std::string& where) {
+        if (scaler == nullptr) {
+            return 1.0;
+        }
+        const Node& body = scaler->body;
+        switch (body.integer_at("m_UiScaleMode", 0)) {
+        case 0:
+            return std::max(body.number_at("m_ScaleFactor", 1.0), 0.01);
+        case 1: {
+            const double width = std::max(body.number_at("m_ReferenceResolution.x", 800.0), 1.0);
+            const double height = std::max(body.number_at("m_ReferenceResolution.y", 600.0), 1.0);
+            const double across = window_width_ / width;
+            const double down = window_height_ / height;
+            double scale = 1.0;
+            switch (body.integer_at("m_ScreenMatchMode", 0)) {
+            case 1: // expand
+                scale = std::min(across, down);
+                break;
+            case 2: // shrink
+                scale = std::max(across, down);
+                break;
+            default: { // match width or height, in log space as Unity does
+                const double match = std::clamp(body.number_at("m_MatchWidthOrHeight"), 0.0, 1.0);
+                scale = std::pow(2.0, std::lerp(std::log2(across), std::log2(down), match));
+                break;
+            }
+            }
+            if (std::abs(scale - 1.0) > 1e-6) {
+                problems_.add("CanvasScaler", where,
+                              "scaled for the project's " + format_size(window_width_) + "x" +
+                                  format_size(window_height_) +
+                                  " window; at other sizes the UI keeps that scale");
+            }
+            return scale;
+        }
+        default:
+            problems_.add("CanvasScaler", where,
+                          "constant physical size isn't converted: the UI is drawn at 1:1");
+            return 1.0;
+        }
+    }
+
+    static std::string format_size(double value) {
+        return std::to_string(static_cast<std::int64_t>(std::llround(value)));
+    }
+
+    // Unity's RectTransform as Control's anchors and offsets in its parent's rect; returns the
+    // rect's size. Unity's rects go up from the bottom left and Control's down from the top left.
+    std::array<double, 2> rect_control(const Node& rect, std::array<double, 2> parent,
+                                       json::Value& control) {
+        const double ax0 = rect.number_at("m_AnchorMin.x", 0.5);
+        const double ay0 = rect.number_at("m_AnchorMin.y", 0.5);
+        const double ax1 = rect.number_at("m_AnchorMax.x", 0.5);
+        const double ay1 = rect.number_at("m_AnchorMax.y", 0.5);
+        const double px = rect.number_at("m_AnchoredPosition.x");
+        const double py = rect.number_at("m_AnchoredPosition.y");
+        const double sx = rect.number_at("m_SizeDelta.x", 100.0);
+        const double sy = rect.number_at("m_SizeDelta.y", 100.0);
+        const double vx = rect.number_at("m_Pivot.x", 0.5);
+        const double vy = rect.number_at("m_Pivot.y", 0.5);
+        control["anchor_left"] = tidy(ax0);
+        control["anchor_top"] = tidy(1.0 - ay1);
+        control["anchor_right"] = tidy(ax1);
+        control["anchor_bottom"] = tidy(1.0 - ay0);
+        control["offset_left"] = tidy(px - (sx * vx));
+        control["offset_right"] = tidy(px + (sx * (1.0 - vx)));
+        control["offset_top"] = tidy(-(py + (sy * (1.0 - vy))));
+        control["offset_bottom"] = tidy(-(py - (sy * vy)));
+        // A rect smaller than its content grows from its pivot.
+        const auto grow = [](double pivot) {
+            if (pivot < 0.25) {
+                return "end";
+            }
+            return pivot > 0.75 ? "begin" : "both";
+        };
+        control["grow_horizontal"] = grow(vx);
+        control["grow_vertical"] = grow(1.0 - vy);
+        const std::array<double, 2> size{(parent[0] * (ax1 - ax0)) + sx,
+                                         (parent[1] * (ay1 - ay0)) + sy};
+        const double angle = z_angle(rect);
+        const double scale_x = rect.number_at("m_LocalScale.x", 1.0);
+        const double scale_y = rect.number_at("m_LocalScale.y", 1.0);
+        if (angle != 0.0 || scale_x != 1.0 || scale_y != 1.0) {
+            control["rotation"] = tidy_angle(angle);
+            control["scale"] = pair(scale_x, scale_y);
+            control["pivot_offset"] = pair(vx * size[0], (1.0 - vy) * size[1]);
+        }
+        return size;
+    }
+
+    // Unity's rich text tags, which Label shows as text, taken out; <br> becomes a line break.
+    static std::string plain_text(std::string_view text, bool& had_tags) {
+        static constexpr std::array<std::string_view, 34> kTags{
+            "b",         "i",      "u",      "s",           "color",       "size",      "material",
+            "quad",      "font",   "sup",    "sub",         "mark",        "link",      "align",
+            "alpha",     "cspace", "indent", "line-height", "line-indent", "lowercase", "uppercase",
+            "smallcaps", "margin", "mspace", "noparse",     "nobr",        "page",      "pos",
+            "rotate",    "space",  "sprite", "style",       "voffset",     "width"};
+        std::string out;
+        std::size_t at = 0;
+        while (at < text.size()) {
+            const std::size_t open = text.find('<', at);
+            if (open == std::string_view::npos) {
+                out.append(text.substr(at));
+                break;
+            }
+            out.append(text.substr(at, open - at));
+            const std::size_t close = text.find('>', open);
+            if (close == std::string_view::npos) {
+                out.append(text.substr(open));
+                break;
+            }
+            std::string_view tag = text.substr(open + 1, close - open - 1);
+            if (tag.starts_with('/')) {
+                tag.remove_prefix(1);
+            }
+            const std::string_view name = tag.substr(0, tag.find_first_of("= "));
+            std::string lower;
+            for (const char c : name) {
+                lower += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            }
+            if (lower == "br") {
+                out += '\n';
+                had_tags = true;
+            } else if (name.starts_with('#') || contains(kTags, std::string_view(lower))) {
+                had_tags = true;
+            } else {
+                out.append(text.substr(open, close - open + 1));
+            }
+            at = close + 1;
+        }
+        return out;
+    }
+
+    // A font Unity's text names: a .ttf or .otf file of the project, or "" for the built-in one.
+    std::string font_path(const std::optional<ObjectRef>& ref, const std::string& where) {
+        if (!ref || ref->null() || ref->guid == kBuiltinExtraGuid) {
+            return {};
+        }
+        const Asset* asset = asset_of(ref->guid);
+        if (asset != nullptr) {
+            const std::string extension = extension_of(asset->path);
+            if (extension == ".ttf" || extension == ".otf") {
+                return destination(asset->path);
+            }
+            if (extension == ".asset") {
+                return tmp_font(*asset, where);
+            }
+        }
+        problems_.add("font", where, "a font from outside the project; the default font draws it");
+        return {};
+    }
+
+    // A TextMesh Pro font asset's source font.
+    std::string tmp_font(const Asset& asset, const std::string& where) {
+        if (const auto known = tmp_fonts_.find(asset.path); known != tmp_fonts_.end()) {
+            return known->second;
+        }
+        std::string guid;
+        if (auto text = platform::read_file(source_ + asset.path); text) {
+            if (auto objects = unity::parse_file(text.value()); objects) {
+                for (const Object& object : objects.value()) {
+                    if (const auto ref = ref_at(object.body, "m_SourceFontFile");
+                        ref && !ref->guid.empty()) {
+                        guid = ref->guid;
+                    } else if (std::string named = object.body.string_at("m_SourceFontFileGUID");
+                               !named.empty()) {
+                        guid = std::move(named);
+                    } else if (std::string created =
+                                   object.body.string_at("m_CreationSettings.sourceFontFileGUID");
+                               !created.empty()) {
+                        guid = std::move(created);
+                    }
+                    if (!guid.empty()) {
+                        break;
+                    }
+                }
+            }
+        }
+        std::string path;
+        if (const Asset* font = guid.empty() ? nullptr : asset_of(guid); font != nullptr) {
+            path = destination(font->path);
+        } else {
+            problems_.add("TextMesh Pro font without its font file", where,
+                          asset.path + ": the default font draws it");
+        }
+        tmp_fonts_[asset.path] = path;
+        return path;
+    }
+
+    // Text as a Label, with its font, size and color as the control's theme overrides.
+    struct TextLook {
+        std::string text;
+        std::string font;
+        Color color{1, 1, 1, 1};
+        int size = 14;
+        std::string horizontal = "left";
+        std::string vertical = "top";
+        bool wrap = true;
+    };
+
+    // Unity's legacy Text.
+    TextLook legacy_text(const Node& body, const std::string& where, json::Value& label) {
+        TextLook look;
+        bool tags = false;
+        look.text = body.flag_at("m_FontData.m_RichText", true)
+                        ? plain_text(body.string_at("m_Text"), tags)
+                        : body.string_at("m_Text");
+        look.font = font_path(ref_at(body, "m_FontData.m_Font"), where);
+        look.color = color_at(body, "m_Color", {0.196, 0.196, 0.196, 1.0});
+        look.size = static_cast<int>(body.integer_at("m_FontData.m_FontSize", 14));
+        const auto alignment = static_cast<std::size_t>(
+            std::clamp<std::int64_t>(body.integer_at("m_FontData.m_Alignment", 0), 0, 8));
+        look.horizontal = std::array{"left", "center", "right"}[alignment % 3];
+        look.vertical = std::array{"top", "center", "bottom"}[alignment / 3];
+        look.wrap = body.integer_at("m_FontData.m_HorizontalOverflow", 0) == 0;
+        if (body.integer_at("m_FontData.m_VerticalOverflow", 0) == 0) {
+            label["clip_text"] = true;
+        }
+        if (tags) {
+            problems_.add("rich text", where, "Labels show plain text; the tags are taken out");
+        }
+        if (const std::int64_t style = body.integer_at("m_FontData.m_FontStyle", 0); style != 0) {
+            problems_.add("bold or italic text", where,
+                          "drawn in the font's regular style; a bold or italic font file draws it");
+        }
+        if (body.flag_at("m_FontData.m_BestFit")) {
+            problems_.add("best fit text", where, "drawn at its font size");
+        }
+        if (const double spacing = body.number_at("m_FontData.m_LineSpacing", 1.0);
+            std::abs(spacing - 1.0) > 1e-6) {
+            label["line_spacing"] =
+                static_cast<std::int64_t>(std::lround((spacing - 1.0) * look.size));
+        }
+        return look;
+    }
+
+    // A TextMesh Pro text.
+    TextLook tmp_text(const Node& body, const std::string& where, json::Value& label,
+                      json::Value& control) {
+        TextLook look;
+        bool tags = false;
+        look.text = body.flag_at("m_isRichText", true) ? plain_text(body.string_at("m_text"), tags)
+                                                       : body.string_at("m_text");
+        look.font = font_path(ref_at(body, "m_fontAsset"), where);
+        look.color = body.get("m_fontColor") != nullptr ? color_at(body, "m_fontColor")
+                                                        : color_at(body, "m_Color");
+        look.size = static_cast<int>(std::lround(body.number_at("m_fontSize", 36.0)));
+        std::int64_t horizontal = body.integer_at("m_HorizontalAlignment", 0);
+        std::int64_t vertical = body.integer_at("m_VerticalAlignment", 0);
+        if (horizontal == 0 || vertical == 0) { // before TextMesh Pro 3, one field for both
+            const std::int64_t both = body.integer_at("m_textAlignment", 257);
+            horizontal = both & 0xFF;
+            vertical = both & 0xFF00;
+        }
+        // Left, center, right, justified, flush and geometry center; top, middle, bottom,
+        // baseline, midline and capline.
+        static const std::map<std::int64_t, std::string_view> kHorizontal{
+            {2, "center"}, {4, "right"}, {8, "fill"}, {16, "fill"}, {32, "center"}};
+        static const std::map<std::int64_t, std::string_view> kVertical{
+            {512, "center"}, {1024, "bottom"}, {4096, "center"}};
+        const auto across = kHorizontal.find(horizontal);
+        look.horizontal = across != kHorizontal.end() ? across->second : "left";
+        const auto down = kVertical.find(vertical);
+        look.vertical = down != kVertical.end() ? down->second : "top";
+        // TextMesh Pro 4's modes: no wrap, normal, preserve whitespace, preserve it without wrap.
+        if (body.get("m_TextWrappingMode") != nullptr) {
+            const std::int64_t mode = body.integer_at("m_TextWrappingMode");
+            look.wrap = mode == 1 || mode == 2;
+        } else {
+            look.wrap = body.flag_at("m_enableWordWrapping", true);
+        }
+        switch (body.integer_at("m_overflowMode", 0)) {
+        case 0:
+            break;
+        case 1:
+            label["text_overrun_behavior"] = "trim_ellipsis";
+            label["clip_text"] = true;
+            break;
+        case 2:
+        case 3:
+            label["clip_text"] = true;
+            break;
+        default:
+            problems_.add("TextMesh Pro overflow mode", where,
+                          "scroll, page and linked overflow aren't converted; the text overflows");
+            break;
+        }
+        const std::int64_t style = body.integer_at("m_fontStyle", 0);
+        if ((style & 16) != 0) {
+            label["uppercase"] = true;
+        }
+        if ((style & ~std::int64_t{16}) != 0) {
+            problems_.add("TextMesh Pro font style", where,
+                          "bold, italic, underline, strikethrough, small caps and lowercase "
+                          "styles aren't converted");
+        }
+        if (body.flag_at("m_enableAutoSizing")) {
+            problems_.add("auto-sized text", where, "drawn at the size it last had");
+        }
+        if (body.number_at("m_characterSpacing") != 0.0 || body.number_at("m_wordSpacing") != 0.0 ||
+            body.number_at("m_paragraphSpacing") != 0.0) {
+            problems_.add("text spacing", where,
+                          "character, word and paragraph spacing aren't converted");
+        }
+        if (const double spacing = body.number_at("m_lineSpacing"); spacing != 0.0) {
+            label["line_spacing"] =
+                static_cast<std::int64_t>(std::lround(spacing * 0.01 * look.size));
+        }
+        if (body.flag_at("m_isRightToLeft")) {
+            problems_.add("right-to-left TextMesh Pro text", where,
+                          "Labels order right-to-left text themselves");
+        }
+        // Margins move the text in from the rect's edges.
+        const std::array<std::pair<const char*, double>, 4> margins{{
+            {"offset_left", body.number_at("m_margin.x")},
+            {"offset_top", body.number_at("m_margin.y")},
+            {"offset_right", -body.number_at("m_margin.z")},
+            {"offset_bottom", -body.number_at("m_margin.w")},
+        }};
+        for (const auto& [key, by] : margins) {
+            if (by != 0.0) {
+                control[key] = tidy(number_in(control, key) + by);
+            }
+        }
+        if (tags) {
+            problems_.add("rich text", where, "Labels show plain text; the tags are taken out");
+        }
+        return look;
+    }
+
+    // Writes text's look on a control: its Label's fields and theme overrides.
+    static void apply_text(const TextLook& look, json::Value& label, json::Value& control,
+                           std::string_view color_item = "font_color") {
+        label["text"] = look.text;
+        label["horizontal_alignment"] = look.horizontal;
+        label["vertical_alignment"] = look.vertical;
+        if (look.wrap) {
+            label["autowrap_mode"] = "word_smart";
+        }
+        control["theme_override_font_sizes"]["font_size"] = std::int64_t{look.size};
+        control["theme_override_colors"][std::string(color_item)] = color_json(look.color);
+        if (!look.font.empty()) {
+            control["theme_override_fonts"]["font"] = look.font;
+        }
+        if (label.find("line_spacing") != nullptr) {
+            control["theme_override_constants"]["line_spacing"] = label["line_spacing"];
+            label.as_object().erase("line_spacing");
+        }
+    }
+
+    // How an Image draws: nothing, a flat rect, or its sprite.
+    struct ImageLook {
+        enum class Kind : std::uint8_t { None, Color, Rounded, Texture } kind = Kind::None;
+        Color color{1, 1, 1, 1};
+        const Sprite* sprite = nullptr;
+        int type = 0; // Unity's: simple, sliced, tiled or filled
+        bool fill_center = true;
+        bool preserve_aspect = false;
+        int radius = 0;
+    };
+
+    ImageLook image_look(const Node& body, const std::string& where, std::string_view sprite_key,
+                         double canvas_ppu) {
+        ImageLook look;
+        look.color = color_at(body, "m_Color");
+        look.type = static_cast<int>(body.integer_at("m_Type", 0));
+        look.fill_center = body.flag_at("m_FillCenter", true);
+        look.preserve_aspect = body.flag_at("m_PreserveAspect");
+        const auto ref = ref_at(body, sprite_key);
+        if (!ref || ref->null()) {
+            look.kind = ImageLook::Kind::Color;
+            return look;
+        }
+        if (ref->guid == kBuiltinSprites) {
+            // Unity's built-in sprites aren't open source; its rounded ones draw as Godot's
+            // rounded style boxes.
+            switch (ref->file_id) {
+            case kUiSprite:
+            case kBackgroundSprite:
+            case kInputFieldSprite:
+            case kMaskSprite:
+                look.kind = ImageLook::Kind::Rounded;
+                look.radius = 3;
+                return look;
+            case kKnobSprite:
+                look.kind = ImageLook::Kind::Rounded;
+                look.radius = 64;
+                return look;
+            default:
+                problems_.add("built-in UI sprite", where,
+                              "Unity's checkmark and dropdown arrow sprites aren't converted");
+                return look;
+            }
+        }
+        std::string why;
+        look.sprite = sprite(*ref, why);
+        if (look.sprite == nullptr) {
+            problems_.add("sprite", where, why);
+            return look;
+        }
+        look.kind = ImageLook::Kind::Texture;
+        if (look.type == 3) {
+            problems_.add("filled Image", where, "drawn whole: fills aren't converted");
+            look.type = 0;
+        }
+        if ((look.type == 1 || look.type == 2) &&
+            std::ranges::any_of(look.sprite->border, [](double side) { return side > 0.0; })) {
+            const double scale =
+                canvas_ppu / (look.sprite->ppu *
+                              std::max(body.number_at("m_PixelsPerUnitMultiplier", 1.0), 0.01));
+            if (std::abs(scale - 1.0) > 0.01) {
+                problems_.add("sliced sprite's corner size", where,
+                              "its corners draw at the texture's size; Unity draws them at " +
+                                  json::write(json::Value(tidy(scale))) + " times that");
+            }
+        } else if (look.type == 1) {
+            look.type = 0; // a sliced sprite with no border draws as a simple one
+        }
+        if (const auto material = ref_at(body, "m_Material");
+            material && !material->null() && asset_of(material->guid) != nullptr) {
+            problems_.add("UI material", where, "materials and shaders don't convert");
+        }
+        return look;
+    }
+
+    // An Image's look as a style box, tinted.
+    static json::Value image_style(const ImageLook& look, const Color& tint,
+                                   const Sprite* swapped = nullptr) {
+        json::Value style;
+        const Color color = tinted(look.color, tint);
+        const Sprite* sprite = swapped != nullptr ? swapped : look.sprite;
+        if (look.kind == ImageLook::Kind::Texture && sprite != nullptr) {
+            style["type"] = "texture";
+            style["texture"] = sprite->texture;
+            if (!sprite->whole) {
+                style["region_rect"] = json::Array{sprite->region[0], sprite->region[1],
+                                                   sprite->region[2], sprite->region[3]};
+            }
+            if (look.type == 1 || look.type == 2) {
+                // Unity's borders are left, bottom, right and top.
+                style["texture_margin_left"] = sprite->border[0];
+                style["texture_margin_top"] = sprite->border[3];
+                style["texture_margin_right"] = sprite->border[2];
+                style["texture_margin_bottom"] = sprite->border[1];
+                if (!look.fill_center) {
+                    style["draw_center"] = false;
+                }
+                if (look.type == 2) {
+                    style["axis_stretch_horizontal"] = "tile";
+                    style["axis_stretch_vertical"] = "tile";
+                }
+            }
+            if (color != Color{1, 1, 1, 1}) {
+                style["modulate_color"] = color_json(color);
+            }
+            return style;
+        }
+        if (look.kind == ImageLook::Kind::None) {
+            style["type"] = "empty";
+            return style;
+        }
+        style["type"] = "flat";
+        style["bg_color"] = color_json(color);
+        if (look.radius > 0) {
+            style["corner_radius"] = look.radius;
+        }
+        return style;
+    }
+
+    // An Image drawn on its own: a color, a rounded panel, a texture or a nine-patch.
+    void draw_image(const ImageLook& look, json::Value& control, json::Object& components) const {
+        switch (look.kind) {
+        case ImageLook::Kind::None:
+            return;
+        case ImageLook::Kind::Color: {
+            json::Value rect;
+            rect["color"] = color_json(look.color);
+            components["ColorRect"] = std::move(rect);
+            return;
+        }
+        case ImageLook::Kind::Rounded:
+            components["Panel"] = json::Object{};
+            control["theme_override_styles"]["panel"] = image_style(look, {1, 1, 1, 1});
+            return;
+        case ImageLook::Kind::Texture:
+            break;
+        }
+        const Sprite& sprite = *look.sprite;
+        if (look.type == 0 && sprite.whole) {
+            json::Value rect;
+            rect["texture"] = sprite.texture;
+            rect["expand_mode"] = "ignore_size";
+            rect["stretch_mode"] = look.preserve_aspect ? "keep_aspect_centered" : "scale";
+            components["TextureRect"] = std::move(rect);
+        } else {
+            json::Value patch;
+            patch["texture"] = sprite.texture;
+            if (!sprite.whole) {
+                patch["region_rect"] = json::Array{sprite.region[0], sprite.region[1],
+                                                   sprite.region[2], sprite.region[3]};
+            }
+            if (look.type == 1 || look.type == 2) {
+                patch["patch_margin_left"] =
+                    static_cast<std::int64_t>(std::lround(sprite.border[0]));
+                patch["patch_margin_top"] =
+                    static_cast<std::int64_t>(std::lround(sprite.border[3]));
+                patch["patch_margin_right"] =
+                    static_cast<std::int64_t>(std::lround(sprite.border[2]));
+                patch["patch_margin_bottom"] =
+                    static_cast<std::int64_t>(std::lround(sprite.border[1]));
+                patch["draw_center"] = look.fill_center;
+                if (look.type == 2) {
+                    patch["axis_stretch_horizontal"] = "tile";
+                    patch["axis_stretch_vertical"] = "tile";
+                }
+            }
+            components["NinePatchRect"] = std::move(patch);
+        }
+        if (look.color != Color{1, 1, 1, 1}) {
+            control["self_modulate"] = color_json(look.color);
+        }
+        const std::string filter = nearest_textures_ > linear_textures_ ? "nearest" : "linear";
+        if (sprite.filter != filter) {
+            control["texture_filter"] = sprite.filter;
+        }
+    }
+
+    // A Selectable's look per state (normal, hover, pressed, disabled and focus) as style boxes:
+    // Unity's color tint or sprite swap on its target graphic. Focus draws over the others, as
+    // Godot's; it is the selected look, or nothing when that is the normal one.
+    std::array<json::Value, 5> selectable_styles(const Node& body, const ImageLook& look,
+                                                 const std::string& where) {
+        const double multiplier = body.number_at("m_Colors.m_ColorMultiplier", 1.0);
+        const Color white{1, 1, 1, 1};
+        const auto state = [&](std::string_view key) {
+            return tinted(white, color_at(body, "m_Colors." + std::string(key)), multiplier);
+        };
+        const auto swapped = [&](std::string_view key) -> const Sprite* {
+            const auto ref = ref_at(body, "m_SpriteState." + std::string(key));
+            if (!ref || ref->null() || ref->guid.empty()) {
+                return nullptr;
+            }
+            std::string why;
+            const Sprite* found = sprite(*ref, why);
+            if (found == nullptr) {
+                problems_.add("sprite", where, why);
+            }
+            return found;
+        };
+        json::Value empty;
+        empty["type"] = "empty";
+        switch (body.integer_at("m_Transition", 1)) {
+        case 1: {
+            const Color normal = state("m_NormalColor");
+            const Color selected =
+                body.get("m_Colors") != nullptr && body.path("m_Colors.m_SelectedColor") != nullptr
+                    ? state("m_SelectedColor")
+                    : normal;
+            return {image_style(look, normal), image_style(look, state("m_HighlightedColor")),
+                    image_style(look, state("m_PressedColor")),
+                    image_style(look, state("m_DisabledColor")),
+                    selected != normal ? image_style(look, selected) : empty};
+        }
+        case 2: {
+            const Sprite* selected = swapped("m_SelectedSprite");
+            return {image_style(look, white),
+                    image_style(look, white, swapped("m_HighlightedSprite")),
+                    image_style(look, white, swapped("m_PressedSprite")),
+                    image_style(look, white, swapped("m_DisabledSprite")),
+                    selected != nullptr ? image_style(look, white, selected) : empty};
+        }
+        default:
+            if (body.integer_at("m_Transition", 1) == 3) {
+                problems_.add("animation transition", where,
+                              "states draw alike: an Animator's transition isn't converted");
+            }
+            return {image_style(look, white), image_style(look, white), image_style(look, white),
+                    image_style(look, white), empty};
+        }
+    }
+
+    // Sets a control's style boxes for the states, by the names its type gives them.
+    static void set_styles(json::Value& control, const std::array<json::Value, 5>& states,
+                           const std::array<std::string_view, 5>& names) {
+        for (std::size_t i = 0; i < 5; ++i) {
+            if (!names[i].empty()) {
+                control["theme_override_styles"][std::string(names[i])] = states[i];
+            }
+        }
+    }
+
+    // Unity's navigation as focus: none takes focus only from clicks; explicit names the next
+    // control each way.
+    static void navigation(const Node& body, const Expanded& file, json::Value& control) {
+        const std::int64_t mode = body.integer_at("m_Navigation.m_Mode", 3);
+        if (mode == 0) {
+            control["focus_mode"] = "click";
+        } else if (mode == 4) {
+            const std::array<std::pair<const char*, const char*>, 4> sides{{
+                {"m_Navigation.m_SelectOnUp", "focus_neighbor_top"},
+                {"m_Navigation.m_SelectOnDown", "focus_neighbor_bottom"},
+                {"m_Navigation.m_SelectOnLeft", "focus_neighbor_left"},
+                {"m_Navigation.m_SelectOnRight", "focus_neighbor_right"},
+            }};
+            for (const auto& [key, field] : sides) {
+                if (const int other = object_at(file, body, key); other >= 0) {
+                    control[field] = file.objects[static_cast<std::size_t>(other)].entity;
+                }
+            }
+        }
+    }
+
+    // A UI event's persistent calls: a line in the task of the project script each calls, or a
+    // report of a call on Unity's own components.
+    void ui_calls(const Node& body, std::string_view key, std::string_view event,
+                  const Context& ctx) {
+        const Node* calls = body.path(std::string(key) + ".m_PersistentCalls.m_Calls");
+        const GameObject& go = ctx.file->objects[static_cast<std::size_t>(ctx.index)];
+        for (const Node& call : items_of(calls)) {
+            const std::string method = call.string_at("m_MethodName");
+            const Component* target = component_at(*ctx.file, call, "m_Target");
+            const Asset* script = nullptr;
+            if (target != nullptr && target->class_id == kMonoBehaviour) {
+                const auto ref = ref_at(target->body, "m_Script");
+                script = ref ? asset_of(ref->guid) : nullptr;
+            }
+            std::string argument;
+            switch (call.integer_at("m_Mode", 1)) {
+            case 2:
+                if (const Node* object = call.path("m_Arguments.m_ObjectArgument")) {
+                    argument = json::write(convert_value(*object, *ctx.file));
+                }
+                break;
+            case 3:
+                argument = std::to_string(call.integer_at("m_Arguments.m_IntArgument"));
+                break;
+            case 4:
+                argument = json::write(json::Value(call.number_at("m_Arguments.m_FloatArgument")));
+                break;
+            case 5:
+                argument = json::write(json::Value(call.string_at("m_Arguments.m_StringArgument")));
+                break;
+            case 6:
+                argument = call.flag_at("m_Arguments.m_BoolArgument") ? "true" : "false";
+                break;
+            default:
+                break;
+            }
+            std::string text = go.entity;
+            text.append(" in ")
+                .append(ctx.file->scene)
+                .append(" calls ")
+                .append(method)
+                .append("(")
+                .append(argument)
+                .append(") on ")
+                .append(event);
+            if (script != nullptr && extension_of(script->path) == ".cs") {
+                scripts_[script->path].calls.push_back(text);
+            } else {
+                std::string why(event);
+                why.append(" calls ")
+                    .append(target != nullptr ? target->type : std::string("an object"))
+                    .append(".")
+                    .append(method)
+                    .append(": gameplay code makes the call on the control's ")
+                    .append(event)
+                    .append(" event");
+                problems_.add("UI event call", ctx.where, why);
+            }
+        }
+    }
+
+    // The parts of a UI object, by the known script names of its components.
+    struct UiParts {
+        const Component* canvas = nullptr;
+        const Component* group = nullptr; // CanvasGroup
+        std::map<std::string, const Component*, std::less<>> scripts;
+        std::vector<const Component*> effects; // Outline and Shadow
+        [[nodiscard]] const Component* get(std::string_view name) const {
+            const auto it = scripts.find(name);
+            return it != scripts.end() ? it->second : nullptr;
+        }
+    };
+
+    // A UI object as a control: its RectTransform as Control's anchors and offsets, its graphic
+    // as what the control draws, and its selectable, layout and mask as Godot's.
+    void ui_object(const Context& ctx, const UiParts& parts, Converted& out) {
+        Expanded& file = *ctx.file;
+        GameObject& go = file.objects[static_cast<std::size_t>(ctx.index)];
+        json::Value control = json::Object{};
+        const Component* transform = transform_of(go);
+        const GameObject* parent =
+            go.parent >= 0 ? &file.objects[static_cast<std::size_t>(go.parent)] : nullptr;
+        const bool root = parent == nullptr || !parent->ui;
+        if (parent != nullptr && parent->ui) {
+            go.ui_ppu = parent->ui_ppu;
+        }
+        if (parts.canvas != nullptr && root) {
+            const Node& canvas = parts.canvas->body;
+            const Component* scaler = parts.get("CanvasScaler");
+            if (scaler != nullptr) {
+                go.ui_ppu = scaler->body.number_at("m_ReferencePixelsPerUnit", 100.0);
+            }
+            if (canvas.integer_at("m_RenderMode", 0) == 2) {
+                problems_.add("World Space canvas", ctx.where,
+                              "drawn over the screen, at its own size, like the others");
+                go.rect = rect_control(transform->body, {window_width_, window_height_}, control);
+            } else {
+                const double scale = canvas_scale(scaler, ctx.where);
+                if (std::abs(scale - 1.0) <= 1e-6) {
+                    control["anchor_right"] = 1.0;
+                    control["anchor_bottom"] = 1.0;
+                } else {
+                    control["offset_right"] = tidy(window_width_ / scale);
+                    control["offset_bottom"] = tidy(window_height_ / scale);
+                    control["scale"] = pair(scale, scale);
+                }
+                go.rect = {window_width_ / scale, window_height_ / scale};
+            }
+            if (const std::int64_t order = canvas.integer_at("m_SortingOrder", 0); order != 0) {
+                control["z_index"] = order;
+            }
+        } else {
+            go.rect = rect_control(transform->body,
+                                   root ? std::array{window_width_, window_height_} : parent->rect,
+                                   control);
+            if (parts.canvas != nullptr && parts.canvas->body.flag_at("m_OverrideSorting")) {
+                control["z_index"] = parts.canvas->body.integer_at("m_SortingOrder", 0);
+            }
+        }
+        if (parts.canvas != nullptr && !parts.canvas->body.flag_at("m_Enabled", true)) {
+            control["visible"] = false;
+        }
+        if (!go.body.flag_at("m_IsActive", true) || go.placement.hidden) {
+            control["visible"] = false;
+        }
+        if (parts.group != nullptr) {
+            const Node& group = parts.group->body;
+            if (const double alpha = group.number_at("m_Alpha", 1.0); alpha < 1.0) {
+                control["modulate"] = json::Array{1.0, 1.0, 1.0, tidy(alpha)};
+            }
+            if (!group.flag_at("m_Interactable", true)) {
+                problems_.add("CanvasGroup that isn't interactable", ctx.where,
+                              "the controls under it still take input; disable them instead");
+            }
+            if (!group.flag_at("m_BlocksRaycasts", true)) {
+                control["mouse_filter"] = "ignore";
+            }
+        }
+        // What a layout group above set.
+        if (go.placement.placed) {
+            control["size_flags_horizontal"] = go.placement.size_h;
+            control["size_flags_vertical"] = go.placement.size_v;
+            if (go.placement.minimum[0] >= 0.0 || go.placement.minimum[1] >= 0.0) {
+                control["custom_minimum_size"] = pair(std::max(go.placement.minimum[0], 0.0),
+                                                      std::max(go.placement.minimum[1], 0.0));
+            }
+        }
+        json::Object& components = out.components;
+        // The graphic: an Image, RawImage or text, unless a selectable draws it as its styles.
+        const Component* image = parts.get("Image");
+        const Component* raw = parts.get("RawImage");
+        const Component* text = parts.get("Text");
+        const Component* tmp = parts.get("TextMeshProUGUI");
+        const Component* mask = parts.get("Mask");
+        const auto enabled = [](const Component* c) {
+            return c != nullptr && c->body.flag_at("m_Enabled", true);
+        };
+        const Component* selectable = nullptr;
+        for (const std::string_view name :
+             {"Button", "Toggle", "Slider", "Scrollbar", "InputField", "TMP_InputField", "Dropdown",
+              "TMP_Dropdown", "ScrollRect"}) {
+            if (const Component* found = parts.get(name); enabled(found)) {
+                selectable = found;
+                break;
+            }
+        }
+        const std::string selectable_name =
+            selectable != nullptr ? std::string(known_script(*selectable)->name) : std::string();
+        ImageLook look;
+        if (enabled(image)) {
+            look = image_look(image->body, ctx.where, "m_Sprite", go.ui_ppu);
+        }
+        // Whether the selectable's target graphic is this object's Image, which it then draws.
+        bool image_drawn = false;
+        if (selectable != nullptr && selectable_name != "ScrollRect" && enabled(image)) {
+            const Component* target = component_at(file, selectable->body, "m_TargetGraphic");
+            image_drawn = target == image;
+        }
+        // A Mask that doesn't show its graphic draws nothing of its own.
+        const bool hidden_by_mask = enabled(mask) && !mask->body.flag_at("m_ShowMaskGraphic", true);
+        if (enabled(image) && !image_drawn && !hidden_by_mask) {
+            draw_image(look, control, components);
+        }
+        if (enabled(raw)) {
+            if (const auto ref = ref_at(raw->body, "m_Texture"); ref && !ref->null()) {
+                const Texture& found = texture(ref->guid);
+                if (found.ok) {
+                    json::Value rect;
+                    rect["texture"] = destination(found.path);
+                    rect["expand_mode"] = "ignore_size";
+                    components["TextureRect"] = std::move(rect);
+                    const Color color = color_at(raw->body, "m_Color");
+                    if (color != Color{1, 1, 1, 1}) {
+                        control["self_modulate"] = color_json(color);
+                    }
+                    const Node& uv = raw->body;
+                    if (uv.number_at("m_UVRect.x") != 0.0 || uv.number_at("m_UVRect.y") != 0.0 ||
+                        uv.number_at("m_UVRect.width", 1.0) != 1.0 ||
+                        uv.number_at("m_UVRect.height", 1.0) != 1.0) {
+                        problems_.add("RawImage UV rect", ctx.where, "the whole texture draws");
+                    }
+                } else {
+                    problems_.add("texture", ctx.where, found.why);
+                }
+            } else {
+                json::Value rect;
+                rect["color"] = color_json(color_at(raw->body, "m_Color"));
+                components["ColorRect"] = std::move(rect);
+            }
+        }
+        if (enabled(text) || enabled(tmp)) {
+            json::Value label = json::Object{};
+            const TextLook look_text = enabled(text)
+                                           ? legacy_text(text->body, ctx.where, label)
+                                           : tmp_text(tmp->body, ctx.where, label, control);
+            apply_text(look_text, label, control);
+            for (const Component* effect : parts.effects) {
+                const Node& body = effect->body;
+                if (!body.flag_at("m_Enabled", true)) {
+                    continue;
+                }
+                const Color color = color_at(body, "m_EffectColor", {0, 0, 0, 0.5});
+                const double dx = body.number_at("m_EffectDistance.x", 1.0);
+                const double dy = body.number_at("m_EffectDistance.y", -1.0);
+                if (known_script(*effect)->name == "Outline") {
+                    // Godot's outline strokes a quarter of outline_size each side of the edge.
+                    control["theme_override_colors"]["font_outline_color"] = color_json(color);
+                    control["theme_override_constants"]["outline_size"] = static_cast<std::int64_t>(
+                        std::lround(4.0 * std::max(std::abs(dx), std::abs(dy))));
+                } else {
+                    control["theme_override_colors"]["font_shadow_color"] = color_json(color);
+                    control["theme_override_constants"]["shadow_offset_x"] =
+                        static_cast<std::int64_t>(std::lround(dx));
+                    control["theme_override_constants"]["shadow_offset_y"] =
+                        static_cast<std::int64_t>(std::lround(-dy));
+                }
+            }
+            if (!(text != nullptr ? text : tmp)->body.flag_at("m_RaycastTarget", true)) {
+                control["mouse_filter"] = "ignore";
+            }
+            components["Label"] = std::move(label);
+        } else if (!parts.effects.empty()) {
+            problems_.add("Outline or Shadow on an image", ctx.where, "only text takes them");
+        }
+        // A graphic that takes the pointer passes it on to the controls it is part of, as
+        // Unity sends a click to the button above what was clicked.
+        const Component* graphic = enabled(raw) ? raw : nullptr;
+        if (enabled(image) && !image_drawn) {
+            graphic = image;
+        }
+        if (graphic != nullptr && control.find("mouse_filter") == nullptr) {
+            control["mouse_filter"] =
+                graphic->body.flag_at("m_RaycastTarget", true) ? "pass" : "ignore";
+        }
+        if (selectable_name == "Button") {
+            ui_button(ctx, *selectable, look, image_drawn, control, out);
+        } else if (selectable_name == "Toggle") {
+            ui_toggle(ctx, *selectable, look, image_drawn, control, out);
+        } else if (selectable_name == "Slider") {
+            ui_slider(ctx, *selectable, control, out);
+        } else if (selectable_name == "Scrollbar") {
+            ui_scrollbar(ctx, *selectable, look, image_drawn, control, out);
+        } else if (selectable_name == "InputField" || selectable_name == "TMP_InputField") {
+            ui_input(ctx, *selectable, selectable_name == "TMP_InputField", look, image_drawn,
+                     control, out);
+        } else if (selectable_name == "ScrollRect") {
+            ui_scroll(ctx, *selectable, out);
+        } else if (selectable_name == "Dropdown" || selectable_name == "TMP_Dropdown") {
+            problems_.add("component " + selectable_name, ctx.where,
+                          "dropdowns come with OptionButton (on the roadmap); its parts stay "
+                          "controls");
+            if (image_drawn) {
+                draw_image(look, control, components);
+            }
+        }
+        if ((enabled(mask) || enabled(parts.get("RectMask2D")))) {
+            control["clip_contents"] = true;
+        }
+        ui_layout(ctx, parts, control, out);
+        out.components["Control"] = std::move(control);
+    }
+
+    void ui_button(const Context& ctx, const Component& button, const ImageLook& look,
+                   bool image_drawn, json::Value& control, Converted& out) {
+        const Node& body = button.body;
+        json::Value fields = json::Object{};
+        if (image_drawn) {
+            const auto states = selectable_styles(body, look, ctx.where);
+            set_styles(control, states, {"normal", "hover", "pressed", "disabled", "focus"});
+            control["theme_override_styles"]["hover_pressed"] = states[2];
+        } else {
+            fields["flat"] = true;
+            if (body.integer_at("m_Transition", 1) != 0 &&
+                component_at(*ctx.file, body, "m_TargetGraphic") != nullptr) {
+                problems_.add("button tint on another object", ctx.where,
+                              "the graphic it tints draws as it starts");
+            }
+        }
+        if (!body.flag_at("m_Interactable", true)) {
+            fields["disabled"] = true;
+        }
+        navigation(body, *ctx.file, control);
+        ui_calls(body, "m_OnClick", "pressed", ctx);
+        out.components["Button"] = std::move(fields);
+    }
+
+    void ui_toggle(const Context& ctx, const Component& toggle, const ImageLook& look,
+                   bool image_drawn, json::Value& control, Converted& out) {
+        Expanded& file = *ctx.file;
+        const Node& body = toggle.body;
+        json::Value fields = json::Object{};
+        fields["button_pressed"] = body.flag_at("m_IsOn");
+        if (!body.flag_at("m_Interactable", true)) {
+            fields["disabled"] = true;
+        }
+        if (const int group = object_at(file, body, "m_Group"); group >= 0) {
+            fields["button_group"] = file.objects[static_cast<std::size_t>(group)].entity;
+            if (const Component* found =
+                    script_of(file.objects[static_cast<std::size_t>(group)], "ToggleGroup");
+                found != nullptr && found->body.flag_at("m_AllowSwitchOff")) {
+                problems_.add("ToggleGroup that allows switching off", ctx.where,
+                              "one button of a group stays pressed");
+            }
+        }
+        navigation(body, file, control);
+        ui_calls(body, "onValueChanged", "toggled", ctx);
+        // Unity's default toggle, its built-in box and checkmark, is Godot's CheckBox.
+        const int graphic = object_at(file, body, "graphic");
+        const int target = object_at(file, body, "m_TargetGraphic");
+        const auto builtin = [&](int index, std::int64_t id) {
+            if (index < 0) {
+                return false;
+            }
+            const Component* image =
+                script_of(file.objects[static_cast<std::size_t>(index)], "Image");
+            const auto ref = image != nullptr ? ref_at(image->body, "m_Sprite") : std::nullopt;
+            return ref && ref->guid == kBuiltinSprites && ref->file_id == id;
+        };
+        if (builtin(graphic, kCheckmarkSprite) &&
+            (builtin(target, kUiSprite) || builtin(target, kBackgroundSprite)) &&
+            descends(file, graphic, ctx.index) && descends(file, target, ctx.index)) {
+            const std::string into = file.objects[static_cast<std::size_t>(ctx.index)].entity;
+            fold(file, target, into, false);
+            fold(file, graphic, into, false);
+            out.components["CheckBox"] = std::move(fields);
+            return;
+        }
+        fields["toggle_mode"] = true;
+        if (image_drawn) {
+            // A toggle's background tints while hovered and pressed, not while it is on.
+            const auto states = selectable_styles(body, look, ctx.where);
+            set_styles(control, states, {"normal", "hover", "", "disabled", "focus"});
+            control["theme_override_styles"]["pressed"] = states[0];
+            control["theme_override_styles"]["hover_pressed"] = states[1];
+        } else {
+            fields["flat"] = true;
+        }
+        if (graphic >= 0) {
+            file.objects[static_cast<std::size_t>(graphic)].placement.hidden =
+                !body.flag_at("m_IsOn");
+            problems_.add("Toggle with its own sprites", ctx.where,
+                          "its checkmark shows as it starts: show and hide it from gameplay code "
+                          "on the toggled event");
+        }
+        out.components["Button"] = std::move(fields);
+    }
+
+    // The objects between a part and the selectable it belongs to, when they hold nothing else.
+    static void fold_part(Expanded& file, int part, int owner, const std::string& into) {
+        if (!descends(file, part, owner)) {
+            return;
+        }
+        for (int at = part; at >= 0 && at != owner;
+             at = file.objects[static_cast<std::size_t>(at)].parent) {
+            if (at != part && !bare(file.objects[static_cast<std::size_t>(at)])) {
+                break;
+            }
+            fold(file, at, into, at == part);
+        }
+    }
+
+    // A part's Image as a style box, or nullopt.
+    std::optional<json::Value> part_style(const Expanded& file, int part, const std::string& where,
+                                          double canvas_ppu, const Color& tint = {1, 1, 1, 1}) {
+        if (part < 0) {
+            return std::nullopt;
+        }
+        const Component* image = script_of(file.objects[static_cast<std::size_t>(part)], "Image");
+        if (image == nullptr || !image->body.flag_at("m_Enabled", true)) {
+            return std::nullopt;
+        }
+        return image_style(image_look(image->body, where, "m_Sprite", canvas_ppu), tint);
+    }
+
+    void ui_slider(const Context& ctx, const Component& slider, json::Value& control,
+                   Converted& out) {
+        Expanded& file = *ctx.file;
+        GameObject& go = file.objects[static_cast<std::size_t>(ctx.index)];
+        const Node& body = slider.body;
+        json::Value fields = json::Object{};
+        fields["min_value"] = body.number_at("m_MinValue");
+        fields["max_value"] = body.number_at("m_MaxValue", 1.0);
+        fields["value"] = body.number_at("m_Value");
+        fields["step"] = body.flag_at("m_WholeNumbers") ? 1.0 : 0.0;
+        const std::int64_t direction = body.integer_at("m_Direction", 0);
+        if (direction >= 2) {
+            fields["vertical"] = true;
+        }
+        if (direction == 1 || direction == 3) {
+            problems_.add("reversed Slider", ctx.where,
+                          "it fills left to right, or bottom to top, as Godot's");
+        }
+        if (!body.flag_at("m_Interactable", true)) {
+            fields["editable"] = false;
+        }
+        navigation(body, file, control);
+        ui_calls(body, "m_OnValueChanged", "value_changed", ctx);
+        // Its parts become its theme: the background its slider style, the fill its grabber
+        // area and the handle its grabber icon.
+        const int fill = object_at(file, body, "m_FillRect");
+        const int handle = object_at(file, body, "m_HandleRect");
+        int background = -1;
+        for (const int child : go.children) {
+            const GameObject& c = file.objects[static_cast<std::size_t>(child)];
+            if (c.body.string_at("m_Name") == "Background" && script_of(c, "Image") != nullptr) {
+                background = child;
+            }
+        }
+        // Godot draws the track as thick as its style's minimum size: the background's
+        // thickness, as content margins either side.
+        const bool vertical = direction >= 2;
+        const auto thick = [&](json::Value style) {
+            if (background >= 0) {
+                const double half = child_size(file, background, go.rect)[vertical ? 0 : 1] / 2.0;
+                style[vertical ? "content_margin_left" : "content_margin_top"] = tidy(half);
+                style[vertical ? "content_margin_right" : "content_margin_bottom"] = tidy(half);
+            }
+            return style;
+        };
+        json::Value& styles = control["theme_override_styles"];
+        if (auto style = part_style(file, background, ctx.where, go.ui_ppu)) {
+            styles["slider"] = thick(std::move(*style));
+            fold(file, background, go.entity, true);
+        }
+        if (auto style = part_style(file, fill, ctx.where, go.ui_ppu)) {
+            styles["grabber_area"] = thick(*style);
+            styles["grabber_area_highlight"] = thick(std::move(*style));
+        }
+        if (handle >= 0) {
+            const Component* image =
+                script_of(file.objects[static_cast<std::size_t>(handle)], "Image");
+            const auto ref = image != nullptr ? ref_at(image->body, "m_Sprite") : std::nullopt;
+            if (ref && !ref->null() && ref->guid != kBuiltinSprites) {
+                std::string why;
+                const Sprite* found = sprite(*ref, why);
+                if (found != nullptr && found->whole) {
+                    control["theme_override_icons"]["grabber"] = found->texture;
+                    control["theme_override_icons"]["grabber_highlight"] = found->texture;
+                } else {
+                    problems_.add("Slider handle", ctx.where,
+                                  found != nullptr
+                                      ? "a sprite cut from a sheet; the default grabber draws"
+                                      : why);
+                }
+            }
+        }
+        fold_part(file, fill, ctx.index, go.entity);
+        fold_part(file, handle, ctx.index, go.entity);
+        out.components["Slider"] = std::move(fields);
+    }
+
+    void ui_scrollbar(const Context& ctx, const Component& bar, const ImageLook& look,
+                      bool image_drawn, json::Value& control, Converted& out) {
+        Expanded& file = *ctx.file;
+        const GameObject& go = file.objects[static_cast<std::size_t>(ctx.index)];
+        const Node& body = bar.body;
+        json::Value fields = json::Object{};
+        const double size = std::clamp(body.number_at("m_Size", 0.2), 0.0, 1.0);
+        const double value = std::clamp(body.number_at("m_Value"), 0.0, 1.0);
+        const std::int64_t direction = body.integer_at("m_Direction", 0);
+        // Unity's value goes from 0 to 1 whatever the size; Godot's from min to max - page. A
+        // vertical bar's 1 is at the top, Godot's 0.
+        const bool reversed = direction == 1 || direction == 2;
+        fields["max_value"] = 1.0;
+        fields["page"] = tidy(size);
+        fields["value"] = tidy((reversed ? 1.0 - value : value) * (1.0 - size));
+        if (direction >= 2) {
+            fields["vertical"] = true;
+        }
+        if (direction == 1) {
+            problems_.add("reversed Scrollbar", ctx.where, "it scrolls left to right");
+        }
+        if (const std::int64_t steps = body.integer_at("m_NumberOfSteps", 0); steps > 1) {
+            fields["step"] = tidy((1.0 - size) / static_cast<double>(steps - 1));
+        }
+        navigation(body, file, control);
+        ui_calls(body, "m_OnValueChanged", "value_changed", ctx);
+        if (image_drawn) {
+            control["theme_override_styles"]["scroll"] = image_style(look, {1, 1, 1, 1});
+        }
+        const int handle = object_at(file, body, "m_HandleRect");
+        if (handle >= 0) {
+            const Component* image =
+                script_of(file.objects[static_cast<std::size_t>(handle)], "Image");
+            if (image != nullptr) {
+                const ImageLook handle_look =
+                    image_look(image->body, ctx.where, "m_Sprite", go.ui_ppu);
+                set_styles(control, selectable_styles(body, handle_look, ctx.where),
+                           {"grabber", "grabber_highlight", "grabber_pressed", "", ""});
+            }
+        }
+        fold_part(file, handle, ctx.index, go.entity);
+        out.components["ScrollBar"] = std::move(fields);
+    }
+
+    void ui_input(const Context& ctx, const Component& input, bool tmp, const ImageLook& look,
+                  bool image_drawn, json::Value& control, Converted& out) {
+        Expanded& file = *ctx.file;
+        const GameObject& go = file.objects[static_cast<std::size_t>(ctx.index)];
+        const Node& body = input.body;
+        const bool lines = body.integer_at("m_LineType", 0) == 2;
+        json::Value fields = json::Object{};
+        fields["text"] = body.string_at("m_Text");
+        if (!body.flag_at("m_Interactable", true) || body.flag_at("m_ReadOnly")) {
+            fields["editable"] = false;
+        }
+        const int text_object = object_at(file, body, "m_TextComponent");
+        const int placeholder = object_at(file, body, "m_Placeholder");
+        // The text's look is the field's font, size and color.
+        if (text_object >= 0) {
+            const GameObject& t = file.objects[static_cast<std::size_t>(text_object)];
+            json::Value label = json::Object{};
+            json::Value ignored = json::Object{};
+            if (const Component* legacy = script_of(t, "Text")) {
+                const TextLook text_look = legacy_text(legacy->body, ctx.where, label);
+                apply_text(text_look, label, control);
+                if (!lines) {
+                    fields["alignment"] = text_look.horizontal;
+                }
+            } else if (const Component* pro = script_of(t, "TextMeshProUGUI")) {
+                const TextLook text_look = tmp_text(pro->body, ctx.where, label, ignored);
+                apply_text(text_look, label, control);
+                if (!lines) {
+                    fields["alignment"] = text_look.horizontal;
+                }
+            }
+        }
+        if (placeholder >= 0) {
+            const GameObject& p = file.objects[static_cast<std::size_t>(placeholder)];
+            json::Value label = json::Object{};
+            json::Value ignored = json::Object{};
+            std::optional<TextLook> found;
+            if (const Component* legacy = script_of(p, "Text")) {
+                found = legacy_text(legacy->body, ctx.where, label);
+            } else if (const Component* pro = script_of(p, "TextMeshProUGUI")) {
+                found = tmp_text(pro->body, ctx.where, label, ignored);
+            }
+            if (found) {
+                fields["placeholder_text"] = found->text;
+                control["theme_override_colors"]["font_placeholder_color"] =
+                    color_json(found->color);
+            }
+        }
+        if (!lines) {
+            if (const std::int64_t limit = body.integer_at("m_CharacterLimit", 0); limit > 0) {
+                fields["max_length"] = limit;
+            }
+            const std::int64_t content = body.integer_at("m_ContentType", 0);
+            if (content == 7 || content == 8 || body.integer_at("m_InputType", 0) == 2) {
+                fields["secret"] = true;
+            }
+            static const std::map<std::int64_t, std::string_view> kContent{{2, "number"},
+                                                                           {3, "number_decimal"},
+                                                                           {6, "email_address"},
+                                                                           {7, "password"},
+                                                                           {8, "number"}};
+            static const std::map<std::int64_t, std::string_view> kKeyboards{
+                {2, "number"}, {3, "url"},           {4, "number"},
+                {5, "phone"},  {7, "email_address"}, {8, "number_decimal"}};
+            if (const auto it = kContent.find(content); it != kContent.end()) {
+                fields["virtual_keyboard_type"] = std::string(it->second);
+            } else if (const auto keyboard = kKeyboards.find(body.integer_at("m_KeyboardType", 0));
+                       keyboard != kKeyboards.end()) {
+                fields["virtual_keyboard_type"] = std::string(keyboard->second);
+            }
+            if (content == 2 || content == 3 || content == 4 || content == 5 || content == 6 ||
+                body.integer_at("m_CharacterValidation", 0) != 0) {
+                problems_.add("input validation", ctx.where,
+                              "any text can be typed; gameplay code checks it on text_changed");
+            }
+        } else if (body.integer_at("m_CharacterLimit", 0) > 0) {
+            problems_.add("character limit on several lines", ctx.where,
+                          "a TextEdit takes text of any length");
+        }
+        if (const double rate = body.number_at("m_CaretBlinkRate", 0.85); rate > 0.0) {
+            fields["caret_blink"] = true;
+            fields["caret_blink_interval"] = tidy(0.5 / rate);
+        }
+        // Its styles, with the text's insets as their content margins so the text sits where
+        // Unity's does; with no image, nothing draws behind the text, as in Unity.
+        std::array<json::Value, 5> states;
+        if (image_drawn) {
+            states = selectable_styles(body, look, ctx.where);
+        } else {
+            for (json::Value& state : states) {
+                state["type"] = "empty";
+            }
+        }
+        if (const auto inset = text_inset(file, text_object, ctx.index, go.rect)) {
+            const std::array<const char*, 4> sides{"content_margin_left", "content_margin_top",
+                                                   "content_margin_right", "content_margin_bottom"};
+            for (json::Value& state : states) {
+                for (std::size_t i = 0; i < 4; ++i) {
+                    state[sides[i]] = tidy(std::max((*inset)[i], 0.0));
+                }
+            }
+        }
+        set_styles(control, states, {"normal", "", "", "read_only", "focus"});
+        navigation(body, file, control);
+        ui_calls(body, "m_OnValueChanged", "text_changed", ctx);
+        ui_calls(body, "m_OnEndEdit", "text_submitted", ctx);
+        ui_calls(body, "m_OnSubmit", "text_submitted", ctx);
+        // Its text, placeholder and the area holding them are part of the field.
+        fold_part(file, text_object, ctx.index, go.entity);
+        fold_part(file, placeholder, ctx.index, go.entity);
+        if (tmp) {
+            const int viewport = object_at(file, body, "m_TextViewport");
+            if (descends(file, viewport, ctx.index)) {
+                fold(file, viewport, go.entity, true);
+            }
+            if (const int bar = object_at(file, body, "m_VerticalScrollbar"); bar >= 0) {
+                problems_.add("input field scroll bar", ctx.where, "a TextEdit draws its own");
+                if (descends(file, bar, ctx.index)) {
+                    fold(file, bar, go.entity, true);
+                }
+            }
+        }
+        out.components[lines ? "TextEdit" : "LineEdit"] = std::move(fields);
+    }
+
+    void ui_scroll(const Context& ctx, const Component& scroll, Converted& out) {
+        Expanded& file = *ctx.file;
+        const GameObject& go = file.objects[static_cast<std::size_t>(ctx.index)];
+        const Node& body = scroll.body;
+        json::Value fields = json::Object{};
+        const auto mode = [&](bool on, std::string_view bar, std::string_view visibility) {
+            if (!on) {
+                return "disabled";
+            }
+            if (object_at(file, body, bar) < 0) {
+                return "never";
+            }
+            return body.integer_at(visibility, 0) == 0 ? "always" : "auto";
+        };
+        fields["horizontal_scroll_mode"] =
+            mode(body.flag_at("m_Horizontal", true), "m_HorizontalScrollbar",
+                 "m_HorizontalScrollbarVisibility");
+        fields["vertical_scroll_mode"] =
+            mode(body.flag_at("m_Vertical", true), "m_VerticalScrollbar",
+                 "m_VerticalScrollbarVisibility");
+        ui_calls(body, "m_OnValueChanged", "value_changed", ctx);
+        // The viewport is the container's own rect, and its scroll bars its own; the content
+        // becomes its child.
+        for (const char* bar : {"m_HorizontalScrollbar", "m_VerticalScrollbar"}) {
+            if (const int index = object_at(file, body, bar); descends(file, index, ctx.index)) {
+                fold(file, index, go.entity, true);
+            }
+        }
+        const int content = object_at(file, body, "m_Content");
+        const int viewport = object_at(file, body, "m_Viewport");
+        if (descends(file, viewport, ctx.index) && viewport != content) {
+            fold(file, viewport, go.entity, false);
+        }
+        if (descends(file, content, ctx.index)) {
+            GameObject& c = file.objects[static_cast<std::size_t>(content)];
+            c.placement.placed = true;
+            c.placement.size_h = body.flag_at("m_Horizontal", true) ? "fill" : "expand_fill";
+            c.placement.size_v = body.flag_at("m_Vertical", true) ? "fill" : "expand_fill";
+            c.placement.minimum = {-1.0, -1.0};
+            c.placement.from_rect = true;
+        }
+        out.components["ScrollContainer"] = std::move(fields);
+    }
+
+    // A layout group as a container, a LayoutElement as minimum sizes and size flags, and a
+    // ContentSizeFitter as a rect that grows to its content.
+    void ui_layout(const Context& ctx, const UiParts& parts, json::Value& control, Converted& out) {
+        Expanded& file = *ctx.file;
+        GameObject& go = file.objects[static_cast<std::size_t>(ctx.index)];
+        const auto enabled = [](const Component* c) {
+            return c != nullptr && c->body.flag_at("m_Enabled", true);
+        };
+        // A content's minimum size from its rect, when its scroll view places it.
+        if (go.placement.from_rect && !enabled(parts.get("ContentSizeFitter"))) {
+            control["custom_minimum_size"] = pair(tidy(go.rect[0]), tidy(go.rect[1]));
+        }
+        if (const Component* element = parts.get("LayoutElement"); enabled(element)) {
+            const Node& body = element->body;
+            if (body.flag_at("m_IgnoreLayout")) {
+                problems_.add("LayoutElement that ignores layout", ctx.where,
+                              "its container places it with the others");
+            }
+            if (go.placement.placed) {
+                std::array<double, 2> minimum = go.placement.minimum;
+                const std::array<std::pair<const char*, const char*>, 2> keys{
+                    {{"m_MinWidth", "m_PreferredWidth"}, {"m_MinHeight", "m_PreferredHeight"}}};
+                for (std::size_t axis = 0; axis < 2; ++axis) {
+                    const double size = std::max(body.number_at(keys[axis].first, -1.0),
+                                                 body.number_at(keys[axis].second, -1.0));
+                    if (size >= 0.0) {
+                        minimum[axis] = size;
+                    }
+                }
+                if (minimum[0] >= 0.0 || minimum[1] >= 0.0) {
+                    control["custom_minimum_size"] =
+                        pair(std::max(minimum[0], 0.0), std::max(minimum[1], 0.0));
+                }
+                const double flexible_w = body.number_at("m_FlexibleWidth", -1.0);
+                const double flexible_h = body.number_at("m_FlexibleHeight", -1.0);
+                if (flexible_w > 0.0) {
+                    control["size_flags_horizontal"] = "expand_fill";
+                }
+                if (flexible_h > 0.0) {
+                    control["size_flags_vertical"] = "expand_fill";
+                }
+                const double ratio = go.placement.vertical ? flexible_h : flexible_w;
+                if (ratio > 0.0 && std::abs(ratio - 1.0) > 1e-6) {
+                    control["size_flags_stretch_ratio"] = tidy(ratio);
+                }
+            }
+        }
+        if (const Component* fitter = parts.get("ContentSizeFitter"); enabled(fitter)) {
+            // Godot's controls are at least their content's minimum size: a rect of no size at
+            // the pivot grows to it.
+            const Node& rect = transform_of(go)->body;
+            const double vx = rect.number_at("m_Pivot.x", 0.5);
+            const double vy = rect.number_at("m_Pivot.y", 0.5);
+            if (fitter->body.integer_at("m_HorizontalFit", 0) != 0) {
+                const double left = number_in(control, "offset_left");
+                const double right = number_in(control, "offset_right");
+                const double at = left + ((right - left) * vx);
+                control["offset_left"] = tidy(at);
+                control["offset_right"] = tidy(at);
+            }
+            if (fitter->body.integer_at("m_VerticalFit", 0) != 0) {
+                const double top = number_in(control, "offset_top");
+                const double bottom = number_in(control, "offset_bottom");
+                const double at = top + ((bottom - top) * (1.0 - vy));
+                control["offset_top"] = tidy(at);
+                control["offset_bottom"] = tidy(at);
+            }
+        }
+        if (enabled(parts.get("AspectRatioFitter"))) {
+            problems_.add("component AspectRatioFitter", ctx.where, "the control keeps its size");
+        }
+        const Component* horizontal = parts.get("HorizontalLayoutGroup");
+        const Component* vertical = parts.get("VerticalLayoutGroup");
+        const Component* grid = parts.get("GridLayoutGroup");
+        const Component* group = nullptr;
+        for (const Component* each : {horizontal, vertical, grid}) { // Unity allows one
+            if (group == nullptr && enabled(each)) {
+                group = each;
+            }
+        }
+        if (group == nullptr) {
+            return;
+        }
+        const Node& body = group->body;
+        const std::array<double, 4> padding{
+            body.number_at("m_Padding.m_Left"), body.number_at("m_Padding.m_Top"),
+            body.number_at("m_Padding.m_Right"), body.number_at("m_Padding.m_Bottom")};
+        const auto alignment = static_cast<std::size_t>(
+            std::clamp<std::int64_t>(body.integer_at("m_ChildAlignment", 0), 0, 8));
+        const std::array<std::string_view, 3> ends{"begin", "center", "end"};
+        const std::array<std::string_view, 3> shrinks{"shrink_begin", "shrink_center",
+                                                      "shrink_end"};
+        json::Value container;
+        std::string type;
+        std::vector<int> children;
+        for (const int child : go.children) {
+            const GameObject& c = file.objects[static_cast<std::size_t>(child)];
+            if (!c.removed && c.ui && c.folded.empty()) {
+                children.push_back(child);
+            }
+        }
+        if (group != grid) {
+            const bool down = group == vertical;
+            type = "BoxContainer";
+            if (down) {
+                container["vertical"] = true;
+            }
+            container["alignment"] = std::string(down ? ends[alignment / 3] : ends[alignment % 3]);
+            const bool control_w = body.flag_at("m_ChildControlWidth", true);
+            const bool control_h = body.flag_at("m_ChildControlHeight", true);
+            const bool expand_w = body.flag_at("m_ChildForceExpandWidth", true);
+            const bool expand_h = body.flag_at("m_ChildForceExpandHeight", true);
+            if (body.flag_at("m_ReverseArrangement")) {
+                problems_.add("reversed layout group", ctx.where, "its children go in order");
+            }
+            const std::int64_t spacing = std::lround(body.number_at("m_Spacing"));
+            for (const int child : children) {
+                GameObject& c = file.objects[static_cast<std::size_t>(child)];
+                c.placement.placed = true;
+                c.placement.vertical = down;
+                const std::array<double, 2> size = child_size(file, child, go.rect);
+                // Along the row: expanding shares the space left; across: filling takes all of
+                // it, else the child keeps its size, placed as the alignment says.
+                const auto along = [&](bool expand, bool control_size, std::size_t axis) {
+                    if (!control_size) {
+                        c.placement.minimum[axis] = size[axis];
+                    }
+                    return expand ? std::string("expand_fill") : std::string("fill");
+                };
+                const auto across = [&](bool expand, bool control_size, std::size_t axis,
+                                        std::size_t part) {
+                    if (control_size && expand) {
+                        return std::string("fill");
+                    }
+                    if (!control_size) {
+                        c.placement.minimum[axis] = size[axis];
+                    }
+                    return std::string(shrinks[part]);
+                };
+                if (down) {
+                    c.placement.size_v = along(expand_h, control_h, 1);
+                    c.placement.size_h = across(expand_w, control_w, 0, alignment % 3);
+                } else {
+                    c.placement.size_h = along(expand_w, control_w, 0);
+                    c.placement.size_v = across(expand_h, control_h, 1, alignment / 3);
+                }
+            }
+            if (spacing != 0) {
+                container["theme_override_separation"] = spacing;
+            }
+        } else {
+            type = "GridContainer";
+            const double cell_w = body.number_at("m_CellSize.x", 100.0);
+            const double cell_h = body.number_at("m_CellSize.y", 100.0);
+            const double gap_x = body.number_at("m_Spacing.x");
+            const double gap_y = body.number_at("m_Spacing.y");
+            std::int64_t columns = 1;
+            const std::int64_t count =
+                std::max<std::int64_t>(body.integer_at("m_ConstraintCount", 2), 1);
+            switch (body.integer_at("m_Constraint", 0)) {
+            case 1:
+                columns = count;
+                break;
+            case 2:
+                columns = std::max<std::int64_t>(
+                    (static_cast<std::int64_t>(children.size()) + count - 1) / count, 1);
+                break;
+            default:
+                columns = std::max<std::int64_t>(
+                    static_cast<std::int64_t>(std::floor(
+                        (go.rect[0] - padding[0] - padding[2] + gap_x) / (cell_w + gap_x))),
+                    1);
+                break;
+            }
+            container["columns"] = columns;
+            if (body.integer_at("m_StartCorner", 0) != 0 ||
+                body.integer_at("m_StartAxis", 0) != 0 || alignment != 0) {
+                problems_.add("grid layout corner, axis or alignment", ctx.where,
+                              "a GridContainer fills rows from the top left");
+            }
+            for (const int child : children) {
+                GameObject& c = file.objects[static_cast<std::size_t>(child)];
+                c.placement.placed = true;
+                c.placement.size_h = "fill";
+                c.placement.size_v = "fill";
+                c.placement.minimum = {cell_w, cell_h};
+            }
+            if (std::lround(gap_x) != 0) {
+                container["theme_override_h_separation"] = std::lround(gap_x);
+            }
+            if (std::lround(gap_y) != 0) {
+                container["theme_override_v_separation"] = std::lround(gap_y);
+            }
+        }
+        // Separations are theme constants of the control that holds the container.
+        const auto take_constants = [&](json::Value& on) {
+            for (const auto& [key, name] : std::array<std::pair<const char*, const char*>, 3>{
+                     {{"theme_override_separation", "separation"},
+                      {"theme_override_h_separation", "h_separation"},
+                      {"theme_override_v_separation", "v_separation"}}}) {
+                if (const json::Value* value = container.find(key)) {
+                    on["theme_override_constants"][name] = *value;
+                    container.as_object().erase(key);
+                }
+            }
+        };
+        if (std::ranges::all_of(padding, [](double side) { return side == 0.0; })) {
+            take_constants(control);
+            out.components[type] = std::move(container);
+            return;
+        }
+        // Padding: a MarginContainer whose child entity is the container.
+        out.components["MarginContainer"] = json::Object{};
+        const std::array<const char*, 4> sides{"margin_left", "margin_top", "margin_right",
+                                               "margin_bottom"};
+        for (std::size_t i = 0; i < 4; ++i) {
+            control["theme_override_constants"][sides[i]] = std::lround(padding[i]);
+        }
+        json::Value inner = json::Object{};
+        take_constants(inner);
+        json::Object added;
+        added[type] = std::move(container);
+        added["Control"] = std::move(inner);
+        out.added.emplace_back("layout", std::move(added));
+        out.children_to = "layout";
+    }
+
+    // How far a field's text is in from each side of the field (left, top, right, bottom):
+    // the offsets of the rects from it up to the field, each stretched over its parent, and a
+    // TextMesh Pro text's margins; nullopt if one isn't stretched.
+    std::optional<std::array<double, 4>> text_inset(const Expanded& file, int part, int owner,
+                                                    std::array<double, 2> owner_rect) {
+        if (part < 0 || part == owner) {
+            return std::nullopt;
+        }
+        std::array<double, 4> inset{};
+        for (int at = part; at != owner; at = file.objects[static_cast<std::size_t>(at)].parent) {
+            if (at < 0) {
+                return std::nullopt;
+            }
+            const Component* transform = transform_of(file.objects[static_cast<std::size_t>(at)]);
+            if (transform == nullptr || transform->class_id != kRectTransform) {
+                return std::nullopt;
+            }
+            const Node& rect = transform->body;
+            if (rect.number_at("m_AnchorMin.x", 0.5) != 0.0 ||
+                rect.number_at("m_AnchorMin.y", 0.5) != 0.0 ||
+                rect.number_at("m_AnchorMax.x", 0.5) != 1.0 ||
+                rect.number_at("m_AnchorMax.y", 0.5) != 1.0) {
+                return std::nullopt;
+            }
+            json::Value control;
+            rect_control(rect, owner_rect, control);
+            inset[0] += number_in(control, "offset_left");
+            inset[1] += number_in(control, "offset_top");
+            inset[2] -= number_in(control, "offset_right");
+            inset[3] -= number_in(control, "offset_bottom");
+        }
+        if (const Component* pro =
+                script_of(file.objects[static_cast<std::size_t>(part)], "TextMeshProUGUI")) {
+            inset[0] += pro->body.number_at("m_margin.x");
+            inset[1] += pro->body.number_at("m_margin.y");
+            inset[2] += pro->body.number_at("m_margin.z");
+            inset[3] += pro->body.number_at("m_margin.w");
+        }
+        return inset;
+    }
+
+    // A child's rect size in a parent's rect of the given size.
+    std::array<double, 2> child_size(const Expanded& file, int child,
+                                     std::array<double, 2> parent) {
+        const Component* transform = transform_of(file.objects[static_cast<std::size_t>(child)]);
+        if (transform == nullptr) {
+            return {0.0, 0.0};
+        }
+        json::Value ignored;
+        return rect_control(transform->body, parent, ignored);
     }
 
     // --- Joints ---
@@ -5018,6 +6850,7 @@ private:
 
     struct ScriptRecord {
         std::vector<ScriptUse> uses;
+        std::vector<std::string> calls; // UI events that call it
     };
 
     // The entity made for an object: the prefab's own for an object an instance brought, when the
@@ -5110,6 +6943,7 @@ private:
         for (const int root : file.roots) {
             collect(root);
         }
+        mark_ui(file);
         // First each object's components and the entities made for it, so an Animator can then
         // bind its tracks to the entities under it.
         struct Done {
@@ -5120,6 +6954,17 @@ private:
         for (const int index : order) {
             GameObject& go = file.objects[static_cast<std::size_t>(index)];
             if (go.removed) {
+                continue;
+            }
+            if (!go.folded.empty()) {
+                // Part of a control above; its rect still places what is lifted out of it.
+                if (const Component* transform = transform_of(go);
+                    go.ui && transform != nullptr && go.parent >= 0) {
+                    const GameObject& parent = file.objects[static_cast<std::size_t>(go.parent)];
+                    json::Value ignored;
+                    go.rect = rect_control(transform->body, parent.rect, ignored);
+                    go.ui_ppu = parent.ui_ppu;
+                }
                 continue;
             }
             const Context ctx{.file = &file,
@@ -5136,6 +6981,10 @@ private:
         }
         for (const int index : order) {
             GameObject& go = file.objects[static_cast<std::size_t>(index)];
+            if (!go.folded.empty()) {
+                record["entities"][object_path(file, index)] = go.folded;
+                continue;
+            }
             record["entities"][object_path(file, index)] = go.entity;
             if (go.removed) {
                 entities[go.entity] = nullptr;
@@ -5153,7 +7002,29 @@ private:
             const Instance* instance =
                 go.instance >= 0 ? &file.instances[static_cast<std::size_t>(go.instance)] : nullptr;
             json::Value entity;
-            json::Value& transform = converted.components["Transform2D"];
+            // A control's children are controls, listed in its Control; other objects' children
+            // in their Transform2D. A canvas under a world object is a root of the UI.
+            json::Value& transform = converted.components[go.ui ? "Control" : "Transform2D"];
+            std::vector<std::string> children;
+            std::function<void(int)> lift = [&](int at) {
+                for (const int child : file.objects[static_cast<std::size_t>(at)].children) {
+                    const GameObject& c = file.objects[static_cast<std::size_t>(child)];
+                    if (c.removed) {
+                        continue;
+                    }
+                    if (!c.folded.empty()) {
+                        lift(child);
+                    } else if (c.ui == go.ui) {
+                        children.push_back(c.entity);
+                    } else if (go.ui) {
+                        problems_.add("object under a UI object",
+                                      file.path + ": " + object_path(file, child),
+                                      "placed in the world, apart from the controls");
+                    }
+                }
+            };
+            lift(index);
+            json::Value* holder = &transform;
             for (std::size_t i = 0; i < converted.added.size(); ++i) {
                 auto& [purpose, components] = converted.added[i];
                 const std::string& id = go.added[purpose];
@@ -5164,12 +7035,12 @@ private:
                 json::Value child;
                 child["components"] = std::move(components);
                 entities[id] = std::move(child);
-            }
-            for (const int child : go.children) {
-                const GameObject& c = file.objects[static_cast<std::size_t>(child)];
-                if (!c.removed) {
-                    transform["children"].push_back(c.entity);
+                if (purpose == converted.children_to) {
+                    holder = &entities[id]["components"]["Control"];
                 }
+            }
+            for (const std::string& child : children) {
+                (*holder)["children"].push_back(child);
             }
             if (instance != nullptr) {
                 complete(converted.components, *instance, go.source_id);
@@ -5623,6 +7494,9 @@ private:
             if (!uses.empty()) {
                 text += " Used by " + join(uses, ", ") + ".";
             }
+            if (!record.calls.empty()) {
+                text += " UI events call it: " + join(record.calls, "; ") + ".";
+            }
             text += " The values each entity's component set and the entity ID of every object "
                     "are in " +
                     std::string(kReportFile) + ".";
@@ -5691,6 +7565,13 @@ private:
                 uses.push_back(std::move(entry));
             }
             item["used_by"] = std::move(uses);
+            if (!record.calls.empty()) {
+                json::Array calls;
+                for (const std::string& call : record.calls) {
+                    calls.emplace_back(call);
+                }
+                item["ui_events"] = std::move(calls);
+            }
             scripts[destination(script)] = item;
             json::Value brief;
             brief["script"] = destination(script);
@@ -5817,7 +7698,8 @@ private:
     std::optional<json::Value> scene_clear_color_;
     std::map<std::string, json::Value> clear_colors_; // by scene
     std::set<std::string> loops_written_;
-    std::map<std::string, ScriptRecord> scripts_; // by source path
+    std::map<std::string, ScriptRecord> scripts_;  // by source path
+    std::map<std::string, std::string> tmp_fonts_; // TextMesh Pro font assets' fonts, by path
     std::map<std::string, std::string> task_of_;
     std::map<std::string, std::vector<std::string>> tags_;
     std::map<std::string, json::Value> report_scenes_;

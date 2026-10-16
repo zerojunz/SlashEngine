@@ -170,6 +170,9 @@ Session::Session(const world::ComponentRegistry& component_registry,
     // Textures, fonts, sprite frames, animation libraries and the systems that play
     // AnimatedSprite2D and AnimationPlayer, so step animates, 2D physics, input actions and
     // sound.
+    if (auto file = resolve_path("project.json")) {
+        project_stamp_ = platform::file_stamp(file.value());
+    }
     const json::Value project = read_project(options_.project_root);
     canvas::install(world_, assets_);
     canvas::set_settings(world_, canvas_settings(project));
@@ -713,7 +716,24 @@ std::vector<std::string> Session::recent_logs(std::size_t count) const {
     return {logs_.begin() + static_cast<std::ptrdiff_t>(first), logs_.end()};
 }
 
+void Session::poll_project() {
+    auto file = resolve_path("project.json");
+    const std::optional<platform::FileStamp> stamp =
+        file ? platform::file_stamp(file.value()) : std::nullopt;
+    if (stamp == project_stamp_) {
+        return;
+    }
+    project_stamp_ = stamp;
+    const json::Value project = read_project(options_.project_root);
+    canvas::set_settings(world_, canvas_settings(project));
+    ui::set_settings(world_, ui_settings(project));
+    physics2d::set_settings(world_, physics_settings(project));
+    input::install(world_, input_map(project), input_settings(project));
+    audio::set_settings(world_, audio_settings(project));
+}
+
 void Session::poll_assets() {
+    poll_project();
     std::vector<asset::Assets::Change> changes = assets_.poll();
     if (changes.empty()) {
         return;
