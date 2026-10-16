@@ -20,19 +20,23 @@ namespace slash::ui {
 namespace {
 
 // Each control type and the type it is built on, as Godot's classes.
-constexpr std::array<std::pair<std::string_view, std::string_view>, 23> kTypes{{
+constexpr std::array<std::pair<std::string_view, std::string_view>, 27> kTypes{{
     {"Control", ""},
     {"Label", "Control"},
     {"BaseButton", "Control"},
     {"Button", "BaseButton"},
     {"TextureButton", "BaseButton"},
     {"LineEdit", "Control"},
+    {"TextEdit", "Control"},
     {"ColorRect", "Control"},
     {"Panel", "Control"},
     {"TextureRect", "Control"},
     {"NinePatchRect", "Control"},
     {"Range", "Control"},
     {"ProgressBar", "Range"},
+    {"ScrollBar", "Range"},
+    {"HScrollBar", "ScrollBar"},
+    {"VScrollBar", "ScrollBar"},
     {"Container", "Control"},
     {"BoxContainer", "Container"},
     {"HBoxContainer", "BoxContainer"},
@@ -50,17 +54,23 @@ constexpr std::array<std::string_view, 5> kKinds{"colors", "constants", "fonts",
                                                  "styles"};
 
 // Godot's make_flat_stylebox: a rounded rect with content margins and smooth corners.
-StyleBox flat_style(Vec4 color, float margin, int corner_radius, bool draw_center = true,
-                    int border_width = 0) {
+StyleBox flat_style(Vec4 color, std::array<float, 4> margins, int corner_radius,
+                    bool draw_center = true, int border_width = 0) {
     StyleBox style;
     style.bg_color = color;
-    style.content_margin.fill(margin);
+    style.content_margin = margins;
     style.corner_radius.fill(corner_radius);
     style.anti_aliasing = true;
     style.corner_detail = std::min(static_cast<int>(std::ceil(1.5 * corner_radius)), 6);
     style.draw_center = draw_center;
     style.border_width.fill(border_width);
     return style;
+}
+
+StyleBox flat_style(Vec4 color, float margin, int corner_radius, bool draw_center = true,
+                    int border_width = 0) {
+    return flat_style(color, {margin, margin, margin, margin}, corner_radius, draw_center,
+                      border_width);
 }
 
 } // namespace
@@ -137,6 +147,33 @@ const std::map<std::string, ThemeItems, std::less<>>& own_defaults() {
             {"minimum_character_width", 4}, {"outline_size", 0}, {"caret_width", 1}};
         line_edit.fonts = {{"font", ""}};
         line_edit.font_sizes = {{"font_size", text::kDefaultFontSize}};
+        ThemeItems& text_edit = themes["TextEdit"];
+        text_edit.styles = {
+            {"normal", line_normal}, {"read_only", line_read_only}, {"focus", focus}};
+        text_edit.colors = {{"background_color", {0.0F, 0.0F, 0.0F, 0.0F}},
+                            {"font_color", control_font_color},
+                            {"font_selected_color", {0.0F, 0.0F, 0.0F, 0.0F}},
+                            {"font_readonly_color", control_font_disabled_color},
+                            {"font_placeholder_color", {0.875F, 0.875F, 0.875F, 0.6F}},
+                            {"font_outline_color", {0.0F, 0.0F, 0.0F, 1.0F}},
+                            {"selection_color", {0.5F, 0.5F, 0.5F, 1.0F}},
+                            {"current_line_color", {0.25F, 0.25F, 0.26F, 0.8F}},
+                            {"caret_color", control_font_color},
+                            {"caret_background_color", {0.0F, 0.0F, 0.0F, 1.0F}}};
+        text_edit.constants = {
+            {"line_spacing", 4}, {"outline_size", 0}, {"caret_width", 1}, {"wrap_offset", 10}};
+        text_edit.fonts = {{"font", ""}};
+        text_edit.font_sizes = {{"font_size", text::kDefaultFontSize}};
+        // Scroll bars: a TextEdit's, which it draws but doesn't let the pointer drag yet.
+        themes["ScrollBar"].constants = {
+            {"padding_left", 0}, {"padding_top", 0}, {"padding_right", 0}, {"padding_bottom", 0}};
+        const StyleBox grabber = flat_style(style_progress_color, 4.0F, 10);
+        themes["HScrollBar"].styles = {
+            {"scroll", flat_style(style_normal_color, {0.0F, 4.0F, 0.0F, 4.0F}, 10)},
+            {"grabber", grabber}};
+        themes["VScrollBar"].styles = {
+            {"scroll", flat_style(style_normal_color, {4.0F, 0.0F, 4.0F, 0.0F}, 10)},
+            {"grabber", grabber}};
         ThemeItems& label = themes["Label"];
         label.colors = {{"font_color", {1.0F, 1.0F, 1.0F, 1.0F}},
                         {"font_shadow_color", {0.0F, 0.0F, 0.0F, 0.0F}},

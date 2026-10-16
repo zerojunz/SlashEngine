@@ -366,6 +366,29 @@ A reference must name an entity that exists in the same scene.
 | | `secret` | `bool` | `false` | Show each character as `secret_character`, for passwords; cut and copy do nothing |
 | | `secret_character` | `std::string` | `"•"` | One character |
 | | `text_direction`, `language` | `std::string` | `"auto"`, `""` | As `Label`'s |
+| `TextEdit` | `text` | `std::string` | `""` | The [text field](#text-fields-of-several-lines)'s lines, broken at `"\n"` |
+| | `placeholder_text` | `std::string` | `""` | Shown, dimmed, while the text is empty |
+| | `editable` | `bool` | `true` | Typing changes the text; off, it can still be selected and copied, and draws `read_only` |
+| | `backspace_deletes_composite_character_enabled` | `bool` | `false` | As `LineEdit`'s |
+| | `shortcut_keys_enabled`, `selecting_enabled`, `deselect_on_focus_loss_enabled` | `bool` | `true` | As `LineEdit`'s |
+| | `empty_selection_clipboard_enabled` | `bool` | `true` | Cut and copy with nothing selected take the caret's line |
+| | `wrap_mode` | `std::string` | `"none"` | `boundary` wraps lines wider than the field |
+| | `autowrap_mode` | `std::string` | `"word_smart"` | Where wrapped lines break: `word` (between words), `word_smart` (inside a word too long for a row) or `arbitrary` (anywhere) |
+| | `tab_input_mode` | `bool` | `true` | Tab types a tab; off, Tab moves focus. `ui_focus_mode` (Ctrl+M) switches it |
+| | `virtual_keyboard_enabled`, `virtual_keyboard_show_on_focus` | `bool` | `true` | As `LineEdit`'s; the keyboard is `multiline` |
+| | `scroll_past_end_of_file` | `bool` | `false` | Let the last line scroll up to the top |
+| | `scroll_vertical` | `double` | `0` | Rows scrolled down; the field writes it as it scrolls |
+| | `scroll_horizontal` | `int` | `0` | Pixels scrolled right |
+| | `scroll_fit_content_height`, `scroll_fit_content_width` | `bool` | `false` | Its minimum height grows to fit every row, or its minimum width the widest line |
+| | `caret_type` | `std::string` | `"line"` | `line` between characters or `block` over one |
+| | `caret_blink`, `caret_blink_interval` | `bool`, `float` | `false`, `0.65` | As `LineEdit`'s |
+| | `caret_draw_when_editable_disabled` | `bool` | `false` | Draw the caret when not `editable` |
+| | `caret_move_on_right_click` | `bool` | `true` | A right click outside the selection moves the caret |
+| | `caret_mid_grapheme` | `bool` | `false` | As `LineEdit`'s |
+| | `caret_line`, `caret_column` | `int` | `0` | The caret's line, and the characters before it in that line |
+| | `highlight_current_line` | `bool` | `false` | Draw `current_line_color` behind the caret's row |
+| | `draw_tabs`, `draw_spaces` | `bool` | `false` | Draw an arrow for each tab, a dot for each space |
+| | `text_direction`, `language` | `std::string` | `"auto"`, `""` | As `Label`'s |
 | `BoxContainer` | `vertical` | `bool` | `false` | Lays its children out in a column instead of a row |
 | | `alignment` | `std::string` | `"begin"` | Where they go when none expands: `begin`, `center` or `end` |
 | `GridContainer` | `columns` | `int` | `1` | Children per row, 1 to 1024 |
@@ -1216,9 +1239,58 @@ clicks and input methods work on every platform. From
   selected), the caret `caret_width` wide and the clear button or right icon. Text that doesn't
   fit scrolls to keep the caret in view. Its minimum size is its style box's margins round
   `minimum_character_width` "W"s of its font, its icon and a line's height.
-- Not yet: `TextEdit` (several lines), the context menu, middle-click paste of the primary
-  selection, drag and drop of text and `structured_text_bidi_override`. `editing_toggled` is
-  emitted only when editing really starts or stops.
+- Not yet: the context menu, middle-click paste of the primary selection, drag and drop of text
+  and `structured_text_bidi_override`. `editing_toggled` is emitted only when editing really
+  starts or stops.
+
+### Text fields of several lines
+
+`TextEdit` is Godot's text field of several lines. The `gui` system edits it from the tick's
+input events as Godot's `TextEdit::gui_input` does. From
+[examples/text-editor](../../examples/text-editor/):
+
+```json
+"letter": {
+  "components": {
+    "Control": {"custom_minimum_size": [0.0, 124.0]},
+    "TextEdit": {"highlight_current_line": true, "placeholder_text": "Write to Mira",
+                 "wrap_mode": "boundary"}
+  }
+}
+```
+
+- A click, Tab or `ui.focus` gives it focus, and typing goes in at the caret, as in a
+  `LineEdit`; it has no editing mode. `ui_text_newline` (Enter) starts a line,
+  `ui_text_newline_blank` (Ctrl+Enter) a blank one below the caret's and
+  `ui_text_newline_above` (Ctrl+Shift+Enter) one above. `ui_text_indent` (Tab) types a tab
+  while `tab_input_mode` is on; `ui_focus_mode` (Ctrl+M) turns that off and on.
+- The [text actions](project-format.md#input-actions) move the caret by character, word, row
+  (keeping its x), page and to the ends of the row, line and text, select with Shift, delete,
+  scroll a line (`ui_text_scroll_up`, `ui_text_scroll_down`), select all, select the word
+  under the caret, drop the selection (Escape), cut, copy, paste, undo and redo; Insert
+  switches to typing over characters. With nothing selected, cut and copy take the caret's line
+  and pasting it puts it back as a line above the caret's. A double click selects a word, a
+  triple click a line, and a drag selects by character, word or line.
+- The wheel scrolls three lines a notch (fifteen with Alt, sideways with Shift); a finger's
+  tap places the caret and its drag scrolls. The view follows the caret, a scroll bar shows when
+  the text doesn't fit (it can't be dragged yet), and tabs stop every four spaces.
+- `text`, `caret_line`, `caret_column`, `scroll_vertical` and `scroll_horizontal` are the
+  truth: the field writes them as it is edited. Text set from outside is set as Godot's
+  `set_text` sets it, as one step undo takes back, and a caret moved from outside drops the
+  selection. Typing is one undo step until a three-second pause or another kind of edit.
+- It emits `text_changed` and `caret_changed` (once a tick, after the tick's edits),
+  `lines_edited_from` (`{"from_line": int, "to_line": int}`, from the last line to the first
+  for a removal, as Godot's) for each insertion, removal and change of composition, and
+  `text_set` when text is set from outside, as world events.
+- It draws its `normal` style box (`read_only` when not `editable`), the `focus` box while it has
+  focus, `background_color`, the caret's row in `current_line_color` when
+  `highlight_current_line`, the selection, the text (`font_readonly_color` when not `editable`,
+  `font_placeholder_color` for the placeholder, `font_selected_color` where selected if not
+  transparent), the caret, an input method's composition underlined and the scroll bars, in
+  the `VScrollBar` and `HScrollBar` theme types' styles. Its minimum size is its style box's
+  margins, plus its text with `scroll_fit_content_height` or `scroll_fit_content_width`.
+- Not yet: several carets, the context menu, gutters, the minimap, syntax highlighting, search,
+  drag and drop of text, middle-click paste, dragging the scroll bars and smooth scrolling.
 
 ### Theme items
 
@@ -1280,6 +1352,24 @@ its `theme_override_*` fields, then its [themes](#themes), then the defaults bel
 | | constant | `minimum_character_width` | `4` |
 | | constant | `outline_size` | `0` |
 | | constant | `caret_width` | `1` |
+| `TextEdit` | style | `normal`, `read_only`, `focus` | As `LineEdit`'s |
+| | font, font size | `font`, `font_size` | The built-in font, `16` |
+| | color | `font_color` | `[0.875, 0.875, 0.875, 1]` |
+| | color | `font_selected_color` | `[0, 0, 0, 0]`: selected text keeps its color |
+| | color | `font_readonly_color` | `[0.875, 0.875, 0.875, 0.5]` |
+| | color | `font_placeholder_color` | `[0.875, 0.875, 0.875, 0.6]` |
+| | color | `font_outline_color`, `caret_background_color` | `[0, 0, 0, 1]` |
+| | color | `caret_color` | `[0.875, 0.875, 0.875, 1]` |
+| | color | `selection_color` | `[0.5, 0.5, 0.5, 1]` |
+| | color | `current_line_color` | `[0.25, 0.25, 0.26, 0.8]` |
+| | color | `background_color` | `[0, 0, 0, 0]`, none |
+| | constant | `line_spacing` | `4` |
+| | constant | `outline_size` | `0` |
+| | constant | `caret_width` | `1` |
+| | constant | `wrap_offset` | `10`, pixels left free at the right of wrapped rows |
+| `HScrollBar`, `VScrollBar` (a TextEdit's) | style | `scroll` | flat `[0.1, 0.1, 0.1, 0.6]`, `corner_radius` 10, `content_margin` 4 across it |
+| | style | `grabber` | flat `[1, 1, 1, 0.4]`, `corner_radius` 10, `content_margin` 4 |
+| `ScrollBar` (`HScrollBar`, `VScrollBar`) | constant | `padding_left`, `padding_top`, `padding_right`, `padding_bottom` | `0` |
 | `BoxContainer` (`HBoxContainer`, `VBoxContainer`) | constant | `separation` | `4` |
 | `GridContainer`, `FlowContainer` (`HFlowContainer`, `VFlowContainer`) | constant | `h_separation`, `v_separation` | `4` |
 | `MarginContainer` | constant | `margin_left`, `margin_top`, `margin_right`, `margin_bottom` | `0` |

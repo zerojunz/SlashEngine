@@ -137,7 +137,9 @@ bool is_control(const world::World& world, entt::entity entity) {
            (world.ecs()
                 .any_of<world::Control, world::Label, world::ColorRect, world::Panel,
                         world::TextureRect, world::NinePatchRect, world::ProgressBar>(entity) ||
-            world.ecs().any_of<world::Button, world::TextureButton, world::LineEdit>(entity) ||
+            world.ecs()
+                .any_of<world::Button, world::TextureButton, world::LineEdit, world::TextEdit>(
+                    entity) ||
             world.ecs()
                 .any_of<world::BoxContainer, world::GridContainer, world::MarginContainer,
                         world::CenterContainer, world::FlowContainer, world::PanelContainer>(
@@ -155,6 +157,9 @@ std::vector<std::string_view> control_classes(const world::World& world, entt::e
     }
     if (ecs.all_of<world::LineEdit>(entity)) {
         classes.emplace_back("LineEdit");
+    }
+    if (ecs.all_of<world::TextEdit>(entity)) {
+        classes.emplace_back("TextEdit");
     }
     if (ecs.all_of<world::Label>(entity)) {
         classes.emplace_back("Label");
@@ -277,6 +282,17 @@ std::vector<Problem> check(const world::World& world, text::Fonts& fonts) {
                      .path = "/components/LineEdit",
                      .message = "a LineEdit draws its own text and takes its own input; put the "
                                 "Label or button in another control"});
+            }
+        }
+        if (const auto* edit = ecs.try_get<world::TextEdit>(entity); edit != nullptr) {
+            check_language("TextEdit", edit->language);
+            if (ecs.any_of<world::Label, world::Button, world::TextureButton, world::LineEdit>(
+                    entity)) {
+                problems.push_back(
+                    {.id = id,
+                     .path = "/components/TextEdit",
+                     .message = "a TextEdit draws its own text and takes its own input; put the "
+                                "Label, button or LineEdit in another control"});
             }
         }
 

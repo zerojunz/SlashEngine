@@ -133,8 +133,9 @@ environment variables, never from the file.
   right-to-left languages. Check UI with `ui_layout` (each control's rect, each label's
   lines, each button's state and which control has focus) rather than a screenshot. Buttons
   emit `pressed` events; try one with `ui_press`, or a click or `ui_accept` with `input_inject`.
-  `LineEdit` is a text field: type into it with `input_inject` `{"type": "text", "text": "Mira"}`
-  after a click or `ui_focus`, and read `text_changed` and `text_submitted` events.
+  `LineEdit` is a text field and `TextEdit` one of several lines: type into them with
+  `input_inject` `{"type": "text", "text": "Mira"}` after a click or `ui_focus`, and read
+  `text_changed` events (and a LineEdit's `text_submitted`).
 - Controls are input actions in `project.json`'s `input`, as Godot's input map: name what the
   game does (`jump`, `move_left`) and bind keys, mouse buttons, gamepad buttons and sticks to it;
   gameplay code reads actions, never keys. Try them with `input_inject` (keys, clicks, touches,
