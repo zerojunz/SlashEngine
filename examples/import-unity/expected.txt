@@ -1,14 +1,15 @@
 project.import {"dry_run":true,"source":"unity"}
 {
   "converted": {
-    "assets": 7,
+    "assets": 8,
     "input_actions": 12,
     "prefabs": 3,
-    "scenes": 1
+    "scenes": 1,
+    "tile_sets": 1
   },
   "dry_run": true,
   "engine": "unity",
-  "files": ["unity/Assets/Prefabs/Coin.scene.json", "unity/Assets/Prefabs/Frog.scene.json", "unity/Assets/Prefabs/Gold Coin.scene.json", "unity/Assets/Audio/pond.loop.audio.json", "unity/Assets/Scenes/Pond.scene.json", "project.json", "storyboard/work.json", "import/unity.json"],
+  "files": ["unity/Assets/Prefabs/Coin.scene.json", "unity/Assets/Prefabs/Frog.scene.json", "unity/Assets/Prefabs/Gold Coin.scene.json", "unity/Assets/Audio/pond.loop.audio.json", "unity/Assets/tiles.tileset.json", "unity/Assets/Scenes/Pond.scene.json", "project.json", "storyboard/work.json", "import/unity.json"],
   "main_scene": "unity/Assets/Scenes/Pond.scene.json",
   "pixels_per_unit": 32.0,
   "project": "Pond Hop",
@@ -61,13 +62,14 @@ project.import {"dry_run":true,"source":"unity"}
 project.import {"source":"unity"}
 {
   "converted": {
-    "assets": 7,
+    "assets": 8,
     "input_actions": 12,
     "prefabs": 3,
-    "scenes": 1
+    "scenes": 1,
+    "tile_sets": 1
   },
   "engine": "unity",
-  "files": 8,
+  "files": 9,
   "main_scene": "unity/Assets/Scenes/Pond.scene.json",
   "pixels_per_unit": 32.0,
   "project": "Pond Hop",
@@ -120,6 +122,22 @@ project.import {"source":"unity"}
 --- unity/Assets/Scenes/Pond.scene.json
 {
   "entities": {
+    "bank": {
+      "components": {
+        "TileMapLayer": {
+          "legend": {
+            "B": "bank_slope",
+            "a": "bank_slope:h",
+            "b": "bank_dirt",
+            "c": "bank_grass"
+          },
+          "origin": [5, -2],
+          "rows": [".Bca", "Bbbba"],
+          "tile_set": "unity/Assets/tiles.tileset.json"
+        },
+        "Transform2D": {}
+      }
+    },
     "coin": {
       "components": {
         "Transform2D": {
@@ -166,6 +184,14 @@ project.import {"source":"unity"}
         }
       },
       "extends": "unity/Assets/Prefabs/Gold Coin.scene.json"
+    },
+    "grid": {
+      "components": {
+        "Transform2D": {
+          "children": ["bank"],
+          "position": [0.0, 148.0]
+        }
+      }
     },
     "ground": {
       "components": {
@@ -334,6 +360,62 @@ project.import {"source":"unity"}
   },
   "format": 1,
   "root": "gold_coin"
+}
+--- unity/Assets/tiles.tileset.json
+{
+  "format": 1,
+  "physics_layers": [
+    {
+      "collision_mask": 4294967295,
+      "friction": 0.4
+    }
+  ],
+  "sources": {
+    "bank": {
+      "texture": "unity/Assets/Sprites/bank.png",
+      "tiles": {
+        "0,0": {
+          "collision": [
+            {
+              "points": [
+                [-16.0, -16.0],
+                [16.0, -16.0],
+                [16.0, 16.0],
+                [-16.0, 16.0]
+              ]
+            }
+          ],
+          "name": "bank_grass"
+        },
+        "1,0": {
+          "collision": [
+            {
+              "points": [
+                [-16.0, -16.0],
+                [16.0, -16.0],
+                [16.0, 16.0],
+                [-16.0, 16.0]
+              ]
+            }
+          ],
+          "name": "bank_dirt"
+        },
+        "2,0": {
+          "collision": [
+            {
+              "points": [
+                [-16.0, 16.0],
+                [16.0, 16.0],
+                [16.0, -16.0]
+              ]
+            }
+          ],
+          "name": "bank_slope"
+        }
+      }
+    }
+  },
+  "tile_size": [32, 32]
 }
 --- unity/Assets/Audio/pond.loop.audio.json
 {
@@ -521,7 +603,7 @@ project.import {"source":"unity"}
 }
 scene.open {"path":"unity/Assets/Scenes/Pond.scene.json"}
 {
-  "entities": 15,
+  "entities": 17,
   "path": "unity/Assets/Scenes/Pond.scene.json"
 }
 step {"ticks":60}
@@ -547,6 +629,16 @@ world.query {"include":["Transform2D"],"with":["RigidBody2D"]}
     }
   ],
   "truncated": false
+}
+physics.raycast {"from":[176,0],"to":[176,200]}
+{
+  "hit": {
+    "cell": [5, -1],
+    "fraction": 0.66,
+    "id": "bank",
+    "normal": [-0.7071, -0.7071],
+    "point": [176, 132]
+  }
 }
 physics.overlap {"collide_with_areas":true,"position":[-16,128],"shape":{"shape":"rectangle","size":[96,16]}}
 {
