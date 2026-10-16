@@ -1,15 +1,16 @@
 // Importing a Unity game: project.import converts a Unity project into this one.
 //
 // unity/ holds "Pond Hop", a small Unity 2D game as Unity saves it: project settings, a scene
-// that instances three prefabs (one of them a prefab variant), sprites and their import
-// settings, a physics material, an Input System actions file and three C# scripts. One call
-// converts it. Its scene and prefabs become .scene.json files beside the originals, the prefabs
-// staying prefabs that the scene instances; its sprites, cameras, 2D physics and sounds become
-// SlashEngine's components, measured in pixels; its player, physics, time, sorting and input
-// settings become project.json; and each script a storyboard task to port it to C++, since
-// SlashEngine games are plain C++. The report lists what didn't convert, and why. Games ship
-// PNG and WAV files made in other tools; this example makes its textures and sounds in code
-// (without libm, so they are the same everywhere), so the repository holds no images or sounds.
+// that instances three prefabs (one of them a prefab variant) and has a tile map, sprites and
+// their import settings, tile assets, a physics material, an Input System actions file and three
+// C# scripts. One call converts it. Its scene and prefabs become .scene.json files beside the
+// originals, the prefabs staying prefabs that the scene instances; its sprites, tile map,
+// cameras, 2D physics and sounds become SlashEngine's components, measured in pixels, and the
+// tile map's sprites a tile set; its player, physics, time, sorting and input settings become
+// project.json; and each script a storyboard task to port it to C++, since SlashEngine games
+// are plain C++. The report lists what didn't convert, and why. Games ship PNG and WAV files
+// made in other tools; this example makes its textures and sounds in code (without libm, so
+// they are the same everywhere), so the repository holds no images or sounds.
 
 #include "slash/audio/audio.hpp"
 #include "slash/command/builtin.hpp"
@@ -117,6 +118,7 @@ int main() {
     write_texture("unity/Assets/Sprites/lily_pad.png", 64, 16, {40, 120, 50});
     write_texture("unity/Assets/Sprites/sky.png", 640, 360, {110, 175, 220});
     write_texture("unity/Assets/Sprites/hat.png", 16, 8, {200, 50, 50});
+    write_texture("unity/Assets/Sprites/bank.png", 96, 32, {120, 90, 50});
     write_sound("unity/Assets/Audio/croak.wav", 220, 110, 0.5F, kRate / 4);
     write_sound("unity/Assets/Audio/pond.wav", 330, 330, 0.2F, kRate);
 
@@ -125,10 +127,12 @@ int main() {
     agent.call("project.import", R"({"source": "unity", "dry_run": true})");
     agent.call("project.import", R"({"source": "unity"})");
 
-    // The scene, the frog and gold coin prefabs, the looping music and the project's settings.
+    // The scene, the frog and gold coin prefabs, the bank's tile set, the looping music and the
+    // project's settings.
     print_file("unity/Assets/Scenes/Pond.scene.json");
     print_file("unity/Assets/Prefabs/Frog.scene.json");
     print_file("unity/Assets/Prefabs/Gold Coin.scene.json");
+    print_file("unity/Assets/tiles.tileset.json");
     print_file("unity/Assets/Audio/pond.loop.audio.json");
     print_file("project.json");
 
@@ -136,6 +140,9 @@ int main() {
     agent.call("scene.open", R"({"path": "unity/Assets/Scenes/Pond.scene.json"})");
     agent.call("step", R"({"ticks": 60})");
     agent.call("world.query", R"({"with": ["RigidBody2D"], "include": ["Transform2D"]})");
+    // The bank's tiles are solid where their sprites' physics shapes are: a ray down onto its
+    // first slope stops halfway up the slope.
+    agent.call("physics.raycast", R"({"from": [176, 0], "to": [176, 200]})");
     // The coins are areas the frog can touch; the hidden one's shape is disabled.
     agent.call("physics.overlap", R"({"shape": {"shape": "rectangle", "size": [96, 16]},
                                       "position": [-16, 128], "collide_with_areas": true})");
