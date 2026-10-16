@@ -528,6 +528,28 @@ TEST_CASE("pixel_projection maps a target's pixels to clip space") {
     CHECK(clip(100, 50) == std::array<float, 2>{0.0F, 0.0F});
 }
 
+TEST_CASE("multiply applies one matrix, then the other") {
+    // Doubled, then moved 3 pixels right on a 200x100 target.
+    Mat4 doubled{};
+    doubled[0] = 2.0F;
+    doubled[5] = 2.0F;
+    doubled[10] = 1.0F;
+    doubled[12] = 3.0F;
+    doubled[15] = 1.0F;
+    const Mat4 m = slash::render::multiply(pixel_projection(200.0F, 100.0F), doubled);
+    const auto clip = [&](float x, float y) {
+        return std::array<float, 2>{(m[0] * x) + (m[4] * y) + m[12],
+                                    (m[1] * x) + (m[5] * y) + m[13]};
+    };
+    CHECK(clip(0, 0)[0] == doctest::Approx(-0.97F));
+    CHECK(clip(0, 0)[1] == 1.0F);
+    CHECK(clip(48.5F, 25)[0] == doctest::Approx(0.0F));
+    CHECK(clip(48.5F, 25)[1] == doctest::Approx(0.0F));
+    Mat4 identity{};
+    identity[0] = identity[5] = identity[10] = identity[15] = 1.0F;
+    CHECK(slash::render::multiply(identity, doubled) == doubled);
+}
+
 TEST_CASE("the software and GPU devices draw, blend, sample and read back pixels") {
     for (const auto& device : drawing_devices()) {
         CAPTURE(slash::render::backend_name(device->backend()));
@@ -597,6 +619,25 @@ TEST_CASE("the software and GPU devices draw, blend, sample and read back pixels
                        {{TextureId::None, rect(0, 0, 4, 8, {0, 255, 0, 255})}});
             CHECK(pixel_is(image, 1, 4, {0, 0, 0, 255}).empty());
             CHECK(pixel_is(image, 6, 4, {0, 255, 0, 255}).empty());
+        }
+
+        // A draw's transform moves it before the view does, as a camera moves the world, and
+        // the draws after it without one are where the view alone puts them.
+        {
+            Material moved;
+            moved.transform = Mat4{2.0F, 0.0F, 0.0F, 0.0F, 0.0F, 2.0F, 0.0F, 0.0F,
+                                   0.0F, 0.0F, 1.0F, 0.0F, 4.0F, 0.0F, 0.0F, 1.0F};
+            REQUIRE(device->begin_frame({.target = target.value(), .clear = {}, .view = {}}).ok());
+            REQUIRE(device->draw(TextureId::None, rect(0, 0, 2, 2, {255, 0, 0, 255}), moved).ok());
+            REQUIRE(device->draw(TextureId::None, rect(0, 6, 2, 8, {0, 0, 255, 255})).ok());
+            REQUIRE(device->end_frame().ok());
+            auto image = device->read_texture(target.value());
+            REQUIRE(image.ok());
+            CHECK(pixel_is(image.value(), 1, 1, {0, 0, 0, 255}).empty());
+            CHECK(pixel_is(image.value(), 4, 0, {255, 0, 0, 255}).empty());
+            CHECK(pixel_is(image.value(), 7, 3, {255, 0, 0, 255}).empty());
+            CHECK(pixel_is(image.value(), 7, 4, {0, 0, 0, 255}).empty());
+            CHECK(pixel_is(image.value(), 1, 7, {0, 0, 255, 255}).empty());
         }
 
         // Batching draws and destroying a texture mid-frame.

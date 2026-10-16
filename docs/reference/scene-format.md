@@ -145,6 +145,21 @@ A reference must name an entity that exists in the same scene.
 | | `cull_mode` | `std::string` | `"disabled"` | `clockwise` or `counter_clockwise` leaves out edges that run that way around the light, as seen on screen |
 | | `occluder_light_mask` | `int` | `1` | Casts shadows from lights whose `shadow_item_cull_mask` shares a bit |
 | `CanvasModulate` | `color` | `Vec4` | `[1, 1, 1, 1]` | Tints everything lit: the light a scene has where no light reaches. One per scene |
+| `Camera2D` | `enabled` | `bool` | `true` | Can be the [current camera](#2d-camera): the first enabled one in drawing order |
+| | `anchor_mode` | `std::string` | `"drag_center"` | `drag_center` puts the middle of the screen at the camera; `fixed_top_left` its top left corner |
+| | `ignore_rotation` | `bool` | `true` | Keep the view upright when the camera's `Transform2D` turns |
+| | `offset` | `Vec2` | `[0, 0]` | Moves the view, in pixels |
+| | `zoom` | `Vec2` | `[1, 1]` | `[2, 2]` shows things twice as big; 0 counts as 1 |
+| | `limit_enabled` | `bool` | `true` | Keep the view inside the limits |
+| | `limit_left`, `limit_top`, `limit_right`, `limit_bottom` | `int` | `-10000000`, `-10000000`, `10000000`, `10000000` | Edges of the world the view stays inside, in pixels |
+| | `limit_smoothed` | `bool` | `false` | With position smoothing, glide to the limits instead of stopping at them |
+| | `position_smoothing_enabled` | `bool` | `false` | Glide after the entity instead of moving with it |
+| | `position_smoothing_speed` | `float` | `5` | Each tick the view closes this times the tick's seconds of the gap |
+| | `rotation_smoothing_enabled` | `bool` | `false` | Turn smoothly with the entity, when not ignoring rotation |
+| | `rotation_smoothing_speed` | `float` | `5` | Each tick the view turns this times the tick's seconds of the way |
+| | `drag_horizontal_enabled`, `drag_vertical_enabled` | `bool` | `false` | Follow the entity across, or up and down, only when it leaves the drag margins |
+| | `drag_horizontal_offset`, `drag_vertical_offset` | `float` | `0` | Where the camera sits within its drag margins, from -1 to 1 |
+| | `drag_left_margin`, `drag_top_margin`, `drag_right_margin`, `drag_bottom_margin` | `float` | `0.2` | How far the entity moves from the center before the camera follows, as a share of half the screen |
 | `CollisionShape2D` | `shape` | `std::string` | `"rectangle"` | A [physics](#2d-physics) shape of the entity's body or area, or its [parent's](#parent-transforms) if it has neither: `rectangle`, `circle`, `capsule`, `segment` or `polygon` |
 | | `size` | `Vec2` | `[20, 20]` | Rectangle width and height, in pixels |
 | | `radius` | `float` | `10` | Circle and capsule radius, in pixels |
@@ -923,6 +938,49 @@ the rows that changed:
   can't draw, or a tile outside its texture, logs one warning and draws the rest.
 - Square tiles only for now; isometric and hexagonal shapes are on the
   [roadmap](../roadmap.md).
+
+## 2D camera
+
+A `Camera2D` chooses the part of the world the window shows, as Godot's. Without one the window
+shows world pixels from (0, 0) at its top left corner. With one, the view is seen from the
+camera's entity: put the camera in the player's `Transform2D` `children` and the view follows
+the player. [examples/camera-2d](../../examples/camera-2d/) follows a player through a level
+wider than the window.
+
+```json
+"cam": {
+  "components": {
+    "Camera2D": {"drag_horizontal_enabled": true, "limit_left": 0, "limit_right": 1600,
+                 "position_smoothing_enabled": true},
+    "Transform2D": {"position": [0.0, -32.0]}
+  }
+}
+```
+
+- The current camera is the first enabled `Camera2D` with a `Transform2D`, in drawing order
+  (`z_index`, then parents before children, then the order entities were made). The others do
+  nothing until it is disabled or removed.
+- `anchor_mode` `drag_center` puts the camera's position in the middle of the window, and
+  `fixed_top_left` at its top left corner. `zoom` scales the view around that point, `offset`
+  moves it, and with `ignore_rotation` off the view turns with the entity.
+- The limits keep the view inside a rectangle of the world. A level narrower than the view is
+  centered in it.
+- With `drag_horizontal_enabled` or `drag_vertical_enabled`, the camera holds still while its
+  entity moves inside the drag margins (a share of half the window on each side of the middle)
+  and follows once it leaves them. A drag offset puts the camera at that point of the margins
+  at once.
+- Position smoothing glides the view after its entity, closing `position_smoothing_speed` times
+  each tick's seconds of the gap; it stops at the limits unless `limit_smoothed` glides it there
+  too. Rotation smoothing does the same for the angle.
+- The `camera_2d` system (priority 1050, after physics) moves the drag margins and smoothing on
+  each tick, for the current camera only. An edit to a camera or its entity shows in the next
+  frame without waiting for a tick, and games draw between ticks with the view in between.
+- Sprites, tile layers, particles, lights and shadows and the debug overlay's collision shapes
+  are drawn through the camera; controls stay where they are on the screen, as if on Godot's
+  default `CanvasLayer`. 2D sounds with no `AudioListener2D` are heard from the middle of the
+  view.
+- [`frame.summary`](commands.md#framesummary) reports rects on the screen, and its `camera` field
+  names the current camera and the world rect it shows.
 
 ## 2D lights
 

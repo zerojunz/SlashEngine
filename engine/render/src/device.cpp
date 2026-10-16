@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -301,6 +302,20 @@ Mat4 pixel_projection(float width, float height) {
     m[12] = -1.0F;
     m[13] = 1.0F;
     m[15] = 1.0F;
+    return m;
+}
+
+Mat4 multiply(const Mat4& a, const Mat4& b) {
+    Mat4 m{};
+    for (std::size_t column = 0; column < 4; ++column) {
+        for (std::size_t row = 0; row < 4; ++row) {
+            float sum = 0.0F;
+            for (std::size_t k = 0; k < 4; ++k) {
+                sum += a[(k * 4) + row] * b[(column * 4) + k];
+            }
+            m[(column * 4) + row] = sum;
+        }
+    }
     return m;
 }
 

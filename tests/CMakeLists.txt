@@ -3,6 +3,7 @@ add_executable(slash_tests
     test_animation.cpp
     test_asset.cpp
     test_audio.cpp
+    test_camera2d.cpp
     test_canvas.cpp
     test_command.cpp
     test_debug.cpp

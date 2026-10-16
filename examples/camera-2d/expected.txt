@@ -1,0 +1,30 @@
+scene.open {"path":"main.scene.json"}
+{"entities":5,"path":"main.scene.json"}
+-- the window shows the level around the camera, with the counter where it was
+step {"ticks":1}
+{"tick":1,"ticks":1}
+frame.summary {"ids":["player","coin","score"]}
+{"camera":{"id":"cam","rect":[240,0,320,180]},"drawn":[{"id":"player","kind":"Sprite2D","rect":[154,144,12,16]},{"id":"score","kind":"Label","rect":[8,8,100,22],"text":"Coins: 0"}],"offscreen":["coin"],"viewport":[320,180]}
+-- the player walks 100 pixels right: past the drag margin, the camera glides after
+component.set {"components":{"Transform2D":{"position":[500,152]}},"id":"player"}
+{"changed":{"Transform2D":{"position":[500.0,152.0]}},"id":"player"}
+step {"ticks":1}
+{"tick":2,"ticks":1}
+frame.summary {"ids":["player","coin","score"]}
+{"camera":{"id":"cam","rect":[245.7,0,320,180]},"drawn":[{"id":"player","kind":"Sprite2D","rect":[248.3,144,12,16]},{"id":"score","kind":"Label","rect":[8,8,100,22],"text":"Coins: 0"}],"offscreen":["coin"],"viewport":[320,180]}
+step {"ticks":120}
+{"tick":122,"ticks":120}
+frame.summary {"ids":["player","coin","score"]}
+{"camera":{"id":"cam","rect":[308,0,320,180]},"drawn":[{"id":"player","kind":"Sprite2D","rect":[186,144,12,16]},{"id":"score","kind":"Label","rect":[8,8,100,22],"text":"Coins: 0"}],"offscreen":["coin"],"viewport":[320,180]}
+-- at the end of the level the limits stop the view, and the coin comes into it
+component.set {"components":{"Transform2D":{"position":[1580,152]}},"id":"player"}
+{"changed":{"Transform2D":{"position":[1580.0,152.0]}},"id":"player"}
+step {"ticks":120}
+{"tick":242,"ticks":120}
+frame.summary {"ids":["player","coin","score"]}
+{"camera":{"id":"cam","rect":[1280,0,320,180]},"drawn":[{"id":"coin","kind":"Sprite2D","rect":[216,116,8,8]},{"id":"player","kind":"Sprite2D","rect":[294,144,12,16]},{"id":"score","kind":"Label","rect":[8,8,100,22],"text":"Coins: 0"}],"viewport":[320,180]}
+-- zoomed in twice, the view is a quarter of the size and still inside the level
+component.set {"components":{"Camera2D":{"zoom":[2,2]}},"id":"cam"}
+{"changed":{"Camera2D":{"zoom":[2.0,2.0]}},"id":"cam"}
+frame.summary {"ids":["player","coin","score"]}
+{"camera":{"id":"cam","rect":[1440,75,160,90]},"drawn":[{"id":"coin","kind":"Sprite2D","rect":[112,82,16,16]},{"id":"player","kind":"Sprite2D","rect":[268,138,24,32]},{"id":"score","kind":"Label","rect":[8,8,100,22],"text":"Coins: 0"}],"viewport":[320,180]}

@@ -812,6 +812,31 @@ TEST_CASE("an AudioStreamPlayer2D inside another entity is heard from where it i
     check_frame(sounds.player("hum")->volume, (1.0F - pan) * fade, pan * fade);
 }
 
+TEST_CASE("without a listener, 2D sounds are heard from the middle of the camera's view") {
+    Sounds sounds;
+    sounds.files.write("hum.wav", steady_wav(kRate, {0.5F, 0.5F}));
+    const float screen = slash::ui::settings(sounds.world).viewport.x;
+    // A camera far from the origin, zoomed in twice.
+    const entt::entity camera = sounds.world.create("cam").value();
+    sounds.world.ecs().emplace<world::Transform2D>(camera).position = {5000.0F, 3000.0F};
+    sounds.world.ecs().emplace<world::Camera2D>(camera).zoom = {2.0F, 2.0F};
+    const entt::entity hum =
+        sounds.add("hum", "AudioStreamPlayer2D", R"({"stream": "hum.wav", "autoplay": true})");
+    sounds.world.ecs().emplace<world::Transform2D>(hum).position = {5100.0F, 3000.0F};
+    sounds.step();
+    // 100 pixels from the middle of the view, which shows it 200 pixels right of the middle of
+    // the screen, as Godot pans by where a sound is on the screen.
+    const float fade = 1.0F - (100.0F / 2000.0F);
+    const float pan = 0.5F + (200.0F / screen * 0.5F * 0.5F);
+    check_frame(sounds.player("hum")->volume, (1.0F - pan) * fade, pan * fade);
+
+    // A listener's distances are scaled with the view too.
+    const entt::entity listener = sounds.add("ears", "AudioListener2D", R"({"current": true})");
+    sounds.world.ecs().emplace<world::Transform2D>(listener).position = {5000.0F, 3000.0F};
+    sounds.step();
+    check_frame(sounds.player("hum")->volume, (1.0F - pan) * fade, pan * fade);
+}
+
 TEST_CASE("buses come from the project's .bus_layout.json, reloaded when it changes") {
     MemoryFiles* files = nullptr;
     audio::Settings settings;

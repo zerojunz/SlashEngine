@@ -175,6 +175,15 @@ rendering on top.
       SpriteFrames), drawn in order and interpolated between fixed ticks so high refresh rates
       look smooth. Textures are PNG or BMP assets that hot reload, and exports ship and check
       them with the frames files
+- [x] A 2D camera, as Godot's `Camera2D`: the first enabled one in drawing order is current,
+      with anchor modes, zoom, offset, rotation, limits (smoothed or not), drag margins and
+      offsets, and position and rotation smoothing, ported from Godot's
+      `get_camera_transform`. The world draws through it, interpolated between ticks; controls
+      stay on the screen, 2D sound is heard from the middle of the view, and `frame.summary`
+      reports the world rect it shows
+- [ ] Canvas layers and parallax, as Godot's `CanvasLayer` (with `follow_viewport`) and
+      `Parallax2D`, and a call that turns a point on the screen into the world through the
+      camera
 - [x] Keyframe animation tracks on any reflected property, like Godot's AnimationPlayer:
       `.anim.json` libraries of animations with value tracks on any component field or part of
       one, Godot's interpolation, easing, update and loop modes, and event tracks that emit world

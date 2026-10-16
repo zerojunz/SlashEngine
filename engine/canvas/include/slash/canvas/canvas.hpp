@@ -9,6 +9,7 @@
 #include "slash/render/device.hpp"
 #include "slash/text/text.hpp"
 #include "slash/ui/ui.hpp"
+#include "slash/world/camera2d.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/tree2d.hpp"
 #include "slash/world/world.hpp"
@@ -26,8 +27,8 @@
 #include <vector>
 
 // 2D drawing, as Godot's canvas: Sprite2D, AnimatedSprite2D, TileMapLayer and CPUParticles2D
-// entities drawn through a render device, in world pixels with y down, and shaded by 2D lights
-// (light.hpp).
+// entities drawn through a render device, in world pixels with y down, seen through the current
+// Camera2D (camera2d.hpp) and shaded by 2D lights (light.hpp).
 namespace slash::canvas {
 
 // Asset types: "texture" (.png and .bmp files as render::Image), "sprite_frames" (.frames.json
@@ -35,7 +36,8 @@ namespace slash::canvas {
 // (.tileset.json files as TileSet).
 void add_asset_types(asset::Assets& assets);
 
-// The "animated_sprite_2d" system, which plays each AnimatedSprite2D on its Sprite2D, and the
+// The "animated_sprite_2d" system, which plays each AnimatedSprite2D on its Sprite2D, the
+// "camera_2d" system (camera2d.hpp), for a screen of ui::settings' viewport size, and the
 // "cpu_particles_2d" system (particles.hpp). The first reads .frames.json files through assets,
 // which must outlive the world.
 void add_systems(world::World& world, asset::Assets& assets);
@@ -108,14 +110,16 @@ struct FrameProblem {
 struct FrameContents {
     std::vector<FrameItem> items;
     std::vector<FrameProblem> problems;
-    ui::Layout layout; // the controls as laid out
+    ui::Layout layout;        // the controls as laid out
+    world::CameraView camera; // what the world was seen through
 };
 
 struct CanvasOptions {
     render::TextureId target = render::TextureId::None; // None draws to the window
     render::Color clear = render::kDefaultClearColor;
-    // The world pixels across the target; 0 uses the target's own pixels. A window on a
-    // high-density display has more pixels than its size, so games pass the window's size.
+    // The viewport's pixels across the target, which the camera fills; 0 uses the target's own
+    // pixels. A window on a high-density display has more pixels than its size, so games pass
+    // the window's size.
     float width = 0.0F;
     float height = 0.0F;
     // How far from the transforms before the last tick to the current ones; see
@@ -152,16 +156,16 @@ public:
     CanvasRenderer(CanvasRenderer&&) = delete;
     CanvasRenderer& operator=(CanvasRenderer&&) = delete;
 
-    // Remembers every sprite's, layer's, light's and occluder's transform. Call it just before
-    // each tick, so frames between ticks can draw them part of the way from where they were to
-    // where they are.
+    // Remembers every sprite's, layer's, light's and occluder's transform, and the camera's
+    // view. Call it just before each tick, so frames between ticks can draw them part of the way
+    // from where they were to where they are.
     void before_tick(const world::World& world);
 
     // Draws one frame: the target cleared, then every visible sprite, tile map layer and
     // CPUParticles2D, in z_index order, then the order entities were made, then the collision
-    // shapes if the options ask, then every visible control (ui.hpp) over them, laid out in a
-    // viewport of the options' width and height, or ui::settings' when they are 0, then the
-    // overlay's controls. A layer draws its
+    // shapes if the options ask, all seen through the current Camera2D, then every visible
+    // control (ui.hpp) over them, laid out in a viewport of the options' width and height, or
+    // ui::settings' when they are 0, then the overlay's controls. A layer draws its
     // cells row by row, each tile's region centered on its cell, moved by the entity's
     // Transform2D if it has one. Particles draw as their emitter's draw_order says, each its
     // texture's frame (or a white pixel) centered on it, turned, scaled and colored. A
@@ -253,6 +257,7 @@ private:
     std::vector<std::uint8_t> shadow_pixels_;
     bool lit_ = false;
     std::unordered_map<entt::entity, world::Transform2D> previous_;
+    world::CameraView previous_view_; // the camera's view before the last tick
     std::set<std::string, std::less<>> warned_;
     std::size_t sprites_drawn_ = 0;
     std::size_t tiles_drawn_ = 0;
