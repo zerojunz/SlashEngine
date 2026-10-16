@@ -1,12 +1,13 @@
 // Importing a Godot game: project.import converts a Godot 4 project into this one.
 //
 // godot/ holds "Coin Run", a small Godot 4 platformer as Godot saves it: project.godot, two
-// scenes (the level instances the player scene), a SpriteFrames resource, a tile set, a theme, a
-// bus layout and three GDScript files. One call converts it. Its scenes become .scene.json files
-// beside the originals, its sprite frames .frames.json files, its tile set a .tileset.json file,
-// its theme a .theme.json file, its buses a .bus_layout.json file, its window, physics,
-// rendering, GUI, audio and input settings project.json, and each script a storyboard task to
-// port it to C++, since SlashEngine games are plain C++. The report lists what didn't convert, and
+// scenes (the level instances the player scene), a SpriteFrames resource, an AnimationPlayer, a
+// tile set, a theme, a bus layout and three GDScript files. One call converts it. Its scenes
+// become .scene.json files beside the originals, its sprite frames .frames.json files, its
+// animation library a .anim.json file, its tile set a .tileset.json file, its theme a
+// .theme.json file, its buses a .bus_layout.json file, its window, physics, rendering, GUI, audio
+// and input settings project.json, and each script a storyboard task to port it to C++, since
+// SlashEngine games are plain C++. The report lists what didn't convert, and
 // why. Games ship PNG files made in an image editor; this example draws its textures in code, so
 // the repository holds no images.
 
@@ -99,19 +100,23 @@ int main() {
     agent.call("project.import", R"({"source": "godot", "dry_run": true})");
     agent.call("project.import", R"({"source": "godot"})");
 
-    // The level, the player's sprite frames, the platforms' tile set, the theme, the buses and
-    // the project's settings.
+    // The level, the player's sprite frames, the coin's animations, the platforms' tile set, the
+    // theme, the buses and the project's settings.
     print_file("godot/main.scene.json");
     print_file("godot/player_frames.frames.json");
+    print_file("godot/main_animation_library_coin.anim.json");
     print_file("godot/tiles.tileset.json");
     print_file("godot/ui_theme.theme.json");
     print_file("godot/default_bus_layout.bus_layout.json");
     print_file("project.json");
 
-    // The converted level opens and runs; the coin spins.
+    // The converted level opens and runs; the coin spins and bobs, and glints each loop.
     agent.call("scene.open", R"({"path": "godot/main.scene.json"})");
+    agent.call("events.subscribe", R"({"kinds": ["glint"]})");
     agent.call("step", R"({"ticks": 25})");
-    agent.call("world.query", R"({"with": ["AnimatedSprite2D"], "include": ["AnimatedSprite2D"]})");
+    agent.call("world.query", R"({"with": ["AnimatedSprite2D"],
+                                  "include": ["AnimatedSprite2D", "Transform2D"]})");
+    agent.call("events.read", R"({"subscription": "events_1"})");
     agent.call("storyboard.query", R"({"kind": "task"})");
     agent.call("storyboard.check", "{}");
     return 0;

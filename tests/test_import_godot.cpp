@@ -1,3 +1,4 @@
+#include "slash/animation/animation.hpp"
 #include "slash/canvas/tilemap.hpp"
 #include "slash/command/builtin.hpp"
 #include "slash/command/command.hpp"
@@ -818,7 +819,8 @@ TEST_CASE("importing Godot tile maps, themes and bus layouts writes their SlashE
     const auto files = files_of(plan);
     CHECK(*plan.report.find("converted") ==
           parse(R"({"scenes": 2, "sprite_frames": 0, "tile_sets": 1, "themes": 1,
-                    "bus_layouts": 1, "input_actions": 1, "assets": 3})"));
+                    "bus_layouts": 1, "animation_libraries": 0, "input_actions": 1,
+                    "assets": 3})"));
     const std::string level = "godot/scenes/level.scene.json";
 
     // The tile set: its terrains by set, and each tile's terrain and the terrain each side must
@@ -946,6 +948,271 @@ position = Vector2(64, 0)
     CHECK(parse(files.at(house)).find("entities")->find("room2/room_top") == nullptr);
     CHECK(cells_of(files, *entity(files, house, "room2/room_top").find("TileMapLayer")) ==
           std::map<std::string, std::string>{{"0,1", "tiles:1,0"}});
+}
+
+constexpr std::string_view kHero = R"([gd_scene load_steps=5 format=3]
+
+[ext_resource type="Texture2D" path="res://art/hero.png" id="1_tex"]
+[ext_resource type="AnimationLibrary" path="res://anim/extra.tres" id="2_extra"]
+
+[sub_resource type="Animation" id="Animation_reset"]
+resource_name = "RESET"
+length = 0.001
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Sprite2D:frame")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 1,
+"values": [0]
+}
+
+[sub_resource type="Animation" id="Animation_walk"]
+resource_name = "walk"
+length = 0.4
+loop_mode = 1
+step = 0.1
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Sprite2D:frame")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 0.2),
+"transitions": PackedFloat32Array(1, 1),
+"update": 0,
+"values": [0, 1]
+}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath(".:position")
+tracks/1/interp = 2
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0, 0.2, 0.6),
+"transitions": PackedFloat32Array(1, 0.5, 1),
+"update": 0,
+"values": [Vector2(0, 0), Vector2(0, -4), Vector2(0, 0)]
+}
+tracks/2/type = "method"
+tracks/2/imported = false
+tracks/2/enabled = true
+tracks/2/path = NodePath(".")
+tracks/2/interp = 1
+tracks/2/loop_wrap = true
+tracks/2/keys = {
+"times": PackedFloat32Array(0, 0.2),
+"transitions": PackedFloat32Array(1, 1),
+"values": [{
+"args": [&"left"],
+"method": &"footstep"
+}, {
+"args": [],
+"method": &"blink"
+}]
+}
+tracks/3/type = "bezier"
+tracks/3/imported = false
+tracks/3/enabled = true
+tracks/3/path = NodePath("Sprite2D:modulate:a")
+tracks/3/interp = 1
+tracks/3/loop_wrap = true
+tracks/3/keys = {
+"handle_modes": PackedInt32Array(0, 0),
+"points": PackedFloat32Array(1, -0.1, 0, 0.1, 0, 0.5, -0.1, 0, 0.1, 0),
+"times": PackedFloat32Array(0, 0.4)
+}
+tracks/4/type = "audio"
+tracks/4/imported = false
+tracks/4/enabled = true
+tracks/4/path = NodePath("Sprite2D")
+tracks/4/keys = {
+"clips": [],
+"times": PackedFloat32Array()
+}
+tracks/4/use_blend = true
+tracks/5/type = "value"
+tracks/5/imported = false
+tracks/5/enabled = false
+tracks/5/path = NodePath("Sprite2D:visible")
+tracks/5/interp = 1
+tracks/5/loop_wrap = true
+tracks/5/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 1,
+"values": [false]
+}
+tracks/6/type = "value"
+tracks/6/imported = false
+tracks/6/enabled = true
+tracks/6/path = NodePath("Missing:visible")
+tracks/6/interp = 1
+tracks/6/loop_wrap = true
+tracks/6/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 1,
+"values": [false]
+}
+tracks/7/type = "value"
+tracks/7/imported = false
+tracks/7/enabled = true
+tracks/7/path = NodePath("Sprite2D:texture")
+tracks/7/interp = 1
+tracks/7/loop_wrap = true
+tracks/7/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 1,
+"values": [ExtResource("1_tex")]
+}
+tracks/8/type = "value"
+tracks/8/imported = false
+tracks/8/enabled = true
+tracks/8/path = NodePath("Sprite2D:offset:y")
+tracks/8/interp = 1
+tracks/8/loop_wrap = true
+tracks/8/keys = {
+"times": PackedFloat32Array(0, 0.2),
+"transitions": PackedFloat32Array(1, 1),
+"update": 1,
+"values": [0.0, -2.0]
+}
+
+[sub_resource type="AnimationLibrary" id="AnimationLibrary_hero"]
+_data = {
+&"RESET": SubResource("Animation_reset"),
+&"walk": SubResource("Animation_walk")
+}
+
+[node name="Hero" type="Node2D"]
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+texture = ExtResource("1_tex")
+hframes = 2
+
+[node name="AnimationPlayer" type="AnimationPlayer" parent="."]
+libraries = {
+&"": SubResource("AnimationLibrary_hero"),
+&"extra": ExtResource("2_extra")
+}
+autoplay = "walk"
+speed_scale = 2.0
+)";
+
+constexpr std::string_view kExtraAnimations =
+    R"([gd_resource type="AnimationLibrary" load_steps=2 format=3]
+
+[sub_resource type="Animation" id="Animation_spin"]
+resource_name = "spin"
+loop_mode = 2
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Sprite2D:rotation")
+tracks/0/interp = 3
+tracks/0/loop_wrap = false
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 1),
+"transitions": PackedFloat32Array(1, 1),
+"update": 0,
+"values": [0.0, 3.14]
+}
+
+[resource]
+_data = {
+"spin": SubResource("Animation_spin")
+}
+)";
+
+TEST_CASE("importing a Godot AnimationPlayer writes its libraries and targets the nodes they "
+          "animate") {
+    const fs::path project = "import_godot_animation";
+    fs::remove_all(project);
+    // No main scene: the first scene becomes it.
+    write(project / "godot/project.godot",
+          "config_version=5\n\n[application]\n\nconfig/name=\"Hero\"\n");
+    write(project / "godot/hero.tscn", kHero);
+    write(project / "godot/anim/extra.tres", kExtraAnimations);
+    write(project / "godot/house.tscn", R"([gd_scene load_steps=2 format=3]
+
+[ext_resource type="PackedScene" path="res://hero.tscn" id="1_hero"]
+
+[node name="House" type="Node2D"]
+
+[node name="Hero1" parent="." instance=ExtResource("1_hero")]
+
+[node name="Hero2" parent="." instance=ExtResource("1_hero")]
+position = Vector2(64, 0)
+
+[node name="AnimationPlayer" parent="Hero2" index="1"]
+autoplay = "extra/spin"
+)");
+    write_png(project / "godot/art/hero.png", 32, 16);
+    const importer::ImportPlan plan = plan_inside(project);
+    const auto files = files_of(plan);
+    CHECK(plan.report.find("converted")->find("animation_libraries")->as_int() == 1);
+    CHECK(parse(files.at("project.json")).find("main_scene")->as_string() ==
+          "godot/hero.scene.json");
+    CHECK(unsupported(plan.report, "main scene").find("why")->as_string() ==
+          "it names none, so the first scene, hero.tscn, is the main scene");
+
+    // The player's two libraries go in one file, the named one's animations under its name.
+    const std::string library = "godot/hero_animation_player.anim.json";
+    REQUIRE(files.contains(library));
+    const json::Value animations = *parse(files.at(library)).find("animations");
+    CHECK(animations.find("RESET") != nullptr);
+    CHECK(*animations.find("extra/spin") == parse(R"({"length": 1, "loop": "pingpong",
+        "tracks": [{"target": "Sprite2D", "path": "Transform2D/rotation",
+                    "interpolation": "linear_angle", "loop_wrap": false,
+                    "keys": [{"time": 0, "value": 0}, {"time": 1, "value": 3.14}]}]})"));
+    // Tracks name nodes from the root node, the player's parent. A method track becomes an
+    // event track per method; a bezier track's keys play cubic; keys past the end go.
+    CHECK(*animations.find("walk") == parse(R"({"length": 0.4, "loop": "linear", "tracks": [
+        {"target": "Sprite2D", "path": "Sprite2D/frame", "update": "continuous",
+         "keys": [{"time": 0, "value": 0}, {"time": 0.2, "value": 1}]},
+        {"target": ".", "path": "Transform2D/position", "interpolation": "cubic",
+         "keys": [{"time": 0, "value": [0, 0]},
+                  {"time": 0.2, "transition": 0.5, "value": [0, -4]}]},
+        {"target": ".", "event": "footstep",
+         "keys": [{"time": 0, "data": {"args": ["left"]}}]},
+        {"target": ".", "event": "blink", "keys": [{"time": 0.2}]},
+        {"target": "Sprite2D", "path": "Sprite2D/modulate/a", "interpolation": "cubic",
+         "keys": [{"time": 0, "value": 1}, {"time": 0.4, "value": 0.5}]},
+        {"target": "Sprite2D", "path": "Sprite2D/texture",
+         "keys": [{"time": 0, "value": "godot/art/hero.png"}]},
+        {"target": "Sprite2D", "path": "Sprite2D/offset/y", "update": "discrete",
+         "keys": [{"time": 0, "value": 0}, {"time": 0.2, "value": -2}]}]})"));
+    CHECK(unsupported(plan.report, "animation audio track").find("why")->as_string() ==
+          "play the sound from gameplay code, on an event track's event");
+    CHECK(unsupported(plan.report, "animation bezier track") != nullptr);
+    CHECK(unsupported(plan.report, "disabled animation track") != nullptr);
+    CHECK(unsupported(plan.report, "animation track target").find("why")->as_string() ==
+          "node path Missing names no node under the root node");
+    CHECK(unsupported(plan.report, "node type AnimationPlayer") == nullptr);
+    CHECK(unsupported(plan.report, "resource AnimationLibrary") == nullptr);
+
+    const std::string hero = "godot/hero.scene.json";
+    CHECK(entity(files, hero, "animation_player") == parse(R"({"AnimationPlayer": {
+        "library": "godot/hero_animation_player.anim.json", "animation": "walk",
+        "speed_scale": 2.0, "targets": {".": "hero", "Sprite2D": "sprite2d"}}})"));
+    CHECK(slash::animation::check_players(parse(files.at(hero)), reader_of(files)).empty());
+
+    // Instances keep the scene's library; their targets follow their IDs.
+    const std::string house = "godot/house.scene.json";
+    CHECK(entry(files, house, "hero2/animation_player") ==
+          parse(R"({"components": {"AnimationPlayer": {"animation": "extra/spin"}}})"));
+    CHECK(parse(files.at(house)).find("entities")->find("hero1/animation_player") == nullptr);
+    CHECK(
+        *entity(files, house, "hero2/animation_player").find("AnimationPlayer")->find("targets") ==
+        parse(R"({".": "hero2", "Sprite2D": "hero2/sprite2d"})"));
 }
 
 TEST_CASE("importing a Godot project turns each script into a storyboard task") {

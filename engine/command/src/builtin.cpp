@@ -987,10 +987,15 @@ Reply animation_eval(Session& session, const json::Value& params) {
         }
         times.push_back(time);
     }
-    std::vector<std::string_view> paths;
+    // A track's name in the result: its path, after its target's name and ':' if it has one,
+    // as a Godot track's "Node:property".
+    const auto track_name = [](const animation::Track& track) {
+        return track.target.empty() ? track.path : track.target + ":" + track.path;
+    };
+    std::vector<std::string> paths;
     for (const animation::Track& track : animation.tracks) {
         if (!track.path.empty()) {
-            paths.emplace_back(track.path);
+            paths.push_back(track_name(track));
         }
     }
     std::set<std::string, std::less<>> wanted;
@@ -1009,7 +1014,7 @@ Reply animation_eval(Session& session, const json::Value& params) {
 
     json::Value tracks = json::Object{};
     for (const animation::Track& track : animation.tracks) {
-        if (track.path.empty() || (!wanted.empty() && !wanted.contains(track.path))) {
+        if (track.path.empty() || (!wanted.empty() && !wanted.contains(track_name(track)))) {
             continue;
         }
         auto target = animation::resolve_target(track.path, session.components());
@@ -1026,7 +1031,7 @@ Reply animation_eval(Session& session, const json::Value& params) {
         for (const double time : times) {
             values.push_back(rounded(animation::sample(animation, track, time, discrete)));
         }
-        tracks[track.path] = std::move(values);
+        tracks[track_name(track)] = std::move(values);
     }
     json::Value result;
     result["length"] = short_number(animation.length);
@@ -4034,7 +4039,9 @@ void register_builtin_commands(Registry& registry) {
     times["items"]["minimum"] = 0;
     times["minItems"] = 1;
     times["maxItems"] = 100;
-    json::Value only_tracks = property("array", "Value track paths to return. Default: all.");
+    json::Value only_tracks = property("array", "Value tracks to return, by path, or "
+                                                "\"target:path\" for a track with a target. "
+                                                "Default: all.");
     only_tracks["items"]["type"] = "string";
     only_tracks["minItems"] = 1;
     registry.add({

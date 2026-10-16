@@ -1914,6 +1914,8 @@ TEST_CASE("animation.eval returns the values an animation's tracks set, and step
           {"event": "footstep", "keys": [{"time": 0.5, "data": {"foot": "left"}}]}]},
         "fade": {"length": 0.5, "tracks": [
           {"path": "Sprite2D/modulate/a", "keys": [{"time": 0, "value": 1}, {"time": 0.5, "value": 0}]},
+          {"target": "shadow", "path": "Sprite2D/modulate/a",
+           "keys": [{"time": 0, "value": 0.5}, {"time": 0.5, "value": 0}]},
           {"path": "Health/current", "keys": [{"time": 0, "value": 10}]}]}
       },
       "format": 1
@@ -1935,10 +1937,16 @@ TEST_CASE("animation.eval returns the values an animation's tracks set, and step
     CHECK(engine.ok("animation.eval", R"({"id": "hero", "animation": "fade", "times": [0.125],
                                           "tracks": ["Sprite2D/modulate/a"]})") ==
           parse(R"({"length": 0.5, "loop": "none", "tracks": {"Sprite2D/modulate/a": [0.75]}})"));
+    // A track with a target is named after it, as Godot's "Node:property".
     CHECK(engine.ok("animation.eval", R"({"path": "hero.anim.json", "animation": "fade",
                                           "times": [0.5]})") ==
           parse(R"({"length": 0.5, "loop": "none",
-                    "tracks": {"Health/current": [10], "Sprite2D/modulate/a": [0]}})"));
+                    "tracks": {"Health/current": [10], "Sprite2D/modulate/a": [0],
+                               "shadow:Sprite2D/modulate/a": [0]}})"));
+    CHECK(engine.ok("animation.eval", R"({"id": "hero", "animation": "fade", "times": [0.25],
+                                          "tracks": ["shadow:Sprite2D/modulate/a"]})") ==
+          parse(R"({"length": 0.5, "loop": "none",
+                    "tracks": {"shadow:Sprite2D/modulate/a": [0.25]}})"));
 
     // step plays it: the frame jumps at its key and the event fires as playback passes it.
     engine.ok("events.subscribe");
