@@ -134,3 +134,29 @@ TEST_CASE("combinators") {
     CHECK(check("1", R"({"allOf": [{"minimum": 0}, {"maximum": 0}]})").size() == 1);
     CHECK(check("1", R"({"not": {"type": "string"}})").empty());
 }
+
+TEST_CASE("an anyOf whose options are told apart by one property reports that option's errors") {
+    const std::string shapes = R"({"anyOf": [
+        {"type": "object", "required": ["kind"], "additionalProperties": false,
+         "properties": {"kind": {"const": "circle"}, "radius": {"type": "number"}}},
+        {"type": "object", "required": ["kind"], "additionalProperties": false,
+         "properties": {"kind": {"const": "square"}, "side": {"type": "number"}}}]})";
+    CHECK(check(R"({"kind": "square", "side": 2})", shapes).empty());
+    const auto wrong = check(R"({"kind": "circle", "radius": "big"})", shapes);
+    REQUIRE(wrong.size() == 1);
+    CHECK(wrong[0].path == "/radius");
+    CHECK(wrong[0].message == "expected number, got string");
+    const auto unknown = check(R"({"kind": "cirle"})", shapes);
+    REQUIRE(unknown.size() == 1);
+    CHECK(unknown[0].path == "/kind");
+    CHECK(unknown[0].message ==
+          R"(expected one of "circle", "square", got "cirle"; did you mean "circle"?)");
+    const auto missing = check(R"({"radius": 1})", shapes);
+    REQUIRE(missing.size() == 1);
+    CHECK(missing[0].message == "missing required property \"kind\"");
+    // Where the property is optional, leaving it out falls back to trying every option.
+    CHECK(check(R"({"radius": 1})", R"({"anyOf": [
+        {"properties": {"kind": {"const": "circle"}}},
+        {"properties": {"kind": {"const": "square"}}}]})")
+              .empty());
+}

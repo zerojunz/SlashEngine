@@ -67,7 +67,9 @@ headless or when no GPU backend works (a warning in the log says why). The windo
 scene's [sprites](scene-format.md#built-in-components) over Godot's default gray, drawn between
 ticks as the game moves (see [`rendering.interpolation`](project-format.md)). The keyboard,
 mouse, touches and gamepads press the [input actions](project-format.md#input-actions) of the
-project folder's `project.json`, or only Godot's `ui_*` actions without one.
+project folder's `project.json`, or only Godot's `ui_*` actions without one. Its
+[sound](scene-format.md#audio) plays on the default output device; with none, a warning says so
+and the game runs silent. Headless runs mix sound but play it nowhere.
 
 With `--serve`, the result also carries the server's `url`, and the game takes the `play` and
 `pause` commands: while paused it keeps serving requests but does not step the world, and
@@ -84,7 +86,9 @@ edited prefab updates its instances and keeps their overrides (see
 Checks a scene, a `.prefab.json` file, a [`.frames.json`](scene-format.md#sprite-frames) file, a
 [`.material.json`](scene-format.md#materials) file, a [`.anim.json`](scene-format.md#animations)
 file, a [`.tileset.json`](scene-format.md#tile-sets) file, a [`.font.json`](scene-format.md#fonts)
-file or a [`.theme.json`](scene-format.md#themes) file and lists every error, each with its JSON
+file, a [`.theme.json`](scene-format.md#themes) file, an
+[`.audio.json`](scene-format.md#audio-streams) file or a
+[`.bus_layout.json`](scene-format.md#bus-layouts) file and lists every error, each with its JSON
 Pointer path. Exit code 1 if the file is invalid. The [prefabs](scene-format.md#prefabs) a file
 extends, the tile sets its layers use and the project's window size and theme are read from its
 project: the nearest folder above it with a `project.json`, else the current folder.
@@ -99,7 +103,8 @@ slash-cli scene validate <file>
 
 For a prefab the result counts its `components` instead of `entities`, for a `.frames.json` or
 `.anim.json` file its `animations`, for a `.tileset.json` file its `tiles`, for a `.theme.json`
-file its `types`, for a `.font.json` file nothing more, and for a `.material.json` file the
+file its `types`, for a `.bus_layout.json` file its `buses`, for a `.font.json` or `.audio.json`
+file nothing more, and for a `.material.json` file the
 `instructions` its graph compiles to, of the 64 a material can run:
 
 ```json
@@ -129,6 +134,13 @@ have:
 {"errors":[{"message":"Label has no colors item \"font_colour\"; did you mean \"font_color\"?","path":"/types/Label/colors/font_colour"}],"valid":false}
 ```
 
+A bus layout's effects must be [types the engine has](scene-format.md#effects), with their
+fields, and each bus must send to a bus before it:
+
+```json
+{"errors":[{"message":"expected one of \"amplify\", \"low_pass_filter\", ... \"stereo_enhance\", got \"revreb\"; did you mean \"reverb\"?","path":"/buses/1/effects/0/type"}],"valid":false}
+```
+
 When the project has a
 [storyboard](storyboard-format.md#storyref), each `StoryRef` ID must name one of its entries:
 
@@ -139,7 +151,7 @@ When the project has a
 ### scene format
 
 Rewrites a scene, prefab, `.frames.json`, `.material.json`, `.anim.json`, `.tileset.json`,
-`.font.json` or `.theme.json` file in [canonical form](scene-format.md#canonical-form).
+`.font.json`, `.theme.json`, `.audio.json` or `.bus_layout.json` file in [canonical form](scene-format.md#canonical-form).
 
 ```bash
 slash-cli scene format <file>
@@ -153,7 +165,9 @@ Prints a JSON Schema: for scene or prefab files (generated from the registered c
 [`.material.json` files](scene-format.md#materials), for
 [`.anim.json` files](scene-format.md#animations), for
 [`.tileset.json` files](scene-format.md#tile-sets), for [`.font.json` files](scene-format.md#fonts),
-for [`.theme.json` files](scene-format.md#themes), for [storyboard files](storyboard-format.md),
+for [`.theme.json` files](scene-format.md#themes), for
+[`.audio.json` files](scene-format.md#audio-streams), for
+[`.bus_layout.json` files](scene-format.md#bus-layouts), for [storyboard files](storyboard-format.md),
 for [`project.json`](project-format.md) or for [`export_presets.json`](project-format.md#export-presets).
 
 ```bash
@@ -165,6 +179,8 @@ slash-cli schema animation
 slash-cli schema tileset
 slash-cli schema font
 slash-cli schema theme
+slash-cli schema audio
+slash-cli schema bus_layout
 slash-cli schema storyboard
 slash-cli schema project
 slash-cli schema presets
@@ -173,7 +189,7 @@ slash-cli schema presets
 ### project validate
 
 Checks a folder's `project.json`, its `export_presets.json` if there is one, the theme its
-`gui.theme` names, and its storyboard with [`storyboard.check`](commands.md#storyboardcheck), and
+`gui.theme` names, the bus layout its `audio.bus_layout` names, and its storyboard with [`storyboard.check`](commands.md#storyboardcheck), and
 lists every error with its file and JSON Pointer path. Exit code 1 if any is invalid. Storyboard warnings, such as a link to a file
 that does not exist yet, are listed under `warnings` and do not fail. The folder defaults to `.`.
 

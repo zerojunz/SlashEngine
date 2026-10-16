@@ -56,6 +56,13 @@
       "repository": "https://github.com/yhirose/cpp-httplib.git",
       "tag": "v0.58.0"
     },
+    "miniaudio": {
+      "license": "MIT-0 OR Unlicense",
+      "license_file": "LICENSE",
+      "license_sha256": "457f1b500e0adf6bc059edddfa78a2f62012e7c3bb43476c20e0bd23b25ba0eb",
+      "repository": "https://github.com/mackron/miniaudio.git",
+      "tag": "0.11.25"
+    },
     "msdfgen": {
       "license": "MIT",
       "license_file": "LICENSE.txt",
