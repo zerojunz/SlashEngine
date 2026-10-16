@@ -3,6 +3,7 @@
 #include "common.hpp"
 
 #include "slash/animation/animation.hpp"
+#include "slash/audio/audio.hpp"
 #include "slash/canvas/debug_draw.hpp"
 #include "slash/canvas/tilemap.hpp"
 #include "slash/core/json.hpp"
@@ -13,10 +14,12 @@
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/scene.hpp"
+#include "slash/world/tree2d.hpp"
 #include "slash/world/world.hpp"
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -24,6 +27,7 @@
 #include <deque>
 #include <functional>
 #include <iterator>
+#include <limits>
 #include <map>
 #include <memory>
 #include <numbers>
@@ -80,6 +84,13 @@ constexpr int kBlendTree = 206;
 constexpr int kSpriteRenderer = 212;
 constexpr int kAnimatorOverrideController = 221;
 constexpr int kRectTransform = 224;
+constexpr int kSpringJoint2D = 231;
+constexpr int kHingeJoint2D = 233;
+constexpr int kSliderJoint2D = 234;
+constexpr int kAudioMixerController = 241;
+constexpr int kAudioMixerGroup = 243;
+constexpr int kAudioMixerEffect = 244;
+constexpr int kAudioMixerSnapshot = 245;
 constexpr int kPlatformEffector2D = 251;
 constexpr int kPrefabInstance = 1001;
 constexpr int kTilemapCollider2D = 19719996;
@@ -809,6 +820,7 @@ public:
         for (const std::string& file : files_) {
             take_file(file);
         }
+        convert_mixers();
         for (const std::string& file : files_) {
             const std::string extension = extension_of(file);
             if (extension == ".prefab" || extension == ".unity") {
@@ -1004,7 +1016,7 @@ private:
         const std::string extension = extension_of(file);
         if (extension == ".meta" || extension == ".unity" || extension == ".prefab" ||
             extension == ".anim" || extension == ".controller" ||
-            extension == ".overridecontroller") {
+            extension == ".overridecontroller" || extension == ".mixer") {
             return; // converted with what uses them
         }
         const bool editor = file.find("/Editor/") != std::string::npos;
@@ -1032,7 +1044,6 @@ private:
                      "material"},
             {".shader", "a game's own shaders are on the roadmap"},
             {".shadergraph", "a game's own shaders are on the roadmap"},
-            {".mixer", "audio mixers convert in a later import (on the roadmap)"},
             {".dll", "compiled plugins don't load; closed SDKs come in as SDK packages (on the "
                      "roadmap)"},
             {".so", "compiled plugins don't load; closed SDKs come in as SDK packages (on the "
@@ -1249,6 +1260,524 @@ private:
         }
         materials_[guid] = material;
         return material;
+    }
+
+    // --- Audio mixers ---
+
+    // A .mixer file: its objects by ID and its start snapshot's values.
+    struct MixerFile {
+        std::string path;
+        std::string guid;
+        std::string name;
+        std::vector<Object> objects;
+        std::map<std::int64_t, const Object*> by_id;
+        const Object* controller = nullptr;
+        std::map<std::string, double> values; // by parameter GUID
+        int groups = 0;
+
+        [[nodiscard]] const Object* find(std::int64_t id, int class_id) const {
+            const auto it = by_id.find(id);
+            return it != by_id.end() && it->second->class_id == class_id ? it->second : nullptr;
+        }
+        [[nodiscard]] double value(const std::string& parameter, double fallback) const {
+            const auto it = values.find(parameter);
+            return it != values.end() ? it->second : fallback;
+        }
+    };
+
+    // A mixer group as the bus it becomes.
+    struct GroupBus {
+        const MixerFile* mixer = nullptr;
+        const Object* group = nullptr;
+        std::string bus;
+        std::string send;
+    };
+
+    // Unity's built-in effects' settings when a snapshot leaves them out, by effect and by
+    // setting name lowercased without spaces or dashes.
+    static double effect_default(std::string_view effect, std::string_view setting) {
+        static const std::map<std::pair<std::string_view, std::string_view>, double> kDefaults{
+            {{"Lowpass", "cutofffreq"}, 5000.0},
+            {{"Lowpass", "resonance"}, 1.0},
+            {{"Highpass", "cutofffreq"}, 5000.0},
+            {{"Highpass", "resonance"}, 1.0},
+            {{"Lowpass Simple", "cutofffreq"}, 5000.0},
+            {{"Highpass Simple", "cutofffreq"}, 5000.0},
+            {{"Echo", "delay"}, 500.0},
+            {{"Echo", "decay"}, 50.0},
+            {{"Echo", "drymix"}, 100.0},
+            {{"Echo", "wetmix"}, 100.0},
+            {{"Distortion", "level"}, 0.5},
+            {{"Chorus", "drymix"}, 0.5},
+            {{"Chorus", "wetmixtap1"}, 0.5},
+            {{"Chorus", "wetmixtap2"}, 0.5},
+            {{"Chorus", "wetmixtap3"}, 0.5},
+            {{"Chorus", "delay"}, 40.0},
+            {{"Chorus", "rate"}, 0.8},
+            {{"Chorus", "depth"}, 0.03},
+            {{"Compressor", "threshold"}, 0.0},
+            {{"Compressor", "attack"}, 50.0},
+            {{"Compressor", "release"}, 50.0},
+            {{"Compressor", "makeupgain"}, 0.0},
+            {{"Duck Volume", "threshold"}, -10.0},
+            {{"Duck Volume", "ratio"}, 2.0},
+            {{"Duck Volume", "attacktime"}, 100.0},
+            {{"Duck Volume", "releasetime"}, 100.0},
+            {{"Duck Volume", "makeupgain"}, 0.0},
+            {{"SFX Reverb", "drylevel"}, 0.0},
+            {{"SFX Reverb", "room"}, 0.0},
+            {{"SFX Reverb", "decaytime"}, 1.0},
+            {{"SFX Reverb", "decayhfratio"}, 0.5},
+            {{"SFX Reverb", "reflectdelay"}, 0.02},
+            {{"SFX Reverb", "reverb"}, 0.0},
+            {{"SFX Reverb", "reverbdelay"}, 0.04},
+        };
+        const auto it = kDefaults.find({effect, setting});
+        return it != kDefaults.end() ? it->second : 0.0;
+    }
+
+    static std::string setting_key(std::string_view name) {
+        std::string key;
+        for (const char c : name) {
+            if (std::isalnum(static_cast<unsigned char>(c)) != 0) {
+                key += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            }
+        }
+        return key;
+    }
+
+    static double db_to_linear(double db) { return std::pow(10.0, db / 20.0); }
+
+    // A list's items, or none for a missing node.
+    static const std::vector<Node>& items_of(const Node* node) {
+        static const std::vector<Node> kNone;
+        return node != nullptr ? node->items : kNone;
+    }
+
+    // One of Unity's mixer effects as a bus effect, or nullopt with why (empty when the effect
+    // is part of the bus rather than one of its effects).
+    std::optional<json::Value> mixer_effect(const MixerFile& mixer, const Node& body,
+                                            const std::string& where,
+                                            const std::vector<std::string>& sidechains,
+                                            std::string& why) {
+        const std::string name = body.string_at("m_EffectName");
+        std::map<std::string, double> settings;
+        if (const Node* parameters = body.get("m_Parameters"); parameters != nullptr) {
+            for (const Node& parameter : parameters->items) {
+                const std::string guid = parameter.string_at("m_GUID");
+                if (const auto it = mixer.values.find(guid); it != mixer.values.end()) {
+                    settings[setting_key(parameter.string_at("m_ParameterName"))] = it->second;
+                }
+            }
+        }
+        const auto setting = [&](std::string_view key) {
+            const auto it = settings.find(std::string(key));
+            return it != settings.end() ? it->second : effect_default(name, key);
+        };
+        json::Value out;
+        if (name == "Lowpass" || name == "Highpass" || name == "Lowpass Simple" ||
+            name == "Highpass Simple") {
+            out["type"] = name.starts_with("Low") ? "low_pass_filter" : "high_pass_filter";
+            out["cutoff_hz"] = tidy(std::clamp(setting("cutofffreq"), 1.0, 20500.0));
+            if (!name.ends_with("Simple")) {
+                const double resonance = setting("resonance");
+                if (resonance > 1.0) {
+                    problems_.add("filter resonance above 1", where,
+                                  "a filter's resonance goes up to 1, as Godot's");
+                }
+                out["resonance"] = tidy(std::clamp(resonance, 0.0, 1.0));
+            }
+        } else if (name == "Echo") {
+            // Echoes that each repeat the last one, decay quieter.
+            const double delay = setting("delay");
+            const double decay = std::clamp(setting("decay") / 100.0, 0.0, 1.0);
+            if (delay > 1500.0) {
+                problems_.add("echo delay above 1500 ms", where,
+                              "a delay's echoes come at most 1500 ms apart, as Godot's");
+            }
+            out["type"] = "delay";
+            out["dry"] = tidy(std::clamp(setting("drymix") / 100.0, 0.0, 1.0));
+            out["tap2_active"] = false;
+            if (decay > 0.0) {
+                out["tap1_active"] = false;
+                out["feedback_active"] = true;
+                out["feedback_delay_ms"] = tidy(std::clamp(delay, 0.0, 1500.0));
+                out["feedback_level_db"] = tidy(std::max(20.0 * std::log10(decay), -60.0));
+            } else {
+                const double wet = std::clamp(setting("wetmix") / 100.0, 0.0, 1.0);
+                out["tap1_delay_ms"] = tidy(std::clamp(delay, 0.0, 1500.0));
+                out["tap1_level_db"] =
+                    wet > 0.0 ? tidy(std::max(20.0 * std::log10(wet), -60.0)) : -60.0;
+                out["tap1_pan"] = 0.0;
+            }
+        } else if (name == "Distortion") {
+            // Unity's distortion is the waveshaper Godot's waveshape mode is.
+            out["type"] = "distortion";
+            out["mode"] = "waveshape";
+            out["drive"] = tidy(std::clamp(setting("level"), 0.0, 1.0));
+            out["keep_hf_hz"] = 20500.0;
+        } else if (name == "Chorus") {
+            const double delay = std::clamp(setting("delay"), 0.0, 50.0);
+            json::Array voices;
+            for (const std::string_view tap : {"wetmixtap1", "wetmixtap2", "wetmixtap3"}) {
+                json::Value voice;
+                voice["delay_ms"] = tidy(delay);
+                voice["rate_hz"] = tidy(std::clamp(setting("rate"), 0.1, 20.0));
+                voice["depth_ms"] =
+                    tidy(std::clamp(std::clamp(setting("depth"), 0.0, 1.0) * delay, 0.0, 20.0));
+                const double level = std::clamp(setting(tap), 0.0, 1.0);
+                voice["level_db"] =
+                    level > 0.0 ? tidy(std::max(20.0 * std::log10(level), -60.0)) : -60.0;
+                voice["pan"] = 0.0;
+                voices.push_back(std::move(voice));
+            }
+            out["type"] = "chorus";
+            out["dry"] = tidy(std::clamp(setting("drymix"), 0.0, 1.0));
+            out["wet"] = 1.0;
+            out["voice_count"] = 3;
+            out["voices"] = std::move(voices);
+        } else if (name == "Compressor" || name == "Duck Volume") {
+            const bool duck = name == "Duck Volume";
+            if (duck && sidechains.empty()) {
+                why = "no group sends to it, so it does nothing";
+                return std::nullopt;
+            }
+            const double attack = setting(duck ? "attacktime" : "attack");
+            if (attack > 2.0) {
+                problems_.add("compressor attack above 2 ms", where,
+                              "a compressor's attack_us goes up to 2000, as Godot's");
+            }
+            // The Duck Volume's ratio may be written as a percentage.
+            double ratio = duck ? setting("ratio") : 2.5;
+            if (ratio > 10.0) {
+                ratio /= 100.0;
+            }
+            out["type"] = "compressor";
+            out["threshold"] = tidy(std::clamp(setting("threshold"), -60.0, 0.0));
+            out["ratio"] = tidy(std::clamp(ratio, 1.0, 48.0));
+            if (const double gain = setting("makeupgain"); gain != 0.0) {
+                out["gain"] = tidy(std::clamp(gain, -20.0, 20.0));
+            }
+            out["attack_us"] = tidy(std::clamp(attack * 1000.0, 20.0, 2000.0));
+            out["release_ms"] =
+                tidy(std::clamp(setting(duck ? "releasetime" : "release"), 20.0, 2000.0));
+            if (duck) {
+                out["sidechain"] = sidechains.front();
+                if (sidechains.size() > 1) {
+                    problems_.add("Duck Volume with sends from several groups", where,
+                                  "the first group that sends to it drives it");
+                }
+            }
+        } else if (name == "SFX Reverb") {
+            // Freeverb's combs, about 1378 samples long at 44.1 kHz, take decay time T when each
+            // pass keeps 10^(-3 * 0.03125 / T) of the sound; Godot's room_size sets that from
+            // 0.7 to 0.98.
+            const double decay = std::clamp(setting("decaytime"), 0.1, 20.0);
+            const double feedback = std::pow(10.0, -3.0 * 0.03125 / decay);
+            out["type"] = "reverb";
+            out["room_size"] = tidy(std::clamp((feedback - 0.7) / 0.28, 0.0, 1.0));
+            out["damping"] = tidy(std::clamp(1.0 - setting("decayhfratio"), 0.0, 1.0));
+            out["dry"] = tidy(std::clamp(db_to_linear(setting("drylevel") / 100.0), 0.0, 1.0));
+            out["wet"] = tidy(
+                std::clamp(db_to_linear((setting("room") + setting("reverb")) / 100.0), 0.0, 1.0));
+            out["predelay_msec"] = tidy(std::clamp(
+                (setting("reflectdelay") + setting("reverbdelay")) * 1000.0, 20.0, 500.0));
+            out["predelay_feedback"] = 0.0;
+        } else if (name == "Attenuation" || name == "Send" || name == "Receive") {
+            why.clear();
+            return std::nullopt;
+        } else {
+            static const std::map<std::string_view, std::string_view> kWhys{
+                {"Flange", "Godot's effects have no flanger"},
+                {"Normalize", "Godot's effects have no normalizer"},
+                {"ParamEQ", "Godot's EQs have fixed bands; one movable band doesn't convert"},
+                {"Pitch Shifter", "pitch shift is on the roadmap"},
+            };
+            const auto it = kWhys.find(name);
+            why = it != kWhys.end() ? std::string(it->second) : "an audio plugin's effect";
+            return std::nullopt;
+        }
+        if (body.flag_at("m_Bypass")) {
+            out["enabled"] = false;
+        }
+        if (body.flag_at("m_EnableWetMix") &&
+            std::abs(mixer.value(body.string_at("m_MixLevel"), 0.0)) > 0.01) {
+            problems_.add("effect wet level", where, "effects run fully wet");
+        }
+        return out;
+    }
+
+    // Reads the project's .mixer files and writes them as one .bus_layout.json file: the mixer
+    // most groups go through gives Master, each group becomes a bus sending to its parent's, and
+    // the start snapshot gives volumes and effect settings.
+    void convert_mixers() {
+        std::map<std::string, std::string> guid_of; // by path
+        for (const auto& [guid, asset] : assets_by_guid_) {
+            guid_of[asset.path] = guid;
+        }
+        std::deque<MixerFile> mixers;
+        for (const std::string& file : files_) {
+            if (extension_of(file) != ".mixer") {
+                continue;
+            }
+            auto text = platform::read_file(source_ + file);
+            auto objects =
+                text ? unity::parse_file(text.value()) : Result<std::vector<Object>>(text.error());
+            if (!objects) {
+                problems_.add("unreadable file", file, objects.error().message);
+                continue;
+            }
+            MixerFile& mixer = mixers.emplace_back();
+            mixer.path = file;
+            mixer.guid = guid_of[file];
+            mixer.objects = std::move(objects.value());
+            for (const Object& object : mixer.objects) {
+                mixer.by_id[object.file_id] = &object;
+                if (object.class_id == kAudioMixerController && mixer.controller == nullptr) {
+                    mixer.controller = &object;
+                }
+                mixer.groups += object.class_id == kAudioMixerGroup ? 1 : 0;
+            }
+            if (mixer.controller == nullptr) {
+                problems_.add("mixer without an AudioMixerController", file);
+                mixers.pop_back();
+                continue;
+            }
+            const Node& body = mixer.controller->body;
+            mixer.name = body.string_at("m_Name");
+            if (mixer.name.empty()) {
+                mixer.name = std::string(file_stem(file));
+            }
+            const auto start = ref_at(body, "m_StartSnapshot");
+            const Object* snapshot =
+                start ? mixer.find(start->file_id, kAudioMixerSnapshot) : nullptr;
+            if (snapshot != nullptr) {
+                if (const Node* values = snapshot->body.get("m_FloatValues"); values != nullptr) {
+                    for (const auto& [guid, value] : values->entries) {
+                        if (const auto number = value.number()) {
+                            mixer.values[guid] = *number;
+                        }
+                    }
+                }
+            }
+            if (const Node* snapshots = body.get("m_Snapshots");
+                snapshots != nullptr && snapshots->items.size() > 1) {
+                std::string others;
+                for (const Node& item : snapshots->items) {
+                    const auto ref = unity::object_ref(item);
+                    const Object* other =
+                        ref ? mixer.find(ref->file_id, kAudioMixerSnapshot) : nullptr;
+                    if (other != nullptr && other != snapshot) {
+                        others.append(others.empty() ? "" : ", ")
+                            .append(other->body.string_at("m_Name"));
+                    }
+                }
+                problems_.add("mixer snapshots", file,
+                              "buses take the start snapshot's values; " + others +
+                                  " don't convert: gameplay code can set the buses instead");
+            }
+            if (const Node* exposed = body.get("m_ExposedParameters");
+                exposed != nullptr && !exposed->items.empty()) {
+                std::string names;
+                for (const Node& item : exposed->items) {
+                    names.append(names.empty() ? "" : ", ").append(item.string_at("name"));
+                }
+                problems_.add("exposed mixer parameters", file,
+                              names + ": scripts that set them set buses with audio.set_bus or "
+                                      "gameplay code instead");
+            }
+        }
+        if (mixers.empty()) {
+            return;
+        }
+        // Master comes from the mixer that outputs nowhere else and has the most groups.
+        MixerFile* primary = nullptr;
+        for (MixerFile& mixer : mixers) {
+            const auto output = ref_at(mixer.controller->body, "m_OutputGroup");
+            if ((!output || output->null()) &&
+                (primary == nullptr || mixer.groups > primary->groups)) {
+                primary = &mixer;
+            }
+        }
+        if (primary == nullptr) {
+            primary = &mixers.front();
+        }
+        std::vector<GroupBus> buses;
+        std::set<std::string> taken{"Master"};
+        std::map<std::pair<const MixerFile*, std::int64_t>, std::size_t> bus_of; // group: bus
+        json::Value groups = json::Object{};
+        std::function<void(const MixerFile&, std::int64_t, const std::string&, std::string,
+                           const std::string&)>
+            walk = [&](const MixerFile& mixer, std::int64_t id, const std::string& send,
+                       std::string name, const std::string& above) {
+                const Object* group = mixer.find(id, kAudioMixerGroup);
+                if (group == nullptr || bus_of.contains({&mixer, id})) {
+                    return;
+                }
+                const std::string own = group->body.string_at("m_Name");
+                if (name.empty()) {
+                    name = own.empty() ? std::string("Bus") : own;
+                    for (int n = 2; !taken.insert(name).second; ++n) {
+                        name = (own.empty() ? std::string("Bus") : own) + " " + std::to_string(n);
+                    }
+                }
+                const std::string path = above.empty() ? own : above + "/" + own;
+                groups[mixer.path][path] = name;
+                mixer_buses_[mixer.guid][id] = name;
+                bus_of[{&mixer, id}] = buses.size();
+                buses.push_back(
+                    GroupBus{.mixer = &mixer, .group = group, .bus = name, .send = send});
+                if (const Node* children = group->body.get("m_Children"); children != nullptr) {
+                    for (const Node& child : children->items) {
+                        if (const auto ref = unity::object_ref(child)) {
+                            walk(mixer, ref->file_id, name, {}, path);
+                        }
+                    }
+                }
+            };
+        const auto master_of = [](const MixerFile& mixer) {
+            const auto ref = ref_at(mixer.controller->body, "m_MasterGroup");
+            return ref ? ref->file_id : 0;
+        };
+        walk(*primary, master_of(*primary), {}, "Master", {});
+        // The other mixers' Masters send to the group each outputs to, once it has a bus.
+        std::vector<MixerFile*> waiting;
+        for (MixerFile& mixer : mixers) {
+            if (&mixer != primary) {
+                waiting.push_back(&mixer);
+            }
+        }
+        for (bool progress = true; progress && !waiting.empty();) {
+            progress = false;
+            for (auto it = waiting.begin(); it != waiting.end();) {
+                const MixerFile& mixer = **it;
+                const auto output = ref_at(mixer.controller->body, "m_OutputGroup");
+                std::string send = "Master";
+                if (output && !output->null()) {
+                    const auto target = std::ranges::find_if(
+                        mixers, [&](const MixerFile& other) { return other.guid == output->guid; });
+                    const bool pending = target != mixers.end() &&
+                                         std::ranges::find(waiting, &*target) != waiting.end();
+                    if (pending) {
+                        ++it;
+                        continue;
+                    }
+                    if (const auto bus = target != mixers.end()
+                                             ? bus_of.find({&*target, output->file_id})
+                                             : bus_of.end();
+                        bus != bus_of.end()) {
+                        send = buses[bus->second].bus;
+                    } else {
+                        problems_.add("mixer output group", mixer.path,
+                                      "it outputs to a group that didn't convert, so it sends to "
+                                      "Master");
+                    }
+                }
+                std::string name = mixer.name;
+                for (int n = 2; !taken.insert(name).second; ++n) {
+                    name = mixer.name + " " + std::to_string(n);
+                }
+                walk(mixer, master_of(mixer), send, name, {});
+                it = waiting.erase(it);
+                progress = true;
+            }
+        }
+        for (const MixerFile* mixer : waiting) { // outputs that loop back
+            std::string name = mixer->name;
+            for (int n = 2; !taken.insert(name).second; ++n) {
+                name = mixer->name + " " + std::to_string(n);
+            }
+            walk(*mixer, master_of(*mixer), "Master", name, {});
+        }
+        // Sends that drive a Duck Volume become its compressor's sidechain; others are reported.
+        std::map<const Object*, std::vector<std::string>> sidechains;
+        for (const GroupBus& bus : buses) {
+            for (const Node& item : items_of(bus.group->body.get("m_Effects"))) {
+                const auto ref = unity::object_ref(item);
+                const Object* effect =
+                    ref ? bus.mixer->find(ref->file_id, kAudioMixerEffect) : nullptr;
+                if (effect == nullptr || effect->body.string_at("m_EffectName") != "Send" ||
+                    bus.mixer->value(effect->body.string_at("m_MixLevel"), -80.0) <= -79.99) {
+                    continue; // a send at -80 dB sends nothing
+                }
+                const auto target = ref_at(effect->body, "m_SendTarget");
+                const Object* to =
+                    target ? bus.mixer->find(target->file_id, kAudioMixerEffect) : nullptr;
+                if (to != nullptr && to->body.string_at("m_EffectName") == "Duck Volume") {
+                    sidechains[to].push_back(bus.bus);
+                } else {
+                    problems_.add("mixer send", bus.mixer->path + ": " + bus.bus,
+                                  "each bus sends to one bus, so sends to a Receive don't "
+                                  "convert");
+                }
+            }
+        }
+        json::Array list;
+        for (const GroupBus& bus : buses) {
+            const Node& body = bus.group->body;
+            const std::string where = bus.mixer->path + ": " + bus.bus;
+            json::Value out;
+            out["name"] = bus.bus;
+            const double volume = bus.mixer->value(body.string_at("m_Volume"), 0.0);
+            if (volume != 0.0) {
+                out["volume_db"] = tidy(std::clamp(volume, -80.0, 24.0));
+            }
+            if (std::abs(bus.mixer->value(body.string_at("m_Pitch"), 100.0) - 100.0) > 0.01) {
+                problems_.add("mixer group pitch", where, "buses have no pitch");
+            }
+            if (body.flag_at("m_Solo")) {
+                out["solo"] = true;
+            }
+            if (body.flag_at("m_Mute")) {
+                out["mute"] = true;
+            }
+            if (body.flag_at("m_BypassEffects")) {
+                out["bypass_effects"] = true;
+            }
+            if (!bus.send.empty() && bus.send != "Master") {
+                out["send"] = bus.send;
+            }
+            bool after_fader = false;
+            for (const Node& item : items_of(body.get("m_Effects"))) {
+                const auto ref = unity::object_ref(item);
+                const Object* effect =
+                    ref ? bus.mixer->find(ref->file_id, kAudioMixerEffect) : nullptr;
+                if (effect == nullptr) {
+                    continue;
+                }
+                if (effect->body.string_at("m_EffectName") == "Attenuation") {
+                    after_fader = true;
+                    continue;
+                }
+                std::string why;
+                const auto found = sidechains.find(effect);
+                auto converted = mixer_effect(
+                    *bus.mixer, effect->body, where,
+                    found != sidechains.end() ? found->second : std::vector<std::string>{}, why);
+                if (!converted) {
+                    if (!why.empty()) {
+                        problems_.add("mixer effect " + effect->body.string_at("m_EffectName"),
+                                      where, why);
+                    }
+                    continue;
+                }
+                if (after_fader && volume != 0.0) {
+                    problems_.add("effect after the fader", where,
+                                  "a bus runs its effects before its volume");
+                }
+                out["effects"].push_back(std::move(*converted));
+            }
+            list.push_back(std::move(out));
+        }
+        json::Value doc;
+        doc["format"] = 1;
+        doc["buses"] = std::move(list);
+        bus_layout_ =
+            destination(without_extension(primary->path) + std::string(audio::kBusLayoutSuffix));
+        keep_valid(doc, bus_layout_,
+                   [](const json::Value& value) { return audio::validate_bus_layout(value); });
+        add_file(bus_layout_, json::write(doc) + "\n");
+        bus_groups_ = std::move(groups);
     }
 
     // --- Scenes and prefabs, with the prefabs they instance ---
@@ -1771,6 +2300,7 @@ private:
         const Component* rigidbody = nullptr;
         const Component* effector = nullptr;
         const Component* composite = nullptr;
+        std::vector<const Component*> found_joints;
         TileMapParts tiles;
         for (const Component& component : go.components) {
             switch (component.class_id) {
@@ -1806,6 +2336,11 @@ private:
                 break;
             case kCompositeCollider2D:
                 composite = &component;
+                break;
+            case kHingeJoint2D:
+            case kSpringJoint2D:
+            case kSliderJoint2D:
+                found_joints.push_back(&component);
                 break;
             case kGrid:
                 break; // read by the tile maps under it
@@ -1850,6 +2385,7 @@ private:
                           "the colliders it merges stay separate shapes");
         }
         physics(ctx, rigidbody, colliders, effector, out);
+        joints(ctx, found_joints, rigidbody, out);
         return out;
     }
 
@@ -1872,29 +2408,44 @@ private:
             return "3D comes with milestone 7";
         }
         if (type.find("Joint2D") != std::string_view::npos) {
-            return "2D joints from Unity convert in a later import";
+            return "Godot's joints are PinJoint2D, DampedSpringJoint2D and GrooveJoint2D, which "
+                   "HingeJoint2D, SpringJoint2D and SliderJoint2D become";
         }
         return {};
+    }
+
+    // Unity's angles go counterclockwise with y up; SlashEngine's clockwise with y down.
+    static double z_angle(const Node& transform) {
+        const double qx = transform.number_at("m_LocalRotation.x");
+        const double qy = transform.number_at("m_LocalRotation.y");
+        const double qz = transform.number_at("m_LocalRotation.z");
+        const double qw = transform.number_at("m_LocalRotation.w", 1.0);
+        return -std::atan2(2.0 * ((qw * qz) + (qx * qy)), 1.0 - (2.0 * ((qy * qy) + (qz * qz))));
     }
 
     json::Value transform_2d(const Node& transform, const std::string& where) {
         json::Value out;
         out["position"] = pair(transform.number_at("m_LocalPosition.x") * ppu_,
                                -transform.number_at("m_LocalPosition.y") * ppu_);
-        const double qx = transform.number_at("m_LocalRotation.x");
-        const double qy = transform.number_at("m_LocalRotation.y");
-        const double qz = transform.number_at("m_LocalRotation.z");
-        const double qw = transform.number_at("m_LocalRotation.w", 1.0);
-        if (std::abs(qx) > 1e-6 || std::abs(qy) > 1e-6) {
+        if (std::abs(transform.number_at("m_LocalRotation.x")) > 1e-6 ||
+            std::abs(transform.number_at("m_LocalRotation.y")) > 1e-6) {
             problems_.add("rotation about x or y", where,
                           "2D objects turn about z only; the rest is dropped");
         }
-        // Unity's angles go counterclockwise with y up; SlashEngine's clockwise with y down.
-        const double angle =
-            std::atan2(2.0 * ((qw * qz) + (qx * qy)), 1.0 - (2.0 * ((qy * qy) + (qz * qz))));
-        out["rotation"] = tidy_angle(-angle);
+        out["rotation"] = tidy_angle(z_angle(transform));
         out["scale"] = json::Array{transform.number_at("m_LocalScale.x", 1.0),
                                    transform.number_at("m_LocalScale.y", 1.0)};
+        return out;
+    }
+
+    // The same as a Transform2D, for working out where things are.
+    [[nodiscard]] world::Transform2D local_2d(const Node& transform) const {
+        world::Transform2D out;
+        out.position = {static_cast<float>(transform.number_at("m_LocalPosition.x") * ppu_),
+                        static_cast<float>(-transform.number_at("m_LocalPosition.y") * ppu_)};
+        out.rotation = static_cast<float>(z_angle(transform));
+        out.scale = {static_cast<float>(transform.number_at("m_LocalScale.x", 1.0)),
+                     static_cast<float>(transform.number_at("m_LocalScale.y", 1.0))};
         return out;
     }
 
@@ -2076,8 +2627,21 @@ private:
             out.components["AudioStreamPlayer"] = std::move(player);
         }
         if (const auto group = ref_at(body, "OutputAudioMixerGroup"); group && !group->null()) {
-            problems_.add("audio mixer group", ctx.where,
-                          "audio mixers convert in a later import; the sound plays on Master");
+            const std::string* bus = nullptr;
+            if (const auto mixer = mixer_buses_.find(group->guid); mixer != mixer_buses_.end()) {
+                if (const auto it = mixer->second.find(group->file_id); it != mixer->second.end()) {
+                    bus = &it->second;
+                }
+            }
+            if (bus == nullptr) {
+                problems_.add("audio mixer group", ctx.where,
+                              "a group of a mixer that didn't convert; the sound plays on Master");
+            } else if (*bus != "Master") {
+                const char* kind = out.components.contains("AudioStreamPlayer2D")
+                                       ? "AudioStreamPlayer2D"
+                                       : "AudioStreamPlayer";
+                out.components[kind]["bus"] = *bus;
+            }
         }
     }
 
@@ -2479,6 +3043,212 @@ private:
             ++trigger_count;
             out.added.emplace_back(trigger_count == 1 ? std::string("trigger")
                                                       : "trigger_" + std::to_string(trigger_count),
+                                   std::move(added));
+        }
+    }
+
+    // --- Joints ---
+
+    // Where an object's own points are in its scene, in pixels: its transform after its parents'.
+    [[nodiscard]] world::Affine2D placed(const Expanded& file, int index) const {
+        world::Affine2D out;
+        for (int at = index, depth = 0; at >= 0 && depth < 256;
+             at = file.objects[static_cast<std::size_t>(at)].parent, ++depth) {
+            if (const Component* transform =
+                    transform_of(file.objects[static_cast<std::size_t>(at)])) {
+                out = world::affine(local_2d(transform->body)) * out;
+            }
+        }
+        return out;
+    }
+
+    // A point written in Unity's units, in pixels with y down.
+    [[nodiscard]] Vec2 units_at(const Node& node, const std::string& key) const {
+        return {static_cast<float>(node.number_at(key + ".x") * ppu_),
+                static_cast<float>(-node.number_at(key + ".y") * ppu_)};
+    }
+
+    // Sets a joint entity's Transform2D, in its object's space, so the joint's y axis runs from
+    // origin to origin + span in the scene; returns how many of the joint's own pixels a scene
+    // pixel along it is.
+    static double aim(json::Value& transform, const world::Affine2D& object, Vec2 origin,
+                      Vec2 span) {
+        const world::Affine2D inverse = object.inverse();
+        const Vec2 start = inverse.apply(origin);
+        const double length = std::hypot(span.x, span.y);
+        const Vec2 unit = length > 0.0 ? span * static_cast<float>(1.0 / length) : Vec2{0.0F, 1.0F};
+        const Vec2 along = inverse.apply(origin + unit) - start;
+        transform["position"] = pair(start.x, start.y);
+        transform["rotation"] = tidy_angle(std::atan2(-along.x, along.y));
+        return std::hypot(along.x, along.y);
+    }
+
+    static double mass_of(const GameObject& go) {
+        for (const Component& component : go.components) {
+            if (component.class_id == kRigidbody2D) {
+                return component.body.integer_at("m_BodyType", 0) == 0
+                           ? std::max(component.body.number_at("m_Mass", 1.0), 0.0)
+                           : 0.0;
+            }
+        }
+        return 0.0;
+    }
+
+    // Unity's HingeJoint2D, SpringJoint2D and SliderJoint2D as Godot's PinJoint2D,
+    // DampedSpringJoint2D and GrooveJoint2D, each on an entity under the joint's object. The
+    // joint joins the connected body (or the world) as node_a to the object's own body as
+    // node_b, so Unity's joint angles keep their sign with y down.
+    void joints(const Context& ctx, const std::vector<const Component*>& found,
+                const Component* rigidbody, Converted& out) {
+        const Expanded& file = *ctx.file;
+        const GameObject& go = file.objects[static_cast<std::size_t>(ctx.index)];
+        std::map<std::string, int> counts;
+        for (const Component* joint : found) {
+            const Node& body = joint->body;
+            if (!body.flag_at("m_Enabled", true)) {
+                problems_.add("disabled " + joint->type, ctx.where,
+                              "joints can't be disabled, so it isn't converted");
+                continue;
+            }
+            if (rigidbody == nullptr) {
+                problems_.add(joint->type + " without a Rigidbody2D", ctx.where);
+                continue;
+            }
+            const world::Affine2D object = placed(file, ctx.index);
+            const Vec2 local_anchor = units_at(body, "m_Anchor");
+            const Vec2 anchor = object.apply(local_anchor);
+            json::Value fields;
+            fields["node_a"] = nullptr;
+            int other = -1;
+            if (const auto ref = ref_at(body, "m_ConnectedRigidBody"); ref && !ref->null()) {
+                if (const auto at = file.components.find(file.resolve(ref->file_id));
+                    at != file.components.end()) {
+                    other = at->second.first;
+                    fields["node_a"] = file.objects[static_cast<std::size_t>(other)].entity;
+                } else {
+                    problems_.add("joint to a missing body", ctx.where,
+                                  "it joins the body to the world");
+                }
+            }
+            fields["node_b"] = go.entity;
+            Vec2 connected = anchor;
+            if (!body.flag_at("m_AutoConfigureConnectedAnchor")) {
+                const Vec2 local = units_at(body, "m_ConnectedAnchor");
+                connected = other >= 0 ? placed(file, other).apply(local) : local;
+            }
+            if (body.flag_at("m_EnableCollision")) {
+                fields["disable_collision"] = false;
+            }
+            constexpr double kForever = std::numeric_limits<double>::infinity();
+            if (std::isfinite(body.number_at("m_BreakForce", kForever)) ||
+                std::isfinite(body.number_at("m_BreakTorque", kForever))) {
+                problems_.add("breakable joint", ctx.where,
+                              "joints don't break; gameplay code can destroy one");
+            }
+            json::Value transform;
+            std::string component;
+            std::string purpose;
+            if (joint->class_id == kHingeJoint2D) {
+                component = "PinJoint2D";
+                purpose = "hinge";
+                transform["position"] = pair(local_anchor.x, local_anchor.y);
+                if (std::hypot(anchor.x - connected.x, anchor.y - connected.y) > 0.5) {
+                    problems_.add("joint anchors apart", ctx.where,
+                                  "it pins the bodies where its anchor is; Unity pulls the "
+                                  "connected anchor to it");
+                }
+                if (body.flag_at("m_UseLimits")) {
+                    const double lower =
+                        body.number_at("m_AngleLimits.m_LowerAngle") * std::numbers::pi / 180.0;
+                    const double upper =
+                        body.number_at("m_AngleLimits.m_UpperAngle") * std::numbers::pi / 180.0;
+                    if (lower > 0.0 || upper < 0.0) {
+                        problems_.add("hinge limits on one side of where it starts", ctx.where,
+                                      "limits keep the angle it starts at between them, as "
+                                      "Godot's");
+                    }
+                    fields["angular_limit_enabled"] = true;
+                    fields["angular_limit_lower"] = tidy_angle(std::clamp(lower, -3.1, 0.0));
+                    fields["angular_limit_upper"] = tidy_angle(std::clamp(upper, 0.0, 3.1));
+                }
+                if (body.flag_at("m_UseMotor")) {
+                    fields["motor_enabled"] = true;
+                    fields["motor_target_velocity"] = tidy_angle(
+                        body.number_at("m_Motor.m_MotorSpeed") * std::numbers::pi / 180.0);
+                }
+            } else if (joint->class_id == kSpringJoint2D) {
+                component = "DampedSpringJoint2D";
+                purpose = "spring";
+                // From the connected anchor to the object's.
+                const double scale = aim(transform, object, connected, anchor - connected);
+                const double length =
+                    std::hypot(anchor.x - connected.x, anchor.y - connected.y) * scale;
+                fields["length"] = tidy(length);
+                if (!body.flag_at("m_AutoConfigureDistance")) {
+                    fields["rest_length"] =
+                        tidy(std::max(body.number_at("m_Distance") * ppu_, 0.01));
+                }
+                // Unity's frequency and damping ratio, as the stiffness and damping that give
+                // them for the bodies' masses.
+                const double mass_a =
+                    other >= 0 ? mass_of(file.objects[static_cast<std::size_t>(other)]) : 0.0;
+                const double mass_b = mass_of(go);
+                const double mass =
+                    std::max(mass_a > 0.0 && mass_b > 0.0 ? mass_a * mass_b / (mass_a + mass_b)
+                                                          : std::max(mass_a, mass_b),
+                             1e-3);
+                double frequency = body.number_at("m_Frequency", 1.0);
+                if (frequency <= 0.0) {
+                    problems_.add("spring with frequency 0", ctx.where,
+                                  "a stiff spring at 15 Hz stands in for Unity's rigid one");
+                    frequency = 15.0;
+                }
+                const double omega = 2.0 * std::numbers::pi * frequency;
+                const double stiffness = mass * omega * omega;
+                fields["stiffness"] = tidy(stiffness);
+                fields["damping"] =
+                    tidy(2.0 * std::clamp(body.number_at("m_DampingRatio"), 0.0, 1.0) *
+                         std::sqrt(stiffness * mass));
+            } else {
+                component = "GrooveJoint2D";
+                purpose = "slider";
+                // Unity's angle is counterclockwise from x with y up.
+                const double angle = body.number_at("m_Angle") * std::numbers::pi / 180.0;
+                const Vec2 axis{static_cast<float>(std::cos(angle)),
+                                static_cast<float>(-std::sin(angle))};
+                const Vec2 offset = anchor - connected;
+                const double at = (offset.x * axis.x) + (offset.y * axis.y);
+                double lower = at - 10000.0;
+                double upper = at + 10000.0;
+                if (body.flag_at("m_UseLimits")) {
+                    lower = body.number_at("m_TranslationLimits.m_LowerTranslation") * ppu_;
+                    upper = body.number_at("m_TranslationLimits.m_UpperTranslation") * ppu_;
+                    if (lower > upper) {
+                        std::swap(lower, upper);
+                    }
+                } else {
+                    problems_.add("SliderJoint2D without limits", ctx.where,
+                                  "it slides along a groove 20000 pixels long");
+                }
+                const Vec2 start = connected + (axis * static_cast<float>(lower));
+                const double scale =
+                    aim(transform, object, start, axis * static_cast<float>(upper - lower));
+                fields["length"] = tidy((upper - lower) * scale);
+                fields["initial_offset"] = tidy(std::clamp(at - lower, 0.0, upper - lower) * scale);
+                if ((rigidbody->body.integer_at("m_Constraints", 0) & 4) == 0) {
+                    problems_.add("SliderJoint2D", ctx.where,
+                                  "the body turns freely along the groove, as on Godot's "
+                                  "GrooveJoint2D; freezing its rotation keeps it straight");
+                }
+                if (body.flag_at("m_UseMotor")) {
+                    problems_.add("SliderJoint2D motor", ctx.where, "a GrooveJoint2D has no motor");
+                }
+            }
+            const int count = ++counts[purpose];
+            json::Object added;
+            added["Transform2D"] = std::move(transform);
+            added[component] = std::move(fields);
+            out.added.emplace_back(count == 1 ? purpose : purpose + "_" + std::to_string(count),
                                    std::move(added));
         }
     }
@@ -4546,6 +5316,9 @@ private:
             project["rendering"]["texture_filter"] =
                 nearest_textures_ > linear_textures_ ? "nearest" : "linear";
         }
+        if (!bus_layout_.empty()) {
+            project["audio"]["bus_layout"] = bus_layout_;
+        }
         if (const auto quality = settings("QualitySettings.asset", "QualitySettings")) {
             const std::int64_t current = quality->integer_at("m_CurrentQuality", 0);
             if (const Node* levels = quality->get("m_QualitySettings");
@@ -4984,6 +5757,10 @@ private:
         if (!animation.as_object().empty()) {
             report["animation_libraries"] = std::move(animation);
         }
+        if (!bus_layout_.empty()) {
+            report["bus_layout"]["path"] = bus_layout_;
+            report["bus_layout"]["groups"] = bus_groups_;
+        }
         json::Array unsupported = problems_.to_json();
         report["unsupported"] = unsupported;
         add_file(std::string(kReportFile), json::write(report) + "\n");
@@ -5001,6 +5778,7 @@ private:
         out["converted"]["tile_sets"] = static_cast<std::int64_t>(std::ranges::count_if(
             tile_sets_, [](const TileSetOut& set) { return !set.path.empty(); }));
         out["converted"]["animation_libraries"] = animation_libraries_;
+        out["converted"]["bus_layouts"] = bus_layout_.empty() ? 0 : 1;
         out["converted"]["input_actions"] = input_actions_;
         out["converted"]["assets"] = assets_;
         out["scripts"] = std::move(summary);
@@ -5059,6 +5837,9 @@ private:
     std::map<std::string, LibraryOut> libraries_; // by controller GUID
     std::set<std::string> library_paths_;
     int animation_libraries_ = 0;
+    std::map<std::string, std::map<std::int64_t, std::string>> mixer_buses_; // by mixer GUID
+    std::string bus_layout_;
+    json::Value bus_groups_; // the buses' names, by mixer and group
 };
 
 } // namespace

@@ -887,6 +887,237 @@ void write_frogs(const fs::path& folder) {
     write(folder / "Assets/Scenes/Frogs.unity.meta", meta("a1000000000000000000000000000019"));
 }
 
+constexpr std::string_view kMainMixer = "a100000000000000000000000000001a";
+constexpr std::string_view kUiMixer = "a100000000000000000000000000001b";
+
+std::string
+mixer_group(std::int64_t object, std::string_view name, std::string_view children,
+            std::string_view volume, std::string_view effects,
+            std::string_view flags = "  m_Mute: 0\n  m_Solo: 0\n  m_BypassEffects: 0\n") {
+    return "--- !u!243 &" + id(object) + "\nAudioMixerGroupController:\n" + std::string(kSource) +
+           "  m_Name: " + std::string(name) + "\n  m_AudioMixer: {fileID: 24100000}\n" +
+           "  m_GroupID: 1000000000000000000000000000" + id(object % 10000) +
+           "\n  m_Children:" + std::string(children) + "\n  m_Volume: " + std::string(volume) +
+           "\n  m_Pitch: 3" + std::string(volume).substr(1) +
+           "\n  m_Send: 00000000000000000000000000000000\n  m_Effects:\n" + std::string(effects) +
+           "  m_UserColorIndex: 0\n" + std::string(flags);
+}
+
+// A mixer effect with its settings' GUIDs, "name:GUID" pairs.
+std::string mixer_effect(std::int64_t object, std::string_view name,
+                         std::initializer_list<std::string_view> settings,
+                         std::string_view more = "  m_SendTarget: {fileID: 0}\n  m_Bypass: 0\n") {
+    std::string out = "--- !u!244 &" + id(object) + "\nAudioMixerEffectController:\n" +
+                      std::string(kSource) + "  m_Name: \n  m_EffectID: 40000000000000000000" +
+                      id(object) + "\n  m_EffectName: " + std::string(name) +
+                      "\n  m_MixLevel: 5000000000000000000000" + id(object) + "\n  m_Parameters:";
+    if (settings.size() == 0) {
+        out += " []";
+    }
+    for (const std::string_view setting : settings) {
+        const auto colon = setting.find(':');
+        out += "\n  - m_ParameterName: " + std::string(setting.substr(0, colon)) +
+               "\n    m_GUID: " + std::string(setting.substr(colon + 1));
+    }
+    return out + "\n  m_EnableWetMix: 0\n" + std::string(more);
+}
+
+std::string mixer_controller(std::string_view name, std::string_view output,
+                             std::string_view snapshots) {
+    return std::string(kHeader) + "--- !u!241 &24100000\nAudioMixerController:\n" +
+           std::string(kSource) + "  m_Name: " + std::string(name) +
+           "\n  m_OutputGroup: " + std::string(output) +
+           "\n  m_MasterGroup: {fileID: 24300002}\n  m_Snapshots:" + std::string(snapshots) +
+           "\n  m_StartSnapshot: {fileID: 24500006}\n  m_ExposedParameters: []\n";
+}
+
+std::string mixer_snapshot(std::int64_t object, std::string_view name, std::string_view values) {
+    return "--- !u!245 &" + id(object) + "\nAudioMixerSnapshotController:\n" +
+           std::string(kSource) + "  m_Name: " + std::string(name) +
+           "\n  m_AudioMixer: {fileID: 24100000}\n  m_FloatValues:" + std::string(values) +
+           "\n  m_TransitionOverrides: {}\n";
+}
+
+std::string rigidbody(std::int64_t object, std::int64_t owner, int type, std::string_view mass) {
+    return component(50, "Rigidbody2D", object, owner,
+                     "  m_BodyType: " + std::to_string(type) +
+                         "\n  m_Simulated: 1\n  m_UseAutoMass: 0\n  m_Mass: " + std::string(mass) +
+                         "\n  m_LinearDrag: 0\n  m_AngularDrag: 0\n  m_GravityScale: 1\n"
+                         "  m_SleepingMode: 1\n  m_CollisionDetection: 0\n  m_Constraints: 0\n");
+}
+
+std::string joint(int class_id, std::string_view type, std::int64_t object, std::int64_t owner,
+                  std::string_view connected, std::string_view fields) {
+    return component(class_id, type, object, owner,
+                     "  m_EnableCollision: 0\n  m_ConnectedRigidBody: " + std::string(connected) +
+                         "\n  m_BreakForce: Infinity\n  m_BreakTorque: Infinity\n" +
+                         std::string(fields));
+}
+
+// "Mill": two audio mixers, the second sending into the first, sounds on their groups, and a
+// scene of bodies on joints.
+void write_mill(const fs::path& folder) {
+    std::string main =
+        mixer_controller("Main", "{fileID: 0}", "\n  - {fileID: 24500006}\n  - {fileID: 24500007}");
+    main += mixer_group(24300002, "Master", "\n  - {fileID: 24300010}\n  - {fileID: 24300020}",
+                        "2b000000000000000000000000000001",
+                        "  - {fileID: 24400004}\n  - {fileID: 24400032}\n");
+    // Music ducks under what SFX sends it, then a low pass after its fader.
+    main += mixer_group(24300010, "Music", " []", "2b000000000000000000000000000002",
+                        "  - {fileID: 24400012}\n  - {fileID: 24400011}\n  - {fileID: 24400013}\n");
+    main +=
+        mixer_group(24300020, "SFX", "\n  - {fileID: 24300030}", "2b000000000000000000000000000003",
+                    "  - {fileID: 24400021}\n  - {fileID: 24400022}\n  - {fileID: 24400024}\n"
+                    "  - {fileID: 24400025}\n  - {fileID: 24400026}\n  - {fileID: 24400027}\n"
+                    "  - {fileID: 24400028}\n  - {fileID: 24400029}\n  - {fileID: 24400030}\n"
+                    "  - {fileID: 24400031}\n  - {fileID: 24400033}\n");
+    main += mixer_group(24300030, "Footsteps", " []", "2b000000000000000000000000000004",
+                        "  - {fileID: 24400041}\n  - {fileID: 24400042}\n",
+                        "  m_Mute: 1\n  m_Solo: 1\n  m_BypassEffects: 1\n");
+    for (const std::int64_t attenuation : {24400004, 24400011, 24400021, 24400041}) {
+        main += mixer_effect(attenuation, "Attenuation", {});
+    }
+    main += mixer_effect(24400012, "Duck Volume",
+                         {"Threshold:6f000000000000000000000000000001",
+                          "Ratio:6f000000000000000000000000000002",
+                          "Attack Time:6f000000000000000000000000000003",
+                          "Release Time:6f000000000000000000000000000004",
+                          "Make-up Gain:6f000000000000000000000000000005"});
+    main +=
+        mixer_effect(24400013, "Lowpass Simple", {"Cutoff freq:6f000000000000000000000000000006"});
+    main += mixer_effect(24400022, "Lowpass",
+                         {"Cutoff freq:6f000000000000000000000000000007",
+                          "Resonance:6f000000000000000000000000000008"});
+    main += mixer_effect(
+        24400024, "Echo",
+        {"Delay:6f000000000000000000000000000009", "Decay:6f000000000000000000000000000010",
+         "Drymix:6f000000000000000000000000000011", "Wetmix:6f000000000000000000000000000012"});
+    main += mixer_effect(24400025, "Compressor",
+                         {"Threshold:6f000000000000000000000000000013",
+                          "Attack:6f000000000000000000000000000014",
+                          "Release:6f000000000000000000000000000015",
+                          "Make up gain:6f000000000000000000000000000016"});
+    main += mixer_effect(
+        24400026, "SFX Reverb",
+        {"Dry Level:6f000000000000000000000000000017", "Room:6f000000000000000000000000000018",
+         "Decay Time:6f000000000000000000000000000019", "Reverb:6f000000000000000000000000000020"});
+    main += mixer_effect(24400027, "Distortion", {"Level:6f000000000000000000000000000021"},
+                         "  m_SendTarget: {fileID: 0}\n  m_Bypass: 1\n");
+    main += mixer_effect(24400028, "Chorus", {});
+    main += mixer_effect(24400029, "Flange", {});
+    // Sends: to the Duck Volume at -3 dB, to Master's Receive at -10 dB, and one left at -80.
+    main +=
+        mixer_effect(24400030, "Send", {}, "  m_SendTarget: {fileID: 24400012}\n  m_Bypass: 0\n");
+    main +=
+        mixer_effect(24400031, "Send", {}, "  m_SendTarget: {fileID: 24400032}\n  m_Bypass: 0\n");
+    main +=
+        mixer_effect(24400033, "Send", {}, "  m_SendTarget: {fileID: 24400032}\n  m_Bypass: 0\n");
+    main += mixer_effect(24400032, "Receive", {});
+    main += mixer_effect(24400042, "Pitch Shifter", {});
+    main += mixer_snapshot(24500006, "Snapshot",
+                           "\n    2b000000000000000000000000000002: -10"
+                           "\n    3b000000000000000000000000000004: 50"
+                           "\n    6f000000000000000000000000000001: -20"
+                           "\n    6f000000000000000000000000000002: 3"
+                           "\n    6f000000000000000000000000000003: 1"
+                           "\n    6f000000000000000000000000000004: 200"
+                           "\n    6f000000000000000000000000000007: 1200"
+                           "\n    6f000000000000000000000000000008: 3"
+                           "\n    6f000000000000000000000000000009: 300"
+                           "\n    6f000000000000000000000000000010: 25"
+                           "\n    6f000000000000000000000000000011: 80"
+                           "\n    6f000000000000000000000000000013: -12"
+                           "\n    6f000000000000000000000000000014: 50"
+                           "\n    6f000000000000000000000000000015: 100"
+                           "\n    6f000000000000000000000000000016: 3"
+                           "\n    6f000000000000000000000000000017: -100"
+                           "\n    6f000000000000000000000000000018: -600"
+                           "\n    6f000000000000000000000000000019: 2"
+                           "\n    6f000000000000000000000000000020: 200"
+                           "\n    6f000000000000000000000000000021: 0.25"
+                           "\n    500000000000000000000024400030: -3"
+                           "\n    500000000000000000000024400031: -10");
+    main += mixer_snapshot(24500007, "Quiet", "\n    2b000000000000000000000000000001: -20");
+    write(folder / "Assets/Audio/Main.mixer", main);
+    write(folder / "Assets/Audio/Main.mixer.meta", meta(kMainMixer, "NativeFormatImporter"));
+    // The UI mixer plays into Main's SFX group; its Music group's name is taken.
+    std::string ui =
+        mixer_controller("UI", ref(24300020, kMainMixer, 2), "\n  - {fileID: 24500006}");
+    ui += mixer_group(24300002, "Master", "\n  - {fileID: 24300010}",
+                      "2b000000000000000000000000000001", "  - {fileID: 24400004}\n");
+    ui += mixer_group(24300010, "Music", " []", "2b000000000000000000000000000002",
+                      "  - {fileID: 24400011}\n");
+    ui += mixer_effect(24400004, "Attenuation", {});
+    ui += mixer_effect(24400011, "Attenuation", {});
+    ui += mixer_snapshot(24500006, "Snapshot", "\n    2b000000000000000000000000000001: -3");
+    write(folder / "Assets/Audio/UI.mixer", ui);
+    write(folder / "Assets/Audio/UI.mixer.meta", meta(kUiMixer, "NativeFormatImporter"));
+
+    std::string scene(kHeader);
+    // The frame is static; the door turns on a hinge to it, driven down to its 90 degree limit.
+    scene += game_object(5000, "Frame", {5001, 5002});
+    scene += transform(5001, 5000, "{x: 0, y: 0, z: 0}", 0, {}, "  m_RootOrder: 0\n");
+    scene += rigidbody(5002, 5000, 2, "1");
+    scene += game_object(5100, "Door", {5101, 5102, 5103, 5104});
+    scene += transform(5101, 5100, "{x: 2, y: 0, z: 0}", 0, {}, "  m_RootOrder: 1\n");
+    scene += rigidbody(5102, 5100, 0, "2");
+    scene += component(61, "BoxCollider2D", 5103, 5100,
+                       std::string(kCollider) + "  m_Size: {x: 2, y: 0.25}\n");
+    scene += joint(233, "HingeJoint2D", 5104, 5100, ref(5002),
+                   "  m_AutoConfigureConnectedAnchor: 1\n  m_Anchor: {x: -1, y: 0}\n"
+                   "  m_ConnectedAnchor: {x: 1, y: 0}\n  m_UseMotor: 1\n  m_Motor:\n"
+                   "    m_MotorSpeed: 90\n    m_MaximumMotorForce: 10000\n  m_UseLimits: 1\n"
+                   "  m_AngleLimits:\n    m_LowerAngle: -45\n    m_UpperAngle: 90\n");
+    // A weight hangs on a spring from a point in the world, 3 units long at rest.
+    scene += game_object(5200, "Weight", {5201, 5202, 5203, 5204});
+    scene += transform(5201, 5200, "{x: 2, y: -4, z: 0}", 0, {}, "  m_RootOrder: 2\n");
+    scene += rigidbody(5202, 5200, 0, "1");
+    scene += component(61, "BoxCollider2D", 5203, 5200,
+                       std::string(kCollider) + "  m_Size: {x: 0.5, y: 0.5}\n");
+    scene += joint(231, "SpringJoint2D", 5204, 5200, ref(0),
+                   "  m_AutoConfigureConnectedAnchor: 0\n  m_Anchor: {x: 0, y: 0.5}\n"
+                   "  m_ConnectedAnchor: {x: 2, y: 0}\n  m_AutoConfigureDistance: 0\n"
+                   "  m_Distance: 3\n  m_DampingRatio: 0.5\n  m_Frequency: 2\n");
+    // A bead slides down a groove 30 degrees up from x, from (4, 0) 4 units along.
+    scene += game_object(5300, "Bead", {5301, 5302, 5303, 5304});
+    scene += transform(5301, 5300, "{x: 4.8660254, y: 0.5, z: 0}", 0, {}, "  m_RootOrder: 3\n");
+    scene += rigidbody(5302, 5300, 0, "1");
+    scene += component(58, "CircleCollider2D", 5303, 5300,
+                       std::string(kCollider) + "  m_Radius: 0.25\n");
+    scene += joint(234, "SliderJoint2D", 5304, 5300, ref(0),
+                   "  m_AutoConfigureConnectedAnchor: 0\n  m_Anchor: {x: 0, y: 0}\n"
+                   "  m_ConnectedAnchor: {x: 4, y: 0}\n  m_AutoConfigureAngle: 0\n"
+                   "  m_Angle: 30\n  m_UseMotor: 0\n  m_UseLimits: 1\n  m_TranslationLimits:\n"
+                   "    m_LowerTranslation: 0\n    m_UpperTranslation: 4\n");
+    // What doesn't convert: a fixed joint, a disabled hinge and a hinge that breaks.
+    scene += game_object(5400, "Gate", {5401, 5402, 5403, 5404, 5405});
+    scene += transform(5401, 5400, "{x: 10, y: 0, z: 0}", 0, {}, "  m_RootOrder: 4\n");
+    scene += rigidbody(5402, 5400, 1, "1");
+    scene += joint(255, "FixedJoint2D", 5403, 5400, ref(0), "");
+    scene +=
+        "--- !u!233 &5404\nHingeJoint2D:\n" + std::string(kSource) +
+        "  m_GameObject: {fileID: 5400}\n  m_Enabled: 0\n  m_ConnectedRigidBody: {fileID: 0}\n";
+    scene += component(233, "HingeJoint2D", 5405, 5400,
+                       "  m_ConnectedRigidBody: {fileID: 0}\n  m_BreakForce: 100\n"
+                       "  m_AutoConfigureConnectedAnchor: 1\n");
+    // Sounds on a group of each mixer, and on a group of a mixer the project doesn't have.
+    const auto sound = [&](std::int64_t object, std::string_view name, std::string_view group,
+                           int order) {
+        scene += game_object(object, name, {object + 1, object + 2});
+        scene += transform(object + 1, object, "{x: 0, y: 0, z: 0}", 0, {},
+                           "  m_RootOrder: " + std::to_string(order) + "\n");
+        scene += component(82, "AudioSource", object + 2, object,
+                           "  OutputAudioMixerGroup: " + std::string(group) +
+                               "\n  m_audioClip: {fileID: 0}\n  m_PlayOnAwake: 0\n"
+                               "  m_Volume: 1\n  m_Pitch: 1\n  Loop: 0\n  Mute: 0\n");
+    };
+    sound(5600, "Steps", ref(24300030, kMainMixer, 2), 5);
+    sound(5700, "Click", ref(24300010, kUiMixer, 2), 6);
+    sound(5800, "Lost", ref(24300010, "a100000000000000000000000000001c", 2), 7);
+    write(folder / "Assets/Scenes/Mill.unity", scene);
+    write(folder / "Assets/Scenes/Mill.unity.meta", meta("a100000000000000000000000000001d"));
+}
+
 fs::path make_project(const fs::path& folder) {
     fs::remove_all(folder);
     write_settings(folder);
@@ -1568,4 +1799,139 @@ TEST_CASE("Unity Animator controllers become animation libraries, their states a
     REQUIRE(croaks.find("events")->size() == 1);
     CHECK(croaks.find("events")->as_array()[0].find("id")->as_string() == "frog");
     CHECK(*croaks.find("events")->as_array()[0].find("data") == parse(R"({"int": 2})"));
+}
+
+TEST_CASE("Unity audio mixers become a bus layout and 2D joints Godot's joints") {
+    const fs::path project = "import_unity_mill";
+    fs::remove_all(project);
+    make_project(project / "unity");
+    write_mill(project / "unity");
+    auto imported = importer::import_project(
+        {.source = (project / "unity").string(), .destination = project.string()});
+    REQUIRE_MESSAGE(imported.ok(), (imported.ok() ? std::string() : imported.error().message));
+    CHECK(imported.value().report.find("converted")->find("bus_layouts")->as_int() == 1);
+    const auto files = files_of(imported.value());
+    const std::string layout = "unity/Assets/Audio/Main.bus_layout.json";
+    const std::string mill = "unity/Assets/Scenes/Mill.scene.json";
+
+    // Every group becomes a bus sending to its parent's, Main's Master the project's Master and
+    // UI's the bus "UI" sending to the group it outputs to. The start snapshot gives volumes and
+    // effect settings; a send to a Duck Volume makes its compressor's sidechain.
+    CHECK(parse(files.at("project.json")).find("audio")->find("bus_layout")->as_string() == layout);
+    CHECK(parse(files.at(layout)) == parse(R"({"format": 1, "buses": [
+        {"name": "Master"},
+        {"name": "Music", "volume_db": -10.0, "effects": [
+            {"type": "compressor", "threshold": -20.0, "ratio": 3.0, "attack_us": 1000.0,
+             "release_ms": 200.0, "sidechain": "SFX"},
+            {"type": "low_pass_filter", "cutoff_hz": 5000.0}]},
+        {"name": "SFX", "effects": [
+            {"type": "low_pass_filter", "cutoff_hz": 1200.0, "resonance": 1.0},
+            {"type": "delay", "dry": 0.8, "tap1_active": false, "tap2_active": false,
+             "feedback_active": true, "feedback_delay_ms": 300.0,
+             "feedback_level_db": -12.0412},
+            {"type": "compressor", "threshold": -12.0, "ratio": 2.5, "gain": 3.0,
+             "attack_us": 2000.0, "release_ms": 100.0},
+            {"type": "reverb", "room_size": 0.706, "damping": 0.5, "dry": 0.8913, "wet": 0.631,
+             "predelay_msec": 60.0, "predelay_feedback": 0.0},
+            {"type": "distortion", "mode": "waveshape", "drive": 0.25, "keep_hf_hz": 20500.0,
+             "enabled": false},
+            {"type": "chorus", "dry": 0.5, "wet": 1.0, "voice_count": 3, "voices": [
+                {"delay_ms": 40.0, "rate_hz": 0.8, "depth_ms": 1.2, "level_db": -6.0206,
+                 "pan": 0.0},
+                {"delay_ms": 40.0, "rate_hz": 0.8, "depth_ms": 1.2, "level_db": -6.0206,
+                 "pan": 0.0},
+                {"delay_ms": 40.0, "rate_hz": 0.8, "depth_ms": 1.2, "level_db": -6.0206,
+                 "pan": 0.0}]}]},
+        {"name": "Footsteps", "send": "SFX", "solo": true, "mute": true, "bypass_effects": true},
+        {"name": "UI", "send": "SFX", "volume_db": -3.0},
+        {"name": "Music 2", "send": "UI"}
+    ]})"));
+    const json::Value report = parse(files.at("import/unity.json"));
+    CHECK(*report.find("bus_layout") == parse(R"({
+        "path": "unity/Assets/Audio/Main.bus_layout.json",
+        "groups": {
+            "Assets/Audio/Main.mixer": {"Master": "Master", "Master/Music": "Music",
+                                        "Master/SFX": "SFX", "Master/SFX/Footsteps": "Footsteps"},
+            "Assets/Audio/UI.mixer": {"Master": "UI", "Master/Music": "Music 2"}}})"));
+
+    // Sounds play on their group's bus.
+    CHECK(entity(files, mill, "steps")["AudioStreamPlayer"]["bus"].as_string() == "Footsteps");
+    CHECK(entity(files, mill, "click")["AudioStreamPlayer"]["bus"].as_string() == "Music 2");
+    CHECK(entity(files, mill, "lost")["AudioStreamPlayer"].find("bus") == nullptr); // Master
+
+    // Each joint is an entity under its object, joining the connected body (or the world) as
+    // node_a to the object's body as node_b. Unity's angles keep their sign; the spring's
+    // frequency and damping ratio become stiffness and damping for the weight's mass.
+    json::Value hinge = entity(files, mill, "door_hinge");
+    CHECK(hinge["Transform2D"]["position"] == parse("[-16.0, 0.0]"));
+    json::Value& pin = hinge["PinJoint2D"];
+    CHECK(pin["node_a"].as_string() == "frame");
+    CHECK(pin["node_b"].as_string() == "door");
+    CHECK(pin["angular_limit_enabled"].as_bool());
+    CHECK(pin["angular_limit_lower"].as_double() == doctest::Approx(-0.785398));
+    CHECK(pin["angular_limit_upper"].as_double() == doctest::Approx(1.570796));
+    CHECK(pin["motor_enabled"].as_bool());
+    CHECK(pin["motor_target_velocity"].as_double() == doctest::Approx(1.570796));
+    json::Value spring = entity(files, mill, "weight_spring");
+    CHECK(spring["Transform2D"]["position"] == parse("[0.0, -64.0]"));
+    CHECK(spring["Transform2D"].find("rotation") == nullptr);
+    json::Value& damped = spring["DampedSpringJoint2D"];
+    CHECK(damped["node_a"].is_null());
+    CHECK(damped["node_b"].as_string() == "weight");
+    CHECK(damped["length"].as_double() == doctest::Approx(56.0));
+    CHECK(damped["rest_length"].as_double() == doctest::Approx(48.0));
+    CHECK(damped["stiffness"].as_double() == doctest::Approx(157.9137));
+    CHECK(damped["damping"].as_double() == doctest::Approx(12.5664));
+    json::Value slider = entity(files, mill, "bead_slider");
+    CHECK(slider["Transform2D"]["position"] == parse("[-13.8564, 8.0]"));
+    CHECK(slider["Transform2D"]["rotation"].as_double() == doctest::Approx(-2.094395));
+    CHECK(slider["GrooveJoint2D"]["length"].as_double() == doctest::Approx(64.0));
+    CHECK(slider["GrooveJoint2D"]["initial_offset"].as_double() == doctest::Approx(16.0));
+    CHECK(entity(files, mill, "gate_hinge")["PinJoint2D"]["node_b"].as_string() == "gate");
+
+    for (const auto& [what, where] :
+         std::initializer_list<std::pair<std::string_view, std::string_view>>{
+             {"mixer snapshots", "Assets/Audio/Main.mixer"},
+             {"filter resonance above 1", "Assets/Audio/Main.mixer: SFX"},
+             {"compressor attack above 2 ms", "Assets/Audio/Main.mixer: SFX"},
+             {"mixer effect Flange", "Assets/Audio/Main.mixer: SFX"},
+             {"mixer send", "Assets/Audio/Main.mixer: SFX"},
+             {"effect after the fader", "Assets/Audio/Main.mixer: Music"},
+             {"mixer group pitch", "Assets/Audio/Main.mixer: Footsteps"},
+             {"mixer effect Pitch Shifter", "Assets/Audio/Main.mixer: Footsteps"},
+             {"audio mixer group", "Assets/Scenes/Mill.unity: Lost"},
+             {"SliderJoint2D", "Assets/Scenes/Mill.unity: Bead"},
+             {"component FixedJoint2D", "Assets/Scenes/Mill.unity: Gate"},
+             {"disabled HingeJoint2D", "Assets/Scenes/Mill.unity: Gate"},
+             {"breakable joint", "Assets/Scenes/Mill.unity: Gate"}}) {
+        const json::Value item = unsupported(report, what);
+        REQUIRE_MESSAGE(!item.is_null(), what);
+        CHECK(item.find("where")->as_string() == where);
+    }
+    CHECK(unsupported(report, "mixer send").find("count")->as_int() == 1); // not the silent one
+    CHECK(unsupported(report, "mixer snapshots").find("why")->as_string().find("Quiet") !=
+          std::string::npos);
+
+    // It runs: the door swings down to its limit, the weight settles 48 + 320 / 157.9 pixels
+    // under the spring's top, and the bead slides down the groove to its end.
+    slash::world::ComponentRegistry components;
+    slash::world::register_builtin_components(components);
+    command::Registry commands;
+    command::register_builtin_commands(commands);
+    command::SessionOptions options;
+    options.project_root = project.string();
+    options.capture_logs = false;
+    command::Session session(components, commands, options);
+    const command::Reply opened = session.call("scene.open", parse(R"({"path": ")" + mill + "\"}"));
+    REQUIRE_MESSAGE(opened.ok, opened.message);
+    REQUIRE(session.call("step", parse(R"({"ticks": 300})")).ok);
+    const slash::world::World& world = session.world();
+    const auto placed = [&](std::string_view id) {
+        return world.ecs().get<slash::world::Transform2D>(world.find(id));
+    };
+    CHECK(placed("door").rotation == doctest::Approx(1.5708).epsilon(0.02));
+    CHECK(placed("weight").position.x == doctest::Approx(32.0).epsilon(0.001));
+    CHECK(placed("weight").position.y == doctest::Approx(58.03).epsilon(0.002));
+    CHECK(placed("bead").position.x == doctest::Approx(64.0).epsilon(0.005));
+    CHECK(placed("bead").position.y == doctest::Approx(0.0).epsilon(0.5));
 }

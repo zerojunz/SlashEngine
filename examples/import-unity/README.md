@@ -5,8 +5,9 @@ small 2D game as Unity 2022.3 saves it: its project settings, a scene
 ([Pond.unity](unity/Assets/Scenes/Pond.unity)) that instances a frog prefab and coin prefabs and
 has a tile map, a prefab variant ([Gold Coin.prefab](unity/Assets/Prefabs/Gold%20Coin.prefab)),
 sprites with their import settings, tile assets, an Animator controller
-([Frog.controller](unity/Assets/Animations/Frog.controller)) and its clips, a physics material,
-an Input System actions file and three C# scripts. Unity
+([Frog.controller](unity/Assets/Animations/Frog.controller)) and its clips, an audio mixer
+([Pond.mixer](unity/Assets/Audio/Pond.mixer)), a physics material, an Input System actions file
+and three C# scripts. Unity
 writes more settings than these files keep; they keep the ones the import reads.
 [main.cpp](main.cpp) makes the textures and sounds, then makes the calls an agent would make over
 MCP or JSON-RPC; [expected.txt](expected.txt) holds the replies and the files the import wrote.
@@ -14,14 +15,15 @@ From a shell, `slash-cli import unity` does the same.
 
 ```text
 project.import {"source":"unity"}
-{"converted": {"animation_libraries": 1, "assets": 9, "input_actions": 12, "prefabs": 3,
-               "scenes": 1, "tile_sets": 1},
- "files": 10, "main_scene": "unity/Assets/Scenes/Pond.scene.json", "pixels_per_unit": 32.0,
+{"converted": {"animation_libraries": 1, "assets": 9, "bus_layouts": 1, "input_actions": 12,
+               "prefabs": 3, "scenes": 1, "tile_sets": 1},
+ "files": 11, "main_scene": "unity/Assets/Scenes/Pond.scene.json", "pixels_per_unit": 32.0,
  "report": "import/unity.json",
  "scripts": [{"entities": 1, "script": "unity/Assets/Scripts/CameraFollow.cs",
               "task": "task/port-camera-follow"}, ...],
- "unsupported": [{"count": 1, "what": "inactive object", "where": "Assets/Scenes/Pond.unity: Coin (2)",
-                  "why": "converted hidden, with its shapes disabled; ..."}, ...]}
+ "unsupported": [{"count": 1, "what": "exposed mixer parameters", "where": "Assets/Audio/Pond.mixer",
+                  "why": "MusicVolume: scripts that set them set buses with audio.set_bus or ..."},
+                 ...]}
 ```
 
 - Each `.unity` and `.prefab` file becomes a `.scene.json` file beside it, a GameObject becoming
@@ -45,6 +47,9 @@ project.import {"source":"unity"}
   second shape on a child entity, the lily pad's `PlatformEffector2D` a one-way shape, and
   trigger colliders `Area2D`s. Layers and the layer collision matrix become collision layers and
   masks, and physics materials friction and bounce.
+- The lantern hangs from a `HingeJoint2D` with limits of 60 degrees either way, which becomes a
+  `PinJoint2D` on a `lantern_hinge` entity under it, pinning it to the world at the hinge's
+  anchor. A second in, it has swung about 27 degrees.
 - The `Bank` tile map, on a `Grid`, becomes a `TileMapLayer`, and the sprites its cells show a
   tile set, `tiles.tileset.json`: the `bank.png` sheet is one atlas source of three tiles. The
   slope's custom physics shape is its collision polygon, the dirt and grass, whose cells use the
@@ -60,6 +65,11 @@ project.import {"source":"unity"}
   animations.
 - An `AudioSource` becomes an `AudioStreamPlayer`, or an `AudioStreamPlayer2D` when it is
   spatial. The music loops, so it plays a `.audio.json` file that loops the sound.
+- The audio mixer becomes a bus layout, `Pond.bus_layout.json`, which `project.json` sets: its
+  Music and SFX groups are buses, the music and the frog's croak play on them, and SFX's
+  high-pass filter comes across. Music's Duck Volume, which SFX sends to, becomes a compressor
+  with SFX as its sidechain, so the music ducks when the frog croaks. Its exposed `MusicVolume`
+  parameter is reported, since gameplay code sets buses itself.
 - The player, time, physics and input settings become `project.json`: the name, version, window,
   tick rate, gravity, clear color, texture filter, and both the Input Manager's axes (`Jump`,
   `Horizontal/negative`) and the Input System's actions (`Player/Move/up`).

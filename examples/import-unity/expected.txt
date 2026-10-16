@@ -3,6 +3,7 @@ project.import {"dry_run":true,"source":"unity"}
   "converted": {
     "animation_libraries": 1,
     "assets": 9,
+    "bus_layouts": 1,
     "input_actions": 12,
     "prefabs": 3,
     "scenes": 1,
@@ -10,7 +11,7 @@ project.import {"dry_run":true,"source":"unity"}
   },
   "dry_run": true,
   "engine": "unity",
-  "files": ["unity/Assets/Prefabs/Coin.scene.json", "unity/Assets/Animations/Frog.anim.json", "unity/Assets/Prefabs/Frog.scene.json", "unity/Assets/Prefabs/Gold Coin.scene.json", "unity/Assets/Audio/pond.loop.audio.json", "unity/Assets/tiles.tileset.json", "unity/Assets/Scenes/Pond.scene.json", "project.json", "storyboard/work.json", "import/unity.json"],
+  "files": ["unity/Assets/Audio/Pond.bus_layout.json", "unity/Assets/Prefabs/Coin.scene.json", "unity/Assets/Animations/Frog.anim.json", "unity/Assets/Prefabs/Frog.scene.json", "unity/Assets/Prefabs/Gold Coin.scene.json", "unity/Assets/Audio/pond.loop.audio.json", "unity/Assets/tiles.tileset.json", "unity/Assets/Scenes/Pond.scene.json", "project.json", "storyboard/work.json", "import/unity.json"],
   "main_scene": "unity/Assets/Scenes/Pond.scene.json",
   "pixels_per_unit": 32.0,
   "project": "Pond Hop",
@@ -34,6 +35,12 @@ project.import {"dry_run":true,"source":"unity"}
   ],
   "unity_version": "2022.3.20f1",
   "unsupported": [
+    {
+      "count": 1,
+      "what": "exposed mixer parameters",
+      "where": "Assets/Audio/Pond.mixer",
+      "why": "MusicVolume: scripts that set them set buses with audio.set_bus or gameplay code instead"
+    },
     {
       "count": 1,
       "what": "inactive object",
@@ -65,13 +72,14 @@ project.import {"source":"unity"}
   "converted": {
     "animation_libraries": 1,
     "assets": 9,
+    "bus_layouts": 1,
     "input_actions": 12,
     "prefabs": 3,
     "scenes": 1,
     "tile_sets": 1
   },
   "engine": "unity",
-  "files": 10,
+  "files": 11,
   "main_scene": "unity/Assets/Scenes/Pond.scene.json",
   "pixels_per_unit": 32.0,
   "project": "Pond Hop",
@@ -95,6 +103,12 @@ project.import {"source":"unity"}
   ],
   "unity_version": "2022.3.20f1",
   "unsupported": [
+    {
+      "count": 1,
+      "what": "exposed mixer parameters",
+      "where": "Assets/Audio/Pond.mixer",
+      "why": "MusicVolume: scripts that set them set buses with audio.set_bus or gameplay code instead"
+    },
     {
       "count": 1,
       "what": "inactive object",
@@ -239,6 +253,36 @@ project.import {"source":"unity"}
         }
       }
     },
+    "lantern": {
+      "components": {
+        "CollisionShape2D": {
+          "size": [16.0, 16.0]
+        },
+        "RigidBody2D": {
+          "angular_damp": 0.05,
+          "collision_mask": 4294967295,
+          "friction": 0.4,
+          "mass": 0.5
+        },
+        "Transform2D": {
+          "children": ["lantern_hinge"],
+          "position": [-192.0, -64.0]
+        }
+      }
+    },
+    "lantern_hinge": {
+      "components": {
+        "PinJoint2D": {
+          "angular_limit_enabled": true,
+          "angular_limit_lower": -1.047198,
+          "angular_limit_upper": 1.047198,
+          "node_b": "lantern"
+        },
+        "Transform2D": {
+          "position": [-24.0, -24.0]
+        }
+      }
+    },
     "lily_pad": {
       "components": {
         "CollisionShape2D": {
@@ -273,6 +317,7 @@ project.import {"source":"unity"}
       "components": {
         "AudioStreamPlayer": {
           "autoplay": true,
+          "bus": "Music",
           "stream": "unity/Assets/Audio/pond.loop.audio.json",
           "volume_db": -6.0206
         },
@@ -320,6 +365,7 @@ project.import {"source":"unity"}
           }
         },
         "AudioStreamPlayer2D": {
+          "bus": "SFX",
           "max_distance": 640.0,
           "stream": "unity/Assets/Audio/croak.wav"
         },
@@ -564,6 +610,38 @@ project.import {"source":"unity"}
   },
   "format": 1
 }
+--- unity/Assets/Audio/Pond.bus_layout.json
+{
+  "buses": [
+    {
+      "name": "Master"
+    },
+    {
+      "effects": [
+        {
+          "attack_us": 1000.0,
+          "ratio": 4.0,
+          "release_ms": 300.0,
+          "sidechain": "SFX",
+          "threshold": -30.0,
+          "type": "compressor"
+        }
+      ],
+      "name": "Music",
+      "volume_db": -6.0
+    },
+    {
+      "effects": [
+        {
+          "cutoff_hz": 200.0,
+          "type": "high_pass_filter"
+        }
+      ],
+      "name": "SFX"
+    }
+  ],
+  "format": 1
+}
 --- unity/Assets/Audio/pond.loop.audio.json
 {
   "format": 1,
@@ -572,6 +650,9 @@ project.import {"source":"unity"}
 }
 --- project.json
 {
+  "audio": {
+    "bus_layout": "unity/Assets/Audio/Pond.bus_layout.json"
+  },
   "format": 1,
   "input": {
     "Cancel": {
@@ -750,7 +831,7 @@ project.import {"source":"unity"}
 }
 scene.open {"path":"unity/Assets/Scenes/Pond.scene.json"}
 {
-  "entities": 17,
+  "entities": 19,
   "path": "unity/Assets/Scenes/Pond.scene.json"
 }
 events.subscribe {"kinds":["Ribbit"]}
@@ -764,7 +845,7 @@ step {"ticks":60}
 }
 world.query {"include":["Transform2D"],"with":["RigidBody2D"]}
 {
-  "count": 1,
+  "count": 2,
   "entities": [
     {
       "components": {
@@ -777,6 +858,18 @@ world.query {"include":["Transform2D"],"with":["RigidBody2D"]}
         }
       },
       "id": "frog"
+    },
+    {
+      "components": {
+        "Transform2D": {
+          "children": ["lantern_hinge"],
+          "position": [-205.62932, -55.67272],
+          "rotation": 0.47488242,
+          "scale": [1.0, 1.0],
+          "skew": 0.0
+        }
+      },
+      "id": "lantern"
     }
   ],
   "truncated": false
