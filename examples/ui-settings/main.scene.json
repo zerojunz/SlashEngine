@@ -1,0 +1,145 @@
+{
+  "entities": {
+    "brightness": {
+      "components": {
+        "Control": {
+          "size_flags_vertical": "expand_fill"
+        },
+        "Slider": {
+          "max_value": 1.0,
+          "step": 0.1,
+          "value": 0.5,
+          "vertical": true
+        }
+      }
+    },
+    "column": {
+      "components": {
+        "BoxContainer": {
+          "vertical": true
+        },
+        "Control": {
+          "children": ["fullscreen", "subtitles", "quality", "vsync", "volume_row"],
+          "size_flags_horizontal": "expand_fill"
+        }
+      }
+    },
+    "fullscreen": {
+      "components": {
+        "CheckBox": {
+          "text": "Fullscreen"
+        },
+        "Control": {}
+      }
+    },
+    "high": {
+      "components": {
+        "CheckBox": {
+          "button_group": "quality",
+          "text": "High"
+        },
+        "Control": {}
+      }
+    },
+    "low": {
+      "components": {
+        "CheckBox": {
+          "button_group": "quality",
+          "text": "Low"
+        },
+        "Control": {}
+      }
+    },
+    "medium": {
+      "components": {
+        "CheckBox": {
+          "button_group": "quality",
+          "button_pressed": true,
+          "text": "Medium"
+        },
+        "Control": {}
+      }
+    },
+    "quality": {
+      "components": {
+        "BoxContainer": {},
+        "Control": {
+          "children": ["low", "medium", "high"]
+        }
+      }
+    },
+    "row": {
+      "components": {
+        "BoxContainer": {},
+        "Control": {
+          "children": ["column", "brightness"]
+        }
+      }
+    },
+    "screen": {
+      "components": {
+        "Control": {
+          "anchor_bottom": 1.0,
+          "anchor_right": 1.0,
+          "children": ["row"],
+          "theme_override_constants": {
+            "margin_bottom": 8,
+            "margin_left": 8,
+            "margin_right": 8,
+            "margin_top": 8
+          }
+        },
+        "MarginContainer": {}
+      }
+    },
+    "subtitles": {
+      "components": {
+        "CheckBox": {
+          "button_pressed": true,
+          "text": "Subtitles"
+        },
+        "Control": {}
+      }
+    },
+    "volume": {
+      "components": {
+        "Control": {
+          "size_flags_horizontal": "expand_fill",
+          "size_flags_vertical": "shrink_center"
+        },
+        "Slider": {
+          "step": 5.0,
+          "tick_count": 5,
+          "ticks_on_borders": true,
+          "value": 80.0
+        }
+      }
+    },
+    "volume_label": {
+      "components": {
+        "Control": {},
+        "Label": {
+          "text": "Volume"
+        }
+      }
+    },
+    "volume_row": {
+      "components": {
+        "BoxContainer": {},
+        "Control": {
+          "children": ["volume_label", "volume"]
+        }
+      }
+    },
+    "vsync": {
+      "components": {
+        "CheckButton": {
+          "button_pressed": true,
+          "text": "V-Sync"
+        },
+        "Control": {}
+      }
+    }
+  },
+  "format": 1
+}

@@ -265,6 +265,10 @@ void register_ui_components(ComponentRegistry& registry) {
         .describe(
             "theme_override_font_sizes",
             {.doc = "Theme font sizes by name, e.g. {\"font_size\": 32}.", .min = 1, .max = 1024})
+        .describe("theme_override_icons",
+                  {.doc = "Theme icons by name: a PNG or BMP file, a built-in icon such as "
+                          "\"builtin:radio_checked\", or \"\" for none, e.g. "
+                          "{\"checked\": \"ui/tick.png\"}."})
         .describe("theme_override_styles",
                   {.doc = "Theme style boxes by name, as in a .theme.json file, e.g. "
                           "{\"panel\": {\"bg_color\": [0.1, 0.1, 0.2, 1], "
@@ -415,6 +419,39 @@ void register_ui_components(ComponentRegistry& registry) {
                    .choices = {"begin_to_end", "end_to_begin", "top_to_bottom", "bottom_to_top"}})
         .describe("show_percentage", {.doc = "Draw the percentage on the bar."});
 
+    registry.add<Slider>()
+        .set_doc("A grabber dragged along a track to pick a value, as Godot's HSlider, or "
+                 "VSlider when vertical: a click on the track moves the grabber there, and the "
+                 "mouse wheel, ui_left and ui_right (ui_up and ui_down when vertical), ui_home "
+                 "and ui_end step it while it has focus. Emits value_changed {\"value\"}, "
+                 "drag_started and drag_ended {\"value_changed\"}. Theme items: slider, "
+                 "grabber_area and grabber_area_highlight styles, the icons grabber, "
+                 "grabber_highlight, grabber_disabled and tick, center_grabber, grabber_offset, "
+                 "grabber_max_size, tick_offset and tick_max_size.")
+        .describe("min_value", {.doc = "The value at the start: the left, or the bottom."})
+        .describe("max_value", {.doc = "The value at the end; at least min_value."})
+        .describe("step", {.doc = "The value is rounded to min_value plus a multiple of it; 0 for "
+                                  "none.",
+                           .min = 0})
+        .describe("page", {.doc = "The value stays this far below max_value.", .min = 0})
+        .describe("value", {.doc = "Kept between min_value and max_value less page unless "
+                                   "allow_greater or allow_lesser."})
+        .describe("rounded", {.doc = "Round the value to a whole number."})
+        .describe("allow_greater", {.doc = "Let value go above max_value."})
+        .describe("allow_lesser", {.doc = "Let value go below min_value."})
+        .describe("editable", {.doc = "The pointer and keys move it; off, it draws dimmed."})
+        .describe("scrollable", {.doc = "The mouse wheel moves it."})
+        .describe("tick_count",
+                  {.doc = "Marks drawn at even steps along the track; 0 or 1 for none.",
+                   .min = 0,
+                   .max = 4096})
+        .describe("ticks_on_borders", {.doc = "Draw the first and last marks, at the ends."})
+        .describe("ticks_position",
+                  {.doc = "Which side of the track the marks go: bottom_right is below a "
+                          "horizontal slider and right of a vertical one.",
+                   .choices = {"bottom_right", "top_left", "both", "center"}})
+        .describe("vertical", {.doc = "Run from bottom to top, as VSlider."});
+
     const FieldMeta button_mask{.doc = "The mouse buttons that press it.",
                                 .choices = {"left", "right", "middle"}};
     const FieldMeta shortcut{.doc =
@@ -449,32 +486,48 @@ void register_ui_components(ComponentRegistry& registry) {
         "font_focus_color, font_disabled_color, icon_*_color for the same states, font, "
         "font_size, outline_size, font_outline_color, h_separation, icon_max_width, "
         "align_to_largest_stylebox, line_spacing and click_margin.");
-    describe_base(button)
-        .describe("text", {.doc = R"(Lines break at "\n".)"})
-        .describe("icon", {.doc = "Project path of a PNG or BMP file drawn beside the text; "
-                                  "\"\" for none."})
-        .describe("flat", {.doc = "Draw no style box, only the text and icon."})
-        .describe("alignment", {.doc = "The text's place across the button.",
-                                .choices = {"left", "center", "right"}})
-        .describe("text_overrun_behavior",
-                  {.doc = "Cut text wider than the button, at a character or word, with or "
-                          "without an ellipsis.",
-                   .choices = {"no_trimming", "trim_char", "trim_word", "trim_ellipsis",
-                               "trim_word_ellipsis"}})
-        .describe("autowrap_mode", {.doc = "Wrap the text to the button's width.",
-                                    .choices = {"off", "arbitrary", "word", "word_smart"}})
-        .describe("clip_text",
-                  {.doc = "Let the button be narrower than its text, cutting the text off."})
-        .describe("icon_alignment",
-                  {.doc = "The icon's place across the button; center puts it behind the text.",
-                   .choices = {"left", "center", "right"}})
-        .describe("vertical_icon_alignment",
-                  {.doc = "The icon's place down the button; top and bottom put the text above "
-                          "or below it.",
-                   .choices = {"top", "center", "bottom"}})
-        .describe("expand_icon", {.doc = "Scale the icon to fit the button, keeping its aspect."})
-        .describe("text_direction", text_direction)
-        .describe("language", language);
+    const auto describe_button = [&](ComponentType& type) -> ComponentType& {
+        return describe_base(type)
+            .describe("text", {.doc = R"(Lines break at "\n".)"})
+            .describe("icon", {.doc = "Project path of a PNG or BMP file drawn beside the text; "
+                                      "\"\" for none."})
+            .describe("flat", {.doc = "Draw no style box, only the text and icon."})
+            .describe("alignment", {.doc = "The text's place across the button.",
+                                    .choices = {"left", "center", "right"}})
+            .describe("text_overrun_behavior",
+                      {.doc = "Cut text wider than the button, at a character or word, with or "
+                              "without an ellipsis.",
+                       .choices = {"no_trimming", "trim_char", "trim_word", "trim_ellipsis",
+                                   "trim_word_ellipsis"}})
+            .describe("autowrap_mode", {.doc = "Wrap the text to the button's width.",
+                                        .choices = {"off", "arbitrary", "word", "word_smart"}})
+            .describe("clip_text",
+                      {.doc = "Let the button be narrower than its text, cutting the text off."})
+            .describe("icon_alignment",
+                      {.doc = "The icon's place across the button; center puts it behind the text.",
+                       .choices = {"left", "center", "right"}})
+            .describe("vertical_icon_alignment",
+                      {.doc = "The icon's place down the button; top and bottom put the text above "
+                              "or below it.",
+                       .choices = {"top", "center", "bottom"}})
+            .describe("expand_icon",
+                      {.doc = "Scale the icon to fit the button, keeping its aspect."})
+            .describe("text_direction", text_direction)
+            .describe("language", language);
+    };
+    describe_button(button);
+    describe_button(registry.add<CheckBox>().set_doc(
+        "A toggle button with a box beside its text showing whether it is on, as Godot's "
+        "CheckBox; in a button_group the box is round, as a radio button's. Pressed as Button "
+        "is, with the same events. Theme items: Button's, plus the icons checked, unchecked, "
+        "radio_checked, radio_unchecked and each one's _disabled, checkbox_checked_color, "
+        "checkbox_unchecked_color and check_v_offset."));
+    describe_button(registry.add<CheckButton>().set_doc(
+        "A toggle button with a switch at its end showing whether it is on, as Godot's "
+        "CheckButton. Pressed as Button is, with the same events. Theme items: Button's, plus "
+        "the icons checked, unchecked, checked_disabled and unchecked_disabled and each one's "
+        "_mirrored (drawn right to left), button_checked_color, button_unchecked_color and "
+        "check_v_offset."));
 
     const FieldMeta button_texture{.doc = "Project path of a PNG or BMP file; \"\" for none."};
     auto& texture_button = registry.add<TextureButton>().set_doc(

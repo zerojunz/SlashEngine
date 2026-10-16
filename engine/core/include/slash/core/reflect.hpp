@@ -44,8 +44,9 @@ struct TypeInfo {
     std::tuple<Field<Class, Members>...> fields;
 };
 
-template <typename Class, typename Member>
-constexpr Field<Class, Member> make_field(std::string_view name, Member Class::*pointer) {
+// A field of Class, which may be declared in a base of Class: CheckBox reflects Button's fields.
+template <typename Class, typename Owner, typename Member>
+constexpr Field<Class, Member> make_field(std::string_view name, Member Owner::*pointer) {
     return {name, pointer};
 }
 
@@ -108,7 +109,8 @@ constexpr void for_each_field(Fn&& fn) {
         __VA_OPT__(SLASH_DETAIL_FOR_EACH_AGAIN SLASH_DETAIL_PARENS(macro, data, __VA_ARGS__))
 #define SLASH_DETAIL_FOR_EACH_AGAIN() SLASH_DETAIL_FOR_EACH_STEP
 
-#define SLASH_DETAIL_FIELD(Type, member) , ::slash::reflect::make_field(#member, &Type::member)
+#define SLASH_DETAIL_FIELD(Type, member)                                                           \
+    , ::slash::reflect::make_field<Type>(#member, &Type::member)
 
 #define SLASH_DETAIL_REFLECT(Type, is_component, ...)                                              \
     [[maybe_unused]] constexpr auto slash_reflect(::slash::reflect::Tag<Type> /*tag*/) {           \
