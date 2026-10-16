@@ -5,6 +5,7 @@
         "Sprite2D": {
           "texture": "boat.png"
         },
+        "StaticBody2D": {},
         "Transform2D": {
           "children": ["deck", "mast", "cannon"],
           "position": [120.0, 120.0]
@@ -27,7 +28,6 @@
         "CollisionShape2D": {
           "size": [48.0, 4.0]
         },
-        "StaticBody2D": {},
         "Transform2D": {
           "position": [0.0, -4.0]
         }

@@ -145,7 +145,7 @@ A reference must name an entity that exists in the same scene.
 | | `cull_mode` | `std::string` | `"disabled"` | `clockwise` or `counter_clockwise` leaves out edges that run that way around the light, as seen on screen |
 | | `occluder_light_mask` | `int` | `1` | Casts shadows from lights whose `shadow_item_cull_mask` shares a bit |
 | `CanvasModulate` | `color` | `Vec4` | `[1, 1, 1, 1]` | Tints everything lit: the light a scene has where no light reaches. One per scene |
-| `CollisionShape2D` | `shape` | `std::string` | `"rectangle"` | A [physics](#2d-physics) shape of the entity's body or area: `rectangle`, `circle`, `capsule`, `segment` or `polygon` |
+| `CollisionShape2D` | `shape` | `std::string` | `"rectangle"` | A [physics](#2d-physics) shape of the entity's body or area, or its [parent's](#parent-transforms) if it has neither: `rectangle`, `circle`, `capsule`, `segment` or `polygon` |
 | | `size` | `Vec2` | `[20, 20]` | Rectangle width and height, in pixels |
 | | `radius` | `float` | `10` | Circle and capsule radius, in pixels |
 | | `height` | `float` | `30` | Capsule height end to end along y, in pixels |
@@ -471,9 +471,12 @@ cannon and a deck.
 - **Physics.** Bodies, areas and joints are where their global transforms put them, and a parent
   that moves moves the bodies in it. The physics step writes a `RigidBody2D`'s motion back as
   Godot sets a body's global transform: its own transform becomes what puts it where Box2D says.
-  A `CharacterBody2D` slides in the world and is put back in its parent's space. A body's shapes
-  are its own entity's `CollisionShape2D` and `CollisionPolygon2D`; shapes in child entities
-  aren't added to it yet. Shapes and light textures don't lean with `skew`.
+  A `CharacterBody2D` slides in the world and is put back in its parent's space. A body or
+  area takes the shapes of its own entity, then those of its children that have a
+  `CollisionShape2D` or `CollisionPolygon2D` and no body or area of their own, placed by their
+  transforms, as a Godot `CollisionObject2D` takes its shape nodes'; hits and events name the
+  body. A character moves as the first of its shapes. Shapes and light textures don't lean
+  with `skew`.
 - **Sound and particles.** `AudioStreamPlayer2D`, `AudioListener2D` and `CPUParticles2D` work
   from global transforms; particles with `local_coords` move with the emitter's.
 - **Rules.** A child needs a `Transform2D`, has one parent and is never its own ancestor. `scene
@@ -488,8 +491,8 @@ cannon and a deck.
   transform. [`entity.destroy`](commands.md#entitydestroy) destroys the entity's `Transform2D` and
   `Control` children with it, as Godot frees a node's children, and takes destroyed entities out
   of the lists of parents that stay.
-- **Not yet.** Godot's `top_level`, `z_as_relative` off, a body's shapes in child entities, and
-  Node2D and Control entities in one tree.
+- **Not yet.** Godot's `top_level`, `z_as_relative` off, and Node2D and Control entities in one
+  tree.
 
 ## Canonical form
 
@@ -968,9 +971,10 @@ map.
 2D physics follows Godot's, on [Box2D](https://box2d.org) v3. An entity is a body or an area by
 having one of `StaticBody2D`, `AnimatableBody2D`, `RigidBody2D`, `CharacterBody2D` or `Area2D`,
 placed by its `Transform2D`, and takes its shapes from its `CollisionShape2D` and
-`CollisionPolygon2D`. Lengths are pixels and y points down. The `physics2d` system steps the
-world each tick at priority 950, after gameplay systems and keyframe animation; gravity and
-damping come from `physics_2d` in [`project.json`](project-format.md).
+`CollisionPolygon2D`, then from its [children's](#parent-transforms) that have no body or area
+of their own, as Godot's shape nodes. Lengths are pixels and y points down. The `physics2d`
+system steps the world each tick at priority 950, after gameplay systems and keyframe
+animation; gravity and damping come from `physics_2d` in [`project.json`](project-format.md).
 [examples/physics-2d](../../examples/physics-2d/) has every kind of body, an area and a joint.
 
 ```json

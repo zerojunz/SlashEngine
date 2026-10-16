@@ -64,7 +64,9 @@ global transform, its parent and its draw order, and everything that places thin
 (drawing, physics, lights, particles, sound) asks it. Make one per use; a root's global transform
 is its own to the bit, so flat scenes behave as before. `check_tree` backs `scene validate`, and
 a session fails any command that would give a child two parents or make it its own ancestor.
-`entity.destroy` takes children with it. `examples/parent-transforms` sails a boat.
+`entity.destroy` takes children with it. A body takes the shapes of its children that have no
+body of their own (`shape_key_of` in `engine/physics2d/src/space.cpp`), as Godot's
+`CollisionShape2D` nodes. `examples/parent-transforms` sails a boat.
 
 ```bash
 $cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, tileset, font, theme, audio, bus_layout, replay, test)
