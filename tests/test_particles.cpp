@@ -48,7 +48,7 @@ struct Particles {
     // An entity at a position with a CPUParticles2D whose fields the JSON sets.
     entt::entity add(std::string_view id, Vec2 position, std::string_view fields) {
         const entt::entity entity = world.create(id).value();
-        world.ecs().emplace<world::Transform2D>(entity, world::Transform2D{.position = position});
+        world.ecs().emplace<world::Transform2D>(entity).position = position;
         std::string path;
         REQUIRE(components.find("CPUParticles2D")->assign(world, entity, parse(fields), path).ok());
         return entity;

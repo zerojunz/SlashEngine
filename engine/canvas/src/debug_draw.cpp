@@ -1,6 +1,7 @@
 #include "slash/canvas/debug_draw.hpp"
 
 #include "slash/world/components.hpp"
+#include "slash/world/tree2d.hpp"
 
 #include <algorithm>
 #include <array>
@@ -273,10 +274,11 @@ CollisionShapes collision_shapes(const world::World& world, const TransformOf& t
         entities.push_back(entity);
     }
     std::ranges::sort(entities, {}, [](entt::entity entity) { return entt::to_entity(entity); });
+    const world::Tree2D tree(world);
     for (const entt::entity entity : entities) {
         world::Transform2D transform;
         if (const auto* current = ecs.try_get<world::Transform2D>(entity); current != nullptr) {
-            transform = transform_of ? transform_of(entity, *current) : *current;
+            transform = transform_of ? transform_of(entity, *current) : tree.global(entity);
         }
         Place place{.position = {},
                     .shape_axis = {1.0F, 0.0F},

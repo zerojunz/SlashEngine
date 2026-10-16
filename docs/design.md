@@ -203,6 +203,7 @@ Scenes, prefabs, materials and project settings are canonical JSON files (`.scen
 - **Canonical form.** Keys sorted, two-space indent, one entity per block, stable string IDs (`"player"`, `"enemy_03"`). A formatter rewrites any valid file to this form, so diffs stay small and merges stay sane.
 - **No binary in the source tree.** Textures and audio are referenced by path; imported caches live in a gitignored `.slash/` folder and rebuild on demand.
 - **Prefabs by reference.** An entity can `"extends"` a prefab and override fields, so an agent edits one file to change every instance.
+- **Parents by ID.** A `Transform2D` lists the entities placed in its space as `children`, by ID, as Godot's Node2D tree; the world stays flat (EnTT), and a parent is a field, not a container, so moving an entity between parents is one `component.set`.
 
 ### 2. Reflection and self-description
 

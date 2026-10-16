@@ -838,7 +838,8 @@ void register_particle_components(ComponentRegistry& registry) {
             .describe("anim_loop", {.doc = "Frames past the last start again from the first; "
                                            "false stays on the last."})
             .describe("z_index", {.doc = "As Sprite2D's.", .min = -4096, .max = 4096})
-            .describe("visible", {.doc = "Draw the particles; they move either way."})
+            .describe("visible", {.doc = "Draw the particles and its children; they move either "
+                                         "way."})
             .describe("material", {.doc = "Project path of a .material.json file; \"\" for none."})
             .describe("material_params", {.doc = "Values for the material's params by name."})
             .describe("light_mask",
@@ -978,10 +979,18 @@ void register_builtin_components(ComponentRegistry& registry) {
         .max = kMaxMask};
 
     registry.add<Transform2D>()
-        .set_doc("Position, rotation and scale in 2D. Units are pixels and y points down.")
-        .describe("position", {.doc = "Position in pixels, as [x, y]."})
+        .set_doc("Position, rotation and scale in 2D. Units are pixels and y points down. The "
+                 "entities in children are placed in its space: they move, turn and scale with "
+                 "it, and draw after it.")
+        .describe("position", {.doc = "Position in pixels, as [x, y], in its parent's space."})
         .describe("rotation", {.doc = "Rotation in radians; positive turns clockwise."})
-        .describe("scale", {.doc = "Scale factor on each axis, as [x, y]."});
+        .describe("scale", {.doc = "Scale factor on each axis, as [x, y]."})
+        .describe("skew", {.doc = "Radians its y axis leans from square to its x axis, "
+                                  "under 89.9 degrees either way.",
+                           .min = -1.569,
+                           .max = 1.569})
+        .describe("children", {.doc = "Entities with a Transform2D placed in its space, in "
+                                      "drawing order. Each has one parent."});
 
     registry.add<Transform3D>()
         .set_doc("Position, rotation and scale in 3D. Units are meters and y points up.")
@@ -1014,12 +1023,13 @@ void register_builtin_components(ComponentRegistry& registry) {
                                     "pixels, before splitting it into frames. A zero size uses "
                                     "the whole texture.",
                              .min = 0})
-        .describe("modulate", {.doc = "Color the texture is multiplied by, as [r, g, b, a] from "
-                                      "0 to 1.",
+        .describe("modulate", {.doc = "Color the texture and its children are multiplied by, as "
+                                      "[r, g, b, a] from 0 to 1.",
                                .min = 0,
                                .max = 1})
-        .describe("z_index", {.doc = "Higher draws on top.", .min = -4096, .max = 4096})
-        .describe("visible", {.doc = "Draw it."})
+        .describe("z_index",
+                  {.doc = "Higher draws on top; added to its parents'.", .min = -4096, .max = 4096})
+        .describe("visible", {.doc = "Draw it and its children."})
         .describe("texture_filter",
                   {.doc = "How the texture is sampled when scaled: \"nearest\" keeps pixel art "
                           "sharp. \"inherit\" uses the project's rendering.texture_filter.",
@@ -1079,10 +1089,11 @@ void register_builtin_components(ComponentRegistry& registry) {
                                     "the same length."})
         .describe("rows", {.doc = "Cells from the origin, one string of keys per row, \".\" for "
                                   "an empty cell."})
-        .describe("z_index", {.doc = "Higher draws on top.", .min = -4096, .max = 4096})
-        .describe("visible", {.doc = "Draw it."})
-        .describe("modulate", {.doc = "Color every tile is multiplied by, as [r, g, b, a] from 0 "
-                                      "to 1.",
+        .describe("z_index",
+                  {.doc = "Higher draws on top; added to its parents'.", .min = -4096, .max = 4096})
+        .describe("visible", {.doc = "Draw it and its children."})
+        .describe("modulate", {.doc = "Color every tile and its children are multiplied by, as "
+                                      "[r, g, b, a] from 0 to 1.",
                                .min = 0,
                                .max = 1})
         .describe("texture_filter",

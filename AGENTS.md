@@ -58,6 +58,14 @@ project) and override its fields; a `null` component removes one the prefab has.
 only what differs from the prefab. `entity.create` takes `"extends"`, and `prefab.save` writes an
 entity to a prefab file. `tests/data/game` has an example.
 
+The entities in a `Transform2D`'s `children` are placed in its space, as Godot's Node2D children:
+`world::Tree2D` (`engine/world/src/tree2d.cpp`, built with `-ffp-contract=off`) gives each one's
+global transform, its parent and its draw order, and everything that places things in the world
+(drawing, physics, lights, particles, sound) asks it. Make one per use; a root's global transform
+is its own to the bit, so flat scenes behave as before. `check_tree` backs `scene validate`, and
+a session fails any command that would give a child two parents or make it its own ancestor.
+`entity.destroy` takes children with it. `examples/parent-transforms` sails a boat.
+
 ```bash
 $cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, tileset, font, theme, audio, bus_layout, replay, test)
 $cli scene validate tests/data/basic.scene.json     # every error, with its JSON Pointer path

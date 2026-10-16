@@ -12,6 +12,7 @@
 #include "slash/platform/file.hpp"
 #include "slash/ui/ui.hpp"
 #include "slash/world/scene.hpp"
+#include "slash/world/tree2d.hpp"
 
 #include <algorithm>
 #include <cstdio>
@@ -295,7 +296,11 @@ Reply Session::call_command(std::string_view name, const json::Value& params) {
     dry_running_ = dry_run;
     undo_calls_.clear();
     begin_files();
+    const std::vector<world::TreeProblem> tree_before = world::check_tree(world_);
     Reply reply = run(*command, *command_args);
+    if (reply.ok && (edited_ || replaced_)) {
+        reply = keeps_tree(tree_before, std::move(reply));
+    }
     dry_running_ = false;
     buffering_events_ = false;
     if (reply.ok && !dry_run) {
@@ -356,6 +361,22 @@ Reply Session::call_command(std::string_view name, const json::Value& params) {
         }
         remember(undo_, std::move(before));
         redo_.clear();
+    }
+    return reply;
+}
+
+Reply Session::keeps_tree(const std::vector<world::TreeProblem>& before, Reply reply) const {
+    // As Godot's add_child refuses a node that has a parent or is an ancestor: an edit that
+    // breaks the Transform2D children's tree fails, unless the tree was already broken there.
+    for (const world::TreeProblem& problem : world::check_tree(world_)) {
+        if (std::ranges::none_of(before, [&](const world::TreeProblem& old) {
+                return old.path == problem.path && old.message == problem.message;
+            })) {
+            json::Value data;
+            data["path"] = problem.path;
+            return Reply::failure(code::kInvalidArgument, problem.path + ": " + problem.message,
+                                  std::move(data));
+        }
     }
     return reply;
 }
