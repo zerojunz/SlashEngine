@@ -32,7 +32,7 @@ engine. Copy from them.
 | [input-actions](input-actions/) | Rebindable input actions in `project.json`, Godot's `ui_*` actions, sticks with deadzones, taps, touch as a mouse, and `input.inject`, `input.state` and `input.actions` |
 | [audio](audio/) | `AudioStreamPlayer` and `AudioStreamPlayer2D`: a `.bus_layout.json` file's buses and effects, a randomizer in a `.audio.json` file, panning and fading by distance, the `finished` event, and `audio.state`, `audio.play`, `audio.set_bus` and `audio.capture` |
 | [frame-capture](frame-capture/) | `frame.capture`: what the window shows, drawn on the CPU the same on every machine, as pixel colors, a PNG to look at or a file |
-| [replays](replays/) | `replay.record`, `replay.stop` and `replay.run`: record a played run to a `.replay.json` file, play it back exactly in another session, stop at any tick, and see where a changed game first differs |
+| [replays](replays/) | `replay.record`, `replay.stop`, `replay.run` and `replay.seek`: record a played run to a `.replay.json` file, play it back exactly in another session, seek the moment something happened and the tick before, and see where a changed game first differs |
 
 ## What an example holds
 

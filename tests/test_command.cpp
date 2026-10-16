@@ -2143,3 +2143,20 @@ TEST_CASE("the call listener hears each command that ran, with the tick it start
     engine.ok("step");
     CHECK(heard.size() == 4);
 }
+
+TEST_CASE("the session's revision counts the calls that may change the world") {
+    Engine engine;
+    const std::uint64_t start = engine.session->revision();
+    engine.ok("entity.create", R"({"id": "a"})");
+    engine.ok("entity.get", R"({"id": "a"})");
+    engine.ok("world.query", R"({"with": ["Transform2D"]})");
+    CHECK(engine.session->revision() == start + 1);
+    // Failures, dry runs and undo count too, as they may have stepped or changed state outside
+    // the components; the commands inside a batch count as the batch.
+    engine.fails("entity.destroy", R"({"id": "b"})", command::code::kNotFound);
+    engine.ok("entity.create", R"({"id": "b", "dry_run": true})");
+    engine.ok("undo");
+    engine.ok("batch", R"({"commands": [{"command": "entity.create", "params": {"id": "c"}},
+                                        {"command": "step"}]})");
+    CHECK(engine.session->revision() == start + 5);
+}
