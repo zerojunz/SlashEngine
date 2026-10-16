@@ -465,6 +465,18 @@ margin on its side (`CheckWork` in `src/layout.cpp`). `Slider` is Godot's `HSlid
 draws in code from the same shapes (`ui::builtin_icon`, `builtin:` paths, which
 `CanvasRenderer` uploads like files). `examples/ui-settings` is a settings screen.
 
+`ScrollBar` and `ScrollContainer` are Godot's. Layout places a container's children and bars as
+`ScrollContainer::_reposition_children` and `_update_scrollbars` do and records each one's
+`ui::ScrollView` in `Layout::scrolls`; a control under a clip (`clip_contents`, every scroll
+container) gets a `Placed::clip`, which drawing cuts its triangles to and hit tests honor. In
+`src/gui.cpp`, `bar_input` follows `ScrollBar::gui_input` and `scroll_input`
+`ScrollContainer::gui_input` (the wheel, and touch drags with a deadzone and inertia); a
+container's own bars are pointer targets named `<id>/h_scroll` and `<id>/v_scroll` (`Target`),
+which never take focus or emit events. The gui state keeps scrolls as doubles while the
+component holds Godot's whole pixels: `absorb_scrolls` takes in changes made outside, and
+`process_scrolls` glides touch drags, follows focus (`ensure_control_visible`) and holds each
+scroll to the layout's range every tick. `examples/ui-scrolling` is a quest log.
+
 Text fields are Godot's `LineEdit`. The gui system edits them (`Editor` in `src/gui.cpp`, which
 follows `LineEdit::gui_input`, its undo stack and its caret and selection calls) from key events
 with a `unicode` character, `ime` events and the `ui_text_*`, `ui_cut`/`copy`/`paste` and

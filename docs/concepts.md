@@ -373,6 +373,15 @@ ones are drawn by the engine, named `builtin:checked`, `builtin:toggle_on` and s
 needs no image files for them. The [UI settings example](../examples/ui-settings/) is a
 settings screen.
 
+A **scroll container** (`ScrollContainer`) shows its children through its rect, **scrolled**,
+with a **scroll bar** on each side they don't fit; the wheel, dragging the bars and a finger
+scroll it, and with `follow_focus` it scrolls a control that gets focus into view. A
+`ScrollBar` also works on its own, holding a value like a slider whose grabber is a page of the
+range long. Controls **clip** their children to their rect when `clip_contents` is on, as a
+scroll container always does: what is cut off neither draws nor takes clicks, and `ui.layout`
+and `frame.summary` say what shows. The [UI scrolling example](../examples/ui-scrolling/) is a
+quest log.
+
 Text in every language follows Godot's text server. **BiDi** (the Unicode Bidirectional
 Algorithm) orders each paragraph: Arabic and Hebrew go right to left, with English words and
 numbers in them still left to right, and a label's `text_direction` can set the paragraph's
@@ -579,6 +588,7 @@ OpenAI-compatible servers (including local ones), Anthropic and Gemini; see the
 | Canonical form | The one way a scene is written: sorted keys, two-space indent, defaults left out |
 | Capability | A permission a session grants: `read`, `edit`, `run`, `filesystem` or `build` |
 | Check box | A toggle button drawn with a box beside its text (`CheckBox`), or a switch (`CheckButton`); in a button group, a radio button |
+| Clip | Cutting a control's children off at its rect, in drawing and for the pointer (`clip_contents`, and every `ScrollContainer`) |
 | Command | A named action with a params schema, capabilities and an effect |
 | Command registry | The list of commands every front end is generated from |
 | Component | A reflected C++ struct of data attached to an entity |
@@ -623,6 +633,8 @@ OpenAI-compatible servers (including local ones), Anthropic and Gemini; see the
 | Replay | A run recorded into a `.replay.json` file, which `replay.run` plays back exactly |
 | Resource | Read-only data an MCP client can fetch: the scene, its schema or the logs |
 | Scene | A world saved as a `.scene.json` file |
+| Scroll bar | A bar whose grabber shows which part of a range is in view and moves it (`ScrollBar`, and a scroll container's own) |
+| Scroll container | A control that shows its children scrolled through its rect, with scroll bars when they don't fit (`ScrollContainer`) |
 | Session | One world with its open scene path, undo history and recent logs |
 | Shadow map | A texture with one row per shadowed light, holding how far away the nearest occluder is in each direction |
 | Shortcut | A binding or action that presses a button from anywhere, such as Escape for Quit |

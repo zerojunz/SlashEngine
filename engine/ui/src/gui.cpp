@@ -19,6 +19,7 @@
 #include <string>
 #include <string_view>
 #include <tuple>
+#include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -29,10 +30,11 @@
 // _update_mouse_over), moves focus as Control does (scene/gui/control.cpp:
 // find_next_valid_focus, find_prev_valid_focus and _get_focus_neighbor with the legacy
 // strategy, Godot's default) and presses buttons as BaseButton does
-// (scene/gui/base_button.cpp) and edits text as LineEdit and TextEdit do (scene/gui/line_edit.cpp,
-// and text_editor.cpp for TextEdit). Its
-// state is kept by entity ID, since sessions make entities anew when they roll a command back.
-// Drag and drop, tooltips, context menus and cursor shapes aren't here.
+// (scene/gui/base_button.cpp), edits text as LineEdit and TextEdit do (scene/gui/line_edit.cpp,
+// and text_editor.cpp for TextEdit), and scrolls as ScrollBar and ScrollContainer do
+// (scene/gui/scroll_bar.cpp and scroll_container.cpp). Its state is kept by entity ID, since
+// sessions make entities anew when they roll a command back. Drag and drop, tooltips, context
+// menus and cursor shapes aren't here.
 namespace slash::ui {
 namespace {
 
@@ -70,6 +72,46 @@ struct SliderStatus {
     double repeat = kSliderRepeatDelay; // seconds until it steps again
 };
 
+// What ScrollBar keeps between events, for a ScrollBar or one of a ScrollContainer's bars: the
+// part the pointer is over, the arrow held down and its grabber's drag.
+struct BarStatus {
+    int highlight = 0; // as BarLook's
+    bool decrement_pressed = false;
+    bool increment_pressed = false;
+    bool dragging = false;
+    double pos_at_click = 0.0;   // where along its area the drag started
+    double value_at_click = 0.0; // its ratio then
+};
+
+// A ScrollBar's: as above, and the value it last had, so a change from anywhere emits
+// value_changed.
+struct ScrollBarStatus {
+    BarStatus bar;
+    double known = 0.0;
+    bool known_set = false;
+};
+
+// A ScrollContainer's: its bars', its scroll as its bars' values, in fractions of a pixel, and a
+// touch drag, as ScrollContainer's drag_* members.
+struct ScrollStatus {
+    BarStatus h;
+    BarStatus v;
+    std::array<double, 2> value{}; // horizontal, vertical
+    bool touching = false;         // drag_touching
+    bool deaccel = false;          // drag_touching_deaccel: let go, and gliding to a stop
+    bool beyond_deadzone = false;
+    Vec2 speed;
+    Vec2 accum;
+    Vec2 last_accum;
+    Vec2 from;
+    double time_since_motion = 0.0;
+};
+
+[[nodiscard]] bool idle(const BarStatus& status) {
+    return status.highlight == 0 && !status.decrement_pressed && !status.increment_pressed &&
+           !status.dragging;
+}
+
 [[nodiscard]] bool idle(const ButtonStatus& status) {
     return !status.hovering && !status.press_attempt && !status.pressing_inside &&
            !status.pressed_down_with_focus && status.touch_index == -1 && status.feedback <= 0.0;
@@ -93,6 +135,9 @@ struct GuiState {
     std::map<std::string, EditState, std::less<>> edits;          // each LineEdit's
     std::map<std::string, TextEditState, std::less<>> text_edits; // each TextEdit's
     std::map<std::string, SliderStatus, std::less<>> sliders;     // each Slider's
+    std::map<std::string, ScrollBarStatus, std::less<>> scroll_bars; // each ScrollBar's
+    std::map<std::string, ScrollStatus, std::less<>> scrolls;        // each ScrollContainer's
+    std::string followed;        // the focus follow_focus last scrolled to
     std::string clipboard;       // the world's clipboard, which a backend shares with the system's
     bool focus_by_arrow = false; // an arrow key is moving focus, so a LineEdit won't edit
 };
@@ -114,6 +159,48 @@ const GuiState* state_of(const world::World& world) {
     return found != nullptr ? found->get() : nullptr;
 }
 
+// A ScrollContainer's bars have no entities, so the gui system names one by its container's ID
+// and the bar's name, as Godot names them _h_scroll and _v_scroll. IDs have no '/'.
+constexpr std::string_view kHBar = "/h_scroll";
+constexpr std::string_view kVBar = "/v_scroll";
+
+std::string bar_id(std::string_view owner, Bar bar) {
+    std::string out(owner);
+    if (bar != Bar::Own) {
+        out += bar == Bar::Horizontal ? kHBar : kVBar;
+    }
+    return out;
+}
+
+// The control an ID the gui system keeps names: itself, or a bar's container.
+std::string_view owner_of(std::string_view id) {
+    return id.substr(0, id.find('/'));
+}
+
+Bar bar_named(std::string_view id) {
+    if (id.ends_with(kHBar)) {
+        return Bar::Horizontal;
+    }
+    return id.ends_with(kVBar) ? Bar::Vertical : Bar::Own;
+}
+
+// The status of the bar an ID names, if the gui system keeps one: const in a const state.
+template <typename State>
+auto* bar_status(State& state, std::string_view id) {
+    using Status = std::conditional_t<std::is_const_v<State>, const BarStatus, BarStatus>;
+    Status* none = nullptr;
+    const Bar bar = bar_named(id);
+    if (bar == Bar::Own) {
+        const auto found = state.scroll_bars.find(id);
+        return found != state.scroll_bars.end() ? &found->second.bar : none;
+    }
+    const auto found = state.scrolls.find(owner_of(id));
+    if (found == state.scrolls.end()) {
+        return none;
+    }
+    return bar == Bar::Horizontal ? &found->second.h : &found->second.v;
+}
+
 // ---- Controls ----
 
 enum class Filter : std::uint8_t { Stop, Pass, Ignore };
@@ -127,7 +214,8 @@ bool is_button(const world::World& world, entt::entity entity) {
 bool is_container(const world::World& world, entt::entity entity) {
     return world.ecs()
         .any_of<world::BoxContainer, world::GridContainer, world::MarginContainer,
-                world::CenterContainer, world::FlowContainer, world::PanelContainer>(entity);
+                world::CenterContainer, world::FlowContainer, world::PanelContainer,
+                world::ScrollContainer>(entity);
 }
 
 // The mouse filter a control has: its own, or its type's as Godot's constructors set them.
@@ -1314,6 +1402,178 @@ void repeat_sliders(world::World& world, GuiState& state, double tick_seconds) {
     }
 }
 
+// ---- Scroll bars ----
+
+constexpr double kPageDivisor = 8.0; // ScrollBar::PAGE_DIVISOR: the wheel moves an eighth page
+constexpr float kDeceleration =
+    1000.0F;                         // a touch glide slows by this many pixels a second, a second
+constexpr double kSpeedSample = 0.1; // seconds a touch drag's speed is measured over
+
+// Math::is_equal_approx.
+bool approx(double a, double b) {
+    if (a == b) {
+        return true;
+    }
+    const double tolerance = std::max(0.00001 * std::abs(a), 0.00001);
+    return std::abs(a - b) < tolerance;
+}
+
+// A ScrollContainer bar's range, as the layout set it, holding a value.
+Range view_range(const ScrollBarView& view, double value) {
+    return {.min = view.min_value,
+            .max = view.max_value,
+            .step = view.step,
+            .page = view.page,
+            .value = value,
+            .rounded = false,
+            .allow_greater = false,
+            .allow_lesser = false};
+}
+
+// A ScrollContainer's scroll as it is now: the gui state's, while the component's whole pixels
+// still match it, else the component's.
+std::array<double, 2> scroll_now(const world::World& world, const GuiState* state,
+                                 entt::entity entity) {
+    const auto* scroll = world.ecs().try_get<world::ScrollContainer>(entity);
+    if (scroll == nullptr) {
+        return {};
+    }
+    std::array<double, 2> now{static_cast<double>(scroll->scroll_horizontal),
+                              static_cast<double>(scroll->scroll_vertical)};
+    const std::string_view id = world.id_of(entity);
+    if (state == nullptr || id.empty()) {
+        return now;
+    }
+    if (const auto found = state->scrolls.find(id); found != state->scrolls.end()) {
+        for (std::size_t axis = 0; axis < now.size(); ++axis) {
+            const double value = found->second.value.at(axis);
+            if (std::isfinite(value) &&
+                static_cast<double>(static_cast<int>(value)) == now.at(axis)) {
+                now.at(axis) = value;
+            }
+        }
+    }
+    return now;
+}
+
+// One axis of a ScrollContainer's scroll set as its bar's Range::set_value keeps it: kept in the
+// gui state, and in whole pixels in the component, as get_h_scroll and get_v_scroll give it.
+void set_scroll(world::World& world, GuiState& state, entt::entity entity, std::size_t axis,
+                const ScrollBarView& view, double value) {
+    auto* scroll = world.ecs().try_get<world::ScrollContainer>(entity);
+    const std::string id(world.id_of(entity));
+    if (scroll == nullptr || id.empty() || !std::isfinite(value)) {
+        return;
+    }
+    const std::array<double, 2> now = scroll_now(world, &state, entity);
+    ScrollStatus& status = state.scrolls[id];
+    status.value = now;
+    status.value.at(axis) = range_value(view_range(view, now.at(axis)), value);
+    (axis == 0 ? scroll->scroll_horizontal : scroll->scroll_vertical) =
+        static_cast<int>(status.value.at(axis));
+}
+
+// ScrollContainer::_cancel_drag: a touch drag or glide stops, and scroll_ended says so if it
+// had begun.
+void cancel_drag(world::World& world, GuiState& state, const std::string& id,
+                 ScrollStatus& status) {
+    status.touching = false;
+    status.deaccel = false;
+    status.speed = {};
+    status.accum = {};
+    status.last_accum = {};
+    status.from = {};
+    if (status.beyond_deadzone) {
+        status.beyond_deadzone = false;
+        emit(world, state, "scroll_ended", id);
+    }
+}
+
+// Takes in scrolls set from outside the gui system (a command, gameplay code) as
+// ScrollContainer::set_h_scroll does, stopping a touch drag, and drops the state of containers
+// that went away.
+void absorb_scrolls(world::World& world, GuiState& state) {
+    for (auto it = state.scrolls.begin(); it != state.scrolls.end();) {
+        const entt::entity entity = world.find(it->first);
+        const auto* scroll =
+            entity != entt::null ? world.ecs().try_get<world::ScrollContainer>(entity) : nullptr;
+        if (scroll == nullptr) {
+            it = state.scrolls.erase(it);
+            continue;
+        }
+        ScrollStatus& status = it->second;
+        bool outside = false;
+        const std::array<int, 2> written{scroll->scroll_horizontal, scroll->scroll_vertical};
+        for (std::size_t axis = 0; axis < written.size(); ++axis) {
+            const double value = status.value.at(axis);
+            if (!std::isfinite(value) || static_cast<int>(value) != written.at(axis)) {
+                status.value.at(axis) = written.at(axis);
+                outside = true;
+            }
+        }
+        if (outside && status.touching) {
+            cancel_drag(world, state, it->first, status);
+        }
+        ++it;
+    }
+}
+
+// Range::set_value on a ScrollBar: its value kept in range, written and value_changed emitted
+// when it changes.
+void set_bar_value(world::World& world, GuiState& state, entt::entity entity, double value) {
+    auto* bar = world.ecs().try_get<world::ScrollBar>(entity);
+    if (bar == nullptr) {
+        return;
+    }
+    const Range range = range_of(*bar);
+    const double next = range_value(range, value);
+    if (next == range.value || (std::isnan(next) && std::isnan(range.value))) {
+        return;
+    }
+    bar->value = next;
+    const std::string id(world.id_of(entity));
+    ScrollBarStatus& status = state.scroll_bars[id];
+    status.known = next;
+    status.known_set = true;
+    emit_value(world, state, "value_changed", id, next);
+}
+
+// As track_sliders, for ScrollBars: each value kept in range and value_changed emitted for a
+// change from anywhere. A hidden bar lets go of its arrows and drag, as
+// NOTIFICATION_VISIBILITY_CHANGED.
+void track_scroll_bars(world::World& world, GuiState& state) {
+    std::set<std::string, std::less<>> seen;
+    std::optional<Parents> parents;
+    for (auto [entity, bar] : world.ecs().view<world::ScrollBar>().each()) {
+        const double value = range_of(bar).value;
+        if (value != bar.value && !(std::isnan(value) && std::isnan(bar.value))) {
+            bar.value = value;
+        }
+        const std::string_view id = world.id_of(entity);
+        if (id.empty()) {
+            continue;
+        }
+        seen.emplace(id);
+        ScrollBarStatus& status = state.scroll_bars[std::string(id)];
+        if (!status.known_set) {
+            status.known = value;
+            status.known_set = true;
+        } else if (value != status.known && !(std::isnan(value) && std::isnan(status.known))) {
+            status.known = value;
+            emit_value(world, state, "value_changed", std::string(id), value);
+        }
+        if (!idle(status.bar)) {
+            if (!parents) {
+                parents.emplace(world);
+            }
+            if (!parents->visible_in_tree(entity)) {
+                status.bar = {};
+            }
+        }
+    }
+    std::erase_if(state.scroll_bars, [&](const auto& each) { return !seen.contains(each.first); });
+}
+
 // Whether one of a button's shortcuts matches an event, as Shortcut::matches_event: bindings
 // with exactly the event's modifiers, or actions the event is bound to.
 bool shortcut_matches(const input::Map* map, const std::vector<json::Value>& shortcut,
@@ -1381,6 +1641,12 @@ Rect2 global_rect(const Placed& placed) {
 
 // ---- Sending events to controls ----
 
+// What the pointer is on: a control, or one of a ScrollContainer's bars.
+struct Target {
+    entt::entity entity = entt::null;
+    Bar bar = Bar::Own;
+};
+
 // One tick's work: the layout to find controls in, and whether the event being sent was handled.
 class Gui {
 public:
@@ -1397,6 +1663,29 @@ public:
             } else {
                 kids_[placed->parent].push_back(entity);
             }
+        }
+    }
+
+    // What ScrollContainers do once a tick, after its events: one that follows focus scrolls to
+    // a control that got it, a finger let go glides on (NOTIFICATION_INTERNAL_PROCESS), and each
+    // scroll stays in its bars' ranges, written back in whole pixels (_update_scrollbars).
+    void process_scrolls(double tick_seconds) {
+        if (state_.key_focus != state_.followed) {
+            state_.followed = state_.key_focus;
+            if (const entt::entity focus = find(state_.key_focus); focus != entt::null) {
+                follow_focus(focus);
+            }
+        }
+        for (const auto& [entity, view] : layout_.scrolls) {
+            const auto* scroll = world_.ecs().try_get<world::ScrollContainer>(entity);
+            if (scroll == nullptr || world_.id_of(entity).empty()) {
+                continue;
+            }
+            if (const auto found = state_.scrolls.find(world_.id_of(entity));
+                found != state_.scrolls.end() && found->second.touching) {
+                glide(entity, *scroll, view, found->second, tick_seconds);
+            }
+            settle(entity, view);
         }
     }
 
@@ -1445,6 +1734,19 @@ private:
     }
     [[nodiscard]] entt::entity find(const std::string& id) const {
         return id.empty() ? entt::null : world_.find(id);
+    }
+    // The control or bar an ID the gui system keeps names.
+    [[nodiscard]] Target target(std::string_view id) const {
+        const Bar bar = bar_named(id);
+        const std::string_view owner = owner_of(id);
+        const entt::entity entity = owner.empty() ? entt::null : world_.find(owner);
+        if (bar != Bar::Own && !layout_.scrolls.contains(entity)) {
+            return {};
+        }
+        return {.entity = entity, .bar = bar};
+    }
+    [[nodiscard]] std::string target_id(Target target) const {
+        return target.entity == entt::null ? std::string() : bar_id(id(target.entity), target.bar);
     }
     [[nodiscard]] const Placed* placed(entt::entity entity) const {
         return entity == entt::null ? nullptr : layout_.find(entity);
@@ -1498,51 +1800,82 @@ private:
 
     // Viewport::gui_find_control: the last control in tree order under a point that the mouse
     // doesn't pass by.
-    [[nodiscard]] entt::entity find_control(Vec2 point) const {
+    [[nodiscard]] Target find_control(Vec2 point) const {
         for (const entt::entity root : std::views::reverse(roots_)) {
             if (!visible(root)) {
                 continue;
             }
-            if (const entt::entity found = find_at(root, point); found != entt::null) {
+            if (const Target found = find_at(root, point); found.entity != entt::null) {
                 return found;
             }
         }
-        return entt::null;
+        return {};
     }
 
-    [[nodiscard]] entt::entity find_at(entt::entity entity, Vec2 point) const {
+    // Viewport::_gui_find_control_at_pos. A control that clips lets the pointer reach its
+    // children only inside its rect, and a ScrollContainer's bars come before its children, as
+    // its last ones.
+    [[nodiscard]] Target find_at(entt::entity entity, Vec2 point) const {
         const Placed* found = placed(entity);
         if (found == nullptr || !found->visible) {
-            return entt::null;
+            return {};
         }
         const auto local = inverse(found->transform);
         if (!local) {
-            return entt::null;
+            return {};
         }
-        const std::vector<entt::entity>& children = kids(entity);
-        for (const entt::entity child : std::views::reverse(children)) {
-            if (const entt::entity hit = find_at(child, point); hit != entt::null) {
-                return hit;
+        const Vec2 at = local->apply(point);
+        if (!found->clips || inside(found->size, at)) {
+            if (const auto scroll = layout_.scrolls.find(entity);
+                scroll != layout_.scrolls.end() && !world_.id_of(entity).empty()) {
+                for (const Bar bar : {Bar::Vertical, Bar::Horizontal}) {
+                    const ScrollBarView& view =
+                        bar == Bar::Vertical ? scroll->second.v : scroll->second.h;
+                    if (view.visible && inside(view.size, at - view.position)) {
+                        return {.entity = entity, .bar = bar};
+                    }
+                }
+            }
+            const std::vector<entt::entity>& children = kids(entity);
+            for (const entt::entity child : std::views::reverse(children)) {
+                if (const Target hit = find_at(child, point); hit.entity != entt::null) {
+                    return hit;
+                }
             }
         }
         if (mouse_filter(world_, entity) == Filter::Ignore || world_.id_of(entity).empty()) {
-            return entt::null;
+            return {};
         }
-        return has_point(entity, local->apply(point)) ? entity : entt::null;
+        return has_point(entity, at) ? Target{.entity = entity, .bar = Bar::Own} : Target{};
+    }
+
+    // Rect2::has_point for a rect at the origin.
+    static bool inside(Vec2 size, Vec2 point) {
+        return point.x >= 0.0F && point.y >= 0.0F && point.x < size.x && point.y < size.y;
     }
 
     // Viewport::_update_mouse_over: mouse_exited for the controls the mouse left, from the
     // innermost, then mouse_entered for the ones it is over, from the outermost.
     void update_mouse_over(Vec2 point) {
-        const entt::entity over = find_control(point);
-        const std::string over_id = over != entt::null ? id(over) : std::string();
+        const Target target = find_control(point);
+        const entt::entity over = target.entity;
+        const std::string over_id = target_id(target);
         auto& hierarchy = state_.mouse_over_hierarchy;
         if (over_id == state_.mouse_over && (over != entt::null || hierarchy.empty())) {
             return;
         }
         std::string common;
         std::vector<std::string> entering;
-        for (entt::entity at = over; at != entt::null; at = parent(at)) {
+        if (target.bar != Bar::Own) {
+            // A ScrollContainer's bar stops the pointer, so it is all the mouse is over.
+            if (std::ranges::find(hierarchy, over_id) != hierarchy.end()) {
+                common = over_id;
+            } else {
+                entering.push_back(over_id);
+            }
+        }
+        for (entt::entity at = target.bar == Bar::Own ? over : entt::null; at != entt::null;
+             at = parent(at)) {
             const Filter filter = mouse_filter(world_, at);
             if (filter != Filter::Ignore && !world_.id_of(at).empty()) {
                 std::string at_id = id(at);
@@ -1563,6 +1896,9 @@ private:
             state_.mouse_over = over_id;
             for (const std::string& each : std::views::reverse(entering)) {
                 hierarchy.push_back(each);
+                if (bar_named(each) != Bar::Own) {
+                    continue; // a container's bar has no entity to tell
+                }
                 const entt::entity entity = find(each);
                 if (is_button(world_, entity)) {
                     status_of(world_, state_, entity).hovering = true;
@@ -1590,15 +1926,26 @@ public:
             if (const auto found = state.buttons.find(left); found != state.buttons.end()) {
                 found->second.hovering = false;
             }
-            if (world.find(left) != entt::null) {
+            // ScrollBar's NOTIFICATION_MOUSE_EXIT.
+            if (BarStatus* bar = bar_status(state, left); bar != nullptr) {
+                bar->highlight = 0;
+            }
+            if (bar_named(left) == Bar::Own && world.find(left) != entt::null) {
                 emit(world, state, "mouse_exited", left);
             }
         }
     }
 
 private:
-    // Viewport::_gui_call_input: the control, then its parents until one stops the pointer.
-    void call_input(entt::entity entity, const input::Event& event) {
+    // Viewport::_gui_call_input: the control, then its parents until one stops the pointer. A
+    // ScrollContainer's bar takes the event and stops it there.
+    void call_input(Target target, const input::Event& event) {
+        if (target.bar != Bar::Own) {
+            bar_input(target.entity, target.bar, event);
+            handled_ = true;
+            return;
+        }
+        const entt::entity entity = target.entity;
         const bool pointer = is_pointer(event);
         const bool scroll = is_scroll(event);
         for (entt::entity at = entity; at != entt::null; at = parent(at)) {
@@ -1629,6 +1976,12 @@ private:
         }
         if (world_.ecs().all_of<world::Slider>(entity) && !world_.id_of(entity).empty()) {
             slider_input(entity, event);
+        }
+        if (world_.ecs().all_of<world::ScrollBar>(entity) && !world_.id_of(entity).empty()) {
+            bar_input(entity, Bar::Own, event);
+        }
+        if (world_.ecs().all_of<world::ScrollContainer>(entity) && !world_.id_of(entity).empty()) {
+            scroll_input(entity, event);
         }
     }
 
@@ -2248,6 +2601,503 @@ private:
         }
     }
 
+    // A touch drag's speed, measured every tenth of a second while the finger moves, and once
+    // it lets go, the glide: the scroll moves on at that speed, slowing by 1000 pixels a second
+    // each second, until it stops or reaches both ends.
+    void glide(entt::entity entity, const world::ScrollContainer& scroll, const ScrollView& view,
+               ScrollStatus& status, double tick_seconds) {
+        const auto delta = static_cast<float>(tick_seconds);
+        if (!status.deaccel) {
+            if (status.time_since_motion == 0.0 || status.time_since_motion > kSpeedSample) {
+                const Vec2 diff = status.accum - status.last_accum;
+                status.last_accum = status.accum;
+                status.speed = {diff.x / delta, diff.y / delta};
+            }
+            status.time_since_motion += tick_seconds;
+            return;
+        }
+        const std::array<double, 2> now = scroll_now(world_, &state_, entity);
+        Vec2 pos{static_cast<float>(now[0]), static_cast<float>(now[1])};
+        pos = pos + (status.speed * delta);
+        bool off_h = false;
+        bool off_v = false;
+        const auto keep = [](float& value, const ScrollBarView& bar, bool& off) {
+            if (value < 0.0F) {
+                value = 0.0F;
+                off = true;
+            }
+            const auto end = static_cast<float>(bar.max_value - bar.page);
+            if (value > end) {
+                value = end;
+                off = true;
+            }
+        };
+        keep(pos.x, view.h, off_h);
+        keep(pos.y, view.v, off_v);
+        if (scroll.horizontal_scroll_mode != "disabled") {
+            set_scroll(world_, state_, entity, 0, view.h, pos.x);
+        }
+        if (scroll.vertical_scroll_mode != "disabled") {
+            set_scroll(world_, state_, entity, 1, view.v, pos.y);
+        }
+        const auto slow = [&](float speed, bool& off) {
+            const float sign = speed < 0.0F ? -1.0F : 1.0F;
+            const auto left =
+                static_cast<float>(static_cast<double>(std::abs(speed)) -
+                                   (static_cast<double>(kDeceleration) * tick_seconds));
+            if (left < 0.0F) {
+                off = true;
+            }
+            return sign * left;
+        };
+        status.speed = {slow(status.speed.x, off_h), slow(status.speed.y, off_v)};
+        if (off_h && off_v) {
+            cancel_drag(world_, state_, id(entity), status);
+        }
+    }
+
+    // _update_scrollbars: the scroll kept in its bars' ranges, as set_max and set_page keep their
+    // values, and written to the component in whole pixels. A bar hidden, or in a hidden
+    // container, lets go of its arrows and drag, as NOTIFICATION_VISIBILITY_CHANGED.
+    void settle(entt::entity entity, const ScrollView& view) {
+        auto& scroll = world_.ecs().get<world::ScrollContainer>(entity);
+        const std::string owner = id(entity);
+        const std::array<double, 2> now = scroll_now(world_, &state_, entity);
+        const std::array<double, 2> kept{range_value(view_range(view.h, now[0]), now[0]),
+                                         range_value(view_range(view.v, now[1]), now[1])};
+        const bool fraction = kept[0] != std::trunc(kept[0]) || kept[1] != std::trunc(kept[1]);
+        auto found = state_.scrolls.find(owner);
+        if (found == state_.scrolls.end() && fraction) {
+            found = state_.scrolls.try_emplace(owner).first;
+        }
+        if (found != state_.scrolls.end()) {
+            ScrollStatus& status = found->second;
+            status.value = kept;
+            const bool shown = visible(entity);
+            const auto let_go = [](BarStatus& bar) {
+                bar.decrement_pressed = false;
+                bar.increment_pressed = false;
+                bar.dragging = false;
+            };
+            if (!shown || !view.h.visible) {
+                let_go(status.h);
+            }
+            if (!shown || !view.v.visible) {
+                let_go(status.v);
+            }
+            if (idle(status.h) && idle(status.v) && !status.touching && !status.beyond_deadzone &&
+                !fraction) {
+                state_.scrolls.erase(found);
+            }
+        }
+        const std::array<int, 2> whole{static_cast<int>(kept[0]), static_cast<int>(kept[1])};
+        if (scroll.scroll_horizontal != whole[0]) {
+            scroll.scroll_horizontal = whole[0];
+        }
+        if (scroll.scroll_vertical != whole[1]) {
+            scroll.scroll_vertical = whole[1];
+        }
+    }
+
+    // ScrollContainer::_gui_focus_changed: each ScrollContainer around the control that follows
+    // focus scrolls it into view, the innermost first.
+    void follow_focus(entt::entity focus) {
+        std::map<entt::entity, Vec2> moved; // each one's scroll_diff, for the ones around it
+        for (entt::entity at = parent(focus); at != entt::null; at = parent(at)) {
+            const auto* scroll = world_.ecs().try_get<world::ScrollContainer>(at);
+            if (scroll != nullptr && scroll->follow_focus && layout_.scrolls.contains(at) &&
+                !world_.id_of(at).empty()) {
+                moved[at] = ensure_visible(at, focus, moved);
+            }
+        }
+    }
+
+    // How far one axis must scroll to show a span: to its start when it fits, else as little
+    // as shows the most of it, as ensure_control_visible's per-axis rule.
+    static float scroll_needed(float begin, float end, bool fits) {
+        if (fits) {
+            if (begin <= 0.0F) {
+                return begin;
+            }
+            return end <= 0.0F ? 0.0F : end;
+        }
+        if (begin >= 0.0F) {
+            return begin;
+        }
+        return end >= 0.0F ? 0.0F : end;
+    }
+
+    // The bounding box of a rect moved by a transform.
+    static Rect2 transformed(const Transform& t, const Rect2& r) {
+        const std::array<Vec2, 4> corners{t.apply(r.position), t.apply({r.end().x, r.position.y}),
+                                          t.apply({r.position.x, r.end().y}), t.apply(r.end())};
+        Vec2 low = corners[0];
+        Vec2 high = corners[0];
+        for (const Vec2 corner : corners) {
+            low = {std::min(low.x, corner.x), std::min(low.y, corner.y)};
+            high = {std::max(high.x, corner.x), std::max(high.y, corner.y)};
+        }
+        return {low, high - low};
+    }
+
+    // ScrollContainer::ensure_control_visible: the least scroll that shows the control, or the
+    // part of it the ScrollContainers inside this one show, from where the layout placed it.
+    // Returns how far it scrolled (scroll_diff).
+    Vec2 ensure_visible(entt::entity container, entt::entity control,
+                        const std::map<entt::entity, Vec2>& moved) {
+        const Placed* shown = placed(control);
+        if (shown == nullptr || placed(container) == nullptr) {
+            return {};
+        }
+        Rect2 local{{}, shown->size};
+        Transform target_in_sc;
+        entt::entity target = control;
+        for (entt::entity at = parent(control); at != entt::null; at = parent(at)) {
+            const auto inner = layout_.scrolls.find(at);
+            if (inner == layout_.scrolls.end()) {
+                continue;
+            }
+            const auto to_sc = inverse(placed(at)->transform);
+            if (!to_sc) {
+                return {};
+            }
+            target_in_sc = (*to_sc * placed(target)->transform) * target_in_sc;
+            if (at == container) {
+                break;
+            }
+            target = at;
+            if (const auto diff = moved.find(at); diff != moved.end()) {
+                // The inner one has scrolled since the layout: move by that too.
+                target_in_sc.tx -= diff->second.x;
+                target_in_sc.ty -= diff->second.y;
+            }
+            const auto back = inverse(target_in_sc);
+            if (!back) {
+                return {};
+            }
+            const Rect2 seen =
+                transformed(*back, {inner->second.visible_position, inner->second.visible_size});
+            const Vec2 low{std::max(local.position.x, seen.position.x),
+                           std::max(local.position.y, seen.position.y)};
+            const Vec2 high{std::min(local.end().x, seen.end().x),
+                            std::min(local.end().y, seen.end().y)};
+            if (high.x <= low.x || high.y <= low.y) {
+                return {}; // hidden by the inner one
+            }
+            local = {low, high - low};
+        }
+        const ScrollView& view = layout_.scrolls.at(container);
+        const Rect2 visible_rect{view.visible_position, view.visible_size};
+        const Rect2 target_rect = transformed(target_in_sc, local);
+        const Vec2 begin = target_rect.position - visible_rect.position;
+        const Vec2 end = target_rect.end() - visible_rect.end();
+        const Vec2 diff{scroll_needed(begin.x, end.x, visible_rect.size.x > target_rect.size.x),
+                        scroll_needed(begin.y, end.y, visible_rect.size.y > target_rect.size.y)};
+        // set_h_scroll and set_v_scroll take whole pixels, and stop a touch drag.
+        set_scroll(world_, state_, container, 0, view.h,
+                   static_cast<double>(static_cast<int>(view.scroll.x + diff.x)));
+        set_scroll(world_, state_, container, 1, view.v,
+                   static_cast<double>(static_cast<int>(view.scroll.y + diff.y)));
+        if (const auto found = state_.scrolls.find(world_.id_of(container));
+            found != state_.scrolls.end()) {
+            cancel_drag(world_, state_, id(container), found->second);
+        }
+        return diff;
+    }
+
+    // A ScrollContainer's status, made with the scroll its component has.
+    ScrollStatus& scroll_status(entt::entity entity) {
+        const auto [found, made] = state_.scrolls.try_emplace(id(entity));
+        if (made) {
+            found->second.value = scroll_now(world_, nullptr, entity);
+        }
+        return found->second;
+    }
+
+    BarStatus& bar_state(entt::entity entity, Bar bar) {
+        if (bar == Bar::Own) {
+            return state_.scroll_bars[id(entity)].bar;
+        }
+        ScrollStatus& scroll = scroll_status(entity);
+        return bar == Bar::Horizontal ? scroll.h : scroll.v;
+    }
+
+    // A bar as the layout measured it: a ScrollBar's, or one of a ScrollContainer's.
+    [[nodiscard]] const ScrollBarView* bar_view(entt::entity entity, Bar bar) const {
+        if (bar == Bar::Own) {
+            const auto found = layout_.scroll_bars.find(entity);
+            return found != layout_.scroll_bars.end() ? &found->second : nullptr;
+        }
+        const auto found = layout_.scrolls.find(entity);
+        if (found == layout_.scrolls.end()) {
+            return nullptr;
+        }
+        return bar == Bar::Horizontal ? &found->second.h : &found->second.v;
+    }
+
+    // A bar's range holding the value it has now: a ScrollBar's own, or its container's scroll
+    // along it.
+    [[nodiscard]] Range bar_range(entt::entity entity, Bar bar, const ScrollBarView& view) const {
+        if (bar == Bar::Own) {
+            const auto* own = world_.ecs().try_get<world::ScrollBar>(entity);
+            return own != nullptr ? range_of(*own) : view_range(view, view.value);
+        }
+        const std::array<double, 2> now = scroll_now(world_, &state_, entity);
+        return view_range(view, now.at(bar == Bar::Horizontal ? 0 : 1));
+    }
+
+    // ScrollBar::scroll_to: its value set, and scrolling emitted when it moved.
+    void bar_scroll_to(entt::entity entity, Bar bar, const ScrollBarView& view, double value) {
+        if (bar != Bar::Own) {
+            set_scroll(world_, state_, entity, bar == Bar::Horizontal ? 0 : 1, view, value);
+            return;
+        }
+        const double before = bar_range(entity, bar, view).value;
+        set_bar_value(world_, state_, entity, value);
+        if (!approx(before, bar_range(entity, bar, view).value)) {
+            emit(world_, state_, "scrolling", id(entity));
+        }
+    }
+
+    // ScrollBar::gui_input, for a ScrollBar or one of a ScrollContainer's bars: a click on an
+    // arrow steps it, a click before or after the grabber pages it, a click on the grabber drags
+    // it, the wheel moves it an eighth of a page, and with focus the ui_* actions step it. It
+    // takes every mouse event.
+    void bar_input(entt::entity entity, Bar bar, const input::Event& event) {
+        const ScrollBarView* found = bar_view(entity, bar);
+        if (found == nullptr || world_.id_of(entity).empty()) {
+            return;
+        }
+        const ScrollBarView& view = *found;
+        const bool vertical = view.vertical;
+        const auto range = [&] { return bar_range(entity, bar, view); };
+        const double step = view.custom_step >= 0.0 ? view.custom_step : range().step;
+        const auto along = [vertical](Vec2 v) { return static_cast<double>(vertical ? v.y : v.x); };
+        // Where along it the pointer is.
+        const auto offset = [&] {
+            Vec2 at = to_local(entity, event.position).value_or(Vec2{});
+            if (bar != Bar::Own) {
+                at = at - view.position;
+            }
+            return along(at);
+        };
+        const auto decrement = static_cast<double>(view.decrement);
+        const auto increment = static_cast<double>(view.increment);
+        const double total = along(view.size);
+        if (event.type == input::EventType::MouseButton) {
+            handled_ = true;
+            const bool down = event.button == input::MouseButton::WheelDown;
+            if (event.pressed && (down || event.button == input::MouseButton::WheelUp)) {
+                const Range r = range();
+                const double change =
+                    (r.page != 0.0 ? r.page / kPageDivisor : (r.max - r.min) / 16.0) *
+                    static_cast<double>(event.factor);
+                const double by = std::max(change, r.step);
+                bar_scroll_to(entity, bar, view, r.value + (down ? by : -by));
+            }
+            if (event.button != input::MouseButton::Left) {
+                return;
+            }
+            if (!event.pressed) {
+                BarStatus& status = bar_state(entity, bar);
+                status.decrement_pressed = false;
+                status.increment_pressed = false;
+                status.dragging = false;
+                return;
+            }
+            double ofs = offset();
+            if (ofs < decrement) {
+                bar_state(entity, bar).decrement_pressed = true;
+                bar_scroll_to(entity, bar, view, range().value - step);
+                return;
+            }
+            if (ofs > total - increment) {
+                bar_state(entity, bar).increment_pressed = true;
+                bar_scroll_to(entity, bar, view, range().value + step);
+                return;
+            }
+            ofs -= decrement + static_cast<double>(view.begin);
+            const Range r = range();
+            const double grabber_offset = view.area * range_ratio(r);
+            const double page = r.page != 0.0 ? r.page : (r.max - r.min) / 16.0;
+            if (ofs < grabber_offset) {
+                bar_scroll_to(entity, bar, view, std::clamp(r.value - page, r.min, r.max - r.page));
+                return;
+            }
+            ofs -= grabber_offset;
+            if (ofs < view.grabber_size) {
+                BarStatus& status = bar_state(entity, bar);
+                status.dragging = true;
+                status.pos_at_click = grabber_offset + ofs;
+                status.value_at_click = range_ratio(r);
+            } else {
+                bar_scroll_to(entity, bar, view, std::clamp(r.value + page, r.min, r.max - r.page));
+            }
+            return;
+        }
+        if (event.type == input::EventType::MouseMotion) {
+            handled_ = true;
+            const double ofs = offset();
+            BarStatus& status = bar_state(entity, bar);
+            if (status.dragging) {
+                const double diff =
+                    (ofs - decrement - static_cast<double>(view.begin) - status.pos_at_click) /
+                    view.area;
+                const double ratio = status.value_at_click + diff;
+                bar_scroll_to(entity, bar, view, range_from_ratio(range(), ratio));
+            } else if (ofs < decrement) {
+                status.highlight = 1;
+            } else if (ofs > total - increment) {
+                status.highlight = 3;
+            } else {
+                status.highlight = 2;
+            }
+            return;
+        }
+        if (!is_pressed(event)) {
+            return;
+        }
+        const Range r = range();
+        if (is_action(event, "ui_left", true)) {
+            if (!vertical) {
+                bar_scroll_to(entity, bar, view, r.value - step);
+            }
+        } else if (is_action(event, "ui_right", true)) {
+            if (!vertical) {
+                bar_scroll_to(entity, bar, view, r.value + step);
+            }
+        } else if (is_action(event, "ui_up", true)) {
+            if (vertical) {
+                bar_scroll_to(entity, bar, view, r.value - step);
+            }
+        } else if (is_action(event, "ui_down", true)) {
+            if (vertical) {
+                bar_scroll_to(entity, bar, view, r.value + step);
+            }
+        } else if (is_action(event, "ui_home", true)) {
+            bar_scroll_to(entity, bar, view, r.min);
+        } else if (is_action(event, "ui_end", true)) {
+            bar_scroll_to(entity, bar, view, r.max);
+        }
+    }
+
+    // ScrollContainer::gui_input: the wheel scrolls it an eighth of a page, the vertical bar
+    // first unless scroll_horizontal_by_default or Shift says otherwise, and a finger drags it
+    // once past its deadzone, gliding on when it lets go. It takes what moved it.
+    void scroll_input(entt::entity entity, const input::Event& event) {
+        const auto found = layout_.scrolls.find(entity);
+        const auto* scroll = world_.ecs().try_get<world::ScrollContainer>(entity);
+        if (found == layout_.scrolls.end() || scroll == nullptr ||
+            event.device == input::kEmulatedDevice) {
+            return;
+        }
+        const ScrollView& view = found->second;
+        const std::array<double, 2> before = scroll_now(world_, &state_, entity);
+        const bool h_enabled = scroll->horizontal_scroll_mode != "disabled";
+        const bool v_enabled = scroll->vertical_scroll_mode != "disabled";
+        const auto moved = [&] { return scroll_now(world_, &state_, entity) != before; };
+        const auto scroll_to = [&](std::size_t axis, double value) {
+            set_scroll(world_, state_, entity, axis, axis == 0 ? view.h : view.v, value);
+        };
+        if (event.type == input::EventType::MouseButton) {
+            if (!event.pressed) {
+                return;
+            }
+            bool modified = false;
+            const bool swap = scroll->scroll_horizontal_by_default != event.modifiers.shift;
+            const bool v_hidden = !view.v.visible && scroll->vertical_scroll_mode != "never";
+            const bool h_hidden = !view.h.visible && scroll->horizontal_scroll_mode != "never";
+            // ScrollBar::scroll by an eighth of its page, one way or the other.
+            const auto wheel = [&](std::size_t axis, double sign) {
+                const double page = axis == 0 ? view.h.page : view.v.page;
+                const double now = scroll_now(world_, &state_, entity).at(axis);
+                scroll_to(axis,
+                          now + (sign * page / kPageDivisor * static_cast<double>(event.factor)));
+                modified = true;
+            };
+            using input::MouseButton;
+            if (event.button == MouseButton::WheelUp || event.button == MouseButton::WheelDown) {
+                const double sign = event.button == MouseButton::WheelUp ? -1.0 : 1.0;
+                if ((h_enabled && swap) || v_hidden) {
+                    wheel(0, sign);
+                } else if (v_enabled) {
+                    wheel(1, sign);
+                }
+            }
+            if (event.button == MouseButton::WheelLeft || event.button == MouseButton::WheelRight) {
+                const double sign = event.button == MouseButton::WheelLeft ? -1.0 : 1.0;
+                if ((v_enabled && swap) || h_hidden) {
+                    wheel(1, sign);
+                } else if (h_enabled) {
+                    wheel(0, sign);
+                }
+            }
+            if (modified && moved()) {
+                handled_ = true;
+            }
+            return;
+        }
+        const std::string owner = id(entity);
+        if (event.type == input::EventType::ScreenTouch) {
+            ScrollStatus& status = scroll_status(entity);
+            if (event.pressed) {
+                if (status.touching) {
+                    cancel_drag(world_, state_, owner, status);
+                }
+                status.speed = {};
+                status.accum = {};
+                status.last_accum = {};
+                status.from = {static_cast<float>(before[0]), static_cast<float>(before[1])};
+                status.touching = true;
+                status.deaccel = false;
+                status.beyond_deadzone = false;
+                status.time_since_motion = 0.0;
+            } else if (status.touching) {
+                if (status.speed == Vec2{}) {
+                    cancel_drag(world_, state_, owner, status);
+                } else {
+                    status.deaccel = true;
+                }
+            }
+            return;
+        }
+        if (event.type != input::EventType::ScreenDrag) {
+            return;
+        }
+        const auto status_found = state_.scrolls.find(owner);
+        if (status_found != state_.scrolls.end() && status_found->second.touching &&
+            !status_found->second.deaccel) {
+            ScrollStatus& status = status_found->second;
+            const Vec2 motion = event.relative.value_or(Vec2{});
+            status.accum = status.accum - motion;
+            const auto deadzone = static_cast<float>(scroll->scroll_deadzone);
+            if (status.beyond_deadzone || (h_enabled && std::abs(status.accum.x) > deadzone) ||
+                (v_enabled && std::abs(status.accum.y) > deadzone)) {
+                if (!status.beyond_deadzone) {
+                    emit(world_, state_, "scroll_started", owner);
+                    status.beyond_deadzone = true;
+                    // Starting over here keeps the scroll from jumping by the deadzone.
+                    status.accum = Vec2{} - motion;
+                }
+                const Vec2 diff = status.from + status.accum;
+                if (h_enabled) {
+                    scroll_to(0, diff.x);
+                } else {
+                    status.accum.x = 0.0F;
+                }
+                if (v_enabled) {
+                    scroll_to(1, diff.y);
+                } else {
+                    status.accum.y = 0.0F;
+                }
+                status.time_since_motion = 0.0;
+            }
+        }
+        if (moved()) {
+            handled_ = true;
+        }
+    }
+
     // BaseButton::on_action_event.
     void on_action_event(entt::entity entity, const input::Event& event) {
         const std::optional<Base> base = base_of(world_, entity);
@@ -2307,21 +3157,22 @@ private:
                 }
                 state_.mouse_focus_mask |= bit;
             } else {
-                const entt::entity over = find_control(event.position);
-                if (over == entt::null) {
+                const Target over = find_control(event.position);
+                if (over.entity == entt::null) {
                     // A click on nothing hides focus, though the focus stays.
                     if (!state_.key_focus.empty() && event.button == input::MouseButton::Left) {
                         state_.hide_focus = true;
                     }
                     return;
                 }
-                state_.mouse_focus = id(over);
+                state_.mouse_focus = target_id(over);
                 state_.mouse_focus_mask |= bit;
             }
-            const entt::entity focus = find(state_.mouse_focus);
-            if (event.button == input::MouseButton::Left) {
-                // The first focusable control up from the one clicked takes focus, hidden.
-                for (entt::entity at = focus; at != entt::null; at = parent(at)) {
+            const Target focus = target(state_.mouse_focus);
+            if (event.button == input::MouseButton::Left && focus.bar == Bar::Own) {
+                // The first focusable control up from the one clicked takes focus, hidden. A
+                // container's bar can't have focus, and stops the search.
+                for (entt::entity at = focus.entity; at != entt::null; at = parent(at)) {
                     if (focusable(at)) {
                         const std::string at_id = id(at);
                         if (!at_id.empty() &&
@@ -2336,7 +3187,7 @@ private:
                     }
                 }
             }
-            if (focus != entt::null) {
+            if (focus.entity != entt::null) {
                 call_input(focus, event);
             }
             return;
@@ -2345,28 +3196,28 @@ private:
         if (state_.mouse_focus.empty()) {
             return;
         }
-        const entt::entity focus = find(state_.mouse_focus);
+        const Target focus = target(state_.mouse_focus);
         if (state_.mouse_focus_mask == 0) {
             state_.mouse_focus.clear();
         }
-        if (focus != entt::null) {
+        if (focus.entity != entt::null) {
             call_input(focus, event);
         }
     }
 
     void mouse_motion(const input::Event& event) {
-        const entt::entity over =
-            !state_.mouse_focus.empty() ? find(state_.mouse_focus) : find_control(event.position);
-        if (over != entt::null) {
+        const Target over =
+            !state_.mouse_focus.empty() ? target(state_.mouse_focus) : find_control(event.position);
+        if (over.entity != entt::null) {
             call_input(over, event);
         }
     }
 
     void screen_touch(const input::Event& event) {
         if (event.pressed) {
-            const entt::entity over = find_control(event.position);
-            if (over != entt::null) {
-                state_.touch_focus[event.index] = id(over);
+            const Target over = find_control(event.position);
+            if (over.entity != entt::null) {
+                state_.touch_focus[event.index] = target_id(over);
                 call_input(over, event);
             }
             return;
@@ -2375,18 +3226,18 @@ private:
         if (found == state_.touch_focus.end()) {
             return;
         }
-        const entt::entity over = find(found->second);
+        const Target over = target(found->second);
         state_.touch_focus.erase(found);
-        if (over != entt::null) {
+        if (over.entity != entt::null) {
             call_input(over, event);
         }
     }
 
     void screen_drag(const input::Event& event) {
         const auto found = state_.touch_focus.find(event.index);
-        const entt::entity over =
-            found != state_.touch_focus.end() ? find(found->second) : find_control(event.position);
-        if (over != entt::null) {
+        const Target over = found != state_.touch_focus.end() ? target(found->second)
+                                                              : find_control(event.position);
+        if (over.entity != entt::null) {
             call_input(over, event);
         }
     }
@@ -2869,8 +3720,10 @@ void upkeep(world::World& world, GuiState& state, double tick_seconds) {
     text_edit_upkeep(world, state, tick_seconds);
     const Parents parents(world);
     const auto shown = [&](const std::string& id) {
-        const entt::entity entity = world.find(id);
-        return entity != entt::null && is_control(world, entity) && parents.visible_in_tree(entity);
+        const entt::entity entity = world.find(owner_of(id));
+        return entity != entt::null && is_control(world, entity) &&
+               (bar_named(id) == Bar::Own || world.ecs().all_of<world::ScrollContainer>(entity)) &&
+               parents.visible_in_tree(entity);
     };
     // A control that was destroyed goes quietly: its entity.destroyed event says so.
     if (!state.key_focus.empty()) {
@@ -2938,15 +3791,22 @@ void run(world::World& world, double tick_seconds) {
     state->next.clear();
     upkeep(world, *state, tick_seconds);
     track_sliders(world, *state);
+    track_scroll_bars(world, *state);
+    absorb_scrolls(world, *state);
     const std::span<const input::Event> events = input::events(std::as_const(world));
     const std::vector<std::string> presses = std::move(state->presses);
     state->presses.clear();
-    if (!events.empty()) {
+    // ScrollContainers need their layout every tick, to glide, follow focus and keep in range.
+    const bool scrolls = !world.ecs().view<world::ScrollContainer>().empty();
+    if (!events.empty() || scrolls) {
         if (text::Fonts* found = fonts(world); found != nullptr) {
             const Layout placed = layout(world, *found, settings(world).viewport);
             Gui gui(world, *state, placed, static_cast<double>(world.tick()) * tick_seconds);
             for (const input::Event& event : events) {
                 gui.send(event);
+            }
+            if (scrolls) {
+                gui.process_scrolls(tick_seconds);
             }
         }
     }
@@ -3120,7 +3980,7 @@ void release_focus(world::World& world) {
 
 entt::entity hovered(const world::World& world) {
     const GuiState* state = state_of(world);
-    return state != nullptr && !state->mouse_over.empty() ? world.find(state->mouse_over)
+    return state != nullptr && !state->mouse_over.empty() ? world.find(owner_of(state->mouse_over))
                                                           : entt::null;
 }
 
@@ -3128,6 +3988,26 @@ bool shows_focus(const world::World& world, entt::entity control) {
     const GuiState* state = state_of(world);
     return state != nullptr && !state->hide_focus && !state->key_focus.empty() &&
            state->key_focus == world.id_of(control);
+}
+
+BarLook bar_look(const world::World& world, entt::entity control, Bar bar) {
+    const GuiState* state = state_of(world);
+    const std::string_view id = world.id_of(control);
+    if (state == nullptr || id.empty()) {
+        return {};
+    }
+    const BarStatus* status = bar_status(*state, bar_id(id, bar));
+    if (status == nullptr) {
+        return {};
+    }
+    return {.highlight = status->highlight,
+            .decrement_pressed = status->decrement_pressed,
+            .increment_pressed = status->increment_pressed,
+            .dragging = status->dragging};
+}
+
+std::array<double, 2> wanted_scroll(const world::World& world, entt::entity container) {
+    return scroll_now(world, state_of(world), container);
 }
 
 Snapshot save(const world::World& world) {

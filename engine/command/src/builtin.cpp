@@ -1519,10 +1519,43 @@ Reply ui_layout(Session& session, const json::Value& params) {
             button != layout.buttons.end()) {
             item["draw_mode"] = ui::draw_mode_name(button->second.mode);
         }
+        if (placed.clip) {
+            // The part a clip leaves: none, or less than the whole rect.
+            const Vec4& clip = *placed.clip;
+            const Vec2 from{std::max(low.x, clip.x), std::max(low.y, clip.y)};
+            const Vec2 to{std::min(high.x, clip.z), std::min(high.y, clip.w)};
+            if (to.x <= from.x || to.y <= from.y) {
+                item["clipped"] = true;
+            } else if (from.x > low.x || from.y > low.y || to.x < high.x || to.y < high.y) {
+                item["shown_rect"] =
+                    rounded(json::Array{from.x, from.y, to.x - from.x, to.y - from.y});
+            }
+        }
         if (const auto slider = layout.sliders.find(placed.entity);
             slider != layout.sliders.end()) {
             item["value"] = rounded(json::Value(slider->second.value));
             item["ratio"] = rounded(json::Value(slider->second.ratio));
+        }
+        if (const auto bar = layout.scroll_bars.find(placed.entity);
+            bar != layout.scroll_bars.end()) {
+            item["value"] = rounded(json::Value(bar->second.value));
+            item["ratio"] = rounded(json::Value(bar->second.ratio));
+        }
+        if (const auto scroll = layout.scrolls.find(placed.entity);
+            scroll != layout.scrolls.end()) {
+            const ui::ScrollView& view = scroll->second;
+            item["scroll"] = rounded(json::Array{view.scroll.x, view.scroll.y});
+            item["scroll_max"] = rounded(json::Array{view.scroll_max.x, view.scroll_max.y});
+            json::Array bars;
+            if (view.h.visible) {
+                bars.emplace_back("horizontal");
+            }
+            if (view.v.visible) {
+                bars.emplace_back("vertical");
+            }
+            if (!bars.empty()) {
+                item["scroll_bars"] = std::move(bars);
+            }
         }
         if (placed.entity == focused) {
             item["focused"] = true;
@@ -2610,6 +2643,15 @@ Reply frame_summary(Session& session, const json::Value& params) {
                 slider != layout.sliders.end()) {
                 each["value"] = rounded(json::Value(slider->second.value));
             }
+            if (const auto bar = layout.scroll_bars.find(item.entity);
+                bar != layout.scroll_bars.end()) {
+                each["value"] = rounded(json::Value(bar->second.value));
+            }
+            if (const auto scroll = layout.scrolls.find(item.entity);
+                scroll != layout.scrolls.end()) {
+                each["scroll"] =
+                    rounded(json::Array{scroll->second.scroll.x, scroll->second.scroll.y});
+            }
             if (item.entity == focused) {
                 each["focused"] = true;
             }
@@ -2621,7 +2663,7 @@ Reply frame_summary(Session& session, const json::Value& params) {
     result["drawn"] = std::move(drawn);
     for (const auto& [name, list] :
          {std::pair{"covered", &summary.covered}, std::pair{"offscreen", &summary.offscreen},
-          std::pair{"clear", &summary.clear}}) {
+          std::pair{"clear", &summary.clear}, std::pair{"clipped", &summary.clipped}}) {
         json::Array ids;
         for (const std::size_t index : *list) {
             if (!included(items[index].entity)) {
@@ -4040,8 +4082,8 @@ void register_builtin_commands(Registry& registry) {
         .description = "Says what the window shows now, as data instead of an image: each sprite, "
                        "tile map layer, particle emitter and control that shows, in drawing "
                        "order, with its rect in window pixels, its text, and how much of it shows "
-                       "when not all; what is covered, offscreen or transparent; and what can't "
-                       "draw.",
+                       "when not all; what is covered, offscreen, transparent or clipped away; "
+                       "and what can't draw.",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema({
@@ -4151,10 +4193,11 @@ void register_builtin_commands(Registry& registry) {
         .description = "Returns where controls are on screen, in drawing order: each one's rect "
                        "[x, y, w, h], the lines labels, buttons, progress bars and text fields "
                        "show (rtl when they go right to left) and whether text overflows, each "
-                       "button's draw_mode, each slider's value and ratio, each LineEdit's "
-                       "and TextEdit's caret and selection, the control with focus and the one "
-                       "hovered, and mistakes such as misspelled theme overrides. A check "
-                       "without a screenshot.",
+                       "button's draw_mode, each slider's and scroll bar's value and ratio, each "
+                       "ScrollContainer's scroll, scroll_max and scroll_bars, the part a clip "
+                       "shows (shown_rect, or clipped), each LineEdit's and TextEdit's caret "
+                       "and selection, the control with focus and the one hovered, and mistakes "
+                       "such as misspelled theme overrides. A check without a screenshot.",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema({
