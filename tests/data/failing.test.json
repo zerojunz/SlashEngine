@@ -1,0 +1,14 @@
+{
+  "tests": {
+    "one_tick": {
+      "steps": [
+        {
+          "command": "step",
+          "expect": {
+            "tick": 2
+          }
+        }
+      ]
+    }
+  }
+}

@@ -94,6 +94,11 @@ void reset_sink() {
     set_sink(default_sink);
 }
 
+Sink sink() {
+    const std::scoped_lock lock(state().mutex);
+    return state().sink;
+}
+
 void set_min_level(Level level) {
     const std::scoped_lock lock(state().mutex);
     state().min_level = level;

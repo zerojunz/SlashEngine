@@ -14,6 +14,7 @@
 #include "slash/command/replay.hpp"
 #include "slash/command/rpc.hpp"
 #include "slash/command/session.hpp"
+#include "slash/command/test.hpp"
 #include "slash/core/json.hpp"
 #include "slash/core/log.hpp"
 #include "slash/core/version.hpp"
@@ -88,18 +89,24 @@ Usage:
       --project <dir>                Project folder for --serve and --record (default ".")
   slash-cli scene validate <file>    Check a scene, .prefab.json, .frames.json,
                                      .material.json, .anim.json, .tileset.json, .font.json,
-                                     .theme.json, .audio.json, .bus_layout.json or
-                                     .replay.json file; lists every error
+                                     .theme.json, .audio.json, .bus_layout.json, .replay.json
+                                     or .test.json file; lists every error
   slash-cli scene format <file>      Rewrite one of those files in canonical form
       --check                        Only report whether it is canonical; change nothing
   slash-cli schema <name>            Print a JSON Schema: scene, prefab, frames (.frames.json),
                                      material (.material.json), animation (.anim.json),
                                      tileset (.tileset.json), font (.font.json), theme
                                      (.theme.json), audio (.audio.json), bus_layout
-                                     (.bus_layout.json), replay (.replay.json), storyboard,
-                                     project (project.json) or presets (export_presets.json)
+                                     (.bus_layout.json), replay (.replay.json), test
+                                     (.test.json), storyboard, project (project.json) or
+                                     presets (export_presets.json)
   slash-cli project validate [dir]   Check project.json, export_presets.json, the project's
                                      theme, bus layout and storyboard; lists every error
+  slash-cli test [path...]           Run the project's .test.json tests headless, or those in
+                                     the files and folders given, and print only the checks
+                                     that failed; exits 1 if any did
+      --project <dir>                Project folder (default ".")
+      --test <name>                  Run only the test with this name (repeatable)
   slash-cli call <command> [params]  Run one engine command and print its result
                                      params is a JSON object, or - to read it from stdin
       --scene <file>                 Open this scene first (or start a new one saved there)
@@ -673,6 +680,7 @@ int cmd_scene_validate(const std::string& path) {
     const bool stream = path.ends_with(slash::audio::kStreamSuffix);
     const bool buses = path.ends_with(slash::audio::kBusLayoutSuffix);
     const bool replay = path.ends_with(command::kReplaySuffix);
+    const bool test = path.ends_with(command::kTestSuffix);
     json::Value result;
     auto parsed = json::parse(text.value());
     std::vector<json::ValidationError> errors;
@@ -696,6 +704,8 @@ int cmd_scene_validate(const std::string& path) {
         errors = slash::audio::validate_bus_layout(parsed.value());
     } else if (replay) {
         errors = command::validate_replay(parsed.value());
+    } else if (test) {
+        errors = command::validate_test(parsed.value());
     } else {
         errors = prefab ? world::validate_prefab(registry, parsed.value(), prefab_reader(path))
                         : world::validate_scene(registry, parsed.value(), prefab_reader(path));
@@ -707,7 +717,7 @@ int cmd_scene_validate(const std::string& path) {
         }
     }
     if (parsed && !frames && !material && !animation && !tileset && !font && !theme && !stream &&
-        !buses && !replay) {
+        !buses && !replay && !test) {
         check_story_refs(path, parsed.value(), errors);
     }
     result["valid"] = errors.empty();
@@ -748,6 +758,8 @@ int cmd_scene_validate(const std::string& path) {
         }
         if (buses) {
             counted = "buses";
+        } else if (test) {
+            counted = "tests";
         } else if (frames || animation) {
             counted = "animations";
         } else if (prefab) {
@@ -761,8 +773,8 @@ int cmd_scene_validate(const std::string& path) {
 }
 
 // A .frames.json, .material.json, .anim.json, .tileset.json, .font.json, .theme.json,
-// .audio.json, .bus_layout.json or .replay.json file in canonical form: checked, then written
-// with sorted keys.
+// .audio.json, .bus_layout.json, .replay.json or .test.json file in canonical form: checked,
+// then written with sorted keys.
 template <typename Parse>
 slash::Result<std::string> format_checked(std::string_view text, Parse parse) {
     auto parsed = json::parse(text);
@@ -806,15 +818,21 @@ int cmd_scene_format(const std::string& path, bool check) {
         if (path.ends_with(slash::audio::kBusLayoutSuffix)) {
             return format_checked(text.value(), slash::audio::parse_bus_layout);
         }
-        if (path.ends_with(command::kReplaySuffix)) {
-            return format_checked(text.value(), [](const json::Value& doc) -> slash::Result<void> {
-                const auto errors = command::validate_replay(doc);
+        const auto checked_by = [](auto validate) {
+            return [validate](const json::Value& doc) -> slash::Result<void> {
+                const auto errors = validate(doc);
                 if (!errors.empty()) {
                     return slash::make_error(slash::ErrorCode::InvalidArgument,
                                              errors.front().path + ": " + errors.front().message);
                 }
                 return {};
-            });
+            };
+        };
+        if (path.ends_with(command::kReplaySuffix)) {
+            return format_checked(text.value(), checked_by(command::validate_replay));
+        }
+        if (path.ends_with(command::kTestSuffix)) {
+            return format_checked(text.value(), checked_by(command::validate_test));
         }
         if (path.ends_with(world::kPrefabSuffix)) {
             return world::format_prefab(registry, text.value(), prefab_reader(path));
@@ -867,12 +885,12 @@ int cmd_scene(const std::vector<std::string>& args) {
 }
 
 int cmd_schema(const std::vector<std::string>& args) {
-    constexpr std::array<std::string_view, 14> kKinds = {
-        "scene", "prefab", "frames",     "material", "animation",  "tileset", "font",
-        "theme", "audio",  "bus_layout", "replay",   "storyboard", "project", "presets"};
+    constexpr std::array<std::string_view, 15> kKinds = {
+        "scene", "prefab",     "frames", "material", "animation",  "tileset", "font",   "theme",
+        "audio", "bus_layout", "replay", "test",     "storyboard", "project", "presets"};
     if (args.size() != 1 || std::ranges::find(kKinds, args[0]) == kKinds.end()) {
         return usage_error("schema takes one argument: scene, prefab, frames, material, "
-                           "animation, tileset, font, theme, audio, bus_layout, replay, "
+                           "animation, tileset, font, theme, audio, bus_layout, replay, test, "
                            "storyboard, project or presets");
     }
     json::Value schema;
@@ -898,6 +916,8 @@ int cmd_schema(const std::vector<std::string>& args) {
         schema = slash::audio::bus_layout_schema();
     } else if (args[0] == "replay") {
         schema = command::replay_schema();
+    } else if (args[0] == "test") {
+        schema = command::test_schema();
     } else if (args[0] == "storyboard") {
         schema = slash::storyboard::file_schema();
     } else if (args[0] == "project") {
@@ -997,6 +1017,44 @@ int cmd_project(const std::vector<std::string>& args) {
     }
     print(result);
     return result.find("errors") == nullptr ? kExitOk : kExitFailure;
+}
+
+// Runs test.run and exits 1 if a check failed.
+int cmd_test(const std::vector<std::string>& args) {
+    command::SessionOptions options;
+    json::Array paths;
+    json::Array tests;
+    for (std::size_t i = 0; i < args.size(); ++i) {
+        if (args[i] == "--project" || args[i] == "--test") {
+            if (i + 1 >= args.size()) {
+                return usage_error(args[i] + " needs a value");
+            }
+            if (args[i] == "--project") {
+                options.project_root = args[++i];
+            } else {
+                tests.emplace_back(args[++i]);
+            }
+        } else if (!args[i].starts_with("--")) {
+            paths.emplace_back(args[i]);
+        } else {
+            return usage_error("unexpected argument for test: " + args[i]);
+        }
+    }
+    json::Value params = json::Object{};
+    if (!paths.empty()) {
+        params["paths"] = std::move(paths);
+    }
+    if (!tests.empty()) {
+        params["tests"] = std::move(tests);
+    }
+    Engine engine(options);
+    const command::Reply reply = engine.session->call("test.run", params);
+    if (!reply.ok) {
+        print(error_json(reply));
+        return kExitFailure;
+    }
+    print(reply.value);
+    return reply.value.find("failed")->size() == 0 ? kExitOk : kExitFailure;
 }
 
 int cmd_call(const std::vector<std::string>& args) {
@@ -1333,6 +1391,9 @@ int main(int argc, char** argv) {
     }
     if (name == "project") {
         return cmd_project(args);
+    }
+    if (name == "test") {
+        return cmd_test(args);
     }
     if (name == "call") {
         return cmd_call(args);

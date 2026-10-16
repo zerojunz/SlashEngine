@@ -62,6 +62,26 @@ up instead of inventing them, and record new ones so other agents see them:
   glossary says to avoid.
 - Before starting work, add a `task/...` entry with your name as `owner`, so others see it.
 
+## Test the game
+
+`tests/` holds `.test.json` files (`slash-cli schema test`). Each test opens a scene and runs
+engine commands in order, with what each reply must hold in `expect`:
+
+```json
+{"scene": "scenes/main.scene.json",
+ "tests": {"crate_lands": {"steps": [
+   {"command": "run.until",
+    "params": {"where": [{"component": "RigidBody2D", "field": "sleeping", "value": true}]},
+    "expect": {"matched": true, "entities": ["crate"]}}]}}}
+```
+
+After a change, save the scene (tests start from scene files) and call `test_run`, or run
+`slash-cli test`. It runs every test headless, each in a session of its own, plus
+`storyboard_check`, and returns only the checks that failed: a step whose command failed, a
+reply that doesn't hold what the step expects, or a warning or error logged while it ran. There
+are no logs or screenshots to read. Add a test for each behavior you build and each bug you fix;
+a recorded run (`replay.run` to a `tick`, then `world.query`) makes a good one.
+
 ## Drive a running game
 
 `slash-cli run --serve` plays the game and serves the same commands over HTTP on this machine,
@@ -80,7 +100,7 @@ asset files reload while it runs: prefab instances update and keep their overrid
 - `component_set` returns only the fields that changed.
 - To test gameplay, `run_until` steps the game headless until an entity matches `with`/`where`
   (or none does) and returns the tick and the matches: one call instead of a step and a query
-  per tick.
+  per tick. Keep the checks you want to repeat as tests in `tests/`.
 - For many similar entities, `prefab_save` one to `prefabs/<name>.prefab.json` and create the
   rest with `entity_create` and `"extends"`. Each saves only the fields it overrides, and editing
   the prefab changes them all.
@@ -148,6 +168,8 @@ environment variables, never from the file.
   `audio_state` and `audio_capture` (levels in dB, slice by slice) rather than by ear.
 - `storyboard/`: the game's facts as typed entries (`slash-cli schema storyboard`), and
   `journal.jsonl`, the record of who changed them. Commit both.
+- `tests/`: `.test.json` tests that `test_run` and `slash-cli test` run, and the export workflow
+  runs on every push.
 )";
 
 constexpr std::string_view kSkill = R"(---
@@ -176,7 +198,8 @@ description: Build or change scenes in this SlashEngine game through the slashen
    see what a player would, call `frame_capture` with `points` (pixel colors) or with
    `"image": true` and a small `scale`.
 6. If something is wrong, `undo` reverts the whole batch.
-7. Call `scene_save`, then `storyboard_check`.
+7. Call `scene_save`, then `test_run`: it runs the tests in `tests/` and `storyboard_check`, and
+   returns only the checks that failed.
 
 A run recorded with `slash-cli run --record bug.replay.json` (or `replay_record` and
 `replay_stop`) plays back exactly with `replay_run`: pass `tick` to stop where a bug happens and
@@ -292,6 +315,10 @@ jobs:
       - name: Check the project and its storyboard
         shell: bash
         run: slashengine/build/tools/slash-cli/slash-cli project validate "game/$GAME_DIR"
+
+      - name: Run the tests
+        shell: bash
+        run: slashengine/build/tools/slash-cli/slash-cli test --project "game/$GAME_DIR"
 
       - name: Export and run headless
         shell: bash
@@ -444,6 +471,19 @@ std::string starter_work() {
     return storyboard::format_file(entries);
 }
 
+// A starter test: the main scene runs for a second with no warning or error.
+std::string starter_test() {
+    json::Value step;
+    step["command"] = "step";
+    step["params"]["ticks"] = 60;
+    json::Value test;
+    test["steps"] = json::Array{std::move(step)};
+    json::Value file;
+    file["scene"] = kMainScene;
+    file["tests"]["main_scene_runs"] = std::move(test);
+    return json::write(file) + "\n";
+}
+
 std::string empty_scene() {
     const world::ComponentRegistry components;
     const world::World scene(components);
@@ -467,6 +507,7 @@ Result<json::Value> init_project(const InitOptions& options) {
         {".claude/skills/slashengine/SKILL.md", std::string(kSkill)},
         {".github/workflows/export.yml", with_engine_ref(kWorkflow)},
         {kMainScene, empty_scene()},
+        {"tests/main.test.json", starter_test()},
         {glossary, starter_glossary(name)},
         {work, starter_work()},
     };

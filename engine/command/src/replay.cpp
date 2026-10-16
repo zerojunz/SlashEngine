@@ -32,10 +32,10 @@ namespace {
 constexpr std::size_t kHashDigits = 16;
 
 // Commands a recording leaves out: they drive the host or the recording rather than the world,
-// or change only project files.
-constexpr std::array<std::string_view, 8> kUnrecorded = {
-    "replay.record", "replay.stop", "replay.run",  "replay.seek",
-    "play",          "pause",       "display.set", "storyboard.edit"};
+// change only project files, or run tests in sessions of their own.
+constexpr std::array<std::string_view, 9> kUnrecorded = {
+    "replay.record", "replay.stop", "replay.run",      "replay.seek", "play",
+    "pause",         "display.set", "storyboard.edit", "test.run"};
 
 bool unrecorded(std::string_view name) {
     return std::ranges::find(kUnrecorded, name) != kUnrecorded.end();
@@ -315,16 +315,6 @@ json::Value replay_json(Session& session, Recording& recording) {
     keep_prefabs(recording, saved.links, end);
     doc["prefabs"] = recording.prefabs;
     return doc;
-}
-
-Result<void> write_file(const std::string& full, const std::string& contents) {
-    if (const std::size_t slash = full.find_last_of('/');
-        slash != std::string::npos && slash > 0 && !platform::exists(full.substr(0, slash))) {
-        if (auto made = platform::create_directories(full.substr(0, slash)); !made) {
-            return made.error();
-        }
-    }
-    return platform::write_file(full, contents);
 }
 
 Result<std::string> replay_file(const Session& session, std::string_view path) {
@@ -1244,6 +1234,10 @@ Result<json::Value> start_recording(Session& session, std::string path) {
     if (auto file = replay_file(session, path); !file) {
         return file.error();
     }
+    if (!session.options().write_files) {
+        return make_error(ErrorCode::PermissionDenied,
+                          "tests don't write files, so a test can't record a replay");
+    }
     world::World& world = session.world();
     // Start afresh, with the entities stored as a replay puts them back, so playing it back
     // begins alike.
@@ -1285,7 +1279,7 @@ Result<json::Value> stop_recording(Session& session) {
         return file.error();
     }
     const json::Value doc = replay_json(session, recording);
-    if (auto written = write_file(file.value(), json::write(doc) + "\n"); !written) {
+    if (auto written = session.write_file(file.value(), json::write(doc) + "\n"); !written) {
         return written.error();
     }
     stop_listening(session);
