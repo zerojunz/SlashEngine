@@ -1,5 +1,7 @@
 #include "slash/command/replay.hpp"
 
+#include "selection.hpp"
+
 #include "slash/command/session.hpp"
 #include "slash/core/json.hpp"
 #include "slash/core/json_schema.hpp"
@@ -15,6 +17,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <memory>
 #include <optional>
@@ -30,9 +33,9 @@ constexpr std::size_t kHashDigits = 16;
 
 // Commands a recording leaves out: they drive the host or the recording rather than the world,
 // or change only project files.
-constexpr std::array<std::string_view, 7> kUnrecorded = {
-    "replay.record", "replay.stop", "replay.run",     "play",
-    "pause",         "display.set", "storyboard.edit"};
+constexpr std::array<std::string_view, 8> kUnrecorded = {
+    "replay.record", "replay.stop", "replay.run",  "replay.seek",
+    "play",          "pause",       "display.set", "storyboard.edit"};
 
 bool unrecorded(std::string_view name) {
     return std::ranges::find(kUnrecorded, name) != kUnrecorded.end();
@@ -545,8 +548,8 @@ Reply nested(std::string_view name) {
     return Reply::failure(code::kInvalidArgument, std::string(name) + " can't run inside a batch");
 }
 
-// Reads and checks a replay file named by params' path.
-Result<json::Value> read_replay(const Session& session, const std::string& path, Reply& failure) {
+// Reads a replay file named by params' path.
+Result<std::string> read_replay(const Session& session, const std::string& path, Reply& failure) {
     auto file = replay_file(session, path);
     if (!file) {
         failure = param_failure(Reply::failure(file.error()).code, "/path", file.error().message);
@@ -558,7 +561,12 @@ Result<json::Value> read_replay(const Session& session, const std::string& path,
             param_failure(Reply::failure(contents.error()).code, "/path", contents.error().message);
         return contents.error();
     }
-    auto doc = json::parse(contents.value());
+    return std::move(contents).value();
+}
+
+// Parses and checks a replay file's text.
+Result<json::Value> parse_replay(const std::string& path, const std::string& text, Reply& failure) {
+    auto doc = json::parse(text);
     if (!doc) {
         failure = param_failure(code::kInvalidArgument, "/path",
                                 path + " is not valid JSON: " + doc.error().message);
@@ -589,122 +597,173 @@ Result<json::Value> read_replay(const Session& session, const std::string& path,
     return std::move(doc).value();
 }
 
-Reply replay_run(Session& session, const json::Value& params) {
-    if (session.depth() > 1) {
-        return nested("replay.run");
-    }
-    if (const Recording* active = active_recording(session.world()); active != nullptr) {
-        return Reply::failure(code::kInvalidArgument,
-                              "recording to " + active->path + "; stop it with replay.stop first");
-    }
-    const std::string path = text_param(params, "path");
-    Reply failure;
-    auto read = read_replay(session, path, failure);
-    if (!read) {
-        return failure;
-    }
-    const json::Value& replay = read.value();
-    const json::Value& start = *replay.find("start");
-    const json::Value& end = *replay.find("end");
-    const std::uint64_t first = tick_of(start);
-    const std::uint64_t last = tick_of(end);
-    std::uint64_t stop = last;
-    if (const json::Value* tick = params.find("tick"); tick != nullptr) {
-        stop = static_cast<std::uint64_t>(tick->as_int());
-        if (stop < first || stop > last) {
-            return param_failure(code::kInvalidArgument, "/tick",
-                                 "the replay runs from tick " + std::to_string(first) + " to " +
-                                     std::to_string(last));
-        }
-    }
-
+// A replay being played back. The session keeps the last one between calls, so replay.seek can
+// go on from where it stopped.
+struct Playback {
+    std::string path;
+    std::string text; // the file as read, to notice when it changes
+    json::Value replay;
     SharedPrefabs prefabs;
-    if (const json::Value* copies = replay.find("prefabs"); copies != nullptr) {
-        for (const auto& [prefab, components] : copies->as_object()) {
-            prefabs.emplace(prefab, std::make_shared<const json::Value>(components));
+    std::vector<Run> runs;
+    std::vector<Check> checks;
+    std::uint64_t first = 0;
+    std::uint64_t last = 0;
+
+    // How far it got.
+    std::size_t next_entry = 0;
+    std::size_t next_run = 0;
+    std::size_t next_check = 0;
+    bool going = true;  // false once a command failed or the ticks went another way
+    bool ended = false; // compared with the recording's end
+    std::optional<std::uint64_t> diverged;
+    json::Value failed;
+    json::Value changes; // what differs at the end
+
+    // The session as the playback left it, to tell whether anything else ran since.
+    bool intact = true; // false after a dry run, which put back the components but not the rest
+    std::uint64_t tick = 0;
+    std::uint64_t revision = 0;
+    std::size_t queued = 0;
+    Vec2 viewport;
+
+    void differ(std::uint64_t at) {
+        if (!diverged) {
+            diverged = at;
         }
     }
-    const auto file_failure = [&path](const Error& error) {
-        json::Value data;
-        data["file"] = path;
-        return Reply::failure(code::kInvalidArgument, path + ": " + error.message, std::move(data));
-    };
+};
 
-    // The start, as a new world would play it.
+// In the world's context, beside the world it plays.
+struct PlaybackHolder {
+    std::unique_ptr<Playback> kept;
+};
+
+Playback* kept_playback(world::World& world) {
+    auto* holder = world.ecs().ctx().find<PlaybackHolder>();
+    return holder != nullptr ? holder->kept.get() : nullptr;
+}
+
+std::unique_ptr<Playback> take_playback(world::World& world) {
+    auto* holder = world.ecs().ctx().find<PlaybackHolder>();
+    return holder != nullptr ? std::move(holder->kept) : nullptr;
+}
+
+void keep_playback(Session& session, std::unique_ptr<Playback> playback) {
     world::World& world = session.world();
-    if (auto put = put_back(session, start, prefabs, "/start"); !put) {
-        return file_failure(put.error());
+    playback->intact = true;
+    playback->tick = world.tick();
+    playback->revision = session.revision();
+    playback->queued = input::queued(world);
+    playback->viewport = ui::settings(world).viewport;
+    auto& holder = world.ecs().ctx().contains<PlaybackHolder>()
+                       ? world.ecs().ctx().get<PlaybackHolder>()
+                       : world.ecs().ctx().emplace<PlaybackHolder>();
+    holder.kept = std::move(playback);
+}
+
+// Whether the world is as the playback left it: nothing else has run since (the call running
+// now counts once), and the host has neither stepped, queued input nor resized.
+bool resumable(const Session& session, const Playback* playback) {
+    const world::World& world = session.world();
+    return playback != nullptr && playback->intact && world.tick() == playback->tick &&
+           session.revision() == playback->revision + 1 &&
+           input::queued(world) == playback->queued &&
+           ui::settings(world).viewport == playback->viewport;
+}
+
+// The playback of a replay file's text.
+Result<std::unique_ptr<Playback>> new_playback(const std::string& path, std::string text,
+                                               Reply& failure) {
+    auto replay = parse_replay(path, text, failure);
+    if (!replay) {
+        return replay.error();
+    }
+    auto playback = std::make_unique<Playback>();
+    playback->path = path;
+    playback->text = std::move(text);
+    playback->replay = std::move(replay).value();
+    const json::Value& doc = playback->replay;
+    if (const json::Value* copies = doc.find("prefabs"); copies != nullptr) {
+        for (const auto& [prefab, components] : copies->as_object()) {
+            playback->prefabs.emplace(prefab, std::make_shared<const json::Value>(components));
+        }
+    }
+    for (const json::Value& item : doc.find("steps")->as_array()) {
+        playback->runs.push_back(
+            {tick_of(item), tick_of(item, "count"), item.find("seconds")->as_double()});
+    }
+    for (const json::Value& item : doc.find("checks")->as_array()) {
+        playback->checks.push_back({tick_of(item), item.find("hash")->as_string()});
+    }
+    playback->first = tick_of(*doc.find("start"));
+    playback->last = tick_of(*doc.find("end"));
+    return playback;
+}
+
+// The replay file at path, as the kept playback if the file is the same (fresh is left empty)
+// or as a new one in fresh. Changes nothing.
+Result<Playback*> open_playback(Session& session, const std::string& path,
+                                std::unique_ptr<Playback>& fresh, Reply& failure) {
+    auto text = read_replay(session, path, failure);
+    if (!text) {
+        return text.error();
+    }
+    if (Playback* kept = kept_playback(session.world());
+        kept != nullptr && kept->path == path && kept->text == text.value()) {
+        return kept;
+    }
+    auto made = new_playback(path, std::move(text).value(), failure);
+    if (!made) {
+        return made.error();
+    }
+    fresh = std::move(made).value();
+    return fresh.get();
+}
+
+// Puts the start back, as a new world would play it.
+Result<void> begin(Session& session, Playback& playback) {
+    const json::Value& start = *playback.replay.find("start");
+    world::World& world = session.world();
+    if (auto put = put_back(session, start, playback.prefabs, "/start"); !put) {
+        return put.error();
     }
     const json::Value* next_id = start.find("next_id");
     world.set_counters(
-        {first, next_id != nullptr ? static_cast<std::uint64_t>(next_id->as_int()) : 1});
+        {playback.first, next_id != nullptr ? static_cast<std::uint64_t>(next_id->as_int()) : 1});
     world.reset_state();
     if (const json::Value* viewport = start.find("viewport"); viewport != nullptr) {
         ui::set_viewport(world, vec_of(*viewport));
     }
-    session.set_scene_path(text_param(replay, "scene"));
+    session.set_scene_path(text_param(playback.replay, "scene"));
+    playback.next_entry = 0;
+    playback.next_run = 0;
+    playback.next_check = 0;
+    playback.going = true;
+    playback.ended = false;
+    playback.diverged.reset();
+    playback.failed = json::Value();
+    playback.changes = json::Value();
+    return {};
+}
 
-    std::vector<Run> runs;
-    for (const json::Value& item : replay.find("steps")->as_array()) {
-        runs.push_back({tick_of(item), tick_of(item, "count"), item.find("seconds")->as_double()});
-    }
-    std::vector<Check> checks;
-    for (const json::Value& item : replay.find("checks")->as_array()) {
-        checks.push_back({tick_of(item), item.find("hash")->as_string()});
-    }
-
-    std::optional<std::uint64_t> diverged;
-    const auto differ = [&diverged](std::uint64_t tick) {
-        if (!diverged) {
-            diverged = tick;
-        }
-    };
-    std::size_t next_check = 0;
-    const auto compare = [&](std::uint64_t tick) {
-        while (next_check < checks.size() && checks[next_check].tick < tick) {
-            ++next_check;
-        }
-        if (next_check < checks.size() && checks[next_check].tick == tick) {
-            if (world_hash(world::save_scene(world)) != checks[next_check].hash) {
-                differ(tick);
-            }
-            ++next_check;
-        }
-    };
-    // Steps the ticks the host stepped, up to target.
-    std::size_t next_run = 0;
-    const auto advance = [&](std::uint64_t target) {
-        while (world.tick() < target) {
-            const std::uint64_t tick = world.tick();
-            compare(tick);
-            while (next_run < runs.size() && runs[next_run].tick + runs[next_run].count <= tick) {
-                ++next_run;
-            }
-            if (next_run == runs.size() || runs[next_run].tick > tick) {
-                // The recording reached this tick inside a command, which stepped a different
-                // number of ticks this time.
-                differ(tick);
-                return false;
-            }
-            world.step(runs[next_run].seconds);
-        }
-        return true;
-    };
-
-    json::Value failed;
-    bool going = true;
-    const json::Array& timeline = replay.find("timeline")->as_array();
-    for (std::size_t i = 0; going && i < timeline.size(); ++i) {
+// Does what happened at the world's tick, which comes before the step from it.
+Result<void> settle(Session& session, Playback& playback) {
+    world::World& world = session.world();
+    const json::Array& timeline = playback.replay.find("timeline")->as_array();
+    while (playback.going && playback.next_entry < timeline.size()) {
+        const std::size_t i = playback.next_entry;
         const json::Value& entry = timeline[i];
         const std::uint64_t tick = tick_of(entry);
-        if (tick > stop) {
+        if (tick > world.tick()) {
             break;
         }
-        if (!advance(tick) || world.tick() > tick) {
-            differ(std::min(world.tick(), tick));
-            going = false;
+        if (tick < world.tick()) {
+            // A command stepped past it, which it didn't when recorded.
+            playback.differ(tick);
+            playback.going = false;
             break;
         }
+        ++playback.next_entry;
         if (const json::Value* events = entry.find("input"); events != nullptr) {
             for (const json::Value& event : events->as_array()) {
                 if (event.find("type")->as_string() == "release_all") {
@@ -719,19 +778,19 @@ Reply replay_run(Session& session, const json::Value& params) {
             const std::string& name = entry.find("command")->as_string();
             const Reply reply = session.call(name, *args);
             if (!reply.ok) {
-                failed["entry"] = i;
-                failed["command"] = name;
-                failed["message"] = reply.message;
-                differ(tick);
-                going = false;
+                playback.failed["entry"] = i;
+                playback.failed["command"] = name;
+                playback.failed["message"] = reply.message;
+                playback.differ(tick);
+                playback.going = false;
             } else if (const json::Value* hash = entry.find("hash");
                        hash != nullptr &&
                        world_hash(world::save_scene(world)) != hash->as_string()) {
-                differ(tick);
+                playback.differ(tick);
             }
         } else {
-            if (auto put = put_back(session, entry, prefabs, at("/timeline", i)); !put) {
-                return file_failure(put.error());
+            if (auto put = put_back(session, entry, playback.prefabs, at("/timeline", i)); !put) {
+                return put.error();
             }
             const json::Value* id = entry.find("next_id");
             const json::Value* end_tick = entry.find("end_tick");
@@ -744,33 +803,296 @@ Reply replay_run(Session& session, const json::Value& params) {
             }
         }
     }
-    if (going && advance(stop)) {
-        compare(stop);
-    }
+    return {};
+}
 
-    json::Value result;
-    result["tick"] = world.tick();
-    result["end"] = last;
-    if (going && stop == last && world.tick() == last) {
-        const Session::SavedWorld now = session.save();
-        if (now.scene != *end.find("world")) {
-            differ(last);
-            auto end_links = links_for(*end.find("world"), end.find("prefabs"), prefabs, "/end");
-            if (!end_links) {
-                return file_failure(end_links.error());
-            }
-            result["changes"] = world::diff_scenes(session.components(), *end.find("world"),
-                                                   now.scene, end_links.value(), now.links);
+// Compares the world with the recording's hash at its tick, if it took one there.
+void compare(Playback& playback, const world::World& world) {
+    const std::uint64_t tick = world.tick();
+    std::vector<Check>& checks = playback.checks;
+    while (playback.next_check < checks.size() && checks[playback.next_check].tick < tick) {
+        ++playback.next_check;
+    }
+    if (playback.next_check < checks.size() && checks[playback.next_check].tick == tick) {
+        if (world_hash(world::save_scene(world)) != checks[playback.next_check].hash) {
+            playback.differ(tick);
+        }
+        ++playback.next_check;
+    }
+}
+
+// Steps one tick as the host did.
+bool step(Playback& playback, world::World& world) {
+    const std::uint64_t tick = world.tick();
+    std::vector<Run>& runs = playback.runs;
+    while (playback.next_run < runs.size() &&
+           runs[playback.next_run].tick + runs[playback.next_run].count <= tick) {
+        ++playback.next_run;
+    }
+    if (playback.next_run == runs.size() || runs[playback.next_run].tick > tick) {
+        // The recording reached this tick inside a command, which stepped a different number of
+        // ticks this time.
+        playback.differ(tick);
+        playback.going = false;
+        return false;
+    }
+    world.step(runs[playback.next_run].seconds);
+    return true;
+}
+
+// Plays on to tick stop, or to the first tick found() holds at. Returns whether it found one.
+Result<bool> play_to(Session& session, Playback& playback, std::uint64_t stop,
+                     const std::function<bool()>& found = {}) {
+    world::World& world = session.world();
+    bool matched = false;
+    while (true) {
+        if (auto settled = settle(session, playback); !settled) {
+            return settled.error();
+        }
+        if (!playback.going) {
+            break;
+        }
+        compare(playback, world);
+        if (found && found()) {
+            matched = true;
+            break;
+        }
+        if (world.tick() >= stop || !step(playback, world)) {
+            break;
         }
     }
-    result["matched"] = !diverged.has_value();
-    if (diverged) {
-        result["diverged"] = *diverged;
+    const json::Value& end = *playback.replay.find("end");
+    if (playback.going && !playback.ended && world.tick() == playback.last &&
+        playback.next_entry == playback.replay.find("timeline")->size()) {
+        playback.ended = true;
+        const Session::SavedWorld now = session.save();
+        if (now.scene != *end.find("world")) {
+            playback.differ(playback.last);
+            auto links =
+                links_for(*end.find("world"), end.find("prefabs"), playback.prefabs, "/end");
+            if (!links) {
+                return links.error();
+            }
+            playback.changes = world::diff_scenes(session.components(), *end.find("world"),
+                                                  now.scene, links.value(), now.links);
+        }
     }
-    if (!failed.is_null()) {
-        result["failed"] = std::move(failed);
+    return matched;
+}
+
+json::Value report(const Playback& playback, const world::World& world) {
+    json::Value result;
+    result["tick"] = world.tick();
+    result["start"] = playback.first;
+    result["end"] = playback.last;
+    result["matched"] = !playback.diverged.has_value();
+    if (playback.diverged) {
+        result["diverged"] = *playback.diverged;
+    }
+    if (!playback.failed.is_null()) {
+        result["failed"] = playback.failed;
+    }
+    if (world.tick() == playback.last && !playback.changes.is_null()) {
+        result["changes"] = playback.changes;
+    }
+    return result;
+}
+
+Reply file_failure(const std::string& path, const Error& error) {
+    json::Value data;
+    data["file"] = path;
+    return Reply::failure(code::kInvalidArgument, path + ": " + error.message, std::move(data));
+}
+
+Reply range_failure(std::string_view param, const Playback& playback) {
+    return param_failure(code::kInvalidArgument, param,
+                         "the replay runs from tick " + std::to_string(playback.first) + " to " +
+                             std::to_string(playback.last));
+}
+
+std::optional<Reply> refuse(const Session& session, std::string_view name) {
+    if (session.depth() > 1) {
+        return nested(name);
+    }
+    if (const Recording* active = active_recording(session.world()); active != nullptr) {
+        return Reply::failure(code::kInvalidArgument,
+                              "recording to " + active->path + "; stop it with replay.stop first");
+    }
+    return std::nullopt;
+}
+
+// Keeps the playback for replay.seek. A dry run puts the world back to where it was before the
+// call, but not contacts and other state outside the components, so after one the next seek
+// plays from the start.
+Reply finish(Session& session, std::unique_ptr<Playback> playback, json::Value result,
+             std::uint64_t tick_before) {
+    Playback& kept = *playback;
+    keep_playback(session, std::move(playback));
+    if (session.dry_running()) {
+        kept.intact = false;
+        kept.tick = tick_before;
     }
     return Reply::success(std::move(result));
+}
+
+// For a call that fails before changing anything: the kept playback stays resumable if it was.
+Reply untouched(Session& session, bool could_resume, Reply failure) {
+    if (Playback* kept = kept_playback(session.world()); kept != nullptr && could_resume) {
+        kept->revision = session.revision();
+    }
+    return failure;
+}
+
+// The playback to change the world with: the kept one, or the fresh one in its place.
+std::unique_ptr<Playback> commit(world::World& world, std::unique_ptr<Playback> fresh) {
+    std::unique_ptr<Playback> kept = take_playback(world);
+    return fresh != nullptr ? std::move(fresh) : std::move(kept);
+}
+
+Reply replay_run(Session& session, const json::Value& params) {
+    if (auto refused = refuse(session, "replay.run")) {
+        return std::move(*refused);
+    }
+    const std::uint64_t tick_before = session.world().tick();
+    const bool could_resume = resumable(session, kept_playback(session.world()));
+    const std::string path = text_param(params, "path");
+    std::unique_ptr<Playback> fresh;
+    Reply failure;
+    auto opened = open_playback(session, path, fresh, failure);
+    if (!opened) {
+        return untouched(session, could_resume, std::move(failure));
+    }
+    const Playback& file = *opened.value();
+    std::uint64_t stop = file.last;
+    if (const json::Value* tick = params.find("tick"); tick != nullptr) {
+        stop = static_cast<std::uint64_t>(tick->as_int());
+        if (stop < file.first || stop > file.last) {
+            return untouched(session, could_resume, range_failure("/tick", file));
+        }
+    }
+
+    std::unique_ptr<Playback> playback = commit(session.world(), std::move(fresh));
+    if (auto begun = begin(session, *playback); !begun) {
+        return file_failure(path, begun.error());
+    }
+    if (auto played = play_to(session, *playback, stop); !played) {
+        return file_failure(path, played.error());
+    }
+    json::Value result = report(*playback, session.world());
+    return finish(session, std::move(playback), std::move(result), tick_before);
+}
+
+Reply replay_seek(Session& session, const json::Value& params) {
+    if (auto refused = refuse(session, "replay.seek")) {
+        return std::move(*refused);
+    }
+    world::World& world = session.world();
+    const std::uint64_t tick_before = world.tick();
+    const Playback* kept = kept_playback(world);
+    const bool could_resume = resumable(session, kept);
+    const auto fail = [&](Reply failure) {
+        return untouched(session, could_resume, std::move(failure));
+    };
+    std::string path = text_param(params, "path");
+    if (path.empty()) {
+        if (kept == nullptr) {
+            return param_failure(code::kInvalidParams, "/path",
+                                 "nothing is playing; give a .replay.json file");
+        }
+        path = kept->path;
+    }
+    const json::Value* tick = params.find("tick");
+    const json::Value* ticks = params.find("ticks");
+    const json::Value* from = params.find("from");
+    const bool searching = params.find("with") != nullptr || params.find("without") != nullptr ||
+                           params.find("where") != nullptr;
+    if (tick != nullptr && ticks != nullptr) {
+        return fail(param_failure(code::kInvalidParams, "/ticks", "give tick or ticks, not both"));
+    }
+    if (searching && ticks != nullptr) {
+        return fail(param_failure(code::kInvalidParams, "/ticks",
+                                  "a search runs from from to tick; ticks moves without one"));
+    }
+    if (!searching && from != nullptr) {
+        return fail(param_failure(code::kInvalidParams, "/from",
+                                  "from starts a search; give with, without or where"));
+    }
+    if (!searching && tick == nullptr && ticks == nullptr) {
+        return fail(Reply::failure(code::kInvalidParams,
+                                   "give tick, ticks, or with, without or where to search for"));
+    }
+    detail::Selection selection;
+    if (searching) {
+        if (auto failed = detail::parse_selection(session.components(), params, selection)) {
+            return fail(std::move(*failed));
+        }
+    }
+
+    std::unique_ptr<Playback> fresh;
+    Reply failure;
+    auto opened = open_playback(session, path, fresh, failure);
+    if (!opened) {
+        return fail(std::move(failure));
+    }
+    const Playback& file = *opened.value();
+    // Where the playback is: where it left off in the same file, else the start.
+    const bool same = fresh == nullptr;
+    const std::uint64_t position = same ? file.tick : file.first;
+    const auto out_of_range = [&](std::string_view param) {
+        return fail(range_failure(param, file));
+    };
+    std::uint64_t target = file.last;
+    if (tick != nullptr) {
+        target = static_cast<std::uint64_t>(tick->as_int());
+    } else if (ticks != nullptr) {
+        const std::int64_t moved = static_cast<std::int64_t>(position) + ticks->as_int();
+        if (moved < static_cast<std::int64_t>(file.first) ||
+            moved > static_cast<std::int64_t>(file.last)) {
+            return out_of_range("/ticks");
+        }
+        target = static_cast<std::uint64_t>(moved);
+    }
+    if (target < file.first || target > file.last) {
+        return out_of_range("/tick");
+    }
+    std::uint64_t first_stop = target;
+    if (searching) {
+        first_stop = from != nullptr ? static_cast<std::uint64_t>(from->as_int()) : file.first;
+        if (first_stop < file.first || first_stop > target) {
+            return fail(param_failure(code::kInvalidArgument, "/from",
+                                      "the search runs from tick " + std::to_string(file.first) +
+                                          " to " + std::to_string(target)));
+        }
+    }
+
+    // Going on from where it stopped is exact. Going back plays the run again from its start,
+    // since contacts and other state outside the components can't be put back.
+    std::unique_ptr<Playback> playback = commit(world, std::move(fresh));
+    if (!same || !could_resume || first_stop < world.tick()) {
+        if (auto begun = begin(session, *playback); !begun) {
+            return file_failure(path, begun.error());
+        }
+    }
+    if (auto played = play_to(session, *playback, first_stop); !played) {
+        return file_failure(path, played.error());
+    }
+    if (!searching) {
+        json::Value result = report(*playback, world);
+        return finish(session, std::move(playback), std::move(result), tick_before);
+    }
+    const bool until_none = text_param(params, "until") == "none";
+    auto found = play_to(session, *playback, target,
+                         [&] { return detail::any_selected(world, selection) != until_none; });
+    if (!found) {
+        return file_failure(path, found.error());
+    }
+    json::Value result = detail::select(world, selection);
+    result["found"] = found.value();
+    json::Value reported = report(*playback, world);
+    for (auto& [key, value] : reported.as_object()) {
+        result[key] = std::move(value);
+    }
+    return finish(session, std::move(playback), std::move(result), tick_before);
 }
 
 } // namespace
@@ -1034,6 +1356,28 @@ void register_replay_commands(Registry& registry) {
         .effect = Effect::Replace,
         .params = object_schema({{"path", std::move(path)}, {"tick", std::move(stop)}}, {"path"}),
         .handler = replay_run,
+    });
+    json::Object seek = detail::selection_properties();
+    seek.emplace("path", typed("string", "A .replay.json file. Left out, the one playing."));
+    seek.emplace("tick", tick_schema("Go to this tick. With a search, the last tick to search."));
+    seek.emplace("ticks", typed("integer", "Move this many ticks from where the playback is; "
+                                           "negative goes back."));
+    seek.emplace("from", tick_schema("Where a search starts. Left out, the replay's start."));
+    json::Value until = typed("string", "Find a tick where any entity matches, or none does.");
+    until["enum"] = json::Array{"any", "none"};
+    until["default"] = "any";
+    seek.emplace("until", std::move(until));
+    registry.add({
+        .name = "replay.seek",
+        .description = "Moves a replay's playback to a tick, by a number of ticks, or to the first "
+                       "tick where an entity matches with/without/where (e.g. the player's "
+                       "position.y > 600). Forward goes on from where it is; back plays again "
+                       "from the start. Returns the tick and whether it still matches the "
+                       "recording.",
+        .capabilities = {Capability::Edit, Capability::Run, Capability::Filesystem},
+        .effect = Effect::Replace,
+        .params = object_schema(std::move(seek), {}),
+        .handler = replay_seek,
     });
 }
 

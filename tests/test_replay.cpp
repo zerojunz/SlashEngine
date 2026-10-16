@@ -187,7 +187,7 @@ TEST_CASE("a recorded run plays back exactly, in its own session and in a new on
     CHECK(replay.find("prefabs")->find("prefabs/crate.prefab.json") != nullptr);
     std::filesystem::remove(run.root + "/prefabs/crate.prefab.json");
 
-    const json::Value matched = parse(R"({"tick": 155, "end": 155, "matched": true})");
+    const json::Value matched = parse(R"({"tick": 155, "start": 0, "end": 155, "matched": true})");
     SUBCASE("in the session that recorded it, twice") {
         Engine& engine = *run.recorder;
         CHECK(engine.ok("replay.run", R"({"path": "replays/run.replay.json"})") == matched);
@@ -204,11 +204,11 @@ TEST_CASE("a recorded run plays back exactly, in its own session and in a new on
     SUBCASE("up to a tick") {
         Engine engine(run.options);
         CHECK(engine.ok("replay.run", R"({"path": "replays/run.replay.json", "tick": 30})") ==
-              parse(R"({"tick": 30, "end": 155, "matched": true})"));
+              parse(R"({"tick": 30, "start": 0, "end": 155, "matched": true})"));
         CHECK(engine.scene() == run.at_30);
         // A tick inside a command's steps stops where the command did.
         CHECK(engine.ok("replay.run", R"({"path": "replays/run.replay.json", "tick": 65})") ==
-              parse(R"({"tick": 70, "end": 155, "matched": true})"));
+              parse(R"({"tick": 70, "start": 0, "end": 155, "matched": true})"));
     }
     std::filesystem::remove_all(run.root);
 }
@@ -224,7 +224,7 @@ TEST_CASE("replay.run says where a run went another way") {
     (*set.find("params"))["components"]["RigidBody2D"]["linear_velocity"] = json::Array{-60, 0};
     run.write("changed.replay.json", changed);
     CHECK(engine.ok("replay.run", R"({"path": "replays/changed.replay.json"})") ==
-          parse(R"({"tick": 155, "end": 155, "matched": false, "diverged": 40})"));
+          parse(R"({"tick": 155, "start": 0, "end": 155, "matched": false, "diverged": 40})"));
 
     // Longer ticks after the last restore: the check at 120 differs, and so does the end.
     json::Value slower = run.file();
@@ -244,6 +244,121 @@ TEST_CASE("replay.run says where a run went another way") {
     CHECK(*stopped.find("tick") == json::Value(40));
     CHECK(*stopped.find("diverged") == json::Value(40));
     CHECK(stopped.find("failed")->find("command")->as_string() == "component.set");
+    std::filesystem::remove_all(run.root);
+}
+
+TEST_CASE("replay.seek goes on from where it stopped, and back from the start") {
+    Recorded run;
+    Engine engine(run.options);
+    // Counts the ticks the session steps, to tell going on from playing again.
+    int stepped = 0;
+    engine.session->world().add_system("count", [&stepped](world::World&, double) { ++stepped; });
+    const auto at = [](int tick) {
+        return parse(R"({"tick": )" + std::to_string(tick) +
+                     R"(, "start": 0, "end": 155, "matched": true})");
+    };
+
+    CHECK(engine.fails("replay.seek", R"({"tick": 30})", command::code::kInvalidParams).message ==
+          "/path: nothing is playing; give a .replay.json file");
+    CHECK(engine.ok("replay.seek", R"({"path": "replays/run.replay.json", "tick": 30})") == at(30));
+    CHECK(engine.scene() == run.at_30);
+    CHECK(stepped == 30);
+    CHECK(engine.ok("replay.seek", R"({"ticks": 10})") == at(40));
+    CHECK(stepped == 40);
+    CHECK(engine.ok("replay.seek", R"({"ticks": -10})") == at(30));
+    CHECK(stepped == 70);
+    CHECK(engine.scene() == run.at_30);
+    // A tick inside a command's steps stops where the command did.
+    CHECK(engine.ok("replay.seek", R"({"tick": 65})") == at(70));
+
+    SUBCASE("a run walked a few ticks at a time ends where the recording did") {
+        stepped = 0;
+        engine.ok("replay.seek", R"({"tick": 0})");
+        for (int tick = 5; tick <= 155; tick += 5) {
+            // The step command at tick 60 runs to 70, so 65 is behind.
+            if (tick == 65) {
+                continue;
+            }
+            CHECK(engine.ok("replay.seek", R"({"tick": )" + std::to_string(tick) + "}") ==
+                  at(tick == 60 ? 70 : tick));
+        }
+        CHECK(stepped == 155);
+        CHECK(engine.scene() == run.end);
+    }
+    SUBCASE("anything else that ran since makes it play again from the start") {
+        stepped = 0;
+        engine.ok("entity.create", R"({"id": "extra"})");
+        CHECK(engine.ok("replay.seek", R"({"ticks": 5})") == at(75));
+        CHECK(stepped == 75);
+        CHECK(engine.scene().find("extra") == nullptr);
+        // So do ticks the host stepped, and input it queued.
+        engine.steps(1);
+        engine.ok("replay.seek", R"({"ticks": 0})");
+        CHECK(stepped == 75 + 1 + 75);
+        slash::input::action_press(engine.session->world(), "ui_accept");
+        engine.ok("replay.seek", R"({"ticks": 0})");
+        CHECK(stepped == 75 + 1 + 75 + 75);
+        // Queries don't.
+        engine.ok("world.query", R"({"with": ["RigidBody2D"]})");
+        engine.ok("replay.seek", R"({"ticks": 5})");
+        CHECK(stepped == 75 + 1 + 75 + 75 + 5);
+    }
+    SUBCASE("a failed seek changes nothing, and a dry run starts the next one afresh") {
+        stepped = 0;
+        CHECK(engine.fails("replay.seek", R"({"tick": 200})", command::code::kInvalidArgument)
+                  .message == "/tick: the replay runs from tick 0 to 155");
+        CHECK(engine.fails("replay.seek", R"({"ticks": -71})", command::code::kInvalidArgument)
+                  .message == "/ticks: the replay runs from tick 0 to 155");
+        CHECK(engine.ok("replay.seek", R"({"ticks": 5})") == at(75));
+        CHECK(stepped == 5);
+        const json::Value dry = engine.ok("replay.seek", R"({"ticks": 5, "dry_run": true})");
+        CHECK(*dry.find("result") == at(80));
+        CHECK(engine.session->world().tick() == 75);
+        CHECK(engine.ok("replay.seek", R"({"ticks": 5})") == at(80));
+        CHECK(stepped == 5 + 5 + 80);
+    }
+    std::filesystem::remove_all(run.root);
+}
+
+TEST_CASE("replay.seek finds the first tick an entity matches") {
+    Recorded run;
+    Engine engine(run.options);
+
+    // The ball rolls left from the command at tick 40.
+    const std::string rolling = R"("with": ["RigidBody2D"], "where": [
+        {"component": "CollisionShape2D", "field": "shape", "value": "circle"},
+        {"component": "RigidBody2D", "field": "linear_velocity.x", "op": "<", "value": 0}])";
+    CHECK(engine.ok("replay.seek", R"({"path": "replays/run.replay.json", )" + rolling + "}") ==
+          parse(R"({"found": true, "count": 1, "entities": ["ball"], "truncated": false,
+                    "tick": 40, "start": 0, "end": 155, "matched": true})"));
+    // From a later tick, up to another, or until none does.
+    const json::Value none = engine.ok("replay.seek", R"({"with": ["Sprite2D"], "from": 100,
+                                                       "tick": 120})");
+    CHECK(*none.find("found") == json::Value(false));
+    CHECK(*none.find("tick") == json::Value(120));
+    const json::Value landed = engine.ok("replay.seek", R"({"with": ["RigidBody2D"],
+        "where": [{"component": "Transform2D", "field": "position.y", "op": "<", "value": 30}],
+        "until": "none"})");
+    CHECK(*landed.find("found") == json::Value(true));
+    CHECK(*landed.find("count") == json::Value(0));
+    CHECK(landed.find("tick")->as_int() > 0);
+
+    CHECK(engine.fails("replay.seek", R"({"with": ["RigidBody"]})", command::code::kNotFound)
+              .message.ends_with("did you mean \"RigidBody2D\"?"));
+    CHECK(engine.fails("replay.seek", R"({"tick": 5, "ticks": 5})", command::code::kInvalidParams)
+              .message == "/ticks: give tick or ticks, not both");
+    CHECK(engine
+              .fails("replay.seek", R"({"with": ["Sprite2D"], "ticks": 5})",
+                     command::code::kInvalidParams)
+              .message == "/ticks: a search runs from from to tick; ticks moves without one");
+    CHECK(engine.fails("replay.seek", R"({"from": 5})", command::code::kInvalidParams).message ==
+          "/from: from starts a search; give with, without or where");
+    CHECK(engine.fails("replay.seek", "{}", command::code::kInvalidParams).message ==
+          "give tick, ticks, or with, without or where to search for");
+    CHECK(engine
+              .fails("replay.seek", R"({"with": ["Sprite2D"], "from": 50, "tick": 40})",
+                     command::code::kInvalidArgument)
+              .message == "/from: the search runs from tick 0 to 40");
     std::filesystem::remove_all(run.root);
 }
 

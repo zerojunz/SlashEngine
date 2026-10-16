@@ -10,14 +10,20 @@ the replay holds 1 step run(s), 5 timeline entries and 2 checks
 its first entry: {"input":[{"key":"D","pressed":true,"type":"key"}],"tick":20}
 -- an agent's session plays it back
 replay.run {"path":"replays/run.replay.json"}
-{"end":150,"matched":true,"tick":150}
+{"end":150,"matched":true,"start":0,"tick":150}
 tick 150: hero at (130.0, 144.0) on the floor, coin taken
 replay.run {"path":"replays/run.replay.json","tick":55}
-{"end":150,"matched":true,"tick":55}
+{"end":150,"matched":true,"start":0,"tick":55}
 tick 55: hero at (92.5, 115.1) in the air, coin still there
 input.state {"actions":["jump","move_right"]}
 {"actions":{"jump":{"pressed":false},"move_right":{"pressed":true}},"keys":["D"],"mouse":{"position":[0.0,0.0]},"tick":54}
+replay.seek {"until":"none","with":["Area2D"]}
+{"count":0,"end":150,"entities":[],"found":true,"matched":true,"start":0,"tick":96,"truncated":false}
+tick 96: hero at (154.0, 134.4) in the air, coin taken
+replay.seek {"ticks":-1}
+{"end":150,"matched":true,"start":0,"tick":95}
+tick 95: hero at (152.5, 128.5) in the air, coin still there
 -- a session with a lower jump
 replay.run {"path":"replays/run.replay.json"}
-{"changes":{"added":["coin"],"changed":{"coin":["Area2D","CollisionShape2D","Transform2D"],"hero":["Transform2D"]}},"diverged":60,"end":150,"matched":false,"tick":150}
+{"changes":{"added":["coin"],"changed":{"coin":["Area2D","CollisionShape2D","Transform2D"],"hero":["Transform2D"]}},"diverged":60,"end":150,"matched":false,"start":0,"tick":150}
 tick 150: hero at (45.0, 144.0) on the floor, coin still there

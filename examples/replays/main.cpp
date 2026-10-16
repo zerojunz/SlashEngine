@@ -5,8 +5,8 @@
 // The game is a hero who walks and jumps by input actions (project.json), with a crate and a
 // coin in the way. The first session records a run while the player presses keys between ticks,
 // as a window's events would arrive. The second, an agent's, plays it back, stops at the jump to
-// look and reaches the same end. The third has a lower jump, and the replay says where the run
-// first went another way.
+// look, then seeks the moment the coin was taken and the tick before it. The third has a lower
+// jump, and the replay says where the run first went another way.
 
 #include "slash/command/builtin.hpp"
 #include "slash/command/command.hpp"
@@ -173,6 +173,11 @@ int main() {
     agent.call("replay.run", R"({"path": "replays/run.replay.json", "tick": 55})");
     agent.print_hero();
     agent.call("input.state", R"({"actions": ["jump", "move_right"]})");
+    // The moment the coin went: the first tick with no Area2D left, then one tick back.
+    agent.call("replay.seek", R"({"with": ["Area2D"], "until": "none"})");
+    agent.print_hero();
+    agent.call("replay.seek", R"({"ticks": -1})");
+    agent.print_hero();
 
     // The hero can't clear the crate now: the replay says where it first differs, and what
     // differs at the end.
