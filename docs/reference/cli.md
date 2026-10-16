@@ -384,7 +384,7 @@ An existing `.gitignore` is never replaced, even with `--force`: `init` adds the
 Converts a game made with Godot 4 or Unity into a SlashEngine project, with each script turned
 into a storyboard task to port it to C++. From Godot: its scenes, sprite frames, animations, tile
 sets, themes, bus layouts, input map and settings. From Unity: its scenes, prefabs, sprites,
-tile maps, cameras, 2D physics, sounds, input and settings. It runs
+tile maps, Animator controllers and clips, cameras, 2D physics, sounds, input and settings. It runs
 [`project.import`](commands.md#projectimport) and prints the same report;
 [godot-import.md](godot-import.md) and [unity-import.md](unity-import.md) say what converts to
 what.

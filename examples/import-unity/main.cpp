@@ -2,15 +2,17 @@
 //
 // unity/ holds "Pond Hop", a small Unity 2D game as Unity saves it: project settings, a scene
 // that instances three prefabs (one of them a prefab variant) and has a tile map, sprites and
-// their import settings, tile assets, a physics material, an Input System actions file and three
-// C# scripts. One call converts it. Its scene and prefabs become .scene.json files beside the
-// originals, the prefabs staying prefabs that the scene instances; its sprites, tile map,
-// cameras, 2D physics and sounds become SlashEngine's components, measured in pixels, and the
-// tile map's sprites a tile set; its player, physics, time, sorting and input settings become
-// project.json; and each script a storyboard task to port it to C++, since SlashEngine games
-// are plain C++. The report lists what didn't convert, and why. Games ship PNG and WAV files
-// made in other tools; this example makes its textures and sounds in code (without libm, so
-// they are the same everywhere), so the repository holds no images or sounds.
+// their import settings, tile assets, an Animator controller and its clips, a physics material,
+// an Input System actions file and three C# scripts. One call converts it. Its scene and
+// prefabs become .scene.json files beside the originals, the prefabs staying prefabs that the
+// scene instances; its sprites, tile map, cameras, 2D physics, animation and sounds become
+// SlashEngine's components, measured in pixels, the tile map's sprites a tile set and the
+// controller an animation library; its player, physics, time, sorting and input settings
+// become project.json; and each script, and the controller's state machine, a storyboard task
+// to port it to C++, since SlashEngine games are plain C++. The report lists what didn't convert,
+// and why. Games ship PNG and WAV files made in other tools; this example makes its textures and
+// sounds in code (without libm, so they are the same everywhere), so the repository holds no images
+// or sounds.
 
 #include "slash/audio/audio.hpp"
 #include "slash/command/builtin.hpp"
@@ -114,6 +116,7 @@ int main() {
         return 1;
     }
     write_texture("unity/Assets/Sprites/frog.png", 32, 32, {80, 170, 60});
+    write_texture("unity/Assets/Sprites/frog_blink.png", 32, 32, {60, 140, 45});
     write_texture("unity/Assets/Sprites/coins.png", 32, 32, {250, 210, 50});
     write_texture("unity/Assets/Sprites/lily_pad.png", 64, 16, {40, 120, 50});
     write_texture("unity/Assets/Sprites/sky.png", 640, 360, {110, 175, 220});
@@ -127,19 +130,29 @@ int main() {
     agent.call("project.import", R"({"source": "unity", "dry_run": true})");
     agent.call("project.import", R"({"source": "unity"})");
 
-    // The scene, the frog and gold coin prefabs, the bank's tile set, the looping music and the
-    // project's settings.
+    // The scene, the frog and gold coin prefabs, the bank's tile set, the frog's animation
+    // library, the looping music and the project's settings.
     print_file("unity/Assets/Scenes/Pond.scene.json");
     print_file("unity/Assets/Prefabs/Frog.scene.json");
     print_file("unity/Assets/Prefabs/Gold Coin.scene.json");
     print_file("unity/Assets/tiles.tileset.json");
+    print_file("unity/Assets/Animations/Frog.anim.json");
     print_file("unity/Assets/Audio/pond.loop.audio.json");
     print_file("project.json");
 
-    // The converted scene opens and runs: the frog falls onto the ground and rests there.
+    // The converted scene opens and runs: the frog falls onto the ground and rests there. Its
+    // Animator's first state plays: a second in, it has ribbited, and it blinks at 1.75 s.
     agent.call("scene.open", R"({"path": "unity/Assets/Scenes/Pond.scene.json"})");
+    agent.call("events.subscribe", R"({"kinds": ["Ribbit"]})");
     agent.call("step", R"({"ticks": 60})");
     agent.call("world.query", R"({"with": ["RigidBody2D"], "include": ["Transform2D"]})");
+    agent.call("events.read", R"({"subscription": "events_1"})");
+    agent.call("step", R"({"ticks": 50})");
+    agent.call("entity.get", R"({"id": "frog/frog_sprite", "components": ["Sprite2D"],
+                                 "omit_defaults": true})");
+    // The Hop state, which gameplay code plays on the Hop trigger, stretches the frog's feet.
+    agent.call("animation.eval", R"({"id": "frog", "animation": "Hop", "times": [0, 0.25],
+                                     "tracks": ["Feet:Transform2D/position/y"]})");
     // The bank's tiles are solid where their sprites' physics shapes are: a ray down onto its
     // first slope stops halfway up the slope.
     agent.call("physics.raycast", R"({"from": [176, 0], "to": [176, 200]})");

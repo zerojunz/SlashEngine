@@ -2,6 +2,7 @@
 
 #include "common.hpp"
 
+#include "slash/animation/animation.hpp"
 #include "slash/canvas/debug_draw.hpp"
 #include "slash/canvas/tilemap.hpp"
 #include "slash/core/json.hpp"
@@ -29,6 +30,7 @@
 #include <numeric>
 #include <optional>
 #include <set>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <tuple>
@@ -51,6 +53,9 @@ constexpr std::int64_t kSingleSprite = 21300000;
 // Unity's friction and bounciness when no physics material sets them.
 constexpr double kDefaultFriction = 0.4;
 constexpr int kMaxZIndex = 4096;
+// The weight of an unweighted curve tangent, and how often a curved stretch of a clip is keyed.
+constexpr double kUnweighted = 1.0 / 3.0;
+constexpr double kSampleStep = 1.0 / 60.0;
 
 // Unity's class IDs for the objects this reads.
 constexpr int kGameObject = 1;
@@ -63,12 +68,17 @@ constexpr int kBoxCollider2D = 61;
 constexpr int kCompositeCollider2D = 66;
 constexpr int kEdgeCollider2D = 68;
 constexpr int kCapsuleCollider2D = 70;
+constexpr int kAnimationClip = 74;
 constexpr int kAudioListener = 81;
 constexpr int kAudioSource = 82;
+constexpr int kAnimatorController = 91;
 constexpr int kGuiLayer = 92;
+constexpr int kAnimator = 95;
 constexpr int kMonoBehaviour = 114;
 constexpr int kFlareLayer = 124;
+constexpr int kBlendTree = 206;
 constexpr int kSpriteRenderer = 212;
+constexpr int kAnimatorOverrideController = 221;
 constexpr int kRectTransform = 224;
 constexpr int kPlatformEffector2D = 251;
 constexpr int kPrefabInstance = 1001;
@@ -808,6 +818,7 @@ public:
         for (const TileSetOut& set : tile_sets_) {
             write_tile_set(set); // with the physics a later tile map gave it
         }
+        convert_unused_animation();
         json::Value project = convert_project(existing_project);
         convert_input(project);
         write_project(std::move(project));
@@ -830,6 +841,23 @@ private:
 
     [[nodiscard]] std::string destination(std::string_view path) const {
         return prefix_ + std::string(path);
+    }
+
+    // Keeps only what validates, reporting the rest, so one bad value can't stop a file.
+    template <typename Validate>
+    void keep_valid(json::Value& doc, const std::string& path, Validate validate) {
+        for (int pass = 0; pass < 64; ++pass) {
+            const std::vector<json::ValidationError> errors = validate(doc);
+            if (errors.empty()) {
+                return;
+            }
+            for (const json::ValidationError& error : errors) {
+                problems_.add("invalid value", path + ": " + error.path, error.message);
+                if (!remove_pointer(doc, error.path)) {
+                    return;
+                }
+            }
+        }
     }
 
     // Learns each asset's GUID from its .meta file.
@@ -974,8 +1002,10 @@ private:
     // Copies an asset, or notes one that can't come along.
     void take_file(const std::string& file) {
         const std::string extension = extension_of(file);
-        if (extension == ".meta" || extension == ".unity" || extension == ".prefab") {
-            return;
+        if (extension == ".meta" || extension == ".unity" || extension == ".prefab" ||
+            extension == ".anim" || extension == ".controller" ||
+            extension == ".overridecontroller") {
+            return; // converted with what uses them
         }
         const bool editor = file.find("/Editor/") != std::string::npos;
         if (extension == ".cs") {
@@ -1002,10 +1032,6 @@ private:
                      "material"},
             {".shader", "a game's own shaders are on the roadmap"},
             {".shadergraph", "a game's own shaders are on the roadmap"},
-            {".anim", "Unity animation clips convert in a later import (on the roadmap)"},
-            {".controller", "Animator controllers convert in a later import (on the roadmap)"},
-            {".overridecontroller",
-             "Animator controllers convert in a later import (on the roadmap)"},
             {".mixer", "audio mixers convert in a later import (on the roadmap)"},
             {".dll", "compiled plugins don't load; closed SDKs come in as SDK packages (on the "
                      "roadmap)"},
@@ -1713,9 +1739,12 @@ private:
     // --- Converting objects ---
 
     // What one object becomes: its components, and entities made for it by what they are for.
+    // An Animator converts once every object has its entity, since its tracks name objects
+    // under it.
     struct Converted {
         json::Object components;
         std::vector<std::pair<std::string, json::Object>> added;
+        const Component* animator = nullptr;
     };
 
     struct Context {
@@ -1795,6 +1824,9 @@ private:
             case kMonoBehaviour:
                 mono_behaviour(component, ctx);
                 break;
+            case kAnimator:
+                out.animator = &component;
+                break;
             default:
                 problems_.add("component " + component.type, ctx.where,
                               component_why(component.type));
@@ -1825,8 +1857,8 @@ private:
         if (type == "Canvas" || type == "CanvasRenderer" || type == "CanvasGroup") {
             return std::string(kUiWhy);
         }
-        if (type == "Animator" || type == "Animation") {
-            return "Unity animation converts in a later import (on the roadmap)";
+        if (type == "Animation") {
+            return "the legacy Animation component doesn't convert; an Animator's controller does";
         }
         if (type == "SortingGroup") {
             return "sprites under it keep their own z_index";
@@ -3115,6 +3147,1096 @@ private:
         out.components["TileMapLayer"] = std::move(layer);
     }
 
+    // --- Animation ---
+
+    // A key of a Unity curve: a value with Hermite tangents, which may be weighted.
+    struct CurveKey {
+        double time = 0.0;
+        double value = 0.0;
+        double in_slope = 0.0;
+        double out_slope = 0.0;
+        double in_weight = kUnweighted;
+        double out_weight = kUnweighted;
+        std::int64_t weighted = 0; // 1: the in tangent's weight counts, 2: the out tangent's
+    };
+    using Curve = std::vector<CurveKey>;
+
+    // A curve's keys, or one part of a vector curve's ("x", "y", "z" or "w").
+    static Curve read_curve(const Node* curve, std::string_view part) {
+        Curve out;
+        const Node* keys = curve != nullptr ? curve->get("m_Curve") : nullptr;
+        for (const Node& key : keys != nullptr ? keys->items : std::vector<Node>{}) {
+            const auto at = [&](std::string_view name, double fallback) {
+                const Node* node = key.get(name);
+                if (node != nullptr && !part.empty()) {
+                    node = node->get(part);
+                }
+                const auto value = node != nullptr ? node->number() : std::nullopt;
+                return value.value_or(fallback);
+            };
+            const double time = key.number_at("time");
+            if (!out.empty() && time <= out.back().time) {
+                continue;
+            }
+            out.push_back(CurveKey{.time = time,
+                                   .value = at("value", 0.0),
+                                   .in_slope = at("inSlope", 0.0),
+                                   .out_slope = at("outSlope", 0.0),
+                                   .in_weight = at("inWeight", kUnweighted),
+                                   .out_weight = at("outWeight", kUnweighted),
+                                   .weighted = key.integer_at("weightedMode", 0)});
+        }
+        return out;
+    }
+
+    enum class Segment : std::uint8_t { Linear, Stepped, Curved };
+
+    // The weights of a segment's tangents, as Unity uses them.
+    static std::pair<double, double> weights(const CurveKey& a, const CurveKey& b) {
+        return {(a.weighted & 2) != 0 ? std::clamp(a.out_weight, 0.0, 1.0) : kUnweighted,
+                (b.weighted & 1) != 0 ? std::clamp(b.in_weight, 0.0, 1.0) : kUnweighted};
+    }
+
+    static Segment segment(const CurveKey& a, const CurveKey& b) {
+        if (!std::isfinite(a.out_slope) || !std::isfinite(b.in_slope)) {
+            return Segment::Stepped;
+        }
+        const double span = b.time - a.time;
+        const double slope = span > 0.0 ? (b.value - a.value) / span : 0.0;
+        const double tolerance = 1e-4 * std::max(1.0, std::abs(slope));
+        return std::abs(a.out_slope - slope) <= tolerance &&
+                       std::abs(b.in_slope - slope) <= tolerance
+                   ? Segment::Linear
+                   : Segment::Curved;
+    }
+
+    // A segment's value at a time between its keys: Unity's Hermite curve, or with weighted
+    // tangents its Bezier curve in time and value.
+    static double evaluate(const CurveKey& a, const CurveKey& b, double time) {
+        const double span = b.time - a.time;
+        if (span <= 0.0 || segment(a, b) == Segment::Stepped) {
+            return time >= b.time ? b.value : a.value;
+        }
+        const auto [w0, w1] = weights(a, b);
+        const double s = std::clamp((time - a.time) / span, 0.0, 1.0);
+        if (std::abs(w0 - kUnweighted) > 1e-6 || std::abs(w1 - kUnweighted) > 1e-6) {
+            const auto bezier = [](double p0, double p1, double p2, double p3, double u) {
+                const double v = 1.0 - u;
+                return (v * v * v * p0) + (3.0 * v * v * u * p1) + (3.0 * v * u * u * p2) +
+                       (u * u * u * p3);
+            };
+            const double x1 = a.time + (w0 * span);
+            const double x2 = b.time - (w1 * span);
+            double low = 0.0;
+            double high = 1.0;
+            for (int i = 0; i < 48; ++i) {
+                const double middle = (low + high) / 2.0;
+                (bezier(a.time, x1, x2, b.time, middle) < time ? low : high) = middle;
+            }
+            const double u = (low + high) / 2.0;
+            return bezier(a.value, a.value + (w0 * span * a.out_slope),
+                          b.value - (w1 * span * b.in_slope), b.value, u);
+        }
+        const double s2 = s * s;
+        const double s3 = s2 * s;
+        return ((2.0 * s3 - 3.0 * s2 + 1.0) * a.value) +
+               ((s3 - 2.0 * s2 + s) * span * a.out_slope) + ((-2.0 * s3 + 3.0 * s2) * b.value) +
+               ((s3 - s2) * span * b.in_slope);
+    }
+
+    // A curve's value at any time: its first key's before it and its last's after it.
+    static double evaluate(const Curve& curve, double time) {
+        if (curve.empty()) {
+            return 0.0;
+        }
+        if (time <= curve.front().time) {
+            return curve.front().value;
+        }
+        for (std::size_t i = 0; i + 1 < curve.size(); ++i) {
+            if (time < curve[i + 1].time) {
+                return evaluate(curve[i], curve[i + 1], time);
+            }
+        }
+        return curve.back().value;
+    }
+
+    // The part of a clip that plays: from its start time to its stop time.
+    struct ClipTime {
+        double start = 0.0;
+        double stop = 1.0;
+
+        [[nodiscard]] double length() const { return stop - start; }
+        // A time in the clip as a time in its animation.
+        [[nodiscard]] double at(double time) const {
+            return std::clamp(time - start, 0.0, length());
+        }
+    };
+
+    // The times a track keys a curve at, and whether each holds its value to the next: every
+    // key, and between keys a curved segment joins, a key each 60th of a second, since
+    // SlashEngine's curves aren't Unity's.
+    struct Sample {
+        double time = 0.0; // in the clip
+        bool hold = false;
+    };
+
+    static std::vector<Sample> samples(const std::vector<const Curve*>& curves,
+                                       const ClipTime& clip, bool discrete) {
+        std::set<double> times;
+        std::set<double> holds;
+        for (const Curve* curve : curves) {
+            for (std::size_t i = 0; i < curve->size(); ++i) {
+                const CurveKey& key = (*curve)[i];
+                times.insert(key.time);
+                if (i + 1 == curve->size() || discrete) {
+                    continue;
+                }
+                const CurveKey& next = (*curve)[i + 1];
+                const Segment kind = segment(key, next);
+                if (kind == Segment::Stepped) {
+                    holds.insert(key.time);
+                } else if (kind == Segment::Curved) {
+                    const double count = ((next.time - key.time) / kSampleStep) - 0.5;
+                    for (int n = 1; n < count; ++n) {
+                        times.insert(key.time + (static_cast<double>(n) * kSampleStep));
+                    }
+                }
+            }
+        }
+        // Only the clip's part, with its ends where keys run past them.
+        std::vector<Sample> out;
+        const auto inside = [&](double t) { return t >= clip.start && t <= clip.stop; };
+        if (!times.empty() && *times.begin() < clip.start) {
+            out.push_back({.time = clip.start, .hold = false});
+        }
+        for (const double t : times) {
+            if (inside(t)) {
+                out.push_back({.time = t, .hold = holds.contains(t)});
+            }
+        }
+        if (!times.empty() && *times.rbegin() > clip.stop) {
+            out.push_back({.time = clip.stop, .hold = false});
+        }
+        return out;
+    }
+
+    // A value track's keys: the value curves give at each sample, made a field's value by
+    // convert, at the times the clip plays them. Keys that land on one time keep the last.
+    static json::Array track_keys(const std::vector<Sample>& at, const ClipTime& clip,
+                                  const std::function<json::Value(double)>& value_at) {
+        json::Array keys;
+        double last = -1.0;
+        for (const Sample& sample : at) {
+            const double time = tidy(clip.at(sample.time));
+            json::Value key;
+            key["time"] = time;
+            key["value"] = value_at(sample.time);
+            if (sample.hold) {
+                key["transition"] = 0;
+            }
+            if (time <= last && !keys.empty()) {
+                keys.back() = std::move(key);
+            } else {
+                keys.push_back(std::move(key));
+            }
+            last = time;
+        }
+        return keys;
+    }
+
+    // An animation of a clip, before a player binds its targets: tracks name the object they
+    // animate by its path from the Animator's object ("" for that object, "Body/Arm" below it),
+    // and the entity drawing an object's sprite as "<path>#sprite".
+    struct ClipOut {
+        bool ok = false;
+        std::string name;
+        json::Value animation;                              // its length, loop and tracks
+        std::vector<std::pair<std::string, double>> events; // functions and times, for tasks
+        bool offsets = false; // whether its sprites' pivots are off their middles
+    };
+
+    // The class names of components clips animate, for reports.
+    static std::string class_name(std::int64_t class_id) {
+        static const std::map<std::int64_t, std::string_view> kNames{
+            {kGameObject, "GameObject"},
+            {kTransform, "Transform"},
+            {kCamera, "Camera"},
+            {kRigidbody2D, "Rigidbody2D"},
+            {kCircleCollider2D, "CircleCollider2D"},
+            {kPolygonCollider2D, "PolygonCollider2D"},
+            {kBoxCollider2D, "BoxCollider2D"},
+            {kEdgeCollider2D, "EdgeCollider2D"},
+            {kCapsuleCollider2D, "CapsuleCollider2D"},
+            {kAudioSource, "AudioSource"},
+            {kAnimator, "Animator"},
+            {kMonoBehaviour, "MonoBehaviour"},
+            {kSpriteRenderer, "SpriteRenderer"},
+            {kRectTransform, "RectTransform"},
+        };
+        const auto it = kNames.find(class_id);
+        return it != kNames.end() ? std::string(it->second)
+                                  : "component class " + std::to_string(class_id);
+    }
+
+    const ClipOut& clip(const ObjectRef& ref, const std::string& where) {
+        const std::string key = ref.guid + ":" + std::to_string(ref.file_id);
+        auto [it, inserted] = clips_.try_emplace(key);
+        ClipOut& out = it->second;
+        if (!inserted) {
+            return out;
+        }
+        const Asset* asset = asset_of(ref.guid);
+        if (asset == nullptr) {
+            problems_.add("animation clip", where,
+                          "a clip from outside the project's Assets folder");
+            return out;
+        }
+        if (extension_of(asset->path) != ".anim") {
+            const std::string why = unsupported_asset(extension_of(asset->path));
+            problems_.add("animation clip", where,
+                          asset->path + ": " + (why.empty() ? "not an .anim file" : why));
+            return out;
+        }
+        auto text = platform::read_file(source_ + asset->path);
+        auto objects =
+            text ? unity::parse_file(text.value()) : Result<std::vector<Object>>(text.error());
+        if (!objects) {
+            problems_.add("unreadable file", asset->path, objects.error().message);
+            return out;
+        }
+        const Object* found = nullptr;
+        for (const Object& object : objects.value()) {
+            if (object.class_id == kAnimationClip &&
+                (found == nullptr || object.file_id == ref.file_id)) {
+                found = &object;
+            }
+        }
+        if (found == nullptr) {
+            problems_.add("animation clip", asset->path, "no AnimationClip in the file");
+            return out;
+        }
+        convert_clip(found->body, asset->path, out);
+        out.ok = true;
+        return out;
+    }
+
+    void convert_clip(const Node& body, const std::string& where, ClipOut& out) {
+        out.name = body.string_at("m_Name");
+        ClipTime time;
+        time.start = body.number_at("m_AnimationClipSettings.m_StartTime");
+        time.stop = body.number_at("m_AnimationClipSettings.m_StopTime");
+        bool loop = body.flag_at("m_AnimationClipSettings.m_LoopTime");
+        if (body.flag_at("m_Legacy")) {
+            // Legacy clips loop by their wrap mode: 2 loops, 4 ping-pongs.
+            const std::int64_t wrap = body.integer_at("m_WrapMode", 0);
+            loop = wrap == 2;
+            if (wrap == 4) {
+                out.animation["loop"] = "pingpong";
+            }
+        }
+        if (loop) {
+            out.animation["loop"] = "linear";
+        }
+
+        // Every track, by its target and path, so a property set twice keeps the first.
+        std::map<std::pair<std::string, std::string>, json::Value> tracks;
+        double last_key = 0.0;
+        const auto add = [&](const std::string& target, const std::string& path,
+                             json::Value track) {
+            if (const json::Value* keys = track.find("keys");
+                keys == nullptr || keys->as_array().empty()) {
+                return;
+            }
+            if (!target.empty()) {
+                track["target"] = target;
+            }
+            track["path"] = path;
+            tracks.try_emplace({target, path}, std::move(track));
+        };
+        // Clip times, once the clip's stop time is known.
+        std::vector<std::function<void()>> pending;
+        const auto float_track = [&](const std::string& target, const std::string& path,
+                                     Curve values, std::function<json::Value(double)> to_field,
+                                     bool discrete) {
+            if (values.empty()) {
+                return;
+            }
+            last_key = std::max(last_key, values.back().time);
+            pending.emplace_back([&, target, path, curve = std::move(values),
+                                  convert = std::move(to_field), discrete] {
+                json::Value track;
+                track["keys"] = track_keys(samples({&curve}, time, discrete), time,
+                                           [&](double t) { return convert(evaluate(curve, t)); });
+                add(target, path, std::move(track));
+            });
+        };
+        const auto scaled = [](double scale) {
+            return [scale](double value) -> json::Value { return tidy(value * scale); };
+        };
+        const auto angle = [](double degrees) -> json::Value {
+            return tidy_angle(-degrees * std::numbers::pi / 180.0);
+        };
+        const auto plain = [](double value) -> json::Value { return tidy(value); };
+        const auto flag = [](double value) -> json::Value { return value > 0.5; };
+
+        const auto list = [&](std::string_view key) -> const std::vector<Node>& {
+            static const std::vector<Node> kNone;
+            const Node* node = body.get(key);
+            return node != nullptr ? node->items : kNone;
+        };
+        for (const Node& item : list("m_PositionCurves")) {
+            const std::string target = item.string_at("path");
+            const Node* curve = item.get("curve");
+            float_track(target, "Transform2D/position/x", read_curve(curve, "x"), scaled(ppu_),
+                        false);
+            float_track(target, "Transform2D/position/y", read_curve(curve, "y"), scaled(-ppu_),
+                        false);
+        }
+        for (const Node& item : list("m_ScaleCurves")) {
+            const std::string target = item.string_at("path");
+            const Node* curve = item.get("curve");
+            float_track(target, "Transform2D/scale/x", read_curve(curve, "x"), plain, false);
+            float_track(target, "Transform2D/scale/y", read_curve(curve, "y"), plain, false);
+        }
+        const auto tilted = [&](const Curve& curve) {
+            return std::ranges::any_of(curve, [](const CurveKey& key) { return key.value != 0.0; });
+        };
+        for (const Node& item : list("m_EulerCurves")) {
+            const std::string target = item.string_at("path");
+            const Node* curve = item.get("curve");
+            if (tilted(read_curve(curve, "x")) || tilted(read_curve(curve, "y"))) {
+                problems_.add("animated rotation about x or y", where,
+                              "2D objects turn about z only; the rest is dropped");
+            }
+            float_track(target, "Transform2D/rotation", read_curve(curve, "z"), angle, false);
+        }
+        for (const Node& item : list("m_RotationCurves")) {
+            // Quaternions: each part interpolates on its own, as Unity does, then the turn about
+            // z is taken from them, at every key and sample.
+            const std::string target = item.string_at("path");
+            const Node* curve = item.get("curve");
+            auto parts = std::make_shared<std::array<Curve, 4>>(
+                std::array<Curve, 4>{read_curve(curve, "x"), read_curve(curve, "y"),
+                                     read_curve(curve, "z"), read_curve(curve, "w")});
+            if (tilted((*parts)[0]) || tilted((*parts)[1])) {
+                problems_.add("animated rotation about x or y", where,
+                              "2D objects turn about z only; the rest is dropped");
+            }
+            if ((*parts)[3].empty()) {
+                continue;
+            }
+            last_key = std::max(last_key, (*parts)[3].back().time);
+            pending.emplace_back([&, target, parts] {
+                const Curve& qx = (*parts)[0];
+                const Curve& qy = (*parts)[1];
+                const Curve& qz = (*parts)[2];
+                const Curve& qw = (*parts)[3];
+                json::Value track;
+                track["keys"] =
+                    track_keys(samples({&qx, &qy, &qz, &qw}, time, false), time, [&](double t) {
+                        const double x = evaluate(qx, t);
+                        const double y = evaluate(qy, t);
+                        const double z = evaluate(qz, t);
+                        const double w = evaluate(qw, t);
+                        const double turn = std::atan2(2.0 * ((w * z) + (x * y)),
+                                                       1.0 - (2.0 * ((y * y) + (z * z))));
+                        return json::Value(tidy_angle(-turn));
+                    });
+                track["interpolation"] = "linear_angle";
+                add(target, "Transform2D/rotation", std::move(track));
+            });
+        }
+        for (const Node& item : list("m_FloatCurves")) {
+            const std::string target = item.string_at("path");
+            const std::string sprite_target = target + "#sprite";
+            const std::string attribute = item.string_at("attribute");
+            const std::int64_t class_id = item.integer_at("classID", 0);
+            Curve curve = read_curve(item.get("curve"), {});
+            if (class_id == kTransform) {
+                if (attribute == "m_LocalPosition.x") {
+                    float_track(target, "Transform2D/position/x", std::move(curve), scaled(ppu_),
+                                false);
+                } else if (attribute == "m_LocalPosition.y") {
+                    float_track(target, "Transform2D/position/y", std::move(curve), scaled(-ppu_),
+                                false);
+                } else if (attribute == "m_LocalScale.x" || attribute == "m_LocalScale.y") {
+                    float_track(target, "Transform2D/scale/" + attribute.substr(13),
+                                std::move(curve), plain, false);
+                } else if (attribute == "localEulerAnglesRaw.z" ||
+                           attribute == "localEulerAngles.z") {
+                    float_track(target, "Transform2D/rotation", std::move(curve), angle, false);
+                } else if (attribute.ends_with(".z") && attribute.starts_with("m_Local")) {
+                    // Depth: SlashEngine orders by z_index.
+                } else if (tilted(curve)) {
+                    problems_.add("animated rotation about x or y", where,
+                                  "2D objects turn about z only; the rest is dropped");
+                }
+                continue;
+            }
+            if (class_id == kSpriteRenderer) {
+                if (attribute.starts_with("m_Color.") && attribute.size() == 9) {
+                    float_track(sprite_target, "Sprite2D/modulate/" + attribute.substr(8),
+                                std::move(curve), plain, false);
+                    continue;
+                }
+                const std::map<std::string, std::string, std::less<>> kFlags{
+                    {"m_Enabled", "visible"}, {"m_FlipX", "flip_h"}, {"m_FlipY", "flip_v"}};
+                if (const auto it = kFlags.find(attribute); it != kFlags.end()) {
+                    float_track(sprite_target, "Sprite2D/" + it->second, std::move(curve), flag,
+                                true);
+                    continue;
+                }
+            }
+            if (class_id == kGameObject && attribute == "m_IsActive") {
+                problems_.add("animated m_IsActive", where,
+                              "shows and hides the object's sprites and those under it; its "
+                              "other components still run");
+                float_track(target, "Sprite2D/visible", std::move(curve), flag, true);
+                continue;
+            }
+            if (class_id == kMonoBehaviour) {
+                problems_.add("animated script value",
+                              std::string(where).append(": ").append(attribute),
+                              "set it from gameplay code; the script's storyboard task says what "
+                              "it does");
+                continue;
+            }
+            problems_.add("animated " + class_name(class_id) + "." + attribute, where,
+                          "no SlashEngine field it maps to");
+        }
+        for (const Node& item : list("m_PPtrCurves")) {
+            const std::string target = item.string_at("path");
+            const std::string attribute = item.string_at("attribute");
+            const std::int64_t class_id = item.integer_at("classID", 0);
+            if (class_id != kSpriteRenderer || attribute != "m_Sprite") {
+                problems_.add("animated " + class_name(class_id) + "." + attribute, where,
+                              "no SlashEngine field it maps to");
+                continue;
+            }
+            // Each key's sprite as the texture, region and offset its Sprite2D takes.
+            struct Frame {
+                double time = 0.0;
+                json::Value texture;
+                json::Value region;
+                json::Value offset;
+            };
+            auto frames = std::make_shared<std::vector<Frame>>();
+            const Node* keys = item.get("curve");
+            for (const Node& key : keys != nullptr ? keys->items : std::vector<Node>{}) {
+                Frame frame{.time = key.number_at("time"),
+                            .texture = "",
+                            .region = json::Array{0.0, 0.0, 0.0, 0.0},
+                            .offset = pair(0.0, 0.0)};
+                if (const auto ref = ref_at(key, "value"); ref && !ref->null()) {
+                    std::string why;
+                    if (const Sprite* found = sprite(*ref, why)) {
+                        frame.texture = found->texture;
+                        if (!found->whole) {
+                            frame.region = json::Array{found->region[0], found->region[1],
+                                                       found->region[2], found->region[3]};
+                        }
+                        const double x = (0.5 - found->pivot_x) * found->width;
+                        const double y = (found->pivot_y - 0.5) * found->height;
+                        out.offsets = out.offsets || x != 0.0 || y != 0.0;
+                        frame.offset = pair(x, y);
+                        if (std::abs(found->ppu - ppu_) > 1e-6) {
+                            problems_.add("animated sprite with other pixels per unit", where,
+                                          "drawn at its size in pixels, unscaled");
+                        }
+                    } else {
+                        problems_.add("animated sprite", where, why);
+                    }
+                }
+                if (!frames->empty() && frame.time <= frames->back().time) {
+                    continue;
+                }
+                last_key = std::max(last_key, frame.time);
+                frames->push_back(std::move(frame));
+            }
+            pending.emplace_back([&, target, frames] {
+                for (const std::string_view field : {"texture", "region", "offset"}) {
+                    json::Array out_keys;
+                    for (std::size_t i = 0; i < frames->size(); ++i) {
+                        const Frame& frame = (*frames)[i];
+                        // The frame showing at the clip's start counts from there.
+                        const bool next_inside =
+                            i + 1 < frames->size() && (*frames)[i + 1].time <= time.start;
+                        if (next_inside || frame.time > time.stop) {
+                            continue;
+                        }
+                        json::Value key;
+                        key["time"] = tidy(time.at(frame.time));
+                        if (field == "texture") {
+                            key["value"] = frame.texture;
+                        } else {
+                            key["value"] = field == "region" ? frame.region : frame.offset;
+                        }
+                        if (!out_keys.empty() && out_keys.back().find("time")->as_double() >=
+                                                     key.find("time")->as_double()) {
+                            out_keys.back() = std::move(key);
+                        } else {
+                            out_keys.push_back(std::move(key));
+                        }
+                    }
+                    json::Value track;
+                    track["keys"] = std::move(out_keys);
+                    if (field != "texture") {
+                        track["update"] = "discrete";
+                    }
+                    add(target + "#sprite", "Sprite2D/" + std::string(field), std::move(track));
+                }
+            });
+        }
+
+        if (time.stop <= time.start) {
+            time.stop = last_key > time.start ? last_key : time.start + kSampleStep;
+        }
+        out.animation["length"] = tidy(time.length());
+        for (const auto& make : pending) {
+            make();
+        }
+        json::Array converted;
+        for (auto& [key, track] : tracks) {
+            converted.push_back(std::move(track));
+        }
+        // Events call a method of the object's scripts in Unity; here, gameplay code reads the
+        // event the track emits.
+        std::map<std::string, json::Array> events;
+        for (const Node& event : list("m_Events")) {
+            const std::string function = event.string_at("functionName");
+            const double at = event.number_at("time");
+            if (function.empty() || at < time.start || at > time.stop) {
+                continue;
+            }
+            json::Value key;
+            key["time"] = tidy(time.at(at));
+            json::Value data = json::Object{};
+            if (const double number = event.number_at("floatParameter"); number != 0.0) {
+                data["float"] = number;
+            }
+            if (const std::int64_t integer = event.integer_at("intParameter"); integer != 0) {
+                data["int"] = integer;
+            }
+            if (const std::string text = event.string_at("data"); !text.empty()) {
+                data["string"] = text;
+            }
+            if (const auto ref = ref_at(event, "objectReferenceParameter"); ref && !ref->null()) {
+                const Asset* referenced = asset_of(ref->guid);
+                data["object"] = referenced != nullptr ? json::Value(destination(referenced->path))
+                                                       : json::Value("unity:" + ref->guid);
+            }
+            if (!data.as_object().empty()) {
+                key["data"] = std::move(data);
+            }
+            json::Array& keys = events[function];
+            if (!keys.empty() &&
+                keys.back().find("time")->as_double() >= key.find("time")->as_double()) {
+                continue;
+            }
+            keys.push_back(std::move(key));
+            out.events.emplace_back(function, time.at(at));
+        }
+        for (auto& [function, keys] : events) {
+            json::Value track;
+            track["event"] = function;
+            track["keys"] = std::move(keys);
+            converted.push_back(std::move(track));
+        }
+        out.animation["tracks"] = std::move(converted);
+    }
+
+    // A clip as one state plays it: faster or slower by its speed.
+    static json::Value at_speed(const json::Value& animation, double speed) {
+        json::Value out = animation;
+        if (std::abs(speed - 1.0) < 1e-9) {
+            return out;
+        }
+        out["length"] = tidy(animation.find("length")->as_double() / speed);
+        for (json::Value& track : out["tracks"].as_array()) {
+            for (json::Value& key : track["keys"].as_array()) {
+                key["time"] = tidy(key.find("time")->as_double() / speed);
+            }
+        }
+        return out;
+    }
+
+    // An Animator controller as converted: an .anim.json file with an animation per state of its
+    // base layer, the state it starts in, and the target names its tracks use.
+    struct LibraryOut {
+        std::string path; // "" if it didn't convert
+        std::string first;
+        std::set<std::string> targets;
+        bool offsets = false;
+        std::string task_text;          // its state machine, for a storyboard task; "" with none
+        std::vector<std::string> users; // "<entity> in <scene>"
+        std::vector<std::string> scenes;
+    };
+
+    // The objects of a controller file, by file ID.
+    struct ControllerFile {
+        std::string path;
+        std::map<std::int64_t, const Object*> by_id;
+        std::vector<Object> objects;
+    };
+
+    std::optional<ControllerFile> read_controller(const std::string& guid,
+                                                  const std::string& where) {
+        const Asset* asset = asset_of(guid);
+        if (asset == nullptr) {
+            problems_.add("Animator controller", where,
+                          "a controller from outside the project's Assets folder");
+            return std::nullopt;
+        }
+        auto text = platform::read_file(source_ + asset->path);
+        auto objects =
+            text ? unity::parse_file(text.value()) : Result<std::vector<Object>>(text.error());
+        if (!objects) {
+            problems_.add("unreadable file", asset->path, objects.error().message);
+            return std::nullopt;
+        }
+        ControllerFile file;
+        file.path = asset->path;
+        file.objects = std::move(objects).value();
+        for (const Object& object : file.objects) {
+            file.by_id[object.file_id] = &object;
+        }
+        return file;
+    }
+
+    LibraryOut& library(const ObjectRef& ref, const std::string& where) {
+        auto [it, inserted] = libraries_.try_emplace(ref.guid);
+        LibraryOut& out = it->second;
+        if (!inserted) {
+            return out;
+        }
+        auto file = read_controller(ref.guid, where);
+        if (!file) {
+            return out;
+        }
+        // An override controller is its controller's states with some clips swapped.
+        std::map<std::string, ObjectRef> overrides;
+        std::optional<ControllerFile> base;
+        for (const Object& object : file->objects) {
+            if (object.class_id != kAnimatorOverrideController) {
+                continue;
+            }
+            const Node* clips = object.body.get("m_Clips");
+            for (const Node& item : clips != nullptr ? clips->items : std::vector<Node>{}) {
+                const auto original = ref_at(item, "m_OriginalClip");
+                const auto replacement = ref_at(item, "m_OverrideClip");
+                if (original && replacement && !replacement->null()) {
+                    overrides[original->guid + ":" + std::to_string(original->file_id)] =
+                        *replacement;
+                }
+            }
+            const auto controller = ref_at(object.body, "m_Controller");
+            if (!controller || controller->null()) {
+                problems_.add("Animator override controller", file->path,
+                              "it overrides no controller");
+                return out;
+            }
+            base = read_controller(controller->guid, file->path);
+            if (!base) {
+                return out;
+            }
+        }
+        const ControllerFile& states_file = base ? *base : *file;
+        const Object* controller = nullptr;
+        for (const Object& object : states_file.objects) {
+            if (object.class_id == kAnimatorController) {
+                controller = &object;
+            }
+        }
+        if (controller == nullptr) {
+            problems_.add("Animator controller", file->path, "no AnimatorController in the file");
+            return out;
+        }
+        const Node* layers = controller->body.get("m_AnimatorLayers");
+        if (layers == nullptr || layers->items.empty()) {
+            problems_.add("Animator controller", file->path, "no layers");
+            return out;
+        }
+        if (layers->items.size() > 1) {
+            problems_.add("Animator layers other than the base layer", file->path,
+                          "an AnimationPlayer plays one animation at a time; the base layer's "
+                          "states convert");
+        }
+        const auto object_at = [&](const Node& node, std::string_view key) -> const Object* {
+            const auto local = ref_at(node, key);
+            if (!local || local->null()) {
+                return nullptr;
+            }
+            const auto found = states_file.by_id.find(local->file_id);
+            return found != states_file.by_id.end() ? found->second : nullptr;
+        };
+        const Object* machine = object_at(layers->items.front(), "m_StateMachine");
+        if (machine == nullptr) {
+            problems_.add("Animator controller", file->path, "its base layer has no state machine");
+            return out;
+        }
+
+        // Every state of the base layer, through its sub-state machines.
+        std::vector<const Object*> states;
+        std::vector<const Object*> machines;
+        std::function<void(const Object&, int)> collect = [&](const Object& at, int depth) {
+            machines.push_back(&at);
+            if (const Node* children = at.body.get("m_ChildStates")) {
+                for (const Node& child : children->items) {
+                    if (const Object* state = object_at(child, "m_State")) {
+                        states.push_back(state);
+                    }
+                }
+            }
+            if (const Node* children = at.body.get("m_ChildStateMachines")) {
+                for (const Node& child : children->items) {
+                    if (const Object* sub = object_at(child, "m_StateMachine");
+                        sub != nullptr && depth < kMaxInstanceDepth) {
+                        collect(*sub, depth + 1);
+                    }
+                }
+            }
+        };
+        collect(*machine, 0);
+
+        // A controller and its override controller may share a name: the second gets a number.
+        const std::string base_path = without_extension(file->path);
+        std::string stem = base_path;
+        for (int n = 2; !library_paths_.insert(stem).second; ++n) {
+            stem = base_path + "_" + std::to_string(n);
+        }
+        out.path = destination(stem + std::string(animation::kAnimationSuffix));
+        json::Object animations;
+        std::map<std::int64_t, std::string> names; // by state's file ID
+        std::set<std::string> taken;
+        std::vector<std::string> events;
+        const std::string state_where = file->path + ": state ";
+        for (const Object* state : states) {
+            const std::string name = take(taken, state->body.string_at("m_Name"));
+            names[state->file_id] = name;
+            const std::string here = state_where + name;
+            // A blend tree plays its first motion.
+            std::optional<ObjectRef> motion = ref_at(state->body, "m_Motion");
+            for (int depth = 0;
+                 motion && !motion->null() && motion->guid.empty() && depth < kMaxInstanceDepth;
+                 ++depth) {
+                const auto tree = states_file.by_id.find(motion->file_id);
+                const Node* children =
+                    tree != states_file.by_id.end() && tree->second->class_id == kBlendTree
+                        ? tree->second->body.get("m_Childs")
+                        : nullptr;
+                problems_.add("blend tree", here, "the state plays the tree's first motion");
+                motion = children != nullptr && !children->items.empty()
+                             ? ref_at(children->items.front(), "m_Motion")
+                             : std::nullopt;
+            }
+            if (!motion || motion->null() || motion->guid.empty()) {
+                continue;
+            }
+            if (const auto swapped =
+                    overrides.find(motion->guid + ":" + std::to_string(motion->file_id));
+                swapped != overrides.end()) {
+                motion = swapped->second;
+            }
+            const ClipOut& converted = clip(*motion, here);
+            if (!converted.ok) {
+                continue;
+            }
+            double speed = state->body.number_at("m_Speed", 1.0);
+            if (speed <= 0.0) {
+                problems_.add("state speed at or below 0", here, "plays forward at speed 1");
+                speed = 1.0;
+            }
+            if (state->body.flag_at("m_SpeedParameterActive")) {
+                problems_.add("state speed parameter", here,
+                              "set the AnimationPlayer's speed_scale from gameplay code");
+            }
+            if (state->body.number_at("m_CycleOffset") != 0.0 ||
+                state->body.flag_at("m_CycleOffsetParameterActive")) {
+                problems_.add("state cycle offset", here, "plays from the start");
+            }
+            if (state->body.flag_at("m_Mirror") || state->body.flag_at("m_MirrorParameterActive")) {
+                problems_.add("mirrored state", here, "mirroring is for humanoid 3D animation");
+            }
+            animations.emplace(name, at_speed(converted.animation, speed));
+            out.offsets = out.offsets || converted.offsets;
+            for (const auto& [function, at] : converted.events) {
+                std::ostringstream seconds;
+                seconds << tidy(at / speed);
+                events.push_back(std::string(function)
+                                     .append(" at ")
+                                     .append(seconds.str())
+                                     .append(" s in ")
+                                     .append(name));
+            }
+            for (const json::Value& track : converted.animation.find("tracks")->as_array()) {
+                if (const json::Value* target = track.find("target")) {
+                    out.targets.insert(target->as_string());
+                }
+            }
+        }
+        if (const auto first = ref_at(machine->body, "m_DefaultState"); first) {
+            if (const auto name = names.find(first->file_id);
+                name != names.end() && animations.contains(name->second)) {
+                out.first = name->second;
+            }
+        }
+        json::Value doc;
+        doc["format"] = 1;
+        doc["animations"] = std::move(animations);
+        keep_valid(doc, out.path, [this](const json::Value& value) {
+            return animation::validate_animation_library(value, &components_);
+        });
+        add_file(out.path, json::write(doc) + "\n");
+        ++animation_libraries_;
+        out.task_text = state_machine_text(states_file, controller->body, names, machines, events);
+        return out;
+    }
+
+    // What a controller's state machine does, in words, for the storyboard task that ports it:
+    // its states, parameters and transitions.
+    std::string state_machine_text(const ControllerFile& file, const Node& controller,
+                                   const std::map<std::int64_t, std::string>& names,
+                                   const std::vector<const Object*>& machines,
+                                   const std::vector<std::string>& events) {
+        static constexpr std::array<std::string_view, 10> kTypes{"", "float", "", "int", "bool",
+                                                                 "", "",      "", "",    "trigger"};
+        std::vector<std::string> parameters;
+        std::map<std::string, std::int64_t> parameter_types;
+        if (const Node* list = controller.get("m_AnimatorParameters")) {
+            for (const Node& parameter : list->items) {
+                const std::string name = parameter.string_at("m_Name");
+                const std::int64_t type = parameter.integer_at("m_Type", 1);
+                parameter_types[name] = type;
+                std::string text = name;
+                if (type >= 0 && type < static_cast<std::int64_t>(kTypes.size()) &&
+                    !kTypes.at(static_cast<std::size_t>(type)).empty()) {
+                    text += " (" + std::string(kTypes.at(static_cast<std::size_t>(type)));
+                    std::ostringstream value;
+                    if (type == 1) {
+                        value << parameter.number_at("m_DefaultFloat");
+                    } else if (type == 3) {
+                        value << parameter.integer_at("m_DefaultInt");
+                    } else if (type == 4) {
+                        value << (parameter.flag_at("m_DefaultBool") ? "true" : "false");
+                    }
+                    text += value.str().empty() ? ")" : ", " + value.str() + ")";
+                }
+                parameters.push_back(std::move(text));
+            }
+        }
+        const auto condition_text = [&](const Node& condition) {
+            std::string text = condition.string_at("m_ConditionEvent");
+            std::ostringstream threshold;
+            threshold << condition.number_at("m_EventTreshold");
+            switch (condition.integer_at("m_ConditionMode", 1)) {
+            case 2:
+                text.insert(0, "not ");
+                break;
+            case 3:
+                text.append(" > ").append(threshold.str());
+                break;
+            case 4:
+                text.append(" < ").append(threshold.str());
+                break;
+            case 6:
+                text.append(" == ").append(threshold.str());
+                break;
+            case 7:
+                text.append(" != ").append(threshold.str());
+                break;
+            default: // 1: true, or a trigger set
+                break;
+            }
+            return text;
+        };
+        std::vector<std::string> transitions;
+        bool blended = false;
+        const auto describe = [&](const std::string& from, const Node& list_owner,
+                                  std::string_view key) {
+            const Node* list = list_owner.get(key);
+            for (const Node& item : list != nullptr ? list->items : std::vector<Node>{}) {
+                const auto ref = unity::object_ref(item);
+                const auto found = ref ? file.by_id.find(ref->file_id) : file.by_id.end();
+                if (found == file.by_id.end()) {
+                    continue;
+                }
+                const Node& transition = found->second->body;
+                std::string to = "exit";
+                if (const auto to_state = ref_at(transition, "m_DstState");
+                    to_state && !to_state->null()) {
+                    const auto name = names.find(to_state->file_id);
+                    to = name != names.end() ? name->second : "a missing state";
+                } else if (const auto sub = ref_at(transition, "m_DstStateMachine");
+                           sub && !sub->null()) {
+                    const auto machine = file.by_id.find(sub->file_id);
+                    to = machine != file.by_id.end()
+                             ? "the " + machine->second->body.string_at("m_Name") + " state machine"
+                             : "a missing state machine";
+                }
+                std::vector<std::string> when;
+                if (const Node* conditions = transition.get("m_Conditions")) {
+                    for (const Node& condition : conditions->items) {
+                        when.push_back(condition_text(condition));
+                    }
+                }
+                if (transition.flag_at("m_HasExitTime")) {
+                    std::ostringstream through;
+                    through << transition.number_at("m_ExitTime", 1.0);
+                    when.push_back("its animation reaches exit time " + through.str());
+                }
+                blended = blended || transition.number_at("m_TransitionDuration") > 0.0;
+                std::string text = from;
+                text.append(" to ").append(to);
+                if (!when.empty()) {
+                    text += " when " + join(when, " and ");
+                }
+                transitions.push_back(std::move(text));
+            }
+        };
+        for (const Object* machine : machines) {
+            if (const Node* children = machine->body.get("m_ChildStates")) {
+                for (const Node& child : children->items) {
+                    const auto state = ref_at(child, "m_State");
+                    const auto found = state ? file.by_id.find(state->file_id) : file.by_id.end();
+                    const auto name = state ? names.find(state->file_id) : names.end();
+                    if (found != file.by_id.end() && name != names.end()) {
+                        describe(name->second, found->second->body, "m_Transitions");
+                    }
+                }
+            }
+            describe("any state", machine->body, "m_AnyStateTransitions");
+            describe("entry", machine->body, "m_EntryTransitions");
+        }
+        if (parameters.empty() && transitions.empty()) {
+            return {};
+        }
+        std::vector<std::string> state_names;
+        state_names.reserve(names.size());
+        for (const auto& [id, name] : names) {
+            state_names.push_back(name);
+        }
+        std::string text =
+            "States, each an animation in the library: " + join(state_names, ", ") + ".";
+        if (!parameters.empty()) {
+            text += " Parameters: " + join(parameters, "; ") + ".";
+        }
+        if (!transitions.empty()) {
+            text += " Transitions: " + join(transitions, "; ") + ".";
+        }
+        if (text.find("exit time") != std::string::npos) {
+            text += " Exit times count plays of the state's animation: 1 is its end.";
+        }
+        if (blended) {
+            text += " Unity blends between states as it moves; an AnimationPlayer switches at "
+                    "once.";
+        }
+        if (!events.empty()) {
+            text += " Animation events: " + join(events, ", ") + ".";
+        }
+        return text;
+    }
+
+    // The AnimationPlayer an Animator becomes: its controller's library, starting in its first
+    // state, with each target its tracks name bound to the entity under the object at that path.
+    std::optional<json::Value> animator_player(const Expanded& file, int index,
+                                               const Component& component, bool object_active,
+                                               const std::string& where) {
+        const Node& body = component.body;
+        const auto controller = ref_at(body, "m_Controller");
+        if (!controller || controller->null()) {
+            return std::nullopt;
+        }
+        LibraryOut& converted = library(*controller, where);
+        if (converted.path.empty()) {
+            return std::nullopt;
+        }
+        const GameObject& go = file.objects[static_cast<std::size_t>(index)];
+        converted.users.push_back(go.entity + " in " + file.scene);
+        if (!contains(converted.scenes, file.scene)) {
+            converted.scenes.push_back(file.scene);
+        }
+        if (body.flag_at("m_ApplyRootMotion")) {
+            problems_.add("Animator root motion", where,
+                          "the animation moves the object's Transform2D directly");
+        }
+        json::Value player;
+        player["library"] = converted.path;
+        if (!converted.first.empty()) {
+            player["animation"] = converted.first;
+        }
+        player["playing"] =
+            !converted.first.empty() && body.flag_at("m_Enabled", true) && object_active;
+        json::Object targets;
+        for (const std::string& name : converted.targets) {
+            const auto hash = name.rfind('#');
+            const std::string path = hash == std::string::npos ? name : name.substr(0, hash);
+            int at = index;
+            for (const std::string_view part :
+                 path.empty() ? std::vector<std::string_view>{} : split_path(path)) {
+                const GameObject& parent = file.objects[static_cast<std::size_t>(at)];
+                const auto child = std::ranges::find_if(parent.children, [&](int c) {
+                    const GameObject& candidate = file.objects[static_cast<std::size_t>(c)];
+                    return !candidate.removed && candidate.body.string_at("m_Name") == part;
+                });
+                at = child != parent.children.end() ? *child : -1;
+                if (at < 0) {
+                    break;
+                }
+            }
+            if (at < 0) {
+                problems_.add("animated object missing",
+                              std::string(where).append(": ").append(path),
+                              "no object at that path under the Animator; its tracks don't play");
+                targets.emplace(name, nullptr);
+                continue;
+            }
+            const GameObject& target = file.objects[static_cast<std::size_t>(at)];
+            const auto sprite_entity = target.added.find("sprite");
+            const bool sprite_child =
+                hash != std::string::npos && sprite_entity != target.added.end();
+            targets.emplace(name, sprite_child ? sprite_entity->second : target.entity);
+            if (hash != std::string::npos && converted.offsets) {
+                for (const Component& renderer : target.components) {
+                    if (renderer.class_id == kSpriteRenderer &&
+                        (renderer.body.flag_at("m_FlipX") || renderer.body.flag_at("m_FlipY"))) {
+                        problems_.add("flipped sprite with animated pivots", where,
+                                      "its animation's sprite offsets don't flip with it");
+                    }
+                }
+            }
+        }
+        if (!targets.empty()) {
+            player["targets"] = std::move(targets);
+        }
+        return player;
+    }
+
+    // Controllers no scene's Animator uses convert too, since gameplay code may set them; clips
+    // no controller plays are reported.
+    void convert_unused_animation() {
+        std::map<std::string, std::string> by_path; // GUIDs
+        for (const auto& [guid, asset] : assets_by_guid_) {
+            by_path[asset.path] = guid;
+        }
+        for (const auto& [path, guid] : by_path) {
+            const std::string extension = extension_of(path);
+            if ((extension == ".controller" || extension == ".overridecontroller") &&
+                !libraries_.contains(guid)) {
+                (void)library(ObjectRef{.file_id = 0, .guid = guid}, path);
+            }
+        }
+        std::set<std::string> played;
+        for (const auto& entry : clips_) {
+            played.insert(entry.first.substr(0, entry.first.find(':')));
+        }
+        for (const auto& [path, guid] : by_path) {
+            if (extension_of(path) == ".anim" && !played.contains(guid)) {
+                problems_.add("animation clip no Animator controller plays", path,
+                              "clips convert as the states of the controllers that play them");
+            }
+        }
+    }
+
     // --- Writing scenes ---
 
     struct ScriptUse {
@@ -3208,31 +4330,66 @@ private:
         json::Value record;
         record["scene"] = file.scene;
         json::Object entities;
-        std::function<void(int)> visit = [&](int index) {
+        std::vector<int> order; // every object, each before the objects under it
+        std::function<void(int)> collect = [&](int index) {
+            order.push_back(index);
+            for (const int child : file.objects[static_cast<std::size_t>(index)].children) {
+                collect(child);
+            }
+        };
+        for (const int root : file.roots) {
+            collect(root);
+        }
+        // First each object's components and the entities made for it, so an Animator can then
+        // bind its tracks to the entities under it.
+        struct Done {
+            Converted converted;
+            std::vector<std::string> sources; // of its added entities: their IDs in the prefab
+        };
+        std::vector<std::optional<Done>> done(file.objects.size());
+        for (const int index : order) {
             GameObject& go = file.objects[static_cast<std::size_t>(index)];
-            const std::string where = file.path + ": " + object_path(file, index);
+            if (go.removed) {
+                continue;
+            }
+            const Context ctx{.file = &file,
+                              .index = index,
+                              .where = file.path + ": " + object_path(file, index),
+                              .active = active(file, index)};
+            Done& object = done[static_cast<std::size_t>(index)].emplace();
+            object.converted = convert_object(ctx);
+            for (const auto& [purpose, components] : object.converted.added) {
+                std::string source;
+                go.added[purpose] = added_id(file, go, purpose, source);
+                object.sources.push_back(std::move(source));
+            }
+        }
+        for (const int index : order) {
+            GameObject& go = file.objects[static_cast<std::size_t>(index)];
             record["entities"][object_path(file, index)] = go.entity;
             if (go.removed) {
                 entities[go.entity] = nullptr;
-                for (const int child : go.children) {
-                    visit(child);
-                }
-                return;
+                continue;
             }
-            const Context ctx{
-                .file = &file, .index = index, .where = where, .active = active(file, index)};
-            Converted converted = convert_object(ctx);
+            Done& object = *done[static_cast<std::size_t>(index)];
+            Converted& converted = object.converted;
+            if (converted.animator != nullptr) {
+                if (auto player =
+                        animator_player(file, index, *converted.animator, active(file, index),
+                                        file.path + ": " + object_path(file, index))) {
+                    converted.components["AnimationPlayer"] = std::move(*player);
+                }
+            }
             const Instance* instance =
                 go.instance >= 0 ? &file.instances[static_cast<std::size_t>(go.instance)] : nullptr;
             json::Value entity;
             json::Value& transform = converted.components["Transform2D"];
-            for (auto& [purpose, components] : converted.added) {
-                std::string source;
-                const std::string id = added_id(file, go, purpose, source);
-                go.added[purpose] = id;
+            for (std::size_t i = 0; i < converted.added.size(); ++i) {
+                auto& [purpose, components] = converted.added[i];
+                const std::string& id = go.added[purpose];
                 transform["children"].push_back(id);
-                if (!source.empty()) {
-                    complete(components, *instance, source);
+                if (!object.sources[i].empty()) {
+                    complete(components, *instance, object.sources[i]);
                 }
                 json::Value child;
                 child["components"] = std::move(components);
@@ -3256,12 +4413,6 @@ private:
                 tags_[tag].push_back(file.scene + "#" + go.entity);
             }
             entities[go.entity] = std::move(entity);
-            for (const int child : go.children) {
-                visit(child);
-            }
-        };
-        for (const int root : file.roots) {
-            visit(root);
         }
         // Entities an instance brings that nothing here makes any more are left out.
         for (const Instance& instance : file.instances) {
@@ -3286,7 +4437,10 @@ private:
         }
         const world::FileReader reader = planned_files();
         for (int pass = 0; pass < 64; ++pass) {
-            const auto errors = world::validate_scene(components_, converted, reader);
+            auto errors = world::validate_scene(components_, converted, reader);
+            if (errors.empty()) {
+                errors = animation::check_players(converted, reader);
+            }
             if (errors.empty()) {
                 break;
             }
@@ -3702,10 +4856,33 @@ private:
             task.text = trim_text(text);
             tasks.push_back(std::move(task));
         }
+        std::vector<std::string> controller_tasks; // controller GUIDs, in task order
+        for (const auto& [guid, controller] : libraries_) {
+            if (controller.path.empty() || controller.task_text.empty()) {
+                continue;
+            }
+            PortTask task;
+            task.link = controller.path;
+            const Asset* asset = asset_of(guid);
+            task.name = "Port the state machine of " + (asset != nullptr ? asset->path : guid);
+            task.summary = "Unity Animator controller: pick its animations from gameplay code.";
+            task.engine = "unity";
+            std::string text = controller.task_text;
+            if (!controller.users.empty()) {
+                text += " Played by " + join(controller.users, ", ") + ".";
+            }
+            task.text = trim_text(text);
+            task.links = controller.scenes;
+            tasks.push_back(std::move(task));
+            controller_tasks.push_back(guid);
+        }
         PortTasks written = write_port_tasks(existing, tasks);
         std::size_t index = 0;
         for (const auto& [script, record] : scripts_) {
             task_of_[script] = written.ids[index++];
+        }
+        for (const std::string& guid : controller_tasks) {
+            task_of_[guid] = written.ids[index++];
         }
         if (!written.file.empty()) {
             add_file(storyboard::file_path("work"), std::move(written.file));
@@ -3783,6 +4960,30 @@ private:
             }
             report["tile_assets"] = std::move(tiles);
         }
+        json::Value animation = json::Object{};
+        for (const auto& [guid, controller] : libraries_) {
+            if (controller.path.empty()) {
+                continue;
+            }
+            json::Value item;
+            const Asset* asset = asset_of(guid);
+            item["controller"] = asset != nullptr ? asset->path : guid;
+            if (!controller.first.empty()) {
+                item["first"] = controller.first;
+            }
+            json::Array users;
+            for (const std::string& user : controller.users) {
+                users.emplace_back(user);
+            }
+            item["used_by"] = std::move(users);
+            if (const auto task = task_of_.find(guid); task != task_of_.end()) {
+                item["task"] = task->second;
+            }
+            animation[controller.path] = std::move(item);
+        }
+        if (!animation.as_object().empty()) {
+            report["animation_libraries"] = std::move(animation);
+        }
         json::Array unsupported = problems_.to_json();
         report["unsupported"] = unsupported;
         add_file(std::string(kReportFile), json::write(report) + "\n");
@@ -3799,6 +5000,7 @@ private:
         out["converted"]["prefabs"] = prefabs_;
         out["converted"]["tile_sets"] = static_cast<std::int64_t>(std::ranges::count_if(
             tile_sets_, [](const TileSetOut& set) { return !set.path.empty(); }));
+        out["converted"]["animation_libraries"] = animation_libraries_;
         out["converted"]["input_actions"] = input_actions_;
         out["converted"]["assets"] = assets_;
         out["scripts"] = std::move(summary);
@@ -3853,6 +5055,10 @@ private:
     std::deque<TileSetOut> tile_sets_;
     std::map<std::string, bool> plain_tiles_;                                // by tile asset GUID
     std::map<std::string, std::pair<std::string, std::string>> tile_assets_; // tile set, tile
+    std::map<std::string, ClipOut> clips_;        // by "<GUID>:<file ID>"
+    std::map<std::string, LibraryOut> libraries_; // by controller GUID
+    std::set<std::string> library_paths_;
+    int animation_libraries_ = 0;
 };
 
 } // namespace
