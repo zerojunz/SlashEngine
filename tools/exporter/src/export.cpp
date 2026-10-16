@@ -239,9 +239,14 @@ std::vector<json::ValidationError> check_data_file(DataFile kind, std::string_vi
         errors = world::validate_scene(components, parsed.value(), reader);
         break;
     }
-    // Each tile map layer's cells must name tiles in its tile set, and controls must lay out.
+    // Each tile map layer's cells must name tiles in its tile set, each AnimationPlayer's
+    // animation and track targets must be in its library and targets, and controls must lay
+    // out.
     if (errors.empty()) {
         errors = canvas::check_tile_layers(parsed.value(), reader);
+    }
+    if (errors.empty()) {
+        errors = animation::check_players(parsed.value(), reader);
     }
     if (errors.empty() && kind == DataFile::Scene) {
         errors = ui::check_scene(components, parsed.value(), reader);

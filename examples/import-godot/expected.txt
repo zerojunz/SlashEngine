@@ -1,6 +1,7 @@
 project.import {"dry_run":true,"source":"godot"}
 {
   "converted": {
+    "animation_libraries": 1,
     "assets": 6,
     "bus_layouts": 1,
     "input_actions": 3,
@@ -11,7 +12,7 @@ project.import {"dry_run":true,"source":"godot"}
   },
   "dry_run": true,
   "engine": "godot",
-  "files": ["godot/ui_theme.theme.json", "godot/default_bus_layout.bus_layout.json", "project.json", "godot/player_frames.frames.json", "godot/player.scene.json", "godot/tiles.tileset.json", "godot/main_sprite_frames_coin.frames.json", "godot/main.scene.json", "storyboard/work.json", "import/godot.json"],
+  "files": ["godot/ui_theme.theme.json", "godot/default_bus_layout.bus_layout.json", "project.json", "godot/player_frames.frames.json", "godot/player.scene.json", "godot/tiles.tileset.json", "godot/main_sprite_frames_coin.frames.json", "godot/main_animation_library_coin.anim.json", "godot/main.scene.json", "storyboard/work.json", "import/godot.json"],
   "main_scene": "godot/main.scene.json",
   "project": "Coin Run",
   "report": "import/godot.json",
@@ -56,6 +57,7 @@ project.import {"dry_run":true,"source":"godot"}
 project.import {"source":"godot"}
 {
   "converted": {
+    "animation_libraries": 1,
     "assets": 6,
     "bus_layouts": 1,
     "input_actions": 3,
@@ -65,7 +67,7 @@ project.import {"source":"godot"}
     "tile_sets": 1
   },
   "engine": "godot",
-  "files": 10,
+  "files": 11,
   "main_scene": "godot/main.scene.json",
   "project": "Coin Run",
   "report": "import/godot.json",
@@ -118,6 +120,18 @@ project.import {"source":"godot"}
         },
         "Sprite2D": {},
         "Transform2D": {}
+      }
+    },
+    "animation_player": {
+      "components": {
+        "AnimationPlayer": {
+          "animation": "bob",
+          "library": "godot/main_animation_library_coin.anim.json",
+          "targets": {
+            ".": "coin",
+            "AnimatedSprite2D": "animated_sprite2d"
+          }
+        }
       }
     },
     "coin": {
@@ -228,6 +242,42 @@ project.import {"source":"godot"}
     "walk": {
       "fps": 8.0,
       "frames": ["godot/art/player_walk_0.png", "godot/art/player_walk_1.png"]
+    }
+  },
+  "format": 1
+}
+--- godot/main_animation_library_coin.anim.json
+{
+  "animations": {
+    "bob": {
+      "length": 1.0,
+      "loop": "linear",
+      "tracks": [
+        {
+          "interpolation": "cubic",
+          "keys": [
+            {
+              "time": 0.0,
+              "value": 0.0
+            },
+            {
+              "time": 0.5,
+              "value": -3.0
+            }
+          ],
+          "path": "Transform2D/position/y",
+          "target": "AnimatedSprite2D"
+        },
+        {
+          "event": "glint",
+          "keys": [
+            {
+              "time": 0.0
+            }
+          ],
+          "target": "."
+        }
+      ]
     }
   },
   "format": 1
@@ -385,15 +435,19 @@ project.import {"source":"godot"}
 }
 scene.open {"path":"godot/main.scene.json"}
 {
-  "entities": 15,
+  "entities": 16,
   "path": "godot/main.scene.json"
+}
+events.subscribe {"kinds":["glint"]}
+{
+  "subscription": "events_1"
 }
 step {"ticks":25}
 {
   "tick": 25,
   "ticks": 25
 }
-world.query {"include":["AnimatedSprite2D"],"with":["AnimatedSprite2D"]}
+world.query {"include":["AnimatedSprite2D","Transform2D"],"with":["AnimatedSprite2D"]}
 {
   "count": 2,
   "entities": [
@@ -406,6 +460,13 @@ world.query {"include":["AnimatedSprite2D"],"with":["AnimatedSprite2D"]}
           "playing": true,
           "speed_scale": 1.0,
           "sprite_frames": "godot/main_sprite_frames_coin.frames.json"
+        },
+        "Transform2D": {
+          "children": [],
+          "position": [0.0, -2.7777777],
+          "rotation": 0.0,
+          "scale": [1.0, 1.0],
+          "skew": 0.0
         }
       },
       "id": "animated_sprite2d"
@@ -419,12 +480,32 @@ world.query {"include":["AnimatedSprite2D"],"with":["AnimatedSprite2D"]}
           "playing": false,
           "speed_scale": 1.0,
           "sprite_frames": "godot/player_frames.frames.json"
+        },
+        "Transform2D": {
+          "children": [],
+          "position": [0.0, 0.0],
+          "rotation": 0.0,
+          "scale": [1.0, 1.0],
+          "skew": 0.0
         }
       },
       "id": "player/animated_sprite2d"
     }
   ],
   "truncated": false
+}
+events.read {"subscription":"events_1"}
+{
+  "dropped": 0,
+  "events": [
+    {
+      "id": "coin",
+      "kind": "glint",
+      "seq": 1,
+      "tick": 0
+    }
+  ],
+  "more": false
 }
 storyboard.query {"kind":"task"}
 {

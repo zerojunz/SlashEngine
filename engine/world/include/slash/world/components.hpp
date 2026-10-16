@@ -87,9 +87,9 @@ struct AnimatedSprite2D {
 SLASH_COMPONENT(AnimatedSprite2D, sprite_frames, animation, playing, speed_scale, frame,
                 frame_progress)
 
-// Plays keyframe animations from a .anim.json file on the entity's own components, as Godot's
-// AnimationPlayer: each tick it moves the time on and sets every field the animation's tracks
-// name.
+// Plays keyframe animations from a .anim.json file, as Godot's AnimationPlayer: each tick it
+// moves the time on and sets every field the animation's tracks name, on the entity's own
+// components or, for a track with a target, on the entity targets maps that name to.
 struct AnimationPlayer {
     std::string library; // project path of a .anim.json file
     std::string animation;
@@ -97,8 +97,11 @@ struct AnimationPlayer {
     float speed_scale = 1.0F;
     double time = 0.0;      // seconds into the animation
     bool backwards = false; // play toward the start; pingpong loops flip it at each end
+    // The entities tracks' targets stand for, by target name, as Godot's node paths from the
+    // root node; null leaves a target's tracks unplayed.
+    std::map<std::string, entt::entity> targets;
 };
-SLASH_COMPONENT(AnimationPlayer, library, animation, playing, speed_scale, time, backwards)
+SLASH_COMPONENT(AnimationPlayer, library, animation, playing, speed_scale, time, backwards, targets)
 
 // A grid of tiles from a .tileset.json file, as Godot's TileMapLayer, drawn at the entity's
 // Transform2D with cell [0, 0]'s top left corner there. Its cells are text: each row is a string

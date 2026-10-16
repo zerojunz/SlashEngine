@@ -4,13 +4,27 @@
       "components": {
         "AnimationPlayer": {
           "animation": "walk",
-          "library": "hero.anim.json"
+          "library": "hero.anim.json",
+          "targets": {
+            "sword": "sword"
+          }
         },
         "Sprite2D": {
           "hframes": 8
         },
         "Transform2D": {
+          "children": ["sword"],
           "position": [64.0, 48.0]
+        }
+      }
+    },
+    "sword": {
+      "components": {
+        "Sprite2D": {
+          "offset": [0.0, -6.0]
+        },
+        "Transform2D": {
+          "position": [4.0, 0.0]
         }
       }
     }

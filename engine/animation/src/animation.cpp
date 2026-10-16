@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <map>
 #include <numbers>
 #include <optional>
 #include <set>
@@ -68,6 +69,10 @@ json::Value schema() {
                            "as \"Transform2D/position\" or \"Sprite2D/modulate/a\".");
     track["properties"]["event"] =
         property("string", "The event kind it emits when playback passes each key.");
+    track["properties"]["target"] =
+        property("string", "The entity it acts on: a name in the AnimationPlayer's targets, "
+                           "as a Godot track's node path. Left out, the player's own entity.");
+    track["properties"]["target"]["minLength"] = 1;
     track["properties"]["interpolation"] = property("string", "How values between keys are found.");
     track["properties"]["interpolation"]["enum"] = names(kInterpolations);
     track["properties"]["interpolation"]["default"] = "linear";
@@ -333,8 +338,11 @@ private:
                                "\"Transform2D/position/y\"");
             return;
         }
-        if (!paths.insert(path).second) {
-            fail(at + "/path", "another track already sets \"" + path + "\"");
+        const json::Value* on = track.find("target");
+        const std::string target_name = on != nullptr ? on->as_string() : std::string();
+        if (!paths.insert(target_name + ":" + path).second) {
+            fail(at + "/path", "another track already sets \"" + path + "\"" +
+                                   (on != nullptr ? " on \"" + target_name + "\"" : ""));
         }
         const json::Array& keys = track.find("keys")->as_array();
         bool values_ok = true;
@@ -457,6 +465,9 @@ Result<AnimationLibrary> parse_animation_library(const json::Value& doc) {
             if (const json::Value* event = json_track.find("event"); event != nullptr) {
                 track.event = event->as_string();
             }
+            if (const json::Value* target = json_track.find("target"); target != nullptr) {
+                track.target = target->as_string();
+            }
             if (const json::Value* value = json_track.find("interpolation"); value != nullptr) {
                 track.interpolation = parse_interpolation(value->as_string());
             }
@@ -483,6 +494,110 @@ Result<AnimationLibrary> parse_animation_library(const json::Value& doc) {
         library.animations.emplace(name, std::move(animation));
     }
     return library;
+}
+
+std::vector<json::ValidationError> check_players(const json::Value& doc,
+                                                 const world::FileReader& reader) {
+    std::vector<json::ValidationError> errors;
+    if (!reader) {
+        return errors;
+    }
+    std::map<std::string, Result<AnimationLibrary>, std::less<>> loaded;
+    const auto load = [&](const std::string& path) -> const Result<AnimationLibrary>& {
+        if (const auto it = loaded.find(path); it != loaded.end()) {
+            return it->second;
+        }
+        const auto parse = [&]() -> Result<AnimationLibrary> {
+            auto text = reader(path);
+            if (!text) {
+                return text.error();
+            }
+            auto parsed = json::parse(text.value());
+            if (!parsed) {
+                return parsed.error();
+            }
+            return parse_animation_library(parsed.value());
+        };
+        return loaded.emplace(path, parse()).first->second;
+    };
+    const auto check = [&](const json::Value& components, const std::string& at, bool extends) {
+        const json::Value* player = components.find("AnimationPlayer");
+        if (player == nullptr || !player->is_object()) {
+            return;
+        }
+        // A player whose library comes from a prefab or an instanced scene is checked there.
+        const json::Value* library_path = player->find("library");
+        if (library_path == nullptr || !library_path->is_string() ||
+            library_path->as_string().empty()) {
+            return;
+        }
+        const std::string& path = library_path->as_string();
+        if (!path.ends_with(kAnimationSuffix)) {
+            errors.push_back({at + "/library", "animation libraries are .anim.json files, as "
+                                               "\"anim/hero.anim.json\""});
+            return;
+        }
+        const Result<AnimationLibrary>& library = load(path);
+        if (!library) {
+            errors.push_back({at + "/library", path + ": " + library.error().message});
+            return;
+        }
+        const auto& animations = library.value().animations;
+        if (const json::Value* name = player->find("animation");
+            name != nullptr && name->is_string() && !name->as_string().empty() &&
+            !animations.contains(name->as_string())) {
+            std::vector<std::string_view> names;
+            names.reserve(animations.size());
+            for (const auto& [each, animation] : animations) {
+                names.emplace_back(each);
+            }
+            std::string message = path + " has no animation \"" + name->as_string() + "\"";
+            if (const std::string_view hint = closest_match(name->as_string(), names);
+                !hint.empty()) {
+                message += "; did you mean \"" + std::string(hint) + "\"?";
+            }
+            errors.push_back({at + "/animation", std::move(message)});
+        }
+        const json::Value* targets = player->find("targets");
+        if (extends && targets == nullptr) {
+            return;
+        }
+        std::vector<std::string_view> bound;
+        if (targets != nullptr && targets->is_object()) {
+            for (const auto& [name, entity] : targets->as_object()) {
+                bound.emplace_back(name);
+            }
+        }
+        std::set<std::string, std::less<>> missing;
+        for (const auto& [name, animation] : animations) {
+            for (const Track& track : animation.tracks) {
+                if (!track.target.empty() &&
+                    std::ranges::find(bound, track.target) == bound.end()) {
+                    missing.insert(track.target);
+                }
+            }
+        }
+        for (const std::string& name : missing) {
+            std::string message = "no entity for target \"" + name + "\", which ";
+            message.append(path).append("'s tracks name; add it to targets");
+            if (const std::string_view hint = closest_match(name, bound); !hint.empty()) {
+                message += "; did you mean \"" + std::string(hint) + "\"?";
+            }
+            errors.push_back({targets != nullptr ? at + "/targets" : at, std::move(message)});
+        }
+    };
+    if (const json::Value* entities = doc.find("entities"); entities != nullptr) {
+        for (const auto& [id, entity] : entities->as_object()) {
+            if (const json::Value* components = entity.find("components"); components != nullptr) {
+                check(*components,
+                      "/entities/" + json::pointer_escape(id) + "/components/AnimationPlayer",
+                      entity.find("extends") != nullptr || id.find('/') != std::string::npos);
+            }
+        }
+    } else if (const json::Value* components = doc.find("components"); components != nullptr) {
+        check(*components, "/components/AnimationPlayer", doc.find("extends") != nullptr);
+    }
+    return errors;
 }
 
 Result<Target> resolve_target(std::string_view path, const world::ComponentRegistry& components) {

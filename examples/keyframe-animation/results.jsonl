@@ -1,6 +1,6 @@
-{"id":1,"jsonrpc":"2.0","result":{"entities":1,"path":"main.scene.json"}}
+{"id":1,"jsonrpc":"2.0","result":{"entities":2,"path":"main.scene.json"}}
 {"id":2,"jsonrpc":"2.0","result":{"length":0.5,"loop":"linear","tracks":{"Sprite2D/frame":[0,1,2,3],"Sprite2D/offset/y":[0,-2,-4,-2]}}}
-{"id":3,"jsonrpc":"2.0","result":{"length":0.4,"loop":"none","tracks":{"Sprite2D/frame":[4,5,5,0],"Sprite2D/modulate":[[1,0.2,0.2,1],[1,0.55,0.55,1],[1,0.8,0.8,1],[1,1,1,1]]}}}
+{"id":3,"jsonrpc":"2.0","result":{"length":0.4,"loop":"none","tracks":{"Sprite2D/frame":[4,5,5,0],"Sprite2D/modulate":[[1,0.2,0.2,1],[1,0.55,0.55,1],[1,0.8,0.8,1],[1,1,1,1]],"sword:Transform2D/rotation":[0,1.0667,1.024,0]}}}
 {"error":{"code":-32001,"data":{"path":"/animation"},"message":"/animation: hero.anim.json has no animation \"hitt\"; did you mean \"hit\"?"},"id":4,"jsonrpc":"2.0"}
 {"id":5,"jsonrpc":"2.0","result":{"subscription":"events_1"}}
 {"id":6,"jsonrpc":"2.0","result":{"tick":31,"ticks":31}}
@@ -8,4 +8,5 @@
 {"id":8,"jsonrpc":"2.0","result":{"changed":{"AnimationPlayer":{"animation":"hit","time":0.0}},"id":"hero"}}
 {"id":9,"jsonrpc":"2.0","result":{"tick":55,"ticks":24}}
 {"id":10,"jsonrpc":"2.0","result":{"dropped":0,"events":[{"data":{"animation":"hit"},"id":"hero","kind":"animation_finished","seq":4,"tick":54}],"more":false}}
-{"id":11,"jsonrpc":"2.0","result":{"components":{"AnimationPlayer":{"animation":"hit","backwards":false,"library":"hero.anim.json","playing":false,"speed_scale":1.0,"time":0.4},"Sprite2D":{"centered":true,"flip_h":false,"flip_v":false,"frame":0,"hframes":8,"light_mask":1,"material":"","material_params":{},"modulate":[1.0,1.0,1.0,1.0],"normal_texture":"","offset":[0.0,-0.050962962],"region":[0.0,0.0,0.0,0.0],"specular_color":[1.0,1.0,1.0,1.0],"specular_shininess":1.0,"specular_texture":"","texture":"","texture_filter":"inherit","vframes":1,"visible":true,"z_index":0},"Transform2D":{"children":[],"position":[64.0,48.0],"rotation":0.0,"scale":[1.0,1.0],"skew":0.0}},"id":"hero"}}
+{"id":11,"jsonrpc":"2.0","result":{"components":{"AnimationPlayer":{"animation":"hit","backwards":false,"library":"hero.anim.json","playing":false,"speed_scale":1.0,"targets":{"sword":"sword"},"time":0.4},"Sprite2D":{"centered":true,"flip_h":false,"flip_v":false,"frame":0,"hframes":8,"light_mask":1,"material":"","material_params":{},"modulate":[1.0,1.0,1.0,1.0],"normal_texture":"","offset":[0.0,-0.050962962],"region":[0.0,0.0,0.0,0.0],"specular_color":[1.0,1.0,1.0,1.0],"specular_shininess":1.0,"specular_texture":"","texture":"","texture_filter":"inherit","vframes":1,"visible":true,"z_index":0},"Transform2D":{"children":["sword"],"position":[64.0,48.0],"rotation":0.0,"scale":[1.0,1.0],"skew":0.0}},"id":"hero"}}
+{"id":12,"jsonrpc":"2.0","result":{"components":{"Transform2D":{"children":[],"position":[4.0,0.0],"rotation":0.0,"scale":[1.0,1.0],"skew":0.0}},"global":{"position":[68,48],"rotation":0,"scale":[1,1]},"id":"sword","parent":"hero"}}

@@ -15,14 +15,14 @@ engine. Copy from them.
 | [events](events/) | `events.subscribe` and `events.read` to hear what changed |
 | [run-until](run-until/) | `run.until`: run a game headless until something happens, in one call |
 | [storyboard](storyboard/) | Briefing before a task, editing facts with versions, and checking after |
-| [import-godot](import-godot/) | `project.import` (`slash-cli import`): a Godot 4 platformer's scenes, sprite frames, tile set, theme, buses, input map and settings converted in one call, its scripts turned into storyboard tasks to port to C++, and the report of what didn't convert |
+| [import-godot](import-godot/) | `project.import` (`slash-cli import`): a Godot 4 platformer's scenes, sprite frames, animations, tile set, theme, buses, input map and settings converted in one call, its scripts turned into storyboard tasks to port to C++, and the report of what didn't convert |
 | [draw-offscreen](draw-offscreen/) | The renderer's device: drawing into a texture and reading the pixels back |
 | [frame-pacing](frame-pacing/) | V-Sync, the frame cap and frame pacing: `display.list`, `display.set` and `perf.stats` |
 | [parent-transforms](parent-transforms/) | Entities in another's `Transform2D` `children`: placed in its space, drawn after it with its `z_index`, visibility and tint, bodies moved with it, `entity.get`'s `parent` and `global`, refused loops and `entity.destroy` taking children along |
 | [camera-2d](camera-2d/) | `Camera2D`: a view that follows the player with drag margins and smoothing, stays inside the level's limits and zooms in, with the coin counter staying put and `frame.summary`'s `camera` |
 | [sprites](sprites/) | `Sprite2D`, sprite sheets and `AnimatedSprite2D` flipbooks from a `.frames.json` file, drawn offscreen |
 | [materials](materials/) | `.material.json` node graphs that color sprites, their params and blend modes, and `material.eval` |
-| [keyframe-animation](keyframe-animation/) | `AnimationPlayer` and `.anim.json` files: tracks for any field, easing, loops, event keys and `animation.eval` |
+| [keyframe-animation](keyframe-animation/) | `AnimationPlayer` and `.anim.json` files: tracks for any field, on the player's entity or another it targets, easing, loops, event keys and `animation.eval` |
 | [tilemaps](tilemaps/) | `TileMapLayer` and `.tileset.json` files: terrain autotiling with `tilemap.paint`, `tilemap.set` and `tilemap.get`, drawn offscreen |
 | [lights-2d](lights-2d/) | `PointLight2D`, `DirectionalLight2D`, `CanvasModulate`, occluder shadows, normal maps and `light.sample`, drawn offscreen |
 | [physics-2d](physics-2d/) | Static, rigid and character bodies, areas, concave and one-way shapes, a joint, and `physics.raycast`, `physics.overlap` and `physics.contacts` |

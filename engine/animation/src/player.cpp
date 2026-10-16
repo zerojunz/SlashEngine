@@ -274,6 +274,34 @@ struct PlayerState {
             stored.backwards = player.backwards;
         }
 
+        // The entity a track acts on: the player's own, or the one its targets name.
+        const auto entity_of = [&](const Track& track) -> entt::entity {
+            if (track.target.empty()) {
+                return entity;
+            }
+            const auto it = player.targets.find(track.target);
+            if (it == player.targets.end()) {
+                std::vector<std::string_view> names;
+                names.reserve(player.targets.size());
+                for (const auto& [name, target] : player.targets) {
+                    names.emplace_back(name);
+                }
+                std::string message = "no entity for target \"" + track.target +
+                                      "\" in the AnimationPlayer's targets";
+                if (const std::string_view hint = closest_match(track.target, names);
+                    !hint.empty()) {
+                    message += "; did you mean \"" + std::string(hint) + "\"?";
+                }
+                warn_once(id, message);
+                return entt::null;
+            }
+            if (it->second == entt::null || !world.valid(it->second)) {
+                warn_once(id, "target \"" + track.target + "\" names no entity");
+                return entt::null;
+            }
+            return it->second;
+        };
+
         // Value tracks: continuous ones take their value at the new time, and discrete ones the
         // value of the last key playback passed, as Godot's update modes do.
         const std::vector<Resolved>& resolved =
@@ -281,6 +309,10 @@ struct PlayerState {
         for (std::size_t i = 0; i < animation.tracks.size(); ++i) {
             const Track& track = animation.tracks[i];
             if (track.path.empty()) {
+                continue;
+            }
+            const entt::entity on = entity_of(track);
+            if (on == entt::null) {
                 continue;
             }
             const std::optional<Target>& found_target = resolved[i].target;
@@ -309,31 +341,46 @@ struct PlayerState {
             if (!world.valid(entity)) {
                 return;
             }
-            if (auto applied = apply(world, entity, target, value); !applied) {
+            if (!world.valid(on)) {
+                continue;
+            }
+            if (auto applied = apply(world, on, target, value); !applied) {
                 warn_once(id, track.path + ": " + applied.error().message);
             }
         }
 
-        // Event tracks: each key passed, in the order playback passed them.
+        // Event tracks: each key passed, in the order playback passed them, from the entity the
+        // track acts on.
+        std::vector<std::optional<std::string>> sources(animation.tracks.size());
+        for (std::size_t i = 0; i < animation.tracks.size(); ++i) {
+            const Track& track = animation.tracks[i];
+            if (!track.event.empty() && !step.spans.empty()) {
+                if (const entt::entity on = entity_of(track); on != entt::null) {
+                    sources[i] = std::string(world.id_of(on));
+                }
+            }
+        }
         for (const Span& span : step.spans) {
             struct Passed {
                 const Key* key;
                 const Track* track;
+                const std::string* source;
             };
             std::vector<Passed> passed;
-            for (const Track& track : animation.tracks) {
-                if (track.event.empty()) {
+            for (std::size_t i = 0; i < animation.tracks.size(); ++i) {
+                const Track& track = animation.tracks[i];
+                if (track.event.empty() || !sources[i]) {
                     continue;
                 }
                 for (const Key* key : span.keys_of(track)) {
-                    passed.push_back({key, &track});
+                    passed.push_back({key, &track, &*sources[i]});
                 }
             }
             std::ranges::stable_sort(passed, [&span](const Passed& a, const Passed& b) {
                 return span.to < span.from ? a.key->time > b.key->time : a.key->time < b.key->time;
             });
             for (const Passed& event : passed) {
-                world.emit(event.track->event, id, event.key->value);
+                world.emit(event.track->event, *event.source, event.key->value);
             }
         }
         if (step.finished) {

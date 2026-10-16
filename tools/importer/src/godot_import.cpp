@@ -1,5 +1,6 @@
 #include "godot_import.hpp"
 
+#include "slash/animation/animation.hpp"
 #include "slash/audio/audio.hpp"
 #include "slash/canvas/tilemap.hpp"
 #include "slash/core/json.hpp"
@@ -19,6 +20,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <initializer_list>
 #include <map>
 #include <memory>
 #include <optional>
@@ -194,12 +196,12 @@ std::optional<std::int64_t> parse_int(std::string_view text) {
     return value;
 }
 
-// text split at each '/'.
-std::vector<std::string_view> split_path(std::string_view text) {
+// text split at each separator.
+std::vector<std::string_view> split_path(std::string_view text, char separator = '/') {
     std::vector<std::string_view> parts;
     std::size_t start = 0;
     while (start <= text.size()) {
-        const std::size_t end = std::min(text.find('/', start), text.size());
+        const std::size_t end = std::min(text.find(separator, start), text.size());
         parts.push_back(text.substr(start, end - start));
         start = end + 1;
     }
@@ -446,6 +448,7 @@ constexpr std::array kNodeTypes{
     NodeType{"AudioStreamPlayer2D", Family::Node2D, "AudioStreamPlayer2D", ""},
     NodeType{"AudioListener2D", Family::Node2D, "AudioListener2D", ""},
     NodeType{"AudioStreamPlayer", Family::Plain, "AudioStreamPlayer", ""},
+    NodeType{"AnimationPlayer", Family::Plain, "AnimationPlayer", ""},
     NodeType{"TileMapLayer", Family::Node2D, "TileMapLayer", ""},
     NodeType{"TileMap", Family::Node2D, "TileMapLayer", ""},
     NodeType{"Control", Family::Control, "", ""},
@@ -521,8 +524,9 @@ std::string unsupported_node(std::string_view type) {
         type == "CSGBox3D") {
         return "3D comes with milestone 7";
     }
-    if (type == "AnimationPlayer" || type == "AnimationTree") {
-        return "animations convert in the next importer step";
+    if (type == "AnimationTree") {
+        return "blend trees and state machines come with milestone 7; play the animations with "
+               "an AnimationPlayer";
     }
     if (type == "Timer") {
         return "timers are gameplay code: count the ticks in a C++ system";
@@ -1078,7 +1082,8 @@ private:
 
     static std::string resource_why(std::string_view type) {
         if (type == "Animation" || type == "AnimationLibrary") {
-            return "animations convert in the next importer step";
+            return "animations convert with an AnimationPlayer that plays them, which says what "
+                   "their tracks animate; none does";
         }
         return "no SlashEngine equivalent yet";
     }
@@ -1104,6 +1109,17 @@ private:
             }
             main_scene_ =
                 destination(without_extension(strip_res(scene)) + std::string(world::kSceneSuffix));
+        }
+        // A project needs a main scene, which a Godot project may leave out.
+        for (std::size_t i = 0; main_scene_.empty() && !existing && i < files_.size(); ++i) {
+            if (extension_of(files_[i]) == ".tscn") {
+                main_scene_ =
+                    destination(without_extension(files_[i]) + std::string(world::kSceneSuffix));
+                problems_.add("main scene", "project.godot",
+                              "it names none, so the first scene, " + files_[i] +
+                                  ", is the main "
+                                  "scene");
+            }
         }
 
         json::Value project = runtime::new_project(name, main_scene_);
@@ -1242,12 +1258,17 @@ private:
             if (errors.empty()) {
                 break;
             }
+            bool reset = false;
             for (const json::ValidationError& error : errors) {
                 problems_.add("setting " + error.path, "project.godot", error.message);
                 if (!remove_pointer(project, error.path)) {
                     project = runtime::new_project(name, main_scene_);
+                    reset = true;
                     break;
                 }
+            }
+            if (reset) {
+                break;
             }
         }
         add_file("project.json", json::write(project) + "\n");
@@ -1494,8 +1515,16 @@ private:
     // The entity a node path names, relative to a node, or "".
     static std::string resolve_node_path(const std::vector<Node>& nodes, const Node& from,
                                          std::string_view path) {
+        const Node* found = find_node(nodes, from, path);
+        return found != nullptr ? found->id : std::string();
+    }
+
+    // The node a path relative to another names, or null; a property path's node for one such as
+    // "Sprite2D:modulate".
+    static const Node* find_node(const std::vector<Node>& nodes, const Node& from,
+                                 std::string_view path) {
         if (path.empty() || path.front() == '/') {
-            return {};
+            return nullptr;
         }
         std::vector<std::string> parts;
         if (from.path != ".") {
@@ -1513,7 +1542,7 @@ private:
             start = end + 1;
             if (part == "..") {
                 if (parts.empty()) {
-                    return {};
+                    return nullptr;
                 }
                 parts.pop_back();
             } else if (!part.empty() && part != ".") {
@@ -1527,10 +1556,10 @@ private:
         const std::string target = parts.empty() ? "." : join(parts, "/");
         for (const Node& node : nodes) {
             if (node.path == target) {
-                return node.id;
+                return &node;
             }
         }
-        return {};
+        return nullptr;
     }
 
     struct SceneContext {
@@ -2812,6 +2841,46 @@ private:
             }
             return true;
         }
+        if (components.contains("AnimationPlayer") && node.type == "AnimationPlayer") {
+            json::Value& player = components["AnimationPlayer"];
+            if (name == "autoplay") {
+                if (value.is_string() && !value.text.empty()) {
+                    player["animation"] = value.text;
+                }
+                return true;
+            }
+            if (name == "active") {
+                if (value.kind == Value::Kind::Bool && !value.boolean) {
+                    player["playing"] = false;
+                }
+                return true;
+            }
+            if (name == "playback_default_blend_time") {
+                if (value.number() != 0.0) {
+                    problems_.add("AnimationPlayer.playback_default_blend_time", node.declared,
+                                  "animations switch at once, without blending");
+                }
+                return true;
+            }
+            // Read by convert_player, or with no effect on what plays.
+            constexpr std::array kTaken{
+                std::string_view{"libraries"},
+                std::string_view{"root_node"},
+                std::string_view{"current_animation"},
+                std::string_view{"assigned_animation"},
+                std::string_view{"deterministic"},
+                std::string_view{"reset_on_save"},
+                std::string_view{"callback_mode_process"},
+                std::string_view{"callback_mode_method"},
+                std::string_view{"callback_mode_discrete"},
+                std::string_view{"movie_quit_on_finish"},
+                std::string_view{"audio_max_polyphony"},
+            };
+            if (contains(kTaken, std::string_view(name)) ||
+                name.starts_with("playback_auto_capture")) {
+                return true;
+            }
+        }
         if (name == "autoplay" && components.contains("AnimatedSprite2D")) {
             if (value.is_string() && !value.text.empty()) {
                 components["AnimatedSprite2D"]["animation"] = value.text;
@@ -3018,6 +3087,496 @@ private:
         };
     }
 
+    // --- Animations ---
+
+    // An animation library as converted: its file, and the node paths its tracks name from the
+    // player's root node.
+    struct LibraryFile {
+        std::string path;
+        std::set<std::string> targets;
+    };
+
+    // One track of a Godot Animation: its "tracks/<n>/..." properties by name.
+    struct GodotTrack {
+        std::map<std::string, const Value*, std::less<>> fields;
+
+        [[nodiscard]] const Value* get(std::string_view name) const {
+            const auto it = fields.find(name);
+            return it != fields.end() ? it->second : nullptr;
+        }
+    };
+
+    static std::map<std::int64_t, GodotTrack> animation_tracks(const Section& section) {
+        constexpr std::string_view kPrefix = "tracks/";
+        std::map<std::int64_t, GodotTrack> tracks;
+        for (const auto& [name, value] : section.properties) {
+            const std::string_view property = name;
+            if (!property.starts_with(kPrefix)) {
+                continue;
+            }
+            const std::size_t slash = property.find('/', kPrefix.size());
+            if (slash == std::string_view::npos) {
+                continue;
+            }
+            if (const auto index =
+                    parse_int(property.substr(kPrefix.size(), slash - kPrefix.size()))) {
+                tracks[*index].fields.emplace(std::string(property.substr(slash + 1)), &value);
+            }
+        }
+        return tracks;
+    }
+
+    // A path value's text: NodePath("a:b") or a plain string.
+    static std::string path_text(const Value& value) {
+        if (value.is_string()) {
+            return value.text;
+        }
+        return value.string_argument().value_or("");
+    }
+
+    using OrderOf = std::function<std::vector<std::string>(const Node&)>;
+
+    // Fills an AnimationPlayer from its node: its animation libraries as one .anim.json file, and
+    // the entity each node path its tracks name stands for, from the player's root node.
+    void convert_player(const std::vector<Node>& nodes, const Node& node, const OrderOf& order_of,
+                        const SceneContext& scene, json::Value& player) {
+        const Property* libraries = node.find("libraries");
+        if (libraries == nullptr || libraries->value->kind != Value::Kind::Dictionary ||
+            libraries->value->entries.empty()) {
+            return;
+        }
+        std::string root_path = "..";
+        if (const Property* root = node.find("root_node"); root != nullptr) {
+            root_path = path_text(*root->value);
+        }
+        const Node* root = find_node(nodes, node, root_path);
+        if (root == nullptr) {
+            problems_.add("AnimationPlayer.root_node", node.declared,
+                          "node path " + root_path + " names no node in the scene");
+            return;
+        }
+        const LibraryFile* library = library_file(nodes, node, *libraries, *root, order_of, scene);
+        if (library == nullptr) {
+            return;
+        }
+        player["library"] = library->path;
+        json::Object targets;
+        for (const std::string& target : library->targets) {
+            const Node* found = find_node(nodes, *root, target);
+            if (found == nullptr) {
+                problems_.add("animation track target", node.declared,
+                              "node path " + target + " names no node under the root node");
+                targets.emplace(target, nullptr);
+            } else {
+                targets.emplace(target, found->id);
+            }
+        }
+        if (!targets.empty()) {
+            player["targets"] = std::move(targets);
+        }
+    }
+
+    // Writes the animations of a player's libraries as one .anim.json file once: a library's
+    // own beside it, or several libraries' together after the player. Animations of a library
+    // with a name are "<library>/<animation>", as Godot names them.
+    const LibraryFile* library_file(const std::vector<Node>& nodes, const Node& node,
+                                    const Property& libraries, const Node& root,
+                                    const OrderOf& order_of, const SceneContext& scene) {
+        struct Source {
+            std::string name;
+            const Section* section;
+            const TextFile* file;
+        };
+        std::vector<Source> animations;
+        std::string base;
+        int count = 0;
+        for (const Value::Entry& entry : libraries.value->entries) {
+            const auto [section, owner] = resource_section(entry.value, *libraries.file);
+            if (section == nullptr || resource_type(*section, *owner) != "AnimationLibrary") {
+                problems_.add("animation library", node.declared,
+                              section == nullptr ? "a missing resource"
+                                                 : "not an AnimationLibrary");
+                continue;
+            }
+            if (++count == 1) {
+                base = resource_base(*section, *owner);
+            }
+            const Value* data = section->property("_data");
+            if (data == nullptr || data->kind != Value::Kind::Dictionary) {
+                continue;
+            }
+            for (const Value::Entry& item : data->entries) {
+                const auto [animation, file] = resource_section(item.value, *owner);
+                if (animation == nullptr || resource_type(*animation, *file) != "Animation") {
+                    problems_.add("animation",
+                                  resource_where(*section, *owner) + ": " + item.key.text,
+                                  animation == nullptr ? "a missing resource" : "not an Animation");
+                    continue;
+                }
+                std::string name;
+                if (!entry.key.text.empty()) {
+                    name.append(entry.key.text).append("/");
+                }
+                name += item.key.text;
+                animations.push_back({std::move(name), animation, file});
+            }
+        }
+        if (count == 0) {
+            return nullptr;
+        }
+        if (count > 1) {
+            base = without_extension(libraries.file->path) + "_" + snake_case(node.name);
+        }
+        if (const auto done = libraries_written_.find(base); done != libraries_written_.end()) {
+            return &done->second;
+        }
+        LibraryFile& out = libraries_written_[base];
+        out.path = destination(base + std::string(animation::kAnimationSuffix));
+        json::Object converted;
+        for (const Source& source : animations) {
+            converted.emplace(source.name, convert_animation(*source.section, *source.file, nodes,
+                                                             root, order_of, scene, out.targets));
+        }
+        json::Value doc;
+        doc["format"] = 1;
+        doc["animations"] = std::move(converted);
+        keep_valid(doc, out.path, [this](const json::Value& value) {
+            return animation::validate_animation_library(value, &components_);
+        });
+        add_file(out.path, json::write(doc) + "\n");
+        ++animation_files_;
+        return &out;
+    }
+
+    json::Value convert_animation(const Section& section, const TextFile& file,
+                                  const std::vector<Node>& nodes, const Node& root,
+                                  const OrderOf& order_of, const SceneContext& scene,
+                                  std::set<std::string>& targets) {
+        const std::string where = resource_where(section, file);
+        json::Value out;
+        double length = 1.0; // Godot's default
+        if (const Value* value = section.property("length");
+            value != nullptr && value->is_number()) {
+            length = value->number();
+        }
+        out["length"] = length;
+        if (const Value* loop = section.property("loop_mode");
+            loop != nullptr && loop->kind == Value::Kind::Int &&
+            (loop->integer == 1 || loop->integer == 2)) {
+            out["loop"] = loop->integer == 1 ? "linear" : "pingpong";
+        }
+        if (section.property("marker_names") != nullptr) {
+            problems_.add("animation markers", where, "play from a marker's time in gameplay code");
+        }
+        json::Array tracks;
+        for (const auto& [index, track] : animation_tracks(section)) {
+            convert_track(track, where + " track " + std::to_string(index), length, file, nodes,
+                          root, order_of, scene, tracks, targets);
+        }
+        out["tracks"] = std::move(tracks);
+        return out;
+    }
+
+    // Why a kind of Godot track doesn't convert.
+    static std::string track_why(std::string_view type) {
+        if (type == "audio") {
+            return "play the sound from gameplay code, on an event track's event";
+        }
+        if (type == "animation") {
+            return "start the other AnimationPlayer from gameplay code, on an event track's event";
+        }
+        if (type.ends_with("_3d") || type == "blend_shape") {
+            return "3D comes with milestone 7";
+        }
+        return "no SlashEngine track of this kind";
+    }
+
+    // Adds a Godot track's equivalent to tracks: a value track for a value or bezier track, and
+    // an event track for each method a method track calls.
+    void convert_track(const GodotTrack& track, const std::string& where, double length,
+                       const TextFile& file, const std::vector<Node>& nodes, const Node& root,
+                       const OrderOf& order_of, const SceneContext& scene, json::Array& tracks,
+                       std::set<std::string>& targets) {
+        const Value* type_value = track.get("type");
+        const std::string type =
+            type_value != nullptr && type_value->is_string() ? type_value->text : "value";
+        if (const Value* enabled = track.get("enabled");
+            enabled != nullptr && enabled->kind == Value::Kind::Bool && !enabled->boolean) {
+            problems_.add("disabled animation track", where, "Godot doesn't play it either");
+            return;
+        }
+        if (type != "value" && type != "bezier" && type != "method") {
+            problems_.add("animation " + type + " track", where, track_why(type));
+            return;
+        }
+        const Value* path_value = track.get("path");
+        const std::string path = path_value != nullptr ? path_text(*path_value) : std::string();
+        const std::size_t colon = path.find(':');
+        std::string node_path = path.substr(0, colon);
+        if (node_path.empty()) {
+            node_path = ".";
+        }
+        const Node* target = find_node(nodes, root, node_path);
+        if (target == nullptr) {
+            problems_.add("animation track target", where,
+                          "node path " + node_path + " names no node under the root node");
+            return;
+        }
+        const Value* keys = track.get("keys");
+        const Value* times_value = keys != nullptr ? keys->get("times") : nullptr;
+        const auto times =
+            times_value != nullptr ? times_value->numbers() : std::optional<std::vector<double>>{};
+        if (!times || times->empty()) {
+            return;
+        }
+        // Keys past the end never play.
+        constexpr double kPastEnd = 1.0e-9;
+        const auto playable = [&](std::size_t i) { return times->at(i) <= length + kPastEnd; };
+        const Value* values = keys->get("values");
+
+        if (type == "method") {
+            std::vector<json::Value> events; // one per method, in the order first called
+            for (std::size_t i = 0; i < times->size(); ++i) {
+                const Value* call =
+                    values != nullptr && i < values->items.size() ? &values->items[i] : nullptr;
+                const Value* method = call != nullptr ? call->get("method") : nullptr;
+                if (!playable(i) || method == nullptr || !method->is_string() ||
+                    method->text.empty()) {
+                    continue;
+                }
+                json::Value key;
+                key["time"] = times->at(i);
+                if (const Value* args = call->get("args");
+                    args != nullptr && args->kind == Value::Kind::Array && !args->items.empty()) {
+                    json::Array converted;
+                    for (const Value& arg : args->items) {
+                        std::string why;
+                        auto value = guess(arg, file, why);
+                        converted.push_back(value ? std::move(*value) : json::Value());
+                    }
+                    key["data"]["args"] = std::move(converted);
+                }
+                json::Value* event = nullptr;
+                for (json::Value& candidate : events) {
+                    if (candidate.find("event")->as_string() == method->text) {
+                        event = &candidate;
+                    }
+                }
+                if (event == nullptr) {
+                    event = &events.emplace_back();
+                    (*event)["event"] = method->text;
+                    (*event)["target"] = node_path;
+                }
+                (*event)["keys"].push_back(std::move(key));
+            }
+            for (json::Value& event : events) {
+                tracks.push_back(std::move(event));
+            }
+            if (!events.empty()) {
+                targets.insert(node_path);
+            }
+            return;
+        }
+
+        std::string property = colon == std::string::npos ? std::string() : path.substr(colon + 1);
+        std::vector<std::string> sub;
+        if (const std::size_t more = property.find(':'); more != std::string::npos) {
+            for (const std::string_view part :
+                 split_path(std::string_view(property).substr(more + 1), ':')) {
+                sub.emplace_back(part);
+            }
+            property.resize(more);
+        }
+        if (property.empty()) {
+            problems_.add("animation track", where, "a node path with no property");
+            return;
+        }
+        const std::string what = "animation track " + target->type + "." + property;
+        const std::vector<std::string> order = order_of(*target);
+        const std::optional<FieldOf> field = property_field(order, property);
+        if (!field) {
+            const bool control = contains(order, std::string("Control"));
+            problems_.add(what, where,
+                          control && (property == "position" || property == "size" ||
+                                      property == "global_position")
+                              ? "animate the control's offsets instead"
+                              : "no SlashEngine field for it");
+            return;
+        }
+        std::string field_path = field->component + "/" + field->field;
+        if (!sub.empty()) {
+            constexpr std::array kParts{"x", "y", "z", "w", "r", "g", "b", "a"};
+            if (sub.size() != 1 || !field->fallback.is_array() ||
+                std::ranges::find(kParts, sub.front()) == kParts.end()) {
+                problems_.add(what + ":" + join(sub, ":"), where, "no SlashEngine part for it");
+                return;
+            }
+            field_path += "/" + sub.front();
+        }
+        auto resolved = animation::resolve_target(field_path, components_);
+        if (!resolved) {
+            problems_.add(what, where, resolved.error().message);
+            return;
+        }
+        std::optional<std::vector<double>> points; // a bezier track's: value and handles per key
+        if (const Value* list = keys->get("points"); type == "bezier" && list != nullptr) {
+            points = list->numbers();
+        }
+        const Value* transitions_value = keys->get("transitions");
+        const auto transitions = transitions_value != nullptr
+                                     ? transitions_value->numbers()
+                                     : std::optional<std::vector<double>>{};
+        SceneContext context = scene;
+        context.node = target;
+        json::Array out_keys;
+        bool numeric = true;
+        for (std::size_t i = 0; i < times->size(); ++i) {
+            if (!playable(i)) {
+                continue;
+            }
+            json::Value key;
+            key["time"] = times->at(i);
+            constexpr std::size_t kPoint = 5;
+            if (type == "bezier") {
+                if (!points || points->size() < (i + 1) * kPoint) {
+                    problems_.add(what, where, "a bezier key with no point");
+                    return;
+                }
+                key["value"] = points->at(i * kPoint);
+            } else if (values == nullptr || i >= values->items.size()) {
+                problems_.add(what, where, "a key with no value");
+                return;
+            } else if (!sub.empty()) {
+                if (!values->items[i].is_number()) {
+                    problems_.add(what, where, "not a number");
+                    return;
+                }
+                key["value"] = values->items[i].number();
+            } else {
+                std::string why;
+                auto converted = field_value(field->component, field->field, field->fallback,
+                                             values->items[i], file, context, why);
+                if (!converted) {
+                    problems_.add(what, where, why);
+                    return;
+                }
+                const bool number_array =
+                    converted->is_array() && !converted->as_array().empty() &&
+                    std::ranges::all_of(converted->as_array(), &json::Value::is_number);
+                numeric = numeric && (converted->is_number() || number_array);
+                key["value"] = std::move(*converted);
+            }
+            if (type != "bezier" && transitions && i < transitions->size() &&
+                transitions->at(i) != 1.0) {
+                key["transition"] = transitions->at(i);
+            }
+            out_keys.push_back(std::move(key));
+        }
+        if (out_keys.empty()) {
+            return;
+        }
+        json::Value out;
+        out["target"] = node_path;
+        out["path"] = field_path;
+        std::int64_t interpolation = 1; // Godot's default, linear
+        if (const Value* value = track.get("interp");
+            value != nullptr && value->kind == Value::Kind::Int) {
+            interpolation = value->integer;
+        }
+        if (type == "bezier") {
+            interpolation = 2;
+            problems_.add("animation bezier track", where,
+                          "its curve plays as cubic interpolation through its keys");
+        }
+        static constexpr std::array<std::string_view, 5> kInterpolations{
+            "nearest", "linear", "cubic", "linear_angle", "cubic_angle"};
+        if (interpolation >= 0 && interpolation < 5 && interpolation != 1) {
+            out["interpolation"] = kInterpolations.at(static_cast<std::size_t>(interpolation));
+        }
+        std::int64_t update = 0; // continuous
+        if (const Value* value = keys->get("update");
+            value != nullptr && value->kind == Value::Kind::Int) {
+            update = value->integer;
+        }
+        if (update == 2) {
+            problems_.add("animation track capture mode", where,
+                          "plays as continuous, from its first key rather than the value before");
+        }
+        if (update == 1 && !resolved.value().discrete) {
+            out["update"] = "discrete";
+        } else if (update != 1 && resolved.value().discrete && numeric) {
+            out["update"] = "continuous";
+        }
+        if (const Value* wrap = track.get("loop_wrap");
+            wrap != nullptr && wrap->kind == Value::Kind::Bool && !wrap->boolean) {
+            out["loop_wrap"] = false;
+        }
+        out["keys"] = std::move(out_keys);
+        tracks.push_back(std::move(out));
+        targets.insert(node_path);
+    }
+
+    // What a Godot property of a node with these components becomes: a component's field and
+    // its default.
+    struct FieldOf {
+        std::string component;
+        std::string field;
+        json::Value fallback;
+    };
+
+    [[nodiscard]] std::optional<FieldOf> property_field(const std::vector<std::string>& order,
+                                                        std::string_view property) const {
+        const auto find =
+            [&](std::string_view field,
+                std::initializer_list<std::string_view> only) -> std::optional<FieldOf> {
+            for (const std::string& component : order) {
+                if (only.size() != 0 && std::ranges::find(only, component) == only.end()) {
+                    continue;
+                }
+                const world::ComponentType* type = components_.find(component);
+                const json::Value* fallback =
+                    type != nullptr && field != "children" ? type->defaults().find(field) : nullptr;
+                if (fallback != nullptr) {
+                    return FieldOf{component, std::string(field), *fallback};
+                }
+            }
+            return std::nullopt;
+        };
+        if (auto found = find(property, {}); found) {
+            return found;
+        }
+        // Sprite2D and TileMapLayer have one tint; a sprite's region is its region_rect.
+        if (property == "self_modulate") {
+            return find("modulate", {"Sprite2D", "TileMapLayer"});
+        }
+        if (property == "region_rect") {
+            return find("region", {"Sprite2D"});
+        }
+        return std::nullopt;
+    }
+
+    // The components a node becomes, in the order its properties look for a field: Transform2D
+    // first, so a node's position goes there rather than to a field of the same name, such as
+    // CollisionShape2D's.
+    static std::vector<std::string> component_order(const Node& node, Family family,
+                                                    bool transform) {
+        std::vector<std::string> order;
+        if (transform) {
+            order.emplace_back("Transform2D");
+        }
+        if (const NodeType* type = find_node_type(node.type); type != nullptr) {
+            for (const std::string_view component : {type->first, type->second}) {
+                if (!component.empty()) {
+                    order.emplace_back(component);
+                }
+            }
+        }
+        if (family == Family::Control) {
+            order.emplace_back("Control");
+        }
+        return order;
+    }
+
     // The ID of an entity a node adds beside its own, such as a TileMap's layer, by a key
     // unique in the node: for a node an instance brings, the ID the scene it instances gave it,
     // under the instance's; else wanted, made unique in the scene.
@@ -3120,28 +3679,14 @@ private:
             const Node& node = nodes[i];
             scene.node = &node;
             json::Object components;
-            std::vector<std::string> order;
-            // Transform2D first, so a node's position goes there rather than to a field of the
-            // same name, such as CollisionShape2D's.
-            if (has_transform[i]) {
-                order.emplace_back("Transform2D");
-                components["Transform2D"] = json::Object{};
+            const std::vector<std::string> order =
+                component_order(node, families[i], has_transform[i]);
+            for (const std::string& component : order) {
+                components[component] = json::Object{};
             }
             const NodeType* type = find_node_type(node.type);
-            if (type != nullptr) {
-                for (const std::string_view component : {type->first, type->second}) {
-                    if (!component.empty()) {
-                        order.emplace_back(component);
-                        components[std::string(component)] = json::Object{};
-                    }
-                }
-                if (type->vertical) {
-                    components[std::string(type->first)]["vertical"] = true;
-                }
-            }
-            if (families[i] == Family::Control) {
-                order.emplace_back("Control");
-                components["Control"] = json::Object{};
+            if (type != nullptr && type->vertical) {
+                components[std::string(type->first)]["vertical"] = true;
             }
             if (components.contains("AnimatedSprite2D")) {
                 // Godot's plays only with autoplay or when code calls play().
@@ -3248,6 +3793,18 @@ private:
             }
         }
 
+        // AnimationPlayers, whose tracks name nodes from their root node.
+        const auto order_of = [&](const Node& target) {
+            const auto t = static_cast<std::size_t>(&target - nodes.data());
+            return component_order(target, families[t], has_transform[t]);
+        };
+        for (const Node& node : nodes) {
+            if (node.type == "AnimationPlayer") {
+                convert_player(nodes, node, order_of, scene,
+                               entities[node.id]["components"]["AnimationPlayer"]);
+            }
+        }
+
         // Connections, by entity.
         json::Array connections;
         for (const Section& section : file.sections) {
@@ -3301,6 +3858,9 @@ private:
                         error.path.resize(at + kLayer.size());
                     }
                 }
+            }
+            if (errors.empty()) {
+                errors = animation::check_players(converted, reader);
             }
             if (errors.empty()) {
                 break;
@@ -3485,6 +4045,7 @@ private:
         out["converted"]["tile_sets"] = tile_set_files_;
         out["converted"]["themes"] = theme_files_;
         out["converted"]["bus_layouts"] = bus_layout_files_;
+        out["converted"]["animation_libraries"] = animation_files_;
         out["converted"]["input_actions"] = input_actions_;
         out["converted"]["assets"] = assets_;
         out["scripts"] = std::move(summary);
@@ -3506,7 +4067,8 @@ private:
     std::map<std::string, TileSetFile> tile_sets_;
     std::map<std::string, std::string> themes_written_;
     std::set<std::string> bus_layouts_written_;
-    std::map<std::string, ScriptRecord> scripts_; // by res path
+    std::map<std::string, LibraryFile> libraries_written_; // by file name, without its suffix
+    std::map<std::string, ScriptRecord> scripts_;          // by res path
     std::map<std::string, std::string> task_of_;
     std::set<std::string> task_ids_;
     std::map<std::string, std::string> autoloads_;
@@ -3524,6 +4086,7 @@ private:
     int tile_set_files_ = 0;
     int theme_files_ = 0;
     int bus_layout_files_ = 0;
+    int animation_files_ = 0;
     int input_actions_ = 0;
     int assets_ = 0;
 };
