@@ -22,7 +22,7 @@ foreach(name IN LISTS examples)
     if(EXISTS ${dir}/main.cpp)
         add_executable(example-${name} ${name}/main.cpp)
         target_link_libraries(example-${name} PRIVATE
-            slash::animation slash::audio slash::canvas slash::command slash::core slash::debug slash::input slash::physics2d
+            slash::animation slash::audio slash::canvas slash::command slash::core slash::debug slash::importer slash::input slash::physics2d
             slash::platform slash::render slash::text slash::ui slash::world)
         # The same output on every platform: no fused multiply-adds, which arm64 compilers
         # would otherwise emit and x86-64 ones not.

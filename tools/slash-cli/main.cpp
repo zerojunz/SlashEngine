@@ -23,6 +23,8 @@
 #include "slash/exporter/export.hpp"
 #include "slash/exporter/presets.hpp"
 #include "slash/exporter/toolchains.hpp"
+#include "slash/importer/commands.hpp"
+#include "slash/importer/import.hpp"
 #include "slash/input/sdl.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/platform/platform.hpp"
@@ -123,6 +125,13 @@ Usage:
   slash-cli init [dir]               Set a project up for Claude Code, Codex and Cursor
       --force                        Replace files that already exist
       --mcp-command <cmd>            How agents launch slash-mcp (default "slash-mcp")
+  slash-cli import <folder>          Convert a Godot 4 project (the folder with project.godot)
+                                     into the project: scenes, sprite frames, input map and
+                                     settings; each script becomes a storyboard task. A folder
+                                     outside the project is copied in
+      --project <dir>                Project folder to import into (default ".")
+      --dry-run                      Print the report and the files it would write; write
+                                     nothing
   slash-cli export <preset>          Build and sign the game with a preset from
                                      export_presets.json, or with a platform's defaults:
                                      macos, windows, linux, web, android or ios
@@ -257,6 +266,7 @@ struct Engine {
 
     explicit Engine(const command::SessionOptions& options, bool running = false) {
         command::register_builtin_commands(commands);
+        slash::importer::register_import_commands(commands);
         if (running) {
             command::register_run_commands(commands);
         } else {
@@ -1198,6 +1208,48 @@ int cmd_serve(const std::vector<std::string>& args) {
     return kExitOk;
 }
 
+int cmd_import(const std::vector<std::string>& args) {
+    slash::importer::ImportOptions options;
+    options.destination = ".";
+    bool dry_run = false;
+    for (std::size_t i = 0; i < args.size(); ++i) {
+        const std::string& arg = args[i];
+        if (arg == "--dry-run") {
+            dry_run = true;
+        } else if (arg == "--project" && i + 1 < args.size()) {
+            options.destination = args[++i];
+        } else if (options.source.empty() && !arg.starts_with("--")) {
+            options.source = arg;
+        } else {
+            return usage_error("unexpected argument for import: " + arg);
+        }
+    }
+    if (options.source.empty()) {
+        return usage_error("import needs the folder of a Godot 4 project, with its project.godot");
+    }
+    if (dry_run) {
+        auto plan = slash::importer::plan_import(options);
+        if (!plan) {
+            return failure("could not import the project", plan.error());
+        }
+        json::Value result = std::move(plan.value().report);
+        json::Array paths;
+        for (const auto& [path, contents] : plan.value().files) {
+            paths.emplace_back(path);
+        }
+        result["dry_run"] = true;
+        result["files"] = std::move(paths);
+        print(result);
+        return kExitOk;
+    }
+    auto result = slash::importer::import_project(options);
+    if (!result) {
+        return failure("could not import the project", result.error());
+    }
+    print(result.value());
+    return kExitOk;
+}
+
 int cmd_export(const std::vector<std::string>& args) {
     slash::exporter::ExportOptions options;
     for (std::size_t i = 0; i < args.size(); ++i) {
@@ -1406,6 +1458,9 @@ int main(int argc, char** argv) {
     }
     if (name == "init") {
         return cmd_init(args);
+    }
+    if (name == "import") {
+        return cmd_import(args);
     }
     if (name == "export") {
         return cmd_export(args);

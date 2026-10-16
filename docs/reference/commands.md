@@ -79,6 +79,7 @@ as `entity.get`, reject it as an unknown param.
 | Several at once | [`batch`](#batch) |
 | Observe | [`events.subscribe`](#eventssubscribe), [`events.read`](#eventsread), [`events.unsubscribe`](#eventsunsubscribe), [`log.tail`](#logtail), [`frame.capture`](#framecapture), [`frame.summary`](#framesummary) |
 | Display | [`display.list`](#displaylist), [`display.set`](#displayset), [`perf.stats`](#perfstats), [`debug.overlay`](#debugoverlay) |
+| Import | [`project.import`](#projectimport) |
 | Export | [`export.run`](#exportrun) |
 
 
@@ -2112,6 +2113,42 @@ Needs: `read`; it changes nothing in the world, and a recording leaves it out.
 ```json
 {"collisions":true,"visible":false}
 ```
+
+## Import
+
+### project.import
+
+Converts a Godot 4 project, in a folder inside this project, into this project, as
+[`slash-cli import`](cli.md#import) does. Its scenes become `.scene.json` files beside the
+originals, its `SpriteFrames` `.frames.json` files and its settings and input map
+`project.json`; its textures, sounds and fonts are used where they are. Each script becomes a
+storyboard task to port it to C++. [godot-import.md](godot-import.md) says what converts to
+what. Registered by `slash-cli` and `slash-mcp`.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `source` | string | required | The folder holding the Godot project's `project.godot` |
+| `dry_run` | boolean | `false` | Return the report and the files it would write; write nothing |
+
+Needs: `read`, `filesystem`. It writes files and changes no scene, so there is nothing to undo;
+importing again rewrites the converted files and keeps each task's status. The result counts
+what converted, lists each script's task, and lists what didn't convert, once per kind with how
+many, the first place it was seen and why. The full report, with the values scripts need, is
+written to `import/godot.json`.
+
+From [examples/import-godot](../../examples/import-godot/):
+
+```json
+{"source": "godot"}
+```
+
+```json
+{"converted":{"assets":5,"input_actions":3,"scenes":2,"sprite_frames":2},"engine":"godot","files":7,"main_scene":"godot/main.scene.json","project":"Coin Run","report":"import/godot.json","scripts":[{"entities":0,"script":"godot/game_state.gd","task":"task/port-game-state"},{"entities":1,"script":"godot/main.gd","task":"task/port-main"},{"entities":2,"script":"godot/player.gd","task":"task/port-player"}],"unsupported":[{"count":1,"what":"autoload","where":"project.godot: GameState","why":"autoloads are gameplay code; see the storyboard task"},{"count":1,"what":"file type .svg","where":"icon.svg","why":"textures are PNG or BMP files; save it as PNG"},{"count":1,"what":"node type Timer","where":"main.tscn: Timer","why":"timers are gameplay code: count the ticks in a C++ system"}]}
+```
+
+With `dry_run`, `files` lists the paths it would write instead of counting them. A missing
+folder fails with `-32001`, a folder with no `project.godot` or a Godot 3 project with `-32002`,
+and a path outside the project with `-32003`; `data.path` is `/source`.
 
 ## Export
 

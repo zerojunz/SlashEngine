@@ -1,0 +1,87 @@
+[gd_scene load_steps=11 format=3 uid="uid://b2m4kq7ntc1rw"]
+
+[ext_resource type="Script" uid="uid://dm5main0script" path="res://main.gd" id="1_main"]
+[ext_resource type="PackedScene" uid="uid://c8player0scene" path="res://player.tscn" id="2_player"]
+[ext_resource type="Texture2D" uid="uid://bground0texture" path="res://art/ground.png" id="3_ground"]
+[ext_resource type="Texture2D" uid="uid://bcoins0texture" path="res://art/coins.png" id="4_coins"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_ground"]
+size = Vector2(640, 20)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_c0"]
+atlas = ExtResource("4_coins")
+region = Rect2(0, 0, 8, 8)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_c1"]
+atlas = ExtResource("4_coins")
+region = Rect2(8, 0, 8, 8)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_c2"]
+atlas = ExtResource("4_coins")
+region = Rect2(16, 0, 8, 8)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_coin"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_c0")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_c1")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_c2")
+}],
+"loop": true,
+"name": &"spin",
+"speed": 6.0
+}]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_coin"]
+radius = 5.0
+
+[node name="Main" type="Node2D"]
+script = ExtResource("1_main")
+coins_to_win = 3
+
+[node name="Ground" type="StaticBody2D" parent="."]
+position = Vector2(320, 170)
+
+[node name="Sprite2D" type="Sprite2D" parent="Ground"]
+texture = ExtResource("3_ground")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Ground"]
+shape = SubResource("RectangleShape2D_ground")
+
+[node name="Player" parent="." instance=ExtResource("2_player")]
+position = Vector2(40, 152)
+speed = 150.0
+
+[node name="Coin" type="Area2D" parent="." groups=["coins"]]
+position = Vector2(200, 140)
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="Coin"]
+sprite_frames = SubResource("SpriteFrames_coin")
+animation = &"spin"
+autoplay = "spin"
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Coin"]
+shape = SubResource("CircleShape2D_coin")
+
+[node name="Timer" type="Timer" parent="."]
+wait_time = 30.0
+autostart = true
+
+[node name="HUD" type="CanvasLayer" parent="."]
+
+[node name="Score" type="Label" parent="HUD"]
+offset_left = 8.0
+offset_top = 6.0
+offset_right = 120.0
+offset_bottom = 24.0
+theme_override_colors/font_color = Color(1, 0.85, 0.2, 1)
+theme_override_font_sizes/font_size = 12
+text = "Coins: 0"
+
+[connection signal="body_entered" from="Coin" to="." method="_on_coin_body_entered"]
+[connection signal="timeout" from="Timer" to="." method="_on_timer_timeout"]
