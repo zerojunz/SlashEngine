@@ -29,6 +29,7 @@
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/scene.hpp"
+#include "slash/world/tree2d.hpp"
 #include "slash/world/world.hpp"
 
 #include <algorithm>
@@ -46,6 +47,7 @@
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -555,15 +557,60 @@ Reply entity_create(Session& session, const json::Value& params) {
     return Reply::success(std::move(result));
 }
 
+json::Value rounded(const json::Value& value);
+
 Reply entity_destroy(Session& session, const json::Value& params) {
+    world::World& world = session.world();
     const std::string id = text(params, "id");
-    const entt::entity entity = session.world().find(id);
+    const entt::entity entity = world.find(id);
     if (entity == entt::null) {
-        return unknown_entity(session.world(), id, "/id");
+        return unknown_entity(world, id, "/id");
     }
-    session.world().destroy(entity);
+    auto& ecs = world.ecs();
+    // As Godot frees a node's children with it: the entities in its Transform2D and Control
+    // children go too, and theirs.
+    std::vector<entt::entity> doomed{entity};
+    std::unordered_set<entt::entity> seen{entity};
+    for (std::size_t i = 0; i < doomed.size(); ++i) {
+        const auto add = [&](const std::vector<entt::entity>& children) {
+            for (const entt::entity child : children) {
+                if (world.valid(child) && seen.insert(child).second) {
+                    doomed.push_back(child);
+                }
+            }
+        };
+        if (const auto* transform = ecs.try_get<world::Transform2D>(doomed[i]);
+            transform != nullptr) {
+            add(transform->children);
+        }
+        if (const auto* control = ecs.try_get<world::Control>(doomed[i]); control != nullptr) {
+            add(control->children);
+        }
+    }
+    // They leave the lists of the parents that stay.
+    const auto gone = [&](entt::entity child) { return seen.contains(child); };
+    for (const auto [other, transform] : ecs.view<world::Transform2D>().each()) {
+        if (!seen.contains(other) && std::ranges::any_of(transform.children, gone)) {
+            std::erase_if(transform.children, gone);
+        }
+    }
+    for (const auto [other, control] : ecs.view<world::Control>().each()) {
+        if (!seen.contains(other) && std::ranges::any_of(control.children, gone)) {
+            std::erase_if(control.children, gone);
+        }
+    }
     json::Value result;
     result["destroyed"] = id;
+    if (doomed.size() > 1) {
+        json::Array descendants;
+        for (std::size_t i = 1; i < doomed.size(); ++i) {
+            descendants.emplace_back(std::string(world.id_of(doomed[i])));
+        }
+        result["descendants"] = std::move(descendants);
+    }
+    for (const entt::entity each : doomed) {
+        world.destroy(each);
+    }
     return Reply::success(std::move(result));
 }
 
@@ -585,6 +632,19 @@ Reply entity_get(Session& session, const json::Value& params) {
         result["extends"] = link->path;
     }
     result["components"] = components_json(world, entity, only, flag(params, "omit_defaults"));
+    // An entity inside another's space: its parent and where it is in the world.
+    if (const world::Tree2D tree(world); tree.parent(entity) != entt::null) {
+        const world::Transform2D placed = tree.global(entity);
+        json::Value global;
+        global["position"] = rounded(json::Array{placed.position.x, placed.position.y});
+        global["rotation"] = rounded(placed.rotation);
+        global["scale"] = rounded(json::Array{placed.scale.x, placed.scale.y});
+        if (placed.skew != 0.0F) {
+            global["skew"] = rounded(placed.skew);
+        }
+        result["parent"] = std::string(world.id_of(tree.parent(entity)));
+        result["global"] = std::move(global);
+    }
     return Reply::success(std::move(result));
 }
 
@@ -1299,10 +1359,8 @@ Reply particles_eval(Session& session, const json::Value& params) {
     if (emitter == nullptr) {
         return param_error(code::kInvalidParams, "/id", quoted(id) + " has no CPUParticles2D");
     }
-    world::Transform2D transform;
-    if (const auto* current = world.ecs().try_get<world::Transform2D>(entity); current != nullptr) {
-        transform = *current;
-    }
+    // Where it is after its parents.
+    const world::Transform2D transform = world::Tree2D(world).global(entity);
     std::vector<canvas::Particle> live;
     if (const json::Value* time = params.find("time"); time != nullptr) {
         const json::Value* seconds = params.find("tick_seconds");
@@ -2171,17 +2229,20 @@ Reply light_sample(Session& session, const json::Value& params) {
             return unknown_entity(world, id, "/id");
         }
         const auto& ecs = world.ecs();
-        const auto* transform = ecs.try_get<world::Transform2D>(entity);
-        if (transform == nullptr) {
+        if (!ecs.all_of<world::Transform2D>(entity)) {
             return param_error(code::kInvalidParams, "/id", quoted(id) + " has no Transform2D");
         }
-        positions.push_back({transform->position.x, transform->position.y});
+        // Where it is, and its z_index, after its parents.
+        const world::Tree2D tree(world);
+        const Vec2 at = tree.global(entity).position;
+        positions.push_back({at.x, at.y});
+        const canvas::Inherited from_parents = canvas::inherited(world, tree, entity);
         if (const auto* sprite = ecs.try_get<world::Sprite2D>(entity); sprite != nullptr) {
             item.light_mask = static_cast<std::uint32_t>(sprite->light_mask);
-            item.z_index = sprite->z_index;
+            item.z_index = canvas::z_index(sprite->z_index, from_parents);
         } else if (const auto* layer = ecs.try_get<world::TileMapLayer>(entity); layer != nullptr) {
             item.light_mask = static_cast<std::uint32_t>(layer->light_mask);
-            item.z_index = layer->z_index;
+            item.z_index = canvas::z_index(layer->z_index, from_parents);
         }
     }
     if (const json::Value* mask = params.find("light_mask"); mask != nullptr) {
@@ -3806,7 +3867,8 @@ void register_builtin_commands(Registry& registry) {
 
     registry.add({
         .name = "entity.destroy",
-        .description = "Destroys an entity and its components.",
+        .description = "Destroys an entity and its components, and the entities in its "
+                       "Transform2D or Control children, listed as descendants.",
         .capabilities = {Edit},
         .effect = Effect::Edit,
         .params = params_schema({{"id", id_property("Entity ID.")}}, {"id"}),
@@ -3816,7 +3878,8 @@ void register_builtin_commands(Registry& registry) {
     json::Value omit_defaults = property("boolean", "Leave out fields equal to their defaults.");
     registry.add({
         .name = "entity.get",
-        .description = "Returns an entity's components.",
+        .description = "Returns an entity's components; for one in another's Transform2D "
+                       "children, its parent and global transform too.",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema(

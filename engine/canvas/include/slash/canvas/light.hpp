@@ -53,8 +53,8 @@ struct LightProblem {
 
 // A light texture's image, by project path.
 using LightImage = std::function<Result<const render::Image*>(const std::string& path)>;
-// Where an entity is drawn, given its Transform2D: the renderer moves it part of the way from
-// the last tick.
+// Where an entity is drawn, given its Transform2D: by default its global transform, after its
+// parents' (world::Tree2D); the renderer moves it part of the way from the last tick.
 using TransformOf =
     std::function<world::Transform2D(entt::entity entity, const world::Transform2D& current)>;
 

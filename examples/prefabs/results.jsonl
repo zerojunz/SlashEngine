@@ -1,6 +1,6 @@
 {"id":1,"jsonrpc":"2.0","result":{"entities":2,"path":"scenes/level.scene.json"}}
 {"id":2,"jsonrpc":"2.0","result":{"id":"coin_2"}}
-{"id":3,"jsonrpc":"2.0","result":{"components":{"Transform2D":{"position":[128.0,32.0],"rotation":0.0,"scale":[0.5,0.5]}},"extends":"prefabs/coin.prefab.json","id":"coin_2"}}
+{"id":3,"jsonrpc":"2.0","result":{"components":{"Transform2D":{"children":[],"position":[128.0,32.0],"rotation":0.0,"scale":[0.5,0.5],"skew":0.0}},"extends":"prefabs/coin.prefab.json","id":"coin_2"}}
 {"id":4,"jsonrpc":"2.0","result":{"components":["Transform2D"],"path":"prefabs/player.prefab.json"}}
 {"id":5,"jsonrpc":"2.0","result":{"id":"player_2"}}
 {"error":{"code":-32001,"data":{"path":"/extends"},"message":"/extends: prefab \"prefabs/coins.prefab.json\" could not be read: no such file; did you mean \"prefabs/coin.prefab.json\"?"},"id":6,"jsonrpc":"2.0"}

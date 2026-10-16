@@ -1,5 +1,7 @@
 #include "slash/canvas/light.hpp"
 
+#include "slash/world/tree2d.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -51,8 +53,13 @@ Point place(const world::Transform2D& transform, float x, float y) {
     const float sy = y * transform.scale.y;
     const float cos_r = std::cos(transform.rotation);
     const float sin_r = std::sin(transform.rotation);
-    return {transform.position.x + (sx * cos_r) - (sy * sin_r),
-            transform.position.y + (sx * sin_r) + (sy * cos_r)};
+    // The y axis's angle: skew leans it from square.
+    const float cos_k =
+        transform.skew == 0.0F ? cos_r : std::cos(transform.rotation + transform.skew);
+    const float sin_k =
+        transform.skew == 0.0F ? sin_r : std::sin(transform.rotation + transform.skew);
+    return {transform.position.x + (sx * cos_r) - (sy * sin_k),
+            transform.position.y + (sx * sin_r) + (sy * cos_k)};
 }
 
 std::uint32_t mask_of(int mask) {
@@ -257,10 +264,11 @@ SceneLighting collect_lighting(const world::World& world, const LightImage& imag
                                ShadowCache* cache) {
     SceneLighting out;
     const auto& ecs = world.ecs();
+    const world::Tree2D tree(world);
     const auto transform = [&](entt::entity entity) {
         world::Transform2D placed;
         if (const auto* current = ecs.try_get<world::Transform2D>(entity); current != nullptr) {
-            placed = transform_of ? transform_of(entity, *current) : *current;
+            placed = transform_of ? transform_of(entity, *current) : tree.global(entity);
         }
         return placed;
     };

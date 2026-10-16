@@ -5,6 +5,7 @@
 #include "slash/core/json.hpp"
 #include "slash/core/result.hpp"
 #include "slash/world/component_registry.hpp"
+#include "slash/world/tree2d.hpp"
 #include "slash/world/world.hpp"
 
 #include <cstddef>
@@ -217,6 +218,10 @@ private:
 
     Reply call_command(std::string_view name, const json::Value& params);
     Reply run(const Command& command, const json::Value& params);
+    // The reply, or a failure if the world's Transform2D children have a problem now that
+    // wasn't in before.
+    [[nodiscard]] Reply keeps_tree(const std::vector<world::TreeProblem>& before,
+                                   Reply reply) const;
     void on_world_event(const world::Event& event);
     void publish(const world::Event& event);
     // Queues a command event if a subscription wants one.

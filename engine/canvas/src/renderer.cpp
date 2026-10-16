@@ -103,13 +103,18 @@ Result<std::array<render::Vertex2D, 6>> sprite_quad(const world::Sprite2D& sprit
     const float y1 = y0 + cell_h;
     const float cos_r = std::cos(transform.rotation);
     const float sin_r = std::sin(transform.rotation);
+    // The y axis's angle: skew leans it from square.
+    const float cos_k =
+        transform.skew == 0.0F ? cos_r : std::cos(transform.rotation + transform.skew);
+    const float sin_k =
+        transform.skew == 0.0F ? sin_r : std::sin(transform.rotation + transform.skew);
     const std::array<std::uint8_t, 4> rgba{to_byte(sprite.modulate.x), to_byte(sprite.modulate.y),
                                            to_byte(sprite.modulate.z), to_byte(sprite.modulate.w)};
     const auto corner = [&](float x, float y, float u, float v) {
         const float sx = x * transform.scale.x;
         const float sy = y * transform.scale.y;
-        return render::Vertex2D{.x = transform.position.x + (sx * cos_r) - (sy * sin_r),
-                                .y = transform.position.y + (sx * sin_r) + (sy * cos_r),
+        return render::Vertex2D{.x = transform.position.x + (sx * cos_r) - (sy * sin_k),
+                                .y = transform.position.y + (sx * sin_r) + (sy * cos_k),
                                 .u = u,
                                 .v = v,
                                 .rgba = rgba};
@@ -138,7 +143,38 @@ world::Transform2D interpolate(const world::Transform2D& from, const world::Tran
     out.position = {lerp(from.position.x, to.position.x), lerp(from.position.y, to.position.y)};
     out.rotation = t >= 1.0F ? to.rotation : from.rotation + (turn * t);
     out.scale = {lerp(from.scale.x, to.scale.x), lerp(from.scale.y, to.scale.y)};
+    out.skew = lerp(from.skew, to.skew);
     return out;
+}
+
+Inherited inherited(const world::World& world, const world::Tree2D& tree, entt::entity entity) {
+    Inherited out;
+    const auto& ecs = world.ecs();
+    for (entt::entity up = tree.parent(entity); up != entt::null; up = tree.parent(up)) {
+        const auto tint = [&](const Vec4& color) {
+            out.modulate = {out.modulate.x * color.x, out.modulate.y * color.y,
+                            out.modulate.z * color.z, out.modulate.w * color.w};
+        };
+        if (const auto* sprite = ecs.try_get<world::Sprite2D>(up); sprite != nullptr) {
+            out.z_index += sprite->z_index;
+            out.visible = out.visible && sprite->visible;
+            tint(sprite->modulate);
+        } else if (const auto* layer = ecs.try_get<world::TileMapLayer>(up); layer != nullptr) {
+            out.z_index += layer->z_index;
+            out.visible = out.visible && layer->visible;
+            tint(layer->modulate);
+        } else if (const auto* emitter = ecs.try_get<world::CPUParticles2D>(up);
+                   emitter != nullptr) {
+            out.z_index += emitter->z_index;
+            out.visible = out.visible && emitter->visible;
+        }
+    }
+    return out;
+}
+
+int z_index(int own, const Inherited& from_parents) {
+    constexpr int kZLimit = 4096;
+    return std::clamp(own + from_parents.z_index, -kZLimit, kZLimit);
 }
 
 double material_time(std::uint64_t tick, double tick_seconds, double interpolation) {
@@ -166,38 +202,21 @@ CanvasRenderer::~CanvasRenderer() {
 void CanvasRenderer::before_tick(const world::World& world) {
     previous_.clear();
     const auto& ecs = world.ecs();
-    for (const auto [entity, transform, sprite] :
-         ecs.view<const world::Transform2D, const world::Sprite2D>().each()) {
-        previous_.emplace(entity, transform);
-    }
-    for (const auto [entity, transform, layer] :
-         ecs.view<const world::Transform2D, const world::TileMapLayer>().each()) {
-        previous_.emplace(entity, transform);
-    }
-    for (const auto [entity, transform, light] :
-         ecs.view<const world::Transform2D, const world::PointLight2D>().each()) {
-        previous_.emplace(entity, transform);
-    }
-    for (const auto [entity, transform, light] :
-         ecs.view<const world::Transform2D, const world::DirectionalLight2D>().each()) {
-        previous_.emplace(entity, transform);
-    }
-    for (const auto [entity, transform, occluder] :
-         ecs.view<const world::Transform2D, const world::LightOccluder2D>().each()) {
-        previous_.emplace(entity, transform);
-    }
-    for (const auto [entity, transform, emitter] :
-         ecs.view<const world::Transform2D, const world::CPUParticles2D>().each()) {
-        previous_.emplace(entity, transform);
-    }
-    for (const auto [entity, transform, shape] :
-         ecs.view<const world::Transform2D, const world::CollisionShape2D>().each()) {
-        previous_.emplace(entity, transform);
-    }
-    for (const auto [entity, transform, polygon] :
-         ecs.view<const world::Transform2D, const world::CollisionPolygon2D>().each()) {
-        previous_.emplace(entity, transform);
-    }
+    const world::Tree2D tree(world);
+    // Where each thing that draws is, after its parents.
+    const auto keep = [&](auto view) {
+        for (const entt::entity entity : view) {
+            previous_.emplace(entity, tree.global(entity));
+        }
+    };
+    keep(ecs.view<const world::Transform2D, const world::Sprite2D>());
+    keep(ecs.view<const world::Transform2D, const world::TileMapLayer>());
+    keep(ecs.view<const world::Transform2D, const world::PointLight2D>());
+    keep(ecs.view<const world::Transform2D, const world::DirectionalLight2D>());
+    keep(ecs.view<const world::Transform2D, const world::LightOccluder2D>());
+    keep(ecs.view<const world::Transform2D, const world::CPUParticles2D>());
+    keep(ecs.view<const world::Transform2D, const world::CollisionShape2D>());
+    keep(ecs.view<const world::Transform2D, const world::CollisionPolygon2D>());
 }
 
 void CanvasRenderer::warn_once(const std::string& key, std::string_view message,
@@ -491,7 +510,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
     // A sprite, or a run of a layer's tiles with one texture: vertices from first, in order.
     struct Item {
         int z_index = 0;
-        std::uint32_t order = 0;
+        std::uint64_t order = 0; // Tree2D::draw_key
         std::uint32_t part = 0;
         render::TextureId texture = render::TextureId::None;
         std::size_t first = 0;
@@ -513,13 +532,17 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         const std::string_view id = world.id_of(entity);
         return id.empty() ? "entity " + std::to_string(entt::to_entity(entity)) : std::string(id);
     };
-    const auto transform_of = [&](entt::entity entity, const world::Transform2D& current) {
+    // Where each entity draws: its transform after its parents', part of the way from the last
+    // tick's.
+    const world::Tree2D tree(world);
+    const auto transform_of = [&](entt::entity entity, const world::Transform2D& /*current*/) {
+        world::Transform2D now = tree.global(entity);
         if (options.interpolation < 1.0) {
             if (const auto before = previous_.find(entity); before != previous_.end()) {
-                return interpolate(before->second, current, options.interpolation);
+                return interpolate(before->second, now, options.interpolation);
             }
         }
-        return current;
+        return now;
     };
     FrameContents* contents = options.contents;
     if (contents != nullptr) {
@@ -543,11 +566,23 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         }
         return shading;
     };
-    for (const auto [entity, current, sprite] :
+    for (const auto [entity, current, own_sprite] :
          ecs.view<const world::Transform2D, const world::Sprite2D>().each()) {
-        if (!sprite.visible || sprite.texture.empty()) {
+        const Inherited from_parents = inherited(world, tree, entity);
+        if (!own_sprite.visible || !from_parents.visible || own_sprite.texture.empty()) {
             continue;
         }
+        // Tinted by its parents' modulate too.
+        std::optional<world::Sprite2D> tinted;
+        if (from_parents.modulate != Vec4{1.0F, 1.0F, 1.0F, 1.0F}) {
+            tinted = own_sprite;
+            tinted->modulate = {own_sprite.modulate.x * from_parents.modulate.x,
+                                own_sprite.modulate.y * from_parents.modulate.y,
+                                own_sprite.modulate.z * from_parents.modulate.z,
+                                own_sprite.modulate.w * from_parents.modulate.w};
+        }
+        const world::Sprite2D& sprite = tinted ? *tinted : own_sprite;
+        const int z = z_index(sprite.z_index, from_parents);
         const render::Filter filter = resolve_filter(sprite.texture_filter, options.texture_filter);
         auto texture = this->texture(sprite.texture, filter);
         if (!texture) {
@@ -566,7 +601,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             }
             material = std::move(made).value();
         }
-        material.shading = shading_for(light_mode, sprite.light_mask, sprite.z_index);
+        material.shading = shading_for(light_mode, sprite.light_mask, z);
         if (material.shading.mode != render::LightMode::Unshaded) {
             // Normal and specular maps, left out with a warning if they don't load.
             for (const auto& [path, slot, field] :
@@ -596,8 +631,8 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             problem(entity, "/components/Sprite2D", quad.error().message);
             continue;
         }
-        items.push_back({.z_index = sprite.z_index,
-                         .order = static_cast<std::uint32_t>(entt::to_entity(entity)),
+        items.push_back({.z_index = z,
+                         .order = tree.draw_key(entity),
                          .part = 0,
                          .texture = texture.value()->id,
                          .first = vertices.size(),
@@ -612,9 +647,11 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
     }
 
     for (const auto [entity, emitter] : ecs.view<const world::CPUParticles2D>().each()) {
-        if (!emitter.visible) {
+        const Inherited from_parents = inherited(world, tree, entity);
+        if (!emitter.visible || !from_parents.visible) {
             continue;
         }
+        const int z = z_index(emitter.z_index, from_parents);
         const std::vector<Particle> live = canvas::particles(world, entity);
         if (live.empty()) {
             continue;
@@ -659,7 +696,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             }
             material = std::move(made).value();
         }
-        material.shading = shading_for(light_mode, emitter.light_mask, emitter.z_index);
+        material.shading = shading_for(light_mode, emitter.light_mask, z);
         // With local_coords, particles move with the entity's transform.
         world::Transform2D local;
         if (const auto* current = ecs.try_get<world::Transform2D>(entity);
@@ -687,8 +724,10 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             const Vec2 y_axis =
                 Vec2{-particle.axis.y, particle.axis.x} * (frame_h * 0.5F * particle.scale);
             const std::array<std::uint8_t, 4> rgba{
-                to_byte(particle.color.x), to_byte(particle.color.y), to_byte(particle.color.z),
-                to_byte(particle.color.w)};
+                to_byte(particle.color.x * from_parents.modulate.x),
+                to_byte(particle.color.y * from_parents.modulate.y),
+                to_byte(particle.color.z * from_parents.modulate.z),
+                to_byte(particle.color.w * from_parents.modulate.w)};
             const auto corner = [&](float sx, float sy, float u, float v) {
                 const Vec2 point = place(at + (x_axis * sx) + (y_axis * sy));
                 return render::Vertex2D{.x = point.x, .y = point.y, .u = u, .v = v, .rgba = rgba};
@@ -700,8 +739,8 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             vertices.insert(vertices.end(), {top_left, top_right, bottom_left, top_right,
                                              bottom_right, bottom_left});
         }
-        items.push_back({.z_index = emitter.z_index,
-                         .order = static_cast<std::uint32_t>(entt::to_entity(entity)),
+        items.push_back({.z_index = z,
+                         .order = tree.draw_key(entity),
                          .part = 0,
                          .texture = texture_id,
                          .first = first,
@@ -718,9 +757,12 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         cached.seen = false;
     }
     for (const auto [entity, layer] : ecs.view<const world::TileMapLayer>().each()) {
-        if (!layer.visible || layer.tile_set.empty() || layer.rows.empty()) {
+        const Inherited from_parents = inherited(world, tree, entity);
+        if (!layer.visible || !from_parents.visible || layer.tile_set.empty() ||
+            layer.rows.empty()) {
             continue;
         }
+        const int z = z_index(layer.z_index, from_parents);
         constexpr std::string_view kEvent = "a tile map layer can't draw";
         auto set = tile_set(layer.tile_set);
         if (!set) {
@@ -746,14 +788,19 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         }
         const float cos_r = std::cos(transform.rotation);
         const float sin_r = std::sin(transform.rotation);
-        const std::array<std::uint8_t, 4> rgba{to_byte(layer.modulate.x), to_byte(layer.modulate.y),
-                                               to_byte(layer.modulate.z),
-                                               to_byte(layer.modulate.w)};
+        const float cos_k =
+            transform.skew == 0.0F ? cos_r : std::cos(transform.rotation + transform.skew);
+        const float sin_k =
+            transform.skew == 0.0F ? sin_r : std::sin(transform.rotation + transform.skew);
+        const std::array<std::uint8_t, 4> rgba{to_byte(layer.modulate.x * from_parents.modulate.x),
+                                               to_byte(layer.modulate.y * from_parents.modulate.y),
+                                               to_byte(layer.modulate.z * from_parents.modulate.z),
+                                               to_byte(layer.modulate.w * from_parents.modulate.w)};
         const auto corner = [&](float x, float y, float u, float v) {
             const float sx = x * transform.scale.x;
             const float sy = y * transform.scale.y;
-            return render::Vertex2D{.x = transform.position.x + (sx * cos_r) - (sy * sin_r),
-                                    .y = transform.position.y + (sx * sin_r) + (sy * cos_r),
+            return render::Vertex2D{.x = transform.position.x + (sx * cos_r) - (sy * sin_k),
+                                    .y = transform.position.y + (sx * sin_r) + (sy * cos_k),
                                     .u = u,
                                     .v = v,
                                     .rgba = rgba};
@@ -789,10 +836,9 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             }
             if (run == kNoRun || items[run].texture != texture.value()->id) {
                 render::Material material;
-                material.shading =
-                    shading_for(render::LightMode::Normal, layer.light_mask, layer.z_index);
-                items.push_back({.z_index = layer.z_index,
-                                 .order = static_cast<std::uint32_t>(entt::to_entity(entity)),
+                material.shading = shading_for(render::LightMode::Normal, layer.light_mask, z);
+                items.push_back({.z_index = z,
+                                 .order = tree.draw_key(entity),
                                  .part = part++,
                                  .texture = texture.value()->id,
                                  .first = vertices.size(),

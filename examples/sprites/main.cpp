@@ -118,9 +118,12 @@ int main() {
     // Between ticks, a frame draws each sprite part of the way from where it was before the last
     // tick to where it is now, so motion looks smooth at any frame rate. Rotation turns the short
     // way round: from 3 to -3 radians passes pi, not 0.
-    const world::Transform2D halfway = canvas::interpolate(
-        {.position = {0.0F, 0.0F}, .rotation = 3.0F, .scale = {1.0F, 1.0F}},
-        {.position = {10.0F, 0.0F}, .rotation = -3.0F, .scale = {1.0F, 1.0F}}, 0.5);
+    world::Transform2D before;
+    before.rotation = 3.0F;
+    world::Transform2D now;
+    now.position = {10.0F, 0.0F};
+    now.rotation = -3.0F;
+    const world::Transform2D halfway = canvas::interpolate(before, now, 0.5);
     std::printf("halfway: position %g, %g, rotation %.4f\n", halfway.position.x, halfway.position.y,
                 halfway.rotation);
 

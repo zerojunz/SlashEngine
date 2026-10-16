@@ -1,0 +1,69 @@
+{
+  "entities": {
+    "boat": {
+      "components": {
+        "Sprite2D": {
+          "texture": "boat.png"
+        },
+        "Transform2D": {
+          "children": ["deck", "mast", "cannon"],
+          "position": [120.0, 120.0]
+        }
+      }
+    },
+    "cannon": {
+      "components": {
+        "Sprite2D": {
+          "texture": "cannon.png"
+        },
+        "Transform2D": {
+          "position": [18.0, -8.0],
+          "rotation": -0.4
+        }
+      }
+    },
+    "deck": {
+      "components": {
+        "CollisionShape2D": {
+          "size": [48.0, 4.0]
+        },
+        "StaticBody2D": {},
+        "Transform2D": {
+          "position": [0.0, -4.0]
+        }
+      }
+    },
+    "flag": {
+      "components": {
+        "Sprite2D": {
+          "texture": "flag.png"
+        },
+        "Transform2D": {
+          "position": [6.0, -9.0]
+        }
+      }
+    },
+    "mast": {
+      "components": {
+        "Sprite2D": {
+          "texture": "mast.png"
+        },
+        "Transform2D": {
+          "children": ["flag"],
+          "position": [-4.0, -18.0]
+        }
+      }
+    },
+    "rock": {
+      "components": {
+        "Sprite2D": {
+          "texture": "rock.png"
+        },
+        "Transform2D": {
+          "position": [146.0, 110.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

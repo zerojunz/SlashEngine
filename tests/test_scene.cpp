@@ -91,7 +91,7 @@ TEST_CASE("saving writes only fields that differ from their defaults") {
     const auto registry = make_registry();
     World game(registry);
     const entt::entity player = game.create("player").value();
-    game.ecs().emplace<Transform2D>(player, Transform2D{.position = {1.5F, -2.0F}});
+    game.ecs().emplace<Transform2D>(player).position = {1.5F, -2.0F};
     game.ecs().emplace<demo::Health>(player, demo::Health{.current = 50.0F});
     const entt::entity grunt = game.create("grunt").value();
     game.ecs().emplace<demo::Enemy>(grunt);
