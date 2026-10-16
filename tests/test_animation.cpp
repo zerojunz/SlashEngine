@@ -505,6 +505,94 @@ TEST_CASE("an AnimationPlayer that can't play warns once, and its other tracks s
     CHECK(scene.player(missing).time == 0.0);
 }
 
+TEST_CASE("a track with a target acts on the entity the AnimationPlayer's targets name") {
+    const Warnings warnings;
+    Scene scene;
+    scene.files.write("swing.anim.json", R"({"format": 1, "animations": {
+        "swing": {"length": 1, "tracks": [
+          {"target": "sword", "path": "Transform2D/rotation",
+           "keys": [{"time": 0, "value": 0}, {"time": 1, "value": 2}]},
+          {"path": "Transform2D/rotation", "keys": [{"time": 0, "value": 0},
+                                                    {"time": 1, "value": 1}]},
+          {"target": "sword", "event": "clang", "keys": [{"time": 0.5}]},
+          {"event": "grunt", "keys": [{"time": 0.5}]},
+          {"target": "shield", "path": "Transform2D/rotation", "keys": [{"time": 0, "value": 1}]},
+          {"target": "helmet", "path": "Transform2D/rotation", "keys": [{"time": 0, "value": 1}]}
+        ]}}})");
+    const entt::entity sword = scene.create("sword", R"({"Transform2D": {}})");
+    const entt::entity hero = scene.create("hero", R"({"Transform2D": {}, "AnimationPlayer":
+        {"library": "swing.anim.json", "animation": "swing",
+         "targets": {"sword": "sword", "shield": null}}})");
+    scene.world.step(0.5);
+    CHECK(scene.transform(sword).rotation == doctest::Approx(1.0F));
+    CHECK(scene.transform(hero).rotation == doctest::Approx(0.5F));
+    // Events come from the entity the track acts on.
+    std::vector<std::string> sources;
+    for (const world::Event& event : scene.events) {
+        if (event.kind == "clang" || event.kind == "grunt") {
+            sources.push_back(event.kind + " " + event.id);
+        }
+    }
+    CHECK(sources == std::vector<std::string>{"clang sword", "grunt hero"});
+    // Targets with no entity warn once and leave their tracks unplayed.
+    CHECK(warnings.lines.size() == 2);
+    CHECK(warnings.logged(R"(target \"shield\" names no entity)"));
+    CHECK(warnings.logged(R"(no entity for target \"helmet\" in the AnimationPlayer's targets)"));
+
+    // A destroyed target stops its tracks; the player's own go on.
+    scene.world.destroy(sword);
+    scene.world.step(0.25);
+    CHECK(scene.transform(hero).rotation == doctest::Approx(0.75F));
+    CHECK(warnings.logged(R"(target \"sword\" names no entity)"));
+}
+
+TEST_CASE("AnimationPlayers in a scene are checked against their libraries") {
+    const std::map<std::string, std::string, std::less<>> files{
+        {"swing.anim.json", R"({"format": 1, "animations": {"swing": {"length": 1, "tracks": [
+            {"target": "sword", "path": "Transform2D/rotation", "keys": [{"time": 0, "value": 0}]},
+            {"target": "shield", "event": "block", "keys": [{"time": 0}]},
+            {"path": "Transform2D/rotation", "keys": [{"time": 0, "value": 0}]}]}}})"},
+    };
+    const world::FileReader reader = [&files](std::string_view path) -> slash::Result<std::string> {
+        const auto it = files.find(path);
+        if (it == files.end()) {
+            return slash::make_error(slash::ErrorCode::NotFound, "no such file");
+        }
+        return it->second;
+    };
+    const json::Value scene = parse(R"({"format": 1, "entities": {
+        "bad": {"components": {"AnimationPlayer": {"library": "swing.json"}}},
+        "ghost": {"components": {"AnimationPlayer": {"library": "gone.anim.json"}}},
+        "hero": {"components": {"AnimationPlayer": {"library": "swing.anim.json",
+            "animation": "swng", "targets": {"swrd": "hero", "shield": "hero"}}}},
+        "knight": {"components": {"AnimationPlayer": {"library": "swing.anim.json"}}},
+        "page": {"components": {"AnimationPlayer": {"library": "swing.anim.json",
+            "animation": "swing", "targets": {"sword": "page", "shield": null}}}},
+        "squire": {"extends": "squire.prefab.json",
+                   "components": {"AnimationPlayer": {"library": "swing.anim.json"}}},
+        "idle": {"components": {"AnimationPlayer": {}}}}})");
+    std::vector<std::string> errors;
+    for (const json::ValidationError& error : animation::check_players(scene, reader)) {
+        errors.push_back(error.path + ": " + error.message);
+    }
+    CHECK(errors ==
+          std::vector<std::string>{
+              "/entities/bad/components/AnimationPlayer/library: animation libraries are "
+              ".anim.json files, as \"anim/hero.anim.json\"",
+              "/entities/ghost/components/AnimationPlayer/library: gone.anim.json: no such file",
+              "/entities/hero/components/AnimationPlayer/animation: swing.anim.json has no "
+              "animation \"swng\"; did you mean \"swing\"?",
+              "/entities/hero/components/AnimationPlayer/targets: no entity for target "
+              "\"sword\", which swing.anim.json's tracks name; add it to targets; did you mean "
+              "\"swrd\"?",
+              "/entities/knight/components/AnimationPlayer: no entity for target \"shield\", "
+              "which swing.anim.json's tracks name; add it to targets",
+              "/entities/knight/components/AnimationPlayer: no entity for target \"sword\", "
+              "which swing.anim.json's tracks name; add it to targets",
+          });
+    CHECK(animation::check_players(scene, {}).empty());
+}
+
 TEST_CASE("an edited animation file plays its new keys from the next tick") {
     Scene scene;
     scene.files.write("spin.anim.json", library(R"({"path": "Transform2D/rotation",

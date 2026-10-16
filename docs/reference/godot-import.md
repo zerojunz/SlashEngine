@@ -18,6 +18,7 @@ Godot 4 and save it there first; Godot converts it.
 | `<name>.tileset.json` | Each `TileSet` resource, named the same way |
 | `<name>.theme.json` | Each `Theme` resource, named the same way |
 | `<name>.bus_layout.json` | Each `AudioBusLayout` resource, such as `default_bus_layout.tres` |
+| `<name>.anim.json` | Each `AnimationPlayer`'s animation libraries: one library's named as above, several together as `<scene>_<player>.anim.json` |
 | `project.json` | `project.godot`'s settings and input map, merged into the project's own if it has one |
 | `storyboard/work.json` | A task per script, merged into the project's own tasks |
 | `import/godot.json` | The full report: every node's entity, what each script needs and everything that didn't convert |
@@ -56,6 +57,7 @@ their children in place. Controls draw on the screen above the world, as in a `C
 | `StaticBody2D`, `AnimatableBody2D`, `RigidBody2D`, `CharacterBody2D`, `Area2D` | `Transform2D` and the body; its `CollisionShape2D` children are its shapes |
 | `PinJoint2D`, `DampedSpringJoint2D`, `GrooveJoint2D` | `Transform2D` and the joint |
 | `AudioStreamPlayer` | `AudioStreamPlayer` |
+| `AnimationPlayer` | `AnimationPlayer` (see [animations](#animations)) |
 | `Control` | `Control` |
 | `Label`, `ColorRect`, `Panel`, `TextureRect`, `NinePatchRect`, `ProgressBar`, `Button`, `CheckBox`, `CheckButton`, `TextureButton`, `LineEdit`, `TextEdit`, `ScrollContainer`, `MarginContainer`, `CenterContainer`, `PanelContainer`, `GridContainer` | `Control` and the component of the same name |
 | `HBoxContainer`, `VBoxContainer`, `BoxContainer` | `Control` and `BoxContainer` (`vertical` for `VBoxContainer`) |
@@ -130,12 +132,34 @@ holding only the properties the instancing scene overrides, on the instance and 
 brings. Editing the instanced scene changes every instance. A value that doesn't fit its field is
 left out and reported, so one bad value can't stop a scene.
 
+## Animations
+
+An `AnimationPlayer` node becomes an entity with an [`AnimationPlayer`](scene-format.md#animations)
+that plays one `.anim.json` file holding all its libraries' animations: the default library's by
+their names, another library's as `<library>/<animation>`, as Godot names them. `autoplay` is the
+animation it plays, `speed_scale` carries over, and `active = false` is `playing` `false`.
+
+A Godot track names the node it animates by its path from the player's root node (`root_node`,
+the player's parent by default). Each converted track keeps that path as its `target`, and the
+player's `targets` maps each path to the entity of that node, so `Sprite2D:frame` becomes target
+`Sprite2D`, path `Sprite2D/frame`, and `".": "hero"` and `"Sprite2D": "sprite2d"` in `targets`.
+An instance of the scene has the same library, with its targets under the instance's ID.
+
+| Godot track | Becomes |
+| --- | --- |
+| Value track | A value track on the field the property converts to, as a node's property does (`.:position` is `Transform2D/position`, `Sprite2D:texture` a texture path); a part such as `modulate:a` or `position:y` is the field's part. Interpolation, easing (`transitions`), `loop_wrap` and discrete or continuous update modes carry over |
+| Bezier track | A value track through its keys' values, with cubic interpolation; its handles are reported |
+| Method track | An event track per method it calls, named after the method, with `{"args": [...]}` as each key's data when it passes arguments. The node's script becomes C++ that handles the event |
+
+Each animation keeps its `length` and loop mode (`loop_mode` 1 is `linear`, 2 is `pingpong`).
+Keys past the end, which Godot never plays, are left out, and so are disabled tracks.
+
 ## Project settings
 
 | `project.godot` | `project.json` |
 | --- | --- |
 | `application/config/name` | `name` |
-| `application/run/main_scene` | `main_scene`, the scene's `.scene.json` |
+| `application/run/main_scene` | `main_scene`, the scene's `.scene.json`; with none, the first scene by path |
 | `application/run/max_fps` | `max_fps` |
 | `display/window/size/viewport_width`, `viewport_height` | `window.width`, `window.height` |
 | `display/window/vsync/vsync_mode` | `window.vsync_mode` |
@@ -188,7 +212,11 @@ The report lists each of these once per kind, with how many and where it was fir
 
 | What | Why, and when |
 | --- | --- |
-| `AnimationPlayer`, `AnimationTree`, `Animation` resources | The importer's next step (`AnimationTree` with milestone 7's blending) |
+| `AnimationTree` | Blend trees and state machines come with milestone 7; its animations play through an `AnimationPlayer` |
+| Audio and animation tracks | Play the sound or the other animation from gameplay code, on an event track's event |
+| Bezier handles, the capture update mode, blend times and markers | A bezier track plays cubic through its keys, a capture track as continuous, and animations switch without blending |
+| Tracks on a control's `position` or `size` | Animate its offsets instead |
+| Animation libraries no `AnimationPlayer` plays | A track's fields depend on the node it animates |
 | Tile collision, navigation, occlusion and custom data layers | Tile sets hold no collision yet; add bodies over the tiles |
 | Isometric and hexagonal tiles, tiles larger than one cell, animated tiles | Tiles are square and one cell each; an animated tile shows its first frame |
 | Alternative tiles (flipped, turned) and scene collection sources | A cell shows its base tile; place scenes as entities |

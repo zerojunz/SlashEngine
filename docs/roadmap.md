@@ -191,8 +191,9 @@ rendering on top.
 - [x] Keyframe animation tracks on any reflected property, like Godot's AnimationPlayer:
       `.anim.json` libraries of animations with value tracks on any component field or part of
       one, Godot's interpolation, easing, update and loop modes, and event tracks that emit world
-      events. `AnimationPlayer` plays them, `animation.eval` returns the values at any times, and
-      exports check and ship the files
+      events. `AnimationPlayer` plays them on its own entity or, through track targets, on the
+      entities it names, `animation.eval` returns the values at any times, and exports check and
+      ship the files
 - [x] Tilemap layers with terrain autotiling, as Godot's TileSet and TileMapLayer:
       `.tileset.json` files cut atlas textures into tiles with terrain peering bits (corners and
       sides, corners or sides), and `TileMapLayer` keeps its cells as text, rows of legend keys.
@@ -327,7 +328,8 @@ rendering on top.
   - [x] Godot's `TileSet` resources, `TileMapLayer` nodes and the old `TileMap`'s layers,
         themes, `LabelSettings` resources and audio bus layouts, with the project's theme and
         buses
-  - [ ] Godot's `AnimationPlayer` nodes and their animation libraries
+  - [x] Godot's `AnimationPlayer` nodes and their animation libraries, with value, bezier and
+        method tracks, through track targets
   - [ ] Unity projects: 2D scenes and prefabs, sprites and their animations, tilemaps, UI,
         audio mixers and the input system's actions; C# scripts become tasks the same way
   - [ ] Exported games (a Godot `.pck`, a Unity build) unpacked back into a project, for games

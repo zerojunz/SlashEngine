@@ -1,4 +1,4 @@
-[gd_scene load_steps=12 format=3 uid="uid://b2m4kq7ntc1rw"]
+[gd_scene load_steps=14 format=3 uid="uid://b2m4kq7ntc1rw"]
 
 [ext_resource type="Script" uid="uid://dm5main0script" path="res://main.gd" id="1_main"]
 [ext_resource type="PackedScene" uid="uid://c8player0scene" path="res://player.tscn" id="2_player"]
@@ -41,6 +41,41 @@ animations = [{
 [sub_resource type="CircleShape2D" id="CircleShape2D_coin"]
 radius = 5.0
 
+[sub_resource type="Animation" id="Animation_bob"]
+resource_name = "bob"
+loop_mode = 1
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("AnimatedSprite2D:position:y")
+tracks/0/interp = 2
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 0.5),
+"transitions": PackedFloat32Array(1, 1),
+"update": 0,
+"values": [0.0, -3.0]
+}
+tracks/1/type = "method"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath(".")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"values": [{
+"args": [],
+"method": &"glint"
+}]
+}
+
+[sub_resource type="AnimationLibrary" id="AnimationLibrary_coin"]
+_data = {
+&"bob": SubResource("Animation_bob")
+}
+
 [node name="Main" type="Node2D"]
 script = ExtResource("1_main")
 coins_to_win = 3
@@ -72,6 +107,12 @@ autoplay = "spin"
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Coin"]
 shape = SubResource("CircleShape2D_coin")
+
+[node name="AnimationPlayer" type="AnimationPlayer" parent="Coin"]
+libraries = {
+&"": SubResource("AnimationLibrary_coin")
+}
+autoplay = "bob"
 
 [node name="Timer" type="Timer" parent="."]
 wait_time = 30.0

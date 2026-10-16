@@ -115,6 +115,7 @@ A reference must name an entity that exists in the same scene.
 | | `speed_scale` | `float` | `1` | Multiplies the playback speed; negative plays backwards |
 | | `time` | `double` | `0` | Seconds into the animation, from 0 to its length |
 | | `backwards` | `bool` | `false` | Play toward the start, as Godot's `play_backwards`; pingpong loops flip it at each end |
+| | `targets` | `std::map<std::string, entt::entity>` | `{}` | The entity each track [`target`](#animations) names, by name; `null` leaves that target's tracks unplayed |
 | `TileMapLayer` | `tile_set` | `std::string` | `""` | Project path of a [`.tileset.json`](#tile-sets) file |
 | | `origin` | `Vec2i` | `[0, 0]` | The cell the first key of the first row stands for, as [column, row] |
 | | `legend` | `std::map<std::string, std::string>` | `{}` | The tile each key in `rows` stands for, by name or as `"source:column,row"` |
@@ -862,7 +863,9 @@ A `.anim.json` file holds keyframe animations by name, like a Godot `AnimationLi
 `Animation` resources. An entity's `AnimationPlayer` names the file in `library` and plays one
 of them: each tick the `animation_player` system moves `time` on, sets every field the
 animation's value tracks name on the entity's own components (adding a component it lacks), and
-emits the events its event tracks name. `slash-cli schema animation` prints the schema,
+emits the events its event tracks name. A track with a `target` acts on another entity instead,
+the one the player's `targets` maps that name to, as a Godot track names a node by its path from
+the player's root node. `slash-cli schema animation` prints the schema,
 `slash-cli scene validate` and `scene format` accept `.anim.json` files, and the
 [`animation.eval`](commands.md#animationeval) command returns the values an animation sets.
 [examples/keyframe-animation](../../examples/keyframe-animation/) has two.
@@ -879,11 +882,25 @@ emits the events its event tracks name. `slash-cli schema animation` prints the 
         {"path": "Sprite2D/frame",
          "keys": [{"time": 0, "value": 0}, {"time": 0.25, "value": 1}]},
         {"event": "footstep",
-         "keys": [{"time": 0, "data": {"foot": "left"}}, {"time": 0.25, "data": {"foot": "right"}}]}
+         "keys": [{"time": 0, "data": {"foot": "left"}}, {"time": 0.25, "data": {"foot": "right"}}]},
+        {"target": "sword", "path": "Transform2D/rotation",
+         "keys": [{"time": 0, "value": 0}, {"time": 0.25, "value": 0.3}]}
       ]
     }
   },
   "format": 1
+}
+```
+
+and the entity that plays it, whose child `sword` the last track turns:
+
+```json
+"hero": {
+  "components": {
+    "AnimationPlayer": {"animation": "walk", "library": "anim/hero.anim.json",
+                        "targets": {"sword": "sword"}},
+    "Transform2D": {"children": ["sword"]}
+  }
 }
 ```
 
@@ -896,6 +913,7 @@ emits the events its event tracks name. `slash-cli schema animation` prints the 
 | `animations/<name>/tracks` | Yes | Value tracks and event tracks |
 | `tracks/<n>/path` | One of these | A value track: the field it sets, as a component, a field and optionally a part of the field |
 | `tracks/<n>/event` | One of these | An event track: the event kind it emits |
+| `tracks/<n>/target` | No | The entity it acts on: a name the `AnimationPlayer`'s `targets` maps to an entity. Left out, the player's own entity |
 | `tracks/<n>/keys` | Yes | At least one key, in time order, each later than the one before and no later than the length |
 | `keys/<n>/time` | Yes | Seconds from the start |
 | `keys/<n>/value` | Value tracks | A value the field takes |
@@ -913,7 +931,12 @@ entity, so animate `Sprite2D/offset` to move a sprite around its entity instead.
 - Playback passes the keys after where it was, up to and including where it gets to, as Godot's:
   at 60 ticks a second, a key at 0.25 seconds is passed on the 15th tick. When playback starts at
   the start of an animation, a key there is passed too. Event keys emit their event then, with
-  the entity's ID and the key's `data`, and discrete tracks set their key's value.
+  the ID of the entity the track acts on and the key's `data`, and discrete tracks set their
+  key's value.
+- The names in `targets` are entity references, so they follow the entities when a scene is
+  instanced: a hero scene whose player targets `sword` targets `knight/sword` in the knight
+  instance. Two tracks may set one path on different targets. A target missing from `targets`,
+  `null` or naming a destroyed entity logs one warning, and its tracks don't play.
 - An animation that doesn't loop stops at its end (at the start when playing backwards), sets
   `playing` to `false` and emits `animation_finished` with `{"animation": "<name>"}`. Playing it
   again from there starts it over. A linear loop passes keys at both its end and its start as it
@@ -924,8 +947,10 @@ entity, so animate `Sprite2D/offset` to move a sprite around its entity instead.
   or past the length, an unknown component or field (with "did you mean"), a part a field doesn't
   have, a key value the field doesn't take, a string or boolean on a continuous track, two
   tracks on one path, or an event kind the engine uses itself (`command`, `entity.*`).
-  `slash-cli scene validate` and exports check all of these. A player whose file, animation or
-  track can't be used logs one warning and plays what it can.
+  `slash-cli scene validate` and exports check all of these, and in a scene or prefab, that
+  each `AnimationPlayer`'s library loads and has its `animation` (with "did you mean") and that
+  its `targets` name every target its tracks use. A player whose file, animation or track can't
+  be used logs one warning and plays what it can.
 - Animation files reload when they change, like every asset, and exports check and ship them.
 
 ## Tile sets
