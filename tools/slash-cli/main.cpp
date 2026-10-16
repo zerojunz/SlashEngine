@@ -1246,7 +1246,7 @@ int cmd_import(const std::vector<std::string>& args) {
     if (!result) {
         return failure("could not import the project", result.error());
     }
-    print(result.value());
+    print(result.value().report);
     return kExitOk;
 }
 

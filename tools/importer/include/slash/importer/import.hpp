@@ -32,8 +32,8 @@ struct ImportPlan {
 // "unsupported" instead.
 [[nodiscard]] Result<ImportPlan> plan_import(const ImportOptions& options);
 
-// Plans the import and writes its files. Returns the report, with "files" set to how many files
-// were written.
-[[nodiscard]] Result<json::Value> import_project(const ImportOptions& options);
+// Plans the import and writes its files. Returns what it wrote, with the report's "files" set to
+// how many files that was.
+[[nodiscard]] Result<ImportPlan> import_project(const ImportOptions& options);
 
 } // namespace slash::importer

@@ -52,10 +52,10 @@ Result<ImportPlan> plan_import(const ImportOptions& options) {
                       read_optional(destination / storyboard::file_path("work")));
 }
 
-Result<json::Value> import_project(const ImportOptions& options) {
+Result<ImportPlan> import_project(const ImportOptions& options) {
     auto plan = plan_import(options);
     if (!plan) {
-        return plan.error();
+        return plan;
     }
     const fs::path destination(options.destination);
     for (const auto& [path, contents] : plan.value().files) {
@@ -67,9 +67,8 @@ Result<json::Value> import_project(const ImportOptions& options) {
             return written.error();
         }
     }
-    json::Value report = std::move(plan.value().report);
-    report["files"] = plan.value().files.size();
-    return report;
+    plan.value().report["files"] = plan.value().files.size();
+    return plan;
 }
 
 } // namespace slash::importer
