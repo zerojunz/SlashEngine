@@ -399,6 +399,19 @@ A reference must name an entity that exists in the same scene.
 | | `last_wrap_alignment` | `std::string` | `"inherit"` | Where the last line's children go when it isn't full: `inherit` (as `alignment`), `begin`, `center` or `end` |
 | | `reverse_fill` | `bool` | `false` | Fill rows from the bottom up, or columns from the right |
 | `PanelContainer` | | | | Draws the theme's `panel` style box and fits its children inside its margins |
+| `AudioStreamPlayer` | `stream` | `std::string` | `""` | Project path of a `.wav`, `.ogg`, `.mp3` or [`.audio.json`](#audio-streams) file; `""` plays nothing |
+| | `volume_db` | `float` | `0` | Volume in dB, -80 or more |
+| | `pitch_scale` | `float` | `1` | Speed and pitch, times the sound's own, 0.01 to 16 |
+| | `playing` | `bool` | `false` | Whether it [plays](#audio). Setting it starts the sound from the beginning or stops it; the sound ending sets it to false |
+| | `autoplay` | `bool` | `false` | Plays once the audio system first sees it |
+| | `stream_paused` | `bool` | `false` | Holds its sounds where they are; clearing it resumes them |
+| | `max_polyphony` | `int` | `1` | Sounds it may play at once, 1 to 64; playing again past this stops the oldest |
+| | `bus` | `std::string` | `"Master"` | The bus it plays through, from the project's [bus layout](#bus-layouts); Master if there is no such bus |
+| `AudioStreamPlayer2D` | `stream`, `volume_db`, `pitch_scale`, `playing`, `autoplay`, `stream_paused`, `max_polyphony`, `bus` | | | As `AudioStreamPlayer`'s; it plays at the entity's `Transform2D` |
+| | `max_distance` | `float` | `2000` | Pixels from the listener beyond which it is silent, 1 or more |
+| | `attenuation` | `float` | `1` | How fast it fades with distance: volume is (1 - distance / `max_distance`) to this power |
+| | `panning_strength` | `float` | `1` | Times the project's `audio.panning_strength_2d`; 0 for no panning |
+| `AudioListener2D` | `current` | `bool` | `false` | Hear `AudioStreamPlayer2D` sounds from this entity's `Transform2D`, turned with it. The first current one by ID is used; with none, the middle of the viewport |
 
 `engine.describe` lists every registered component with its defaults, including ones a game adds.
 
@@ -1507,3 +1520,136 @@ names one and says how it draws, as Godot's font import options (`slash-cli sche
 - A font that doesn't load is reported by `ui.layout` and `scene validate`, and the label draws
   with the built-in font.
 - Fonts reload when their files change, as every asset does.
+
+## Audio
+
+Sound follows Godot's `AudioServer` and its players. An `AudioStreamPlayer` plays a sound the
+same wherever its entity is; an `AudioStreamPlayer2D` plays at its entity's `Transform2D`, heard
+from the current `AudioListener2D`. Each plays through a bus of the project's
+[bus layout](#bus-layouts), and every bus mixes into Master, which is what plays.
+[examples/audio](../../examples/audio/) has music, footsteps and both kinds of bus change.
+
+```json
+"music": {
+  "components": {
+    "AudioStreamPlayer": {"autoplay": true, "bus": "Music", "stream": "audio/theme.ogg"}
+  }
+}
+```
+
+- Sound files load as assets and reload when they change: `.wav` files (8, 16, 24 or 32-bit
+  integer or 32-bit float samples, mono or stereo) decode when loaded, as Godot imports them,
+  and `.ogg` (Vorbis) and `.mp3` files decode as they play. More than two channels mix down to
+  two.
+- Each tick, after every other system, the `audio` system (priority 1200) starts and stops
+  players, then mixes the tick's share of frames at the project's `audio.mix_rate` (735 frames
+  a tick at 60 ticks a second and 44100 Hz). Mixing follows the ticks rather than the sound
+  card, so the same ticks always make the same sound, and headless runs mix too.
+- As in Godot, `autoplay` plays when the player is first seen and `playing` plays or stops when
+  it changes; [`audio.play`](commands.md#audioplay) and `audio.stop` (and `audio::play` and
+  `audio::stop` in C++) do so at the next tick. Playing again restarts the sound, or with
+  `max_polyphony` over 1, adds a voice and stops the oldest past the limit. A new `stream`
+  stops the old one.
+- When a player's last sound ends, it sets `playing` to false and emits a `finished` event with
+  `{"component": "AudioStreamPlayer"}` (or `AudioStreamPlayer2D`) as its data.
+- An `AudioStreamPlayer2D` fades and pans as Godot's `_update_panning`: its volume is times
+  (1 - distance / `max_distance`) ^ `attenuation`, and it pans by its offset from the listener
+  over the viewport's width, times `panning_strength` and half of `audio.panning_strength_2d`.
+- Volume changes ramp over one mix step of 512 frames, and a stopped sound fades out over one,
+  so neither clicks. Sound starts 64 frames late, Godot's lookahead for those fades.
+- The voices are not saved: scenes, snapshots, undo and dry runs keep only the components'
+  fields. Plays and stops a failed command or dry run asked for are dropped, as are its bus
+  changes.
+
+### Bus layouts
+
+A `.bus_layout.json` file, named by `audio.bus_layout` in [project.json](project-format.md),
+lists the buses, as Godot's `default_bus_layout.tres`. With none, there is one Master bus.
+
+```json
+{
+  "buses": [
+    {"name": "Master"},
+    {"effects": [{"room_size": 0.6, "type": "reverb", "wet": 0.3}], "name": "Music", "volume_db": -6},
+    {"name": "Footsteps", "send": "Sfx"},
+    {"effects": [{"ceiling_db": -1, "type": "hard_limiter"}], "name": "Sfx"}
+  ],
+  "format": 1
+}
+```
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `name` | | What players and sends call it; the first bus is `Master` and names are unique |
+| `volume_db` | `0` | Gain in dB after its effects, -80 to 24 |
+| `mute` | `false` | Silences it |
+| `solo` | `false` | While any bus is solo, only solo buses and the buses they send to play |
+| `bypass_effects` | `false` | Skips its effects |
+| `send` | `"Master"` | The bus it mixes into, which must come before it in the list; Master sends nowhere |
+| `effects` | `[]` | Up to 16 effects it runs in order on what was mixed into it |
+
+- At most 64 buses. A bus goes quiet (and its effects stop) after two seconds under -60 dB with
+  nothing playing into it, as Godot's, so a reverb's tail still plays out.
+- The layout reloads when its file changes, which starts the buses over. A layout that doesn't
+  load is logged, and the last one keeps playing.
+- [`audio.set_bus`](commands.md#audioset_bus) changes a bus's volume, switches and effects'
+  `enabled` while the game runs; the file stays as it is.
+
+### Effects
+
+Each effect is a `type` and its settings, by Godot's property names, plus `enabled` (default
+`true`). Settings left out take Godot's defaults, listed here; `slash-cli schema bus_layout`
+gives each one's range and meaning.
+
+| Type | Godot's | Settings and defaults |
+| --- | --- | --- |
+| `amplify` | AudioEffectAmplify: changes the volume | `volume_db` 0 |
+| `low_pass_filter` | AudioEffectLowPassFilter: cuts frequencies above the cutoff | `cutoff_hz` 2000, `resonance` 0.5, `db` 6 (6, 12, 18 or 24 dB per octave) |
+| `high_pass_filter` | AudioEffectHighPassFilter: cuts frequencies below the cutoff | as `low_pass_filter` |
+| `band_pass_filter` | AudioEffectBandPassFilter: keeps frequencies near the cutoff | as `low_pass_filter` |
+| `notch_filter` | AudioEffectNotchFilter: cuts frequencies near the cutoff | as `low_pass_filter` |
+| `band_limit_filter` | AudioEffectBandLimitFilter: keeps a band from the cutoff | as `low_pass_filter` |
+| `low_shelf_filter`, `high_shelf_filter` | AudioEffectLowShelfFilter and HighShelfFilter: scale frequencies below or above the cutoff | as `low_pass_filter`, and `gain` 1 |
+| `eq6`, `eq10`, `eq21` | AudioEffectEQ6, EQ10 and EQ21: 6, 10 or 21 bands | `band_db`: dB by band frequency, e.g. `{"1000_hz": -3}`; bands left out are 0 |
+| `delay` | AudioEffectDelay: two echoes and repeating feedback | `dry` 1, `tap1_active` true, `tap1_delay_ms` 250, `tap1_level_db` -6, `tap1_pan` 0.2, `tap2_active` true, `tap2_delay_ms` 500, `tap2_level_db` -12, `tap2_pan` -0.4, `feedback_active` false, `feedback_delay_ms` 340, `feedback_level_db` -6, `feedback_lowpass` 16000 |
+| `reverb` | AudioEffectReverb: the sound of a room | `predelay_msec` 150, `predelay_feedback` 0.4, `room_size` 0.8, `damping` 0.5, `spread` 1, `hipass` 0, `dry` 1, `wet` 0.5 |
+| `chorus` | AudioEffectChorus: delayed, wavering copies | `voice_count` 2, `dry` 1, `wet` 0.5, `voices`: up to 4 of `{delay_ms, rate_hz, depth_ms, level_db, cutoff_hz, pan}`, with Godot's defaults for the first two |
+| `phaser` | AudioEffectPhaser: notches that sweep | `range_min_hz` 440, `range_max_hz` 1600, `rate_hz` 0.5, `feedback` 0.7, `depth` 1 |
+| `distortion` | AudioEffectDistortion: clips or shapes the waveform | `mode` `"clip"` (`clip`, `atan`, `lofi`, `overdrive`, `waveshape`), `pre_gain` 0, `keep_hf_hz` 16000, `drive` 0, `post_gain` 0 |
+| `compressor` | AudioEffectCompressor: turns loud sound down | `threshold` 0, `ratio` 4, `gain` 0, `attack_us` 20, `release_ms` 250, `mix` 1, `sidechain`: a bus whose level drives it instead |
+| `hard_limiter` | AudioEffectHardLimiter: keeps the sound under a ceiling | `ceiling_db` -0.3, `pre_gain_db` 0, `release` 0.1 |
+| `panner` | AudioEffectPanner: moves the sound left or right | `pan` 0 |
+| `stereo_enhance` | AudioEffectStereoEnhance: widens or narrows the stereo image | `pan_pullout` 1, `time_pullout_ms` 0, `surround` 0 |
+
+A misspelled type is an error naming the closest one, and the type a slot names says which
+settings it takes.
+
+### Audio streams
+
+A `.audio.json` file is a sound with Godot's import settings, or Godot's
+`AudioStreamRandomizer`: one of several streams each time it plays. A player's `stream` can
+name one, as can a randomizer's `streams`.
+
+```json
+{"format": 1, "loop": true, "loop_offset": 4, "source": "music/theme.ogg"}
+{"format": 1, "random_pitch": 1.1, "streams": [{"stream": "sfx/step1.wav"}, {"stream": "sfx/step2.wav"}]}
+```
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `format` | | Must be 1 |
+| `source` | | The `.wav`, `.ogg` or `.mp3` file, for a sound |
+| `loop_mode` | `"disabled"` | `.wav`: `disabled`, `forward`, `pingpong` or `backward` between `loop_begin` and `loop_end` |
+| `loop_begin`, `loop_end` | `0`, `-1` | `.wav`: the frames the loop starts and ends at; -1 is the end of the sound |
+| `loop` | `false` | `.ogg` and `.mp3`: play again from `loop_offset` seconds at the end |
+| `loop_offset` | `0` | `.ogg` and `.mp3`: seconds into the sound a loop goes back to |
+| `bpm`, `beat_count` | `0` | `.ogg` and `.mp3`: with both, loop after that many beats instead of at the end |
+| `streams` | | A randomizer's streams, each `{"stream": path, "weight": 1}` |
+| `playback_mode` | `"random_no_repeats"` | How a randomizer picks: `random_no_repeats`, `random` or `sequential` |
+| `random_pitch` | `1` | A randomizer's pitch scale varies up to this many times higher or lower |
+| `random_volume_offset_db` | `0` | A randomizer's volume varies up to this many dB louder or quieter |
+
+- A file is either a sound (`source`) or a randomizer (`streams`), and takes only that one's
+  fields.
+- A randomizer's choices come from the player's entity ID and how many times it has played,
+  so a scene makes the same picks every run.

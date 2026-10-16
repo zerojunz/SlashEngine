@@ -1,0 +1,12 @@
+{
+  "format": 1,
+  "playback_mode": "sequential",
+  "streams": [
+    {
+      "stream": "audio/step_left.wav"
+    },
+    {
+      "stream": "audio/step_right.wav"
+    }
+  ]
+}

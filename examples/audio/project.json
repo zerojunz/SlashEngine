@@ -1,0 +1,8 @@
+{
+  "audio": {"bus_layout": "audio/default.bus_layout.json"},
+  "format": 1,
+  "main_scene": "main.scene.json",
+  "name": "Audio",
+  "version": "0.1.0",
+  "window": {"height": 360, "width": 640}
+}

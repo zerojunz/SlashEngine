@@ -778,6 +778,59 @@ void register_particle_components(ComponentRegistry& registry) {
         .describe("anim_offset_curve", curve);
 }
 
+void register_audio_components(ComponentRegistry& registry) {
+    const FieldMeta stream{.doc = "Project path of a .wav, .ogg, .mp3 or .audio.json file; \"\" "
+                                  "plays nothing."};
+    const FieldMeta volume{.doc = "Volume in dB.", .min = -80};
+    const FieldMeta pitch{.doc = "Speed and pitch, times the sound's own.", .min = 0.01, .max = 16};
+    const FieldMeta playing{.doc = "Whether it plays. Setting it starts the sound from the "
+                                   "beginning or stops it; the sound ending sets it to false."};
+    const FieldMeta autoplay{.doc = "Plays once the audio system first sees it."};
+    const FieldMeta paused{.doc = "Holds its sounds where they are; clearing it resumes them."};
+    const FieldMeta polyphony{
+        .doc = "Sounds it may play at once; playing again past this stops the oldest.",
+        .min = 1,
+        .max = 64};
+    const FieldMeta bus{.doc = "The bus it plays through, from the project's bus layout; Master "
+                               "if there is no such bus."};
+    registry.add<AudioStreamPlayer>()
+        .set_doc("Plays a sound through a bus, as Godot's AudioStreamPlayer, the same wherever "
+                 "the entity is. Emits finished when a sound ends.")
+        .describe("stream", stream)
+        .describe("volume_db", volume)
+        .describe("pitch_scale", pitch)
+        .describe("playing", playing)
+        .describe("autoplay", autoplay)
+        .describe("stream_paused", paused)
+        .describe("max_polyphony", polyphony)
+        .describe("bus", bus);
+    registry.add<AudioStreamPlayer2D>()
+        .set_doc("Plays a sound at the entity's Transform2D, as Godot's AudioStreamPlayer2D: "
+                 "fading with distance from the AudioListener2D (or the middle of the screen) "
+                 "and panned by its offset across the screen. Emits finished when a sound ends.")
+        .describe("stream", stream)
+        .describe("volume_db", volume)
+        .describe("pitch_scale", pitch)
+        .describe("playing", playing)
+        .describe("autoplay", autoplay)
+        .describe("stream_paused", paused)
+        .describe("max_distance",
+                  {.doc = "Pixels from the listener beyond which it is silent.", .min = 1})
+        .describe("attenuation", {.doc = "How fast it fades with distance: volume is (1 - "
+                                         "distance / max_distance) to this power.",
+                                  .min = 0})
+        .describe("max_polyphony", polyphony)
+        .describe(
+            "panning_strength",
+            {.doc = "Times the project's audio.panning_strength_2d; 0 for no panning.", .min = 0})
+        .describe("bus", bus);
+    registry.add<AudioListener2D>()
+        .set_doc("Where AudioStreamPlayer2D sounds are heard from, as Godot's AudioListener2D, "
+                 "at its Transform2D and turned with it. The first current one by ID is used; "
+                 "with none, the middle of the viewport.")
+        .describe("current", {.doc = "Whether it is the listener."});
+}
+
 void register_builtin_components(ComponentRegistry& registry) {
     // Fields lights, sprites and tile map layers share.
     const FieldMeta light_mask{
@@ -993,6 +1046,7 @@ void register_builtin_components(ComponentRegistry& registry) {
 
     register_physics_components(registry);
     register_particle_components(registry);
+    register_audio_components(registry);
     register_ui_components(registry);
 }
 

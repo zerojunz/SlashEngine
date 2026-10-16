@@ -136,3 +136,8 @@ endif()
 # The default font, as Godot has one: Roboto Regular, built into the engine (cmake/embed.cmake),
 # so text draws before a game adds fonts of its own. Version 2 is Apache 2.0; later ones are not.
 slash_add_dependency(roboto DOWNLOAD_ONLY TRUE)
+
+# Audio decoding, as Godot imports sound: WAV and MP3 with miniaudio's decoders and Ogg Vorbis with
+# stb_vorbis from its extras. engine/audio builds them (src/miniaudio.c) with no device backends,
+# threads or engine, since SDL plays the sound and the engine mixes it.
+slash_add_dependency(miniaudio DOWNLOAD_ONLY TRUE)

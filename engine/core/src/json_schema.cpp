@@ -237,10 +237,88 @@ private:
         }
     }
 
+    // The property every option of an anyOf pins with a string "const", as "type" in
+    // [{"properties": {"type": {"const": "reverb"}, ...}}, ...], or "".
+    static std::string_view discriminator(const Array& options) {
+        if (options.size() < 2 || !options.front().is_object()) {
+            return {};
+        }
+        const Value* properties = options.front().find("properties");
+        if (properties == nullptr || !properties->is_object()) {
+            return {};
+        }
+        for (const auto& [name, unused] : properties->as_object()) {
+            if (std::ranges::all_of(options, [&](const Value& option) {
+                    return pinned(option, name) != nullptr;
+                })) {
+                return name;
+            }
+        }
+        return {};
+    }
+
+    static const Value* pinned(const Value& option, std::string_view name) {
+        const Value* properties = option.is_object() ? option.find("properties") : nullptr;
+        const Value* property =
+            properties != nullptr && properties->is_object() ? properties->find(name) : nullptr;
+        const Value* constant =
+            property != nullptr && property->is_object() ? property->find("const") : nullptr;
+        return constant != nullptr && constant->is_string() ? constant : nullptr;
+    }
+
+    // When the options are told apart by one property's value, the option the instance names
+    // says what is wrong, and a value no option has is the error, with the closest one.
+    bool check_discriminated(const Value& instance, const Array& options, std::string& path,
+                             int ref_depth) {
+        const std::string_view key = discriminator(options);
+        if (key.empty() || !instance.is_object()) {
+            return false;
+        }
+        const Value* value = instance.find(key);
+        if (value == nullptr) {
+            // Missing is an error only if every option requires it.
+            const bool required = std::ranges::all_of(options, [&](const Value& option) {
+                const Value* names = option.find("required");
+                return names != nullptr && names->is_array() &&
+                       std::ranges::find(names->as_array(), Value(key)) != names->as_array().end();
+            });
+            if (!required) {
+                return false;
+            }
+            fail(path, "missing required property \"" + std::string(key) + "\"");
+            return true;
+        }
+        std::vector<std::string_view> names;
+        for (const Value& option : options) {
+            const Value* name = pinned(option, key);
+            if (*value == *name) {
+                check(instance, option, path, ref_depth);
+                return true;
+            }
+            names.emplace_back(name->as_string());
+        }
+        std::string message = "expected one of ";
+        for (std::size_t i = 0; i < names.size(); ++i) {
+            message += (i > 0 ? ", " : "") + text_of(Value(names[i]));
+        }
+        message += ", got " + text_of(*value);
+        if (value->is_string()) {
+            if (const std::string_view hint = closest_match(value->as_string(), names);
+                !hint.empty()) {
+                message += "; did you mean \"" + std::string(hint) + "\"?";
+            }
+        }
+        fail(path + "/" + pointer_escape(key), std::move(message));
+        return true;
+    }
+
     // When only one option accepts the instance's type, as in {"anyOf": [{"type": "null"},
     // {"$ref": ...}]}, that option's errors say what is wrong better than "does not match".
     void check_any_of(const Value& instance, const Array& options, std::string& path,
                       int ref_depth) {
+        if (check_discriminated(instance, options, path, ref_depth)) {
+            return;
+        }
         std::vector<std::vector<ValidationError>> failures;
         for (const Value& option : options) {
             std::vector<ValidationError> errors = collect(instance, option, path, ref_depth);

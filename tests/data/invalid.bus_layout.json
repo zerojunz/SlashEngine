@@ -1,0 +1,8 @@
+{
+  "buses": [
+    {"name": "Master"},
+    {"effects": [{"type": "revreb"}], "name": "Music"},
+    {"name": "Sfx", "send": "Musik"}
+  ],
+  "format": 1
+}

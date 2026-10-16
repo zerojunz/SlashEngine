@@ -206,6 +206,24 @@ stick or action name, then `step` and read back what the game saw with `input.st
 `input.actions` lists the bindings. The [input example](../examples/input-actions/) moves a
 player with WASD, a stick and taps.
 
+## Sound
+
+Sound follows Godot's AudioServer. **Sounds** are `.wav`, `.ogg` and `.mp3` files; a
+`.audio.json` file loops one, or picks one of several at random each time it plays, as footsteps
+want. **Players** are components: an `AudioStreamPlayer` plays everywhere at once, as music
+does, and an `AudioStreamPlayer2D` fades with distance from the `AudioListener2D` and pans left
+or right by where it is. Each player mixes into a **bus**, and each bus runs its **effects**
+(filters, EQs, delay, reverb, compression and the rest of Godot's) and sends to another bus,
+down to Master, which plays on the speakers. The project's `.bus_layout.json` file lists the
+buses, so music and sound effects get their own volumes, as in an options menu.
+
+Sound is mixed by the fixed ticks, a tick's worth at a time, not by the sound card, so the same
+run makes the same sound, and a headless run makes it too. Agents can't listen, so they measure:
+`audio.state` shows each bus's level in dB and what each player plays, `audio.capture` reports a
+bus's levels over the last seconds, slice by slice, or writes it to a `.wav` file for a person to
+hear, and `audio.play`, `audio.stop` and `audio.set_bus` change what plays. The
+[audio example](../examples/audio/) plays music and footsteps around a listener.
+
 ## Rendering
 
 Everything draws through a **render device**, about a dozen calls: make and update textures,
@@ -501,9 +519,11 @@ OpenAI-compatible servers (including local ones), Anthropic and Gemini; see the
 | Animation | A `.anim.json` file's named set of tracks, which an `AnimationPlayer` plays on its entity's fields |
 | Autotiling | Picking each tile so its edges connect to its neighbors' terrains, as `tilemap.paint` does |
 | Asset | A file a game loads by project path into a shared, reference-counted handle |
+| Audio effect | What a bus does to its sound before sending it on: a filter, EQ, delay, reverb, compressor and the rest of Godot's |
 | BiDi | The Unicode Bidirectional Algorithm, which orders text that mixes right-to-left scripts such as Arabic with left-to-right ones |
 | Binding | A key, mouse button, gamepad button or stick direction that presses an action |
 | Button group | Toggle buttons with the same `button_group` name, of which at most one is on |
+| Bus | A channel players mix into, with a volume and effects, that sends on to another, down to Master |
 | Blend mode | How a sprite's color combines with what is under it: `mix`, `add`, `sub`, `mul` or `premul_alpha` |
 | Canonical form | The one way a scene is written: sorted keys, two-space indent, defaults left out |
 | Capability | A permission a session grants: `read`, `edit`, `run`, `filesystem` or `build` |
@@ -515,6 +535,7 @@ OpenAI-compatible servers (including local ones), Anthropic and Gemini; see the
 | Container | A control that places its children itself, in a row, a grid, lines that wrap, a margin or the center |
 | Draw mode | How a button draws for its state: `normal`, `hover`, `pressed`, `hover_pressed` or `disabled` |
 | Deadzone | How far a stick must move, from 0 to 1, before it presses an action |
+| Decibels (dB) | How loud, on a log scale: 0 dB is full scale, -6 dB about half, and each 20 dB down a tenth |
 | Discovery file | `.slash/server.json`: a running server's URL and token |
 | Distance field font | A font drawn from one field per glyph of distances to its outline (MSDF), sharp at any size, scale and outline |
 | Effect | How a command changes the world: read, edit, replace, history or compound |
