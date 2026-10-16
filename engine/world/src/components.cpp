@@ -1171,6 +1171,52 @@ void register_builtin_components(ComponentRegistry& registry) {
                  "scene.")
         .describe("color", {.doc = "As [r, g, b, a] from 0 to 1.", .min = 0, .max = 1});
 
+    const FieldMeta limit{.doc = "Edge of the world the view stays inside, in pixels."};
+    const FieldMeta drag_margin{
+        .doc = "How far the entity moves from the center before the camera follows, as a share "
+               "of half the screen.",
+        .min = 0,
+        .max = 1};
+    const FieldMeta drag_offset{
+        .doc = "Where the camera sits within its drag margins, from -1 to 1.", .min = -1, .max = 1};
+    registry.add<Camera2D>()
+        .set_doc("The part of the world the window shows, seen from the entity's Transform2D, as "
+                 "Godot's Camera2D. The first enabled one in drawing order is current. Controls "
+                 "stay put on the screen.")
+        .describe("enabled", {.doc = "Whether it can be the current camera."})
+        .describe("anchor_mode", {.doc = "\"drag_center\" puts the middle of the screen at the "
+                                         "camera; \"fixed_top_left\" its top left corner.",
+                                  .choices = {"drag_center", "fixed_top_left"}})
+        .describe("ignore_rotation", {.doc = "Keep the view upright when the camera turns."})
+        .describe("offset", {.doc = "Moves the view, in pixels, as [x, y]."})
+        .describe("zoom", {.doc = "[2, 2] shows things twice as big; 0 counts as 1."})
+        .describe("limit_enabled", {.doc = "Keep the view inside the limits."})
+        .describe("limit_left", limit)
+        .describe("limit_top", limit)
+        .describe("limit_right", limit)
+        .describe("limit_bottom", limit)
+        .describe("limit_smoothed",
+                  {.doc = "With position smoothing, glide to the limits instead of stopping."})
+        .describe("position_smoothing_enabled",
+                  {.doc = "Glide after the entity instead of moving with it."})
+        .describe(
+            "position_smoothing_speed",
+            {.doc = "Each tick it closes this times the tick's seconds of the gap.", .min = 0})
+        .describe("rotation_smoothing_enabled",
+                  {.doc = "Turn smoothly with the entity, when not ignoring rotation."})
+        .describe("rotation_smoothing_speed",
+                  {.doc = "Each tick it turns this times the tick's seconds of the way.", .min = 0})
+        .describe("drag_horizontal_enabled",
+                  {.doc = "Follow the entity across only when it leaves the drag margins."})
+        .describe("drag_vertical_enabled",
+                  {.doc = "Follow the entity up and down only when it leaves the drag margins."})
+        .describe("drag_horizontal_offset", drag_offset)
+        .describe("drag_vertical_offset", drag_offset)
+        .describe("drag_left_margin", drag_margin)
+        .describe("drag_top_margin", drag_margin)
+        .describe("drag_right_margin", drag_margin)
+        .describe("drag_bottom_margin", drag_margin);
+
     register_physics_components(registry);
     register_particle_components(registry);
     register_audio_components(registry);

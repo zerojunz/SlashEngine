@@ -100,11 +100,13 @@ nested struct declared with `SLASH_REFLECT`.
 A **system** is code that updates components every tick, added with `World::add_system` and an
 optional doc string and priority. Systems run in order of priority, lowest first as with Godot's
 `process_priority`, and in the order they were added when priorities are equal. `engine.describe`
-lists them in that order. The built-in systems apply input, play animations, step physics and
-run particles: `input` applies the input events queued since the last tick, first,
-`animation_player` runs `AnimationPlayer` components, `physics2d` moves bodies and reports
-contacts, `animated_sprite_2d` runs `AnimatedSprite2D` flipbooks, then `cpu_particles_2d`
-emits and moves `CPUParticles2D` particles. More arrive with the feature milestones (audio).
+lists them in that order. The built-in systems apply input, play animations, step physics,
+move the camera, run particles and play sound: `input` applies the input events queued since
+the last tick, first, `gui` sends them to controls, `animation_player` runs `AnimationPlayer`
+components, `physics2d` moves bodies and reports contacts, `animated_sprite_2d` runs
+`AnimatedSprite2D` flipbooks, `camera_2d` moves the current `Camera2D`'s drag margins and
+smoothing on, `cpu_particles_2d` emits and moves `CPUParticles2D` particles, then `audio` mixes
+the tick's sound.
 
 ## Scenes
 

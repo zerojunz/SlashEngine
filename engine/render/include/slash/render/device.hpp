@@ -121,6 +121,9 @@ struct DistanceField {
 [[nodiscard]] float distance_field_coverage(const std::array<float, 4>& texel,
                                             const DistanceField& field, float scale);
 
+// A column-major 4x4 matrix: element (row, column) is at [column * 4 + row].
+using Mat4 = std::array<float, 16>;
+
 // How a draw colors its pixels: a blend mode, a program the material shader runs for each pixel
 // (see material.hpp) and how lights shade it. The default draws the texture times the vertex
 // color, mixed and unlit.
@@ -132,6 +135,10 @@ struct Material {
     Shading shading;
     // Draws the texture as a distance field instead; only with no program.
     DistanceField field;
+    // Moves the draw's positions before the frame's view maps them to clip space, as Godot's
+    // canvas transform moves the world under a Camera2D: the view times this. Lights shade the
+    // positions as given.
+    std::optional<Mat4> transform;
 
     bool operator==(const Material&) const = default;
 };
@@ -158,11 +165,10 @@ struct Vertex2D {
     std::array<std::uint8_t, 4> rgba{255, 255, 255, 255};
 };
 
-// A column-major 4x4 matrix: element (row, column) is at [column * 4 + row].
-using Mat4 = std::array<float, 16>;
-
 // Maps pixels of a width x height target, origin at the top left and y down, to clip space.
 [[nodiscard]] Mat4 pixel_projection(float width, float height);
+// The matrix that applies b, then a. The same bits on every platform.
+[[nodiscard]] Mat4 multiply(const Mat4& a, const Mat4& b);
 
 struct Frame {
     TextureId target = TextureId::None; // None draws to the window

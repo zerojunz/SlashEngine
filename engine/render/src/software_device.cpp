@@ -250,7 +250,9 @@ public:
         const Mat4 view = frame_.view.value_or(
             pixel_projection(static_cast<float>(target.width), static_cast<float>(target.height)));
         for (const Batch& batch : batches_) {
-            draw_batch(batch, view, target);
+            draw_batch(batch,
+                       batch.material.transform ? multiply(view, *batch.material.transform) : view,
+                       target);
         }
         retired_.clear();
         return {};

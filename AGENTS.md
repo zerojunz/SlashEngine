@@ -307,12 +307,17 @@ player behind a bush and off the screen.
 sprite sheet, at the entity's `Transform2D`, in `z_index` order, then the order entities were
 made. `AnimatedSprite2D` plays a `.frames.json` file's animations on it through the
 `animated_sprite_2d` system (`$cli schema frames`; `animation_finished` events). `canvas::install`
-adds the asset types and the systems (that one and `cpu_particles_2d`) to a world; sessions and
+adds the asset types and the systems (that one, `camera_2d` and `cpu_particles_2d`) to a world; sessions and
 games call it. `CanvasRenderer`
 draws a world through a render device over the project's `rendering.clear_color`: games and
 `slash-cli run` call `before_tick` before each tick and draw between ticks with
 `Loop::interpolation()`, so sprites move smoothly at any frame rate. On the null device it checks
-and counts sprites but draws nothing. `examples/sprites` plays and draws a scene's sprites.
+and counts sprites but draws nothing. `examples/sprites` plays and draws a scene's sprites. The
+current `Camera2D` (`engine/world/src/camera2d.cpp`, Godot's `get_camera_transform` line for
+line) picks what the window shows: the renderer draws the world through its canvas transform
+(each draw's `render::Material::transform`) and controls over it in screen space, the
+`camera_2d` system (priority 1050) moves its drag margins and smoothing on, and `frame.summary`
+reports the world rect it shows. `examples/camera-2d` follows a player through a level.
 
 Materials are `.material.json` node graphs (`$cli schema material`) that `Sprite2D`'s `material`
 names and `material_params` sets. `engine/canvas/src/material.cpp` compiles a graph on load into

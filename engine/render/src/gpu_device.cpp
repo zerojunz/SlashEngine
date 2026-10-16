@@ -14,6 +14,7 @@
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -545,8 +546,6 @@ public:
         if (!batches_.empty()) {
             const Mat4 view = frame_.view.value_or(pixel_projection(
                 static_cast<float>(frame_width_), static_cast<float>(frame_height_)));
-            SDL_PushGPUVertexUniformData(commands, 0, view.data(),
-                                         static_cast<std::uint32_t>(sizeof(view)));
             if (std::ranges::any_of(batches_, [](const Batch& batch) {
                     return batch.kind == ShaderKind::Material;
                 })) {
@@ -558,7 +557,16 @@ public:
             const SDL_GPUBufferBinding vertices{.buffer = vertex_buffer_, .offset = 0};
             SDL_BindGPUVertexBuffers(pass, 0, &vertices, 1);
             SDL_GPUGraphicsPipeline* bound = nullptr;
+            std::optional<Mat4> pushed;
             for (const Batch& batch : batches_) {
+                // The view, times the draw's transform if it has one, pushed when it changes.
+                const Mat4 matrix =
+                    batch.material.transform ? multiply(view, *batch.material.transform) : view;
+                if (pushed != matrix) {
+                    SDL_PushGPUVertexUniformData(commands, 0, matrix.data(),
+                                                 static_cast<std::uint32_t>(sizeof(matrix)));
+                    pushed = matrix;
+                }
                 if (batch.pipeline != bound) {
                     SDL_BindGPUGraphicsPipeline(pass, batch.pipeline);
                     bound = batch.pipeline;

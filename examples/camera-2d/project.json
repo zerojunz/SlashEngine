@@ -1,0 +1,14 @@
+{
+  "format": 1,
+  "main_scene": "main.scene.json",
+  "name": "Camera 2D",
+  "rendering": {
+    "clear_color": [0.45, 0.7, 0.95, 1.0],
+    "texture_filter": "nearest"
+  },
+  "version": "1.0.0",
+  "window": {
+    "height": 180,
+    "width": 320
+  }
+}

@@ -1,0 +1,65 @@
+{
+  "entities": {
+    "cam": {
+      "components": {
+        "Camera2D": {
+          "drag_horizontal_enabled": true,
+          "limit_bottom": 180,
+          "limit_left": 0,
+          "limit_right": 1600,
+          "limit_top": 0,
+          "position_smoothing_enabled": true
+        },
+        "Transform2D": {
+          "position": [0.0, -32.0]
+        }
+      }
+    },
+    "coin": {
+      "components": {
+        "Sprite2D": {
+          "texture": "coin.png"
+        },
+        "Transform2D": {
+          "position": [1500.0, 120.0]
+        }
+      }
+    },
+    "ground": {
+      "components": {
+        "Sprite2D": {
+          "centered": false,
+          "texture": "ground.png"
+        },
+        "Transform2D": {
+          "position": [0.0, 160.0]
+        }
+      }
+    },
+    "player": {
+      "components": {
+        "Sprite2D": {
+          "texture": "player.png"
+        },
+        "Transform2D": {
+          "children": ["cam"],
+          "position": [400.0, 152.0]
+        }
+      }
+    },
+    "score": {
+      "components": {
+        "Control": {
+          "offset_bottom": 24.0,
+          "offset_left": 8.0,
+          "offset_right": 108.0,
+          "offset_top": 8.0
+        },
+        "Label": {
+          "text": "Coins: 0"
+        }
+      }
+    }
+  },
+  "format": 1
+}

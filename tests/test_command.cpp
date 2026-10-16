@@ -1157,11 +1157,11 @@ TEST_CASE("engine.describe lists systems in the order they run") {
     world.add_system("movement", [](world::World& /*w*/, double /*dt*/) {},
                      {.doc = "Moves things by their velocity."});
     world.add_system("controls", [](world::World& /*w*/, double /*dt*/) {}, {.priority = -1});
-    // Every session applies input first and plays animations, steps 2D physics, runs particles
-    // and plays sound with built-in systems that run late.
+    // Every session applies input first and plays animations, steps 2D physics, moves the
+    // camera, runs particles and plays sound with built-in systems that run late.
     CHECK(*engine.ok("engine.describe").find("systems") ==
           parse(R"(["input", "gui", "controls", "movement", "animation_player", "physics2d",
-                    "animated_sprite_2d", "cpu_particles_2d", "audio"])"));
+                    "animated_sprite_2d", "camera_2d", "cpu_particles_2d", "audio"])"));
     CHECK(*engine.ok("engine.describe", R"({"full": true})").find("systems") == parse(R"([
         {"name": "input", "doc": "Applies the input events queued since the last tick.",
          "priority": -1000},
@@ -1177,6 +1177,9 @@ TEST_CASE("engine.describe lists systems in the order they run") {
          "priority": 950},
         {"name": "animated_sprite_2d",
          "doc": "Plays each AnimatedSprite2D's animation on its Sprite2D.", "priority": 1000},
+        {"name": "camera_2d",
+         "doc": "Moves the current Camera2D's drag margins and smoothing on by the tick.",
+         "priority": 1050},
         {"name": "cpu_particles_2d",
          "doc": "Emits, moves and ages each CPUParticles2D's particles.", "priority": 1100},
         {"name": "audio",
