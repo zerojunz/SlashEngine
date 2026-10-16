@@ -2,8 +2,9 @@
 
 [`project.import`](commands.md#projectimport) and [`slash-cli import`](cli.md#import) convert a
 Unity project's 2D game into a SlashEngine project in one pass: its scenes and prefabs, sprites,
-tile maps, cameras, 2D physics, sounds, input and settings. Scripts don't convert, since SlashEngine games
-are plain C++: each becomes a storyboard task to port it, with what the port needs.
+tile maps, animation, cameras, 2D physics, sounds, input and settings. Scripts don't convert,
+since SlashEngine games are plain C++: each becomes a storyboard task to port it, with what the
+port needs, as does each Animator controller's state machine.
 [examples/import-unity](../../examples/import-unity/) imports a small platformer.
 
 A folder imports as a Unity project when it has `Assets/` and
@@ -20,8 +21,9 @@ serialization).
 | `<prefab>.scene.json` beside each `<prefab>.prefab` | The prefab, as a scene with a `root` that other scenes instance |
 | `<clip>.loop.audio.json` beside a sound | A sound an `AudioSource` loops |
 | `Assets/tiles.tileset.json` | The sprites tile maps show, as a tile set (`tiles_2.tileset.json` and on for tile maps of other cell sizes or physics) |
+| `<controller>.anim.json` beside each `.controller` and `.overrideController` | The controller's states, as an animation library |
 | `project.json` | The player, time, physics, quality and input settings, merged into the project's own if it has one |
-| `storyboard/work.json` | A task per C# script, merged into the project's own tasks |
+| `storyboard/work.json` | A task per C# script and per state machine, merged into the project's own tasks |
 | `import/unity.json` | The full report: every object's entity, what each script needs, tags, layers and everything that didn't convert |
 
 Textures (`.png`, `.bmp`), sounds (`.wav`, `.ogg`, `.mp3`), fonts (`.ttf`, `.otf`) and data files
@@ -124,6 +126,45 @@ has other physics gets a set of its own (`tiles_2.tileset.json`).
   dynamic or kinematic `Rigidbody2D`. A `CompositeCollider2D` needs nothing, since a layer's
   tiles are one static body.
 
+## Animation
+
+Each Animator controller becomes an [animation library](scene-format.md#animations)
+beside it, `Frog.controller` becoming `Frog.anim.json`, with an animation per state of its base
+layer, named after the state. An `Animator` becomes an `AnimationPlayer` playing that library
+from the controller's default state.
+
+- A clip's curves become value tracks, its events event tracks. Position and scale curves are
+  `Transform2D` `position` and `scale` (in pixels, y down), a rotation about z `rotation`
+  (clockwise radians; a quaternion curve's turn is taken at each key and sample), a
+  `SpriteRenderer`'s color `Sprite2D` `modulate`, its enabled and flip flags `visible`, `flip_h`
+  and `flip_v`, and a sprite curve three discrete tracks, `texture`, `region` and `offset`.
+  `GameObject.m_IsActive` shows and hides the object's sprites.
+- Unity's curves are Hermite curves (Bezier with weighted tangents); SlashEngine's interpolate
+  linearly between keys. A stretch of a curve that isn't a straight line is keyed every 60th of
+  a second, a stepped one (infinite tangents) holds its key (`transition: 0`), and a straight one
+  keeps its two keys.
+- Only the part between the clip's start and stop times plays. A clip that loops time loops
+  linearly; a state's speed scales the animation's times, so a state at speed 2 plays a clip of
+  one second as an animation of half a second.
+- Tracks name the objects they animate by their paths from the Animator's object, as Unity's
+  curves do: `target` is `"Body/Arm"`, or none for the Animator's own object, and
+  `"Body#sprite"` for the entity drawing that object's sprite. The player's `targets` bind each
+  to an entity; a path with no object under the Animator is null and reported.
+- An event track is named after the function the event calls, with its `float`, `int`,
+  `string` and `object` parameters as the key's `data`; gameplay code reads the event
+  (`World::emit`'s events, as Godot's method tracks).
+- An override controller is its controller's states with its clips swapped. A blend tree plays
+  its first motion.
+- The state machine, which gameplay code drives, becomes a storyboard task per controller
+  (`task/port-frog-anim`) when it has parameters or transitions: its states, its parameters with
+  their types and defaults, each transition with its conditions and exit time, and the events
+  its clips raise. The report's `animation_libraries` names, for each library, its controller,
+  its first state, the entities using it and its task. Controllers no scene uses convert too,
+  since gameplay code may set them, and clips no controller plays are reported.
+- Layers other than the base layer, transitions' blending, state speed parameters, cycle
+  offsets, root motion, animated script values and fields SlashEngine has no counterpart for
+  are reported. The legacy `Animation` component doesn't convert.
+
 ## Cameras
 
 An orthographic camera becomes a `Camera2D` whose `zoom` shows what Unity's orthographic size
@@ -205,8 +246,8 @@ the report.
 
 ## Not yet converted
 
-Animator controllers and animation clips, audio mixers, uGUI, 2D joints, 2D lights, particle
-systems and isometric and hexagonal tile maps convert in later imports; until then each is reported where it is used.
+Audio mixers, uGUI, 2D joints, 2D lights, particle systems and isometric and hexagonal tile maps
+convert in later imports; until then each is reported where it is used.
 Materials and shaders, 3D (milestone 7) and Timeline don't convert. Everything that didn't
 convert is in the report's `unsupported`, once per kind with how many and the first place it was
 seen.

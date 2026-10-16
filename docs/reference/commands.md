@@ -2157,10 +2157,12 @@ beside the originals, its `SpriteFrames` `.frames.json` files, each `AnimationPl
 animation libraries a `.anim.json` file, its tile sets `.tileset.json` files, its themes
 `.theme.json` files, its bus layouts `.bus_layout.json` files and its settings and input map
 `project.json`. A Unity project's scenes and prefabs become `.scene.json` files beside the
-originals (prefabs that scenes instance), its sprites, tile maps, cameras, 2D physics and sounds
-components measured in pixels, the sprites its tile maps show a `.tileset.json` file, and its
-player, time, physics and input settings `project.json`. Textures, sounds and fonts are used
-where they are. Each script becomes a storyboard task to port it to C++. [godot-import.md](godot-import.md) and
+originals (prefabs that scenes instance), its sprites, tile maps, animation, cameras, 2D physics
+and sounds components measured in pixels, the sprites its tile maps show a `.tileset.json`
+file, each Animator controller a `.anim.json` file, and its player, time, physics and input
+settings `project.json`. Textures, sounds and fonts are used
+where they are. Each script, and each Animator controller's state machine, becomes a storyboard task to port
+it to C++. [godot-import.md](godot-import.md) and
 [unity-import.md](unity-import.md) say what converts to what. Registered by `slash-cli` and
 `slash-mcp`.
 
@@ -2193,7 +2195,7 @@ scale Unity's units convert at:
 ```
 
 ```json
-{"converted":{"assets":8,"input_actions":12,"prefabs":3,"scenes":1,"tile_sets":1},"engine":"unity","files":9,"main_scene":"unity/Assets/Scenes/Pond.scene.json","pixels_per_unit":32.0,"project":"Pond Hop","report":"import/unity.json","scripts":[{"entities":1,"script":"unity/Assets/Scripts/CameraFollow.cs","task":"task/port-camera-follow"},{"entities":6,"script":"unity/Assets/Scripts/Coin.cs","task":"task/port-coin"},{"entities":2,"script":"unity/Assets/Scripts/Frog.cs","task":"task/port-frog"}],"unity_version":"2022.3.20f1","unsupported":[{"count":1,"what":"inactive object","where":"Assets/Scenes/Pond.unity: Coin (2)","why":"converted hidden, with its shapes disabled; there is no inactive state, so its other components still run"},{"count":1,"what":"input axis Mouse X","where":"ProjectSettings/InputManager.asset","why":"mouse movement axes: read the mouse's motion in code"},{"count":1,"what":"input binding","where":"Assets/Input/Controls.inputactions: Player/Croak","why":"\"<XRController>/trigger\": XRController bindings"},{"count":1,"what":"input interaction","where":"Assets/Input/Controls.inputactions: Player/Croak","why":"Hold: gameplay code times holds and taps"}]}
+{"converted":{"animation_libraries":1,"assets":9,"input_actions":12,"prefabs":3,"scenes":1,"tile_sets":1},"engine":"unity","files":10,"main_scene":"unity/Assets/Scenes/Pond.scene.json","pixels_per_unit":32.0,"project":"Pond Hop","report":"import/unity.json","scripts":[{"entities":1,"script":"unity/Assets/Scripts/CameraFollow.cs","task":"task/port-camera-follow"},{"entities":6,"script":"unity/Assets/Scripts/Coin.cs","task":"task/port-coin"},{"entities":2,"script":"unity/Assets/Scripts/Frog.cs","task":"task/port-frog"}],"unity_version":"2022.3.20f1","unsupported":[{"count":1,"what":"inactive object","where":"Assets/Scenes/Pond.unity: Coin (2)","why":"converted hidden, with its shapes disabled; there is no inactive state, so its other components still run"},{"count":1,"what":"input axis Mouse X","where":"ProjectSettings/InputManager.asset","why":"mouse movement axes: read the mouse's motion in code"},{"count":1,"what":"input binding","where":"Assets/Input/Controls.inputactions: Player/Croak","why":"\"<XRController>/trigger\": XRController bindings"},{"count":1,"what":"input interaction","where":"Assets/Input/Controls.inputactions: Player/Croak","why":"Hold: gameplay code times holds and taps"}]}
 ```
 
 With `dry_run`, `files` lists the paths it would write instead of counting them. A missing
