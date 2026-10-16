@@ -558,6 +558,13 @@ void install(world::World& world, asset::Assets& assets, const Settings& setting
     state->settings = settings;
     state->apply_settings();
     world.ecs().ctx().emplace<Handle>(state);
+    // A new mixer: nothing plays, effects and the buses' recent sound start over.
+    world.add_reset([state](world::World& /*world*/) {
+        state->server.reset();
+        state->players.clear();
+        state->requests.clear();
+        state->apply_settings();
+    });
     world.add_system(
         "audio", [state](world::World& w, double tick_seconds) { run(*state, w, tick_seconds); },
         {.doc = "Plays each AudioStreamPlayer and AudioStreamPlayer2D and mixes the tick's sound "

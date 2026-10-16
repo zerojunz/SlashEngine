@@ -93,3 +93,31 @@ TEST_CASE("systems run in order of priority, then in the order they were added")
     CHECK(systems.back().priority == 100);
     CHECK(systems.front().priority == -10);
 }
+
+TEST_CASE("reset_state forgets what systems keep, and the step listener hears each tick first") {
+    const ComponentRegistry registry;
+    World world(registry);
+    int counted = 0;
+    world.add_system("count", [&](World& w, double /*dt*/) { counted += w.stepping() ? 1 : 100; });
+    world.add_reset([&](World& /*w*/) { counted = 0; });
+    std::vector<std::string> heard;
+    world.set_step_listener([&](World& w, double dt) {
+        heard.push_back(std::to_string(w.tick()) + " " + std::to_string(dt) +
+                        (w.stepping() ? " stepping" : ""));
+    });
+    REQUIRE(world.create("player").ok());
+    world.step(0.5);
+    world.step(0.25);
+    CHECK(counted == 2);
+    CHECK(heard == std::vector<std::string>{"0 0.500000", "1 0.250000"});
+
+    // The entities and the tick stay.
+    world.reset_state();
+    CHECK(counted == 0);
+    CHECK(world.size() == 1);
+    CHECK(world.tick() == 2);
+
+    world.set_step_listener({});
+    world.step(0.5);
+    CHECK(heard.size() == 2);
+}

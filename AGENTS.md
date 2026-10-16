@@ -59,7 +59,7 @@ only what differs from the prefab. `entity.create` takes `"extends"`, and `prefa
 entity to a prefab file. `tests/data/game` has an example.
 
 ```bash
-$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, tileset, font, theme, audio, bus_layout)
+$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, tileset, font, theme, audio, bus_layout, replay)
 $cli scene validate tests/data/basic.scene.json     # every error, with its JSON Pointer path
 $cli scene format level.scene.json                  # rewrite in canonical form
 $cli scene format --check level.scene.json          # exit 1 if not canonical
@@ -67,7 +67,7 @@ $cli scene format --check level.scene.json          # exit 1 if not canonical
 
 Validate after editing a scene or prefab by hand, and format before committing one. Both
 commands take `.prefab.json`, `.frames.json`, `.material.json`, `.anim.json`, `.tileset.json`,
-`.font.json`, `.theme.json`, `.audio.json` and `.bus_layout.json` files too; validating a scene also checks each tile map layer against its tile
+`.font.json`, `.theme.json`, `.audio.json`, `.bus_layout.json` and `.replay.json` files too; validating a scene also checks each tile map layer against its tile
 set and that its controls lay out as written.
 
 ## Assets and hot reload
@@ -156,6 +156,22 @@ Requests are queued and run only when the session's owner calls `Server::poll()`
 never race the game loop. A running game adds `play` and `pause`; while paused it keeps serving
 but stops stepping the world. Tests drive the server from a helper thread while the test thread polls;
 see `tests/test_server.cpp`.
+
+## Replays
+
+`engine/command/src/replay.cpp` records runs and plays them back. `replay.record` (or
+`slash-cli run --record <file>`) listens through `World::set_step_listener` (ticks the host
+steps), `input::set_recorder` (events queued between ticks) and `Session::set_call_listener`
+(commands that change the world; undo, redo, `world.restore`, scene opens and hot reloads are
+kept as the entities they left), and `replay.stop` writes a `.replay.json` file
+(`$cli schema replay`) with a hash of the world every 60 host ticks and after each command.
+`replay.run` puts the start back, steps the same ticks with the same input and commands, and
+reports `matched`, the first tick that `diverged` and the `changes` at the end. Recording and
+playback start with `World::reset_state`, so a module that keeps state outside components
+(input, gui, physics, particles, audio) adds a reset with `World::add_reset`, and anything that
+iterates entities in an order that matters uses registry storage order, never handle values
+(`EntityMap` in `engine/physics2d/src/space.hpp`), so a replay steps the same in every session.
+`examples/replays` records a run and plays it back.
 
 ## Game projects and exports
 

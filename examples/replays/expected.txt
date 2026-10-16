@@ -1,0 +1,23 @@
+-- the player's session records a run
+scene.open {"path":"main.scene.json"}
+{"entities":4,"path":"main.scene.json"}
+replay.record {"path":"replays/run.replay.json"}
+{"recording":"replays/run.replay.json","tick":0}
+tick 150: hero at (130.0, 144.0) on the floor, coin taken
+replay.stop {}
+{"commands":0,"inputs":6,"path":"replays/run.replay.json","ticks":150}
+the replay holds 1 step run(s), 5 timeline entries and 2 checks
+its first entry: {"input":[{"key":"D","pressed":true,"type":"key"}],"tick":20}
+-- an agent's session plays it back
+replay.run {"path":"replays/run.replay.json"}
+{"end":150,"matched":true,"tick":150}
+tick 150: hero at (130.0, 144.0) on the floor, coin taken
+replay.run {"path":"replays/run.replay.json","tick":55}
+{"end":150,"matched":true,"tick":55}
+tick 55: hero at (92.5, 115.1) in the air, coin still there
+input.state {"actions":["jump","move_right"]}
+{"actions":{"jump":{"pressed":false},"move_right":{"pressed":true}},"keys":["D"],"mouse":{"position":[0.0,0.0]},"tick":54}
+-- a session with a lower jump
+replay.run {"path":"replays/run.replay.json"}
+{"changes":{"added":["coin"],"changed":{"coin":["Area2D","CollisionShape2D","Transform2D"],"hero":["Transform2D"]}},"diverged":60,"end":150,"matched":false,"tick":150}
+tick 150: hero at (45.0, 144.0) on the floor, coin still there

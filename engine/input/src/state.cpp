@@ -66,6 +66,22 @@ struct InputState {
 
 using Handle = std::shared_ptr<InputState>;
 
+// Kept apart from InputState so snapshots leave it alone.
+struct RecorderHolder {
+    Recorder recorder;
+};
+
+// Hands input pushed from outside the world's systems to the recorder, if there is one.
+void record(const world::World& world, const Recorded& input) {
+    if (world.stepping()) {
+        return;
+    }
+    if (const auto* holder = world.ecs().ctx().find<RecorderHolder>();
+        holder != nullptr && holder->recorder) {
+        holder->recorder(input);
+    }
+}
+
 InputState* state_of(world::World& world) {
     auto* found = world.ecs().ctx().find<Handle>();
     return found != nullptr ? found->get() : nullptr;
@@ -661,6 +677,15 @@ void install(world::World& world, Map map, Settings settings) {
     state->map = std::move(map);
     state->settings = settings;
     world.ecs().ctx().emplace<Handle>(std::move(state));
+    world.ecs().ctx().emplace<RecorderHolder>();
+    world.add_reset([](world::World& in_world) {
+        if (InputState* current = state_of(in_world); current != nullptr) {
+            InputState fresh;
+            fresh.map = std::move(current->map);
+            fresh.settings = current->settings;
+            *current = std::move(fresh);
+        }
+    });
     world.add_system(
         "input",
         [](world::World& in_world, double /*tick_seconds*/) {
@@ -698,6 +723,7 @@ void push(world::World& world, Event event) {
     if (state == nullptr) {
         return;
     }
+    record(world, {event, false});
     // Only motions since the last press or release merge, so the queue holds at most one per
     // mouse, finger and gamepad axis between presses, however fast they report or however long
     // a paused game leaves them queued.
@@ -734,6 +760,7 @@ void action_release(world::World& world, std::string_view action) {
 
 void release_pressed(world::World& world) {
     if (InputState* state = state_of(world); state != nullptr) {
+        record(world, {{}, true});
         state->queue.push_back({{}, true});
     }
 }
@@ -952,6 +979,12 @@ void restore(world::World& world, const Snapshot& snapshot) {
         return;
     }
     *state = *static_cast<const InputState*>(snapshot.data.get());
+}
+
+void set_recorder(world::World& world, Recorder recorder) {
+    if (auto* holder = world.ecs().ctx().find<RecorderHolder>(); holder != nullptr) {
+        holder->recorder = std::move(recorder);
+    }
 }
 
 } // namespace slash::input
