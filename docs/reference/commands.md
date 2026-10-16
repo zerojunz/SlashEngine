@@ -75,11 +75,11 @@ as `entity.get`, reject it as an unknown param.
 | Run | [`step`](#step), [`run.until`](#rununtil), [`play`](#play), [`pause`](#pause) |
 | History | [`undo`](#undo), [`redo`](#redo), [`history.get`](#historyget) |
 | Several at once | [`batch`](#batch) |
-| Observe | [`events.subscribe`](#eventssubscribe), [`events.read`](#eventsread), [`events.unsubscribe`](#eventsunsubscribe), [`log.tail`](#logtail) |
+| Observe | [`events.subscribe`](#eventssubscribe), [`events.read`](#eventsread), [`events.unsubscribe`](#eventsunsubscribe), [`log.tail`](#logtail), [`frame.capture`](#framecapture) |
 | Display | [`display.list`](#displaylist), [`display.set`](#displayset), [`perf.stats`](#perfstats) |
 | Export | [`export.run`](#exportrun) |
 
-Planned commands from the [roadmap](../roadmap.md), not yet available: `frame.capture` and `replay.run`.
+Planned commands from the [roadmap](../roadmap.md), not yet available: `replay.run`.
 
 ## Describe
 
@@ -1692,6 +1692,40 @@ Needs: `read`.
 The result is `{"lines": [...]}`, each line an object such as
 `{"level":"info","msg":"server listening","url":"http://127.0.0.1:34467"}`. A session captures
 only the lines logged while it is open, so a fresh one returns `{"lines":[]}`.
+
+### frame.capture
+
+Draws the frame the window shows now, on the CPU: the world's sprites, tile maps, particles and
+lights, then the controls, over the project's `rendering.clear_color`, at the window size
+(`window.width` and `height` in `project.json`). The software device that draws it shades with
+the same code as the GPU device's shaders, so the pixels are the same on every machine and with
+no GPU. Nothing changes. [examples/frame-capture](../../examples/frame-capture/) calls it.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `points` | array of `[x, y]`, 1 to 256 | | Window pixels to return the colors of |
+| `region` | `[x, y, width, height]` | the whole window | Only this part of the window, in window pixels |
+| `scale` | number, 0.05 to 4 | `1` | Image pixels per window pixel |
+| `image` | boolean | `false` | Return the image as a base64 PNG in `png` |
+| `path` | string | | A `.png` file to write, relative to the project |
+| `time` | number | the tick's | Seconds of game time for materials' `time` nodes |
+
+Needs: `read`, and `filesystem` with `path`. A HUD with a health bar at 75%:
+
+```json
+{"points": [[80, 30], [20, 14], [68, 14]]}
+```
+
+```json
+{"colors":[[0.2,0.4,0.8,1],[0.502,0.584,0.753,1],[0.169,0.31,0.588,1]],"drawn":{"controls":3},"height":90,"width":160}
+```
+
+`width` and `height` are the image's, after `region` and `scale`. `drawn` counts what was drawn
+(`sprites`, `tiles`, `particles`, `lights` and `controls`), leaving out zeros. `colors` are
+`[r, g, b, a]` from 0 to 1, one per point, read from the whole window whatever `region` says.
+Over MCP, `png` is sent as an image content block rather than as text. A point or region outside
+the window is an error at its path, and so is a `path` that doesn't end in `.png`. In a dry-run
+`batch`, `path` writes nothing.
 
 ## Display
 

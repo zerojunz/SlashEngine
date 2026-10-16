@@ -82,6 +82,16 @@ std::unique_ptr<RenderDevice> gpu_device() {
     return std::move(device).value();
 }
 
+// The devices that draw pixels: the software device, and a GPU device where one works.
+std::vector<std::unique_ptr<RenderDevice>> drawing_devices() {
+    std::vector<std::unique_ptr<RenderDevice>> devices;
+    devices.push_back(slash::render::create_software_device());
+    if (auto gpu = gpu_device(); gpu != nullptr) {
+        devices.push_back(std::move(gpu));
+    }
+    return devices;
+}
+
 // Two triangles covering a rectangle, the texture's u running from u0 to u1.
 std::vector<Vertex2D> rect(float x0, float y0, float x1, float y1, float u0 = 0.0F, float u1 = 1.0F,
                            Rgba rgba = {255, 255, 255, 255}) {
@@ -283,13 +293,15 @@ TEST_CASE("occluders' depths in the shadow map hide pixels behind them") {
     CHECK(sun_at(60.0F) == 0.0F);
 }
 
-TEST_CASE("both devices check a frame's lights") {
-    for (int gpu = 0; gpu < 2; ++gpu) {
-        auto device = gpu == 0 ? slash::render::create_null_device() : gpu_device();
+TEST_CASE("every device checks a frame's lights") {
+    for (int kind = 0; kind < 3; ++kind) {
+        auto device = kind == 0   ? slash::render::create_null_device()
+                      : kind == 1 ? slash::render::create_software_device()
+                                  : gpu_device();
         if (device == nullptr) {
             continue;
         }
-        CAPTURE(gpu);
+        CAPTURE(kind);
         auto target = device->create_texture(
             {.width = 4, .height = 4, .filter = Filter::Linear, .render_target = true});
         auto narrow = device->create_texture(
@@ -325,180 +337,185 @@ TEST_CASE("both devices check a frame's lights") {
     }
 }
 
-TEST_CASE("the GPU device lights pixels as shade does") {
-    auto device = gpu_device();
-    if (device == nullptr) {
-        return;
-    }
-    constexpr std::uint32_t kSize = 32;
-    auto target = device->create_texture(
-        {.width = kSize, .height = kSize, .filter = Filter::Linear, .render_target = true});
-    REQUIRE(target.ok());
+TEST_CASE("the software and GPU devices light pixels as shade does") {
+    for (const auto& device : drawing_devices()) {
+        CAPTURE(slash::render::backend_name(device->backend()));
+        constexpr std::uint32_t kSize = 32;
+        auto target = device->create_texture(
+            {.width = kSize, .height = kSize, .filter = Filter::Linear, .render_target = true});
+        REQUIRE(target.ok());
 
-    // The atlas: a 4x4 light fading out to the right on the left, plain white on the right.
-    Image atlas{.width = 8, .height = 4, .pixels = {}};
-    for (std::uint32_t y = 0; y < 4; ++y) {
-        for (std::uint32_t x = 0; x < 8; ++x) {
-            const auto fade = static_cast<std::uint8_t>(x < 4 ? 255 - (x * 60) : 255);
-            atlas.pixels.insert(atlas.pixels.end(), {255, 255, 255, fade});
+        // The atlas: a 4x4 light fading out to the right on the left, plain white on the right.
+        Image atlas{.width = 8, .height = 4, .pixels = {}};
+        for (std::uint32_t y = 0; y < 4; ++y) {
+            for (std::uint32_t x = 0; x < 8; ++x) {
+                const auto fade = static_cast<std::uint8_t>(x < 4 ? 255 - (x * 60) : 255);
+                atlas.pixels.insert(atlas.pixels.end(), {255, 255, 255, fade});
+            }
         }
-    }
-    // Shadow rows: the point light's occluder covers its right side at 40% of its reach; the
-    // directional light's covers the left half of the target at depth 0.25.
-    std::vector<std::uint8_t> shadows(std::size_t{kColumns} * 2 * 4, 0);
-    const auto put = [&](std::uint32_t column, std::uint32_t row, Rgba texel) {
-        std::ranges::copy(texel, shadows.begin() + ((row * kColumns) + column) * 4);
-    };
-    for (std::uint32_t column = kColumns * 3 / 8; column < kColumns * 5 / 8; ++column) {
-        put(column, 0, slash::render::encode_shadow_depth(0.4F));
-    }
-    for (std::uint32_t column = kColumns / 2; column < kColumns; ++column) {
-        put(column, 1, slash::render::encode_shadow_depth(0.25F));
-    }
-    // A normal map leaning right on its left half and down on its right half, and a specular map.
-    const Image normals{.width = 2, .height = 1, .pixels = {218, 128, 218, 255, 128, 37, 218, 255}};
-    const Image shine{.width = 1, .height = 1, .pixels = {255, 200, 100, 128}};
-    auto atlas_texture = device->create_texture(
-        {.width = 8, .height = 4, .filter = Filter::Linear, .render_target = false}, atlas.pixels);
-    auto shadow_texture = device->create_texture(
-        {.width = kColumns, .height = 2, .filter = Filter::Nearest, .render_target = false},
-        shadows);
-    auto normal_texture = device->create_texture(
-        {.width = 2, .height = 1, .filter = Filter::Nearest, .render_target = false},
-        normals.pixels);
-    auto shine_texture = device->create_texture(
-        {.width = 1, .height = 1, .filter = Filter::Nearest, .render_target = false}, shine.pixels);
-    REQUIRE(atlas_texture.ok());
-    REQUIRE(shadow_texture.ok());
-    REQUIRE(normal_texture.ok());
-    REQUIRE(shine_texture.ok());
+        // Shadow rows: the point light's occluder covers its right side at 40% of its reach; the
+        // directional light's covers the left half of the target at depth 0.25.
+        std::vector<std::uint8_t> shadows(std::size_t{kColumns} * 2 * 4, 0);
+        const auto put = [&](std::uint32_t column, std::uint32_t row, Rgba texel) {
+            std::ranges::copy(texel, shadows.begin() + ((row * kColumns) + column) * 4);
+        };
+        for (std::uint32_t column = kColumns * 3 / 8; column < kColumns * 5 / 8; ++column) {
+            put(column, 0, slash::render::encode_shadow_depth(0.4F));
+        }
+        for (std::uint32_t column = kColumns / 2; column < kColumns; ++column) {
+            put(column, 1, slash::render::encode_shadow_depth(0.25F));
+        }
+        // A normal map leaning right on its left half and down on its right half, and a specular
+        // map.
+        const Image normals{
+            .width = 2, .height = 1, .pixels = {218, 128, 218, 255, 128, 37, 218, 255}};
+        const Image shine{.width = 1, .height = 1, .pixels = {255, 200, 100, 128}};
+        auto atlas_texture = device->create_texture(
+            {.width = 8, .height = 4, .filter = Filter::Linear, .render_target = false},
+            atlas.pixels);
+        auto shadow_texture = device->create_texture(
+            {.width = kColumns, .height = 2, .filter = Filter::Nearest, .render_target = false},
+            shadows);
+        auto normal_texture = device->create_texture(
+            {.width = 2, .height = 1, .filter = Filter::Nearest, .render_target = false},
+            normals.pixels);
+        auto shine_texture = device->create_texture(
+            {.width = 1, .height = 1, .filter = Filter::Nearest, .render_target = false},
+            shine.pixels);
+        REQUIRE(atlas_texture.ok());
+        REQUIRE(shadow_texture.ok());
+        REQUIRE(normal_texture.ok());
+        REQUIRE(shine_texture.ok());
 
-    std::vector<Light> lights;
-    Light torch = point_light(-8, -8, 40, 40);
-    torch.position = {12.0F, 14.0F};
-    torch.height = 10.0F;
-    torch.color = {1.2F, 0.9F, 0.6F, 1.0F};
-    torch.atlas_rect = {0.5F / 8.0F, 0.5F / 4.0F, 3.0F / 8.0F, 3.0F / 4.0F};
-    torch.shadow_row = 0;
-    torch.shadow_far = 30.0F;
-    torch.shadow_filter = ShadowFilter::Pcf5;
-    torch.shadow_color = {0.1F, 0.0F, 0.2F, 0.5F};
-    lights.push_back(torch);
-    Light sun;
-    sun.kind = LightKind::Directional;
-    sun.position = {std::numbers::sqrt2_v<float> / 2.0F, std::numbers::sqrt2_v<float> / 2.0F};
-    sun.height = 0.4F;
-    sun.color = {0.3F, 0.3F, 0.5F, 1.0F};
-    sun.blend = BlendMode::Mix;
-    sun.shadow_row = 1;
-    sun.shadow_origin = {-23.0F, 0.0F};
-    sun.shadow_span = 46.0F;
-    sun.shadow_far = 46.0F;
-    sun.shadow_reach = 0.5F;
-    lights.push_back(sun);
-    Light masked = point_light(0, 0, 32, 32);
-    masked.item_cull_mask = 4; // reaches neither draw
-    masked.atlas_rect = {4.5F / 8.0F, 0.5F / 4.0F, 3.0F / 8.0F, 3.0F / 4.0F};
-    lights.push_back(masked);
+        std::vector<Light> lights;
+        Light torch = point_light(-8, -8, 40, 40);
+        torch.position = {12.0F, 14.0F};
+        torch.height = 10.0F;
+        torch.color = {1.2F, 0.9F, 0.6F, 1.0F};
+        torch.atlas_rect = {0.5F / 8.0F, 0.5F / 4.0F, 3.0F / 8.0F, 3.0F / 4.0F};
+        torch.shadow_row = 0;
+        torch.shadow_far = 30.0F;
+        torch.shadow_filter = ShadowFilter::Pcf5;
+        torch.shadow_color = {0.1F, 0.0F, 0.2F, 0.5F};
+        lights.push_back(torch);
+        Light sun;
+        sun.kind = LightKind::Directional;
+        sun.position = {std::numbers::sqrt2_v<float> / 2.0F, std::numbers::sqrt2_v<float> / 2.0F};
+        sun.height = 0.4F;
+        sun.color = {0.3F, 0.3F, 0.5F, 1.0F};
+        sun.blend = BlendMode::Mix;
+        sun.shadow_row = 1;
+        sun.shadow_origin = {-23.0F, 0.0F};
+        sun.shadow_span = 46.0F;
+        sun.shadow_far = 46.0F;
+        sun.shadow_reach = 0.5F;
+        lights.push_back(sun);
+        Light masked = point_light(0, 0, 32, 32);
+        masked.item_cull_mask = 4; // reaches neither draw
+        masked.atlas_rect = {4.5F / 8.0F, 0.5F / 4.0F, 3.0F / 8.0F, 3.0F / 4.0F};
+        lights.push_back(masked);
 
-    const slash::render::Frame frame{
-        .target = target.value(),
-        .clear = {},
-        .view = {},
-        .lighting = {.ambient = {.r = 0.3F, .g = 0.3F, .b = 0.35F, .a = 1.0F},
-                     .lights = lights,
-                     .atlas = atlas_texture.value(),
-                     .shadow_map = shadow_texture.value()}};
-    REQUIRE(device->begin_frame(frame).ok());
-    // Left: normal-mapped and shiny. Right: mirrored left to right, plain, light only.
-    Material left;
-    left.shading = {.mode = LightMode::Normal,
-                    .light_mask = 1,
-                    .z_index = 0,
-                    .normal_map = normal_texture.value(),
-                    .specular_map = shine_texture.value(),
-                    .specular = {1.0F, 1.0F, 1.0F, 0.8F}};
-    Material right;
-    right.shading = {.mode = LightMode::LightOnly,
-                     .light_mask = 3,
-                     .z_index = 2,
-                     .normal_map = normal_texture.value(),
-                     .specular_map = TextureId::None,
-                     .specular = {1.0F, 1.0F, 1.0F, 1.0F}};
-    constexpr Rgba kTint{200, 230, 255, 255};
-    REQUIRE(device->draw(TextureId::None, rect(0, 0, 16, kSize, 0.0F, 1.0F, kTint), left).ok());
-    REQUIRE(
-        device->draw(TextureId::None, rect(16, 0, kSize, kSize, 1.0F, 0.0F, kTint), right).ok());
-    REQUIRE(device->end_frame().ok());
-    auto drawn = device->read_texture(target.value());
-    REQUIRE(drawn.ok());
+        const slash::render::Frame frame{
+            .target = target.value(),
+            .clear = {},
+            .view = {},
+            .lighting = {.ambient = {.r = 0.3F, .g = 0.3F, .b = 0.35F, .a = 1.0F},
+                         .lights = lights,
+                         .atlas = atlas_texture.value(),
+                         .shadow_map = shadow_texture.value()}};
+        REQUIRE(device->begin_frame(frame).ok());
+        // Left: normal-mapped and shiny. Right: mirrored left to right, plain, light only.
+        Material left;
+        left.shading = {.mode = LightMode::Normal,
+                        .light_mask = 1,
+                        .z_index = 0,
+                        .normal_map = normal_texture.value(),
+                        .specular_map = shine_texture.value(),
+                        .specular = {1.0F, 1.0F, 1.0F, 0.8F}};
+        Material right;
+        right.shading = {.mode = LightMode::LightOnly,
+                         .light_mask = 3,
+                         .z_index = 2,
+                         .normal_map = normal_texture.value(),
+                         .specular_map = TextureId::None,
+                         .specular = {1.0F, 1.0F, 1.0F, 1.0F}};
+        constexpr Rgba kTint{200, 230, 255, 255};
+        REQUIRE(device->draw(TextureId::None, rect(0, 0, 16, kSize, 0.0F, 1.0F, kTint), left).ok());
+        REQUIRE(device->draw(TextureId::None, rect(16, 0, kSize, kSize, 1.0F, 0.0F, kTint), right)
+                    .ok());
+        REQUIRE(device->end_frame().ok());
+        auto drawn = device->read_texture(target.value());
+        REQUIRE(drawn.ok());
 
-    const slash::render::AtlasSampler sample_atlas = [&](float u, float v) {
-        return slash::render::sample_image(atlas, Filter::Linear, false, u, v);
-    };
-    const slash::render::ShadowTexel shadow_texel = [&](std::uint32_t column, std::uint32_t row) {
-        Rgba texel{};
-        std::copy_n(shadows.begin() + ((row * kColumns) + column) * 4, 4, texel.begin());
-        return texel;
-    };
-    int compared = 0;
-    for (std::uint32_t y = 0; y < kSize; ++y) {
-        for (std::uint32_t x = 0; x < kSize; ++x) {
-            const std::array<float, 2> position{static_cast<float>(x) + 0.5F,
-                                                static_cast<float>(y) + 0.5F};
-            // Pixels on a shadow's edge may land either side of it.
-            bool edge = false;
-            for (const Light& light : lights) {
-                if (light.shadow_row < 0) {
+        const slash::render::AtlasSampler sample_atlas = [&](float u, float v) {
+            return slash::render::sample_image(atlas, Filter::Linear, false, u, v);
+        };
+        const slash::render::ShadowTexel shadow_texel = [&](std::uint32_t column,
+                                                            std::uint32_t row) {
+            Rgba texel{};
+            std::copy_n(shadows.begin() + ((row * kColumns) + column) * 4, 4, texel.begin());
+            return texel;
+        };
+        int compared = 0;
+        for (std::uint32_t y = 0; y < kSize; ++y) {
+            for (std::uint32_t x = 0; x < kSize; ++x) {
+                const std::array<float, 2> position{static_cast<float>(x) + 0.5F,
+                                                    static_cast<float>(y) + 0.5F};
+                // Pixels on a shadow's edge may land either side of it.
+                bool edge = false;
+                for (const Light& light : lights) {
+                    if (light.shadow_row < 0) {
+                        continue;
+                    }
+                    const auto coord = slash::render::shadow_coord(light, position);
+                    const float column = coord.column - std::floor(coord.column);
+                    edge = edge || column < 0.02F || column > 0.98F ||
+                           std::abs(coord.depth - 0.4F) < 0.02F ||
+                           std::abs(coord.depth - 0.25F) < 0.02F;
+                }
+                if (edge) {
                     continue;
                 }
-                const auto coord = slash::render::shadow_coord(light, position);
-                const float column = coord.column - std::floor(coord.column);
-                edge = edge || column < 0.02F || column > 0.98F ||
-                       std::abs(coord.depth - 0.4F) < 0.02F ||
-                       std::abs(coord.depth - 0.25F) < 0.02F;
+                const bool is_left = x < 16;
+                const float u =
+                    is_left ? position[0] / 16.0F : 1.0F - ((position[0] - 16.0F) / 16.0F);
+                const Float4 texel = slash::render::sample_image(normals, Filter::Nearest, false, u,
+                                                                 position[1] / kSize);
+                ShadePixel pixel{.position = position,
+                                 .color = {200.0F / 255.0F, 230.0F / 255.0F, 1.0F, 1.0F},
+                                 .normal = slash::render::map_normal(
+                                     texel, {is_left ? 1.0F : -1.0F, 0.0F}, {0.0F, 1.0F}),
+                                 .specular = std::nullopt};
+                if (is_left) {
+                    const Float4 s = slash::render::sample_image(shine, Filter::Nearest, false, u,
+                                                                 position[1] / kSize);
+                    pixel.specular = Float4{s[0], s[1], s[2], s[3] * 0.8F};
+                }
+                const Material& material = is_left ? left : right;
+                Float4 expected = slash::render::shade(lights, {0.3F, 0.3F, 0.35F, 1.0F},
+                                                       {.mode = material.shading.mode,
+                                                        .light_mask = material.shading.light_mask,
+                                                        .z_index = material.shading.z_index},
+                                                       pixel, sample_atlas, shadow_texel);
+                // The target keeps 0 to 1, blended over its clear black.
+                for (float& channel : expected) {
+                    channel = std::clamp(channel, 0.0F, 1.0F);
+                }
+                const float alpha = expected[3];
+                const std::size_t at = ((std::size_t{y} * kSize) + x) * 4;
+                Float4 actual{};
+                for (std::size_t i = 0; i < 4; ++i) {
+                    actual.at(i) = static_cast<float>(drawn.value().pixels.at(at + i)) / 255.0F;
+                }
+                // Mixed over the clear color, opaque black.
+                const Float4 blended{expected[0] * alpha, expected[1] * alpha, expected[2] * alpha,
+                                     1.0F};
+                CAPTURE(x);
+                CAPTURE(y);
+                CHECK_MESSAGE(near(actual, blended), text(actual) << " vs " << text(blended));
+                ++compared;
             }
-            if (edge) {
-                continue;
-            }
-            const bool is_left = x < 16;
-            const float u = is_left ? position[0] / 16.0F : 1.0F - ((position[0] - 16.0F) / 16.0F);
-            const Float4 texel = slash::render::sample_image(normals, Filter::Nearest, false, u,
-                                                             position[1] / kSize);
-            ShadePixel pixel{.position = position,
-                             .color = {200.0F / 255.0F, 230.0F / 255.0F, 1.0F, 1.0F},
-                             .normal = slash::render::map_normal(
-                                 texel, {is_left ? 1.0F : -1.0F, 0.0F}, {0.0F, 1.0F}),
-                             .specular = std::nullopt};
-            if (is_left) {
-                const Float4 s = slash::render::sample_image(shine, Filter::Nearest, false, u,
-                                                             position[1] / kSize);
-                pixel.specular = Float4{s[0], s[1], s[2], s[3] * 0.8F};
-            }
-            const Material& material = is_left ? left : right;
-            Float4 expected = slash::render::shade(lights, {0.3F, 0.3F, 0.35F, 1.0F},
-                                                   {.mode = material.shading.mode,
-                                                    .light_mask = material.shading.light_mask,
-                                                    .z_index = material.shading.z_index},
-                                                   pixel, sample_atlas, shadow_texel);
-            // The target keeps 0 to 1, blended over its clear black.
-            for (float& channel : expected) {
-                channel = std::clamp(channel, 0.0F, 1.0F);
-            }
-            const float alpha = expected[3];
-            const std::size_t at = ((std::size_t{y} * kSize) + x) * 4;
-            Float4 actual{};
-            for (std::size_t i = 0; i < 4; ++i) {
-                actual.at(i) = static_cast<float>(drawn.value().pixels.at(at + i)) / 255.0F;
-            }
-            // Mixed over the clear color, opaque black.
-            const Float4 blended{expected[0] * alpha, expected[1] * alpha, expected[2] * alpha,
-                                 1.0F};
-            CAPTURE(x);
-            CAPTURE(y);
-            CHECK_MESSAGE(near(actual, blended), text(actual) << " vs " << text(blended));
-            ++compared;
         }
+        CHECK(compared > 650);
     }
-    CHECK(compared > 650);
 }

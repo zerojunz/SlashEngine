@@ -114,6 +114,37 @@ ui::Settings ui_settings(const json::Value& project) {
     return settings;
 }
 
+// How the project's frames look, for frame.capture: rendering's clear color and filter, and
+// the tick length, or the defaults for what doesn't validate.
+canvas::Settings canvas_settings(const json::Value& project) {
+    canvas::Settings settings;
+    if (!project.is_object()) {
+        return settings;
+    }
+    const json::Value* rendering = project.find("rendering");
+    if (rendering != nullptr && rendering->is_object()) {
+        const json::Value* clear = rendering->find("clear_color");
+        if (clear != nullptr && clear->is_array() && clear->as_array().size() == 4 &&
+            std::ranges::all_of(clear->as_array(),
+                                [](const json::Value& each) { return each.is_number(); })) {
+            const json::Array& rgba = clear->as_array();
+            settings.clear_color = {.r = static_cast<float>(rgba[0].as_double()),
+                                    .g = static_cast<float>(rgba[1].as_double()),
+                                    .b = static_cast<float>(rgba[2].as_double()),
+                                    .a = static_cast<float>(rgba[3].as_double())};
+        }
+        const json::Value* filter = rendering->find("texture_filter");
+        if (filter != nullptr && filter->is_string() && filter->as_string() == "nearest") {
+            settings.texture_filter = render::Filter::Nearest;
+        }
+    }
+    const json::Value* tick_hz = project.find("tick_hz");
+    if (tick_hz != nullptr && tick_hz->is_number() && tick_hz->as_double() > 0.0) {
+        settings.tick_seconds = 1.0 / tick_hz->as_double();
+    }
+    return settings;
+}
+
 } // namespace
 
 Session::Session(const world::ComponentRegistry& component_registry,
@@ -140,6 +171,7 @@ Session::Session(const world::ComponentRegistry& component_registry,
     // sound.
     const json::Value project = read_project(options_.project_root);
     canvas::install(world_, assets_);
+    canvas::set_settings(world_, canvas_settings(project));
     ui::set_settings(world_, ui_settings(project));
     animation::install(world_, assets_);
     physics2d::install(world_, physics_settings(project));

@@ -115,6 +115,12 @@ Game::Game(Project project, platform::Platform platform, const std::string& data
     world_.set_file_reader(
         [this](std::string_view path) { return assets_.read(path, world::kPrefabType); });
     canvas::install(world_, assets_);
+    const auto& [r, g, b, a] = project_.clear_color;
+    canvas::set_settings(world_, {.clear_color = {.r = r, .g = g, .b = b, .a = a},
+                                  .texture_filter = project_.texture_filter == "nearest"
+                                                        ? render::Filter::Nearest
+                                                        : render::Filter::Linear,
+                                  .tick_seconds = 1.0 / project_.tick_hz});
     ui::set_settings(world_, {.viewport = {static_cast<float>(project_.window_width),
                                            static_cast<float>(project_.window_height)},
                               .theme = project_.gui_theme,
