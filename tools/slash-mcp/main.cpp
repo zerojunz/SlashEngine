@@ -9,6 +9,7 @@
 #include "slash/core/log.hpp"
 #include "slash/core/version.hpp"
 #include "slash/exporter/commands.hpp"
+#include "slash/importer/commands.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/server/client.hpp"
 #include "slash/server/server.hpp"
@@ -129,6 +130,7 @@ int main(int argc, char** argv) {
     command::Registry commands;
     command::register_builtin_commands(commands);
     slash::exporter::register_export_commands(commands);
+    slash::importer::register_import_commands(commands);
     command::Session session(components, commands, options);
 
     if (!scene.empty()) {
