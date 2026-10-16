@@ -126,9 +126,9 @@ Checks a scene, a `.prefab.json` file, a [`.frames.json`](scene-format.md#sprite
 file, a [`.tileset.json`](scene-format.md#tile-sets) file, a [`.font.json`](scene-format.md#fonts)
 file, a [`.theme.json`](scene-format.md#themes) file, an
 [`.audio.json`](scene-format.md#audio-streams) file, a
-[`.bus_layout.json`](scene-format.md#bus-layouts) file or a
-[`.replay.json`](scene-format.md#replays) file and lists every error, each with its JSON
-Pointer path. Exit code 1 if the file is invalid. The [prefabs](scene-format.md#prefabs) a file
+[`.bus_layout.json`](scene-format.md#bus-layouts) file, a
+[`.replay.json`](scene-format.md#replays) file or a [`.test.json`](scene-format.md#tests) file
+and lists every error, each with its JSON Pointer path. Exit code 1 if the file is invalid. The [prefabs](scene-format.md#prefabs) a file
 extends, the tile sets its layers use and the project's window size and theme are read from its
 project: the nearest folder above it with a `project.json`, else the current folder.
 
@@ -143,7 +143,7 @@ slash-cli scene validate <file>
 For a prefab the result counts its `components` instead of `entities`, for a `.frames.json` or
 `.anim.json` file its `animations`, for a `.tileset.json` file its `tiles`, for a `.theme.json`
 file its `types`, for a `.bus_layout.json` file its `buses`, for a `.replay.json` file the
-`ticks` it covers, for a `.font.json` or `.audio.json` file nothing more, and for a `.material.json` file the
+`ticks` it covers, for a `.test.json` file its `tests`, for a `.font.json` or `.audio.json` file nothing more, and for a `.material.json` file the
 `instructions` its graph compiles to, of the 64 a material can run:
 
 ```json
@@ -190,7 +190,7 @@ When the project has a
 ### scene format
 
 Rewrites a scene, prefab, `.frames.json`, `.material.json`, `.anim.json`, `.tileset.json`,
-`.font.json`, `.theme.json`, `.audio.json`, `.bus_layout.json` or `.replay.json` file in [canonical form](scene-format.md#canonical-form).
+`.font.json`, `.theme.json`, `.audio.json`, `.bus_layout.json`, `.replay.json` or `.test.json` file in [canonical form](scene-format.md#canonical-form).
 
 ```bash
 slash-cli scene format <file>
@@ -207,7 +207,8 @@ Prints a JSON Schema: for scene or prefab files (generated from the registered c
 for [`.theme.json` files](scene-format.md#themes), for
 [`.audio.json` files](scene-format.md#audio-streams), for
 [`.bus_layout.json` files](scene-format.md#bus-layouts), for
-[`.replay.json` files](scene-format.md#replays), for [storyboard files](storyboard-format.md),
+[`.replay.json` files](scene-format.md#replays), for [`.test.json` files](scene-format.md#tests),
+for [storyboard files](storyboard-format.md),
 for [`project.json`](project-format.md) or for [`export_presets.json`](project-format.md#export-presets).
 
 ```bash
@@ -222,6 +223,7 @@ slash-cli schema theme
 slash-cli schema audio
 slash-cli schema bus_layout
 slash-cli schema replay
+slash-cli schema test
 slash-cli schema storyboard
 slash-cli schema project
 slash-cli schema presets
@@ -248,6 +250,30 @@ slash-cli project validate tests/data/game
 
 ```json
 {"errors":[{"file":"export_presets.json","message":"unknown platform \"wbe\"; did you mean \"web\"?","path":"/presets/web/platform"},{"file":"export_presets.json","message":"secrets are read from environment variables, never from export_presets.json; \"slash-cli schema presets\" lists the variables","path":"/presets/windows-signed/windows/certificate_password"}],"valid":false}
+```
+
+### test
+
+Runs the project's [`.test.json` tests](scene-format.md#tests) headless with
+[`test.run`](commands.md#testrun) and prints only the checks that failed. Exit code 1 if any
+did. Paths are files and folders inside the project; with none, every test file runs, and so
+does [`storyboard.check`](commands.md#storyboardcheck).
+
+```bash
+slash-cli test [path...] [--project <dir>] [--test <name>]...
+```
+
+| Flag | Meaning |
+| --- | --- |
+| `--project <dir>` | The project folder (default `.`) |
+| `--test <name>` | Run only the test with this name; repeat it for more |
+
+```json
+{"failed":[],"passed":3,"tests":3}
+```
+
+```json
+{"failed":[{"file":"tests/main.test.json","message":"expected 1 item, got 0 items: []","path":"/tests/crate_lands/steps/0/expect/entities","test":"crate_lands","tick":600}],"passed":0,"tests":1}
 ```
 
 ### call
@@ -326,18 +352,21 @@ slash-cli init [dir]
 | `--mcp-command <cmd>` | How agents launch `slash-mcp` (default `slash-mcp`, found on `PATH`) |
 
 ```json
-{"created":["project.json","AGENTS.md","CLAUDE.md",".mcp.json",".cursor/mcp.json",".codex/config.toml",".claude/skills/slashengine/SKILL.md",".github/workflows/export.yml","scenes/main.scene.json","storyboard/glossary.json","storyboard/work.json",".gitignore"],"skipped":[]}
+{"created":["project.json","AGENTS.md","CLAUDE.md",".mcp.json",".cursor/mcp.json",".codex/config.toml",".claude/skills/slashengine/SKILL.md",".github/workflows/export.yml","scenes/main.scene.json","tests/main.test.json","storyboard/glossary.json","storyboard/work.json",".gitignore"],"skipped":[]}
 ```
 
 The `project.json` it writes is named after the folder and points at `scenes/main.scene.json`.
 The starter [storyboard](storyboard-format.md) records the game's title in the glossary and an
 open task to fill in the rest, and `AGENTS.md` and the skill tell agents to call
-`storyboard_brief` before a task and `storyboard_check` after it. `AGENTS.md` also links the
-engine's [examples](../../examples/README.md) at the commit the project pins.
+`storyboard_brief` before a task and `storyboard_check` after it. `tests/main.test.json` is a
+starter [test](scene-format.md#tests) that runs the main scene for a second, and `AGENTS.md` and
+the skill tell agents to run `test_run` after a change and add tests as they build. `AGENTS.md`
+also links the engine's [examples](../../examples/README.md) at the commit the project pins.
 
 `.github/workflows/export.yml` exports the game for every platform on GitHub Actions, each on a
 native runner, runs each export headless and uploads the results. It runs
-`slash-cli project validate` first, so a change that breaks the storyboard fails the run. It pins
+`slash-cli project validate` and `slash-cli test` first, so a change that breaks the storyboard
+or a test fails the run. It pins
 the engine to the commit `init` ran from (`SLASHENGINE_REF`), or to its version tag when that
 commit is unknown.
 An existing `.gitignore` is never replaced, even with `--force`: `init` adds the `.slash/` and

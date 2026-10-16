@@ -205,6 +205,16 @@ Recording and playback both start the world afresh: what systems keep outside co
 input, focus, particles, physics contacts, playing sounds) starts over, through the resets
 modules add with `World::add_reset`. A gameplay system that keeps its own state does the same.
 
+### Tests
+
+A **test** is a scene and a list of command calls, each with what its reply must hold, kept in a
+`.test.json` file. `test.run` (or `slash-cli test`) runs every test headless, each in a session
+of its own from its scene file, and returns only the checks that failed: a command that failed,
+a reply that didn't hold what was expected, or a warning or error logged while it ran. Each
+failure points into the test file with a JSON Pointer and gives the tick. Since runs repeat, a
+test that passes once passes everywhere, so agents check a change in one call instead of reading
+logs or screenshots, and games run their tests in CI.
+
 ## Input
 
 Input follows Godot. Keys, mouse buttons and motion, touches and gamepads arrive as **input
@@ -520,10 +530,11 @@ edit a frozen frame or advance it with `step`; `play` lets it run again.
 the working rules and a link to the engine's [examples](../examples/README.md) at the commit the
 project pins, a `CLAUDE.md` that loads it, a Claude Code skill for editing scenes, a GitHub
 Actions workflow that checks the project and exports and tests every platform
-(`.github/workflows/export.yml`), an empty `scenes/main.scene.json`, a starter storyboard, and
-`.gitignore` entries for `.slash/` and `build/`. The MCP server's own instructions repeat the key
-rules (call `engine_describe` first, use `batch`, brief before a task and check after it, don't
-hand-edit scenes while the server runs) to every client that connects.
+(`.github/workflows/export.yml`), an empty `scenes/main.scene.json`, a starter storyboard, a
+starter test (`tests/main.test.json`), and `.gitignore` entries for `.slash/` and `build/`. The
+MCP server's own instructions repeat the key rules (call `engine_describe` first, use `batch`,
+brief before a task and check after it, run the tests after a change, don't hand-edit scenes
+while the server runs) to every client that connects.
 
 ## Model agnostic
 
@@ -606,6 +617,7 @@ OpenAI-compatible servers (including local ones), Anthropic and Gemini; see the
 | Style box | What a panel or bar draws behind its content, a flat box with optional rounded corners, border and shadow or a nine-patch texture, and the margin its content keeps |
 | System | Code that updates components every tick, in order of priority |
 | Terrain | A kind of ground in a tile set, such as grass or water, whose tiles autotiling connects |
+| Test | A scene and command calls with what their replies must hold, in a `.test.json` file, which `test.run` runs headless |
 | Theme | A `.theme.json` file of theme items by control type, used by a control and everything in it, or by the whole game (`gui.theme`) |
 | Theme item | A named color, constant, font, font size or style box a control draws with, set by its `theme_override_*` fields or a theme |
 | Tick | One fixed simulation step, 1/60 s by default |

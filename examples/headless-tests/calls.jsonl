@@ -1,0 +1,13 @@
+{"jsonrpc":"2.0","id":1,"method":"test.run","params":{}}
+{"jsonrpc":"2.0","id":2,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":3,"method":"component.set","params":{"id":"floor","components":{"CollisionShape2D":{"disabled":true}}}}
+{"jsonrpc":"2.0","id":4,"method":"scene.save","params":{}}
+{"jsonrpc":"2.0","id":5,"method":"test.run","params":{"tests":["crate_lands"]}}
+{"jsonrpc":"2.0","id":6,"method":"undo","params":{}}
+{"jsonrpc":"2.0","id":7,"method":"entity.create","params":{"id":"torch","components":{"AnimatedSprite2D":{"sprite_frames":"torch.frames.json"},"Transform2D":{"position":[300,150]}}}}
+{"jsonrpc":"2.0","id":8,"method":"scene.save","params":{}}
+{"jsonrpc":"2.0","id":9,"method":"test.run","params":{"paths":["tests/main.test.json"],"tests":["crate_lands"]}}
+{"jsonrpc":"2.0","id":10,"method":"undo","params":{}}
+{"jsonrpc":"2.0","id":11,"method":"scene.save","params":{}}
+{"jsonrpc":"2.0","id":12,"method":"test.run","params":{}}
+{"jsonrpc":"2.0","id":13,"method":"test.run","params":{"tests":["crate_land"]}}

@@ -129,8 +129,8 @@ rendering on top.
         files can be linked too; unknown IDs are errors with "did you mean"
   - [x] `storyboard.check`: references, glossary names and `StoryRef` IDs, checked by
         `scene validate`, `project validate` and CI
-  - [ ] Palette and budget checks once sprites, textures and meshes exist, and storyboard
-        checks in the headless test command
+  - [x] Storyboard checks in the headless test command
+  - [ ] Palette and budget checks once sprites, textures and meshes exist
   - [x] A journal of who changed what and why, and open work that says which agent is on it
         and what it touches, so agents can see what others are doing
   - [x] `slash-cli init` writes a starter storyboard, and the MCP instructions tell agents to
@@ -278,7 +278,12 @@ rendering on top.
       buttons that run the same commands an agent would; collision shapes drawn as Godot's
       Visible Collision Shapes (`--debug-collisions`, `frame.capture`'s `collisions`), and
       `debug.overlay` for agents
-- [ ] A test command that steps a game headless and returns only the checks that failed
+- [x] A test command that steps a game headless and returns only the checks that failed:
+      `test.run` (and `slash-cli test`) runs `.test.json` tests, each a scene and command calls
+      with what their replies must hold, in sessions of their own that can't write files, and
+      returns each failed check (a failed command, a reply that doesn't match, a warning or error
+      logged) with a JSON Pointer into its file; a whole-project run adds `storyboard.check`, and
+      games made by `slash-cli init` start with a test their CI runs
 - [x] Watch conditions: `run.until` steps a game headless until a condition on component
       fields holds (say, the player below the floor) or a tick limit passes, and returns the
       tick and the matching entities
@@ -523,7 +528,7 @@ calls and tokens ([design section 6](design.md#6-cheap-for-agents-to-use)).
 | `engine.describe` lists components with defaults and command names in one short answer | 3 | Done |
 | Errors carry the JSON Pointer of the bad value and a "did you mean" hint | 2, 3 | Done |
 | `slash-cli init` and the MCP server's instructions point agents at the tools | 3 | Done |
-| A test command that returns only the checks that failed | 5 | Planned |
+| A test command that returns only the checks that failed | 5 | Done |
 | Frame summaries as data instead of screenshots | 5 | Planned |
 | `storyboard.brief`: only the facts a task needs, and what changed since the agent last looked | 5 | Done |
 | Dry runs: see what an edit would change before making it | 5 | Done |

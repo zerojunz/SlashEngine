@@ -59,7 +59,7 @@ only what differs from the prefab. `entity.create` takes `"extends"`, and `prefa
 entity to a prefab file. `tests/data/game` has an example.
 
 ```bash
-$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, tileset, font, theme, audio, bus_layout, replay)
+$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, tileset, font, theme, audio, bus_layout, replay, test)
 $cli scene validate tests/data/basic.scene.json     # every error, with its JSON Pointer path
 $cli scene format level.scene.json                  # rewrite in canonical form
 $cli scene format --check level.scene.json          # exit 1 if not canonical
@@ -67,7 +67,7 @@ $cli scene format --check level.scene.json          # exit 1 if not canonical
 
 Validate after editing a scene or prefab by hand, and format before committing one. Both
 commands take `.prefab.json`, `.frames.json`, `.material.json`, `.anim.json`, `.tileset.json`,
-`.font.json`, `.theme.json`, `.audio.json`, `.bus_layout.json` and `.replay.json` files too; validating a scene also checks each tile map layer against its tile
+`.font.json`, `.theme.json`, `.audio.json`, `.bus_layout.json`, `.replay.json` and `.test.json` files too; validating a scene also checks each tile map layer against its tile
 set and that its controls lay out as written.
 
 ## Assets and hot reload
@@ -93,6 +93,8 @@ entries and returns their versions; `storyboard.edit` takes the version it read,
 ones with `-32005`, writes the files and appends to `storyboard/journal.jsonl`. Commands that
 change project files stage them through `Session::stage_file` and record undo with
 `Session::add_undo_call`, so a failed command writes nothing and undo replays the reverse edit.
+Other files a command writes go through `Session::write_file`, which a session running a test
+refuses.
 
 `storyboard.brief` returns the entries a task touches: those its scenes' and entities' `StoryRef`
 components name, those linked to its files, global rules and live work. `storyboard.check` finds
@@ -191,6 +193,19 @@ shapes are `canvas::collision_shapes` (`engine/canvas/src/debug_draw.cpp`), port
 `CanvasOptions::collisions` and `frame.capture`'s `collisions` draw them. `--debug-overlay`,
 `--debug-collisions` and the `debug.overlay` command turn them on. `examples/debug-overlay`
 captures the shapes and works the panel.
+
+## Headless tests
+
+`engine/command/src/test.cpp` is `test.run` (and `$cli test`): it runs `.test.json` files
+(`$cli schema test`; tests by name, each a scene and steps of command calls with what each reply
+must hold in `expect`) and returns only the checks that failed, with the JSON Pointer of each
+into its test file. Each test opens its scene file in a new `Session` over the same registries,
+with `SessionOptions::write_files` off (commands write files only through `Session::write_file`,
+which refuses then) and no `build` capability. A test fails at a step whose command fails, a
+reply that doesn't hold what it expects, or a warning or error logged while it runs, which it
+sees by wrapping the log sink (`log::sink`). Run with no `paths` or `tests`, it also runs
+`storyboard.check`. Games made by `$cli init` start with `tests/main.test.json`, and their
+workflow runs `$cli test`. `examples/headless-tests` breaks a scene and reads the failures.
 
 ## Game projects and exports
 
