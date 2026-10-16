@@ -26,6 +26,7 @@ engine. Copy from them.
 | [ui-and-text](ui-and-text/) | `Control`, `Label` and `ColorRect`: anchors, wrapping and trimmed text, fonts and theme overrides, `ui.layout` and `text.measure`, drawn offscreen |
 | [ui-containers](ui-containers/) | Box, grid, flow, center, margin and panel containers, `.theme.json` themes and variations, style boxes, `ProgressBar`, `TextureRect`, `NinePatchRect` and `ui.theme`, drawn offscreen |
 | [ui-buttons](ui-buttons/) | `Button` and `TextureButton`: clicks, taps, hover, focus moved by keys and gamepads, toggle groups, shortcuts, UI events, `ui.press` and `ui.focus`, drawn offscreen |
+| [ui-settings](ui-settings/) | `CheckBox`, `CheckButton` and `Slider`: check boxes, a radio group, a switch, a volume slider dragged, clicked and stepped by keys, values set from outside, the built-in theme icons and `ui.layout`'s values |
 | [text-input](text-input/) | `LineEdit`: clicks, typing, an input method's composition, editing actions, undo, the clipboard, secret text, `max_length`, on-screen keyboards, `ui.clipboard` and the text events, drawn offscreen |
 | [text-editor](text-editor/) | `TextEdit`: typing lines, wrapping, double-click selection, undo and redo, tabs, scrolling with the view following the caret, the text events and `ui.layout`'s `text_edit`, drawn offscreen |
 | [text-languages](text-languages/) | Right-to-left text and layout (`layout_direction`, `text_direction`), fallback fonts in `.font.json` files, fonts per language, installed fonts and `text::box_font` placeholders |

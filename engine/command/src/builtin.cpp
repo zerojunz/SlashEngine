@@ -1519,6 +1519,11 @@ Reply ui_layout(Session& session, const json::Value& params) {
             button != layout.buttons.end()) {
             item["draw_mode"] = ui::draw_mode_name(button->second.mode);
         }
+        if (const auto slider = layout.sliders.find(placed.entity);
+            slider != layout.sliders.end()) {
+            item["value"] = rounded(json::Value(slider->second.value));
+            item["ratio"] = rounded(json::Value(slider->second.ratio));
+        }
         if (placed.entity == focused) {
             item["focused"] = true;
         }
@@ -1689,13 +1694,24 @@ Reply ui_press(Session& session, const json::Value& params) {
     if (entity == entt::null) {
         return unknown_entity(world, id, "/id");
     }
-    const auto* button = world.ecs().try_get<world::Button>(entity);
-    const auto* texture = world.ecs().try_get<world::TextureButton>(entity);
-    if (button == nullptr && texture == nullptr) {
+    bool button = false;
+    bool disabled = false;
+    const auto take = [&](const auto* each) {
+        if (each != nullptr) {
+            button = true;
+            disabled = disabled || each->disabled;
+        }
+    };
+    take(world.ecs().try_get<world::Button>(entity));
+    take(world.ecs().try_get<world::CheckBox>(entity));
+    take(world.ecs().try_get<world::CheckButton>(entity));
+    take(world.ecs().try_get<world::TextureButton>(entity));
+    if (!button) {
         return param_error(code::kInvalidParams, "/id",
-                           quoted(id) + " isn't a button: it has no Button or TextureButton");
+                           quoted(id) + " isn't a button: it has no Button, CheckBox, "
+                                        "CheckButton or TextureButton");
     }
-    if ((button != nullptr && button->disabled) || (texture != nullptr && texture->disabled)) {
+    if (disabled) {
         return param_error(code::kInvalidParams, "/id",
                            quoted(id) + " is disabled, so it can't be pressed");
     }
@@ -2589,6 +2605,10 @@ Reply frame_summary(Session& session, const json::Value& params) {
             if (const auto button = layout.buttons.find(item.entity);
                 button != layout.buttons.end() && button->second.mode != ui::DrawMode::Normal) {
                 each["draw_mode"] = ui::draw_mode_name(button->second.mode);
+            }
+            if (const auto slider = layout.sliders.find(item.entity);
+                slider != layout.sliders.end()) {
+                each["value"] = rounded(json::Value(slider->second.value));
             }
             if (item.entity == focused) {
                 each["focused"] = true;
@@ -4131,9 +4151,10 @@ void register_builtin_commands(Registry& registry) {
         .description = "Returns where controls are on screen, in drawing order: each one's rect "
                        "[x, y, w, h], the lines labels, buttons, progress bars and text fields "
                        "show (rtl when they go right to left) and whether text overflows, each "
-                       "button's draw_mode, each LineEdit's and TextEdit's caret and selection, "
-                       "the control with focus and the one hovered, and mistakes such as "
-                       "misspelled theme overrides. A check without a screenshot.",
+                       "button's draw_mode, each slider's value and ratio, each LineEdit's "
+                       "and TextEdit's caret and selection, the control with focus and the one "
+                       "hovered, and mistakes such as misspelled theme overrides. A check "
+                       "without a screenshot.",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema({
@@ -4160,7 +4181,8 @@ void register_builtin_commands(Registry& registry) {
     });
     registry.add({
         .name = "ui.press",
-        .description = "Presses a Button or TextureButton at the next tick, as a click would: "
+        .description = "Presses a button (Button, CheckBox, CheckButton or TextureButton) at the "
+                       "next tick, as a click would: "
                        "it emits pressed, and toggles first if it is a toggle button. Returns "
                        "the tick.",
         .capabilities = {Run},

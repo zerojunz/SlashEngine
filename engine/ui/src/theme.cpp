@@ -20,11 +20,13 @@ namespace slash::ui {
 namespace {
 
 // Each control type and the type it is built on, as Godot's classes.
-constexpr std::array<std::pair<std::string_view, std::string_view>, 27> kTypes{{
+constexpr std::array<std::pair<std::string_view, std::string_view>, 32> kTypes{{
     {"Control", ""},
     {"Label", "Control"},
     {"BaseButton", "Control"},
     {"Button", "BaseButton"},
+    {"CheckBox", "Button"},
+    {"CheckButton", "Button"},
     {"TextureButton", "BaseButton"},
     {"LineEdit", "Control"},
     {"TextEdit", "Control"},
@@ -34,6 +36,9 @@ constexpr std::array<std::pair<std::string_view, std::string_view>, 27> kTypes{{
     {"NinePatchRect", "Control"},
     {"Range", "Control"},
     {"ProgressBar", "Range"},
+    {"Slider", "Range"},
+    {"HSlider", "Slider"},
+    {"VSlider", "Slider"},
     {"ScrollBar", "Range"},
     {"HScrollBar", "ScrollBar"},
     {"VScrollBar", "ScrollBar"},
@@ -50,8 +55,8 @@ constexpr std::array<std::pair<std::string_view, std::string_view>, 27> kTypes{{
     {"PanelContainer", "Container"},
 }};
 
-constexpr std::array<std::string_view, 5> kKinds{"colors", "constants", "fonts", "font_sizes",
-                                                 "styles"};
+constexpr std::array<std::string_view, 6> kKinds{"colors",     "constants", "fonts",
+                                                 "font_sizes", "icons",     "styles"};
 
 // Godot's make_flat_stylebox: a rounded rect with content margins and smooth corners.
 StyleBox flat_style(Vec4 color, std::array<float, 4> margins, int corner_radius,
@@ -124,6 +129,52 @@ const std::map<std::string, ThemeItems, std::less<>>& own_defaults() {
                             {"line_spacing", 0}};
         button.fonts = {{"font", ""}};
         button.font_sizes = {{"font_size", text::kDefaultFontSize}};
+        // Check boxes and check buttons draw no box, only their text and an icon that shows
+        // whether they are on.
+        const auto check_items = [&](std::array<float, 4> margins) {
+            ThemeItems items;
+            StyleBox empty;
+            empty.type = StyleBox::Type::Empty;
+            empty.content_margin = margins;
+            for (const std::string_view state :
+                 {"normal", "pressed", "disabled", "hover", "hover_pressed"}) {
+                items.styles.emplace(state, empty);
+            }
+            items.styles.emplace("focus", focus);
+            items.colors = {{"font_color", control_font_color},
+                            {"font_pressed_color", control_font_pressed_color},
+                            {"font_hover_color", control_font_hover_color},
+                            {"font_hover_pressed_color", control_font_pressed_color},
+                            {"font_focus_color", control_font_focus_color},
+                            {"font_disabled_color", control_font_disabled_color},
+                            {"font_outline_color", {0.0F, 0.0F, 0.0F, 1.0F}}};
+            items.constants = {
+                {"h_separation", kSeparation}, {"check_v_offset", 0}, {"outline_size", 0}};
+            return items;
+        };
+        ThemeItems& check_box = themes["CheckBox"] = check_items({4.0F, 4.0F, 4.0F, 4.0F});
+        check_box.icons = {{"checked", "builtin:checked"},
+                           {"checked_disabled", "builtin:checked_disabled"},
+                           {"unchecked", "builtin:unchecked"},
+                           {"unchecked_disabled", "builtin:unchecked_disabled"},
+                           {"radio_checked", "builtin:radio_checked"},
+                           {"radio_checked_disabled", "builtin:radio_checked_disabled"},
+                           {"radio_unchecked", "builtin:radio_unchecked"},
+                           {"radio_unchecked_disabled", "builtin:radio_unchecked_disabled"}};
+        check_box.colors.emplace("checkbox_checked_color", white);
+        check_box.colors.emplace("checkbox_unchecked_color", white);
+        ThemeItems& check_button = themes["CheckButton"] = check_items({6.0F, 4.0F, 6.0F, 4.0F});
+        check_button.icons = {
+            {"checked", "builtin:toggle_on"},
+            {"checked_disabled", "builtin:toggle_on_disabled"},
+            {"unchecked", "builtin:toggle_off"},
+            {"unchecked_disabled", "builtin:toggle_off_disabled"},
+            {"checked_mirrored", "builtin:toggle_on_mirrored"},
+            {"checked_disabled_mirrored", "builtin:toggle_on_disabled_mirrored"},
+            {"unchecked_mirrored", "builtin:toggle_off_mirrored"},
+            {"unchecked_disabled_mirrored", "builtin:toggle_off_disabled_mirrored"}};
+        check_button.colors.emplace("button_checked_color", white);
+        check_button.colors.emplace("button_unchecked_color", white);
         // A line along the bottom tells a LineEdit from a Button.
         ThemeItems& line_edit = themes["LineEdit"];
         StyleBox line_normal = flat_style(style_normal_color, kMargin, kCornerRadius);
@@ -174,6 +225,23 @@ const std::map<std::string, ThemeItems, std::less<>>& own_defaults() {
         themes["VScrollBar"].styles = {
             {"scroll", flat_style(style_normal_color, {4.0F, 0.0F, 4.0F, 0.0F}, 10)},
             {"grabber", grabber}};
+        // Sliders: a track, the part of it before the grabber filled in, and a round grabber.
+        for (const std::string_view type : {"HSlider", "VSlider"}) {
+            ThemeItems& slider = themes[std::string(type)];
+            slider.styles = {{"slider", flat_style(style_normal_color, kMargin, 4)},
+                             {"grabber_area", flat_style(style_progress_color, kMargin, 4)},
+                             {"grabber_area_highlight", flat_style(style_focus_color, kMargin, 4)}};
+            slider.icons = {
+                {"grabber", "builtin:slider_grabber"},
+                {"grabber_highlight", "builtin:slider_grabber_hl"},
+                {"grabber_disabled", "builtin:slider_grabber_disabled"},
+                {"tick", type == "HSlider" ? "builtin:hslider_tick" : "builtin:vslider_tick"}};
+            slider.constants = {{"center_grabber", 0},
+                                {"grabber_offset", 0},
+                                {"grabber_max_size", 0},
+                                {"tick_offset", 0},
+                                {"tick_max_size", 0}};
+        }
         ThemeItems& label = themes["Label"];
         label.colors = {{"font_color", {1.0F, 1.0F, 1.0F, 1.0F}},
                         {"font_shadow_color", {0.0F, 0.0F, 0.0F, 0.0F}},
@@ -237,6 +305,7 @@ void merge(ThemeItems& into, const ThemeItems& from) {
     into.constants.insert(from.constants.begin(), from.constants.end());
     into.fonts.insert(from.fonts.begin(), from.fonts.end());
     into.font_sizes.insert(from.font_sizes.begin(), from.font_sizes.end());
+    into.icons.insert(from.icons.begin(), from.icons.end());
     into.styles.insert(from.styles.begin(), from.styles.end());
 }
 
@@ -256,6 +325,8 @@ std::vector<std::string_view> names_of(const ThemeItems& items, std::string_view
         add(items.fonts);
     } else if (kind == "font_sizes") {
         add(items.font_sizes);
+    } else if (kind == "icons") {
+        add(items.icons);
     } else {
         add(items.styles);
     }
@@ -304,6 +375,28 @@ Vec4 vec4(const json::Value& value) {
 }
 
 } // namespace
+
+// Why an icon's path is wrong: not a PNG or BMP file in the project, nor a built-in icon.
+std::string icon_path_error(const std::string& path) {
+    if (path.empty()) {
+        return "";
+    }
+    if (path.starts_with(kBuiltinPrefix)) {
+        const std::string_view name = std::string_view(path).substr(kBuiltinPrefix.size());
+        if (builtin_icon(path) != nullptr) {
+            return "";
+        }
+        return with_hint(quoted(name) + " isn't a built-in icon", name, builtin_icon_names());
+    }
+    if (!is_project_path(path)) {
+        return "expected a path inside the project folder, separated by '/', with no \".\" or "
+               "\"..\" parts, or a built-in icon such as \"builtin:checked\"";
+    }
+    if (!path.ends_with(".png") && !path.ends_with(".bmp")) {
+        return "expected a .png or .bmp file";
+    }
+    return "";
+}
 
 std::vector<std::string_view> base_types(std::string_view type) {
     std::vector<std::string_view> out;
@@ -362,6 +455,8 @@ json::Value theme_schema() {
     constant["type"] = "integer";
     json::Value font;
     font["type"] = "string";
+    json::Value icon;
+    icon["type"] = "string";
     json::Value font_size;
     font_size["type"] = "integer";
     font_size["minimum"] = 1;
@@ -380,6 +475,8 @@ json::Value theme_schema() {
     items["fonts"] = object_of(font, "Fonts by name: a .ttf, .otf or .font.json file; \"\" is "
                                      "the built-in font.");
     items["font_sizes"] = object_of(font_size, "Font sizes by name, in pixels.");
+    items["icons"] = object_of(icon, "Icons by name: a .png or .bmp file, a built-in icon such as "
+                                     "\"builtin:radio_checked\", or \"\" for none.");
     items["styles"] = object_of(style_box_schema(), "Style boxes by name.");
 
     json::Value schema;
@@ -497,6 +594,10 @@ std::vector<json::ValidationError> validate_theme(const json::Value& doc) {
                     if (std::string error = font_path_error(value.as_string()); !error.empty()) {
                         errors.push_back({item_path, std::move(error)});
                     }
+                } else if (kind == "icons") {
+                    if (std::string error = icon_path_error(value.as_string()); !error.empty()) {
+                        errors.push_back({item_path, std::move(error)});
+                    }
                 }
             }
         }
@@ -545,6 +646,11 @@ Result<Theme> parse_theme(const json::Value& doc) {
         if (const json::Value* items = value.find("font_sizes"); items != nullptr) {
             for (const auto& [item, size] : items->as_object()) {
                 type.items.font_sizes.emplace(item, static_cast<int>(size.as_int()));
+            }
+        }
+        if (const json::Value* items = value.find("icons"); items != nullptr) {
+            for (const auto& [item, icon] : items->as_object()) {
+                type.items.icons.emplace(item, icon.as_string());
             }
         }
         if (const json::Value* items = value.find("styles"); items != nullptr) {

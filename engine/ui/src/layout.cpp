@@ -137,6 +137,32 @@ public:
             },
             text::kDefaultFontSize, from);
     }
+    std::string icon(const std::string& name, std::string* from = nullptr) const {
+        return find(
+            &ThemeItems::icons, name, control_->theme_override_icons,
+            [](const Theme& /*theme*/) { return std::optional<std::string>(); }, std::string(),
+            from);
+    }
+    // Whether an override, a theme or the default theme has a style box, as Godot's
+    // has_theme_stylebox: Button's hover_pressed only when a theme gives one, CheckBox's always.
+    [[nodiscard]] bool has_style(const std::string& name) const {
+        if (control_->theme_override_styles.contains(name)) {
+            return true;
+        }
+        for (const ThemeLink* link = themes_; link != nullptr; link = link->parent) {
+            for (const std::string_view type : types_) {
+                const auto found = link->theme->types.find(type);
+                if (found != link->theme->types.end() &&
+                    found->second.items.styles.contains(name)) {
+                    return true;
+                }
+            }
+        }
+        return std::ranges::any_of(types_, [&](std::string_view type) {
+            const auto found = own_defaults().find(type);
+            return found != own_defaults().end() && found->second.styles.contains(name);
+        });
+    }
     StyleBox style(const std::string& name, std::string* from = nullptr) const {
         // An override that isn't a style box is left out; check() reports it.
         std::map<std::string, StyleBox, std::less<>> overrides;
@@ -463,6 +489,18 @@ void finish_label(text::Fonts& fonts, LabelWork& work, Vec2 size, bool rtl) {
 
 // ---- Buttons ----
 
+// What a CheckBox or CheckButton draws besides a Button's: the icon showing whether it is on.
+struct CheckWork {
+    std::string icon;         // the icon for its state and whether it is on
+    std::optional<Vec2> size; // that icon's size, if it loads
+    Vec2 largest;             // CheckBox::get_icon_size: the largest of its state's icons, fitted
+    Vec4 color{1.0F, 1.0F, 1.0F, 1.0F};
+    float normal_left = 0.0F; // the normal style's margins, which the icon keeps from the edge
+    float normal_right = 0.0F;
+    int v_offset = 0;
+    bool end = false; // at the end of the button (a CheckButton), not its start
+};
+
 // A Button being laid out: the theme items of the state it is drawn in, and its text, shaped as
 // a label's.
 struct ButtonWork {
@@ -479,6 +517,10 @@ struct ButtonWork {
     int icon_max_width = 0;
     Vec4 icon_color{1.0F, 1.0F, 1.0F, 1.0F};
     std::optional<Vec2> icon; // the icon's size, if it loads
+    // Room kept for a CheckBox's or CheckButton's icon on the left and the right, as Button's
+    // _internal_margin.
+    std::array<float, 2> internal{};
+    std::optional<CheckWork> check;
     LabelWork text;
 };
 
@@ -490,29 +532,21 @@ ButtonWork start_button(const world::Button& button, const Resolver& theme, Draw
     work.button = &button;
     work.focused = focused;
     work.rtl = rtl;
-    // Laid out right to left, a state's "_mirrored" style box when a theme or override has one.
-    const auto state_style = [&](const std::string& name, std::string* from = nullptr) {
-        if (rtl) {
-            std::string mirrored_from;
-            StyleBox mirrored = theme.style(name + "_mirrored", &mirrored_from);
-            if (mirrored_from != "default") {
-                if (from != nullptr) {
-                    *from = mirrored_from;
-                }
-                return mirrored;
-            }
+    // Laid out right to left, a state's "_mirrored" style box when there is one.
+    const auto state_style = [&](const std::string& name) {
+        if (rtl && theme.has_style(name + "_mirrored")) {
+            return theme.style(name + "_mirrored");
         }
-        return theme.style(name, from);
+        return theme.style(name);
     };
     const StyleBox normal = state_style("normal");
     const StyleBox hover = state_style("hover");
     const StyleBox pressed = state_style("pressed");
     const StyleBox disabled = state_style("disabled");
-    // hover_pressed only when a theme or override has one; pressed stands in for it.
-    std::string from;
-    const StyleBox hover_pressed_style = state_style("hover_pressed", &from);
-    const std::optional<StyleBox> hover_pressed =
-        from != "default" ? std::optional(hover_pressed_style) : std::nullopt;
+    // hover_pressed only when there is one; pressed stands in for it.
+    const std::optional<StyleBox> hover_pressed = theme.has_style("hover_pressed")
+                                                      ? std::optional(state_style("hover_pressed"))
+                                                      : std::nullopt;
     std::string_view color = "font_color";
     std::string_view icon = "icon_normal_color";
     switch (mode) {
@@ -646,11 +680,27 @@ Vec2 button_icon_size(const ButtonWork& work, Vec2 room) {
     return {std::round(size.x), std::round(size.y)};
 }
 
-// The width its text gets: its rect less the style's margins and the icon beside the text, in
-// whole pixels and at least 1, as Button's NOTIFICATION_DRAW sets its text buffer's width.
+// The internal margins with h_separation after each that isn't 0, as Button's NOTIFICATION_DRAW
+// keeps them from the text and icon.
+std::array<float, 2> internal_margins(const ButtonWork& work) {
+    const auto h_separation = static_cast<float>(std::max(work.h_separation, 0));
+    std::array<float, 2> out = work.internal;
+    for (float& side : out) {
+        if (side > 0.0F) {
+            side += h_separation;
+        }
+    }
+    return out;
+}
+
+// The width its text gets: its rect less the style's margins, the internal margins and the icon
+// beside the text, in whole pixels and at least 1, as Button's NOTIFICATION_DRAW sets its text
+// buffer's width.
 float button_text_width(const ButtonWork& work, Vec2 size) {
     const std::array<float, 4> m = button_margins(work);
-    const Vec2 room{size.x - m[kLeft] - m[kRight], size.y - m[kTop] - m[kBottom]};
+    const std::array<float, 2> internal = internal_margins(work);
+    const Vec2 room{size.x - m[kLeft] - m[kRight] - internal[0] - internal[1],
+                    size.y - m[kTop] - m[kBottom]};
     float width = room.x;
     if (work.icon && !work.button->text.empty() && work.button->icon_alignment != "center") {
         width -=
@@ -684,7 +734,22 @@ Vec2 button_minimum(const ButtonWork& work) {
         size.y = center ? std::max(size.y, font_height) : size.y + font_height;
     }
     const Vec2 style = work.align ? work.largest : work.style.minimum_size();
-    return {style.x + size.x, style.y + size.y};
+    Vec2 minimum{style.x + size.x, style.y + size.y};
+    // CheckBox::get_minimum_size and CheckButton's: room for the icon beside the content.
+    if (work.check) {
+        const Vec2 icon = work.check->largest;
+        if (icon.x > 0.0F || icon.y > 0.0F) {
+            const Vec2 padding = work.largest;
+            Vec2 content{minimum.x - padding.x, minimum.y - padding.y};
+            if (content.x > 0.0F && icon.x > 0.0F) {
+                content.x += static_cast<float>(std::max(0, work.h_separation));
+            }
+            content.x += icon.x;
+            content.y = std::max(content.y, icon.y);
+            minimum = {content.x + padding.x, content.y + padding.y};
+        }
+    }
+    return minimum;
 }
 
 // ---- Placement ----
@@ -752,6 +817,27 @@ struct Rect {
     Vec2 size;
 };
 
+// A Slider being laid out: its theme items, the icons of its state, and its range.
+struct SliderWork {
+    const world::Slider* slider = nullptr;
+    StyleBox style;
+    StyleBox grabber_area; // or grabber_area_highlight
+    std::string grabber_icon;
+    Vec2 grabber_size;    // that icon's
+    Vec2 minimum_grabber; // the grabber icon's, which the minimum size fits
+    Vec2 drag_grabber;    // the grabber_highlight icon's, which dragging measures with
+    std::string tick_icon;
+    Vec2 tick_size;
+    int grabber_offset = 0;
+    int grabber_max_size = 0;
+    int tick_offset = 0;
+    int tick_max_size = 0;
+    bool center_grabber = false;
+    bool highlighted = false;
+    bool rtl = false;
+    Range range;
+};
+
 enum class Kind : std::uint8_t { None, Box, Grid, Margin, Center, Flow, Panel };
 
 // Which way a control's minimum size depends on its own size.
@@ -796,6 +882,7 @@ struct Node {
     // focused.
     std::array<std::optional<Vec2>, 5> button_textures;
     std::optional<ButtonState> button_state;
+    std::optional<SliderWork> slider;
     // A LineEdit: a copy with its caret column in its text, its theme items, its shaped text and
     // the gui system's state for it.
     std::optional<world::LineEdit> line_edit;
@@ -944,8 +1031,22 @@ struct Builder {
         return found->second.value().get();
     }
 
-    // A texture's size in pixels; nullopt and why if it doesn't load.
+    // A texture's size in pixels: a file's or a built-in icon's; nullopt and why if it doesn't
+    // load, and nullopt for "".
     std::optional<Vec2> texture_size(const std::string& path, std::string* error = nullptr) {
+        if (path.empty()) {
+            return std::nullopt;
+        }
+        if (path.starts_with(kBuiltinPrefix)) {
+            const render::Image* icon = builtin_icon(path);
+            if (icon == nullptr) {
+                if (error != nullptr) {
+                    *error = icon_path_error(path);
+                }
+                return std::nullopt;
+            }
+            return Vec2{static_cast<float>(icon->width), static_cast<float>(icon->height)};
+        }
         auto found = images.find(path);
         if (found == images.end()) {
             found = images.emplace(path, fonts.assets().load<render::Image>(path)).first;
@@ -1056,8 +1157,12 @@ struct Builder {
                 node.depends = Depends::Width;
             }
         }
-        if (const auto* button = ecs.try_get<world::Button>(entity); button != nullptr) {
-            start_button_node(node, *button, resolver("Button"));
+        if (const world::Button* button = button_of(world, entity); button != nullptr) {
+            const std::string_view type = button_type(world, entity);
+            start_button_node(node, *button, resolver(type), type);
+        }
+        if (const auto* slider = ecs.try_get<world::Slider>(entity); slider != nullptr) {
+            start_slider(node, *slider, resolver(slider->vertical ? "VSlider" : "HSlider"));
         }
         if (const auto* edit = ecs.try_get<world::LineEdit>(entity); edit != nullptr) {
             start_line_edit(node, *edit, resolver("LineEdit"));
@@ -1102,7 +1207,8 @@ struct Builder {
         }
     }
 
-    void start_button_node(Node& node, const world::Button& button, const Resolver& theme) {
+    void start_button_node(Node& node, const world::Button& button, const Resolver& theme,
+                           std::string_view type) {
         const DrawMode mode = draw_mode(world, node.entity);
         node.button = start_button(button, theme, mode, shows_focus(world, node.entity), node.rtl);
         node.button_state = ButtonState{
@@ -1112,14 +1218,99 @@ struct Builder {
             std::string error;
             work.icon = texture_size(button.icon, &error);
             if (!work.icon) {
-                problem(node.entity, "/components/Button/icon", error);
+                problem(node.entity, "/components/" + std::string(type) + "/icon", error);
             }
+        }
+        if (type == "CheckBox" || type == "CheckButton") {
+            start_check(node, work, button, theme, type == "CheckButton");
         }
         if (work.text.autowrap == text::Autowrap::Off) {
             shape(fonts, work.text, std::nullopt);
         } else {
             node.depends = Depends::Width;
         }
+    }
+
+    // The icon a CheckBox or CheckButton shows, as its NOTIFICATION_DRAW picks it, and the room
+    // kept for it, as its NOTIFICATION_THEME_CHANGED sets the internal margins.
+    void start_check(const Node& node, ButtonWork& work, const world::Button& button,
+                     const Resolver& theme, bool check_button) {
+        CheckWork& check = work.check.emplace();
+        check.end = check_button;
+        const bool rtl = node.rtl;
+        const bool disabled = button.disabled;
+        std::string on = disabled ? "checked_disabled" : "checked";
+        std::string off = disabled ? "unchecked_disabled" : "unchecked";
+        std::vector<std::string> sized;
+        if (check_button) {
+            if (rtl) {
+                on += "_mirrored";
+                off += "_mirrored";
+            }
+            sized = {on, off};
+        } else {
+            // In a group it is a radio button.
+            if (!button.button_group.empty()) {
+                on = "radio_" + on;
+                off = "radio_" + off;
+            }
+            sized = {"checked",
+                     "unchecked",
+                     "radio_checked",
+                     "radio_unchecked",
+                     "checked_disabled",
+                     "unchecked_disabled",
+                     "radio_checked_disabled",
+                     "radio_unchecked_disabled"};
+        }
+        Vec2 largest;
+        for (const std::string& name : sized) {
+            if (const auto size = texture_size(theme.icon(name)); size) {
+                largest = max(largest, *size);
+            }
+        }
+        check.largest = fit_icon(work, largest);
+        const bool pressed = is_pressed(world, node.entity);
+        check.icon = theme.icon(pressed ? on : off);
+        check.size = texture_size(check.icon);
+        const std::string prefix = check_button ? "button_" : "checkbox_";
+        check.color = theme.color(prefix + (pressed ? "checked_color" : "unchecked_color"));
+        const StyleBox normal = theme.style("normal");
+        check.normal_left = normal.margin(kLeft);
+        check.normal_right = normal.margin(kRight);
+        check.v_offset = theme.constant("check_v_offset");
+        // On the icon's side.
+        work.internal.at(check_button != rtl ? 1 : 0) = check.largest.x;
+    }
+
+    // A Slider's theme items and its value kept in range, as Slider's theme cache and
+    // NOTIFICATION_DRAW read them.
+    void start_slider(Node& node, const world::Slider& slider, const Resolver& theme) {
+        SliderWork& work = node.slider.emplace();
+        work.slider = &slider;
+        work.style = theme.style("slider");
+        const bool editable = slider.editable;
+        work.highlighted =
+            editable && (is_hovered(world, node.entity) || has_focus(world, node.entity));
+        work.grabber_area =
+            theme.style(work.highlighted ? "grabber_area_highlight" : "grabber_area");
+        std::string grabber = work.highlighted ? "grabber_highlight" : "grabber";
+        if (!editable) {
+            grabber = "grabber_disabled";
+        }
+        work.grabber_icon = theme.icon(grabber);
+        work.grabber_size = texture_size(work.grabber_icon).value_or(Vec2{});
+        work.minimum_grabber = texture_size(theme.icon("grabber")).value_or(Vec2{});
+        work.drag_grabber = texture_size(theme.icon("grabber_highlight")).value_or(Vec2{});
+        work.tick_icon = theme.icon("tick");
+        work.tick_size = texture_size(work.tick_icon).value_or(Vec2{});
+        work.center_grabber = theme.constant("center_grabber") != 0;
+        work.grabber_offset = theme.constant("grabber_offset");
+        work.grabber_max_size = theme.constant("grabber_max_size");
+        work.tick_offset = theme.constant("tick_offset");
+        work.tick_max_size = theme.constant("tick_max_size");
+        work.rtl = node.rtl;
+        work.range = range_of(slider);
     }
 
     // A LineEdit's theme items and its text shaped as it shows.
@@ -1459,6 +1650,17 @@ struct Builder {
                               (edit.editable ? node.text_view->normal : node.text_view->read_only)
                                   .minimum_size());
             }
+        }
+        if (node.slider) {
+            // Slider::get_minimum_size, in whole pixels.
+            const SliderWork& work = *node.slider;
+            const Vec2 style = work.style.minimum_size();
+            const Vec2 track{std::trunc(style.x), std::trunc(style.y)};
+            const Vec2 grabber{std::trunc(work.minimum_grabber.x),
+                               std::trunc(work.minimum_grabber.y)};
+            minimum =
+                max(minimum, work.slider->vertical ? Vec2{std::max(track.x, grabber.x), track.y}
+                                                   : Vec2{track.x, std::max(track.y, grabber.y)});
         }
         if (node.texture_button != nullptr && !node.texture_button->ignore_texture_size) {
             // TextureButton::get_minimum_size: the normal texture's size, else the pressed
@@ -2163,6 +2365,16 @@ struct Builder {
         if (node.texture_button != nullptr && node.button_state) {
             texture_button_boxes(node, size, boxes);
         }
+        if (node.slider) {
+            slider_boxes(*node.slider, size, boxes);
+            const SliderWork& work = *node.slider;
+            out.sliders.emplace(node.entity, SliderState{.value = work.range.value,
+                                                         .ratio = range_ratio(work.range),
+                                                         .grabber = work.drag_grabber,
+                                                         .center_grabber = work.center_grabber,
+                                                         .highlighted = work.highlighted,
+                                                         .rtl = work.rtl});
+        }
         if (node.field) {
             finish_line_edit(node, size, boxes);
         }
@@ -2243,12 +2455,48 @@ struct Builder {
             boxes.push_back(
                 {.style = work.focus, .position = {}, .size = size, .texture_size = {}});
         }
+        finish_button_content(work, size, boxes);
+        if (work.check) {
+            check_box(work, *work.check, size, boxes);
+        }
+    }
+
+    // A CheckBox's or CheckButton's icon, as its NOTIFICATION_DRAW draws it after Button's.
+    static void check_box(const ButtonWork& work, const CheckWork& check, Vec2 size,
+                          std::vector<Box>& boxes) {
+        if (!check.size) {
+            return;
+        }
+        const Vec2 largest = check.largest;
+        Vec2 at;
+        // A CheckBox's icon starts the button, a CheckButton's ends it; laid out right to left,
+        // the other way round.
+        const bool right = check.end != work.rtl;
+        at.x = right ? size.x - check.normal_right - largest.x : check.normal_left;
+        // CheckBox rounds down to a whole pixel; CheckButton doesn't.
+        const float y = (size.y - largest.y) / 2.0F;
+        at.y = (check.end ? y : std::trunc(y)) + static_cast<float>(check.v_offset);
+        Box box{.style = {},
+                .position = at,
+                .size = fit_icon(work, *check.size),
+                .texture_size = *check.size};
+        box.style.type = StyleBox::Type::Texture;
+        box.style.texture = check.icon;
+        box.style.modulate_color = check.color;
+        boxes.push_back(std::move(box));
+    }
+
+    // A Button's icon and text, as its NOTIFICATION_DRAW places them.
+    void finish_button_content(ButtonWork& work, Vec2 size, std::vector<Box>& boxes) {
+        const world::Button& button = *work.button;
         if (button.text.empty() && !work.icon) {
             return;
         }
         const std::array<float, 4> m = button_margins(work);
+        const std::array<float, 2> internal = internal_margins(work);
         const auto h_separation = static_cast<float>(std::max(work.h_separation, 0));
-        Vec2 room{size.x - m[kLeft] - m[kRight], size.y - m[kTop] - m[kBottom]};
+        Vec2 room{size.x - m[kLeft] - m[kRight] - internal[0] - internal[1],
+                  size.y - m[kTop] - m[kBottom]};
         const Vec2 element = room;
         const bool center_v = button.vertical_icon_alignment == "center";
         // Laid out right to left, left and right swap for the icon and the text.
@@ -2265,11 +2513,11 @@ struct Builder {
             if (icon.x > 0.0F) {
                 Vec2 at;
                 if (icon_alignment == "center") {
-                    at.x = ((element.x - icon.x) / 2.0F) + m[kLeft];
+                    at.x = ((element.x - icon.x) / 2.0F) + m[kLeft] + internal[0];
                 } else if (icon_alignment == "right") {
-                    at.x = size.x - m[kRight] - icon.x;
+                    at.x = size.x - m[kRight] - internal[1] - icon.x;
                 } else {
-                    at.x = m[kLeft];
+                    at.x = m[kLeft] + internal[0];
                 }
                 if (center_v) {
                     at.y = ((element.y - icon.y) / 2.0F) + m[kTop];
@@ -2332,7 +2580,7 @@ struct Builder {
         if (alignment == "center") {
             at.x = (room.x - width) / 2.0F;
         }
-        at.x += m[kLeft];
+        at.x += m[kLeft] + internal[0];
         if (work.icon && icon_alignment == "left") {
             at.x += element.x - room.x;
         }
@@ -2353,6 +2601,147 @@ struct Builder {
             shown.stretch.push_back(0.0F);
             y += layout.metrics.descent + static_cast<float>(text.line_spacing);
         }
+    }
+
+    // Slider::_fit_icon_size: scaled down to fit max_size each way, in whole pixels.
+    static Vec2 fit_slider_icon(Vec2 size, int max_size) {
+        const int largest = static_cast<int>(std::max(size.x, size.y));
+        if (max_size <= 0 || largest <= max_size) {
+            return size;
+        }
+        const double scale = static_cast<double>(max_size) / largest;
+        return {static_cast<float>(static_cast<int>(size.x * scale)),
+                static_cast<float>(static_cast<int>(size.y * scale))};
+    }
+
+    // A Slider's track, the filled part of it, its ticks and its grabber, as its
+    // NOTIFICATION_DRAW draws them, with Godot's whole-pixel rects.
+    static void slider_boxes(const SliderWork& work, Vec2 rect_size, std::vector<Box>& boxes) {
+        const world::Slider& slider = *work.slider;
+        const int width = static_cast<int>(rect_size.x);
+        const int height = static_cast<int>(rect_size.y);
+        double ratio = range_ratio(work.range);
+        if (std::isnan(ratio)) {
+            ratio = 0.0;
+        }
+        const auto rounded = [](Vec2 v) { return Vec2{std::round(v.x), std::round(v.y)}; };
+        const Vec2 grabber = rounded(fit_slider_icon(work.grabber_size, work.grabber_max_size));
+        const Vec2 tick = rounded(fit_slider_icon(work.tick_size, work.tick_max_size));
+        const auto box = [&](const StyleBox& style, int x, int y, int w, int h) {
+            boxes.push_back({.style = style,
+                             .position = {static_cast<float>(x), static_cast<float>(y)},
+                             .size = {static_cast<float>(w), static_cast<float>(h)},
+                             .texture_size = {}});
+        };
+        const auto icon = [&](const std::string& path, Vec2 texture, Vec2 at, Vec2 size) {
+            if (path.empty() || texture == Vec2{}) {
+                return;
+            }
+            // A negative size flips the texture, as RenderingServer's texture rects do.
+            Box drawn{.style = {},
+                      .position = at,
+                      .size = {std::abs(size.x), std::abs(size.y)},
+                      .texture_size = texture};
+            drawn.style.type = StyleBox::Type::Texture;
+            drawn.style.texture = path;
+            drawn.style.flip_h = size.x < 0.0F;
+            drawn.style.flip_v = size.y < 0.0F;
+            boxes.push_back(std::move(drawn));
+        };
+        const std::string& position = slider.ticks_position;
+        const bool after = position == "bottom_right" || position == "both";
+        const bool before = position == "top_left" || position == "both";
+        const int ticks = slider.tick_count;
+        if (slider.vertical) {
+            const int widget = static_cast<int>(work.style.minimum_size().x);
+            const int side = (width - widget) / 2; // the track's left
+            const double area =
+                static_cast<float>(height) - (work.center_grabber ? 0.0F : grabber.y);
+            const int shift = work.center_grabber ? static_cast<int>(grabber.y / 2.0F) : 0;
+            box(work.style, (width / 2) - (widget / 2), 0, widget, height);
+            box(work.grabber_area, side,
+                static_cast<int>(std::round(height - (area * ratio) - (grabber.y / 2.0F) + shift)),
+                widget, static_cast<int>(std::round((area * ratio) + (grabber.y / 2.0F) - shift)));
+            if (ticks > 1) {
+                const int offset = static_cast<int>((grabber.y / 2.0F) - (tick.y / 2.0F));
+                for (int i = 0; i < ticks; ++i) {
+                    if (!slider.ticks_on_borders && (i == 0 || i + 1 == ticks)) {
+                        continue;
+                    }
+                    const auto at = static_cast<float>(
+                        static_cast<int>((i * area / (ticks - 1)) + offset - shift));
+                    const int right = widget + side + work.tick_offset;
+                    const int left = side - static_cast<int>(tick.x) - work.tick_offset;
+                    if (after) {
+                        icon(work.tick_icon, work.tick_size, {static_cast<float>(right), at}, tick);
+                    }
+                    if (before) {
+                        icon(work.tick_icon, work.tick_size, {static_cast<float>(left), at},
+                             {-tick.x, tick.y});
+                    }
+                    if (position == "center") {
+                        icon(work.tick_icon, work.tick_size,
+                             {static_cast<float>(
+                                  static_cast<int>(((static_cast<float>(width) - tick.x) / 2.0F) +
+                                                   static_cast<float>(work.tick_offset))),
+                              at},
+                             tick);
+                    }
+                }
+            }
+            const int middle = width / 2;
+            const Vec2 at{
+                static_cast<float>(static_cast<int>(static_cast<float>(middle) -
+                                                    (grabber.x / 2.0F) +
+                                                    static_cast<float>(work.grabber_offset))),
+                static_cast<float>(static_cast<int>(height - (ratio * area) - grabber.y + shift))};
+            icon(work.grabber_icon, work.grabber_size, at, grabber);
+            return;
+        }
+        const int widget = static_cast<int>(work.style.minimum_size().y);
+        const int top = (height - widget) / 2; // the track's top
+        const double area = static_cast<float>(width) - (work.center_grabber ? 0.0F : grabber.x);
+        const int shift = work.center_grabber ? static_cast<int>(-grabber.x / 2.0F) : 0;
+        const double along = work.rtl ? 1.0 - ratio : ratio;
+        box(work.style, 0, top, width, widget);
+        const int p = static_cast<int>((area * along) + (grabber.x / 2.0F) + shift);
+        if (work.rtl) {
+            box(work.grabber_area, p, top, width - p, widget);
+        } else {
+            box(work.grabber_area, 0, top, p, widget);
+        }
+        if (ticks > 1) {
+            const int offset = static_cast<int>((grabber.x / 2.0F) - (tick.x / 2.0F));
+            for (int i = 0; i < ticks; ++i) {
+                if (!slider.ticks_on_borders && (i == 0 || i + 1 == ticks)) {
+                    continue;
+                }
+                const auto at =
+                    static_cast<float>(static_cast<int>((i * area / (ticks - 1)) + offset + shift));
+                const int below = widget + top + work.tick_offset;
+                const int above = top - static_cast<int>(tick.y) - work.tick_offset;
+                if (after) {
+                    icon(work.tick_icon, work.tick_size, {at, static_cast<float>(below)}, tick);
+                }
+                if (before) {
+                    icon(work.tick_icon, work.tick_size, {at, static_cast<float>(above)},
+                         {tick.x, -tick.y});
+                }
+                if (position == "center") {
+                    icon(work.tick_icon, work.tick_size,
+                         {at, static_cast<float>(
+                                  static_cast<int>(((static_cast<float>(height) - tick.y) / 2.0F) +
+                                                   static_cast<float>(work.tick_offset)))},
+                         tick);
+                }
+            }
+        }
+        const int middle = height / 2;
+        const Vec2 at{
+            static_cast<float>(static_cast<int>((along * area) + shift)),
+            static_cast<float>(static_cast<int>(static_cast<float>(middle) - (grabber.y / 2.0F) +
+                                                static_cast<float>(work.grabber_offset)))};
+        icon(work.grabber_icon, work.grabber_size, at, grabber);
     }
 
     // A TextureButton's texture for its state and its focused texture over it, as its
@@ -2607,6 +2996,10 @@ std::vector<ThemeItem> theme_items(const world::World& world, text::Fonts& fonts
         for (const auto& [name, fallback] : known.font_sizes) {
             const int size = theme.font_size(name, &from);
             add("font_sizes", name, size, from);
+        }
+        for (const auto& [name, fallback] : known.icons) {
+            std::string icon = theme.icon(name, &from);
+            add("icons", name, std::move(icon), from);
         }
         for (const auto& [name, fallback] : known.styles) {
             const StyleBox style = theme.style(name, &from);
