@@ -10,6 +10,7 @@
 #include <numbers>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <vector>
 
 namespace slash::canvas {
@@ -488,6 +489,11 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         std::size_t first = 0;
         std::size_t count = 0;
         render::Material material;
+        // For FrameContents.
+        entt::entity entity = entt::null;
+        FrameItem::Kind kind = FrameItem::Kind::Sprite;
+        const render::Image* image = nullptr; // white when null
+        std::size_t drawn = 0;                // tiles or particles
     };
     std::vector<Item> items;
     std::vector<render::Vertex2D> vertices;
@@ -506,6 +512,17 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             }
         }
         return current;
+    };
+    FrameContents* contents = options.contents;
+    if (contents != nullptr) {
+        *contents = {};
+    }
+    // Something that can't draw as written, for FrameContents.
+    const auto problem = [&](entt::entity entity, std::string path, std::string message) {
+        if (contents != nullptr) {
+            contents->problems.push_back(
+                {.entity = entity, .path = std::move(path), .message = std::move(message)});
+        }
     };
     const render::Lighting lights = lighting(world, transform_of);
     // How lights shade a sprite or layer: not at all in an unlit world.
@@ -527,6 +544,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         auto texture = this->texture(sprite.texture, filter);
         if (!texture) {
             warn_once(sprite.texture, texture.error().message, "texture");
+            problem(entity, "/components/Sprite2D/texture", texture.error().message);
             continue;
         }
         render::Material material;
@@ -535,6 +553,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             auto made = this->material(sprite, filter, options.time, &light_mode);
             if (!made) {
                 warn_once(sprite.material, made.error().message, "material");
+                problem(entity, "/components/Sprite2D/material", made.error().message);
                 continue;
             }
             material = std::move(made).value();
@@ -542,9 +561,11 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         material.shading = shading_for(light_mode, sprite.light_mask, sprite.z_index);
         if (material.shading.mode != render::LightMode::Unshaded) {
             // Normal and specular maps, left out with a warning if they don't load.
-            for (const auto& [path, slot] :
-                 {std::pair{&sprite.normal_texture, &material.shading.normal_map},
-                  std::pair{&sprite.specular_texture, &material.shading.specular_map}}) {
+            for (const auto& [path, slot, field] :
+                 {std::tuple{&sprite.normal_texture, &material.shading.normal_map,
+                             "normal_texture"},
+                  std::tuple{&sprite.specular_texture, &material.shading.specular_map,
+                             "specular_texture"}}) {
                 if (path->empty()) {
                     continue;
                 }
@@ -552,6 +573,8 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
                     *slot = map.value()->id;
                 } else {
                     warn_once(*path, map.error().message, "texture");
+                    problem(entity, std::string("/components/Sprite2D/") + field,
+                            map.error().message);
                 }
             }
             material.shading.specular = {sprite.specular_color.x, sprite.specular_color.y,
@@ -562,6 +585,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
                                 texture.value()->height);
         if (!quad) {
             warn_once(name_of(entity), quad.error().message, "id");
+            problem(entity, "/components/Sprite2D", quad.error().message);
             continue;
         }
         items.push_back({.z_index = sprite.z_index,
@@ -570,7 +594,11 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
                          .texture = texture.value()->id,
                          .first = vertices.size(),
                          .count = quad.value().size(),
-                         .material = std::move(material)});
+                         .material = std::move(material),
+                         .entity = entity,
+                         .kind = FrameItem::Kind::Sprite,
+                         .image = &*texture.value()->image,
+                         .drawn = 1});
         vertices.insert(vertices.end(), quad.value().begin(), quad.value().end());
         ++sprites;
     }
@@ -588,6 +616,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             resolve_filter(emitter.texture_filter, options.texture_filter);
         // A particle is its texture's frame, or a white pixel.
         render::TextureId texture_id = render::TextureId::None;
+        const render::Image* image = nullptr;
         float frame_w = 1.0F;
         float frame_h = 1.0F;
         float sheet_w = 1.0F;
@@ -598,9 +627,11 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             auto texture = this->texture(emitter.texture, filter);
             if (!texture) {
                 warn_once(emitter.texture, texture.error().message, "texture", kEvent);
+                problem(entity, "/components/CPUParticles2D/texture", texture.error().message);
                 continue;
             }
             texture_id = texture.value()->id;
+            image = &*texture.value()->image;
             sheet_w = static_cast<float>(texture.value()->width);
             sheet_h = static_cast<float>(texture.value()->height);
             frame_w = sheet_w / static_cast<float>(hframes);
@@ -615,6 +646,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             auto made = this->material(look, filter, options.time, &light_mode);
             if (!made) {
                 warn_once(emitter.material, made.error().message, "material", kEvent);
+                problem(entity, "/components/CPUParticles2D/material", made.error().message);
                 continue;
             }
             material = std::move(made).value();
@@ -666,7 +698,11 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
                          .texture = texture_id,
                          .first = first,
                          .count = vertices.size() - first,
-                         .material = std::move(material)});
+                         .material = std::move(material),
+                         .entity = entity,
+                         .kind = FrameItem::Kind::Particles,
+                         .image = image,
+                         .drawn = live.size()});
         particles += live.size();
     }
 
@@ -681,12 +717,19 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         auto set = tile_set(layer.tile_set);
         if (!set) {
             warn_once(layer.tile_set, set.error().message, "tile_set", kEvent);
+            problem(entity, "/components/TileMapLayer/tile_set", set.error().message);
             continue;
         }
         const LayerCells& cached =
             cells(entity, layer, *set.value(), tile_sets_.at(layer.tile_set).version());
         if (!cached.error.empty()) {
             warn_once(name_of(entity), "TileMapLayer" + cached.error, "id", kEvent);
+            // The error starts with the bad value's JSON Pointer in the layer.
+            const std::size_t split = cached.error.find(": ");
+            problem(entity,
+                    "/components/TileMapLayer" +
+                        (split == std::string::npos ? "" : cached.error.substr(0, split)),
+                    split == std::string::npos ? cached.error : cached.error.substr(split + 2));
             continue;
         }
         world::Transform2D transform;
@@ -718,19 +761,22 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             auto texture = this->texture(source.texture, filter);
             if (!texture) {
                 warn_once(source.texture, texture.error().message, "texture", kEvent);
+                problem(entity, "/components/TileMapLayer/tile_set",
+                        source.texture + ": " + texture.error().message);
                 continue;
             }
             const auto [rx, ry, rw, rh] = tile_region(source, tile.atlas);
             const auto width = static_cast<int>(texture.value()->width);
             const auto height = static_cast<int>(texture.value()->height);
             if (rx + rw > width || ry + rh > height) {
-                warn_once(layer.tile_set,
-                          "the tile " + tile.source + ":" + std::to_string(tile.atlas.x) + "," +
-                              std::to_string(tile.atlas.y) + " at [" + std::to_string(rx) + ", " +
-                              std::to_string(ry) + ", " + std::to_string(rw) + ", " +
-                              std::to_string(rh) + "] goes outside the " + std::to_string(width) +
-                              "x" + std::to_string(height) + " texture " + source.texture,
-                          "tile_set", kEvent);
+                std::string message =
+                    "the tile " + tile.source + ":" + std::to_string(tile.atlas.x) + "," +
+                    std::to_string(tile.atlas.y) + " at [" + std::to_string(rx) + ", " +
+                    std::to_string(ry) + ", " + std::to_string(rw) + ", " + std::to_string(rh) +
+                    "] goes outside the " + std::to_string(width) + "x" + std::to_string(height) +
+                    " texture " + source.texture;
+                warn_once(layer.tile_set, message, "tile_set", kEvent);
+                problem(entity, "/components/TileMapLayer/tile_set", std::move(message));
                 continue;
             }
             if (run == kNoRun || items[run].texture != texture.value()->id) {
@@ -743,7 +789,11 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
                                  .texture = texture.value()->id,
                                  .first = vertices.size(),
                                  .count = 0,
-                                 .material = std::move(material)});
+                                 .material = std::move(material),
+                                 .entity = entity,
+                                 .kind = FrameItem::Kind::Tiles,
+                                 .image = &*texture.value()->image,
+                                 .drawn = 0});
                 run = items.size() - 1;
             }
             // The tile's region, centered on its cell.
@@ -764,6 +814,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             vertices.insert(vertices.end(), {top_left, top_right, bottom_left, top_right,
                                              bottom_right, bottom_left});
             items[run].count += 6;
+            ++items[run].drawn;
             ++tiles;
         }
     }
@@ -794,8 +845,8 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
     const Vec2 viewport = options.width > 0.0F && options.height > 0.0F
                               ? Vec2{options.width, options.height}
                               : ui::settings(world).viewport;
-    const ui::DrawList controls =
-        ui::draw_calls(ui::layout(world, *fonts, viewport), world, *fonts);
+    ui::Layout layout = ui::layout(world, *fonts, viewport);
+    const ui::DrawList controls = ui::draw_calls(layout, world, *fonts);
     ui::DrawList overlay;
     if (options.overlay != nullptr) {
         overlay = ui::draw_calls(ui::layout(*options.overlay, *fonts, viewport), *options.overlay,
@@ -821,6 +872,59 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
     };
     const std::vector<std::optional<render::TextureId>> control_textures = textures_of(controls);
     const std::vector<std::optional<render::TextureId>> overlay_textures = textures_of(overlay);
+
+    if (contents != nullptr) {
+        // Each item's draws together: a layer's runs, a control's boxes and text.
+        const auto add = [&](FrameItem::Kind kind, entt::entity entity) -> FrameItem& {
+            if (contents->items.empty() || contents->items.back().entity != entity ||
+                contents->items.back().kind != kind) {
+                contents->items.push_back(
+                    {.kind = kind, .entity = entity, .count = 0, .pieces = {}});
+            }
+            return contents->items.back();
+        };
+        for (const Item& item : items) {
+            FrameItem& out = add(item.kind, item.entity);
+            out.count += item.drawn;
+            const auto from = vertices.begin() + static_cast<std::ptrdiff_t>(item.first);
+            out.pieces.push_back(
+                {.pixels = item.image != nullptr ? item.image->pixels.data() : nullptr,
+                 .width = item.image != nullptr ? item.image->width : 0,
+                 .height = item.image != nullptr ? item.image->height : 0,
+                 .field = {},
+                 .vertices = {from, from + static_cast<std::ptrdiff_t>(item.count)}});
+        }
+        for (const ui::DrawSpan& span : controls.spans) {
+            const ui::DrawCall& call = controls.calls[span.call];
+            if (!control_textures[span.call]) {
+                continue;
+            }
+            const auto from = call.vertices.begin() + static_cast<std::ptrdiff_t>(span.first);
+            FramePiece piece{.pixels = nullptr,
+                             .width = 0,
+                             .height = 0,
+                             .field = call.field,
+                             .vertices = {from, from + static_cast<std::ptrdiff_t>(span.count)}};
+            if (call.source == ui::DrawCall::Source::Atlas) {
+                const text::AtlasPage& page = fonts->pages().at(call.page);
+                piece.pixels = page.rgba.data();
+                piece.width = page.width;
+                piece.height = page.height;
+            } else if (call.source == ui::DrawCall::Source::Texture) {
+                const auto found = textures_.find(
+                    {call.texture, resolve_filter(call.filter, options.texture_filter)});
+                if (found == textures_.end()) {
+                    continue;
+                }
+                const render::Image& image = *found->second.image;
+                piece.pixels = image.pixels.data();
+                piece.width = image.width;
+                piece.height = image.height;
+            }
+            add(FrameItem::Kind::Control, span.entity).pieces.push_back(std::move(piece));
+        }
+        contents->layout = std::move(layout);
+    }
 
     // The null device stands in for a window it doesn't have, as draw_empty_frame allows: the
     // sprites and tiles are checked and counted, and nothing is drawn.

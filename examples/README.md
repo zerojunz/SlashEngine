@@ -35,6 +35,7 @@ engine. Copy from them.
 | [replays](replays/) | `replay.record`, `replay.stop`, `replay.run` and `replay.seek`: record a played run to a `.replay.json` file, play it back exactly in another session, seek the moment something happened and the tick before, and see where a changed game first differs |
 | [debug-overlay](debug-overlay/) | The F3 panel over a running game (frame stats, Pause, Step, the bodies under the mouse) and collision shapes drawn as Godot's Visible Collision Shapes, in the panel and in `frame.capture` |
 | [headless-tests](headless-tests/) | `.test.json` tests and `test.run` (`slash-cli test`): each test opens a scene and runs commands with what their replies must hold; a run returns only the checks that failed, such as a reply that doesn't match or a warning logged |
+| [frame-summary](frame-summary/) | `frame.summary`: what the window shows as data instead of an image (what shows where and how much, what is covered, offscreen or transparent, what can't draw) and a text map of the frame |
 
 ## What an example holds
 
