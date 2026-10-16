@@ -41,6 +41,10 @@ checks it.
 | `physics_2d.angular_damp` | No | `1` | How fast rigid bodies stop turning, per second, combined the same way |
 | `gui.theme` | No | | A [`.theme.json`](scene-format.md#themes) file every control uses after its own and its parents' themes, before Godot's default theme, as Godot's `gui/theme/custom`. `project validate` checks that it exists and `export` checks and ships it |
 | `gui.allow_system_fallback` | No | `true` | Let text take characters its fonts and their [fallbacks](scene-format.md#fonts) lack from fonts installed on the machine. Off, text lays out the same on every machine, as on the web, which has none; a `.font.json` file's `allow_system_fallback` turns them off for one font |
+| `audio.bus_layout` | No | | A [`.bus_layout.json`](scene-format.md#bus-layouts) file with the buses players mix into, as Godot's `audio/buses/default_bus_layout`. Without one, everything plays through Master. `project validate` checks it and `export` checks and ships it |
+| `audio.mix_rate` | No | `44100` | Frames of sound mixed per second, 8000 to 192000, as Godot's `audio/driver/mix_rate`. Sounds at other rates are resampled |
+| `audio.output_latency` | No | `15` | Milliseconds of sound queued ahead of the speakers, 1 to 500, as Godot's `audio/driver/output_latency`. More is steadier when frames run late; less answers sooner |
+| `audio.panning_strength_2d` | No | `0.5` | How far [`AudioStreamPlayer2D`](scene-format.md#audio) sounds pan left and right, 0 to 4, as Godot's `audio/general/2d_panning_strength`. Each player's `panning_strength` multiplies it |
 | `input` | No | Godot's `ui_*` actions | [Input actions](#input-actions) by name, each with the events that press it |
 | `input_devices.pointing.emulate_mouse_from_touch` | No | `true` | A touch also clicks the left mouse button and dragging it moves the mouse, so mouse code works on phones, as Godot's setting of the same name |
 | `input_devices.pointing.emulate_touch_from_mouse` | No | `false` | A left click also touches the screen and dragging with it drags a finger, so touch code can be tried with a mouse |

@@ -1,6 +1,7 @@
 #include "slash/command/builtin.hpp"
 
 #include "slash/animation/animation.hpp"
+#include "slash/audio/audio.hpp"
 #include "slash/canvas/light.hpp"
 #include "slash/canvas/material.hpp"
 #include "slash/canvas/particles.hpp"
@@ -379,6 +380,12 @@ Reply schema_get(Session& session, const json::Value& params) {
     }
     if (kind == "theme") {
         return Reply::success(ui::theme_schema());
+    }
+    if (kind == "audio") {
+        return Reply::success(audio::stream_file_schema());
+    }
+    if (kind == "bus_layout") {
+        return Reply::success(audio::bus_layout_schema());
     }
     if (name.empty()) {
         return param_error(code::kInvalidParams, "/name",
@@ -1839,6 +1846,251 @@ Reply input_actions(Session& session, const json::Value& params) {
     return Reply::success(std::move(result));
 }
 
+// ---- Audio ----
+
+constexpr double kMaxCaptureSeconds = 10.0;
+constexpr std::int64_t kDefaultCaptureSlices = 10;
+
+audio::Server& audio_server(Session& session) {
+    audio::Server* server = audio::server(session.world());
+    SLASH_ASSERT(server != nullptr, "sessions install audio");
+    return *server;
+}
+
+// Decibels to a tenth, which is finer than an ear can tell and the same on every machine.
+json::Value decibels(double db) {
+    return short_number(std::round(db * 10.0) / 10.0);
+}
+
+// A level in dB, or null for silence: Godot's floor of -200 dB, give or take the tiny offset
+// it adds to a peak.
+json::Value level(float db) {
+    constexpr float kSilent = -199.0F;
+    return db > kSilent ? decibels(db) : json::Value(nullptr);
+}
+
+json::Value bus_json(const audio::Server& server, int index) {
+    const audio::BusSettings& bus = server.layout().buses[static_cast<std::size_t>(index)];
+    json::Value item;
+    item["name"] = bus.name;
+    item["volume_db"] = decibels(bus.volume_db);
+    const audio::Frame peak = server.bus_peak_db(index);
+    item["peak_db"] = level(std::max(peak.left, peak.right));
+    if (bus.solo) {
+        item["solo"] = true;
+    }
+    if (bus.mute) {
+        item["mute"] = true;
+    }
+    if (bus.bypass_effects) {
+        item["bypass_effects"] = true;
+    }
+    if (index > 0 && bus.send != "Master") {
+        item["send"] = bus.send;
+    }
+    if (!bus.effects.empty()) {
+        json::Array effects;
+        for (const audio::EffectSlot& slot : bus.effects) {
+            json::Value effect;
+            effect["type"] = slot.type;
+            if (!slot.enabled) {
+                effect["enabled"] = false;
+            }
+            effects.push_back(std::move(effect));
+        }
+        item["effects"] = std::move(effects);
+    }
+    return item;
+}
+
+// The index of a bus, or an error naming the closest one.
+Result<int> find_bus(const audio::Server& server, std::string_view name) {
+    const int index = server.bus_index(name);
+    if (index >= 0) {
+        return index;
+    }
+    std::vector<std::string_view> names;
+    for (const audio::BusSettings& bus : server.layout().buses) {
+        names.emplace_back(bus.name);
+    }
+    std::string message = "no bus is named " + quoted(name);
+    add_hint(message, name, names);
+    return make_error(ErrorCode::NotFound, std::move(message));
+}
+
+Reply audio_state(Session& session, const json::Value& params) {
+    const audio::Server& server = audio_server(session);
+    json::Value result;
+    result["mix_rate"] = server.mix_rate();
+    json::Array buses;
+    for (std::size_t i = 0; i < server.layout().buses.size(); ++i) {
+        buses.push_back(bus_json(server, static_cast<int>(i)));
+    }
+    result["buses"] = std::move(buses);
+    std::set<std::string, std::less<>> wanted;
+    if (const json::Value* ids = params.find("ids"); ids != nullptr) {
+        for (const json::Value& id : ids->as_array()) {
+            wanted.insert(id.as_string());
+        }
+    }
+    json::Array players;
+    for (const audio::PlayerInfo& info : audio::players(session.world())) {
+        if (!wanted.empty() && !wanted.contains(info.id)) {
+            continue;
+        }
+        json::Value item;
+        item["id"] = info.id;
+        item["kind"] = info.kind;
+        item["stream"] = info.stream;
+        item["bus"] = info.bus;
+        item["voices"] = info.voices;
+        if (info.voices > 0) {
+            item["position"] = rounded(info.position);
+        }
+        if (info.length > 0.0) {
+            item["length"] = rounded(info.length);
+        }
+        if (info.paused) {
+            item["paused"] = true;
+        }
+        item["volume"] = rounded(json::Array{info.volume.left, info.volume.right});
+        if (!info.error.empty()) {
+            item["error"] = info.error;
+        }
+        players.push_back(std::move(item));
+    }
+    result["players"] = std::move(players);
+    return Reply::success(std::move(result));
+}
+
+Reply audio_capture(Session& session, const json::Value& params) {
+    const std::string bus = params.find("bus") != nullptr ? text(params, "bus") : "Master";
+    const json::Value* seconds = params.find("seconds");
+    const std::string path = text(params, "path");
+    if (!path.empty()) {
+        if (!session.allowed(Capability::Filesystem)) {
+            json::Value data;
+            data["capability"] = "filesystem";
+            data["path"] = "/path";
+            return Reply::failure(code::kPermissionDenied,
+                                  "/path: writing a file needs the \"filesystem\" capability, "
+                                  "which this session does not grant",
+                                  std::move(data));
+        }
+        if (!path.ends_with(".wav") || path.size() == 4) {
+            return param_error(code::kInvalidArgument, "/path",
+                               R"(captures are .wav files, e.g. "build/capture.wav")");
+        }
+    }
+    auto captured = audio::capture(
+        session.world(), bus, seconds != nullptr ? seconds->as_double() : 1.0,
+        static_cast<int>(integer(params, "slices", kDefaultCaptureSlices)), !path.empty());
+    if (!captured) {
+        return param_error(captured.error(), "/bus");
+    }
+    const audio::Capture& capture = captured.value();
+    json::Value result;
+    result["seconds"] = rounded(capture.seconds);
+    result["peak_db"] = level(capture.peak_db);
+    result["rms_db"] = level(capture.rms_db);
+    json::Array slices;
+    for (const float peak : capture.slice_peaks_db) {
+        slices.push_back(level(peak));
+    }
+    result["slices"] = std::move(slices);
+    if (!path.empty()) {
+        auto file = session.resolve_path(path);
+        if (!file) {
+            return param_error(file.error(), "/path");
+        }
+        if (!session.dry_running()) {
+            const std::string wav =
+                audio::encode_wav(capture.frames, audio_server(session).mix_rate());
+            if (auto written = write_file(file.value(), wav); !written) {
+                return Reply::failure(written.error());
+            }
+        }
+        result["path"] = path;
+    }
+    return Reply::success(std::move(result));
+}
+
+// The entity a player command names, or why it can't play.
+Result<entt::entity> audio_player(const world::World& world, std::string_view id) {
+    const entt::entity entity = world.find(id);
+    if (entity == entt::null) {
+        return make_error(ErrorCode::NotFound, "");
+    }
+    if (!world.ecs().any_of<world::AudioStreamPlayer, world::AudioStreamPlayer2D>(entity)) {
+        return make_error(ErrorCode::InvalidArgument,
+                          quoted(id) + " has no AudioStreamPlayer or AudioStreamPlayer2D");
+    }
+    return entity;
+}
+
+Reply audio_play_or_stop(Session& session, const json::Value& params, bool play) {
+    world::World& world = session.world();
+    const std::string id = text(params, "id");
+    auto entity = audio_player(world, id);
+    if (!entity) {
+        return entity.error().code == ErrorCode::NotFound
+                   ? unknown_entity(world, id, "/id")
+                   : param_error(code::kInvalidParams, "/id", entity.error().message);
+    }
+    if (play) {
+        const json::Value* from = params.find("from");
+        audio::play(world, entity.value(), from != nullptr ? from->as_double() : 0.0);
+    } else {
+        audio::stop(world, entity.value());
+    }
+    json::Value result;
+    result["tick"] = world.tick();
+    return Reply::success(std::move(result));
+}
+
+Reply audio_set_bus(Session& session, const json::Value& params) {
+    audio::Server& server = audio_server(session);
+    auto found = find_bus(server, text(params, "bus"));
+    if (!found) {
+        return param_error(found.error(), "/bus");
+    }
+    const int bus = found.value();
+    const json::Value* effect = params.find("effect");
+    const json::Value* enabled = params.find("enabled");
+    if (effect != nullptr) {
+        const auto count = static_cast<std::int64_t>(
+            server.layout().buses[static_cast<std::size_t>(bus)].effects.size());
+        if (effect->as_int() >= count) {
+            return param_error(code::kInvalidArgument, "/effect",
+                               quoted(text(params, "bus")) + " has " + std::to_string(count) +
+                                   (count == 1 ? " effect" : " effects"));
+        }
+        if (enabled == nullptr) {
+            return param_error(code::kInvalidParams, "/enabled",
+                               R"(missing required property; "effect" needs "enabled")");
+        }
+    } else if (enabled != nullptr) {
+        return param_error(code::kInvalidParams, "/effect",
+                           R"(missing required property; "enabled" needs "effect")");
+    }
+    if (const json::Value* volume = params.find("volume_db"); volume != nullptr) {
+        server.set_bus_volume_db(bus, static_cast<float>(volume->as_double()));
+    }
+    if (const json::Value* mute = params.find("mute"); mute != nullptr) {
+        server.set_bus_mute(bus, mute->as_bool());
+    }
+    if (const json::Value* solo = params.find("solo"); solo != nullptr) {
+        server.set_bus_solo(bus, solo->as_bool());
+    }
+    if (const json::Value* bypass = params.find("bypass_effects"); bypass != nullptr) {
+        server.set_bus_bypass_effects(bus, bypass->as_bool());
+    }
+    if (effect != nullptr) {
+        server.set_bus_effect_enabled(bus, static_cast<int>(effect->as_int()), enabled->as_bool());
+    }
+    return Reply::success(bus_json(server, bus));
+}
+
 // ---- Lights ----
 
 // Three decimals are finer than 8-bit color.
@@ -2941,17 +3193,19 @@ void register_builtin_commands(Registry& registry) {
     json::Value kind = property("string", "\"scene\", \"prefab\", \"frames\" (.frames.json), "
                                           "\"material\" (.material.json), \"animation\" "
                                           "(.anim.json), \"tileset\" (.tileset.json), \"font\" "
-                                          "(.font.json), \"theme\" (.theme.json) or "
+                                          "(.font.json), \"theme\" (.theme.json), \"audio\" "
+                                          "(.audio.json), \"bus_layout\" (.bus_layout.json) or "
                                           "\"storyboard\" for those files, \"component\" for "
                                           "one component's fields, \"command\" for a command's "
                                           "params.");
-    kind["enum"] = json::Array{"scene", "prefab", "frames",     "material",  "animation", "tileset",
-                               "font",  "theme",  "storyboard", "component", "command"};
+    kind["enum"] =
+        json::Array{"scene", "prefab", "frames",     "material",   "animation", "tileset", "font",
+                    "theme", "audio",  "bus_layout", "storyboard", "component", "command"};
     registry.add({
         .name = "schema.get",
         .description = "Returns a JSON Schema: for scene, prefab, .frames.json, .material.json, "
-                       ".anim.json, .tileset.json, .font.json, .theme.json or storyboard files, "
-                       "one component or one command.",
+                       ".anim.json, .tileset.json, .font.json, .theme.json, .audio.json, "
+                       ".bus_layout.json or storyboard files, one component or one command.",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema(
@@ -3479,6 +3733,84 @@ void register_builtin_commands(Registry& registry) {
         .effect = Effect::Read,
         .params = params_schema({{"names", names_property("Only these actions. Default: all.")}}),
         .handler = input_actions,
+    });
+
+    registry.add({
+        .name = "audio.state",
+        .description = "Returns the buses (volume, peak dB over the last mix step, null if silent, "
+                       "flags, send, effects) and each player with an ID: stream, bus, voices, "
+                       "position and length in seconds, volume after 2D distance and panning.",
+        .capabilities = {Read},
+        .effect = Effect::Read,
+        .params = params_schema({{"ids", names_property("Only these players. Default: all.")}}),
+        .handler = audio_state,
+    });
+    json::Value capture_seconds = property("number", "How far back, in seconds. Default: 1.");
+    capture_seconds["minimum"] = 0;
+    capture_seconds["maximum"] = kMaxCaptureSeconds;
+    registry.add({
+        .name = "audio.capture",
+        .description = "Measures what a bus played over the last seconds (up to 10): peak and RMS "
+                       "dB and the peak of each slice of that time, null if silent. Hear it with "
+                       "\"path\", a .wav file to write (needs the filesystem capability).",
+        .capabilities = {Read},
+        .effect = Effect::Read,
+        .params =
+            params_schema({{"bus", id_property("The bus. Default: \"Master\".")},
+                           {"seconds", std::move(capture_seconds)},
+                           {"slices", integer_property("Equal slices to report the peak of.", 0,
+                                                       100, kDefaultCaptureSlices)},
+                           {"path", property("string", "A .wav file to write the sound to.")}}),
+        .handler = audio_capture,
+    });
+    json::Value play_from = property("number", "Seconds into the stream. Default: 0.");
+    play_from["minimum"] = 0;
+    registry.add({
+        .name = "audio.play",
+        .description = "Plays an AudioStreamPlayer or AudioStreamPlayer2D at the next tick, as "
+                       "Godot's play(): it restarts, or adds a voice up to max_polyphony. "
+                       "Returns the tick it plays at.",
+        .capabilities = {Run},
+        .effect = Effect::Read,
+        .params = params_schema(
+            {{"id", id_property("The player's entity.")}, {"from", std::move(play_from)}}, {"id"}),
+        .handler =
+            [](Session& session, const json::Value& params) {
+                return audio_play_or_stop(session, params, true);
+            },
+    });
+    registry.add({
+        .name = "audio.stop",
+        .description = "Stops an AudioStreamPlayer or AudioStreamPlayer2D at the next tick, as "
+                       "Godot's stop(). Returns the tick it stops at.",
+        .capabilities = {Run},
+        .effect = Effect::Read,
+        .params = params_schema({{"id", id_property("The player's entity.")}}, {"id"}),
+        .handler =
+            [](Session& session, const json::Value& params) {
+                return audio_play_or_stop(session, params, false);
+            },
+    });
+    json::Value bus_volume = property("number", "Gain in dB.");
+    bus_volume["minimum"] = -80;
+    bus_volume["maximum"] = 24;
+    registry.add({
+        .name = "audio.set_bus",
+        .description = "Changes a bus while the game runs, as Godot's AudioServer setters: volume, "
+                       "mute, solo, bypass_effects, or one effect's enabled. The bus layout file "
+                       "is unchanged. Returns the bus.",
+        .capabilities = {Run},
+        .effect = Effect::Read,
+        .params = params_schema(
+            {{"bus", id_property("The bus, e.g. \"Master\".")},
+             {"volume_db", std::move(bus_volume)},
+             {"mute", property("boolean", "Silences it.")},
+             {"solo", property("boolean", "Plays only solo buses and what they send to.")},
+             {"bypass_effects", property("boolean", "Skips its effects.")},
+             {"effect", integer_property("An effect's index on the bus, with enabled.", 0, 15, 0)},
+             {"enabled", property("boolean", "Turns that effect on or off.")}},
+            {"bus"}),
+        .handler = audio_set_bus,
     });
 
     json::Value set_components =

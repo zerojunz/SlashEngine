@@ -473,6 +473,55 @@ SLASH_COMPONENT(CPUParticles2D, emitting, amount, lifetime, one_shot, preprocess
                 hue_variation_curve, anim_speed_min, anim_speed_max, anim_speed_curve,
                 anim_offset_min, anim_offset_max, anim_offset_curve)
 
+// ---- Audio, as Godot's AudioStreamPlayer nodes.
+
+// Plays a sound through a bus, as Godot's AudioStreamPlayer: the same wherever the entity is.
+// Setting playing starts or stops it, and the audio system sets it back to false when the sound
+// ends, emitting finished.
+struct AudioStreamPlayer {
+    std::string stream; // project path of a .wav, .ogg, .mp3 or .audio.json file
+    float volume_db = 0.0F;
+    float pitch_scale = 1.0F;
+    bool playing = false;
+    bool autoplay = false;      // play once the audio system first sees it
+    bool stream_paused = false; // hold the sound where it is
+    int max_polyphony = 1;      // sounds it may play at once
+    std::string bus = "Master";
+
+    friend bool operator==(const AudioStreamPlayer&, const AudioStreamPlayer&) = default;
+};
+SLASH_COMPONENT(AudioStreamPlayer, stream, volume_db, pitch_scale, playing, autoplay, stream_paused,
+                max_polyphony, bus)
+
+// Plays a sound at the entity's Transform2D, as Godot's AudioStreamPlayer2D: quieter with
+// distance from the listener and panned by where it is on screen.
+struct AudioStreamPlayer2D {
+    std::string stream; // project path of a .wav, .ogg, .mp3 or .audio.json file
+    float volume_db = 0.0F;
+    float pitch_scale = 1.0F;
+    bool playing = false;
+    bool autoplay = false;
+    bool stream_paused = false;
+    float max_distance = 2000.0F; // pixels; silent beyond
+    float attenuation = 1.0F;     // how fast it fades with distance, as an easing curve
+    int max_polyphony = 1;
+    float panning_strength = 1.0F;
+    std::string bus = "Master";
+
+    friend bool operator==(const AudioStreamPlayer2D&, const AudioStreamPlayer2D&) = default;
+};
+SLASH_COMPONENT(AudioStreamPlayer2D, stream, volume_db, pitch_scale, playing, autoplay,
+                stream_paused, max_distance, attenuation, max_polyphony, panning_strength, bus)
+
+// Where 2D sounds are heard from, as Godot's AudioListener2D, while current; with none, the
+// middle of the screen.
+struct AudioListener2D {
+    bool current = false;
+
+    friend bool operator==(const AudioListener2D&, const AudioListener2D&) = default;
+};
+SLASH_COMPONENT(AudioListener2D, current)
+
 // Registers the components above, with their docs.
 void register_builtin_components(ComponentRegistry& registry);
 

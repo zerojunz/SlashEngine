@@ -214,6 +214,7 @@ json::Value project_schema() {
     properties["gui"] = std::move(gui);
     properties["input"] = input::map_schema();
     properties["input_devices"] = input::settings_schema();
+    properties["audio"] = audio::settings_schema();
     return schema;
 }
 
@@ -251,6 +252,11 @@ std::vector<json::ValidationError> validate_project(const json::Value& project) 
     }
     if (const json::Value* input = project.find("input"); input != nullptr) {
         auto found = input::validate_map(*input, "/input");
+        errors.insert(errors.end(), std::make_move_iterator(found.begin()),
+                      std::make_move_iterator(found.end()));
+    }
+    if (const json::Value* audio = project.find("audio"); audio != nullptr) {
+        auto found = audio::validate_settings(*audio, "/audio");
         errors.insert(errors.end(), std::make_move_iterator(found.begin()),
                       std::make_move_iterator(found.end()));
     }
@@ -330,6 +336,9 @@ Result<Project> parse_project(const json::Value& project) {
     }
     if (const json::Value* devices = project.find("input_devices"); devices != nullptr) {
         out.input_devices = input::parse_settings(*devices);
+    }
+    if (const json::Value* audio = project.find("audio"); audio != nullptr) {
+        out.audio = audio::parse_settings(*audio);
     }
     return out;
 }

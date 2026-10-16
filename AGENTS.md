@@ -59,7 +59,7 @@ only what differs from the prefab. `entity.create` takes `"extends"`, and `prefa
 entity to a prefab file. `tests/data/game` has an example.
 
 ```bash
-$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, tileset, font, theme)
+$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, tileset, font, theme, audio, bus_layout)
 $cli scene validate tests/data/basic.scene.json     # every error, with its JSON Pointer path
 $cli scene format level.scene.json                  # rewrite in canonical form
 $cli scene format --check level.scene.json          # exit 1 if not canonical
@@ -67,7 +67,7 @@ $cli scene format --check level.scene.json          # exit 1 if not canonical
 
 Validate after editing a scene or prefab by hand, and format before committing one. Both
 commands take `.prefab.json`, `.frames.json`, `.material.json`, `.anim.json`, `.tileset.json`,
-`.font.json` and `.theme.json` files too; validating a scene also checks each tile map layer against its tile
+`.font.json`, `.theme.json`, `.audio.json` and `.bus_layout.json` files too; validating a scene also checks each tile map layer against its tile
 set and that its controls lay out as written.
 
 ## Assets and hot reload
@@ -76,7 +76,8 @@ set and that its controls lay out as written.
 (`assets.load<json::Value>("data/tuning.json")`); `.json`, `.txt` and `.csv` load out of the box,
 `canvas::add_asset_types` adds textures (`.png`, `.bmp`), `.frames.json`, `.material.json` and
 `.tileset.json` files, `animation::add_asset_types` adds `.anim.json` files,
-`text::add_asset_types` adds fonts (`.ttf`, `.otf`, `.font.json`), and games add types
+`text::add_asset_types` adds fonts (`.ttf`, `.otf`, `.font.json`), `audio::add_asset_types`
+adds sounds (`.wav`, `.ogg`, `.mp3`), `.audio.json` and `.bus_layout.json` files, and games add types
 with `add_type`. Sessions and games own an `asset::Assets`, and prefab files are read through it.
 `Session::poll_assets()` reloads changed files and updates prefab instances (keeping overrides);
 every command polls first, and `slash-cli run` and `serve` poll between ticks. `asset.list` shows
@@ -171,7 +172,7 @@ $cli export linux --project path/to/game --test        # build, lay out and run 
 ```
 
 `slash-cli export <preset>` validates the project, its presets and every scene, prefab, texture,
-font, `.frames.json` and `.material.json` file, stages them as the game's data, configures
+font, sound, `.frames.json`, `.material.json`, `.audio.json` and `.bus_layout.json` file, stages them as the game's data, configures
 `export/CMakeLists.txt` with the engine sources, builds, signs and installs into
 `<project>/build/export/<preset>`. Its work folder
 and full build log are in `<project>/.slash/export/<preset>/`; a failure reports the step and the
@@ -427,6 +428,27 @@ event handler, and so does `slash-cli run`. Agents send events with `input.injec
 `input.state` and `input.actions`; sessions put input back with the world when a command fails or
 is a dry run. `examples/input-actions` moves a player with keys, a stick and taps.
 
+## Audio
+
+`engine/audio` is sound, as Godot's AudioServer, on miniaudio's decoders. `.wav` files decode to
+samples when they load (integer samples scaled as Godot's importer scales them), and `.ogg` and
+`.mp3` files decode as they play. A `.audio.json` file (`$cli schema audio`) gives a sound
+Godot's loop settings, or picks one of several at random each play, as Godot's
+`AudioStreamRandomizer` (`src/stream.cpp`, with Godot 4.4's cubic resampler). `audio::Server`
+(`src/server.cpp`) is the mixer: playbacks mix into buses in steps of 512 frames, with a 64-frame
+lookahead, volume ramps and stop fades; each bus runs its effects (`src/effects.cpp`: 20 of Godot's
+`servers/audio/effects`, each ported from the one of the same name) and sends to an earlier bus,
+down to Master. A `.bus_layout.json` file
+(`$cli schema bus_layout`; project.json's `audio.bus_layout`) is Godot's `default_bus_layout.tres`.
+`AudioStreamPlayer`, `AudioStreamPlayer2D` and `AudioListener2D` are components, played by the
+`audio` system (priority 1200, last), which mixes each tick's share of frames, so the same ticks
+make the same sound, and hands them to a sink: `audio::SdlOutput` in a window, nowhere headless.
+Sessions keep ten seconds of each bus for `audio.capture`, which measures it (peak, RMS and
+slices in dB) or writes a `.wav` file; `audio.state`, `audio.play`, `audio.stop` and
+`audio.set_bus` do the rest, and sessions put the buses back with the world when a command fails
+or is a dry run. Example sounds are made in code without libm, so outputs match everywhere.
+`examples/audio` plays music and footsteps panned around a listener.
+
 ## Add a component
 
 Components are plain structs reflected with one macro, at namespace scope in the struct's own
@@ -487,7 +509,8 @@ CI rejects unformatted code and any clang-tidy finding.
   files and folder listings, child processes), `render` (the render device over SDL3's GPU API,
   the null device, HLSL shaders, material programs and 2D light shading), `asset` (asset handles, loaders, hot reload),
   `world` (EnTT world, components, scenes and prefabs), `input` (input events, action maps,
-  the input state and reading SDL's events), `canvas` (sprites, `.frames.json`
+  the input state and reading SDL's events), `audio` (sound files and streams, the mixer, buses
+  and effects, players and SDL's audio output), `canvas` (sprites, `.frames.json`
   animations, `.material.json` materials, `.tileset.json` tile maps, 2D lights and shadows, CPU
   particles and drawing them), `text` (fonts, shaping, line breaking, carets and selections, and glyph atlases), `ui`
   (controls, containers and themes: layout, draw calls, buttons, focus and text fields), `animation` (`.anim.json` keyframe

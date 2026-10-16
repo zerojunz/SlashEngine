@@ -1,3 +1,4 @@
+#include "slash/audio/audio.hpp"
 #include "slash/command/builtin.hpp"
 #include "slash/command/command.hpp"
 #include "slash/command/session.hpp"
@@ -1154,11 +1155,11 @@ TEST_CASE("engine.describe lists systems in the order they run") {
     world.add_system("movement", [](world::World& /*w*/, double /*dt*/) {},
                      {.doc = "Moves things by their velocity."});
     world.add_system("controls", [](world::World& /*w*/, double /*dt*/) {}, {.priority = -1});
-    // Every session applies input first and plays animations, steps 2D physics and runs
-    // particles with built-in systems that run late.
+    // Every session applies input first and plays animations, steps 2D physics, runs particles
+    // and plays sound with built-in systems that run late.
     CHECK(*engine.ok("engine.describe").find("systems") ==
           parse(R"(["input", "gui", "controls", "movement", "animation_player", "physics2d",
-                    "animated_sprite_2d", "cpu_particles_2d"])"));
+                    "animated_sprite_2d", "cpu_particles_2d", "audio"])"));
     CHECK(*engine.ok("engine.describe", R"({"full": true})").find("systems") == parse(R"([
         {"name": "input", "doc": "Applies the input events queued since the last tick.",
          "priority": -1000},
@@ -1175,7 +1176,10 @@ TEST_CASE("engine.describe lists systems in the order they run") {
         {"name": "animated_sprite_2d",
          "doc": "Plays each AnimatedSprite2D's animation on its Sprite2D.", "priority": 1000},
         {"name": "cpu_particles_2d",
-         "doc": "Emits, moves and ages each CPUParticles2D's particles.", "priority": 1100}
+         "doc": "Emits, moves and ages each CPUParticles2D's particles.", "priority": 1100},
+        {"name": "audio",
+         "doc": "Plays each AudioStreamPlayer and AudioStreamPlayer2D and mixes the tick's sound through the bus layout.",
+         "priority": 1200}
     ])"));
 }
 
@@ -1960,4 +1964,82 @@ TEST_CASE("log.tail returns recent log lines as objects") {
     const json::Value errors = engine.ok("log.tail", R"({"level": "error"})");
     REQUIRE(errors.find("lines")->size() == 1);
     CHECK(errors.find("lines")->as_array()[0].find("msg")->as_string() == "third");
+}
+
+TEST_CASE("audio commands play players, report buses and capture what was heard") {
+    const std::string root = "command_audio_project";
+    REQUIRE(slash::platform::create_directories(root).ok());
+    const std::vector<slash::audio::Frame> hum(44100, slash::audio::Frame{0.5F, 0.5F});
+    REQUIRE(
+        slash::platform::write_file(root + "/hum.wav", slash::audio::encode_wav(hum, 44100)).ok());
+    command::SessionOptions options;
+    options.project_root = root;
+    Engine engine(options);
+    engine.ok("entity.create",
+              R"({"id": "music", "components": {"AudioStreamPlayer": {"stream": "hum.wav"}}})");
+    engine.ok("entity.create", R"({"id": "rock"})");
+
+    CHECK(engine.ok("audio.state") == parse(R"({"mix_rate": 44100,
+        "buses": [{"name": "Master", "volume_db": 0, "peak_db": null}], "players": []})"));
+    CHECK(engine.ok("audio.play", R"({"id": "music"})") == parse(R"({"tick": 0})"));
+    engine.ok("step", R"({"ticks": 3})");
+    json::Value state = engine.ok("audio.state");
+    CHECK(*state.find("buses") == parse(R"([{"name": "Master", "volume_db": 0, "peak_db": -6}])"));
+    const json::Value& player = state.find("players")->as_array().at(0);
+    CHECK(player.find("id")->as_string() == "music");
+    CHECK(player.find("kind")->as_string() == "AudioStreamPlayer");
+    CHECK(player.find("voices")->as_int() == 1);
+    CHECK(player.find("length")->as_double() == 1.0);
+    CHECK(player.find("position")->as_double() > 0.04);
+    CHECK(*player.find("volume") == parse("[1, 1]"));
+    CHECK(engine.ok("audio.state", R"({"ids": ["other"]})").find("players")->size() == 0);
+
+    // Peak and RMS in dB to a tenth, and the peak of each slice of the time asked for.
+    CHECK(engine.ok("audio.capture", R"({"seconds": 0.02, "slices": 2})") ==
+          parse(R"({"seconds": 0.02, "peak_db": -6, "rms_db": -6, "slices": [-6, -6]})"));
+    engine.fails("audio.capture", R"({"bus": "Mastr"})", command::code::kNotFound);
+    engine.fails("audio.capture", R"({"path": "capture.mp3"})", command::code::kInvalidArgument);
+    const json::Value written = engine.ok("audio.capture", R"({"path": "out/capture.wav"})");
+    CHECK(written.find("path")->as_string() == "out/capture.wav");
+    const auto wav = slash::platform::read_file(root + "/out/capture.wav");
+    REQUIRE(wav.ok());
+    auto heard = slash::audio::decode_sound(wav.value(), "capture.wav");
+    REQUIRE(heard.ok());
+    CHECK(heard.value().channels == 2);
+    CHECK(heard.value().frames > 2000);
+
+    // Bus changes last until the layout is loaded again; a failed batch puts them back.
+    CHECK(engine.ok("audio.set_bus", R"({"bus": "Master", "volume_db": -12, "mute": true})") ==
+          parse(R"({"name": "Master", "volume_db": -12, "peak_db": -6, "mute": true})"));
+    const auto typo =
+        engine.fails("audio.set_bus", R"({"bus": "Mastre"})", command::code::kNotFound);
+    CHECK(contains(typo.message, "did you mean \"Master\""));
+    engine.fails("audio.set_bus", R"({"bus": "Master", "effect": 0, "enabled": true})",
+                 command::code::kInvalidArgument);
+    engine.fails("audio.set_bus", R"({"bus": "Master", "enabled": true})",
+                 command::code::kInvalidParams);
+    engine.call("batch", R"({"commands": [
+        {"command": "audio.set_bus", "params": {"bus": "Master", "volume_db": 0, "mute": false}},
+        {"command": "entity.destroy", "params": {"id": "nobody"}}]})");
+    CHECK(engine.ok("audio.state").find("buses")->as_array().at(0).find("mute") != nullptr);
+    engine.ok("audio.set_bus", R"({"bus": "Master", "volume_db": 0, "mute": false})");
+
+    CHECK(engine.ok("audio.stop", R"({"id": "music"})") == parse(R"({"tick": 3})"));
+    engine.ok("step");
+    CHECK(engine.ok("audio.state").find("players")->as_array().at(0).find("voices")->as_int() == 0);
+    const auto rock =
+        engine.fails("audio.play", R"({"id": "rock"})", command::code::kInvalidParams);
+    CHECK(contains(rock.message, "has no AudioStreamPlayer or AudioStreamPlayer2D"));
+    engine.fails("audio.play", R"({"id": "musik"})", command::code::kNotFound);
+
+    CHECK(engine.ok("schema.get", R"({"kind": "bus_layout"})").find("title")->as_string() ==
+          "SlashEngine bus layout");
+    CHECK(engine.ok("schema.get", R"({"kind": "audio"})").find("title")->as_string() ==
+          "SlashEngine audio stream");
+
+    // Writing a capture needs the filesystem capability.
+    options.capabilities = {Capability::Read, Capability::Run};
+    Engine reader(options);
+    reader.fails("audio.capture", R"({"path": "x.wav"})", command::code::kPermissionDenied);
+    CHECK(reader.ok("audio.capture").find("seconds")->as_double() == 0.0);
 }

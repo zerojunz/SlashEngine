@@ -1,6 +1,7 @@
 #include "slash/command/session.hpp"
 
 #include "slash/animation/animation.hpp"
+#include "slash/audio/audio.hpp"
 #include "slash/canvas/canvas.hpp"
 #include "slash/core/assert.hpp"
 #include "slash/core/json_schema.hpp"
@@ -73,6 +74,20 @@ input::Settings input_settings(const json::Value& project) {
     return input::parse_settings(*settings);
 }
 
+// How long sessions keep each bus's sound for audio.capture.
+constexpr double kAudioHistorySeconds = 10.0;
+
+// The project's audio settings, or the defaults if they don't validate.
+audio::Settings audio_settings(const json::Value& project) {
+    const json::Value* settings = project.is_object() ? project.find("audio") : nullptr;
+    audio::Settings out;
+    if (settings != nullptr && audio::validate_settings(*settings, "").empty()) {
+        out = audio::parse_settings(*settings);
+    }
+    out.history_seconds = kAudioHistorySeconds;
+    return out;
+}
+
 // The viewport controls are laid out in: the project's window size, or the default.
 ui::Settings ui_settings(const json::Value& project) {
     ui::Settings settings;
@@ -121,13 +136,15 @@ Session::Session(const world::ComponentRegistry& component_registry,
     world_.set_file_reader(
         [this](std::string_view path) { return assets_.read(path, world::kPrefabType); });
     // Textures, fonts, sprite frames, animation libraries and the systems that play
-    // AnimatedSprite2D and AnimationPlayer, so step animates, 2D physics and input actions.
+    // AnimatedSprite2D and AnimationPlayer, so step animates, 2D physics, input actions and
+    // sound.
     const json::Value project = read_project(options_.project_root);
     canvas::install(world_, assets_);
     ui::set_settings(world_, ui_settings(project));
     animation::install(world_, assets_);
     physics2d::install(world_, physics_settings(project));
     input::install(world_, input_map(project), input_settings(project));
+    audio::install(world_, assets_, audio_settings(project));
     if (options_.capture_logs) {
         log::set_sink([this](log::Level /*level*/, std::string_view line) {
             std::fwrite(line.data(), 1, line.size(), stderr);
@@ -218,6 +235,7 @@ Reply Session::call(std::string_view name, const json::Value& params) {
     // focus, hover and buttons being pressed are as they were.
     const input::Snapshot input_before = input::save(world_);
     const ui::Snapshot ui_before = ui::save(world_);
+    const audio::Snapshot audio_before = audio::save(world_);
     const std::string path_before = scene_path_;
     const world::World::Counters counters_before = world_.counters();
     edited_ = false;
@@ -249,6 +267,7 @@ Reply Session::call(std::string_view name, const json::Value& params) {
         restore(before.saved);
         input::restore(world_, input_before);
         ui::restore(world_, ui_before);
+        audio::restore(world_, audio_before);
         scene_path_ = path_before;
         world_.set_counters(counters_before);
         if (!reply.ok) {

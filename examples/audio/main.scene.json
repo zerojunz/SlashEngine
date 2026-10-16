@@ -1,0 +1,36 @@
+{
+  "entities": {
+    "ears": {
+      "components": {
+        "AudioListener2D": {
+          "current": true
+        },
+        "Transform2D": {
+          "position": [320.0, 180.0]
+        }
+      }
+    },
+    "footsteps": {
+      "components": {
+        "AudioStreamPlayer2D": {
+          "bus": "Sfx",
+          "max_polyphony": 2,
+          "stream": "audio/steps.audio.json"
+        },
+        "Transform2D": {
+          "position": [120.0, 180.0]
+        }
+      }
+    },
+    "music": {
+      "components": {
+        "AudioStreamPlayer": {
+          "autoplay": true,
+          "bus": "Music",
+          "stream": "audio/theme.wav"
+        }
+      }
+    }
+  },
+  "format": 1
+}

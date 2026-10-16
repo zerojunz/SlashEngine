@@ -140,6 +140,12 @@ environment variables, never from the file.
   game does (`jump`, `move_left`) and bind keys, mouse buttons, gamepad buttons and sticks to it;
   gameplay code reads actions, never keys. Try them with `input_inject` (keys, clicks, touches,
   sticks or actions by name) and `step`, then `input_state`.
+- `audio/` (or any folder): `.wav`, `.ogg` and `.mp3` sounds, `.audio.json` files
+  (`slash-cli schema audio`) that loop one or pick one of several at random, and the
+  `.bus_layout.json` file (`slash-cli schema bus_layout`) that `project.json`'s
+  `audio.bus_layout` names: buses such as Music and Sfx with their volumes and effects.
+  `AudioStreamPlayer` and `AudioStreamPlayer2D` components play them. Check sound with
+  `audio_state` and `audio_capture` (levels in dB, slice by slice) rather than by ear.
 - `storyboard/`: the game's facts as typed entries (`slash-cli schema storyboard`), and
   `journal.jsonl`, the record of who changed them. Commit both.
 )";

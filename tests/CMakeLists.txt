@@ -2,6 +2,7 @@ add_executable(slash_tests
     test_main.cpp
     test_animation.cpp
     test_asset.cpp
+    test_audio.cpp
     test_canvas.cpp
     test_command.cpp
     test_exporter.cpp
@@ -33,7 +34,7 @@ add_executable(slash_tests
     test_ui_containers.cpp
     test_world.cpp)
 target_link_libraries(slash_tests PRIVATE
-    slash::animation slash::asset slash::canvas slash::command slash::core slash::exporter slash::input slash::physics2d
+    slash::animation slash::asset slash::audio slash::canvas slash::command slash::core slash::exporter slash::input slash::physics2d
     slash::platform slash::render slash::runtime slash::server slash::storyboard slash::text slash::ui slash::world doctest::doctest SDL3::SDL3-static)
 # doctest forward-declares std::ostream by default, which breaks string_view checks on recent
 # MSVC standard libraries; include the real headers instead.
@@ -274,6 +275,39 @@ if(SLASH_BUILD_TOOLS)
         COMMAND slash-cli scene validate ${scenes}/invalid.theme.json)
     set_tests_properties(cli_scene_validate_invalid_theme PROPERTIES
         PASS_REGULAR_EXPRESSION "\"message\":\"Label has no colors item \\\\\"font_colour\\\\\"; did you mean \\\\\"font_color\\\\\"[?]\",\"path\":\"/types/Label/colors/font_colour\"")
+
+    add_test(NAME cli_schema_audio COMMAND slash-cli schema audio)
+    set_tests_properties(cli_schema_audio PROPERTIES
+        PASS_REGULAR_EXPRESSION "\"title\": \"SlashEngine audio stream\"")
+    add_test(NAME cli_schema_bus_layout COMMAND slash-cli schema bus_layout)
+    set_tests_properties(cli_schema_bus_layout PROPERTIES
+        PASS_REGULAR_EXPRESSION "\"title\": \"SlashEngine bus layout\"")
+    # The audio example's bus layout and randomizer, which must stay valid and canonical.
+    set(audio_example ${PROJECT_SOURCE_DIR}/examples/audio)
+    add_test(NAME cli_scene_validate_bus_layout
+        COMMAND slash-cli scene validate ${audio_example}/audio/default.bus_layout.json)
+    set_tests_properties(cli_scene_validate_bus_layout PROPERTIES
+        PASS_REGULAR_EXPRESSION "{\"buses\":3,\"valid\":true}")
+    add_test(NAME cli_scene_format_bus_layout
+        COMMAND slash-cli scene format --check ${audio_example}/audio/default.bus_layout.json)
+    set_tests_properties(cli_scene_format_bus_layout PROPERTIES
+        PASS_REGULAR_EXPRESSION "{\"canonical\":true}")
+    add_test(NAME cli_scene_validate_audio_stream
+        COMMAND slash-cli scene validate ${audio_example}/audio/steps.audio.json)
+    set_tests_properties(cli_scene_validate_audio_stream PROPERTIES
+        PASS_REGULAR_EXPRESSION "{\"valid\":true}")
+    add_test(NAME cli_scene_format_audio_stream
+        COMMAND slash-cli scene format --check ${audio_example}/audio/steps.audio.json)
+    set_tests_properties(cli_scene_format_audio_stream PROPERTIES
+        PASS_REGULAR_EXPRESSION "{\"canonical\":true}")
+    add_test(NAME cli_scene_format_audio_scene
+        COMMAND slash-cli scene format --check ${audio_example}/main.scene.json)
+    set_tests_properties(cli_scene_format_audio_scene PROPERTIES
+        PASS_REGULAR_EXPRESSION "{\"canonical\":true}")
+    add_test(NAME cli_scene_validate_invalid_bus_layout
+        COMMAND slash-cli scene validate ${scenes}/invalid.bus_layout.json)
+    set_tests_properties(cli_scene_validate_invalid_bus_layout PROPERTIES
+        PASS_REGULAR_EXPRESSION "got \\\\\"revreb\\\\\"; did you mean \\\\\"reverb\\\\\"[?]\",\"path\":\"/buses/1/effects/0/type\"")
 
     add_test(NAME cli_schema_storyboard COMMAND slash-cli schema storyboard)
     set_tests_properties(cli_schema_storyboard PROPERTIES

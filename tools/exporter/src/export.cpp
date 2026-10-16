@@ -6,6 +6,7 @@
 #include "steps.hpp"
 
 #include "slash/animation/animation.hpp"
+#include "slash/audio/audio.hpp"
 #include "slash/canvas/material.hpp"
 #include "slash/canvas/sprite_frames.hpp"
 #include "slash/canvas/tilemap.hpp"
@@ -125,7 +126,7 @@ bool skipped_folder(const fs::path& name) {
 }
 
 // The files a game reads at run time: scenes, prefabs, the assets sprites draw, animations, tile
-// sets and fonts.
+// sets, fonts and sounds.
 enum class DataFile : std::uint8_t {
     None,
     Scene,
@@ -137,7 +138,10 @@ enum class DataFile : std::uint8_t {
     Texture,
     FontSettings,
     Font,
-    Theme
+    Theme,
+    Sound,
+    AudioStream,
+    BusLayout
 };
 
 DataFile data_file(std::string_view name) {
@@ -168,6 +172,15 @@ DataFile data_file(std::string_view name) {
     if (name.ends_with(ui::kThemeSuffix)) {
         return DataFile::Theme;
     }
+    if (name.ends_with(audio::kStreamSuffix)) {
+        return DataFile::AudioStream;
+    }
+    if (name.ends_with(audio::kBusLayoutSuffix)) {
+        return DataFile::BusLayout;
+    }
+    if (audio::is_sound_path(name)) {
+        return DataFile::Sound;
+    }
     if (text::is_font_path(name)) {
         return DataFile::Font;
     }
@@ -175,7 +188,8 @@ DataFile data_file(std::string_view name) {
 }
 
 // Every problem in one of a game's files; none for a file it can use.
-std::vector<json::ValidationError> check_data_file(DataFile kind, std::string_view text,
+std::vector<json::ValidationError> check_data_file(DataFile kind, std::string_view file,
+                                                   std::string_view text,
                                                    const world::ComponentRegistry& components,
                                                    const world::FileReader& reader) {
     if (kind == DataFile::Texture) {
@@ -187,6 +201,12 @@ std::vector<json::ValidationError> check_data_file(DataFile kind, std::string_vi
     if (kind == DataFile::Font) {
         if (auto font = text::check_font_data(text); !font) {
             return {{"", font.error().message}};
+        }
+        return {};
+    }
+    if (kind == DataFile::Sound) {
+        if (auto sound = audio::decode_sound(text, file); !sound) {
+            return {{"", sound.error().message}};
         }
         return {};
     }
@@ -208,6 +228,10 @@ std::vector<json::ValidationError> check_data_file(DataFile kind, std::string_vi
         return text::validate_font(parsed.value());
     case DataFile::Theme:
         return ui::validate_theme(parsed.value());
+    case DataFile::AudioStream:
+        return audio::validate_stream_file(parsed.value());
+    case DataFile::BusLayout:
+        return audio::validate_bus_layout(parsed.value());
     case DataFile::Prefab:
         errors = world::validate_prefab(components, parsed.value(), reader);
         break;
@@ -226,7 +250,8 @@ std::vector<json::ValidationError> check_data_file(DataFile kind, std::string_vi
 }
 
 // Copies project.json and every scene, prefab, texture, .frames.json, .material.json, .anim.json,
-// .tileset.json, font and .theme.json file into data, checking each on the way.
+// .tileset.json, font, .theme.json, sound, .audio.json and .bus_layout.json file into data,
+// checking each on the way.
 bool stage_data(const fs::path& project_dir, const runtime::Project& project, const fs::path& data,
                 Failure& failure) {
     std::error_code error;
@@ -265,7 +290,7 @@ bool stage_data(const fs::path& project_dir, const runtime::Project& project, co
         found_main = found_main || file == project.main_scene;
         auto text = platform::read_file(entry.path().string());
         const std::vector<json::ValidationError> errors =
-            text ? check_data_file(kind, text.value(), components, reader)
+            text ? check_data_file(kind, file, text.value(), components, reader)
                  : std::vector<json::ValidationError>{{"", text.error().message}};
         for (const json::ValidationError& problem : errors) {
             json::Value item;
