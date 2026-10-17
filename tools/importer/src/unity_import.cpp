@@ -7,8 +7,10 @@
 #include "slash/canvas/debug_draw.hpp"
 #include "slash/canvas/tilemap.hpp"
 #include "slash/core/json.hpp"
+#include "slash/core/math.hpp"
 #include "slash/importer/unity_yaml.hpp"
 #include "slash/platform/file.hpp"
+#include "slash/render/image.hpp"
 #include "slash/runtime/project.hpp"
 #include "slash/storyboard/storyboard.hpp"
 #include "slash/world/component_registry.hpp"
@@ -164,6 +166,12 @@ constexpr std::array kKnownScripts{
     KnownScript{"1511ccae7919cfc46b603b9b337fdc94", "BaseInput", kEventWhy},
     KnownScript{"56666c5a40171f54783dd416a44f42bf", "Physics2DRaycaster", kEventWhy},
     KnownScript{"c49b4cc203aa6414fae5c798d1d0e7d6", "PhysicsRaycaster", kEventWhy},
+    // URP's 2D lights and shadow casters convert on objects outside a Canvas.
+    KnownScript{"073797afb82c5a1438f328866b10b3f0", "Light2D",
+                "2D lights shade sprites and tile maps, not controls"},
+    KnownScript{"7db70e0ea77f5ac47a8f4565a9406397", "ShadowCaster2D", "controls cast no shadows"},
+    KnownScript{"38f48a8d66b2adc46887f23a3a88ac01", "CompositeShadowCaster2D",
+                "controls cast no shadows"},
 };
 
 // Keys every MonoBehaviour has, which aren't a script's own values.
@@ -1106,6 +1114,7 @@ private:
         std::array<double, 4> border{}; // pixels kept at their size when sliced: left, bottom,
                                         // right and top, as Unity's x, y, z and w
         std::string filter;
+        std::string normal_map; // its texture's normal map's path in the destination, if any
         // Its physics shape: outlines in pixels around the middle of its rect, y up.
         std::vector<Outline> shape;
         bool fallback_shape = true; // Unity makes one from the alpha when it has none
@@ -1178,6 +1187,18 @@ private:
         base.filter =
             importer->integer_at("textureSettings.filterMode", 1) == 0 ? "nearest" : "linear";
         base.fallback_shape = importer->flag_at("spriteGenerateFallbackPhysicsShape", true);
+        // A secondary texture named _NormalMap is the sprites' normal map, laid out as the
+        // texture, as Godot's CanvasTexture takes one.
+        if (const Node* secondary = importer->path("spriteSheet.secondaryTextures")) {
+            for (const Node& entry : secondary->items) {
+                const auto ref = ref_at(entry, "texture");
+                const Asset* map = ref && !ref->null() ? asset_of(ref->guid) : nullptr;
+                if (entry.string_at("name") == "_NormalMap" && map != nullptr &&
+                    is_texture_file(extension_of(map->path))) {
+                    base.normal_map = destination(map->path);
+                }
+            }
+        }
         const Node* sheet = importer->path("spriteSheet.sprites");
         if (importer->integer_at("spriteMode", 1) == 2 && sheet != nullptr) {
             // Each sprite's file ID: its internalID, or (before Unity 2019.3) the ID its name has
@@ -2402,9 +2423,19 @@ private:
             case kPlatformEffector2D:
                 effector = &component;
                 break;
-            case kMonoBehaviour:
-                mono_behaviour(component, ctx);
+            case kMonoBehaviour: {
+                const KnownScript* known = known_script(component);
+                const std::string_view name = known != nullptr ? known->name : std::string_view();
+                if (name == "Light2D") {
+                    light_2d(component, ctx, out);
+                } else if (name == "ShadowCaster2D") {
+                    shadow_caster(component, ctx, out);
+                } else if (name != "CompositeShadowCaster2D") {
+                    // A composite caster groups the casters under it, which cast on their own.
+                    mono_behaviour(component, ctx);
+                }
                 break;
+            }
             case kAnimator:
                 out.animator = &component;
                 break;
@@ -2587,6 +2618,9 @@ private:
         const bool flip_y = body.flag_at("m_FlipY");
         if (found != nullptr) {
             sprite["texture"] = found->texture;
+            if (!found->normal_map.empty()) {
+                sprite["normal_texture"] = found->normal_map;
+            }
             if (!found->whole) {
                 sprite["region"] = json::Array{found->region[0], found->region[1], found->region[2],
                                                found->region[3]};
@@ -3149,9 +3183,669 @@ private:
         }
     }
 
-    // --- UI ---
-
     using Color = std::array<double, 4>;
+
+    // --- 2D lights ---
+
+    // URP's 2D lights shade as Godot's do with a CanvasModulate for the global light and a
+    // PointLight2D in add mode for each other light: what they light gets its color times the
+    // ambient color plus each light's color, energy and texture there. Each light's shape and
+    // falloff become its texture, white with the light's strength in its alpha.
+    static constexpr std::uint32_t kLightTextureSize = 256;
+
+    // How strong a 2D light is at an attenuation t, from 1 where it is full to 0 where it stops,
+    // as URP's falloff curve: t raised to a power the falloff strength sets, 1 at the default
+    // strength of 0.5. Higher strengths dim the light sooner, softening its edge.
+    static double falloff(double t, double strength) {
+        const double base = 0.25 + (std::clamp(strength, 0.0, 1.0) / 2.0);
+        if (base == 0.5) {
+            return std::clamp(t, 0.0, 1.0); // linear, and the same everywhere without libm
+        }
+        return std::pow(std::clamp(t, 0.0, 1.0), std::log(1.0 - base) / std::log(base));
+    }
+
+    // Writes a light texture once: white, each pixel's alpha what alpha gives for the pixel's
+    // middle.
+    void add_light_texture(const std::string& path, std::uint32_t width, std::uint32_t height,
+                           const std::function<double(double x, double y)>& alpha) {
+        if (!light_textures_.insert(path).second) {
+            return;
+        }
+        render::Image image{.width = width, .height = height, .pixels = {}};
+        image.pixels.reserve(std::size_t{width} * height * 4);
+        for (std::uint32_t y = 0; y < height; ++y) {
+            for (std::uint32_t x = 0; x < width; ++x) {
+                const double value =
+                    alpha(static_cast<double>(x) + 0.5, static_cast<double>(y) + 0.5);
+                image.pixels.insert(
+                    image.pixels.end(),
+                    {255, 255, 255,
+                     static_cast<std::uint8_t>(std::lround(std::clamp(value, 0.0, 1.0) * 255.0))});
+            }
+        }
+        if (auto png = render::encode_png(image)) {
+            add_file(path, std::move(png).value());
+        }
+    }
+
+    // A spot light's texture, its outer radius half the texture's size: full inside the inner
+    // radius (a share of the outer) and the cone's inner angle, gone past the outer radius and
+    // angle, the cone pointing up as Unity's points along the object's y axis.
+    std::string spot_texture(double inner, double inner_angle, double outer_angle,
+                             double strength) {
+        const auto percent = [](double value) {
+            return static_cast<int>(std::lround(std::clamp(value, 0.0, 1.0) * 100.0));
+        };
+        const int inner_percent = percent(inner);
+        const int strength_percent = percent(strength);
+        const auto degrees = [](double value) {
+            return static_cast<int>(std::lround(std::clamp(value, 0.0, 360.0)));
+        };
+        const int cone_out = degrees(outer_angle);
+        const int cone_in = std::min(degrees(inner_angle), cone_out);
+        const bool cone = cone_out < 360;
+        std::string name =
+            "spot_" + std::to_string(inner_percent) + "_" + std::to_string(strength_percent);
+        if (cone) {
+            name.append("_")
+                .append(std::to_string(cone_in))
+                .append("_")
+                .append(std::to_string(cone_out));
+        }
+        const std::string path = destination("Assets/lights/" + name + ".png");
+        const double radius_in = inner_percent / 100.0;
+        const double half_in = cone_in / 2.0;
+        const double half_out = cone_out / 2.0;
+        const double soft = strength_percent / 100.0;
+        constexpr double kHalf = kLightTextureSize / 2.0;
+        add_light_texture(path, kLightTextureSize, kLightTextureSize, [&](double x, double y) {
+            const double dx = (x - kHalf) / kHalf;
+            const double dy = (y - kHalf) / kHalf;
+            const double distance = std::sqrt((dx * dx) + (dy * dy));
+            double t = 0.0;
+            if (radius_in >= 1.0) {
+                t = distance <= 1.0 ? 1.0 : 0.0;
+            } else {
+                t = (1.0 - distance) / (1.0 - radius_in);
+            }
+            if (cone) {
+                const double angle = distance > 0.0
+                                         ? std::acos(std::clamp(-dy / distance, -1.0, 1.0)) *
+                                               180.0 / std::numbers::pi
+                                         : 0.0;
+                if (half_out <= half_in) {
+                    t *= angle <= half_out ? 1.0 : 0.0;
+                } else {
+                    t *= std::clamp((half_out - angle) / (half_out - half_in), 0.0, 1.0);
+                }
+            }
+            return falloff(t, soft);
+        });
+        return path;
+    }
+
+    struct LightTexture {
+        std::string path;
+        double scale = 1.0;             // the texture's pixels per light pixel
+        std::array<double, 2> middle{}; // the middle of what it covers, in pixels
+    };
+
+    // A freeform light's texture: full inside its polygon (in pixels), fading over falloff_size
+    // pixels outside it. Named by a hash of its shape, so a prefab's light and its instances' share
+    // one.
+    LightTexture freeform_texture(const std::vector<std::array<double, 2>>& polygon,
+                                  double falloff_size, double strength) {
+        double left = std::numeric_limits<double>::max();
+        double top = left;
+        double right = std::numeric_limits<double>::lowest();
+        double bottom = right;
+        std::uint64_t hash = 14695981039346656037ULL;
+        const auto mix = [&hash](double value) {
+            const std::string text = json::write(json::Value(tidy(value)));
+            for (const char c : text) {
+                hash = (hash ^ static_cast<unsigned char>(c)) * 1099511628211ULL;
+            }
+            hash = (hash ^ ',') * 1099511628211ULL;
+        };
+        for (const auto& [x, y] : polygon) {
+            left = std::min(left, x);
+            right = std::max(right, x);
+            top = std::min(top, y);
+            bottom = std::max(bottom, y);
+            mix(x);
+            mix(y);
+        }
+        mix(falloff_size);
+        mix(strength);
+        left -= falloff_size;
+        top -= falloff_size;
+        right += falloff_size;
+        bottom += falloff_size;
+        const double scale =
+            std::max({right - left, bottom - top, 1.0}) / static_cast<double>(kLightTextureSize);
+        const auto pixels = [scale](double size) {
+            return static_cast<std::uint32_t>(std::max(1L, std::lround(size / scale)));
+        };
+        const std::uint32_t width = pixels(right - left);
+        const std::uint32_t height = pixels(bottom - top);
+        std::string hex;
+        for (int shift = 60; shift >= 32; shift -= 4) {
+            hex.push_back("0123456789abcdef"[(hash >> static_cast<unsigned>(shift)) & 0xFU]);
+        }
+        LightTexture out{.path = destination("Assets/lights/freeform_" + hex + ".png"),
+                         .scale = scale,
+                         .middle = {left + (width * scale / 2.0), top + (height * scale / 2.0)}};
+        add_light_texture(out.path, width, height, [&](double x, double y) {
+            const double px = left + (x * scale);
+            const double py = top + (y * scale);
+            bool inside = false;
+            double nearest = std::numeric_limits<double>::max();
+            for (std::size_t i = 0, j = polygon.size() - 1; i < polygon.size(); j = i++) {
+                const auto& [ax, ay] = polygon[i];
+                const auto& [bx, by] = polygon[j];
+                if ((ay > py) != (by > py) && px < ax + ((bx - ax) * (py - ay) / (by - ay))) {
+                    inside = !inside;
+                }
+                const double ex = bx - ax;
+                const double ey = by - ay;
+                const double length = (ex * ex) + (ey * ey);
+                const double along =
+                    length > 0.0
+                        ? std::clamp((((px - ax) * ex) + ((py - ay) * ey)) / length, 0.0, 1.0)
+                        : 0.0;
+                const double cx = ax + (ex * along) - px;
+                const double cy = ay + (ey * along) - py;
+                nearest = std::min(nearest, std::sqrt((cx * cx) + (cy * cy)));
+            }
+            if (inside) {
+                return 1.0;
+            }
+            if (falloff_size <= 0.0) {
+                return 0.0;
+            }
+            return falloff(1.0 - (nearest / falloff_size), strength);
+        });
+        return out;
+    }
+
+    // A sprite light's texture: the sprite's own texture, or its part of a sheet cut out once.
+    std::optional<std::string> cookie_texture(const ObjectRef& ref, const Sprite& sprite,
+                                              const std::string& where) {
+        if (sprite.whole) {
+            return sprite.texture;
+        }
+        auto [it, added] = cookies_.try_emplace(std::pair{ref.guid, ref.file_id});
+        if (!added) {
+            return it->second.empty() ? std::nullopt : std::optional(it->second);
+        }
+        const Texture& sheet = texture(ref.guid);
+        auto bytes = platform::read_file(source_ + sheet.path);
+        auto image =
+            bytes ? render::decode_image(bytes.value()) : Result<render::Image>(bytes.error());
+        if (!image) {
+            problems_.add("light sprite", where, sheet.path + ": " + image.error().message);
+            return std::nullopt;
+        }
+        const render::Image& whole = image.value();
+        const auto at = [](double value, std::uint32_t limit) {
+            return static_cast<std::uint32_t>(
+                std::clamp(std::lround(value), 0L, static_cast<long>(limit)));
+        };
+        const std::uint32_t x0 = at(sprite.region[0], whole.width);
+        const std::uint32_t y0 = at(sprite.region[1], whole.height);
+        const std::uint32_t x1 = at(sprite.region[0] + sprite.region[2], whole.width);
+        const std::uint32_t y1 = at(sprite.region[1] + sprite.region[3], whole.height);
+        if (x1 <= x0 || y1 <= y0) {
+            problems_.add("light sprite", where,
+                          sheet.path + ": the sprite is outside its texture");
+            return std::nullopt;
+        }
+        render::Image part{.width = x1 - x0, .height = y1 - y0, .pixels = {}};
+        for (std::uint32_t y = y0; y < y1; ++y) {
+            const auto row = whole.pixels.begin() +
+                             static_cast<std::ptrdiff_t>(((std::size_t{y} * whole.width) + x0) * 4);
+            part.pixels.insert(part.pixels.end(), row,
+                               row + static_cast<std::ptrdiff_t>(std::size_t{part.width} * 4));
+        }
+        const std::string name =
+            take(cookie_names_, sprite.name.empty() ? "sprite" : snake_case(sprite.name));
+        std::string path = destination("Assets/lights/" + name + ".png");
+        if (auto png = render::encode_png(part)) {
+            add_file(path, std::move(png).value());
+            it->second = path;
+            return path;
+        }
+        return std::nullopt;
+    }
+
+    // The sorting layers a light names, by their ranks from the default layer; every layer when
+    // it names none in a list it doesn't have.
+    std::vector<int> sorting_ranks(const Node* layers) const {
+        std::vector<std::uint32_t> ids;
+        if (layers != nullptr && layers->is_seq()) {
+            for (const Node& item : layers->items) {
+                ids.push_back(static_cast<std::uint32_t>(item.integer().value_or(0)));
+            }
+        } else if (layers != nullptr) {
+            const std::string_view text = layers->string();
+            for (std::size_t at = 0; at + 8 <= text.size(); at += 8) {
+                if (const auto word = hex_word(text.substr(at, 8))) {
+                    ids.push_back(*word);
+                }
+            }
+        }
+        std::vector<int> ranks;
+        if (sorting_layers_.empty()) {
+            if (layers == nullptr || contains(ids, 0U)) {
+                ranks.push_back(0);
+            }
+            return ranks;
+        }
+        for (std::size_t i = 0; i < sorting_layers_.size(); ++i) {
+            if (layers == nullptr ||
+                contains(ids, static_cast<std::uint32_t>(sorting_layers_[i].first))) {
+                ranks.push_back(static_cast<int>(i) - default_sorting_);
+            }
+        }
+        return ranks;
+    }
+
+    // The z indices a light's sorting layers' sprites have, or nullopt when it lights none.
+    std::optional<std::pair<int, int>> light_z_range(const Node& body, const std::string& where) {
+        const std::vector<int> ranks = sorting_ranks(body.get("m_ApplyToSortingLayers"));
+        if (ranks.empty()) {
+            return std::nullopt;
+        }
+        if (ranks.back() - ranks.front() + 1 != static_cast<int>(ranks.size())) {
+            problems_.add("Light 2D on sorting layers apart", where,
+                          "its z range takes in the sorting layers between them too");
+        }
+        const int limit = sorting_layers_.size() > 1 ? (sorting_step_ / 2) - 1 : kMaxZIndex;
+        return std::pair{
+            std::clamp((ranks.front() * sorting_step_) - limit, -kMaxZIndex, kMaxZIndex),
+            std::clamp((ranks.back() * sorting_step_) + limit, -kMaxZIndex, kMaxZIndex)};
+    }
+
+    // A Light2D of URP's 2D renderer: a global light as the scene's CanvasModulate, a spot,
+    // freeform or sprite light as a PointLight2D through a texture of its shape.
+    void light_2d(const Component& component, const Context& ctx, Converted& out) {
+        const Node& body = component.body;
+        // Lights saved before Unity versioned them keep a few settings in older fields.
+        const std::int64_t version = body.integer_at("m_ComponentVersion", 0);
+        const std::int64_t type = body.integer_at("m_LightType", 3);
+        bool enabled = body.flag_at("m_Enabled", true) && ctx.active;
+        const Color color = color_at(body, "m_Color");
+        const double intensity = std::max(0.0, body.number_at("m_Intensity", 1.0));
+        if (type == 4) {
+            global_light(body, color, intensity, enabled, ctx, out);
+            return;
+        }
+        const double strength = body.number_at("m_FalloffIntensity", 0.5);
+        json::Value light;
+        if (type == 3) {
+            const double outer =
+                std::max(0.0, body.number_at("m_PointLightOuterRadius", 1.0)) * ppu_;
+            if (outer <= 0.0) {
+                problems_.add("Spot Light 2D with no radius", ctx.where, "it lights nothing");
+                return;
+            }
+            const double inner =
+                std::clamp(body.number_at("m_PointLightInnerRadius") * ppu_, 0.0, outer);
+            light["texture"] =
+                spot_texture(inner / outer, body.number_at("m_PointLightInnerAngle", 360.0),
+                             body.number_at("m_PointLightOuterAngle", 360.0), strength);
+            light["texture_scale"] = tidy(2.0 * outer / kLightTextureSize);
+            const auto cookie = ref_at(body, "m_LightCookieSprite");
+            const auto old_cookie =
+                version < 4 ? ref_at(body, "m_DeprecatedPointLightCookieSprite") : std::nullopt;
+            if ((cookie && !cookie->null()) || (old_cookie && !old_cookie->null())) {
+                problems_.add("Spot Light 2D cookie", ctx.where,
+                              "the light shines without its cookie sprite");
+            }
+        } else if (type == 1) {
+            std::vector<std::array<double, 2>> polygon;
+            if (const Node* path = body.get("m_ShapePath"); path != nullptr) {
+                for (const Node& p : path->items) {
+                    polygon.push_back(
+                        {tidy(p.number_at("x") * ppu_), tidy(-p.number_at("y") * ppu_)});
+                }
+            }
+            if (polygon.size() < 3) {
+                problems_.add("Freeform Light 2D with fewer than three points", ctx.where,
+                              "it lights nothing");
+                return;
+            }
+            if (body.number_at("m_ShapeLightFalloffOffset.x") != 0.0 ||
+                body.number_at("m_ShapeLightFalloffOffset.y") != 0.0) {
+                problems_.add("Freeform Light 2D falloff offset", ctx.where,
+                              "the falloff spreads evenly around the shape");
+            }
+            const LightTexture made = freeform_texture(
+                polygon, std::max(0.0, body.number_at("m_ShapeLightFalloffSize", 0.5)) * ppu_,
+                strength);
+            light["texture"] = made.path;
+            light["texture_scale"] = tidy(made.scale);
+            light["offset"] = pair(made.middle[0], made.middle[1]);
+        } else if (type == 2) {
+            const auto ref = ref_at(body, "m_LightCookieSprite");
+            if (!ref || ref->null()) {
+                problems_.add("Sprite Light 2D with no sprite", ctx.where, "it lights nothing");
+                return;
+            }
+            std::string why;
+            const Sprite* found = sprite(*ref, why);
+            const auto path =
+                found != nullptr ? cookie_texture(*ref, *found, ctx.where) : std::nullopt;
+            if (found == nullptr) {
+                problems_.add("light sprite", ctx.where, why);
+            }
+            if (!path) {
+                return;
+            }
+            // Unity draws the sprite at its size in units, its pivot on the light.
+            const double scale = ppu_ / found->ppu;
+            light["texture"] = *path;
+            light["texture_scale"] = tidy(scale);
+            light["offset"] = pair((0.5 - found->pivot_x) * found->width * scale,
+                                   -(0.5 - found->pivot_y) * found->height * scale);
+        } else {
+            problems_.add(
+                type == 0 ? "Parametric Light 2D" : "Light 2D of type " + std::to_string(type),
+                ctx.where,
+                type == 0 ? "Unity replaced parametric lights with freeform ones; make it "
+                            "Freeform in Unity and import again"
+                          : "Spot, Freeform, Sprite and Global lights convert");
+            return;
+        }
+        const auto z_range = light_z_range(body, ctx.where);
+        if (!z_range) {
+            problems_.add("Light 2D on no sorting layer", ctx.where, "it lights nothing");
+            enabled = false;
+        } else {
+            light["range_z_min"] = z_range->first;
+            light["range_z_max"] = z_range->second;
+        }
+        if (!enabled) {
+            light["enabled"] = false;
+        }
+        light["color"] = color_json({std::clamp(color[0], 0.0, 1.0), std::clamp(color[1], 0.0, 1.0),
+                                     std::clamp(color[2], 0.0, 1.0), 1.0});
+        light["energy"] = tidy(intensity);
+        const bool normals = version == 0 ? body.flag_at("m_UseNormalMap")
+                                          : body.integer_at("m_NormalMapQuality", 2) != 2;
+        if (normals) {
+            light["height"] =
+                tidy(std::max(0.0, body.number_at("m_NormalMapDistance", 3.0)) * ppu_);
+        }
+        const double shadow_strength = body.number_at("m_ShadowIntensity", 0.75);
+        if (version == 0 ? shadow_strength > 0.0 : body.flag_at("m_ShadowsEnabled")) {
+            light["shadow_enabled"] = true;
+            if (shadow_strength < 0.995) {
+                problems_.add("Light 2D shadow strength below 1", ctx.where,
+                              "Godot's 2D shadows block all of a light");
+            }
+            const double softness =
+                version < 2 ? 0.0 : std::clamp(body.number_at("m_ShadowSoftness", 0.3), 0.0, 1.0);
+            if (softness > 0.0) {
+                light["shadow_filter"] = "pcf13";
+                light["shadow_filter_smooth"] = tidy(softness * 10.0);
+            }
+        }
+        if (version == 0 ? body.number_at("m_LightVolumeIntensity") > 0.0
+                         : body.flag_at("m_LightVolumeEnabled")) {
+            problems_.add("volumetric Light 2D", ctx.where,
+                          "Godot's 2D lights light what they fall on, not the air");
+        }
+        if (body.integer_at("m_BlendStyleIndex", 0) != 0) {
+            problems_.add("Light 2D blend style", ctx.where,
+                          "lights add to what they light, as URP's first blend style, Multiply, "
+                          "does");
+        }
+        if (version == 0 ? body.flag_at("m_AlphaBlendOnOverlap")
+                         : body.integer_at("m_OverlapOperation", 0) == 1) {
+            problems_.add("Light 2D alpha blend overlap", ctx.where, "overlapping lights add up");
+        }
+        if (enabled) {
+            scene_lit_ = true;
+        }
+        if (out.components.find("PointLight2D") == out.components.end()) {
+            out.components["PointLight2D"] = std::move(light);
+            return;
+        }
+        // An entity has one light; more on the object go on entities under it.
+        const auto lights = std::ranges::count_if(
+            out.added, [](const auto& added) { return added.first.starts_with("light_"); });
+        json::Object added;
+        added["Transform2D"] = json::Object{};
+        added["PointLight2D"] = std::move(light);
+        out.added.emplace_back("light_" + std::to_string(lights + 2), std::move(added));
+    }
+
+    // A global light lights everything the same, as the scene's CanvasModulate does, up to white.
+    void global_light(const Node& body, const Color& color, double intensity, bool enabled,
+                      const Context& ctx, Converted& out) {
+        if (!enabled) {
+            problems_.add("disabled Global Light 2D", ctx.where,
+                          "converted as no global light; gameplay code can add a CanvasModulate");
+            return;
+        }
+        if (scene_global_) {
+            problems_.add("second Global Light 2D", ctx.where,
+                          "a scene has one CanvasModulate, the first global light's");
+            return;
+        }
+        scene_global_ = true;
+        if (sorting_layers_.size() > 1 &&
+            sorting_ranks(body.get("m_ApplyToSortingLayers")).size() < sorting_layers_.size()) {
+            problems_.add("Global Light 2D on some sorting layers", ctx.where,
+                          "CanvasModulate tints all of them");
+        }
+        Color ambient{0.0, 0.0, 0.0, 1.0};
+        bool brighter = false;
+        for (std::size_t i = 0; i < 3; ++i) {
+            const double value = color[i] * intensity;
+            brighter = brighter || value > 1.0 + 1e-6;
+            ambient[i] = std::clamp(value, 0.0, 1.0);
+        }
+        if (brighter) {
+            problems_.add("Global Light 2D brighter than white", ctx.where,
+                          "CanvasModulate lights things up to their own colors");
+        }
+        json::Value modulate;
+        modulate["color"] = color_json(ambient);
+        out.components["CanvasModulate"] = std::move(modulate);
+    }
+
+    // A ShadowCaster2D as Godot's LightOccluder2D: its own shape, or the shape of the collider or
+    // sprite it takes its shape from.
+    void shadow_caster(const Component& component, const Context& ctx, Converted& out) {
+        const Node& body = component.body;
+        if (!body.flag_at("m_Enabled", true)) {
+            problems_.add("disabled ShadowCaster2D", ctx.where,
+                          "converted as no occluder, since occluders can't be turned off");
+            return;
+        }
+        if (const Node* option = body.get("m_CastingOption"); option != nullptr) {
+            const std::int64_t casting = option->integer().value_or(1);
+            if (casting == 3) {
+                return; // casts no shadow
+            }
+            if (casting == 0) {
+                problems_.add("ShadowCaster2D that shadows only itself", ctx.where,
+                              "Godot's occluders shadow what is behind them");
+                return;
+            }
+        } else if (!body.flag_at("m_CastsShadows", true)) {
+            return;
+        }
+        std::vector<std::pair<Outline, bool>> outlines; // in pixels, y down; closed or not
+        const std::int64_t source = body.integer_at("m_ShadowCastingSource", -1);
+        if (source == 0) {
+            return;
+        }
+        if (source == 2) {
+            const Component* provider = component_at(*ctx.file, body, "m_ShadowShape2DComponent");
+            if (provider != nullptr) {
+                outlines = provider_outlines(*provider, ctx.where);
+            } else {
+                problems_.add("ShadowCaster2D shape provider", ctx.where,
+                              "it names no component; the occluder takes the caster's own shape");
+            }
+        }
+        if (outlines.empty()) {
+            Outline points;
+            if (const Node* path = body.get("m_ShapePath"); path != nullptr) {
+                for (const Node& p : path->items) {
+                    points.push_back({p.number_at("x") * ppu_, -p.number_at("y") * ppu_});
+                }
+            }
+            if (points.size() >= 2) {
+                outlines.emplace_back(std::move(points), true);
+            }
+        }
+        if (outlines.empty()) {
+            problems_.add("ShadowCaster2D with no shape", ctx.where, "it casts no shadow");
+            return;
+        }
+        int extra = 0;
+        for (auto& [points, closed] : outlines) {
+            json::Array polygon;
+            for (const auto& [x, y] : points) {
+                polygon.push_back(pair(x, y));
+            }
+            json::Value occluder;
+            occluder["polygon"] = std::move(polygon);
+            if (!closed) {
+                occluder["closed"] = false;
+            }
+            if (out.components.find("LightOccluder2D") == out.components.end()) {
+                out.components["LightOccluder2D"] = std::move(occluder);
+                continue;
+            }
+            json::Object added;
+            added["Transform2D"] = json::Object{};
+            added["LightOccluder2D"] = std::move(occluder);
+            out.added.emplace_back("occluder_" + std::to_string(extra++ + 2), std::move(added));
+        }
+    }
+
+    // The outlines of the collider or sprite a shadow caster takes its shape from, in pixels with
+    // y down, each closed or not.
+    std::vector<std::pair<Outline, bool>> provider_outlines(const Component& provider,
+                                                            const std::string& where) {
+        const Node& body = provider.body;
+        const double ox = body.number_at("m_Offset.x");
+        const double oy = body.number_at("m_Offset.y");
+        const auto point = [&](double x, double y) {
+            return std::array<double, 2>{(x + ox) * ppu_, -(y + oy) * ppu_};
+        };
+        // A circle's or capsule's round end, from one angle to another, in radians.
+        const auto arc = [&](Outline& points, double cx, double cy, double radius, double from,
+                             double to, int steps) {
+            for (int i = 0; i <= steps; ++i) {
+                const double angle = from + ((to - from) * i / steps);
+                const Vec2 cs = cos_sin(static_cast<float>(angle));
+                points.push_back(point(cx + (radius * cs.x), cy + (radius * cs.y)));
+            }
+        };
+        std::vector<std::pair<Outline, bool>> out;
+        switch (provider.class_id) {
+        case kBoxCollider2D: {
+            const double x = std::abs(body.number_at("m_Size.x", 1.0)) / 2.0;
+            const double y = std::abs(body.number_at("m_Size.y", 1.0)) / 2.0;
+            out.emplace_back(Outline{point(-x, y), point(x, y), point(x, -y), point(-x, -y)}, true);
+            break;
+        }
+        case kCircleCollider2D: {
+            Outline points;
+            arc(points, 0.0, 0.0, std::abs(body.number_at("m_Radius", 0.5)), 0.0,
+                2.0 * std::numbers::pi * 23.0 / 24.0, 23);
+            out.emplace_back(std::move(points), true);
+            break;
+        }
+        case kCapsuleCollider2D: {
+            const double width = std::abs(body.number_at("m_Size.x", 0.5));
+            const double height = std::abs(body.number_at("m_Size.y", 1.0));
+            Outline points;
+            if (body.integer_at("m_Direction", 0) == 1) {
+                const double radius = height / 2.0;
+                const double reach = std::max(0.0, (width / 2.0) - radius);
+                arc(points, reach, 0.0, radius, -std::numbers::pi / 2.0, std::numbers::pi / 2.0, 8);
+                arc(points, -reach, 0.0, radius, std::numbers::pi / 2.0,
+                    3.0 * std::numbers::pi / 2.0, 8);
+            } else {
+                const double radius = width / 2.0;
+                const double reach = std::max(0.0, (height / 2.0) - radius);
+                arc(points, 0.0, reach, radius, 0.0, std::numbers::pi, 8);
+                arc(points, 0.0, -reach, radius, std::numbers::pi, 2.0 * std::numbers::pi, 8);
+            }
+            out.emplace_back(std::move(points), true);
+            break;
+        }
+        case kPolygonCollider2D:
+        case kEdgeCollider2D: {
+            const bool edge = provider.class_id == kEdgeCollider2D;
+            std::vector<const Node*> paths;
+            if (edge) {
+                paths.push_back(body.get("m_Points"));
+            } else if (const Node* all = body.path("m_Points.m_Paths"); all != nullptr) {
+                for (const Node& path : all->items) {
+                    paths.push_back(&path);
+                }
+            }
+            for (const Node* path : paths) {
+                Outline points;
+                for (const Node& p : path != nullptr ? path->items : std::vector<Node>{}) {
+                    points.push_back(point(p.number_at("x"), p.number_at("y")));
+                }
+                if (points.size() >= (edge ? 2U : 3U)) {
+                    out.emplace_back(std::move(points), !edge);
+                }
+            }
+            break;
+        }
+        case kSpriteRenderer: {
+            std::string why;
+            const auto ref = ref_at(body, "m_Sprite");
+            const Sprite* found = ref && !ref->null() ? sprite(*ref, why) : nullptr;
+            if (found == nullptr) {
+                problems_.add("ShadowCaster2D shape from a sprite", where,
+                              why.empty() ? "the SpriteRenderer has no sprite" : why);
+                break;
+            }
+            // Its physics shape, around the middle of its rect; or the rect.
+            const double scale = ppu_ / found->ppu;
+            const double mx = (0.5 - found->pivot_x) * found->width;
+            const double my = (0.5 - found->pivot_y) * found->height;
+            const double flip_x = body.flag_at("m_FlipX") ? -1.0 : 1.0;
+            const double flip_y = body.flag_at("m_FlipY") ? -1.0 : 1.0;
+            std::vector<Outline> shapes = found->shape;
+            if (shapes.empty()) {
+                const double x = found->width / 2.0;
+                const double y = found->height / 2.0;
+                shapes.push_back({{-x, y}, {x, y}, {x, -y}, {-x, -y}});
+                problems_.add("ShadowCaster2D shape from a sprite with no physics shape", where,
+                              "the occluder is the sprite's rectangle");
+            }
+            for (const Outline& shape : shapes) {
+                Outline points;
+                for (const auto& [x, y] : shape) {
+                    points.push_back({(x + mx) * scale * flip_x, -(y + my) * scale * flip_y});
+                }
+                out.emplace_back(std::move(points), true);
+            }
+            break;
+        }
+        default:
+            problems_.add("ShadowCaster2D shape from " + provider.type, where,
+                          "colliders' and sprites' shapes convert; the occluder takes the "
+                          "caster's own shape");
+            break;
+        }
+        return out;
+    }
+
+    // --- UI ---
 
     static Color color_at(const Node& body, std::string_view key, Color fallback = {1, 1, 1, 1}) {
         const Node* node = body.path(key);
@@ -6934,6 +7628,8 @@ private:
     void write_scene(Expanded& file) {
         file.scene = destination(without_extension(file.path) + std::string(world::kSceneSuffix));
         scene_clear_color_.reset();
+        scene_lit_ = false;
+        scene_global_ = false;
         json::Value record;
         record["scene"] = file.scene;
         json::Object entities;
@@ -7068,6 +7764,16 @@ private:
                     entities[id] = nullptr;
                 }
             }
+        }
+        // URP's 2D lights leave what no light reaches dark unless a global light lights it.
+        if (scene_lit_ && !scene_global_ && extension_of(file.path) == ".unity") {
+            const std::string id = take(file.used, "ambient");
+            json::Value ambient;
+            ambient["components"]["CanvasModulate"]["color"] = json::Array{0.0, 0.0, 0.0, 1.0};
+            entities[id] = std::move(ambient);
+            problems_.add("2D lights without a Global Light 2D", file.path,
+                          "URP leaves what no light reaches dark, so entity \"" + id +
+                              "\" has a black CanvasModulate");
         }
         for (const auto& [id, entity] : entities) {
             if (!entity.is_null()) {
@@ -7700,6 +8406,13 @@ private:
     int sorting_step_ = 0;
     std::string main_source_;
     std::optional<json::Value> scene_clear_color_;
+    // The scene being converted has an enabled 2D light, and its global light.
+    bool scene_lit_ = false;
+    bool scene_global_ = false;
+    std::set<std::string> light_textures_; // light textures written
+    // Light textures cut from sprite sheets, by the sprite's texture GUID and file ID.
+    std::map<std::pair<std::string, std::int64_t>, std::string> cookies_;
+    std::set<std::string> cookie_names_;
     std::map<std::string, json::Value> clear_colors_; // by scene
     std::set<std::string> loops_written_;
     std::map<std::string, ScriptRecord> scripts_;  // by source path

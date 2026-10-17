@@ -3,12 +3,12 @@
 `project.import` converts a Unity project into this one. [unity/](unity/) holds "Pond Hop", a
 small 2D game as Unity 2022.3 saves it: its project settings, a scene
 ([Pond.unity](unity/Assets/Scenes/Pond.unity)) that instances a frog prefab and coin prefabs and
-has a tile map and a HUD canvas, a prefab variant ([Gold Coin.prefab](unity/Assets/Prefabs/Gold%20Coin.prefab)),
-sprites with their import settings, tile assets, an Animator controller
+has a tile map, 2D lights and a HUD canvas, a prefab variant
+([Gold Coin.prefab](unity/Assets/Prefabs/Gold%20Coin.prefab)), sprites with their import
+settings, tile assets, an Animator controller
 ([Frog.controller](unity/Assets/Animations/Frog.controller)) and its clips, an audio mixer
 ([Pond.mixer](unity/Assets/Audio/Pond.mixer)), a physics material, an Input System actions file
-and four C# scripts. Unity
-writes more settings than these files keep; they keep the ones the import reads.
+and four C# scripts. Unity writes more settings than these files keep; they keep the ones the import reads.
 [main.cpp](main.cpp) makes the textures and sounds, then makes the calls an agent would make over
 MCP or JSON-RPC; [expected.txt](expected.txt) holds the replies and the files the import wrote.
 From a shell, `slash-cli import unity` does the same.
@@ -56,6 +56,13 @@ project.import {"source":"unity"}
   slope's custom physics shape is its collision polygon, the dirt and grass, whose cells use the
   Grid collider type, get the cell's square, and the mirrored slopes at the right are `:h`
   cells. The tiles are solid: a ray down onto the first slope stops halfway up it.
+- URP's 2D lights become Godot's. The dusky `Global Light 2D` is the scene's `CanvasModulate`,
+  its color times its intensity, and the lantern's spot light a `PointLight2D` that swings with
+  it, through `spot_17_50.png`, a texture of its falloff (full inside a sixth of its radius, the
+  inner radius, then fading linearly) scaled to its 12-unit radius. It lights all three sorting
+  layers, so its z range covers their sprites. The lily pad's `ShadowCaster2D` is a
+  `LightOccluder2D` with its shape: beside the lantern, `light.sample` finds the lantern's light
+  on top of the dusk, and under the lily pad only the dusk.
 - The frog's `Animator` becomes an `AnimationPlayer`, and its controller an animation library,
   `Frog.anim.json`, with an animation per state: `Idle`, which plays first, swaps the frog's
   sprite to blink and calls `Ribbit` (an event track), and `Hop`, which stretches its feet. The

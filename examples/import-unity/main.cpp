@@ -1,20 +1,19 @@
 // Importing a Unity game: project.import converts a Unity project into this one.
 //
 // unity/ holds "Pond Hop", a small Unity 2D game as Unity saves it: project settings, a scene
-// that instances three prefabs (one of them a prefab variant) and has a tile map and a HUD canvas,
-// sprites and their import settings, tile assets, an Animator controller and its clips, an audio
-// mixer, a physics material, an Input System actions file and four C# scripts. One call converts
-// it.
+// that instances three prefabs (one of them a prefab variant) and has a tile map, 2D lights and a
+// HUD canvas, sprites and their import settings, tile assets, an Animator controller and its
+// clips, an audio mixer, a physics material, an Input System actions file and four C# scripts.
+// One call converts it.
 // Its scene and prefabs become .scene.json files beside the originals, the prefabs staying
-// prefabs that the scene instances; its sprites, tile map, cameras, 2D physics and joints,
-// animation, sounds and UI become SlashEngine's components, measured in pixels, the tile map's
-// sprites a tile set, the controller an animation library and the mixer a bus layout; its
-// player, physics, time, sorting and input settings become project.json; and each script, and
-// the controller's state machine, a storyboard task to port it to C++, since SlashEngine games
-// are plain C++. The report lists what didn't convert,
-// and why. Games ship PNG and WAV files made in other tools; this example makes its textures and
-// sounds in code (without libm, so they are the same everywhere), so the repository holds no images
-// or sounds.
+// prefabs that the scene instances; its sprites, tile map, cameras, 2D physics and joints, 2D
+// lights and shadow casters, animation, sounds and UI become SlashEngine's components, measured
+// in pixels, the tile map's sprites a tile set, the controller an animation library and the mixer
+// a bus layout; its player, physics, time, sorting and input settings become project.json; and
+// each script, and the controller's state machine, a storyboard task to port it to C++, since
+// SlashEngine games are plain C++. The report lists what didn't convert, and why. Games ship PNG
+// and WAV files made in other tools; this example makes its textures and sounds in code (without
+// libm, so they are the same everywhere), so the repository holds no images or sounds.
 
 #include "slash/audio/audio.hpp"
 #include "slash/command/builtin.hpp"
@@ -157,6 +156,14 @@ int main() {
     // The HUD canvas is controls drawn over the game: the coin count laid out in a row at the
     // top left, the pause button at the top right and the hint along the bottom.
     agent.call("ui.layout", R"({"ids": ["coins", "icon", "count", "pause", "hint"]})");
+    // URP's 2D lights are Godot's: the dusky Global Light 2D is the scene's CanvasModulate and
+    // the lantern a PointLight2D, through a texture of its falloff, that swings with it. The lily
+    // pad's ShadowCaster2D is an occluder: beside the lantern it lights the pond on top of the
+    // dusk, and under the lily pad only the dusk does.
+    agent.call("entity.get", R"({"id": "global_light_2d", "components": ["CanvasModulate"]})");
+    agent.call("entity.get", R"({"id": "lantern", "components": ["PointLight2D"],
+                                 "omit_defaults": true})");
+    agent.call("light.sample", R"({"points": [[-160, -32], [144, 112]]})");
     // The Hop state, which gameplay code plays on the Hop trigger, stretches the frog's feet.
     agent.call("animation.eval", R"({"id": "frog", "animation": "Hop", "times": [0, 0.25],
                                      "tracks": ["Feet:Transform2D/position/y"]})");
