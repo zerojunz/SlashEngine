@@ -773,7 +773,7 @@ void write_animated_tiles(const fs::path& folder) {
     constexpr std::string_view kStill = "{fileID: 13312, guid: 0000000000000000e000000000000000, "
                                         "type: 0}";
     // Water plays at 2 frames a second, and torches between 0.5 and 1.5; lava starts a second in.
-    const auto pool = [](std::int64_t sprite) { return ref(sprite, kPoolPng); };
+    const auto pool = [](std::int64_t id) { return ref(id, kPoolPng); };
     animated("Water", "a1000000000000000000000000000f02", {pool(2001), pool(2002), pool(2003)},
              "  m_MinSpeed: 2\n  m_MaxSpeed: 2\n");
     animated("Torch", "a1000000000000000000000000000f03",
