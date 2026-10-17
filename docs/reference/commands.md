@@ -2158,7 +2158,7 @@ animation libraries a `.anim.json` file, its tile sets `.tileset.json` files, it
 `.theme.json` files, its bus layouts `.bus_layout.json` files and its settings and input map
 `project.json`. A Unity project's scenes and prefabs become `.scene.json` files beside the
 originals (prefabs that scenes instance), its sprites, tile maps, animation, cameras, 2D physics,
-joints and sounds components measured in pixels, the sprites its tile maps show a `.tileset.json`
+joints and sounds components measured in pixels, its uGUI and TextMesh Pro UI controls, the sprites its tile maps show a `.tileset.json`
 file, each Animator controller a `.anim.json` file, its audio mixers a `.bus_layout.json` file,
 and its player, time, physics and input settings `project.json`. Textures, sounds and fonts are used
 where they are. Each script, and each Animator controller's state machine, becomes a storyboard task to port
@@ -2175,7 +2175,8 @@ Needs: `read`, `filesystem`. It writes files and changes no scene, so there is n
 importing again rewrites the converted files and keeps each task's status. The result counts
 what converted, lists each script's task, and lists what didn't convert, once per kind with how
 many, the first place it was seen and why. The full report, with the values scripts need, is
-written to `import/godot.json` or `import/unity.json`.
+written to `import/godot.json` or `import/unity.json`. The settings it writes to `project.json`
+(the window, physics, input and audio) apply to the session at the next command.
 
 From [examples/import-godot](../../examples/import-godot/):
 
@@ -2195,7 +2196,7 @@ scale Unity's units convert at:
 ```
 
 ```json
-{"converted":{"animation_libraries":1,"assets":9,"bus_layouts":1,"input_actions":12,"prefabs":3,"scenes":1,"tile_sets":1},"engine":"unity","files":11,"main_scene":"unity/Assets/Scenes/Pond.scene.json","pixels_per_unit":32.0,"project":"Pond Hop","report":"import/unity.json","scripts":[{"entities":1,"script":"unity/Assets/Scripts/CameraFollow.cs","task":"task/port-camera-follow"},{"entities":6,"script":"unity/Assets/Scripts/Coin.cs","task":"task/port-coin"},{"entities":2,"script":"unity/Assets/Scripts/Frog.cs","task":"task/port-frog"}],"unity_version":"2022.3.20f1","unsupported":[{"count":1,"what":"exposed mixer parameters","where":"Assets/Audio/Pond.mixer","why":"MusicVolume: scripts that set them set buses with audio.set_bus or gameplay code instead"},{"count":1,"what":"inactive object","where":"Assets/Scenes/Pond.unity: Coin (2)","why":"converted hidden, with its shapes disabled; there is no inactive state, so its other components still run"},{"count":1,"what":"input axis Mouse X","where":"ProjectSettings/InputManager.asset","why":"mouse movement axes: read the mouse's motion in code"},{"count":1,"what":"input binding","where":"Assets/Input/Controls.inputactions: Player/Croak","why":"\"<XRController>/trigger\": XRController bindings"},{"count":1,"what":"input interaction","where":"Assets/Input/Controls.inputactions: Player/Croak","why":"Hold: gameplay code times holds and taps"}]}
+{"converted":{"animation_libraries":1,"assets":9,"bus_layouts":1,"input_actions":12,"prefabs":3,"scenes":1,"tile_sets":1},"engine":"unity","files":11,"main_scene":"unity/Assets/Scenes/Pond.scene.json","pixels_per_unit":32.0,"project":"Pond Hop","report":"import/unity.json","scripts":[{"entities":1,"script":"unity/Assets/Scripts/CameraFollow.cs","task":"task/port-camera-follow"},{"entities":6,"script":"unity/Assets/Scripts/Coin.cs","task":"task/port-coin"},{"entities":2,"script":"unity/Assets/Scripts/Frog.cs","task":"task/port-frog"},{"entities":1,"script":"unity/Assets/Scripts/Hud.cs","task":"task/port-hud"}],"unity_version":"2022.3.20f1","unsupported":[{"count":1,"what":"component EventSystem","where":"Assets/Scenes/Pond.unity: EventSystem","why":"not needed: SlashEngine's gui system sends input to controls itself"},{"count":1,"what":"component StandaloneInputModule","where":"Assets/Scenes/Pond.unity: EventSystem","why":"not needed: SlashEngine's gui system sends input to controls itself"},{"count":1,"what":"exposed mixer parameters","where":"Assets/Audio/Pond.mixer","why":"MusicVolume: scripts that set them set buses with audio.set_bus or gameplay code instead"},{"count":1,"what":"inactive object","where":"Assets/Scenes/Pond.unity: Coin (2)","why":"converted hidden, with its shapes disabled; there is no inactive state, so its other components still run"},{"count":1,"what":"input axis Mouse X","where":"ProjectSettings/InputManager.asset","why":"mouse movement axes: read the mouse's motion in code"},{"count":1,"what":"input binding","where":"Assets/Input/Controls.inputactions: Player/Croak","why":"\"<XRController>/trigger\": XRController bindings"},{"count":1,"what":"input interaction","where":"Assets/Input/Controls.inputactions: Player/Croak","why":"Hold: gameplay code times holds and taps"}]}
 ```
 
 With `dry_run`, `files` lists the paths it would write instead of counting them. A missing

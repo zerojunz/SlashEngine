@@ -9,6 +9,7 @@
 #include "slash/render/image.hpp"
 #include "slash/runtime/project.hpp"
 #include "slash/storyboard/storyboard.hpp"
+#include "slash/text/text.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/scene.hpp"
@@ -1118,6 +1119,402 @@ void write_mill(const fs::path& folder) {
     write(folder / "Assets/Scenes/Mill.unity.meta", meta("a100000000000000000000000000001d"));
 }
 
+// uGUI's and TextMesh Pro's scripts, whose GUIDs are the same in every project.
+constexpr std::string_view kRawImageCs = "1344c3c82d62a2a41a3576d8abb8e3ea";
+constexpr std::string_view kButtonCs = "4e29b1a8efbd4b44bb3f3716e73f07ff";
+constexpr std::string_view kTextCs = "5f7201a12d95ffc409449d95f23cf332";
+constexpr std::string_view kToggleCs = "9085046f02f69544eb97fd06b6048fe2";
+constexpr std::string_view kSliderCs = "67db9e8f0e2ae9c40bc1e2b64352a6b4";
+constexpr std::string_view kScrollbarCs = "2a4db7a114972834c8e4117be1d82ba3";
+constexpr std::string_view kScrollRectCs = "1aa08ab6e0800fa44ae55d278d1423e3";
+constexpr std::string_view kMaskCs = "31a19414c41e5ae4aae2af33fee712f6";
+constexpr std::string_view kRectMaskCs = "3312d7739989d2b4e91e6319e9a96d76";
+constexpr std::string_view kVerticalLayoutCs = "59f8146938fff824cb5fd77236b75775";
+constexpr std::string_view kGridLayoutCs = "8a8695521f0d02e499659fee002a26c2";
+constexpr std::string_view kFitterCs = "3245ec927659c4140ac4f8d17403cc18";
+constexpr std::string_view kScalerCs = "0cd44c1031e13a943bb63640046fad76";
+constexpr std::string_view kOutlineCs = "e19747de3f5aca642ab2be37e372fb86";
+constexpr std::string_view kRaycasterCs = "dc42784cf147c0c48a680349fa168899";
+constexpr std::string_view kTmpTextCs = "f4688fdb7df04437aeb418b961361dc5";
+constexpr std::string_view kTmpInputCs = "2da0c512f12947e489f739169773d7ca";
+constexpr std::string_view kEventSystemCs = "76c392e42b5098c458856cdf6ecaaaa1";
+constexpr std::string_view kBuiltin = "0000000000000000f000000000000000";
+constexpr std::string_view kMenuCs = "a1000000000000000000000000000020";
+constexpr std::string_view kButtonPng = "a1000000000000000000000000000021";
+constexpr std::string_view kIconPng = "a1000000000000000000000000000022";
+constexpr std::string_view kPondTtf = "a1000000000000000000000000000023";
+constexpr std::string_view kPondSdf = "a1000000000000000000000000000024";
+constexpr std::string_view kBadgePrefab = "a1000000000000000000000000000026";
+
+// A RectTransform: anchors, position, size and pivot as "x, y" pairs.
+std::string rect_transform(std::int64_t object, std::int64_t owner, std::string_view anchor_min,
+                           std::string_view anchor_max, std::string_view position,
+                           std::string_view size, std::string_view pivot, std::int64_t father,
+                           std::initializer_list<std::int64_t> children = {},
+                           std::string_view scale = "1, y: 1") {
+    std::string out = "--- !u!224 &" + id(object) + "\nRectTransform:\n" + std::string(kSource) +
+                      "  m_GameObject: {fileID: " + id(owner) + "}\n" +
+                      "  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}\n" +
+                      "  m_LocalPosition: {x: 0, y: 0, z: 0}\n" +
+                      "  m_LocalScale: {x: " + std::string(scale) + ", z: 1}\n";
+    if (children.size() == 0) {
+        out += "  m_Children: []\n";
+    } else {
+        out += "  m_Children:\n";
+        for (const std::int64_t child : children) {
+            out += "  - {fileID: " + id(child) + "}\n";
+        }
+    }
+    const auto xy = [](std::string_view pair) {
+        const auto comma = pair.find(',');
+        return "{x: " + std::string(pair.substr(0, comma)) +
+               ", y:" + std::string(pair.substr(comma + 1)) + "}";
+    };
+    return out + "  m_Father: {fileID: " + id(father) + "}\n  m_AnchorMin: " + xy(anchor_min) +
+           "\n  m_AnchorMax: " + xy(anchor_max) + "\n  m_AnchoredPosition: " + xy(position) +
+           "\n  m_SizeDelta: " + xy(size) + "\n  m_Pivot: " + xy(pivot) + "\n";
+}
+
+// A UI object: a GameObject on the UI layer with a RectTransform and a CanvasRenderer.
+std::string ui_object(std::int64_t object, std::string_view name,
+                      std::initializer_list<std::int64_t> components, bool active = true) {
+    return game_object(object, name, components, 5,
+                       active ? "  m_TagString: Untagged\n  m_IsActive: 1\n"
+                              : "  m_TagString: Untagged\n  m_IsActive: 0\n") +
+           "--- !u!222 &" + id(object + 9) + "\nCanvasRenderer:\n" + std::string(kSource) +
+           "  m_GameObject: {fileID: " + id(object) + "}\n  m_CullTransparentMesh: 1\n";
+}
+
+std::string script(std::int64_t object, std::int64_t owner, std::string_view guid,
+                   std::string_view fields) {
+    return component(114, "MonoBehaviour", object, owner,
+                     "  m_EditorHideFlags: 0\n  m_Script: " + ref(11500000, guid) +
+                         "\n  m_Name: \n  m_EditorClassIdentifier: \n" + std::string(fields));
+}
+
+std::string image(std::int64_t object, std::int64_t owner, std::string_view sprite,
+                  std::string_view color = "{r: 1, g: 1, b: 1, a: 1}", int type = 0) {
+    return script(object, owner, kImageCs,
+                  "  m_Material: {fileID: 0}\n  m_Color: " + std::string(color) +
+                      "\n  m_RaycastTarget: 1\n  m_Sprite: " + std::string(sprite) +
+                      "\n  m_Type: " + std::to_string(type) +
+                      "\n  m_PreserveAspect: 0\n  m_FillCenter: 1\n"
+                      "  m_PixelsPerUnitMultiplier: 1\n");
+}
+
+std::string legacy_text(std::int64_t object, std::int64_t owner, std::string_view text, int size,
+                        int alignment) {
+    return script(object, owner, kTextCs,
+                  "  m_Material: {fileID: 0}\n  m_Color: {r: 0.19607843, g: 0.19607843, b: "
+                  "0.19607843, a: 1}\n  m_RaycastTarget: 1\n  m_FontData:\n"
+                  "    m_Font: {fileID: 10102, guid: 0000000000000000e000000000000000, type: 0}\n"
+                  "    m_FontSize: " +
+                      std::to_string(size) +
+                      "\n    m_FontStyle: 0\n    m_BestFit: 0\n    m_MinSize: 10\n"
+                      "    m_MaxSize: 40\n    m_Alignment: " +
+                      std::to_string(alignment) +
+                      "\n    m_AlignByGeometry: 0\n    m_RichText: 1\n"
+                      "    m_HorizontalOverflow: 0\n    m_VerticalOverflow: 1\n"
+                      "    m_LineSpacing: 1\n  m_Text: " +
+                      std::string(text) + "\n");
+}
+
+std::string tmp_text(std::int64_t object, std::int64_t owner, std::string_view text,
+                     std::string_view color, std::string_view more) {
+    return script(object, owner, kTmpTextCs,
+                  "  m_Material: {fileID: 0}\n  m_Color: {r: 1, g: 1, b: 1, a: 1}\n"
+                  "  m_RaycastTarget: 1\n  m_text: " +
+                      std::string(text) + "\n  m_isRightToLeft: 0\n  m_fontColor: " +
+                      std::string(color) + "\n" + std::string(more));
+}
+
+// A persistent call of a UI event to a method of the Menu script.
+std::string ui_call(std::string_view event, std::string_view method, int mode = 1) {
+    return "  " + std::string(event) +
+           ":\n    m_PersistentCalls:\n      m_Calls:\n      - m_Target: {fileID: 1005}\n"
+           "        m_TargetAssemblyTypeName: Menu, Assembly-CSharp\n        m_MethodName: " +
+           std::string(method) + "\n        m_Mode: " + std::to_string(mode) +
+           "\n        m_Arguments:\n          m_ObjectArgument: {fileID: 0}\n"
+           "          m_IntArgument: 0\n          m_FloatArgument: 0\n"
+           "          m_StringArgument: \n          m_BoolArgument: 0\n        m_CallState: 2\n";
+}
+
+constexpr std::string_view kColors = "  m_Colors:\n    m_NormalColor: {r: 1, g: 1, b: 1, a: 1}\n"
+                                     "    m_HighlightedColor: {r: 0.9, g: 0.9, b: 0.9, a: 1}\n"
+                                     "    m_PressedColor: {r: 0.78, g: 0.78, b: 0.78, a: 1}\n"
+                                     "    m_SelectedColor: {r: 0.96, g: 0.96, b: 0.96, a: 1}\n"
+                                     "    m_DisabledColor: {r: 0.78, g: 0.78, b: 0.78, a: 0.5}\n"
+                                     "    m_ColorMultiplier: 1\n    m_FadeDuration: 0.1\n";
+
+// The fields every Selectable has, with automatic navigation and a color tint.
+std::string selectable(std::int64_t target) {
+    return "  m_Navigation:\n    m_Mode: 3\n    m_WrapAround: 0\n  m_Transition: 1\n" +
+           std::string(kColors) + "  m_Interactable: 1\n  m_TargetGraphic: {fileID: " + id(target) +
+           "}\n";
+}
+
+// "Pond Hop"'s menu: a canvas scaled from 400x300 to the 800x600 window, holding a panel, a
+// TextMesh Pro title in a font asset, a sliced button, the default toggle, a slider, a TextMesh
+// Pro input field, a scroll view of a vertical layout, a grid, a raw image and a hidden panel.
+void write_menu(const fs::path& folder) {
+    write(
+        folder / "Assets/Scripts/Menu.cs",
+        "using UnityEngine;\n\npublic class Menu : MonoBehaviour\n{\n"
+        "    public void StartGame() {}\n    public void SetSound(bool on) {}\n"
+        "    public void SetName(string name) {}\n    public void SetVolume(float volume) {}\n}\n");
+    write(folder / "Assets/Scripts/Menu.cs.meta", meta(kMenuCs, "MonoImporter"));
+    write_png(folder / "Assets/UI/button.png", 48, 48);
+    write(folder / "Assets/UI/button.png.meta",
+          texture_meta(kButtonPng, 100,
+                       "  spriteMode: 1\n  spriteBorder: {x: 12, y: 12, z: 12, w: 12}\n"));
+    write_png(folder / "Assets/UI/icon.png", 16, 16);
+    write(folder / "Assets/UI/icon.png.meta", texture_meta(kIconPng, 100, "  spriteMode: 1\n"));
+    const std::vector<std::uint8_t> font =
+        slash::text::box_font(U"Pond HopPlaySoundMiraYour nameLilyReedOptions");
+    write(folder / "Assets/Fonts/Pond.ttf", std::string(font.begin(), font.end()));
+    write(folder / "Assets/Fonts/Pond.ttf.meta", meta(kPondTtf, "TrueTypeFontImporter"));
+    write(folder / "Assets/Fonts/Pond SDF.asset",
+          std::string(kHeader) + "--- !u!114 &11400000\nMonoBehaviour:\n" + std::string(kSource) +
+              "  m_GameObject: {fileID: 0}\n  m_Enabled: 1\n"
+              "  m_Script: {fileID: 11500000, guid: 71c1514a6bd24e1e882cebbe1904ce04, type: 3}\n"
+              "  m_Name: Pond SDF\n  m_Version: 1.1.0\n"
+              "  m_SourceFontFile: {fileID: 12800000, guid: " +
+              std::string(kPondTtf) + ", type: 3}\n");
+    write(folder / "Assets/Fonts/Pond SDF.asset.meta",
+          meta(kPondSdf, "NativeFormatImporter", "  mainObjectFileID: 11400000\n"));
+
+    // A UI prefab: a red badge with a count.
+    std::string badge(kHeader);
+    badge += ui_object(100, "Badge", {101, 109, 102});
+    badge +=
+        rect_transform(101, 100, "0.5, 0.5", "0.5, 0.5", "0, 0", "40, 40", "0.5, 0.5", 0, {111});
+    badge += image(102, 100, ref(10905, kBuiltin, 0), "{r: 1, g: 0, b: 0, a: 1}", 1);
+    badge += ui_object(110, "Count", {111, 119, 112});
+    badge += rect_transform(111, 110, "0, 0", "1, 1", "0, 0", "0, 0", "0.5, 0.5", 101);
+    badge += legacy_text(112, 110, "3", 14, 4);
+    write(folder / "Assets/UI/Badge.prefab", badge);
+    write(folder / "Assets/UI/Badge.prefab.meta", meta(kBadgePrefab, "PrefabImporter"));
+
+    std::string scene(kHeader);
+    // The canvas, with the menu's script.
+    scene += ui_object(1000, "Canvas", {1001, 1009, 1002, 1003, 1004, 1005});
+    scene += rect_transform(
+        1001, 1000, "0, 0", "0, 0", "0, 0", "0, 0", "0, 0", 0,
+        {1101, 1201, 1301, 1401, 1501, 1601, 1701, 1801, 1901, 2001, brought(2100, 101)});
+    scene += component(223, "Canvas", 1002, 1000,
+                       "  serializedVersion: 3\n  m_RenderMode: 0\n  m_Camera: {fileID: 0}\n"
+                       "  m_PixelPerfect: 0\n  m_OverrideSorting: 0\n  m_SortingOrder: 0\n");
+    scene += script(1003, 1000, kScalerCs,
+                    "  m_UiScaleMode: 1\n  m_ReferencePixelsPerUnit: 100\n  m_ScaleFactor: 1\n"
+                    "  m_ReferenceResolution: {x: 400, y: 300}\n  m_ScreenMatchMode: 0\n"
+                    "  m_MatchWidthOrHeight: 0.5\n");
+    scene += script(1004, 1000, kRaycasterCs, "  m_IgnoreReversedGraphics: 1\n");
+    scene += script(1005, 1000, kMenuCs, "");
+    // A dark panel over the whole canvas, in Unity's rounded sprite.
+    scene += ui_object(1100, "Panel", {1101, 1109, 1102});
+    scene += rect_transform(1101, 1100, "0, 0", "1, 1", "0, 0", "0, 0", "0.5, 0.5", 1001);
+    scene += image(1102, 1100, ref(10905, kBuiltin, 0), "{r: 0, g: 0, b: 0, a: 0.5}", 1);
+    // The title, at the top, in a TextMesh Pro font asset, with rich text and an outline.
+    scene += ui_object(1200, "Title", {1201, 1209, 1202, 1203});
+    scene += rect_transform(1201, 1200, "0.5, 1", "0.5, 1", "0, -10", "300, 60", "0.5, 1", 1001);
+    scene += tmp_text(1202, 1200, "<b>Pond</b> Hop", "{r: 1, g: 0.9, b: 0.2, a: 1}",
+                      "  m_fontAsset: " + ref(11400000, kPondSdf, 2) +
+                          "\n  m_fontSize: 32\n  m_fontStyle: 0\n  m_textAlignment: 514\n"
+                          "  m_enableWordWrapping: 0\n  m_overflowMode: 0\n"
+                          "  m_margin: {x: 0, y: 0, z: 0, w: 0}\n");
+    scene += script(1203, 1200, kOutlineCs,
+                    "  m_EffectColor: {r: 0, g: 0, b: 0, a: 1}\n"
+                    "  m_EffectDistance: {x: 2, y: -2}\n  m_UseGraphicAlpha: 1\n");
+    // A button of a sliced sprite, which calls Menu.StartGame, with its label.
+    scene += ui_object(1300, "Play", {1301, 1309, 1302, 1303});
+    scene += rect_transform(1301, 1300, "0.5, 0.5", "0.5, 0.5", "0, 20", "160, 40", "0.5, 0.5",
+                            1001, {1311});
+    scene += image(1302, 1300, ref(21300000, kButtonPng), "{r: 1, g: 1, b: 1, a: 1}", 1);
+    scene += script(1303, 1300, kButtonCs, selectable(1302) + ui_call("m_OnClick", "StartGame"));
+    scene += ui_object(1310, "Text", {1311, 1319, 1312});
+    scene += rect_transform(1311, 1310, "0, 0", "1, 1", "0, 0", "0, 0", "0.5, 0.5", 1301);
+    scene += legacy_text(1312, 1310, "Play", 16, 4);
+    // Unity's default toggle: a background, a checkmark in it and a label.
+    scene += ui_object(1400, "Sound", {1401, 1409, 1402});
+    scene += rect_transform(1401, 1400, "0.5, 0.5", "0.5, 0.5", "0, -20", "160, 20", "0.5, 0.5",
+                            1001, {1411, 1431});
+    scene += script(1402, 1400, kToggleCs,
+                    selectable(1412) +
+                        "  toggleTransition: 1\n  graphic: {fileID: 1422}\n"
+                        "  m_Group: {fileID: 0}\n" +
+                        ui_call("onValueChanged", "SetSound", 0) + "  m_IsOn: 1\n");
+    scene += ui_object(1410, "Background", {1411, 1419, 1412});
+    scene +=
+        rect_transform(1411, 1410, "0, 1", "0, 1", "10, -10", "20, 20", "0.5, 0.5", 1401, {1421});
+    scene += image(1412, 1410, ref(10905, kBuiltin, 0), "{r: 1, g: 1, b: 1, a: 1}", 1);
+    scene += ui_object(1420, "Checkmark", {1421, 1429, 1422});
+    scene += rect_transform(1421, 1420, "0.5, 0.5", "0.5, 0.5", "0, 0", "20, 20", "0.5, 0.5", 1411);
+    scene += image(1422, 1420, ref(10901, kBuiltin, 0));
+    scene += ui_object(1430, "Label", {1431, 1439, 1432});
+    scene += rect_transform(1431, 1430, "0, 0", "1, 1", "9, -0.5", "-28, -3", "0.5, 0.5", 1401);
+    scene += legacy_text(1432, 1430, "Sound", 14, 0);
+    // A slider of whole numbers from 0 to 10: a background, a fill and a handle.
+    scene += ui_object(1500, "Volume", {1501, 1509, 1502});
+    scene += rect_transform(1501, 1500, "0.5, 0.5", "0.5, 0.5", "0, -50", "160, 20", "0.5, 0.5",
+                            1001, {1511, 1531, 1551});
+    scene += script(1502, 1500, kSliderCs,
+                    selectable(1542) +
+                        "  m_FillRect: {fileID: 1521}\n  m_HandleRect: {fileID: 1541}\n"
+                        "  m_Direction: 0\n  m_MinValue: 0\n  m_MaxValue: 10\n"
+                        "  m_WholeNumbers: 1\n  m_Value: 7\n" +
+                        ui_call("m_OnValueChanged", "SetVolume", 0));
+    scene += ui_object(1510, "Background", {1511, 1519, 1512});
+    scene += rect_transform(1511, 1510, "0, 0.25", "1, 0.75", "0, 0", "0, 0", "0.5, 0.5", 1501);
+    scene += image(1512, 1510, ref(10907, kBuiltin, 0), "{r: 1, g: 1, b: 1, a: 1}", 1);
+    scene += ui_object(1530, "Fill Area", {1531, 1539});
+    scene += rect_transform(1531, 1530, "0, 0.25", "1, 0.75", "-5, 0", "-20, 0", "0.5, 0.5", 1501,
+                            {1521});
+    scene += ui_object(1520, "Fill", {1521, 1529, 1522});
+    scene += rect_transform(1521, 1520, "0, 0", "0.7, 1", "0, 0", "10, 0", "0.5, 0.5", 1531);
+    scene += image(1522, 1520, ref(10905, kBuiltin, 0), "{r: 0.2, g: 0.8, b: 0.4, a: 1}", 1);
+    scene += ui_object(1550, "Handle Slide Area", {1551, 1559});
+    scene += rect_transform(1551, 1550, "0, 0", "1, 1", "0, 0", "-20, 0", "0.5, 0.5", 1501, {1541});
+    scene += ui_object(1540, "Handle", {1541, 1549, 1542});
+    scene += rect_transform(1541, 1540, "0.7, 0", "0.7, 1", "0, 0", "20, 0", "0.5, 0.5", 1551);
+    scene += image(1542, 1540, ref(10913, kBuiltin, 0));
+    // A TextMesh Pro input field: a text area holding the placeholder and the text.
+    scene += ui_object(1600, "Name", {1601, 1609, 1602, 1603});
+    scene += rect_transform(1601, 1600, "0.5, 0.5", "0.5, 0.5", "0, -80", "160, 30", "0.5, 0.5",
+                            1001, {1611});
+    scene += image(1602, 1600, ref(10911, kBuiltin, 0), "{r: 1, g: 1, b: 1, a: 1}", 1);
+    scene += script(1603, 1600, kTmpInputCs,
+                    selectable(1602) +
+                        "  m_TextViewport: {fileID: 1611}\n  m_TextComponent: {fileID: 1632}\n"
+                        "  m_Placeholder: {fileID: 1622}\n  m_VerticalScrollbar: {fileID: 0}\n"
+                        "  m_ContentType: 0\n  m_InputType: 0\n  m_KeyboardType: 0\n"
+                        "  m_LineType: 0\n  m_CharacterValidation: 0\n  m_CharacterLimit: 12\n" +
+                        ui_call("m_OnEndEdit", "SetName", 0) +
+                        "  m_CaretBlinkRate: 0.85\n  m_Text: Mira\n  m_ReadOnly: 0\n");
+    scene += ui_object(1610, "Text Area", {1611, 1619, 1612});
+    scene += rect_transform(1611, 1610, "0, 0", "1, 1", "0, -0.5", "-20, -13", "0.5, 0.5", 1601,
+                            {1621, 1631});
+    scene += script(1612, 1610, kRectMaskCs, "  m_Padding: {x: -8, y: -5, z: -8, w: -5}\n");
+    scene += ui_object(1620, "Placeholder", {1621, 1629, 1622});
+    scene += rect_transform(1621, 1620, "0, 0", "1, 1", "0, 0", "0, 0", "0.5, 0.5", 1611);
+    scene += tmp_text(1622, 1620, "Your name", "{r: 0.2, g: 0.2, b: 0.2, a: 0.5}",
+                      "  m_fontAsset: " + ref(11400000, kPondSdf, 2) +
+                          "\n  m_fontSize: 14\n  m_fontStyle: 0\n  m_HorizontalAlignment: 1\n"
+                          "  m_VerticalAlignment: 512\n  m_TextWrappingMode: 0\n");
+    scene += ui_object(1630, "Text", {1631, 1639, 1632});
+    scene += rect_transform(1631, 1630, "0, 0", "1, 1", "0, 0", "0, 0", "0.5, 0.5", 1611);
+    scene += tmp_text(1632, 1630, "Mira", "{r: 0.2, g: 0.2, b: 0.2, a: 1}",
+                      "  m_fontAsset: " + ref(11400000, kPondSdf, 2) +
+                          "\n  m_fontSize: 14\n  m_fontStyle: 0\n  m_HorizontalAlignment: 1\n"
+                          "  m_VerticalAlignment: 512\n  m_TextWrappingMode: 0\n");
+    // A scroll view down the right edge: a masked viewport, a content that a vertical layout
+    // group lays out and a fitter sizes, and a scroll bar that hides when it isn't needed.
+    scene += ui_object(1700, "List", {1701, 1709, 1702, 1703});
+    scene += rect_transform(1701, 1700, "1, 0", "1, 1", "-10, 0", "120, -20", "1, 0.5", 1001,
+                            {1711, 1751});
+    scene += image(1702, 1700, ref(10907, kBuiltin, 0), "{r: 1, g: 1, b: 1, a: 0.4}", 1);
+    scene += script(1703, 1700, kScrollRectCs,
+                    "  m_Content: {fileID: 1721}\n  m_Horizontal: 0\n  m_Vertical: 1\n"
+                    "  m_MovementType: 1\n  m_Elasticity: 0.1\n  m_Inertia: 1\n"
+                    "  m_ScrollSensitivity: 1\n  m_Viewport: {fileID: 1711}\n"
+                    "  m_HorizontalScrollbar: {fileID: 0}\n"
+                    "  m_VerticalScrollbar: {fileID: 1753}\n"
+                    "  m_HorizontalScrollbarVisibility: 2\n  m_VerticalScrollbarVisibility: 2\n");
+    scene += ui_object(1710, "Viewport", {1711, 1719, 1712, 1713});
+    scene += rect_transform(1711, 1710, "0, 0", "1, 1", "0, 0", "-17, 0", "0, 1", 1701, {1721});
+    scene += image(1712, 1710, ref(10917, kBuiltin, 0), "{r: 1, g: 1, b: 1, a: 1}", 1);
+    scene += script(1713, 1710, kMaskCs, "  m_ShowMaskGraphic: 0\n");
+    scene += ui_object(1720, "Content", {1721, 1729, 1722, 1723});
+    scene +=
+        rect_transform(1721, 1720, "0, 1", "1, 1", "0, 0", "0, 300", "0, 1", 1711, {1731, 1741});
+    scene += script(1722, 1720, kVerticalLayoutCs,
+                    "  m_Padding:\n    m_Left: 4\n    m_Right: 4\n    m_Top: 4\n    m_Bottom: 4\n"
+                    "  m_ChildAlignment: 0\n  m_Spacing: 2\n  m_ChildForceExpandWidth: 1\n"
+                    "  m_ChildForceExpandHeight: 0\n  m_ChildControlWidth: 1\n"
+                    "  m_ChildControlHeight: 0\n  m_ChildScaleWidth: 0\n"
+                    "  m_ChildScaleHeight: 0\n  m_ReverseArrangement: 0\n");
+    scene += script(1723, 1720, kFitterCs, "  m_HorizontalFit: 0\n  m_VerticalFit: 2\n");
+    for (const auto& [object, name] :
+         std::initializer_list<std::pair<std::int64_t, std::string_view>>{{1730, "Lily"},
+                                                                          {1740, "Reed"}}) {
+        scene += ui_object(object, name, {object + 1, object + 9, object + 2});
+        scene +=
+            rect_transform(object + 1, object, "0, 1", "0, 1", "0, 0", "100, 24", "0.5, 0.5", 1721);
+        scene += legacy_text(object + 2, object, name, 14, 3);
+    }
+    scene += ui_object(1750, "Scrollbar Vertical", {1751, 1759, 1752, 1753});
+    scene += rect_transform(1751, 1750, "1, 0", "1, 1", "0, 0", "20, 0", "1, 1", 1701, {1761});
+    scene += image(1752, 1750, ref(10907, kBuiltin, 0), "{r: 1, g: 1, b: 1, a: 1}", 1);
+    scene +=
+        script(1753, 1750, kScrollbarCs,
+               selectable(1772) + "  m_HandleRect: {fileID: 1771}\n  m_Direction: 2\n  m_Value: 1\n"
+                                  "  m_Size: 1\n  m_NumberOfSteps: 0\n");
+    scene += ui_object(1760, "Sliding Area", {1761, 1769});
+    scene +=
+        rect_transform(1761, 1760, "0, 0", "1, 1", "0, 0", "-20, -20", "0.5, 0.5", 1751, {1771});
+    scene += ui_object(1770, "Handle", {1771, 1779, 1772});
+    scene += rect_transform(1771, 1770, "0, 0", "1, 1", "0, 0", "20, 20", "0.5, 0.5", 1761);
+    scene += image(1772, 1770, ref(10905, kBuiltin, 0), "{r: 1, g: 1, b: 1, a: 1}", 1);
+    // A grid of two columns of icons in the bottom left corner.
+    scene += ui_object(1800, "Grid", {1801, 1809, 1802});
+    scene += rect_transform(1801, 1800, "0, 0", "0, 0", "10, 10", "100, 100", "0, 0", 1001,
+                            {1811, 1821, 1831});
+    scene += script(1802, 1800, kGridLayoutCs,
+                    "  m_Padding:\n    m_Left: 0\n    m_Right: 0\n    m_Top: 0\n    m_Bottom: 0\n"
+                    "  m_ChildAlignment: 0\n  m_StartCorner: 0\n  m_StartAxis: 0\n"
+                    "  m_CellSize: {x: 32, y: 32}\n  m_Spacing: {x: 4, y: 4}\n"
+                    "  m_Constraint: 1\n  m_ConstraintCount: 2\n");
+    for (const auto& [object, name] :
+         std::initializer_list<std::pair<std::int64_t, std::string_view>>{
+             {1810, "Gem"}, {1820, "Key"}, {1830, "Map"}}) {
+        scene += ui_object(object, name, {object + 1, object + 9, object + 2});
+        scene +=
+            rect_transform(object + 1, object, "0, 1", "0, 1", "0, 0", "32, 32", "0.5, 0.5", 1801);
+        scene += image(object + 2, object, ref(21300000, kIconPng));
+    }
+    // A raw image at the top left, scaled up by half.
+    scene += ui_object(1900, "Logo", {1901, 1909, 1902});
+    scene += rect_transform(1901, 1900, "0, 1", "0, 1", "8, -8", "64, 32", "0, 1", 1001, {},
+                            "1.5, y: 1.5");
+    scene += script(1902, 1900, kRawImageCs,
+                    "  m_Material: {fileID: 0}\n  m_Color: {r: 1, g: 1, b: 1, a: 1}\n"
+                    "  m_RaycastTarget: 0\n  m_Texture: " +
+                        ref(2800000, kIconPng) +
+                        "\n  m_UVRect:\n    serializedVersion: 2\n    x: 0\n    y: 0\n"
+                        "    width: 1\n    height: 1\n");
+    // A hidden panel of options, faded by a CanvasGroup.
+    scene += ui_object(2000, "Options", {2001, 2009, 2002, 2003}, false);
+    scene +=
+        rect_transform(2001, 2000, "0.5, 0.5", "0.5, 0.5", "0, 0", "200, 150", "0.5, 0.5", 1001);
+    scene += image(2002, 2000, "{fileID: 0}", "{r: 0.1, g: 0.2, b: 0.3, a: 1}");
+    scene += component(225, "CanvasGroup", 2003, 2000,
+                       "  m_Alpha: 0.5\n  m_Interactable: 1\n  m_BlocksRaycasts: 1\n"
+                       "  m_IgnoreParentGroups: 0\n");
+    // The badge, moved to the top right of the canvas.
+    scene += instance(2100, kBadgePrefab, 1001,
+                      modification(100, kBadgePrefab, "m_Name", "Badge") +
+                          modification(101, kBadgePrefab, "m_AnchoredPosition.x", "150") +
+                          modification(101, kBadgePrefab, "m_AnchoredPosition.y", "120"));
+    scene += stripped(224, "RectTransform", brought(2100, 101), 101, kBadgePrefab, 2100);
+    // A sign in the world with a canvas of its own in world space.
+    scene += game_object(2200, "Sign", {2201});
+    scene += transform(2201, 2200, "{x: 3, y: 1, z: 0}", 0, {2211});
+    scene += ui_object(2210, "Board", {2211, 2219, 2212, 2213});
+    scene += rect_transform(2211, 2210, "0.5, 0.5", "0.5, 0.5", "0, 0", "80, 30", "0.5, 0.5", 2201);
+    scene += component(223, "Canvas", 2212, 2210,
+                       "  serializedVersion: 3\n  m_RenderMode: 2\n  m_Camera: {fileID: 0}\n"
+                       "  m_PixelPerfect: 0\n  m_OverrideSorting: 0\n  m_SortingOrder: 0\n");
+    scene += legacy_text(2213, 2210, "Exit", 14, 4);
+    // The event system, which the gui system stands in for.
+    scene += game_object(3000, "EventSystem", {3001, 3002});
+    scene += transform(3001, 3000, "{x: 0, y: 0, z: 0}");
+    scene += script(3002, 3000, kEventSystemCs,
+                    "  m_FirstSelected: {fileID: 0}\n  m_sendNavigationEvents: 1\n");
+    scene += "--- !u!1660057539 &9223372036854775807\nSceneRoots:\n  m_ObjectHideFlags: 0\n"
+             "  m_Roots:\n  - {fileID: 1001}\n  - {fileID: 2201}\n  - {fileID: 3001}\n";
+    write(folder / "Assets/Scenes/Menu.unity", scene);
+    write(folder / "Assets/Scenes/Menu.unity.meta", meta("a1000000000000000000000000000025"));
+}
+
 fs::path make_project(const fs::path& folder) {
     fs::remove_all(folder);
     write_settings(folder);
@@ -1347,7 +1744,7 @@ TEST_CASE("importing a Unity scene converts cameras, sprites, bodies and sounds 
     CHECK(unsupported(report, "component Light").find("why")->as_string() ==
           "3D comes with milestone 7");
     CHECK(unsupported(report, "component Image").find("why")->as_string() ==
-          "Unity UI converts in a later import (on the roadmap)");
+          "a UI component outside a Canvas; put it under one");
     CHECK(unsupported(report, "component Light2D").find("why")->as_string() ==
           "a script from a Unity package");
     CHECK(unsupported(report, "Rigidbody2D frozen position").find("where")->as_string() ==
@@ -1934,4 +2331,206 @@ TEST_CASE("Unity audio mixers become a bus layout and 2D joints Godot's joints")
     CHECK(placed("weight").position.y == doctest::Approx(58.03).epsilon(0.002));
     CHECK(placed("bead").position.x == doctest::Approx(64.0).epsilon(0.005));
     CHECK(placed("bead").position.y == doctest::Approx(0.0).epsilon(0.5));
+}
+
+TEST_CASE("Unity UI becomes controls: canvases, text, images, widgets and layout groups") {
+    const fs::path project = "import_unity_menu";
+    fs::remove_all(project);
+    make_project(project / "unity");
+    write_menu(project / "unity");
+    auto imported = importer::import_project(
+        {.source = (project / "unity").string(), .destination = project.string()});
+    REQUIRE_MESSAGE(imported.ok(), (imported.ok() ? std::string() : imported.error().message));
+    const auto files = files_of(imported.value());
+    const std::string menu = "unity/Assets/Scenes/Menu.scene.json";
+
+    // The canvas is a control of the window's size at the scale its CanvasScaler gives the
+    // 800x600 window: 400x300 at twice the size. The event system needs nothing.
+    json::Value canvas = entity(files, menu, "canvas");
+    CHECK(canvas["Control"]["offset_right"].as_double() == 400.0);
+    CHECK(canvas["Control"]["offset_bottom"].as_double() == 300.0);
+    CHECK(canvas["Control"]["scale"] == parse("[2.0, 2.0]"));
+    CHECK(canvas["Control"]["children"] ==
+          parse(R"(["panel", "title", "play", "sound", "volume", "name", "list", "grid",
+                    "logo", "options", "badge"])"));
+    CHECK(entity(files, menu, "event_system").find("Control") == nullptr);
+
+    // A rect's anchors, position, size and pivot become anchors, offsets and grow directions;
+    // TextMesh Pro text is a Label in its font asset's font, its outline the theme's.
+    json::Value title = entity(files, menu, "title");
+    CHECK(title["Control"]["anchor_left"].as_double() == 0.5);
+    CHECK(title["Control"]["anchor_right"].as_double() == 0.5);
+    CHECK(title["Control"]["offset_left"].as_double() == -150.0);
+    CHECK(title["Control"]["offset_top"].as_double() == 10.0);
+    CHECK(title["Control"]["offset_right"].as_double() == 150.0);
+    CHECK(title["Control"]["offset_bottom"].as_double() == 70.0);
+    CHECK(title["Control"].find("anchor_top") == nullptr); // 0, as Unity's top anchor of 1
+    CHECK(title["Control"]["grow_horizontal"].as_string() == "both");
+    CHECK(title["Control"]["theme_override_fonts"] ==
+          parse(R"({"font": "unity/Assets/Fonts/Pond.ttf"})"));
+    CHECK(title["Control"]["theme_override_constants"] == parse(R"({"outline_size": 8})"));
+    CHECK(title["Control"]["theme_override_colors"] == parse(R"({"font_color": [1.0, 0.9, 0.2, 1.0],
+                    "font_outline_color": [0.0, 0.0, 0.0, 1.0]})"));
+    CHECK(title["Label"]["text"].as_string() == "Pond Hop");
+    CHECK(title["Label"]["horizontal_alignment"].as_string() == "center");
+    CHECK(title["Label"]["vertical_alignment"].as_string() == "center");
+    CHECK(title["Label"].find("autowrap_mode") == nullptr); // off, as word wrapping is
+
+    // A button draws its target graphic, a sliced sprite, tinted per state; its label is
+    // a Label of Unity's legacy Text in the default font.
+    json::Value play = entity(files, menu, "play");
+    REQUIRE(play.find("Button") != nullptr);
+    json::Value& styles = play["Control"]["theme_override_styles"];
+    CHECK(styles["normal"] == parse(R"({"type": "texture", "texture": "unity/Assets/UI/button.png",
+        "texture_margin_left": 12.0, "texture_margin_top": 12.0, "texture_margin_right": 12.0,
+        "texture_margin_bottom": 12.0})"));
+    CHECK(styles["hover"]["modulate_color"] == parse("[0.9, 0.9, 0.9, 1.0]"));
+    CHECK(styles["pressed"]["modulate_color"] == parse("[0.78, 0.78, 0.78, 1.0]"));
+    CHECK(styles["hover_pressed"] == styles["pressed"]);
+    CHECK(styles["disabled"]["modulate_color"] == parse("[0.78, 0.78, 0.78, 0.5]"));
+    CHECK(styles["focus"]["modulate_color"] == parse("[0.96, 0.96, 0.96, 1.0]"));
+    CHECK(play["Control"]["children"] == parse(R"(["text"])"));
+    json::Value text = entity(files, menu, "text");
+    CHECK(text["Label"]["text"].as_string() == "Play");
+    CHECK(text["Control"]["theme_override_font_sizes"] == parse(R"({"font_size": 16})"));
+    CHECK(text["Control"].find("theme_override_fonts") == nullptr); // Arial: the default font
+
+    // Unity's default toggle is a check box; its background and checkmark are part of it.
+    json::Value sound = entity(files, menu, "sound");
+    CHECK(sound["CheckBox"]["button_pressed"].as_bool());
+    CHECK(sound["Control"]["children"] == parse(R"(["label"])"));
+    const json::Value report = parse(files.at("import/unity.json"));
+    const json::Value& objects =
+        *report.find("scenes")->find("Assets/Scenes/Menu.unity")->find("entities");
+    CHECK(objects.find("Canvas/Sound/Background/Checkmark")->as_string() == "sound");
+
+    // A slider takes its background and fill as its track's styles, as thick as the background.
+    json::Value volume = entity(files, menu, "volume");
+    CHECK(volume["Slider"]["max_value"].as_double() == 10.0);
+    CHECK(volume["Slider"]["value"].as_double() == 7.0);
+    CHECK(volume["Slider"].find("step") == nullptr); // 1, whole numbers
+    CHECK(volume["Control"]["theme_override_styles"]["slider"] ==
+          parse(R"({"type": "flat", "bg_color": [1.0, 1.0, 1.0, 1.0], "corner_radius": 3,
+                    "content_margin_top": 5.0, "content_margin_bottom": 5.0})"));
+    CHECK(volume["Control"]["theme_override_styles"]["grabber_area"]["bg_color"] ==
+          parse("[0.2, 0.8, 0.4, 1.0]"));
+    CHECK(objects.find("Canvas/Volume/Handle Slide Area/Handle")->as_string() == "volume");
+
+    // A TextMesh Pro input field is a LineEdit; its text area's insets are its styles' content
+    // margins.
+    json::Value name = entity(files, menu, "name");
+    CHECK(name["LineEdit"]["text"].as_string() == "Mira");
+    CHECK(name["LineEdit"]["placeholder_text"].as_string() == "Your name");
+    CHECK(name["LineEdit"]["max_length"].as_int() == 12);
+    CHECK(name["LineEdit"]["caret_blink"].as_bool());
+    CHECK(name["Control"]["theme_override_colors"]["font_placeholder_color"] ==
+          parse("[0.2, 0.2, 0.2, 0.5]"));
+    CHECK(name["Control"]["theme_override_styles"]["normal"] ==
+          parse(R"({"type": "flat", "bg_color": [1.0, 1.0, 1.0, 1.0], "corner_radius": 3,
+                    "content_margin_left": 10.0, "content_margin_top": 7.0,
+                    "content_margin_right": 10.0, "content_margin_bottom": 6.0})"));
+    CHECK(objects.find("Canvas/Name/Text Area/Text")->as_string() == "name");
+
+    // A scroll view is a ScrollContainer holding its content; a layout group with padding is a
+    // MarginContainer around a BoxContainer, and its children take their sizes as minimums.
+    json::Value list = entity(files, menu, "list");
+    CHECK(list["ScrollContainer"]["horizontal_scroll_mode"].as_string() == "disabled");
+    CHECK(list["ScrollContainer"].find("vertical_scroll_mode") == nullptr); // auto
+    CHECK(list["Control"]["children"] == parse(R"(["content"])"));
+    json::Value content = entity(files, menu, "content");
+    REQUIRE(content.find("MarginContainer") != nullptr);
+    CHECK(content["Control"]["children"] == parse(R"(["content_layout"])"));
+    CHECK(content["Control"]["size_flags_horizontal"].as_string() == "expand_fill");
+    CHECK(content["Control"]["theme_override_constants"] ==
+          parse(R"({"margin_left": 4, "margin_top": 4, "margin_right": 4, "margin_bottom": 4})"));
+    json::Value layout = entity(files, menu, "content_layout");
+    CHECK(layout["BoxContainer"]["vertical"].as_bool());
+    CHECK(layout["Control"]["theme_override_constants"] == parse(R"({"separation": 2})"));
+    CHECK(layout["Control"]["children"] == parse(R"(["lily", "reed"])"));
+    CHECK(entity(files, menu, "lily")["Control"]["custom_minimum_size"] == parse("[0.0, 24.0]"));
+
+    // A grid layout group is a GridContainer of cells as big as its cell size.
+    json::Value grid = entity(files, menu, "grid");
+    CHECK(grid["GridContainer"]["columns"].as_int() == 2);
+    CHECK(grid["Control"]["theme_override_constants"] ==
+          parse(R"({"h_separation": 4, "v_separation": 4})"));
+    json::Value gem = entity(files, menu, "gem");
+    CHECK(gem["Control"]["custom_minimum_size"] == parse("[32.0, 32.0]"));
+    CHECK(gem["TextureRect"]["texture"].as_string() == "unity/Assets/UI/icon.png");
+
+    // A raw image is a TextureRect, scaled; an inactive object is hidden, faded by its group.
+    json::Value logo = entity(files, menu, "logo");
+    CHECK(logo["Control"]["scale"] == parse("[1.5, 1.5]"));
+    CHECK(logo["Control"]["mouse_filter"].as_string() == "ignore");
+    json::Value options = entity(files, menu, "options");
+    CHECK_FALSE(options["Control"]["visible"].as_bool());
+    CHECK(options["Control"]["modulate"] == parse("[1.0, 1.0, 1.0, 0.5]"));
+    CHECK(options["ColorRect"]["color"] == parse("[0.1, 0.2, 0.3, 1.0]"));
+
+    // A UI prefab is a scene of controls, which its instances extend; a canvas in the world is
+    // a control of its own.
+    const std::string badge = "unity/Assets/UI/Badge.scene.json";
+    json::Value badge_root = entity(files, badge, "badge");
+    CHECK(badge_root["Control"]["offset_left"].as_double() == -20.0);
+    CHECK(badge_root["Control"]["children"] == parse(R"(["count"])"));
+    CHECK(badge_root["Control"]["theme_override_styles"]["panel"]["bg_color"] ==
+          parse("[1.0, 0.0, 0.0, 1.0]"));
+    CHECK(entity(files, badge, "count")["Label"]["text"].as_string() == "3");
+    const json::Value menu_scene = parse(files.at(menu));
+    const json::Value& instanced = *menu_scene.find("entities")->find("badge");
+    CHECK(instanced.find("extends")->as_string() == badge);
+    CHECK(*instanced.find("components") ==
+          parse(R"({"Control": {"offset_left": 130.0, "offset_top": -140.0,
+                                "offset_right": 170.0, "offset_bottom": -100.0}})"));
+    json::Value board = entity(files, menu, "board");
+    CHECK(board["Label"]["text"].as_string() == "Exit");
+    CHECK(entity(files, menu, "sign")["Transform2D"].find("children") == nullptr);
+
+    // UI events' calls go in the task of the script they call.
+    const json::Value work = parse(files.at("storyboard/work.json"));
+    const std::string& task =
+        work.find("entries")->find("task/port-menu")->find("text")->as_string();
+    CHECK(task.find("play in unity/Assets/Scenes/Menu.scene.json calls StartGame() on pressed") !=
+          std::string::npos);
+    CHECK(task.find("name in unity/Assets/Scenes/Menu.scene.json calls SetName() on "
+                    "text_submitted") != std::string::npos);
+    for (const auto& [what, where] :
+         std::initializer_list<std::pair<std::string_view, std::string_view>>{
+             {"CanvasScaler", "Assets/Scenes/Menu.unity: Canvas"},
+             {"rich text", "Assets/Scenes/Menu.unity: Canvas/Title"},
+             {"World Space canvas", "Assets/Scenes/Menu.unity: Sign/Board"},
+             {"component EventSystem", "Assets/Scenes/Menu.unity: EventSystem"}}) {
+        const json::Value item = unsupported(report, what);
+        REQUIRE_MESSAGE(!item.is_null(), what);
+        CHECK(item.find("where")->as_string() == where);
+    }
+
+    // It lays out as Unity places it, at twice the size.
+    slash::world::ComponentRegistry components;
+    slash::world::register_builtin_components(components);
+    command::Registry commands;
+    command::register_builtin_commands(commands);
+    command::SessionOptions options_;
+    options_.project_root = project.string();
+    options_.capture_logs = false;
+    command::Session session(components, commands, options_);
+    const command::Reply opened = session.call("scene.open", parse(R"({"path": ")" + menu + "\"}"));
+    REQUIRE_MESSAGE(opened.ok, opened.message);
+    const command::Reply laid =
+        session.call("ui.layout", parse(R"({"ids": ["title", "play", "volume", "name", "list",
+                                                     "lily", "key", "logo"]})"));
+    REQUIRE_MESSAGE(laid.ok, laid.message);
+    CHECK(laid.value.find("problems") == nullptr);
+    std::map<std::string, json::Value> rects;
+    for (const json::Value& control : laid.value.find("controls")->as_array()) {
+        rects[control.find("id")->as_string()] = *control.find("rect");
+    }
+    CHECK(rects["title"] == parse("[100, 20, 600, 120]"));
+    CHECK(rects["play"] == parse("[240, 220, 320, 80]"));
+    CHECK(rects["volume"] == parse("[240, 380, 320, 40]"));
+    CHECK(rects["name"] == parse("[240, 430, 320, 60]"));
+    CHECK(rects["list"] == parse("[540, 20, 240, 560]"));
+    CHECK(rects["lily"] == parse("[548, 28, 224, 48]"));
+    CHECK(rects["key"] == parse("[92, 380, 64, 64]"));
+    CHECK(rects["logo"] == parse("[16, 16, 192, 96]"));
 }

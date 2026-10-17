@@ -1,12 +1,13 @@
 // Importing a Unity game: project.import converts a Unity project into this one.
 //
 // unity/ holds "Pond Hop", a small Unity 2D game as Unity saves it: project settings, a scene
-// that instances three prefabs (one of them a prefab variant) and has a tile map, sprites and
-// their import settings, tile assets, an Animator controller and its clips, an audio mixer, a
-// physics material, an Input System actions file and three C# scripts. One call converts it.
+// that instances three prefabs (one of them a prefab variant) and has a tile map and a HUD canvas,
+// sprites and their import settings, tile assets, an Animator controller and its clips, an audio
+// mixer, a physics material, an Input System actions file and four C# scripts. One call converts
+// it.
 // Its scene and prefabs become .scene.json files beside the originals, the prefabs staying
 // prefabs that the scene instances; its sprites, tile map, cameras, 2D physics and joints,
-// animation and sounds become SlashEngine's components, measured in pixels, the tile map's
+// animation, sounds and UI become SlashEngine's components, measured in pixels, the tile map's
 // sprites a tile set, the controller an animation library and the mixer a bus layout; its
 // player, physics, time, sorting and input settings become project.json; and each script, and
 // the controller's state machine, a storyboard task to port it to C++, since SlashEngine games
@@ -153,6 +154,9 @@ int main() {
     agent.call("step", R"({"ticks": 50})");
     agent.call("entity.get", R"({"id": "frog/frog_sprite", "components": ["Sprite2D"],
                                  "omit_defaults": true})");
+    // The HUD canvas is controls drawn over the game: the coin count laid out in a row at the
+    // top left, the pause button at the top right and the hint along the bottom.
+    agent.call("ui.layout", R"({"ids": ["coins", "icon", "count", "pause", "hint"]})");
     // The Hop state, which gameplay code plays on the Hop trigger, stretches the frog's feet.
     agent.call("animation.eval", R"({"id": "frog", "animation": "Hop", "times": [0, 0.25],
                                      "tracks": ["Feet:Transform2D/position/y"]})");
