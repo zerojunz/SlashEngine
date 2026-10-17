@@ -17,9 +17,10 @@
 // shadowed light. shade runs the same lighting on the CPU, for checks and light.sample.
 //
 // A lit pixel starts from the color its program made (Godot's base color). Normal draws multiply
-// it by the ambient color (CanvasModulate); then each light whose cull mask and z range take the
-// draw adds, subtracts or mixes in its color times the base color, darkened where the pixel's
-// normal faces away from it and blended toward its shadow color where an occluder hides it.
+// it by the ambient color (their canvas's CanvasModulate); then each light whose cull mask, z
+// range and layer range take the draw adds, subtracts or mixes in its color times the base color,
+// darkened where the pixel's normal faces away from it and blended toward its shadow color where
+// an occluder hides it.
 namespace slash::render {
 
 // How a draw takes the frame's lights, as Godot's light_mode.
@@ -71,10 +72,13 @@ struct Light {
     // Point: where the light texture is in the frame's light atlas, as [x, y, width, height]
     // from 0 to 1.
     std::array<float, 4> atlas_rect{0.0F, 0.0F, 1.0F, 1.0F};
-    // Lights draws whose light mask shares a bit with it, z index from z_min to z_max.
+    // Lights draws whose light mask shares a bit with it, z index from z_min to z_max and canvas
+    // layer from layer_min to layer_max.
     std::uint32_t item_cull_mask = 1;
     std::int32_t z_min = -1024;
     std::int32_t z_max = 1024;
+    std::int32_t layer_min = 0;
+    std::int32_t layer_max = 0;
     // The light's row in the shadow map, or -1 for no shadows.
     std::int32_t shadow_row = -1;
     ShadowFilter shadow_filter = ShadowFilter::None;
@@ -120,6 +124,7 @@ struct ShadeItem {
     LightMode mode = LightMode::Normal;
     std::uint32_t light_mask = 1;
     std::int32_t z_index = 0;
+    std::int32_t layer = 0; // the canvas layer it is drawn in
 };
 
 struct ShadePixel {

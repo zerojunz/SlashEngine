@@ -521,6 +521,7 @@ void write_prefabs(const fs::path& folder) {
 }
 
 constexpr std::string_view kTilesPng = "a100000000000000000000000000000d";
+constexpr std::string_view kTilesNormalPng = "a1000000000000000000000000000d01";
 constexpr std::string_view kGroundTile = "a100000000000000000000000000000e";
 constexpr std::string_view kSlopeTile = "a100000000000000000000000000000f";
 constexpr std::string_view kRuleTile = "a1000000000000000000000000000010";
@@ -582,7 +583,12 @@ void write_tiles(const fs::path& folder) {
                                   "\n      - - {x: -8, y: -8}\n        - {x: 8, y: -8}\n"
                                   "        - {x: 8, y: 8}",
                                   1002) +
-                           sprite("Plank", 32, " []", 1003)));
+                           sprite("Plank", 32, " []", 1003) +
+                           // The sheet's normal map, for 2D lights.
+                           "    secondaryTextures:\n    - texture: " +
+                           ref(2800000, kTilesNormalPng) + "\n      name: _NormalMap\n"));
+    write_png(folder / "Assets/Art/tiles_n.png", 48, 16);
+    write(folder / "Assets/Art/tiles_n.png.meta", texture_meta(kTilesNormalPng, 16, ""));
     constexpr std::string_view kTileScript =
         "{fileID: 13312, guid: 0000000000000000e000000000000000, type: 0}";
     write_tile(folder / "Assets/Tiles/Ground.asset", kGroundTile, kTileScript, 1001);
@@ -2176,7 +2182,8 @@ TEST_CASE("Unity tile maps become tile map layers, their sprites a tile set") {
     CHECK(parse(files.at(tiles)) == parse(R"({
         "format": 1,
         "physics_layers": [{"collision_mask": 4294967295, "friction": 0.2, "bounce": 1.0}],
-        "sources": {"tiles": {"texture": "unity/Assets/Art/tiles.png", "tiles": {
+        "sources": {"tiles": {"texture": "unity/Assets/Art/tiles.png",
+                              "normal_texture": "unity/Assets/Art/tiles_n.png", "tiles": {
             "0,0": {"name": "ground",
                     "collision": [{"points": [[-8.0, -8.0], [8.0, -8.0], [8.0, 8.0],
                                               [-8.0, 8.0]]}],

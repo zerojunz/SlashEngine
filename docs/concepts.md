@@ -332,8 +332,10 @@ one texture, so a layer from one atlas is one GPU draw. The
 layers are lit: the `CanvasModulate` color is the **ambient** light, a `PointLight2D` shines from
 its entity through a texture (a soft round one by default), and a `DirectionalLight2D` lights
 everything from one direction, like the sun. Each light adds, subtracts or mixes its color into
-what it reaches, and **light masks** and z ranges pick what that is. A sprite's **normal map**
-gives each pixel its own facing, so light falls on bumps and bevels by their angle. A
+what it reaches, and **light masks**, z ranges and layer ranges pick what that is: a light
+reaches the canvases whose layer its range holds, so a HUD layer can have lights of its own, and
+each canvas has its own `CanvasModulate`. A sprite's or a tile set's **normal map** gives each
+pixel its own facing, so light falls on bumps and bevels by their angle. A
 `LightOccluder2D` polygon casts **shadows** from lights that have them on: the CPU casts each
 shadowed light's occluders into one row of a **shadow map**, and the material shader reads it.
 A material's `light_mode` keeps a sprite unshaded, for glowing signs, or shows it only where light

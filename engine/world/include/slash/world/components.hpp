@@ -125,9 +125,10 @@ SLASH_COMPONENT(TileMapLayer, tile_set, origin, legend, rows, z_index, visible, 
 
 // A light shining from the entity's Transform2D (or the origin) through a texture, as Godot's
 // PointLight2D. It lights the sprites and tile map layers whose light_mask shares a bit with
-// range_item_cull_mask and whose z_index is in its range, and with shadow_enabled, the
-// LightOccluder2D polygons whose occluder_light_mask shares a bit with shadow_item_cull_mask
-// cast shadows from it.
+// range_item_cull_mask, whose z_index is in its range and whose canvas's layer is in its layer
+// range, and with shadow_enabled, the LightOccluder2D polygons whose occluder_light_mask shares a
+// bit with shadow_item_cull_mask cast shadows from it. In a CanvasLayer, it shines from where its
+// canvas puts it on the screen.
 struct PointLight2D {
     bool enabled = true;
     std::string texture; // project path of a PNG or BMP file; "" is a soft round light
@@ -139,6 +140,8 @@ struct PointLight2D {
     float height = 0.0F;            // pixels above the plane, for normal maps
     int range_z_min = -1024;
     int range_z_max = 1024;
+    int range_layer_min = 0; // the canvas layers it lights: the world is 0, a CanvasLayer its layer
+    int range_layer_max = 0;
     int range_item_cull_mask = 1;
     bool shadow_enabled = false;
     Vec4 shadow_color{0.0F, 0.0F, 0.0F, 0.0F};
@@ -147,8 +150,9 @@ struct PointLight2D {
     int shadow_item_cull_mask = 1;
 };
 SLASH_COMPONENT(PointLight2D, enabled, texture, texture_scale, offset, color, energy, blend_mode,
-                height, range_z_min, range_z_max, range_item_cull_mask, shadow_enabled,
-                shadow_color, shadow_filter, shadow_filter_smooth, shadow_item_cull_mask)
+                height, range_z_min, range_z_max, range_layer_min, range_layer_max,
+                range_item_cull_mask, shadow_enabled, shadow_color, shadow_filter,
+                shadow_filter_smooth, shadow_item_cull_mask)
 
 // Light from one direction over everything, as Godot's DirectionalLight2D, such as the sun or the
 // moon. It shines down the screen, turned by the entity's Transform2D rotation if it has one.
@@ -162,6 +166,8 @@ struct DirectionalLight2D {
     float max_distance = 10000.0F;  // how far shadows reach past their occluders, in pixels
     int range_z_min = -1024;
     int range_z_max = 1024;
+    int range_layer_min = 0; // the canvas layers it lights: the world is 0, a CanvasLayer its layer
+    int range_layer_max = 0;
     int range_item_cull_mask = 1;
     bool shadow_enabled = false;
     Vec4 shadow_color{0.0F, 0.0F, 0.0F, 0.0F};
@@ -170,8 +176,9 @@ struct DirectionalLight2D {
     int shadow_item_cull_mask = 1;
 };
 SLASH_COMPONENT(DirectionalLight2D, enabled, color, energy, blend_mode, height, max_distance,
-                range_z_min, range_z_max, range_item_cull_mask, shadow_enabled, shadow_color,
-                shadow_filter, shadow_filter_smooth, shadow_item_cull_mask)
+                range_z_min, range_z_max, range_layer_min, range_layer_max, range_item_cull_mask,
+                shadow_enabled, shadow_color, shadow_filter, shadow_filter_smooth,
+                shadow_item_cull_mask)
 
 // A polygon that casts shadows from 2D lights, as Godot's LightOccluder2D with its
 // OccluderPolygon2D, placed by the entity's Transform2D if it has one.
@@ -183,8 +190,8 @@ struct LightOccluder2D {
 };
 SLASH_COMPONENT(LightOccluder2D, polygon, closed, cull_mode, occluder_light_mask)
 
-// Tints everything lit, as Godot's CanvasModulate: the light a scene has where no light reaches.
-// One per scene.
+// Tints everything lit in its canvas, as Godot's CanvasModulate: the light the world, or a
+// CanvasLayer it is in, has where no light reaches. One per canvas.
 struct CanvasModulate {
     Vec4 color{1.0F, 1.0F, 1.0F, 1.0F};
 };
@@ -229,8 +236,8 @@ SLASH_COMPONENT(Camera2D, enabled, anchor_mode, ignore_rotation, offset, zoom, l
 // A canvas of its own over or under the world, as Godot's CanvasLayer (see canvas_layer.hpp): the
 // entities in its children, and theirs, draw in it, moved by its offset, rotation and scale
 // instead of the camera, and controls in it lay out in the viewport. Canvases draw in order of
-// layer; the world is layer 0, under any CanvasLayer of layer 0. Lights and CanvasModulate shade
-// only the world.
+// layer; the world is layer 0, under any CanvasLayer of layer 0. Lights whose layer range holds
+// its layer shade it, and a CanvasModulate in it tints only it.
 struct CanvasLayer {
     std::vector<entt::entity> children;
     Vec2 offset;

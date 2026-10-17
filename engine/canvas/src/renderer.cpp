@@ -7,6 +7,7 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <map>
 #include <memory>
 #include <numbers>
 #include <optional>
@@ -322,11 +323,13 @@ Result<const render::Image*> CanvasRenderer::light_image(const std::string& path
 }
 
 render::Lighting CanvasRenderer::lighting(const world::World& world,
-                                          const TransformOf& transform_of) {
+                                          const TransformOf& transform_of,
+                                          const world::Canvases& canvases) {
     constexpr std::string_view kEvent = "a light can't shine";
     const auto images = [this](const std::string& path) { return light_image(path); };
     std::vector<LightProblem> problems;
-    SceneLighting scene = collect_lighting(world, images, transform_of, problems, &shadow_cache_);
+    SceneLighting scene =
+        collect_lighting(world, images, transform_of, problems, &shadow_cache_, &canvases);
     const auto name_of = [&](entt::entity entity) {
         const std::string_view id = world.id_of(entity);
         return id.empty() ? "entity " + std::to_string(entt::to_entity(entity)) : std::string(id);
@@ -334,7 +337,7 @@ render::Lighting CanvasRenderer::lighting(const world::World& world,
     for (const LightProblem& problem : problems) {
         warn_once(name_of(problem.entity), problem.message, "id", kEvent);
     }
-    lit_ = scene.lit;
+    canvas_lighting_ = std::move(scene.canvases);
     render::Lighting out;
     if (!scene.lit) {
         // Nothing lights the world now: let the light textures go.
@@ -350,9 +353,6 @@ render::Lighting CanvasRenderer::lighting(const world::World& world,
         shadow_pixels_.clear();
         return out;
     }
-    out.ambient = {
-        .r = scene.ambient[0], .g = scene.ambient[1], .b = scene.ambient[2], .a = scene.ambient[3]};
-
     // The atlas, packed again when a light texture comes, goes or changes.
     std::vector<std::pair<std::string, std::uint64_t>> key;
     for (const SceneLight& light : scene.lights) {
@@ -703,15 +703,18 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             }
         }
     };
-    const render::Lighting lights = lighting(world, transform_of);
-    // How lights shade a sprite or layer: not at all in an unlit world, nor in a CanvasLayer.
+    const render::Lighting lights = lighting(world, transform_of, canvases);
+    // How lights shade a sprite or layer: as its canvas is lit, or not at all.
     const auto shading_for = [&](render::LightMode mode, int light_mask, int z_index,
                                  std::size_t canvas) {
         render::Shading shading;
-        if (lit_ && canvas == world_canvas) {
+        if (const CanvasLighting& lit = canvas_lighting_.at(canvas); lit.lit) {
             shading.mode = mode;
             shading.light_mask = static_cast<std::uint32_t>(std::max(light_mask, 0));
             shading.z_index = z_index;
+            shading.layer = lit.layer;
+            shading.ambient = lit.ambient;
+            shading.to_lights = lit.to_lights;
         }
         return shading;
     };
@@ -965,7 +968,39 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         };
         const render::Filter filter = resolve_filter(layer.texture_filter, options.texture_filter);
         const Vec2i size = set.value()->tile_size;
-        // Tiles go in runs with one texture; each run is one draw.
+        // How each source's tiles are shaded: with its normal and specular maps, left out with a
+        // warning if they don't load.
+        std::map<const AtlasSource*, render::Material> source_materials;
+        const auto material_of = [&](const AtlasSource& source) -> const render::Material& {
+            auto [found, added] = source_materials.try_emplace(&source);
+            if (!added) {
+                return found->second;
+            }
+            render::Shading& shading = found->second.shading;
+            shading = shading_for(render::LightMode::Normal, layer.light_mask, z, canvas);
+            if (shading.mode == render::LightMode::Unshaded) {
+                return found->second;
+            }
+            for (const auto& [path, slot] :
+                 {std::pair{&source.normal_texture, &shading.normal_map},
+                  std::pair{&source.specular_texture, &shading.specular_map}}) {
+                if (path->empty()) {
+                    continue;
+                }
+                if (auto map = this->texture(*path, filter); map) {
+                    *slot = map.value()->id;
+                } else {
+                    warn_once(*path, map.error().message, "texture", kEvent);
+                    problem(entity, "/components/TileMapLayer/tile_set",
+                            *path + ": " + map.error().message);
+                }
+            }
+            shading.specular = {source.specular_color.x, source.specular_color.y,
+                                source.specular_color.z,
+                                source.specular_color.w * source.specular_shininess};
+            return found->second;
+        };
+        // Tiles go in runs with one texture and material; each run is one draw.
         constexpr std::size_t kNoRun = SIZE_MAX;
         std::size_t run = kNoRun;
         std::uint32_t part = 0;
@@ -993,10 +1028,9 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
                 problem(entity, "/components/TileMapLayer/tile_set", std::move(message));
                 continue;
             }
-            if (run == kNoRun || items[run].texture != texture.value()->id) {
-                render::Material material;
-                material.shading =
-                    shading_for(render::LightMode::Normal, layer.light_mask, z, canvas);
+            const render::Material& material = material_of(source);
+            if (run == kNoRun || items[run].texture != texture.value()->id ||
+                items[run].material != material) {
                 items.push_back({.canvas = canvas,
                                  .z_index = z,
                                  .order = tree.draw_key(entity),
@@ -1004,7 +1038,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
                                  .texture = texture.value()->id,
                                  .first = vertices.size(),
                                  .count = 0,
-                                 .material = std::move(material),
+                                 .material = material,
                                  .entity = entity,
                                  .kind = FrameItem::Kind::Tiles,
                                  .image = &*texture.value()->image,

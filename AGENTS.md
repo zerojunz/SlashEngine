@@ -368,7 +368,8 @@ Canvas layers follow Godot's `CanvasLayer` and `Parallax2D` (`engine/world/src/c
 layer 0) and says which one each entity draws in: that of the `CanvasLayer` whose `children` hold
 it or an entity above it, else the world's. `CanvasRenderer` draws each canvas's sprites, tiles
 and particles, then its controls, through its transform (`canvas_layer_transform`, after the
-camera's when `follow_viewport_enabled`), lighting only the world's; `ui::layout` places each
+camera's when `follow_viewport_enabled`), each lit by its own `CanvasModulate` and the lights
+whose `range_layer_min`/`range_layer_max` hold its layer; `ui::layout` places each
 control by its canvas's transform (`Placed::canvas`, `DrawCall::canvas`), so hit tests follow.
 The `parallax_2d` system (priority 1060) sets each `Parallax2D`'s position from the camera as
 Godot's `_update_scroll`, and the renderer draws a repeating one's children again at each
@@ -390,7 +391,9 @@ sets; a terrain tile's `peering` names the terrain each side and corner must tou
 `paint_terrain` picks connecting tiles for painted cells and their neighbors; the commands are
 `tilemap.paint`, `tilemap.set` and `tilemap.get`. `CanvasRenderer` draws layers in runs of one
 texture (`tiles_drawn()`), and `check_tile_layers` checks a scene's layers for `scene validate`
-and exports. `examples/tilemaps` paints an island with a pond. Tiles have Godot's physics layers,
+and exports. `examples/tilemaps` paints an island with a pond. An atlas source's
+`normal_texture` and `specular_texture` are a Godot `CanvasTexture`'s, which lights shade its
+tiles with (`material_of` in `renderer.cpp`). Tiles have Godot's physics layers,
 collision polygons and alternative tiles, and a cell can turn its tile with `:h`, `:v` and `:t`
 after the tile (`slope:h`, `rock:1:ht`), as Godot's cell transform flags; drawing and collision
 turn together (`tile_look`, `tile_collision`). `examples/tile-collision` rolls balls on tiles.
@@ -398,14 +401,17 @@ turn together (`tile_look`, `tile_collision`). `examples/tile-collision` rolls b
 2D lights follow Godot's: `PointLight2D`, `DirectionalLight2D`, `LightOccluder2D` and
 `CanvasModulate`, with `Sprite2D`'s `light_mask`, `normal_texture` and `specular_texture` and a
 material's `light_mode`. `engine/render/include/slash/render/light.hpp` is the device side: a
-frame's `render::Lighting` (ambient color, up to 64 lights, a light atlas and a shadow map) and a
-draw's `Material::shading`, shaded in `material.hlsl`; `render::shade` is its CPU twin, used by
+frame's `render::Lighting` (up to 64 lights, a light atlas and a shadow map) and a draw's
+`Material::shading` (its canvas's layer, ambient color and `to_lights`, which maps a canvas
+layer's pixels into the world's, where lights are), shaded in `material.hlsl`; `render::shade` is its CPU twin, used by
 `light.sample`, and a test compares the two pixel for pixel. A change to the light math goes in
 both. `engine/canvas/src/light.cpp` turns a world's lights into that: `collect_lighting` casts
 each shadowed light's occluder edges on the CPU into one row of `render::kShadowMapWidth` texels
-(a point light's goes round it, a directional light's across it) and `pack_light_atlas` packs
-the light textures. `CanvasRenderer` uploads both only when they change (`lights_drawn()`,
-`shadows_drawn()`). `examples/lights-2d` has a torch, the moon and a shadowed crate.
+(a point light's goes round it, a directional light's across it), places lights and occluders
+in canvas layers into the world's canvas and gives each canvas its `CanvasLighting`, and
+`pack_light_atlas` packs the light textures. `CanvasRenderer` uploads both only when they change (`lights_drawn()`,
+`shadows_drawn()`). `examples/lights-2d` has a torch, the moon and a shadowed crate, and
+`examples/lit-tiles-and-layers` a tile set's normal map and a HUD with its own light.
 
 Shaders are HLSL in `engine/render/shaders/`. Their SPIR-V and MSL are committed in
 `engine/render/src/*_shaders.hpp`, so only someone changing a shader needs glslang and

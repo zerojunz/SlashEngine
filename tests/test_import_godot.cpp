@@ -1333,6 +1333,75 @@ _data = {
 }
 )";
 
+TEST_CASE("importing Godot CanvasTextures and light layer ranges keeps the lighting") {
+    const fs::path project = "import_godot_lit";
+    fs::remove_all(project);
+    write(project / "godot/project.godot",
+          "config_version=5\n\n[application]\n\nconfig/name=\"Lit\"\n");
+    for (const std::string_view name : {"wall", "wall_n", "wall_s"}) {
+        write_png(project / "godot/art" / (std::string(name) + ".png"), 16, 16);
+    }
+    write(project / "godot/level.tscn", R"([gd_scene format=3]
+
+[ext_resource type="Texture2D" path="res://art/wall.png" id="1_wall"]
+[ext_resource type="Texture2D" path="res://art/wall_n.png" id="2_normal"]
+[ext_resource type="Texture2D" path="res://art/wall_s.png" id="3_specular"]
+
+[sub_resource type="CanvasTexture" id="CanvasTexture_1"]
+diffuse_texture = ExtResource("1_wall")
+normal_texture = ExtResource("2_normal")
+specular_texture = ExtResource("3_specular")
+specular_color = Color(1, 0.5, 0.25, 1)
+specular_shininess = 0.5
+texture_filter = 1
+
+[sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_1"]
+texture = SubResource("CanvasTexture_1")
+0:0/0 = 0
+
+[sub_resource type="TileSet" id="TileSet_1"]
+sources/0 = SubResource("TileSetAtlasSource_1")
+
+[node name="Level" type="Node2D"]
+
+[node name="Wall" type="Sprite2D" parent="."]
+texture = SubResource("CanvasTexture_1")
+
+[node name="Ground" type="TileMapLayer" parent="."]
+tile_set = SubResource("TileSet_1")
+
+[node name="Torch" type="PointLight2D" parent="."]
+texture = ExtResource("1_wall")
+range_layer_min = -1
+range_layer_max = 2
+)");
+    const importer::ImportPlan plan = plan_inside(project);
+    const auto files = files_of(plan);
+    const std::string level = "godot/level.scene.json";
+    REQUIRE(files.contains(level));
+
+    // A sprite's CanvasTexture becomes its texture, normal and specular maps.
+    CHECK(*entity(files, level, "wall").find("Sprite2D") == parse(R"({
+        "texture": "godot/art/wall.png", "normal_texture": "godot/art/wall_n.png",
+        "specular_texture": "godot/art/wall_s.png", "specular_color": [1.0, 0.5, 0.25, 1.0],
+        "specular_shininess": 0.5})"));
+    // So does a tile set source's.
+    const std::string tileset =
+        entity(files, level, "ground").find("TileMapLayer")->find("tile_set")->as_string();
+    REQUIRE(files.contains(tileset));
+    CHECK(slash::canvas::validate_tileset(parse(files.at(tileset))).empty());
+    CHECK(*parse(files.at(tileset)).find("sources")->find("wall") == parse(R"({
+        "texture": "godot/art/wall.png", "normal_texture": "godot/art/wall_n.png",
+        "specular_texture": "godot/art/wall_s.png", "specular_color": [1.0, 0.5, 0.25, 1.0],
+        "specular_shininess": 0.5, "tiles": {"0,0": {}}})"));
+    CHECK(unsupported(plan.report, "CanvasTexture texture_filter").find("count")->as_int() == 2);
+    // Light layer ranges come as they are.
+    const json::Value torch = entity(files, level, "torch");
+    CHECK(torch.find("PointLight2D")->find("range_layer_min")->as_int() == -1);
+    CHECK(torch.find("PointLight2D")->find("range_layer_max")->as_int() == 2);
+    fs::remove_all(project);
+}
+
 TEST_CASE("importing a Godot AnimationPlayer writes its libraries and targets the nodes they "
           "animate") {
     const fs::path project = "import_godot_animation";

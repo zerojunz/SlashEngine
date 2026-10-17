@@ -174,7 +174,8 @@ std::array<float, 4> shade(std::span<const Light> lights, const std::array<float
     for (std::size_t index = 0; index < count; ++index) {
         const Light& light = lights[index];
         if ((light.item_cull_mask & item.light_mask) == 0 || item.z_index < light.z_min ||
-            item.z_index > light.z_max) {
+            item.z_index > light.z_max || item.layer < light.layer_min ||
+            item.layer > light.layer_max) {
             continue;
         }
         Float4 light_color = light.color;

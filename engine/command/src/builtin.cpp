@@ -2515,6 +2515,10 @@ Reply light_sample(Session& session, const json::Value& params) {
     }
     render::ShadeItem item;
     std::vector<std::array<float, 2>> positions;
+    const world::Tree2D tree(world);
+    const world::Canvases canvases = world::canvases(world, tree, ui::settings(world).viewport);
+    // The canvas sampled: the world's for points, an entity's own.
+    std::size_t sampled = canvases.world_canvas();
     if (points != nullptr) {
         for (const json::Value& point : points->as_array()) {
             positions.push_back(floats<2>(point));
@@ -2529,7 +2533,7 @@ Reply light_sample(Session& session, const json::Value& params) {
             return param_error(code::kInvalidParams, "/id", quoted(id) + " has no Transform2D");
         }
         // Where it is, and its z_index, after its parents.
-        const world::Tree2D tree(world);
+        sampled = canvases.of(entity);
         const Vec2 at = tree.global(entity).position;
         positions.push_back({at.x, at.y});
         const canvas::Inherited from_parents = canvas::inherited(world, tree, entity);
@@ -2563,7 +2567,18 @@ Reply light_sample(Session& session, const json::Value& params) {
                             : std::string(name);
     };
     std::vector<canvas::LightProblem> problems;
-    canvas::SceneLighting scene = canvas::collect_lighting(world, load, {}, problems);
+    canvas::SceneLighting scene =
+        canvas::collect_lighting(world, load, {}, problems, nullptr, &canvases);
+    const canvas::CanvasLighting& lit = scene.canvases.at(sampled);
+    item.layer = lit.layer;
+    if (lit.to_lights) {
+        // An entity in a CanvasLayer: where its canvas puts it among the lights.
+        const auto& m = *lit.to_lights;
+        for (std::array<float, 2>& position : positions) {
+            position = {(m[0] * position[0]) + (m[1] * position[1]) + m[2],
+                        (m[3] * position[0]) + (m[4] * position[1]) + m[5]};
+        }
+    }
     render::Image atlas;
     if (std::ranges::any_of(scene.lights, [](const canvas::SceneLight& light) {
             return light.light.kind == render::LightKind::Point;
@@ -2588,7 +2603,7 @@ Reply light_sample(Session& session, const json::Value& params) {
         std::copy_n(scene.shadow_pixels.data() + at, 4, texel.data());
         return texel;
     };
-    if (!scene.lit) {
+    if (!lit.lit) {
         item.mode = render::LightMode::Unshaded;
     }
 
@@ -2598,7 +2613,7 @@ Reply light_sample(Session& session, const json::Value& params) {
         render::ShadePixel pixel;
         pixel.position = position;
         const std::array<float, 4> color =
-            render::shade(lights, scene.ambient, item, pixel, sample_atlas, shadow_texel, &hits);
+            render::shade(lights, lit.ambient, item, pixel, sample_atlas, shadow_texel, &hits);
         json::Value point;
         point["color"] =
             json::Array{color_value(color[0]), color_value(color[1]), color_value(color[2])};
@@ -2628,9 +2643,12 @@ Reply light_sample(Session& session, const json::Value& params) {
         out.push_back(std::move(point));
     }
     json::Value result;
-    result["lit"] = scene.lit;
-    result["ambient"] = json::Array{color_value(scene.ambient[0]), color_value(scene.ambient[1]),
-                                    color_value(scene.ambient[2])};
+    result["lit"] = lit.lit;
+    if (sampled != canvases.world_canvas()) {
+        result["layer"] = name_of(canvases.all()[sampled].layer);
+    }
+    result["ambient"] = json::Array{color_value(lit.ambient[0]), color_value(lit.ambient[1]),
+                                    color_value(lit.ambient[2])};
     result["points"] = std::move(out);
     if (!problems.empty()) {
         json::Array warnings;
@@ -4460,9 +4478,9 @@ void register_builtin_commands(Registry& registry) {
         .effect = Effect::Read,
         .params = params_schema({
             {"points", std::move(sample_points)},
-            {"id", id_property("An entity with a Transform2D: sample at its position, with its "
-                               "Sprite2D or TileMapLayer's light mask and z index. Or give "
-                               "points.")},
+            {"id", id_property("An entity with a Transform2D: sample at its position in its "
+                               "canvas, with its Sprite2D or TileMapLayer's light mask and z "
+                               "index. Or give points.")},
             {"light_mask", integer_property("The draw's light mask: lights whose "
                                             "range_item_cull_mask shares a bit reach it.",
                                             0, kMaxLightMask, 1)},
