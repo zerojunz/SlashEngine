@@ -92,6 +92,11 @@ type:
   points and color ramps; a label's theme overrides; a body's `friction` and `bounce`.
 - `region_enabled` and `region_rect` are `Sprite2D`'s `region`; `self_modulate` multiplies
   into its `modulate`; an `AnimatedSprite2D` plays only with `autoplay`, as in Godot.
+- A `CanvasTexture`, as a sprite's `texture` or an atlas source's, becomes its
+  `diffuse_texture` as the texture, with its `normal_texture`, `specular_texture`,
+  `specular_color` and `specular_shininess` beside it, so lights shade it as in Godot. Its
+  `texture_filter` and `texture_repeat` are reported: the node's own are used. A light's
+  `range_layer_min` and `range_layer_max` keep which canvas layers it lights.
 - A menu's `item_count` and each item's `text`, `icon`, `checkable` (0, 1, 2 for `none`,
   `check`, `radio`), `checked`, `id` (left out when it is the item's index), `disabled` and
   `separator` become its `items`; other item properties, such as shortcuts and submenus, are
@@ -124,7 +129,8 @@ A `TileSet` becomes a [`.tileset.json` file](scene-format.md#tile-sets) and keep
 size, atlas sources, terrains, physics layers, collision polygons and alternative tiles:
 
 - Each `TileSetAtlasSource` is a source named after its texture (`tiles.png` is `tiles`), with
-  its texture, region size, margins and separation. Each tile is keyed by its column and row
+  its texture (and a `CanvasTexture`'s normal and specular maps), region size, margins and
+  separation. Each tile is keyed by its column and row
   (`"2,0"` for Godot's `2:0`) and keeps its probability.
 - Each terrain set is `set_<n>`, with its mode and its terrains' names; a name used in two sets
   gets the set's number added, since names are unique in the file.

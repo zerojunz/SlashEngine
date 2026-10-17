@@ -1049,6 +1049,12 @@ void register_builtin_components(ComponentRegistry& registry) {
         .doc = "Lights sprites and layers with at least this z_index.", .min = -4096, .max = 4096};
     const FieldMeta z_max{
         .doc = "Lights sprites and layers with at most this z_index.", .min = -4096, .max = 4096};
+    const FieldMeta layer_min{.doc = "Lights canvases with at least this layer: the world is 0, "
+                                     "a CanvasLayer its layer.",
+                              .min = -512,
+                              .max = 512};
+    const FieldMeta layer_max{
+        .doc = "Lights canvases with at most this layer.", .min = -512, .max = 512};
     const FieldMeta cull_mask{.doc = "Lights sprites and layers whose light_mask shares a bit.",
                               .min = 0,
                               .max = kMaxMask};
@@ -1200,8 +1206,8 @@ void register_builtin_components(ComponentRegistry& registry) {
     registry.add<PointLight2D>()
         .set_doc("A light shining from the entity's Transform2D through a texture. It lights "
                  "sprites and tile map layers whose light_mask shares a bit with "
-                 "range_item_cull_mask; with shadow_enabled, LightOccluder2D polygons cast "
-                 "shadows from it.")
+                 "range_item_cull_mask, in canvases its layer range holds; with shadow_enabled, "
+                 "LightOccluder2D polygons cast shadows from it.")
         .describe("enabled", {.doc = "Shine."})
         .describe("texture", {.doc = "Project path of a PNG or BMP file whose color and alpha "
                                      "shape the light; \"\" is a soft round light 256 pixels "
@@ -1215,6 +1221,8 @@ void register_builtin_components(ComponentRegistry& registry) {
                                     "them only from the side."})
         .describe("range_z_min", z_min)
         .describe("range_z_max", z_max)
+        .describe("range_layer_min", layer_min)
+        .describe("range_layer_max", layer_max)
         .describe("range_item_cull_mask", cull_mask)
         .describe("shadow_enabled", shadow_enabled)
         .describe("shadow_color", shadow_color)
@@ -1238,6 +1246,8 @@ void register_builtin_components(ComponentRegistry& registry) {
                   {.doc = "How far shadows reach past their occluders, in pixels.", .min = 0})
         .describe("range_z_min", z_min)
         .describe("range_z_max", z_max)
+        .describe("range_layer_min", layer_min)
+        .describe("range_layer_max", layer_max)
         .describe("range_item_cull_mask", cull_mask)
         .describe("shadow_enabled", shadow_enabled)
         .describe("shadow_color", shadow_color)
@@ -1261,8 +1271,8 @@ void register_builtin_components(ComponentRegistry& registry) {
                    .max = kMaxMask});
 
     registry.add<CanvasModulate>()
-        .set_doc("Tints everything lit: the light a scene has where no light reaches. One per "
-                 "scene.")
+        .set_doc("Tints everything lit in its canvas: the light the world, or the CanvasLayer "
+                 "it is in, has where no light reaches. One per canvas.")
         .describe("color", {.doc = "As [r, g, b, a] from 0 to 1.", .min = 0, .max = 1});
 
     const FieldMeta limit{.doc = "Edge of the world the view stays inside, in pixels."};
@@ -1315,8 +1325,8 @@ void register_builtin_components(ComponentRegistry& registry) {
         .set_doc("A canvas of its own over or under the world, as Godot's CanvasLayer: the "
                  "entities in its children, and theirs, draw in it, moved by its offset, "
                  "rotation and scale instead of the camera. Canvases draw in order of layer; the "
-                 "world is layer 0. Its controls lay out in the viewport. Lights shade only the "
-                 "world.")
+                 "world is layer 0. Its controls lay out in the viewport. Lights whose layer "
+                 "range holds its layer shade it; a CanvasModulate in it tints only it.")
         .describe("layer", {.doc = "Draws over canvases with a lower layer; the world is 0, under "
                                    "a CanvasLayer of 0. Negative layers draw behind the world."})
         .describe("visible", {.doc = "Hides everything in it when false."})

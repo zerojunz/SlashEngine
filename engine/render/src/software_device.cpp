@@ -524,10 +524,23 @@ private:
         if (shading.mode == LightMode::Unshaded) {
             return color;
         }
-        ShadePixel pixel{.position = {varying[6], varying[7]},
-                         .color = color,
-                         .normal = std::nullopt,
-                         .specular = std::nullopt};
+        // Where the pixel is in the lights' coordinates, and how that changes across the screen.
+        std::array<float, 2> position{varying[6], varying[7]};
+        std::array<float, 2> position_dx{slopes.dx[6], slopes.dx[7]};
+        std::array<float, 2> position_dy{slopes.dy[6], slopes.dy[7]};
+        if (shading.to_lights) {
+            const auto& m = *shading.to_lights;
+            const auto linear = [&](std::array<float, 2> d) {
+                return std::array{(m[0] * d[0]) + (m[1] * d[1]), (m[3] * d[0]) + (m[4] * d[1])};
+            };
+            position = linear(position);
+            position[0] += m[2];
+            position[1] += m[5];
+            position_dx = linear(position_dx);
+            position_dy = linear(position_dy);
+        }
+        ShadePixel pixel{
+            .position = position, .color = color, .normal = std::nullopt, .specular = std::nullopt};
         if (shading.normal_map != TextureId::None) {
             // The texture's u and v axes in the frame, from how both change across the screen.
             std::array<float, 2> u_axis{1.0F, 0.0F};
@@ -535,11 +548,11 @@ private:
             const float det = (slopes.dx[0] * slopes.dy[1]) - (slopes.dy[0] * slopes.dx[1]);
             if (std::abs(det) > 1.0e-12F) {
                 const std::array<float, 2> along_u{
-                    ((slopes.dx[6] * slopes.dy[1]) - (slopes.dy[6] * slopes.dx[1])) / det,
-                    ((slopes.dx[7] * slopes.dy[1]) - (slopes.dy[7] * slopes.dx[1])) / det};
+                    ((position_dx[0] * slopes.dy[1]) - (position_dy[0] * slopes.dx[1])) / det,
+                    ((position_dx[1] * slopes.dy[1]) - (position_dy[1] * slopes.dx[1])) / det};
                 const std::array<float, 2> along_v{
-                    ((slopes.dy[6] * slopes.dx[0]) - (slopes.dx[6] * slopes.dy[0])) / det,
-                    ((slopes.dy[7] * slopes.dx[0]) - (slopes.dx[7] * slopes.dy[0])) / det};
+                    ((position_dy[0] * slopes.dx[0]) - (position_dx[0] * slopes.dy[0])) / det,
+                    ((position_dy[1] * slopes.dx[0]) - (position_dx[1] * slopes.dy[0])) / det};
                 const float lu = (along_u[0] * along_u[0]) + (along_u[1] * along_u[1]);
                 const float lv = (along_v[0] * along_v[0]) + (along_v[1] * along_v[1]);
                 if (lu > 0.0F && lv > 0.0F) {
@@ -558,11 +571,13 @@ private:
             }
             pixel.specular = shine;
         }
-        const Color& ambient = frame_.lighting.ambient;
         const Image* shadow_image = shader.shadows.image;
         return shade(
-            frame_.lighting.lights, {ambient.r, ambient.g, ambient.b, ambient.a},
-            {.mode = shading.mode, .light_mask = shading.light_mask, .z_index = shading.z_index},
+            frame_.lighting.lights, shading.ambient,
+            {.mode = shading.mode,
+             .light_mask = shading.light_mask,
+             .z_index = shading.z_index,
+             .layer = shading.layer},
             pixel, [&](float su, float sv) { return shader.atlas.sample(su, sv); },
             [&](std::uint32_t column, std::uint32_t row) -> std::array<std::uint8_t, 4> {
                 if (shadow_image == nullptr || column >= shadow_image->width ||

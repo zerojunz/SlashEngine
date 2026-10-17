@@ -1,0 +1,74 @@
+{
+  "entities": {
+    "floor": {
+      "components": {
+        "TileMapLayer": {
+          "legend": {
+            "b": "block"
+          },
+          "rows": ["bbbbbbbbbb", "bbbbbbbbbb", "bbbbbbbbbb", "bbbbbbbbbb", "bbbbbbbbbb", "bbbbbbbbbb"],
+          "tile_set": "dungeon.tileset.json"
+        }
+      }
+    },
+    "hud": {
+      "components": {
+        "CanvasLayer": {
+          "children": ["hud_dim", "panel", "lantern"]
+        }
+      }
+    },
+    "hud_dim": {
+      "components": {
+        "CanvasModulate": {
+          "color": [0.35, 0.35, 0.35, 1.0]
+        }
+      }
+    },
+    "lantern": {
+      "components": {
+        "PointLight2D": {
+          "color": [1.0, 0.85, 0.5, 1.0],
+          "energy": 0.8,
+          "range_layer_max": 1,
+          "range_layer_min": 1,
+          "texture_scale": 0.25
+        },
+        "Transform2D": {
+          "position": [28.0, 10.0]
+        }
+      }
+    },
+    "night": {
+      "components": {
+        "CanvasModulate": {
+          "color": [0.1, 0.1, 0.15, 1.0]
+        }
+      }
+    },
+    "panel": {
+      "components": {
+        "Sprite2D": {
+          "texture": "panel.png"
+        },
+        "Transform2D": {
+          "position": [28.0, 10.0]
+        }
+      }
+    },
+    "torch": {
+      "components": {
+        "PointLight2D": {
+          "color": [1.0, 0.7, 0.4, 1.0],
+          "energy": 1.2,
+          "height": 16.0,
+          "texture_scale": 0.75
+        },
+        "Transform2D": {
+          "position": [32.0, 40.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

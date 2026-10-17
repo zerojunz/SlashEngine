@@ -340,7 +340,7 @@ TEST_CASE("the parallax_2d system scrolls with the current camera and autoscroll
     check_near(scene.get<world::Parallax2D>("clouds").scroll_offset, {1.0F, 0.0F}, 1e-2F);
 }
 
-TEST_CASE("canvas layers draw in their order, over the camera's view and unlit") {
+TEST_CASE("canvas layers draw in their order, over the camera's view") {
     Scene scene;
     // A red sprite in the middle of the world's view, a blue one under it in layer -1, a green
     // one at (20, 20) on the screen in a HUD.
@@ -383,6 +383,119 @@ TEST_CASE("canvas layers draw in their order, over the camera's view and unlit")
     scene.get<world::Transform2D>("heart").position = {1010.0F, 1000.0F};
     image = scene.capture();
     CHECK(pixel(image, 90, 45) == kGreen);
+}
+
+TEST_CASE("lights shade the canvases their layer range holds, as Godot's") {
+    Scene scene;
+    // The camera puts world (1000, 1000) in the middle of the screen. White ground fills the
+    // screen in a dark world; a HUD in layer 1, moved 10 pixels right, is dark too and holds a
+    // badge at (20, 20), a chip at (60, 20) and a lamp, an 8x8 square of light, over the chip.
+    scene.create("cam", R"({"Transform2D": {"position": [1000, 1000]}, "Camera2D": {}})");
+    scene.create("night", R"({"CanvasModulate": {"color": [0, 0, 0, 1]}})");
+    scene.create("ground", R"({"Transform2D": {"position": [1000, 1000], "scale": [40, 22.5]},
+                               "Sprite2D": {"texture": "white.png"}})");
+    scene.create("hud_night", R"({"CanvasModulate": {"color": [0, 0, 0, 1]}})");
+    scene.create("badge", R"({"Transform2D": {"position": [20, 20]},
+                              "Sprite2D": {"texture": "white.png"}})");
+    scene.create("chip", R"({"Transform2D": {"position": [60, 20]},
+                             "Sprite2D": {"texture": "white.png"}})");
+    scene.create("lamp", R"({"Transform2D": {"position": [60, 20]},
+                             "PointLight2D": {"texture": "white.png", "texture_scale": 2,
+                                              "range_layer_min": 1, "range_layer_max": 1}})");
+    scene.create("hud", R"({"CanvasLayer": {"offset": [10, 0],
+                            "children": ["hud_night", "badge", "chip", "lamp"]}})");
+
+    // Each canvas has its own CanvasModulate, and the lamp lights only layer 1: the chip under
+    // it, not the ground around it.
+    render::Image image = scene.capture();
+    CHECK(pixel(image, 30, 20) == kClear); // the badge
+    CHECK(pixel(image, 70, 20) == kWhite); // the chip
+    CHECK(pixel(image, 73, 17) == kClear); // the ground in the lamp's light
+    CHECK(pixel(image, 120, 60) == kClear);
+
+    // Reaching layer 0 too, it lights the world where its canvas puts it on the screen.
+    scene.get<world::PointLight2D>("lamp").range_layer_min = 0;
+    image = scene.capture();
+    CHECK(pixel(image, 73, 17) == kWhite);
+    CHECK(pixel(image, 76, 17) == kClear); // past its light
+
+    // A torch in the world lights layer 0 by default, so not the HUD, until its range takes 1.
+    scene.create("torch", R"({"Transform2D": {"position": [1000, 1000]},
+                              "PointLight2D": {"texture": "white.png", "texture_scale": 100}})");
+    image = scene.capture();
+    CHECK(pixel(image, 120, 60) == kWhite);
+    CHECK(pixel(image, 30, 20) == kClear);
+    scene.get<world::PointLight2D>("torch").range_layer_max = 1;
+    image = scene.capture();
+    CHECK(pixel(image, 30, 20) == kWhite);
+
+    // A hidden layer's lights go out with it.
+    scene.get<world::PointLight2D>("torch").enabled = false;
+    scene.get<world::CanvasLayer>("hud").visible = false;
+    image = scene.capture();
+    CHECK(pixel(image, 73, 17) == kClear);
+
+    // collect_lighting says how each canvas is lit, and places the lamp through its canvas.
+    scene.get<world::CanvasLayer>("hud").visible = true;
+    std::vector<canvas::LightProblem> problems;
+    const world::Canvases canvases = scene.canvases();
+    const canvas::SceneLighting lighting = canvas::collect_lighting(
+        scene.world,
+        [](const std::string&) -> slash::Result<const render::Image*> {
+            static const render::Image white{
+                .width = 4, .height = 4, .pixels = std::vector<std::uint8_t>(64, 255)};
+            return &white;
+        },
+        {}, problems, nullptr, &canvases);
+    REQUIRE(lighting.canvases.size() == 2);
+    const canvas::CanvasLighting& world_lit = lighting.canvases[canvases.world_canvas()];
+    const canvas::CanvasLighting& hud_lit = lighting.canvases[1 - canvases.world_canvas()];
+    CHECK(world_lit.lit);
+    CHECK(world_lit.layer == 0);
+    CHECK_FALSE(world_lit.to_lights);
+    CHECK(hud_lit.layer == 1);
+    CHECK(hud_lit.ambient == std::array{0.0F, 0.0F, 0.0F, 1.0F});
+    REQUIRE(hud_lit.to_lights);
+    // HUD (60, 20) is screen (70, 20), world (990, 975).
+    const auto& m = *hud_lit.to_lights;
+    CHECK((m[0] * 60.0F) + (m[1] * 20.0F) + m[2] == doctest::Approx(990.0F));
+    CHECK((m[3] * 60.0F) + (m[4] * 20.0F) + m[5] == doctest::Approx(975.0F));
+    REQUIRE(lighting.lights.size() == 1);
+    CHECK(lighting.lights[0].light.position[0] == doctest::Approx(990.0F));
+    CHECK(lighting.lights[0].light.position[1] == doctest::Approx(975.0F));
+    CHECK(lighting.lights[0].light.layer_min == 0);
+    CHECK(lighting.lights[0].light.layer_max == 1);
+    CHECK(problems.empty());
+}
+
+TEST_CASE("light.sample samples an entity in its canvas") {
+    const Project project("light_sample_layer_project");
+    project.ok("batch", R"({"commands": [
+        {"command": "entity.create", "params": {"id": "cam", "components": {
+            "Transform2D": {"position": [1000, 1000]}, "Camera2D": {}}}},
+        {"command": "entity.create", "params": {"id": "sun", "components": {
+            "DirectionalLight2D": {"color": [0.5, 0.5, 0.5, 1], "range_layer_max": 2}}}},
+        {"command": "entity.create", "params": {"id": "dusk", "components": {
+            "CanvasModulate": {"color": [0.25, 0.25, 0.25, 1]}}}},
+        {"command": "entity.create", "params": {"id": "badge", "components": {
+            "Transform2D": {"position": [20, 20]}, "Sprite2D": {"texture": "white.png"}}}},
+        {"command": "entity.create", "params": {"id": "hud", "components": {
+            "CanvasLayer": {"layer": 2, "children": ["badge"]}}}}]})");
+    // The world: the sun over the dusk. The badge's canvas has no CanvasModulate.
+    CHECK(project.ok("light.sample", R"({"points": [[0, 0]]})") ==
+          parse(R"({"lit": true, "ambient": [0.25, 0.25, 0.25], "points": [
+              {"color": [0.75, 0.75, 0.75], "lights": [{"id": "sun", "color": [0.5, 0.5, 0.5]}]}
+          ]})"));
+    CHECK(project.ok("light.sample", R"({"id": "badge"})") ==
+          parse(R"({"lit": true, "layer": "hud", "ambient": [1, 1, 1], "points": [
+              {"color": [1.5, 1.5, 1.5], "lights": [{"id": "sun", "color": [0.5, 0.5, 0.5]}]}
+          ]})"));
+    // Out of the sun's range, the badge's canvas isn't lit at all.
+    project.ok("component.set",
+               R"({"id": "sun", "components": {"DirectionalLight2D": {"range_layer_max": 1}}})");
+    CHECK(project.ok("light.sample", R"({"id": "badge"})") ==
+          parse(R"({"lit": false, "layer": "hud", "ambient": [1, 1, 1],
+                    "points": [{"color": [1, 1, 1], "lights": []}]})"));
 }
 
 TEST_CASE("a Parallax2D's repeat draws its children side by side, as Godot's") {

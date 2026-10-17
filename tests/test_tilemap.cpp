@@ -144,6 +144,12 @@ TEST_CASE("tile set files are checked, with every mistake located") {
           "\"2,0\"");
     CHECK(first_error(R"({"format": 1, "sources": {"a": {"texture": "../a.png"}}})")
               .starts_with("/sources/a/texture: expected a path inside the project"));
+    CHECK(first_error(R"({"format": 1, "sources": {"a": {"texture": "a.png",
+          "normal_texture": "/a_n.png"}}})")
+              .starts_with("/sources/a/normal_texture: expected a path inside the project"));
+    CHECK(first_error(R"({"format": 1, "sources": {"a": {"texture": "a.png",
+          "specular_shininess": 2}}})")
+              .starts_with("/sources/a/specular_shininess: "));
     CHECK(first_error(R"({"format": 1, "terrain_sets": {"t": {"terrains": ["grass"]}},
           "sources": {"a": {"texture": "a.png", "tiles": {"0,0": {"terrain": "gras"}}}}})") ==
           "/sources/a/tiles/0,0/terrain: no terrain set has a terrain named \"gras\"; did you "
@@ -203,6 +209,19 @@ TEST_CASE("tile set files are checked, with every mistake located") {
     CHECK(s.tiles.at({2, 1}).probability == doctest::Approx(0.5));
     CHECK(canvas::tile_region(s, {2, 1}) == std::array<int, 4>{1 + (2 * 19), 2 + 28, 16, 24});
     CHECK(canvas::tile_text(sides.value(), {.source = "s", .atlas = {2, 1}}) == "s:2,1");
+
+    // A source's normal and specular maps, as a Godot CanvasTexture's.
+    auto lit = canvas::parse_tileset(parse(R"({"format": 1, "sources": {"s": {
+        "texture": "s.png", "normal_texture": "s_n.png", "specular_texture": "s_s.png",
+        "specular_color": [1, 0.5, 0.25, 1], "specular_shininess": 0.5}}})"));
+    REQUIRE(lit.ok());
+    const canvas::AtlasSource& shiny = lit.value().sources.at("s");
+    CHECK(shiny.normal_texture == "s_n.png");
+    CHECK(shiny.specular_texture == "s_s.png");
+    CHECK(shiny.specular_color == slash::Vec4{1.0F, 0.5F, 0.25F, 1.0F});
+    CHECK(shiny.specular_shininess == 0.5F);
+    CHECK(s.normal_texture.empty());
+    CHECK(s.specular_shininess == 1.0F);
 }
 
 TEST_CASE("tiles are found by name or by source and grid cell, with hints") {
@@ -840,6 +859,52 @@ TEST_CASE("turned and alternative tiles draw as Godot's draw_tile draws them") {
         const Rgba cyan{0, 255, 255, 255};
         CHECK(quarters(1, 1) == Quarters{green, black, cyan, blue});
         CHECK(quarters(2, 1) == Quarters{black, green, blue, cyan});
+    }
+}
+
+TEST_CASE("a tile set source's normal map turns light on its tiles, flipped with them") {
+    // Under a light along the screen from the top, a normal map facing up the screen is lit
+    // and one facing down is dark; flipping a tile vertically flips its normals too. A source
+    // with no normal map is lit as a flat tile, by light from any side.
+    const Rgba white{255, 255, 255, 255};
+    const Rgba black{0, 0, 0, 255};
+    std::vector<std::unique_ptr<render::RenderDevice>> devices;
+    devices.push_back(render::create_software_device());
+    if (auto gpu = gpu_device(); gpu != nullptr) {
+        devices.push_back(std::move(gpu));
+    }
+    for (const auto& device : devices) {
+        CAPTURE(render::backend_name(device->backend()));
+        Scene scene;
+        scene.files.write("white.png", grid_png({{white}}, 8));
+        scene.files.write("up.png", grid_png({{{128, 255, 128, 255}}}, 8));
+        scene.files.write("down.png", grid_png({{{128, 0, 128, 255}}}, 8));
+        scene.files.write("lit.tileset.json", R"({"format": 1, "tile_size": [8, 8], "sources": {
+            "up": {"texture": "white.png", "normal_texture": "up.png",
+                   "tiles": {"0,0": {"name": "up"}}},
+            "down": {"texture": "white.png", "normal_texture": "down.png",
+                     "tiles": {"0,0": {"name": "down"}}},
+            "plain": {"texture": "white.png", "tiles": {"0,0": {"name": "plain"}}}}})");
+        scene.create("map", R"({"TileMapLayer": {"tile_set": "lit.tileset.json",
+            "texture_filter": "nearest",
+            "legend": {"a": "up", "b": "up:v", "c": "down", "d": "plain"}, "rows": ["abcd"]}})");
+        scene.create("night", R"({"CanvasModulate": {"color": [0, 0, 0, 1]}})");
+        scene.create("sun", R"({"DirectionalLight2D": {}})");
+        auto target = device->create_texture(
+            {.width = 32, .height = 8, .filter = render::Filter::Nearest, .render_target = true});
+        REQUIRE(target.ok());
+        canvas::CanvasRenderer renderer(*device, scene.assets);
+        canvas::CanvasOptions options;
+        options.target = target.value();
+        options.clear = {.r = 0.0F, .g = 0.0F, .b = 0.0F, .a = 1.0F};
+        REQUIRE(renderer.draw(scene.world, options).ok());
+        CHECK(renderer.tiles_drawn() == 4);
+        auto image = device->read_texture(target.value());
+        REQUIRE(image.ok());
+        CHECK(pixel(image.value(), 4, 4) == white);  // facing the light
+        CHECK(pixel(image.value(), 12, 4) == black); // flipped to face away
+        CHECK(pixel(image.value(), 20, 4) == black); // facing away
+        CHECK(pixel(image.value(), 28, 4) == white); // no normal map
     }
 }
 

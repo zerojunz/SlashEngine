@@ -135,6 +135,7 @@ A reference must name an entity that exists in the same scene.
 | | `blend_mode` | `std::string` | `"add"` | How the light changes what it lights: `add` brightens, `sub` darkens and `mix` blends toward its color |
 | | `height` | `float` | `0` | Pixels above the plane, for normal maps: at 0 it lights them only from the side |
 | | `range_z_min`, `range_z_max` | `int` | `-1024`, `1024` | Lights sprites and layers whose `z_index` is in this range |
+| | `range_layer_min`, `range_layer_max` | `int` | `0`, `0` | Lights the [canvases](#canvas-layers-and-parallax) whose layer is in this range, from -512 to 512: the world is layer 0, a `CanvasLayer` its `layer` |
 | | `range_item_cull_mask` | `int` | `1` | Lights sprites and layers whose `light_mask` shares a bit |
 | | `shadow_enabled` | `bool` | `false` | `LightOccluder2D` polygons cast shadows from it |
 | | `shadow_color` | `Vec4` | `[0, 0, 0, 0]` | What shadowed pixels get instead of the light; alpha is times the light's |
@@ -149,7 +150,7 @@ A reference must name an entity that exists in the same scene.
 | | `closed` | `bool` | `true` | Join the last point to the first |
 | | `cull_mode` | `std::string` | `"disabled"` | `clockwise` or `counter_clockwise` leaves out edges that run that way around the light, as seen on screen |
 | | `occluder_light_mask` | `int` | `1` | Casts shadows from lights whose `shadow_item_cull_mask` shares a bit |
-| `CanvasModulate` | `color` | `Vec4` | `[1, 1, 1, 1]` | Tints everything lit: the light a scene has where no light reaches. One per scene |
+| `CanvasModulate` | `color` | `Vec4` | `[1, 1, 1, 1]` | Tints everything lit in its canvas (the world's, or the `CanvasLayer`'s that holds it): the light it has where no light reaches. One per canvas |
 | `Camera2D` | `enabled` | `bool` | `true` | Can be the [current camera](#2d-camera): the first enabled one in drawing order |
 | | `anchor_mode` | `std::string` | `"drag_center"` | `drag_center` puts the middle of the screen at the camera; `fixed_top_left` its top left corner |
 | | `ignore_rotation` | `bool` | `true` | Keep the view upright when the camera's `Transform2D` turns |
@@ -1018,6 +1019,10 @@ its tiles. `slash-cli schema tileset` prints the schema, `slash-cli scene valida
 | `physics_layers/<n>/friction`, `bounce` | No | Its physics material, as Godot's `PhysicsMaterial`: friction from 0 (default `1`) and bounce from 0 to 1 (default `0`) |
 | `sources` | Yes | Atlas sources by name, at least one |
 | `sources/<name>/texture` | Yes | Project path of a PNG or BMP file |
+| `sources/<name>/normal_texture` | No | Project path of a normal map laid out as the texture, which [2D lights](#2d-lights) shade its tiles with, as a Godot `CanvasTexture`'s |
+| `sources/<name>/specular_texture` | No | Project path of a specular map laid out as the texture: highlight color and, in alpha, shininess. Needs a `normal_texture` |
+| `sources/<name>/specular_color` | No | Multiplies the specular map's color, as [r, g, b, a] from 0 to 1; default `[1, 1, 1, 1]` |
+| `sources/<name>/specular_shininess` | No | Multiplies the specular map's alpha, from 0 to 1; default `1` |
 | `sources/<name>/region_size` | No | Each tile's width and height in the texture; default `tile_size` |
 | `sources/<name>/margins` | No | Pixels before the first column and row; default `[0, 0]` |
 | `sources/<name>/separation` | No | Pixels between columns and rows; default `[0, 0]` |
@@ -1069,7 +1074,8 @@ the rows that changed:
   without changing their neighbors, and [`tilemap.get`](commands.md#tilemapget) reads the rows.
 - A layer draws at its entity's `Transform2D` if it has one, each tile's region centered on its
   cell (cell `(c, r)` spans `c × tile_size` to `(c + 1) × tile_size`), row by row. Tiles from one
-  texture draw together, so a layer whose tiles share an atlas is one GPU draw.
+  texture draw together, so a layer whose tiles share an atlas is one GPU draw. Lights shade a
+  source's tiles with its normal and specular maps, flipped and turned with each cell.
 - `slash-cli scene validate` and exports check every layer's legend and rows against its tile
   set; a layer that takes part of itself from a prefab is checked in the prefab. A layer that
   can't draw, or a tile outside its texture, logs one warning and draws the rest.
@@ -1213,8 +1219,10 @@ parallax background and a HUD.
   `follow_viewport_enabled` the camera moves it after them, as it does the world, and
   `follow_viewport_scale` then scales it around the middle of the window, so a layer at 0.5
   looks farther away than the world.
-- Lights, shadows and `CanvasModulate` shade only the world's canvas; layers draw unlit, as in
-  Godot by default.
+- Lights shade the canvases their `range_layer_min` to `range_layer_max` holds, the world's
+  (layer 0) by default, and a `CanvasModulate` tints the canvas it is in. A layer that no light
+  reaches and that holds no `CanvasModulate` draws unlit, as in Godot. Lights and occluders in a
+  layer are placed in its canvas, and shadows fall across every canvas a light reaches.
 - Controls in a layer lay out in the window as other controls do, then the layer places them;
   they take clicks and touches where they show. Controls in no layer stay on the screen, above
   the world's sprites. Popup menus, tooltips and drag previews draw over every canvas.
@@ -1246,12 +1254,13 @@ parallax background and a HUD.
 
 ## 2D lights
 
-Lights follow Godot's 2D lighting. Draws are unshaded until a scene has an enabled light or a
-`CanvasModulate`. Then each lit pixel of a sprite or tile layer starts from the color its
-material made, times the `CanvasModulate` color (the ambient light, white if there is none), and
-each light whose `range_item_cull_mask` shares a bit with the draw's `light_mask`, and whose z
-range holds its `z_index`, adds its color times that pixel color, subtracts it or mixes toward
-it. [examples/lights-2d](../../examples/lights-2d/) has a torch, the moon, a shadow and a normal
+Lights follow Godot's 2D lighting. Draws in a [canvas](#canvas-layers-and-parallax) are unshaded
+until an enabled light's layer range holds it or it has a `CanvasModulate`. Then each lit pixel
+of a sprite or tile layer starts from the color its material made, times its canvas's
+`CanvasModulate` color (the ambient light, white if there is none), and each light whose
+`range_item_cull_mask` shares a bit with the draw's `light_mask`, whose z range holds its
+`z_index` and whose layer range holds its canvas's layer, adds its color times that pixel
+color, subtracts it or mixes toward it. [examples/lights-2d](../../examples/lights-2d/) has a torch, the moon, a shadow and a normal
 map.
 
 ```json
@@ -1268,10 +1277,11 @@ map.
   adds `color` × `energy` × the texture's color and alpha.
 - A `DirectionalLight2D` reaches everywhere. At rotation 0 its light travels down the screen;
   positive rotations turn it clockwise.
-- With a `normal_texture`, a pixel takes a light by the angle between its normal and the light:
-  for a point light, toward its position raised `height` pixels; for a directional light, its
-  direction tipped `height` of the way toward the viewer. A `specular_texture` adds Blinn-Phong
-  highlights. Without a normal map, a pixel faces the viewer and takes each light whole.
+- With a `normal_texture` (a sprite's, or a tile set source's), a pixel takes a light by the
+  angle between its normal and the light: for a point light, toward its position raised
+  `height` pixels; for a directional light, its direction tipped `height` of the way toward the
+  viewer. A `specular_texture` adds Blinn-Phong highlights. Without a normal map, a pixel faces
+  the viewer and takes each light whole.
 - `LightOccluder2D` polygons cast shadows from lights with `shadow_enabled`, when its
   `occluder_light_mask` shares a bit with the light's `shadow_item_cull_mask`. Shadows begin at
   the first edge a ray from the light crosses, so an occluder with `cull_mode` `disabled`
@@ -1279,12 +1289,15 @@ map.
   out the edges facing the light, so the shadow starts at its far side and its sprite is lit.
   A directional light's shadows reach `max_distance` pixels past their occluders.
 - A frame takes up to 64 lights, in the order their entities were made; more, a light whose
-  texture doesn't load, or a second `CanvasModulate` is left out with one warning in the log.
+  texture doesn't load, or a second `CanvasModulate` in a canvas is left out with one warning in
+  the log.
 - A material's `light_mode` opts a sprite out of lighting (`unshaded`, for glowing signs and UI)
   or shows it only where lights reach (`light_only`).
-- [`light.sample`](commands.md#lightsample) computes the color a white pixel gets at points, and
-  which lights reach them, the way the GPU does, so an agent checks lighting without a
-  screenshot.
+- [`light.sample`](commands.md#lightsample) computes the color a white pixel gets at points, or
+  at an entity in its canvas, and which lights reach them, the way the GPU does, so an agent
+  checks lighting without a screenshot.
+  [examples/lit-tiles-and-layers](../../examples/lit-tiles-and-layers/) lights a tile set's
+  normal map and a HUD layer.
 
 ## 2D physics
 

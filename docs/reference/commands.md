@@ -669,8 +669,9 @@ the entity's `Transform2D`), its rotation in radians clockwise, its scale, its c
 
 Returns how lit points are: the color a white pixel of a lit sprite gets there from the scene's
 [2D lights](scene-format.md#2d-lights), computed on the CPU as the GPU shades it, and each light
-that reaches it. A check that needs no screenshot. Given an entity, it samples at its
-`Transform2D` position with its `Sprite2D`'s (or `TileMapLayer`'s) `light_mask` and `z_index`.
+that reaches it. A check that needs no screenshot. Points are in the world's canvas. Given an
+entity, it samples at its `Transform2D` position in the [canvas](scene-format.md#canvas-layers-and-parallax)
+it draws in, with its `Sprite2D`'s (or `TileMapLayer`'s) `light_mask` and `z_index`.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -690,8 +691,10 @@ torch and one behind the crate from it:
 {"ambient":[0.12,0.12,0.2],"lit":true,"points":[{"color":[1.244,1.02,0.9],"lights":[{"color":[0.125,0.15,0.25],"id":"moon"},{"color":[0.999,0.75,0.45],"id":"torch","shadow":0}]},{"color":[0.245,0.27,0.45],"lights":[{"color":[0.125,0.15,0.25],"id":"moon"},{"color":[0,0,0],"id":"torch","shadow":1}]}]}
 ```
 
-- `ambient` is the `CanvasModulate` color, and `lit` says whether anything lights the scene;
-  when nothing does, draws are unshaded and every point is white.
+- `ambient` is the color of the sampled canvas's `CanvasModulate`, and `lit` says whether
+  anything lights that canvas; when nothing does, draws there are unshaded and every point is
+  white. For an entity in a `CanvasLayer`, `layer` is the layer's ID, and only lights whose
+  layer range holds its layer are listed.
 - Each point's `color` is `[r, g, b]` after the ambient color and every light, before clamping,
   so a value above 1 means the light is saturated there.
 - `lights` lists the lights that reach the point, in draw order, each with its color there times

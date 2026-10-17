@@ -106,7 +106,8 @@ has other physics gets a set of its own (`tiles_2.tileset.json`).
 
 - A texture's sprites of one size that fall on a grid, as Unity's Sprite Editor slices them, are
   one atlas source named after the texture, with its margins and separation; a sprite off the
-  grid is a source of its own. A tile is named after its sprite in snake case.
+  grid is a source of its own. A tile is named after its sprite in snake case. The texture's
+  `_NormalMap` secondary texture is the source's `normal_texture`, so 2D lights shade its tiles.
 - Unity's cell `(x, y)` is cell `(x, -y - 1)`, since Unity's cells go up from y 0 and rows go
   down.
 - A cell's matrix becomes its turns: a mirrored cell is `:h` or `:v`, and a quarter turn

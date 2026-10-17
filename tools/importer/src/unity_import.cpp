@@ -6025,6 +6025,9 @@ private:
                 axis(1, height);
                 json::Value source;
                 source["texture"] = sprite.texture;
+                if (!sprite.normal_map.empty()) {
+                    source["normal_texture"] = sprite.normal_map;
+                }
                 if (width != set.cell[0] || height != set.cell[1]) {
                     source["region_size"] = json::Array{width, height};
                 }
@@ -6062,6 +6065,9 @@ private:
         }
         json::Value source;
         source["texture"] = sprite.texture;
+        if (!sprite.normal_map.empty()) {
+            source["normal_texture"] = sprite.normal_map;
+        }
         if (width != set.cell[0] || height != set.cell[1]) {
             source["region_size"] =
                 json::Array{std::max<std::int64_t>(width, 1), std::max<std::int64_t>(height, 1)};

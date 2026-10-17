@@ -1759,8 +1759,15 @@ private:
         json::Value source;
         std::string why;
         const Value* texture = section.property("texture");
-        const std::string texture_path =
-            texture != nullptr ? resource_path(*texture, file, why) : "";
+        std::string texture_path;
+        if (texture != nullptr && canvas_texture(*texture, file, source, where)) {
+            // Its normal and specular maps light the tiles, as in Godot.
+            if (const json::Value* diffuse = source.find("texture"); diffuse != nullptr) {
+                texture_path = diffuse->as_string();
+            }
+        } else if (texture != nullptr) {
+            texture_path = resource_path(*texture, file, why);
+        }
         if (texture_path.empty()) {
             problems_.add("tile set source texture", where, why.empty() ? "no texture" : why);
             return nullptr;
@@ -2369,6 +2376,48 @@ private:
         return section.tag == "resource" ? file.type : section.field_string("type");
     }
 
+    // A CanvasTexture, as the fields Sprite2D and tile set sources share: its diffuse texture
+    // as texture, its normal and specular textures, and its specular color and shininess. False,
+    // writing nothing, if the reference is to anything else.
+    bool canvas_texture(const Value& reference, const TextFile& file, json::Value& into,
+                        const std::string& where) {
+        const auto [section, owner] = resource_section(reference, file);
+        if (section == nullptr || resource_type(*section, *owner) != "CanvasTexture") {
+            return false;
+        }
+        for (const auto& [from, to] : {std::pair{"diffuse_texture", "texture"},
+                                       std::pair{"normal_texture", "normal_texture"},
+                                       std::pair{"specular_texture", "specular_texture"}}) {
+            const Value* texture = section->property(from);
+            if (texture == nullptr || texture->kind == Value::Kind::Nil) {
+                continue;
+            }
+            std::string why;
+            if (std::string path = resource_path(*texture, *owner, why); !path.empty()) {
+                into[to] = std::move(path);
+            } else {
+                problems_.add(std::string("CanvasTexture ") + from, where, why);
+            }
+        }
+        if (const Value* color = section->property("specular_color"); color != nullptr) {
+            if (const auto rgba = color->numbers(); rgba && rgba->size() == 4) {
+                into["specular_color"] =
+                    json::Array{rgba->at(0), rgba->at(1), rgba->at(2), rgba->at(3)};
+            }
+        }
+        if (const Value* shininess = section->property("specular_shininess");
+            shininess != nullptr) {
+            into["specular_shininess"] = shininess->number();
+        }
+        for (const char* setting : {"texture_filter", "texture_repeat"}) {
+            if (section->property(setting) != nullptr) {
+                problems_.add(std::string("CanvasTexture ") + setting, where,
+                              "the node's own setting is used");
+            }
+        }
+        return true;
+    }
+
     // Writes a SpriteFrames resource as a .frames.json file once and returns its path.
     std::string frames_file(const TextFile& file, const Section& resource,
                             const std::string& base) {
@@ -2865,6 +2914,10 @@ private:
                 }
             }
             return components.contains("Sprite2D");
+        }
+        if (name == "texture" && components.contains("Sprite2D") &&
+            canvas_texture(value, file, components["Sprite2D"], node.declared)) {
+            return true;
         }
         if (name == "shape" && components.contains("CollisionShape2D")) {
             convert_shape(value, file, components["CollisionShape2D"], node);

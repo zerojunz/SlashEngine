@@ -852,7 +852,9 @@ TEST_CASE("collect_lighting gathers lights, the ambient color and shadow rows, a
 
     canvas::SceneLighting lighting = canvas::collect_lighting(scene.world, images, {}, problems);
     CHECK(lighting.lit);
-    CHECK(lighting.ambient == std::array{0.1F, 0.2F, 0.3F, 1.0F});
+    REQUIRE(lighting.canvases.size() == 1); // with no canvases given, the world's alone
+    CHECK(lighting.canvases[0].lit);
+    CHECK(lighting.canvases[0].ambient == std::array{0.1F, 0.2F, 0.3F, 1.0F});
     REQUIRE(lighting.lights.size() == 2);
     const render::Light& point = lighting.lights[0].light;
     CHECK(lighting.lights[0].entity == lamp);
@@ -885,7 +887,7 @@ TEST_CASE("collect_lighting gathers lights, the ambient color and shadow rows, a
         messages.emplace(problem.entity, problem.message);
     }
     REQUIRE(messages.size() == 5);
-    CHECK(messages[second] == "a scene has one CanvasModulate, and \"dark\" is the one used");
+    CHECK(messages[second] == "a canvas has one CanvasModulate, and \"dark\" is the one used");
     CHECK(messages[gone].starts_with("gone.png: "));
     CHECK(messages[flat] == "its texture_scale or Transform2D scale is 0, so it lights nothing");
     CHECK(messages[typo].find("\"mul\"") != std::string::npos);

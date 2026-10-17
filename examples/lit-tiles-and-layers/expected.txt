@@ -1,0 +1,15 @@
+scene.open {"path":"main.scene.json"}
+{"entities":7,"path":"main.scene.json"}
+-- the panel is in the HUD: dimmed by the HUD's CanvasModulate, lit by the lantern and not the torch
+light.sample {"id":"panel"}
+{"ambient":[0.35,0.35,0.35],"layer":"hud","lit":true,"points":[{"color":[1.131,1.014,0.741],"lights":[{"color":[0.781,0.664,0.391],"id":"lantern"}]}]}
+-- a block's left edge faces the torch and is bright, its right edge faces away, the far corner is dark, and the panel is lit by the lantern
+frame.capture {"points":[[34,40],[46,40],[150,80],[28,10]]}
+{"colors":[[0.596,0.435,0.325,1],[0.082,0.075,0.106,1],[0.027,0.027,0.047,1],[1,0.824,0.459,1]],"drawn":{"lights":2,"sprites":1,"tiles":60},"height":90,"width":160}
+-- the torch's layer range takes the HUD's layer too
+component.set {"components":{"PointLight2D":{"range_layer_max":1}},"id":"torch"}
+{"changed":{"PointLight2D":{"range_layer_max":1}},"id":"torch"}
+light.sample {"id":"panel"}
+{"ambient":[0.35,0.35,0.35],"layer":"hud","lit":true,"points":[{"color":[1.697,1.41,0.967],"lights":[{"color":[0.781,0.664,0.391],"id":"lantern"},{"color":[0.566,0.396,0.226],"id":"torch"}]}]}
+frame.capture {"points":[[28,10]]}
+{"colors":[[1,1,0.604,1]],"drawn":{"lights":2,"sprites":1,"tiles":60},"height":90,"width":160}
