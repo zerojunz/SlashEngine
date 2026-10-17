@@ -226,6 +226,47 @@ SLASH_COMPONENT(Camera2D, enabled, anchor_mode, ignore_rotation, offset, zoom, l
                 drag_horizontal_offset, drag_vertical_offset, drag_left_margin, drag_top_margin,
                 drag_right_margin, drag_bottom_margin)
 
+// A canvas of its own over or under the world, as Godot's CanvasLayer (see canvas_layer.hpp): the
+// entities in its children, and theirs, draw in it, moved by its offset, rotation and scale
+// instead of the camera, and controls in it lay out in the viewport. Canvases draw in order of
+// layer; the world is layer 0, under any CanvasLayer of layer 0. Lights and CanvasModulate shade
+// only the world.
+struct CanvasLayer {
+    std::vector<entt::entity> children;
+    Vec2 offset;
+    Vec2 scale{1.0F, 1.0F};
+    float rotation = 0.0F;
+    float follow_viewport_scale = 1.0F;
+    int layer = 1;
+    bool visible = true;
+    // Seen through the camera too, as a layer of the world in front of it or behind it, scaled by
+    // follow_viewport_scale around the middle of the screen.
+    bool follow_viewport_enabled = false;
+};
+SLASH_COMPONENT(CanvasLayer, layer, visible, offset, rotation, scale, follow_viewport_enabled,
+                follow_viewport_scale, children)
+
+// Scrolls the entity's children at a different speed from the camera, as Godot's Parallax2D:
+// each tick the "parallax_2d" system sets its Transform2D position from the camera's view, and
+// with a repeat_size its children draw again every repeat_size, so a background goes on forever.
+struct Parallax2D {
+    Vec2 scroll_scale{1.0F, 1.0F}; // how fast it scrolls with the camera: 0 stays, 1 moves with it
+    Vec2 scroll_offset;            // where it starts, in pixels
+    Vec2 repeat_size;              // draw the children again every this many pixels; 0 for none
+    Vec2 autoscroll;               // pixels a second scroll_offset moves, with a repeat_size
+    Vec2 limit_begin{-10000000.0F, -10000000.0F};
+    Vec2 limit_end{10000000.0F, 10000000.0F};
+    // The camera's view, as Godot's Camera2D sets it: the middle of the screen in the world less
+    // half the screen.
+    Vec2 screen_offset;
+    int repeat_times = 1; // copies drawn each way past the first, half of them before it
+    // Off for one in a CanvasLayer that doesn't follow the viewport, so the camera doesn't move it.
+    bool follow_viewport = true;
+    bool ignore_camera_scroll = false; // leave screen_offset as it is
+};
+SLASH_COMPONENT(Parallax2D, scroll_scale, scroll_offset, repeat_size, autoscroll, repeat_times,
+                limit_begin, limit_end, follow_viewport, ignore_camera_scroll, screen_offset)
+
 // ---- 2D physics, as Godot's: a body component makes its entity a physics body, placed by its
 // Transform2D, and the entity's CollisionShape2D and CollisionPolygon2D give it shapes. Units are
 // pixels, seconds, radians and kilograms; layers and masks are Godot's 32 physics layers, and two

@@ -239,8 +239,11 @@ struct NodeType {
 // component comes first so its frame and speed_scale win over Sprite2D's.
 constexpr std::array kNodeTypes{
     NodeType{"Node", Family::Plain, "", ""},
-    NodeType{"CanvasLayer", Family::Plain, "", ""},
+    NodeType{"CanvasLayer", Family::Plain, "CanvasLayer", ""},
+    NodeType{"ParallaxBackground", Family::Plain, "CanvasLayer", ""},
     NodeType{"Node2D", Family::Node2D, "", ""},
+    NodeType{"Parallax2D", Family::Node2D, "Parallax2D", ""},
+    NodeType{"ParallaxLayer", Family::Node2D, "Parallax2D", ""},
     NodeType{"Marker2D", Family::Node2D, "", ""},
     NodeType{"Sprite2D", Family::Node2D, "Sprite2D", ""},
     NodeType{"AnimatedSprite2D", Family::Node2D, "AnimatedSprite2D", "Sprite2D"},
@@ -318,8 +321,7 @@ Family guess_family(const Node& node) {
         }
     }
     if (type.ends_with("2D") || type == "TileMapLayer" || type == "TileMap" ||
-        type == "ParallaxLayer" || type == "BackBufferCopy" || type == "TouchScreenButton" ||
-        type == "CanvasGroup") {
+        type == "BackBufferCopy" || type == "TouchScreenButton" || type == "CanvasGroup") {
         return Family::Node2D;
     }
     if (type.ends_with("Container") || type.ends_with("Button") || type.ends_with("Label") ||
@@ -334,6 +336,85 @@ Family guess_family(const Node& node) {
         }
     }
     return Family::Plain;
+}
+
+// A node's bool property, false when it doesn't set one.
+bool node_bool(const Node& node, std::string_view property) {
+    const Property* found = node.find(property);
+    return found != nullptr && found->value->kind == Value::Kind::Bool && found->value->boolean;
+}
+
+// A node's Vector2 property, or fallback when it doesn't set one.
+std::array<double, 2> node_vector(const Node& node, std::string_view property,
+                                  std::array<double, 2> fallback) {
+    if (const Property* found = node.find(property); found != nullptr) {
+        if (const auto xy = found->value->numbers(); xy && xy->size() == 2) {
+            return {xy->at(0), xy->at(1)};
+        }
+    }
+    return fallback;
+}
+
+// ParallaxBackground's own default layer, behind the world.
+constexpr std::int64_t kParallaxBackgroundLayer = -100;
+
+// A ParallaxLayer's Parallax2D, from it and the ParallaxBackground above it, as Godot's
+// ParallaxBackgroundEditorPlugin::convert_to_parallax2d makes it. Only fields that differ from
+// Parallax2D's defaults are set.
+void convert_parallax_layer(const std::vector<Node>& nodes, const Node& layer,
+                            json::Value& parallax) {
+    const Node* background = nullptr;
+    if (layer.parent >= 0 &&
+        nodes[static_cast<std::size_t>(layer.parent)].type == "ParallaxBackground") {
+        background = &nodes[static_cast<std::size_t>(layer.parent)];
+    }
+    const auto from_background = [&](std::string_view property, std::array<double, 2> fallback) {
+        return background != nullptr ? node_vector(*background, property, fallback) : fallback;
+    };
+    constexpr std::array<double, 2> kZero{0.0, 0.0};
+    constexpr std::array<double, 2> kOne{1.0, 1.0};
+    const std::array<double, 2> base_offset = from_background("scroll_base_offset", kZero);
+    const std::array<double, 2> base_scale = from_background("scroll_base_scale", kOne);
+    const std::array<double, 2> limit_begin = from_background("scroll_limit_begin", kZero);
+    const std::array<double, 2> limit_end = from_background("scroll_limit_end", kZero);
+    const std::array<double, 2> motion_scale = node_vector(layer, "motion_scale", kOne);
+    const std::array<double, 2> motion_offset = node_vector(layer, "motion_offset", kZero);
+    const std::array<double, 2> mirroring = node_vector(layer, "motion_mirroring", kZero);
+    const std::array<double, 2> position = node_vector(layer, "position", kZero);
+    // Parallax2D's limits when there are none.
+    constexpr double kNoLimit = 10000000.0;
+    std::array<double, 2> offset{};
+    std::array<double, 2> scale{};
+    std::array<double, 2> begin{-kNoLimit, -kNoLimit};
+    std::array<double, 2> end{kNoLimit, kNoLimit};
+    bool limited = false;
+    for (std::size_t i = 0; i < 2; ++i) {
+        offset.at(i) =
+            (base_offset.at(i) * motion_scale.at(i)) + motion_offset.at(i) + position.at(i);
+        scale.at(i) = base_scale.at(i) * motion_scale.at(i);
+        if (limit_begin.at(i) != 0.0 || limit_end.at(i) != 0.0) {
+            begin.at(i) = limit_begin.at(i);
+            end.at(i) = limit_end.at(i);
+            limited = true;
+        }
+    }
+    const auto pair = [](const std::array<double, 2>& xy) { return json::Array{xy[0], xy[1]}; };
+    if (offset != kZero) {
+        parallax["scroll_offset"] = pair(offset);
+    }
+    if (scale != kOne) {
+        parallax["scroll_scale"] = pair(scale);
+    }
+    if (mirroring != kZero) {
+        parallax["repeat_size"] = pair(mirroring);
+    }
+    if (limited) {
+        parallax["limit_begin"] = pair(begin);
+        parallax["limit_end"] = pair(end);
+    }
+    if (background != nullptr && node_bool(*background, "scroll_ignore_camera_zoom")) {
+        parallax["follow_viewport"] = false;
+    }
 }
 
 // Why a node type doesn't convert.
@@ -2906,6 +2987,25 @@ private:
         if (node.type == "TileMap" && (name == "format" || name.starts_with("layer_"))) {
             return true; // convert_tile_map reads them
         }
+        // CanvasLayer saves its offset, rotation and scale as a transform too.
+        if (components.contains("CanvasLayer") && name == "transform") {
+            return true;
+        }
+        if (node.type == "ParallaxBackground" && !components.contains("CanvasLayer") &&
+            (name == "layer" || name == "offset" || name == "transform" ||
+             name.starts_with("follow_viewport"))) {
+            if (name != "transform") {
+                problems_.add("ParallaxBackground." + name, node.declared,
+                              "drawn with the world, as Godot's converter makes a "
+                              "ParallaxBackground that follows the camera's zoom");
+            }
+            return true;
+        }
+        // Read by convert_parallax_layer; the camera sets a ParallaxBackground's scroll_offset.
+        if ((node.type == "ParallaxBackground" && name.starts_with("scroll_")) ||
+            (node.type == "ParallaxLayer" && (name.starts_with("motion_") || name == "position"))) {
+            return true;
+        }
         const char* tinted = nullptr;
         if (components.contains("Sprite2D")) {
             tinted = "Sprite2D";
@@ -3538,7 +3638,11 @@ private:
         if (transform) {
             order.emplace_back("Transform2D");
         }
-        if (const NodeType* type = find_node_type(node.type); type != nullptr) {
+        // A ParallaxBackground in the world is a Node2D, as Godot's converter makes it.
+        const bool background_in_world =
+            node.type == "ParallaxBackground" && family == Family::Node2D;
+        if (const NodeType* type = find_node_type(node.type);
+            type != nullptr && !background_in_world) {
             for (const std::string_view component : {type->first, type->second}) {
                 if (!component.empty()) {
                     order.emplace_back(component);
@@ -3624,8 +3728,10 @@ private:
 
         // The family of each node, and whether a plain node holds its children in place: the
         // root, and plain nodes under it, keep Godot's drawing order that way.
+        // A canvas layer holds its children in place as the root does.
         std::vector<Family> families(nodes.size(), Family::Plain);
         std::vector<bool> has_transform(nodes.size(), false);
+        std::vector<bool> layers(nodes.size(), false);
         for (std::size_t i = 0; i < nodes.size(); ++i) {
             const NodeType* type = find_node_type(nodes[i].type);
             families[i] = type != nullptr ? type->family : guess_family(nodes[i]);
@@ -3633,14 +3739,23 @@ private:
                 problems_.add("node type " + nodes[i].type, nodes[i].declared,
                               unsupported_node(nodes[i].type));
             }
+            // A ParallaxBackground that follows the camera's zoom is drawn with the world, as
+            // Godot's converter turns it into a Node2D.
+            if (nodes[i].type == "ParallaxBackground" &&
+                !node_bool(nodes[i], "scroll_ignore_camera_zoom")) {
+                families[i] = Family::Node2D;
+            }
+            layers[i] =
+                families[i] == Family::Plain && type != nullptr && type->first == "CanvasLayer";
             // An instance's root is placed as the root of the scene it instances is.
             const int parent = nodes[i].instanced != nullptr ? -1 : nodes[i].parent;
             has_transform[i] =
                 families[i] == Family::Node2D ||
-                (families[i] == Family::Plain && nodes[i].type != "AudioStreamPlayer" &&
-                 nodes[i].type != "PopupMenu" &&
+                (families[i] == Family::Plain && !layers[i] &&
+                 nodes[i].type != "AudioStreamPlayer" && nodes[i].type != "PopupMenu" &&
                  (parent < 0 || (families[static_cast<std::size_t>(parent)] == Family::Plain &&
-                                 has_transform[static_cast<std::size_t>(parent)])));
+                                 (has_transform[static_cast<std::size_t>(parent)] ||
+                                  layers[static_cast<std::size_t>(parent)]))));
         }
 
         json::Object entities;
@@ -3666,6 +3781,12 @@ private:
             if (components.contains("AnimatedSprite2D")) {
                 // Godot's plays only with autoplay or when code calls play().
                 components["AnimatedSprite2D"]["playing"] = false;
+            }
+            if (node.type == "ParallaxBackground" && components.contains("CanvasLayer")) {
+                components["CanvasLayer"]["layer"] = kParallaxBackgroundLayer;
+            }
+            if (node.type == "ParallaxLayer") {
+                convert_parallax_layer(nodes, node, components["Parallax2D"]);
             }
             json::Value values = json::Object{};  // a script's exported variables
             json::Value unknown = json::Object{}; // what a node type that doesn't convert set
@@ -3745,25 +3866,40 @@ private:
         }
 
         // Children: Node2D under Node2D through Transform2D, Control under Control through
-        // Control. Anything else stays where Godot would draw it, at the top.
+        // Control. Anything else stays where Godot would draw it, at the top of its canvas.
+        std::vector<bool> linked(nodes.size(), false);
         for (std::size_t i = 0; i < nodes.size(); ++i) {
             for (const int child : nodes[i].children) {
                 const auto c = static_cast<std::size_t>(child);
                 json::Value& parent = entities[nodes[i].id]["components"];
                 if (has_transform[i] && has_transform[c]) {
                     parent["Transform2D"]["children"].push_back(nodes[c].id);
+                    linked[c] = true;
                 } else if (families[i] == Family::Control && families[c] == Family::Control) {
                     parent["Control"]["children"].push_back(nodes[c].id);
+                    linked[c] = true;
                 } else if (families[i] == Family::Control && families[c] == Family::Node2D) {
                     problems_.add("Node2D under a Control", nodes[c].declared,
-                                  "placed in the world instead of in the control's rect");
+                                  "placed in its canvas instead of in the control's rect");
                 } else if (families[i] == Family::Node2D && families[c] == Family::Control) {
                     problems_.add("Control under a Node2D", nodes[c].declared,
-                                  "drawn on the screen over the world instead of in it");
+                                  "drawn on the screen over its canvas instead of in it");
                 }
-                if (nodes[i].type == "CanvasLayer" && families[c] == Family::Node2D) {
-                    problems_.add("Node2D under a CanvasLayer", nodes[c].declared,
-                                  "drawn with the world, through the camera");
+            }
+        }
+        // What draws at the top of a canvas layer's canvas is in its children, in Godot's order.
+        for (std::size_t c = 0; c < nodes.size(); ++c) {
+            const bool draws = has_transform[c] || families[c] == Family::Control;
+            if (linked[c] || layers[c] || !draws) {
+                continue;
+            }
+            for (int up = nodes[c].parent; up >= 0;
+                 up = nodes[static_cast<std::size_t>(up)].parent) {
+                if (layers[static_cast<std::size_t>(up)]) {
+                    entities[nodes[static_cast<std::size_t>(up)].id]["components"]["CanvasLayer"]
+                            ["children"]
+                                .push_back(nodes[c].id);
+                    break;
                 }
             }
         }

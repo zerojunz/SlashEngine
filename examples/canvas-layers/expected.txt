@@ -1,0 +1,23 @@
+scene.open {"path":"main.scene.json"}
+{"entities":10,"path":"main.scene.json"}
+-- the hills fill the window; the heart and the counter are in the HUD layer
+step {"ticks":1}
+{"tick":1,"ticks":1}
+frame.summary {"ids":["hills","cloud","player","heart","score"]}
+{"camera":{"id":"cam","rect":[240,0,320,180]},"drawn":[{"id":"hills","kind":"Sprite2D","rect":[-60,120,640,40],"shown":0.49},{"id":"cloud","kind":"Sprite2D","rect":[-104.5,22,368,16],"shown":0.49},{"id":"player","kind":"Sprite2D","rect":[154,144,12,16]},{"id":"heart","kind":"Sprite2D","layer":"hud","rect":[294,10,12,12]},{"id":"score","kind":"Label","layer":"hud","rect":[8,8,100,22],"text":"Coins: 0"}],"viewport":[320,180]}
+-- the player walks 200 pixels right: the hills go by a quarter as far, the clouds half as far as they drift
+component.set {"components":{"Transform2D":{"position":[600,152]}},"id":"player"}
+{"changed":{"Transform2D":{"position":[600.0,152.0]}},"id":"player"}
+step {"ticks":60}
+{"tick":61,"ticks":60}
+frame.summary {"ids":["hills","cloud","player","heart","score"]}
+{"camera":{"id":"cam","rect":[440,0,320,180]},"drawn":[{"id":"hills","kind":"Sprite2D","rect":[-110,120,640,40],"shown":0.49},{"id":"cloud","kind":"Sprite2D","rect":[-234.5,22,368,16],"shown":0.47},{"id":"player","kind":"Sprite2D","rect":[154,144,12,16]},{"id":"heart","kind":"Sprite2D","layer":"hud","rect":[294,10,12,12]},{"id":"score","kind":"Label","layer":"hud","rect":[8,8,100,22],"text":"Coins: 0"}],"viewport":[320,180]}
+-- a click at the middle of the window and one on the ground, in the world
+canvas.convert {"points":[[160,90],[100,165]],"to":"world"}
+{"points":[[600,90],[540,165]]}
+-- the same click in the HUD's canvas, which doesn't scroll
+canvas.convert {"id":"heart","points":[[160,90]],"to":"world"}
+{"layer":"hud","points":[[160,90]]}
+-- where the player shows in the window
+canvas.convert {"points":[[600,152]],"to":"screen"}
+{"points":[[160,152]]}

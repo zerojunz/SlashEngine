@@ -10,6 +10,7 @@
 #include "slash/text/text.hpp"
 #include "slash/ui/ui.hpp"
 #include "slash/world/camera2d.hpp"
+#include "slash/world/canvas_layer.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/tree2d.hpp"
 #include "slash/world/world.hpp"
@@ -37,10 +38,10 @@ namespace slash::canvas {
 void add_asset_types(asset::Assets& assets);
 
 // The "animated_sprite_2d" system, which plays each AnimatedSprite2D on its Sprite2D, the
-// "camera_2d" system (camera2d.hpp), for a screen of ui::settings' viewport size, and the
-// "cpu_particles_2d" system (particles.hpp), and gives 2D physics the shapes of TileMapLayer
-// cells (physics2d::set_tile_shape_source). The first and the last read files through assets,
-// which must outlive the world.
+// "camera_2d" and "parallax_2d" systems (camera2d.hpp, canvas_layer.hpp), for a screen of
+// ui::settings' viewport size, and the "cpu_particles_2d" system (particles.hpp), and gives 2D
+// physics the shapes of TileMapLayer cells (physics2d::set_tile_shape_source). The first and the
+// last read files through assets, which must outlive the world.
 void add_systems(world::World& world, asset::Assets& assets);
 
 // Both of the above, and ui::install, for a world and the assets it loads from.
@@ -96,6 +97,9 @@ struct FrameItem {
     Kind kind = Kind::Sprite;
     entt::entity entity = entt::null;
     std::size_t count = 0; // tiles or particles drawn
+    // Its place in FrameContents::canvases; canvases.size() for a popup menu, the tooltip or a
+    // drag's preview, over every canvas.
+    std::size_t canvas = 0;
     std::vector<FramePiece> pieces;
     // For a control a clip cut: its pieces as they would draw whole. A control cut away entirely
     // has these and no pieces.
@@ -114,8 +118,9 @@ struct FrameProblem {
 struct FrameContents {
     std::vector<FrameItem> items;
     std::vector<FrameProblem> problems;
-    ui::Layout layout;        // the controls as laid out
-    world::CameraView camera; // what the world was seen through
+    ui::Layout layout;                   // the controls as laid out
+    world::CameraView camera;            // what the world was seen through
+    std::vector<world::Canvas> canvases; // the canvases drawn, in order (world::Canvases)
 };
 
 struct CanvasOptions {
@@ -145,6 +150,15 @@ struct CanvasOptions {
     FrameContents* contents = nullptr;
 };
 
+// A point on the screen in a canvas's pixels, as Godot's get_canvas_transform().affine_inverse():
+// in the world's, through the current camera, or in those of the CanvasLayer the entity in
+// draws in, for a screen of ui::settings' viewport size (world::screen_transform). Godot's
+// get_global_mouse_position is to_world(world, mouse, entity).
+[[nodiscard]] Vec2 to_world(const world::World& world, Vec2 point, entt::entity in = entt::null);
+// The other way: a point of the canvas the entity in draws in (the world's when null) on the
+// screen.
+[[nodiscard]] Vec2 to_screen(const world::World& world, Vec2 point, entt::entity in = entt::null);
+
 // The time a frame shows, for CanvasOptions::time: tick ticks of tick_seconds have run, and the
 // frame is interpolation of the way from the tick before to the last one.
 [[nodiscard]] double material_time(std::uint64_t tick, double tick_seconds, double interpolation);
@@ -165,11 +179,16 @@ public:
     // from where they were to where they are.
     void before_tick(const world::World& world);
 
-    // Draws one frame: the target cleared, then every visible sprite, tile map layer and
-    // CPUParticles2D, in z_index order, then the order entities were made, then the collision
-    // shapes if the options ask, all seen through the current Camera2D, then every visible
-    // control (ui.hpp) over them, laid out in a viewport of the options' width and height, or
-    // ui::settings' when they are 0, then the overlay's controls. A layer draws its
+    // Draws one frame: the target cleared, then each canvas in order (world::Canvases), then
+    // the popup menus, tooltip and drag preview, then the overlay's controls. The world's
+    // canvas is every visible sprite, tile map layer and CPUParticles2D not in a CanvasLayer, in
+    // z_index order, then the order entities were made, seen through the current Camera2D,
+    // then the collision shapes if the options ask, then the controls not in a CanvasLayer
+    // (ui.hpp), on the screen. A CanvasLayer's is its own sprites, layers and particles, then
+    // its controls, all placed by its transform. Controls are laid out in a viewport of the
+    // options' width and height, or ui::settings' when they are 0. The children of a
+    // Parallax2D with a repeat_size draw again at each repeat, as Godot repeats them. A layer
+    // draws its
     // cells row by row, each tile's region centered on its cell, moved by the entity's
     // Transform2D if it has one. Particles draw as their emitter's draw_order says, each its
     // texture's frame (or a white pixel) centered on it, turned, scaled and colored. A
@@ -177,10 +196,11 @@ public:
     // material_params name a param the material doesn't have, is left out with one warning in the
     // log. On the null device a window frame checks and counts them but draws nothing.
     //
-    // When the world has a light or a CanvasModulate, every sprite and layer is shaded by them,
-    // as its material's light_mode says (normal by default), with its normal and specular
-    // textures. A light that can't shine, such as one whose texture is missing, is left out with
-    // one warning.
+    // When the world has a light or a CanvasModulate, every sprite and layer of the world's
+    // canvas is shaded by them, as its material's light_mode says (normal by default), with its
+    // normal and specular textures; those in CanvasLayers are unshaded, as Godot's lights shine
+    // on layer 0 unless told otherwise. A light that can't shine, such as one whose texture is
+    // missing, is left out with one warning.
     [[nodiscard]] Result<void> draw(const world::World& world, const CanvasOptions& options);
 
     // Sprites the last frame drew.
@@ -261,6 +281,8 @@ private:
     std::vector<std::uint8_t> shadow_pixels_;
     bool lit_ = false;
     std::unordered_map<entt::entity, world::Transform2D> previous_;
+    // Each Parallax2D's position before the last tick, to tell when its repeat wrapped.
+    std::unordered_map<entt::entity, Vec2> previous_parallax_;
     world::CameraView previous_view_; // the camera's view before the last tick
     std::set<std::string, std::less<>> warned_;
     std::size_t sprites_drawn_ = 0;

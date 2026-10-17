@@ -586,8 +586,8 @@ Reply entity_destroy(Session& session, const json::Value& params) {
         return unknown_entity(world, id, "/id");
     }
     auto& ecs = world.ecs();
-    // As Godot frees a node's children with it: the entities in its Transform2D and Control
-    // children go too, and theirs, and those its instanced scene brought.
+    // As Godot frees a node's children with it: the entities in its Transform2D, Control and
+    // CanvasLayer children go too, and theirs, and those its instanced scene brought.
     std::vector<entt::entity> doomed{entity};
     std::unordered_set<entt::entity> seen{entity};
     const std::vector<std::string_view> ids = world.ids();
@@ -605,6 +605,9 @@ Reply entity_destroy(Session& session, const json::Value& params) {
         }
         if (const auto* control = ecs.try_get<world::Control>(doomed[i]); control != nullptr) {
             add(control->children);
+        }
+        if (const auto* layer = ecs.try_get<world::CanvasLayer>(doomed[i]); layer != nullptr) {
+            add(layer->children);
         }
         if (const std::string_view own = world.id_of(doomed[i]); !own.empty()) {
             const std::string prefix = std::string(own) + "/";
@@ -626,6 +629,11 @@ Reply entity_destroy(Session& session, const json::Value& params) {
     for (const auto [other, control] : ecs.view<world::Control>().each()) {
         if (!seen.contains(other) && std::ranges::any_of(control.children, gone)) {
             std::erase_if(control.children, gone);
+        }
+    }
+    for (const auto [other, layer] : ecs.view<world::CanvasLayer>().each()) {
+        if (!seen.contains(other) && std::ranges::any_of(layer.children, gone)) {
+            std::erase_if(layer.children, gone);
         }
     }
     json::Value result;
@@ -1620,6 +1628,10 @@ Reply ui_layout(Session& session, const json::Value& params) {
         item["rect"] = rounded(json::Array{low.x, low.y, high.x - low.x, high.y - low.y});
         if (!placed.visible) {
             item["visible"] = false;
+        }
+        if (placed.canvas < layout.canvases.size() &&
+            layout.canvases[placed.canvas].layer != entt::null) {
+            item["layer"] = world.id_of(layout.canvases[placed.canvas].layer);
         }
         if (const auto button = layout.buttons.find(placed.entity);
             button != layout.buttons.end()) {
@@ -2781,6 +2793,37 @@ Reply frame_capture(Session& session, const json::Value& params) {
     return Reply::success(std::move(result));
 }
 
+// ---- Canvases ----
+
+// Points turned from the screen into a canvas's pixels or back, as Godot's
+// get_canvas_transform: the world's through the current camera, or the canvas an entity draws in.
+Reply canvas_convert(Session& session, const json::Value& params) {
+    const world::World& world = session.world();
+    entt::entity in = entt::null;
+    if (const std::string id = text(params, "id"); !id.empty()) {
+        in = world.find(id);
+        if (in == entt::null) {
+            return unknown_entity(world, id, "/id");
+        }
+    }
+    const world::Tree2D tree(world);
+    const world::Canvases canvases = world::canvases(world, tree, ui::settings(world).viewport);
+    const world::Affine2D to_screen = world::screen_transform(world, canvases, in);
+    const world::Affine2D transform =
+        text(params, "to") == "world" ? to_screen.inverse() : to_screen;
+    json::Array points;
+    for (const json::Value& point : params.find("points")->as_array()) {
+        const auto at = floats<2>(point);
+        points.push_back(point_value(transform.apply({at[0], at[1]})));
+    }
+    json::Value result;
+    result["points"] = std::move(points);
+    if (const entt::entity layer = canvases.all()[canvases.of(in)].layer; layer != entt::null) {
+        result["layer"] = std::string(world.id_of(layer));
+    }
+    return Reply::success(std::move(result));
+}
+
 // ---- Frame summaries ----
 
 constexpr std::int64_t kDefaultSummaryLimit = 100;
@@ -2974,6 +3017,10 @@ Reply frame_summary(Session& session, const json::Value& params) {
         const double fraction = std::round(static_cast<double>(shown.shown) * 100.0) / 100.0;
         if (fraction < 1.0) {
             each["shown"] = short_number(std::max(fraction, 0.01));
+        }
+        if (const std::vector<world::Canvas>& canvases = summary.contents.canvases;
+            item.canvas < canvases.size() && canvases[item.canvas].layer != entt::null) {
+            each["layer"] = name_of(canvases[item.canvas].layer);
         }
         const auto& ecs = world.ecs();
         switch (item.kind) {
@@ -4204,8 +4251,8 @@ void register_builtin_commands(Registry& registry) {
     registry.add({
         .name = "entity.destroy",
         .description = "Destroys an entity and its components, and the entities in its "
-                       "Transform2D or Control children or its instanced scene, listed as "
-                       "descendants.",
+                       "Transform2D, Control or CanvasLayer children or its instanced scene, "
+                       "listed as descendants.",
         .capabilities = {Edit},
         .effect = Effect::Edit,
         .params = params_schema({{"id", id_property("Entity ID.")}}, {"id"}),
@@ -4499,6 +4546,31 @@ void register_builtin_commands(Registry& registry) {
             {"region", std::move(summary_region)},
         }),
         .handler = frame_summary,
+    });
+
+    json::Value convert_point = property("array", "[x, y]");
+    convert_point["items"]["type"] = "number";
+    convert_point["minItems"] = 2;
+    convert_point["maxItems"] = 2;
+    json::Value convert_points = property("array", "Points as [x, y].");
+    convert_points["items"] = std::move(convert_point);
+    convert_points["minItems"] = 1;
+    convert_points["maxItems"] = 256;
+    json::Value convert_to = property("string", "\"world\": from window pixels into the canvas; "
+                                                "\"screen\": from the canvas into window pixels.");
+    convert_to["enum"] = json::Array{"world", "screen"};
+    registry.add({
+        .name = "canvas.convert",
+        .description = "Turns window pixels into the world through the current camera, or "
+                       "back, as Godot's get_global_mouse_position. With id, uses the canvas "
+                       "that entity draws in (its CanvasLayer's, if any, named as layer).",
+        .capabilities = {Read},
+        .effect = Effect::Read,
+        .params = params_schema({{"points", std::move(convert_points)},
+                                 {"to", std::move(convert_to)},
+                                 {"id", id_property("Use the canvas this entity draws in.")}},
+                                {"points", "to"}),
+        .handler = canvas_convert,
     });
 
     json::Value physics_point = property("array", "[x, y]");

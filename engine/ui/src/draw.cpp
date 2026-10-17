@@ -66,6 +66,9 @@ public:
                                                    bottom_right, bottom_left});
     }
 
+    // The canvas the draws from now on are in (DrawCall::canvas).
+    void set_canvas(std::size_t canvas) { canvas_ = canvas; }
+
     // Triangles already in viewport pixels, three vertices each.
     void triangles(const DrawCall& source, const std::vector<render::Vertex2D>& vertices) {
         if (vertices.empty()) {
@@ -82,7 +85,7 @@ private:
             DrawCall& last = list_.calls.back();
             if (last.source == source.source && last.texture == source.texture &&
                 last.filter == source.filter && last.page == source.page &&
-                last.field == source.field) {
+                last.field == source.field && last.canvas == canvas_) {
                 return last;
             }
         }
@@ -92,10 +95,12 @@ private:
         call.filter = source.filter;
         call.page = source.page;
         call.field = source.field;
+        call.canvas = canvas_;
         return call;
     }
 
     DrawList& list_;
+    std::size_t canvas_ = 0;
 };
 
 // ---- Flat style boxes, as Godot's StyleBoxFlat::draw (scene/resources/style_box_flat.cpp) ----
@@ -906,6 +911,7 @@ DrawList draw_calls(const Layout& layout, const world::World& world, text::Fonts
     };
     for (std::size_t index = 0; index < layout.controls.size(); ++index) {
         const Placed& placed = layout.controls[index];
+        drawer.set_canvas(placed.canvas);
         if (placed.visible && world.valid(placed.entity)) {
             const auto* control = ecs.try_get<world::Control>(placed.entity);
             const Vec4 tint = times(
@@ -971,6 +977,7 @@ DrawList draw_calls(const Layout& layout, const world::World& world, text::Fonts
             if (!container.visible || !world.valid(container.entity)) {
                 continue;
             }
+            drawer.set_canvas(container.canvas);
             const std::size_t calls_before = list.calls.size();
             const std::size_t vertices_before = vertices_now();
             for (const Box& box : layout.over_children.at(container.entity)) {
@@ -999,6 +1006,8 @@ DrawList draw_calls(const Layout& layout, const world::World& world, text::Fonts
         }
         draw_label_pass(drawer, list, fonts, label, at, white, Pass::Text, std::nullopt);
     };
+    // The rest draws over every canvas.
+    drawer.set_canvas(layout.canvases.size());
     // A text field's dragged text, at the pointer over the controls.
     if (layout.drag && layout.drag->text && world.valid(layout.drag->from)) {
         Placed placed;

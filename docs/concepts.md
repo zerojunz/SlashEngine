@@ -105,8 +105,8 @@ move the camera, run particles and play sound: `input` applies the input events 
 the last tick, first, `gui` sends them to controls, `animation_player` runs `AnimationPlayer`
 components, `physics2d` moves bodies and reports contacts, `animated_sprite_2d` runs
 `AnimatedSprite2D` flipbooks, `camera_2d` moves the current `Camera2D`'s drag margins and
-smoothing on, `cpu_particles_2d` emits and moves `CPUParticles2D` particles, then `audio` mixes
-the tick's sound.
+smoothing on, `parallax_2d` scrolls each `Parallax2D` with it, `cpu_particles_2d` emits and moves
+`CPUParticles2D` particles, then `audio` mixes the tick's sound.
 
 ## Scenes
 

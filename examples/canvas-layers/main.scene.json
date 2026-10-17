@@ -1,0 +1,116 @@
+{
+  "entities": {
+    "cam": {
+      "components": {
+        "Camera2D": {
+          "limit_bottom": 180,
+          "limit_left": 0,
+          "limit_right": 1600,
+          "limit_top": 0
+        },
+        "Transform2D": {
+          "position": [0.0, -32.0]
+        }
+      }
+    },
+    "cloud": {
+      "components": {
+        "Sprite2D": {
+          "texture": "cloud.png",
+          "z_index": -1
+        },
+        "Transform2D": {
+          "position": [40.0, 30.0]
+        }
+      }
+    },
+    "far": {
+      "components": {
+        "Parallax2D": {
+          "repeat_size": [320.0, 0.0],
+          "scroll_scale": [0.25, 1.0]
+        },
+        "Transform2D": {
+          "children": ["hills"]
+        }
+      }
+    },
+    "ground": {
+      "components": {
+        "Sprite2D": {
+          "centered": false,
+          "texture": "ground.png"
+        },
+        "Transform2D": {
+          "position": [0.0, 160.0]
+        }
+      }
+    },
+    "heart": {
+      "components": {
+        "Sprite2D": {
+          "texture": "heart.png"
+        },
+        "Transform2D": {
+          "position": [300.0, 16.0]
+        }
+      }
+    },
+    "hills": {
+      "components": {
+        "Sprite2D": {
+          "centered": false,
+          "texture": "hills.png",
+          "z_index": -1
+        },
+        "Transform2D": {
+          "position": [0.0, 120.0]
+        }
+      }
+    },
+    "hud": {
+      "components": {
+        "CanvasLayer": {
+          "children": ["heart", "score"]
+        }
+      }
+    },
+    "player": {
+      "components": {
+        "Sprite2D": {
+          "texture": "player.png"
+        },
+        "Transform2D": {
+          "children": ["cam"],
+          "position": [400.0, 152.0]
+        }
+      }
+    },
+    "score": {
+      "components": {
+        "Control": {
+          "offset_bottom": 30.0,
+          "offset_left": 8.0,
+          "offset_right": 108.0,
+          "offset_top": 8.0
+        },
+        "Label": {
+          "text": "Coins: 0"
+        }
+      }
+    },
+    "sky": {
+      "components": {
+        "Parallax2D": {
+          "autoscroll": [-30.0, 0.0],
+          "repeat_size": [320.0, 0.0],
+          "scroll_scale": [0.5, 1.0]
+        },
+        "Transform2D": {
+          "children": ["cloud"]
+        }
+      }
+    }
+  },
+  "format": 1
+}

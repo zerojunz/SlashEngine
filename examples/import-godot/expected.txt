@@ -169,7 +169,13 @@ project.import {"source":"godot"}
         }
       }
     },
-    "hud": {},
+    "hud": {
+      "components": {
+        "CanvasLayer": {
+          "children": ["score"]
+        }
+      }
+    },
     "main": {
       "components": {
         "Transform2D": {
