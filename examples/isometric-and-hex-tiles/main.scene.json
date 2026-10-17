@@ -1,0 +1,25 @@
+{
+  "entities": {
+    "board": {
+      "components": {
+        "TileMapLayer": {
+          "tile_set": "hex.tileset.json"
+        },
+        "Transform2D": {
+          "position": [16.0, 128.0]
+        }
+      }
+    },
+    "island": {
+      "components": {
+        "TileMapLayer": {
+          "tile_set": "iso.tileset.json"
+        },
+        "Transform2D": {
+          "position": [144.0, 8.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

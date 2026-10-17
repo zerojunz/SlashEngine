@@ -1000,6 +1000,72 @@ TEST_CASE("importing Godot tile maps, themes and bus layouts writes their SlashE
     CHECK(unsupported(plan.report, "resource AudioBusLayout").is_null());
 }
 
+TEST_CASE("importing a Godot hexagon tile set keeps its shape, layout and corners") {
+    const fs::path project = "import_godot_hex_tiles";
+    fs::remove_all(project);
+    write(project / "godot/project.godot",
+          "config_version=5\n\n[application]\n\nconfig/name=\"Hexes\"\n");
+    write_png(project / "godot/art/hex.png", 64, 28);
+    // Columns of hexagons in a diamond layout. The right corner, a corner of a hexagon in
+    // offset columns, is on the shape's e; the bottom right corner, between its se and s sides,
+    // is sse. Godot's bottom corner is no corner of this shape, so it goes.
+    write(project / "godot/tiles/hex.tres", R"([gd_resource type="TileSet" load_steps=3 format=3]
+
+[ext_resource type="Texture2D" path="res://art/hex.png" id="1_tex"]
+
+[sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_1"]
+texture = ExtResource("1_tex")
+texture_region_size = Vector2i(32, 28)
+0:0/0 = 0
+0:0/0/terrain_set = 0
+0:0/0/terrain = 0
+0:0/0/terrains_peering_bit/right_corner = 1
+0:0/0/terrains_peering_bit/bottom_right_side = 1
+0:0/0/terrains_peering_bit/bottom_right_corner = 1
+0:0/0/terrains_peering_bit/bottom_corner = 1
+0:0/0/terrains_peering_bit/bottom_side = 0
+0:0/0/terrains_peering_bit/bottom_left_corner = 0
+0:0/0/terrains_peering_bit/bottom_left_side = 0
+0:0/0/terrains_peering_bit/left_corner = 0
+0:0/0/terrains_peering_bit/top_left_side = 0
+0:0/0/terrains_peering_bit/top_left_corner = 0
+0:0/0/terrains_peering_bit/top_side = 0
+0:0/0/terrains_peering_bit/top_right_corner = 0
+0:0/0/terrains_peering_bit/top_right_side = 0
+1:0/0 = 0
+
+[resource]
+tile_shape = 3
+tile_layout = 5
+tile_offset_axis = 1
+tile_size = Vector2i(32, 28)
+terrain_set_0/terrain_0/name = "Grass"
+terrain_set_0/terrain_1/name = "Water"
+sources/0 = SubResource("TileSetAtlasSource_1")
+)");
+    write(project / "godot/odd.tres", R"([gd_resource type="TileSet" format=3]
+
+[resource]
+tile_shape = 9
+tile_layout = -1
+)");
+    const importer::ImportPlan plan = plan_inside(project);
+    const auto files = files_of(plan);
+    const std::string tileset = "godot/tiles/hex.tileset.json";
+    REQUIRE(files.contains(tileset));
+    CHECK(slash::canvas::validate_tileset(parse(files.at(tileset))).empty());
+    CHECK(parse(files.at(tileset)) == parse(R"({
+        "format": 1, "tile_shape": "hexagon", "tile_layout": "diamond_down",
+        "tile_offset_axis": "vertical", "tile_size": [32, 28],
+        "terrain_sets": {"set_0": {"terrains": ["Grass", "Water"]}},
+        "sources": {"hex": {"texture": "godot/art/hex.png", "tiles": {
+            "0,0": {"terrain": "Grass", "peering": {"e": "Water", "se": "Water",
+                                                    "sse": "Water"}},
+            "1,0": {}}}}})"));
+    CHECK(unsupported(plan.report, "TileSet.tile_shape").find("where")->as_string() == "odd.tres");
+    CHECK(unsupported(plan.report, "TileSet.tile_layout").find("where")->as_string() == "odd.tres");
+}
+
 TEST_CASE("an instanced Godot TileMap keeps its layers' entities under the instance") {
     const fs::path project = "import_godot_tile_instances";
     fs::remove_all(project);

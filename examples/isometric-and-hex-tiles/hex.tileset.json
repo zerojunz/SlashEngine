@@ -1,0 +1,24 @@
+{
+  "format": 1,
+  "sources": {
+    "board": {
+      "texture": "hex.png",
+      "tiles": {
+        "0,0": {
+          "name": "grass"
+        },
+        "1,0": {
+          "name": "forest"
+        },
+        "2,0": {
+          "name": "water"
+        },
+        "3,0": {
+          "name": "hill"
+        }
+      }
+    }
+  },
+  "tile_shape": "hexagon",
+  "tile_size": [32, 28]
+}

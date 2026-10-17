@@ -397,6 +397,12 @@ tiles with (`material_of` in `renderer.cpp`). Tiles have Godot's physics layers,
 collision polygons and alternative tiles, and a cell can turn its tile with `:h`, `:v` and `:t`
 after the tile (`slope:h`, `rock:1:ht`), as Godot's cell transform flags; drawing and collision
 turn together (`tile_look`, `tile_collision`). `examples/tile-collision` rolls balls on tiles.
+A tile set's `tile_shape`, `tile_layout` and `tile_offset_axis` are Godot's: `map_to_local`,
+`local_to_map` and `neighbor_cell` port Godot's `TileSet` functions line for line, peering
+directions are 16 compass points (`Neighbor`) of which each shape has its own sides and corners
+(`peering_kind`, `godot_neighbor` for Godot's bits), and cells draw by `draw_order`, down the
+screen. `tilemap.convert` turns cells into points and back; `examples/isometric-and-hex-tiles`
+paints diamonds and sets hexagons.
 
 2D lights follow Godot's: `PointLight2D`, `DirectionalLight2D`, `LightOccluder2D` and
 `CanvasModulate`, with `Sprite2D`'s `light_mask`, `normal_texture` and `specular_texture` and a

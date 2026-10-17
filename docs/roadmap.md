@@ -209,8 +209,13 @@ rendering on top.
 - [x] Alternative tiles and turned cells, as Godot's: a tile's numbered alternatives with their
       own flips, transpose, color and collision, and cells that flip or transpose their tile
       (`slope:h`), drawing and colliding turned
-- [ ] Isometric and hexagonal tile shapes, Godot's other TileSet layouts, with their terrain
-      peering bits
+- [x] Isometric and hexagonal tile shapes, Godot's other TileSet layouts, with their terrain
+      peering bits: `tile_shape` (square, isometric, half-offset square, hexagon), the six
+      `tile_layout`s and both offset axes, placed, neighbored and drawn down the screen as
+      Godot's, 16 compass peering directions, terrain painting by each shape's sides and corners,
+      `tilemap.convert` between cells and points, and Godot's shapes imported
+- [ ] The rest of Godot's TileSet: animated tiles, tiles larger than one cell, custom data
+      layers and occlusion polygons; tile navigation polygons come with navigation in milestone 7
 - [x] 2D lights, occluders and normal-mapped sprites, as Godot's: `PointLight2D` (textured,
       with a height for normal maps), `DirectionalLight2D` and `CanvasModulate`, with light masks,
       z ranges and add, sub and mix blending; `LightOccluder2D` shadows with cull modes and PCF
@@ -596,7 +601,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Gameplay code | C++ with hot reload; plugins as C++ modules with a stable C ABI | 6 | Planned |
 | Scenes and prefabs | JSON scenes, prefabs and instanced scenes with overrides, on EnTT | 2, 5 | Done |
 | 2D sprites and animation | Batched sprites, sprite sheets, flipbooks | 5 | Done |
-| Tilemaps | Tilemap layers with terrain autotiling, stored as text | 5 | In part: square tiles, alternatives, turned cells and collision are done; isometric and hexagonal shapes in 5 |
+| Tilemaps | Tilemap layers with terrain autotiling, stored as text | 5 | In part: square, isometric and hexagonal tiles, alternatives, turned cells and collision are done; animated and multi-cell tiles in 5 |
 | 2D lighting | 2D lights, occluders, normal-mapped sprites | 5 | Done |
 | 2D physics | Box2D v3: bodies, areas, joints, character movement and queries | 5 | In part: tile collision is done; area overrides in 5 |
 | 3D physics | Jolt: rigid bodies, joints, character controller, vehicles | 7 | Planned |
