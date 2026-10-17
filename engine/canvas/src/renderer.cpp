@@ -328,9 +328,10 @@ render::Lighting CanvasRenderer::lighting(const world::World& world,
                                           const world::Canvases& canvases) {
     constexpr std::string_view kEvent = "a light can't shine";
     const auto images = [this](const std::string& path) { return light_image(path); };
+    const auto tile_sets = [this](const std::string& path) { return tile_set(path); };
     std::vector<LightProblem> problems;
-    SceneLighting scene =
-        collect_lighting(world, images, transform_of, problems, &shadow_cache_, &canvases);
+    SceneLighting scene = collect_lighting(world, images, transform_of, problems, &shadow_cache_,
+                                           &canvases, tile_sets);
     const auto name_of = [&](entt::entity entity) {
         const std::string_view id = world.id_of(entity);
         return id.empty() ? "entity " + std::to_string(entt::to_entity(entity)) : std::string(id);

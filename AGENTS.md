@@ -409,7 +409,12 @@ turning with the cell. `tilemap.convert` turns cells into points and back;
 `size_in_atlas` texture cells and play `animation_frames` laid out after them as Godot's
 (`tile_region`, `tile_frame`, and `tile_animation_offset` for random start times), on
 `CanvasOptions::time`; a tile set refuses tiles whose cells or frames overlap.
-`examples/animated-tiles` has water, torches and a bridge two cells wide.
+`examples/animated-tiles` has water, torches and a bridge two cells wide. Tile sets have
+Godot's custom data layers (`TileSet::custom_data` gives a tile's value or the type's default;
+`tilemap.get` with `cells` returns them) and occlusion layers: `collect_lighting` places each
+cell's `tile_occluders` as `LightOccluder2D`s with the layer's `light_mask`, unless the layer's
+`occlusion_enabled` is off. `examples/tile-data-and-occluders` has walls that cast shadows and
+lava that hurts.
 
 2D lights follow Godot's: `PointLight2D`, `DirectionalLight2D`, `LightOccluder2D` and
 `CanvasModulate`, with `Sprite2D`'s `light_mask`, `normal_texture` and `specular_texture` and a

@@ -142,9 +142,42 @@ struct TilePolygon {
     friend bool operator==(const TilePolygon&, const TilePolygon&) = default;
 };
 
-// Another version of a tile, as Godot's alternative tiles: its own look and its own collision
-// polygons (none unless it gives some). Its flips change only how it draws, as in Godot; a
-// cell's turns flip the polygons too.
+// Which way an occluder's edges must wind, seen from a light, to cast a shadow, as Godot's
+// OccluderPolygon2D::CullMode.
+enum class TileCull : std::uint8_t { Disabled, Clockwise, CounterClockwise };
+inline constexpr std::array<std::string_view, 3> kTileCullNames = {"disabled", "clockwise",
+                                                                   "counter_clockwise"};
+
+// A polygon that casts shadows from 2D lights in one of its tile set's occlusion layers, as
+// Godot's TileData occluder polygons (an OccluderPolygon2D each).
+struct TileOccluder {
+    int layer = 0;            // into TileSet::occlusion_layers
+    std::vector<Vec2> points; // in pixels from the tile's center
+    bool closed = true;       // the last point joins the first
+    TileCull cull = TileCull::Disabled;
+
+    friend bool operator==(const TileOccluder&, const TileOccluder&) = default;
+};
+
+// The kinds of value a custom data layer holds, as the Godot Variant types its tiles' custom
+// data take; each is written as JSON (vectors as [x, y], colors as [r, g, b, a]).
+enum class CustomDataType : std::uint8_t { Bool, Int, Float, String, Vector2, Vector2i, Color };
+inline constexpr std::array<std::string_view, 7> kCustomDataTypeNames = {
+    "bool", "int", "float", "string", "vector2", "vector2i", "color"};
+
+// A value every tile of a tile set has, as Godot's custom data layers: games read it by name.
+struct CustomDataLayer {
+    std::string name;
+    CustomDataType type = CustomDataType::Int;
+};
+
+// What a tile with no value of its own has in a custom data layer of this type, as Godot's
+// default Variant of it: false, 0, "", [0, 0] or [0, 0, 0, 1].
+[[nodiscard]] json::Value custom_data_default(CustomDataType type);
+
+// Another version of a tile, as Godot's alternative tiles: its own look, collision polygons,
+// occluders and custom data (none, or the layers' defaults, unless it gives some). Its flips
+// change only how it draws, as in Godot; a cell's turns flip the polygons too.
 struct AlternativeTile {
     bool flip_h = false;
     bool flip_v = false;
@@ -152,6 +185,8 @@ struct AlternativeTile {
     Vec4 modulate{1.0F, 1.0F, 1.0F, 1.0F};
     Vec2i texture_origin; // as the tile's; its own, (0, 0) unless it gives one
     std::vector<TilePolygon> collision;
+    std::vector<TileOccluder> occlusion;
+    std::map<int, json::Value> custom_data; // by custom data layer
 };
 
 // How an animated tile's cells start, as Godot's TileSetAtlasSource::TileAnimationMode: all on
@@ -171,6 +206,9 @@ struct TileData {
     // polygons stay put.
     Vec2i texture_origin;
     std::vector<TilePolygon> collision;
+    std::vector<TileOccluder> occlusion;
+    // Values in the tile set's custom data layers, by layer; others have their type's default.
+    std::map<int, json::Value> custom_data;
     std::map<int, AlternativeTile> alternatives; // by number, from 1
     // The texture's cells the tile covers from its own, as Godot's size_in_atlas: its region is
     // that many cells and the separations between them, drawn centered on one map cell.
@@ -191,6 +229,12 @@ struct PhysicsLayer {
     std::uint32_t collision_mask = 1;
     float friction = 1.0F;
     float bounce = 0.0F;
+};
+
+// A tile set's occlusion layer, as Godot's: the lights its tiles' occluders cast shadows from
+// are those whose shadow_item_cull_mask shares a bit with light_mask.
+struct OcclusionLayer {
+    std::uint32_t light_mask = 1;
 };
 
 struct AtlasSource {
@@ -223,6 +267,8 @@ struct TileSet {
     TileLayout layout = TileLayout::Stacked;
     TileOffsetAxis offset_axis = TileOffsetAxis::Horizontal;
     std::vector<PhysicsLayer> physics_layers;
+    std::vector<OcclusionLayer> occlusion_layers;
+    std::vector<CustomDataLayer> custom_data_layers;
     std::map<std::string, AtlasSource, std::less<>> sources;
     std::vector<TerrainSet> terrain_sets;
     std::vector<Terrain> terrains;
@@ -234,6 +280,13 @@ struct TileSet {
     [[nodiscard]] const AlternativeTile* alternative(const TileRef& tile) const;
     // A terrain's index, or -1.
     [[nodiscard]] int terrain(std::string_view name) const;
+    // A custom data layer's index, or -1.
+    [[nodiscard]] int custom_data_layer(std::string_view name) const;
+    // A tile's value in a custom data layer, as Godot's TileData::get_custom_data: its own (or
+    // its alternative's), else the layer type's default; nullopt if the set has no such tile or
+    // layer.
+    [[nodiscard]] std::optional<json::Value> custom_data(const TileRef& tile,
+                                                         std::string_view layer) const;
 };
 
 [[nodiscard]] std::string_view terrain_mode_name(TerrainMode mode);
@@ -296,6 +349,13 @@ struct TileLook {
 // tile's or its alternative's, transposed then flipped as the cell turns it (Godot's
 // TileData::get_transformed_vertices).
 [[nodiscard]] std::vector<TilePolygon> tile_collision(const TileSet& set, const TileRef& tile);
+
+// A tile's occluders as a cell places them, in pixels from the cell's center: the tile's or its
+// alternative's, turned as tile_collision turns polygons (Godot's
+// TileData::get_occluder_polygon). A turn that mirrors them reverses how their points wind, so
+// it swaps clockwise and counter_clockwise and the same sides cast shadows; Godot's turned copies
+// drop the cull mode and close open ones instead.
+[[nodiscard]] std::vector<TileOccluder> tile_occluders(const TileSet& set, const TileRef& tile);
 
 // The pixels a tile's frame takes in its atlas texture, as [x, y, width, height], as Godot's
 // TileSetAtlasSource::get_tile_texture_region.

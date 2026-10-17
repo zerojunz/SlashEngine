@@ -114,6 +114,12 @@ json::Value schema() {
     tile["properties"]["collision"] =
         property("array", "Polygons that make the tile solid, each in a physics layer.");
     tile["properties"]["collision"]["items"]["$ref"] = "#/$defs/polygon";
+    tile["properties"]["occlusion"] =
+        property("array", "Polygons that cast shadows from 2D lights, each in an occlusion layer.");
+    tile["properties"]["occlusion"]["items"]["$ref"] = "#/$defs/occluder";
+    tile["properties"]["custom_data"] =
+        property("object", "Values in the tile set's custom data layers, by layer name; the "
+                           "others have their type's default.");
     tile["properties"]["alternatives"] =
         property("object", R"(Other versions of the tile by number from 1, as "1"; legends )"
                            R"(name them as "crate:1".)");
@@ -130,7 +136,7 @@ json::Value schema() {
     polygon["required"] = json::Array{"points"};
     polygon["properties"]["points"] =
         property("array", "Corners in pixels from the tile's center, x right and y down.");
-    polygon["properties"]["points"]["items"] = std::move(point);
+    polygon["properties"]["points"]["items"] = point;
     polygon["properties"]["points"]["minItems"] = 3;
     polygon["properties"]["layer"] = property("integer", "Its physics layer, from 0.");
     polygon["properties"]["layer"]["minimum"] = 0;
@@ -164,6 +170,57 @@ json::Value schema() {
     alternative["properties"]["collision"] =
         property("array", "Its own collision polygons, as the tile's; none if left out.");
     alternative["properties"]["collision"]["items"]["$ref"] = "#/$defs/polygon";
+    alternative["properties"]["occlusion"] =
+        property("array", "Its own occluders, as the tile's; none if left out.");
+    alternative["properties"]["occlusion"]["items"]["$ref"] = "#/$defs/occluder";
+    alternative["properties"]["custom_data"] =
+        property("object", "Its own custom data, as the tile's; the layers' defaults if left out.");
+
+    json::Value occluder;
+    occluder["type"] = "object";
+    occluder["additionalProperties"] = false;
+    occluder["required"] = json::Array{"points"};
+    occluder["properties"]["points"] =
+        property("array", "Corners in pixels from the tile's center, x right and y down.");
+    occluder["properties"]["points"]["items"] = point;
+    occluder["properties"]["points"]["minItems"] = 2;
+    occluder["properties"]["layer"] = property("integer", "Its occlusion layer, from 0.");
+    occluder["properties"]["layer"]["minimum"] = 0;
+    occluder["properties"]["layer"]["default"] = 0;
+    occluder["properties"]["closed"] = property("boolean", "The last point joins the first.");
+    occluder["properties"]["closed"]["default"] = true;
+    occluder["properties"]["cull_mode"] =
+        property("string", "Which way edges wind, seen from a light, to cast a shadow; disabled: "
+                           "both.");
+    occluder["properties"]["cull_mode"]["enum"] =
+        json::Array{kTileCullNames[0], kTileCullNames[1], kTileCullNames[2]};
+    occluder["properties"]["cull_mode"]["default"] = kTileCullNames[0];
+
+    json::Value occlusion_layer;
+    occlusion_layer["type"] = "object";
+    occlusion_layer["additionalProperties"] = false;
+    occlusion_layer["properties"]["light_mask"] =
+        property("integer", "The lights its occluders shadow: those whose shadow_item_cull_mask "
+                            "shares a bit.");
+    occlusion_layer["properties"]["light_mask"]["minimum"] = 0;
+    occlusion_layer["properties"]["light_mask"]["maximum"] = std::int64_t{UINT32_MAX};
+    occlusion_layer["properties"]["light_mask"]["default"] = 1;
+
+    json::Value custom_data_layer;
+    custom_data_layer["type"] = "object";
+    custom_data_layer["additionalProperties"] = false;
+    custom_data_layer["required"] = json::Array{"name", "type"};
+    custom_data_layer["properties"]["name"] =
+        property("string", "What tiles' custom_data and games call it; unique in the file.");
+    custom_data_layer["properties"]["name"]["minLength"] = 1;
+    custom_data_layer["properties"]["type"] =
+        property("string", "Its values' type: vector2 and vector2i are [x, y], color [r, g, b, "
+                           "a].");
+    json::Array types;
+    for (const std::string_view type : kCustomDataTypeNames) {
+        types.emplace_back(type);
+    }
+    custom_data_layer["properties"]["type"]["enum"] = std::move(types);
 
     json::Value physics_layer;
     physics_layer["type"] = "object";
@@ -279,6 +336,12 @@ json::Value schema() {
     out["properties"]["physics_layers"] = property(
         "array", "Physics layers by number from 0: what tiles' collision polygons collide as.");
     out["properties"]["physics_layers"]["items"]["$ref"] = "#/$defs/physics_layer";
+    out["properties"]["occlusion_layers"] = property(
+        "array", "Occlusion layers by number from 0: which lights tiles' occluders shadow.");
+    out["properties"]["occlusion_layers"]["items"]["$ref"] = "#/$defs/occlusion_layer";
+    out["properties"]["custom_data_layers"] = property(
+        "array", "Values every tile has, each with a name and a type, as Godot's custom data.");
+    out["properties"]["custom_data_layers"]["items"]["$ref"] = "#/$defs/custom_data_layer";
     out["properties"]["terrain_sets"] =
         property("object", "Terrain sets by name, each with the terrains whose tiles connect.");
     out["properties"]["terrain_sets"]["additionalProperties"]["$ref"] = "#/$defs/terrain_set";
@@ -291,6 +354,9 @@ json::Value schema() {
     out["$defs"]["polygon"] = std::move(polygon);
     out["$defs"]["alternative"] = std::move(alternative);
     out["$defs"]["physics_layer"] = std::move(physics_layer);
+    out["$defs"]["occluder"] = std::move(occluder);
+    out["$defs"]["occlusion_layer"] = std::move(occlusion_layer);
+    out["$defs"]["custom_data_layer"] = std::move(custom_data_layer);
     return out;
 }
 
@@ -548,6 +614,22 @@ public:
         if (const json::Value* layers = doc_.find("physics_layers"); layers != nullptr) {
             physics_layers_ = layers->as_array().size();
         }
+        if (const json::Value* layers = doc_.find("occlusion_layers"); layers != nullptr) {
+            occlusion_layers_ = layers->as_array().size();
+        }
+        if (const json::Value* layers = doc_.find("custom_data_layers"); layers != nullptr) {
+            for (std::size_t i = 0; i < layers->as_array().size(); ++i) {
+                const json::Value& layer = layers->as_array()[i];
+                const std::string& name = layer.find("name")->as_string();
+                const std::string& type = layer.find("type")->as_string();
+                const auto kind = static_cast<CustomDataType>(
+                    std::ranges::find(kCustomDataTypeNames, type) - kCustomDataTypeNames.begin());
+                if (!custom_data_.try_emplace(name, kind).second) {
+                    fail("/custom_data_layers/" + std::to_string(i) + "/name",
+                         "another custom data layer is named " + quoted(name));
+                }
+            }
+        }
         if (const json::Value* sets = doc_.find("terrain_sets"); sets != nullptr) {
             for (const auto& [name, set] : sets->as_object()) {
                 check_terrain_set(name, set);
@@ -699,9 +781,108 @@ private:
         }
     }
 
+    void check_occluders(const json::Value& occluders, const std::string& at) {
+        const json::Array& items = occluders.as_array();
+        for (std::size_t i = 0; i < items.size(); ++i) {
+            const std::string occluder_at = at + "/" + std::to_string(i);
+            const json::Value* layer = items[i].find("layer");
+            if (static_cast<std::uint64_t>(layer != nullptr ? layer->as_int() : 0) >=
+                occlusion_layers_) {
+                fail(occluder_at + "/layer",
+                     occlusion_layers_ == 0
+                         ? std::string("the tile set has no occlusion layers; add one to "
+                                       "occlusion_layers")
+                         : "the tile set has occlusion layers 0 to " +
+                               std::to_string(occlusion_layers_ - 1));
+            }
+            const json::Value* closed = items[i].find("closed");
+            if ((closed == nullptr || closed->as_bool()) &&
+                items[i].find("points")->as_array().size() < 3) {
+                fail(occluder_at + "/points",
+                     "a closed occluder has at least three points; an open one, two");
+            }
+        }
+    }
+
+    // Each value against its layer's type, as Godot's custom data layers hold one type each.
+    void check_custom_data(const json::Value& data, const std::string& at) {
+        for (const auto& [name, value] : data.as_object()) {
+            const std::string value_at = at + "/" + json::pointer_escape(name);
+            const auto layer = custom_data_.find(name);
+            if (layer == custom_data_.end()) {
+                std::string message =
+                    custom_data_.empty()
+                        ? std::string("the tile set has no custom data layers; add one to "
+                                      "custom_data_layers")
+                        : "the tile set has no custom data layer named " + quoted(name);
+                std::vector<std::string_view> names;
+                names.reserve(custom_data_.size());
+                for (const auto& [other, type] : custom_data_) {
+                    names.push_back(other);
+                }
+                add_hint(message, name, names);
+                fail(value_at, std::move(message));
+                continue;
+            }
+            const auto numbers = [](const json::Value& given, std::size_t count, bool whole) {
+                if (!given.is_array() || given.as_array().size() != count) {
+                    return false;
+                }
+                return std::ranges::all_of(given.as_array(), [&](const json::Value& item) {
+                    return whole ? item.is_integral() : item.is_number();
+                });
+            };
+            bool fits = false;
+            switch (layer->second) {
+            case CustomDataType::Bool:
+                fits = value.is_bool();
+                break;
+            case CustomDataType::Int:
+                fits = value.is_integral();
+                break;
+            case CustomDataType::Float:
+                fits = value.is_number();
+                break;
+            case CustomDataType::String:
+                fits = value.is_string();
+                break;
+            case CustomDataType::Vector2:
+                fits = numbers(value, 2, false);
+                break;
+            case CustomDataType::Vector2i:
+                fits = numbers(value, 2, true);
+                break;
+            case CustomDataType::Color:
+                fits = numbers(value, 4, false);
+                break;
+            }
+            if (!fits) {
+                constexpr std::array<std::string_view, 7> kExpected = {"true or false",
+                                                                       "a whole number",
+                                                                       "a number",
+                                                                       "a string",
+                                                                       "[x, y] in numbers",
+                                                                       "[x, y] in whole numbers",
+                                                                       "[r, g, b, a] in numbers"};
+                fail(value_at,
+                     "the layer " + quoted(name) + " holds " +
+                         std::string(
+                             kCustomDataTypeNames.at(static_cast<std::size_t>(layer->second))) +
+                         " values: " +
+                         std::string(kExpected.at(static_cast<std::size_t>(layer->second))));
+            }
+        }
+    }
+
     void check_tile(const std::string& where, const json::Value& tile, const std::string& at) {
         if (const json::Value* collision = tile.find("collision"); collision != nullptr) {
             check_polygons(*collision, at + "/collision");
+        }
+        if (const json::Value* occlusion = tile.find("occlusion"); occlusion != nullptr) {
+            check_occluders(*occlusion, at + "/occlusion");
+        }
+        if (const json::Value* data = tile.find("custom_data"); data != nullptr) {
+            check_custom_data(*data, at + "/custom_data");
         }
         if (const json::Value* alternatives = tile.find("alternatives"); alternatives != nullptr) {
             for (const auto& [key, alternative] : alternatives->as_object()) {
@@ -714,6 +895,13 @@ private:
                 if (const json::Value* collision = alternative.find("collision");
                     collision != nullptr) {
                     check_polygons(*collision, alternative_at + "/collision");
+                }
+                if (const json::Value* occlusion = alternative.find("occlusion");
+                    occlusion != nullptr) {
+                    check_occluders(*occlusion, alternative_at + "/occlusion");
+                }
+                if (const json::Value* data = alternative.find("custom_data"); data != nullptr) {
+                    check_custom_data(*data, alternative_at + "/custom_data");
                 }
             }
         }
@@ -773,6 +961,8 @@ private:
     const json::Value& doc_;
     TileSet shape_; // only its shape, layout and offset axis
     std::size_t physics_layers_ = 0;
+    std::size_t occlusion_layers_ = 0;
+    std::map<std::string, CustomDataType, std::less<>> custom_data_;
     std::map<std::string, TerrainInfo, std::less<>> terrains_;
     std::map<std::string, std::string, std::less<>> names_; // tile name -> "source:x,y"
     std::vector<json::ValidationError> errors_;
@@ -951,6 +1141,74 @@ std::vector<TilePolygon> polygons_of(const json::Value& polygons) {
     return out;
 }
 
+std::vector<TileOccluder> occluders_of(const json::Value& occluders) {
+    std::vector<TileOccluder> out;
+    for (const json::Value& item : occluders.as_array()) {
+        TileOccluder occluder;
+        for (const json::Value& point : item.find("points")->as_array()) {
+            occluder.points.push_back({static_cast<float>(point.as_array()[0].as_double()),
+                                       static_cast<float>(point.as_array()[1].as_double())});
+        }
+        if (const json::Value* value = item.find("layer"); value != nullptr) {
+            occluder.layer = static_cast<int>(value->as_int());
+        }
+        if (const json::Value* value = item.find("closed"); value != nullptr) {
+            occluder.closed = value->as_bool();
+        }
+        if (const json::Value* value = item.find("cull_mode"); value != nullptr) {
+            occluder.cull = static_cast<TileCull>(
+                std::ranges::find(kTileCullNames, value->as_string()) - kTileCullNames.begin());
+        }
+        out.push_back(std::move(occluder));
+    }
+    return out;
+}
+
+// Custom data by layer, each value as its layer's type writes it: 2.0 in an int layer is 2.
+std::map<int, json::Value> custom_data_of(const TileSet& set, const json::Value& data) {
+    // A whole number written as a float, kept in range.
+    const auto whole = [](const json::Value& number) {
+        constexpr double kLimit = 9.0e18;
+        return static_cast<std::int64_t>(std::clamp(number.as_double(), -kLimit, kLimit));
+    };
+    std::map<int, json::Value> out;
+    for (const auto& [name, value] : data.as_object()) {
+        const int layer = set.custom_data_layer(name);
+        if (layer < 0) {
+            continue;
+        }
+        json::Value stored = value;
+        switch (set.custom_data_layers[static_cast<std::size_t>(layer)].type) {
+        case CustomDataType::Int:
+            if (!value.is_int()) {
+                stored = whole(value);
+            }
+            break;
+        case CustomDataType::Float:
+            stored = value.as_double();
+            break;
+        case CustomDataType::Vector2:
+        case CustomDataType::Color:
+            for (json::Value& item : stored.as_array()) {
+                item = item.as_double();
+            }
+            break;
+        case CustomDataType::Vector2i:
+            for (json::Value& item : stored.as_array()) {
+                if (!item.is_int()) {
+                    item = whole(item);
+                }
+            }
+            break;
+        case CustomDataType::Bool:
+        case CustomDataType::String:
+            break;
+        }
+        out.emplace(layer, std::move(stored));
+    }
+    return out;
+}
+
 bool flag(const json::Value& object, std::string_view key) {
     const json::Value* value = object.find(key);
     return value != nullptr && value->as_bool();
@@ -1004,6 +1262,53 @@ int TileSet::terrain(std::string_view name) const {
         }
     }
     return -1;
+}
+
+int TileSet::custom_data_layer(std::string_view name) const {
+    for (std::size_t i = 0; i < custom_data_layers.size(); ++i) {
+        if (custom_data_layers[i].name == name) {
+            return static_cast<int>(i);
+        }
+    }
+    return -1;
+}
+
+std::optional<json::Value> TileSet::custom_data(const TileRef& tile, std::string_view layer) const {
+    const TileData* data = find(tile);
+    const int index = custom_data_layer(layer);
+    if (data == nullptr || index < 0) {
+        return std::nullopt;
+    }
+    const AlternativeTile* alternative = this->alternative(tile);
+    if (tile.alternative != 0 && alternative == nullptr) {
+        return std::nullopt;
+    }
+    const std::map<int, json::Value>& values =
+        alternative != nullptr ? alternative->custom_data : data->custom_data;
+    if (const auto found = values.find(index); found != values.end()) {
+        return found->second;
+    }
+    return custom_data_default(custom_data_layers[static_cast<std::size_t>(index)].type);
+}
+
+json::Value custom_data_default(CustomDataType type) {
+    switch (type) {
+    case CustomDataType::Bool:
+        return false;
+    case CustomDataType::Int:
+        return std::int64_t{0};
+    case CustomDataType::Float:
+        return 0.0;
+    case CustomDataType::String:
+        return "";
+    case CustomDataType::Vector2:
+        return json::Array{0.0, 0.0};
+    case CustomDataType::Vector2i:
+        return json::Array{std::int64_t{0}, std::int64_t{0}};
+    case CustomDataType::Color:
+        return json::Array{0.0, 0.0, 0.0, 1.0};
+    }
+    return nullptr;
 }
 
 std::string_view terrain_mode_name(TerrainMode mode) {
@@ -1309,6 +1614,24 @@ Result<TileSet> parse_tileset(const json::Value& doc) {
             set.physics_layers.push_back(layer);
         }
     }
+    if (const json::Value* layers = doc.find("occlusion_layers"); layers != nullptr) {
+        for (const json::Value& json_layer : layers->as_array()) {
+            OcclusionLayer layer;
+            if (const json::Value* value = json_layer.find("light_mask"); value != nullptr) {
+                layer.light_mask = static_cast<std::uint32_t>(value->as_int());
+            }
+            set.occlusion_layers.push_back(layer);
+        }
+    }
+    if (const json::Value* layers = doc.find("custom_data_layers"); layers != nullptr) {
+        for (const json::Value& json_layer : layers->as_array()) {
+            const std::string& type = json_layer.find("type")->as_string();
+            set.custom_data_layers.push_back(
+                {.name = json_layer.find("name")->as_string(),
+                 .type = static_cast<CustomDataType>(std::ranges::find(kCustomDataTypeNames, type) -
+                                                     kCustomDataTypeNames.begin())});
+        }
+    }
     if (const json::Value* sets = doc.find("terrain_sets"); sets != nullptr) {
         for (const auto& [name, json_set] : sets->as_object()) {
             const json::Value* mode = json_set.find("mode");
@@ -1400,6 +1723,12 @@ Result<TileSet> parse_tileset(const json::Value& doc) {
                 if (const json::Value* value = json_tile.find("collision"); value != nullptr) {
                     tile.collision = polygons_of(*value);
                 }
+                if (const json::Value* value = json_tile.find("occlusion"); value != nullptr) {
+                    tile.occlusion = occluders_of(*value);
+                }
+                if (const json::Value* value = json_tile.find("custom_data"); value != nullptr) {
+                    tile.custom_data = custom_data_of(set, *value);
+                }
                 if (const json::Value* value = json_tile.find("alternatives"); value != nullptr) {
                     for (const auto& [number, json_alternative] : value->as_object()) {
                         AlternativeTile alternative;
@@ -1419,6 +1748,14 @@ Result<TileSet> parse_tileset(const json::Value& doc) {
                         if (const json::Value* collision = json_alternative.find("collision");
                             collision != nullptr) {
                             alternative.collision = polygons_of(*collision);
+                        }
+                        if (const json::Value* occlusion = json_alternative.find("occlusion");
+                            occlusion != nullptr) {
+                            alternative.occlusion = occluders_of(*occlusion);
+                        }
+                        if (const json::Value* data = json_alternative.find("custom_data");
+                            data != nullptr) {
+                            alternative.custom_data = custom_data_of(set, *data);
                         }
                         tile.alternatives.emplace(parse_alternative(number).value_or(1),
                                                   std::move(alternative));
@@ -1620,6 +1957,39 @@ std::vector<TilePolygon> tile_collision(const TileSet& set, const TileRef& tile)
             if (tile.flip_v) {
                 point.y = -point.y;
             }
+        }
+    }
+    return out;
+}
+
+std::vector<TileOccluder> tile_occluders(const TileSet& set, const TileRef& tile) {
+    const TileData* data = set.find(tile);
+    if (data == nullptr) {
+        return {};
+    }
+    const AlternativeTile* alternative = set.alternative(tile);
+    std::vector<TileOccluder> out =
+        alternative != nullptr ? alternative->occlusion : data->occlusion;
+    // An odd number of flips and transposes mirrors the points.
+    const bool mirrored = (static_cast<int>(tile.flip_h) + static_cast<int>(tile.flip_v) +
+                           static_cast<int>(tile.transpose)) %
+                              2 !=
+                          0;
+    for (TileOccluder& occluder : out) {
+        for (Vec2& point : occluder.points) {
+            if (tile.transpose) {
+                point = {point.y, point.x};
+            }
+            if (tile.flip_h) {
+                point.x = -point.x;
+            }
+            if (tile.flip_v) {
+                point.y = -point.y;
+            }
+        }
+        if (mirrored && occluder.cull != TileCull::Disabled) {
+            occluder.cull = occluder.cull == TileCull::Clockwise ? TileCull::CounterClockwise
+                                                                 : TileCull::Clockwise;
         }
     }
     return out;

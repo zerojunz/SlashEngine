@@ -126,6 +126,7 @@ A reference must name an entity that exists in the same scene.
 | | `texture_filter` | `std::string` | `"inherit"` | `"linear"`, `"nearest"` (sharp pixel art) or `"inherit"`, which uses the project's `rendering.texture_filter` |
 | | `light_mask` | `int` | `1` | [Lit](#2d-lights) by lights whose `range_item_cull_mask` shares a bit |
 | | `collision_enabled` | `bool` | `true` | Its tiles' [collision polygons](#tile-collision) make it a static body in 2D physics |
+| | `occlusion_enabled` | `bool` | `true` | Its tiles' [occluders](#tile-occluders-and-custom-data) cast shadows |
 | `PointLight2D` | `enabled` | `bool` | `true` | Shine |
 | | `texture` | `std::string` | `""` | Project path of a PNG or BMP file whose color and alpha shape the light; `""` is a soft round light 256 pixels across |
 | | `texture_scale` | `float` | `1` | Scales the texture |
@@ -137,11 +138,11 @@ A reference must name an entity that exists in the same scene.
 | | `range_z_min`, `range_z_max` | `int` | `-1024`, `1024` | Lights sprites and layers whose `z_index` is in this range |
 | | `range_layer_min`, `range_layer_max` | `int` | `0`, `0` | Lights the [canvases](#canvas-layers-and-parallax) whose layer is in this range, from -512 to 512: the world is layer 0, a `CanvasLayer` its `layer` |
 | | `range_item_cull_mask` | `int` | `1` | Lights sprites and layers whose `light_mask` shares a bit |
-| | `shadow_enabled` | `bool` | `false` | `LightOccluder2D` polygons cast shadows from it |
+| | `shadow_enabled` | `bool` | `false` | `LightOccluder2D` polygons and tiles' [occluders](#tile-occluders-and-custom-data) cast shadows from it |
 | | `shadow_color` | `Vec4` | `[0, 0, 0, 0]` | What shadowed pixels get instead of the light; alpha is times the light's |
 | | `shadow_filter` | `std::string` | `"none"` | Shadow edges: hard (`none`), or softened over 5 or 13 samples (`pcf5`, `pcf13`) |
 | | `shadow_filter_smooth` | `float` | `0` | Spreads the filter's samples further apart |
-| | `shadow_item_cull_mask` | `int` | `1` | Occluders whose `occluder_light_mask` shares a bit cast shadows |
+| | `shadow_item_cull_mask` | `int` | `1` | Occluders whose `occluder_light_mask`, or tiles' occlusion layer's `light_mask`, shares a bit cast shadows |
 | `DirectionalLight2D` | `enabled`, `color`, `energy`, `blend_mode` | | | As `PointLight2D`'s. It lights everything, down the screen turned by its `Transform2D` rotation |
 | | `height` | `float` | `0` | For normal maps: from 0, along the plane, to 1, straight down onto it |
 | | `max_distance` | `float` | `10000` | How far shadows reach past their occluders, in pixels |
@@ -978,7 +979,8 @@ entity, so animate `Sprite2D/offset` to move a sprite around its entity instead.
 ## Tile sets
 
 A `.tileset.json` file cuts atlas textures into tiles, names the terrains that connect them and
-gives tiles collision polygons, like Godot's `TileSet` with `TileSetAtlasSource`s. A [`TileMapLayer`](#tile-map-layers) draws
+gives tiles collision polygons, occluders and custom data, like Godot's `TileSet` with
+`TileSetAtlasSource`s. A [`TileMapLayer`](#tile-map-layers) draws
 its tiles. `slash-cli schema tileset` prints the schema, `slash-cli scene validate` and
 `scene format` accept `.tileset.json` files, and exports check and ship them.
 [examples/tilemaps](../../examples/tilemaps/) has one with grass, water and the tiles between.
@@ -1020,6 +1022,9 @@ its tiles. `slash-cli schema tileset` prints the schema, `slash-cli scene valida
 | `physics_layers/<n>/collision_layer` | No | The layer bits its polygons are on; default `1` |
 | `physics_layers/<n>/collision_mask` | No | The layer bits its polygons collide with; default `1` |
 | `physics_layers/<n>/friction`, `bounce` | No | Its physics material, as Godot's `PhysicsMaterial`: friction from 0 (default `1`) and bounce from 0 to 1 (default `0`) |
+| `occlusion_layers` | No | Occlusion layers, as Godot's: each tile's [occluders](#tile-occluders-and-custom-data) are on one, by index from 0 |
+| `occlusion_layers/<n>/light_mask` | No | Lights whose `shadow_item_cull_mask` shares a bit take shadows from its occluders; default `1` |
+| `custom_data_layers` | No | Values every tile has, as Godot's custom data layers, each with a `name` (unique in the file) and a `type`: `bool`, `int`, `float`, `string`, `vector2`, `vector2i` or `color` |
 | `sources` | Yes | Atlas sources by name, at least one |
 | `sources/<name>/texture` | Yes | Project path of a PNG or BMP file |
 | `sources/<name>/normal_texture` | No | Project path of a normal map laid out as the texture, which [2D lights](#2d-lights) shade its tiles with, as a Godot `CanvasTexture`'s |
@@ -1042,6 +1047,8 @@ its tiles. `slash-cli schema tileset` prints the schema, `slash-cli scene valida
 | `tiles/<cell>/animation_speed` | No | Multiplies the animation's speed, above 0; default `1` |
 | `tiles/<cell>/animation_mode` | No | `default`, every cell in step, or `random_start_times`, each cell from its own point of the loop |
 | `tiles/<cell>/collision` | No | Its [collision polygons](#tile-collision) |
+| `tiles/<cell>/occlusion` | No | Its [occluders](#tile-occluders-and-custom-data) |
+| `tiles/<cell>/custom_data` | No | Its [values](#tile-occluders-and-custom-data) by custom data layer name |
 | `tiles/<cell>/alternatives` | No | [Alternative tiles](#alternative-tiles-and-turned-cells) by number, from `"1"` to `"4095"` |
 
 A tile's pixels start at `margins + column × (region_size + separation)` on each axis, and
@@ -1165,12 +1172,14 @@ one after the tile: `"rock:1"` or `"ground:3,2:1"`.
 | `alternatives/<n>/modulate` | No | Color it is multiplied by, as [r, g, b, a] from 0 to 1 |
 | `alternatives/<n>/collision` | No | Its own collision polygons, as a tile's; an alternative without them has none |
 | `alternatives/<n>/texture_origin` | No | Its own texture origin, as a tile's; `[0, 0]` if left out, whatever the tile's is |
+| `alternatives/<n>/occlusion` | No | Its own occluders, as a tile's; an alternative without them has none |
+| `alternatives/<n>/custom_data` | No | Its own custom data, as a tile's; a layer it leaves out has the type's default, whatever the tile's is |
 
 A cell can also turn whatever tile it holds, as Godot's cell transform flags: after the tile, and
 its alternative if any, `:h` flips it left to right, `:v` top to bottom and `:t` swaps its axes,
 written in that order (`"slope:h"`, `"rock:1:hv"`, `"ground:3,2:vt"`). A quarter turn clockwise
-is `:ht`, counterclockwise `:vt`. The tile draws turned, its collision polygons turn with it, and
-an alternative's own flips combine with the cell's. Commands give each turned or alternative tile
+is `:ht`, counterclockwise `:vt`. The tile draws turned, its collision polygons and occluders
+turn with it, and an alternative's own flips combine with the cell's. Commands give each turned or alternative tile
 a legend key of its own.
 
 ### Animated and large tiles
@@ -1200,6 +1209,44 @@ A tile can span several of its texture's cells and play frames, as Godot's
   `animation_speed`. With `random_start_times`, each cell starts from its own point of the loop,
   picked from the layer's entity ID and the cell, the same on every run. Alternatives play
   their tile's frames. [`frame.capture`](commands.md#framecapture) draws any moment with `time`.
+
+### Tile occluders and custom data
+
+Tiles carry occluders that cast shadows and values that gameplay code reads, as Godot's tile
+set occlusion and custom data layers.
+[examples/tile-data-and-occluders](../../examples/tile-data-and-occluders/) lights a dungeon
+whose walls cast shadows and whose lava does damage.
+
+```json
+"occlusion_layers": [{}],
+"custom_data_layers": [{"name": "damage", "type": "int"}, {"name": "kind", "type": "string"}],
+"sources": {"dungeon": {"texture": "dungeon.png", "tiles": {
+  "1,0": {"name": "wall", "custom_data": {"kind": "wall"},
+          "occlusion": [{"points": [[-8, -8], [8, -8], [8, 8], [-8, 8]]}]},
+  "2,0": {"name": "lava", "custom_data": {"damage": 10, "kind": "lava"}}}}}
+```
+
+| Key | Required | Meaning |
+| --- | --- | --- |
+| `occlusion/<n>/points` | Yes | The occluder's corners as `[x, y]` in pixels around the tile's center, at least two |
+| `occlusion/<n>/layer` | No | The occlusion layer it is on, by index; default `0` |
+| `occlusion/<n>/closed` | No | Join the last point to the first; default `true`, which needs three points or more |
+| `occlusion/<n>/cull_mode` | No | `disabled` (default), `clockwise` or `counter_clockwise`, as a `LightOccluder2D`'s |
+| `custom_data/<layer>` | No | The tile's value in that layer, of the layer's type: `vector2` and `vector2i` are `[x, y]`, `color` is `[r, g, b, a]` |
+
+- Each cell's occluders sit at its center, moved by the layer's `Transform2D`, and cast shadows
+  as a `LightOccluder2D` with the occlusion layer's `light_mask` as its `occluder_light_mask`.
+  A layer casts none while it is hidden or its `occlusion_enabled` is `false`.
+- A cell's turns turn its occluders. When they mirror it (an odd number of `h`, `v` and `t`),
+  `clockwise` and `counter_clockwise` swap, so the same edges face the light. Godot's turned
+  copies lose their cull mode; this keeps it.
+- A tile's value in a layer it doesn't set is the type's default: `false`, `0`, `0.0`, `""`,
+  `[0, 0]` or `[0, 0, 0, 1]`, as Godot's `get_custom_data` returns. An alternative's values are
+  its own. [`tilemap.get`](commands.md#tilemapget) with `cells` returns each cell's tile and all
+  its values; C++ asks `TileSet::custom_data(tile, "damage")`.
+- An occluder on an occlusion layer the tile set doesn't have, a value of the wrong type and a
+  value for a layer it doesn't have fail validation; a misspelled layer name gets the closest
+  one.
 
 ## 2D camera
 
@@ -1351,8 +1398,9 @@ map.
   `height` pixels; for a directional light, its direction tipped `height` of the way toward the
   viewer. A `specular_texture` adds Blinn-Phong highlights. Without a normal map, a pixel faces
   the viewer and takes each light whole.
-- `LightOccluder2D` polygons cast shadows from lights with `shadow_enabled`, when its
-  `occluder_light_mask` shares a bit with the light's `shadow_item_cull_mask`. Shadows begin at
+- `LightOccluder2D` polygons, and tiles' [occluders](#tile-occluders-and-custom-data), cast
+  shadows from lights with `shadow_enabled`, when its `occluder_light_mask` shares a bit with
+  the light's `shadow_item_cull_mask`. Shadows begin at
   the first edge a ray from the light crosses, so an occluder with `cull_mode` `disabled`
   shadows its own sprite. For a polygon wound clockwise on screen, `counter_clockwise` leaves
   out the edges facing the light, so the shadow starts at its far side and its sprite is lit.
