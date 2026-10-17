@@ -126,7 +126,8 @@ converts them to `Parallax2D` (`ParallaxBackgroundEditorPlugin::convert_to_paral
 ## Tile sets and tile maps
 
 A `TileSet` becomes a [`.tileset.json` file](scene-format.md#tile-sets) and keeps Godot's tile
-size, atlas sources, terrains, physics layers, collision polygons and alternative tiles:
+shape, layout, offset axis and size, atlas sources, terrains, physics layers, collision polygons
+and alternative tiles:
 
 - Each `TileSetAtlasSource` is a source named after its texture (`tiles.png` is `tiles`), with
   its texture (and a `CanvasTexture`'s normal and specular maps), region size, margins and
@@ -134,9 +135,12 @@ size, atlas sources, terrains, physics layers, collision polygons and alternativ
   (`"2,0"` for Godot's `2:0`) and keeps its probability.
 - Each terrain set is `set_<n>`, with its mode and its terrains' names; a name used in two sets
   gets the set's number added, since names are unique in the file.
-- A tile's terrain and its peering bits become `terrain` and `peering`: `right_side` is `e`,
-  `bottom_right_corner` is `se` and so on round the tile, a bit with no terrain is `null`, and a
-  bit with the tile's own terrain is left out.
+- A tile's terrain and its peering bits become `terrain` and `peering`, named for the way each
+  side or corner faces in the tile's [shape](scene-format.md#tile-shapes): on a square
+  `right_side` is `e` and `bottom_right_corner` is `se`, on a diamond `right_corner` is `e` and
+  `bottom_right_side` is `se`, and on a hexagon in offset rows `bottom_right_corner`, between the
+  `e` and `se` sides, is `ese`. A bit with no terrain is `null`, and a bit with the tile's own
+  terrain is left out.
 - Each physics layer keeps its collision layer and mask, and its physics material's friction and
   bounce. A tile's polygons on it become its
   [`collision`](scene-format.md#tile-collision), with `one_way` and `one_way_margin`.
@@ -262,7 +266,7 @@ The report lists each of these once per kind, with how many and where it was fir
 | Tracks on a control's `position` or `size` | Animate its offsets instead |
 | Animation libraries no `AnimationPlayer` plays | A track's fields depend on the node it animates |
 | Tile navigation, occlusion and custom data layers, and tiles' constant velocities | Tile sets hold collision only; add `LightOccluder2D` entities for shadows, and move a layer rather than give its tiles a velocity |
-| Isometric and hexagonal tiles, tiles larger than one cell, animated tiles | Tiles are square and one cell each; an animated tile shows its first frame |
+| Tiles larger than one cell, animated tiles | Tiles are one cell each; an animated tile shows its first frame |
 | Alternative tiles' other properties, such as `z_index` and `texture_origin`, and scene collection sources | An alternative keeps its flips, color and collision; place scenes as entities |
 | Y-sorting tile map layers | Layers draw in order, by `z_index` |
 | `gui/theme/custom_font` | Set `default_font` in the project's theme |

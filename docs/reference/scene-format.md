@@ -1009,9 +1009,12 @@ its tiles. `slash-cli schema tileset` prints the schema, `slash-cli scene valida
 | Key | Required | Meaning |
 | --- | --- | --- |
 | `format` | Yes | Format version. Must be `1` |
-| `tile_size` | No | A cell's width and height in pixels; default `[16, 16]` |
+| `tile_shape` | No | The cells' shape, as Godot's: `square` (default), `isometric` (diamonds), `half_offset_square` (bricks) or `hexagon`. See [tile shapes](#tile-shapes) |
+| `tile_layout` | No | How cells of the shapes other than squares are numbered, as Godot's: `stacked` (default), `stacked_offset`, `stairs_right`, `stairs_down`, `diamond_right` or `diamond_down` |
+| `tile_offset_axis` | No | Which way those shapes' rows run: `horizontal` (default), offset rows, or `vertical`, offset columns |
+| `tile_size` | No | A cell's width and height in pixels, the box its shape fills; default `[16, 16]` |
 | `terrain_sets` | No | Terrain sets by name |
-| `terrain_sets/<name>/mode` | No | How tiles connect, as Godot's terrain modes: `match_corners_and_sides` (default) by all eight neighbors, `match_corners` by the four at their corners, `match_sides` by the four at their sides |
+| `terrain_sets/<name>/mode` | No | How tiles connect, as Godot's terrain modes: `match_corners_and_sides` (default) by their sides and corners, `match_corners` by their corners only, `match_sides` by their sides only |
 | `terrain_sets/<name>/terrains` | Yes | Terrain names, unique in the file |
 | `physics_layers` | No | Physics layers, as Godot's: each tile's collision polygons are on one, by index from 0 |
 | `physics_layers/<n>/collision_layer` | No | The layer bits its polygons are on; default `1` |
@@ -1029,15 +1032,43 @@ its tiles. `slash-cli schema tileset` prints the schema, `slash-cli scene valida
 | `sources/<name>/tiles` | No | Tiles by `"column,row"` in the texture's grid, as `"2,0"` |
 | `tiles/<cell>/name` | No | What legends and `tilemap.set` call the tile: unique in the file, no `:`. A tile without one is `"source:column,row"` |
 | `tiles/<cell>/terrain` | No | The terrain it paints |
-| `tiles/<cell>/peering` | No | The terrain each neighbor must have for the tile to fit, by direction: `n`, `ne`, `e`, `se`, `s`, `sw`, `w`, `nw`, as Godot's terrain peering bits. A direction left out must have the tile's own terrain; `null` means none |
+| `tiles/<cell>/peering` | No | The terrain each side and corner must touch for the tile to fit, by compass direction: `n`, `ne`, `e`, `se`, `s`, `sw`, `w`, `nw` for squares, as Godot's terrain peering bits; the [shape](#tile-shapes) says which directions it has. A direction left out must have the tile's own terrain; `null` means none |
 | `tiles/<cell>/probability` | No | How often painting picks the tile over others that fit as well; default `1`, and `0` only when nothing else fits |
 | `tiles/<cell>/collision` | No | Its [collision polygons](#tile-collision) |
 | `tiles/<cell>/alternatives` | No | [Alternative tiles](#alternative-tiles-and-turned-cells) by number, from `"1"` to `"4095"` |
 
 A tile's pixels start at `margins + column × (region_size + separation)` on each axis. Peering
-names only directions the terrain set's mode connects by, and only terrains of the tile's own
-set. Mistakes fail with the JSON Pointer of the bad value and, for a misspelled terrain, the
-closest one. Tile sets reload when they change, like every asset.
+names only directions the shape has and the terrain set's mode connects by, and only terrains of
+the tile's own set. Mistakes fail with the JSON Pointer of the bad value and, for a misspelled
+terrain, the closest one. Tile sets reload when they change, like every asset.
+
+### Tile shapes
+
+Cells are squares unless `tile_shape` says otherwise, and the other shapes follow Godot's
+`TileSet` exactly: where each cell sits, which cells are its neighbors and which sides and
+corners its peering names. [examples/isometric-and-hex-tiles](../../examples/isometric-and-hex-tiles/)
+paints an island on diamonds and sets tiles on a board of hexagons.
+
+| Shape | Sides | Corners | Cells overlap |
+| --- | --- | --- | --- |
+| `square` | `n`, `e`, `s`, `w` | `ne`, `se`, `sw`, `nw` | not at all |
+| `isometric` | `ne`, `se`, `sw`, `nw` | `n`, `e`, `s`, `w` | by half a cell down each row (across each column with a vertical axis) |
+| `hexagon`, offset rows | `ne`, `e`, `se`, `sw`, `w`, `nw` | `n`, `ene`, `ese`, `s`, `wsw`, `wnw` | by a quarter |
+| `hexagon`, offset columns | `n`, `ne`, `se`, `s`, `sw`, `nw` | `nne`, `e`, `sse`, `ssw`, `w`, `nnw` | by a quarter |
+| `half_offset_square` | as a hexagon | as a hexagon | not at all |
+
+- `tile_layout` numbers the cells of the shapes other than squares, as Godot's layouts. In
+  `stacked` every other row (or column, with a vertical `tile_offset_axis`) sits half a cell
+  over, starting with row 1; `stacked_offset` starts with row 0. `stairs_right` and `stairs_down`
+  step each row, or each column, half a cell over from the last. `diamond_right` and
+  `diamond_down` turn the grid so that columns and rows both run diagonally; in `diamond_down`,
+  the usual isometric layout, columns run down to the right and rows down to the left.
+- A cell has a neighbor across each of its sides; a square or a diamond also has one across each
+  corner, and a hexagon has none there. Painting terrain fits a side to the cell across it, and
+  a corner to the cells around it, so a hexagon's corner follows the two sides beside it.
+- [`tilemap.convert`](commands.md#tilemapconvert) turns cells into the points at their centers
+  and points into the cells they are in, as Godot's `map_to_local` and `local_to_map`. The
+  C++ calls are `canvas::map_to_local`, `canvas::local_to_map` and `canvas::neighbor_cell`.
 
 ### Tile map layers
 
@@ -1073,14 +1104,15 @@ the rows that changed:
   paint always gives the same tiles. [`tilemap.set`](commands.md#tilemapset) places tiles
   without changing their neighbors, and [`tilemap.get`](commands.md#tilemapget) reads the rows.
 - A layer draws at its entity's `Transform2D` if it has one, each tile's region centered on its
-  cell (cell `(c, r)` spans `c × tile_size` to `(c + 1) × tile_size`), row by row. Tiles from one
-  texture draw together, so a layer whose tiles share an atlas is one GPU draw. Lights shade a
-  source's tiles with its normal and specular maps, flipped and turned with each cell.
+  cell (a square cell `(c, r)` spans `c × tile_size` to `(c + 1) × tile_size`; other shapes are
+  placed as [tile shapes](#tile-shapes) says). Cells draw down the screen by their centers, then
+  left to right, as Godot draws a layer with Y-sort on, so a tile taller than its cell covers the
+  cells behind it. Tiles from one texture draw together, so a layer whose tiles share an atlas
+  is one GPU draw. Lights shade a source's tiles with its normal and specular maps,
+  flipped and turned with each cell.
 - `slash-cli scene validate` and exports check every layer's legend and rows against its tile
   set; a layer that takes part of itself from a prefab is checked in the prefab. A layer that
   can't draw, or a tile outside its texture, logs one warning and draws the rest.
-- Square tiles only for now; isometric and hexagonal shapes are on the
-  [roadmap](../roadmap.md).
 
 ### Tile collision
 

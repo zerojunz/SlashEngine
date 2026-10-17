@@ -247,7 +247,8 @@ private:
         std::uint64_t set_version = 0;
         world::TileMapLayer layer;
         Cells cells;
-        std::string error; // why the cells don't decode, or ""
+        std::vector<const Cells::value_type*> order; // the cells as they draw (draw_order)
+        std::string error;                           // why the cells don't decode, or ""
         bool seen = false;
     };
 

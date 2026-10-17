@@ -1279,6 +1279,45 @@ Reply tilemap_get(Session& session, const json::Value& params) {
     return Reply::success(std::move(result));
 }
 
+// Cells to the points at their centers, or points to the cells they are in, as Godot's
+// TileMapLayer map_to_local and local_to_map, through the layer's transform.
+Reply tilemap_convert(Session& session, const json::Value& params) {
+    const std::string id = text(params, "id");
+    LayerTarget target;
+    if (auto failed = find_layer(session, id, target)) {
+        return std::move(*failed);
+    }
+    const json::Value* cells = params.find("cells");
+    const json::Value* points = params.find("points");
+    if (cells == nullptr && points == nullptr) {
+        return param_error(code::kInvalidParams, "",
+                           "give cells, a list of [column, row], or points, a list of [x, y]");
+    }
+    const world::Affine2D transform = world::Tree2D(session.world()).global_affine(target.entity);
+    json::Value result;
+    if (cells != nullptr) {
+        json::Array centers;
+        for (const json::Value& cell : cells->as_array()) {
+            const Vec2i at{static_cast<int>(cell.as_array()[0].as_int()),
+                           static_cast<int>(cell.as_array()[1].as_int())};
+            const Vec2 point = transform.apply(canvas::map_to_local(*target.set, at));
+            centers.push_back(rounded(json::Array{point.x, point.y}));
+        }
+        result["points"] = std::move(centers);
+    }
+    if (points != nullptr) {
+        const world::Affine2D to_layer = transform.inverse();
+        json::Array found;
+        for (const json::Value& point : points->as_array()) {
+            const auto at = floats<2>(point);
+            const Vec2i cell = canvas::local_to_map(*target.set, to_layer.apply({at[0], at[1]}));
+            found.emplace_back(json::Array{cell.x, cell.y});
+        }
+        result["cells"] = std::move(found);
+    }
+    return Reply::success(std::move(result));
+}
+
 // ---- Physics ----
 
 json::Value point_value(Vec2 point) {
@@ -4459,6 +4498,31 @@ void register_builtin_commands(Registry& registry) {
         .effect = Effect::Read,
         .params = params_schema({{"id", layer_id}, {"rect", std::move(tile_rect)}}, {"id"}),
         .handler = tilemap_get,
+    });
+    json::Value convert_cells = tile_cells;
+    convert_cells["description"] = "Cells as [column, row]: returns the points at their centers.";
+    convert_cells["maxItems"] = 1024;
+    json::Value layer_point = property("array", "[x, y]");
+    layer_point["items"]["type"] = "number";
+    layer_point["minItems"] = 2;
+    layer_point["maxItems"] = 2;
+    json::Value layer_points =
+        property("array", "Points as [x, y]: returns the cells they are in.");
+    layer_points["items"] = std::move(layer_point);
+    layer_points["minItems"] = 1;
+    layer_points["maxItems"] = 1024;
+    registry.add({
+        .name = "tilemap.convert",
+        .description = "Turns a TileMapLayer's cells into the points at their centers, or points "
+                       "into the cells they are in, as Godot's map_to_local and local_to_map, "
+                       "through the layer's transform. Points are in the canvas it draws in.",
+        .capabilities = {Read},
+        .effect = Effect::Read,
+        .params = params_schema({{"id", layer_id},
+                                 {"cells", std::move(convert_cells)},
+                                 {"points", std::move(layer_points)}},
+                                {"id"}),
+        .handler = tilemap_convert,
     });
 
     json::Value sample_point = property("array", "[x, y]");

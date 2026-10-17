@@ -54,7 +54,7 @@ void write_atlas(const canvas::TileSet& set) {
     render::Image image{.width = 64, .height = 64, .pixels = {}};
     image.pixels.resize(std::size_t{image.width} * image.height * 4);
     // The Neighbor for each part of the 3x3 grid; -1 is the middle.
-    constexpr std::array<int, 9> kParts = {7, 0, 1, 6, -1, 2, 5, 4, 3};
+    constexpr std::array<int, 9> kParts = {14, 0, 2, 12, -1, 4, 10, 8, 6};
     for (const auto& [atlas, tile] : source.tiles) {
         const auto [left, top, width, height] = canvas::tile_region(source, atlas);
         for (int y = 0; y < height; ++y) {
