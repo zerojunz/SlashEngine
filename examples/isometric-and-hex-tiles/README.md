@@ -4,8 +4,9 @@ Tile maps of diamonds and hexagons, as Godot's TileSet shapes and layouts.
 [iso.tileset.json](iso.tileset.json) cuts `iso.png` into 32x16 diamonds in Godot's
 `diamond_down` layout, where columns run down to the right and rows down to the left, with grass
 and water tiles whose `peering` names a diamond's sides (`ne`, `se`, `sw`, `nw`) and corners
-(`n`, `e`, `s`, `w`). [hex.tileset.json](hex.tileset.json) cuts `hex.png` into 32x28 hexagons in
-offset rows. [main.scene.json](main.scene.json) has an empty layer of each. [main.cpp](main.cpp)
+(`n`, `e`, `s`, `w`), and a 32x32 tree from `props.png`. [hex.tileset.json](hex.tileset.json) cuts
+`hex.png` into 32x28 hexagons in offset rows. [main.scene.json](main.scene.json) has an empty layer
+of each, and a layer for trees over the island. [main.cpp](main.cpp)
 draws the atlases, then makes the calls an agent would make over MCP or JSON-RPC;
 [expected.txt](expected.txt) holds the replies.
 
@@ -26,7 +27,11 @@ tilemap.convert {"id":"board","points":[[136,149],[136,156]]}
   A point in the corner of a diamond's box is in the diamond beside it, and clicks either side
   of a hexagon's slanted edge land in the two hexagons that share it.
 - Cells draw down the screen, so a tile taller than its cell covers the ones behind it.
+- The tree's `texture_origin` is `[0, 8]`, Godot's: its texture draws 8 pixels up, so the foot
+  of its trunk, the texture's bottom middle, is on its cell's bottom corner and its crown rises
+  above the cell. Collision polygons don't move with it.
 - `frame.capture` confirms it: the colors at those points are the pond's water, the island's
-  grass, the forest and hill hexagons, and the grass and forest either side of the edge.
+  grass, the forest and hill hexagons, the grass and forest either side of the edge, a tree's
+  crown above its cell and the other tree's trunk.
 - `slash-cli scene validate iso.tileset.json` checks that peering names only the sides and
   corners a diamond has.

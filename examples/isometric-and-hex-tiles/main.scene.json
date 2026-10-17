@@ -19,6 +19,16 @@
           "position": [144.0, 8.0]
         }
       }
+    },
+    "trees": {
+      "components": {
+        "TileMapLayer": {
+          "tile_set": "iso.tileset.json"
+        },
+        "Transform2D": {
+          "position": [144.0, 8.0]
+        }
+      }
     }
   },
   "format": 1

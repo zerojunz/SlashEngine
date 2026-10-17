@@ -2,13 +2,15 @@
 //
 // iso.tileset.json cuts iso.png into 32x16 diamonds in a diamond layout: columns run down to the
 // right and rows down to the left, as in most isometric games. Its grass tiles' peering names
-// the sides (ne, se, sw, nw) and corners (n, e, s, w) of a diamond that touch water.
+// the sides (ne, se, sw, nw) and corners (n, e, s, w) of a diamond that touch water. Its tree,
+// from props.png, is 32x32: its texture_origin [0, 8] lifts it so its trunk stands on its cell.
 // hex.tileset.json cuts hex.png into 32x28 hexagons in offset rows, the board of a strategy game.
 //
 // This program draws the atlases from the tile sets, paints an island with a pond on the
-// diamonds, sets tiles on the hexagons, asks tilemap.convert where cells are and which cell a
-// point is in, and asks frame.capture for the colors there. Games ship PNG files made in an image
-// editor; this example draws its textures in code, so the repository holds no images.
+// diamonds, plants trees on a layer above it, sets tiles on the hexagons, asks tilemap.convert
+// where cells are and which cell a point is in, and asks frame.capture for the colors there. Games
+// ship PNG files made in an image editor; this example draws its textures in code, so the
+// repository holds no images.
 
 #include "slash/canvas/tilemap.hpp"
 #include "slash/command/builtin.hpp"
@@ -45,6 +47,7 @@ constexpr Rgba kWater{33, 150, 243, 255};
 constexpr Rgba kRock{120, 120, 120, 255};
 constexpr Rgba kForest{27, 94, 32, 255};
 constexpr Rgba kHill{141, 110, 99, 255};
+constexpr Rgba kTrunk{93, 64, 55, 255};
 constexpr Rgba kClear{0, 0, 0, 0};
 
 void write_png(const std::string& path, const render::Image& image) {
@@ -133,6 +136,30 @@ void write_hexagons(const canvas::TileSet& set) {
                 source.tiles.size());
 }
 
+// A tree: a round crown over a trunk whose foot is the bottom middle of the tile, where its
+// texture_origin puts its cell's bottom corner.
+void write_tree(const canvas::TileSet& set) {
+    const canvas::AtlasSource& source = set.sources.at("props");
+    render::Image image{.width = 32, .height = 32, .pixels = {}};
+    image.pixels.resize(std::size_t{image.width} * image.height * 4);
+    for (int y = 0; y < 32; ++y) {
+        for (int x = 0; x < 32; ++x) {
+            const float dx = static_cast<float>(x) + 0.5F - 16.0F;
+            const float dy = static_cast<float>(y) + 0.5F - 11.0F;
+            Rgba color = kClear;
+            if ((dx * dx) + (dy * dy) <= 11.0F * 11.0F) {
+                color = kForest;
+            } else if (y >= 20 && x >= 13 && x < 19) {
+                color = kTrunk;
+            }
+            put(image, x, y, color);
+        }
+    }
+    write_png(source.texture, image);
+    std::printf("wrote %s: %ux%u, %zu tile\n", source.texture.c_str(), image.width, image.height,
+                source.tiles.size());
+}
+
 struct Agent {
     world::ComponentRegistry components;
     command::Registry commands;
@@ -170,7 +197,9 @@ struct Agent {
 
 int main() {
     const Agent agent;
-    write_diamonds(*agent.session->assets().load<canvas::TileSet>("iso.tileset.json").value());
+    const auto iso = agent.session->assets().load<canvas::TileSet>("iso.tileset.json").value();
+    write_diamonds(*iso);
+    write_tree(*iso);
     write_hexagons(*agent.session->assets().load<canvas::TileSet>("hex.tileset.json").value());
     (void)agent.call("scene.open", R"({"path": "main.scene.json"})");
 
@@ -189,6 +218,12 @@ int main() {
     (void)agent.call("tilemap.convert", R"({"id": "island", "cells": [[3, 3], [1, 1]]})");
     (void)agent.call("tilemap.convert", R"({"id": "island", "points": [[160, 64], [147, 58]]})");
 
+    std::puts("-- trees on a layer above the island, lifted by their texture_origin so each trunk "
+              "stands on its cell; the one lower down draws in front");
+    (void)agent.call("tilemap.set",
+                     R"({"id": "trees", "cells": [[4, 1], [5, 1]], "tile": "tree"})");
+    (void)agent.call("tilemap.convert", R"({"id": "trees", "cells": [[4, 1], [5, 1]]})");
+
     std::puts("-- a board of hexagons in offset rows: odd rows sit half a hexagon over");
     (void)agent.call("tilemap.set", R"({"id": "board", "rect": [0, 0, 8, 3], "tile": "grass"})");
     (void)agent.call("tilemap.set",
@@ -201,10 +236,10 @@ int main() {
     std::puts("-- clicks either side of the slanted edge between two hexagons");
     (void)agent.call("tilemap.convert", R"({"id": "board", "points": [[136, 149], [136, 156]]})");
 
-    std::puts("-- the frame at those places: pond, island, forest, hill, and grass and forest "
-              "either side of the edge");
-    (void)agent.call(
-        "frame.capture",
-        R"({"points": [[160, 64], [160, 32], [144, 163], [64, 184], [136, 149], [136, 156]]})");
+    std::puts("-- the frame at those places: pond, island, forest, hill, grass and forest either "
+              "side of the edge, then a tree's crown above its cell and the other's trunk");
+    (void)agent.call("frame.capture", R"({"points": [[160, 64], [160, 32], [144, 163], [64, 184],
+                                                     [136, 149], [136, 156], [200, 38],
+                                                     [224, 68]]})");
     return 0;
 }

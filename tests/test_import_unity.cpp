@@ -1,3 +1,4 @@
+#include "slash/canvas/tilemap.hpp"
 #include "slash/command/builtin.hpp"
 #include "slash/command/command.hpp"
 #include "slash/command/session.hpp"
@@ -17,6 +18,8 @@
 
 #include <doctest/doctest.h>
 
+#include <algorithm>
+#include <array>
 #include <cstdint>
 #include <filesystem>
 #include <initializer_list>
@@ -30,6 +33,7 @@ namespace json = slash::json;
 namespace command = slash::command;
 namespace unity = slash::importer::unity;
 namespace importer = slash::importer;
+namespace canvas = slash::canvas;
 namespace fs = std::filesystem;
 
 namespace {
@@ -562,7 +566,7 @@ std::string tile_matrix(int e00, int e01, int e10, int e11) {
 }
 
 // "Level": a sheet of three tiles (a block, a slope with a physics shape and a plank), tile
-// assets, and a scene with a rectangular tile map on a Grid and an isometric one.
+// assets, and a scene with a rectangular tile map on a Grid.
 void write_tiles(const fs::path& folder) {
     write_png(folder / "Assets/Art/tiles.png", 48, 16);
     const auto sprite = [](std::string_view name, int x, std::string_view shape, int id) {
@@ -642,20 +646,83 @@ void write_tiles(const fs::path& folder) {
                        "  m_Density: 1\n  m_Material: " + ref(6200000, kBouncy, 2) +
                            "\n  m_IsTrigger: 0\n  m_UsedByEffector: 0\n"
                            "  m_Offset: {x: 0, y: 0}\n");
-    scene += game_object(3200, "Iso", {3201, 3202});
-    scene += transform(3201, 3200, "{x: 0, y: 0, z: 0}", 0, {3301});
-    scene += component(156049354, "Grid", 3202, 3200,
-                       std::string(kGrid) + "  m_CellLayout: 2\n  m_CellSwizzle: 0\n");
-    scene += game_object(3300, "Iso Tiles", {3301, 3302});
-    scene += transform(3301, 3300, "{x: 0, y: 0, z: 0}", 3201);
-    scene += component(
-        1839735485, "Tilemap", 3302, 3300,
-        "  m_Tiles:\n" + tile_cell(0, 0, 0, 0, 0, 0, kNone) +
-            "  m_TileAssetArray:\n  - m_RefCount: 1\n    m_Data: " + ref(11400000, kGroundTile, 2) +
-            "\n  m_TileSpriteArray:\n  - m_RefCount: 1\n    m_Data: " + ref(1001, kTilesPng) +
-            "\n");
     write(folder / "Assets/Scenes/Level.unity", scene);
     write(folder / "Assets/Scenes/Level.unity.meta", meta("a1000000000000000000000000000011"));
+}
+
+constexpr std::string_view kIsoPng = "a1000000000000000000000000000e01";
+constexpr std::string_view kHexPng = "a1000000000000000000000000000e02";
+constexpr std::string_view kFlatPng = "a1000000000000000000000000000e03";
+constexpr std::int64_t kWholeSprite = 21300000; // a texture's one sprite
+
+// "Board": an isometric tile map of blocks that stand on their bottom corner, anchored at the
+// cells' bottom corners as Unity's isometric tile maps are, with a marker under it; and tile
+// maps of hexagons pointing up and, swizzled YXZ, flat on top.
+void write_shaped_tiles(const fs::path& folder) {
+    write_png(folder / "Assets/Art/iso.png", 32, 32);
+    // The block's pivot is its bottom middle (alignment 7); its physics shape is all of it.
+    write(folder / "Assets/Art/iso.png.meta",
+          texture_meta(kIsoPng, 32,
+                       "  spriteMode: 1\n  alignment: 7\n  spritePivot: {x: 0.5, y: 0.5}\n"
+                       "  spriteSheet:\n    serializedVersion: 2\n    sprites: []\n"
+                       "    physicsShape:\n    - - {x: -16, y: 16}\n      - {x: 16, y: 16}\n"
+                       "      - {x: 16, y: -16}\n      - {x: -16, y: -16}\n"));
+    write_png(folder / "Assets/Art/hex.png", 32, 36);
+    write(folder / "Assets/Art/hex.png.meta", texture_meta(kHexPng, 32, "  spriteMode: 1\n"));
+    write_png(folder / "Assets/Art/flat.png", 36, 32);
+    write(folder / "Assets/Art/flat.png.meta", texture_meta(kFlatPng, 32, "  spriteMode: 1\n"));
+
+    constexpr std::int64_t kNone = 1;
+    constexpr std::int64_t kSprite = (std::int64_t{1} << 30) + 1;
+    constexpr std::int64_t kCell = (std::int64_t{2} << 30) + 1;
+    // A Grid object at the origin, and under it a Tilemap object with its renderer.
+    const auto tile_map = [](std::int64_t grid, std::string_view name, std::string_view layout,
+                             std::string_view cells, std::string_view sprite,
+                             std::initializer_list<std::int64_t> children = {}) {
+        const std::int64_t tiles = grid + 100;
+        return game_object(grid, std::string(name) + " Grid", {grid + 1, grid + 2}) +
+               transform(grid + 1, grid, "{x: 0, y: 0, z: 0}", 0, {tiles + 1}) +
+               component(156049354, "Grid", grid + 2, grid, layout) +
+               game_object(tiles, std::string(name) + " Tiles",
+                           {tiles + 1, tiles + 2, tiles + 3, tiles + 4}) +
+               (transform)(tiles + 1, tiles, "{x: 0, y: 0, z: 0}", grid + 1, children) +
+               component(1839735485, "Tilemap", tiles + 2, tiles,
+                         "  m_Tiles:\n" + std::string(cells) +
+                             "  m_TileSpriteArray:\n  - m_RefCount: 1\n    m_Data: " +
+                             ref(kWholeSprite, sprite) + "\n  m_TileMatrixArray:\n" +
+                             tile_matrix(1, 0, 0, 1) + tile_matrix(-1, 0, 0, 1) +
+                             "  m_TileAnchor: {x: 0, y: 0, z: 0}\n  m_TileOrientation: 0\n") +
+               component(483693784, "TilemapRenderer", tiles + 3, tiles,
+                         "  m_SortingLayerID: 0\n  m_SortingOrder: 0\n  m_MaskInteraction: 0\n") +
+               component(19719996, "TilemapCollider2D", tiles + 4, tiles,
+                         "  m_Density: 1\n  m_Material: {fileID: 0}\n  m_IsTrigger: 0\n"
+                         "  m_UsedByEffector: 0\n  m_Offset: {x: 0, y: 0}\n");
+    };
+    std::string scene(kHeader);
+    // Cells of 32x16 pixels; one block with the cell as its collider, one flipped.
+    scene += tile_map(3000, "Iso",
+                      "  m_CellSize: {x: 1, y: 0.5, z: 1}\n  m_CellGap: {x: 0, y: 0, z: 0}\n"
+                      "  m_CellLayout: 2\n  m_CellSwizzle: 0\n",
+                      tile_cell(0, 0, 0, 0, 0, 0, kSprite) + tile_cell(1, 0, 0, 0, 0, 0, kCell) +
+                          tile_cell(0, 1, 0, 0, 1, 0, kSprite),
+                      kIsoPng, {3201});
+    scene += game_object(3200, "Marker", {3201});
+    scene += transform(3201, 3200, "{x: 1, y: 1, z: 0}", 3101);
+    // Hexagons 32 pixels wide and 36 high, and, swizzled, 36 wide and 32 high.
+    scene += tile_map(4000, "Hex",
+                      "  m_CellSize: {x: 1, y: 1.125, z: 1}\n  m_CellGap: {x: 0, y: 0, z: 0}\n"
+                      "  m_CellLayout: 1\n  m_CellSwizzle: 0\n",
+                      tile_cell(0, 0, 0, 0, 0, 0, kNone) + tile_cell(1, 1, 0, 0, 0, 0, kNone) +
+                          tile_cell(-1, -1, 0, 0, 0, 0, kNone) + tile_cell(0, 1, 0, 0, 0, 0, kNone),
+                      kHexPng);
+    scene += tile_map(5000, "Flat",
+                      "  m_CellSize: {x: 1, y: 1.125, z: 1}\n  m_CellGap: {x: 0, y: 0, z: 0}\n"
+                      "  m_CellLayout: 1\n  m_CellSwizzle: 2\n",
+                      tile_cell(0, 0, 0, 0, 0, 0, kNone) + tile_cell(1, 1, 0, 0, 0, 0, kNone) +
+                          tile_cell(0, 1, 0, 0, 0, 0, kNone) + tile_cell(-1, -1, 0, 0, 0, 0, kNone),
+                      kFlatPng);
+    write(folder / "Assets/Scenes/Board.unity", scene);
+    write(folder / "Assets/Scenes/Board.unity.meta", meta("a1000000000000000000000000000e04"));
 }
 
 constexpr std::string_view kFrogPng = "a1000000000000000000000000000012";
@@ -2238,9 +2305,6 @@ TEST_CASE("Unity tile maps become tile map layers, their sprites a tile set") {
     CHECK(unsupported(report, "scripted tiles (rule tiles, animated tiles)")
               .find("where")
               ->as_string() == "Assets/Scenes/Level.unity: Grid/Ground");
-    CHECK(unsupported(report, "isometric or hexagonal tile map").find("where")->as_string() ==
-          "Assets/Scenes/Level.unity: Iso/Iso Tiles");
-    CHECK(entity(files, level, "iso_tiles").find("TileMapLayer") == nullptr);
 
     // The tiles are solid where their polygons are: a ray down through the plank, which has
     // none, stops on the block under it, and one through the flipped slope on its face.
@@ -2267,6 +2331,117 @@ TEST_CASE("Unity tile maps become tile map layers, their sprites a tile set") {
     CHECK(*slope.value.find("hit")->find("cell") == parse("[-1, -1]"));
     CHECK(slope.value.find("hit")->find("point")->as_array()[1].as_double() ==
           doctest::Approx(-4.0).epsilon(0.01));
+}
+
+TEST_CASE("Unity's isometric and hexagonal tile maps keep their cells where Unity puts them") {
+    const fs::path project = "import_unity_shaped_tiles";
+    fs::remove_all(project);
+    make_project(project / "unity");
+    write_shaped_tiles(project / "unity");
+    auto imported = importer::import_project(
+        {.source = (project / "unity").string(), .destination = project.string()});
+    REQUIRE_MESSAGE(imported.ok(), (imported.ok() ? std::string() : imported.error().message));
+    const auto files = files_of(imported.value());
+    const std::string board = "unity/Assets/Scenes/Board.scene.json";
+
+    // Each layer's cells by key, and where their centers are in the layer's parent: the tile
+    // set's place for each cell, moved with the layer.
+    struct Layer {
+        canvas::TileSet set;
+        std::map<std::pair<int, int>, std::string> cells;
+        std::vector<std::array<float, 2>> centers;
+        json::Value position;
+    };
+    const auto layer_of = [&](std::string_view id) {
+        const json::Value components = entity(files, board, id);
+        const json::Value& layer = *components.find("TileMapLayer");
+        Layer out;
+        const std::string& path = layer.find("tile_set")->as_string();
+        REQUIRE_MESSAGE(files.contains(path), path);
+        auto set = canvas::parse_tileset(parse(files.at(path)));
+        REQUIRE_MESSAGE(set.ok(), (set.ok() ? std::string() : set.error().message));
+        out.set = std::move(set).value();
+        out.position = *components.find("Transform2D")->find("position");
+        const auto& origin = layer.find("origin")->as_array();
+        const json::Value& rows = *layer.find("rows");
+        for (std::size_t row = 0; row < rows.size(); ++row) {
+            const std::string& keys = rows.as_array()[row].as_string();
+            for (std::size_t column = 0; column < keys.size(); ++column) {
+                if (keys[column] == '.') {
+                    continue;
+                }
+                const int x = static_cast<int>(origin[0].as_int()) + static_cast<int>(column);
+                const int y = static_cast<int>(origin[1].as_int()) + static_cast<int>(row);
+                out.cells[{x, y}] =
+                    layer.find("legend")->find(std::string(1, keys[column]))->as_string();
+                const slash::Vec2 center = canvas::map_to_local(out.set, {x, y});
+                out.centers.push_back(
+                    {center.x + static_cast<float>(out.position.as_array()[0].as_double()),
+                     center.y + static_cast<float>(out.position.as_array()[1].as_double())});
+            }
+        }
+        std::ranges::sort(out.centers);
+        return out;
+    };
+    // Where Unity centers cells, in pixels with y down, sorted.
+    const auto unity = [](std::vector<std::array<float, 2>> centers) {
+        std::ranges::sort(centers);
+        return centers;
+    };
+
+    // Isometric: Unity's cell (x, y) is (x, -y - 1) in Godot's diamond_right layout, where
+    // Unity centers it at ((x - y) * 16, -(x + y + 1) * 8); the layer moves up 8 pixels to
+    // put it there, and its marker moves back.
+    const Layer iso = layer_of("iso_tiles");
+    CHECK(iso.set.shape == canvas::TileShape::Isometric);
+    CHECK(iso.set.layout == canvas::TileLayout::DiamondRight);
+    CHECK(iso.set.tile_size == slash::Vec2i{32, 16});
+    CHECK(iso.position == parse("[0, -8]"));
+    CHECK(iso.cells == std::map<std::pair<int, int>, std::string>{
+                           {{0, -1}, "iso"}, {{1, -1}, "iso:1"}, {{0, -2}, "iso:h"}});
+    CHECK(iso.centers == unity({{0, -8}, {16, -16}, {-16, -16}}));
+    CHECK(*entity(files, board, "marker").find("Transform2D")->find("position") ==
+          parse("[32, -24]"));
+    // The block's bottom middle is at the anchor, the cell's bottom corner, 8 pixels under its
+    // center: its texture draws 8 pixels up. Its physics shape moves with it; the cell's outline
+    // is a diamond.
+    const json::Value iso_set = parse(files.at("unity/Assets/tiles.tileset.json"));
+    CHECK(*iso_set.find("sources")->find("iso")->find("tiles")->find("0,0") == parse(R"({
+        "name": "iso", "texture_origin": [0, 8],
+        "collision": [{"points": [[-16.0, -24.0], [16.0, -24.0], [16.0, 8.0], [-16.0, 8.0]]}],
+        "alternatives": {"1": {"texture_origin": [0, 8],
+                               "collision": [{"points": [[0.0, -8.0], [16.0, 0.0], [0.0, 8.0],
+                                                         [-16.0, 0.0]]}]}}})"));
+    const canvas::TileLook look =
+        canvas::tile_look(iso.set, canvas::TileRef{.source = "iso", .atlas = {0, 0}});
+    CHECK(look.position == slash::Vec2{-16.0F, -24.0F});
+    CHECK(look.size == slash::Vec2{32.0F, 32.0F});
+
+    // Hexagons pointing up: odd rows sit half a cell right, as in Godot's stacked_offset layout
+    // once rows go down.
+    const Layer hex = layer_of("hex_tiles");
+    CHECK(hex.set.shape == canvas::TileShape::Hexagon);
+    CHECK(hex.set.layout == canvas::TileLayout::StackedOffset);
+    CHECK(hex.set.offset_axis == canvas::TileOffsetAxis::Horizontal);
+    CHECK(hex.set.tile_size == slash::Vec2i{32, 36});
+    CHECK(hex.position == parse("[-16, 9]"));
+    CHECK(hex.centers == unity({{0, 0}, {48, -27}, {-16, 27}, {16, -27}}));
+
+    // Swizzled flat hexagons: Unity's cell x runs up the columns and y along them.
+    const Layer flat = layer_of("flat_tiles");
+    CHECK(flat.set.shape == canvas::TileShape::Hexagon);
+    CHECK(flat.set.offset_axis == canvas::TileOffsetAxis::Vertical);
+    CHECK(flat.set.tile_size == slash::Vec2i{36, 32});
+    CHECK(flat.position == parse("[-18, 0]"));
+    CHECK(flat.centers == unity({{0, 0}, {27, -48}, {27, -16}, {-27, 16}}));
+    CHECK(flat.cells.contains({1, -2}));
+
+    const json::Value report = parse(files.at("import/unity.json"));
+    CHECK(imported.value().report.find("converted")->find("tile_sets")->as_int() == 3);
+    CHECK(unsupported(report, "turned tiles with the tile anchor off the cell's center")
+              .find("where")
+              ->as_string() == "Assets/Scenes/Board.unity: Iso Grid/Iso Tiles");
+    CHECK(unsupported(report, "tile anchor off a hexagon's center").is_null());
 }
 
 TEST_CASE("Unity Animator controllers become animation libraries, their states animations") {

@@ -1,0 +1,57 @@
+project.import {"source":"unity"}
+{"converted":{"animation_libraries":0,"assets":2,"bus_layouts":0,"input_actions":0,"prefabs":0,"scenes":1,"tile_sets":2},"engine":"unity","files":5,"main_scene":"unity/Assets/Scenes/Garden.scene.json","pixels_per_unit":32.0,"project":"Hex Garden","report":"import/unity.json","scripts":[],"unity_version":"2022.3.20f1","unsupported":[]}
+--- unity/Assets/tiles.tileset.json
+{
+  "format": 1,
+  "sources": {
+    "blocks": {
+      "region_size": [32, 32],
+      "texture": "unity/Assets/Sprites/blocks.png",
+      "tiles": {
+        "0,0": {
+          "name": "garden_grass",
+          "texture_origin": [0, 8]
+        },
+        "1,0": {
+          "name": "garden_water",
+          "texture_origin": [0, 8]
+        }
+      }
+    }
+  },
+  "tile_layout": "diamond_right",
+  "tile_shape": "isometric",
+  "tile_size": [32, 16]
+}
+--- unity/Assets/tiles_2.tileset.json
+{
+  "format": 1,
+  "sources": {
+    "hexes": {
+      "texture": "unity/Assets/Sprites/hexes.png",
+      "tiles": {
+        "0,0": {
+          "name": "hex_grass"
+        },
+        "1,0": {
+          "name": "hex_sand"
+        }
+      }
+    }
+  },
+  "tile_layout": "stacked_offset",
+  "tile_shape": "hexagon",
+  "tile_size": [32, 36]
+}
+scene.open {"path":"unity/Assets/Scenes/Garden.scene.json"}
+{"entities":5,"path":"unity/Assets/Scenes/Garden.scene.json"}
+entity.get {"components":["Transform2D","TileMapLayer"],"id":"garden"}
+{"components":{"TileMapLayer":{"collision_enabled":false,"legend":{"G":"garden_water","g":"garden_grass"},"light_mask":1,"modulate":[1.0,1.0,1.0,1.0],"origin":[0,-4],"rows":["gggg","gggg","ggGg","gggg"],"texture_filter":"inherit","tile_set":"unity/Assets/tiles.tileset.json","visible":true,"z_index":0},"Transform2D":{"children":[],"position":[0.0,-8.0],"rotation":0.0,"scale":[1.0,1.0],"skew":0.0}},"global":{"position":[-80,24],"rotation":0,"scale":[1,1]},"id":"garden","parent":"garden_grid"}
+entity.get {"components":["Transform2D","TileMapLayer"],"id":"board"}
+{"components":{"TileMapLayer":{"collision_enabled":false,"legend":{"H":"hex_sand","h":"hex_grass"},"light_mask":1,"modulate":[1.0,1.0,1.0,1.0],"origin":[0,-1],"rows":["hHh","hhh"],"texture_filter":"inherit","tile_set":"unity/Assets/tiles_2.tileset.json","visible":true,"z_index":0},"Transform2D":{"children":[],"position":[-16.0,9.0],"rotation":0.0,"scale":[1.0,1.0],"skew":0.0}},"global":{"position":[48,-7],"rotation":0,"scale":[1,1]},"id":"board","parent":"board_grid"}
+tilemap.convert {"cells":[[2,-2]],"id":"garden"}
+{"points":[[-64,0]]}
+tilemap.convert {"cells":[[1,-1]],"id":"board"}
+{"points":[[96,-16]]}
+frame.capture {"points":[[96,74],[80,98],[72,114],[88,114],[256,74],[160,90]]}
+{"colors":[[0.129,0.588,0.953,1],[0.298,0.686,0.314,1],[0.149,0.341,0.157,1],[0.208,0.478,0.22,1],[0.902,0.784,0.471,1],[0.102,0.102,0.149,1]],"drawn":{"tiles":22},"height":180,"width":320}

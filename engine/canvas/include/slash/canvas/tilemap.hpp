@@ -150,6 +150,7 @@ struct AlternativeTile {
     bool flip_v = false;
     bool transpose = false;
     Vec4 modulate{1.0F, 1.0F, 1.0F, 1.0F};
+    Vec2i texture_origin; // as the tile's; its own, (0, 0) unless it gives one
     std::vector<TilePolygon> collision;
 };
 
@@ -161,6 +162,10 @@ struct TileData {
     std::array<int, 16> peering{-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1};
     // How often autotiling picks this tile over others that fit as well.
     double probability = 1.0;
+    // Where the cell's center is in the texture, in pixels from its middle, as Godot's
+    // TileData::texture_origin: the texture draws that much up and to the left. Collision
+    // polygons stay put.
+    Vec2i texture_origin;
     std::vector<TilePolygon> collision;
     std::map<int, AlternativeTile> alternatives; // by number, from 1
 };
@@ -259,13 +264,16 @@ enum class PeeringKind : std::uint8_t { None, Side, Corner };
 // then its alternative if not 0 and its turns if any.
 [[nodiscard]] std::string tile_text(const TileSet& set, const TileRef& tile);
 
-// How a tile draws in a cell: its alternative's flips with the cell's, and its alternative's
-// modulate.
+// How a tile draws in a cell, as Godot's TileMapLayer::compute_transformed_tile_dest_rect: its
+// alternative's flips with the cell's, its alternative's modulate, and the rect it takes, from
+// the cell's center, moved by its texture_origin and turned with the cell.
 struct TileLook {
     bool flip_h = false;
     bool flip_v = false;
     bool transpose = false;
     Vec4 modulate{1.0F, 1.0F, 1.0F, 1.0F};
+    Vec2 position; // the rect's top left corner, in pixels from the cell's center
+    Vec2 size;     // the rect's size: the tile's, with width and height swapped if transposed
 };
 [[nodiscard]] TileLook tile_look(const TileSet& set, const TileRef& tile);
 
