@@ -45,12 +45,17 @@ its entity.
 
 Node2D nodes nest through their parent's `Transform2D` `children` and controls through their
 parent's `Control` `children`, in Godot's order, so they draw in Godot's order. A root that is a
-plain `Node`, and plain nodes under it such as a `CanvasLayer`, get a `Transform2D` to hold
-their children in place. Controls draw on the screen above the world, as in a `CanvasLayer`.
+plain `Node`, and plain nodes under it or under a `CanvasLayer`, get a `Transform2D` to hold
+their children in place. A `CanvasLayer` lists in its `children` the nodes that draw at the top
+of its canvas, so they draw in it as in Godot. Controls in no `CanvasLayer` draw on the screen
+above the world.
 
 | Godot node | Components |
 | --- | --- |
-| `Node`, `CanvasLayer` | `Transform2D` under a plain root, else none |
+| `Node` | `Transform2D` under a plain root or a `CanvasLayer`, else none |
+| `CanvasLayer` | `CanvasLayer` (its `transform` is its `offset`, `rotation` and `scale`, which convert as they are) |
+| `Parallax2D` | `Transform2D` and `Parallax2D` |
+| `ParallaxBackground`, `ParallaxLayer` | As Godot's Convert to Parallax2D: see [parallax](#parallax) |
 | `Node2D`, `Marker2D` | `Transform2D` |
 | `Sprite2D`, `Camera2D`, `CollisionShape2D`, `CollisionPolygon2D`, `PointLight2D`, `DirectionalLight2D`, `LightOccluder2D`, `CanvasModulate`, `CPUParticles2D`, `AudioStreamPlayer2D`, `AudioListener2D` | `Transform2D` and the component of the same name |
 | `AnimatedSprite2D` | `Transform2D`, `AnimatedSprite2D` and `Sprite2D` |
@@ -96,6 +101,22 @@ type:
   script's `_get_drag_data`, `_can_drop_data` and `_drop_data` are script code like the rest;
   in C++ they become a [`DragAndDrop`](scene-format.md#tooltips-and-drag-and-drop) component or
   `ui::set_drag_forwarding`.
+
+## Parallax
+
+`ParallaxBackground` and `ParallaxLayer`, Godot 3's parallax nodes, convert as Godot 4's editor
+converts them to `Parallax2D` (`ParallaxBackgroundEditorPlugin::convert_to_parallax2d`):
+
+- Each `ParallaxLayer` becomes a `Parallax2D` with `scroll_offset` its background's
+  `scroll_base_offset` times its `motion_scale`, plus its `motion_offset` and `position`;
+  `scroll_scale` the background's `scroll_base_scale` times its `motion_scale`; `repeat_size`
+  its `motion_mirroring`; the background's `scroll_limit_begin` and `scroll_limit_end` on each
+  axis they limit; and `follow_viewport` off when the background has
+  `scroll_ignore_camera_zoom`.
+- A `ParallaxBackground` with `scroll_ignore_camera_zoom` becomes a `CanvasLayer` at its
+  `layer`, -100 unless set, holding its layers. Without it, it becomes a `Node2D` drawn with
+  the world, as Godot's converter makes it; its `CanvasLayer` properties are reported.
+- The background's `scroll_offset`, which its camera sets as the game runs, is left out.
 
 ## Tile sets and tile maps
 

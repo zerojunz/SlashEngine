@@ -8,6 +8,7 @@
 #include "slash/input/input.hpp"
 #include "slash/render/device.hpp"
 #include "slash/text/text.hpp"
+#include "slash/world/canvas_layer.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/world.hpp"
@@ -206,6 +207,10 @@ struct LabelText {
 struct Placed {
     entt::entity entity = entt::null;
     entt::entity parent = entt::null;
+    // The canvas it draws in, its place in Layout::canvases: a root's is the CanvasLayer that
+    // lists it, or the world's, and a child's its parent's. A drag's preview, over every canvas,
+    // has canvases.size().
+    std::size_t canvas = 0;
     // In the parent's rect, before rotation and scale, as Godot's position and size.
     Vec2 position;
     Vec2 size;
@@ -440,12 +445,17 @@ struct Problem {
 
 struct Layout {
     Vec2 viewport;
-    // Every control, in drawing order: by z, then parents before children and children in
-    // order, roots in the order their entities were made.
+    // The world's canvases in drawing order (world::Canvases). A control in a CanvasLayer is
+    // placed by the layer's transform; one in the world stays on the screen, over the world's
+    // sprites.
+    std::vector<world::Canvas> canvases;
+    // Every control, in drawing order: by canvas, then z, then parents before children and
+    // children in order, roots in the order their entities were made.
     std::vector<Placed> controls;
     std::unordered_map<entt::entity, std::size_t> index; // entity to its place in controls
-    // Every control in tree order, as Godot's scene tree: parents before children and children
-    // in order, roots in the order their entities were made. Pointers hit the last first.
+    // Every control in tree order, as Godot's scene tree: by canvas, then parents before
+    // children and children in order, roots in the order their entities were made. Pointers hit
+    // the last first.
     std::vector<entt::entity> tree;
     std::vector<Problem> problems;
     std::map<entt::entity, LabelText> labels;       // each Label's text
@@ -555,6 +565,9 @@ struct DrawCall {
     std::uint32_t page = 0;         // a page of the fonts' atlas, for Atlas
     render::DistanceField field;
     std::vector<render::Vertex2D> vertices;
+    // The canvas it draws in, as Placed::canvas; Layout::canvases.size() for popup menus, the
+    // tooltip and a drag's preview, over every canvas.
+    std::size_t canvas = 0;
 };
 
 // Which control drew which vertices: calls[call].vertices [first, first + count).

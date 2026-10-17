@@ -1164,10 +1164,85 @@ wider than the window.
   frame without waiting for a tick, and games draw between ticks with the view in between.
 - Sprites, tile layers, particles, lights and shadows and the debug overlay's collision shapes
   are drawn through the camera; controls stay where they are on the screen, as if on Godot's
-  default `CanvasLayer`. 2D sounds with no `AudioListener2D` are heard from the middle of the
-  view.
+  default `CanvasLayer`, and what a [`CanvasLayer`](#canvas-layers-and-parallax) holds is placed
+  by the layer. 2D sounds with no `AudioListener2D` are heard from the middle of the view.
 - [`frame.summary`](commands.md#framesummary) reports rects on the screen, and its `camera` field
   names the current camera and the world rect it shows.
+  [`canvas.convert`](commands.md#canvasconvert) turns window pixels into the world through the
+  camera, and back.
+
+## Canvas layers and parallax
+
+A `CanvasLayer` draws the entities its `children` list in a canvas of its own, as Godot's: a HUD
+that stays put while the camera moves, or a background behind the world. A `Parallax2D` scrolls
+its entity with the camera, slower or faster than the world, and can draw what it holds again
+and again to fill the window. [examples/canvas-layers](../../examples/canvas-layers/) has a
+parallax background and a HUD.
+
+```json
+"hud": {"components": {"CanvasLayer": {"children": ["heart", "score"]}}},
+"far": {
+  "components": {
+    "Parallax2D": {"repeat_size": [320.0, 0.0], "scroll_scale": [0.25, 1.0]},
+    "Transform2D": {"children": ["hills"]}
+  }
+}
+```
+
+| `CanvasLayer` field | Default | Meaning |
+| --- | --- | --- |
+| `layer` | `1` | Its place in the drawing order: higher draws over lower; the world is 0 |
+| `visible` | `true` | Hides everything in it when false |
+| `offset` | `[0, 0]` | Moves it, in pixels |
+| `rotation` | `0` | Turns it around its top left, in radians |
+| `scale` | `[1, 1]` | Scales it from its top left |
+| `follow_viewport_enabled` | `false` | Seen through the camera too, after its own offset, rotation and scale |
+| `follow_viewport_scale` | `1` | Following the camera, scales it around the middle of the window |
+| `children` | `[]` | The entities that draw in it, with their own children |
+
+- Canvases draw in order of `layer`, lowest first. The world's canvas is layer 0 and draws
+  before a `CanvasLayer` of layer 0, and layers of one layer draw in the order their entities
+  were made. Within a canvas, things draw as in the world: by `z_index`, then parents before
+  children.
+- `children` lists the 2D entities and controls that draw in the layer, and their own
+  `Transform2D` and `Control` children draw there too. A `CanvasLayer` has no `Transform2D` of
+  its own. An entity in a layer can't also be another entity's child, nor be in two layers
+  (the first made wins), and layers don't hold each other; `scene validate` reports each at
+  the JSON Pointer of the list item. `entity.destroy` on a layer takes its children with it.
+- What a layer holds is placed by its `offset`, `rotation` and `scale`, not by the camera. With
+  `follow_viewport_enabled` the camera moves it after them, as it does the world, and
+  `follow_viewport_scale` then scales it around the middle of the window, so a layer at 0.5
+  looks farther away than the world.
+- Lights, shadows and `CanvasModulate` shade only the world's canvas; layers draw unlit, as in
+  Godot by default.
+- Controls in a layer lay out in the window as other controls do, then the layer places them;
+  they take clicks and touches where they show. Controls in no layer stay on the screen, above
+  the world's sprites. Popup menus, tooltips and drag previews draw over every canvas.
+- [`frame.summary`](commands.md#framesummary) and [`ui.layout`](commands.md#uilayout) name the
+  layer each thing is in as `layer`, and [`canvas.convert`](commands.md#canvasconvert) with an
+  `id` turns points into and out of the canvas that entity draws in.
+
+| `Parallax2D` field | Default | Meaning |
+| --- | --- | --- |
+| `scroll_scale` | `[1, 1]` | How far it moves on the screen for each pixel the camera moves: 0 stays put, 1 moves with the world, 0.25 looks far away |
+| `scroll_offset` | `[0, 0]` | Where it sits when the view's top left is at `[0, 0]` |
+| `repeat_size` | `[0, 0]` | Draws what it holds again every so many pixels, along each axis that isn't 0 |
+| `repeat_times` | `1` | Copies drawn past the first on each repeating axis, half of them (rounded down) before it, for a camera zoomed out |
+| `autoscroll` | `[0, 0]` | Pixels a second `scroll_offset` moves by, wrapped within the repeat |
+| `limit_begin`, `limit_end` | `[-10000000, -10000000]`, `[10000000, 10000000]` | The views it scrolls for: past them it stops |
+| `follow_viewport` | `true` | Off for one in a `CanvasLayer` that doesn't follow the camera |
+| `ignore_camera_scroll` | `false` | Leaves `screen_offset` alone, for code or an animation to set |
+| `screen_offset` | `[0, 0]` | The top left of the current camera's view in the world, set each tick |
+
+- The `parallax_2d` system (priority 1060, right after `camera_2d`) sets each `Parallax2D`'s
+  `Transform2D` `position` each tick, as Godot's `Parallax2D::_update_scroll`: it takes
+  `screen_offset` from the current camera (none leaves it as it is), keeps it inside the limits
+  less a window, scales it by `scroll_scale` and adds `scroll_offset`. Set `scroll_offset`, not
+  `position`, to place one.
+- With a `repeat_size` it wraps its position within one repeat and draws everything it holds
+  again beside it, so a picture as wide as the window always fills it. Something drawn between
+  ticks jumps where its repeat wrapped instead of sliding back across the window.
+- `autoscroll` drifts only a `Parallax2D` with a `repeat_size`, as in Godot.
 
 ## 2D lights
 

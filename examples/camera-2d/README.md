@@ -21,5 +21,5 @@ frame.summary {"ids":["player","coin","score"]}
   `position_smoothing_speed` times the tick's seconds of the gap each tick.
 - `limit_left`, `limit_top`, `limit_right` and `limit_bottom` keep the view inside the level, so
   at its end the player walks off the middle of the screen.
-- `zoom` `[2, 2]` shows things twice as big. Controls such as the coin counter stay put, as in a
-  Godot `CanvasLayer`.
+- `zoom` `[2, 2]` shows things twice as big. Controls outside a `CanvasLayer`, such as the coin
+  counter, stay put on the screen; [canvas-layers](../canvas-layers/) puts a HUD in a layer.

@@ -185,9 +185,15 @@ rendering on top.
       `get_camera_transform`. The world draws through it, interpolated between ticks; controls
       stay on the screen, 2D sound is heard from the middle of the view, and `frame.summary`
       reports the world rect it shows
-- [ ] Canvas layers and parallax, as Godot's `CanvasLayer` (with `follow_viewport`) and
+- [x] Canvas layers and parallax, as Godot's `CanvasLayer` (with `follow_viewport`) and
       `Parallax2D`, and a call that turns a point on the screen into the world through the
-      camera
+      camera: layers draw what their `children` hold in their own canvas, in `layer` order
+      around the world, unlit, with their controls laid out and clicked where they show; the
+      `parallax_2d` system scrolls each `Parallax2D` as Godot's `_update_scroll`, with limits,
+      autoscroll and repeats drawn to fill the window; `canvas.convert` and
+      `canvas::to_world` turn points through the camera or a layer; `frame.summary` and
+      `ui.layout` name each thing's layer; and the Godot importer converts `CanvasLayer`,
+      `Parallax2D`, `ParallaxBackground` and `ParallaxLayer`
 - [x] Keyframe animation tracks on any reflected property, like Godot's AnimationPlayer:
       `.anim.json` libraries of animations with value tracks on any component field or part of
       one, Godot's interpolation, easing, update and loop modes, and event tracks that emit world

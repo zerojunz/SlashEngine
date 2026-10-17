@@ -209,10 +209,73 @@ void Tree2D::set_global_rotation(World& world, entt::entity entity, float rotati
     transform.rotation = up == entt::null ? rotation : rotation - global(up).rotation;
 }
 
+namespace {
+
+// What CanvasLayers' children get wrong: an entity there has no other parent and one layer, and
+// layers don't hold each other. parents are the Transform2D children's.
+void check_layers(const World& world, const std::unordered_map<entt::entity, entt::entity>& parents,
+                  std::vector<TreeProblem>& problems) {
+    const auto& ecs = world.ecs();
+    std::vector<entt::entity> layers;
+    for (const entt::entity entity : ecs.view<const CanvasLayer>()) {
+        layers.push_back(entity);
+    }
+    if (layers.empty()) {
+        return;
+    }
+    std::ranges::sort(layers, {}, [](entt::entity entity) { return entt::to_entity(entity); });
+    std::unordered_map<entt::entity, entt::entity> control_parents;
+    std::vector<entt::entity> controls;
+    for (const entt::entity entity : ecs.view<const Control>()) {
+        controls.push_back(entity);
+    }
+    std::ranges::sort(controls, {}, [](entt::entity entity) { return entt::to_entity(entity); });
+    for (const entt::entity entity : controls) {
+        for (const entt::entity child : ecs.get<const Control>(entity).children) {
+            control_parents.try_emplace(child, entity);
+        }
+    }
+    const auto quoted = [&](entt::entity entity) {
+        return "\"" + std::string(world.id_of(entity)) + "\"";
+    };
+    std::unordered_map<entt::entity, entt::entity> held;
+    for (const entt::entity layer : layers) {
+        const auto& children = ecs.get<const CanvasLayer>(layer).children;
+        for (std::size_t i = 0; i < children.size(); ++i) {
+            const entt::entity child = children[i];
+            const std::string path = "/entities/" + std::string(world.id_of(layer)) +
+                                     "/components/CanvasLayer/children/" + std::to_string(i);
+            const auto parent = parents.find(child);
+            const auto control_parent = control_parents.find(child);
+            if (child == entt::null || !world.valid(child)) {
+                problems.push_back({path, "children can't be null"});
+            } else if (child == layer) {
+                problems.push_back({path, "a canvas layer can't hold itself"});
+            } else if (ecs.all_of<CanvasLayer>(child)) {
+                problems.push_back({path, quoted(child) +
+                                              " is a canvas layer; canvas layers can't hold each "
+                                              "other"});
+            } else if (parent != parents.end()) {
+                problems.push_back(
+                    {path, quoted(child) + " is already a child of " + quoted(parent->second)});
+            } else if (control_parent != control_parents.end()) {
+                problems.push_back({path, quoted(child) + " is already a child of " +
+                                              quoted(control_parent->second)});
+            } else if (const auto [found, added] = held.try_emplace(child, layer); !added) {
+                problems.push_back(
+                    {path, quoted(child) + " is already in " + quoted(found->second)});
+            }
+        }
+    }
+}
+
+} // namespace
+
 std::vector<TreeProblem> check_tree(const World& world) {
     std::vector<TreeProblem> problems;
     const auto& ecs = world.ecs();
     if (!has_children(world)) {
+        check_layers(world, {}, problems);
         return problems;
     }
     const std::vector<entt::entity> entities = made_order(world);
@@ -271,6 +334,7 @@ std::vector<TreeProblem> check_tree(const World& world) {
                             quoted(entity) + " is an ancestor of " + quoted(parent) +
                                 ", so it can't be its child"});
     }
+    check_layers(world, parents, problems);
     return problems;
 }
 

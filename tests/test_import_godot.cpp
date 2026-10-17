@@ -762,9 +762,12 @@ TEST_CASE("importing a Godot scene maps its nodes to entities and components") {
     }
 
     // Plain nodes under a plain root keep their children in place, so Godot's drawing order
-    // holds; Node2D children hang from their parent's Transform2D.
+    // holds; Node2D children hang from their parent's Transform2D. A CanvasLayer holds what
+    // draws at the top of its canvas.
     CHECK(*entity(files, level, "level").find("Transform2D")->find("children") ==
-          parse(R"(["world", "ui"])"));
+          parse(R"(["world"])"));
+    CHECK(*entity(files, level, "ui").find("CanvasLayer") ==
+          parse(R"({"children": ["menu", "marker", "size", "file"]})"));
     CHECK(*entity(files, level, "world").find("Transform2D")->find("children") ==
           parse(R"(["floor", "enemy", "enemy2", "pin", "crate", "torch", "sparks", "tiles",
                     "old"])"));
@@ -1042,6 +1045,110 @@ position = Vector2(64, 0)
     CHECK(parse(files.at(house)).find("entities")->find("room2/room_top") == nullptr);
     CHECK(cells_of(files, *entity(files, house, "room2/room_top").find("TileMapLayer")) ==
           std::map<std::string, std::string>{{"0,1", "tiles:1,0"}});
+}
+
+TEST_CASE("importing Godot canvas layers and parallax converts them as Godot's converter does") {
+    const fs::path project = "import_godot_canvas_layers";
+    fs::remove_all(project);
+    write(project / "godot/project.godot",
+          "config_version=5\n\n[application]\n\nconfig/name=\"Layers\"\n");
+    write_png(project / "godot/art/sky.png", 16, 16);
+    write(project / "godot/level.tscn", R"([gd_scene format=3]
+
+[ext_resource type="Texture2D" path="res://art/sky.png" id="1_sky"]
+
+[node name="Level" type="Node2D"]
+
+[node name="Back" type="ParallaxBackground" parent="."]
+scroll_offset = Vector2(-50, 0)
+scroll_base_offset = Vector2(10, 0)
+scroll_base_scale = Vector2(0.5, 1)
+scroll_limit_end = Vector2(2000, 0)
+scroll_ignore_camera_zoom = true
+
+[node name="Clouds" type="ParallaxLayer" parent="Back"]
+position = Vector2(0, 20)
+motion_scale = Vector2(0.5, 0.25)
+motion_offset = Vector2(3, 4)
+motion_mirroring = Vector2(320, 0)
+
+[node name="Sky" type="Sprite2D" parent="Back/Clouds"]
+texture = ExtResource("1_sky")
+
+[node name="Hills" type="ParallaxBackground" parent="."]
+layer = -5
+
+[node name="Far" type="ParallaxLayer" parent="Hills"]
+
+[node name="Trees" type="Parallax2D" parent="."]
+scroll_scale = Vector2(1.5, 1)
+repeat_size = Vector2(256, 0)
+repeat_times = 3
+autoscroll = Vector2(-20, 0)
+
+[node name="HUD" type="CanvasLayer" parent="."]
+layer = 2
+offset = Vector2(4, 8)
+transform = Transform2D(1, 0, 0, 1, 4, 8)
+follow_viewport_enabled = true
+follow_viewport_scale = 0.5
+
+[node name="Group" type="Node" parent="HUD"]
+
+[node name="Heart" type="Sprite2D" parent="HUD/Group"]
+texture = ExtResource("1_sky")
+
+[node name="Score" type="Label" parent="HUD"]
+text = "0"
+)");
+    const importer::ImportPlan plan = plan_inside(project);
+    const auto files = files_of(plan);
+    const std::string level = "godot/level.scene.json";
+    REQUIRE(files.contains(level));
+    slash::world::ComponentRegistry components;
+    slash::world::register_builtin_components(components);
+    CHECK(
+        slash::world::validate_scene(components, parse(files.at(level)), reader_of(files)).empty());
+
+    // A ParallaxBackground that ignores the camera's zoom is a CanvasLayer at its layer, -100,
+    // holding its ParallaxLayers, which are Parallax2Ds.
+    const json::Value back = entity(files, level, "back");
+    CHECK(back.find("Transform2D") == nullptr);
+    CHECK(*back.find("CanvasLayer") == parse(R"({"layer": -100, "children": ["clouds"]})"));
+    const json::Value clouds = entity(files, level, "clouds");
+    CHECK(*clouds.find("Parallax2D") == parse(R"({"scroll_scale": [0.25, 0.25],
+        "scroll_offset": [8.0, 24.0], "repeat_size": [320.0, 0.0],
+        "limit_begin": [0.0, -10000000.0], "limit_end": [2000.0, 10000000.0],
+        "follow_viewport": false})"));
+    CHECK(*clouds.find("Transform2D") == parse(R"({"children": ["sky"]})"));
+    // One that follows the zoom is drawn with the world, as a Node2D.
+    const json::Value hills = entity(files, level, "hills");
+    CHECK(hills.find("CanvasLayer") == nullptr);
+    CHECK(*hills.find("Transform2D") == parse(R"({"children": ["far"]})"));
+    CHECK(*entity(files, level, "far").find("Parallax2D") == parse("{}"));
+    CHECK(*entity(files, level, "trees").find("Parallax2D") ==
+          parse(R"({"scroll_scale": [1.5, 1.0], "repeat_size": [256.0, 0.0],
+                    "autoscroll": [-20.0, 0.0], "repeat_times": 3})"));
+    CHECK(*entity(files, level, "level").find("Transform2D")->find("children") ==
+          parse(R"(["hills", "trees"])"));
+
+    // A CanvasLayer keeps its fields; a plain node in it holds its children in place.
+    const json::Value hud = entity(files, level, "hud");
+    CHECK(hud.find("Transform2D") == nullptr);
+    CHECK(*hud.find("CanvasLayer") ==
+          parse(R"({"layer": 2, "offset": [4.0, 8.0], "follow_viewport_enabled": true,
+                    "follow_viewport_scale": 0.5, "children": ["group", "score"]})"));
+    CHECK(*entity(files, level, "group").find("Transform2D") ==
+          parse(R"({"children": ["heart"]})"));
+
+    CHECK(unsupported(plan.report, "CanvasLayer.transform").is_null());
+    CHECK(unsupported(plan.report, "ParallaxBackground.scroll_offset").is_null());
+    CHECK(unsupported(plan.report, "ParallaxLayer.position").is_null());
+    CHECK(unsupported(plan.report, "node type ParallaxLayer").is_null());
+    CHECK(unsupported(plan.report, "ParallaxBackground.layer")
+              .find("why")
+              ->as_string()
+              .find("with the world") != std::string::npos);
 }
 
 constexpr std::string_view kHero = R"([gd_scene load_steps=5 format=3]
