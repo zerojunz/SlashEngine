@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -87,6 +88,8 @@ struct TextEditState {
     Vec2 drag_accum;
     Vec2 drag_from; // the scroll it started from: horizontal pixels, vertical rows
     Caret caret;
+    // Where text dragged over it would drop, drawn as a second caret (Godot's drag caret).
+    std::optional<Caret> drag_caret;
     SelectionMode selecting_mode = SelectionMode::None;
     text::Direction input_direction = text::Direction::Ltr;
     bool dragging_selection = false;
@@ -95,6 +98,8 @@ struct TextEditState {
     bool show_keyboard = false;
     bool touch_dragging_starting = false;
     bool touch_dragging_in_progress = false;
+    bool selection_drag_attempt = false; // a press landed on the selection, which a drag may take
+    bool drag_caret_force_displayed = false;
     // The text as last seen, so a change made from outside is undone as set_text's is.
     bool known = false;
     std::string known_text;
@@ -322,8 +327,10 @@ struct TextEditSignal {
 struct TextEditContext {
     world::World* world = nullptr; // for the clipboard
     const input::Map* map = nullptr;
-    double now = 0.0;     // seconds of world time, for triple clicks
-    bool focused = false; // it has focus
+    double now = 0.0;      // seconds of world time, for triple clicks
+    bool focused = false;  // it has focus
+    bool dragging = false; // a drag with data is going on (Godot's drag_action)
+    bool can_drop = false; // and the TextEdit would take it at the event's point
     std::vector<TextEditSignal>* signals = nullptr;
 };
 
@@ -353,6 +360,18 @@ void text_edit_ime_update(const TextEditContext& context, world::TextEdit& edit,
 // _click_selection_held, with the pointer in the TextEdit's rect.
 void text_edit_click_held(const TextEditContext& context, world::TextEdit& edit,
                           TextEditState& state, TextArea& area, Vec2 local);
+// What TextEditContext::dragging changes in gui_input: with a drag going on, the pointer moves
+// the drag caret where the drop would go (when can_drop) instead of selecting.
+// drop_data, with the drop's point in the TextEdit's rect: the text goes in there and is
+// selected; dragged from its own selection it moves there, or is copied with Command (Ctrl)
+// held. Whether it went in (not on its own selection), so the TextEdit takes focus.
+bool text_edit_drop_text(const TextEditContext& context, world::TextEdit& edit,
+                         TextEditState& state, TextArea& area, Vec2 local, std::u32string_view text,
+                         bool command);
+// NOTIFICATION_DRAG_END after its selection was dropped elsewhere: the selection goes, unless
+// it can't be edited or Command (Ctrl) was held to copy it.
+void text_edit_drag_end(const TextEditContext& context, world::TextEdit& edit, TextEditState& state,
+                        TextArea& area, bool command);
 // A tick's timers: the caret's blink, idle_detect closing an undo step, and click_select_held,
 // for which it returns true when a drag selection should follow the held pointer
 // (text_edit_click_held).

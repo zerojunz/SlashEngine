@@ -461,9 +461,9 @@ void Field::draw(const world::LineEdit& edit, const EditState& state, bool focus
     }
     out.caret_x = caret_pixel_pos(edit, state).x;
 
-    // Carets, while editing (or forced), in the blink's shown phase.
+    // Carets, while editing (or forced), in the blink's shown phase, or where a drag would drop.
     const bool can_draw = edit.caret_force_displayed || (state.editing && focused);
-    if (!can_draw || !state.draw_caret) {
+    if ((!can_draw || !state.draw_caret) && !state.drag_caret_force_displayed) {
         return;
     }
     const auto caret_width = static_cast<float>(std::max(view.caret_width, 0));

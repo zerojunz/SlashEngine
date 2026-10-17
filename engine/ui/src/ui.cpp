@@ -129,6 +129,33 @@ Settings settings(const world::World& world) {
     return state != nullptr ? state->settings : Settings{};
 }
 
+void read_settings(const json::Value& gui, Settings& settings) {
+    if (!gui.is_object()) {
+        return;
+    }
+    if (const json::Value* theme = gui.find("theme"); theme != nullptr && theme->is_string()) {
+        settings.theme = theme->as_string();
+    }
+    if (const json::Value* system = gui.find("allow_system_fallback");
+        system != nullptr && system->is_bool()) {
+        settings.allow_system_fallback = system->as_bool();
+    }
+    if (const json::Value* delay = gui.find("tooltip_delay_sec");
+        delay != nullptr && delay->is_number()) {
+        settings.tooltip_delay_sec = delay->as_double();
+    }
+    if (const json::Value* offset = gui.find("tooltip_position_offset");
+        offset != nullptr && offset->is_array() && offset->size() == 2 &&
+        offset->as_array()[0].is_number() && offset->as_array()[1].is_number()) {
+        settings.tooltip_position_offset = {static_cast<float>(offset->as_array()[0].as_double()),
+                                            static_cast<float>(offset->as_array()[1].as_double())};
+    }
+    if (const json::Value* threshold = gui.find("drag_threshold");
+        threshold != nullptr && threshold->is_number()) {
+        settings.drag_threshold = static_cast<int>(threshold->as_double());
+    }
+}
+
 text::Fonts* fonts(const world::World& world) {
     const State* state = state_of(world);
     return state != nullptr ? state->fonts.get() : nullptr;
@@ -306,6 +333,7 @@ std::vector<world::PopupMenuItem> popup_items(const world::World& world, entt::e
             world::PopupMenuItem& item = items.emplace_back();
             item.text = each.text;
             item.icon = each.icon;
+            item.tooltip = each.tooltip;
             item.checkable = "radio";
             item.checked = std::cmp_equal(option->selected, i);
             item.id = each.id;
@@ -609,16 +637,8 @@ std::vector<json::ValidationError> check_scene(const world::ComponentRegistry& c
             project.viewport = {static_cast<float>(width->as_double()),
                                 static_cast<float>(height->as_double())};
         }
-        const json::Value* gui = doc.find("gui");
-        const json::Value* theme =
-            gui != nullptr && gui->is_object() ? gui->find("theme") : nullptr;
-        if (theme != nullptr && theme->is_string()) {
-            project.theme = theme->as_string();
-        }
-        const json::Value* system =
-            gui != nullptr && gui->is_object() ? gui->find("allow_system_fallback") : nullptr;
-        if (system != nullptr && system->is_bool()) {
-            project.allow_system_fallback = system->as_bool();
+        if (const json::Value* gui = doc.find("gui"); gui != nullptr) {
+            read_settings(*gui, project);
         }
     }
     install(world, assets, project);

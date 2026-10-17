@@ -301,10 +301,14 @@ A reference must name an entity that exists in the same scene.
 | | `size_flags_stretch_ratio` | `float` | `1` | Its share of the space expanding children split in a container |
 | | `texture_filter` | `std::string` | `"inherit"` | How its textures are sampled when scaled: `linear`, `nearest`, or `inherit` its parent's, then the project's `rendering.texture_filter` |
 | | `mouse_filter` | `std::string` | `""` | Whether a click, tap or the mouse [stops at it](#buttons) (`stop`), goes on to its parent too (`pass`) or passes it by (`ignore`); `""` takes its type's: `ignore` for `Label` and `NinePatchRect`, `pass` for `TextureRect` and containers other than `PanelContainer`, `stop` for the rest |
+| | `tooltip_text` | `std::string` | `""` | Shown in a box beside the pointer once it [rests on the control](#tooltips-and-drag-and-drop); a parent's shows over children that pass the mouse on |
 | | `focus_mode` | `std::string` | `""` | Whether clicks and the keyboard or a gamepad give it [focus](#buttons) (`all`), clicks only (`click`) or nothing (`none`); `""` takes its type's: `all` for buttons, `none` for the rest |
 | | `focus_neighbor_left`, `_top`, `_right`, `_bottom` | `entity` | `null` | The control `ui_left`, `ui_up`, `ui_right` or `ui_down` moves focus to; `null` finds the closest one that way |
 | | `focus_next`, `focus_previous` | `entity` | `null` | The control `ui_focus_next` (Tab) or `ui_focus_prev` (Shift+Tab) moves focus to; `null` takes the next or previous in the tree |
 | | `layout_direction` | `std::string` | `"inherited"` | Which way it [lays out](#right-to-left-layout): `ltr`, `rtl` (anchors, offsets, containers and alignment mirrored) or `inherited` from its parent, left to right at the root |
+| `DragAndDrop` | `drag_data` | `json` | `null` | What [dragging the control](#tooltips-and-drag-and-drop) carries; `null`: it can't be dragged |
+| | `can_drop` | `std::vector<json>` | `[]` | What it takes when dropped on it: data matching one of these, where an object needs only the members given and anything else must be equal |
+| | `drag_preview` | `entity` | `null` | A control with no parent shown at the pointer while a drag from it goes on, even if hidden |
 | `Label` | `text` | `std::string` | `""` | The text; lines break at `"\n"` |
 | | `horizontal_alignment` | `std::string` | `"left"` | Each line's place across the rect: `left`, `center`, `right` or `fill`, which stretches spaces to the width on every line but a wrapped paragraph's last |
 | | `vertical_alignment` | `std::string` | `"top"` | The lines' place down the rect: `top`, `center`, `bottom` or `fill`, which spreads them over it |
@@ -384,7 +388,7 @@ A reference must name an entity that exists in the same scene.
 | | `disabled` … `shortcut_feedback` | | | As `Button`'s |
 | `CheckBox` | `text` … `language` | | | As `Button`'s, but `toggle_mode` is `true` and `alignment` `"left"`: a [check box](#check-boxes) drawn with a box before its text, or a radio button in a `button_group` |
 | `CheckButton` | `text` … `language` | | | As `CheckBox`'s, drawn with a switch after its text |
-| `OptionButton` | `items` | `std::vector<OptionButtonItem>` | `[]` | The [drop-down list](#menus)'s options: `text`, `icon`, `id` (-1 for its index), `disabled`, `separator` |
+| `OptionButton` | `items` | `std::vector<OptionButtonItem>` | `[]` | The [drop-down list](#menus)'s options: `text`, `icon`, `id` (-1 for its index), `disabled`, `separator` and `tooltip` |
 | | `selected` | `int` | `-1` | The option shown, by index; -1 for none. Picking one sets it |
 | | `fit_to_longest_item` | `bool` | `true` | As wide as the widest option, not only the one shown |
 | | `allow_reselect` | `bool` | `false` | Picking the option already shown emits `item_selected` again |
@@ -392,7 +396,7 @@ A reference must name an entity that exists in the same scene.
 | `MenuButton` | `items` | `std::vector<PopupMenuItem>` | `[]` | The [menu](#menus) it opens: items as `PopupMenu`'s |
 | | `switch_on_hover` | `bool` | `false` | While another menu button's menu is open, moving onto this one opens its menu instead |
 | | `text` … `language` | | | As `Button`'s, but `flat` and `toggle_mode` are `true` and `action_mode` `"press"`; it takes no focus unless `focus_mode` says so |
-| `PopupMenu` | `items` | `std::vector<PopupMenuItem>` | `[]` | The [menu](#menus)'s items: `text`, `icon`, `checkable` (`none`, `check` or `radio`), `checked`, `id` (-1 for its index), `disabled`, `separator` and `indent` |
+| `PopupMenu` | `items` | `std::vector<PopupMenuItem>` | `[]` | The [menu](#menus)'s items: `text`, `icon`, `checkable` (`none`, `check` or `radio`), `checked`, `id` (-1 for its index), `disabled`, `separator`, `indent` and `tooltip` (shown once the pointer rests on the item) |
 | | `position` | `Vec2` | `[0, 0]` | Its top left corner in the viewport; moved to fit inside it |
 | | `visible` | `bool` | `false` | Open: set it to open the menu; closing it clears it |
 | | `hide_on_item_selection`, `hide_on_checkable_item_selection` | `bool` | `true` | Close when an item, or a checkable item, is picked |
@@ -414,6 +418,7 @@ A reference must name an entity that exists in the same scene.
 | | `shortcut_keys_enabled` | `bool` | `true` | Cut, copy, paste, select all, undo and redo by keyboard shortcut |
 | | `selecting_enabled` | `bool` | `true` | Text can be selected |
 | | `deselect_on_focus_loss_enabled` | `bool` | `true` | Losing focus drops the selection |
+| | `drag_and_drop_selection_enabled` | `bool` | `true` | The selection can be [dragged](#tooltips-and-drag-and-drop) elsewhere in the field or to another |
 | | `right_icon` | `std::string` | `""` | Project path of a PNG or BMP file drawn at the end |
 | | `icon_expand_mode` | `std::string` | `"original_size"` | The right icon's size: `original_size`, `fit_to_text` (the font's height) or `fit_to_line_edit` (the field's height times `right_icon_scale`) |
 | | `right_icon_scale` | `float` | `1` | For `fit_to_line_edit` |
@@ -430,7 +435,7 @@ A reference must name an entity that exists in the same scene.
 | | `placeholder_text` | `std::string` | `""` | Shown, dimmed, while the text is empty |
 | | `editable` | `bool` | `true` | Typing changes the text; off, it can still be selected and copied, and draws `read_only` |
 | | `backspace_deletes_composite_character_enabled` | `bool` | `false` | As `LineEdit`'s |
-| | `shortcut_keys_enabled`, `selecting_enabled`, `deselect_on_focus_loss_enabled` | `bool` | `true` | As `LineEdit`'s |
+| | `shortcut_keys_enabled`, `selecting_enabled`, `deselect_on_focus_loss_enabled`, `drag_and_drop_selection_enabled` | `bool` | `true` | As `LineEdit`'s |
 | | `empty_selection_clipboard_enabled` | `bool` | `true` | Cut and copy with nothing selected take the caret's line |
 | | `wrap_mode` | `std::string` | `"none"` | `boundary` wraps lines wider than the field |
 | | `autowrap_mode` | `std::string` | `"word_smart"` | Where wrapped lines break: `word` (between words), `word_smart` (inside a word too long for a row) or `arbitrary` (anywhere) |
@@ -1674,8 +1679,62 @@ as wide as the button at least, and a menu button a menu of its items, both draw
   and `frame.summary` report each open list and its items' rects.
 - `ui.layout` and `scene validate` report a `checkable` that isn't `none`, `check` or `radio`, a
   `PopupMenu` on a control entity and a `selected` past the options.
-- Not yet: submenus, item shortcuts, tooltips, multistate items, dragging a list's scroll bar
-  and holding a gamepad direction to move on.
+- An item's `tooltip` shows once the pointer rests on it, as a control's
+  [`tooltip_text`](#tooltips-and-drag-and-drop) does.
+- Not yet: submenus, item shortcuts, multistate items, dragging a list's scroll bar and holding a
+  gamepad direction to move on.
+
+### Tooltips and drag and drop
+
+Tooltips and drag and drop are Godot's: a control's `tooltip_text` shows after the pointer rests
+on it, and the `DragAndDrop` component does what a Godot script's `_get_drag_data`,
+`_can_drop_data` and `_drop_data` do. From
+[examples/ui-drag-and-drop](../../examples/ui-drag-and-drop/):
+
+```json
+"sword": {"components": {
+  "Control": {"mouse_filter": "pass", "tooltip_text": "Sword: 12 damage"},
+  "ColorRect": {"color": [0.75, 0.78, 0.82, 1]},
+  "DragAndDrop": {"drag_data": {"kind": "item", "id": "sword"}, "drag_preview": "sword_ghost"}}},
+"slot_3": {"components": {
+  "Control": {"offset_left": 128, "offset_top": 40, "offset_right": 176, "offset_bottom": 88},
+  "ColorRect": {},
+  "DragAndDrop": {"can_drop": [{"kind": "item"}]}}}
+```
+
+- The pointer resting on a control for `gui.tooltip_delay_sec` (0.5 seconds) with no button held
+  shows its `tooltip_text`, or the first parent's up to one that stops the mouse, without the
+  blanks at its ends. The tooltip is a `TooltipLabel` in a `TooltipPanel`
+  ([theme items](#theme-items)) at `gui.tooltip_position_offset` (`[10, 10]`) from where the
+  pointer came to rest, over every control and popup menu; where it would leave the viewport it
+  goes on the other side of the pointer, or against the viewport's edge.
+- Moving over the same tooltip keeps it; moving onto a control with another, or more than 5
+  pixels while it waits, starts the wait over. A press, Escape (which goes no further), the
+  pointer entering the tooltip, or its control hidden or destroyed hides it.
+- Pressing on a control and moving more than `gui.drag_threshold` (10) pixels starts a drag of
+  what it gives: its `drag_data`, a text field's selection, or else its first parent's that
+  gives something, up to one that stops the mouse. The control emits `drag_begin` (data
+  `{"data"}`), and its `drag_preview` follows the pointer with its top-left corner, over the
+  other controls and under popup menus; the pointer passes through the preview.
+- Letting go over a control that takes the data (one of its `can_drop` patterns matches, or a
+  text field that is editable and given text), or the first parent that does, drops it there:
+  that control emits `drop_data` (data `{"data", "from", "position"}`, the position in its
+  rect). The control dragged then emits `drag_end` (data `{"successful"}`). Letting go where
+  nothing takes it, a right click or Escape cancels the drag. What a drop means is up to the
+  game: read `drop_data` and change the world.
+- A text field's selection drags as Godot's: dropped on another field it moves there, selected,
+  with Ctrl (Command on a Mac) held it is copied, and dropped on its own selection nothing
+  changes. A drop caret shows where it would go.
+- Gameplay code can do the same in C++ with `ui::set_drag_forwarding` (Godot's
+  `set_drag_forwarding`), `ui::set_drag_preview`, `ui::force_drag`, `ui::show_tooltip` and
+  `ui::cancel_tooltip`.
+- [`ui.drag`](commands.md#uidrag) drags one control onto another, [`ui.tooltip`](commands.md#uitooltip)
+  shows a tooltip, and `ui.layout` and `frame.summary` report the tooltip shown and the drag
+  going on.
+- `ui.layout` and `scene validate` report a `tooltip_text` on a control the pointer passes by, a
+  `drag_preview` that isn't a control with no parent, and a `DragAndDrop` on an entity with no
+  `Control`.
+- Not yet: custom tooltip controls (`_make_custom_tooltip`) and dragging between windows.
 
 ### Text fields
 
@@ -1854,6 +1913,10 @@ its `theme_override_*` fields, then its [themes](#themes), then the defaults bel
 | | constant | `item_start_padding`, `item_end_padding` | `2` |
 | | constant | `icon_max_width` | `0`, no limit |
 | | constant | `outline_size`, `separator_outline_size` | `0` |
+| `TooltipPanel` | style | `panel` | flat `[0, 0, 0, 0.5]`, `corner_radius` 3, `content_margin` 8 left and right, 2 top and bottom |
+| `TooltipLabel` | font, font size | `font`, `font_size` | as `Label`'s |
+| | color | `font_color` | `[0.875, 0.875, 0.875, 1]` |
+| | color, constant | `font_shadow_color`, `font_outline_color`, `shadow_offset_x`, `shadow_offset_y`, `outline_size` | as `Label`'s |
 | `HSlider`, `VSlider` | style | `slider` | flat `[0.1, 0.1, 0.1, 0.6]`, `corner_radius` 4, `content_margin` 4: the track |
 | | style | `grabber_area`, `grabber_area_highlight` | flat `[1, 1, 1, 0.4]` and `[1, 1, 1, 0.75]`, the same shape: the track up to the grabber |
 | | icon | `grabber`, `grabber_highlight`, `grabber_disabled` | `builtin:slider_grabber`, `builtin:slider_grabber_hl`, `builtin:slider_grabber_disabled`: a 16-pixel white circle at 0.75, 1 and 0.37 |

@@ -1741,6 +1741,32 @@ Reply ui_layout(Session& session, const json::Value& params) {
     if (!popups.empty()) {
         result["popups"] = std::move(popups);
     }
+    // The tooltip shown, over everything, and the drag going on.
+    if (const std::optional<ui::TooltipView>& tip = layout.tooltip;
+        tip && (wanted.empty() || wanted.contains(tip->owner))) {
+        json::Value tooltip;
+        tooltip["id"] = world.id_of(tip->owner);
+        tooltip["text"] = tip->text;
+        tooltip["rect"] =
+            rounded(json::Array{tip->position.x, tip->position.y, tip->size.x, tip->size.y});
+        result["tooltip"] = std::move(tooltip);
+    }
+    if (const std::optional<ui::DragView>& going = layout.drag; going) {
+        json::Value drag;
+        drag["from"] =
+            going->from != entt::null ? json::Value(world.id_of(going->from)) : json::Value();
+        drag["data"] = going->data;
+        drag["position"] = point_value(going->position);
+        if (going->over != entt::null) {
+            drag["over"] = world.id_of(going->over);
+        }
+        if (going->preview != entt::null) {
+            drag["preview"] = world.id_of(going->preview);
+        } else if (going->text) {
+            drag["preview_text"] = going->text->source;
+        }
+        result["drag"] = std::move(drag);
+    }
     // Children that can't be laid out, theme overrides with names their type doesn't have and
     // fonts that don't load, for the controls asked about.
     json::Array problems;
@@ -2042,6 +2068,60 @@ Reply ui_select(Session& session, const json::Value& params) {
     json::Value result;
     result["index"] = static_cast<std::int64_t>(index);
     result["tick"] = world.tick();
+    return Reply::success(std::move(result));
+}
+
+// The control an "id" param names, as a param error if it names none.
+Result<entt::entity> control_named(const world::World& world, const std::string& id) {
+    const entt::entity entity = world.find(id);
+    if (entity == entt::null) {
+        std::string message = "no entity has the id " + quoted(id);
+        add_hint(message, id, world.ids());
+        return make_error(ErrorCode::NotFound, std::move(message));
+    }
+    if (!ui::is_control(world, entity)) {
+        return make_error(ErrorCode::InvalidArgument,
+                          quoted(id) + " isn't a control: it has no Control or UI component");
+    }
+    return entity;
+}
+
+Reply ui_drag(Session& session, const json::Value& params) {
+    world::World& world = session.world();
+    const auto from = control_named(world, text(params, "from"));
+    if (!from) {
+        return param_error(from.error(), "/from");
+    }
+    const auto to = control_named(world, text(params, "to"));
+    if (!to) {
+        return param_error(to.error(), "/to");
+    }
+    ui::drag_and_drop(world, from.value(), to.value());
+    json::Value result;
+    result["tick"] = world.tick();
+    return Reply::success(std::move(result));
+}
+
+Reply ui_tooltip(Session& session, const json::Value& params) {
+    world::World& world = session.world();
+    const json::Value* show = params.find("show");
+    if (show == nullptr || show->as_bool()) {
+        const auto control = control_named(world, text(params, "id"));
+        if (!control) {
+            return param_error(control.error(), "/id");
+        }
+        ui::show_tooltip(world, control.value());
+    } else {
+        ui::cancel_tooltip(world);
+    }
+    json::Value result;
+    const ui::Tooltip shown = ui::tooltip(world);
+    if (shown.owner == entt::null) {
+        result["tooltip"] = json::Value();
+    } else {
+        result["tooltip"] =
+            json::Object{{"id", std::string(world.id_of(shown.owner))}, {"text", shown.text}};
+    }
     return Reply::success(std::move(result));
 }
 
@@ -2843,6 +2923,8 @@ Reply frame_summary(Session& session, const json::Value& params) {
             return "CPUParticles2D";
         case canvas::FrameItem::Kind::Popup:
             return "PopupMenu";
+        case canvas::FrameItem::Kind::Tooltip:
+            return "Tooltip";
         case canvas::FrameItem::Kind::Control:
             break;
         }
@@ -2960,6 +3042,11 @@ Reply frame_summary(Session& session, const json::Value& params) {
             }
             break;
         }
+        case canvas::FrameItem::Kind::Tooltip:
+            if (layout.tooltip) {
+                each["text"] = layout.tooltip->text;
+            }
+            break;
         }
         drawn.push_back(std::move(each));
     }
@@ -4516,8 +4603,9 @@ void register_builtin_commands(Registry& registry) {
                        "ScrollContainer's scroll, scroll_max and scroll_bars, the part a clip "
                        "shows (shown_rect, or clipped), each LineEdit's and TextEdit's caret "
                        "and selection, the control with focus and the one hovered, the popup "
-                       "menus open with each item's rect, and mistakes such as misspelled "
-                       "theme overrides. A check without a screenshot.",
+                       "menus open with each item's rect, the tooltip shown, the drag going "
+                       "on, and mistakes such as misspelled theme overrides. A check without a "
+                       "screenshot.",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema({
@@ -4599,6 +4687,36 @@ void register_builtin_commands(Registry& registry) {
         .effect = Effect::Read,
         .params = params_schema({{"id", std::move(focus_id)}}, {"id"}),
         .handler = ui_focus,
+    });
+    registry.add({
+        .name = "ui.drag",
+        .description = "Drags one control onto another at the next tick, as the mouse would "
+                       "from the middle of from to the middle of to: from (or a parent) gives "
+                       "its DragAndDrop drag_data or a text field's selection, and to (or a "
+                       "parent) takes it if a can_drop pattern matches. The tick emits "
+                       "drag_begin, drop_data and drag_end. Returns the tick.",
+        .capabilities = {Run},
+        .effect = Effect::Read,
+        .params = params_schema(
+            {
+                {"from", property("string", "The control dragged.")},
+                {"to", property("string", "The control it is dropped on.")},
+            },
+            {"from", "to"}),
+        .handler = ui_drag,
+    });
+    registry.add({
+        .name = "ui.tooltip",
+        .description = "Shows a control's tooltip_text (or its parent's) now, below its middle, "
+                       "or hides the tooltip shown with show false. Returns the tooltip shown; "
+                       "ui.layout gives its rect.",
+        .capabilities = {Run},
+        .effect = Effect::Read,
+        .params = params_schema({
+            {"id", property("string", "The control. Needed unless show is false.")},
+            {"show", property("boolean", "False hides the tooltip. Default true.")},
+        }),
+        .handler = ui_tooltip,
     });
     json::Value clipboard_text = property("string", "Text to put on the clipboard first.");
     clipboard_text["maxLength"] = 65536;

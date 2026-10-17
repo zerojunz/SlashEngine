@@ -1140,6 +1140,9 @@ struct Builder {
     std::map<std::string, Result<asset::Handle<Theme>>, std::less<>> themes;
     std::map<std::string, Result<asset::Handle<render::Image>>, std::less<>> images;
     const ThemeLink* project_link = nullptr; // the project's theme, if it has one that loads
+    // A drag's preview, a root control laid out last with its top left at the pointer.
+    entt::entity preview = entt::null;
+    Vec2 preview_at;
 
     [[nodiscard]] const world::Control& control_of(entt::entity entity) const {
         const auto* control = world.ecs().try_get<world::Control>(entity);
@@ -2734,6 +2737,12 @@ struct Builder {
             }
         }
         mirror();
+        const bool previewing = parent == nullptr && node.entity == preview;
+        if (previewing) {
+            // set_drag_preview's set_position, at the pointer.
+            left = preview_at.x;
+            top = preview_at.y;
+        }
         Placed& placed = node.placed;
         placed.entity = node.entity;
         placed.parent = parent != nullptr ? parent->entity : entt::null;
@@ -2742,7 +2751,8 @@ struct Builder {
         placed.minimum_size = minimum;
         const Transform local = local_transform(control, placed.position);
         placed.transform = parent != nullptr ? parent->placed.transform * local : local;
-        placed.visible = control.visible && (parent == nullptr || parent->placed.visible);
+        placed.visible =
+            (control.visible || previewing) && (parent == nullptr || parent->placed.visible);
         placed.modulate =
             parent != nullptr ? times(parent->placed.modulate, control.modulate) : control.modulate;
         placed.z =
@@ -3616,6 +3626,109 @@ struct Builder {
     // size (_get_contents_minimum_size); its rect, as OptionButton's and MenuButton's show_popup
     // and Popup::_popup_adjust_rect place it, in whole pixels as a window's; its list scrolled
     // inside the panel (scroll_to_item); and its items (_draw_items).
+    // The themes a control's own items come from: its node's, or a PopupMenu's own theme over
+    // the project's.
+    const ThemeLink* themes_of(entt::entity entity) {
+        if (const auto node = std::ranges::find(nodes, entity, &Node::entity);
+            node != nodes.end()) {
+            return node->themes;
+        }
+        if (const auto* menu = world.ecs().try_get<world::PopupMenu>(entity);
+            menu != nullptr && !menu->theme.empty()) {
+            if (const Theme* loaded = theme(menu->theme, nullptr); loaded != nullptr) {
+                return &links.emplace_back(
+                    ThemeLink{.theme = loaded, .path = menu->theme, .parent = project_link});
+            }
+        }
+        return project_link;
+    }
+
+    // Viewport::_gui_show_tooltip_at: the tooltip panel at its contents' minimum size, the
+    // position offset below and right of where the pointer came to rest; where it would leave
+    // the viewport it goes the other way, or hugs the edge.
+    void tooltip_view(const Tooltip& shown) {
+        if (!world.valid(shown.owner) || shown.text.empty()) {
+            return;
+        }
+        const ThemeLink* link = themes_of(shown.owner);
+        const Resolver label_theme(link, kDefaultControl, "TooltipLabel");
+        const StyleBox panel = Resolver(link, kDefaultControl, "TooltipPanel").style("panel");
+        world::Label label;
+        label.text = shown.text;
+        LabelWork work = start_label(label, label_theme, false);
+        shape(fonts, work, std::nullopt);
+        // PopupPanel::_get_contents_minimum_size, ceiled.
+        const Vec2 contents = label_minimum(work) + panel.minimum_size();
+        const Vec2 size{std::ceil(contents.x), std::ceil(contents.y)};
+        const Vec2 offset = settings(world).tooltip_position_offset;
+        const Vec2 rest = shown.position;
+        const Vec2 room{std::trunc(out.viewport.x), std::trunc(out.viewport.y)};
+        Vec2 position = rest + offset;
+        const auto fit = [](float& at, float rest_at, float length, float offset_at, float end) {
+            if (at + length > end) {
+                at = rest_at - length - offset_at;
+                if (at < 0.0F) {
+                    at = end - length;
+                }
+            } else if (at < 0.0F) {
+                at = 0.0F;
+            }
+        };
+        fit(position.x, rest.x, size.x, offset.x, room.x);
+        fit(position.y, rest.y, size.y, offset.y, room.y);
+        TooltipView& view = out.tooltip.emplace();
+        view.owner = shown.owner;
+        view.text = shown.text;
+        view.position = {std::trunc(position.x), std::trunc(position.y)};
+        view.size = size;
+        view.panel.push_back({.style = panel, .position = {}, .size = size, .texture_size = {}});
+        // The label fills the panel inside its margins.
+        const Vec2 margin{panel.margin(kLeft), panel.margin(kTop)};
+        finish_label(fonts, work, size - margin - Vec2{panel.margin(kRight), panel.margin(kBottom)},
+                     false);
+        for (Vec2& pen : work.out.pens) {
+            pen = pen + margin;
+        }
+        view.label = std::move(work.out);
+    }
+
+    // The drag going on: its preview control was placed at the pointer; a text field's text is
+    // a Label in the field's font, colors and outline with no margins, as LineEdit's and
+    // TextEdit's get_drag_data make it.
+    void drag_view(const Drag& going) {
+        DragView& view = out.drag.emplace();
+        view.from = going.from;
+        view.data = going.data;
+        view.over = going.over;
+        view.position = going.position;
+        if (std::ranges::any_of(nodes, [&](const Node& node) {
+                return node.entity == going.preview && node.parent == kNone;
+            })) {
+            view.preview = going.preview;
+        }
+        if (going.preview_text.empty() || !world.valid(going.from)) {
+            return;
+        }
+        const auto node = std::ranges::find(nodes, going.from, &Node::entity);
+        if (node == nodes.end()) {
+            return;
+        }
+        const bool field = world.ecs().all_of<world::LineEdit>(going.from);
+        const Resolver source(node->themes, *node->control, field ? "LineEdit" : "TextEdit");
+        world::Label label;
+        label.text = going.preview_text;
+        LabelWork work =
+            start_label(label, Resolver(project_link, kDefaultControl, "Label"), false);
+        work.out.font = source.font("font");
+        work.out.font_size = std::clamp(source.font_size("font_size"), 1, text::kMaxFontSize);
+        work.out.outline_size = std::max(source.constant("outline_size"), 0);
+        work.out.font_color = source.color("font_color");
+        work.out.outline_color = source.color("font_outline_color");
+        shape(fonts, work, std::nullopt);
+        finish_label(fonts, work, label_minimum(work), false);
+        view.text = std::move(work.out);
+    }
+
     void popup(const PopupState& state) {
         const auto& ecs = world.ecs();
         const entt::entity owner = state.owner;
@@ -3963,9 +4076,14 @@ void build(Builder& builder, const std::vector<entt::entity>& controls) {
     builder.project_link = project;
     std::vector<std::pair<entt::entity, std::size_t>> stack;
     for (const entt::entity entity : std::views::reverse(controls)) {
-        if (!builder.parents.contains(entity)) {
+        if (!builder.parents.contains(entity) && entity != builder.preview) {
             stack.emplace_back(entity, kNone);
         }
+    }
+    // A drag's preview comes last, over the other roots, as set_drag_preview's move_to_front.
+    if (builder.preview != entt::null && !builder.parents.contains(builder.preview) &&
+        std::ranges::find(controls, builder.preview) != controls.end()) {
+        stack.emplace(stack.begin(), builder.preview, kNone);
     }
     while (!stack.empty()) {
         const auto [entity, parent] = stack.back();
@@ -4007,6 +4125,11 @@ Layout layout(const world::World& world, text::Fonts& fonts, Vec2 viewport) {
     Layout out;
     out.viewport = viewport;
     Builder builder(world, fonts, out);
+    const std::optional<Drag> dragging = drag(world);
+    if (dragging) {
+        builder.preview = dragging->preview;
+        builder.preview_at = dragging->position;
+    }
     build(builder, all_controls(world));
     std::vector<Node>& nodes = builder.nodes;
     for (Node& node : nodes) {
@@ -4047,6 +4170,12 @@ Layout layout(const world::World& world, text::Fonts& fonts, Vec2 viewport) {
     builder.check_popup_menus();
     for (const PopupState& state : popup_states(world)) {
         builder.popup(state);
+    }
+    if (const Tooltip shown = tooltip(world); shown.owner != entt::null) {
+        builder.tooltip_view(shown);
+    }
+    if (dragging) {
+        builder.drag_view(*dragging);
     }
     // Then by z: Godot draws a canvas item over those with a lower z_index, the rest in tree
     // order.

@@ -559,6 +559,19 @@ end of the tick, as `Popup::_close_pressed` defers it) and goes on to the contro
 names. `ui.popup`, `ui.select` (`ui::open_popup`, `ui::select_item`) drive them.
 `examples/ui-menus` is a settings screen with a menu bar.
 
+Tooltips and drag and drop are the rest of Godot's `Viewport` GUI: the gui state's
+`TooltipStatus` is its `tooltip_*` (the rest timer runs in world time, so ticks repeat; an open
+popup's items have tooltips) and `DragStatus` its `drag_*` and `global_dragging`, each function
+named after the one it ports (`_gui_show_tooltip`, `_gui_drop`, `gui_perform_drop_at`,
+`force_drag`). The `DragAndDrop` component stands for a script's `_get_drag_data`,
+`_can_drop_data` and `_drop_data`; `ui::set_drag_forwarding` keeps a game's C++ calls by ID in a
+holder snapshots leave alone. Text fields drag their selection as `LineEdit` and `TextEdit` do
+(`drag_attempt`, the drop caret, `NOTIFICATION_DRAG_END` in `end_drag`). Layout makes
+`Layout::tooltip` (`TooltipLabel` in a `TooltipPanel`, placed as `_gui_show_tooltip_at`) and
+`Layout::drag` (the preview root placed at the pointer, or a text field's text): the tooltip
+draws over the popups (`canvas::FrameItem::Kind::Tooltip`), the preview under them. `ui.drag`
+and `ui.tooltip` drive them. `examples/ui-drag-and-drop` is an inventory.
+
 Text fields are Godot's `LineEdit`. The gui system edits them (`Editor` in `src/gui.cpp`, which
 follows `LineEdit::gui_input`, its undo stack and its caret and selection calls) from key events
 with a `unicode` character, `ime` events and the `ui_text_*`, `ui_cut`/`copy`/`paste` and

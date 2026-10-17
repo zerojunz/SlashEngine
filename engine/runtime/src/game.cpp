@@ -124,7 +124,10 @@ Game::Game(Project project, platform::Platform platform, const std::string& data
     ui::set_settings(world_, {.viewport = {static_cast<float>(project_.window_width),
                                            static_cast<float>(project_.window_height)},
                               .theme = project_.gui_theme,
-                              .allow_system_fallback = project_.allow_system_fallback});
+                              .allow_system_fallback = project_.allow_system_fallback,
+                              .tooltip_delay_sec = project_.tooltip_delay_sec,
+                              .tooltip_position_offset = project_.tooltip_position_offset,
+                              .drag_threshold = project_.drag_threshold});
     animation::install(world_, assets_);
     physics2d::install(world_, project_.physics_2d);
     input::install(world_, project_.input, project_.input_devices);
