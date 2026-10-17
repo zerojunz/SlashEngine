@@ -2,8 +2,8 @@
 
 [`project.import`](commands.md#projectimport) and [`slash-cli import`](cli.md#import) convert a
 Unity project's 2D game into a SlashEngine project in one pass: its scenes and prefabs, sprites,
-tile maps, animation, cameras, 2D physics and joints, sounds and audio mixers, UI, input and
-settings. Scripts don't convert,
+tile maps, animation, cameras, 2D physics and joints, 2D lights and shadows, sounds and audio
+mixers, UI, input and settings. Scripts don't convert,
 since SlashEngine games are plain C++: each becomes a storyboard task to port it, with what the
 port needs, as does each Animator controller's state machine.
 [examples/import-unity](../../examples/import-unity/) imports a small platformer.
@@ -89,6 +89,7 @@ and its sounds not playing, and is reported, since entities have no inactive sta
 | Sorting layer and `m_SortingOrder` | `z_index`: the order with one sorting layer; with several, each layer a band of up to 1000 (the Default layer at 0), reported in `sorting_layers` |
 | `m_Enabled` | `visible` |
 | The texture's filter mode | `texture_filter`, when it differs from the project's (`rendering.texture_filter` is what most textures use) |
+| The texture's `_NormalMap` secondary texture | `normal_texture`, which [2D lights](#2d-lights) shade with |
 
 Unity's sprites don't pass their order, visibility or color to the objects under them, and
 Sprite2D's do, as Godot's do. So an object with children draws its sprite on a child entity of its
@@ -128,6 +129,52 @@ has other physics gets a set of its own (`tiles_2.tileset.json`).
   reported, as are isometric and hexagonal grids, which don't convert, and a tile map moved by a
   dynamic or kinematic `Rigidbody2D`. A `CompositeCollider2D` needs nothing, since a layer's
   tiles are one static body.
+
+## 2D lights
+
+URP's 2D renderer lights a sprite with the global light's color plus each light's color times its
+strength there, and Godot does the same with a `CanvasModulate` and `PointLight2D`s in add mode
+(see [2D lights](scene-format.md#2d-lights)). So the lights convert to those:
+
+| Light2D | Converts to |
+| --- | --- |
+| Global | The scene's `CanvasModulate`, its `color` the light's color times its intensity, up to white (brighter is reported). A scene has one; a second global light is reported |
+| Spot (Point) | A `PointLight2D` through a texture of the light's shape and falloff, `Assets/lights/spot_<inner radius %>_<falloff %>[_<inner angle>_<outer angle>].png`, 256 pixels across and scaled to the outer radius by `texture_scale`. A cone points up the texture, as Unity's points along the object's y axis, so it turns with the object |
+| Freeform | A `PointLight2D` through a texture of the polygon with its falloff around it, `Assets/lights/freeform_<hash>.png`, scaled to the shape and `offset` to its middle |
+| Sprite | A `PointLight2D` through the sprite's texture, or its part of a sheet cut out to `Assets/lights/<sprite>.png`, at the sprite's size with its pivot on the light |
+| Parametric | Not converted and reported: Unity replaced parametric lights with freeform ones |
+
+| Light2D field | PointLight2D |
+| --- | --- |
+| `m_Color`, `m_Intensity` | `color`, `energy` |
+| `m_ApplyToSortingLayers` | `range_z_min` and `range_z_max`: the z indices of those sorting layers' sprites (see [Sprites](#sprites)). Layers with others between them light those too, and are reported |
+| `m_ShadowsEnabled` | `shadow_enabled`. Godot's shadows block all of a light, so a shadow strength below 1 is reported |
+| `m_ShadowSoftness` | `shadow_filter` `pcf13` with `shadow_filter_smooth` ten times the softness |
+| `m_NormalMapQuality` and `m_NormalMapDistance` | `height`, the distance in pixels, when normal maps are on |
+| `m_Enabled`, an inactive object | `enabled: false` |
+
+The falloff becomes each texture's alpha: full inside the inner radius (or the freeform shape),
+then fading to nothing at the outer radius as URP's curve does, `t^(ln(1 - b) / ln b)` with
+`b = 0.25 + strength / 2`, which is linear at the default strength of 0.5. Lights saved before
+URP versioned them (no `m_ComponentVersion`) take shadows from their shadow strength and normal
+maps from `m_UseNormalMap`. An object with several lights keeps the first and puts each other
+light on an entity under it, `<entity>_light_2`. A scene with lights and no global light gets an
+`ambient` entity with a black `CanvasModulate`, since URP leaves what no light reaches dark, and
+this is reported.
+
+A `ShadowCaster2D` becomes a `LightOccluder2D` with its shape path as the `polygon`, or, when it
+takes its shape from a component, that collider's shape (a circle as 24 sides, a capsule's round
+ends as 8 each, an edge collider an open `closed: false` polygon) or the sprite's physics shape,
+or its rectangle. A shape of several paths puts each other one on an entity under it,
+`<entity>_occluder_2`. A caster set to cast no shadows converts to nothing, and a
+`CompositeShadowCaster2D` isn't needed, since each occluder shadows on its own.
+
+Differences, each reported where it applies: volumetric lights and other blend styles than the
+first (Godot's lights add, as URP's default Multiply style does), alpha blending where lights
+overlap, spot light cookies, a freeform light's falloff offset, a caster that shadows only itself
+(Godot's occluders shadow what is behind them) and disabled casters. Godot's lights also shade
+sprites with normal maps when a light has normal maps off, and an occluder shadows the sprite it
+is on, as URP's casters do only with Self Shadows on.
 
 ## Animation
 
@@ -375,8 +422,8 @@ itself), and other package scripts are named in the report.
 
 ## Not yet converted
 
-2D lights, particle systems, dropdowns and isometric and hexagonal tile maps convert in later
-imports; until then each is reported where it is used. TextMesh Pro text in the world (not under
+Particle systems, dropdowns and isometric and hexagonal tile maps convert in later imports; until
+then each is reported where it is used. TextMesh Pro text in the world (not under
 a canvas) is reported too.
 Materials and shaders, 3D (milestone 7) and Timeline don't convert. Everything that didn't
 convert is in the report's `unsupported`, once per kind with how many and the first place it was
