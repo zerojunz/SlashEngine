@@ -466,6 +466,16 @@ Result<FrameSummary> summarize(world::World& world, asset::Assets& assets,
                         rect.y1 = std::clamp(rect.y1, placed->clip->y, placed->clip->w);
                     }
                 }
+            } else if (items[i].kind == FrameItem::Kind::Popup) {
+                const std::vector<ui::PopupView>& popups = summary.contents.layout.popups;
+                if (const auto popup =
+                        std::ranges::find(popups, items[i].entity, &ui::PopupView::owner);
+                    popup != popups.end()) {
+                    rect = {.x0 = popup->position.x,
+                            .y0 = popup->position.y,
+                            .x1 = popup->position.x + popup->size.x,
+                            .y1 = popup->position.y + popup->size.y};
+                }
             }
             place[i] = static_cast<std::ptrdiff_t>(summary.shown.size());
             summary.shown.push_back(

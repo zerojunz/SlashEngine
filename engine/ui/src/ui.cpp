@@ -140,9 +140,9 @@ bool is_control(const world::World& world, entt::entity entity) {
                 .any_of<world::Control, world::Label, world::ColorRect, world::Panel,
                         world::TextureRect, world::NinePatchRect, world::ProgressBar>(entity) ||
             world.ecs()
-                .any_of<world::Button, world::CheckBox, world::CheckButton, world::TextureButton,
-                        world::LineEdit, world::TextEdit, world::Slider, world::ScrollBar>(
-                    entity) ||
+                .any_of<world::Button, world::CheckBox, world::CheckButton, world::OptionButton,
+                        world::MenuButton, world::TextureButton, world::LineEdit, world::TextEdit,
+                        world::Slider, world::ScrollBar>(entity) ||
             world.ecs()
                 .any_of<world::BoxContainer, world::GridContainer, world::MarginContainer,
                         world::CenterContainer, world::FlowContainer, world::PanelContainer,
@@ -160,6 +160,12 @@ std::vector<std::string_view> control_classes(const world::World& world, entt::e
     }
     if (ecs.all_of<world::CheckButton>(entity)) {
         classes.emplace_back("CheckButton");
+    }
+    if (ecs.all_of<world::OptionButton>(entity)) {
+        classes.emplace_back("OptionButton");
+    }
+    if (ecs.all_of<world::MenuButton>(entity)) {
+        classes.emplace_back("MenuButton");
     }
     if (ecs.all_of<world::TextureButton>(entity)) {
         classes.emplace_back("TextureButton");
@@ -232,7 +238,13 @@ const world::Button* button_of(const world::World& world, entt::entity entity) {
     if (const auto* box = ecs.try_get<world::CheckBox>(entity); box != nullptr) {
         return box;
     }
-    return ecs.try_get<world::CheckButton>(entity);
+    if (const auto* check = ecs.try_get<world::CheckButton>(entity); check != nullptr) {
+        return check;
+    }
+    if (const auto* option = ecs.try_get<world::OptionButton>(entity); option != nullptr) {
+        return option;
+    }
+    return ecs.try_get<world::MenuButton>(entity);
 }
 
 world::Button* button_of(world::World& world, entt::entity entity) {
@@ -246,7 +258,13 @@ world::Button* button_of(world::World& world, entt::entity entity) {
     if (auto* box = ecs.try_get<world::CheckBox>(entity); box != nullptr) {
         return box;
     }
-    return ecs.try_get<world::CheckButton>(entity);
+    if (auto* check = ecs.try_get<world::CheckButton>(entity); check != nullptr) {
+        return check;
+    }
+    if (auto* option = ecs.try_get<world::OptionButton>(entity); option != nullptr) {
+        return option;
+    }
+    return ecs.try_get<world::MenuButton>(entity);
 }
 
 std::string_view button_type(const world::World& world, entt::entity entity) {
@@ -260,7 +278,46 @@ std::string_view button_type(const world::World& world, entt::entity entity) {
     if (ecs.all_of<world::CheckBox>(entity)) {
         return "CheckBox";
     }
-    return ecs.all_of<world::CheckButton>(entity) ? "CheckButton" : "";
+    if (ecs.all_of<world::CheckButton>(entity)) {
+        return "CheckButton";
+    }
+    if (ecs.all_of<world::OptionButton>(entity)) {
+        return "OptionButton";
+    }
+    return ecs.all_of<world::MenuButton>(entity) ? "MenuButton" : "";
+}
+
+std::vector<world::PopupMenuItem> popup_items(const world::World& world, entt::entity owner) {
+    if (!world.valid(owner)) {
+        return {};
+    }
+    const auto& ecs = world.ecs();
+    if (const auto* popup = ecs.try_get<world::PopupMenu>(owner); popup != nullptr) {
+        return popup->items;
+    }
+    if (const auto* menu = ecs.try_get<world::MenuButton>(owner); menu != nullptr) {
+        return menu->items;
+    }
+    std::vector<world::PopupMenuItem> items;
+    if (const auto* option = ecs.try_get<world::OptionButton>(owner); option != nullptr) {
+        items.reserve(option->items.size());
+        for (std::size_t i = 0; i < option->items.size(); ++i) {
+            const world::OptionButtonItem& each = option->items[i];
+            world::PopupMenuItem& item = items.emplace_back();
+            item.text = each.text;
+            item.icon = each.icon;
+            item.checkable = "radio";
+            item.checked = std::cmp_equal(option->selected, i);
+            item.id = each.id;
+            item.disabled = each.disabled;
+            item.separator = each.separator;
+        }
+    }
+    return items;
+}
+
+int item_id(const world::PopupMenuItem& item, std::size_t index) {
+    return item.id >= 0 ? item.id : static_cast<int>(index);
 }
 
 Range range_of(const world::Slider& slider) {

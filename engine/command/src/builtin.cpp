@@ -1585,7 +1585,7 @@ Reply ui_layout(Session& session, const json::Value& params) {
             if (entity == entt::null) {
                 return unknown_entity(world, id, path);
             }
-            if (!ui::is_control(world, entity)) {
+            if (!ui::is_control(world, entity) && !world.ecs().all_of<world::PopupMenu>(entity)) {
                 return param_error(code::kInvalidParams, path,
                                    quoted(id) + " isn't a control: it has no Control or UI "
                                                 "component");
@@ -1706,6 +1706,41 @@ Reply ui_layout(Session& session, const json::Value& params) {
     json::Value result;
     result["viewport"] = point_value(viewport);
     result["controls"] = std::move(controls);
+    // The popup menus open, over the controls: each item's row in the viewport, scrolled.
+    json::Array popups;
+    for (const ui::PopupView& view : layout.popups) {
+        if (!wanted.empty() && !wanted.contains(view.owner)) {
+            continue;
+        }
+        json::Value popup;
+        popup["id"] = world.id_of(view.owner);
+        popup["rect"] =
+            rounded(json::Array{view.position.x, view.position.y, view.size.x, view.size.y});
+        json::Array items;
+        for (const ui::PopupItemView& entry : view.items) {
+            json::Value item;
+            item["text"] = entry.text;
+            const float top = view.position.y + view.list_position.y + entry.y - view.scroll;
+            item["rect"] = rounded(json::Array{view.position.x + view.list_position.x, top,
+                                               view.list_size.x, entry.height});
+            if (!entry.selectable) {
+                item["selectable"] = false;
+            }
+            items.push_back(std::move(item));
+        }
+        popup["items"] = std::move(items);
+        if (view.focused >= 0) {
+            popup["focused_item"] = view.focused;
+        }
+        if (view.scroll_max > 0.0F) {
+            popup["scroll"] = rounded(json::Value(view.scroll));
+            popup["scroll_max"] = rounded(json::Value(view.scroll_max));
+        }
+        popups.push_back(std::move(popup));
+    }
+    if (!popups.empty()) {
+        result["popups"] = std::move(popups);
+    }
     // Children that can't be laid out, theme overrides with names their type doesn't have and
     // fonts that don't load, for the controls asked about.
     json::Array problems;
@@ -1844,11 +1879,14 @@ Reply ui_press(Session& session, const json::Value& params) {
     take(world.ecs().try_get<world::Button>(entity));
     take(world.ecs().try_get<world::CheckBox>(entity));
     take(world.ecs().try_get<world::CheckButton>(entity));
+    take(world.ecs().try_get<world::OptionButton>(entity));
+    take(world.ecs().try_get<world::MenuButton>(entity));
     take(world.ecs().try_get<world::TextureButton>(entity));
     if (!button) {
         return param_error(code::kInvalidParams, "/id",
                            quoted(id) + " isn't a button: it has no Button, CheckBox, "
-                                        "CheckButton or TextureButton");
+                                        "CheckButton, OptionButton, MenuButton or "
+                                        "TextureButton");
     }
     if (disabled) {
         return param_error(code::kInvalidParams, "/id",
@@ -1886,6 +1924,124 @@ Reply ui_focus(Session& session, const json::Value& params) {
     json::Value result;
     const entt::entity owner = ui::focus_owner(world);
     result["focused"] = owner != entt::null ? json::Value(world.id_of(owner)) : json::Value();
+    return Reply::success(std::move(result));
+}
+
+// The entity an "id" param names, if it has a popup menu: a PopupMenu, OptionButton or
+// MenuButton.
+Result<entt::entity> popup_owner(const world::World& world, const std::string& id) {
+    const entt::entity entity = world.find(id);
+    if (entity == entt::null) {
+        std::string message = "no entity has the id " + quoted(id);
+        add_hint(message, id, world.ids());
+        return make_error(ErrorCode::NotFound, std::move(message));
+    }
+    if (!world.ecs().any_of<world::PopupMenu, world::OptionButton, world::MenuButton>(entity)) {
+        return make_error(ErrorCode::InvalidArgument,
+                          quoted(id) + " has no popup menu: it has no PopupMenu, OptionButton "
+                                       "or MenuButton");
+    }
+    return entity;
+}
+
+Reply ui_popup(Session& session, const json::Value& params) {
+    world::World& world = session.world();
+    const std::string id = text(params, "id");
+    const auto owner = popup_owner(world, id);
+    if (!owner) {
+        return param_error(owner.error(), "/id");
+    }
+    const json::Value* open = params.find("open");
+    if (open == nullptr || open->as_bool()) {
+        if (!ui::open_popup(world, owner.value())) {
+            return param_error(code::kInvalidParams, "/id",
+                               quoted(id) + " is hidden, so its popup can't open");
+        }
+    } else {
+        ui::close_popup(world, owner.value());
+    }
+    json::Array ids;
+    for (const entt::entity each : ui::open_popups(world)) {
+        ids.emplace_back(world.id_of(each));
+    }
+    json::Value result;
+    result["open"] = std::move(ids);
+    return Reply::success(std::move(result));
+}
+
+Reply ui_select(Session& session, const json::Value& params) {
+    world::World& world = session.world();
+    const std::string id = text(params, "id");
+    const auto owner = popup_owner(world, id);
+    if (!owner) {
+        return param_error(owner.error(), "/id");
+    }
+    const entt::entity entity = owner.value();
+    const std::vector<world::PopupMenuItem> items = ui::popup_items(world, entity);
+    const json::Value* by_index = params.find("index");
+    const json::Value* by_id = params.find("item_id");
+    const json::Value* by_text = params.find("text");
+    if (static_cast<int>(by_index != nullptr) + static_cast<int>(by_id != nullptr) +
+            static_cast<int>(by_text != nullptr) !=
+        1) {
+        return param_error(code::kInvalidParams, "", "give one of index, item_id or text");
+    }
+    std::string path;
+    std::size_t index = items.size();
+    if (by_index != nullptr) {
+        path = "/index";
+        index = static_cast<std::size_t>(by_index->as_double());
+        if (index >= items.size()) {
+            return param_error(code::kInvalidParams, path,
+                               quoted(id) + " has " + std::to_string(items.size()) + " items");
+        }
+    } else if (by_id != nullptr) {
+        path = "/item_id";
+        const auto wanted = static_cast<int>(by_id->as_double());
+        for (std::size_t i = 0; i < items.size() && index == items.size(); ++i) {
+            if (ui::item_id(items[i], i) == wanted) {
+                index = i;
+            }
+        }
+        if (index == items.size()) {
+            return param_error(code::kNotFound, path,
+                               "no item of " + quoted(id) + " has the id " +
+                                   std::to_string(wanted));
+        }
+    } else {
+        path = "/text";
+        const std::string& wanted = by_text->as_string();
+        std::vector<std::string_view> texts;
+        for (std::size_t i = 0; i < items.size(); ++i) {
+            if (items[i].separator) {
+                continue;
+            }
+            texts.emplace_back(items[i].text);
+            if (index == items.size() && items[i].text == wanted) {
+                index = i;
+            }
+        }
+        if (index == items.size()) {
+            std::string message = "no item of " + quoted(id) + " reads " + quoted(wanted);
+            add_hint(message, wanted, texts);
+            return param_error(code::kNotFound, path, message);
+        }
+    }
+    const world::PopupMenuItem& item = items[index];
+    const std::string which = "item " + std::to_string(index) + " of " + quoted(id);
+    if (item.separator) {
+        return param_error(code::kInvalidParams, path, which + " is a separator");
+    }
+    if (item.disabled) {
+        return param_error(code::kInvalidParams, path, which + " is disabled");
+    }
+    if (!ui::select_item(world, entity, static_cast<int>(index))) {
+        return param_error(code::kInvalidParams, "/id",
+                           quoted(id) + " is disabled, so nothing can be picked from it");
+    }
+    json::Value result;
+    result["index"] = static_cast<std::int64_t>(index);
+    result["tick"] = world.tick();
     return Reply::success(std::move(result));
 }
 
@@ -2685,6 +2841,8 @@ Reply frame_summary(Session& session, const json::Value& params) {
             return "TileMapLayer";
         case canvas::FrameItem::Kind::Particles:
             return "CPUParticles2D";
+        case canvas::FrameItem::Kind::Popup:
+            return "PopupMenu";
         case canvas::FrameItem::Kind::Control:
             break;
         }
@@ -2781,6 +2939,24 @@ Reply frame_summary(Session& session, const json::Value& params) {
             }
             if (item.entity == focused) {
                 each["focused"] = true;
+            }
+            break;
+        }
+        case canvas::FrameItem::Kind::Popup: {
+            const auto popup = std::ranges::find(layout.popups, item.entity, &ui::PopupView::owner);
+            if (popup == layout.popups.end()) {
+                break;
+            }
+            json::Array texts;
+            for (const ui::PopupItemView& entry : popup->items) {
+                texts.emplace_back(entry.text);
+            }
+            each["items"] = std::move(texts);
+            if (popup->focused >= 0) {
+                each["focused_item"] = popup->focused;
+            }
+            if (popup->scroll > 0.0F) {
+                each["scroll"] = rounded(json::Value(popup->scroll));
             }
             break;
         }
@@ -4221,8 +4397,9 @@ void register_builtin_commands(Registry& registry) {
     registry.add({
         .name = "frame.summary",
         .description = "Says what the window shows now, as data instead of an image: each sprite, "
-                       "tile map layer, particle emitter and control that shows, in drawing "
-                       "order, with its rect in window pixels, its text, and how much of it shows "
+                       "tile map layer, particle emitter, control and open popup menu that "
+                       "shows, in drawing order, with its rect in window pixels, its text, and "
+                       "how much of it shows "
                        "when not all; what is covered, offscreen, transparent or clipped away; "
                        "what can't draw; and the camera with the world rect it shows.",
         .capabilities = {Read},
@@ -4338,8 +4515,9 @@ void register_builtin_commands(Registry& registry) {
                        "button's draw_mode, each slider's and scroll bar's value and ratio, each "
                        "ScrollContainer's scroll, scroll_max and scroll_bars, the part a clip "
                        "shows (shown_rect, or clipped), each LineEdit's and TextEdit's caret "
-                       "and selection, the control with focus and the one hovered, and mistakes "
-                       "such as misspelled theme overrides. A check without a screenshot.",
+                       "and selection, the control with focus and the one hovered, the popup "
+                       "menus open with each item's rect, and mistakes such as misspelled "
+                       "theme overrides. A check without a screenshot.",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema({
@@ -4366,14 +4544,49 @@ void register_builtin_commands(Registry& registry) {
     });
     registry.add({
         .name = "ui.press",
-        .description = "Presses a button (Button, CheckBox, CheckButton or TextureButton) at the "
-                       "next tick, as a click would: "
-                       "it emits pressed, and toggles first if it is a toggle button. Returns "
-                       "the tick.",
+        .description = "Presses a button (Button, CheckBox, CheckButton, OptionButton, "
+                       "MenuButton or TextureButton) at the next tick, as a click would: it "
+                       "emits pressed, and toggles first if it is a toggle button; an "
+                       "OptionButton or MenuButton opens or closes its list. Returns the tick.",
         .capabilities = {Run},
         .effect = Effect::Read,
         .params = params_schema({{"id", property("string", "The button.")}}, {"id"}),
         .handler = ui_press,
+    });
+    registry.add({
+        .name = "ui.popup",
+        .description = "Opens a popup menu (a PopupMenu at its position, or an OptionButton's "
+                       "or MenuButton's list below it), closing any other, or closes it. "
+                       "Returns the popups open.",
+        .capabilities = {Run},
+        .effect = Effect::Read,
+        .params = params_schema(
+            {
+                {"id", property("string", "The PopupMenu, OptionButton or MenuButton.")},
+                {"open", property("boolean", "False closes it. Default true.")},
+            },
+            {"id"}),
+        .handler = ui_popup,
+    });
+    json::Value select_index = property("integer", "The item's index.");
+    select_index["minimum"] = 0;
+    registry.add({
+        .name = "ui.select",
+        .description = "Picks an item of a PopupMenu, OptionButton or MenuButton at the next "
+                       "tick, as a click on it would, open or not: an OptionButton selects it "
+                       "(item_selected), the others emit id_pressed and index_pressed, and the "
+                       "popup closes. Give index, item_id or text. Returns the index and tick.",
+        .capabilities = {Run},
+        .effect = Effect::Read,
+        .params = params_schema(
+            {
+                {"id", property("string", "The PopupMenu, OptionButton or MenuButton.")},
+                {"index", std::move(select_index)},
+                {"item_id", property("integer", "The item's id (its index if it has none).")},
+                {"text", property("string", "The first item with this text.")},
+            },
+            {"id"}),
+        .handler = ui_select,
     });
     json::Value focus_id = property("string", "The control, or null to take focus away.");
     focus_id["type"] = json::Array{"string", "null"};

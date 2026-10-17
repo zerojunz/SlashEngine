@@ -525,6 +525,16 @@ struct ButtonWork {
     LabelWork text;
 };
 
+// What an OptionButton draws besides a Button's: the arrow at its end, as its NOTIFICATION_DRAW
+// draws it.
+struct OptionWork {
+    std::string arrow; // the arrow icon, if it loads
+    Vec2 arrow_size;   // its size in pixels
+    Vec4 arrow_color{1.0F, 1.0F, 1.0F, 1.0F};
+    float arrow_margin = 0.0F;
+    std::optional<Vec2> longest; // with fit_to_longest_item, its _cached_size
+};
+
 // A Button's theme items for its state, as Button::_update_theme_item_cache,
 // _get_current_stylebox and the colors its NOTIFICATION_DRAW picks.
 ButtonWork start_button(const world::Button& button, const Resolver& theme, DrawMode mode,
@@ -1077,6 +1087,9 @@ struct Node {
     std::optional<Vec2> patch_texture_size;
     const world::ColorRect* color_rect = nullptr;
     std::optional<ButtonWork> button;
+    // An OptionButton: its Button with the selected option's text and icon, and its arrow.
+    std::unique_ptr<world::Button> shown_button;
+    std::optional<OptionWork> option;
     const world::TextureButton* texture_button = nullptr;
     // TextureButton's textures' sizes, those that load: normal, pressed, hover, disabled and
     // focused.
@@ -1126,6 +1139,7 @@ struct Builder {
     std::deque<ThemeLink> links;
     std::map<std::string, Result<asset::Handle<Theme>>, std::less<>> themes;
     std::map<std::string, Result<asset::Handle<render::Image>>, std::less<>> images;
+    const ThemeLink* project_link = nullptr; // the project's theme, if it has one that loads
 
     [[nodiscard]] const world::Control& control_of(entt::entity entity) const {
         const auto* control = world.ecs().try_get<world::Control>(entity);
@@ -1365,7 +1379,11 @@ struct Builder {
         }
         if (const world::Button* button = button_of(world, entity); button != nullptr) {
             const std::string_view type = button_type(world, entity);
-            start_button_node(node, *button, resolver(type), type);
+            if (const auto* option = ecs.try_get<world::OptionButton>(entity); option != nullptr) {
+                start_option(node, *option, resolver(type));
+            } else {
+                start_button_node(node, *button, resolver(type), type);
+            }
         }
         if (const auto* slider = ecs.try_get<world::Slider>(entity); slider != nullptr) {
             start_slider(node, *slider, resolver(slider->vertical ? "VSlider" : "HSlider"));
@@ -1422,8 +1440,8 @@ struct Builder {
         }
     }
 
-    void start_button_node(Node& node, const world::Button& button, const Resolver& theme,
-                           std::string_view type) {
+    ButtonWork& start_button_node(Node& node, const world::Button& button, const Resolver& theme,
+                                  std::string_view type) {
         const DrawMode mode = draw_mode(world, node.entity);
         node.button = start_button(button, theme, mode, shows_focus(world, node.entity), node.rtl);
         node.button_state = ButtonState{
@@ -1432,18 +1450,91 @@ struct Builder {
         if (!button.icon.empty()) {
             std::string error;
             work.icon = texture_size(button.icon, &error);
-            if (!work.icon) {
+            // An OptionButton's icons are its options', which start_option checks.
+            if (!work.icon && type != "OptionButton") {
                 problem(node.entity, "/components/" + std::string(type) + "/icon", error);
             }
         }
         if (type == "CheckBox" || type == "CheckButton") {
             start_check(node, work, button, theme, type == "CheckButton");
         }
+        if (const auto* menu = world.ecs().try_get<world::MenuButton>(node.entity);
+            menu != nullptr) {
+            check_item_icons(node.entity, "MenuButton", menu->items);
+        }
         if (work.text.autowrap == text::Autowrap::Off) {
             shape(fonts, work.text, std::nullopt);
         } else {
             node.depends = Depends::Width;
         }
+        return work;
+    }
+
+    // An OptionButton: a Button showing the selected option's text and icon, with room kept
+    // for its arrow (NOTIFICATION_THEME_CHANGED) and, with fit_to_longest_item, the size of its
+    // longest option (_refresh_size_cache).
+    void start_option(Node& node, const world::OptionButton& option, const Resolver& theme) {
+        node.shown_button =
+            std::make_unique<world::Button>(static_cast<const world::Button&>(option));
+        world::Button& shown = *node.shown_button;
+        const bool selected =
+            option.selected >= 0 && std::cmp_less(option.selected, option.items.size());
+        shown.text = selected ? option.items[static_cast<std::size_t>(option.selected)].text : "";
+        shown.icon = selected ? option.items[static_cast<std::size_t>(option.selected)].icon : "";
+        ButtonWork& work = start_button_node(node, shown, theme, "OptionButton");
+        OptionWork& made = node.option.emplace();
+        const std::string arrow = theme.icon("arrow");
+        if (const auto size = texture_size(arrow); size) {
+            made.arrow = arrow;
+            made.arrow_size = *size;
+            work.internal.at(node.rtl ? 0 : 1) = size->x;
+        }
+        made.arrow_margin = static_cast<float>(theme.constant("arrow_margin"));
+        if (theme.constant("modulate_arrow") != 0) {
+            std::string_view color = "font_color";
+            switch (draw_mode(world, node.entity)) {
+            case DrawMode::Pressed:
+                color = "font_pressed_color";
+                break;
+            case DrawMode::Hover:
+                color = "font_hover_color";
+                break;
+            case DrawMode::HoverPressed:
+                color = "font_hover_pressed_color";
+                break;
+            case DrawMode::Disabled:
+                color = "font_disabled_color";
+                break;
+            case DrawMode::Normal:
+                if (has_focus(world, node.entity)) {
+                    color = "font_focus_color";
+                }
+                break;
+            }
+            made.arrow_color = theme.color(std::string(color));
+        }
+        check_item_icons(node.entity, "OptionButton", option.items);
+        if (!option.fit_to_longest_item) {
+            return;
+        }
+        // Each option measured as Button::get_minimum_size_for_text_and_icon measures it: an
+        // option with no text takes the text shown.
+        Vec2 longest = theme.style("normal").minimum_size();
+        for (const world::OptionButtonItem& item : option.items) {
+            world::Button each_button = shown;
+            if (!item.text.empty()) {
+                each_button.text = item.text;
+            }
+            each_button.icon = item.icon;
+            ButtonWork each = work;
+            each.button = &each_button;
+            each.icon = item.icon.empty() ? std::nullopt : texture_size(item.icon);
+            each.text.out.source = each_button.text;
+            each.text.shaped = false;
+            shape(fonts, each.text, std::nullopt);
+            longest = max(longest, button_minimum(each));
+        }
+        made.longest = longest;
     }
 
     // The icon a CheckBox or CheckButton shows, as its NOTIFICATION_DRAW picks it, and the room
@@ -1952,7 +2043,22 @@ struct Builder {
                 shape(fonts, work.text,
                       size ? std::optional<float>(button_text_width(work, *size)) : std::nullopt);
             }
-            minimum = max(minimum, button_minimum(work));
+            Vec2 own = button_minimum(work);
+            // OptionButton::get_minimum_size: its longest option's size, then room for the
+            // arrow beside the content.
+            if (node.option) {
+                const OptionWork& option = *node.option;
+                own = option.longest.value_or(own);
+                if (!option.arrow.empty()) {
+                    const Vec2 padding = work.largest;
+                    Vec2 content{own.x - padding.x, own.y - padding.y};
+                    content.x +=
+                        option.arrow_size.x + static_cast<float>(std::max(0, work.h_separation));
+                    content.y = std::max(content.y, option.arrow_size.y);
+                    own = {content.x + padding.x, content.y + padding.y};
+                }
+            }
+            minimum = max(minimum, own);
         }
         if (node.field && node.line_edit) {
             node.field->resize(size.value_or(Vec2{}));
@@ -2851,6 +2957,17 @@ struct Builder {
         if (node.button) {
             finish_button(*node.button, size, boxes);
         }
+        if (node.option && !node.option->arrow.empty()) {
+            const OptionWork& option = *node.option;
+            const Vec2 arrow = option.arrow_size;
+            const float y = std::trunc(std::abs((size.y - arrow.y) / 2.0F));
+            const float x = node.rtl ? option.arrow_margin : size.x - arrow.x - option.arrow_margin;
+            Box box{.style = {}, .position = {x, y}, .size = arrow, .texture_size = arrow};
+            box.style.type = StyleBox::Type::Texture;
+            box.style.texture = option.arrow;
+            box.style.modulate_color = option.arrow_color;
+            boxes.push_back(std::move(box));
+        }
         if (node.texture_button != nullptr && node.button_state) {
             texture_button_boxes(node, size, boxes);
         }
@@ -3355,6 +3472,472 @@ struct Builder {
             boxes.push_back(std::move(over));
         }
     }
+
+    // ---- Popup menus ----
+
+    // Reports the items' icons that don't load.
+    template <typename Item>
+    void check_item_icons(entt::entity entity, std::string_view type,
+                          const std::vector<Item>& items) {
+        for (std::size_t i = 0; i < items.size(); ++i) {
+            std::string error;
+            if (!items[i].icon.empty() && !texture_size(items[i].icon, &error)) {
+                problem(entity,
+                        "/components/" + std::string(type) + "/items/" + std::to_string(i) +
+                            "/icon",
+                        error);
+            }
+        }
+    }
+
+    // PopupMenus' themes and icons that don't load, open or not.
+    void check_popup_menus() {
+        std::vector<std::pair<entt::entity, const world::PopupMenu*>> menus;
+        for (const auto [entity, menu] : world.ecs().view<world::PopupMenu>().each()) {
+            menus.emplace_back(entity, &menu);
+        }
+        std::ranges::sort(menus, [](const auto& a, const auto& b) {
+            return entt::to_entity(a.first) < entt::to_entity(b.first);
+        });
+        for (const auto& [entity, menu] : menus) {
+            std::string error;
+            if (!menu->theme.empty() && theme(menu->theme, &error) == nullptr) {
+                problem(entity, "/components/PopupMenu/theme", error);
+            }
+            check_item_icons(entity, "PopupMenu", menu->items);
+        }
+    }
+
+    // A popup menu's theme items, as PopupMenu's theme cache holds them.
+    struct PopupTheme {
+        StyleBox panel;
+        StyleBox hover;
+        StyleBox separator;
+        StyleBox labeled_left;
+        StyleBox labeled_right;
+        // checked, radio_checked, checked_disabled and radio_checked_disabled, as
+        // PopupMenu::_draw_items orders them; then the unchecked ones. Sizes are 0 for icons that
+        // don't load.
+        std::array<std::string, 4> check;
+        std::array<std::string, 4> uncheck;
+        std::array<Vec2, 4> check_size{};
+        std::array<Vec2, 4> uncheck_size{};
+        std::string font;
+        std::string font_separator;
+        int font_size = text::kDefaultFontSize;
+        int font_separator_size = text::kDefaultFontSize;
+        Vec4 font_color;
+        Vec4 font_hover_color;
+        Vec4 font_disabled_color;
+        Vec4 font_separator_color;
+        Vec4 font_outline_color;
+        Vec4 font_separator_outline_color;
+        int indent = 0;
+        int h_separation = 0;
+        int v_separation = 0;
+        int item_start_padding = 0;
+        int item_end_padding = 0;
+        int icon_max_width = 0;
+        int outline_size = 0;
+        int separator_outline_size = 0;
+    };
+
+    // One item of a popup menu being laid out: its text shaped as PopupMenu::_shape_item shapes
+    // it, its icon's size and its height.
+    struct PopupItemWork {
+        LabelWork text;
+        Vec2 text_size;           // TextLine::get_size; none for no text
+        std::optional<Vec2> icon; // its icon's size, fitted to icon_max_width, if it loads
+        Vec2 icon_texture;        // and its texture's
+        float height = 0.0F;
+    };
+
+    PopupTheme popup_theme(const Resolver& theme) {
+        static constexpr std::array<std::string_view, 4> kChecked{
+            "checked", "radio_checked", "checked_disabled", "radio_checked_disabled"};
+        static constexpr std::array<std::string_view, 4> kUnchecked{
+            "unchecked", "radio_unchecked", "unchecked_disabled", "radio_unchecked_disabled"};
+        PopupTheme look;
+        look.panel = theme.style("panel");
+        look.hover = theme.style("hover");
+        look.separator = theme.style("separator");
+        look.labeled_left = theme.style("labeled_separator_left");
+        look.labeled_right = theme.style("labeled_separator_right");
+        for (std::size_t i = 0; i < kChecked.size(); ++i) {
+            look.check.at(i) = theme.icon(std::string(kChecked.at(i)));
+            look.check_size.at(i) = texture_size(look.check.at(i)).value_or(Vec2{});
+            look.uncheck.at(i) = theme.icon(std::string(kUnchecked.at(i)));
+            look.uncheck_size.at(i) = texture_size(look.uncheck.at(i)).value_or(Vec2{});
+        }
+        look.font = theme.font("font");
+        look.font_separator = theme.font("font_separator");
+        look.font_size = std::clamp(theme.font_size("font_size"), 1, text::kMaxFontSize);
+        look.font_separator_size =
+            std::clamp(theme.font_size("font_separator_size"), 1, text::kMaxFontSize);
+        look.font_color = theme.color("font_color");
+        look.font_hover_color = theme.color("font_hover_color");
+        look.font_disabled_color = theme.color("font_disabled_color");
+        look.font_separator_color = theme.color("font_separator_color");
+        look.font_outline_color = theme.color("font_outline_color");
+        look.font_separator_outline_color = theme.color("font_separator_outline_color");
+        look.indent = theme.constant("indent");
+        look.h_separation = theme.constant("h_separation");
+        look.v_separation = theme.constant("v_separation");
+        look.item_start_padding = theme.constant("item_start_padding");
+        look.item_end_padding = theme.constant("item_end_padding");
+        look.icon_max_width = theme.constant("icon_max_width");
+        look.outline_size = theme.constant("outline_size");
+        look.separator_outline_size = theme.constant("separator_outline_size");
+        return look;
+    }
+
+    // PopupMenu::_get_item_height, in whole pixels as its ints keep it: the tallest of its text
+    // (a line of the font when it has none), its icon or check box, and a separator's lines.
+    static float popup_item_height(const PopupTheme& theme, const world::PopupMenuItem& item,
+                                   const PopupItemWork& work) {
+        float icon = std::trunc(work.icon.value_or(Vec2{}).y);
+        if (item.checkable != "none" && !item.separator) {
+            icon = std::max(icon, std::max(theme.check_size[0].y, theme.check_size[1].y));
+        }
+        float text = std::trunc(work.text_size.y);
+        if (text == 0.0F && !item.separator) {
+            text = std::trunc(work.text.line_height);
+        }
+        float separator = 0.0F;
+        if (item.separator) {
+            separator = std::trunc(std::max(theme.separator.minimum_size().y,
+                                            std::max(theme.labeled_left.minimum_size().y,
+                                                     theme.labeled_right.minimum_size().y)));
+        }
+        return std::max(separator, std::max(text, icon));
+    }
+
+    // An open popup menu, as PopupMenu lays out and draws its window: its contents' minimum
+    // size (_get_contents_minimum_size); its rect, as OptionButton's and MenuButton's show_popup
+    // and Popup::_popup_adjust_rect place it, in whole pixels as a window's; its list scrolled
+    // inside the panel (scroll_to_item); and its items (_draw_items).
+    void popup(const PopupState& state) {
+        const auto& ecs = world.ecs();
+        const entt::entity owner = state.owner;
+        if (!world.valid(owner)) {
+            return;
+        }
+        enum class From : std::uint8_t { Popup, Option, Menu };
+        From from = From::Popup;
+        const ThemeLink* link = project_link;
+        bool rtl = false;
+        Vec2 origin; // where it opens: a PopupMenu's position, or its button's top left
+        Vec2 button; // the button's size in the viewport
+        if (const auto* menu = ecs.try_get<world::PopupMenu>(owner); menu != nullptr) {
+            if (!menu->theme.empty()) {
+                if (const Theme* loaded = theme(menu->theme, nullptr); loaded != nullptr) {
+                    link = &links.emplace_back(
+                        ThemeLink{.theme = loaded, .path = menu->theme, .parent = project_link});
+                }
+            }
+            rtl = menu->layout_direction == "rtl";
+            origin = menu->position;
+        } else {
+            const auto node = std::ranges::find(nodes, owner, &Node::entity);
+            if (node == nodes.end() || !node->placed.visible) {
+                return;
+            }
+            from = ecs.all_of<world::OptionButton>(owner) ? From::Option : From::Menu;
+            link = node->themes;
+            rtl = node->rtl;
+            // Control::get_screen_rect.
+            const Transform& t = node->placed.transform;
+            origin = t.apply({});
+            button = {node->placed.size.x * std::hypot(t.a, t.b),
+                      node->placed.size.y * std::hypot(t.c, t.d)};
+        }
+        const PopupTheme look = popup_theme(Resolver(link, kDefaultControl, "PopupMenu"));
+        const std::vector<world::PopupMenuItem> items = popup_items(world, owner);
+        std::vector<PopupItemWork> works(items.size());
+        for (std::size_t i = 0; i < items.size(); ++i) {
+            const world::PopupMenuItem& item = items[i];
+            PopupItemWork& work = works[i];
+            LabelText& text = work.text.out;
+            text.font = item.separator ? look.font_separator : look.font;
+            text.font_size = item.separator ? look.font_separator_size : look.font_size;
+            text.source = item.text;
+            work.text.direction = rtl ? text::Direction::Rtl : text::Direction::Ltr;
+            shape(fonts, work.text, std::nullopt);
+            if (!item.text.empty()) {
+                work.text_size = {text.text.width, work.text.line_height};
+            }
+            // _get_item_icon_size: no wider than icon_max_width, keeping its aspect.
+            if (auto icon = texture_size(item.icon); icon) {
+                work.icon_texture = *icon;
+                const auto max_width = static_cast<float>(look.icon_max_width);
+                if (look.icon_max_width > 0 && icon->x > max_width) {
+                    *icon = {max_width, icon->y * max_width / icon->x};
+                }
+                work.icon = icon;
+            }
+            work.height = popup_item_height(look, item, work);
+        }
+
+        // Its contents' minimum size: the panel's, the scroll bar's width, and the widest item
+        // with the widest icon and a check box; each item's height and v_separation.
+        const BarTheme bar = bar_theme(Resolver(link, kDefaultControl, "VScrollBar"), true);
+        const float bar_width = bar_minimum(bar).x;
+        const auto v_separation = static_cast<float>(look.v_separation);
+        Vec2 minimum = look.panel.minimum_size();
+        minimum.x += bar_width;
+        float widest = 0.0F;
+        float icon_width = 0.0F;
+        bool has_check = false;
+        float total = 0.0F; // the list's height, as _get_items_total_height
+        for (std::size_t i = 0; i < items.size(); ++i) {
+            icon_width = std::max(icon_width, works[i].icon.value_or(Vec2{}).x);
+            widest = std::max(widest, static_cast<float>(items[i].indent * look.indent) +
+                                          works[i].text_size.x);
+            has_check = has_check || (items[i].checkable != "none" && !items[i].separator);
+            total += works[i].height + v_separation;
+        }
+        minimum.y += total;
+        minimum.x += widest + icon_width +
+                     static_cast<float>(look.item_start_padding + look.item_end_padding);
+        if (has_check) {
+            minimum.x += std::trunc(std::max(look.check_size[0].x, look.check_size[1].x)) +
+                         static_cast<float>(look.h_separation);
+        }
+        minimum.y = std::ceil(std::min(minimum.y, std::trunc(out.viewport.y)));
+
+        // Its rect, in whole pixels: an OptionButton's list is at least as wide as the button.
+        const Vec2 least{std::trunc(minimum.x), std::trunc(minimum.y)};
+        Vec2 size = least;
+        Vec2 position{std::trunc(origin.x), std::trunc(origin.y)};
+        if (from == From::Option) {
+            size.x = std::max(std::trunc(button.x), least.x);
+            position.y = std::trunc(origin.y + button.y);
+        } else if (from == From::Menu) {
+            const float x =
+                rtl ? origin.x + button.x - std::max(std::trunc(button.x), least.x) : origin.x;
+            position = {std::trunc(x), std::trunc(origin.y + button.y)};
+        }
+        const Vec2 parent{std::trunc(out.viewport.x), std::trunc(out.viewport.y)};
+        if (parent.x > 0.0F && parent.y > 0.0F) {
+            position.x = std::max(std::min(position.x, parent.x - size.x), 0.0F);
+            position.y = std::max(std::min(position.y, parent.y - size.y), 0.0F);
+            size = {std::min(size.x, parent.x), std::min(size.y, parent.y)};
+        }
+
+        // The list scrolls inside the panel's margins, beside a scroll bar when it is taller
+        // than its room, as the ScrollContainer in PopupMenu's window.
+        PopupView& view = out.popups.emplace_back();
+        view.owner = owner;
+        view.position = position;
+        view.size = size;
+        view.rtl = rtl;
+        view.v_separation = look.v_separation;
+        const std::array<float, 4> margins{look.panel.margin(kLeft), look.panel.margin(kTop),
+                                           look.panel.margin(kRight), look.panel.margin(kBottom)};
+        view.margins = margins;
+        const Vec2 room{std::max(size.x - margins[kLeft] - margins[kRight], 0.0F),
+                        std::max(size.y - margins[kTop] - margins[kBottom], 0.0F)};
+        const bool scrolls = total > room.y;
+        view.bar_width = scrolls ? bar_width : 0.0F;
+        view.list_position = {margins[kLeft] + (rtl ? view.bar_width : 0.0F), margins[kTop]};
+        view.list_size = {std::max(room.x - view.bar_width, 0.0F), room.y};
+        view.scroll_max = scrolls ? total - room.y : 0.0F;
+        // Each item's top in the list (_ofs_cache): half a separation before the first.
+        std::vector<float> tops(items.size());
+        float top = 0.0F;
+        for (std::size_t i = 0; i < items.size(); ++i) {
+            top += i > 0 ? v_separation : v_separation / 2.0F;
+            tops[i] = top;
+            top += works[i].height;
+        }
+        float scroll = state.scroll;
+        if (state.scroll_to >= 0 && std::cmp_less(state.scroll_to, items.size())) {
+            const auto index = static_cast<std::size_t>(state.scroll_to);
+            const float item_y = std::trunc(tops[index]);
+            const float relative = item_y - std::trunc(scroll);
+            if (relative < 0.0F) {
+                scroll = item_y;
+            } else if (relative + works[index].height > std::trunc(room.y)) {
+                scroll = item_y + works[index].height - std::trunc(room.y);
+            }
+        }
+        view.scroll = scrolls ? std::round(std::clamp(scroll, 0.0F, view.scroll_max)) : 0.0F;
+        view.focused =
+            state.focused >= 0 && std::cmp_less(state.focused, items.size()) ? state.focused : -1;
+        for (std::size_t i = 0; i < items.size(); ++i) {
+            view.items.push_back({.y = tops[i],
+                                  .height = works[i].height,
+                                  .text = items[i].text,
+                                  .selectable = !items[i].separator && !items[i].disabled});
+        }
+        view.panel.push_back(
+            {.style = look.panel, .position = {}, .size = size, .texture_size = {}});
+        popup_items_draw(view, look, items, works, tops);
+        if (scrolls) {
+            const Range range{.min = 0.0,
+                              .max = static_cast<double>(total),
+                              .step = 0.0,
+                              .page = static_cast<double>(room.y),
+                              .value = static_cast<double>(view.scroll),
+                              .rounded = false,
+                              .allow_greater = false,
+                              .allow_lesser = false};
+            const Vec2 at{rtl ? margins[kLeft] : margins[kLeft] + room.x - bar_width,
+                          margins[kTop]};
+            scroll_bar_boxes(bar, measure_bar(bar, range, -1.0F, at, {bar_width, room.y}),
+                             BarLook{}, false, view.bar);
+        }
+    }
+
+    // PopupMenu::_draw_items: each item's hover box, separator lines, check box, icon and text,
+    // in the popup's rect, its list scrolled.
+    static void popup_items_draw(PopupView& view, const PopupTheme& look,
+                                 const std::vector<world::PopupMenuItem>& items,
+                                 std::vector<PopupItemWork>& works,
+                                 const std::vector<float>& tops) {
+        const bool rtl = view.rtl;
+        const float display_width = view.list_size.x;
+        const Vec2 base{view.list_position.x, view.list_position.y - view.scroll};
+        const auto h_separation = static_cast<float>(look.h_separation);
+        const auto texture = [&](const std::string& path, Vec2 texture_size, Vec2 at, Vec2 size) {
+            if (path.empty() || texture_size.x <= 0.0F || texture_size.y <= 0.0F) {
+                return;
+            }
+            Box box{.style = {}, .position = base + at, .size = size, .texture_size = texture_size};
+            box.style.type = StyleBox::Type::Texture;
+            box.style.texture = path;
+            view.boxes.push_back(std::move(box));
+        };
+        const auto style = [&](const StyleBox& box_style, Vec2 at, Vec2 size) {
+            view.boxes.push_back(
+                {.style = box_style, .position = base + at, .size = size, .texture_size = {}});
+        };
+        // The widest icon and whether any item has a check box give the offsets of the rest.
+        float icon_ofs = 0.0F;
+        bool has_check = false;
+        for (std::size_t i = 0; i < items.size(); ++i) {
+            if (items[i].separator) {
+                continue;
+            }
+            icon_ofs = std::max(icon_ofs, works[i].icon.value_or(Vec2{}).x);
+            has_check = has_check || items[i].checkable != "none";
+        }
+        if (icon_ofs > 0.0F) {
+            icon_ofs += h_separation;
+        }
+        float check_ofs = 0.0F;
+        if (has_check) {
+            for (std::size_t k = 0; k < look.check_size.size(); ++k) {
+                check_ofs =
+                    std::max({check_ofs, look.check_size.at(k).x, look.uncheck_size.at(k).x});
+            }
+            check_ofs += h_separation;
+        }
+        for (std::size_t i = 0; i < items.size(); ++i) {
+            const world::PopupMenuItem& item = items[i];
+            PopupItemWork& work = works[i];
+            const float h = work.height;
+            const Vec2 text_size = work.text_size;
+            const Vec2 icon_size = work.icon.value_or(Vec2{});
+            Vec2 at{0.0F, tops[i]};
+            if (std::cmp_equal(view.focused, i)) {
+                const int half_separation = look.v_separation / 2; // whole pixels, as Godot's
+                style(look.hover, {at.x, at.y - static_cast<float>(half_separation)},
+                      {display_width, h + static_cast<float>(look.v_separation)});
+            }
+            at.x += static_cast<float>(item.indent * look.indent);
+            if (item.separator) {
+                if (!item.text.empty() || work.icon) {
+                    auto content = static_cast<int>(text_size.x + (h_separation * 2.0F));
+                    if (work.icon) {
+                        content = static_cast<int>(static_cast<float>(content) + icon_size.x +
+                                                   h_separation);
+                    }
+                    const auto center = static_cast<int>(display_width / 2.0F);
+                    const int left = center - (content / 2);
+                    const int right = center + (content / 2);
+                    if (static_cast<float>(left) > at.x) {
+                        const float sep_h = std::trunc(look.labeled_left.minimum_size().y);
+                        const float sep_ofs = std::floor((h - sep_h) / 2.0F);
+                        style(look.labeled_left, {at.x, at.y + sep_ofs},
+                              {std::max(0.0F, static_cast<float>(left) - at.x), sep_h});
+                    }
+                    if (static_cast<float>(right) < display_width) {
+                        const float sep_h = std::trunc(look.labeled_right.minimum_size().y);
+                        const float sep_ofs = std::floor((h - sep_h) / 2.0F);
+                        style(look.labeled_right, {static_cast<float>(right), at.y + sep_ofs},
+                              {std::max(0.0F, display_width - static_cast<float>(right)), sep_h});
+                    }
+                } else {
+                    const float sep_h = std::trunc(look.separator.minimum_size().y);
+                    const float sep_ofs = std::floor((h - sep_h) / 2.0F);
+                    style(look.separator, {at.x, at.y + sep_ofs}, {display_width, sep_h});
+                }
+            } else {
+                at.x += static_cast<float>(look.item_start_padding);
+            }
+            if (item.checkable != "none" && !item.separator) {
+                const std::size_t k =
+                    (item.checkable == "radio" ? 1U : 0U) + (item.disabled ? 2U : 0U);
+                const std::string& path = item.checked ? look.check.at(k) : look.uncheck.at(k);
+                const Vec2 icon = item.checked ? look.check_size.at(k) : look.uncheck_size.at(k);
+                const float x = rtl ? display_width - at.x - icon.x : at.x;
+                texture(path, icon, {x, at.y + std::floor((h - icon.y) / 2.0F)}, icon);
+            }
+            auto separator_ofs = static_cast<int>((display_width - text_size.x) / 2.0F);
+            if (work.icon) {
+                const float icon_y = std::floor((h - icon_size.y) / 2.0F);
+                Vec2 icon_at;
+                if (item.separator) {
+                    separator_ofs = static_cast<int>(static_cast<float>(separator_ofs) -
+                                                     ((icon_size.x + h_separation) / 2.0F));
+                    if (rtl) {
+                        icon_at = {display_width - at.x - static_cast<float>(separator_ofs) -
+                                       icon_size.x,
+                                   at.y};
+                    } else {
+                        icon_at = {at.x + static_cast<float>(separator_ofs), at.y};
+                        separator_ofs = static_cast<int>(static_cast<float>(separator_ofs) +
+                                                         icon_size.x + h_separation);
+                    }
+                } else {
+                    icon_at = rtl ? Vec2{display_width - at.x - check_ofs - icon_size.x, at.y}
+                                  : Vec2{at.x + check_ofs, at.y};
+                }
+                texture(item.icon, work.icon_texture, {icon_at.x, icon_at.y + icon_y}, icon_size);
+            }
+            if (item.text.empty()) {
+                continue;
+            }
+            const float text_y = at.y + std::floor((h - text_size.y) / 2.0F);
+            Vec2 text_at;
+            LabelText& label = work.text.out;
+            if (item.separator) {
+                text_at = {static_cast<float>(separator_ofs), text_y};
+                label.font_color = look.font_separator_color;
+                label.outline_color = look.font_separator_outline_color;
+                label.outline_size = std::max(look.separator_outline_size, 0);
+            } else {
+                at.x += icon_ofs + check_ofs;
+                text_at =
+                    rtl ? Vec2{display_width - text_size.x - at.x, text_y} : Vec2{at.x, text_y};
+                if (item.disabled) {
+                    label.font_color = look.font_disabled_color;
+                } else {
+                    label.font_color =
+                        std::cmp_equal(view.focused, i) ? look.font_hover_color : look.font_color;
+                }
+                label.outline_color = look.font_outline_color;
+                label.outline_size = std::max(look.outline_size, 0);
+            }
+            label.shadow_color = {0.0F, 0.0F, 0.0F, 0.0F};
+            label.first = 0;
+            label.last = std::min<std::size_t>(label.text.lines.size(), 1);
+            label.pens = {base + text_at + Vec2{0.0F, label.text.metrics.ascent}};
+            label.stretch = {0.0F};
+            view.labels.push_back(std::move(label));
+        }
+    }
 };
 
 // The entities that are controls, in the order they were made.
@@ -3377,6 +3960,7 @@ void build(Builder& builder, const std::vector<entt::entity>& controls) {
     builder.link(controls);
     builder.break_loops(controls);
     const ThemeLink* project = builder.project_theme();
+    builder.project_link = project;
     std::vector<std::pair<entt::entity, std::size_t>> stack;
     for (const entt::entity entity : std::views::reverse(controls)) {
         if (!builder.parents.contains(entity)) {
@@ -3459,6 +4043,10 @@ Layout layout(const world::World& world, text::Fonts& fonts, Vec2 viewport) {
     for (Node& node : nodes) {
         builder.finish(node);
         out.controls.push_back(node.placed);
+    }
+    builder.check_popup_menus();
+    for (const PopupState& state : popup_states(world)) {
+        builder.popup(state);
     }
     // Then by z: Godot draws a canvas item over those with a lower z_index, the rest in tree
     // order.

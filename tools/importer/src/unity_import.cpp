@@ -4882,12 +4882,8 @@ private:
         } else if (selectable_name == "ScrollRect") {
             ui_scroll(ctx, *selectable, out);
         } else if (selectable_name == "Dropdown" || selectable_name == "TMP_Dropdown") {
-            problems_.add("component " + selectable_name, ctx.where,
-                          "dropdowns come with OptionButton (on the roadmap); its parts stay "
-                          "controls");
-            if (image_drawn) {
-                draw_image(look, control, components);
-            }
+            ui_dropdown(ctx, *selectable, selectable_name == "TMP_Dropdown", look, image_drawn,
+                        control, out);
         }
         if ((enabled(mask) || enabled(parts.get("RectMask2D")))) {
             control["clip_contents"] = true;
@@ -5252,6 +5248,105 @@ private:
             }
         }
         out.components[lines ? "TextEdit" : "LineEdit"] = std::move(fields);
+    }
+
+    // A Dropdown or TMP_Dropdown is Godot's OptionButton: its options and the one shown, its
+    // background's styles and its caption's look. Its caption, arrow and template are part of
+    // it; its list draws with the PopupMenu theme.
+    void ui_dropdown(const Context& ctx, const Component& dropdown, bool tmp, const ImageLook& look,
+                     bool image_drawn, json::Value& control, Converted& out) {
+        Expanded& file = *ctx.file;
+        const GameObject& go = file.objects[static_cast<std::size_t>(ctx.index)];
+        const Node& body = dropdown.body;
+        json::Value fields = json::Object{};
+        json::Array items;
+        if (const Node* options = body.path("m_Options.m_Options");
+            options != nullptr && options->is_seq()) {
+            for (const Node& option : options->items) {
+                json::Value item = json::Object{};
+                if (std::string text = option.string_at("m_Text"); !text.empty()) {
+                    item["text"] = std::move(text);
+                }
+                if (const auto ref = ref_at(option, "m_Image"); ref && !ref->null()) {
+                    std::string why;
+                    const Sprite* found = sprite(*ref, why);
+                    if (found != nullptr && found->whole) {
+                        item["icon"] = found->texture;
+                    } else {
+                        problems_.add("Dropdown option image", ctx.where,
+                                      found != nullptr
+                                          ? "a sprite cut from a sheet; the option shows none"
+                                          : why);
+                    }
+                }
+                items.push_back(std::move(item));
+            }
+        }
+        // Unity keeps the value in the options' range.
+        const auto count = static_cast<std::int64_t>(items.size());
+        fields["selected"] =
+            count > 0 ? std::clamp(body.integer_at("m_Value", 0), std::int64_t{0}, count - 1)
+                      : std::int64_t{-1};
+        fields["items"] = std::move(items);
+        if (!body.flag_at("m_Interactable", true)) {
+            fields["disabled"] = true;
+        }
+        // The caption's look is the button's font, size and color.
+        const int caption = object_at(file, body, "m_CaptionText");
+        if (caption >= 0) {
+            const GameObject& c = file.objects[static_cast<std::size_t>(caption)];
+            json::Value label = json::Object{};
+            json::Value ignored = json::Object{};
+            std::optional<TextLook> text_look;
+            if (const Component* legacy = script_of(c, "Text")) {
+                text_look = legacy_text(legacy->body, ctx.where, label);
+            } else if (const Component* pro = script_of(c, "TextMeshProUGUI")) {
+                text_look = tmp_text(pro->body, ctx.where, label, ignored);
+            }
+            if (text_look) {
+                apply_text(*text_look, label, control);
+                fields["alignment"] = text_look->horizontal;
+            }
+        }
+        if (image_drawn) {
+            const auto states = selectable_styles(body, look, ctx.where);
+            set_styles(control, states, {"normal", "hover", "pressed", "disabled", "focus"});
+            control["theme_override_styles"]["hover_pressed"] = states[2];
+        } else {
+            fields["flat"] = true;
+        }
+        navigation(body, file, control);
+        ui_calls(body, "m_OnValueChanged", "item_selected", ctx);
+        // Its caption and caption image show the option picked, its arrow is OptionButton's
+        // and its template is the list it opens.
+        fold_part(file, caption, ctx.index, go.entity);
+        fold_part(file, object_at(file, body, "m_CaptionImage"), ctx.index, go.entity);
+        if (tmp) {
+            fold_part(file, object_at(file, body, "m_Placeholder"), ctx.index, go.entity);
+        }
+        if (const int list = object_at(file, body, "m_Template"); descends(file, list, ctx.index)) {
+            fold(file, list, go.entity, true);
+            problems_.add("Dropdown template", ctx.where,
+                          "its list draws with the PopupMenu theme, not the template's look");
+        }
+        for (const int child : go.children) {
+            const GameObject& c = file.objects[static_cast<std::size_t>(child)];
+            const Component* image = script_of(c, "Image");
+            if (c.body.string_at("m_Name") != "Arrow" || image == nullptr || !c.children.empty()) {
+                continue;
+            }
+            // A sprite of the project's own replaces the arrow; Unity's built-in one is
+            // OptionButton's.
+            if (const auto ref = ref_at(image->body, "m_Sprite");
+                ref && !ref->null() && ref->guid != kBuiltinSprites) {
+                std::string why;
+                if (const Sprite* found = sprite(*ref, why); found != nullptr && found->whole) {
+                    control["theme_override_icons"]["arrow"] = found->texture;
+                }
+            }
+            fold(file, child, go.entity, true);
+        }
+        out.components["OptionButton"] = std::move(fields);
     }
 
     void ui_scroll(const Context& ctx, const Component& scroll, Converted& out) {

@@ -4,6 +4,7 @@
 
 #include "slash/core/text.hpp"
 #include "slash/input/input.hpp"
+#include "slash/text/text.hpp"
 #include "slash/ui/ui.hpp"
 
 #include <algorithm>
@@ -117,15 +118,39 @@ struct ScrollStatus {
            !status.pressed_down_with_focus && status.touch_index == -1 && status.feedback <= 0.0;
 }
 
+// Godot's gui/timers/incremental_search_max_interval_msec, in seconds.
+constexpr double kSearchInterval = 2.0;
+// PopupMenu ignores a release this soon after it opened under a held button, so the press that
+// opened it doesn't pick an item.
+constexpr double kGrabbedClickSeconds = 0.4;
+// InputEvent::DEVICE_ID_INTERNAL: the releases a control gets when it loses the mouse.
+constexpr int kInternalDevice = -2;
+
+// What PopupMenu keeps between events, for one open popup menu: a PopupMenu's, or an
+// OptionButton's or MenuButton's list.
+struct PopupStatus {
+    std::string owner; // the entity ID of the PopupMenu, OptionButton or MenuButton
+    int focused = -1;  // mouse_over: the item the pointer or keys are on
+    double scroll = 0.0;
+    int scroll_to = -1;             // an item to scroll into view, as scroll_to_item asks
+    double opened = 0.0;            // popup_time_msec, in seconds of world time
+    std::uint16_t initial_mask = 0; // initial_button_mask: the mouse buttons held as it opened
+    bool grabbed = false;           // during_grabbed_click: opened under a held button
+    bool scrolling = false;         // is_scrolling: a press landed beside the items
+    bool closing = false;           // _close_pressed: hidden at the end of the tick
+    bool mouse_inside = false;      // the mouse is over it, as NOTIFICATION_WM_MOUSE_ENTER
+    std::u32string search;          // search_string
+    double search_time = -1e9;      // search_time_msec, in seconds
+};
+
 struct GuiState {
     std::uint64_t tick = kNever; // the tick the gui system last ran
+    double now = 0.0;            // seconds of world time this tick
     std::vector<UiEvent> events; // that tick's
     std::vector<UiEvent> next;   // emitted between ticks, for the next one
     std::map<std::string, ButtonStatus, std::less<>> buttons;
     std::string key_focus;
-    bool hide_focus = false; // focus came from a click, so it isn't drawn
     std::string mouse_focus; // the control a held mouse button pressed
-    std::uint16_t mouse_focus_mask = 0;
     std::string mouse_over;
     std::vector<std::string> mouse_over_hierarchy; // it and its parents, outermost first
     std::map<int, std::string> touch_focus;        // the control each finger pressed
@@ -137,9 +162,17 @@ struct GuiState {
     std::map<std::string, SliderStatus, std::less<>> sliders;     // each Slider's
     std::map<std::string, ScrollBarStatus, std::less<>> scroll_bars; // each ScrollBar's
     std::map<std::string, ScrollStatus, std::less<>> scrolls;        // each ScrollContainer's
-    std::string followed;        // the focus follow_focus last scrolled to
-    std::string clipboard;       // the world's clipboard, which a backend shares with the system's
-    bool focus_by_arrow = false; // an arrow key is moving focus, so a LineEdit won't edit
+    std::string followed;  // the focus follow_focus last scrolled to
+    std::string clipboard; // the world's clipboard, which a backend shares with the system's
+    std::vector<PopupStatus> popups;                  // the popup menus open, the last on top
+    std::vector<std::pair<std::string, int>> selects; // select_item() calls for the next tick
+    std::uint16_t mouse_focus_mask = 0;
+    std::uint16_t mouse_mask = 0; // the mouse buttons held, as Input::get_mouse_button_mask
+    bool hide_focus = false;      // focus came from a click, so it isn't drawn
+    bool focus_by_arrow = false;  // an arrow key is moving focus, so a LineEdit won't edit
+    // A popup opened, so the controls lose the mouse as their window loses focus.
+    bool drop_mouse_focus = false;
+    bool popups_changed = false; // a popup opened or closed, so the layout is out of date
 };
 
 // The clipboard the platform gives, kept apart from GuiState so snapshots leave it alone.
@@ -248,6 +281,10 @@ Focus focus_mode(const world::World& world, entt::entity entity) {
         return Focus::Click;
     }
     if (mode == "none") {
+        return Focus::None;
+    }
+    // MenuButton's constructor sets FOCUS_ACCESSIBILITY: keys don't move focus to it.
+    if (world.ecs().all_of<world::MenuButton>(entity)) {
         return Focus::None;
     }
     return is_button(world, entity) ||
@@ -409,7 +446,9 @@ void emit(world::World& world, GuiState& state, std::string_view kind, const std
                         .from_line = 0,
                         .to_line = 0,
                         .value = 0.0,
-                        .value_changed = false};
+                        .value_changed = false,
+                        .index = -1,
+                        .item_id = -1};
     (state.tick == world.tick() ? state.events : state.next).push_back(event);
     json::Value data;
     if (toggled) {
@@ -432,7 +471,9 @@ void emit_value(world::World& world, GuiState& state, std::string_view kind, con
                         .from_line = 0,
                         .to_line = 0,
                         .value = ended ? 0.0 : value,
-                        .value_changed = ended && changed};
+                        .value_changed = ended && changed,
+                        .index = -1,
+                        .item_id = -1};
     (state.tick == world.tick() ? state.events : state.next).push_back(event);
     world.emit(std::string(kind), id,
                ended ? json::Object{{"value_changed", changed}} : json::Object{{"value", value}});
@@ -468,7 +509,9 @@ void emit_text(world::World& world, GuiState& state, std::string_view kind, cons
                         .from_line = 0,
                         .to_line = 0,
                         .value = 0.0,
-                        .value_changed = false};
+                        .value_changed = false,
+                        .index = -1,
+                        .item_id = -1};
     (state.tick == world.tick() ? state.events : state.next).push_back(event);
     world.emit(std::string(kind), id, json::Object{{std::string(key), text}});
 }
@@ -1118,7 +1161,9 @@ void emit_text_edit(world::World& world, GuiState& state, const std::string& id,
                             .from_line = signal.from_line,
                             .to_line = signal.to_line,
                             .value = 0.0,
-                            .value_changed = false};
+                            .value_changed = false,
+                            .index = -1,
+                            .item_id = -1};
         (state.tick == world.tick() ? state.events : state.next).push_back(event);
         world.emit(signal.kind, id,
                    json::Object{{"from_line", signal.from_line}, {"to_line", signal.to_line}});
@@ -1242,6 +1287,8 @@ void unpress_group(world::World& world, GuiState& state, entt::entity entity) {
     collect(world.ecs().view<world::Button>());
     collect(world.ecs().view<world::CheckBox>());
     collect(world.ecs().view<world::CheckButton>());
+    collect(world.ecs().view<world::OptionButton>());
+    collect(world.ecs().view<world::MenuButton>());
     collect(world.ecs().view<world::TextureButton>());
     std::ranges::sort(group, [](entt::entity a, entt::entity b) {
         return entt::to_entity(a) < entt::to_entity(b);
@@ -1258,9 +1305,230 @@ void unpress_group(world::World& world, GuiState& state, entt::entity entity) {
     }
 }
 
+// BaseButton::set_pressed: a toggle button set on or off without a press, emitting toggled if
+// that changed it.
+void set_toggled(world::World& world, GuiState& state, entt::entity entity, bool pressed) {
+    const std::optional<Base> base = base_of(world, entity);
+    if (!base || !base->toggle_mode || base->button_pressed == pressed) {
+        return;
+    }
+    set_button_pressed(world, entity, pressed);
+    if (pressed) {
+        unpress_group(world, state, entity);
+    }
+    emit(world, state, "toggled", std::string(world.id_of(entity)), pressed);
+}
+
+// ---- Popup menus ----
+
+// What shows an entity's popup menu.
+enum class PopupKind : std::uint8_t { None, Menu, Option, MenuButton };
+
+PopupKind popup_kind(const world::World& world, entt::entity entity) {
+    if (!world.valid(entity)) {
+        return PopupKind::None;
+    }
+    const auto& ecs = world.ecs();
+    if (ecs.all_of<world::PopupMenu>(entity)) {
+        return PopupKind::Menu;
+    }
+    if (ecs.all_of<world::OptionButton>(entity)) {
+        return PopupKind::Option;
+    }
+    return ecs.all_of<world::MenuButton>(entity) ? PopupKind::MenuButton : PopupKind::None;
+}
+
+PopupStatus* popup_status(GuiState& state, std::string_view owner) {
+    const auto found = std::ranges::find(state.popups, owner, &PopupStatus::owner);
+    return found != state.popups.end() ? &*found : nullptr;
+}
+
+// A popup menu's event: item_selected and item_focused with {"index"}, id_focused with {"id"},
+// and id_pressed and index_pressed with both.
+void emit_item(world::World& world, GuiState& state, std::string_view kind, const std::string& id,
+               int index, int item) {
+    if (id.empty()) {
+        return;
+    }
+    const bool has_id = kind == "id_focused" || kind == "id_pressed" || kind == "index_pressed";
+    const bool has_index = kind != "id_focused";
+    const UiEvent event{.kind = std::string(kind),
+                        .id = id,
+                        .toggled_on = false,
+                        .text = {},
+                        .from_line = 0,
+                        .to_line = 0,
+                        .value = 0.0,
+                        .value_changed = false,
+                        .index = has_index ? index : -1,
+                        .item_id = has_id ? item : -1};
+    (state.tick == world.tick() ? state.events : state.next).push_back(event);
+    json::Object data;
+    if (has_id) {
+        data.emplace("id", item);
+    }
+    if (has_index) {
+        data.emplace("index", index);
+    }
+    world.emit(std::string(kind), id, std::move(data));
+}
+
+// Window::hide on an open popup menu, and what its popup_hide does: a PopupMenu emits it; a
+// MenuButton emits it and is released (_popup_visibility_changed); an OptionButton is released.
+void hide_popup(world::World& world, GuiState& state, const std::string& owner) {
+    const auto found = std::ranges::find(state.popups, owner, &PopupStatus::owner);
+    if (found == state.popups.end()) {
+        return;
+    }
+    state.popups.erase(found);
+    state.popups_changed = true;
+    const entt::entity entity = world.find(owner);
+    switch (popup_kind(world, entity)) {
+    case PopupKind::Menu:
+        world.ecs().get<world::PopupMenu>(entity).visible = false;
+        emit(world, state, "popup_hide", owner);
+        break;
+    case PopupKind::MenuButton:
+        emit(world, state, "popup_hide", owner);
+        set_toggled(world, state, entity, false);
+        break;
+    case PopupKind::Option:
+        set_toggled(world, state, entity, false);
+        break;
+    case PopupKind::None:
+        break;
+    }
+}
+
+// The first item that isn't disabled, as OptionButton's and MenuButton's show_popup look for
+// one; -1 for none.
+int first_enabled(const std::vector<world::PopupMenuItem>& items) {
+    for (std::size_t i = 0; i < items.size(); ++i) {
+        if (!items[i].disabled) {
+            return static_cast<int>(i);
+        }
+    }
+    return -1;
+}
+
+// Popup::popup and what leads to it. An OptionButton's list starts on the option shown, or the
+// first that isn't disabled: focused when keys opened it, else only scrolled to. A MenuButton
+// emits about_to_popup and, opened by keys, focuses its first item that isn't disabled, and is
+// pressed as its popup's about_to_popup does. A PopupMenu becomes visible and emits
+// about_to_popup. Any other popup closes, and the controls lose the mouse, as the viewport's
+// window loses focus to the popup's.
+void show_popup(world::World& world, GuiState& state, entt::entity entity, bool by_mouse) {
+    const std::string owner(world.id_of(entity));
+    const PopupKind kind = popup_kind(world, entity);
+    if (owner.empty() || kind == PopupKind::None || popup_status(state, owner) != nullptr) {
+        return;
+    }
+    const std::vector<world::PopupMenuItem> items = popup_items(world, entity);
+    PopupStatus status;
+    status.owner = owner;
+    int start = -1;
+    if (kind == PopupKind::Option) {
+        start = world.ecs().get<world::OptionButton>(entity).selected;
+        if (start < 0 || !std::cmp_less(start, items.size()) ||
+            items[static_cast<std::size_t>(start)].disabled) {
+            start = first_enabled(items);
+        }
+    } else if (kind == PopupKind::MenuButton) {
+        emit(world, state, "about_to_popup", owner);
+        start = by_mouse ? -1 : first_enabled(items);
+    } else {
+        world.ecs().get<world::PopupMenu>(entity).visible = true;
+        emit(world, state, "about_to_popup", owner);
+    }
+    status.scroll_to = start;
+    status.focused = by_mouse ? -1 : start;
+    // NOTIFICATION_POST_POPUP.
+    status.opened = state.now;
+    status.initial_mask = state.mouse_mask;
+    status.grabbed = state.mouse_mask != 0;
+    for (PopupStatus& other : state.popups) {
+        other.closing = true;
+    }
+    state.popups.push_back(std::move(status));
+    state.popups_changed = true;
+    state.drop_mouse_focus = true;
+    if (kind == PopupKind::MenuButton) {
+        set_toggled(world, state, entity, true);
+    }
+}
+
+// PopupMenu::activate_item, and what its signals do. The popup hides, unless a PopupMenu's
+// hide_on_item_selection or hide_on_checkable_item_selection keeps it; then a PopupMenu or
+// MenuButton emits id_pressed and index_pressed, and an OptionButton selects the option and
+// emits item_selected, unless it was selected already and allow_reselect is off (_select).
+void activate_item(world::World& world, GuiState& state, entt::entity entity, int index) {
+    const std::vector<world::PopupMenuItem> items = popup_items(world, entity);
+    if (index < 0 || !std::cmp_less(index, items.size())) {
+        return;
+    }
+    const auto at = static_cast<std::size_t>(index);
+    const world::PopupMenuItem& item = items[at];
+    if (item.separator) {
+        return;
+    }
+    const std::string owner(world.id_of(entity));
+    const int id = item_id(item, at);
+    const PopupKind kind = popup_kind(world, entity);
+    bool hide = true;
+    if (kind == PopupKind::Menu) {
+        const auto& menu = world.ecs().get<world::PopupMenu>(entity);
+        hide = item.checkable != "none" ? menu.hide_on_checkable_item_selection
+                                        : menu.hide_on_item_selection;
+    }
+    if (hide) {
+        hide_popup(world, state, owner);
+    }
+    if (kind == PopupKind::Option) {
+        auto& option = world.ecs().get<world::OptionButton>(entity);
+        if (index == option.selected && !option.allow_reselect) {
+            return;
+        }
+        option.selected = index;
+        emit_item(world, state, "item_selected", owner, index, id);
+        return;
+    }
+    emit_item(world, state, "id_pressed", owner, index, id);
+    emit_item(world, state, "index_pressed", owner, index, id);
+}
+
+// The keys moving to an item: id_focused, or an OptionButton's item_focused (_focused), and the
+// item scrolled into view.
+void focus_item(world::World& world, GuiState& state, entt::entity entity, int index) {
+    const std::string owner(world.id_of(entity));
+    PopupStatus* status = popup_status(state, owner);
+    const std::vector<world::PopupMenuItem> items = popup_items(world, entity);
+    if (status == nullptr || index < 0 || !std::cmp_less(index, items.size())) {
+        return;
+    }
+    status->focused = index;
+    status->scroll_to = index;
+    const int id = item_id(items[static_cast<std::size_t>(index)], static_cast<std::size_t>(index));
+    if (popup_kind(world, entity) == PopupKind::Option) {
+        emit_item(world, state, "item_focused", owner, index, id);
+    } else {
+        emit_item(world, state, "id_focused", owner, index, id);
+    }
+}
+
+// OptionButton::pressed and MenuButton::pressed: the popup hides if it's open, else shows.
+void press_popup_button(world::World& world, GuiState& state, entt::entity entity, bool by_mouse) {
+    const std::string owner(world.id_of(entity));
+    if (popup_status(state, owner) != nullptr) {
+        hide_popup(world, state, owner);
+    } else {
+        show_popup(world, state, entity, by_mouse);
+    }
+}
+
 // Toggles a toggle button, or just presses one that isn't, as the end of a click and
-// BaseButton::press do.
-void fire(world::World& world, GuiState& state, entt::entity entity) {
+// BaseButton::press do; an OptionButton or MenuButton opens or closes its popup between toggled
+// and pressed, as BaseButton::_pressed calls pressed().
+void fire(world::World& world, GuiState& state, entt::entity entity, bool by_mouse = false) {
     const std::optional<Base> base = base_of(world, entity);
     if (!base || base->disabled) {
         return;
@@ -1272,6 +1540,10 @@ void fire(world::World& world, GuiState& state, entt::entity entity) {
         // In a group, the button pressed stays on.
         const std::optional<Base> now = base_of(world, entity);
         emit(world, state, "toggled", id, now && now->button_pressed);
+    }
+    if (const std::string_view type = button_type(world, entity);
+        type == "OptionButton" || type == "MenuButton") {
+        press_popup_button(world, state, entity, by_mouse);
     }
     emit(world, state, "pressed", id);
 }
@@ -1647,22 +1919,70 @@ struct Target {
     Bar bar = Bar::Own;
 };
 
-// One tick's work: the layout to find controls in, and whether the event being sent was handled.
+// One tick's work: the layout to find controls in, laid out again when a popup opens or closes,
+// and whether the event being sent was handled.
 class Gui {
 public:
-    Gui(world::World& world, GuiState& state, const Layout& layout, double now)
-        : world_(world), state_(state), layout_(layout), map_(input::map(std::as_const(world))),
-          now_(now) {
-        for (const entt::entity entity : layout.tree) {
-            const Placed* placed = layout.find(entity);
-            if (placed == nullptr) {
+    Gui(world::World& world, GuiState& state, text::Fonts& fonts, double now)
+        : world_(world), state_(state), fonts_(fonts),
+          layout_(layout(world, fonts, settings(world).viewport)),
+          map_(input::map(std::as_const(world))), now_(now),
+          last_mouse_(input::mouse_position(world)) {
+        index_tree();
+        settle_popups();
+    }
+
+    // What a popup opening or closing leaves to do once an event is handled: the controls lose
+    // the mouse as their window loses focus (Viewport::_drop_mouse_focus), and the layout catches
+    // up.
+    void after_event() {
+        if (state_.drop_mouse_focus) {
+            state_.drop_mouse_focus = false;
+            drop_mouse_focus();
+        }
+        if (state_.popups_changed) {
+            relayout();
+        }
+    }
+
+    // Once a tick, after its events: popup lists scroll to the items asked for, and a MenuButton
+    // whose menu is open hands it to another the mouse is on, with switch_on_hover, in the same
+    // parent (MenuButton's NOTIFICATION_INTERNAL_PROCESS).
+    void process_popups() {
+        if (std::ranges::any_of(state_.popups,
+                                [](const PopupStatus& status) { return status.scroll_to >= 0; })) {
+            relayout();
+        }
+        const entt::entity hovered = find(std::string(owner_of(state_.mouse_over)));
+        const auto* other = hovered != entt::null && bar_named(state_.mouse_over) == Bar::Own
+                                ? world_.ecs().try_get<world::MenuButton>(hovered)
+                                : nullptr;
+        if (other == nullptr || !other->switch_on_hover || other->disabled) {
+            return;
+        }
+        for (const PopupStatus& status : state_.popups) {
+            const entt::entity menu = find(status.owner);
+            const auto* own =
+                menu != entt::null ? world_.ecs().try_get<world::MenuButton>(menu) : nullptr;
+            if (own == nullptr || !own->switch_on_hover || menu == hovered || status.closing) {
                 continue;
             }
-            if (placed->parent == entt::null) {
-                roots_.push_back(entity);
-            } else {
-                kids_[placed->parent].push_back(entity);
+            const entt::entity up = parent(menu);
+            const entt::entity other_up = parent(hovered);
+            if (!(up != entt::null && contains(up, hovered)) &&
+                !(other_up != entt::null && contains(other_up, menu))) {
+                continue;
             }
+            const std::string owner = status.owner;
+            hide_popup(world_, state_, owner);
+            // pressed(), not a press: no toggle and no pressed signal. Not opened by the mouse,
+            // so its first item is focused, then unfocused.
+            press_popup_button(world_, state_, hovered, false);
+            if (PopupStatus* opened = popup_status(state_, id(hovered)); opened != nullptr) {
+                opened->focused = -1;
+            }
+            after_event();
+            return;
         }
     }
 
@@ -1689,13 +2009,33 @@ public:
         }
     }
 
-    // Viewport::push_input, from the mouse over on.
+    // Viewport::push_input, from the mouse over on: an open popup menu takes what isn't a left
+    // press outside it, as Viewport::_sub_windows_forward_input sends events to the window with
+    // focus.
     void send(const input::Event& event) {
         handled_ = false;
+        track_sticks(event);
+        if (event.type == input::EventType::MouseButton) {
+            const std::uint16_t bit = mask_bit(event.button);
+            state_.mouse_mask = event.pressed
+                                    ? static_cast<std::uint16_t>(state_.mouse_mask | bit)
+                                    : static_cast<std::uint16_t>(state_.mouse_mask & ~bit);
+        }
         if (event.type == input::EventType::MouseButton ||
             event.type == input::EventType::MouseMotion) {
+            last_mouse_ = event.position;
             update_mouse_over(event.position);
         }
+        if (forward_to_popup(event)) {
+            after_event();
+            return;
+        }
+        dispatch(event);
+        after_event();
+    }
+
+private:
+    void dispatch(const input::Event& event) {
         switch (event.type) {
         case input::EventType::MouseButton:
             mouse_button(event);
@@ -1728,7 +2068,385 @@ public:
         }
     }
 
-private:
+    void index_tree() {
+        roots_.clear();
+        kids_.clear();
+        for (const entt::entity entity : layout_.tree) {
+            const Placed* placed = layout_.find(entity);
+            if (placed == nullptr) {
+                continue;
+            }
+            if (placed->parent == entt::null) {
+                roots_.push_back(entity);
+            } else {
+                kids_[placed->parent].push_back(entity);
+            }
+        }
+    }
+
+    void relayout() {
+        layout_ = layout(world_, fonts_, settings(world_).viewport);
+        index_tree();
+        areas_.clear();
+        state_.popups_changed = false;
+        settle_popups();
+    }
+
+    // A popup list laid out with an item to scroll to keeps the scroll it came to.
+    void settle_popups() {
+        for (PopupStatus& status : state_.popups) {
+            if (status.scroll_to < 0) {
+                continue;
+            }
+            if (const PopupView* view = popup_view(status.owner); view != nullptr) {
+                status.scroll = view->scroll;
+                status.scroll_to = -1;
+            }
+        }
+    }
+
+    // A stick pushed to a focus action, as is_action_just_pressed_by_event: it moves focus once
+    // a push.
+    void track_sticks(const input::Event& event) {
+        static constexpr std::array<std::string_view, 6> kMoves{
+            "ui_focus_next", "ui_focus_prev", "ui_up", "ui_left", "ui_right", "ui_down"};
+        just_pushed_.clear();
+        if (event.type != input::EventType::JoypadMotion || map_ == nullptr) {
+            return;
+        }
+        for (const std::string_view action : kMoves) {
+            const auto found = map_->find_event(action, event, false);
+            if (!found) {
+                continue;
+            }
+            const auto key =
+                std::make_tuple(event.device, static_cast<int>(event.axis), std::string(action));
+            if (!found->match.pressed) {
+                state_.joy_held.erase(key);
+            } else if (state_.joy_held.insert(key).second) {
+                just_pushed_.insert(action);
+            }
+        }
+    }
+
+    [[nodiscard]] const PopupView* popup_view(std::string_view owner) const {
+        const entt::entity entity = owner.empty() ? entt::null : world_.find(owner);
+        if (entity == entt::null) {
+            return nullptr;
+        }
+        const auto found = std::ranges::find(layout_.popups, entity, &PopupView::owner);
+        return found != layout_.popups.end() ? &*found : nullptr;
+    }
+
+    // The popup with focus: the last one open that isn't closing.
+    PopupStatus* top_popup() {
+        for (PopupStatus& status : std::views::reverse(state_.popups)) {
+            if (!status.closing) {
+                return &status;
+            }
+        }
+        return nullptr;
+    }
+
+    // A left press outside the popup with focus closes it at the end of the tick, as its parent
+    // window taking focus does (Popup::_parent_focused), and goes on to the controls; anything
+    // else goes to it.
+    bool forward_to_popup(const input::Event& event) {
+        PopupStatus* top = top_popup();
+        if (top == nullptr) {
+            return false;
+        }
+        const PopupView* view = popup_view(top->owner);
+        if (event.type == input::EventType::MouseButton && event.pressed &&
+            event.button == input::MouseButton::Left &&
+            (view == nullptr || !inside(view->size, event.position - view->position))) {
+            top->closing = true;
+            return false;
+        }
+        if (view != nullptr) {
+            popup_input(top->owner, *view, event);
+        }
+        return true;
+    }
+
+    // Rect2::has_point.
+    static bool has(Vec2 position, Vec2 size, Vec2 point) {
+        return point.x >= position.x && point.y >= position.y && point.x < position.x + size.x &&
+               point.y < position.y + size.y;
+    }
+
+    // PopupMenu::_get_mouse_over: the item at a viewport point, in the list as the scroll
+    // container cuts it; -1 for none.
+    static int item_at(const PopupView& view, Vec2 point) {
+        const Vec2 room{view.size.x - view.margins[0] - view.margins[2],
+                        view.size.y - view.margins[1] - view.margins[3]};
+        const Vec2 local = point - view.position - Vec2{view.margins[0], view.margins[1]};
+        const auto separation = static_cast<float>(view.v_separation);
+        float total = 0.0F;
+        for (const PopupItemView& item : view.items) {
+            total += item.height + separation;
+        }
+        // The list's rect in the scroll container, which fills it at least, cut to it.
+        const float left = view.list_position.x - view.margins[0];
+        const float x0 = std::max(0.0F, left);
+        const float x1 = std::min(room.x, left + view.list_size.x);
+        const float y0 = std::max(0.0F, -view.scroll);
+        const float y1 = std::min(room.y, std::max(total, room.y) - view.scroll);
+        if (local.x < x0 || local.y < y0 || local.x >= x1 || local.y >= y1) {
+            return -1;
+        }
+        const float y = local.y + view.scroll;
+        float bottom = 0.0F;
+        for (std::size_t i = 0; i < view.items.size(); ++i) {
+            bottom += separation;
+            bottom += view.items[i].height;
+            if (bottom > y) {
+                return static_cast<int>(i);
+            }
+        }
+        return -1;
+    }
+
+    // PopupMenu::_mouse_over_update: the item under the pointer, or none over a separator or a
+    // disabled item.
+    static void mouse_over_update(PopupStatus& status, const PopupView& view, Vec2 point) {
+        const int over = item_at(view, point);
+        status.focused =
+            over >= 0 && view.items[static_cast<std::size_t>(over)].selectable ? over : -1;
+    }
+
+    // PopupMenu::_input_from_window: its own handling, then Popup's, which closes it on
+    // ui_cancel.
+    void popup_input(const std::string& owner, const PopupView& view, const input::Event& event) {
+        popup_menu_input(owner, view, event);
+        if (action_pressed(event, "ui_cancel", false, true)) {
+            if (PopupStatus* status = popup_status(state_, owner); status != nullptr) {
+                status->closing = true;
+            }
+        }
+    }
+
+    // PopupMenu::_input_from_window_internal. Submenus, item shortcuts and holding a gamepad
+    // direction aren't here.
+    void popup_menu_input(const std::string& owner, const PopupView& view,
+                          const input::Event& event) {
+        const entt::entity entity = find(owner);
+        if (entity == entt::null) {
+            return;
+        }
+        const auto status = [&] { return popup_status(state_, owner); };
+        const std::vector<world::PopupMenuItem> items = popup_items(world_, entity);
+        const int count = static_cast<int>(items.size());
+        const auto selectable = [&](int i) {
+            const world::PopupMenuItem& item = items[static_cast<std::size_t>(i)];
+            return !item.separator && !item.disabled;
+        };
+        if (!items.empty()) {
+            const bool joypad = event.type == input::EventType::JoypadMotion ||
+                                event.type == input::EventType::JoypadButton;
+            const auto just = [&](std::string_view action) {
+                return event.type == input::EventType::JoypadButton ? !event.echo
+                                                                    : just_pushed_.contains(action);
+            };
+            // The next selectable item one way, going round; -1 for none.
+            const auto next = [&](int step) {
+                const int focused = status()->focused;
+                int from = focused + step;
+                if (from >= count || from < 0) {
+                    from = step > 0 ? 0 : count - 1;
+                }
+                for (int i = from; i >= 0 && i < count; i += step) {
+                    if (selectable(i)) {
+                        return i;
+                    }
+                }
+                for (int i = step > 0 ? 0 : count - 1; step > 0 ? i < from : i >= from; i += step) {
+                    if (selectable(i)) {
+                        return i;
+                    }
+                }
+                return -1;
+            };
+            if (is_action(event, "ui_down", true) && is_pressed(event)) {
+                if (joypad && !just("ui_down")) {
+                    return;
+                }
+                if (const int to = next(1); to >= 0) {
+                    focus_item(world_, state_, entity, to);
+                }
+            } else if (is_action(event, "ui_up", true) && is_pressed(event)) {
+                if (joypad && !just("ui_up")) {
+                    return;
+                }
+                if (const int to = next(-1); to >= 0) {
+                    focus_item(world_, state_, entity, to);
+                }
+            } else if (is_action(event, "ui_accept", true) && is_pressed(event)) {
+                const int over = status()->focused;
+                if (over >= 0 && over < count && !items[static_cast<std::size_t>(over)].separator) {
+                    activate_item(world_, state_, entity, over);
+                    return;
+                }
+            }
+        }
+
+        // The items' area: the panel inside its margins, less the scroll bar (twice in right to
+        // left, as Godot's).
+        Vec2 area_position = view.position;
+        Vec2 area_size = view.size;
+        if (view.bar_width > 0.0F) {
+            if (view.rtl) {
+                area_position.x += view.bar_width;
+                area_size.x -= view.bar_width;
+            }
+            area_size.x -= view.bar_width;
+        }
+        area_position = area_position + Vec2{view.margins[0], view.margins[1]};
+        area_size =
+            area_size - Vec2{view.margins[0] + view.margins[2], view.margins[1] + view.margins[3]};
+        const Vec2 point = event.position;
+
+        if (event.type == input::EventType::MouseButton) {
+            PopupStatus& s = *status();
+            // A release of the left button, or of any button held as it opened, picks an item,
+            // so a press can open it and its release pick one.
+            if (event.button == input::MouseButton::Left ||
+                (s.initial_mask & mask_bit(event.button)) != 0) {
+                if (event.pressed) {
+                    s.grabbed = false;
+                    s.scrolling = view.rtl ? point.x < area_position.x - area_size.x
+                                           : point.x > area_size.x + area_position.x;
+                    if (!has(area_position, area_size, point)) {
+                        return;
+                    }
+                    mouse_over_update(s, view, point);
+                    return;
+                }
+                if (s.scrolling) {
+                    s.scrolling = false;
+                    return;
+                }
+                const bool was_grabbed = s.grabbed;
+                s.grabbed = false;
+                s.initial_mask = 0;
+                if (!has(area_position, area_size, point) ||
+                    (was_grabbed && now_ - s.opened < kGrabbedClickSeconds)) {
+                    return;
+                }
+                const int over = item_at(view, point);
+                if (over < 0) {
+                    if (!was_grabbed) {
+                        hide_popup(world_, state_, owner);
+                    }
+                    return;
+                }
+                if (selectable(over)) {
+                    activate_item(world_, state_, entity, over);
+                }
+                return;
+            }
+            // The wheel scrolls the list by an eighth of its page, or a quarter over its scroll
+            // bar, as ScrollContainer and ScrollBar do.
+            if (event.pressed && view.scroll_max > 0.0F &&
+                (event.button == input::MouseButton::WheelUp ||
+                 event.button == input::MouseButton::WheelDown)) {
+                const Vec2 room{view.size.x - view.margins[0] - view.margins[2],
+                                view.size.y - view.margins[1] - view.margins[3]};
+                const Vec2 container = view.position + Vec2{view.margins[0], view.margins[1]};
+                if (!has(container, room, point)) {
+                    return;
+                }
+                const Vec2 bar{view.rtl ? container.x : container.x + room.x - view.bar_width,
+                               container.y};
+                const auto page = static_cast<double>(view.list_size.y);
+                const double by =
+                    has(bar, {view.bar_width, room.y}, point) ? page / 4.0 : page / kPageDivisor;
+                const double sign = event.button == input::MouseButton::WheelUp ? -1.0 : 1.0;
+                s.scroll = std::clamp(static_cast<double>(view.scroll) +
+                                          (sign * by * static_cast<double>(event.factor)),
+                                      0.0, static_cast<double>(view.scroll_max));
+                s.scroll_to = -1;
+            }
+            return;
+        }
+
+        if (event.type == input::EventType::MouseMotion) {
+            // Godot skips motion with no velocity.
+            if (event.relative && *event.relative == Vec2{}) {
+                return;
+            }
+            PopupStatus& s = *status();
+            if (s.focused == -1 && !has(area_position, area_size, point)) {
+                return;
+            }
+            mouse_over_update(s, view, point);
+            return;
+        }
+
+        // Typing the start of an item's text moves to the next one that starts so, the letters
+        // typed within two seconds of each other making up what it looks for.
+        const auto* menu = world_.ecs().try_get<world::PopupMenu>(entity);
+        const bool allow_search = menu == nullptr || menu->allow_search;
+        if (allow_search && event.type == input::EventType::Key && event.unicode >= 0x20U &&
+            event.pressed && !items.empty()) {
+            PopupStatus& s = *status();
+            const double diff = now_ - s.search_time;
+            s.search_time = now_;
+            if (diff > kSearchInterval) {
+                s.search.clear();
+            }
+            if (s.search != std::u32string(1, event.unicode)) {
+                s.search += event.unicode;
+            }
+            const std::string wanted = text::to_upper(to_utf8(s.search));
+            const int over = s.focused;
+            for (int i = over + 1; i <= count; ++i) {
+                if (i == count) {
+                    if (over <= 0) {
+                        break;
+                    }
+                    i = 0;
+                }
+                if (i == over) {
+                    break;
+                }
+                if (text::to_upper(items[static_cast<std::size_t>(i)].text).starts_with(wanted)) {
+                    focus_item(world_, state_, entity, i);
+                    break;
+                }
+            }
+        }
+    }
+
+    // Viewport::_drop_mouse_focus: the control a held mouse button pressed gets a release for
+    // each button, and loses the mouse.
+    void drop_mouse_focus() {
+        const Target focus = target(state_.mouse_focus);
+        const std::uint16_t mask = state_.mouse_focus_mask;
+        state_.mouse_focus.clear();
+        state_.mouse_focus_mask = 0;
+        if (focus.entity == entt::null) {
+            return;
+        }
+        for (const input::MouseButton button :
+             {input::MouseButton::Left, input::MouseButton::Right, input::MouseButton::Middle}) {
+            if ((mask & mask_bit(button)) == 0) {
+                continue;
+            }
+            input::Event release;
+            release.type = input::EventType::MouseButton;
+            release.device = kInternalDevice;
+            release.button = button;
+            release.pressed = false;
+            release.position = last_mouse_;
+            if (focus.bar != Bar::Own) {
+                bar_input(focus.entity, focus.bar, release);
+            } else {
+                gui_input(focus.entity, release);
+            }
+        }
+    }
+
     [[nodiscard]] std::string id(entt::entity entity) const {
         return std::string(world_.id_of(entity));
     }
@@ -1857,6 +2575,29 @@ private:
     // Viewport::_update_mouse_over: mouse_exited for the controls the mouse left, from the
     // innermost, then mouse_entered for the ones it is over, from the outermost.
     void update_mouse_over(Vec2 point) {
+        // Over an open popup, the controls lose the mouse and the popup has it; a popup the mouse
+        // leaves loses its focused item (NOTIFICATION_WM_MOUSE_EXIT).
+        const PopupView* over_popup = nullptr;
+        for (const PopupView& view : std::views::reverse(layout_.popups)) {
+            if (inside(view.size, point - view.position)) {
+                over_popup = &view;
+                break;
+            }
+        }
+        for (PopupStatus& status : state_.popups) {
+            const bool now_inside =
+                over_popup != nullptr && find(status.owner) == over_popup->owner;
+            if (status.mouse_inside && !now_inside) {
+                status.focused = -1;
+            }
+            status.mouse_inside = now_inside;
+        }
+        if (over_popup != nullptr) {
+            if (!state_.mouse_over.empty() || !state_.mouse_over_hierarchy.empty()) {
+                drop_mouse_over(world_, state_, {});
+            }
+            return;
+        }
         const Target target = find_control(point);
         const entt::entity over = target.entity;
         const std::string over_id = target_id(target);
@@ -3132,7 +3873,9 @@ private:
                 status.pressing_inside = false;
                 status.touch_index = -1;
             }
-            fire(world_, state_, entity);
+            fire(world_, state_, entity,
+                 event.type == input::EventType::MouseButton ||
+                     event.type == input::EventType::ScreenTouch);
         }
         if (!pressed) {
             ButtonStatus& now = status_of(world_, state_, entity);
@@ -3245,26 +3988,8 @@ private:
     // Keys, gamepads and actions: the control with focus first, then the ui_* actions move
     // focus.
     void action_event(const input::Event& event) {
-        // A stick moves focus once per push, as is_action_just_pressed_by_event.
-        std::set<std::string_view> just_pushed;
         static constexpr std::array<std::string_view, 6> kMoves{
             "ui_focus_next", "ui_focus_prev", "ui_up", "ui_left", "ui_right", "ui_down"};
-        if (event.type == input::EventType::JoypadMotion && map_ != nullptr) {
-            for (const std::string_view action : kMoves) {
-                const auto found = map_->find_event(action, event, false);
-                if (!found) {
-                    continue;
-                }
-                const auto key = std::make_tuple(event.device, static_cast<int>(event.axis),
-                                                 std::string(action));
-                if (!found->match.pressed) {
-                    state_.joy_held.erase(key);
-                } else if (state_.joy_held.insert(key).second) {
-                    just_pushed.insert(action);
-                }
-            }
-        }
-        just_pushed_ = just_pushed;
         if (const entt::entity focus = find(state_.key_focus); focus != entt::null) {
             gui_input(focus, event);
             if (handled_) {
@@ -3286,7 +4011,7 @@ private:
         for (const std::string_view action : kMoves) {
             const bool moved =
                 event.type == input::EventType::JoypadMotion
-                    ? action_pressed(event, action, false, false) && just_pushed.contains(action)
+                    ? action_pressed(event, action, false, false) && just_pushed_.contains(action)
                     : action_pressed(event, action, true, true);
             if (!moved) {
                 continue;
@@ -3598,11 +4323,13 @@ private:
 
     world::World& world_;
     GuiState& state_;
-    const Layout& layout_;
+    text::Fonts& fonts_;
+    Layout layout_;
     const input::Map* map_;
     std::vector<entt::entity> roots_;
     std::unordered_map<entt::entity, std::vector<entt::entity>> kids_;
     double now_ = 0.0; // seconds of world time, for triple clicks
+    Vec2 last_mouse_;  // where the mouse last was
     bool handled_ = false;
     std::set<std::string_view> just_pushed_; // actions a stick just pushed, for the event sent
     struct CachedArea {
@@ -3781,6 +4508,45 @@ void upkeep(world::World& world, GuiState& state, double tick_seconds) {
     }
 }
 
+// Keeps the open popups in step with the world: one whose entity went away goes quietly; a
+// PopupMenu set invisible closes, as does a button's list when the button is hidden
+// (NOTIFICATION_VISIBILITY_CHANGED); a PopupMenu set visible opens.
+void popup_upkeep(world::World& world, GuiState& state) {
+    std::erase_if(state.popups, [&](const PopupStatus& status) {
+        return popup_kind(world, world.find(status.owner)) == PopupKind::None;
+    });
+    std::vector<std::string> hidden;
+    if (!state.popups.empty()) {
+        const Parents parents(world);
+        for (const PopupStatus& status : state.popups) {
+            const entt::entity entity = world.find(status.owner);
+            if (const auto* menu = world.ecs().try_get<world::PopupMenu>(entity); menu != nullptr) {
+                if (!menu->visible) {
+                    hidden.push_back(status.owner);
+                }
+            } else if (!parents.visible_in_tree(entity)) {
+                hidden.push_back(status.owner);
+            }
+        }
+    }
+    for (const std::string& owner : hidden) {
+        hide_popup(world, state, owner);
+    }
+    std::vector<entt::entity> shown;
+    for (const auto [entity, menu] : world.ecs().view<world::PopupMenu>().each()) {
+        if (menu.visible && !world.id_of(entity).empty() &&
+            popup_status(state, world.id_of(entity)) == nullptr) {
+            shown.push_back(entity);
+        }
+    }
+    std::ranges::sort(shown, [](entt::entity a, entt::entity b) {
+        return entt::to_entity(a) < entt::to_entity(b);
+    });
+    for (const entt::entity entity : shown) {
+        show_popup(world, state, entity, false);
+    }
+}
+
 void run(world::World& world, double tick_seconds) {
     GuiState* state = state_of(world);
     if (state == nullptr) {
@@ -3789,32 +4555,68 @@ void run(world::World& world, double tick_seconds) {
     state->tick = world.tick();
     state->events = std::move(state->next);
     state->next.clear();
+    state->now = static_cast<double>(world.tick()) * tick_seconds;
     upkeep(world, *state, tick_seconds);
+    popup_upkeep(world, *state);
     track_sliders(world, *state);
     track_scroll_bars(world, *state);
     absorb_scrolls(world, *state);
     const std::span<const input::Event> events = input::events(std::as_const(world));
     const std::vector<std::string> presses = std::move(state->presses);
     state->presses.clear();
+    const std::vector<std::pair<std::string, int>> selects = std::move(state->selects);
+    state->selects.clear();
     // ScrollContainers need their layout every tick, to glide, follow focus and keep in range.
     const bool scrolls = !world.ecs().view<world::ScrollContainer>().empty();
-    if (!events.empty() || scrolls) {
+    std::optional<Gui> gui;
+    if (!events.empty() || scrolls || !presses.empty() || !selects.empty() ||
+        state->drop_mouse_focus) {
         if (text::Fonts* found = fonts(world); found != nullptr) {
-            const Layout placed = layout(world, *found, settings(world).viewport);
-            Gui gui(world, *state, placed, static_cast<double>(world.tick()) * tick_seconds);
+            gui.emplace(world, *state, *found, state->now);
+            gui->after_event();
             for (const input::Event& event : events) {
-                gui.send(event);
+                gui->send(event);
             }
             if (scrolls) {
-                gui.process_scrolls(tick_seconds);
+                gui->process_scrolls(tick_seconds);
             }
         }
     }
     for (const std::string& id : presses) {
         if (const entt::entity entity = world.find(id); entity != entt::null) {
             fire(world, *state, entity);
+            if (gui) {
+                gui->after_event();
+            }
         }
     }
+    for (const auto& [id, index] : selects) {
+        if (const entt::entity entity = world.find(id); entity != entt::null) {
+            activate_item(world, *state, entity, index);
+            if (gui) {
+                gui->after_event();
+            }
+        }
+    }
+    if (gui) {
+        gui->process_popups();
+    }
+    // Popup::_close_pressed's deferred hide.
+    std::vector<std::string> closing;
+    for (const PopupStatus& status : state->popups) {
+        if (status.closing) {
+            closing.push_back(status.owner);
+        }
+    }
+    for (const std::string& owner : closing) {
+        hide_popup(world, *state, owner);
+    }
+    if (!gui && state->drop_mouse_focus) {
+        state->mouse_focus.clear();
+        state->mouse_focus_mask = 0;
+    }
+    state->drop_mouse_focus = false;
+    state->popups_changed = false;
     repeat_sliders(world, *state, tick_seconds);
     std::erase_if(state->buttons, [](const auto& each) { return idle(each.second); });
     // LineEdit's deferred _text_changed: one text_changed a tick, and one step to undo.
@@ -3897,6 +4699,112 @@ void press(world::World& world, entt::entity button) {
     if (state != nullptr && !world.id_of(button).empty() && base_of(world, button)) {
         state->presses.emplace_back(world.id_of(button));
     }
+}
+
+bool open_popup(world::World& world, entt::entity owner) {
+    GuiState* state = state_of(world);
+    const PopupKind kind = popup_kind(world, owner);
+    if (state == nullptr || kind == PopupKind::None || world.id_of(owner).empty()) {
+        return false;
+    }
+    if (kind != PopupKind::Menu &&
+        (!is_control(world, owner) || !Parents(world).visible_in_tree(owner))) {
+        return false;
+    }
+    const std::string id(world.id_of(owner));
+    if (PopupStatus* status = popup_status(*state, id); status == nullptr) {
+        show_popup(world, *state, owner, false);
+    } else if (status->closing) {
+        // Closing as another opened: it stays open, on top, and the others close instead.
+        for (PopupStatus& other : state->popups) {
+            other.closing = other.owner != id;
+        }
+        const auto found = std::ranges::find(state->popups, id, &PopupStatus::owner);
+        std::rotate(found, found + 1, state->popups.end());
+        state->popups_changed = true;
+    }
+    return true;
+}
+
+bool close_popup(world::World& world, entt::entity owner) {
+    GuiState* state = state_of(world);
+    if (state == nullptr || world.id_of(owner).empty()) {
+        return false;
+    }
+    const std::string id(world.id_of(owner));
+    if (popup_status(*state, id) != nullptr) {
+        hide_popup(world, *state, id);
+        return true;
+    }
+    // A PopupMenu made visible that the gui system hasn't opened yet.
+    auto* menu = world.ecs().try_get<world::PopupMenu>(owner);
+    if (menu == nullptr || !menu->visible) {
+        return false;
+    }
+    menu->visible = false;
+    return true;
+}
+
+std::vector<entt::entity> open_popups(const world::World& world) {
+    std::vector<entt::entity> out;
+    const GuiState* state = state_of(world);
+    for (const PopupState& each : popup_states(world)) {
+        // One closing at the end of the tick, as another opened, is as good as closed.
+        const bool closing =
+            state != nullptr && std::ranges::any_of(state->popups, [&](const PopupStatus& status) {
+                return status.closing && status.owner == world.id_of(each.owner);
+            });
+        if (!closing) {
+            out.push_back(each.owner);
+        }
+    }
+    return out;
+}
+
+bool select_item(world::World& world, entt::entity owner, int index) {
+    GuiState* state = state_of(world);
+    if (state == nullptr || world.id_of(owner).empty() ||
+        popup_kind(world, owner) == PopupKind::None) {
+        return false;
+    }
+    const std::vector<world::PopupMenuItem> items = popup_items(world, owner);
+    if (index < 0 || !std::cmp_less(index, items.size())) {
+        return false;
+    }
+    const world::PopupMenuItem& item = items[static_cast<std::size_t>(index)];
+    const std::optional<Base> base = base_of(world, owner);
+    if (item.separator || item.disabled || (base && base->disabled)) {
+        return false;
+    }
+    state->selects.emplace_back(world.id_of(owner), index);
+    return true;
+}
+
+std::vector<PopupState> popup_states(const world::World& world) {
+    std::vector<PopupState> out;
+    if (const GuiState* state = state_of(world); state != nullptr) {
+        for (const PopupStatus& status : state->popups) {
+            if (const entt::entity owner = world.find(status.owner); owner != entt::null) {
+                out.push_back({.owner = owner,
+                               .focused = status.focused,
+                               .scroll = static_cast<float>(status.scroll),
+                               .scroll_to = status.scroll_to});
+            }
+        }
+    }
+    std::vector<entt::entity> untracked;
+    for (const auto [entity, menu] : world.ecs().view<world::PopupMenu>().each()) {
+        if (menu.visible && std::ranges::find(out, entity, &PopupState::owner) == out.end()) {
+            untracked.push_back(entity);
+        }
+    }
+    std::ranges::sort(untracked, [](entt::entity a, entt::entity b) {
+        return entt::to_entity(a) < entt::to_entity(b);
+    });
+    for (const entt::entity entity : untracked) {
+        out.push_back({.owner = entity, .focused = -1, .scroll = 0.0F, .scroll_to = -1});
+    }
+    return out;
 }
 
 // BaseButton::get_draw_mode.
@@ -4164,7 +5072,8 @@ void check_buttons(const world::World& world, std::vector<Problem>& problems) {
     const input::Map& actions = map != nullptr ? *map : defaults;
     std::vector<std::pair<std::string, entt::entity>> entities;
     for (const auto [entity] : ecs.storage<entt::entity>()->each()) {
-        if (is_control(world, entity) && !world.id_of(entity).empty()) {
+        if ((is_control(world, entity) || ecs.all_of<world::PopupMenu>(entity)) &&
+            !world.id_of(entity).empty()) {
             entities.emplace_back(world.id_of(entity), entity);
         }
     }
@@ -4216,10 +5125,50 @@ void check_buttons(const world::World& world, std::vector<Problem>& problems) {
                  .message = "button groups are for toggle buttons; set toggle_mode too"});
         }
     };
+    // Items' checkable values, which the schema takes as any string.
+    const auto check_items = [&](const std::string& id, std::string_view type,
+                                 const std::vector<world::PopupMenuItem>& items) {
+        static const std::vector<std::string_view> kCheckable{"none", "check", "radio"};
+        for (std::size_t i = 0; i < items.size(); ++i) {
+            const std::string& checkable = items[i].checkable;
+            if (std::ranges::find(kCheckable, checkable) != kCheckable.end()) {
+                continue;
+            }
+            std::string message = "\"" + checkable + R"(" isn't "none", "check" or "radio")";
+            if (const std::string_view hint = closest_match(checkable, kCheckable); !hint.empty()) {
+                message += "; did you mean \"" + std::string(hint) + "\"?";
+            }
+            problems.push_back({.id = id,
+                                .path = "/components/" + std::string(type) + "/items/" +
+                                        std::to_string(i) + "/checkable",
+                                .message = std::move(message)});
+        }
+    };
     for (const auto& entry : entities) {
         // Named, not bound, so the lambda below can capture them on every compiler.
         const std::string& id = entry.first;
         const entt::entity entity = entry.second;
+        if (const auto* menu = ecs.try_get<world::PopupMenu>(entity); menu != nullptr) {
+            check_items(id, "PopupMenu", menu->items);
+            if (is_control(world, entity)) {
+                problems.push_back({.id = id,
+                                    .path = "/components/PopupMenu",
+                                    .message = "a PopupMenu is a window of its own, not a "
+                                               "control; give it an entity of its own"});
+            }
+        }
+        if (const auto* menu = ecs.try_get<world::MenuButton>(entity); menu != nullptr) {
+            check_items(id, "MenuButton", menu->items);
+        }
+        if (const auto* option = ecs.try_get<world::OptionButton>(entity);
+            option != nullptr && option->selected >= 0 &&
+            !std::cmp_less(option->selected, option->items.size())) {
+            problems.push_back({.id = id,
+                                .path = "/components/OptionButton/selected",
+                                .message = "it has " + std::to_string(option->items.size()) +
+                                           (option->items.size() == 1 ? " option" : " options") +
+                                           "; -1 selects none"});
+        }
         std::vector<std::string_view> types; // the buttons it has
         const auto check = [&](std::string_view type, const auto* button) {
             if (button != nullptr) {
@@ -4231,12 +5180,15 @@ void check_buttons(const world::World& world, std::vector<Problem>& problems) {
         check("Button", ecs.try_get<world::Button>(entity));
         check("CheckBox", ecs.try_get<world::CheckBox>(entity));
         check("CheckButton", ecs.try_get<world::CheckButton>(entity));
+        check("OptionButton", ecs.try_get<world::OptionButton>(entity));
+        check("MenuButton", ecs.try_get<world::MenuButton>(entity));
         check("TextureButton", ecs.try_get<world::TextureButton>(entity));
         if (types.size() > 1) {
-            problems.push_back(
-                {.id = id,
-                 .path = "/components/" + std::string(types[1]),
-                 .message = "an entity is one button; it has a " + std::string(types[0]) + " too"});
+            problems.push_back({.id = id,
+                                .path = "/components/" + std::string(types[1]),
+                                .message = "an entity is one button; it has " +
+                                           std::string(types[0] == "OptionButton" ? "an " : "a ") +
+                                           std::string(types[0]) + " too"});
         }
         if (!types.empty() && ecs.all_of<world::Label>(entity)) {
             problems.push_back(
