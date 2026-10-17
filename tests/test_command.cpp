@@ -2167,6 +2167,66 @@ TEST_CASE("tilemap.convert finds where cells are and which cell a point is in") 
     std::filesystem::remove_all(root);
 }
 
+TEST_CASE("tilemap.get reads cells' custom data, and light.sample sees tiles' shadows") {
+    const std::string root = "tilemap_data_project";
+    std::filesystem::remove_all(root);
+    REQUIRE(slash::platform::create_directories(root).ok());
+    render::Image white;
+    white.width = 32;
+    white.height = 16;
+    white.pixels.assign(std::size_t{32} * 16 * 4, 255);
+    REQUIRE(
+        slash::platform::write_file(root + "/white.png", render::encode_png(white).value()).ok());
+    REQUIRE(slash::platform::write_file(root + "/dungeon.tileset.json", R"({"format": 1,
+        "occlusion_layers": [{}],
+        "custom_data_layers": [{"name": "damage", "type": "int"},
+                               {"name": "kind", "type": "string"}],
+        "sources": {"white": {"texture": "white.png", "tiles": {
+            "0,0": {"name": "lava", "custom_data": {"damage": 5, "kind": "lava"}},
+            "1,0": {"name": "wall", "custom_data": {"kind": "wall"},
+                    "occlusion": [{"points": [[-8, -8], [8, -8], [8, 8], [-8, 8]]}]}}}}})")
+                .ok());
+    command::SessionOptions options;
+    options.project_root = root;
+    Engine engine(options);
+    engine.ok("batch", R"({"commands": [
+        {"command": "entity.create", "params": {"id": "map", "components": {
+            "TileMapLayer": {"tile_set": "dungeon.tileset.json",
+                             "legend": {"l": "lava", "w": "wall"}, "rows": ["l..w"]}}}},
+        {"command": "entity.create", "params": {"id": "lamp", "components": {
+            "Transform2D": {"position": [8, 8]},
+            "PointLight2D": {"texture": "white.png", "texture_scale": 20,
+                             "shadow_enabled": true}}}}]})");
+
+    // Each cell's tile and its value in every custom data layer, or the layer's default.
+    CHECK(engine.ok("tilemap.get", R"({"id": "map", "cells": [[0, 0], [3, 0], [1, 0]]})") ==
+          parse(R"({"cells": [
+              {"cell": [0, 0], "tile": "lava", "data": {"damage": 5, "kind": "lava"}},
+              {"cell": [3, 0], "tile": "wall", "data": {"damage": 0, "kind": "wall"}},
+              {"cell": [1, 0], "tile": null}]})"));
+    CHECK(contains(engine
+                       .fails("tilemap.get",
+                              R"({"id": "map", "cells": [[0, 0]], "rect": [0, 0, 1, 1]})",
+                              command::code::kInvalidParams)
+                       .message,
+                   "give cells"));
+
+    // The wall at cell (3, 0), x 48 to 64, shadows the lamp's light beyond it.
+    const json::Value lit = engine.ok("light.sample", R"({"points": [[40, 8], [80, 8]]})");
+    CHECK(*lit.find("points")->as_array()[0].find("lights") ==
+          parse(R"([{"id": "lamp", "color": [1, 1, 1], "shadow": 0}])"));
+    CHECK(*lit.find("points")->as_array()[1].find("lights") ==
+          parse(R"([{"id": "lamp", "color": [0, 0, 0], "shadow": 1}])"));
+    // With the layer's occlusion off, nothing shadows the lamp.
+    engine.ok("component.set",
+              R"({"id": "map", "components": {"TileMapLayer": {"occlusion_enabled": false}}})");
+    CHECK(*engine.ok("light.sample", R"({"points": [[80, 8]]})")
+               .find("points")
+               ->as_array()[0]
+               .find("lights") == parse(R"([{"id": "lamp", "color": [1, 1, 1]}])"));
+    std::filesystem::remove_all(root);
+}
+
 TEST_CASE("log.tail returns recent log lines as objects") {
     Engine engine({}, /*capture_logs=*/true);
     slash::log::info("first", {{"n", 1}});

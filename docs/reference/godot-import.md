@@ -126,8 +126,8 @@ converts them to `Parallax2D` (`ParallaxBackgroundEditorPlugin::convert_to_paral
 ## Tile sets and tile maps
 
 A `TileSet` becomes a [`.tileset.json` file](scene-format.md#tile-sets) and keeps Godot's tile
-shape, layout, offset axis and size, atlas sources, terrains, physics layers, collision polygons
-and alternative tiles:
+shape, layout, offset axis and size, atlas sources, terrains, physics layers, collision polygons,
+occlusion layers, occluders, custom data and alternative tiles:
 
 - Each `TileSetAtlasSource` is a source named after its texture (`tiles.png` is `tiles`), with
   its texture (and a `CanvasTexture`'s normal and specular maps), region size, margins and
@@ -149,13 +149,25 @@ and alternative tiles:
 - Each physics layer keeps its collision layer and mask, and its physics material's friction and
   bounce. A tile's polygons on it become its
   [`collision`](scene-format.md#tile-collision), with `one_way` and `one_way_margin`.
+- Each occlusion layer keeps its `light_mask`. A tile's `OccluderPolygon2D`s on it
+  (`occlusion_layer_0/polygon_0/polygon`, or `occlusion_layer_0/polygon` before Godot 4.4)
+  become its [`occlusion`](scene-format.md#tile-occluders-and-custom-data), with `closed` and
+  `cull_mode`. Polygons on a layer the tile set lacks go, as Godot drops them, and so do closed
+  ones of fewer than three points, which cast no shadow. `sdf_collision` is reported.
+- Each custom data layer of type `bool`, `int`, `float`, `String`, `StringName`, `Vector2`,
+  `Vector2i` or `Color` keeps its name and becomes a layer of that type (`StringName` is
+  `string`). Other types, such as `Dictionary`, or `Any`, are left out and reported. A tile's
+  `custom_data_N` becomes its `custom_data` by the layer's name, numbers converted as Godot
+  converts them (`2.7` in an `int` layer is `2`); values equal to the type's default, which
+  Godot saves for every tile, are left out. A value Godot couldn't convert either is reported.
 - Each alternative tile (`2:0/1`) becomes one of the tile's
   [`alternatives`](scene-format.md#alternative-tiles-and-turned-cells), with its flips, transpose,
-  modulate, texture origin and own polygons.
+  modulate, texture origin and own polygons, occluders and custom data.
 
 A `TileMapLayer` node's `tile_map_data` becomes its layer's `origin`, `legend` and `rows`, so
 `tilemap.get`, `tilemap.paint` and `tilemap.set` edit the cells as Godot left them. A cell keeps
 its alternative tile and its flip and transpose flags as turns: `"tiles:1,0:1"`, `"tiles:0,1:ht"`.
+Its `enabled`, `collision_enabled` and `occlusion_enabled` carry over.
 
 The old `TileMap` node (Godot 4.0 to 4.2) keeps its tile set on its own `TileMapLayer` and puts
 each layer on an entity of its own, in its `Transform2D` children, drawn before its other
@@ -270,8 +282,8 @@ The report lists each of these once per kind, with how many and where it was fir
 | Bezier handles, the capture update mode, blend times and markers | A bezier track plays cubic through its keys, a capture track as continuous, and animations switch without blending |
 | Tracks on a control's `position` or `size` | Animate its offsets instead |
 | Animation libraries no `AnimationPlayer` plays | A track's fields depend on the node it animates |
-| Tile navigation, occlusion and custom data layers, and tiles' constant velocities | Tile sets hold collision only; add `LightOccluder2D` entities for shadows, and move a layer rather than give its tiles a velocity |
-| Tiles' other properties, such as `z_index` and `y_sort_origin`, a base tile's flips and `modulate`, and scene collection sources | Tiles keep their texture origin and collision, and alternatives their flips and color too; place scenes as entities |
+| Tile navigation layers, custom data of other types, the occlusion SDF, and tiles' constant velocities | Navigation comes with 2D navigation; custom data holds the types listed above; move a layer rather than give its tiles a velocity |
+| Tiles' other properties, such as `z_index` and `y_sort_origin`, a base tile's flips and `modulate`, and scene collection sources | Tiles keep their texture origin, collision, occluders and custom data, and alternatives their flips and color too; place scenes as entities |
 | Y-sorting tile map layers | Layers draw in order, by `z_index` |
 | `gui/theme/custom_font` | Set `default_font` in the project's theme |
 | Audio effects with no SlashEngine equivalent, such as `AudioEffectRecord` | Left out of the bus, which keeps its other effects |

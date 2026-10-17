@@ -298,7 +298,8 @@ cast_shadows(render::Light& light, std::span<const OccluderEdge> edges, float ma
 
 SceneLighting collect_lighting(const world::World& world, const LightImage& images,
                                const TransformOf& transform_of, std::vector<LightProblem>& problems,
-                               ShadowCache* cache, const world::Canvases* canvases) {
+                               ShadowCache* cache, const world::Canvases* canvases,
+                               const TileSetOf& tile_sets) {
     SceneLighting out;
     const auto& ecs = world.ecs();
     const world::Tree2D tree(world);
@@ -395,6 +396,54 @@ SceneLighting collect_lighting(const world::World& world, const LightImage& imag
             occluder.edges.push_back({points.back(), points.front()});
         }
         occluders.push_back(std::move(occluder));
+    }
+    // Each cell's occluders, at its center, as Godot's TileMapLayer makes them while the layer
+    // shows. A tile set that doesn't load is the renderer's to report.
+    for (const entt::entity entity : tile_sets ? in_order(ecs.view<const world::TileMapLayer>())
+                                               : std::vector<entt::entity>{}) {
+        const auto& layer = ecs.get<world::TileMapLayer>(entity);
+        const std::size_t canvas = canvas_of(entity);
+        if (!shown[canvas] || !layer.visible || !layer.occlusion_enabled ||
+            layer.tile_set.empty()) {
+            continue;
+        }
+        const auto set = tile_sets(layer.tile_set);
+        if (!set || set.value()->occlusion_layers.empty()) {
+            continue;
+        }
+        const auto cells = decode_cells(layer, *set.value());
+        if (!cells) {
+            continue;
+        }
+        const world::Transform2D placed = transform(entity);
+        for (const auto& [cell, tile] : cells.value()) {
+            const Vec2 center = map_to_local(*set.value(), cell);
+            for (const TileOccluder& polygon : tile_occluders(*set.value(), tile)) {
+                if (static_cast<std::size_t>(polygon.layer) >=
+                    set.value()->occlusion_layers.size()) {
+                    continue;
+                }
+                Occluder occluder;
+                occluder.mask = set.value()
+                                    ->occlusion_layers[static_cast<std::size_t>(polygon.layer)]
+                                    .light_mask;
+                // TileCull and Cull list the same modes in the same order.
+                occluder.cull = static_cast<Cull>(static_cast<std::uint8_t>(polygon.cull));
+                std::vector<Point> points;
+                points.reserve(polygon.points.size());
+                for (const Vec2& p : polygon.points) {
+                    points.push_back(
+                        to_lights(canvas, place(placed, p.x + center.x, p.y + center.y)));
+                }
+                for (std::size_t i = 0; i + 1 < points.size(); ++i) {
+                    occluder.edges.push_back({points[i], points[i + 1]});
+                }
+                if (polygon.closed && points.size() > 2) {
+                    occluder.edges.push_back({points.back(), points.front()});
+                }
+                occluders.push_back(std::move(occluder));
+            }
+        }
     }
 
     struct Shadowed {

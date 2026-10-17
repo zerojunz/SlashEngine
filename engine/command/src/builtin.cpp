@@ -1223,6 +1223,40 @@ Reply tilemap_get(Session& session, const json::Value& params) {
     const auto& layer = session.world().ecs().get<world::TileMapLayer>(target.entity);
     json::Value result;
     const json::Value* rect = params.find("rect");
+    if (const json::Value* asked = params.find("cells"); asked != nullptr) {
+        if (rect != nullptr) {
+            return param_error(code::kInvalidParams, "/rect",
+                               "give cells, for their tiles and custom data, or rect, for rows");
+        }
+        // Each cell's tile and its value in every custom data layer, as Godot's
+        // get_cell_tile_data(cell).get_custom_data(name).
+        const canvas::TileSet& set = *target.set;
+        json::Array out;
+        for (const json::Value& cell : asked->as_array()) {
+            const Vec2i at{static_cast<int>(cell.as_array()[0].as_int()),
+                           static_cast<int>(cell.as_array()[1].as_int())};
+            json::Value item;
+            item["cell"] = json::Array{at.x, at.y};
+            const auto it = target.cells.find(at);
+            if (it == target.cells.end()) {
+                item["tile"] = nullptr;
+                out.push_back(std::move(item));
+                continue;
+            }
+            item["tile"] = canvas::tile_text(set, it->second);
+            if (!set.custom_data_layers.empty()) {
+                json::Value data = json::Object{};
+                for (const canvas::CustomDataLayer& data_layer : set.custom_data_layers) {
+                    data[data_layer.name] =
+                        set.custom_data(it->second, data_layer.name).value_or(nullptr);
+                }
+                item["data"] = std::move(data);
+            }
+            out.push_back(std::move(item));
+        }
+        result["cells"] = std::move(out);
+        return Reply::success(std::move(result));
+    }
     if (rect == nullptr) {
         result["origin"] = json::Array{layer.origin.x, layer.origin.y};
         result["legend"] = json::Object{};
@@ -2605,9 +2639,19 @@ Reply light_sample(Session& session, const json::Value& params) {
         return name.empty() ? "entity " + std::to_string(entt::to_entity(entity))
                             : std::string(name);
     };
+    std::vector<asset::Handle<canvas::TileSet>> sets;
+    const canvas::TileSetOf load_set =
+        [&](const std::string& path) -> Result<const canvas::TileSet*> {
+        auto set = session.assets().load<canvas::TileSet>(path);
+        if (!set) {
+            return set.error();
+        }
+        sets.push_back(std::move(set).value());
+        return sets.back().get();
+    };
     std::vector<canvas::LightProblem> problems;
     canvas::SceneLighting scene =
-        canvas::collect_lighting(world, load, {}, problems, nullptr, &canvases);
+        canvas::collect_lighting(world, load, {}, problems, nullptr, &canvases, load_set);
     const canvas::CanvasLighting& lit = scene.canvases.at(sampled);
     item.layer = lit.layer;
     if (lit.to_lights) {
@@ -4490,13 +4534,19 @@ void register_builtin_commands(Registry& registry) {
         .handler = tilemap_paint,
     });
     tile_rect["description"] = "[column, row, width, height]: only these cells. Default: all.";
+    json::Value data_cells = tile_cells;
+    data_cells["description"] =
+        "Cells as [column, row]: returns each one's tile and custom data instead of rows.";
+    data_cells["maxItems"] = 1024;
     registry.add({
         .name = "tilemap.get",
         .description = "Returns a TileMapLayer's cells as rows of legend keys from an origin, "
-                       "with \".\" for an empty cell.",
+                       "with \".\" for an empty cell, or given cells' tiles and custom data.",
         .capabilities = {Read},
         .effect = Effect::Read,
-        .params = params_schema({{"id", layer_id}, {"rect", std::move(tile_rect)}}, {"id"}),
+        .params = params_schema(
+            {{"id", layer_id}, {"rect", std::move(tile_rect)}, {"cells", std::move(data_cells)}},
+            {"id"}),
         .handler = tilemap_get,
     });
     json::Value convert_cells = tile_cells;

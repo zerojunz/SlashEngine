@@ -1569,3 +1569,197 @@ TEST_CASE("isometric cells draw and collide at their centers, down the screen") 
     REQUIRE(shapes.size() == 1);
     CHECK(points_text(shapes[0].points) == "16,4 24,8 16,12 8,8");
 }
+
+namespace {
+
+// Walls whose occluders shadow lights on two occlusion layers, and lava with custom data.
+constexpr std::string_view kData = R"({
+    "format": 1,
+    "occlusion_layers": [{}, {"light_mask": 2}],
+    "custom_data_layers": [{"name": "damage", "type": "int"}, {"name": "kind", "type": "string"},
+                           {"name": "push", "type": "vector2"}, {"name": "tint", "type": "color"},
+                           {"name": "deadly", "type": "bool"}],
+    "sources": {"main": {"texture": "main.png", "tiles": {
+        "0,0": {"name": "wall", "custom_data": {"kind": "wall"},
+                "occlusion": [{"points": [[-8, -8], [8, -8], [8, 8], [-8, 8]],
+                               "cull_mode": "clockwise"},
+                              {"layer": 1, "points": [[-8, 0], [8, 4]], "closed": false}],
+                "alternatives": {"1": {"flip_h": true, "custom_data": {"damage": 3}}}},
+        "1,0": {"name": "lava", "custom_data": {"damage": 5, "kind": "lava", "push": [1.5, 0],
+                                                "deadly": true}}}}}
+})";
+
+} // namespace
+
+TEST_CASE("tile sets give tiles occluders and custom data, all checked") {
+    CHECK(first_error(kData) == "(valid)");
+    auto parsed = canvas::parse_tileset(parse(kData));
+    REQUIRE(parsed.ok());
+    const canvas::TileSet& set = parsed.value();
+    REQUIRE(set.occlusion_layers.size() == 2);
+    CHECK(set.occlusion_layers[0].light_mask == 1);
+    CHECK(set.occlusion_layers[1].light_mask == 2);
+    const canvas::TileRef wall{.source = "main", .atlas = {0, 0}};
+    const canvas::TileData* walls = set.find(wall);
+    REQUIRE(walls != nullptr);
+    REQUIRE(walls->occlusion.size() == 2);
+    CHECK(points_text(walls->occlusion[0].points) == "-8,-8 8,-8 8,8 -8,8");
+    CHECK(walls->occlusion[0].layer == 0);
+    CHECK(walls->occlusion[0].closed);
+    CHECK(walls->occlusion[0].cull == canvas::TileCull::Clockwise);
+    CHECK(walls->occlusion[1].layer == 1);
+    CHECK_FALSE(walls->occlusion[1].closed);
+    CHECK(walls->occlusion[1].cull == canvas::TileCull::Disabled);
+
+    // A tile's value in a layer, or the default of the layer's type, as Godot's get_custom_data.
+    const canvas::TileRef lava{.source = "main", .atlas = {1, 0}};
+    CHECK(set.custom_data_layer("kind") == 1);
+    CHECK(set.custom_data_layer("speed") == -1);
+    CHECK(set.custom_data(lava, "damage") == json::Value(5));
+    CHECK(set.custom_data(lava, "push") == parse("[1.5, 0]"));
+    CHECK(set.custom_data(lava, "deadly") == json::Value(true));
+    CHECK(set.custom_data(wall, "kind") == json::Value("wall"));
+    CHECK(set.custom_data(wall, "damage") == json::Value(0));
+    CHECK(set.custom_data(wall, "push") == parse("[0, 0]"));
+    CHECK(set.custom_data(wall, "tint") == parse("[0, 0, 0, 1]"));
+    CHECK(set.custom_data(wall, "deadly") == json::Value(false));
+    // An alternative has values of its own, as in Godot, and the defaults for the rest.
+    const canvas::TileRef flipped{.source = "main", .atlas = {0, 0}, .alternative = 1};
+    CHECK(set.custom_data(flipped, "damage") == json::Value(3));
+    CHECK(set.custom_data(flipped, "kind") == json::Value(""));
+    CHECK_FALSE(set.custom_data(lava, "speed").has_value());
+    CHECK_FALSE(
+        set.custom_data({.source = "main", .atlas = {0, 0}, .alternative = 2}, "kind").has_value());
+    CHECK_FALSE(set.custom_data({.source = "main", .atlas = {5, 5}}, "kind").has_value());
+
+    const auto with = [](std::string_view from, std::string_view to) {
+        std::string text(kData);
+        const std::size_t at = text.find(from);
+        REQUIRE(at != std::string::npos);
+        text.replace(at, from.size(), to);
+        return text;
+    };
+    CHECK(first_error(with(R"("occlusion_layers": [{}, {"light_mask": 2}],)", "")) ==
+          "/sources/main/tiles/0,0/occlusion/0/layer: the tile set has no occlusion layers; add "
+          "one to occlusion_layers");
+    CHECK(first_error(with(R"("layer": 1,)", R"("layer": 2,)")) ==
+          "/sources/main/tiles/0,0/occlusion/1/layer: the tile set has occlusion layers 0 to 1");
+    CHECK(first_error(with(R"(, "closed": false)", "")) ==
+          "/sources/main/tiles/0,0/occlusion/1/points: a closed occluder has at least three "
+          "points; an open one, two");
+    CHECK(first_error(with(R"("clockwise")", R"("both")"))
+              .starts_with("/sources/main/tiles/0,0/occlusion/0/cull_mode"));
+    CHECK(first_error(with(R"("light_mask": 2)", R"("light_mask": -1)"))
+              .starts_with("/occlusion_layers/1/light_mask"));
+    CHECK(first_error(with(R"("damage": 5)", R"("damag": 5)")) ==
+          "/sources/main/tiles/1,0/custom_data/damag: the tile set has no custom data layer "
+          "named \"damag\"; did you mean \"damage\"?");
+    CHECK(first_error(with(R"("damage": 5)", R"("damage": 5.5)")) ==
+          "/sources/main/tiles/1,0/custom_data/damage: the layer \"damage\" holds int values: a "
+          "whole number");
+    CHECK(first_error(with(R"("push": [1.5, 0])", R"("push": [1.5])")) ==
+          "/sources/main/tiles/1,0/custom_data/push: the layer \"push\" holds vector2 values: "
+          "[x, y] in numbers");
+    CHECK(first_error(with(R"("deadly": true)", R"("deadly": 1)")) ==
+          "/sources/main/tiles/1,0/custom_data/deadly: the layer \"deadly\" holds bool values: "
+          "true or false");
+    CHECK(first_error(with(R"("damage": 3)", R"("kind": 3)")) ==
+          "/sources/main/tiles/0,0/alternatives/1/custom_data/kind: the layer \"kind\" holds "
+          "string values: a string");
+    CHECK(first_error(with(R"({"name": "deadly", "type": "bool"})",
+                           R"({"name": "kind", "type": "bool"})")) ==
+          "/custom_data_layers/4/name: another custom data layer is named \"kind\"");
+    CHECK(first_error(with(R"("type": "color")", R"("type": "colour")"))
+              .starts_with("/custom_data_layers/3/type"));
+    // With no custom data layers, there is nothing to give a value to.
+    std::string no_layers(kData);
+    const std::size_t layers_at = no_layers.find("\"custom_data_layers\"");
+    no_layers.erase(layers_at, no_layers.find("\"sources\"") - layers_at);
+    CHECK(first_error(no_layers) == "/sources/main/tiles/0,0/custom_data/kind: the tile set has "
+                                    "no custom data layers; add one to custom_data_layers");
+}
+
+TEST_CASE("a tile's occluders turn with its cell, and a mirrored one culls the other way") {
+    auto parsed = canvas::parse_tileset(parse(R"({"format": 1, "occlusion_layers": [{}],
+        "sources": {"a": {"texture": "a.png", "tiles": {"0,0": {
+            "occlusion": [{"points": [[0, 0], [4, 0], [4, 2]], "cull_mode": "clockwise"}],
+            "alternatives": {"1": {"flip_h": true}}}}}}})"));
+    REQUIRE(parsed.ok());
+    const canvas::TileSet& set = parsed.value();
+    const auto turned = [&](canvas::TileRef tile) {
+        const std::vector<canvas::TileOccluder> occluders = canvas::tile_occluders(set, tile);
+        REQUIRE(occluders.size() == 1);
+        return points_text(occluders[0].points) + " " +
+               std::string(canvas::kTileCullNames.at(static_cast<std::size_t>(occluders[0].cull)));
+    };
+    const canvas::TileRef plain{.source = "a", .atlas = {0, 0}};
+    CHECK(turned(plain) == "0,0 4,0 4,2 clockwise");
+    canvas::TileRef tile = plain;
+    tile.flip_h = true;
+    CHECK(turned(tile) == "0,0 -4,0 -4,2 counter_clockwise");
+    tile.flip_v = true;
+    CHECK(turned(tile) == "0,0 -4,0 -4,-2 clockwise");
+    tile = plain;
+    tile.transpose = true;
+    CHECK(turned(tile) == "0,0 0,4 2,4 counter_clockwise");
+    // An alternative has occluders of its own, as in Godot: this one has none.
+    CHECK(canvas::tile_occluders(set, {.source = "a", .atlas = {0, 0}, .alternative = 1}).empty());
+    CHECK(canvas::tile_occluders(set, {.source = "a", .atlas = {3, 0}}).empty());
+}
+
+TEST_CASE("tiles' occluders cast shadows, as Godot's TileMapLayer places them in its cells") {
+    // A sun shining down the screen over a white floor. The wall at cell (1, 0) shadows the
+    // cells below it; the fence at (3, 0) is on an occlusion layer whose light mask the sun
+    // doesn't shadow, until the sun's shadow_item_cull_mask takes it in.
+    const Rgba white{255, 255, 255, 255};
+    const Rgba black{0, 0, 0, 255};
+    std::vector<std::unique_ptr<render::RenderDevice>> devices;
+    devices.push_back(render::create_software_device());
+    if (auto gpu = gpu_device(); gpu != nullptr) {
+        devices.push_back(std::move(gpu));
+    }
+    for (const auto& device : devices) {
+        CAPTURE(render::backend_name(device->backend()));
+        Scene scene;
+        scene.files.write("white.png", grid_png({{white, white, white}}, 8));
+        scene.files.write("walls.tileset.json", R"({"format": 1, "tile_size": [8, 8],
+            "occlusion_layers": [{}, {"light_mask": 2}],
+            "sources": {"white": {"texture": "white.png", "tiles": {
+                "0,0": {"name": "floor"},
+                "1,0": {"name": "wall",
+                        "occlusion": [{"points": [[-4, -4], [4, -4], [4, 4], [-4, 4]]}]},
+                "2,0": {"name": "fence",
+                        "occlusion": [{"layer": 1, "points": [[-4, 0], [4, 0]],
+                                       "closed": false}]}}}}})");
+        scene.create("floor", R"({"TileMapLayer": {"tile_set": "walls.tileset.json",
+            "legend": {"f": "floor"}, "rows": ["ffff", "ffff", "ffff"]}})");
+        const entt::entity walls =
+            scene.create("walls", R"({"TileMapLayer": {"tile_set": "walls.tileset.json",
+                "legend": {"w": "wall", "f": "fence"}, "rows": [".w.f"]}})");
+        scene.create("night", R"({"CanvasModulate": {"color": [0, 0, 0, 1]}})");
+        const entt::entity sun =
+            scene.create("sun", R"({"DirectionalLight2D": {"shadow_enabled": true}})");
+        auto target = device->create_texture(
+            {.width = 32, .height = 24, .filter = render::Filter::Nearest, .render_target = true});
+        REQUIRE(target.ok());
+        canvas::CanvasRenderer renderer(*device, scene.assets);
+        canvas::CanvasOptions options;
+        options.target = target.value();
+        options.clear = {.r = 0.0F, .g = 0.0F, .b = 0.0F, .a = 1.0F};
+        const auto draw = [&] {
+            REQUIRE(renderer.draw(scene.world, options).ok());
+            auto image = device->read_texture(target.value());
+            REQUIRE(image.ok());
+            return std::array{pixel(image.value(), 4, 12), pixel(image.value(), 12, 12),
+                              pixel(image.value(), 12, 20), pixel(image.value(), 28, 12)};
+        };
+        CHECK(draw() == std::array{white, black, black, white});
+        CHECK(renderer.shadows_drawn() > 0);
+        // A layer whose occlusion is off casts no shadows.
+        scene.world.ecs().get<world::TileMapLayer>(walls).occlusion_enabled = false;
+        CHECK(draw() == std::array{white, white, white, white});
+        scene.world.ecs().get<world::TileMapLayer>(walls).occlusion_enabled = true;
+        scene.world.ecs().get<world::DirectionalLight2D>(sun).shadow_item_cull_mask = 2;
+        CHECK(draw() == std::array{white, white, white, black});
+    }
+}
