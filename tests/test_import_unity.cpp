@@ -439,10 +439,9 @@ void write_cave(const fs::path& folder) {
                            "\n  m_Name: \n"
                            "  m_EditorClassIdentifier: \n");
     scene += component(114, "MonoBehaviour", 94, 90,
-                       "  m_Script: {fileID: 11500000, guid: 073797afb82c5a1438f328866b10b3f0, "
+                       "  m_Script: {fileID: 11500000, guid: 5b3f9f1e2c8d4a7b9e0f1a2b3c4d5e6f, "
                        "type: 3}\n  m_Name: \n  m_EditorClassIdentifier: "
-                       "Unity.RenderPipelines.Universal.Runtime::UnityEngine.Rendering."
-                       "Universal.Light2D\n");
+                       "Unity.Cinemachine::Unity.Cinemachine.CinemachineCamera\n");
     write(folder / "Assets/Scenes/Cave.unity", scene);
     write(folder / "Assets/Scenes/Cave.unity.meta", meta("a100000000000000000000000000000b"));
 }
@@ -1515,6 +1514,146 @@ void write_menu(const fs::path& folder) {
     write(folder / "Assets/Scenes/Menu.unity.meta", meta("a1000000000000000000000000000025"));
 }
 
+constexpr std::string_view kLight2DCs = "073797afb82c5a1438f328866b10b3f0";
+constexpr std::string_view kShadowCasterCs = "7db70e0ea77f5ac47a8f4565a9406397";
+constexpr std::string_view kCompositeCasterCs = "38f48a8d66b2adc46887f23a3a88ac01";
+constexpr std::string_view kGlowPng = "a3000000000000000000000000000001";
+constexpr std::string_view kGlowNormalPng = "a3000000000000000000000000000002";
+
+// A Light2D of URP's 2D renderer, saved by URP 12 and later, lighting the sorting layers whose
+// IDs layers lists as Unity writes them: eight hex digits each, little-endian.
+std::string light_2d(std::int64_t object, std::int64_t owner, int type, std::string_view fields,
+                     std::string_view layers = "00000000") {
+    return script(object, owner, kLight2DCs,
+                  "  m_ComponentVersion: 4\n  m_LightType: " + std::to_string(type) +
+                      "\n  m_ApplyToSortingLayers: " + std::string(layers) + "\n" +
+                      std::string(fields));
+}
+
+std::string shadow_caster(std::int64_t object, std::int64_t owner, std::string_view fields) {
+    return script(object, owner, kShadowCasterCs,
+                  "  m_ComponentVersion: 6\n  m_HasRenderer: 0\n  m_UseRendererSilhouette: 1\n" +
+                      std::string(fields));
+}
+
+// A lit scene: a global light, spot lights (one a cone, two on one object), a freeform window,
+// a sprite light cut from a sheet, a parametric light, shadow casters with their own shape and
+// a collider's, and a sprite with a normal map; on three sorting layers. And a scene with a light
+// and no global light.
+void write_lights(const fs::path& folder) {
+    // The project's tags, with a sorting layer behind the default one and one in front.
+    const fs::path tags = folder / "ProjectSettings/TagManager.asset";
+    auto tag_manager = slash::platform::read_file(tags.string());
+    REQUIRE(tag_manager.ok());
+    std::string sorted = std::move(tag_manager).value();
+    sorted.replace(sorted.find("  m_SortingLayers:"), std::string::npos,
+                   "  m_SortingLayers:\n  - name: Back\n    uniqueID: 111\n    locked: 0\n"
+                   "  - name: Default\n    uniqueID: 0\n    locked: 0\n"
+                   "  - name: Front\n    uniqueID: 222\n    locked: 0\n");
+    write(tags, sorted);
+    write_png(folder / "Assets/Art/glow.png", 16, 16);
+    write_png(folder / "Assets/Art/glow_n.png", 16, 16);
+    write(folder / "Assets/Art/glow.png.meta",
+          texture_meta(kGlowPng, 16,
+                       "  spriteMode: 1\n  alignment: 0\n  spriteSheet:\n"
+                       "    serializedVersion: 2\n    sprites: []\n    secondaryTextures:\n"
+                       "    - texture: " +
+                           ref(2800000, kGlowNormalPng) + "\n      name: _NormalMap\n"));
+    write(folder / "Assets/Art/glow_n.png.meta", texture_meta(kGlowNormalPng, 16, ""));
+
+    const std::string spot = "  m_PointLightInnerRadius: 1\n  m_PointLightOuterRadius: 4\n"
+                             "  m_PointLightInnerAngle: 360\n  m_PointLightOuterAngle: 360\n";
+    std::string scene(kHeader);
+    scene += game_object(100, "Global Light", {101, 102});
+    scene += transform(101, 100, "{x: 0, y: 0, z: 0}");
+    scene += light_2d(102, 100, 4, "  m_Color: {r: 0.5, g: 0.5, b: 1, a: 1}\n  m_Intensity: 0.8\n",
+                      "6f00000000000000de000000");
+    // A warm torch on the default layer, its shadows soft and its normal maps used.
+    scene += game_object(110, "Torch", {111, 112});
+    scene += transform(111, 110, "{x: 2, y: 1, z: 0}");
+    scene += light_2d(112, 110, 3,
+                      spot + "  m_FalloffIntensity: 0.5\n  m_Color: {r: 1, g: 0.8, b: 0.6, a: 1}\n"
+                             "  m_Intensity: 1.5\n  m_ShadowsEnabled: 1\n  m_ShadowIntensity: 1\n"
+                             "  m_ShadowSoftness: 0.3\n  m_NormalMapQuality: 1\n"
+                             "  m_NormalMapDistance: 2\n");
+    // A cone lighting the front layer, volumetric and in another blend style, and a second light
+    // on the same object.
+    scene += game_object(120, "Beam", {121, 122, 123});
+    scene += transform(121, 120, "{x: 6, y: 0, z: 0}");
+    scene += light_2d(122, 120, 3,
+                      "  m_PointLightInnerRadius: 0\n  m_PointLightOuterRadius: 2\n"
+                      "  m_PointLightInnerAngle: 30\n  m_PointLightOuterAngle: 60\n"
+                      "  m_FalloffIntensity: 1\n  m_ShadowsEnabled: 0\n  m_LightVolumeEnabled: 1\n"
+                      "  m_BlendStyleIndex: 1\n",
+                      "de000000");
+    scene += light_2d(123, 120, 3, "  m_NormalMapQuality: 2\n  m_ShadowsEnabled: 0\n");
+    // A freeform window, a square two units wide to the right of its object, on the back and
+    // front layers but not between, with faint shadows.
+    scene += game_object(130, "Window", {131, 132});
+    scene += transform(131, 130, "{x: -6, y: -3, z: 0}");
+    scene += light_2d(132, 130, 1,
+                      "  m_FalloffIntensity: 0.5\n  m_ShapeLightFalloffSize: 0.5\n"
+                      "  m_ShadowsEnabled: 1\n  m_ShadowIntensity: 0.5\n"
+                      "  m_ShapePath:\n  - {x: 0, y: -1, z: 0}\n  - {x: 2, y: -1, z: 0}\n"
+                      "  - {x: 2, y: 1, z: 0}\n  - {x: 0, y: 1, z: 0}\n",
+                      "6f000000de000000");
+    // A sprite light in the shape of a sheet's sprite, on every layer.
+    scene += game_object(140, "Lamp", {141, 142});
+    scene += transform(141, 140, "{x: -10, y: 5, z: 0}");
+    scene +=
+        light_2d(142, 140, 2,
+                 "  m_LightCookieSprite: " + ref(21300002, kSheetPng) + "\n  m_ShadowsEnabled: 0\n",
+                 "6f00000000000000de000000");
+    scene += game_object(150, "Old", {151, 152});
+    scene += transform(151, 150, "{x: 0, y: 10, z: 0}");
+    scene += light_2d(152, 150, 0, "  m_ShapeLightParametricSides: 5\n");
+    // A crate casting a square shadow, its sprite normal mapped.
+    scene += game_object(160, "Crate", {161, 162, 163});
+    scene += transform(161, 160, "{x: 3, y: -2, z: 0}");
+    scene += sprite_renderer(162, 160, ref(21300000, kGlowPng));
+    scene += shadow_caster(163, 160,
+                           "  m_CastsShadows: 1\n  m_SelfShadows: 0\n  m_ShadowCastingSource: 1\n"
+                           "  m_CastingOption: 1\n  m_ShapePath:\n  - {x: -0.5, y: -0.5, z: 0}\n"
+                           "  - {x: 0.5, y: -0.5, z: 0}\n  - {x: 0.5, y: 0.5, z: 0}\n"
+                           "  - {x: -0.5, y: 0.5, z: 0}\n");
+    // A box casting the shape of its collider, offset from its middle.
+    scene += game_object(170, "Box", {171, 172, 173});
+    scene += transform(171, 170, "{x: 8, y: -2, z: 0}");
+    scene += component(
+        61, "BoxCollider2D", 172, 170,
+        std::string(kCollider).replace(kCollider.find("{x: 0, y: 0}"), 12, "{x: 0.5, y: 0}") +
+            "  m_Size: {x: 2, y: 1}\n  m_EdgeRadius: 0\n");
+    scene += shadow_caster(173, 170,
+                           "  m_ShadowCastingSource: 2\n  m_CastingOption: 1\n"
+                           "  m_ShadowShape2DComponent: {fileID: 172}\n  m_ShapePath: []\n");
+    // A caster that shadows only itself, and a composite caster.
+    scene += game_object(180, "Ghost", {181, 182});
+    scene += transform(181, 180, "{x: 0, y: -6, z: 0}");
+    scene += shadow_caster(182, 180,
+                           "  m_ShadowCastingSource: 1\n  m_CastingOption: 0\n  m_ShapePath:\n"
+                           "  - {x: 0, y: 0, z: 0}\n  - {x: 1, y: 0, z: 0}\n"
+                           "  - {x: 0, y: 1, z: 0}\n");
+    scene += game_object(190, "Group", {191, 192});
+    scene += transform(191, 190, "{x: 0, y: 0, z: 0}");
+    scene += script(192, 190, kCompositeCasterCs, "");
+    scene += "--- !u!1660057539 &9223372036854775807\nSceneRoots:\n  m_ObjectHideFlags: 0\n"
+             "  m_Roots:\n  - {fileID: 101}\n  - {fileID: 111}\n  - {fileID: 121}\n"
+             "  - {fileID: 131}\n  - {fileID: 141}\n  - {fileID: 151}\n  - {fileID: 161}\n"
+             "  - {fileID: 171}\n  - {fileID: 181}\n  - {fileID: 191}\n";
+    write(folder / "Assets/Scenes/Lights.unity", scene);
+    write(folder / "Assets/Scenes/Lights.unity.meta", meta("a3000000000000000000000000000003"));
+
+    // Saved before URP versioned its lights: shadows on by their strength, normal maps by a flag.
+    std::string night(kHeader);
+    night += game_object(200, "Moon", {201, 202});
+    night += transform(201, 200, "{x: 0, y: 0, z: 0}");
+    night += script(202, 200, kLight2DCs,
+                    "  m_LightType: 3\n  m_ApplyToSortingLayers: 00000000\n"
+                    "  m_ShadowIntensity: 0\n  m_UseNormalMap: 1\n");
+    write(folder / "Assets/Scenes/Night.unity", night);
+    write(folder / "Assets/Scenes/Night.unity.meta", meta("a3000000000000000000000000000004"));
+}
+
 fs::path make_project(const fs::path& folder) {
     fs::remove_all(folder);
     write_settings(folder);
@@ -1745,7 +1884,7 @@ TEST_CASE("importing a Unity scene converts cameras, sprites, bodies and sounds 
           "3D comes with milestone 7");
     CHECK(unsupported(report, "component Image").find("why")->as_string() ==
           "a UI component outside a Canvas; put it under one");
-    CHECK(unsupported(report, "component Light2D").find("why")->as_string() ==
+    CHECK(unsupported(report, "component CinemachineCamera").find("why")->as_string() ==
           "a script from a Unity package");
     CHECK(unsupported(report, "Rigidbody2D frozen position").find("where")->as_string() ==
           "Assets/Scenes/Cave.unity: Bat");
@@ -2533,4 +2672,146 @@ TEST_CASE("Unity UI becomes controls: canvases, text, images, widgets and layout
     CHECK(rects["lily"] == parse("[548, 28, 224, 48]"));
     CHECK(rects["key"] == parse("[92, 380, 64, 64]"));
     CHECK(rects["logo"] == parse("[16, 16, 192, 96]"));
+}
+
+TEST_CASE("Unity's 2D lights become Godot's lights, its shadow casters occluders") {
+    const fs::path project = "import_unity_lights";
+    fs::remove_all(project);
+    make_project(project / "unity");
+    write_lights(project / "unity");
+    const auto files = files_of(plan_inside(project));
+    const std::string lights = "unity/Assets/Scenes/Lights.scene.json";
+    const auto image = [&files](const std::string& path) {
+        REQUIRE_MESSAGE(files.contains(path), path);
+        auto decoded = slash::render::decode_image(files.at(path));
+        REQUIRE(decoded.ok());
+        return std::move(decoded).value();
+    };
+    const auto alpha = [](const slash::render::Image& made, std::uint32_t x, std::uint32_t y) {
+        return static_cast<int>(made.pixels[(((std::size_t{y} * made.width) + x) * 4) + 3]);
+    };
+
+    // The global light is the scene's CanvasModulate: its color times its intensity.
+    CHECK(entity(files, lights, "global_light")["CanvasModulate"]["color"] ==
+          parse("[0.4, 0.4, 0.8, 1.0]"));
+
+    // A spot light is a PointLight2D through a texture of its falloff, as wide as the light: full
+    // inside the inner radius, a quarter of the outer, then fading linearly at the default
+    // falloff strength. The default sorting layer's z indices, normal maps and soft shadows.
+    json::Value torch = entity(files, lights, "torch")["PointLight2D"];
+    CHECK(torch["texture"].as_string() == "unity/Assets/lights/spot_25_50.png");
+    CHECK(torch["texture_scale"].as_double() == 0.5); // 128 pixels across, from 256
+    CHECK(torch["color"] == parse("[1.0, 0.8, 0.6, 1.0]"));
+    CHECK(torch["energy"].as_double() == 1.5);
+    CHECK(torch["height"].as_double() == 32.0);
+    CHECK(torch["range_z_min"].as_int() == -499);
+    CHECK(torch["range_z_max"].as_int() == 499);
+    CHECK(torch["shadow_enabled"].as_bool());
+    CHECK(torch["shadow_filter"].as_string() == "pcf13");
+    CHECK(torch["shadow_filter_smooth"].as_double() == 3.0);
+    const slash::render::Image spot = image("unity/Assets/lights/spot_25_50.png");
+    CHECK(spot.width == 256);
+    CHECK(alpha(spot, 128, 128) == 255);
+    CHECK(alpha(spot, 128 + 31, 128) == 255); // inside the inner radius
+    CHECK(alpha(spot, 128 + 80, 128) == doctest::Approx(128).epsilon(0.02)); // halfway out
+    CHECK(alpha(spot, 255, 128) <= 1);                                       // the edge
+    CHECK(alpha(spot, 0, 0) == 0);
+
+    // A cone points up the texture, as Unity's points along the object's y axis; its strongest
+    // falloff dims it soon. Volumetric lights and other blend styles are reported.
+    json::Value beam = entity(files, lights, "beam")["PointLight2D"];
+    CHECK(beam["texture"].as_string() == "unity/Assets/lights/spot_0_100_30_60.png");
+    CHECK(beam["range_z_min"].as_int() == 501);
+    CHECK(beam["range_z_max"].as_int() == 1499);
+    CHECK(beam.find("shadow_enabled") == nullptr);
+    CHECK(beam.find("height") == nullptr); // URP's default: normal maps off
+    const slash::render::Image cone = image("unity/Assets/lights/spot_0_100_30_60.png");
+    CHECK(alpha(cone, 128, 120) > 150); // just above the middle
+    CHECK(alpha(cone, 128, 136) == 0);  // below it, behind the light
+    CHECK(alpha(cone, 160, 128) == 0);  // beside it, outside the cone
+    // The object's second light is on an entity under it.
+    CHECK(entity(files, lights, "beam_light_2")["PointLight2D"]["texture"].as_string() ==
+          "unity/Assets/lights/spot_0_50.png");
+    CHECK(entity(files, lights, "beam")["Transform2D"]["children"] == parse(R"(["beam_light_2"])"));
+
+    // A freeform light's texture covers its polygon and falloff, full inside and fading outside.
+    json::Value window = entity(files, lights, "window")["PointLight2D"];
+    const std::string window_texture = window["texture"].as_string();
+    CHECK(window_texture.starts_with("unity/Assets/lights/freeform_"));
+    CHECK(window["texture_scale"].as_double() == 0.1875); // 48 pixels across
+    CHECK(window["offset"] == parse("[16.0, 0.0]"));      // the middle of the shape
+    CHECK(window["range_z_min"].as_int() == -1499);       // the back and front layers, and between
+    CHECK(window["range_z_max"].as_int() == 1499);
+    const slash::render::Image freeform = image(window_texture);
+    CHECK(alpha(freeform, 128, 128) == 255);
+    CHECK(alpha(freeform, 21, 128) == doctest::Approx(128).epsilon(0.02)); // halfway out
+    CHECK(alpha(freeform, 0, 0) == 0);
+
+    // A sprite light shines through the sprite's part of its sheet, cut out, at the sprite's size
+    // in units with its pivot on the light.
+    json::Value lamp = entity(files, lights, "lamp")["PointLight2D"];
+    CHECK(lamp["texture"].as_string() == "unity/Assets/lights/sheet_1.png");
+    CHECK(lamp["texture_scale"].as_double() == 0.5);
+    CHECK(lamp["offset"] == parse("[4.0, 2.0]"));
+    const slash::render::Image cookie = image("unity/Assets/lights/sheet_1.png");
+    CHECK(cookie.width == 16);
+    CHECK(cookie.height == 8);
+    CHECK(entity(files, lights, "old").find("PointLight2D") == nullptr);
+
+    // Shadow casters are occluders: their own shape, or the collider's they take it from. Sprites
+    // take their texture's normal map.
+    CHECK(entity(files, lights, "crate")["LightOccluder2D"]["polygon"] ==
+          parse("[[-8.0, 8.0], [8.0, 8.0], [8.0, -8.0], [-8.0, -8.0]]"));
+    CHECK(entity(files, lights, "crate")["Sprite2D"]["normal_texture"].as_string() ==
+          "unity/Assets/Art/glow_n.png");
+    CHECK(entity(files, lights, "box")["LightOccluder2D"]["polygon"] ==
+          parse("[[-8.0, -8.0], [24.0, -8.0], [24.0, 8.0], [-8.0, 8.0]]"));
+    CHECK(entity(files, lights, "ghost").find("LightOccluder2D") == nullptr);
+    CHECK(entity(files, lights, "group").find("LightOccluder2D") == nullptr);
+    CHECK(entity(files, lights, "ambient").is_null()); // the global light lights the rest
+
+    const json::Value report = parse(files.at("import/unity.json"));
+    for (const std::string_view what :
+         {"volumetric Light 2D", "Light 2D blend style", "Light 2D shadow strength below 1",
+          "Light 2D on sorting layers apart", "Parametric Light 2D",
+          "ShadowCaster2D that shadows only itself"}) {
+        CHECK_MESSAGE(unsupported(report, what) != nullptr, what);
+    }
+    CHECK(unsupported(report, "component CompositeShadowCaster2D") == nullptr);
+    CHECK(unsupported(report, "Light 2D shadow strength below 1").find("where")->as_string() ==
+          "Assets/Scenes/Lights.unity: Window");
+
+    // A scene whose lights have no global light to fill in is dark where they don't reach. Lights
+    // saved before URP versioned them take shadows from their strength, normal maps from a flag.
+    const std::string night = "unity/Assets/Scenes/Night.scene.json";
+    CHECK(entity(files, night, "ambient")["CanvasModulate"]["color"] ==
+          parse("[0.0, 0.0, 0.0, 1.0]"));
+    json::Value moon = entity(files, night, "moon")["PointLight2D"];
+    CHECK(moon.find("shadow_enabled") == nullptr);
+    CHECK(moon["height"].as_double() == 48.0);
+    CHECK(unsupported(report, "2D lights without a Global Light 2D") != nullptr);
+
+    // In a session, the torch lights a white pixel under it with its color on top of the ambient.
+    REQUIRE(importer::import_project(
+                {.source = (project / "unity").string(), .destination = project.string()})
+                .ok());
+    slash::world::ComponentRegistry components;
+    slash::world::register_builtin_components(components);
+    command::Registry commands;
+    command::register_builtin_commands(commands);
+    command::SessionOptions options;
+    options.project_root = project.string();
+    options.capture_logs = false;
+    command::Session session(components, commands, options);
+    json::Value params;
+    params["path"] = lights;
+    const command::Reply opened = session.call("scene.open", params);
+    REQUIRE_MESSAGE(opened.ok, opened.message);
+    const command::Reply sampled =
+        session.call("light.sample", parse(R"({"points": [[32, -16]]})"));
+    REQUIRE_MESSAGE(sampled.ok, sampled.message);
+    CHECK(*sampled.value.find("ambient") == parse("[0.4, 0.4, 0.8]"));
+    const json::Value& point = sampled.value.find("points")->as_array()[0];
+    CHECK(*point.find("color") == parse("[1.9, 1.6, 1.7]")); // as URP adds them
+    CHECK(point.find("lights")->as_array()[0].find("id")->as_string() == "torch");
 }

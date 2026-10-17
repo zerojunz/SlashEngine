@@ -354,7 +354,10 @@ rendering on top.
         offsets, images, text, buttons, toggles, sliders, scroll bars, input fields, scroll
         views, masks and layout groups as Godot's controls and containers, with UI events'
         calls in their scripts' tasks
-  - [ ] Unity's 2D lights, and isometric and hexagonal tile maps
+  - [x] Unity's 2D lights: the global light as a `CanvasModulate`, spot, freeform and sprite
+        lights as `PointLight2D`s through textures of their shapes and falloff, sorting layers as
+        z ranges, shadow casters as occluders and sprites' normal maps
+  - [ ] Unity's isometric and hexagonal tile maps, once tile maps have those shapes
   - [ ] Exported games (a Godot `.pck`, a Unity build) unpacked back into a project, for games
         the user made or has the rights to. Nothing breaks encryption or DRM, and GPL tools such
         as AssetRipper run as separate programs, never linked
