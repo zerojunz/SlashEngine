@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <array>
 #include <charconv>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -1848,6 +1849,16 @@ private:
             }
             return true;
         };
+        // A tile's or an alternative's texture origin, a Vector2i, kept unless it is (0, 0).
+        const auto texture_origin = [](const Value& value, json::Value& out) {
+            constexpr double kLimit = 16384.0;
+            if (const auto xy = value.numbers();
+                xy && xy->size() == 2 && (xy->at(0) != 0.0 || xy->at(1) != 0.0)) {
+                out["texture_origin"] =
+                    json::Array{std::llround(std::clamp(xy->at(0), -kLimit, kLimit)),
+                                std::llround(std::clamp(xy->at(1), -kLimit, kLimit))};
+            }
+        };
         // Polygons as a collision array, in Godot's order; those with no points are left out.
         const auto collision = [](const Polygons& polygons) {
             json::Array out;
@@ -1927,6 +1938,9 @@ private:
                         own["modulate"] =
                             json::Array{rgba->at(0), rgba->at(1), rgba->at(2), rgba->at(3)};
                     }
+                } else if (path.size() == 1 &&
+                           (path[0] == "texture_origin" || path[0] == "texture_offset")) {
+                    texture_origin(value, own);
                 } else if (!physics_property(path, value,
                                              tile.alternative_polygons[*alternative])) {
                     problems_.add("alternative tile property " + std::string(path[0]), where);
@@ -1941,6 +1955,13 @@ private:
                 }
             } else if (parts.size() == 2 && parts[1] == "probability") {
                 tile.json["probability"] = value.number();
+            } else if (parts.size() == 2 &&
+                       (parts[1] == "texture_origin" || parts[1] == "texture_offset")) {
+                // texture_offset is its old name, which Godot still reads.
+                if (tile.json.is_null()) {
+                    tile.json = json::Object{};
+                }
+                texture_origin(value, tile.json);
             } else if (parts.size() > 1 &&
                        !physics_property(std::span<const std::string_view>(parts).subspan(1), value,
                                          tile.polygons)) {

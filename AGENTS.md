@@ -310,7 +310,9 @@ and `src/unity_import.cpp` converts a project with `Assets/` and `ProjectSetting
 instance (an instance's objects take Unity's IDs, `(instance ^ source) & 0x7FFFFFFFFFFFFFFF`,
 and stripped objects resolve to what they stand for), units scaled to pixels by the pixels per
 unit most sprites use, tile maps as `TileMapLayer`s over a `.tileset.json` cut from the sprites
-their cells show, each Animator controller as a `.anim.json` library with an animation per state
+their cells show (isometric and hexagonal Grids as Godot's shapes, the layer moved by
+`GridPlan::offset` so cells stay where Unity draws them, anchors and pivots as `texture_origin`),
+each Animator controller as a `.anim.json` library with an animation per state
 (Unity's curves keyed every 60th of a second where they bend; tracks target objects by their
 paths from the Animator), every `.mixer` file as one `.bus_layout.json`, 2D joints as Godot's,
 URP's 2D lights as `CanvasModulate` and `PointLight2D`s through generated falloff textures and
@@ -401,8 +403,9 @@ A tile set's `tile_shape`, `tile_layout` and `tile_offset_axis` are Godot's: `ma
 `local_to_map` and `neighbor_cell` port Godot's `TileSet` functions line for line, peering
 directions are 16 compass points (`Neighbor`) of which each shape has its own sides and corners
 (`peering_kind`, `godot_neighbor` for Godot's bits), and cells draw by `draw_order`, down the
-screen. `tilemap.convert` turns cells into points and back; `examples/isometric-and-hex-tiles`
-paints diamonds and sets hexagons.
+screen. A tile's `texture_origin` moves its texture as Godot's does (`TileLook::position`),
+turning with the cell. `tilemap.convert` turns cells into points and back;
+`examples/isometric-and-hex-tiles` paints diamonds and sets hexagons.
 
 2D lights follow Godot's: `PointLight2D`, `DirectionalLight2D`, `LightOccluder2D` and
 `CanvasModulate`, with `Sprite2D`'s `light_mask`, `normal_texture` and `specular_texture` and a

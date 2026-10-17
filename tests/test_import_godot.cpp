@@ -456,10 +456,12 @@ texture = ExtResource("1_tex")
 1:0/1 = 1
 1:0/1/flip_v = true
 1:0/1/modulate = Color(1, 0.5, 0.5, 1)
+1:0/1/texture_offset = Vector2i(1, 2)
 1:0/1/z_index = 1
 1:0/1/physics_layer_0/angular_velocity = 0.0
 2:0/0 = 0
 2:0/0/probability = 0.5
+2:0/0/texture_origin = Vector2i(0, 4)
 0:1/0 = 0
 0:1/0/physics_layer_0/polygon_0/points = PackedVector2Array(-8, -8, 8, -8, 8, 8, -8, 8)
 0:1/0/physics_layer_1/polygon_0/points = PackedVector2Array(-8, -8, 8, -8, 8, -4, -8, -4)
@@ -924,8 +926,9 @@ TEST_CASE("importing Godot tile maps, themes and bus layouts writes their SlashE
         "sources": {"tiles": {"texture": "godot/art/tiles.png", "tiles": {
             "0,0": {"terrain": "Grass", "peering": {"n": null, "s": "Water", "w": null}},
             "1,0": {"terrain": "Water",
-                    "alternatives": {"1": {"flip_v": true, "modulate": [1.0, 0.5, 0.5, 1.0]}}},
-            "2,0": {"probability": 0.5},
+                    "alternatives": {"1": {"flip_v": true, "modulate": [1.0, 0.5, 0.5, 1.0],
+                                           "texture_origin": [1, 2]}}},
+            "2,0": {"probability": 0.5, "texture_origin": [0, 4]},
             "0,1": {"collision": [
                 {"points": [[-8.0, -8.0], [8.0, -8.0], [8.0, 8.0], [-8.0, 8.0]]},
                 {"layer": 1, "one_way": true,
