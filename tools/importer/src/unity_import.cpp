@@ -3189,8 +3189,12 @@ private:
         if (!script) {
             return nullptr;
         }
-        const auto* found = std::ranges::find(kKnownScripts, script->guid, &KnownScript::guid);
-        return found != kKnownScripts.end() ? &*found : nullptr;
+        for (const KnownScript& known : kKnownScripts) {
+            if (known.guid == script->guid) {
+                return &known;
+            }
+        }
+        return nullptr;
     }
 
     // The object a local reference names, through the component it names, or -1.
