@@ -89,7 +89,9 @@ struct FramePiece {
 // A control's pieces are cut to its clip, and what it draws over its children (a
 // ScrollContainer's scroll bars) draws after them.
 struct FrameItem {
-    enum class Kind : std::uint8_t { Sprite, Tiles, Particles, Control };
+    // Popup is an open popup menu, over every control: its entity is the PopupMenu, OptionButton
+    // or MenuButton that shows it.
+    enum class Kind : std::uint8_t { Sprite, Tiles, Particles, Control, Popup };
     Kind kind = Kind::Sprite;
     entt::entity entity = entt::null;
     std::size_t count = 0; // tiles or particles drawn

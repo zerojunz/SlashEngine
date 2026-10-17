@@ -518,11 +518,9 @@ void register_ui_components(ComponentRegistry& registry) {
         "font_focus_color, font_disabled_color, icon_*_color for the same states, font, "
         "font_size, outline_size, font_outline_color, h_separation, icon_max_width, "
         "align_to_largest_stylebox, line_spacing and click_margin.");
-    const auto describe_button = [&](ComponentType& type) -> ComponentType& {
+    // A Button's fields but its text and icon, which an OptionButton takes from its options.
+    const auto describe_button_look = [&](ComponentType& type) -> ComponentType& {
         return describe_base(type)
-            .describe("text", {.doc = R"(Lines break at "\n".)"})
-            .describe("icon", {.doc = "Project path of a PNG or BMP file drawn beside the text; "
-                                      "\"\" for none."})
             .describe("flat", {.doc = "Draw no style box, only the text and icon."})
             .describe("alignment", {.doc = "The text's place across the button.",
                                     .choices = {"left", "center", "right"}})
@@ -547,6 +545,12 @@ void register_ui_components(ComponentRegistry& registry) {
             .describe("text_direction", text_direction)
             .describe("language", language);
     };
+    const auto describe_button = [&](ComponentType& type) -> ComponentType& {
+        return describe_button_look(type)
+            .describe("text", {.doc = R"(Lines break at "\n".)"})
+            .describe("icon", {.doc = "Project path of a PNG or BMP file drawn beside the text; "
+                                      "\"\" for none."});
+    };
     describe_button(button);
     describe_button(registry.add<CheckBox>().set_doc(
         "A toggle button with a box beside its text showing whether it is on, as Godot's "
@@ -560,6 +564,61 @@ void register_ui_components(ComponentRegistry& registry) {
         "the icons checked, unchecked, checked_disabled and unchecked_disabled and each one's "
         "_mirrored (drawn right to left), button_checked_color, button_unchecked_color and "
         "check_v_offset."));
+
+    const FieldMeta items{.doc = "The items, in order: {\"text\", \"icon\", \"checkable\": "
+                                 "\"none\", \"check\" or \"radio\", \"checked\", \"id\" (-1 for "
+                                 "its index), \"disabled\", \"separator\", \"indent\"}."};
+    registry.add<PopupMenu>()
+        .set_doc("A list of items shown over everything at a point of the viewport while "
+                 "visible, as Godot's PopupMenu: picked with a click, the arrow keys and "
+                 "ui_accept, or by typing an item's first letters. Picking an item emits "
+                 "id_pressed and index_pressed (data {\"id\", \"index\"}) and closes it; so do "
+                 "a click outside and ui_cancel. Opening and closing emit about_to_popup and "
+                 "popup_hide, and moving to an item with the keys id_focused. Theme items "
+                 "(type PopupMenu): panel, hover, separator, labeled_separator_left and "
+                 "labeled_separator_right styles, the check box and radio icons, font, "
+                 "font_size, font_separator, font_separator_size, font_color, "
+                 "font_hover_color, font_disabled_color, font_separator_color, the outline "
+                 "colors and sizes, v_separation, h_separation, indent, item_start_padding, "
+                 "item_end_padding and icon_max_width.")
+        .describe("items", items)
+        .describe("position", {.doc = "Its top left corner in the viewport, in pixels; it is "
+                                      "moved to fit inside the viewport."})
+        .describe("visible", {.doc = "Shown. Set it to open the menu; closing it clears it."})
+        .describe("hide_on_item_selection",
+                  {.doc = "Close when an item that isn't checkable is picked."})
+        .describe("hide_on_checkable_item_selection",
+                  {.doc = "Close when a checkable item is picked."})
+        .describe("allow_search", {.doc = "Typing the start of an item's text moves to the item."})
+        .describe("theme", {.doc = "Project path of a .theme.json file to take theme items "
+                                   "from before the project's; \"\" for none."})
+        .describe("layout_direction", {.doc = "Which way it lays out; inherited is left to right.",
+                                       .choices = {"inherited", "ltr", "rtl"}});
+    describe_button_look(registry.add<OptionButton>().set_doc(
+                             "A button showing the option picked, which opens a list of its "
+                             "options below it when pressed, as Godot's OptionButton. Picking "
+                             "one sets selected and emits item_selected (data {\"index\"}); "
+                             "moving to one with the keys emits item_focused. Theme items: "
+                             "Button's, plus the arrow icon, arrow_margin and modulate_arrow, "
+                             "and PopupMenu's for the list."))
+        .describe("items", {.doc = "The options, in order: {\"text\", \"icon\", \"id\" (-1 "
+                                   "for its index), \"disabled\", \"separator\"}."})
+        .describe("selected", {.doc = "The option shown, by index; -1 for none.", .min = -1})
+        .describe("fit_to_longest_item",
+                  {.doc = "Be as wide as the widest option, not only the one shown."})
+        .describe("allow_reselect",
+                  {.doc = "Picking the option already shown emits item_selected again."});
+    describe_button(registry.add<MenuButton>().set_doc(
+                        "A flat button that opens a menu of items below it when pressed, as "
+                        "Godot's MenuButton. Picking an item emits id_pressed and index_pressed "
+                        "(data {\"id\", \"index\"}) from the button; it also emits "
+                        "about_to_popup and popup_hide as the menu opens and closes, and "
+                        "id_focused when the keys move to an item. Theme items: Button's, and "
+                        "PopupMenu's for the menu."))
+        .describe("items", items)
+        .describe("switch_on_hover",
+                  {.doc = "While another MenuButton's menu is open, moving onto this one opens "
+                          "its menu instead, as in a menu bar."});
 
     const FieldMeta button_texture{.doc = "Project path of a PNG or BMP file; \"\" for none."};
     auto& texture_button = registry.add<TextureButton>().set_doc(

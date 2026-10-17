@@ -384,6 +384,48 @@ max_value = 10.0
 layout_mode = 2
 max_columns = 2
 
+[node name="Size" type="OptionButton" parent="UI"]
+offset_right = 90.0
+offset_bottom = 31.0
+text = "Medium"
+selected = 1
+fit_to_longest_item = false
+item_count = 3
+popup/item_0/text = "Small"
+popup/item_0/id = 0
+popup/item_1/text = "Medium"
+popup/item_1/id = 5
+popup/item_2/separator = true
+popup/item_2/id = 2
+
+[node name="File" type="MenuButton" parent="UI"]
+offset_left = 100.0
+offset_right = 140.0
+offset_bottom = 31.0
+text = "File"
+switch_on_hover = true
+item_count = 2
+popup/item_0/text = "New"
+popup/item_0/icon = ExtResource("3_sheet")
+popup/item_0/id = 0
+popup/item_1/text = "Grid"
+popup/item_1/checkable = 1
+popup/item_1/checked = true
+popup/item_1/id = 1
+
+[node name="Context" type="PopupMenu" parent="UI"]
+position = Vector2i(10, 20)
+size = Vector2i(100, 80)
+hide_on_checkable_item_selection = false
+item_count = 2
+item_0/text = "Copy"
+item_0/id = 7
+item_1/text = "Mode"
+item_1/checkable = 2
+item_1/disabled = true
+item_1/id = 1
+item_1/shortcut = null
+
 [connection signal="pressed" from="UI/Menu/Play" to="." method="_on_play_pressed"]
 )";
 
@@ -782,7 +824,7 @@ TEST_CASE("importing a Godot scene maps its nodes to entities and components") {
     CHECK(*sparks.find("CPUParticles2D")->find("scale_amount_curve") ==
           parse("[[0.0, 1.0], [1.0, 0.0]]"));
     CHECK(*sparks.find("CPUParticles2D")->find("color_ramp") ==
-          parse(R"([{"offset": 0.0, "color": [1.0, 1.0, 0.0, 1.0]},
+          parse(R"([{"color": [1.0, 1.0, 0.0, 1.0]},
                     {"offset": 1.0, "color": [1.0, 0.0, 0.0, 0.0]}])"));
 
     // Sounds and controls.
@@ -817,6 +859,26 @@ TEST_CASE("importing a Godot scene maps its nodes to entities and components") {
                     "corner_radius_top_left": 6, "border_width_bottom": 2})"));
     CHECK(*entity(files, level, "volume").find("Slider") ==
           parse(R"({"max_value": 10.0, "vertical": true})"));
+
+    // Option buttons, menu buttons and popup menus keep their items; an item's ID is left out
+    // when it is its index, and an option button's text comes from the option selected.
+    CHECK(*entity(files, level, "size").find("OptionButton") ==
+          parse(R"({"selected": 1, "fit_to_longest_item": false, "items": [
+              {"text": "Small"}, {"text": "Medium", "id": 5}, {"separator": true}]})"));
+    CHECK(*entity(files, level, "file").find("MenuButton") ==
+          parse(R"({"text": "File", "switch_on_hover": true, "items": [
+              {"text": "New", "icon": "godot/art/sheet.png"},
+              {"text": "Grid", "checkable": "check", "checked": true}]})"));
+    const json::Value context = entity(files, level, "context");
+    CHECK(context.find("Control") == nullptr);
+    CHECK(context.find("Transform2D") == nullptr);
+    CHECK(*context.find("PopupMenu") ==
+          parse(R"({"position": [10.0, 20.0], "hide_on_checkable_item_selection": false,
+                    "items": [{"text": "Copy", "id": 7},
+                              {"text": "Mode", "checkable": "radio", "disabled": true}]})"));
+    CHECK(unsupported(plan.report, "PopupMenu.size").find("why")->as_string() ==
+          "a popup menu is as big as its items");
+    CHECK(!unsupported(plan.report, "PopupMenu.item_*/shortcut").is_null());
 
     // What doesn't convert is reported once by kind, and kept in the report for porting.
     CHECK(!unsupported(plan.report, "node type ItemList").is_null());

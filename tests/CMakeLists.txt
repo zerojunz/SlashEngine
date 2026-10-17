@@ -41,6 +41,7 @@ add_executable(slash_tests
     test_ui.cpp
     test_ui_containers.cpp
     test_ui_controls.cpp
+    test_ui_menus.cpp
     test_ui_scroll.cpp
     test_world.cpp)
 target_link_libraries(slash_tests PRIVATE

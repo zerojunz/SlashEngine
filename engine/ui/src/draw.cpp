@@ -466,6 +466,30 @@ void draw_flat(Drawer& drawer, const Box& box, const Placed& placed, Vec4 tint) 
     drawer.triangles({}, vertices);
 }
 
+// StyleBoxLine::draw: a rect of its thickness along the top of the rect, or down its left side,
+// grown at both ends, in whole pixels as Godot's Rect2i keeps it.
+void draw_line(Drawer& drawer, const Box& box, const Placed& placed, Vec4 tint) {
+    const StyleBox& style = box.style;
+    float x = std::trunc(box.position.x);
+    float y = std::trunc(box.position.y);
+    float w = std::trunc(box.size.x);
+    float h = std::trunc(box.size.y);
+    const auto thickness = static_cast<float>(style.thickness);
+    if (style.vertical) {
+        y = std::trunc(y - style.grow_begin);
+        h = std::trunc(h + (style.grow_begin + style.grow_end));
+        w = thickness;
+    } else {
+        x = std::trunc(x - style.grow_begin);
+        w = std::trunc(w + (style.grow_begin + style.grow_end));
+        h = thickness;
+    }
+    if (w > 0.0F && h > 0.0F) {
+        drawer.quad({}, placed.transform, {x, y, x + w, y + h}, {0.0F, 0.0F, 1.0F, 1.0F},
+                    times(style.color, tint), std::nullopt);
+    }
+}
+
 // ---- Texture style boxes, as Godot's nine-patch drawing (map_ninepatch_axis in the canvas
 // shaders) ----
 
@@ -579,6 +603,22 @@ void draw_texture(Drawer& drawer, const Box& box, const Placed& placed, Vec4 tin
             drawer.quad(source, placed.transform, {x0, y0, x1, y1}, {u0, v0, u1, v1}, color,
                         std::nullopt);
         }
+    }
+}
+
+// A style box of any type.
+void draw_box(Drawer& drawer, const Box& box, const Placed& placed, Vec4 tint) {
+    switch (box.style.type) {
+    case StyleBox::Type::Texture:
+        draw_texture(drawer, box, placed, tint);
+        break;
+    case StyleBox::Type::Line:
+        draw_line(drawer, box, placed, tint);
+        break;
+    case StyleBox::Type::Flat:
+    case StyleBox::Type::Empty:
+        draw_flat(drawer, box, placed, tint);
+        break;
     }
 }
 
@@ -818,7 +858,7 @@ DrawList draw_calls(const Layout& layout, const world::World& world, text::Fonts
     // What a control drew since calls_before (and vertices_before of the call before it), cut
     // to its clip, as spans.
     const auto finish = [&](const Placed& placed, std::size_t calls_before,
-                            std::size_t vertices_before) {
+                            std::size_t vertices_before, bool popup) {
         const std::size_t from = calls_before == 0 ? 0 : calls_before - 1;
         if (placed.clip) {
             for (std::size_t call = from; call < list.calls.size(); ++call) {
@@ -837,7 +877,8 @@ DrawList draw_calls(const Layout& layout, const world::World& world, text::Fonts
                 all.insert(all.end(), part.begin(), part.end());
                 DrawCall uncut = list.calls[call];
                 uncut.vertices = whole;
-                list.uncut.push_back({.entity = placed.entity, .call = std::move(uncut)});
+                list.uncut.push_back(
+                    {.entity = placed.entity, .call = std::move(uncut), .popup = popup});
             }
             // Its own calls that it cut down to nothing.
             for (std::size_t call = list.calls.size(); call > calls_before; --call) {
@@ -851,8 +892,11 @@ DrawList draw_calls(const Layout& layout, const world::World& world, text::Fonts
             const std::size_t first = call + 1 == calls_before ? vertices_before : 0;
             const std::size_t end = list.calls[call].vertices.size();
             if (end > first) {
-                list.spans.push_back(
-                    {.entity = placed.entity, .call = call, .first = first, .count = end - first});
+                list.spans.push_back({.entity = placed.entity,
+                                      .call = call,
+                                      .first = first,
+                                      .count = end - first,
+                                      .popup = popup});
             }
         }
     };
@@ -871,11 +915,7 @@ DrawList draw_calls(const Layout& layout, const world::World& world, text::Fonts
             bool drawn = false;
             if (const auto found = layout.boxes.find(placed.entity); found != layout.boxes.end()) {
                 for (const Box& box : found->second) {
-                    if (box.style.type == StyleBox::Type::Texture) {
-                        draw_texture(drawer, box, placed, tint);
-                    } else {
-                        draw_flat(drawer, box, placed, tint);
-                    }
+                    draw_box(drawer, box, placed, tint);
                     ++list.boxes;
                 }
                 drawn = true;
@@ -917,7 +957,7 @@ DrawList draw_calls(const Layout& layout, const world::World& world, text::Fonts
                 ++list.controls;
                 counted[index] = true;
             }
-            finish(placed, calls_before, vertices_before);
+            finish(placed, calls_before, vertices_before, false);
         }
         // Then what the controls this one ends draw over their children, as Godot draws a
         // ScrollContainer's scroll bars, which are its last children.
@@ -933,19 +973,58 @@ DrawList draw_calls(const Layout& layout, const world::World& world, text::Fonts
             const std::size_t calls_before = list.calls.size();
             const std::size_t vertices_before = vertices_now();
             for (const Box& box : layout.over_children.at(container.entity)) {
-                if (box.style.type == StyleBox::Type::Texture) {
-                    draw_texture(drawer, box, container, container.modulate);
-                } else {
-                    draw_flat(drawer, box, container, container.modulate);
-                }
+                draw_box(drawer, box, container, container.modulate);
                 ++list.boxes;
             }
             if (!counted[own]) {
                 ++list.controls;
                 counted[own] = true;
             }
-            finish(container, calls_before, vertices_before);
+            finish(container, calls_before, vertices_before, false);
         }
+    }
+    // The popup menus open, over every control, as Godot draws embedded windows over the
+    // viewport's canvas: the panel, then the items cut to the list's room, then the scroll bar.
+    for (const PopupView& popup : layout.popups) {
+        if (!world.valid(popup.owner)) {
+            continue;
+        }
+        Placed placed;
+        placed.entity = popup.owner;
+        placed.transform.tx = popup.position.x;
+        placed.transform.ty = popup.position.y;
+        const Vec4 white{1.0F, 1.0F, 1.0F, 1.0F};
+        const auto boxes = [&](const Placed& at, const std::vector<Box>& list_boxes) {
+            const std::size_t calls_before = list.calls.size();
+            const std::size_t vertices_before = vertices_now();
+            for (const Box& box : list_boxes) {
+                draw_box(drawer, box, at, white);
+                ++list.boxes;
+            }
+            finish(at, calls_before, vertices_before, true);
+        };
+        boxes(placed, popup.panel);
+        Placed items = placed;
+        const std::array<float, 4>& m = popup.margins;
+        items.clip =
+            Vec4{popup.position.x + m[0], popup.position.y + m[1],
+                 popup.position.x + popup.size.x - m[2], popup.position.y + popup.size.y - m[3]};
+        const std::size_t calls_before = list.calls.size();
+        const std::size_t vertices_before = vertices_now();
+        for (const Box& box : popup.boxes) {
+            draw_box(drawer, box, items, white);
+            ++list.boxes;
+        }
+        for (const LabelText& label : popup.labels) {
+            if (label.outline_size > 0 && label.outline_color.w > 0.0F) {
+                draw_label_pass(drawer, list, fonts, label, items, white, Pass::Outline,
+                                std::nullopt);
+            }
+            draw_label_pass(drawer, list, fonts, label, items, white, Pass::Text, std::nullopt);
+        }
+        finish(items, calls_before, vertices_before, true);
+        boxes(placed, popup.bar);
+        ++list.controls;
     }
     return list;
 }

@@ -394,6 +394,15 @@ scroll container always does: what is cut off neither draws nor takes clicks, an
 and `frame.summary` say what shows. The [UI scrolling example](../examples/ui-scrolling/) is a
 quest log.
 
+A **popup menu** (`PopupMenu`) is a list of **items** shown over everything, picked with a
+click, the arrow keys or by typing the start of one; an item can be a check box, a radio button
+or a **separator**, and picking one emits `id_pressed`. An **option button** (`OptionButton`)
+shows the option picked and opens a list of its options below it, and a **menu button**
+(`MenuButton`) opens a menu, as in a menu bar. Only one list is open at a time, and a click
+outside closes it. An agent opens one with `ui.popup` and picks an item with `ui.select`, and
+`ui.layout` and `frame.summary` show the lists open and their items. The
+[UI menus example](../examples/ui-menus/) is a settings screen with a menu bar.
+
 Text in every language follows Godot's text server. **BiDi** (the Unicode Bidirectional
 Algorithm) orders each paragraph: Arabic and Hebrew go right to left, with English words and
 numbers in them still left to right, and a label's `text_direction` can set the paragraph's
@@ -638,8 +647,10 @@ OpenAI-compatible servers (including local ones), Anthropic and Gemini; see the
 | Material | A `.material.json` node graph that colors a sprite's pixels, with params each sprite sets |
 | Normal map | A texture whose colors give each pixel of a sprite its own facing, so light falls on it by angle |
 | Occluder | A polygon that casts shadows from 2D lights (`LightOccluder2D`) |
+| Option button | A button that shows the option picked and opens a list of the options below it (`OptionButton`) |
 | Parent | The entity whose `Transform2D` lists another in its `children`, placing it in its space |
 | Peering | The terrain a tile's side or corner must touch for the tile to fit, as Godot's terrain peering bits |
+| Popup menu | A list of items shown over everything until one is picked or a click lands outside (`PopupMenu`); option buttons and menu buttons open one |
 | Prefab | One entity's components in a `.prefab.json` file, which entities extend and override |
 | Project | A game's folder: `project.json` plus its scenes |
 | Project folder | The folder all command paths are relative to |

@@ -1,0 +1,127 @@
+{
+  "entities": {
+    "bar": {
+      "components": {
+        "BoxContainer": {},
+        "Control": {
+          "anchor_right": 1.0,
+          "children": ["game", "view"],
+          "offset_bottom": 30.0
+        }
+      }
+    },
+    "context": {
+      "components": {
+        "PopupMenu": {
+          "items": [
+            {
+              "id": 1,
+              "text": "Copy"
+            },
+            {
+              "disabled": true,
+              "id": 2,
+              "text": "Paste"
+            },
+            {
+              "separator": true
+            },
+            {
+              "id": 3,
+              "text": "Rename"
+            }
+          ],
+          "position": [180.0, 90.0]
+        }
+      }
+    },
+    "game": {
+      "components": {
+        "Control": {},
+        "MenuButton": {
+          "items": [
+            {
+              "text": "New Game"
+            },
+            {
+              "disabled": true,
+              "text": "Load"
+            },
+            {
+              "separator": true
+            },
+            {
+              "id": 99,
+              "text": "Quit"
+            }
+          ],
+          "switch_on_hover": true,
+          "text": "Game"
+        }
+      }
+    },
+    "quality": {
+      "components": {
+        "Control": {
+          "offset_left": 96.0,
+          "offset_top": 56.0
+        },
+        "OptionButton": {
+          "items": [
+            {
+              "text": "Low"
+            },
+            {
+              "text": "Medium"
+            },
+            {
+              "text": "High"
+            }
+          ],
+          "selected": 1
+        }
+      }
+    },
+    "quality_label": {
+      "components": {
+        "Control": {
+          "offset_left": 16.0,
+          "offset_top": 60.0
+        },
+        "Label": {
+          "text": "Quality"
+        }
+      }
+    },
+    "view": {
+      "components": {
+        "Control": {},
+        "MenuButton": {
+          "items": [
+            {
+              "checkable": "check",
+              "checked": true,
+              "text": "Show Grid"
+            },
+            {
+              "separator": true,
+              "text": "Zoom"
+            },
+            {
+              "checkable": "radio",
+              "checked": true,
+              "text": "1x"
+            },
+            {
+              "checkable": "radio",
+              "text": "2x"
+            }
+          ],
+          "switch_on_hover": true,
+          "text": "View"
+        }
+      }
+    }
+  },
+  "format": 1
+}

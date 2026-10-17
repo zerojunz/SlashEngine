@@ -350,6 +350,7 @@ the middle. A turned or scaled rect turns and scales about its pivot (`pivot_off
 | `Slider` | `Slider`: range, value, whole numbers as `step`, and `vertical`. Its background is the `slider` style and its fill the `grabber_area` style, as thick as the background, and a handle sprite the `grabber` icon |
 | `Scrollbar` | `ScrollBar`, its size as `page` and its handle the `grabber` styles |
 | `InputField`, `TMP_InputField` | `LineEdit` (`TextEdit` for Multi Line Newline): text, placeholder, character limit, password, keyboard type and caret blink, the text's font and colors, and the text area's insets as the style boxes' content margins |
+| `Dropdown`, `TMP_Dropdown` | `OptionButton`: its options' text and whole-sprite images as `items`, its value as `selected` (kept in range), Interactable as `disabled`, its caption's font, size and color, and its graphic's styles as a button's. Its caption, caption image, placeholder, arrow and template are part of it; an arrow of the project's own sprite is its `arrow` icon, and the list draws with the `PopupMenu` theme, so the template's look is reported |
 | `ScrollRect` | `ScrollContainer`, its content the child: a direction that doesn't scroll is `disabled`, one without a scroll bar `never`, and Auto Hide `auto` |
 | `Mask`, `RectMask2D` | `clip_contents` |
 | `HorizontalLayoutGroup`, `VerticalLayoutGroup` | `BoxContainer` (`vertical`): child alignment as `alignment`, spacing as `separation`; Control Child Size and Child Force Expand as the children's size flags, a child's own size its minimum where the group doesn't control it |
@@ -360,20 +361,21 @@ the middle. A turned or scaled rect turns and scales about its pivot (`pivot_off
 | Explicit navigation, none | `focus_neighbor_*`; `focus_mode: "click"` |
 
 A widget's parts become part of its control: a default toggle's background and checkmark, a
-slider's background, fill and handle, a scroll view's viewport and scroll bars, and an input
-field's text area, text and placeholder. The report maps each to the control's entity, and what
-they hold that isn't a part is lifted into the control's children. A graphic that takes clicks
-has `mouse_filter: "pass"`, so a click reaches the button above it, as in Unity.
+slider's background, fill and handle, a scroll view's viewport and scroll bars, an input field's
+text area, text and placeholder, and a dropdown's caption, arrow and template. The report maps
+each to the control's entity, and what they hold that isn't a part is lifted into the control's
+children. A graphic that takes clicks has `mouse_filter: "pass"`, so a click reaches the button
+above it, as in Unity.
 
-A UI event's persistent calls (On Click, On Value Changed, On End Edit) to a project script's
-methods are listed in the script's task with the control's event that makes them: `play in
-Menu.scene.json calls StartGame() on pressed`. Calls to Unity's own components are reported.
+A UI event's persistent calls (On Click, On Value Changed, On End Edit; a dropdown's On Value
+Changed is `item_selected`) to a project script's methods are listed in the script's task with
+the control's event that makes them: `play in Menu.scene.json calls StartGame() on pressed`.
+Calls to Unity's own components are reported.
 
-Dropdowns are reported until `OptionButton` lands (on the roadmap); their parts stay controls.
-Also reported: filled images (drawn whole), a sliced sprite whose corners Unity draws at another
-size, UI materials, Unity's checkmark and arrow sprites outside a default toggle, a toggle with
-its own sprites (its checkmark shows as it starts: gameplay code shows and hides it on
-`toggled`), `AspectRatioFitter`, reversed layout groups, a grid's start corner, axis and
+Also reported: a dropdown option's image cut from a sprite sheet, filled images (drawn whole), a
+sliced sprite whose corners Unity draws at another size, UI materials, Unity's checkmark and
+arrow sprites outside a default toggle, a toggle with its own sprites (its checkmark shows as it
+starts: gameplay code shows and hides it on `toggled`), `AspectRatioFitter`, reversed layout groups, a grid's start corner, axis and
 alignment, input validation, best fit and auto-sized text, bold and italic styles, animation
 transitions, objects that aren't UI under UI objects and other components on UI objects. The
 `EventSystem` isn't needed: the gui system sends input to controls itself.

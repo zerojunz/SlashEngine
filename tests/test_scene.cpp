@@ -131,7 +131,7 @@ TEST_CASE("a saved scene loads back into an identical world") {
             "pet": {"components": {
                 "Follow": {"target": "leader", "distance": 2.5},
                 "Loadout": {"items": ["bone", "ball"], "level": 4,
-                            "stats": [{"name": "speed", "value": 7}]},
+                            "stats": [{"name": "speed", "value": 7}, {"name": "luck"}]},
                 "Enemy": {}
             }},
             "empty": {}
@@ -151,6 +151,10 @@ TEST_CASE("a saved scene loads back into an identical world") {
     CHECK(first.ecs().all_of<demo::Enemy>(pet));
 
     const json::Value saved = world::save_scene(first);
+    // A struct in a component leaves out its fields equal to their defaults, as components do.
+    CHECK(
+        *saved.find("entities")->find("pet")->find("components")->find("Loadout")->find("stats") ==
+        parse(R"([{"name": "speed", "value": 7}, {"name": "luck"}])"));
     World second(registry);
     REQUIRE(world::load_scene(second, saved).ok());
     CHECK(world::save_scene(second) == saved);

@@ -751,8 +751,8 @@ TEST_CASE("ui.press, ui.focus and ui.layout drive and report buttons") {
     CHECK(s.fails("ui.press", R"({"id": "strat"})") ==
           "/id: no entity has the id \"strat\"; did you mean \"start\"?");
     CHECK(s.fails("ui.press", R"({"id": "title"})") ==
-          "/id: \"title\" isn't a button: it has no Button, CheckBox, CheckButton or "
-          "TextureButton");
+          "/id: \"title\" isn't a button: it has no Button, CheckBox, CheckButton, "
+          "OptionButton, MenuButton or TextureButton");
     CHECK(s.fails("ui.press", R"({"id": "locked"})") ==
           "/id: \"locked\" is disabled, so it can't be pressed");
     CHECK(s.fails("ui.focus", R"({"id": "title"})") ==

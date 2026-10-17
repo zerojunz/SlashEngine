@@ -384,6 +384,21 @@ A reference must name an entity that exists in the same scene.
 | | `disabled` … `shortcut_feedback` | | | As `Button`'s |
 | `CheckBox` | `text` … `language` | | | As `Button`'s, but `toggle_mode` is `true` and `alignment` `"left"`: a [check box](#check-boxes) drawn with a box before its text, or a radio button in a `button_group` |
 | `CheckButton` | `text` … `language` | | | As `CheckBox`'s, drawn with a switch after its text |
+| `OptionButton` | `items` | `std::vector<OptionButtonItem>` | `[]` | The [drop-down list](#menus)'s options: `text`, `icon`, `id` (-1 for its index), `disabled`, `separator` |
+| | `selected` | `int` | `-1` | The option shown, by index; -1 for none. Picking one sets it |
+| | `fit_to_longest_item` | `bool` | `true` | As wide as the widest option, not only the one shown |
+| | `allow_reselect` | `bool` | `false` | Picking the option already shown emits `item_selected` again |
+| | `flat` … `language` | | | As `Button`'s but `text` and `icon`, which are the option's; `toggle_mode` is `true`, `alignment` `"left"` and `action_mode` `"press"` |
+| `MenuButton` | `items` | `std::vector<PopupMenuItem>` | `[]` | The [menu](#menus) it opens: items as `PopupMenu`'s |
+| | `switch_on_hover` | `bool` | `false` | While another menu button's menu is open, moving onto this one opens its menu instead |
+| | `text` … `language` | | | As `Button`'s, but `flat` and `toggle_mode` are `true` and `action_mode` `"press"`; it takes no focus unless `focus_mode` says so |
+| `PopupMenu` | `items` | `std::vector<PopupMenuItem>` | `[]` | The [menu](#menus)'s items: `text`, `icon`, `checkable` (`none`, `check` or `radio`), `checked`, `id` (-1 for its index), `disabled`, `separator` and `indent` |
+| | `position` | `Vec2` | `[0, 0]` | Its top left corner in the viewport; moved to fit inside it |
+| | `visible` | `bool` | `false` | Open: set it to open the menu; closing it clears it |
+| | `hide_on_item_selection`, `hide_on_checkable_item_selection` | `bool` | `true` | Close when an item, or a checkable item, is picked |
+| | `allow_search` | `bool` | `true` | Typing the start of an item's text moves to it |
+| | `theme` | `std::string` | `""` | Project path of a `.theme.json` file to take its theme items from first |
+| | `layout_direction` | `std::string` | `"inherited"` | `inherited` (left to right), `ltr` or `rtl` |
 | `LineEdit` | `text` | `std::string` | `""` | The [text field](#text-fields)'s one line; line breaks show as spaces |
 | | `placeholder_text` | `std::string` | `""` | Shown, dimmed, while the text is empty |
 | | `alignment` | `std::string` | `"left"` | The text's place across the field: `left`, `center`, `right` or `fill` (as `left`) |
@@ -1614,6 +1629,54 @@ scroll bars when they don't fit. `ScrollBar` is Godot's `HScrollBar`, or `VScrol
   `clipped` and counts only what shows.
 - Not yet: scroll hints (`scroll_hint_mode`) and a scroll bar's smooth scrolling.
 
+### Menus
+
+`OptionButton`, `MenuButton` and `PopupMenu` are Godot's. A `PopupMenu` is a list of items
+shown over every control while `visible`, at its `position`; in Godot it is a window, so here it
+is an entity of its own, not a control. An option button opens a list of its options below it,
+as wide as the button at least, and a menu button a menu of its items, both drawn as a
+`PopupMenu` with the [`PopupMenu` theme items](#theme-items).
+
+```json
+"view": {"components": {"Control": {}, "MenuButton": {"text": "View", "items": [
+  {"text": "Show Grid", "checkable": "check", "checked": true},
+  {"separator": true, "text": "Zoom"},
+  {"text": "1x", "checkable": "radio", "checked": true}, {"text": "2x", "checkable": "radio"}]}}}
+```
+
+- One list is open at a time: opening one closes the others. A press of the button opens it (it
+  emits `toggled` and `pressed`, and stays pressed while its list is open), and a press while
+  it is open closes it.
+- A click on an item picks it. A click outside the list closes it at the end of the tick and
+  still reaches the control it lands on; one on the list's margin does nothing. A click held
+  from the button and let go over an item picks it, once the list has been open 0.4 seconds.
+  The pointer over an item focuses it; the wheel scrolls a list taller than the viewport.
+- `ui_up` and `ui_down` move to the previous or next item, going round and skipping
+  separators and disabled items; `ui_accept` picks the item focused; `ui_cancel` closes the
+  list. Typing the start of an item's text, within two seconds a letter, moves to the next item
+  that starts so (`allow_search`). Opened by a key, an option button's list starts on the option
+  shown, and a menu button's on its first item that isn't disabled.
+- Picking an item of a `PopupMenu` or a menu button emits `id_pressed` and `index_pressed` (data
+  `{"id", "index"}`, the ID being the item's index when it has none) and closes the menu as its
+  `hide_on_*` fields say. Picking an option of an option button sets `selected` and emits
+  `item_selected` (data `{"index"}`) unless it was selected and `allow_reselect` is off. A check
+  or radio item isn't checked by being picked: as in Godot, the game sets `checked`.
+- Opening and closing emit `about_to_popup` and `popup_hide` from a `PopupMenu` or menu button;
+  moving to an item with the keys emits `id_focused` (data `{"id"}`), or `item_focused` (data
+  `{"index"}`) from an option button.
+- A list is as wide as its widest item, its icon and check box, `item_start_padding` and
+  `item_end_padding`, plus the panel's margins and a scroll bar's width, and as tall as its items
+  with `v_separation` between them, at most the viewport's height; then it scrolls. A separator
+  with no text is a line of no height; one with text is a line each side of it. Right to left,
+  items lay out from the right and the scroll bar goes on the left.
+- A list closes when its button is hidden or destroyed. [`ui.popup`](commands.md#uipopup)
+  opens and closes lists, [`ui.select`](commands.md#uiselect) picks an item, and `ui.layout`
+  and `frame.summary` report each open list and its items' rects.
+- `ui.layout` and `scene validate` report a `checkable` that isn't `none`, `check` or `radio`, a
+  `PopupMenu` on a control entity and a `selected` past the options.
+- Not yet: submenus, item shortcuts, tooltips, multistate items, dragging a list's scroll bar
+  and holding a gamepad direction to move on.
+
 ### Text fields
 
 `LineEdit` is Godot's one-line text field. The `gui` system edits it from the tick's
@@ -1771,6 +1834,26 @@ its `theme_override_*` fields, then its [themes](#themes), then the defaults bel
 | | icon | `checked_disabled`, `unchecked_disabled` | `builtin:toggle_on_disabled`, `builtin:toggle_off_disabled` |
 | | icon | `checked_mirrored`, `unchecked_mirrored`, `checked_disabled_mirrored`, `unchecked_disabled_mirrored` | the same switches the other way round, for right to left (`builtin:toggle_on_mirrored` and so on) |
 | | color | `button_checked_color`, `button_unchecked_color` | `[1, 1, 1, 1]`, tinting the icon |
+| `OptionButton` | style | `normal`, `hover`, `pressed`, `disabled` and their `_mirrored` boxes | as `Button`'s, with `content_margin` 8 left and right |
+| | style | `focus` | as `Button`'s |
+| | icon | `arrow` | `builtin:option_button_arrow`: a 12-pixel chevron pointing down, at the end of the button |
+| | constant | `arrow_margin` | `4`, between the arrow and the button's edge |
+| | constant | `modulate_arrow` | `0`; 1 tints the arrow with the font color |
+| | font, font size, color, constant | `font`, `font_size`, `font_*_color`, `h_separation`, `outline_size` | as `Button`'s |
+| `MenuButton` | style, font, font size, color, constant | | as `Button`'s, but `font_disabled_color` is `[1, 1, 1, 0.3]` |
+| `PopupMenu` | style | `panel` | flat `[0.25, 0.25, 0.25, 1]`, `corner_radius` 3, `content_margin` 4, a `[0.175, 0.175, 0.175, 1]` border 2 wide |
+| | style | `hover` | flat `[0.4, 0.4, 0.4, 1]`, `corner_radius` 3, `content_margin` 4: behind the item focused |
+| | style | `separator`, `labeled_separator_left`, `labeled_separator_right` | a `[0.5, 0.5, 0.5, 1]` line 1 thick, `content_margin` 4 left and right |
+| | icon | `checked`, `unchecked`, `radio_checked`, `radio_unchecked` and their `_disabled` ones | as `CheckBox`'s |
+| | font, font size | `font`, `font_size`, `font_separator`, `font_separator_size` | The built-in font, `16` |
+| | color | `font_color`, `font_hover_color`, `font_separator_color` | `[0.875, 0.875, 0.875, 1]` |
+| | color | `font_disabled_color` | `[0.4, 0.4, 0.4, 0.8]` |
+| | color | `font_outline_color`, `font_separator_outline_color` | `[0, 0, 0, 1]` |
+| | constant | `v_separation`, `h_separation` | `4`, between items, and between an item's check box, icon and text |
+| | constant | `indent` | `10`, pixels per `indent` of an item |
+| | constant | `item_start_padding`, `item_end_padding` | `2` |
+| | constant | `icon_max_width` | `0`, no limit |
+| | constant | `outline_size`, `separator_outline_size` | `0` |
 | `HSlider`, `VSlider` | style | `slider` | flat `[0.1, 0.1, 0.1, 0.6]`, `corner_radius` 4, `content_margin` 4: the track |
 | | style | `grabber_area`, `grabber_area_highlight` | flat `[1, 1, 1, 0.4]` and `[1, 1, 1, 0.75]`, the same shape: the track up to the grabber |
 | | icon | `grabber`, `grabber_highlight`, `grabber_disabled` | `builtin:slider_grabber`, `builtin:slider_grabber_hl`, `builtin:slider_grabber_disabled`: a 16-pixel white circle at 0.75, 1 and 0.37 |
@@ -1881,7 +1964,7 @@ an object with a `type` and Godot's property names:
 
 | Field | Types | Default | Meaning |
 | --- | --- | --- | --- |
-| `type` | | `"flat"` | `flat` (Godot's `StyleBoxFlat`), `texture` (`StyleBoxTexture`) or `empty` (`StyleBoxEmpty`) |
+| `type` | | `"flat"` | `flat` (Godot's `StyleBoxFlat`), `texture` (`StyleBoxTexture`), `line` (`StyleBoxLine`) or `empty` (`StyleBoxEmpty`) |
 | `content_margin_left`, `_top`, `_right`, `_bottom` | all | `-1` | Room kept for the content on each side; -1 takes the style's own: its border, or its texture margin |
 | `expand_margin_left`, `_top`, `_right`, `_bottom` | flat, texture | `0` | Drawn this far outside the rect |
 | `draw_center` | flat, texture | `true` | Draw the middle, not only the border or the nine-patch's edges |
@@ -1899,6 +1982,10 @@ an object with a `type` and Godot's property names:
 | `texture_margin_left`, `_top`, `_right`, `_bottom` | texture | `0` | Pixels on each side that keep their size, as `NinePatchRect`'s |
 | `axis_stretch_horizontal`, `axis_stretch_vertical` | texture | `"stretch"` | `stretch`, `tile` or `tile_fit` |
 | `modulate_color` | texture | `[1, 1, 1, 1]` | Tints the texture |
+| `color` | line | `[0, 0, 0, 1]` | The line's color |
+| `thickness` | line | `1` | The line's width in pixels; half of it is the style's own margin on each side across the line |
+| `grow_begin`, `grow_end` | line | `1` | Pixels the line reaches before the rect's start and past its end |
+| `vertical` | line | `false` | Run down the rect's left side instead of along its top |
 
 - `content_margin`, `expand_margin`, `border_width`, `corner_radius` and `texture_margin` set all
   four sides or corners at once; the named ones override them.
