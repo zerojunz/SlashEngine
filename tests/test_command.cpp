@@ -2141,6 +2141,32 @@ TEST_CASE("tilemap commands set, paint and read a TileMapLayer's cells") {
     std::filesystem::remove_all(root);
 }
 
+TEST_CASE("tilemap.convert finds where cells are and which cell a point is in") {
+    const std::string root = "tilemap_convert_project";
+    std::filesystem::remove_all(root);
+    REQUIRE(slash::platform::create_directories(root).ok());
+    REQUIRE(slash::platform::write_file(root + "/iso.tileset.json",
+                                        R"({"format": 1, "tile_shape": "isometric",
+                                            "tile_size": [64, 32],
+                                            "sources": {"a": {"texture": "a.png"}}})")
+                .ok());
+    command::SessionOptions options;
+    options.project_root = root;
+    Engine engine(options);
+    engine.ok("entity.create", R"({"id": "map", "components": {"Transform2D":
+        {"position": [100, 50]}, "TileMapLayer": {"tile_set": "iso.tileset.json"}}})");
+    // Odd rows of diamonds sit half a cell over and half a cell down.
+    CHECK(engine.ok("tilemap.convert", R"({"id": "map", "cells": [[0, 0], [0, 1]]})") ==
+          parse(R"({"points": [[132, 66], [164, 82]]})"));
+    // The corner of cell 0,0's box is in the diamond up and to the left of it.
+    CHECK(engine.ok("tilemap.convert", R"({"id": "map", "points": [[164, 82], [102, 52]]})") ==
+          parse(R"({"cells": [[0, 1], [-1, -1]]})"));
+    CHECK(contains(
+        engine.fails("tilemap.convert", R"({"id": "map"})", command::code::kInvalidParams).message,
+        "give cells"));
+    std::filesystem::remove_all(root);
+}
+
 TEST_CASE("log.tail returns recent log lines as objects") {
     Engine engine({}, /*capture_logs=*/true);
     slash::log::info("first", {{"n", 1}});

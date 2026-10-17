@@ -325,8 +325,11 @@ its cells as text, rows of one-letter **legend** keys, so an agent reads a whole
 `tilemap.paint` paints a terrain and picks, for each cell and the cells around it, the tile whose
 peering fits its neighbors, so shores and corners draw themselves (**autotiling**);
 `tilemap.set` places single tiles and `tilemap.get` reads the rows back. A layer draws in runs of
-one texture, so a layer from one atlas is one GPU draw. The
-[tile maps example](../examples/tilemaps/) paints an island with a pond.
+one texture, so a layer from one atlas is one GPU draw. Cells are squares, isometric
+**diamonds** or **hexagons**, numbered by Godot's **layouts**; `tilemap.convert` says where a
+cell is and which cell a point is in. The [tile maps example](../examples/tilemaps/) paints an
+island with a pond, and the [isometric and hex example](../examples/isometric-and-hex-tiles/)
+paints one on diamonds.
 
 **2D lights** follow Godot's. Once a scene has a light or a `CanvasModulate`, sprites and tile
 layers are lit: the `CanvasModulate` color is the **ambient** light, a `PointLight2D` shines from

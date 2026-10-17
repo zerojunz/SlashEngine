@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <charconv>
 #include <climits>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -56,10 +57,12 @@ json::Value schema() {
     tile["properties"]["name"]["minLength"] = 1;
     tile["properties"]["terrain"] = property("string", "The terrain it paints.");
     tile["properties"]["terrain"]["minLength"] = 1;
-    tile["properties"]["peering"] =
-        property("object", "The terrain each neighbor must have for the tile to fit, by "
-                           "direction: n, ne, e, se, s, sw, w, nw. Left out, the tile's own "
-                           "terrain; null, none.");
+    tile["properties"]["peering"] = property(
+        "object", "The terrain each neighbor must have for the tile to fit, by the compass "
+                  "direction of the side or corner it touches: n, ne, e, se, s, sw, w, nw for "
+                  "squares and diamonds; a hexagon's corners between two sides are ene, ese, "
+                  "wsw, wnw (offset rows) or nne, sse, ssw, nnw (offset columns). Left out, the "
+                  "tile's own terrain; null, none.");
     tile["properties"]["peering"]["additionalProperties"] = false;
     for (const std::string_view name : kNeighborNames) {
         tile["properties"]["peering"]["properties"][name] = peering_bit;
@@ -183,8 +186,8 @@ json::Value schema() {
     terrain_set["additionalProperties"] = false;
     terrain_set["required"] = json::Array{"terrains"};
     terrain_set["properties"]["mode"] =
-        property("string", "How tiles connect: by all eight neighbors, the four at their "
-                           "corners or the four at their sides.");
+        property("string", "How tiles connect: by their corners and sides, their corners only "
+                           "or their sides only.");
     json::Array modes;
     for (const std::string_view mode : kModeNames) {
         modes.emplace_back(mode);
@@ -208,6 +211,28 @@ json::Value schema() {
     out["properties"]["format"]["description"] = "Format version. Must be 1.";
     out["properties"]["tile_size"] = pair("A cell's width and height, in pixels.", 1);
     out["properties"]["tile_size"]["default"] = json::Array{16, 16};
+    const auto names = [](std::span<const std::string_view> list) {
+        json::Array out_names;
+        for (const std::string_view name : list) {
+            out_names.emplace_back(name);
+        }
+        return out_names;
+    };
+    out["properties"]["tile_shape"] =
+        property("string", "The cells' shape, as Godot's: squares, isometric diamonds, squares in "
+                           "rows offset by half a cell (connected as hexagons), or hexagons.");
+    out["properties"]["tile_shape"]["enum"] = names(kTileShapeNames);
+    out["properties"]["tile_shape"]["default"] = kTileShapeNames.front();
+    out["properties"]["tile_layout"] =
+        property("string", "How the columns and rows of cells that aren't square lie, as "
+                           "Godot's TileLayout.");
+    out["properties"]["tile_layout"]["enum"] = names(kTileLayoutNames);
+    out["properties"]["tile_layout"]["default"] = kTileLayoutNames.front();
+    out["properties"]["tile_offset_axis"] =
+        property("string", "Whether cells that aren't square offset their rows (horizontal) or "
+                           "their columns (vertical).");
+    out["properties"]["tile_offset_axis"]["enum"] = names(kTileOffsetAxisNames);
+    out["properties"]["tile_offset_axis"]["default"] = kTileOffsetAxisNames.front();
     out["properties"]["physics_layers"] = property(
         "array", "Physics layers by number from 0: what tiles' collision polygons collide as.");
     out["properties"]["physics_layers"]["items"]["$ref"] = "#/$defs/physics_layer";
@@ -287,37 +312,177 @@ Vec2i pair_of(const json::Value* value, Vec2i fallback) {
     return {static_cast<int>(items[0].as_int()), static_cast<int>(items[1].as_int())};
 }
 
-bool is_corner(std::size_t bit) {
-    return bit % 2 == 1;
-}
-
-// Whether a terrain set's mode connects tiles by this neighbor.
-bool connects(TerrainMode mode, std::size_t bit) {
-    switch (mode) {
-    case TerrainMode::Corners:
-        return is_corner(bit);
-    case TerrainMode::Sides:
-        return !is_corner(bit);
-    case TerrainMode::CornersAndSides:
+// What a direction is to a cell of a shape, as Godot's is_valid_terrain_peering_bit_for_mode
+// with both corners and sides.
+PeeringKind kind_of(TileShape shape, TileOffsetAxis axis, Neighbor direction) {
+    const auto d = static_cast<std::size_t>(direction);
+    const bool main = d % 2 == 0;  // one of the eight main points
+    const bool along = d % 4 == 0; // n, e, s or w
+    switch (shape) {
+    case TileShape::Square:
+    case TileShape::Isometric:
+        // A square's sides face n, e, s and w; a diamond's corners do.
+        if (!main) {
+            return PeeringKind::None;
+        }
+        return along == (shape == TileShape::Square) ? PeeringKind::Side : PeeringKind::Corner;
+    case TileShape::HalfOffsetSquare:
+    case TileShape::Hexagon:
         break;
     }
-    return true;
+    // Offset rows have sides e and w and the diagonals, and corners n, s and those between the
+    // diagonals and e or w; offset columns, sides n and s and the diagonals, and corners e, w and
+    // those between the diagonals and n or s.
+    const bool rows = axis == TileOffsetAxis::Horizontal;
+    if (!main) {
+        const bool beside_east_or_west = direction == Neighbor::ENE || direction == Neighbor::ESE ||
+                                         direction == Neighbor::WSW || direction == Neighbor::WNW;
+        return beside_east_or_west == rows ? PeeringKind::Corner : PeeringKind::None;
+    }
+    if (!along) {
+        return PeeringKind::Side;
+    }
+    const bool east_or_west = direction == Neighbor::E || direction == Neighbor::W;
+    return east_or_west == rows ? PeeringKind::Side : PeeringKind::Corner;
 }
 
-std::string_view connected_bits(TerrainMode mode) {
-    switch (mode) {
-    case TerrainMode::Corners:
-        return "ne, se, sw and nw";
-    case TerrainMode::Sides:
-        return "n, e, s and w";
-    case TerrainMode::CornersAndSides:
+// Whether a terrain set's mode connects a tile set's tiles by this direction.
+bool connects(const TileSet& set, TerrainMode mode, Neighbor direction) {
+    switch (peering_kind(set, direction)) {
+    case PeeringKind::None:
+        return false;
+    case PeeringKind::Side:
+        return mode != TerrainMode::Corners;
+    case PeeringKind::Corner:
         break;
     }
-    return "all eight";
+    return mode != TerrainMode::Sides;
+}
+
+// The directions a mode connects a tile set's tiles by, as "n, e, s and w".
+std::string connected_names(const TileSet& set, TerrainMode mode) {
+    std::vector<std::string_view> names;
+    for (std::size_t d = 0; d < kNeighborNames.size(); ++d) {
+        if (connects(set, mode, static_cast<Neighbor>(d))) {
+            names.push_back(kNeighborNames.at(d));
+        }
+    }
+    std::string out;
+    for (std::size_t i = 0; i < names.size(); ++i) {
+        if (i > 0) {
+            out += i + 1 == names.size() ? " and " : ", ";
+        }
+        out += names[i];
+    }
+    return out;
+}
+
+// What a tile of a shape is called in messages, as "square".
+std::string shape_words(TileShape shape) {
+    std::string out(kTileShapeNames.at(static_cast<std::size_t>(shape)));
+    std::ranges::replace(out, '_', ' ');
+    return out;
 }
 
 TerrainMode parse_mode(std::string_view name) {
     return static_cast<TerrainMode>(std::ranges::find(kModeNames, name) - kModeNames.begin());
+}
+
+template <typename Enum, std::size_t N>
+Enum parse_name(const json::Value* value, const std::array<std::string_view, N>& names) {
+    if (value == nullptr) {
+        return Enum{};
+    }
+    return static_cast<Enum>(std::ranges::find(names, value->as_string()) - names.begin());
+}
+
+// The shape, layout and offset axis of a .tileset.json document the schema accepted.
+TileSet shape_of(const json::Value& doc) {
+    TileSet set;
+    set.shape = parse_name<TileShape>(doc.find("tile_shape"), kTileShapeNames);
+    set.layout = parse_name<TileLayout>(doc.find("tile_layout"), kTileLayoutNames);
+    set.offset_axis =
+        parse_name<TileOffsetAxis>(doc.find("tile_offset_axis"), kTileOffsetAxisNames);
+    return set;
+}
+
+int posmod2(int value) {
+    return ((value % 2) + 2) % 2;
+}
+
+// One step from a cell of a shape other than squares toward one of the eight main points
+// (0 n, 1 ne, ... 7 nw), as Godot's get_neighbor_cell for half-offset shapes.
+Vec2i half_offset_step(const TileSet& set, Vec2i cell, std::size_t point) {
+    const bool rows = set.offset_axis == TileOffsetAxis::Horizontal;
+    switch (set.layout) {
+    case TileLayout::Stacked:
+    case TileLayout::StackedOffset: {
+        // A stacked offset layout is a stacked one with the other rows (or columns) offset.
+        const bool offset =
+            (posmod2(rows ? cell.y : cell.x) == 1) != (set.layout == TileLayout::StackedOffset);
+        // Toward the offset side, one more on the other axis in offset rows; away, one less in
+        // the others.
+        const auto shift = [&](bool toward) { return (offset ? 1 : 0) - (toward ? 0 : 1); };
+        // Straight up or down offset rows, the cell across is two rows away, in the next row
+        // offset the same way; along a row, it is the next cell. Offset columns the other way.
+        constexpr std::array<Vec2i, 8> kAlongRows{
+            {{0, -2}, {}, {1, 0}, {}, {0, 2}, {}, {-1, 0}, {}}};
+        constexpr std::array<Vec2i, 8> kAlongColumns{
+            {{0, -1}, {}, {2, 0}, {}, {0, 1}, {}, {-2, 0}, {}}};
+        if (point % 2 == 0) {
+            return rows ? kAlongRows.at(point) : kAlongColumns.at(point);
+        }
+        // ne 1, se 3, sw 5, nw 7.
+        const bool east = point == 1 || point == 3;
+        const bool south = point == 3 || point == 5;
+        return rows ? Vec2i{shift(east), south ? 1 : -1} : Vec2i{east ? 1 : -1, shift(south)};
+    }
+    case TileLayout::StairsRight: {
+        constexpr std::array<Vec2i, 8> kSteps{
+            {{1, -2}, {1, -1}, {1, 0}, {0, 1}, {-1, 2}, {-1, 1}, {-1, 0}, {0, -1}}};
+        return kSteps.at(point);
+    }
+    case TileLayout::StairsDown: {
+        constexpr std::array<Vec2i, 8> kSteps{
+            {{0, -1}, {1, -1}, {2, -1}, {1, 0}, {0, 1}, {-1, 1}, {-2, 1}, {-1, 0}}};
+        return kSteps.at(point);
+    }
+    case TileLayout::DiamondRight: {
+        constexpr std::array<Vec2i, 8> kSteps{
+            {{1, -1}, {1, 0}, {1, 1}, {0, 1}, {-1, 1}, {-1, 0}, {-1, -1}, {0, -1}}};
+        return kSteps.at(point);
+    }
+    case TileLayout::DiamondDown:
+        break;
+    }
+    constexpr std::array<Vec2i, 8> kSteps{
+        {{-1, -1}, {0, -1}, {1, -1}, {1, 0}, {1, 1}, {0, 1}, {-1, 1}, {-1, 0}}};
+    return kSteps.at(point);
+}
+
+float cross(Vec2 a, Vec2 b) {
+    return (a.x * b.y) - (a.y * b.x);
+}
+
+// How much a shape's rows (or columns) overlap, as Godot's overlapping ratio: diamonds by half,
+// hexagons by a quarter.
+float overlap_of(TileShape shape) {
+    switch (shape) {
+    case TileShape::Isometric:
+        return 0.5F;
+    case TileShape::Hexagon:
+        return 0.75F;
+    case TileShape::Square:
+    case TileShape::HalfOffsetSquare:
+        break;
+    }
+    return 1.0F;
+}
+
+// A whole number of cells as an int, held in range for points far past any cell.
+int whole(float value) {
+    constexpr float kLimit = 1.0e9F;
+    return static_cast<int>(std::clamp(value, -kLimit, kLimit));
 }
 
 std::string path_error() {
@@ -328,7 +493,7 @@ std::string path_error() {
 // Checks a document the schema accepted, collecting every error.
 class Checker {
 public:
-    explicit Checker(const json::Value& doc) : doc_(doc) {}
+    explicit Checker(const json::Value& doc) : doc_(doc), shape_(shape_of(doc)) {}
 
     std::vector<json::ValidationError> run() {
         if (const json::Value* layers = doc_.find("physics_layers"); layers != nullptr) {
@@ -489,13 +654,19 @@ private:
             std::string bit_at = at;
             bit_at += "/peering/";
             bit_at += bit;
-            const auto index = static_cast<std::size_t>(std::ranges::find(kNeighborNames, bit) -
-                                                        kNeighborNames.begin());
-            if (!connects(info->mode, index)) {
+            const auto direction = static_cast<Neighbor>(std::ranges::find(kNeighborNames, bit) -
+                                                         kNeighborNames.begin());
+            if (peering_kind(shape_, direction) == PeeringKind::None) {
+                fail(bit_at, quoted(bit) + " is no side or corner of a " +
+                                 shape_words(shape_.shape) + " tile, which has " +
+                                 connected_names(shape_, TerrainMode::CornersAndSides));
+                continue;
+            }
+            if (!connects(shape_, info->mode, direction)) {
                 fail(bit_at, "the terrain set " + quoted(info->set) + " is " +
                                  std::string(kModeNames.at(static_cast<std::size_t>(info->mode))) +
-                                 ", which connects tiles by " +
-                                 std::string(connected_bits(info->mode)) + " only");
+                                 ", which connects " + shape_words(shape_.shape) + " tiles by " +
+                                 connected_names(shape_, info->mode) + " only");
                 continue;
             }
             if (value.is_null()) {
@@ -513,6 +684,7 @@ private:
     }
 
     const json::Value& doc_;
+    TileSet shape_; // only its shape, layout and offset axis
     std::size_t physics_layers_ = 0;
     std::map<std::string, TerrainInfo, std::less<>> terrains_;
     std::map<std::string, std::string, std::less<>> names_; // tile name -> "source:x,y"
@@ -742,6 +914,266 @@ std::string_view terrain_mode_name(TerrainMode mode) {
     return kModeNames.at(static_cast<std::size_t>(mode));
 }
 
+PeeringKind peering_kind(const TileSet& set, Neighbor direction) {
+    return kind_of(set.shape, set.offset_axis, direction);
+}
+
+std::optional<Vec2i> neighbor_cell(const TileSet& set, Vec2i cell, Neighbor direction) {
+    const auto d = static_cast<std::size_t>(direction);
+    const PeeringKind kind = peering_kind(set, direction);
+    // A hexagon's corners have no cell across them.
+    if (kind == PeeringKind::None || d % 2 == 1 ||
+        (kind == PeeringKind::Corner && set.shape != TileShape::Square &&
+         set.shape != TileShape::Isometric)) {
+        return std::nullopt;
+    }
+    if (set.shape == TileShape::Square) {
+        constexpr std::array<Vec2i, 8> kSteps{
+            {{0, -1}, {1, -1}, {1, 0}, {1, 1}, {0, 1}, {-1, 1}, {-1, 0}, {-1, -1}}};
+        return cell + kSteps.at(d / 2);
+    }
+    return cell + half_offset_step(set, cell, d / 2);
+}
+
+std::optional<Neighbor> godot_neighbor(TileShape shape, TileOffsetAxis axis, int bit) {
+    if (bit < 0 || bit > 15) {
+        return std::nullopt;
+    }
+    // Godot's bits go round clockwise from the right, a side then a corner each way.
+    constexpr std::array<Neighbor, 8> kFacing{Neighbor::E, Neighbor::SE, Neighbor::S, Neighbor::SW,
+                                              Neighbor::W, Neighbor::NW, Neighbor::N, Neighbor::NE};
+    const auto way = static_cast<std::size_t>(bit / 2);
+    const bool corner = bit % 2 == 1;
+    Neighbor direction = kFacing.at(way);
+    if (corner && way % 2 == 1 &&
+        (shape == TileShape::HalfOffsetSquare || shape == TileShape::Hexagon)) {
+        // A hexagon's corner beside a diagonal side lies toward e or w in offset rows, toward n
+        // or s in offset columns.
+        constexpr std::array<Neighbor, 4> kRows{Neighbor::ESE, Neighbor::WSW, Neighbor::WNW,
+                                                Neighbor::ENE};
+        constexpr std::array<Neighbor, 4> kColumns{Neighbor::SSE, Neighbor::SSW, Neighbor::NNW,
+                                                   Neighbor::NNE};
+        direction = (axis == TileOffsetAxis::Horizontal ? kRows : kColumns).at(way / 2);
+    }
+    const PeeringKind want = corner ? PeeringKind::Corner : PeeringKind::Side;
+    if (kind_of(shape, axis, direction) != want) {
+        return std::nullopt;
+    }
+    return direction;
+}
+
+Vec2 map_to_local(const TileSet& set, Vec2i cell) {
+    // Godot's TileSet::map_to_local, line for line.
+    auto x = static_cast<float>(cell.x);
+    auto y = static_cast<float>(cell.y);
+    const bool rows = set.offset_axis == TileOffsetAxis::Horizontal;
+    if (set.shape != TileShape::Square) {
+        switch (set.layout) {
+        case TileLayout::Stacked:
+            if (rows) {
+                x += posmod2(cell.y) == 0 ? 0.0F : 0.5F;
+            } else {
+                y += posmod2(cell.x) == 0 ? 0.0F : 0.5F;
+            }
+            break;
+        case TileLayout::StackedOffset:
+            if (rows) {
+                x += posmod2(cell.y) == 1 ? 0.0F : 0.5F;
+            } else {
+                y += posmod2(cell.x) == 1 ? 0.0F : 0.5F;
+            }
+            break;
+        case TileLayout::StairsRight:
+            if (rows) {
+                x += y / 2.0F;
+            } else {
+                x = (x * 2.0F) + y;
+                y /= 2.0F;
+            }
+            break;
+        case TileLayout::StairsDown:
+            if (rows) {
+                y = (y * 2.0F) + x;
+                x /= 2.0F;
+            } else {
+                y += x / 2.0F;
+            }
+            break;
+        case TileLayout::DiamondRight: {
+            const float ox = x;
+            if (rows) {
+                x = (ox + y) / 2.0F;
+                y -= ox;
+            } else {
+                x = ox + y;
+                y = (y - ox) / 2.0F;
+            }
+            break;
+        }
+        case TileLayout::DiamondDown: {
+            const float ox = x;
+            if (rows) {
+                x = (ox - y) / 2.0F;
+                y += ox;
+            } else {
+                x = ox - y;
+                y = (y + ox) / 2.0F;
+            }
+            break;
+        }
+        }
+    }
+    const float overlap = overlap_of(set.shape);
+    if (rows) {
+        y *= overlap;
+    } else {
+        x *= overlap;
+    }
+    return {(x + 0.5F) * static_cast<float>(set.tile_size.x),
+            (y + 0.5F) * static_cast<float>(set.tile_size.y)};
+}
+
+Vec2i local_to_map(const TileSet& set, Vec2 point) {
+    // Godot's TileSet::local_to_map, line for line.
+    Vec2 at{point.x / static_cast<float>(set.tile_size.x),
+            point.y / static_cast<float>(set.tile_size.y)};
+    const bool rows = set.offset_axis == TileOffsetAxis::Horizontal;
+    const float overlap = overlap_of(set.shape);
+    if (rows) {
+        at.y /= overlap;
+    } else {
+        at.x /= overlap;
+    }
+    const auto floored = [](Vec2 v) { return Vec2{std::floor(v.x), std::floor(v.y)}; };
+    const auto odd = [](float value) { return posmod2(whole(std::floor(value))) == 1; };
+    if (set.shape == TileShape::Square) {
+        const Vec2 cell = floored({at.x + 0.00005F, at.y + 0.00005F});
+        return {whole(cell.x), whole(cell.y)};
+    }
+    const bool stacked_offset = set.layout == TileLayout::StackedOffset;
+    const float slope = (1.0F / overlap) - 1.0F;
+    const Vec2 raw = at;
+    Vec2 add;
+    if (rows) {
+        // Floor, half a cell over in offset rows; then whether the point is in a top corner,
+        // which belongs to a cell of the row above.
+        at = odd(at.y) != stacked_offset ? Vec2{std::floor(at.x + 0.5F) - 0.5F, std::floor(at.y)}
+                                         : floored(at);
+        const Vec2 in_tile = raw - at;
+        const bool top_left = cross(in_tile - Vec2{0.5F, 0.0F}, {-0.5F, slope}) <= 0.0F;
+        const bool top_right = cross(in_tile - Vec2{0.5F, 0.0F}, {0.5F, slope}) > 0.0F;
+        Vec2 left;
+        Vec2 right;
+        switch (set.layout) {
+        case TileLayout::Stacked:
+            at = floored(at);
+            left = {odd(at.y) ? 0.0F : -1.0F, -1.0F};
+            right = {odd(at.y) ? 1.0F : 0.0F, -1.0F};
+            break;
+        case TileLayout::StackedOffset:
+            at = floored(at);
+            left = {odd(at.y) ? -1.0F : 0.0F, -1.0F};
+            right = {odd(at.y) ? 0.0F : 1.0F, -1.0F};
+            break;
+        case TileLayout::StairsRight:
+            at = floored({at.x - (at.y / 2.0F), at.y});
+            left = {0.0F, -1.0F};
+            right = {1.0F, -1.0F};
+            break;
+        case TileLayout::StairsDown:
+            at = floored({at.x * 2.0F, (at.y / 2.0F) - at.x});
+            left = {-1.0F, 0.0F};
+            right = {1.0F, -1.0F};
+            break;
+        case TileLayout::DiamondRight:
+            at = floored({at.x - (at.y / 2.0F), (at.y / 2.0F) + at.x});
+            left = {0.0F, -1.0F};
+            right = {1.0F, 0.0F};
+            break;
+        case TileLayout::DiamondDown:
+            at = floored({at.x + (at.y / 2.0F), (at.y / 2.0F) - at.x});
+            left = {-1.0F, 0.0F};
+            right = {0.0F, -1.0F};
+            break;
+        }
+        if (top_left) {
+            add = left;
+        } else if (top_right) {
+            add = right;
+        }
+    } else {
+        at = odd(at.x) != stacked_offset ? Vec2{std::floor(at.x), std::floor(at.y + 0.5F) - 0.5F}
+                                         : floored(at);
+        const Vec2 in_tile = raw - at;
+        const bool top_left = cross(in_tile - Vec2{0.0F, 0.5F}, {slope, -0.5F}) > 0.0F;
+        const bool bottom_left = cross(in_tile - Vec2{0.0F, 0.5F}, {slope, 0.5F}) <= 0.0F;
+        Vec2 top;
+        Vec2 bottom;
+        switch (set.layout) {
+        case TileLayout::Stacked:
+            at = floored(at);
+            top = {-1.0F, odd(at.x) ? 0.0F : -1.0F};
+            bottom = {-1.0F, odd(at.x) ? 1.0F : 0.0F};
+            break;
+        case TileLayout::StackedOffset:
+            at = floored(at);
+            top = {-1.0F, odd(at.x) ? -1.0F : 0.0F};
+            bottom = {-1.0F, odd(at.x) ? 0.0F : 1.0F};
+            break;
+        case TileLayout::StairsRight:
+            at = floored({(at.x / 2.0F) - at.y, at.y * 2.0F});
+            top = {0.0F, -1.0F};
+            bottom = {-1.0F, 1.0F};
+            break;
+        case TileLayout::StairsDown:
+            at = floored({at.x, at.y - (at.x / 2.0F)});
+            top = {-1.0F, 0.0F};
+            bottom = {-1.0F, 1.0F};
+            break;
+        case TileLayout::DiamondRight:
+            at = floored({(at.x / 2.0F) - at.y, at.y + (at.x / 2.0F)});
+            top = {0.0F, -1.0F};
+            bottom = {-1.0F, 0.0F};
+            break;
+        case TileLayout::DiamondDown:
+            at = floored({(at.x / 2.0F) + at.y, at.y - (at.x / 2.0F)});
+            top = {-1.0F, 0.0F};
+            bottom = {0.0F, 1.0F};
+            break;
+        }
+        if (top_left) {
+            add = top;
+        } else if (bottom_left) {
+            add = bottom;
+        }
+    }
+    return {whole(at.x + add.x), whole(at.y + add.y)};
+}
+
+std::vector<const Cells::value_type*> draw_order(const TileSet& set, const Cells& cells) {
+    std::vector<const Cells::value_type*> out;
+    out.reserve(cells.size());
+    // Square cells' centers go as the cells do, in rows.
+    if (set.shape == TileShape::Square) {
+        for (const auto& cell : cells) {
+            out.push_back(&cell);
+        }
+        return out;
+    }
+    std::vector<std::pair<Vec2, const Cells::value_type*>> centers;
+    centers.reserve(cells.size());
+    for (const auto& cell : cells) {
+        centers.emplace_back(map_to_local(set, cell.first), &cell);
+    }
+    std::ranges::stable_sort(centers, [](const auto& a, const auto& b) {
+        return a.first.y != b.first.y ? a.first.y < b.first.y : a.first.x < b.first.x;
+    });
+    for (const auto& entry : centers) {
+        out.push_back(entry.second);
+    }
+    return out;
+}
+
 json::Value tileset_schema() {
     return schema();
 }
@@ -761,7 +1193,7 @@ Result<TileSet> parse_tileset(const json::Value& doc) {
                           (first.path.empty() ? std::string("root") : first.path) + ": " +
                               first.message);
     }
-    TileSet set;
+    TileSet set = shape_of(doc);
     set.tile_size = pair_of(doc.find("tile_size"), set.tile_size);
     if (const json::Value* layers = doc.find("physics_layers"); layers != nullptr) {
         for (const json::Value& json_layer : layers->as_array()) {
@@ -832,7 +1264,7 @@ Result<TileSet> parse_tileset(const json::Value& doc) {
                             .mode;
                     const json::Value* peering = json_tile.find("peering");
                     for (std::size_t bit = 0; bit < kNeighborNames.size(); ++bit) {
-                        if (!connects(mode, bit)) {
+                        if (!connects(set, mode, static_cast<Neighbor>(bit))) {
                             continue;
                         }
                         const json::Value* value_bit =
@@ -1050,9 +1482,7 @@ std::vector<TilePolygon> tile_collision(const TileSet& set, const TileRef& tile)
 std::vector<physics2d::TileShape> tile_shapes(const TileSet& set, const Cells& cells) {
     std::vector<physics2d::TileShape> out;
     for (const auto& [cell, tile] : cells) {
-        const Vec2 center{(static_cast<float>(cell.x) + 0.5F) * static_cast<float>(set.tile_size.x),
-                          (static_cast<float>(cell.y) + 0.5F) *
-                              static_cast<float>(set.tile_size.y)};
+        const Vec2 center = map_to_local(set, cell);
         for (TilePolygon& polygon : tile_collision(set, tile)) {
             if (polygon.layer < 0 ||
                 static_cast<std::size_t>(polygon.layer) >= set.physics_layers.size()) {
@@ -1201,14 +1631,27 @@ Result<std::size_t> paint_terrain(Cells& cells, const TileSet& set, std::span<co
         const TileData* data = set.find(it->second);
         return data != nullptr ? data->terrain : -1;
     };
+    // The shape's sides and corners in order round a cell, and the cells beside a cell: across
+    // its sides, and across its corners where a cell is.
+    std::vector<Neighbor> ring;
+    for (std::size_t d = 0; d < kNeighborNames.size(); ++d) {
+        if (peering_kind(set, static_cast<Neighbor>(d)) != PeeringKind::None) {
+            ring.push_back(static_cast<Neighbor>(d));
+        }
+    }
+    const auto in_range = [](Vec2i cell) {
+        return cell.x >= kMinCell && cell.x <= kMaxCell && cell.y >= kMinCell && cell.y <= kMaxCell;
+    };
+    const auto beside = [&](Vec2i cell, Neighbor direction) -> std::optional<Vec2i> {
+        const std::optional<Vec2i> next = neighbor_cell(set, cell, direction);
+        return next && in_range(*next) ? next : std::nullopt;
+    };
     // The painted cells, and the terrain tiles around them that must fit them.
     std::set<Vec2i, CellOrder> affected = paint;
     for (const Vec2i cell : paint) {
-        for (const Vec2i offset : kNeighborOffsets) {
-            const Vec2i next = cell + offset;
-            if (next.x >= kMinCell && next.x <= kMaxCell && next.y >= kMinCell &&
-                next.y <= kMaxCell && terrain_at(next) >= 0) {
-                affected.insert(next);
+        for (const Neighbor direction : ring) {
+            if (const auto next = beside(cell, direction); next && terrain_at(*next) >= 0) {
+                affected.insert(*next);
             }
         }
     }
@@ -1223,24 +1666,36 @@ Result<std::size_t> paint_terrain(Cells& cells, const TileSet& set, std::span<co
         }
         const int set_index = set.terrains.at(static_cast<std::size_t>(own)).set;
         const TerrainMode mode = set.terrain_sets.at(static_cast<std::size_t>(set_index)).mode;
-        std::array<int, 8> around{};
-        for (std::size_t bit = 0; bit < around.size(); ++bit) {
-            const int found = terrain_at(cell + kNeighborOffsets.at(bit));
-            around.at(bit) =
+        // The terrain across each side, and across each corner where a cell is; a hexagon's
+        // corners have none, so the cell's own.
+        std::array<int, 16> around{};
+        around.fill(-1);
+        for (const Neighbor direction : ring) {
+            const auto next = neighbor_cell(set, cell, direction);
+            int found = own;
+            if (next) {
+                found = in_range(*next) ? terrain_at(*next) : -1;
+            }
+            around.at(static_cast<std::size_t>(direction)) =
                 found >= 0 && set.terrains.at(static_cast<std::size_t>(found)).set == set_index
                     ? found
                     : -1;
         }
-        // A side wants its neighbor's terrain. A corner wants its own terrain only where both
+        // A side wants its neighbor's terrain. A corner wants its own terrain only where the
         // sides beside it and the cell across it have that terrain; else what breaks the run.
-        std::array<int, 8> wanted = around;
-        for (std::size_t bit = 1; bit < wanted.size(); bit += 2) {
-            const int before = around.at(bit - 1);
-            const int after = around.at((bit + 1) % around.size());
+        std::array<int, 16> wanted = around;
+        for (std::size_t i = 0; i < ring.size(); ++i) {
+            if (peering_kind(set, ring[i]) != PeeringKind::Corner) {
+                continue;
+            }
+            const int before =
+                around.at(static_cast<std::size_t>(ring[(i + ring.size() - 1) % ring.size()]));
+            const int after = around.at(static_cast<std::size_t>(ring[(i + 1) % ring.size()]));
+            int& corner = wanted.at(static_cast<std::size_t>(ring[i]));
             if (before != own) {
-                wanted.at(bit) = before;
+                corner = before;
             } else if (after != own) {
-                wanted.at(bit) = after;
+                corner = after;
             }
         }
         // A wrong bit costs 2 where the tile joins its own terrain and the neighbor doesn't, or
@@ -1250,10 +1705,11 @@ Result<std::size_t> paint_terrain(Cells& cells, const TileSet& set, std::span<co
         std::vector<const Candidate*> fits;
         for (const Candidate& candidate : candidates.at(static_cast<std::size_t>(own))) {
             std::size_t cost = 0;
-            for (std::size_t bit = 0; bit < wanted.size(); ++bit) {
+            for (const Neighbor direction : ring) {
+                const auto bit = static_cast<std::size_t>(direction);
                 const int has = candidate.data->peering.at(bit);
                 const int want = wanted.at(bit);
-                if (connects(mode, bit) && has != want) {
+                if (connects(set, mode, direction) && has != want) {
                     cost += (has == own) != (want == own) ? 2 : 1;
                 }
             }

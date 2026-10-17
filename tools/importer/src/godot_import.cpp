@@ -158,24 +158,26 @@ std::optional<std::vector<GodotCell>> tile_map_cells(const Value& value) {
     return decode_godot_cells(bytes);
 }
 
-// Godot's terrain peering bits of square tiles, as kNeighborNames indexes them.
-std::optional<std::size_t> peering_direction(std::string_view godot) {
-    constexpr std::array<std::string_view, 8> kBits{
-        "top_side",    "top_right_corner",   "right_side", "bottom_right_corner",
-        "bottom_side", "bottom_left_corner", "left_side",  "top_left_corner"};
-    for (std::size_t direction = 0; direction < kBits.size(); ++direction) {
-        if (kBits.at(direction) == godot) {
-            return direction;
-        }
-    }
-    return std::nullopt;
+// A Godot terrain peering bit as the direction it faces in a tile set of this shape.
+std::optional<canvas::Neighbor> peering_direction(std::string_view godot,
+                                                  const canvas::TileSet& shape) {
+    // Godot's CellNeighbor, in order.
+    constexpr std::array<std::string_view, 16> kBits{
+        "right_side",  "right_corner",  "bottom_right_side", "bottom_right_corner",
+        "bottom_side", "bottom_corner", "bottom_left_side",  "bottom_left_corner",
+        "left_side",   "left_corner",   "top_left_side",     "top_left_corner",
+        "top_side",    "top_corner",    "top_right_side",    "top_right_corner"};
+    const auto bit = std::ranges::find(kBits, godot) - kBits.begin();
+    return canvas::godot_neighbor(shape.shape, shape.offset_axis, static_cast<int>(bit));
 }
 
 // Whether a terrain set's mode connects tiles by a direction, as canvas's terrain painting does:
 // Godot's modes match corners and sides (0), corners (1) or sides (2).
-bool connects(std::int64_t mode, std::size_t direction) {
-    const bool corner = direction % 2 == 1;
-    return mode == 1 ? corner : mode != 2 || !corner;
+bool connects(std::int64_t mode, const canvas::TileSet& shape, canvas::Neighbor direction) {
+    const canvas::PeeringKind kind = canvas::peering_kind(shape, direction);
+    return kind != canvas::PeeringKind::None &&
+           (mode == 1 ? kind == canvas::PeeringKind::Corner
+                      : mode != 2 || kind == canvas::PeeringKind::Side);
 }
 
 // --- Godot files -------------------------------------------------------------------------------
@@ -1606,6 +1608,7 @@ private:
         json::Value doc;
         doc["format"] = 1;
         std::array<std::int64_t, 2> tile_size{16, 16};
+        canvas::TileSet shape; // its shape, layout and offset axis
         // Terrain sets by index: their modes and their terrains' names by index.
         std::map<std::int64_t, std::int64_t> modes;
         std::map<std::pair<std::int64_t, std::int64_t>, std::string> terrains;
@@ -1621,11 +1624,26 @@ private:
                     tile_size = {static_cast<std::int64_t>(xy->at(0)),
                                  static_cast<std::int64_t>(xy->at(1))};
                 }
-            } else if (name == "tile_shape") {
-                if (value.number() != 0.0) {
-                    problems_.add("tile shape", where,
-                                  "only square tiles convert; isometric and hexagonal tile maps "
-                                  "are on the roadmap");
+            } else if (name == "tile_shape" || name == "tile_layout" ||
+                       name == "tile_offset_axis") {
+                // Enums, stored as numbers in Godot's order; 0, the default, is left out.
+                const auto whole = static_cast<std::int64_t>(value.number());
+                if (whole == 0) {
+                    continue;
+                }
+                const std::size_t number = whole > 0 ? static_cast<std::size_t>(whole) : SIZE_MAX;
+                if (name == "tile_shape" && number < canvas::kTileShapeNames.size()) {
+                    shape.shape = static_cast<canvas::TileShape>(number);
+                    doc["tile_shape"] = canvas::kTileShapeNames.at(number);
+                } else if (name == "tile_layout" && number < canvas::kTileLayoutNames.size()) {
+                    shape.layout = static_cast<canvas::TileLayout>(number);
+                    doc["tile_layout"] = canvas::kTileLayoutNames.at(number);
+                } else if (name == "tile_offset_axis" &&
+                           number < canvas::kTileOffsetAxisNames.size()) {
+                    shape.offset_axis = static_cast<canvas::TileOffsetAxis>(number);
+                    doc["tile_offset_axis"] = canvas::kTileOffsetAxisNames.at(number);
+                } else {
+                    problems_.add("TileSet." + name, where);
                 }
             } else if (parts.size() == 2 && parts[0] == "sources") {
                 if (const auto id = parse_int(parts[1])) {
@@ -1722,7 +1740,7 @@ private:
                                   : "");
                 continue;
             }
-            json::Value source = atlas_source(*section, *owner, tile_size, terrains, modes);
+            json::Value source = atlas_source(*section, *owner, tile_size, shape, terrains, modes);
             if (source.is_null()) {
                 continue;
             }
@@ -1752,7 +1770,7 @@ private:
     // One of a tile set's atlas sources, or null if its texture can't come along.
     json::Value
     atlas_source(const Section& section, const TextFile& file,
-                 const std::array<std::int64_t, 2>& tile_size,
+                 const std::array<std::int64_t, 2>& tile_size, const canvas::TileSet& shape,
                  const std::map<std::pair<std::int64_t, std::int64_t>, std::string>& terrains,
                  const std::map<std::int64_t, std::int64_t>& modes) {
         const std::string where = resource_where(section, file);
@@ -1780,7 +1798,7 @@ private:
             json::Value json;
             std::int64_t set = -1;
             std::int64_t terrain = -1;
-            std::map<std::size_t, std::int64_t> bits;
+            std::map<canvas::Neighbor, std::int64_t> bits;
             Polygons polygons;
             std::map<std::int64_t, json::Value> alternatives;
             std::map<std::int64_t, Polygons> alternative_polygons;
@@ -1918,7 +1936,7 @@ private:
             } else if (parts.size() == 2 && parts[1] == "terrain") {
                 tile.terrain = static_cast<std::int64_t>(value.number());
             } else if (parts.size() == 3 && parts[1] == "terrains_peering_bit") {
-                if (const auto direction = peering_direction(parts[2])) {
+                if (const auto direction = peering_direction(parts[2], shape)) {
                     tile.bits[*direction] = static_cast<std::int64_t>(value.number());
                 }
             } else if (parts.size() == 2 && parts[1] == "probability") {
@@ -1938,9 +1956,9 @@ private:
                 tile.json["terrain"] = own->second;
                 const auto mode = modes.find(tile.set);
                 json::Value peering = json::Object{};
-                for (std::size_t direction = 0; direction < canvas::kNeighborNames.size();
-                     ++direction) {
-                    if (!connects(mode != modes.end() ? mode->second : 0, direction)) {
+                for (std::size_t d = 0; d < canvas::kNeighborNames.size(); ++d) {
+                    const auto direction = static_cast<canvas::Neighbor>(d);
+                    if (!connects(mode != modes.end() ? mode->second : 0, shape, direction)) {
                         continue;
                     }
                     const auto bit = tile.bits.find(direction);
@@ -1949,7 +1967,7 @@ private:
                         continue; // left out: the tile's own terrain
                     }
                     const auto other = terrains.find({tile.set, terrain});
-                    peering[canvas::kNeighborNames.at(direction)] =
+                    peering[canvas::kNeighborNames.at(d)] =
                         other != terrains.end() ? json::Value(other->second) : json::Value(nullptr);
                 }
                 if (peering.size() > 0) {
