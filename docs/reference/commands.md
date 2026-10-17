@@ -77,7 +77,7 @@ as `entity.get`, reject it as an unknown param.
 | Tests | [`test.run`](#testrun) |
 | History | [`undo`](#undo), [`redo`](#redo), [`history.get`](#historyget) |
 | Several at once | [`batch`](#batch) |
-| Observe | [`events.subscribe`](#eventssubscribe), [`events.read`](#eventsread), [`events.unsubscribe`](#eventsunsubscribe), [`log.tail`](#logtail), [`frame.capture`](#framecapture), [`frame.summary`](#framesummary) |
+| Observe | [`events.subscribe`](#eventssubscribe), [`events.read`](#eventsread), [`events.unsubscribe`](#eventsunsubscribe), [`log.tail`](#logtail), [`frame.capture`](#framecapture), [`frame.summary`](#framesummary), [`canvas.convert`](#canvasconvert) |
 | Display | [`display.list`](#displaylist), [`display.set`](#displayset), [`perf.stats`](#perfstats), [`debug.overlay`](#debugoverlay) |
 | Import | [`project.import`](#projectimport) |
 | Export | [`export.run`](#exportrun) |
@@ -261,8 +261,9 @@ With a scene, the entity becomes the scene's root and the scene's other entities
 
 ### entity.destroy
 
-Destroys an entity and its components, and the entities in its `Transform2D` or `Control`
-`children`, theirs too, as Godot frees a node's children, and those its instanced scene brought.
+Destroys an entity and its components, and the entities in its `Transform2D`, `Control` or
+`CanvasLayer` `children`, theirs too, as Godot frees a node's children, and those its instanced
+scene brought.
 They are listed as `descendants`, and leave the `children` lists of the parents that stay.
 Destroying one entity an instanced scene brought saves as `null` for it.
 
@@ -731,7 +732,9 @@ the sign on a smaller window:
 ```
 
 - `rect` is `[x, y, width, height]` in the viewport: the box round the control as it draws,
-  turned and scaled. A control hidden by its own or a parent's `visible` has `"visible": false`.
+  turned and scaled, and placed by its [canvas layer](scene-format.md#canvas-layers-and-parallax)
+  if it is in one, which `layer` names. A control hidden by its own, a parent's or its layer's
+  `visible` has `"visible": false`.
 - A label has `lines`, the lines it shows, without trailing spaces, those cut ending with the
   ellipsis. A button with text has its lines too, and a progress bar showing its percentage has
   it as its one line, e.g. `["72%"]`. `overflow` is `true` when a line is wider than the rect or
@@ -2169,6 +2172,9 @@ With `"map": [40, 12]` over the whole frame, the reply adds:
   `visible_characters` shows), a button's `draw_mode` when it isn't `"normal"`, a slider's or
   scroll bar's `value`, a scroll container's `scroll` and `focused`, and a popup menu's `items`
   (their texts), `focused_item` and `scroll`, and the tooltip's `text`.
+- `layer` names the [`CanvasLayer`](scene-format.md#canvas-layers-and-parallax) a thing draws
+  in, when it is in one. Things in layers under the world come first in `drawn`, those over it
+  last. A repeating `Parallax2D`'s children are listed once, their `rect` round every copy.
 - `covered` lists what is in the window but wholly under what was drawn after it, `offscreen`
   what drew only outside the window (left out with a `region`) and `clear` what drew no pixel
   that can be seen, such as a sprite whose `modulate` alpha is below 0.25. `clipped` lists
@@ -2195,6 +2201,38 @@ one in the dark, still counts as showing. The part of each thing in the window (
 read at every pixel up to 64 pixels across and down, and at evenly spaced pixels beyond, so
 `shown` is exact for small things and close for large ones. A `region` outside the window is an error at its path, and so is an unknown ID, with the
 closest one.
+
+### canvas.convert
+
+Turns points between window pixels and the world, through the current
+[`Camera2D`](scene-format.md#2d-camera), as Godot's `get_global_mouse_position`: where a click
+lands in the level, or where a thing in the level shows in the window. With an `id`, uses the
+canvas that entity draws in instead: its
+[`CanvasLayer`](scene-format.md#canvas-layers-and-parallax)'s, or the window itself for a
+control in no layer. Nothing changes.
+[examples/canvas-layers](../../examples/canvas-layers/) calls it.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `points` | array of `[x, y]`, 1 to 256 | required | The points to turn |
+| `to` | `"world"` or `"screen"` | required | `"world"`: from window pixels into the canvas; `"screen"`: from the canvas into window pixels |
+| `id` | entity ID | the world | Use the canvas this entity draws in |
+
+Needs: `read`. A click in the middle of a 320x180 window and one on the ground, with the camera
+over the level at x 440:
+
+```json
+{"points": [[160, 90], [100, 165]], "to": "world"}
+```
+
+```json
+{"points":[[600,90],[540,165]]}
+```
+
+- `points` are in the same order, to four decimals. With no camera, the world's pixels are the
+  window's.
+- `layer` names the `CanvasLayer` whose canvas was used, when `id` draws in one.
+- An unknown `id` is an error at `/id`, with the closest ID.
 
 ## Display
 

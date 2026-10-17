@@ -351,8 +351,8 @@ player behind a bush and off the screen.
 sprite sheet, at the entity's `Transform2D`, in `z_index` order, then the order entities were
 made. `AnimatedSprite2D` plays a `.frames.json` file's animations on it through the
 `animated_sprite_2d` system (`$cli schema frames`; `animation_finished` events). `canvas::install`
-adds the asset types and the systems (that one, `camera_2d` and `cpu_particles_2d`) to a world; sessions and
-games call it. `CanvasRenderer`
+adds the asset types and the systems (that one, `camera_2d`, `parallax_2d` and `cpu_particles_2d`) to a world;
+sessions and games call it. `CanvasRenderer`
 draws a world through a render device over the project's `rendering.clear_color`: games and
 `slash-cli run` call `before_tick` before each tick and draw between ticks with
 `Loop::interpolation()`, so sprites move smoothly at any frame rate. On the null device it checks
@@ -362,6 +362,18 @@ line) picks what the window shows: the renderer draws the world through its canv
 (each draw's `render::Material::transform`) and controls over it in screen space, the
 `camera_2d` system (priority 1050) moves its drag margins and smoothing on, and `frame.summary`
 reports the world rect it shows. `examples/camera-2d` follows a player through a level.
+
+Canvas layers follow Godot's `CanvasLayer` and `Parallax2D` (`engine/world/src/canvas_layer.cpp`).
+`world::Canvases` lists a world's canvases in drawing order (by `layer`, the world first among
+layer 0) and says which one each entity draws in: that of the `CanvasLayer` whose `children` hold
+it or an entity above it, else the world's. `CanvasRenderer` draws each canvas's sprites, tiles
+and particles, then its controls, through its transform (`canvas_layer_transform`, after the
+camera's when `follow_viewport_enabled`), lighting only the world's; `ui::layout` places each
+control by its canvas's transform (`Placed::canvas`, `DrawCall::canvas`), so hit tests follow.
+The `parallax_2d` system (priority 1060) sets each `Parallax2D`'s position from the camera as
+Godot's `_update_scroll`, and the renderer draws a repeating one's children again at each
+repeat. `canvas::to_world` and `to_screen` (and `canvas.convert`) turn points between the screen
+and a canvas. `examples/canvas-layers` scrolls hills behind a level under a HUD.
 
 Materials are `.material.json` node graphs (`$cli schema material`) that `Sprite2D`'s `material`
 names and `material_params` sets. `engine/canvas/src/material.cpp` compiles a graph on load into

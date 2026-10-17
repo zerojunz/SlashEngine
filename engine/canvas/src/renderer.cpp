@@ -42,7 +42,51 @@ render::Filter resolve_filter(std::string_view filter, render::Filter fallback) 
     return fallback;
 }
 
+// A canvas transform as the matrix a draw's material moves its positions by.
+render::Mat4 matrix(const world::Affine2D& t) {
+    return render::Mat4{t.x.x, t.x.y, 0.0F, 0.0F, t.y.x,      t.y.y,      0.0F, 0.0F,
+                        0.0F,  0.0F,  1.0F, 0.0F, t.origin.x, t.origin.y, 0.0F, 1.0F};
+}
+
+// Where a Parallax2D's repeat draws its children, as offsets in their canvas's pixels for a
+// Parallax2D whose global transform is global, in the order Godot's canvas_render_items draws
+// them, the first place included; empty when it doesn't repeat.
+std::vector<Vec2> repeat_offsets(const world::Parallax2D& parallax, const world::Affine2D& global) {
+    const Vec2 size{std::max(parallax.repeat_size.x, 0.0F), std::max(parallax.repeat_size.y, 0.0F)};
+    if (size.x == 0.0F && size.y == 0.0F) {
+        return {};
+    }
+    const int times = std::max(parallax.repeat_times, 1);
+    const int before = times / 2; // copies before the first place, rounded down
+    const Vec2 start = size * static_cast<float>(-before);
+    const int times_x = size.x != 0.0F ? times : 0;
+    const int times_y = size.y != 0.0F ? times : 0;
+    std::vector<Vec2> out;
+    for (int ry = 0; ry <= times_y; ++ry) {
+        const float oy = start.y + (static_cast<float>(ry) * size.y);
+        for (int rx = 0; rx <= times_x; ++rx) {
+            const float ox = start.x + (static_cast<float>(rx) * size.x);
+            // final_transform.basis_xform(offset).
+            out.push_back(
+                {(global.x.x * ox) + (global.y.x * oy), (global.x.y * ox) + (global.y.y * oy)});
+        }
+    }
+    return out;
+}
+
 } // namespace
+
+Vec2 to_world(const world::World& world, Vec2 point, entt::entity in) {
+    const world::Tree2D tree(world);
+    const world::Canvases canvases = world::canvases(world, tree, ui::settings(world).viewport);
+    return world::screen_transform(world, canvases, in).inverse().apply(point);
+}
+
+Vec2 to_screen(const world::World& world, Vec2 point, entt::entity in) {
+    const world::Tree2D tree(world);
+    const world::Canvases canvases = world::canvases(world, tree, ui::settings(world).viewport);
+    return world::screen_transform(world, canvases, in).apply(point);
+}
 
 Result<std::array<render::Vertex2D, 6>> sprite_quad(const world::Sprite2D& sprite,
                                                     const world::Transform2D& transform,
@@ -219,6 +263,11 @@ void CanvasRenderer::before_tick(const world::World& world) {
     keep(ecs.view<const world::Transform2D, const world::CPUParticles2D>());
     keep(ecs.view<const world::Transform2D, const world::CollisionShape2D>());
     keep(ecs.view<const world::Transform2D, const world::CollisionPolygon2D>());
+    previous_parallax_.clear();
+    for (const auto [entity, parallax, transform] :
+         ecs.view<const world::Parallax2D, const world::Transform2D>().each()) {
+        previous_parallax_.emplace(entity, transform.position);
+    }
     previous_view_ = world::camera_view(world, tree, ui::settings(world).viewport);
 }
 
@@ -512,6 +561,7 @@ Result<render::TextureId> CanvasRenderer::atlas_page(const text::Fonts& fonts, s
 Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions& options) {
     // A sprite, or a run of a layer's tiles with one texture: vertices from first, in order.
     struct Item {
+        std::size_t canvas = 0; // in canvases.all()
         int z_index = 0;
         std::uint64_t order = 0; // Tree2D::draw_key
         std::uint32_t part = 0;
@@ -535,14 +585,54 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         const std::string_view id = world.id_of(entity);
         return id.empty() ? "entity " + std::to_string(entt::to_entity(entity)) : std::string(id);
     };
+    const world::Tree2D tree(world);
+    // The Parallax2D whose repeat an entity's drawing takes, the nearest of it and its parents
+    // that repeats, as Godot's repeat_source_item; null for none.
+    const bool parallaxes = !ecs.view<const world::Parallax2D>().empty();
+    std::unordered_map<entt::entity, entt::entity> sources;
+    const auto repeat_source = [&](entt::entity entity) -> entt::entity {
+        if (!parallaxes) {
+            return entt::null;
+        }
+        const auto [found, added] = sources.try_emplace(entity, entt::null);
+        if (added) {
+            for (entt::entity up = entity; up != entt::null; up = tree.parent(up)) {
+                if (const auto* parallax = ecs.try_get<world::Parallax2D>(up);
+                    parallax != nullptr &&
+                    (parallax->repeat_size.x > 0.0F || parallax->repeat_size.y > 0.0F)) {
+                    found->second = up;
+                    break;
+                }
+            }
+        }
+        return found->second;
+    };
+    // Whether a repeating Parallax2D wrapped round in the last tick: drawn part of the way from
+    // where it was, it would slide back across a repeat, so it draws where it is, as Godot
+    // doesn't interpolate a Parallax2D.
+    const auto wrapped = [&](entt::entity source) {
+        const auto before = previous_parallax_.find(source);
+        const auto* transform = ecs.try_get<world::Transform2D>(source);
+        if (before == previous_parallax_.end() || transform == nullptr) {
+            return false;
+        }
+        const world::Parallax2D& parallax = ecs.get<world::Parallax2D>(source);
+        const Vec2 moved = transform->position - before->second;
+        const float across = std::abs(parallax.repeat_size.x * transform->scale.x);
+        const float down = std::abs(parallax.repeat_size.y * transform->scale.y);
+        return (across > 0.0F && std::abs(moved.x) * 2.0F >= across) ||
+               (down > 0.0F && std::abs(moved.y) * 2.0F >= down);
+    };
     // Where each entity draws: its transform after its parents', part of the way from the last
     // tick's.
-    const world::Tree2D tree(world);
     const auto transform_of = [&](entt::entity entity, const world::Transform2D& /*current*/) {
         world::Transform2D now = tree.global(entity);
         if (options.interpolation < 1.0) {
             if (const auto before = previous_.find(entity); before != previous_.end()) {
-                return interpolate(before->second, now, options.interpolation);
+                const entt::entity source = repeat_source(entity);
+                if (source == entt::null || !wrapped(source)) {
+                    return interpolate(before->second, now, options.interpolation);
+                }
             }
         }
         return now;
@@ -570,30 +660,55 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         view.canvas = world::affine(interpolate(world::parts(previous_view_.canvas),
                                                 world::parts(view.canvas), options.interpolation));
     }
-    std::optional<render::Mat4> camera;
-    if (view.camera != entt::null) {
-        camera = render::Mat4{view.canvas.x.x,
-                              view.canvas.x.y,
-                              0.0F,
-                              0.0F,
-                              view.canvas.y.x,
-                              view.canvas.y.y,
-                              0.0F,
-                              0.0F,
-                              0.0F,
-                              0.0F,
-                              1.0F,
-                              0.0F,
-                              view.canvas.origin.x,
-                              view.canvas.origin.y,
-                              0.0F,
-                              1.0F};
+    // The canvases, the world's through that view, and the matrix each one's draws move by:
+    // the camera's for the world, a CanvasLayer's transform, or none to leave them in place.
+    const world::Canvases canvases(world, tree, view, viewport);
+    const std::vector<world::Canvas>& canvas_list = canvases.all();
+    const std::size_t world_canvas = canvases.world_canvas();
+    std::vector<std::optional<render::Mat4>> matrices(canvas_list.size());
+    for (std::size_t c = 0; c < canvas_list.size(); ++c) {
+        if (c == world_canvas ? view.camera != entt::null
+                              : canvas_list[c].transform != world::Affine2D{}) {
+            matrices[c] = matrix(canvas_list[c].transform);
+        }
     }
+    const std::optional<render::Mat4>& camera = matrices[world_canvas];
+    // Where a Parallax2D's repeat draws its children, worked out once each frame.
+    std::unordered_map<entt::entity, std::vector<Vec2>> repeats;
+    const auto offsets_of = [&](entt::entity source) -> const std::vector<Vec2>& {
+        auto [found, added] = repeats.try_emplace(source);
+        if (added) {
+            found->second =
+                repeat_offsets(ecs.get<world::Parallax2D>(source),
+                               world::affine(transform_of(source, world::Transform2D{})));
+        }
+        return found->second;
+    };
+    // Draws the vertices from first on again at each repeat of the Parallax2D the entity is
+    // under, as Godot's canvas_render_items records an item once for each.
+    const auto repeat = [&](entt::entity entity, std::size_t first) {
+        const entt::entity source = repeat_source(entity);
+        if (source == entt::null || first >= vertices.size()) {
+            return;
+        }
+        const std::vector<Vec2>& offsets = offsets_of(source);
+        const std::vector<render::Vertex2D> once(
+            vertices.begin() + static_cast<std::ptrdiff_t>(first), vertices.end());
+        vertices.resize(first);
+        for (const Vec2 offset : offsets) {
+            for (render::Vertex2D vertex : once) {
+                vertex.x += offset.x;
+                vertex.y += offset.y;
+                vertices.push_back(vertex);
+            }
+        }
+    };
     const render::Lighting lights = lighting(world, transform_of);
-    // How lights shade a sprite or layer: not at all in an unlit world.
-    const auto shading_for = [&](render::LightMode mode, int light_mask, int z_index) {
+    // How lights shade a sprite or layer: not at all in an unlit world, nor in a CanvasLayer.
+    const auto shading_for = [&](render::LightMode mode, int light_mask, int z_index,
+                                 std::size_t canvas) {
         render::Shading shading;
-        if (lit_) {
+        if (lit_ && canvas == world_canvas) {
             shading.mode = mode;
             shading.light_mask = static_cast<std::uint32_t>(std::max(light_mask, 0));
             shading.z_index = z_index;
@@ -603,7 +718,9 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
     for (const auto [entity, current, own_sprite] :
          ecs.view<const world::Transform2D, const world::Sprite2D>().each()) {
         const Inherited from_parents = inherited(world, tree, entity);
-        if (!own_sprite.visible || !from_parents.visible || own_sprite.texture.empty()) {
+        const std::size_t canvas = canvases.of(entity);
+        if (!own_sprite.visible || !from_parents.visible || own_sprite.texture.empty() ||
+            !canvas_list[canvas].visible) {
             continue;
         }
         // Tinted by its parents' modulate too.
@@ -635,7 +752,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             }
             material = std::move(made).value();
         }
-        material.shading = shading_for(light_mode, sprite.light_mask, z);
+        material.shading = shading_for(light_mode, sprite.light_mask, z, canvas);
         if (material.shading.mode != render::LightMode::Unshaded) {
             // Normal and specular maps, left out with a warning if they don't load.
             for (const auto& [path, slot, field] :
@@ -665,24 +782,28 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             problem(entity, "/components/Sprite2D", quad.error().message);
             continue;
         }
-        items.push_back({.z_index = z,
+        const std::size_t first = vertices.size();
+        vertices.insert(vertices.end(), quad.value().begin(), quad.value().end());
+        repeat(entity, first);
+        items.push_back({.canvas = canvas,
+                         .z_index = z,
                          .order = tree.draw_key(entity),
                          .part = 0,
                          .texture = texture.value()->id,
-                         .first = vertices.size(),
-                         .count = quad.value().size(),
+                         .first = first,
+                         .count = vertices.size() - first,
                          .material = std::move(material),
                          .entity = entity,
                          .kind = FrameItem::Kind::Sprite,
                          .image = &*texture.value()->image,
                          .drawn = 1});
-        vertices.insert(vertices.end(), quad.value().begin(), quad.value().end());
         ++sprites;
     }
 
     for (const auto [entity, emitter] : ecs.view<const world::CPUParticles2D>().each()) {
         const Inherited from_parents = inherited(world, tree, entity);
-        if (!emitter.visible || !from_parents.visible) {
+        const std::size_t canvas = canvases.of(entity);
+        if (!emitter.visible || !from_parents.visible || !canvas_list[canvas].visible) {
             continue;
         }
         const int z = z_index(emitter.z_index, from_parents);
@@ -730,7 +851,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             }
             material = std::move(made).value();
         }
-        material.shading = shading_for(light_mode, emitter.light_mask, z);
+        material.shading = shading_for(light_mode, emitter.light_mask, z, canvas);
         // With local_coords, particles move with the entity's transform.
         world::Transform2D local;
         if (const auto* current = ecs.try_get<world::Transform2D>(entity);
@@ -773,7 +894,9 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             vertices.insert(vertices.end(), {top_left, top_right, bottom_left, top_right,
                                              bottom_right, bottom_left});
         }
-        items.push_back({.z_index = z,
+        repeat(entity, first);
+        items.push_back({.canvas = canvas,
+                         .z_index = z,
                          .order = tree.draw_key(entity),
                          .part = 0,
                          .texture = texture_id,
@@ -792,8 +915,9 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
     }
     for (const auto [entity, layer] : ecs.view<const world::TileMapLayer>().each()) {
         const Inherited from_parents = inherited(world, tree, entity);
+        const std::size_t canvas = canvases.of(entity);
         if (!layer.visible || !from_parents.visible || layer.tile_set.empty() ||
-            layer.rows.empty()) {
+            layer.rows.empty() || !canvas_list[canvas].visible) {
             continue;
         }
         const int z = z_index(layer.z_index, from_parents);
@@ -845,6 +969,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         constexpr std::size_t kNoRun = SIZE_MAX;
         std::size_t run = kNoRun;
         std::uint32_t part = 0;
+        const std::size_t first_run = items.size();
         for (const auto& [cell, tile] : cached.cells) {
             const AtlasSource& source = set.value()->sources.find(tile.source)->second;
             auto texture = this->texture(source.texture, filter);
@@ -870,8 +995,10 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             }
             if (run == kNoRun || items[run].texture != texture.value()->id) {
                 render::Material material;
-                material.shading = shading_for(render::LightMode::Normal, layer.light_mask, z);
-                items.push_back({.z_index = z,
+                material.shading =
+                    shading_for(render::LightMode::Normal, layer.light_mask, z, canvas);
+                items.push_back({.canvas = canvas,
+                                 .z_index = z,
                                  .order = tree.draw_key(entity),
                                  .part = part++,
                                  .texture = texture.value()->id,
@@ -927,26 +1054,57 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             ++items[run].drawn;
             ++tiles;
         }
+        // Under a repeating Parallax2D, each run again at each repeat. The runs follow each
+        // other in vertices, so each one's are taken out and put back repeated in turn.
+        if (repeat_source(entity) != entt::null && first_run < items.size()) {
+            const std::size_t from = items[first_run].first;
+            const std::vector<render::Vertex2D> all(
+                vertices.begin() + static_cast<std::ptrdiff_t>(from), vertices.end());
+            vertices.resize(from);
+            for (std::size_t i = first_run; i < items.size(); ++i) {
+                const std::size_t start = vertices.size();
+                const auto begin = all.begin() + static_cast<std::ptrdiff_t>(items[i].first - from);
+                vertices.insert(vertices.end(), begin,
+                                begin + static_cast<std::ptrdiff_t>(items[i].count));
+                repeat(entity, start);
+                items[i].first = start;
+                items[i].count = vertices.size() - start;
+            }
+        }
     }
     std::erase_if(layer_cells_, [](const auto& entry) { return !entry.second.seen; });
 
     std::ranges::sort(items, [](const Item& a, const Item& b) {
+        if (a.canvas != b.canvas) {
+            return a.canvas < b.canvas;
+        }
         if (a.z_index != b.z_index) {
             return a.z_index < b.z_index;
         }
         return a.order != b.order ? a.order < b.order : a.part < b.part;
     });
     for (Item& item : items) {
-        item.material.transform = camera;
+        item.material.transform = matrices[item.canvas];
     }
 
-    // Collision shapes, over the world.
+    // Collision shapes, over the world's canvas. Those of entities in a CanvasLayer are drawn
+    // where the layer shows them, through the camera's view undone.
     CollisionShapes shapes;
     if (options.collisions) {
-        shapes = collision_shapes(world, transform_of);
+        const world::Affine2D undo_camera = canvas_list[world_canvas].transform.inverse();
+        shapes =
+            collision_shapes(world, [&](entt::entity entity, const world::Transform2D& current) {
+                world::Transform2D placed = transform_of(entity, current);
+                const std::size_t canvas = canvases.of(entity);
+                if (canvas == world_canvas) {
+                    return placed;
+                }
+                return world::parts(undo_camera * canvas_list[canvas].transform *
+                                    world::affine(placed));
+            });
     }
 
-    // Controls, over the world, then the overlay's.
+    // Controls, in their canvases, then the overlay's.
     text::Fonts* fonts = ui::fonts(world);
     if (fonts == nullptr) {
         if (fonts_ == nullptr) {
@@ -961,6 +1119,17 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
     if (options.overlay != nullptr) {
         overlay = ui::draw_calls(ui::layout(*options.overlay, *fonts, viewport), *options.overlay,
                                  *fonts);
+    }
+    // The layout places a CanvasLayer's controls with the camera as it is; following the
+    // viewport between ticks, they move to where this frame shows the layer.
+    std::vector<std::optional<render::Mat4>> control_matrices(canvas_list.size() + 1);
+    if (options.interpolation < 1.0 && layout.canvases.size() == canvas_list.size()) {
+        for (std::size_t c = 0; c < canvas_list.size(); ++c) {
+            if (c != world_canvas && canvas_list[c].transform != layout.canvases[c].transform) {
+                control_matrices[c] =
+                    matrix(canvas_list[c].transform * layout.canvases[c].transform.inverse());
+            }
+        }
     }
     // Their textures, made now so the null device checks them too; a call whose texture doesn't
     // load draws nothing (layout leaves out the boxes whose textures don't).
@@ -985,41 +1154,27 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
 
     if (contents != nullptr) {
         // Each item's draws together: a layer's runs, a control's boxes and text.
-        const auto add = [&](FrameItem::Kind kind, entt::entity entity) -> FrameItem& {
+        const auto add = [&](FrameItem::Kind kind, entt::entity entity,
+                             std::size_t canvas) -> FrameItem& {
             if (contents->items.empty() || contents->items.back().entity != entity ||
                 contents->items.back().kind != kind) {
-                contents->items.push_back(
-                    {.kind = kind, .entity = entity, .count = 0, .pieces = {}, .uncut = {}});
+                contents->items.push_back({.kind = kind,
+                                           .entity = entity,
+                                           .count = 0,
+                                           .canvas = canvas,
+                                           .pieces = {},
+                                           .uncut = {}});
             }
             return contents->items.back();
         };
         std::size_t order = 0; // pieces in drawing order
-        for (const Item& item : items) {
-            FrameItem& out = add(item.kind, item.entity);
-            out.count += item.drawn;
-            const auto from = vertices.begin() + static_cast<std::ptrdiff_t>(item.first);
-            FramePiece& piece = out.pieces.emplace_back(
-                FramePiece{.pixels = item.image != nullptr ? item.image->pixels.data() : nullptr,
-                           .width = item.image != nullptr ? item.image->width : 0,
-                           .height = item.image != nullptr ? item.image->height : 0,
-                           .field = {},
-                           .vertices = {from, from + static_cast<std::ptrdiff_t>(item.count)},
-                           .order = order++});
-            // In viewport pixels, as the camera shows them.
-            if (camera) {
-                for (render::Vertex2D& vertex : piece.vertices) {
-                    const Vec2 placed = view.canvas.apply({vertex.x, vertex.y});
-                    vertex.x = placed.x;
-                    vertex.y = placed.y;
-                }
-            }
-        }
         // A control draws as one item, though what it draws over its children comes later; the
         // popup menu it opened is another, and its tooltip another.
         std::unordered_map<entt::entity, std::size_t> control_items;
         std::unordered_map<entt::entity, std::size_t> popup_items;
         std::unordered_map<entt::entity, std::size_t> tooltip_items;
-        const auto control_item = [&](entt::entity entity, bool popup, bool tooltip) -> FrameItem& {
+        const auto control_item = [&](entt::entity entity, bool popup, bool tooltip,
+                                      std::size_t canvas) -> FrameItem& {
             FrameItem::Kind kind = FrameItem::Kind::Control;
             auto* kept = &control_items;
             if (tooltip) {
@@ -1031,8 +1186,12 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             }
             const auto [found, made] = kept->try_emplace(entity, contents->items.size());
             if (made) {
-                contents->items.push_back(
-                    {.kind = kind, .entity = entity, .count = 0, .pieces = {}, .uncut = {}});
+                contents->items.push_back({.kind = kind,
+                                           .entity = entity,
+                                           .count = 0,
+                                           .canvas = canvas,
+                                           .pieces = {},
+                                           .uncut = {}});
             }
             return contents->items[found->second];
         };
@@ -1063,29 +1222,61 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             }
             return piece;
         };
-        for (const ui::DrawSpan& span : controls.spans) {
-            const ui::DrawCall& call = controls.calls[span.call];
-            if (!control_textures[span.call]) {
-                continue;
+        // In drawing order: each canvas's sprites, layers and particles, then its controls,
+        // then what draws over every canvas.
+        std::size_t next_item = 0;
+        std::size_t next_span = 0;
+        for (std::size_t c = 0; c <= canvas_list.size(); ++c) {
+            for (; next_item < items.size() && items[next_item].canvas == c; ++next_item) {
+                const Item& item = items[next_item];
+                FrameItem& out = add(item.kind, item.entity, c);
+                out.count += item.drawn;
+                const auto from = vertices.begin() + static_cast<std::ptrdiff_t>(item.first);
+                FramePiece& piece = out.pieces.emplace_back(FramePiece{
+                    .pixels = item.image != nullptr ? item.image->pixels.data() : nullptr,
+                    .width = item.image != nullptr ? item.image->width : 0,
+                    .height = item.image != nullptr ? item.image->height : 0,
+                    .field = {},
+                    .vertices = {from, from + static_cast<std::ptrdiff_t>(item.count)},
+                    .order = order++});
+                // In viewport pixels, as the camera or the canvas layer shows them.
+                if (matrices[c]) {
+                    for (render::Vertex2D& vertex : piece.vertices) {
+                        const Vec2 placed = canvas_list[c].transform.apply({vertex.x, vertex.y});
+                        vertex.x = placed.x;
+                        vertex.y = placed.y;
+                    }
+                }
             }
-            const auto from = call.vertices.begin() + static_cast<std::ptrdiff_t>(span.first);
-            if (auto piece =
-                    control_piece(call, from, from + static_cast<std::ptrdiff_t>(span.count));
-                piece) {
-                ++order;
-                control_item(span.entity, span.popup, span.tooltip)
-                    .pieces.push_back(std::move(*piece));
+            for (; next_span < controls.spans.size() &&
+                   controls.calls[controls.spans[next_span].call].canvas <= c;
+                 ++next_span) {
+                const ui::DrawSpan& span = controls.spans[next_span];
+                const ui::DrawCall& call = controls.calls[span.call];
+                if (!control_textures[span.call]) {
+                    continue;
+                }
+                const auto from = call.vertices.begin() + static_cast<std::ptrdiff_t>(span.first);
+                if (auto piece =
+                        control_piece(call, from, from + static_cast<std::ptrdiff_t>(span.count));
+                    piece) {
+                    ++order;
+                    control_item(span.entity, span.popup, span.tooltip, call.canvas)
+                        .pieces.push_back(std::move(*piece));
+                }
             }
         }
         for (const ui::UncutDraw& uncut : controls.uncut) {
             if (auto piece = control_piece(uncut.call, uncut.call.vertices.begin(),
                                            uncut.call.vertices.end());
                 piece) {
-                control_item(uncut.entity, uncut.popup, false).uncut.push_back(std::move(*piece));
+                control_item(uncut.entity, uncut.popup, false, uncut.call.canvas)
+                    .uncut.push_back(std::move(*piece));
             }
         }
         contents->layout = std::move(layout);
         contents->camera = view;
+        contents->canvases = canvas_list;
     }
 
     // The null device stands in for a window it doesn't have, as draw_empty_frame allows: the
@@ -1119,49 +1310,59 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         (void)device_->end_frame();
         return error;
     };
-    for (const Item& item : items) {
-        const std::span<const render::Vertex2D> span(vertices.data() + item.first, item.count);
-        if (auto drawn = device_->draw(item.texture, span, item.material); !drawn) {
-            return failed(drawn.error());
+    const auto draw_control = [&](const ui::DrawCall& call,
+                                  const std::optional<render::TextureId>& made,
+                                  const std::optional<render::Mat4>& transform) -> Result<void> {
+        if (!made) {
+            return {};
+        }
+        render::TextureId texture = *made;
+        if (call.source == ui::DrawCall::Source::Atlas) {
+            auto page = atlas_page(*fonts, call.page);
+            if (!page) {
+                return page.error();
+            }
+            texture = page.value();
+        }
+        render::Material material;
+        material.field = call.field;
+        material.transform = transform;
+        return device_->draw(texture, call.vertices, material);
+    };
+    // Each canvas in turn: its sprites, layers and particles, the collision shapes over the
+    // world's, then its controls; then what draws over every canvas, then the overlay.
+    std::size_t next_item = 0;
+    std::size_t next_call = 0;
+    for (std::size_t c = 0; c <= canvas_list.size(); ++c) {
+        for (; next_item < items.size() && items[next_item].canvas == c; ++next_item) {
+            const Item& item = items[next_item];
+            const std::span<const render::Vertex2D> span(vertices.data() + item.first, item.count);
+            if (auto drawn = device_->draw(item.texture, span, item.material); !drawn) {
+                return failed(drawn.error());
+            }
+        }
+        if (c == world_canvas && !shapes.vertices.empty()) {
+            render::Material material;
+            material.transform = camera;
+            if (auto drawn = device_->draw(render::TextureId::None, shapes.vertices, material);
+                !drawn) {
+                return failed(drawn.error());
+            }
+        }
+        for (; next_call < controls.calls.size() && controls.calls[next_call].canvas <= c;
+             ++next_call) {
+            if (auto drawn = draw_control(controls.calls[next_call], control_textures[next_call],
+                                          control_matrices[c]);
+                !drawn) {
+                return failed(drawn.error());
+            }
         }
     }
-    if (!shapes.vertices.empty()) {
-        render::Material material;
-        material.transform = camera;
-        if (auto drawn = device_->draw(render::TextureId::None, shapes.vertices, material);
+    for (std::size_t i = 0; i < overlay.calls.size(); ++i) {
+        if (auto drawn = draw_control(overlay.calls[i], overlay_textures[i], std::nullopt);
             !drawn) {
             return failed(drawn.error());
         }
-    }
-    const auto draw_controls =
-        [&](const ui::DrawList& list,
-            const std::vector<std::optional<render::TextureId>>& textures) -> Result<void> {
-        for (std::size_t i = 0; i < list.calls.size(); ++i) {
-            const ui::DrawCall& call = list.calls[i];
-            if (!textures[i]) {
-                continue;
-            }
-            render::TextureId texture = *textures[i];
-            if (call.source == ui::DrawCall::Source::Atlas) {
-                auto page = atlas_page(*fonts, call.page);
-                if (!page) {
-                    return page.error();
-                }
-                texture = page.value();
-            }
-            render::Material material;
-            material.field = call.field;
-            if (auto drawn = device_->draw(texture, call.vertices, material); !drawn) {
-                return drawn.error();
-            }
-        }
-        return {};
-    };
-    if (auto drawn = draw_controls(controls, control_textures); !drawn) {
-        return failed(drawn.error());
-    }
-    if (auto drawn = draw_controls(overlay, overlay_textures); !drawn) {
-        return failed(drawn.error());
     }
     controls_drawn_ = began.value() ? controls.controls : 0;
     glyphs_drawn_ = began.value() ? controls.glyphs : 0;

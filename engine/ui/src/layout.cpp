@@ -1057,6 +1057,7 @@ struct Node {
     entt::entity entity = entt::null;
     const world::Control* control = &kDefaultControl;
     std::size_t parent = kNone;
+    std::size_t canvas = 0; // as Placed::canvas
     std::vector<std::size_t> kids;
     const ThemeLink* themes = nullptr;
     std::vector<std::string_view> classes;
@@ -1143,6 +1144,37 @@ struct Builder {
     // A drag's preview, a root control laid out last with its top left at the pointer.
     entt::entity preview = entt::null;
     Vec2 preview_at;
+    // The canvases controls draw in, or null for all in the world.
+    const world::Canvases* canvases = nullptr;
+
+    // The canvas a root control draws in.
+    [[nodiscard]] std::size_t canvas_of_root(entt::entity entity) const {
+        if (canvases == nullptr) {
+            return 0;
+        }
+        return entity == preview ? canvases->all().size() : canvases->of(entity);
+    }
+
+    // Whether a canvas shows: a hidden CanvasLayer hides its controls.
+    [[nodiscard]] bool canvas_visible(std::size_t canvas) const {
+        return canvases == nullptr || canvas >= canvases->all().size() ||
+               canvases->all()[canvas].visible;
+    }
+
+    // What places a root control in its canvas: a CanvasLayer's transform, or none for the
+    // world's controls, which stay on the screen, and for a drag's preview.
+    [[nodiscard]] std::optional<Transform> canvas_transform(std::size_t canvas) const {
+        if (canvases == nullptr || canvas >= canvases->all().size()) {
+            return std::nullopt;
+        }
+        const world::Canvas& in = canvases->all()[canvas];
+        const world::Affine2D& t = in.transform;
+        if (in.layer == entt::null || t == world::Affine2D{}) {
+            return std::nullopt;
+        }
+        return Transform{
+            .a = t.x.x, .b = t.x.y, .c = t.y.x, .d = t.y.y, .tx = t.origin.x, .ty = t.origin.y};
+    }
 
     [[nodiscard]] const world::Control& control_of(entt::entity entity) const {
         const auto* control = world.ecs().try_get<world::Control>(entity);
@@ -2746,13 +2778,22 @@ struct Builder {
         Placed& placed = node.placed;
         placed.entity = node.entity;
         placed.parent = parent != nullptr ? parent->entity : entt::null;
+        placed.canvas = node.canvas;
         placed.position = {left, top};
         placed.size = {width, height};
         placed.minimum_size = minimum;
         const Transform local = local_transform(control, placed.position);
-        placed.transform = parent != nullptr ? parent->placed.transform * local : local;
-        placed.visible =
-            (control.visible || previewing) && (parent == nullptr || parent->placed.visible);
+        if (parent != nullptr) {
+            placed.transform = parent->placed.transform * local;
+        } else if (const std::optional<Transform> canvas = canvas_transform(node.canvas)) {
+            // A root of a CanvasLayer's is in the layer's space, as Godot's
+            // get_global_transform_with_canvas.
+            placed.transform = *canvas * local;
+        } else {
+            placed.transform = local;
+        }
+        placed.visible = (control.visible || previewing) &&
+                         (parent != nullptr ? parent->placed.visible : canvas_visible(node.canvas));
         placed.modulate =
             parent != nullptr ? times(parent->placed.modulate, control.modulate) : control.modulate;
         placed.z =
@@ -4075,10 +4116,17 @@ void build(Builder& builder, const std::vector<entt::entity>& controls) {
     const ThemeLink* project = builder.project_theme();
     builder.project_link = project;
     std::vector<std::pair<entt::entity, std::size_t>> stack;
-    for (const entt::entity entity : std::views::reverse(controls)) {
+    // The roots by canvas, then in the order they were made.
+    std::vector<entt::entity> roots;
+    for (const entt::entity entity : controls) {
         if (!builder.parents.contains(entity) && entity != builder.preview) {
-            stack.emplace_back(entity, kNone);
+            roots.push_back(entity);
         }
+    }
+    std::ranges::stable_sort(roots, {},
+                             [&](entt::entity entity) { return builder.canvas_of_root(entity); });
+    for (const entt::entity entity : std::views::reverse(roots)) {
+        stack.emplace_back(entity, kNone);
     }
     // A drag's preview comes last, over the other roots, as set_drag_preview's move_to_front.
     if (builder.preview != entt::null && !builder.parents.contains(builder.preview) &&
@@ -4092,6 +4140,8 @@ void build(Builder& builder, const std::vector<entt::entity>& controls) {
         Node& node = builder.nodes.emplace_back();
         node.entity = entity;
         node.parent = parent;
+        node.canvas =
+            parent != kNone ? builder.nodes[parent].canvas : builder.canvas_of_root(entity);
         node.control = &builder.control_of(entity);
         const ThemeLink* themes = parent != kNone ? builder.nodes[parent].themes : project;
         if (const std::string& path = node.control->theme; !path.empty()) {
@@ -4130,6 +4180,10 @@ Layout layout(const world::World& world, text::Fonts& fonts, Vec2 viewport) {
         builder.preview = dragging->preview;
         builder.preview_at = dragging->position;
     }
+    const world::Tree2D tree(world);
+    const world::Canvases canvases = world::canvases(world, tree, viewport);
+    out.canvases = canvases.all();
+    builder.canvases = &canvases;
     build(builder, all_controls(world));
     std::vector<Node>& nodes = builder.nodes;
     for (Node& node : nodes) {
@@ -4177,10 +4231,11 @@ Layout layout(const world::World& world, text::Fonts& fonts, Vec2 viewport) {
     if (dragging) {
         builder.drag_view(*dragging);
     }
-    // Then by z: Godot draws a canvas item over those with a lower z_index, the rest in tree
-    // order.
-    std::ranges::stable_sort(out.controls,
-                             [](const Placed& a, const Placed& b) { return a.z < b.z; });
+    // Then by canvas, then z: Godot draws a canvas item over those of its canvas with a lower
+    // z_index, the rest in tree order.
+    std::ranges::stable_sort(out.controls, [](const Placed& a, const Placed& b) {
+        return a.canvas != b.canvas ? a.canvas < b.canvas : a.z < b.z;
+    });
     for (std::size_t i = 0; i < out.controls.size(); ++i) {
         out.index.emplace(out.controls[i].entity, i);
     }

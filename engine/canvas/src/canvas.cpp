@@ -253,6 +253,8 @@ void add_systems(world::World& world, asset::Assets& assets) {
         [state](world::World& w, double tick_seconds) { state->run(w, tick_seconds); },
         {.doc = "Plays each AnimatedSprite2D's animation on its Sprite2D.", .priority = 1000});
     world::add_camera_system(world, [](const world::World& w) { return ui::settings(w).viewport; });
+    world::add_parallax_system(world,
+                               [](const world::World& w) { return ui::settings(w).viewport; });
     add_particles_system(world);
 }
 
