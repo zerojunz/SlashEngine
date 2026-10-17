@@ -164,8 +164,9 @@ TEST_CASE("shade mixes the ambient color and lights into a pixel as Godot does")
                    {0.1F, 0.2F, 0.4F, 1.0F}));
     }
     SUBCASE("unshaded draws keep their color") {
-        CHECK(shade({}, ambient, {.mode = LightMode::Unshaded, .light_mask = 1, .z_index = 0},
-                    pixel, kWhiteAtlas, kNoShadows) == pixel.color);
+        CHECK(shade({}, ambient,
+                    {.mode = LightMode::Unshaded, .light_mask = 1, .z_index = 0, .layer = 0}, pixel,
+                    kWhiteAtlas, kNoShadows) == pixel.color);
     }
 
     Light light = point_light(0, 0, 100, 100);
@@ -206,8 +207,18 @@ TEST_CASE("shade mixes the ambient color and lights into a pixel as Godot does")
         CHECK(near(shade({&light, 1}, ambient, item, pixel, kWhiteAtlas, kNoShadows),
                    {0.1F, 0.2F, 0.4F, 1.0F}));
     }
+    SUBCASE("layer ranges pick the canvas layers a light reaches") {
+        light.layer_min = 1;
+        light.layer_max = 2;
+        CHECK(near(shade({&light, 1}, ambient, item, pixel, kWhiteAtlas, kNoShadows),
+                   {0.1F, 0.2F, 0.4F, 1.0F}));
+        const ShadeItem hud{.mode = LightMode::Normal, .light_mask = 1, .z_index = 0, .layer = 2};
+        CHECK(near(shade({&light, 1}, ambient, hud, pixel, kWhiteAtlas, kNoShadows),
+                   {0.6F, 0.7F, 0.4F, 1.0F}));
+    }
     SUBCASE("light_only shows the draw only where lights reach") {
-        const ShadeItem light_only{.mode = LightMode::LightOnly, .light_mask = 1, .z_index = 0};
+        const ShadeItem light_only{
+            .mode = LightMode::LightOnly, .light_mask = 1, .z_index = 0, .layer = 0};
         CHECK(near(shade({}, ambient, light_only, pixel, kWhiteAtlas, kNoShadows),
                    {0.5F, 1.0F, 1.0F, 0.0F}));
         light.color[3] = 0.25F;
@@ -414,21 +425,29 @@ TEST_CASE("the software and GPU devices light pixels as shade does") {
         masked.item_cull_mask = 4; // reaches neither draw
         masked.atlas_rect = {4.5F / 8.0F, 0.5F / 4.0F, 3.0F / 8.0F, 3.0F / 4.0F};
         lights.push_back(masked);
+        Light layered = point_light(0, 0, 32, 32);
+        layered.color = {0.2F, 0.5F, 0.2F, 1.0F};
+        layered.layer_min = 1; // reaches only the right draw, in layer 1
+        layered.layer_max = 3;
+        layered.atlas_rect = masked.atlas_rect;
+        lights.push_back(layered);
 
-        const slash::render::Frame frame{
-            .target = target.value(),
-            .clear = {},
-            .view = {},
-            .lighting = {.ambient = {.r = 0.3F, .g = 0.3F, .b = 0.35F, .a = 1.0F},
-                         .lights = lights,
-                         .atlas = atlas_texture.value(),
-                         .shadow_map = shadow_texture.value()}};
+        const slash::render::Frame frame{.target = target.value(),
+                                         .clear = {},
+                                         .view = {},
+                                         .lighting = {.lights = lights,
+                                                      .atlas = atlas_texture.value(),
+                                                      .shadow_map = shadow_texture.value()}};
         REQUIRE(device->begin_frame(frame).ok());
-        // Left: normal-mapped and shiny. Right: mirrored left to right, plain, light only.
+        // Left: normal-mapped and shiny. Right: mirrored left to right, plain, light only, in
+        // canvas layer 1, whose positions are 2 pixels left and 1 down among the lights'.
         Material left;
         left.shading = {.mode = LightMode::Normal,
                         .light_mask = 1,
                         .z_index = 0,
+                        .layer = 0,
+                        .ambient = {0.3F, 0.3F, 0.35F, 1.0F},
+                        .to_lights = std::nullopt,
                         .normal_map = normal_texture.value(),
                         .specular_map = shine_texture.value(),
                         .specular = {1.0F, 1.0F, 1.0F, 0.8F}};
@@ -436,6 +455,9 @@ TEST_CASE("the software and GPU devices light pixels as shade does") {
         right.shading = {.mode = LightMode::LightOnly,
                          .light_mask = 3,
                          .z_index = 2,
+                         .layer = 1,
+                         .ambient = {1.0F, 1.0F, 1.0F, 1.0F},
+                         .to_lights = std::array{1.0F, 0.0F, -2.0F, 0.0F, 1.0F, 1.0F},
                          .normal_map = normal_texture.value(),
                          .specular_map = TextureId::None,
                          .specular = {1.0F, 1.0F, 1.0F, 1.0F}};
@@ -459,8 +481,12 @@ TEST_CASE("the software and GPU devices light pixels as shade does") {
         int compared = 0;
         for (std::uint32_t y = 0; y < kSize; ++y) {
             for (std::uint32_t x = 0; x < kSize; ++x) {
-                const std::array<float, 2> position{static_cast<float>(x) + 0.5F,
+                const bool is_left = x < 16;
+                const std::array<float, 2> drawn_at{static_cast<float>(x) + 0.5F,
                                                     static_cast<float>(y) + 0.5F};
+                // Where the lights see it.
+                const std::array<float, 2> position =
+                    is_left ? drawn_at : std::array{drawn_at[0] - 2.0F, drawn_at[1] + 1.0F};
                 // Pixels on a shadow's edge may land either side of it.
                 bool edge = false;
                 for (const Light& light : lights) {
@@ -476,11 +502,10 @@ TEST_CASE("the software and GPU devices light pixels as shade does") {
                 if (edge) {
                     continue;
                 }
-                const bool is_left = x < 16;
                 const float u =
-                    is_left ? position[0] / 16.0F : 1.0F - ((position[0] - 16.0F) / 16.0F);
+                    is_left ? drawn_at[0] / 16.0F : 1.0F - ((drawn_at[0] - 16.0F) / 16.0F);
                 const Float4 texel = slash::render::sample_image(normals, Filter::Nearest, false, u,
-                                                                 position[1] / kSize);
+                                                                 drawn_at[1] / kSize);
                 ShadePixel pixel{.position = position,
                                  .color = {200.0F / 255.0F, 230.0F / 255.0F, 1.0F, 1.0F},
                                  .normal = slash::render::map_normal(
@@ -488,14 +513,15 @@ TEST_CASE("the software and GPU devices light pixels as shade does") {
                                  .specular = std::nullopt};
                 if (is_left) {
                     const Float4 s = slash::render::sample_image(shine, Filter::Nearest, false, u,
-                                                                 position[1] / kSize);
+                                                                 drawn_at[1] / kSize);
                     pixel.specular = Float4{s[0], s[1], s[2], s[3] * 0.8F};
                 }
                 const Material& material = is_left ? left : right;
-                Float4 expected = slash::render::shade(lights, {0.3F, 0.3F, 0.35F, 1.0F},
+                Float4 expected = slash::render::shade(lights, material.shading.ambient,
                                                        {.mode = material.shading.mode,
                                                         .light_mask = material.shading.light_mask,
-                                                        .z_index = material.shading.z_index},
+                                                        .z_index = material.shading.z_index,
+                                                        .layer = material.shading.layer},
                                                        pixel, sample_atlas, shadow_texel);
                 // The target keeps 0 to 1, blended over its clear black.
                 for (float& channel : expected) {

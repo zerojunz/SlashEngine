@@ -68,6 +68,14 @@ cbuffer Program : register(b0, space3) {
     // x: the distance field's pixel range in texels, or 0 to draw texture0 as colors; y: its
     // outline in texels.
     float4 field;
+    // x: the canvas layer the draw is in, which a light's layer range must hold.
+    int4 layer;
+    // Multiplies normal draws: the CanvasModulate of the draw's canvas.
+    float4 ambient;
+    // Maps the draw's positions to the coordinates lights use: x' = dot(to_lights_x.xyz,
+    // (x, y, 1)), y' likewise.
+    float4 to_lights_x;
+    float4 to_lights_y;
 };
 
 struct Light {
@@ -80,11 +88,10 @@ struct Light {
     float4 shadow_origin; // x, y: where a directional row starts across and in depth; z: span
     float4 shadow_color;
     uint4 flags;          // x: blend (0 mix, 1 add, 2 sub); y: filter taps each side; z: cull mask
-    int4 range;           // x, y: the z indexes it lights
+    int4 range;           // x, y: the z indexes it lights; z, w: the canvas layers
 };
 
 cbuffer Lights : register(b1, space3) {
-    float4 ambient;
     uint4 light_count;
     Light lights[64];
 };
@@ -242,7 +249,7 @@ float4 light_pixel(float4 base, float2 position, float3 normal, bool normal_used
     [loop] for (uint i = 0u; i < count; ++i) {
         Light light = lights[i];
         if ((light.flags.z & uint(shading.y)) == 0u || shading.z < light.range.x ||
-            shading.z > light.range.y) {
+            shading.z > light.range.y || layer.x < light.range.z || layer.x > light.range.w) {
             continue;
         }
         float4 light_color = light.color;
@@ -288,10 +295,13 @@ float4 light_pixel(float4 base, float2 position, float3 normal, bool normal_used
 }
 
 float4 fs_main(VertexOutput input) : SV_Target0 {
+    // Where the pixel is in the lights' coordinates.
+    float3 at = float3(input.world, 1.0);
+    float2 world = float2(dot(to_lights_x.xyz, at), dot(to_lights_y.xyz, at));
     // The texture's u and v axes in the frame, from how both change across the screen, for
     // turning normal maps with the draw.
-    float2 world_dx = ddx(input.world);
-    float2 world_dy = ddy(input.world);
+    float2 world_dx = ddx(world);
+    float2 world_dy = ddy(world);
     float2 uv_dx = ddx(input.uv);
     float2 uv_dy = ddy(input.uv);
     registers[0] = float4(input.uv, 0.0, 0.0);
@@ -399,5 +409,5 @@ float4 fs_main(VertexOutput input) : SV_Target0 {
     if (shine_used) {
         shine = specular_map.SampleLevel(specular_sampler, input.uv, 0.0) * specular;
     }
-    return light_pixel(registers[0], input.world, normal, normal_used, shine, shine_used);
+    return light_pixel(registers[0], world, normal, normal_used, shine, shine_used);
 }

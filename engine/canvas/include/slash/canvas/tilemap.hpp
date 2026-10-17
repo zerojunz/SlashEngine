@@ -46,7 +46,9 @@
 // As in Godot, a tile set's "physics_layers" give tiles collision: each tile's "collision"
 // polygons, in pixels from the tile's center, make a layer's cells solid through 2D physics. A
 // tile's "alternatives" are its other versions, flipped, transposed or tinted, by number from 1;
-// and any cell can flip or transpose its tile, as Godot's runtime tile transforms do.
+// and any cell can flip or transpose its tile, as Godot's runtime tile transforms do. A source's
+// "normal_texture" and "specular_texture" give its tiles bumps and highlights under 2D lights, as
+// a CanvasTexture does for a Godot atlas source.
 namespace slash::canvas {
 
 inline constexpr std::string_view kTileSetSuffix = ".tileset.json";
@@ -130,6 +132,12 @@ struct AtlasSource {
     Vec2i margins;     // pixels before the first column and row
     Vec2i separation;  // pixels between columns and rows
     std::map<Vec2i, TileData, CellOrder> tiles;
+    // For 2D lights, as a Godot CanvasTexture's: a normal map and a specular map laid out as the
+    // texture ("" for none), and what the specular map's color and shininess are multiplied by.
+    std::string normal_texture;
+    std::string specular_texture;
+    Vec4 specular_color{1.0F, 1.0F, 1.0F, 1.0F};
+    float specular_shininess = 1.0F;
 };
 
 struct Terrain {
