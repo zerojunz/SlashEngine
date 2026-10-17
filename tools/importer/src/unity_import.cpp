@@ -105,6 +105,7 @@ constexpr int kTilemap = 1839735485;
 // The script of Unity's own Tile class, which tile assets name; other tiles are scripted.
 constexpr std::string_view kTileScriptGuid = "0000000000000000e000000000000000";
 constexpr std::int64_t kTileScriptId = 13312;
+constexpr std::int64_t kMaxTileFrames = 256; // a tile set's limit
 // Unity's built-in resources: its default font (Arial) and the sprites its default UI controls
 // use, by file ID.
 constexpr std::string_view kBuiltinExtraGuid = "0000000000000000e000000000000000";
@@ -5913,6 +5914,24 @@ private:
         std::map<TileLook, int> alternatives;
         // Polygons by collider type and shift.
         std::map<std::pair<std::int64_t, std::array<double, 2>>, json::Array> collision;
+        // An AnimatedTile's frames, as Godot lays them out after the tile: how many, how many to
+        // a row (0: all in one) and the texture cells between them; each lasts duration seconds.
+        int frames = 1;
+        int columns = 0;
+        std::array<std::int64_t, 2> separation{};
+        double duration = 1.0;
+        bool still = false; // shown by a Tile too, which doesn't animate in Unity
+    };
+
+    // What an AnimatedTile (from Unity's 2D Tilemap Extras) plays: its sprites in order, at a
+    // speed in frames per second times the tile map's animation frame rate.
+    struct AnimatedTileAsset {
+        std::vector<ObjectRef> sprites;
+        double min_speed = 1.0;
+        double max_speed = 1.0;
+        double start_time = 0.0;
+        std::int64_t start_frame = 0;
+        std::int64_t flags = 0;
     };
 
     // The physics a tile map's collider gives its tile set's physics layer.
@@ -6284,9 +6303,8 @@ private:
     }
 
     // The tile, and its alternative, that a cell showing this sprite with this look has.
-    std::pair<const TileOut*, int> tile_for(TileSetOut& set, const ObjectRef& ref,
-                                            const Sprite& sprite, const TileLook& look,
-                                            const std::string& where) {
+    std::pair<TileOut*, int> tile_for(TileSetOut& set, const ObjectRef& ref, const Sprite& sprite,
+                                      const TileLook& look, const std::string& where) {
         auto [it, added] = set.tiles.try_emplace({ref.guid, ref.file_id});
         TileOut& tile = it->second;
         if (added) {
@@ -6366,6 +6384,17 @@ private:
             };
             out["name"] = tile.name;
             origin(tile.base, out);
+            if (tile.frames > 1) {
+                out["animation_frames"] =
+                    json::Array(static_cast<std::size_t>(tile.frames), json::Value(tile.duration));
+                if (tile.columns != 0) {
+                    out["animation_columns"] = tile.columns;
+                }
+                if (tile.separation != std::array<std::int64_t, 2>{}) {
+                    out["animation_separation"] =
+                        json::Array{tile.separation[0], tile.separation[1]};
+                }
+            }
             if (json::Array base = collision(tile, tile.base); !base.empty()) {
                 out["collision"] = std::move(base);
             }
@@ -6450,28 +6479,187 @@ private:
         return std::nullopt;
     }
 
-    // Whether a tile asset is one of Unity's own Tiles; rule tiles, animated tiles and other
-    // scripted tiles aren't.
-    bool plain_tile(const ObjectRef& ref) {
-        if (const auto known = plain_tiles_.find(ref.guid); known != plain_tiles_.end()) {
-            return known->second;
-        }
-        bool plain = true;
-        if (const Asset* asset = asset_of(ref.guid); asset != nullptr) {
-            if (auto text = platform::read_file(source_ + asset->path); text) {
-                if (auto objects = unity::parse_file(text.value()); objects) {
-                    for (const Object& object : objects.value()) {
-                        if (object.file_id == ref.file_id) {
-                            const auto script = ref_at(object.body, "m_Script");
-                            plain = script && script->guid == kTileScriptGuid &&
-                                    script->file_id == kTileScriptId;
-                        }
+    // A tile asset's object, or nullptr if it can't be read.
+    const Object* tile_object(const ObjectRef& ref) {
+        auto [file, added] = tile_files_.try_emplace(ref.guid);
+        if (added) {
+            if (const Asset* asset = asset_of(ref.guid); asset != nullptr) {
+                if (auto text = platform::read_file(source_ + asset->path); text) {
+                    if (auto objects = unity::parse_file(text.value()); objects) {
+                        file->second = std::move(objects.value());
                     }
                 }
             }
         }
-        plain_tiles_[ref.guid] = plain;
-        return plain;
+        for (const Object& object : file->second) {
+            if (object.file_id == ref.file_id) {
+                return &object;
+            }
+        }
+        return nullptr;
+    }
+
+    // Whether a tile asset is one of Unity's own Tiles; rule tiles, animated tiles and other
+    // scripted tiles aren't.
+    bool plain_tile(const ObjectRef& ref) {
+        const Object* object = tile_object(ref);
+        if (object == nullptr) {
+            return true;
+        }
+        const auto script = ref_at(object->body, "m_Script");
+        return script && script->guid == kTileScriptGuid && script->file_id == kTileScriptId;
+    }
+
+    // A tile asset's animation, if it is an AnimatedTile: known by its m_AnimatedSprites.
+    std::optional<AnimatedTileAsset> animated_tile(const ObjectRef& ref) {
+        const Object* object = tile_object(ref);
+        const Node* sprites = object != nullptr ? object->body.get("m_AnimatedSprites") : nullptr;
+        if (sprites == nullptr) {
+            return std::nullopt;
+        }
+        AnimatedTileAsset out;
+        for (const Node& item : sprites->items) {
+            if (const auto sprite = unity::object_ref(item); sprite && !sprite->null()) {
+                out.sprites.push_back(*sprite);
+            }
+        }
+        if (out.sprites.empty()) {
+            return std::nullopt;
+        }
+        const Node& body = object->body;
+        out.min_speed = body.number_at("m_MinSpeed", 1.0);
+        out.max_speed = body.number_at("m_MaxSpeed", out.min_speed);
+        out.start_time = body.number_at("m_AnimationStartTime");
+        out.start_frame = body.integer_at("m_AnimationStartFrame");
+        out.flags = body.integer_at("m_TileAnimationFlags");
+        return out;
+    }
+
+    // How frames at these texture cells follow one another as Godot's do: the frames per row
+    // (0: one row) and the cells between them; nullopt if they don't.
+    static std::optional<std::pair<int, std::array<std::int64_t, 2>>>
+    frame_layout(const std::vector<std::array<std::int64_t, 2>>& cells) {
+        const std::array<std::int64_t, 2> first = cells.front();
+        int columns = 0;
+        for (std::size_t i = 1; i < cells.size(); ++i) {
+            if (cells[i][1] != first[1]) {
+                columns = static_cast<int>(i);
+                break;
+            }
+        }
+        std::array<std::int64_t, 2> gap{};
+        if (cells.size() > 1 && columns != 1) {
+            gap[0] = cells[1][0] - first[0] - 1;
+        }
+        if (columns > 0) {
+            gap[1] = cells[static_cast<std::size_t>(columns)][1] - first[1] - 1;
+        }
+        if (gap[0] < 0 || gap[1] < 0) {
+            return std::nullopt;
+        }
+        for (std::size_t i = 0; i < cells.size(); ++i) {
+            const auto frame = static_cast<std::int64_t>(i);
+            const std::int64_t column = columns > 0 ? frame % columns : frame;
+            const std::int64_t row = columns > 0 ? frame / columns : 0;
+            if (cells[i] != std::array<std::int64_t, 2>{first[0] + (column * (gap[0] + 1)),
+                                                        first[1] + (row * (gap[1] + 1))}) {
+                return std::nullopt;
+            }
+        }
+        return std::pair{columns, gap};
+    }
+
+    // Gives a tile an AnimatedTile's frames, if they lie in the tile's source as Godot's do.
+    void animate(TileSetOut& set, TileOut& tile, const AnimatedTileAsset& animation,
+                 double frame_rate, const std::string& where) {
+        std::vector<std::array<std::int64_t, 2>> cells;
+        for (const ObjectRef& ref : animation.sprites) {
+            std::string why;
+            const Sprite* frame = sprite(ref, why);
+            if (frame == nullptr) {
+                problems_.add("tile sprite", where, why);
+                return;
+            }
+            // The texture first: tile_source would add a source for another one.
+            const auto [source, atlas] =
+                ref.guid == animation.sprites.front().guid
+                    ? tile_source(set, ref.guid, *frame, where)
+                    : std::pair<std::string, std::array<std::int64_t, 2>>{};
+            if (source != tile.source) {
+                problems_.add("animated tiles whose sprites aren't on one texture's grid", where,
+                              "they show their first frame");
+                return;
+            }
+            cells.push_back(atlas);
+        }
+        const auto layout = frame_layout(cells);
+        if (!layout) {
+            problems_.add("animated tiles whose sprites aren't in order along the texture's grid",
+                          where,
+                          "frames follow each other along rows, as Godot's; they show their "
+                          "first frame");
+            return;
+        }
+        if (animation.min_speed != animation.max_speed) {
+            problems_.add("animated tiles with a random speed", where,
+                          "they play at the middle of their speed range");
+        }
+        if (animation.start_time != 0.0 || animation.start_frame != 0) {
+            problems_.add("animated tile start times", where,
+                          "every cell starts on the first frame when the game does");
+        }
+        if (animation.flags != 0) {
+            problems_.add("animated tile flags", where, "they loop, and keep playing");
+        }
+        const double fps = (animation.min_speed + animation.max_speed) / 2.0 * frame_rate;
+        if (fps <= 0.0) {
+            problems_.add("animated tiles that don't play", where, "they show their first frame");
+            return;
+        }
+        const auto frames = static_cast<int>(
+            std::min<std::size_t>(cells.size(), static_cast<std::size_t>(kMaxTileFrames)));
+        if (tile.frames > 1 && (tile.frames != frames || tile.duration != 1.0 / fps)) {
+            problems_.add("a sprite animated two ways", where,
+                          "it plays the first animation everywhere");
+            return;
+        }
+        tile.frames = frames;
+        tile.columns = layout->first;
+        tile.separation = layout->second;
+        tile.duration = 1.0 / fps;
+    }
+
+    // Takes the animation off tiles whose frames cover texture cells other tiles or their frames
+    // do, as Godot's has_room_for_tile forbids.
+    void settle_animations(TileSetOut& set, const std::string& where) {
+        std::set<std::pair<std::string, std::array<std::int64_t, 2>>> covered;
+        for (const auto& [key, tile] : set.tiles) {
+            covered.insert({tile.source, tile.atlas});
+        }
+        for (auto& [key, tile] : set.tiles) {
+            if (tile.frames > 1 && tile.still) {
+                problems_.add("sprites shown both by animated tiles and still ones", where,
+                              "they play wherever they show");
+                tile.still = false;
+            }
+            std::vector<std::pair<std::string, std::array<std::int64_t, 2>>> cells;
+            for (int frame = 1; frame < tile.frames; ++frame) {
+                const std::int64_t column = tile.columns > 0 ? frame % tile.columns : frame;
+                const std::int64_t row = tile.columns > 0 ? frame / tile.columns : 0;
+                cells.emplace_back(
+                    tile.source,
+                    std::array<std::int64_t, 2>{tile.atlas[0] + (column * (tile.separation[0] + 1)),
+                                                tile.atlas[1] + (row * (tile.separation[1] + 1))});
+            }
+            if (std::ranges::any_of(cells,
+                                    [&](const auto& cell) { return covered.contains(cell); })) {
+                problems_.add("animated tiles whose frames other tiles show", where,
+                              "they show their first frame");
+                tile.frames = 1;
+                continue;
+            }
+            covered.insert(cells.begin(), cells.end());
+        }
     }
 
     void tile_map(const Context& ctx, const TileMapParts& parts, Converted& out) {
@@ -6583,13 +6771,23 @@ private:
                 const Node* ref = entry("m_TileAssetArray", data->integer_at("m_TileIndex", -1));
                 return ref != nullptr ? unity::object_ref(*ref) : std::nullopt;
             }();
+            // An AnimatedTile shows its first sprite and plays the rest; other scripted tiles
+            // keep the sprite each cell shows.
+            std::optional<AnimatedTileAsset> animation;
             if (asset && !asset->null() && !plain_tile(*asset)) {
-                problems_.add("scripted tiles (rule tiles, animated tiles)", ctx.where,
-                              "each cell keeps the sprite it shows");
+                animation = animated_tile(*asset);
+                if (!animation) {
+                    problems_.add("scripted tiles (rule tiles and others)", ctx.where,
+                                  "each cell keeps the sprite it shows");
+                }
             }
-            const Node* sprite_ref =
-                entry("m_TileSpriteArray", data->integer_at("m_TileSpriteIndex", -1));
-            const auto ref = sprite_ref != nullptr ? unity::object_ref(*sprite_ref) : std::nullopt;
+            std::optional<ObjectRef> ref;
+            if (animation) {
+                ref = animation->sprites.front();
+            } else if (const Node* sprite_ref =
+                           entry("m_TileSpriteArray", data->integer_at("m_TileSpriteIndex", -1))) {
+                ref = unity::object_ref(*sprite_ref);
+            }
             if (!ref || ref->null()) {
                 problems_.add("tiles without a sprite", ctx.where,
                               "left out, with any collision they had");
@@ -6626,6 +6824,12 @@ private:
                 problems_.add("tile offsets", ctx.where, "tiles draw centered on their cells");
             }
             const auto [tile, alternative] = tile_for(set, *ref, *sprite, look, ctx.where);
+            if (animation) {
+                animate(set, *tile, *animation, body.number_at("m_AnimationFrameRate", 1.0),
+                        ctx.where);
+            } else {
+                tile->still = true;
+            }
             if (filter.empty()) {
                 filter = sprite->filter;
             }
@@ -6647,6 +6851,7 @@ private:
         json::Value layer = json::Object{};
         if (!set.path.empty()) {
             layer["tile_set"] = set.path;
+            settle_animations(set, ctx.where);
             const json::Value doc = tile_set_doc(set);
             auto parsed = canvas::parse_tileset(doc);
             if (!parsed) {
@@ -8726,7 +8931,7 @@ private:
     int input_actions_ = 0;
     int assets_ = 0;
     std::deque<TileSetOut> tile_sets_;
-    std::map<std::string, bool> plain_tiles_;                                // by tile asset GUID
+    std::map<std::string, std::vector<Object>> tile_files_;                  // by tile asset GUID
     std::map<std::string, std::pair<std::string, std::string>> tile_assets_; // tile set, tile
     std::map<std::string, ClipOut> clips_;        // by "<GUID>:<file ID>"
     std::map<std::string, LibraryOut> libraries_; // by controller GUID

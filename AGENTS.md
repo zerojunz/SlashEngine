@@ -405,7 +405,11 @@ directions are 16 compass points (`Neighbor`) of which each shape has its own si
 (`peering_kind`, `godot_neighbor` for Godot's bits), and cells draw by `draw_order`, down the
 screen. A tile's `texture_origin` moves its texture as Godot's does (`TileLook::position`),
 turning with the cell. `tilemap.convert` turns cells into points and back;
-`examples/isometric-and-hex-tiles` paints diamonds and sets hexagons.
+`examples/isometric-and-hex-tiles` paints diamonds and sets hexagons. Tiles span
+`size_in_atlas` texture cells and play `animation_frames` laid out after them as Godot's
+(`tile_region`, `tile_frame`, and `tile_animation_offset` for random start times), on
+`CanvasOptions::time`; a tile set refuses tiles whose cells or frames overlap.
+`examples/animated-tiles` has water, torches and a bridge two cells wide.
 
 2D lights follow Godot's: `PointLight2D`, `DirectionalLight2D`, `LightOccluder2D` and
 `CanvasModulate`, with `Sprite2D`'s `light_mask`, `normal_texture` and `specular_texture` and a

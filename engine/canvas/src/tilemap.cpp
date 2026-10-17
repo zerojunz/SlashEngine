@@ -25,6 +25,10 @@ constexpr std::int64_t kMaxPixels = 16384;
 constexpr std::size_t kMaxKeyLength = 3;
 // Godot keeps alternative IDs below its transform flags, bit 12 up.
 constexpr int kMaxAlternative = 4095;
+constexpr std::int64_t kMaxFrames = 256;
+// The most texture cells one tile and its frames can cover.
+constexpr std::int64_t kMaxCovered = 65536;
+constexpr std::array<std::string_view, 2> kAnimationModeNames = {"default", "random_start_times"};
 constexpr std::size_t kKeyCount = kKeyCharacters.size();
 
 json::Value property(std::string_view type, std::string_view description) {
@@ -76,6 +80,37 @@ json::Value schema() {
              "draws that much up and to the left. Collision stays put.",
              -kMaxPixels);
     tile["properties"]["texture_origin"]["default"] = json::Array{0, 0};
+    tile["properties"]["size_in_atlas"] =
+        pair("How many of the texture's cells it covers from its own, across and down; it draws "
+             "centered on one map cell.",
+             1);
+    tile["properties"]["size_in_atlas"]["default"] = json::Array{1, 1};
+    tile["properties"]["animation_frames"] =
+        property("array", "Each animation frame's duration in seconds; frames follow the tile "
+                          "in the texture.");
+    tile["properties"]["animation_frames"]["items"]["type"] = "number";
+    tile["properties"]["animation_frames"]["items"]["exclusiveMinimum"] = 0;
+    tile["properties"]["animation_frames"]["minItems"] = 1;
+    tile["properties"]["animation_frames"]["maxItems"] = kMaxFrames;
+    tile["properties"]["animation_frames"]["default"] = json::Array{1};
+    tile["properties"]["animation_columns"] =
+        property("integer", "Frames in a row before the next row; 0 puts them all in one row.");
+    tile["properties"]["animation_columns"]["minimum"] = 0;
+    tile["properties"]["animation_columns"]["maximum"] = kMaxFrames;
+    tile["properties"]["animation_columns"]["default"] = 0;
+    tile["properties"]["animation_separation"] =
+        pair("Texture cells between one frame and the next, across and down.", 0);
+    tile["properties"]["animation_separation"]["default"] = json::Array{0, 0};
+    tile["properties"]["animation_speed"] =
+        property("number", "How fast the animation plays: 2 is twice as fast.");
+    tile["properties"]["animation_speed"]["exclusiveMinimum"] = 0;
+    tile["properties"]["animation_speed"]["default"] = 1;
+    tile["properties"]["animation_mode"] =
+        property("string", "default: every cell shows the same frame; random_start_times: each "
+                           "cell starts at its own point in the animation.");
+    tile["properties"]["animation_mode"]["enum"] =
+        json::Array{kAnimationModeNames[0], kAnimationModeNames[1]};
+    tile["properties"]["animation_mode"]["default"] = kAnimationModeNames[0];
     tile["properties"]["collision"] =
         property("array", "Polygons that make the tile solid, each in a physics layer.");
     tile["properties"]["collision"]["items"]["$ref"] = "#/$defs/polygon";
@@ -318,6 +353,12 @@ Vec2i pair_of(const json::Value* value, Vec2i fallback) {
     }
     const json::Array& items = value->as_array();
     return {static_cast<int>(items[0].as_int()), static_cast<int>(items[1].as_int())};
+}
+
+// The texture cell a tile's frame starts at, as Godot's get_tile_texture_region finds it.
+Vec2i frame_cell(Vec2i atlas, Vec2i size, Vec2i separation, int columns, int frame) {
+    const Vec2i at = columns > 0 ? Vec2i{frame % columns, frame / columns} : Vec2i{frame, 0};
+    return {atlas.x + ((size.x + separation.x) * at.x), atlas.y + ((size.y + separation.y) * at.y)};
 }
 
 // What a direction is to a cell of a shape, as Godot's is_valid_terrain_peering_bit_for_mode
@@ -582,9 +623,11 @@ private:
         if (tiles == nullptr) {
             return;
         }
+        std::map<Vec2i, std::string, CellOrder> covered; // texture cell -> the tile covering it
         for (const auto& [key, tile] : tiles->as_object()) {
             const std::string tile_at = at + "/tiles/" + json::pointer_escape(key);
-            if (!parse_atlas(key)) {
+            const std::optional<Vec2i> atlas = parse_atlas(key);
+            if (!atlas) {
                 fail(tile_at, R"(tiles are keyed by "column,row" in the texture's grid, as "2,0")");
                 continue;
             }
@@ -592,6 +635,42 @@ private:
             where += ':';
             where += key;
             check_tile(where, tile, tile_at);
+            check_cover(key, *atlas, tile, tile_at, covered);
+        }
+    }
+
+    // That a tile, with its size_in_atlas and its animation frames, covers no texture cell
+    // another tile does, as Godot's has_room_for_tile.
+    void check_cover(const std::string& key, Vec2i atlas, const json::Value& tile,
+                     const std::string& at, std::map<Vec2i, std::string, CellOrder>& covered) {
+        const Vec2i size = pair_of(tile.find("size_in_atlas"), {1, 1});
+        const Vec2i separation = pair_of(tile.find("animation_separation"), {});
+        const json::Value* columns = tile.find("animation_columns");
+        const json::Value* frames = tile.find("animation_frames");
+        const auto count = static_cast<int>(frames != nullptr ? frames->as_array().size() : 1);
+        if (std::int64_t{size.x} * size.y * count > kMaxCovered) {
+            fail(at + "/size_in_atlas", "a tile and its animation frames cover at most " +
+                                            std::to_string(kMaxCovered) +
+                                            " of the texture's cells");
+            return;
+        }
+        for (int frame = 0; frame < count; ++frame) {
+            const Vec2i first =
+                frame_cell(atlas, size, separation,
+                           columns != nullptr ? static_cast<int>(columns->as_int()) : 0, frame);
+            for (int y = 0; y < size.y; ++y) {
+                for (int x = 0; x < size.x; ++x) {
+                    const Vec2i cell{first.x + x, first.y + y};
+                    const auto [it, added] = covered.try_emplace(cell, key);
+                    if (!added && it->second != key) {
+                        fail(at, "it covers the texture's cell " + atlas_text(cell) +
+                                     ", as the tile " + quoted(it->second) +
+                                     " does; a tile, its size_in_atlas and its animation "
+                                     "frames cover cells no other tile does");
+                        return;
+                    }
+                }
+            }
         }
     }
 
@@ -823,10 +902,14 @@ std::string new_key(std::string_view name, std::size_t length,
     return key;
 }
 
-// A cell's place in the hash that picks between tiles that fit equally well.
-double position_hash(Vec2i cell) {
-    std::uint64_t x = (static_cast<std::uint64_t>(static_cast<std::uint32_t>(cell.x)) << 32U) |
-                      static_cast<std::uint32_t>(cell.y);
+// A cell as 64 bits, for hashing.
+std::uint64_t cell_bits(Vec2i cell) {
+    return (static_cast<std::uint64_t>(static_cast<std::uint32_t>(cell.x)) << 32U) |
+           static_cast<std::uint32_t>(cell.y);
+}
+
+// Bits scrambled into a number from 0 up to 1.
+double unit_hash(std::uint64_t x) {
     // splitmix64's finalizer.
     x += 0x9E3779B97F4A7C15ULL;
     x = (x ^ (x >> 30U)) * 0xBF58476D1CE4E5B9ULL;
@@ -834,6 +917,11 @@ double position_hash(Vec2i cell) {
     x ^= x >> 31U;
     constexpr double kScale = 1.0 / 9007199254740992.0; // 2^-53
     return static_cast<double>(x >> 11U) * kScale;
+}
+
+// A cell's place in the hash that picks between tiles that fit equally well.
+double position_hash(Vec2i cell) {
+    return unit_hash(cell_bits(cell));
 }
 
 struct Candidate {
@@ -1288,6 +1376,27 @@ Result<TileSet> parse_tileset(const json::Value& doc) {
                     tile.probability = value->as_double();
                 }
                 tile.texture_origin = pair_of(json_tile.find("texture_origin"), {});
+                tile.size_in_atlas = pair_of(json_tile.find("size_in_atlas"), {1, 1});
+                if (const json::Value* frames = json_tile.find("animation_frames");
+                    frames != nullptr) {
+                    tile.animation_frames.clear();
+                    for (const json::Value& duration : frames->as_array()) {
+                        tile.animation_frames.push_back(duration.as_double());
+                    }
+                }
+                if (const json::Value* columns = json_tile.find("animation_columns");
+                    columns != nullptr) {
+                    tile.animation_columns = static_cast<int>(columns->as_int());
+                }
+                tile.animation_separation = pair_of(json_tile.find("animation_separation"), {});
+                if (const json::Value* speed = json_tile.find("animation_speed");
+                    speed != nullptr) {
+                    tile.animation_speed = speed->as_double();
+                }
+                if (const json::Value* mode = json_tile.find("animation_mode");
+                    mode != nullptr && mode->as_string() == kAnimationModeNames[1]) {
+                    tile.animation_mode = TileAnimationMode::RandomStartTimes;
+                }
                 if (const json::Value* value = json_tile.find("collision"); value != nullptr) {
                     tile.collision = polygons_of(*value);
                 }
@@ -1474,7 +1583,8 @@ TileLook tile_look(const TileSet& set, const TileRef& tile) {
     out.flip_v = tile.flip_v != (tile.transpose ? tile_flip_h : tile_flip_v);
     Vec2i region;
     if (const auto source = set.sources.find(tile.source); source != set.sources.end()) {
-        region = source->second.region_size;
+        const auto [x, y, width, height] = tile_region(source->second, tile.atlas);
+        region = {width, height};
     }
     out.size = out.transpose ? Vec2{static_cast<float>(region.y), static_cast<float>(region.x)}
                              : Vec2{static_cast<float>(region.x), static_cast<float>(region.y)};
@@ -1541,10 +1651,56 @@ std::vector<physics2d::TileShape> tile_shapes(const TileSet& set, const Cells& c
     return out;
 }
 
-std::array<int, 4> tile_region(const AtlasSource& source, Vec2i atlas) {
-    return {source.margins.x + (atlas.x * (source.region_size.x + source.separation.x)),
-            source.margins.y + (atlas.y * (source.region_size.y + source.separation.y)),
-            source.region_size.x, source.region_size.y};
+std::array<int, 4> tile_region(const AtlasSource& source, Vec2i atlas, int frame) {
+    Vec2i size{1, 1};
+    Vec2i start = atlas;
+    if (const auto tile = source.tiles.find(atlas); tile != source.tiles.end()) {
+        const TileData& data = tile->second;
+        size = data.size_in_atlas;
+        start = frame_cell(atlas, size, data.animation_separation, data.animation_columns, frame);
+    }
+    return {source.margins.x + (start.x * (source.region_size.x + source.separation.x)),
+            source.margins.y + (start.y * (source.region_size.y + source.separation.y)),
+            (source.region_size.x * size.x) + (source.separation.x * (size.x - 1)),
+            (source.region_size.y * size.y) + (source.separation.y * (size.y - 1))};
+}
+
+int tile_frame(const TileData& tile, double time, double offset) {
+    const auto count = static_cast<int>(tile.animation_frames.size());
+    if (count <= 1) {
+        return 0;
+    }
+    // As Godot's draw_tile and the canvas renderer's animation slices: the frames' durations are
+    // summed before they are divided by the speed, and a frame shows from its start up to, not
+    // including, its end.
+    const double speed = tile.animation_speed;
+    double total = 0.0;
+    for (const double duration : tile.animation_frames) {
+        total += duration;
+    }
+    const double length = total / speed;
+    double local = std::fmod(time - (offset * length), length);
+    if (local < 0.0) {
+        local += length;
+    }
+    double unscaled = 0.0;
+    for (int frame = 0; frame < count; ++frame) {
+        const double duration = tile.animation_frames[static_cast<std::size_t>(frame)];
+        if (local >= unscaled / speed && local < (unscaled + duration) / speed) {
+            return frame;
+        }
+        unscaled += duration;
+    }
+    return count - 1;
+}
+
+double tile_animation_offset(std::string_view layer, Vec2i cell) {
+    // FNV-1a over the layer's ID, then the cell mixed in.
+    std::uint64_t h = 0xCBF29CE484222325ULL;
+    for (const char c : layer) {
+        h = (h ^ static_cast<unsigned char>(c)) * 0x100000001B3ULL;
+    }
+    return unit_hash(h ^ cell_bits(cell));
 }
 
 Result<Cells> decode_cells(const world::TileMapLayer& layer, const TileSet& set) {

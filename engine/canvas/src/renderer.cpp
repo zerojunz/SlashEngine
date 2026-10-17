@@ -1015,20 +1015,39 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
                         source.texture + ": " + texture.error().message);
                 continue;
             }
-            const auto [rx, ry, rw, rh] = tile_region(source, tile.atlas);
+            // An animated tile shows the frame for the time drawn, from the cell's own start
+            // with random_start_times; every frame must be in the texture, whichever shows.
+            const TileData* data = set.value()->find(tile);
+            const int frames =
+                data != nullptr ? static_cast<int>(data->animation_frames.size()) : 1;
+            int frame = 0;
+            if (frames > 1) {
+                frame = tile_frame(*data, options.time,
+                                   data->animation_mode == TileAnimationMode::RandomStartTimes
+                                       ? tile_animation_offset(world.id_of(entity), cell)
+                                       : 0.0);
+            }
             const auto width = static_cast<int>(texture.value()->width);
             const auto height = static_cast<int>(texture.value()->height);
-            if (rx + rw > width || ry + rh > height) {
-                std::string message =
-                    "the tile " + tile.source + ":" + std::to_string(tile.atlas.x) + "," +
-                    std::to_string(tile.atlas.y) + " at [" + std::to_string(rx) + ", " +
-                    std::to_string(ry) + ", " + std::to_string(rw) + ", " + std::to_string(rh) +
-                    "] goes outside the " + std::to_string(width) + "x" + std::to_string(height) +
-                    " texture " + source.texture;
-                warn_once(layer.tile_set, message, "tile_set", kEvent);
-                problem(entity, "/components/TileMapLayer/tile_set", std::move(message));
+            std::string outside;
+            for (int each = 0; each < frames && outside.empty(); ++each) {
+                const auto [x, y, w, h] = tile_region(source, tile.atlas, each);
+                if (x + w > width || y + h > height) {
+                    outside = "the tile " + tile.source + ":" + std::to_string(tile.atlas.x) + "," +
+                              std::to_string(tile.atlas.y) +
+                              (frames > 1 ? "'s frame " + std::to_string(each) : "") + " at [" +
+                              std::to_string(x) + ", " + std::to_string(y) + ", " +
+                              std::to_string(w) + ", " + std::to_string(h) + "] goes outside the " +
+                              std::to_string(width) + "x" + std::to_string(height) + " texture " +
+                              source.texture;
+                }
+            }
+            if (!outside.empty()) {
+                warn_once(layer.tile_set, outside, "tile_set", kEvent);
+                problem(entity, "/components/TileMapLayer/tile_set", std::move(outside));
                 continue;
             }
+            const auto [rx, ry, rw, rh] = tile_region(source, tile.atlas, frame);
             const render::Material& material = material_of(source);
             if (run == kNoRun || items[run].texture != texture.value()->id ||
                 items[run].material != material) {
