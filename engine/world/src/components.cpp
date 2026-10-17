@@ -227,7 +227,8 @@ void register_ui_components(ComponentRegistry& registry) {
                  "Label, ColorRect and the other UI components draw in it; they lay out with "
                  "these defaults when the entity has no Control. A container component places "
                  "its children by size flags instead of their anchors and offsets. Controls "
-                 "draw above the world, parents before children.")
+                 "draw above the world, or in the CanvasLayer that holds them, parents before "
+                 "children.")
         .describe("children",
                   {.doc = "Controls laid out in its rect, drawn over it in this order."})
         .describe("anchor_left", anchor)
@@ -1309,6 +1310,59 @@ void register_builtin_components(ComponentRegistry& registry) {
         .describe("drag_top_margin", drag_margin)
         .describe("drag_right_margin", drag_margin)
         .describe("drag_bottom_margin", drag_margin);
+
+    registry.add<CanvasLayer>()
+        .set_doc("A canvas of its own over or under the world, as Godot's CanvasLayer: the "
+                 "entities in its children, and theirs, draw in it, moved by its offset, "
+                 "rotation and scale instead of the camera. Canvases draw in order of layer; the "
+                 "world is layer 0. Its controls lay out in the viewport. Lights shade only the "
+                 "world.")
+        .describe("layer", {.doc = "Draws over canvases with a lower layer; the world is 0, under "
+                                   "a CanvasLayer of 0. Negative layers draw behind the world."})
+        .describe("visible", {.doc = "Hides everything in it when false."})
+        .describe("offset", {.doc = "Moves it, in pixels, as [x, y]."})
+        .describe("rotation", {.doc = "Turns it around its top left, in radians."})
+        .describe("scale", {.doc = "Scales it from its top left, as [x, y]."})
+        .describe("follow_viewport_enabled",
+                  {.doc = "Seen through the camera too, as part of the world in front of it or "
+                          "behind it."})
+        .describe("follow_viewport_scale",
+                  {.doc = "Following the viewport, scales it around the middle of the screen: "
+                          "below 1 looks farther than the world, above 1 nearer."})
+        .describe("children",
+                  {.doc = "Entities that draw in it, with their own children: 2D entities and "
+                          "controls with no parent."});
+
+    registry.add<Parallax2D>()
+        .set_doc("Scrolls the entity's children at a different speed from the camera, as Godot's "
+                 "Parallax2D: each tick it sets the entity's Transform2D position from the "
+                 "camera's view. With a repeat_size its children draw again every repeat_size, "
+                 "so a background goes on forever.")
+        .describe("scroll_scale",
+                  {.doc = "How fast it scrolls as the camera moves, as [x, y]: 0 stays on the "
+                          "screen, 1 moves with the world, 0.5 looks far away."})
+        .describe("scroll_offset", {.doc = "Where it sits when the view is at [0, 0], in pixels."})
+        .describe("repeat_size",
+                  {.doc = "Draws the children again every this many pixels, as [x, y]; 0 for "
+                          "none. At least the screen's size covers it.",
+                   .min = 0})
+        .describe("autoscroll",
+                  {.doc = "Pixels a second scroll_offset moves by, as [x, y]; only with a "
+                          "repeat_size, as in Godot."})
+        .describe("repeat_times", {.doc = "Copies drawn each way past the first, half of them "
+                                          "before it, for a view zoomed out.",
+                                   .min = 1})
+        .describe("limit_begin",
+                  {.doc = "Top left of the views it scrolls for, in pixels; past it, it stops."})
+        .describe("limit_end", {.doc = "Bottom right of the views it scrolls for, in pixels."})
+        .describe("follow_viewport",
+                  {.doc = "Off for one in a CanvasLayer that doesn't follow the viewport, so it "
+                          "scrolls as if it did."})
+        .describe("ignore_camera_scroll",
+                  {.doc = "Leave screen_offset alone, so code or an animation scrolls it."})
+        .describe("screen_offset",
+                  {.doc = "The view it scrolls for, set each tick from the current camera: the "
+                          "middle of the screen in the world less half the screen."});
 
     register_physics_components(registry);
     register_particle_components(registry);
