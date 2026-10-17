@@ -213,7 +213,8 @@ rendering on top.
       peering bits: `tile_shape` (square, isometric, half-offset square, hexagon), the six
       `tile_layout`s and both offset axes, placed, neighbored and drawn down the screen as
       Godot's, 16 compass peering directions, terrain painting by each shape's sides and corners,
-      `tilemap.convert` between cells and points, and Godot's shapes imported
+      `tilemap.convert` between cells and points, and Godot's shapes imported, with tiles'
+      `texture_origin` lifting tall tiles on their cells
 - [ ] The rest of Godot's TileSet: animated tiles, tiles larger than one cell, custom data
       layers and occlusion polygons; tile navigation polygons come with navigation in milestone 7
 - [x] 2D lights, occluders and normal-mapped sprites, as Godot's: `PointLight2D` (textured,
@@ -376,7 +377,9 @@ rendering on top.
   - [x] Unity's 2D lights: the global light as a `CanvasModulate`, spot, freeform and sprite
         lights as `PointLight2D`s through textures of their shapes and falloff, sorting layers as
         z ranges, shadow casters as occluders and sprites' normal maps
-  - [ ] Unity's isometric and hexagonal tile maps, once tile maps have those shapes
+  - [x] Unity's isometric and hexagonal tile maps: each Grid's cell layout and swizzle as a tile
+        set's shape, layout and offset axis, layers moved so their cells stay where Unity draws
+        them, and tile anchors and sprite pivots as `texture_origin`
   - [ ] Exported games (a Godot `.pck`, a Unity build) unpacked back into a project, for games
         the user made or has the rights to. Nothing breaks encryption or DRM, and GPL tools such
         as AssetRipper run as separate programs, never linked

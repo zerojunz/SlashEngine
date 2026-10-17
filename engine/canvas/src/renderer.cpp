@@ -1046,18 +1046,16 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
                                  .drawn = 0});
                 run = items.size() - 1;
             }
-            // The tile's region, centered on its cell, turned as Godot's draw_tile turns it:
-            // transposed (the texture's x and y swapped), then flipped.
+            // The tile's region on its cell, moved by its texture origin and turned as Godot's
+            // draw_tile turns it: transposed (the texture's x and y swapped), then flipped.
             const TileLook look = tile_look(*set.value(), tile);
             rgba = {to_byte(tint.x * look.modulate.x), to_byte(tint.y * look.modulate.y),
                     to_byte(tint.z * look.modulate.z), to_byte(tint.w * look.modulate.w)};
-            const auto dw = static_cast<float>(look.transpose ? rh : rw);
-            const auto dh = static_cast<float>(look.transpose ? rw : rh);
             const Vec2 center = map_to_local(*set.value(), cell);
-            const float x0 = center.x - (dw / 2.0F);
-            const float y0 = center.y - (dh / 2.0F);
-            const float x1 = x0 + dw;
-            const float y1 = y0 + dh;
+            const float x0 = center.x + look.position.x;
+            const float y0 = center.y + look.position.y;
+            const float x1 = x0 + look.size.x;
+            const float y1 = y0 + look.size.y;
             float u0 = static_cast<float>(rx) / static_cast<float>(width);
             float v0 = static_cast<float>(ry) / static_cast<float>(height);
             float u1 = static_cast<float>(rx + rw) / static_cast<float>(width);

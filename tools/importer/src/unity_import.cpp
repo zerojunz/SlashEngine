@@ -2337,6 +2337,7 @@ private:
         std::vector<std::pair<std::string, json::Object>> added;
         const Component* animator = nullptr;
         std::string children_to; // the added entity that holds the object's children, if one
+        Vec2 child_shift;        // moves the object's children by minus this
     };
 
     struct Context {
@@ -5891,10 +5892,12 @@ private:
     };
 
     // What a cell gives its tile besides the sprite: Unity's collider type (0 none, 1 the
-    // sprite's physics shape, 2 the cell) and a color.
+    // sprite's physics shape, 2 the cell), a color, and where its tile map's anchor puts the
+    // sprite's pivot, in pixels from the middle of the cell with y down.
     struct TileLook {
         std::int64_t collider = 1;
         std::array<double, 4> color{1.0, 1.0, 1.0, 1.0};
+        std::array<double, 2> shift{};
 
         auto operator<=>(const TileLook&) const = default;
     };
@@ -5908,7 +5911,8 @@ private:
         std::string name;
         TileLook base;
         std::map<TileLook, int> alternatives;
-        std::map<std::int64_t, json::Array> collision; // polygons by collider type
+        // Polygons by collider type and shift.
+        std::map<std::pair<std::int64_t, std::array<double, 2>>, json::Array> collision;
     };
 
     // The physics a tile map's collider gives its tile set's physics layer.
@@ -5935,6 +5939,9 @@ private:
     struct TileSetOut {
         std::string path;
         std::array<std::int64_t, 2> cell{};
+        canvas::TileShape shape = canvas::TileShape::Square;
+        canvas::TileLayout layout = canvas::TileLayout::Stacked;
+        canvas::TileOffsetAxis axis = canvas::TileOffsetAxis::Horizontal;
         std::optional<TilePhysics> physics;
         std::map<std::string, json::Value> sources; // atlas sources by name, without their tiles
         std::map<std::string, TileGrid> grids;      // by "<guid> <width>x<height>"
@@ -5942,10 +5949,119 @@ private:
         std::set<std::string> names;                                   // the tiles'
     };
 
-    TileSetOut& tile_set_for(std::array<std::int64_t, 2> cell,
-                             const std::optional<TilePhysics>& physics) {
+    // How a Grid lays out its cells, as a tile set's shape: Unity's cell (x, y) is cell(x, y)
+    // here, and the tile map moves by offset, in its own pixels, so each cell's center is where
+    // Unity's is.
+    struct GridPlan {
+        std::int64_t layout = 0; // Unity's: 0 rectangle, 1 hexagon, 2 isometric, 3 z as y
+        bool swap = false;       // a YXZ swizzle: the cells' x runs up the y axis, their y along x
+        double width = 1.0;      // the cell size along the cells' x and y, in whole pixels
+        double height = 1.0;
+        canvas::TileSet set; // the shape, layout, offset axis and tile size
+        Vec2 offset;
+
+        // Where Unity centers a cell, in the tile map's pixels with y down.
+        [[nodiscard]] std::array<double, 2> center(int x, int y) const {
+            const auto cx = static_cast<double>(x);
+            const auto cy = static_cast<double>(y);
+            std::array<double, 2> at{}; // in Unity's units, y up, before the swizzle
+            if (layout == 0) {
+                at = {(cx + 0.5) * width, (cy + 0.5) * height};
+            } else if (layout == 1) {
+                // A hexagon's corner is its center; odd rows sit half a cell right, and rows
+                // overlap by a quarter.
+                at = {(cx + (y % 2 != 0 ? 0.5 : 0.0)) * width, 0.75 * cy * height};
+            } else {
+                // A diamond's corner is its bottom one; x runs up to the right, y up to the left.
+                at = {(cx - cy) * width / 2.0, (cx + cy + 1.0) * height / 2.0};
+            }
+            if (swap) {
+                std::swap(at[0], at[1]);
+            }
+            return {at[0], -at[1]};
+        }
+
+        // Where a tile anchor, in fractions of a cell from its corner, is from the cell's center,
+        // in pixels with y down. A hexagon's is its center.
+        [[nodiscard]] std::array<double, 2> shift(double x, double y) const {
+            std::array<double, 2> at{};
+            if (layout == 0) {
+                at = {(x - 0.5) * width, (y - 0.5) * height};
+            } else if (layout != 1) {
+                at = {(x - y) * width / 2.0, (x + y - 1.0) * height / 2.0};
+            }
+            if (swap) {
+                std::swap(at[0], at[1]);
+            }
+            return {at[0] == 0.0 ? 0.0 : at[0], at[1] == 0.0 ? 0.0 : -at[1]};
+        }
+
+        // The cell here for Unity's cell: rows go down, and a swizzled grid's columns are its y.
+        // A swizzled diamond's x still runs up to the right, and its y down to the right.
+        [[nodiscard]] Vec2i cell(int x, int y) const {
+            if (swap && layout >= 2) {
+                return {x, y};
+            }
+            return swap ? Vec2i{y, -x - 1} : Vec2i{x, -y - 1};
+        }
+    };
+
+    std::optional<GridPlan> grid_plan(const Node& grid, const std::string& where) {
+        GridPlan plan;
+        plan.layout = grid.integer_at("m_CellLayout", 0);
+        const std::int64_t swizzle = grid.integer_at("m_CellSwizzle", 0);
+        if (plan.layout < 0 || plan.layout > 3) {
+            problems_.add("grid cell layout", where, "this tile map isn't converted");
+            return std::nullopt;
+        }
+        if (swizzle != 0 && swizzle != 2) {
+            problems_.add("grid cell swizzle", where,
+                          "tile maps lie in the xy plane; this one isn't converted");
+            return std::nullopt;
+        }
+        plan.swap = swizzle == 2;
+        if (grid.number_at("m_CellGap.x") != 0.0 || grid.number_at("m_CellGap.y") != 0.0) {
+            problems_.add("grid cell gap", where, "cells touch");
+        }
+        const double cell_x = std::abs(grid.number_at("m_CellSize.x", 1.0)) * ppu_;
+        const double cell_y = std::abs(grid.number_at("m_CellSize.y", 1.0)) * ppu_;
+        const std::array<std::int64_t, 2> whole{std::max<std::int64_t>(std::llround(cell_x), 1),
+                                                std::max<std::int64_t>(std::llround(cell_y), 1)};
+        if (std::abs(cell_x - static_cast<double>(whole[0])) > 1e-6 ||
+            std::abs(cell_y - static_cast<double>(whole[1])) > 1e-6) {
+            problems_.add("grid cell size between whole pixels", where,
+                          "tiles are whole pixels; the size is rounded");
+        }
+        constexpr std::int64_t kMaxPixels = 16384; // a tile set's largest tile size
+        const auto x = static_cast<int>(std::min(whole[0], kMaxPixels));
+        const auto y = static_cast<int>(std::min(whole[1], kMaxPixels));
+        plan.width = static_cast<double>(x);
+        plan.height = static_cast<double>(y);
+        plan.set.tile_size = plan.swap ? Vec2i{y, x} : Vec2i{x, y};
+        if (plan.layout == 1) {
+            // Unity's odd rows (columns, swizzled) sit over; Godot's stacked_offset layout moves
+            // its even ones, and rows here have the other parity.
+            plan.set.shape = canvas::TileShape::Hexagon;
+            plan.set.layout = canvas::TileLayout::StackedOffset;
+            plan.set.offset_axis =
+                plan.swap ? canvas::TileOffsetAxis::Vertical : canvas::TileOffsetAxis::Horizontal;
+        } else if (plan.layout >= 2) {
+            plan.set.shape = canvas::TileShape::Isometric;
+            plan.set.layout = canvas::TileLayout::DiamondRight;
+        }
+        const Vec2 ours = canvas::map_to_local(plan.set, plan.cell(0, 0));
+        const auto unity = plan.center(0, 0);
+        plan.offset = {static_cast<float>(unity[0] - static_cast<double>(ours.x)),
+                       static_cast<float>(unity[1] - static_cast<double>(ours.y))};
+        return plan;
+    }
+
+    TileSetOut& tile_set_for(const GridPlan& plan, const std::optional<TilePhysics>& physics) {
+        const std::array<std::int64_t, 2> cell{plan.set.tile_size.x, plan.set.tile_size.y};
         for (TileSetOut& set : tile_sets_) {
-            if (set.cell == cell && (!physics || !set.physics || *set.physics == *physics)) {
+            if (set.cell == cell && set.shape == plan.set.shape && set.layout == plan.set.layout &&
+                set.axis == plan.set.offset_axis &&
+                (!physics || !set.physics || *set.physics == *physics)) {
                 if (physics && !set.physics) {
                     set.physics = physics;
                 }
@@ -5954,6 +6070,9 @@ private:
         }
         TileSetOut& set = tile_sets_.emplace_back();
         set.cell = cell;
+        set.shape = plan.set.shape;
+        set.layout = plan.set.layout;
+        set.axis = plan.set.offset_axis;
         set.physics = physics;
         return set;
     }
@@ -6079,40 +6198,78 @@ private:
         return {name, {0, 0}};
     }
 
-    // A tile's collision polygons for a Unity collider type, in pixels around its middle.
-    json::Array tile_polygons(const TileSetOut& set, const Sprite& sprite, std::int64_t collider,
+    // Where a sprite's pivot is from its middle, in its pixels with y down.
+    static std::array<double, 2> pivot_offset(const Sprite& sprite) {
+        return {(sprite.pivot_x - 0.5) * sprite.width, (0.5 - sprite.pivot_y) * sprite.height};
+    }
+
+    // Where a tile's texture is from its cell's center, as a texture_origin: Unity puts the
+    // sprite's pivot at the tile anchor.
+    static std::array<double, 2> texture_origin(const Sprite& sprite, const TileLook& look) {
+        const auto [x, y] = pivot_offset(sprite);
+        return {tidy(x - look.shift[0]), tidy(y - look.shift[1])};
+    }
+
+    // A tile's collision polygons for a look, in pixels around its cell's center, y down: the
+    // sprite's physics shape where Unity puts it, or the cell's outline.
+    json::Array tile_polygons(const TileSetOut& set, const Sprite& sprite, const TileLook& look,
                               const std::string& where) {
         json::Array out;
         std::vector<Outline> shapes;
-        if (collider == 2) {
+        if (look.collider == 2) {
             const double x = static_cast<double>(set.cell[0]) / 2.0;
             const double y = static_cast<double>(set.cell[1]) / 2.0;
-            shapes.push_back({{-x, y}, {x, y}, {x, -y}, {-x, -y}});
-        } else if (collider == 1) {
+            if (set.shape == canvas::TileShape::Isometric) {
+                shapes.push_back({{0.0, -y}, {x, 0.0}, {0.0, y}, {-x, 0.0}});
+            } else if (set.shape == canvas::TileShape::Hexagon &&
+                       set.axis == canvas::TileOffsetAxis::Horizontal) {
+                shapes.push_back({{0.0, -y},
+                                  {x, -y / 2.0},
+                                  {x, y / 2.0},
+                                  {0.0, y},
+                                  {-x, y / 2.0},
+                                  {-x, -y / 2.0}});
+            } else if (set.shape == canvas::TileShape::Hexagon) {
+                shapes.push_back({{-x, 0.0},
+                                  {-x / 2.0, -y},
+                                  {x / 2.0, -y},
+                                  {x, 0.0},
+                                  {x / 2.0, y},
+                                  {-x / 2.0, y}});
+            } else {
+                shapes.push_back({{-x, -y}, {x, -y}, {x, y}, {-x, y}});
+            }
+        } else if (look.collider == 1) {
+            // Unity's outlines are around the sprite's middle with y up; the sprite's middle is
+            // its pivot's offset from the anchor.
             const double scale = ppu_ / sprite.ppu;
-            for (const Outline& outline : sprite.shape) {
-                Outline scaled;
+            const std::array<double, 2> pivot = pivot_offset(sprite);
+            const auto place = [&](const Outline& outline) {
+                Outline placed;
                 for (const auto& [x, y] : outline) {
-                    scaled.push_back({x * scale, y * scale});
+                    placed.push_back({look.shift[0] + ((x - pivot[0]) * scale),
+                                      look.shift[1] + ((-y - pivot[1]) * scale)});
                 }
-                shapes.push_back(std::move(scaled));
+                return placed;
+            };
+            for (const Outline& outline : sprite.shape) {
+                shapes.push_back(place(outline));
             }
             if (shapes.empty() && sprite.fallback_shape) {
                 problems_.add("tile physics shape from the sprite's alpha", where,
                               "Unity makes it from the pixels; the tile's polygon is the sprite's "
                               "rectangle");
-                const double x = sprite.width * scale / 2.0;
-                const double y = sprite.height * scale / 2.0;
-                shapes.push_back({{-x, y}, {x, y}, {x, -y}, {-x, -y}});
+                const double x = sprite.width / 2.0;
+                const double y = sprite.height / 2.0;
+                shapes.push_back(place({{-x, y}, {x, y}, {x, -y}, {-x, -y}}));
             }
         }
         for (const Outline& outline : shapes) {
             std::vector<Vec2> points;
             json::Array polygon;
             for (const auto& [x, y] : outline) {
-                // Unity's y points up.
-                points.push_back({static_cast<float>(x), static_cast<float>(-y)});
-                polygon.push_back(pair(tidy(x), tidy(-y)));
+                points.push_back({static_cast<float>(x), static_cast<float>(y)});
+                polygon.push_back(pair(tidy(x), tidy(y)));
             }
             if (points.size() < 3 || canvas::triangulate(points).empty()) {
                 problems_.add("tile physics shape with no area or crossing itself", where,
@@ -6145,18 +6302,20 @@ private:
             tile.sprite = &sprite;
             std::tie(tile.source, tile.atlas) = tile_source(set, ref.guid, sprite, where);
             tile.name = take(set.names, sprite.name.empty() ? "tile" : snake_case(sprite.name));
-            tile.base = TileLook{.collider = look.collider};
-            if (std::abs(sprite.pivot_x - 0.5) > 1e-6 || std::abs(sprite.pivot_y - 0.5) > 1e-6) {
-                problems_.add("tile sprite pivot off its middle", where,
-                              "tiles draw centered on their cells");
-            }
+            tile.base = TileLook{.collider = look.collider, .shift = look.shift};
             if (std::abs(sprite.ppu - ppu_) > 1e-6) {
                 problems_.add("tile sprite with other pixels per unit", where,
                               "a tile draws at its size in pixels, unscaled");
             }
         }
-        if (!tile.collision.contains(look.collider)) {
-            tile.collision[look.collider] = tile_polygons(set, sprite, look.collider, where);
+        if (!tile.collision.contains({look.collider, look.shift})) {
+            tile.collision[{look.collider, look.shift}] = tile_polygons(set, sprite, look, where);
+            const auto origin = texture_origin(sprite, look);
+            if (origin[0] != std::round(origin[0]) || origin[1] != std::round(origin[1])) {
+                problems_.add("tile sprite pivot between whole pixels", where,
+                              "a tile's texture_origin is whole pixels; it draws up to half a "
+                              "pixel off");
+            }
         }
         if (look == tile.base) {
             return {&tile, 0};
@@ -6172,13 +6331,21 @@ private:
         if (set.cell != std::array<std::int64_t, 2>{16, 16}) {
             doc["tile_size"] = json::Array{set.cell[0], set.cell[1]};
         }
+        if (set.shape != canvas::TileShape::Square) {
+            doc["tile_shape"] = canvas::kTileShapeNames.at(static_cast<std::size_t>(set.shape));
+            doc["tile_layout"] = canvas::kTileLayoutNames.at(static_cast<std::size_t>(set.layout));
+            if (set.axis != canvas::TileOffsetAxis::Horizontal) {
+                doc["tile_offset_axis"] =
+                    canvas::kTileOffsetAxisNames.at(static_cast<std::size_t>(set.axis));
+            }
+        }
         json::Value sources = json::Object{};
         for (const auto& [name, source] : set.sources) {
             sources[name] = source;
         }
         bool polygons = false;
         const auto collision = [&](const TileOut& tile, const TileLook& look) {
-            const auto found = tile.collision.find(look.collider);
+            const auto found = tile.collision.find({look.collider, look.shift});
             json::Array out = found != tile.collision.end() ? found->second : json::Array{};
             for (json::Value& polygon : out) {
                 if (set.physics && set.physics->one_way) {
@@ -6190,7 +6357,15 @@ private:
         };
         for (const auto& [key, tile] : set.tiles) {
             json::Value out;
+            // Unity's sprite pivots and tile anchors, as each tile's texture origin.
+            const auto origin = [&](const TileLook& look, json::Value& to) {
+                const auto [x, y] = texture_origin(*tile.sprite, look);
+                if (std::llround(x) != 0 || std::llround(y) != 0) {
+                    to["texture_origin"] = json::Array{std::llround(x), std::llround(y)};
+                }
+            };
             out["name"] = tile.name;
+            origin(tile.base, out);
             if (json::Array base = collision(tile, tile.base); !base.empty()) {
                 out["collision"] = std::move(base);
             }
@@ -6200,6 +6375,7 @@ private:
                     alternative["modulate"] =
                         json::Array{look.color[0], look.color[1], look.color[2], look.color[3]};
                 }
+                origin(look, alternative);
                 if (json::Array own = collision(tile, look); !own.empty()) {
                     alternative["collision"] = std::move(own);
                 }
@@ -6315,35 +6491,19 @@ private:
             problems_.add("Tilemap without a Grid above it", ctx.where, "its cells are 1 unit");
             grid = &none;
         }
-        if (grid->integer_at("m_CellLayout", 0) != 0) {
-            problems_.add("isometric or hexagonal tile map", ctx.where,
-                          "only rectangular grids convert; isometric and hexagonal tile maps are "
-                          "on the roadmap");
+        const std::optional<GridPlan> plan = grid_plan(*grid, ctx.where);
+        if (!plan) {
             return;
-        }
-        if (grid->integer_at("m_CellSwizzle", 0) != 0) {
-            problems_.add("grid cell swizzle", ctx.where,
-                          "tile maps lie in the xy plane; this one isn't converted");
-            return;
-        }
-        if (grid->number_at("m_CellGap.x") != 0.0 || grid->number_at("m_CellGap.y") != 0.0) {
-            problems_.add("grid cell gap", ctx.where, "cells touch");
-        }
-        const double cell_x = std::abs(grid->number_at("m_CellSize.x", 1.0)) * ppu_;
-        const double cell_y = std::abs(grid->number_at("m_CellSize.y", 1.0)) * ppu_;
-        const std::array<std::int64_t, 2> cell{std::max<std::int64_t>(std::llround(cell_x), 1),
-                                               std::max<std::int64_t>(std::llround(cell_y), 1)};
-        if (std::abs(cell_x - static_cast<double>(cell[0])) > 1e-6 ||
-            std::abs(cell_y - static_cast<double>(cell[1])) > 1e-6) {
-            problems_.add("grid cell size between whole pixels", ctx.where,
-                          "tiles are whole pixels; the size is rounded");
         }
         const Node& body = parts.tilemap->body;
-        if (std::abs(body.number_at("m_TileAnchor.x", 0.5) - 0.5) > 1e-6 ||
-            std::abs(body.number_at("m_TileAnchor.y", 0.5) - 0.5) > 1e-6) {
-            problems_.add("tile anchor off the middle of the cell", ctx.where,
-                          "tiles draw centered on their cells");
+        // Unity puts each sprite's pivot at the tile anchor; a texture origin puts it there.
+        const double anchor_x = body.number_at("m_TileAnchor.x", 0.5);
+        const double anchor_y = body.number_at("m_TileAnchor.y", 0.5);
+        if (plan->layout == 1 && (anchor_x != 0.0 || anchor_y != 0.0)) {
+            problems_.add("tile anchor off a hexagon's center", ctx.where,
+                          "tiles anchor at their cell's center, as Unity's (0, 0)");
         }
+        const std::array<double, 2> shift = plan->shift(anchor_x, anchor_y);
         if (body.integer_at("m_TileOrientation", 0) != 0) {
             problems_.add("tile orientation", ctx.where, "tiles lie in the xy plane");
         }
@@ -6391,7 +6551,7 @@ private:
                               "tile map layers are static bodies; it stays where it is");
             }
         }
-        TileSetOut& set = tile_set_for(cell, physics);
+        TileSetOut& set = tile_set_for(*plan, physics);
 
         // Each cell's tile, from the arrays the cells index.
         const auto entry = [&](std::string_view array, std::int64_t index) -> const Node* {
@@ -6441,7 +6601,7 @@ private:
                 problems_.add("tile sprite", ctx.where, why);
                 continue;
             }
-            TileLook look;
+            TileLook look{.shift = shift};
             look.collider = static_cast<std::int64_t>(
                 (static_cast<std::uint64_t>(data->integer_at("m_AllTileFlags", 0)) >> 30U) & 3U);
             if (const Node* color =
@@ -6457,6 +6617,10 @@ private:
                               "drawn unturned");
                 turns = std::array<bool, 3>{};
             }
+            if (std::ranges::any_of(*turns, std::identity{}) && shift != std::array<double, 2>{}) {
+                problems_.add("turned tiles with the tile anchor off the cell's center", ctx.where,
+                              "they turn about the cell's center");
+            }
             if (matrix != nullptr &&
                 (matrix->number_at("e03") != 0.0 || matrix->number_at("e13") != 0.0)) {
                 problems_.add("tile offsets", ctx.where, "tiles draw centered on their cells");
@@ -6465,10 +6629,10 @@ private:
             if (filter.empty()) {
                 filter = sprite->filter;
             }
-            // Unity's cells go up from y 0; rows go down.
-            const std::int64_t x = item.integer_at("first.x", 0);
-            const std::int64_t y = item.integer_at("first.y", 0);
-            placed[{x, -y - 1}] = Placed{.tile = tile, .alternative = alternative, .turns = *turns};
+            const Vec2i at = plan->cell(static_cast<int>(item.integer_at("first.x", 0)),
+                                        static_cast<int>(item.integer_at("first.y", 0)));
+            placed[{at.x, at.y}] =
+                Placed{.tile = tile, .alternative = alternative, .turns = *turns};
             if (asset && !asset->null()) {
                 if (const Asset* file = asset_of(asset->guid); file != nullptr) {
                     tile_assets_.try_emplace(
@@ -6546,6 +6710,17 @@ private:
         }
         layer["collision_enabled"] = solid;
         out.components["TileMapLayer"] = std::move(layer);
+        if (plan->offset != Vec2{}) {
+            // Unity's cells sit off the tile set's: the layer moves to put them where they are in
+            // Unity, and its children move back.
+            world::Transform2D local;
+            if (const Component* transform = transform_of(go)) {
+                local = local_2d(transform->body);
+            }
+            const Vec2 moved = world::affine(local).apply(plan->offset);
+            out.components["Transform2D"]["position"] = pair(moved.x, moved.y);
+            out.child_shift = plan->offset;
+        }
     }
 
     // --- Animation ---
@@ -7778,6 +7953,26 @@ private:
                 std::string source;
                 go.added[purpose] = added_id(file, go, purpose, source);
                 object.sources.push_back(std::move(source));
+            }
+        }
+        // A tile map layer moved to put its cells where Unity's are moves its children back.
+        for (const int index : order) {
+            const auto& parent = done[static_cast<std::size_t>(index)];
+            if (!parent || parent->converted.child_shift == Vec2{}) {
+                continue;
+            }
+            const Vec2 shift = parent->converted.child_shift;
+            for (const int child : file.objects[static_cast<std::size_t>(index)].children) {
+                auto& object = done[static_cast<std::size_t>(child)];
+                if (!object || file.objects[static_cast<std::size_t>(child)].ui) {
+                    continue;
+                }
+                json::Value& transform = object->converted.components["Transform2D"];
+                const json::Value* position = transform.find("position");
+                const double x = position != nullptr ? position->as_array()[0].as_double() : 0.0;
+                const double y = position != nullptr ? position->as_array()[1].as_double() : 0.0;
+                transform["position"] =
+                    pair(x - static_cast<double>(shift.x), y - static_cast<double>(shift.y));
             }
         }
         for (const int index : order) {

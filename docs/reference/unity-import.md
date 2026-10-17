@@ -101,8 +101,10 @@ masks don't convert, and each is reported.
 
 Each `Tilemap` becomes a `TileMapLayer` on its entity, and the sprites its cells show become
 tiles of a [tile set](scene-format.md#tile-sets) the import writes, `Assets/tiles.tileset.json`.
-Tile maps whose `Grid` cells are the same size in pixels share one tile set; one whose collider
-has other physics gets a set of its own (`tiles_2.tileset.json`).
+Tile maps whose `Grid`s have the same cell layout and cells of the same size in pixels share one
+tile set; one whose collider has other physics gets a set of its own (`tiles_2.tileset.json`).
+[examples/import-unity-isometric](../../examples/import-unity-isometric/) imports an isometric
+and a hexagonal tile map.
 
 - A texture's sprites of one size that fall on a grid, as Unity's Sprite Editor slices them, are
   one atlas source named after the texture, with its margins and separation; a sprite off the
@@ -110,14 +112,29 @@ has other physics gets a set of its own (`tiles_2.tileset.json`).
   `_NormalMap` secondary texture is the source's `normal_texture`, so 2D lights shade its tiles.
 - Unity's cell `(x, y)` is cell `(x, -y - 1)`, since Unity's cells go up from y 0 and rows go
   down.
+- The Grid's cell layout is the tile set's [shape](scene-format.md#tile-shapes): Rectangle is
+  `square`, Isometric and Isometric Z As Y are `isometric` in the `diamond_right` layout, and
+  Hexagon is `hexagon` in `stacked_offset` rows. A Grid with the cell swizzle YXZ, as Unity's
+  flat-top hexagons, swaps the axes: its tile size is the cell size turned, its hexagons are
+  offset in columns (`tile_offset_axis` `vertical`), and its cell `(x, y)` is `(y, -x - 1)`, or
+  `(x, y)` for diamonds. Other swizzles aren't converted, and gaps between cells are reported.
+- Unity and Godot don't put cell `(0, 0)` in the same place on these shapes, so the layer moves
+  by a fixed offset that puts each cell's center where Unity's is: an isometric map half a cell
+  up, a hexagonal one half a cell left and a quarter down. The objects under the tile map move
+  back by as much, so they stay where they were.
+- The tile anchor and each sprite's pivot become the tile's `texture_origin`, which puts the
+  pivot on the anchor as Unity does: blocks standing on their bottom middle on an isometric map
+  anchored at (0, 0) draw with their feet on each cell's bottom corner. A pivot that falls
+  between whole pixels is rounded, a hexagonal map's anchor is its cells' centers, and a turned
+  cell turns its tile about the cell's center, not the anchor; each of these is reported.
 - A cell's matrix becomes its turns: a mirrored cell is `:h` or `:v`, and a quarter turn
   counterclockwise `:vt`, as Godot's cell transform flags. A scaled or skewed matrix, or an
   offset, is reported and drawn without it.
 - A cell's color and collider type pick the tile's look; each look other than the first a cell
   showed becomes an alternative tile (`ground:1`) with its own `modulate` and collision.
 - With a `TilemapCollider2D`, a tile's collision polygons come from its collider type: the
-  sprite's custom physics shape (pixels around the sprite's middle, y flipped), or the cell's
-  square for the Grid type. A sprite with no custom shape, whose physics shape Unity makes from its pixels, gets
+  sprite's custom physics shape (pixels around the sprite's middle, y flipped), where the sprite
+  draws, or the cell's square, diamond or hexagon for the Grid type. A sprite with no custom shape, whose physics shape Unity makes from its pixels, gets
   its rectangle, reported. The collider's physics material (else its `Rigidbody2D`'s, else the
   project's default) gives the tile set's physics layer its friction and bounce, the object's
   layer its collision layer and mask, and a one-way `PlatformEffector2D` makes the polygons
@@ -127,8 +144,7 @@ has other physics gets a set of its own (`tiles_2.tileset.json`).
   project's. A tile map without a `TilemapRenderer` is hidden.
 - The report's `tile_assets` names, for each tile asset (`.asset`), the tile set and tile it
   became. Scripted tiles (rule tiles, animated tiles) keep the sprite each cell shows and are
-  reported, as are isometric and hexagonal grids, which don't convert, and a tile map moved by a
-  dynamic or kinematic `Rigidbody2D`. A `CompositeCollider2D` needs nothing, since a layer's
+  reported, as is a tile map moved by a dynamic or kinematic `Rigidbody2D`. A `CompositeCollider2D` needs nothing, since a layer's
   tiles are one static body.
 
 ## 2D lights
@@ -425,8 +441,7 @@ itself), and other package scripts are named in the report.
 
 ## Not yet converted
 
-Particle systems, dropdowns and isometric and hexagonal tile maps convert in later imports; until
-then each is reported where it is used. TextMesh Pro text in the world (not under
+Particle systems convert in a later import; until then each is reported where it is used. TextMesh Pro text in the world (not under
 a canvas) is reported too.
 Materials and shaders, 3D (milestone 7) and Timeline don't convert. Everything that didn't
 convert is in the report's `unsupported`, once per kind with how many and the first place it was

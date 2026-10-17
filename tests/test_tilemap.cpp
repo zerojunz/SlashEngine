@@ -1181,6 +1181,81 @@ TEST_CASE("turned and alternative tiles draw as Godot's draw_tile draws them") {
     }
 }
 
+TEST_CASE("a tile's texture origin moves its texture, and turns with the cell, as Godot's") {
+    // Godot's compute_transformed_tile_dest_rect: the tile turned by its alternative, moved by
+    // its texture origin, then turned by the cell around the cell's center.
+    auto set = canvas::parse_tileset(parse(R"({"format": 1, "tile_size": [8, 4],
+        "sources": {"a": {"texture": "a.png", "tiles": {"0,0": {"texture_origin": [2, -3],
+            "alternatives": {"1": {"flip_h": true, "texture_origin": [0, 4]}}}}}}})"));
+    REQUIRE(set.ok());
+    const auto look = [&](std::string_view text) {
+        const auto tile = canvas::find_tile(set.value(), text);
+        REQUIRE(tile.ok());
+        return canvas::tile_look(set.value(), tile.value());
+    };
+    const auto rect = [&](std::string_view text) {
+        const canvas::TileLook found = look(text);
+        return std::array<float, 4>{found.position.x, found.position.y, found.size.x, found.size.y};
+    };
+    using Rect = std::array<float, 4>;
+    CHECK(rect("a:0,0") == Rect{-6, 1, 8, 4});
+    CHECK(rect("a:0,0:h") == Rect{-2, 1, 8, 4});
+    CHECK(rect("a:0,0:v") == Rect{-6, -5, 8, 4});
+    CHECK(rect("a:0,0:t") == Rect{1, -6, 4, 8});
+    CHECK(rect("a:0,0:ht") == Rect{-5, -6, 4, 8});
+    // An alternative has its own origin; its flip is in the texture's axes, so a transposed
+    // cell turns it into a vertical flip.
+    CHECK(rect("a:0,0:1") == Rect{-4, -6, 8, 4});
+    CHECK(look("a:0,0:1").flip_h);
+    CHECK(rect("a:0,0:1:t") == Rect{-6, -4, 4, 8});
+    CHECK(look("a:0,0:1:t").transpose);
+    CHECK_FALSE(look("a:0,0:1:t").flip_h);
+    CHECK(look("a:0,0:1:t").flip_v);
+
+    // Drawn: an 8x8 tile in quarters whose texture origin is (2, 3) draws 2 pixels left and 3
+    // up of its cell; flipped, it is mirrored about the cell's center, origin and all.
+    const Rgba red{255, 0, 0, 255};
+    const Rgba green{0, 255, 0, 255};
+    const Rgba blue{0, 0, 255, 255};
+    const Rgba white{255, 255, 255, 255};
+    const Rgba black{0, 0, 0, 255};
+    std::vector<std::unique_ptr<render::RenderDevice>> devices;
+    devices.push_back(render::create_software_device());
+    if (auto gpu = gpu_device(); gpu != nullptr) {
+        devices.push_back(std::move(gpu));
+    }
+    for (const auto& device : devices) {
+        CAPTURE(render::backend_name(device->backend()));
+        Scene scene;
+        scene.files.write("quarters.png", grid_png({{red, green}, {blue, white}}, 4));
+        scene.files.write("tall.tileset.json", R"({"format": 1, "tile_size": [8, 8],
+            "sources": {"q": {"texture": "quarters.png", "tiles": {"0,0": {"name": "o",
+                "texture_origin": [2, 3]}}}}})");
+        scene.create("map", R"({"TileMapLayer": {"tile_set": "tall.tileset.json",
+            "texture_filter": "nearest", "legend": {"o": "o", "h": "o:h"},
+            "rows": ["....", ".o.h"]}})");
+        auto target = device->create_texture(
+            {.width = 32, .height = 16, .filter = render::Filter::Nearest, .render_target = true});
+        REQUIRE(target.ok());
+        canvas::CanvasRenderer renderer(*device, scene.assets);
+        canvas::CanvasOptions options;
+        options.target = target.value();
+        options.clear = {.r = 0.0F, .g = 0.0F, .b = 0.0F, .a = 1.0F};
+        REQUIRE(renderer.draw(scene.world, options).ok());
+        auto image = device->read_texture(target.value());
+        REQUIRE(image.ok());
+        // Cell (1, 1) is centered at (12, 12): its tile covers x 6 to 14 and y 5 to 13.
+        CHECK(pixel(image.value(), 7, 6) == red);
+        CHECK(pixel(image.value(), 13, 12) == white);
+        CHECK(pixel(image.value(), 5, 6) == black);
+        CHECK(pixel(image.value(), 7, 4) == black);
+        // Cell (3, 1), centered at (28, 12), flipped: x 26 to 34, green on the left.
+        CHECK(pixel(image.value(), 27, 6) == green);
+        CHECK(pixel(image.value(), 31, 6) == red);
+        CHECK(pixel(image.value(), 25, 6) == black);
+    }
+}
+
 TEST_CASE("a tile set source's normal map turns light on its tiles, flipped with them") {
     // Under a light along the screen from the top, a normal map facing up the screen is lit
     // and one facing down is dark; flipping a tile vertically flips its normals too. A source

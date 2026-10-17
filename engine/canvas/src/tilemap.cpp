@@ -71,6 +71,11 @@ json::Value schema() {
         property("number", "How often terrain painting picks it over tiles that fit as well.");
     tile["properties"]["probability"]["minimum"] = 0;
     tile["properties"]["probability"]["default"] = 1;
+    tile["properties"]["texture_origin"] =
+        pair("Where the cell's center is in the texture, in pixels from its middle: the texture "
+             "draws that much up and to the left. Collision stays put.",
+             -kMaxPixels);
+    tile["properties"]["texture_origin"]["default"] = json::Array{0, 0};
     tile["properties"]["collision"] =
         property("array", "Polygons that make the tile solid, each in a physics layer.");
     tile["properties"]["collision"]["items"]["$ref"] = "#/$defs/polygon";
@@ -118,6 +123,9 @@ json::Value schema() {
     alternative["properties"]["modulate"]["minItems"] = 4;
     alternative["properties"]["modulate"]["maxItems"] = 4;
     alternative["properties"]["modulate"]["default"] = json::Array{1, 1, 1, 1};
+    alternative["properties"]["texture_origin"] =
+        pair("Its own texture origin, as the tile's; [0, 0] if left out.", -kMaxPixels);
+    alternative["properties"]["texture_origin"]["default"] = json::Array{0, 0};
     alternative["properties"]["collision"] =
         property("array", "Its own collision polygons, as the tile's; none if left out.");
     alternative["properties"]["collision"]["items"]["$ref"] = "#/$defs/polygon";
@@ -1279,6 +1287,7 @@ Result<TileSet> parse_tileset(const json::Value& doc) {
                 if (const json::Value* value = json_tile.find("probability"); value != nullptr) {
                     tile.probability = value->as_double();
                 }
+                tile.texture_origin = pair_of(json_tile.find("texture_origin"), {});
                 if (const json::Value* value = json_tile.find("collision"); value != nullptr) {
                     tile.collision = polygons_of(*value);
                 }
@@ -1296,6 +1305,8 @@ Result<TileSet> parse_tileset(const json::Value& doc) {
                                                     static_cast<float>(rgba[2].as_double()),
                                                     static_cast<float>(rgba[3].as_double())};
                         }
+                        alternative.texture_origin =
+                            pair_of(json_alternative.find("texture_origin"), {});
                         if (const json::Value* collision = json_alternative.find("collision");
                             collision != nullptr) {
                             alternative.collision = polygons_of(*collision);
@@ -1441,16 +1452,41 @@ std::string tile_text(const TileSet& set, const TileRef& tile) {
     return out;
 }
 
+// Godot's TileMapLayer::compute_transformed_tile_dest_rect: the tile centered on the cell, turned
+// by its alternative, moved by its texture origin, then turned by the cell.
 TileLook tile_look(const TileSet& set, const TileRef& tile) {
-    TileLook out{.flip_h = tile.flip_h,
-                 .flip_v = tile.flip_v,
-                 .transpose = tile.transpose,
-                 .modulate = {1.0F, 1.0F, 1.0F, 1.0F}};
+    TileLook out;
+    bool tile_flip_h = false;
+    bool tile_flip_v = false;
+    bool tile_transpose = false;
+    Vec2i origin;
     if (const AlternativeTile* alternative = set.alternative(tile); alternative != nullptr) {
-        out.flip_h = out.flip_h != alternative->flip_h;
-        out.flip_v = out.flip_v != alternative->flip_v;
-        out.transpose = out.transpose != alternative->transpose;
+        tile_flip_h = alternative->flip_h;
+        tile_flip_v = alternative->flip_v;
+        tile_transpose = alternative->transpose;
         out.modulate = alternative->modulate;
+        origin = alternative->texture_origin;
+    } else if (const TileData* data = set.find(tile); data != nullptr) {
+        origin = data->texture_origin;
+    }
+    out.transpose = tile_transpose != tile.transpose;
+    out.flip_h = tile.flip_h != (tile.transpose ? tile_flip_v : tile_flip_h);
+    out.flip_v = tile.flip_v != (tile.transpose ? tile_flip_h : tile_flip_v);
+    Vec2i region;
+    if (const auto source = set.sources.find(tile.source); source != set.sources.end()) {
+        region = source->second.region_size;
+    }
+    out.size = out.transpose ? Vec2{static_cast<float>(region.y), static_cast<float>(region.x)}
+                             : Vec2{static_cast<float>(region.x), static_cast<float>(region.y)};
+    const Vec2 shift = tile.transpose
+                           ? Vec2{static_cast<float>(origin.y), static_cast<float>(origin.x)}
+                           : Vec2{static_cast<float>(origin.x), static_cast<float>(origin.y)};
+    out.position = {(-0.5F * out.size.x) - shift.x, (-0.5F * out.size.y) - shift.y};
+    if (tile.flip_h) {
+        out.position.x = -(out.position.x + out.size.x);
+    }
+    if (tile.flip_v) {
+        out.position.y = -(out.position.y + out.size.y);
     }
     return out;
 }
