@@ -306,6 +306,7 @@ const CanvasRenderer::LayerCells& CanvasRenderer::cells(entt::entity entity,
         auto decoded = decode_cells(layer, set);
         cached.error = decoded ? std::string() : decoded.error().message;
         cached.cells = decoded ? std::move(decoded).value() : Cells{};
+        cached.order = draw_order(set, cached.cells);
     }
     return cached;
 }
@@ -967,7 +968,6 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
                                     .rgba = rgba};
         };
         const render::Filter filter = resolve_filter(layer.texture_filter, options.texture_filter);
-        const Vec2i size = set.value()->tile_size;
         // How each source's tiles are shaded: with its normal and specular maps, left out with a
         // warning if they don't load.
         std::map<const AtlasSource*, render::Material> source_materials;
@@ -1005,7 +1005,8 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         std::size_t run = kNoRun;
         std::uint32_t part = 0;
         const std::size_t first_run = items.size();
-        for (const auto& [cell, tile] : cached.cells) {
+        for (const auto* entry : cached.order) {
+            const auto& [cell, tile] = *entry;
             const AtlasSource& source = set.value()->sources.find(tile.source)->second;
             auto texture = this->texture(source.texture, filter);
             if (!texture) {
@@ -1052,10 +1053,9 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
                     to_byte(tint.z * look.modulate.z), to_byte(tint.w * look.modulate.w)};
             const auto dw = static_cast<float>(look.transpose ? rh : rw);
             const auto dh = static_cast<float>(look.transpose ? rw : rh);
-            const float cx = (static_cast<float>(cell.x) + 0.5F) * static_cast<float>(size.x);
-            const float cy = (static_cast<float>(cell.y) + 0.5F) * static_cast<float>(size.y);
-            const float x0 = cx - (dw / 2.0F);
-            const float y0 = cy - (dh / 2.0F);
+            const Vec2 center = map_to_local(*set.value(), cell);
+            const float x0 = center.x - (dw / 2.0F);
+            const float y0 = center.y - (dh / 2.0F);
             const float x1 = x0 + dw;
             const float y1 = y0 + dh;
             float u0 = static_cast<float>(rx) / static_cast<float>(width);

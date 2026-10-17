@@ -61,7 +61,7 @@ as `entity.get`, reject it as an unknown param.
 | Assets | [`asset.list`](#assetlist) |
 | Materials | [`material.eval`](#materialeval) |
 | Animations | [`animation.eval`](#animationeval) |
-| Tile maps | [`tilemap.paint`](#tilemappaint), [`tilemap.set`](#tilemapset), [`tilemap.get`](#tilemapget) |
+| Tile maps | [`tilemap.paint`](#tilemappaint), [`tilemap.set`](#tilemapset), [`tilemap.get`](#tilemapget), [`tilemap.convert`](#tilemapconvert) |
 | Physics | [`physics.raycast`](#physicsraycast), [`physics.overlap`](#physicsoverlap), [`physics.contacts`](#physicscontacts) |
 | Particles | [`particles.eval`](#particleseval) |
 | Lights | [`light.sample`](#lightsample) |
@@ -524,6 +524,34 @@ Needs: `read`.
 
 With `rect`, `origin` is the rect's top left, there is a row for each of its rows, and each row
 ends at its last tile. `legend` holds only the keys the rows use.
+
+### tilemap.convert
+
+Turns cells into the points at their centers, or points into the cells they are in, as Godot's
+`map_to_local` and `local_to_map` through the layer's `Transform2D` (and its parents'). Points
+are in the canvas the layer draws in: the world's, unless the layer is in a `CanvasLayer`. Cells
+need not hold a tile. For squares the answer is plain arithmetic; for diamonds and hexagons this
+is how an agent finds where a cell is drawn or which cell a click landed in
+([tile shapes](scene-format.md#tile-shapes)).
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `id` | string | required | An entity with a `TileMapLayer` |
+| `cells` | array of `[column, row]` | | Up to 1024 cells: returns `points`, their centers |
+| `points` | array of `[x, y]` | | Up to 1024 points: returns `cells`, the cells they are in |
+
+Needs: `read`. Give `cells`, `points` or both.
+
+```json
+{"id": "board", "points": [[136, 149], [136, 156]]}
+```
+
+```json
+{"cells":[[3,0],[3,1]]}
+```
+
+The two points lie either side of the slanted edge between two hexagons of
+[examples/isometric-and-hex-tiles](../../examples/isometric-and-hex-tiles/).
 
 ## Physics
 

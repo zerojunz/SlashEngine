@@ -162,7 +162,7 @@ TEST_CASE("tile set files are checked, with every mistake located") {
           "terrains": ["grass", "water"]}}, "sources": {"a": {"texture": "a.png",
           "tiles": {"0,0": {"terrain": "grass", "peering": {"ne": "water"}}}}}})") ==
           "/sources/a/tiles/0,0/peering/ne: the terrain set \"t\" is match_sides, which connects "
-          "tiles by n, e, s and w only");
+          "square tiles by n, e, s and w only");
     CHECK(first_error(R"({"format": 1, "terrain_sets": {"t": {"terrains": ["grass"]},
           "u": {"terrains": ["lava"]}}, "sources": {"a": {"texture": "a.png",
           "tiles": {"0,0": {"terrain": "grass", "peering": {"n": "lava"}}}}}})") ==
@@ -192,9 +192,10 @@ TEST_CASE("tile set files are checked, with every mistake located") {
     CHECK(source.region_size == Vec2i{8, 8}); // the tile size, when left out
     const canvas::TileData& north = source.tiles.at({1, 0});
     CHECK(north.name == "grass_n");
-    CHECK(north.peering == std::array<int, 8>{1, 1, 0, 0, 0, 0, 0, 1});
+    CHECK(north.peering ==
+          std::array<int, 16>{1, -1, 1, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 1, -1});
     CHECK(source.tiles.at({2, 3}).terrain == -1);
-    CHECK(source.tiles.at({2, 3}).peering == std::array<int, 8>{-1, -1, -1, -1, -1, -1, -1, -1});
+    CHECK(source.tiles.at({2, 3}).peering == canvas::TileData{}.peering);
     CHECK(set.names.size() == 15);
 
     // A side-only set leaves the corners out.
@@ -205,7 +206,8 @@ TEST_CASE("tile set files are checked, with every mistake located") {
                           "probability": 0.5}}}}})"));
     REQUIRE(sides.ok());
     const canvas::AtlasSource& s = sides.value().sources.at("s");
-    CHECK(s.tiles.at({2, 1}).peering == std::array<int, 8>{0, -1, 1, -1, 0, -1, -1, -1});
+    CHECK(s.tiles.at({2, 1}).peering ==
+          std::array<int, 16>{0, -1, -1, -1, 1, -1, -1, -1, 0, -1, -1, -1, -1, -1, -1, -1});
     CHECK(s.tiles.at({2, 1}).probability == doctest::Approx(0.5));
     CHECK(canvas::tile_region(s, {2, 1}) == std::array<int, 4>{1 + (2 * 19), 2 + 28, 16, 24});
     CHECK(canvas::tile_text(sides.value(), {.source = "s", .atlas = {2, 1}}) == "s:2,1");
@@ -395,6 +397,323 @@ TEST_CASE("equally good tiles are picked by probability, the same way every time
     canvas::Cells again;
     REQUIRE(canvas::paint_terrain(again, set, rect(0, 0, 12, 12), set.terrain("grass")).ok());
     CHECK(again == cells);
+}
+
+namespace {
+
+// A tile set of a shape, layout and offset axis, with no sources.
+canvas::TileSet shaped(canvas::TileShape shape, canvas::TileLayout layout,
+                       canvas::TileOffsetAxis axis, Vec2i size = {64, 32}) {
+    canvas::TileSet set;
+    set.shape = shape;
+    set.layout = layout;
+    set.offset_axis = axis;
+    set.tile_size = size;
+    return set;
+}
+
+std::string shape_name(const canvas::TileSet& set) {
+    return std::string(canvas::kTileShapeNames.at(static_cast<std::size_t>(set.shape))) + " " +
+           std::string(canvas::kTileLayoutNames.at(static_cast<std::size_t>(set.layout))) + " " +
+           std::string(canvas::kTileOffsetAxisNames.at(static_cast<std::size_t>(set.offset_axis)));
+}
+
+canvas::Neighbor opposite(canvas::Neighbor direction) {
+    return static_cast<canvas::Neighbor>((static_cast<std::size_t>(direction) + 8) % 16);
+}
+
+} // namespace
+
+TEST_CASE("cells of every tile shape and layout sit where Godot's TileSet puts them") {
+    using canvas::TileLayout;
+    using canvas::TileOffsetAxis;
+    using canvas::TileShape;
+    const auto center = [](const canvas::TileSet& set, Vec2i cell) {
+        return canvas::map_to_local(set, cell);
+    };
+    // Squares, the default: rows of cells.
+    CHECK(center(canvas::TileSet{}, {2, -1}) == Vec2{40, -8});
+    // Isometric diamonds overlap by half: each row is half a cell down, odd rows half a cell
+    // over; in a diamond layout, columns go down to the right and rows down to the left.
+    const auto iso = shaped(TileShape::Isometric, TileLayout::Stacked, TileOffsetAxis::Horizontal);
+    CHECK(center(iso, {0, 0}) == Vec2{32, 16});
+    CHECK(center(iso, {0, 1}) == Vec2{64, 32});
+    CHECK(center(iso, {0, -1}) == Vec2{64, 0});
+    const auto diamond =
+        shaped(TileShape::Isometric, TileLayout::DiamondDown, TileOffsetAxis::Horizontal);
+    CHECK(center(diamond, {1, 0}) == Vec2{64, 32});
+    CHECK(center(diamond, {0, 1}) == Vec2{0, 32});
+    CHECK(center(diamond, {1, 1}) == Vec2{32, 48});
+    // Hexagons overlap by a quarter; offset columns go down, not across.
+    const auto hex =
+        shaped(TileShape::Hexagon, TileLayout::Stacked, TileOffsetAxis::Horizontal, {32, 32});
+    CHECK(center(hex, {0, 1}) == Vec2{32, 40});
+    const auto columns =
+        shaped(TileShape::Hexagon, TileLayout::StackedOffset, TileOffsetAxis::Vertical, {32, 32});
+    CHECK(center(columns, {0, 0}) == Vec2{16, 32});
+    CHECK(center(columns, {1, 0}) == Vec2{40, 16});
+    // A half-offset square is a hexagon that doesn't overlap.
+    const auto bricks = shaped(TileShape::HalfOffsetSquare, TileLayout::Stacked,
+                               TileOffsetAxis::Horizontal, {32, 16});
+    CHECK(center(bricks, {0, 1}) == Vec2{32, 24});
+    // The corner of a diamond's box is in the cell across its side.
+    CHECK(canvas::local_to_map(diamond, {2, 2}) == Vec2i{-1, 0});
+    CHECK(canvas::local_to_map(diamond, {62, 2}) == Vec2i{0, -1});
+    CHECK(canvas::local_to_map(diamond, {32, 2}) == Vec2i{0, 0});
+    // Points far past every cell still give a cell.
+    CHECK(canvas::local_to_map(iso, {1.0e30F, -1.0e30F}).x > 1000000);
+
+    // In every shape, layout and axis, a cell's center maps back to it, and a point just
+    // inside the edge it shares with a neighbor is in it, just past it in the neighbor.
+    for (const TileShape shape : {TileShape::Square, TileShape::Isometric,
+                                  TileShape::HalfOffsetSquare, TileShape::Hexagon}) {
+        for (std::size_t layout = 0; layout < canvas::kTileLayoutNames.size(); ++layout) {
+            for (const TileOffsetAxis axis :
+                 {TileOffsetAxis::Horizontal, TileOffsetAxis::Vertical}) {
+                const auto set = shaped(shape, static_cast<TileLayout>(layout), axis);
+                CAPTURE(shape_name(set));
+                int neighbors = 0;
+                for (int y = -3; y <= 3; ++y) {
+                    for (int x = -3; x <= 3; ++x) {
+                        const Vec2i cell{x, y};
+                        const Vec2 at = center(set, cell);
+                        REQUIRE(canvas::local_to_map(set, at) == cell);
+                        for (std::size_t d = 0; d < canvas::kNeighborNames.size(); ++d) {
+                            const auto direction = static_cast<canvas::Neighbor>(d);
+                            const auto next = canvas::neighbor_cell(set, cell, direction);
+                            if (!next) {
+                                continue;
+                            }
+                            CAPTURE(canvas::kNeighborNames.at(d));
+                            ++neighbors;
+                            // The cell across is the way the direction points, and this cell is
+                            // across from it the other way.
+                            CHECK(canvas::neighbor_cell(set, *next, opposite(direction)) == cell);
+                            const Vec2 there = center(set, *next);
+                            const Vec2 middle = (at + there) * 0.5F;
+                            CHECK(canvas::local_to_map(set, middle + ((at - middle) * 0.1F)) ==
+                                  cell);
+                            CHECK(canvas::local_to_map(set, middle + ((there - middle) * 0.1F)) ==
+                                  *next);
+                        }
+                    }
+                }
+                // Squares and diamonds have a cell across each side and corner; hexagons and
+                // half-offset squares across their six sides.
+                CHECK(neighbors ==
+                      49 * (shape == TileShape::Square || shape == TileShape::Isometric ? 8 : 6));
+            }
+        }
+    }
+}
+
+TEST_CASE("each tile shape has its own sides and corners, as Godot's terrain peering bits") {
+    using canvas::Neighbor;
+    using canvas::PeeringKind;
+    using canvas::TileLayout;
+    using canvas::TileOffsetAxis;
+    using canvas::TileShape;
+    const auto kinds = [](const canvas::TileSet& set) {
+        std::string sides;
+        std::string corners;
+        for (std::size_t d = 0; d < canvas::kNeighborNames.size(); ++d) {
+            const PeeringKind kind = canvas::peering_kind(set, static_cast<Neighbor>(d));
+            std::string& out = kind == PeeringKind::Side ? sides : corners;
+            if (kind != PeeringKind::None) {
+                out += (out.empty() ? "" : " ") + std::string(canvas::kNeighborNames.at(d));
+            }
+        }
+        return sides + " | " + corners;
+    };
+    const auto square = canvas::TileSet{};
+    const auto iso = shaped(TileShape::Isometric, TileLayout::Stacked, TileOffsetAxis::Horizontal);
+    const auto rows = shaped(TileShape::Hexagon, TileLayout::Stacked, TileOffsetAxis::Horizontal);
+    const auto columns = shaped(TileShape::Hexagon, TileLayout::Stacked, TileOffsetAxis::Vertical);
+    const auto bricks =
+        shaped(TileShape::HalfOffsetSquare, TileLayout::Stacked, TileOffsetAxis::Horizontal);
+    CHECK(kinds(square) == "n e s w | ne se sw nw");
+    CHECK(kinds(iso) == "ne se sw nw | n e s w");
+    CHECK(kinds(rows) == "ne e se sw w nw | n ene ese s wsw wnw");
+    CHECK(kinds(columns) == "n ne se s sw nw | nne e sse ssw w nnw");
+    CHECK(kinds(bricks) == kinds(rows));
+
+    // Godot's bits go clockwise from the right side; each shape uses the ones it has.
+    const auto bit = [](const canvas::TileSet& set, int godot) {
+        const auto direction = canvas::godot_neighbor(set.shape, set.offset_axis, godot);
+        return direction
+                   ? std::string(canvas::kNeighborNames.at(static_cast<std::size_t>(*direction)))
+                   : std::string("-");
+    };
+    const auto bits = [&](const canvas::TileSet& set) {
+        std::string out;
+        for (int godot = 0; godot < 16; ++godot) {
+            out += (godot == 0 ? "" : " ") + bit(set, godot);
+        }
+        return out;
+    };
+    CHECK(bits(square) == "e - - se s - - sw w - - nw n - - ne");
+    CHECK(bits(iso) == "- e se - - s sw - - w nw - - n ne -");
+    CHECK(bits(rows) == "e - se ese - s sw wsw w - nw wnw - n ne ene");
+    CHECK(bits(columns) == "- e se sse s - sw ssw - w nw nnw n - ne nne");
+    CHECK(bit(square, 16) == "-");
+    CHECK(bit(square, -1) == "-");
+
+    // The cells across, from Godot's get_neighbor_cell.
+    CHECK(canvas::neighbor_cell(iso, {0, 1}, Neighbor::SE) == Vec2i{1, 2});
+    CHECK(canvas::neighbor_cell(iso, {0, 1}, Neighbor::N) == Vec2i{0, -1});
+    CHECK(canvas::neighbor_cell(iso, {0, 1}, Neighbor::E) == Vec2i{1, 1});
+    const auto offset_columns =
+        shaped(TileShape::Hexagon, TileLayout::StackedOffset, TileOffsetAxis::Vertical);
+    CHECK(canvas::neighbor_cell(offset_columns, {1, 0}, Neighbor::SE) == Vec2i{2, 0});
+    CHECK(canvas::neighbor_cell(offset_columns, {1, 0}, Neighbor::NE) == Vec2i{2, -1});
+    const auto stairs =
+        shaped(TileShape::Hexagon, TileLayout::StairsDown, TileOffsetAxis::Horizontal);
+    CHECK(canvas::neighbor_cell(stairs, {0, 0}, Neighbor::E) == Vec2i{2, -1});
+    CHECK(canvas::neighbor_cell(rows, {0, 0}, Neighbor::ENE) == std::nullopt); // a corner
+    CHECK(canvas::neighbor_cell(square, {0, 0}, Neighbor::NNE) == std::nullopt);
+
+    // Tile set files name the shape, and peering only the sides and corners it has.
+    CHECK(first_error(R"({"format": 1, "tile_shape": "isometric",
+          "terrain_sets": {"t": {"mode": "match_sides", "terrains": ["grass", "water"]}},
+          "sources": {"a": {"texture": "a.png",
+          "tiles": {"0,0": {"terrain": "grass", "peering": {"n": "water"}}}}}})") ==
+          "/sources/a/tiles/0,0/peering/n: the terrain set \"t\" is match_sides, which connects "
+          "isometric tiles by ne, se, sw and nw only");
+    CHECK(first_error(R"({"format": 1, "tile_shape": "hexagon", "tile_offset_axis": "vertical",
+          "terrain_sets": {"t": {"terrains": ["grass", "water"]}},
+          "sources": {"a": {"texture": "a.png",
+          "tiles": {"0,0": {"terrain": "grass", "peering": {"ene": "water"}}}}}})") ==
+          "/sources/a/tiles/0,0/peering/ene: \"ene\" is no side or corner of a hexagon tile, "
+          "which has n, nne, ne, e, se, sse, s, ssw, sw, w, nw and nnw");
+    CHECK(first_error(R"({"format": 1, "tile_shape": "hexagonal",
+          "sources": {"a": {"texture": "a.png"}}})")
+              .find("/tile_shape") == 0);
+    auto parsed = canvas::parse_tileset(parse(R"({"format": 1, "tile_shape": "half_offset_square",
+        "tile_layout": "diamond_right", "tile_offset_axis": "vertical",
+        "terrain_sets": {"t": {"terrains": ["grass", "water"]}},
+        "sources": {"a": {"texture": "a.png",
+        "tiles": {"0,0": {"terrain": "grass", "peering": {"nne": "water", "s": "water"}}}}}})"));
+    REQUIRE(parsed.ok());
+    CHECK(parsed.value().shape == TileShape::HalfOffsetSquare);
+    CHECK(parsed.value().layout == TileLayout::DiamondRight);
+    CHECK(parsed.value().offset_axis == TileOffsetAxis::Vertical);
+    const auto& peering = parsed.value().sources.at("a").tiles.at({0, 0}).peering;
+    CHECK(peering.at(static_cast<std::size_t>(Neighbor::NNE)) == 1);
+    CHECK(peering.at(static_cast<std::size_t>(Neighbor::S)) == 1);
+    CHECK(peering.at(static_cast<std::size_t>(Neighbor::N)) == 0);
+    CHECK(peering.at(static_cast<std::size_t>(Neighbor::E)) == 0);
+    CHECK(peering.at(static_cast<std::size_t>(Neighbor::NE)) == 0);
+    CHECK(peering.at(static_cast<std::size_t>(Neighbor::ENE)) == -1); // no such corner
+}
+
+TEST_CASE("painting terrain connects isometric and hexagonal tiles by their own sides") {
+    // An isometric map in a diamond layout is a square map turned 45 degrees: the ground tile
+    // set with each peering direction turned paints the same tiles.
+    std::string text(kGround);
+    text.replace(text.find("\"tile_size\""), 0,
+                 R"("tile_shape": "isometric", "tile_layout": "diamond_down", )");
+    const std::array<std::pair<std::string, std::string>, 8> kTurned{{{"\"n\"", "\"ne\""},
+                                                                      {"\"ne\"", "\"e\""},
+                                                                      {"\"e\"", "\"se\""},
+                                                                      {"\"se\"", "\"s\""},
+                                                                      {"\"s\"", "\"sw\""},
+                                                                      {"\"sw\"", "\"w\""},
+                                                                      {"\"w\"", "\"nw\""},
+                                                                      {"\"nw\"", "\"n\""}}};
+    std::string turned;
+    for (std::size_t at = 0; at < text.size();) {
+        bool replaced = false;
+        for (const auto& [from, to] : kTurned) {
+            if (text.compare(at, from.size(), from) == 0 &&
+                text.compare(at + from.size(), 1, ":") == 0) {
+                turned += to;
+                at += from.size();
+                replaced = true;
+                break;
+            }
+        }
+        if (!replaced) {
+            turned += text[at++];
+        }
+    }
+    auto diamond = canvas::parse_tileset(parse(turned));
+    REQUIRE(diamond.ok());
+    const canvas::TileSet& iso = diamond.value();
+    canvas::Cells cells;
+    REQUIRE(canvas::paint_terrain(cells, iso, rect(0, 0, 3, 3), iso.terrain("grass")).ok());
+    CHECK(names(cells, iso, 0, 0, 3, 3) == std::vector<std::string>{
+                                               "grass_nw grass_n grass_ne",
+                                               "grass_w grass grass_e",
+                                               "grass_sw grass_s grass_se",
+                                           });
+
+    // Hexagons by their six sides, in every layout: water in a field of grass turns each cell
+    // around it to the tile with water on the side that faces it.
+    for (const canvas::TileOffsetAxis axis :
+         {canvas::TileOffsetAxis::Horizontal, canvas::TileOffsetAxis::Vertical}) {
+        for (std::size_t layout = 0; layout < canvas::kTileLayoutNames.size(); ++layout) {
+            const canvas::TileSet shape =
+                shaped(canvas::TileShape::Hexagon, static_cast<canvas::TileLayout>(layout), axis);
+            CAPTURE(shape_name(shape));
+            std::string tiles = R"("0,0": {"name": "grass", "terrain": "grass"},
+                                   "1,0": {"name": "water", "terrain": "water"})";
+            int column = 0;
+            for (std::size_t d = 0; d < canvas::kNeighborNames.size(); ++d) {
+                if (canvas::peering_kind(shape, static_cast<canvas::Neighbor>(d)) ==
+                    canvas::PeeringKind::Side) {
+                    const std::string name(canvas::kNeighborNames.at(d));
+                    tiles += ", \"" + std::to_string(column++) + ",1\": {\"name\": \"grass_" +
+                             name + "\", \"terrain\": \"grass\", \"peering\": {\"" + name +
+                             "\": \"water\"}}";
+                }
+            }
+            auto set = canvas::parse_tileset(parse(
+                R"({"format": 1, "tile_shape": "hexagon", "tile_layout": ")" +
+                std::string(canvas::kTileLayoutNames.at(layout)) + R"(", "tile_offset_axis": ")" +
+                std::string(canvas::kTileOffsetAxisNames.at(static_cast<std::size_t>(axis))) +
+                R"(", "terrain_sets": {"t": {"mode": "match_sides", "terrains": ["grass", "water"]}},
+                "sources": {"a": {"texture": "a.png", "tiles": {)" +
+                tiles + "}}}}"));
+            REQUIRE(set.ok());
+            canvas::Cells field;
+            REQUIRE(canvas::paint_terrain(field, set.value(), rect(-3, -3, 7, 7),
+                                          set.value().terrain("grass"))
+                        .ok());
+            auto changed = canvas::paint_terrain(field, set.value(), std::vector<Vec2i>{{0, 0}},
+                                                 set.value().terrain("water"));
+            REQUIRE(changed.ok());
+            CHECK(changed.value() == 7);
+            CHECK(canvas::tile_text(set.value(), field.at({0, 0})) == "water");
+            for (std::size_t d = 0; d < canvas::kNeighborNames.size(); ++d) {
+                const auto direction = static_cast<canvas::Neighbor>(d);
+                if (const auto next = canvas::neighbor_cell(set.value(), {0, 0}, direction)) {
+                    CAPTURE(canvas::kNeighborNames.at(d));
+                    CHECK(canvas::tile_text(set.value(), field.at(*next)) ==
+                          "grass_" + std::string(canvas::kNeighborNames.at(
+                                         static_cast<std::size_t>(opposite(direction)))));
+                }
+            }
+        }
+    }
+}
+
+TEST_CASE("cells draw in order down the screen, so taller tiles overlap as they should") {
+    canvas::Cells cells;
+    for (const Vec2i cell : {Vec2i{2, 0}, Vec2i{0, 0}, Vec2i{1, 1}, Vec2i{0, 1}, Vec2i{1, 0}}) {
+        cells.emplace(cell, canvas::TileRef{.source = "a", .atlas = {0, 0}});
+    }
+    const auto order = [&](const canvas::TileSet& set) {
+        std::string out;
+        for (const auto* entry : canvas::draw_order(set, cells)) {
+            out += (out.empty() ? "" : " ") + std::to_string(entry->first.x) + "," +
+                   std::to_string(entry->first.y);
+        }
+        return out;
+    };
+    CHECK(order(canvas::TileSet{}) == "0,0 1,0 2,0 0,1 1,1");
+    // In a diamond layout, centers go down as column plus row grows, and across by column.
+    CHECK(order(shaped(canvas::TileShape::Isometric, canvas::TileLayout::DiamondDown,
+                       canvas::TileOffsetAxis::Horizontal)) == "0,0 0,1 1,0 1,1 2,0");
 }
 
 TEST_CASE("TileMapLayer saves its cells as text and checks them against its tile set") {
@@ -977,4 +1296,57 @@ TEST_CASE("tile map layers are solid where their tiles have collision polygons")
     auto shapes = slash::physics2d::tile_shapes(scene.world, scene.world.find("ledges"));
     REQUIRE(shapes != nullptr);
     CHECK_FALSE(shapes->front().one_way);
+}
+
+TEST_CASE("isometric cells draw and collide at their centers, down the screen") {
+    // Tiles twice a cell's width: cells side by side overlap, and the one lower down, or
+    // further right on the same line, draws on top.
+    const Rgba red{255, 0, 0, 255};
+    const Rgba blue{0, 0, 255, 255};
+    const Rgba black{0, 0, 0, 255};
+    std::vector<std::unique_ptr<render::RenderDevice>> devices;
+    devices.push_back(render::create_software_device());
+    if (auto gpu = gpu_device(); gpu != nullptr) {
+        devices.push_back(std::move(gpu));
+    }
+    for (const auto& device : devices) {
+        CAPTURE(render::backend_name(device->backend()));
+        Scene scene;
+        scene.files.write("wide.png",
+                          grid_png({{red, red, red, red}, {blue, blue, blue, blue}}, 8));
+        scene.files.write("diamonds.tileset.json", R"({"format": 1, "tile_shape": "isometric",
+            "tile_layout": "diamond_down", "tile_size": [16, 8],
+            "sources": {"w": {"texture": "wide.png", "region_size": [32, 8],
+                              "tiles": {"0,0": {"name": "red"}, "0,1": {"name": "blue"}}}}})");
+        // Cells (2, 0) and (1, 1) are both centered 12 pixels down, at x 24 and 8.
+        scene.create("map", R"({"TileMapLayer": {"tile_set": "diamonds.tileset.json",
+            "texture_filter": "nearest", "legend": {"r": "red", "b": "blue"},
+            "rows": ["..b", ".r"]}})");
+        auto target = device->create_texture(
+            {.width = 48, .height = 24, .filter = render::Filter::Nearest, .render_target = true});
+        REQUIRE(target.ok());
+        canvas::CanvasRenderer renderer(*device, scene.assets);
+        canvas::CanvasOptions options;
+        options.target = target.value();
+        options.clear = {.r = 0.0F, .g = 0.0F, .b = 0.0F, .a = 1.0F};
+        REQUIRE(renderer.draw(scene.world, options).ok());
+        CHECK(renderer.tiles_drawn() == 2);
+        auto image = device->read_texture(target.value());
+        REQUIRE(image.ok());
+        CHECK(pixel(image.value(), 2, 12) == red);   // (1, 1) spans x -8 to 24
+        CHECK(pixel(image.value(), 16, 12) == blue); // (2, 0), x 8 to 40, on top
+        CHECK(pixel(image.value(), 36, 12) == blue);
+        CHECK(pixel(image.value(), 16, 4) == black); // both span y 8 to 16
+        CHECK(pixel(image.value(), 16, 20) == black);
+    }
+
+    // A tile's collision polygon is placed at its cell's center too.
+    auto set = canvas::parse_tileset(parse(R"({"format": 1, "tile_shape": "isometric",
+        "tile_size": [16, 8], "physics_layers": [{}], "sources": {"a": {"texture": "a.png",
+        "tiles": {"0,0": {"collision": [{"points": [[0, -4], [8, 0], [0, 4], [-8, 0]]}]}}}}})"));
+    REQUIRE(set.ok());
+    const canvas::Cells one{{Vec2i{0, 1}, canvas::TileRef{.source = "a", .atlas = {0, 0}}}};
+    const auto shapes = canvas::tile_shapes(set.value(), one);
+    REQUIRE(shapes.size() == 1);
+    CHECK(points_text(shapes[0].points) == "16,4 24,8 16,12 8,8");
 }

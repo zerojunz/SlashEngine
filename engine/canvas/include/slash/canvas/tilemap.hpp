@@ -11,6 +11,7 @@
 #include <array>
 #include <cstdint>
 #include <map>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -43,6 +44,10 @@
 // terrain. A TileMapLayer holds its cells as text, rows of legend keys (see decode_cells), and
 // paint_terrain picks the tiles that connect, as Godot's terrain painting does.
 //
+// Cells are squares unless the tile set's "tile_shape" says otherwise, as Godot's TileSet: an
+// "isometric" diamond, a "half_offset_square" or a "hexagon", laid out by "tile_layout" and
+// "tile_offset_axis" (map_to_local places a cell).
+//
 // As in Godot, a tile set's "physics_layers" give tiles collision: each tile's "collision"
 // polygons, in pixels from the tile's center, make a layer's cells solid through 2D physics. A
 // tile's "alternatives" are its other versions, flipped, transposed or tinted, by number from 1;
@@ -57,12 +62,53 @@ inline constexpr std::string_view kTileSetSuffix = ".tileset.json";
 // four at their corners, or by the four at their sides.
 enum class TerrainMode : std::uint8_t { CornersAndSides, Corners, Sides };
 
-// A cell's neighbors, as Godot's CellNeighbor, by compass direction with north up (-y).
-enum class Neighbor : std::uint8_t { N, NE, E, SE, S, SW, W, NW };
-inline constexpr std::array<std::string_view, 8> kNeighborNames = {"n", "ne", "e", "se",
-                                                                   "s", "sw", "w", "nw"};
-inline constexpr std::array<Vec2i, 8> kNeighborOffsets = {
-    {{0, -1}, {1, -1}, {1, 0}, {1, 1}, {0, 1}, {-1, 1}, {-1, 0}, {-1, -1}}};
+// A tile set's cell shape, as Godot's TileShape: squares, diamonds, squares in rows offset by
+// half a cell (which connect as hexagons do), or hexagons.
+enum class TileShape : std::uint8_t { Square, Isometric, HalfOffsetSquare, Hexagon };
+inline constexpr std::array<std::string_view, 4> kTileShapeNames = {
+    "square", "isometric", "half_offset_square", "hexagon"};
+
+// How a shape other than squares lays out its columns and rows, as Godot's TileLayout.
+enum class TileLayout : std::uint8_t {
+    Stacked,
+    StackedOffset,
+    StairsRight,
+    StairsDown,
+    DiamondRight,
+    DiamondDown
+};
+inline constexpr std::array<std::string_view, 6> kTileLayoutNames = {
+    "stacked", "stacked_offset", "stairs_right", "stairs_down", "diamond_right", "diamond_down"};
+
+// Whether a shape other than squares offsets its rows (horizontal) or its columns (vertical), as
+// Godot's TileOffsetAxis.
+enum class TileOffsetAxis : std::uint8_t { Horizontal, Vertical };
+inline constexpr std::array<std::string_view, 2> kTileOffsetAxisNames = {"horizontal", "vertical"};
+
+// A cell's sides and corners, as Godot's CellNeighbor, by the compass direction they face, north
+// up (-y) and clockwise. Squares and diamonds use the eight main points; a hexagon's corners
+// between two sides use the points between them, as ene between e and ne.
+enum class Neighbor : std::uint8_t {
+    N,
+    NNE,
+    NE,
+    ENE,
+    E,
+    ESE,
+    SE,
+    SSE,
+    S,
+    SSW,
+    SW,
+    WSW,
+    W,
+    WNW,
+    NW,
+    NNW
+};
+inline constexpr std::array<std::string_view, 16> kNeighborNames = {
+    "n", "nne", "ne", "ene", "e", "ese", "se", "sse",
+    "s", "ssw", "sw", "wsw", "w", "wnw", "nw", "nnw"};
 
 // Cells in rows, top to bottom, each row left to right.
 struct CellOrder {
@@ -110,8 +156,9 @@ struct AlternativeTile {
 struct TileData {
     std::string name;
     int terrain = -1; // into TileSet::terrains, or -1 for none
-    // The terrain each neighbor must have, by Neighbor, or -1 for none.
-    std::array<int, 8> peering{-1, -1, -1, -1, -1, -1, -1, -1};
+    // The terrain each neighbor must have, by Neighbor, or -1 for none (and for directions the
+    // tile set's shape and the terrain's mode don't connect by).
+    std::array<int, 16> peering{-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1};
     // How often autotiling picks this tile over others that fit as well.
     double probability = 1.0;
     std::vector<TilePolygon> collision;
@@ -152,6 +199,9 @@ struct TerrainSet {
 
 struct TileSet {
     Vec2i tile_size{16, 16}; // a cell's size, in pixels
+    TileShape shape = TileShape::Square;
+    TileLayout layout = TileLayout::Stacked;
+    TileOffsetAxis offset_axis = TileOffsetAxis::Horizontal;
     std::vector<PhysicsLayer> physics_layers;
     std::map<std::string, AtlasSource, std::less<>> sources;
     std::vector<TerrainSet> terrain_sets;
@@ -167,6 +217,28 @@ struct TileSet {
 };
 
 [[nodiscard]] std::string_view terrain_mode_name(TerrainMode mode);
+
+// What a direction is to a cell of a tile set's shape: one of its sides, one of its corners, or
+// neither, as Godot's is_valid_terrain_peering_bit.
+enum class PeeringKind : std::uint8_t { None, Side, Corner };
+[[nodiscard]] PeeringKind peering_kind(const TileSet& set, Neighbor direction);
+
+// The cell across a side, or across a corner where one cell is (squares and diamonds), as
+// Godot's TileSet::get_neighbor_cell; nullopt where there is none.
+[[nodiscard]] std::optional<Vec2i> neighbor_cell(const TileSet& set, Vec2i cell,
+                                                 Neighbor direction);
+
+// Godot's CellNeighbor number (0 right side, 1 right corner, ... 15 top right corner) as a
+// direction of a cell of this shape and offset axis, or nullopt where the shape has no such side
+// or corner.
+[[nodiscard]] std::optional<Neighbor> godot_neighbor(TileShape shape, TileOffsetAxis axis, int bit);
+
+// Where a cell's center is, in pixels from the layer's origin, as Godot's
+// TileSet::map_to_local.
+[[nodiscard]] Vec2 map_to_local(const TileSet& set, Vec2i cell);
+
+// The cell a point is in, in pixels from the layer's origin, as Godot's TileSet::local_to_map.
+[[nodiscard]] Vec2i local_to_map(const TileSet& set, Vec2 point);
 
 // JSON Schema for .tileset.json files.
 [[nodiscard]] json::Value tileset_schema();
@@ -206,6 +278,11 @@ struct TileLook {
 [[nodiscard]] std::array<int, 4> tile_region(const AtlasSource& source, Vec2i atlas);
 
 using Cells = std::map<Vec2i, TileRef, CellOrder>;
+
+// A layer's cells in the order they draw: by their centers' y, then x, so a tile taller than its
+// cell overlaps the cells behind it, as Godot draws a layer with y-sort enabled.
+[[nodiscard]] std::vector<const Cells::value_type*> draw_order(const TileSet& set,
+                                                               const Cells& cells);
 
 // Where cells can be, as in Godot: columns and rows from -32768 to 32767.
 inline constexpr int kMinCell = -32768;

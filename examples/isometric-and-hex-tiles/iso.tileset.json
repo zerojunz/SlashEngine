@@ -1,0 +1,137 @@
+{
+  "format": 1,
+  "sources": {
+    "ground": {
+      "texture": "iso.png",
+      "tiles": {
+        "0,0": {
+          "name": "grass_n",
+          "peering": {
+            "e": "water",
+            "n": "water",
+            "ne": "water",
+            "nw": "water",
+            "w": "water"
+          },
+          "terrain": "grass"
+        },
+        "0,1": {
+          "name": "grass_nw",
+          "peering": {
+            "n": "water",
+            "nw": "water",
+            "w": "water"
+          },
+          "terrain": "grass"
+        },
+        "0,2": {
+          "name": "grass_w",
+          "peering": {
+            "n": "water",
+            "nw": "water",
+            "s": "water",
+            "sw": "water",
+            "w": "water"
+          },
+          "terrain": "grass"
+        },
+        "0,3": {
+          "name": "grass_in_w",
+          "peering": {
+            "w": "water"
+          },
+          "terrain": "grass"
+        },
+        "1,0": {
+          "name": "grass_ne",
+          "peering": {
+            "e": "water",
+            "n": "water",
+            "ne": "water"
+          },
+          "terrain": "grass"
+        },
+        "1,1": {
+          "name": "grass",
+          "terrain": "grass"
+        },
+        "1,2": {
+          "name": "grass_sw",
+          "peering": {
+            "s": "water",
+            "sw": "water",
+            "w": "water"
+          },
+          "terrain": "grass"
+        },
+        "1,3": {
+          "name": "grass_in_s",
+          "peering": {
+            "s": "water"
+          },
+          "terrain": "grass"
+        },
+        "2,0": {
+          "name": "grass_e",
+          "peering": {
+            "e": "water",
+            "n": "water",
+            "ne": "water",
+            "s": "water",
+            "se": "water"
+          },
+          "terrain": "grass"
+        },
+        "2,1": {
+          "name": "grass_se",
+          "peering": {
+            "e": "water",
+            "s": "water",
+            "se": "water"
+          },
+          "terrain": "grass"
+        },
+        "2,2": {
+          "name": "grass_s",
+          "peering": {
+            "e": "water",
+            "s": "water",
+            "se": "water",
+            "sw": "water",
+            "w": "water"
+          },
+          "terrain": "grass"
+        },
+        "2,3": {
+          "name": "rock"
+        },
+        "3,0": {
+          "name": "water",
+          "terrain": "water"
+        },
+        "3,1": {
+          "name": "grass_in_n",
+          "peering": {
+            "n": "water"
+          },
+          "terrain": "grass"
+        },
+        "3,2": {
+          "name": "grass_in_e",
+          "peering": {
+            "e": "water"
+          },
+          "terrain": "grass"
+        }
+      }
+    }
+  },
+  "terrain_sets": {
+    "ground": {
+      "terrains": ["grass", "water"]
+    }
+  },
+  "tile_layout": "diamond_down",
+  "tile_shape": "isometric",
+  "tile_size": [32, 16]
+}

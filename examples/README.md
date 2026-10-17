@@ -26,6 +26,7 @@ engine. Copy from them.
 | [materials](materials/) | `.material.json` node graphs that color sprites, their params and blend modes, and `material.eval` |
 | [keyframe-animation](keyframe-animation/) | `AnimationPlayer` and `.anim.json` files: tracks for any field, on the player's entity or another it targets, easing, loops, event keys and `animation.eval` |
 | [tilemaps](tilemaps/) | `TileMapLayer` and `.tileset.json` files: terrain autotiling with `tilemap.paint`, `tilemap.set` and `tilemap.get`, drawn offscreen |
+| [isometric-and-hex-tiles](isometric-and-hex-tiles/) | Isometric and hexagonal tile sets with Godot's `tile_shape`, `tile_layout` and `tile_offset_axis`: an island painted on diamonds by their sides and corners, a board of hexagons, `tilemap.convert` between cells and points, checked with `frame.capture` |
 | [tile-collision](tile-collision/) | Collision polygons on tiles, physics layers, one-way tiles, cells turned with `:h`, an alternative tile, and `physics.raycast` reporting the cell |
 | [lights-2d](lights-2d/) | `PointLight2D`, `DirectionalLight2D`, `CanvasModulate`, occluder shadows, normal maps and `light.sample`, drawn offscreen |
 | [lit-tiles-and-layers](lit-tiles-and-layers/) | Normal and specular maps on a tile set's atlas source, lights' `range_layer_min` and `range_layer_max` across canvas layers, a `CanvasModulate` per canvas and `light.sample` on a HUD sprite, checked with `frame.capture` |
