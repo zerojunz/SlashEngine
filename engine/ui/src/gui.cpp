@@ -2,6 +2,7 @@
 #include "line_edit.hpp"
 #include "text_edit.hpp"
 
+#include "slash/core/log.hpp"
 #include "slash/core/text.hpp"
 #include "slash/input/input.hpp"
 #include "slash/text/text.hpp"
@@ -143,6 +144,34 @@ struct PopupStatus {
     double search_time = -1e9;      // search_time_msec, in seconds
 };
 
+// What Viewport keeps for tooltips (gui.tooltip_*): the control the mouse's rest timer runs for,
+// where the mouse came to rest and when, and the tooltip shown.
+struct TooltipStatus {
+    std::string control; // tooltip_control: a control, or an open popup menu; "" for none
+    std::string owner;   // the control whose tooltip shows (tooltip_popup); "" while none does
+    std::string text;    // tooltip_text
+    double since = 0.0;  // when the timer started, in seconds of world time
+    Vec2 pos;            // tooltip_pos: where the mouse came to rest
+    bool timing = false; // tooltip_timer runs
+    bool popup = false;  // control is an open popup menu, whose items have tooltips
+};
+
+// What Viewport keeps for drag and drop (gui.drag_* and global_dragging): how far the mouse has
+// moved since the left button went down, and the drag going on.
+struct DragStatus {
+    json::Value data;         // drag_data
+    std::string from;         // the control that gave the data
+    std::string preview;      // a control shown at the pointer; "" for none
+    std::string preview_text; // or a text field's text, drawn with from's font
+    std::string over;         // drag_mouse_over: the control that takes the drop there
+    Vec2 accum;               // drag_accum
+    Vec2 at;                  // where the preview is: the pointer
+    bool attempted = false;   // drag_attempted: this press tried to start a drag already
+    bool global = false;      // global_dragging: a drag is starting or going on
+    bool dragging = false;    // dragging: data was given
+    bool successful = false;  // drag_successful: the last drag was dropped
+};
+
 struct GuiState {
     std::uint64_t tick = kNever; // the tick the gui system last ran
     double now = 0.0;            // seconds of world time this tick
@@ -166,19 +195,39 @@ struct GuiState {
     std::string clipboard; // the world's clipboard, which a backend shares with the system's
     std::vector<PopupStatus> popups;                  // the popup menus open, the last on top
     std::vector<std::pair<std::string, int>> selects; // select_item() calls for the next tick
+    TooltipStatus tooltip;
+    DragStatus drag;
+    // drag_and_drop() calls for the next tick: (from, to).
+    std::vector<std::pair<std::string, std::string>> drags;
     std::uint16_t mouse_focus_mask = 0;
     std::uint16_t mouse_mask = 0; // the mouse buttons held, as Input::get_mouse_button_mask
     bool hide_focus = false;      // focus came from a click, so it isn't drawn
     bool focus_by_arrow = false;  // an arrow key is moving focus, so a LineEdit won't edit
     // A popup opened, so the controls lose the mouse as their window loses focus.
     bool drop_mouse_focus = false;
-    bool popups_changed = false; // a popup opened or closed, so the layout is out of date
+    // A popup or tooltip opened or closed, or a drag preview moved, so the layout is out of
+    // date.
+    bool popups_changed = false;
 };
 
 // The clipboard the platform gives, kept apart from GuiState so snapshots leave it alone.
 struct ClipboardHolder {
     ClipboardBackend backend;
 };
+
+// Each control's drag forwarding by entity ID, kept apart from GuiState for the same reason.
+struct ForwardingHolder {
+    std::map<std::string, DragForwarding, std::less<>> controls;
+};
+
+const DragForwarding* forwarding_of(const world::World& world, std::string_view id) {
+    const auto* holder = world.ecs().ctx().find<ForwardingHolder>();
+    if (holder == nullptr) {
+        return nullptr;
+    }
+    const auto found = holder->controls.find(id);
+    return found != holder->controls.end() ? &found->second : nullptr;
+}
 
 using Handle = std::shared_ptr<GuiState>;
 
@@ -432,24 +481,29 @@ std::string_view mask_name(input::MouseButton button) {
     }
 }
 
-// Records a UI event and emits it as a world event: in this tick's list while the gui system
-// has run this tick, else in the next tick's.
+// A UI event of a kind from a control, with nothing else set.
+UiEvent ui_event(std::string_view kind, const std::string& id) {
+    UiEvent event;
+    event.kind = std::string(kind);
+    event.id = id;
+    return event;
+}
+
+// Records a UI event: in this tick's list while the gui system has run this tick, else in the
+// next tick's.
+void record(const world::World& world, GuiState& state, UiEvent event) {
+    (state.tick == world.tick() ? state.events : state.next).push_back(std::move(event));
+}
+
+// Records a UI event and emits it as a world event.
 void emit(world::World& world, GuiState& state, std::string_view kind, const std::string& id,
           std::optional<bool> toggled = std::nullopt) {
     if (id.empty()) {
         return;
     }
-    const UiEvent event{.kind = std::string(kind),
-                        .id = id,
-                        .toggled_on = toggled.value_or(false),
-                        .text = {},
-                        .from_line = 0,
-                        .to_line = 0,
-                        .value = 0.0,
-                        .value_changed = false,
-                        .index = -1,
-                        .item_id = -1};
-    (state.tick == world.tick() ? state.events : state.next).push_back(event);
+    UiEvent event = ui_event(kind, id);
+    event.toggled_on = toggled.value_or(false);
+    record(world, state, std::move(event));
     json::Value data;
     if (toggled) {
         data = json::Object{{"toggled_on", *toggled}};
@@ -464,17 +518,10 @@ void emit_value(world::World& world, GuiState& state, std::string_view kind, con
         return;
     }
     const bool ended = kind == "drag_ended";
-    const UiEvent event{.kind = std::string(kind),
-                        .id = id,
-                        .toggled_on = false,
-                        .text = {},
-                        .from_line = 0,
-                        .to_line = 0,
-                        .value = ended ? 0.0 : value,
-                        .value_changed = ended && changed,
-                        .index = -1,
-                        .item_id = -1};
-    (state.tick == world.tick() ? state.events : state.next).push_back(event);
+    UiEvent event = ui_event(kind, id);
+    event.value = ended ? 0.0 : value;
+    event.value_changed = ended && changed;
+    record(world, state, std::move(event));
     world.emit(std::string(kind), id,
                ended ? json::Object{{"value_changed", changed}} : json::Object{{"value", value}});
 }
@@ -502,17 +549,9 @@ void emit_text(world::World& world, GuiState& state, std::string_view kind, cons
     if (id.empty()) {
         return;
     }
-    const UiEvent event{.kind = std::string(kind),
-                        .id = id,
-                        .toggled_on = false,
-                        .text = text,
-                        .from_line = 0,
-                        .to_line = 0,
-                        .value = 0.0,
-                        .value_changed = false,
-                        .index = -1,
-                        .item_id = -1};
-    (state.tick == world.tick() ? state.events : state.next).push_back(event);
+    UiEvent event = ui_event(kind, id);
+    event.text = text;
+    record(world, state, std::move(event));
     world.emit(std::string(kind), id, json::Object{{std::string(key), text}});
 }
 
@@ -607,7 +646,7 @@ public:
         apply_ime();
         set_caret_column(caret());
         s_.show_keyboard = false;
-        if (edit_.deselect_on_focus_loss_enabled) {
+        if (edit_.deselect_on_focus_loss_enabled && !s_.drag_attempt) {
             deselect();
         }
     }
@@ -1139,7 +1178,7 @@ void line_edit_focus_exit(world::World& world, GuiState& state, const std::strin
     if (editor.editing()) {
         editor.unedit();
         emit(world, state, "editing_toggled", id, false);
-    } else if (editor.edit().deselect_on_focus_loss_enabled) {
+    } else if (editor.edit().deselect_on_focus_loss_enabled && !editor.state().drag_attempt) {
         editor.deselect();
     }
 }
@@ -1154,17 +1193,10 @@ void emit_text_edit(world::World& world, GuiState& state, const std::string& id,
             emit(world, state, signal.kind, id);
             continue;
         }
-        const UiEvent event{.kind = signal.kind,
-                            .id = id,
-                            .toggled_on = false,
-                            .text = {},
-                            .from_line = signal.from_line,
-                            .to_line = signal.to_line,
-                            .value = 0.0,
-                            .value_changed = false,
-                            .index = -1,
-                            .item_id = -1};
-        (state.tick == world.tick() ? state.events : state.next).push_back(event);
+        UiEvent event = ui_event(signal.kind, id);
+        event.from_line = signal.from_line;
+        event.to_line = signal.to_line;
+        record(world, state, std::move(event));
         world.emit(signal.kind, id,
                    json::Object{{"from_line", signal.from_line}, {"to_line", signal.to_line}});
     }
@@ -1352,17 +1384,10 @@ void emit_item(world::World& world, GuiState& state, std::string_view kind, cons
     }
     const bool has_id = kind == "id_focused" || kind == "id_pressed" || kind == "index_pressed";
     const bool has_index = kind != "id_focused";
-    const UiEvent event{.kind = std::string(kind),
-                        .id = id,
-                        .toggled_on = false,
-                        .text = {},
-                        .from_line = 0,
-                        .to_line = 0,
-                        .value = 0.0,
-                        .value_changed = false,
-                        .index = has_index ? index : -1,
-                        .item_id = has_id ? item : -1};
-    (state.tick == world.tick() ? state.events : state.next).push_back(event);
+    UiEvent event = ui_event(kind, id);
+    event.index = has_index ? index : -1;
+    event.item_id = has_id ? item : -1;
+    record(world, state, std::move(event));
     json::Object data;
     if (has_id) {
         data.emplace("id", item);
@@ -1373,9 +1398,26 @@ void emit_item(world::World& world, GuiState& state, std::string_view kind, cons
     world.emit(std::string(kind), id, std::move(data));
 }
 
+// Viewport::_gui_cancel_tooltip: the rest timer stops and the tooltip shown goes.
+void cancel_tooltip(GuiState& state) {
+    TooltipStatus& tooltip = state.tooltip;
+    tooltip.control.clear();
+    tooltip.popup = false;
+    tooltip.text.clear();
+    tooltip.timing = false;
+    if (!tooltip.owner.empty()) {
+        tooltip.owner.clear();
+        state.popups_changed = true;
+    }
+}
+
 // Window::hide on an open popup menu, and what its popup_hide does: a PopupMenu emits it; a
 // MenuButton emits it and is released (_popup_visibility_changed); an OptionButton is released.
+// Its items' tooltip goes with it.
 void hide_popup(world::World& world, GuiState& state, const std::string& owner) {
+    if (state.tooltip.popup && state.tooltip.control == owner) {
+        cancel_tooltip(state);
+    }
     const auto found = std::ranges::find(state.popups, owner, &PopupStatus::owner);
     if (found == state.popups.end()) {
         return;
@@ -1911,6 +1953,76 @@ Rect2 global_rect(const Placed& placed) {
     return {{t.tx, t.ty}, {placed.size.x * scale.x, placed.size.y * scale.y}};
 }
 
+// ---- Tooltips and drag and drop ----
+
+// String::strip_edges: no characters up to a space at either end.
+std::string strip_edges(std::string_view text) {
+    const auto blank = [](char c) { return static_cast<unsigned char>(c) <= ' '; };
+    while (!text.empty() && blank(text.front())) {
+        text.remove_prefix(1);
+    }
+    while (!text.empty() && blank(text.back())) {
+        text.remove_suffix(1);
+    }
+    return std::string(text);
+}
+
+// A point's coordinate in an event's data: whole pixels as integers.
+json::Value coordinate(float value) {
+    const float whole = std::round(value);
+    if (whole == value && std::abs(value) < 1e9F) {
+        return static_cast<std::int64_t>(whole);
+    }
+    return value;
+}
+
+std::string quoted(std::string_view text) {
+    return "\"" + std::string(text) + "\"";
+}
+
+// Whether data matches one of a DragAndDrop's can_drop patterns: an object needs the pattern's
+// members, each matching; anything else must be equal.
+bool drop_matches(const json::Value& pattern, const json::Value& data) {
+    if (!pattern.is_object()) {
+        return pattern == data;
+    }
+    if (!data.is_object()) {
+        return false;
+    }
+    return std::ranges::all_of(pattern.as_object(), [&](const auto& member) {
+        const json::Value* found = data.find(member.first);
+        return found != nullptr && drop_matches(member.second, *found);
+    });
+}
+
+// Whether Godot's Key::CMD_OR_CTRL is held: Command on a Mac, Ctrl elsewhere.
+bool command_held(const world::World& world) {
+    return input::is_key_pressed(world, input::host_keyboard() == input::Keyboard::Mac
+                                            ? input::Key::Meta
+                                            : input::Key::Ctrl);
+}
+
+// What NOTIFICATION_DRAG_BEGIN does, sent to every node once a drag has data: a button pressed
+// lets go (BaseButton), and the control dragged emits drag_begin.
+void begin_drag(world::World& world, GuiState& state) {
+    for (auto& [id, status] : state.buttons) {
+        status.press_attempt = false;
+        status.touch_index = -1;
+    }
+    // TextEdit stops selecting.
+    for (auto& [id, s] : state.text_edits) {
+        s.selecting_mode = SelectionMode::None;
+        s.dragging_selection = false;
+        s.click_held = -1.0;
+    }
+    if (!state.drag.from.empty()) {
+        UiEvent event = ui_event("drag_begin", state.drag.from);
+        event.data = state.drag.data;
+        record(world, state, std::move(event));
+        world.emit("drag_begin", state.drag.from, json::Object{{"data", state.drag.data}});
+    }
+}
+
 // ---- Sending events to controls ----
 
 // What the pointer is on: a control, or one of a ScrollContainer's bars.
@@ -2164,6 +2276,18 @@ private:
             return false;
         }
         if (view != nullptr) {
+            // The popup's own viewport runs the tooltips of its items.
+            if (event.type == input::EventType::MouseMotion) {
+                if (!inside(view->size, event.position - view->position)) {
+                    if (state_.tooltip.popup) {
+                        cancel_tooltip(state_);
+                    }
+                } else if (event.button_mask == 0) {
+                    tooltip_motion(top->owner, true, event.position);
+                }
+            } else if (event.type == input::EventType::MouseButton && event.pressed) {
+                cancel_tooltip(state_);
+            }
             popup_input(top->owner, *view, event);
         }
         return true;
@@ -2519,8 +2643,10 @@ private:
     // Viewport::gui_find_control: the last control in tree order under a point that the mouse
     // doesn't pass by.
     [[nodiscard]] Target find_control(Vec2 point) const {
+        const entt::entity preview = layout_.drag ? layout_.drag->preview : entt::null;
         for (const entt::entity root : std::views::reverse(roots_)) {
-            if (!visible(root)) {
+            // A drag's preview, at the pointer, is never what the pointer is over.
+            if (!visible(root) || root == preview) {
                 continue;
             }
             if (const Target found = find_at(root, point); found.entity != entt::null) {
@@ -2575,6 +2701,16 @@ private:
     // Viewport::_update_mouse_over: mouse_exited for the controls the mouse left, from the
     // innermost, then mouse_entered for the ones it is over, from the outermost.
     void update_mouse_over(Vec2 point) {
+        // The tooltip is a window over everything: the mouse going into it leaves what it was
+        // over, which takes the tooltip away.
+        if (const std::optional<TooltipView>& tip = layout_.tooltip;
+            tip && !state_.tooltip.owner.empty() && inside(tip->size, point - tip->position)) {
+            if (!state_.mouse_over.empty() || !state_.mouse_over_hierarchy.empty()) {
+                drop_mouse_over(world_, state_, {});
+            }
+            cancel_tooltip(state_);
+            return;
+        }
         // Over an open popup, the controls lose the mouse and the popup has it; a popup the mouse
         // leaves loses its focused item (NOTIFICATION_WM_MOUSE_EXIT).
         const PopupView* over_popup = nullptr;
@@ -2589,6 +2725,9 @@ private:
                 over_popup != nullptr && find(status.owner) == over_popup->owner;
             if (status.mouse_inside && !now_inside) {
                 status.focused = -1;
+                if (state_.tooltip.popup && state_.tooltip.control == status.owner) {
+                    cancel_tooltip(state_);
+                }
             }
             status.mouse_inside = now_inside;
         }
@@ -2652,6 +2791,7 @@ private:
 public:
     // Viewport::_drop_mouse_over: the controls the mouse is over after until leave it.
     static void drop_mouse_over(world::World& world, GuiState& state, const std::string& until) {
+        cancel_tooltip(state);
         state.mouse_over.clear();
         auto& hierarchy = state.mouse_over_hierarchy;
         std::size_t keep = 0;
@@ -2670,6 +2810,13 @@ public:
             // ScrollBar's NOTIFICATION_MOUSE_EXIT.
             if (BarStatus* bar = bar_status(state, left); bar != nullptr) {
                 bar->highlight = 0;
+            }
+            // A text field's: the drag caret hides.
+            if (const auto found = state.edits.find(left); found != state.edits.end()) {
+                found->second.drag_caret_force_displayed = false;
+            }
+            if (const auto found = state.text_edits.find(left); found != state.text_edits.end()) {
+                found->second.drag_caret_force_displayed = false;
             }
             if (bar_named(left) == Bar::Own && world.find(left) != entt::null) {
                 emit(world, state, "mouse_exited", left);
@@ -2755,6 +2902,8 @@ private:
                 .map = map_,
                 .now = now_,
                 .focused = state_.key_focus == id,
+                .dragging = state_.drag.dragging,
+                .can_drop = false,
                 .signals = &signals};
     }
 
@@ -2783,8 +2932,14 @@ private:
             const Vec2 origin = to_local(entity, {}).value_or(Vec2{});
             relative = to_local(entity, *event.relative).value_or(Vec2{}) - origin;
         }
-        edit_text(entity, [&](const TextEditContext& context, world::TextEdit& edit,
-                              TextEditState& s, TextArea& area) {
+        const bool moved = event.type == input::EventType::MouseMotion ||
+                           event.type == input::EventType::ScreenDrag;
+        const bool can_drop =
+            state_.drag.dragging && moved && can_drop_data(entity, local, state_.drag.data);
+        edit_text(entity, [&](const TextEditContext& base, world::TextEdit& edit, TextEditState& s,
+                              TextArea& area) {
+            TextEditContext context = base;
+            context.can_drop = can_drop;
             if (text_edit_input(context, edit, s, area, event, local, relative)) {
                 handled_ = true;
             }
@@ -2840,6 +2995,11 @@ private:
                                                 ? s.selection.begin
                                                 : s.selection.end);
                 }
+            }
+            // A drag over it shows where the text would drop.
+            if (state_.drag.dragging && can_drop_data(entity, at, state_.drag.data)) {
+                s.drag_caret_force_displayed = true;
+                editor.set_caret_at_pixel_pos(at.x);
             }
             return;
         }
@@ -3047,6 +3207,9 @@ private:
             }
             s.selection.creating = false;
             s.selection.double_click = false;
+            if (!state_.drag.dragging) {
+                s.drag_attempt = false;
+            }
             if (s.pending_select_all) {
                 editor.select_all();
                 s.pending_select_all = false;
@@ -3105,10 +3268,18 @@ private:
                     }
                 }
             }
+            s.drag_attempt = false;
             if (!s.selection.double_click) {
-                editor.deselect();
-                s.selection.start_column = editor.caret();
-                s.selection.creating = true;
+                // A press on the selection may drag it away.
+                const bool inside = s.selection.enabled && editor.caret() >= s.selection.begin &&
+                                    editor.caret() <= s.selection.end;
+                if (!edit.secret && edit.drag_and_drop_selection_enabled && inside) {
+                    s.drag_attempt = true;
+                } else {
+                    editor.deselect();
+                    s.selection.start_column = editor.caret();
+                    s.selection.creating = true;
+                }
             }
         }
         if (edit.editable && !editor.editing() && editor.start_editing(true)) {
@@ -3893,7 +4064,14 @@ private:
     // The mouse button part of Viewport::_gui_input_event.
     void mouse_button(const input::Event& event) {
         const std::uint16_t bit = mask_bit(event.button);
+        DragStatus& drag = state_.drag;
         if (event.pressed) {
+            // A right click cancels a drag.
+            if (drag.dragging && event.button == input::MouseButton::Right) {
+                perform_drop(entt::null, event.position);
+                handled_ = true;
+                return;
+            }
             if (state_.mouse_focus_mask != 0 && (state_.mouse_focus_mask & bit) == 0) {
                 if (state_.mouse_focus.empty()) {
                     return;
@@ -3910,6 +4088,10 @@ private:
                 }
                 state_.mouse_focus = target_id(over);
                 state_.mouse_focus_mask |= bit;
+                if (event.button == input::MouseButton::Left) {
+                    drag.accum = {};
+                    drag.attempted = false;
+                }
             }
             const Target focus = target(state_.mouse_focus);
             if (event.button == input::MouseButton::Left && focus.bar == Bar::Own) {
@@ -3933,7 +4115,15 @@ private:
             if (focus.entity != entt::null) {
                 call_input(focus, event);
             }
+            // force_drag's data drops where the left button goes down.
+            if (drag.dragging && event.button == input::MouseButton::Left) {
+                perform_drop(target(state_.mouse_focus).entity, event.position);
+            }
+            cancel_tooltip(state_);
             return;
+        }
+        if (drag.dragging && event.button == input::MouseButton::Left) {
+            perform_drop(find(drag.over), event.position);
         }
         state_.mouse_focus_mask &= static_cast<std::uint16_t>(~bit);
         if (state_.mouse_focus.empty()) {
@@ -3948,14 +4138,474 @@ private:
         }
     }
 
+    // Viewport::_gui_input_event's mouse motion: past the drag threshold with the left button
+    // held, a drag starts; the control under the pointer gets the event, and while no button is
+    // held its tooltip's rest timer runs; a drag going on moves its preview and finds what takes
+    // the drop.
     void mouse_motion(const input::Event& event) {
+        DragStatus& drag = state_.drag;
+        if (!drag.attempted && !state_.mouse_focus.empty() && !drag.global &&
+            (event.button_mask & mask_bit(input::MouseButton::Left)) != 0) {
+            drag.accum = drag.accum + event.relative.value_or(Vec2{});
+            if (std::hypot(drag.accum.x, drag.accum.y) >
+                static_cast<float>(settings(world_).drag_threshold)) {
+                start_drag(event.position - drag.accum);
+            }
+        }
         const Target over =
             !state_.mouse_focus.empty() ? target(state_.mouse_focus) : find_control(event.position);
         if (over.entity != entt::null) {
+            if (event.button_mask == 0) {
+                tooltip_motion(target_id(over), false, event.position);
+            }
             call_input(over, event);
+        }
+        if (drag.dragging) {
+            drag.at = event.position;
+            if (!drag.preview.empty() || !drag.preview_text.empty()) {
+                state_.popups_changed = true;
+            }
+            // Godot keeps the control under the pointer and finds the one that takes the drop
+            // again when it drops; this keeps the one that takes it, which agents are told.
+            const Target under = find_control(event.position);
+            drag.over = under.entity != entt::null
+                            ? id(gui_drop(under.entity, event.position, true))
+                            : std::string();
         }
     }
 
+    // ---- Tooltips ----
+
+    // Viewport::_gui_get_tooltip: the tooltip of the control at a point, or of the first parent
+    // that has one, up to one that stops the mouse; and the control it came from, the last one
+    // asked. An open popup menu's is its item's under the point (PopupMenu::get_tooltip), and a
+    // scroll bar has none.
+    [[nodiscard]] std::pair<std::string, std::string> find_tooltip(const std::string& control,
+                                                                   bool popup, Vec2 point) const {
+        if (popup) {
+            const PopupView* view = popup_view(control);
+            const int over = view != nullptr ? item_at(*view, point) : -1;
+            if (over < 0) {
+                return {control, {}};
+            }
+            const std::vector<world::PopupMenuItem> items = popup_items(world_, find(control));
+            return {control, std::cmp_less(over, items.size())
+                                 ? items[static_cast<std::size_t>(over)].tooltip
+                                 : std::string()};
+        }
+        if (bar_named(control) != Bar::Own) {
+            return {};
+        }
+        std::string owner;
+        for (entt::entity at = find(control); at != entt::null; at = parent(at)) {
+            owner = id(at);
+            const auto* own = world_.ecs().try_get<world::Control>(at);
+            if (own != nullptr && !own->tooltip_text.empty()) {
+                return {owner, own->tooltip_text};
+            }
+            if (mouse_filter(world_, at) == Filter::Stop) {
+                break;
+            }
+        }
+        return {owner, {}};
+    }
+
+    // The tooltip half of Viewport::_gui_input_event's mouse motion with no button held: a
+    // tooltip shown stays while the pointer's tooltip reads the same, and the rest timer starts
+    // again on another control or once the pointer moves more than 5 pixels.
+    void tooltip_motion(const std::string& over, bool popup, Vec2 point) {
+        TooltipStatus& tooltip = state_.tooltip;
+        bool shown = false;
+        if (!tooltip.owner.empty()) {
+            if (!tooltip.control.empty() &&
+                strip_edges(find_tooltip(over, popup, point).second) == tooltip.text) {
+                shown = true;
+            } else {
+                cancel_tooltip(state_);
+            }
+        }
+        if (shown) {
+            return;
+        }
+        const Vec2 moved = point - tooltip.pos;
+        if (over != tooltip.control || popup != tooltip.popup || dot(moved, moved) > 25.0F) {
+            tooltip.control = over;
+            tooltip.popup = popup;
+            tooltip.pos = point;
+            tooltip.since = now_;
+            tooltip.timing = true;
+        }
+    }
+
+public:
+    // Viewport::_gui_show_tooltip, once the rest timer runs out: the tooltip of the control it
+    // ran for, as the pointer is now, shows where the pointer came to rest.
+    void show_due_tooltip() {
+        TooltipStatus& tooltip = state_.tooltip;
+        if (!tooltip.timing || now_ - tooltip.since < settings(world_).tooltip_delay_sec - 1e-9) {
+            return;
+        }
+        tooltip.timing = false;
+        show_tooltip_now(last_mouse_);
+    }
+
+    // Viewport::show_tooltip: a control's tooltip now, below its middle.
+    void show_tooltip_for(entt::entity control) {
+        const Placed* found = placed(control);
+        if (found == nullptr) {
+            return;
+        }
+        // Unlike Godot, which keeps the tooltip shown when the control has none, it goes.
+        cancel_tooltip(state_);
+        TooltipStatus& tooltip = state_.tooltip;
+        tooltip.control = id(control);
+        tooltip.popup = false;
+        tooltip.pos = found->transform.apply({found->size.x / 2.0F, found->size.y / 2.0F});
+        show_tooltip_now(tooltip.pos);
+        after_event();
+    }
+
+private:
+    // Viewport::_gui_show_tooltip_at: shows the tooltip at a point, if there is one.
+    void show_tooltip_now(Vec2 point) {
+        TooltipStatus& tooltip = state_.tooltip;
+        if (tooltip.control.empty()) {
+            return;
+        }
+        auto [owner, text] = find_tooltip(tooltip.control, tooltip.popup, point);
+        std::string stripped = strip_edges(text);
+        if (stripped.empty() || owner.empty()) {
+            return;
+        }
+        tooltip.text = std::move(stripped);
+        tooltip.owner = std::move(owner);
+        state_.popups_changed = true;
+    }
+
+    // ---- Drag and drop ----
+
+    // Viewport::_gui_input_event's attempt to grab: the control pressed gives data, or the
+    // first parent that does, up to one that stops the mouse. A scroll bar gives none.
+    void start_drag(Vec2 point) {
+        DragStatus& drag = state_.drag;
+        const Target focus = target(state_.mouse_focus);
+        for (entt::entity at = focus.bar == Bar::Own ? focus.entity : entt::null; at != entt::null;
+             at = parent(at)) {
+            drag.global = true;
+            drag.data = get_drag_data(at, to_local(at, point).value_or(Vec2{}));
+            if (!drag.data.is_null()) {
+                state_.mouse_focus.clear();
+                state_.mouse_focus_mask = 0;
+                drag.dragging = true;
+                drag.from = id(at);
+                drag.at = last_mouse_;
+                break;
+            }
+            if (!drag.preview.empty()) {
+                log::warn("A drag preview was set but no data given; the drag is ignored.",
+                          {{"control", id(at)}});
+            }
+            drag.preview.clear();
+            drag.preview_text.clear();
+            drag.global = false;
+            if (mouse_filter(world_, at) == Filter::Stop) {
+                break;
+            }
+        }
+        drag.attempted = true;
+        if (drag.dragging) {
+            begin_drag(world_, state_);
+            state_.popups_changed = true;
+        }
+    }
+
+    // Control::get_drag_data, then a text field's own: what dragging a control from a point in
+    // its rect carries; null for nothing.
+    json::Value get_drag_data(entt::entity entity, Vec2 at) {
+        const std::string control = id(entity);
+        const DragForwarding* forward = forwarding_of(world_, control);
+        if (forward != nullptr && forward->get_drag_data) {
+            const auto call = forward->get_drag_data;
+            json::Value data = call(at);
+            if (!data.is_null()) {
+                return data;
+            }
+        } else if (const auto* own = world_.ecs().try_get<world::DragAndDrop>(entity);
+                   own != nullptr && !own->drag_data.is_null()) {
+            if (own->drag_preview != entt::null && world_.valid(own->drag_preview)) {
+                state_.drag.preview = id(own->drag_preview);
+            }
+            return own->drag_data;
+        }
+        if (world_.ecs().all_of<world::LineEdit>(entity)) {
+            return line_edit_drag_data(entity);
+        }
+        if (world_.ecs().all_of<world::TextEdit>(entity)) {
+            return text_edit_drag_data(entity);
+        }
+        return {};
+    }
+
+    // Control::can_drop_data, then a text field's own, which takes text while editable.
+    bool can_drop_data(entt::entity entity, Vec2 at, const json::Value& data) {
+        bool takes = false;
+        const DragForwarding* forward = forwarding_of(world_, id(entity));
+        if (forward != nullptr && forward->can_drop_data) {
+            const auto call = forward->can_drop_data;
+            takes = call(at, data);
+        } else if (const auto* own = world_.ecs().try_get<world::DragAndDrop>(entity);
+                   own != nullptr) {
+            takes = std::ranges::any_of(own->can_drop, [&](const json::Value& pattern) {
+                return drop_matches(pattern, data);
+            });
+        }
+        if (takes) {
+            return true;
+        }
+        if (const auto* edit = world_.ecs().try_get<world::LineEdit>(entity); edit != nullptr) {
+            return edit->editable && data.is_string();
+        }
+        if (const auto* edit = world_.ecs().try_get<world::TextEdit>(entity); edit != nullptr) {
+            return edit->editable && data.is_string();
+        }
+        return false;
+    }
+
+    // Control::drop_data, then drop_data is emitted, then a text field's own takes text.
+    void drop_data(entt::entity entity, Vec2 at, const json::Value& data) {
+        const std::string control = id(entity);
+        if (const DragForwarding* forward = forwarding_of(world_, control);
+            forward != nullptr && forward->drop_data) {
+            const auto call = forward->drop_data;
+            call(at, data);
+        }
+        if (!control.empty()) {
+            UiEvent event = ui_event("drop_data", control);
+            event.data = data;
+            event.from = state_.drag.from;
+            event.position = at;
+            record(world_, state_, std::move(event));
+            world_.emit(
+                "drop_data", control,
+                json::Object{{"data", data},
+                             {"from", state_.drag.from},
+                             {"position", json::Array{coordinate(at.x), coordinate(at.y)}}});
+        }
+        if (world_.ecs().all_of<world::LineEdit>(entity)) {
+            line_edit_drop(entity, at, data);
+        } else if (world_.ecs().all_of<world::TextEdit>(entity)) {
+            text_edit_drop(entity, at, data);
+        }
+    }
+
+    // LineEdit::get_drag_data: the selection, after a press on it, shown at the pointer in the
+    // LineEdit's font.
+    json::Value line_edit_drag_data(entt::entity entity) {
+        Editor editor(world_, state_, entity, &layout_);
+        const EditState& s = editor.state();
+        if (!s.drag_attempt || !s.selection.enabled) {
+            return {};
+        }
+        std::string text = to_utf8(editor.selected_text());
+        state_.drag.preview_text = text;
+        return text;
+    }
+
+    // LineEdit::drop_data: text goes in where it was dropped and is selected. Dragged from
+    // itself, the selection moves there, or is copied with Command (Ctrl) held; dropped on its
+    // own selection, nothing changes.
+    void line_edit_drop(entt::entity entity, Vec2 at, const json::Value& data) {
+        Editor editor(world_, state_, entity, &layout_);
+        EditState& s = editor.state();
+        if (!data.is_string() || !editor.edit().editable) {
+            return;
+        }
+        editor.apply_ime();
+        editor.set_caret_at_pixel_pos(at.x);
+        int caret_column_tmp = editor.caret();
+        const bool command = command_held(world_);
+        const EditState::Selection& selection = s.selection;
+        const bool inside = command ? selection.enabled && editor.caret() > selection.begin &&
+                                          editor.caret() < selection.end
+                                    : selection.enabled && editor.caret() >= selection.begin &&
+                                          editor.caret() <= selection.end;
+        const std::u32string inserted = strip_escapes(to_utf32(data.as_string()));
+        const std::u32string before = editor.text();
+        if (s.drag_attempt) {
+            s.drag_attempt = false;
+            if (!inside) {
+                if (!command) {
+                    if (caret_column_tmp > selection.end) {
+                        caret_column_tmp -= selection.end - selection.begin;
+                    }
+                    editor.selection_delete();
+                }
+                editor.set_caret_column(caret_column_tmp);
+                editor.insert_text_at_caret(inserted);
+            }
+        } else if (selection.enabled && editor.caret() >= selection.begin &&
+                   editor.caret() <= selection.end) {
+            caret_column_tmp = selection.begin;
+            editor.selection_delete();
+            editor.set_caret_column(caret_column_tmp);
+            editor.insert_text_at_caret(inserted);
+            grab(world_, state_, id(entity), true);
+        } else {
+            editor.insert_text_at_caret(inserted);
+            grab(world_, state_, id(entity), true);
+        }
+        editor.select(caret_column_tmp, editor.caret());
+        // Godot emits text_changed even when the text was dropped on its own selection.
+        if (editor.text() != before) {
+            s.text_changed_dirty = true;
+        }
+    }
+
+    // TextEdit::get_drag_data: the selection, after a press on it, shown at the pointer in the
+    // TextEdit's font.
+    json::Value text_edit_drag_data(entt::entity entity) {
+        json::Value data;
+        edit_text(entity,
+                  [&](const TextEditContext&, world::TextEdit&, TextEditState& s, TextArea& area) {
+                      if (!s.selection_drag_attempt || !s.caret.selection.active) {
+                          return;
+                      }
+                      const SelectionRange range = selection_range(s.caret);
+                      std::string text = to_utf8(area.get(range.from_line, range.from_column,
+                                                          range.to_line, range.to_column));
+                      state_.drag.preview_text = text;
+                      data = std::move(text);
+                  });
+        return data;
+    }
+
+    // TextEdit::drop_data.
+    void text_edit_drop(entt::entity entity, Vec2 at, const json::Value& data) {
+        if (!data.is_string()) {
+            return;
+        }
+        const bool command = command_held(world_);
+        bool dropped = false;
+        edit_text(entity, [&](const TextEditContext& context, world::TextEdit& edit,
+                              TextEditState& s, TextArea& area) {
+            dropped = text_edit_drop_text(context, edit, s, area, at, to_utf32(data.as_string()),
+                                          command);
+        });
+        if (dropped) {
+            grab(world_, state_, id(entity), true);
+        }
+    }
+
+    // NOTIFICATION_DRAG_END, which every control gets: a text field the selection was dragged
+    // from loses it once it was dropped elsewhere, unless Command (Ctrl) was held to copy it.
+    void end_drag() {
+        const bool command = command_held(world_);
+        for (auto& [control, s] : state_.edits) {
+            const entt::entity entity = world_.find(control);
+            if (entity == entt::null || !world_.ecs().all_of<world::LineEdit>(entity)) {
+                continue;
+            }
+            if (state_.drag.successful && s.drag_attempt) {
+                Editor editor(world_, state_, entity, &layout_);
+                s.drag_attempt = false;
+                if (editor.edit().editable && !command) {
+                    editor.selection_delete();
+                } else if (editor.edit().deselect_on_focus_loss_enabled) {
+                    editor.deselect();
+                }
+            }
+            s.drag_attempt = false;
+            s.drag_caret_force_displayed = false;
+        }
+        for (auto& [control, s] : state_.text_edits) {
+            const entt::entity entity = world_.find(control);
+            if (entity == entt::null || !world_.ecs().all_of<world::TextEdit>(entity)) {
+                continue;
+            }
+            if (state_.drag.successful && s.selection_drag_attempt) {
+                edit_text(entity, [&](const TextEditContext& context, world::TextEdit& edit,
+                                      TextEditState& state, TextArea& area) {
+                    text_edit_drag_end(context, edit, state, area, command);
+                });
+            } else {
+                s.selection_drag_attempt = false;
+                s.drag_caret.reset();
+                s.drag_caret_force_displayed = false;
+                s.dragging_selection = false;
+            }
+        }
+    }
+
+    // Viewport::_gui_drop: the control at a point takes the drop, or the first parent that
+    // does, up to one that stops the mouse; check only asks. The control that takes it, or
+    // entt::null.
+    entt::entity gui_drop(entt::entity entity, Vec2 point, bool check) {
+        const json::Value data = state_.drag.data;
+        for (entt::entity at = entity; at != entt::null; at = parent(at)) {
+            const Vec2 local = to_local(at, point).value_or(Vec2{});
+            if (can_drop_data(at, local, data)) {
+                if (!check) {
+                    drop_data(at, local, data);
+                }
+                return at;
+            }
+            if (mouse_filter(world_, at) == Filter::Stop) {
+                break;
+            }
+        }
+        return entt::null;
+    }
+
+    // Viewport::gui_perform_drop_at: drops on a control (or a parent), or with none cancels the
+    // drag; then NOTIFICATION_DRAG_END, and drag_end from the control dragged.
+    void perform_drop(entt::entity control, Vec2 point) {
+        DragStatus& drag = state_.drag;
+        drag.successful = control != entt::null && gui_drop(control, point, false) != entt::null;
+        const std::string from = drag.from;
+        drag.data = {};
+        drag.from.clear();
+        drag.preview.clear();
+        drag.preview_text.clear();
+        drag.over.clear();
+        drag.dragging = false;
+        drag.global = false;
+        state_.popups_changed = true;
+        end_drag();
+        if (!from.empty()) {
+            UiEvent event = ui_event("drag_end", from);
+            event.successful = drag.successful;
+            record(world_, state_, std::move(event));
+            world_.emit("drag_end", from, json::Object{{"successful", drag.successful}});
+        }
+    }
+
+public:
+    // drag_and_drop(): what the middle of from gives, dropped on the middle of to.
+    void drag_between(entt::entity from, entt::entity to) {
+        const Placed* source = placed(from);
+        const Placed* target_placed = placed(to);
+        DragStatus& drag = state_.drag;
+        if (source == nullptr || target_placed == nullptr || drag.global) {
+            return;
+        }
+        const Vec2 start = source->transform.apply({source->size.x / 2.0F, source->size.y / 2.0F});
+        const Vec2 end = target_placed->transform.apply(
+            {target_placed->size.x / 2.0F, target_placed->size.y / 2.0F});
+        const std::string focus = state_.mouse_focus;
+        const bool attempted = drag.attempted;
+        state_.mouse_focus = id(from);
+        start_drag(start);
+        if (!drag.dragging) {
+            state_.mouse_focus = focus;
+            drag.attempted = attempted;
+            return;
+        }
+        drag.at = end;
+        perform_drop(to, end);
+        after_event();
+    }
+
+private:
     void screen_touch(const input::Event& event) {
         if (event.pressed) {
             const Target over = find_control(event.position);
@@ -3990,6 +4640,25 @@ private:
     void action_event(const input::Event& event) {
         static constexpr std::array<std::string_view, 6> kMoves{
             "ui_focus_next", "ui_focus_prev", "ui_up", "ui_left", "ui_right", "ui_down"};
+        if (action_pressed(event, "ui_cancel", false, false)) {
+            // Escape drops a drag, and hides a tooltip (standard in most applications), which
+            // then takes the event. The rest timer keeps its control so it doesn't start again
+            // at once.
+            if (state_.drag.dragging &&
+                input::is_action_just_pressed(std::as_const(world_), "ui_cancel")) {
+                perform_drop(entt::null, last_mouse_);
+                handled_ = true;
+                return;
+            }
+            const TooltipStatus before = state_.tooltip;
+            cancel_tooltip(state_);
+            if (!before.owner.empty()) {
+                state_.tooltip.control = before.control;
+                state_.tooltip.popup = before.popup;
+                handled_ = true;
+                return;
+            }
+        }
         if (const entt::entity focus = find(state_.key_focus); focus != entt::null) {
             gui_input(focus, event);
             if (handled_) {
@@ -4432,6 +5101,42 @@ void text_edit_upkeep(world::World& world, GuiState& state, double tick_seconds)
     }
 }
 
+// _gui_hide_control and _gui_remove_control for tooltips and drags: the tooltip goes with the
+// control it is for, hidden or destroyed, or with the popup menu whose item's it is; a drag
+// forgets a preview or a control to drop on that went away.
+void tooltip_upkeep(world::World& world, GuiState& state) {
+    TooltipStatus& tooltip = state.tooltip;
+    DragStatus& drag = state.drag;
+    if (tooltip.control.empty() && tooltip.owner.empty() && drag.preview.empty() &&
+        drag.over.empty()) {
+        return;
+    }
+    const Parents parents(world);
+    const auto gone = [&](const std::string& id) {
+        if (id.empty()) {
+            return false;
+        }
+        if (tooltip.popup) {
+            return popup_status(state, id) == nullptr;
+        }
+        const entt::entity entity = world.find(owner_of(id));
+        return entity == entt::null || !is_control(world, entity) ||
+               !parents.visible_in_tree(entity);
+    };
+    if (gone(tooltip.control) || gone(tooltip.owner)) {
+        cancel_tooltip(state);
+    }
+    if (!drag.preview.empty() && world.find(drag.preview) == entt::null) {
+        drag.preview.clear();
+    }
+    if (!drag.over.empty()) {
+        const entt::entity over = world.find(drag.over);
+        if (over == entt::null || !is_control(world, over) || !parents.visible_in_tree(over)) {
+            drag.over.clear();
+        }
+    }
+}
+
 // Drops what refers to controls that went away, were hidden or can no longer have it, as
 // Viewport::_gui_hide_control and _gui_remove_control, BaseButton's visibility and
 // set_disabled do, and runs shortcut highlights down.
@@ -4556,6 +5261,7 @@ void run(world::World& world, double tick_seconds) {
     state->events = std::move(state->next);
     state->next.clear();
     state->now = static_cast<double>(world.tick()) * tick_seconds;
+    tooltip_upkeep(world, *state);
     upkeep(world, *state, tick_seconds);
     popup_upkeep(world, *state);
     track_sliders(world, *state);
@@ -4566,11 +5272,16 @@ void run(world::World& world, double tick_seconds) {
     state->presses.clear();
     const std::vector<std::pair<std::string, int>> selects = std::move(state->selects);
     state->selects.clear();
+    const std::vector<std::pair<std::string, std::string>> drags = std::move(state->drags);
+    state->drags.clear();
     // ScrollContainers need their layout every tick, to glide, follow focus and keep in range.
     const bool scrolls = !world.ecs().view<world::ScrollContainer>().empty();
+    // The tooltip's rest timer runs out this tick.
+    const bool tooltip_due = state->tooltip.timing && state->now - state->tooltip.since >=
+                                                          settings(world).tooltip_delay_sec - 1e-9;
     std::optional<Gui> gui;
-    if (!events.empty() || scrolls || !presses.empty() || !selects.empty() ||
-        state->drop_mouse_focus) {
+    if (!events.empty() || scrolls || !presses.empty() || !selects.empty() || !drags.empty() ||
+        tooltip_due || state->drop_mouse_focus) {
         if (text::Fonts* found = fonts(world); found != nullptr) {
             gui.emplace(world, *state, *found, state->now);
             gui->after_event();
@@ -4598,8 +5309,16 @@ void run(world::World& world, double tick_seconds) {
             }
         }
     }
+    for (const auto& [from, to] : drags) {
+        const entt::entity source = world.find(from);
+        const entt::entity target = world.find(to);
+        if (gui && source != entt::null && target != entt::null) {
+            gui->drag_between(source, target);
+        }
+    }
     if (gui) {
         gui->process_popups();
+        gui->show_due_tooltip();
     }
     // Popup::_close_pressed's deferred hide.
     std::vector<std::string> closing;
@@ -4934,6 +5653,120 @@ void restore(world::World& world, const Snapshot& snapshot) {
     *state = *static_cast<const GuiState*>(snapshot.data.get());
 }
 
+// ---- Tooltips and drag and drop ----
+
+void show_tooltip(world::World& world, entt::entity control) {
+    GuiState* state = state_of(world);
+    text::Fonts* found = fonts(world);
+    if (state == nullptr || found == nullptr || world.id_of(control).empty() ||
+        !is_control(world, control)) {
+        return;
+    }
+    Gui(world, *state, *found, state->now).show_tooltip_for(control);
+}
+
+void cancel_tooltip(world::World& world) {
+    if (GuiState* state = state_of(world); state != nullptr) {
+        cancel_tooltip(*state);
+    }
+}
+
+Tooltip tooltip(const world::World& world) {
+    const GuiState* state = state_of(world);
+    if (state == nullptr || state->tooltip.owner.empty()) {
+        return {};
+    }
+    const entt::entity owner = world.find(state->tooltip.owner);
+    if (owner == entt::null) {
+        return {};
+    }
+    return {.owner = owner, .text = state->tooltip.text, .position = state->tooltip.pos};
+}
+
+void set_drag_forwarding(world::World& world, entt::entity control, DragForwarding forwarding) {
+    const std::string_view id = world.id_of(control);
+    if (id.empty()) {
+        return;
+    }
+    auto& holder = world.ecs().ctx().contains<ForwardingHolder>()
+                       ? world.ecs().ctx().get<ForwardingHolder>()
+                       : world.ecs().ctx().emplace<ForwardingHolder>();
+    if (!forwarding.get_drag_data && !forwarding.can_drop_data && !forwarding.drop_data) {
+        if (const auto found = holder.controls.find(id); found != holder.controls.end()) {
+            holder.controls.erase(found);
+        }
+        return;
+    }
+    holder.controls.insert_or_assign(std::string(id), std::move(forwarding));
+}
+
+void set_drag_preview(world::World& world, entt::entity preview) {
+    GuiState* state = state_of(world);
+    if (state == nullptr || !state->drag.global || world.id_of(preview).empty()) {
+        return;
+    }
+    state->drag.preview = world.id_of(preview);
+    state->popups_changed = true;
+}
+
+void force_drag(world::World& world, entt::entity from, json::Value data, entt::entity preview) {
+    GuiState* state = state_of(world);
+    if (state == nullptr || data.is_null()) {
+        return;
+    }
+    DragStatus& drag = state->drag;
+    drag.global = true;
+    drag.dragging = true;
+    drag.data = std::move(data);
+    drag.from = world.id_of(from);
+    drag.at = input::mouse_position(world);
+    drag.preview = preview != entt::null ? std::string(world.id_of(preview)) : std::string();
+    drag.preview_text.clear();
+    drag.over.clear();
+    state->mouse_focus.clear();
+    state->mouse_focus_mask = 0;
+    state->popups_changed = true;
+    begin_drag(world, *state);
+}
+
+bool drag_and_drop(world::World& world, entt::entity from, entt::entity to) {
+    GuiState* state = state_of(world);
+    if (state == nullptr || world.id_of(from).empty() || world.id_of(to).empty()) {
+        return false;
+    }
+    state->drags.emplace_back(world.id_of(from), world.id_of(to));
+    return true;
+}
+
+bool is_dragging(const world::World& world) {
+    const GuiState* state = state_of(world);
+    return state != nullptr && state->drag.dragging;
+}
+
+json::Value drag_data(const world::World& world) {
+    const GuiState* state = state_of(world);
+    return state != nullptr ? state->drag.data : json::Value();
+}
+
+bool is_drag_successful(const world::World& world) {
+    const GuiState* state = state_of(world);
+    return state != nullptr && state->drag.successful;
+}
+
+std::optional<Drag> drag(const world::World& world) {
+    const GuiState* state = state_of(world);
+    if (state == nullptr || !state->drag.dragging) {
+        return std::nullopt;
+    }
+    const DragStatus& status = state->drag;
+    return Drag{.from = world.find(status.from),
+                .data = status.data,
+                .over = world.find(status.over),
+                .position = status.at,
+                .preview = world.find(status.preview),
+                .preview_text = status.preview_text};
+}
+
 // ---- Text fields ----
 
 const EditState* edit_state(const world::World& world, entt::entity entity) {
@@ -5078,6 +5911,59 @@ void check_buttons(const world::World& world, std::vector<Problem>& problems) {
         }
     }
     std::ranges::sort(entities);
+    // Tooltips the pointer can't reach (Control::get_configuration_warnings), and drags.
+    for (const auto& [id, entity] : entities) {
+        const auto* control = ecs.try_get<world::Control>(entity);
+        if (control != nullptr && !control->tooltip_text.empty() &&
+            mouse_filter(world, entity) == Filter::Ignore) {
+            problems.push_back({.id = id,
+                                .path = "/components/Control/tooltip_text",
+                                .message = "the tooltip won't show: the pointer passes this "
+                                           "control by; set mouse_filter to \"stop\" or "
+                                           "\"pass\""});
+        }
+        const auto* drag = ecs.try_get<world::DragAndDrop>(entity);
+        if (drag == nullptr || drag->drag_preview == entt::null) {
+            continue;
+        }
+        const entt::entity preview = drag->drag_preview;
+        const std::string path = "/components/DragAndDrop/drag_preview";
+        if (!world.valid(preview) || !is_control(world, preview)) {
+            const std::string_view preview_id = world.valid(preview) ? world.id_of(preview) : "";
+            problems.push_back(
+                {.id = id,
+                 .path = path,
+                 .message = (preview_id.empty() ? std::string("it") : quoted(preview_id)) +
+                            " isn't a control"});
+        } else if (preview == entity) {
+            problems.push_back(
+                {.id = id, .path = path, .message = "a control can't be its own drag preview"});
+        } else if (world.id_of(preview).empty()) {
+            problems.push_back({.id = id, .path = path, .message = "a drag preview needs an ID"});
+        } else {
+            for (const auto [parent, parent_control] : ecs.view<world::Control>().each()) {
+                if (std::ranges::find(parent_control.children, preview) !=
+                    parent_control.children.end()) {
+                    const std::string_view parent_id = world.id_of(parent);
+                    problems.push_back(
+                        {.id = id,
+                         .path = path,
+                         .message = quoted(world.id_of(preview)) + " is a child of " +
+                                    (parent_id.empty() ? std::string("another control")
+                                                       : quoted(parent_id)) +
+                                    "; a drag preview must have no parent"});
+                    break;
+                }
+            }
+        }
+    }
+    for (const auto [entity, drag] : ecs.view<world::DragAndDrop>().each()) {
+        if (!is_control(world, entity)) {
+            problems.push_back({.id = std::string(world.id_of(entity)),
+                                .path = "/components/DragAndDrop",
+                                .message = "DragAndDrop works on a control; give it a Control"});
+        }
+    }
     const auto check_shortcut = [&](const std::string& id, std::string_view type,
                                     const std::vector<json::Value>& shortcut) {
         for (std::size_t i = 0; i < shortcut.size(); ++i) {

@@ -1,0 +1,175 @@
+{
+  "entities": {
+    "potion": {
+      "components": {
+        "ColorRect": {
+          "color": [0.85, 0.2, 0.25, 1.0]
+        },
+        "Control": {
+          "anchor_bottom": 1.0,
+          "anchor_right": 1.0,
+          "mouse_filter": "pass",
+          "offset_bottom": -8.0,
+          "offset_left": 8.0,
+          "offset_right": -8.0,
+          "offset_top": 8.0,
+          "tooltip_text": "Potion: heals 20"
+        },
+        "DragAndDrop": {
+          "drag_data": {
+            "id": "potion",
+            "kind": "item"
+          },
+          "drag_preview": "potion_ghost"
+        }
+      }
+    },
+    "potion_ghost": {
+      "components": {
+        "ColorRect": {
+          "color": [0.85, 0.2, 0.25, 1.0]
+        },
+        "Control": {
+          "modulate": [1.0, 1.0, 1.0, 0.6],
+          "mouse_filter": "ignore",
+          "offset_bottom": 32.0,
+          "offset_right": 32.0,
+          "visible": false
+        }
+      }
+    },
+    "slot_1": {
+      "components": {
+        "ColorRect": {
+          "color": [0.2, 0.2, 0.25, 1.0]
+        },
+        "Control": {
+          "children": ["sword"],
+          "offset_bottom": 88.0,
+          "offset_left": 16.0,
+          "offset_right": 64.0,
+          "offset_top": 40.0
+        },
+        "DragAndDrop": {
+          "can_drop": [
+            {
+              "kind": "item"
+            }
+          ]
+        }
+      }
+    },
+    "slot_2": {
+      "components": {
+        "ColorRect": {
+          "color": [0.2, 0.2, 0.25, 1.0]
+        },
+        "Control": {
+          "children": ["potion"],
+          "offset_bottom": 88.0,
+          "offset_left": 72.0,
+          "offset_right": 120.0,
+          "offset_top": 40.0
+        },
+        "DragAndDrop": {
+          "can_drop": [
+            {
+              "kind": "item"
+            }
+          ]
+        }
+      }
+    },
+    "slot_3": {
+      "components": {
+        "ColorRect": {
+          "color": [0.2, 0.2, 0.25, 1.0]
+        },
+        "Control": {
+          "offset_bottom": 88.0,
+          "offset_left": 128.0,
+          "offset_right": 176.0,
+          "offset_top": 40.0
+        },
+        "DragAndDrop": {
+          "can_drop": [
+            {
+              "kind": "item"
+            }
+          ]
+        }
+      }
+    },
+    "sword": {
+      "components": {
+        "ColorRect": {
+          "color": [0.75, 0.78, 0.82, 1.0]
+        },
+        "Control": {
+          "anchor_bottom": 1.0,
+          "anchor_right": 1.0,
+          "mouse_filter": "pass",
+          "offset_bottom": -8.0,
+          "offset_left": 8.0,
+          "offset_right": -8.0,
+          "offset_top": 8.0,
+          "tooltip_text": "Sword: 12 damage"
+        },
+        "DragAndDrop": {
+          "drag_data": {
+            "id": "sword",
+            "kind": "item"
+          },
+          "drag_preview": "sword_ghost"
+        }
+      }
+    },
+    "sword_ghost": {
+      "components": {
+        "ColorRect": {
+          "color": [0.75, 0.78, 0.82, 1.0]
+        },
+        "Control": {
+          "modulate": [1.0, 1.0, 1.0, 0.6],
+          "mouse_filter": "ignore",
+          "offset_bottom": 32.0,
+          "offset_right": 32.0,
+          "visible": false
+        }
+      }
+    },
+    "title": {
+      "components": {
+        "Control": {
+          "offset_left": 16.0,
+          "offset_top": 8.0
+        },
+        "Label": {
+          "text": "Inventory"
+        }
+      }
+    },
+    "trash": {
+      "components": {
+        "ColorRect": {
+          "color": [0.45, 0.12, 0.1, 1.0]
+        },
+        "Control": {
+          "offset_bottom": 88.0,
+          "offset_left": 256.0,
+          "offset_right": 304.0,
+          "offset_top": 40.0,
+          "tooltip_text": "Drop an item here to throw it away"
+        },
+        "DragAndDrop": {
+          "can_drop": [
+            {
+              "kind": "item"
+            }
+          ]
+        }
+      }
+    }
+  },
+  "format": 1
+}

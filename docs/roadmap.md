@@ -265,8 +265,11 @@ rendering on top.
       picked by clicks, held clicks, taps, the arrow keys and typing, menu bars that switch on
       hover, check and radio items and separators; `ui.popup` and `ui.select` drive them, and
       `ui.layout` and `frame.summary` report the lists open and their items
-- [ ] Tooltips and drag and drop, as Godot's: `tooltip_text` shown after a pause, and controls
-      dragged and dropped onto others with a preview
+- [x] Tooltips and drag and drop, as Godot's: `tooltip_text` shown after a pause (and menu
+      items' tooltips), controls dragged and dropped onto others with a preview through the
+      `DragAndDrop` component or C++ drag forwarding, and text fields' selections dragged
+      between them; `ui.drag` and `ui.tooltip` drive them, and `ui.layout` and
+      `frame.summary` report them
 - [x] Text in every language, as Godot's text server: BiDi (SheenBidi) so right-to-left and
       left-to-right text mix in one line, right-to-left layout of controls
       (`layout_direction`), `text_direction` and `language` on labels and buttons, fallback
@@ -601,7 +604,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Audio | miniaudio: buses, effects, 3D spatial audio | 5, 7 | In part: 2D players, buses and effects are done; area overrides, pitch shift and interactive music in 5, 3D audio in 7 |
 | Input | Rebindable action maps over SDL3, injectable by agents | 5 | Done |
 | Refresh rates and frame pacing | V-Sync modes, frame cap, display refresh rates, variable refresh rate, rendering interpolated between fixed ticks | 5 | Done |
-| UI | Retained UI with flexbox layout and themes, defined in text | 5 | In part: controls that draw, containers, themes, style boxes, buttons, check boxes, sliders, scrolling, drop-down lists, menus, focus and text fields are done; tooltips and drag and drop in 5 |
+| UI | Retained UI with flexbox layout and themes, defined in text | 5 | In part: controls that draw, containers, themes, style boxes, buttons, check boxes, sliders, scrolling, drop-down lists, menus, tooltips, drag and drop, focus and text fields are done; a code editor's gutters and syntax highlighting in 5 |
 | Text and fonts | FreeType, HarfBuzz, MSDF fonts, BiDi, IME input, fallback fonts | 5 | Done |
 | Navigation | Recast and Detour, 2D and 3D, avoidance | 7 | Planned |
 | Asset import | glTF 2.0, FBX, OBJ, PNG, JPG, KTX2, WAV, OGG, MP3, and `.blend` through the artist's own Blender | 7 | Planned |

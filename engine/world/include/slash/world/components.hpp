@@ -590,6 +590,8 @@ struct Control {
     std::string texture_filter = "inherit"; // "inherit", "linear" or "nearest"
     std::string theme;                      // project path of a .theme.json file; "" for none
     std::string theme_type_variation;       // a theme type to look items up in first
+    // Shown in a box beside the pointer once it rests on the control, as Godot's tooltip_text.
+    std::string tooltip_text;
     // Whether the pointer stops at it ("stop"), goes on to its parent too ("pass") or passes it
     // by ("ignore"); "" takes its type's, as in Godot: ignore for Label and NinePatchRect, pass
     // for containers and TextureRect, stop for the rest.
@@ -644,10 +646,29 @@ SLASH_COMPONENT(Control, children, anchor_left, anchor_top, anchor_right, anchor
                 size_flags_horizontal, size_flags_vertical, size_flags_stretch_ratio,
                 focus_neighbor_left, focus_neighbor_top, focus_neighbor_right,
                 focus_neighbor_bottom, focus_next, focus_previous, focus_mode, mouse_filter,
-                layout_direction, visible, modulate, self_modulate, z_index, texture_filter, theme,
-                theme_type_variation, theme_override_colors, theme_override_constants,
-                theme_override_fonts, theme_override_font_sizes, theme_override_icons,
-                theme_override_styles)
+                tooltip_text, layout_direction, visible, modulate, self_modulate, z_index,
+                texture_filter, theme, theme_type_variation, theme_override_colors,
+                theme_override_constants, theme_override_fonts, theme_override_font_sizes,
+                theme_override_icons, theme_override_styles)
+
+// Lets a control be dragged and take what is dropped on it, as a Godot script's _get_drag_data,
+// _can_drop_data and _drop_data. Moving the mouse past the drag threshold with the left button
+// held on it starts a drag that carries drag_data; letting go over a control whose can_drop
+// takes the data drops it there, which emits drop_data from that control (data {"data",
+// "from", "position"}). The control dragged emits drag_begin and drag_end (data
+// {"successful"}).
+struct DragAndDrop {
+    json::Value drag_data; // what a drag from it carries; null: it can't be dragged
+    // What it takes: data matching one of these, where an object needs only the members given
+    // and anything else must be equal; empty takes nothing.
+    std::vector<json::Value> can_drop;
+    // A control shown at the pointer while a drag from it goes on, even if hidden; it must have
+    // no parent. null shows nothing.
+    entt::entity drag_preview = entt::null;
+
+    friend bool operator==(const DragAndDrop&, const DragAndDrop&) = default;
+};
+SLASH_COMPONENT(DragAndDrop, drag_data, can_drop, drag_preview)
 
 // Text in a control's rect, as Godot's Label. Its font, size, colors, outline and shadow are
 // theme items, set per label with Control's theme_override_* fields.
@@ -861,6 +882,7 @@ struct PopupMenuItem {
     std::string text;
     std::string icon;               // project path of a PNG or BMP file; "" for none
     std::string checkable = "none"; // "none", "check" (a check box) or "radio" (a radio button)
+    std::string tooltip;            // shown once the pointer rests on the item
     int id = -1;                    // what id_pressed reports; -1 for the item's index
     int indent = 0;                 // indented this many times the theme's indent
     bool checked = false;
@@ -869,19 +891,21 @@ struct PopupMenuItem {
 
     friend bool operator==(const PopupMenuItem&, const PopupMenuItem&) = default;
 };
-SLASH_REFLECT(PopupMenuItem, text, icon, checkable, checked, id, disabled, separator, indent)
+SLASH_REFLECT(PopupMenuItem, text, icon, checkable, checked, id, disabled, separator, indent,
+              tooltip)
 
 // One option of an OptionButton, as Godot's OptionButton items.
 struct OptionButtonItem {
     std::string text;
-    std::string icon; // project path of a PNG or BMP file; "" for none
-    int id = -1;      // what the option is known by; -1 for its index
+    std::string icon;    // project path of a PNG or BMP file; "" for none
+    std::string tooltip; // shown once the pointer rests on the option in the list
+    int id = -1;         // what the option is known by; -1 for its index
     bool disabled = false;
     bool separator = false; // a line between options, around the text if it has some
 
     friend bool operator==(const OptionButtonItem&, const OptionButtonItem&) = default;
 };
-SLASH_REFLECT(OptionButtonItem, text, icon, id, disabled, separator)
+SLASH_REFLECT(OptionButtonItem, text, icon, id, disabled, separator, tooltip)
 
 // A list of items shown over everything at a point of the viewport, as Godot's PopupMenu:
 // picked with a click, the arrow keys and ui_accept, or by typing the start of one. It shows
@@ -996,7 +1020,8 @@ struct LineEdit {
     bool shortcut_keys_enabled = true;
     bool selecting_enabled = true;
     bool deselect_on_focus_loss_enabled = true;
-    std::string right_icon; // project path of a PNG or BMP file; "" for none
+    bool drag_and_drop_selection_enabled = true; // the selection can be dragged elsewhere
+    std::string right_icon;                      // project path of a PNG or BMP file; "" for none
     std::string icon_expand_mode = "original_size";
     float right_icon_scale = 1.0F;
     bool flat = false;
@@ -1018,9 +1043,10 @@ SLASH_COMPONENT(LineEdit, text, placeholder_text, alignment, max_length, editabl
                 backspace_deletes_composite_character_enabled, virtual_keyboard_enabled,
                 virtual_keyboard_show_on_focus, virtual_keyboard_type, clear_button_enabled,
                 shortcut_keys_enabled, selecting_enabled, deselect_on_focus_loss_enabled,
-                right_icon, icon_expand_mode, right_icon_scale, flat, select_all_on_focus,
-                caret_blink, caret_blink_interval, caret_column, caret_force_displayed,
-                caret_mid_grapheme, secret, secret_character, text_direction, language)
+                drag_and_drop_selection_enabled, right_icon, icon_expand_mode, right_icon_scale,
+                flat, select_all_on_focus, caret_blink, caret_blink_interval, caret_column,
+                caret_force_displayed, caret_mid_grapheme, secret, secret_character, text_direction,
+                language)
 
 // A text field of several lines, as Godot's TextEdit: typed into while it has focus, with one
 // caret, selection, undo, the clipboard, line wrapping and scrolling.
@@ -1032,6 +1058,7 @@ struct TextEdit {
     bool shortcut_keys_enabled = true;
     bool selecting_enabled = true;
     bool deselect_on_focus_loss_enabled = true;
+    bool drag_and_drop_selection_enabled = true;   // the selection can be dragged elsewhere
     bool empty_selection_clipboard_enabled = true; // cut and copy take the line
     std::string wrap_mode = "none";                // "none" or "boundary"
     std::string autowrap_mode = "word_smart";      // "arbitrary", "word" or "word_smart"
@@ -1061,7 +1088,7 @@ struct TextEdit {
 };
 SLASH_COMPONENT(TextEdit, text, placeholder_text, editable,
                 backspace_deletes_composite_character_enabled, shortcut_keys_enabled,
-                selecting_enabled, deselect_on_focus_loss_enabled,
+                selecting_enabled, deselect_on_focus_loss_enabled, drag_and_drop_selection_enabled,
                 empty_selection_clipboard_enabled, wrap_mode, autowrap_mode, tab_input_mode,
                 virtual_keyboard_enabled, virtual_keyboard_show_on_focus, scroll_past_end_of_file,
                 scroll_vertical, scroll_horizontal, scroll_fit_content_height,

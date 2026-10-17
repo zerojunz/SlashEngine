@@ -368,6 +368,7 @@ mouse_filter = 2
 
 [node name="Play" type="Button" parent="UI/Menu"]
 layout_mode = 2
+tooltip_text = "Start a new game"
 focus_mode = 2
 theme_override_styles/normal = SubResource("StyleBoxFlat_1")
 text = "Play"
@@ -852,6 +853,7 @@ TEST_CASE("importing a Godot scene maps its nodes to entities and components") {
               ->as_int() == 3);
     const json::Value play = entity(files, level, "play");
     CHECK(play.find("Control")->find("focus_mode")->as_string() == "all");
+    CHECK(play.find("Control")->find("tooltip_text")->as_string() == "Start a new game");
     CHECK(*play.find("Button")->find("button_mask") == parse(R"(["left", "right"])"));
     CHECK(play.find("Button")->find("alignment") == nullptr); // fill has no equivalent
     CHECK(*play.find("Control")->find("theme_override_styles")->find("normal") ==

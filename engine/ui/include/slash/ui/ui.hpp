@@ -54,7 +54,21 @@ struct Settings {
     // lack (for fonts that allow it). Off, text lays out the same on every machine, as it does
     // on the web.
     bool allow_system_fallback = true;
+    // Seconds the mouse rests on a control before its tooltip shows, as Godot's
+    // gui/timers/tooltip_delay_sec.
+    double tooltip_delay_sec = 0.5;
+    // Where a tooltip shows from the pointer, as Godot's
+    // display/mouse_cursor/tooltip_position_offset.
+    Vec2 tooltip_position_offset{10.0F, 10.0F};
+    // Pixels the mouse moves with the left button held before a drag starts, as Godot's
+    // Viewport.gui_drag_threshold.
+    int drag_threshold = 10;
 };
+
+// Reads project.json's "gui" object into settings: theme, allow_system_fallback,
+// tooltip_delay_sec, tooltip_position_offset and drag_threshold. What is missing or of the
+// wrong type keeps its value.
+void read_settings(const json::Value& gui, Settings& settings);
 
 // Asset types "theme" (.theme.json files as Theme) and "texture" (.png and .bmp files as
 // render::Image), plus the font types (text::add_asset_types).
@@ -393,6 +407,30 @@ struct PopupView {
     std::vector<Box> bar;
 };
 
+// The tooltip shown, as Viewport::_gui_show_tooltip_at makes it: a TooltipPanel holding a
+// TooltipLabel, in a window of its own over every control and popup menu, below and right of
+// where the pointer came to rest, on the other side where it would leave the viewport.
+struct TooltipView {
+    entt::entity owner = entt::null; // the control, or the popup menu whose item it is
+    std::string text;
+    Vec2 position;          // its top left corner in the viewport
+    Vec2 size;              // its contents' minimum size
+    std::vector<Box> panel; // in its rect
+    LabelText label;        // in its rect, inside the panel's margins
+};
+
+// A drag going on: its preview follows the pointer over the other controls, below the popup
+// menus. The preview is a root control laid out with its top left at the pointer, or a text
+// field's dragged text.
+struct DragView {
+    entt::entity from = entt::null;
+    json::Value data;
+    entt::entity over = entt::null; // the control that would take it at the pointer
+    Vec2 position;                  // the pointer
+    entt::entity preview = entt::null;
+    std::optional<LabelText> text; // the text, with its top left at the pointer
+};
+
 // What one control the layout can't place properly is doing wrong.
 struct Problem {
     std::string id;
@@ -427,6 +465,8 @@ struct Layout {
     std::map<entt::entity, std::vector<Box>> over_children;
     // The popup menus open, over every control, the last on top.
     std::vector<PopupView> popups;
+    std::optional<TooltipView> tooltip;
+    std::optional<DragView> drag;
 
     [[nodiscard]] const Placed* find(entt::entity entity) const;
     [[nodiscard]] const LabelText* label(entt::entity entity) const;
@@ -523,7 +563,8 @@ struct DrawSpan {
     std::size_t call = 0;
     std::size_t first = 0;
     std::size_t count = 0;
-    bool popup = false; // the entity's popup menu drew them
+    bool popup = false;   // the entity's popup menu drew them
+    bool tooltip = false; // the entity's tooltip drew them
 };
 
 // A control's triangles as they would draw if nothing clipped them, for a control a clip cut.
@@ -554,13 +595,15 @@ struct DrawList {
 // sliders; "value_changed" and "scrolling" from scroll bars; "scroll_started" and
 // "scroll_ended" from scroll containers; "item_selected" and "item_focused" from option
 // buttons; "id_pressed", "index_pressed", "id_focused", "about_to_popup" and "popup_hide" from
-// menu buttons and popup menus; and "mouse_entered", "mouse_exited",
+// menu buttons and popup menus; "drag_begin" and "drag_end" from the control dragged and
+// "drop_data" from the one it is dropped on; and "mouse_entered", "mouse_exited",
 // "focus_entered" and "focus_exited" from any control. Each is a world event (World::emit) too,
 // with data {"toggled_on": bool} for toggled and editing_toggled, {"text": string} for
 // text_changed and text_submitted, {"rejected_substring": string} for text_change_rejected,
 // {"value": number} for value_changed, {"value_changed": bool} for drag_ended, {"index"} for
-// item_selected and item_focused, {"id", "index"} for id_pressed and index_pressed and {"id"}
-// for id_focused.
+// item_selected and item_focused, {"id", "index"} for id_pressed and index_pressed, {"id"} for
+// id_focused, {"data"} for drag_begin, {"data", "from", "position"} for drop_data and
+// {"successful"} for drag_end.
 struct UiEvent {
     std::string kind;
     std::string id;          // the control's entity ID
@@ -572,6 +615,10 @@ struct UiEvent {
     bool value_changed = false; // for drag_ended: the drag changed the value
     int index = -1;             // the item, for item_selected, item_focused and *_pressed
     int item_id = -1;           // the item's ID, for id_pressed, index_pressed and id_focused
+    json::Value data;           // what a drag carries, for drag_begin and drop_data
+    std::string from;           // the control dragged, for drop_data
+    Vec2 position;              // where in the control it was dropped, for drop_data
+    bool successful = false;    // for drag_end: the data was dropped
 };
 
 // The UI events of the tick the "gui" system last ran (inside a system: this tick), in order.
@@ -615,6 +662,64 @@ bool close_popup(world::World& world, entt::entity owner);
 // is selected, emitting item_selected. False for an item that doesn't exist, is a separator or
 // is disabled, or a disabled button.
 bool select_item(world::World& world, entt::entity owner, int index);
+
+// ---- Tooltips and drag and drop ----
+
+// Shows a control's tooltip now, below its middle, as Godot's Viewport::show_tooltip; nothing
+// shows when it and its parents have no tooltip_text.
+void show_tooltip(world::World& world, entt::entity control);
+// Hides the tooltip shown and stops the mouse's rest timer, as Godot's cancel_tooltip.
+void cancel_tooltip(world::World& world);
+// The tooltip shown: the control whose it is (or the popup menu whose item's), or entt::null,
+// its text and where the pointer came to rest.
+struct Tooltip {
+    entt::entity owner = entt::null;
+    std::string text;
+    Vec2 position;
+};
+[[nodiscard]] Tooltip tooltip(const world::World& world);
+
+// A game's own drag and drop for a control, as Godot's Control::set_drag_forwarding: each call
+// set is used instead of what the control's DragAndDrop says. at is the pointer in the
+// control's rect. get_drag_data returns what a drag from there carries (null for no drag) and
+// may call set_drag_preview; can_drop_data says whether the control takes data dropped there;
+// drop_data takes it, before drop_data is emitted.
+struct DragForwarding {
+    std::function<json::Value(Vec2 at)> get_drag_data;
+    std::function<bool(Vec2 at, const json::Value& data)> can_drop_data;
+    std::function<void(Vec2 at, const json::Value& data)> drop_data;
+};
+// Sets a control's drag forwarding, kept by entity ID; a forwarding with no calls removes it.
+void set_drag_forwarding(world::World& world, entt::entity control, DragForwarding forwarding);
+// Shows a control at the pointer while the drag goes on, as Godot's set_drag_preview: it is
+// drawn over the other controls even if hidden, and must have no parent. Only while a drag is
+// starting or going on, as inside get_drag_data.
+void set_drag_preview(world::World& world, entt::entity preview);
+// Starts a drag of data from a control without the mouse, as Godot's Control::force_drag; it
+// drops where the left mouse button is next pressed or let go.
+void force_drag(world::World& world, entt::entity from, json::Value data,
+                entt::entity preview = entt::null);
+// Drags a control onto another at the next tick, as the mouse would: what dragging from the
+// middle of from gives (its parents' when it gives nothing), dropped on the middle of to. The
+// tick emits drag_begin, drop_data if to (or a parent) takes it, and drag_end. False if either
+// has no ID.
+bool drag_and_drop(world::World& world, entt::entity from, entt::entity to);
+// Whether a drag goes on, as Godot's gui_is_dragging, and what it carries (null for none).
+[[nodiscard]] bool is_dragging(const world::World& world);
+[[nodiscard]] json::Value drag_data(const world::World& world);
+// Whether the last drag was dropped on a control that took it, as gui_is_drag_successful.
+[[nodiscard]] bool is_drag_successful(const world::World& world);
+// The drag going on: the control dragged, what it carries, the control under the pointer that
+// would take it (entt::null for none), the pointer and the preview.
+struct Drag {
+    entt::entity from = entt::null;
+    json::Value data;
+    entt::entity over = entt::null;
+    Vec2 position;
+    entt::entity preview = entt::null;
+    std::string preview_text; // a text field's selected text, shown at the pointer
+};
+[[nodiscard]] std::optional<Drag> drag(const world::World& world);
 
 // ---- Text fields ----
 
