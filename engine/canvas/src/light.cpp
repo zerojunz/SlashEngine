@@ -104,6 +104,8 @@ std::optional<std::string> fill_common(const LightComponent& component, render::
     light.item_cull_mask = mask_of(component.range_item_cull_mask);
     light.z_min = component.range_z_min;
     light.z_max = component.range_z_max;
+    light.layer_min = component.range_layer_min;
+    light.layer_max = component.range_layer_max;
     light.shadow_filter = *filter;
     light.shadow_smooth = std::max(component.shadow_filter_smooth, 0.0F);
     light.shadow_color = {component.shadow_color.x, component.shadow_color.y,
@@ -140,6 +142,41 @@ std::vector<OccluderEdge> edges_for(const render::Light& light, std::uint32_t sh
         }
     }
     return edges;
+}
+
+// A transform as render::Shading::to_lights holds it.
+std::array<float, 6> rows_of(const world::Affine2D& m) {
+    return {m.x.x, m.y.x, m.origin.x, m.x.y, m.y.y, m.origin.y};
+}
+
+Point moved(const world::Affine2D& m, Point p) {
+    const Vec2 out = m.apply({p[0], p[1]});
+    return {out.x, out.y};
+}
+
+// Moves a light from its canvas's coordinates into the lights', through m, as Godot's viewport
+// places a light by its canvas's transform.
+void move_light(render::Light& light, const world::Affine2D& m) {
+    if (light.kind == render::LightKind::Point) {
+        light.position = moved(m, light.position);
+        // The texture's coordinates from the light's: first back through m.
+        const world::Affine2D back = m.inverse();
+        const std::array<float, 6> t = light.texture_transform;
+        light.texture_transform = {(t[0] * back.x.x) + (t[1] * back.x.y),
+                                   (t[0] * back.y.x) + (t[1] * back.y.y),
+                                   (t[0] * back.origin.x) + (t[1] * back.origin.y) + t[2],
+                                   (t[3] * back.x.x) + (t[4] * back.x.y),
+                                   (t[3] * back.y.x) + (t[4] * back.y.y),
+                                   (t[3] * back.origin.x) + (t[4] * back.origin.y) + t[5]};
+        // As Godot scales a light's height to the canvas.
+        light.height *= (length({m.x.x, m.x.y}) + length({m.y.x, m.y.y})) * 0.5F;
+    } else {
+        const Point along{(m.x.x * light.position[0]) + (m.y.x * light.position[1]),
+                          (m.x.y * light.position[0]) + (m.y.y * light.position[1])};
+        if (const float size = length(along); size > 0.0F) {
+            light.position = {along[0] / size, along[1] / size};
+        }
+    }
 }
 
 } // namespace
@@ -261,7 +298,7 @@ cast_shadows(render::Light& light, std::span<const OccluderEdge> edges, float ma
 
 SceneLighting collect_lighting(const world::World& world, const LightImage& images,
                                const TransformOf& transform_of, std::vector<LightProblem>& problems,
-                               ShadowCache* cache) {
+                               ShadowCache* cache, const world::Canvases* canvases) {
     SceneLighting out;
     const auto& ecs = world.ecs();
     const world::Tree2D tree(world);
@@ -279,21 +316,60 @@ SceneLighting collect_lighting(const world::World& world, const LightImage& imag
         return entities;
     };
 
-    const std::vector<entt::entity> modulates = in_order(ecs.view<const world::CanvasModulate>());
-    for (const entt::entity entity : modulates) {
-        if (entity != modulates.front()) {
-            problems.push_back({entity, "a scene has one CanvasModulate, and \"" +
-                                            std::string(world.id_of(modulates.front())) +
+    // The canvases, and how each one's coordinates go into the world canvas's.
+    out.canvases.resize(canvases != nullptr ? canvases->all().size() : 1);
+    std::vector<std::optional<world::Affine2D>> to_world(out.canvases.size());
+    std::vector<bool> shown(out.canvases.size(), true);
+    if (canvases != nullptr) {
+        const world::Affine2D undo_world =
+            canvases->all()[canvases->world_canvas()].transform.inverse();
+        for (std::size_t c = 0; c < out.canvases.size(); ++c) {
+            const world::Canvas& canvas = canvases->all()[c];
+            out.canvases[c].layer = canvas.order;
+            shown[c] = canvas.visible;
+            if (c != canvases->world_canvas()) {
+                to_world[c] = undo_world * canvas.transform;
+                out.canvases[c].to_lights = rows_of(*to_world[c]);
+            }
+        }
+    }
+    const auto canvas_of = [&](entt::entity entity) {
+        return canvases != nullptr ? canvases->of(entity) : std::size_t{0};
+    };
+    const auto to_lights = [&](std::size_t canvas, Point p) {
+        return to_world[canvas] ? moved(*to_world[canvas], p) : p;
+    };
+
+    std::vector<entt::entity> modulating(out.canvases.size(), entt::entity{entt::null});
+    for (const entt::entity entity : in_order(ecs.view<const world::CanvasModulate>())) {
+        const std::size_t canvas = canvas_of(entity);
+        if (!shown[canvas]) {
+            continue;
+        }
+        if (modulating[canvas] != entt::null) {
+            problems.push_back({entity, "a canvas has one CanvasModulate, and \"" +
+                                            std::string(world.id_of(modulating[canvas])) +
                                             "\" is the one used"});
             continue;
         }
+        modulating[canvas] = entity;
         const Vec4& color = ecs.get<world::CanvasModulate>(entity).color;
-        out.ambient = {color.x, color.y, color.z, color.w};
-        out.lit = true;
+        out.canvases[canvas].ambient = {color.x, color.y, color.z, color.w};
+        out.canvases[canvas].lit = true;
     }
+    // Lights the canvases whose layer is in a light's range.
+    const auto light_canvases = [&](int layer_min, int layer_max) {
+        for (CanvasLighting& canvas : out.canvases) {
+            canvas.lit = canvas.lit || (canvas.layer >= layer_min && canvas.layer <= layer_max);
+        }
+    };
 
     std::vector<Occluder> occluders;
     for (const entt::entity entity : in_order(ecs.view<const world::LightOccluder2D>())) {
+        const std::size_t canvas = canvas_of(entity);
+        if (!shown[canvas]) {
+            continue;
+        }
         const auto& component = ecs.get<world::LightOccluder2D>(entity);
         Occluder occluder;
         occluder.mask = mask_of(component.occluder_light_mask);
@@ -310,7 +386,7 @@ SceneLighting collect_lighting(const world::World& world, const LightImage& imag
         std::vector<Point> points;
         points.reserve(component.polygon.size());
         for (const Vec2& p : component.polygon) {
-            points.push_back(place(placed, p.x, p.y));
+            points.push_back(to_lights(canvas, place(placed, p.x, p.y)));
         }
         for (std::size_t i = 0; i + 1 < points.size(); ++i) {
             occluder.edges.push_back({points[i], points[i + 1]});
@@ -338,13 +414,17 @@ SceneLighting collect_lighting(const world::World& world, const LightImage& imag
     for (const entt::entity entity : lights) {
         SceneLight scene_light{.entity = entity, .texture = {}, .light = {}};
         render::Light& light = scene_light.light;
+        const std::size_t canvas = canvas_of(entity);
+        if (!shown[canvas]) {
+            continue;
+        }
         const world::Transform2D placed = transform(entity);
         std::optional<std::string> problem;
         if (const auto* point = ecs.try_get<world::PointLight2D>(entity); point != nullptr) {
             if (!point->enabled) {
                 continue;
             }
-            out.lit = true;
+            light_canvases(point->range_layer_min, point->range_layer_max);
             problem = fill_common(*point, light);
             float width = kDefaultLightSize;
             float height = kDefaultLightSize;
@@ -372,6 +452,8 @@ SceneLighting collect_lighting(const world::World& world, const LightImage& imag
             light.kind = render::LightKind::Point;
             light.position = {placed.position.x, placed.position.y};
             light.height = point->height;
+            // In the canvas's coordinates first; move_light takes it into the lights'.
+            const Point center = light.position;
             // World to the light's own space, then to its texture: u = (local x - left) / width.
             const float cos_r = std::cos(placed.rotation);
             const float sin_r = std::sin(placed.rotation);
@@ -386,11 +468,15 @@ SceneLighting collect_lighting(const world::World& world, const LightImage& imag
                 -sin_r / (sy * height),
                 cos_r / (sy * height),
                 (((sin_r * px) - (cos_r * py)) / (sy * height)) - (top / height)};
+            if (to_world[canvas]) {
+                move_light(light, *to_world[canvas]);
+            }
             float far = 0.0F;
             for (const auto& [cx, cy] :
                  {std::pair{left, top}, std::pair{left + width, top}, std::pair{left, top + height},
                   std::pair{left + width, top + height}}) {
-                far = std::max(far, length(minus(place(placed, cx, cy), light.position)));
+                far = std::max(far, length(minus(to_lights(canvas, place(placed, cx, cy)),
+                                                 to_lights(canvas, center))));
             }
             light.shadow_far = std::max(far, 1.0F);
             if (point->shadow_enabled) {
@@ -403,7 +489,7 @@ SceneLighting collect_lighting(const world::World& world, const LightImage& imag
             if (!sun.enabled) {
                 continue;
             }
-            out.lit = true;
+            light_canvases(sun.range_layer_min, sun.range_layer_max);
             problem = fill_common(sun, light);
             if (problem) {
                 problems.push_back({entity, *problem});
@@ -413,6 +499,9 @@ SceneLighting collect_lighting(const world::World& world, const LightImage& imag
             // Down the screen, turned clockwise by the rotation.
             light.position = {-std::sin(placed.rotation), std::cos(placed.rotation)};
             light.height = std::clamp(sun.height, 0.0F, 1.0F);
+            if (to_world[canvas]) {
+                move_light(light, *to_world[canvas]);
+            }
             if (sun.shadow_enabled) {
                 shadowed.push_back({.light = out.lights.size(),
                                     .mask = mask_of(sun.shadow_item_cull_mask),
@@ -476,6 +565,7 @@ SceneLighting collect_lighting(const world::World& world, const LightImage& imag
     if (cache != nullptr) {
         std::erase_if(cache->rows, [](const auto& entry) { return !entry.second.used; });
     }
+    out.lit = std::ranges::any_of(out.canvases, &CanvasLighting::lit);
     return out;
 }
 

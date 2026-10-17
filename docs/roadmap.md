@@ -217,8 +217,9 @@ rendering on top.
       filters; `Sprite2D` normal and specular maps; and materials' `light_mode`. The material
       shader lights every lit draw, the CPU casts shadows into a shadow map, and `light.sample`
       returns how lit points are without a screenshot
-- [ ] Normal and specular maps on tile set atlases, and lights' canvas layer ranges once canvas
-      layers exist
+- [x] Normal and specular maps on tile set atlases, as a Godot `CanvasTexture`'s, and lights'
+      `range_layer_min`/`range_layer_max` over canvas layers, each canvas with its own
+      `CanvasModulate`
 - [x] 2D physics on Box2D v3, as Godot's: `StaticBody2D`, `AnimatableBody2D`, `RigidBody2D`
       and `CharacterBody2D` (`move_and_slide` with floors, walls, slopes, snapping, moving
       platforms and one-way platforms), `Area2D` with enter and exit events, rectangle, circle,

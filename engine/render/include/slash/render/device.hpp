@@ -89,9 +89,17 @@ struct MaterialTexture {
 // How the frame's lights shade a draw (see light.hpp).
 struct Shading {
     LightMode mode = LightMode::Unshaded;
-    // Lit by lights whose item_cull_mask shares a bit with it and whose z range holds z_index.
+    // Lit by lights whose item_cull_mask shares a bit with it, whose z range holds z_index and
+    // whose layer range holds layer, the canvas layer it is drawn in (0 for the world).
     std::uint32_t light_mask = 1;
     std::int32_t z_index = 0;
+    std::int32_t layer = 0;
+    // Multiplies a Normal draw, as the CanvasModulate of its canvas.
+    std::array<float, 4> ambient{1.0F, 1.0F, 1.0F, 1.0F};
+    // Where the draw's positions are in the coordinates lights use, for a draw in another canvas
+    // than theirs: x' = [0] x + [1] y + [2] and y' = [3] x + [4] y + [5]. None takes them as they
+    // are.
+    std::optional<std::array<float, 6>> to_lights;
     // RGB normals, OpenGL style (green up), laid out as the draw's texture; None faces the
     // viewer.
     TextureId normal_map = TextureId::None;
@@ -143,10 +151,8 @@ struct Material {
     bool operator==(const Material&) const = default;
 };
 
-// A frame's lights: what lit draws are shaded by.
+// A frame's lights: what lit draws are shaded by, each by those its Shading takes.
 struct Lighting {
-    // Multiplies every Normal draw, as Godot's CanvasModulate.
-    Color ambient{.r = 1.0F, .g = 1.0F, .b = 1.0F, .a = 1.0F};
     std::vector<Light> lights; // up to kMaxLights
     // Point lights' textures, at their atlas_rect; None is white.
     TextureId atlas = TextureId::None;

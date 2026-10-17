@@ -1,0 +1,18 @@
+{
+  "format": 1,
+  "sources": {
+    "stone": {
+      "normal_texture": "stone_n.png",
+      "specular_color": [1.0, 0.9, 0.7, 1.0],
+      "specular_shininess": 0.6,
+      "specular_texture": "stone_s.png",
+      "texture": "stone.png",
+      "tiles": {
+        "0,0": {
+          "name": "block"
+        }
+      }
+    }
+  },
+  "tile_size": [16, 16]
+}

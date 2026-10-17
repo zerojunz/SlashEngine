@@ -45,8 +45,12 @@ struct ProgramUniforms {
     std::array<std::int32_t, 4> shading{};
     std::array<float, 4> specular{};
     std::array<float, 4> field{};
+    std::array<std::int32_t, 4> layer{};
+    std::array<float, 4> ambient{};
+    std::array<float, 4> to_lights_x{};
+    std::array<float, 4> to_lights_y{};
 };
-static_assert(sizeof(ProgramUniforms) == 1616);
+static_assert(sizeof(ProgramUniforms) == 1680);
 
 // One light, laid out as the material shader's Light struct.
 struct LightUniform {
@@ -65,11 +69,10 @@ static_assert(sizeof(LightUniform) == 160);
 
 // The material shader's Lights cbuffer.
 struct LightsUniforms {
-    std::array<float, 4> ambient{1.0F, 1.0F, 1.0F, 1.0F};
     std::array<std::uint32_t, 4> count{};
     std::array<LightUniform, kMaxLights> lights{};
 };
-static_assert(sizeof(LightsUniforms) == 32 + (160 * kMaxLights));
+static_assert(sizeof(LightsUniforms) == 16 + (160 * kMaxLights));
 
 // The material shader's samplers: the draw's texture, the material's three, the draw's normal and
 // specular maps, then the frame's light atlas and shadow map.
@@ -77,7 +80,6 @@ constexpr std::size_t kMaterialSamplers = kMaterialTextureSlots + 4;
 
 LightsUniforms lights_uniforms(const Lighting& lighting) {
     LightsUniforms out;
-    out.ambient = {lighting.ambient.r, lighting.ambient.g, lighting.ambient.b, lighting.ambient.a};
     const std::size_t count = std::min(lighting.lights.size(), kMaxLights);
     out.count.at(0) = static_cast<std::uint32_t>(count);
     for (std::size_t i = 0; i < count; ++i) {
@@ -101,7 +103,7 @@ LightsUniforms lights_uniforms(const Lighting& lighting) {
             taps = 6;
         }
         u.flags = {static_cast<std::uint32_t>(light.blend), taps, light.item_cull_mask, 0};
-        u.range = {light.z_min, light.z_max, 0, 0};
+        u.range = {light.z_min, light.z_max, light.layer_min, light.layer_max};
     }
     return out;
 }
@@ -733,6 +735,12 @@ private:
         uniforms.specular = shading.specular;
         uniforms.field = {batch.material.field.pixel_range, batch.material.field.outline, 0.0F,
                           0.0F};
+        uniforms.layer = {shading.layer, 0, 0, 0};
+        uniforms.ambient = shading.ambient;
+        const std::array<float, 6> to_lights =
+            shading.to_lights.value_or(std::array{1.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F});
+        uniforms.to_lights_x = {to_lights[0], to_lights[1], to_lights[2], 0.0F};
+        uniforms.to_lights_y = {to_lights[3], to_lights[4], to_lights[5], 0.0F};
         SDL_PushGPUFragmentUniformData(commands, 0, &uniforms,
                                        static_cast<std::uint32_t>(sizeof(uniforms)));
     }

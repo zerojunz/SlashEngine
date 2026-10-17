@@ -156,6 +156,27 @@ json::Value schema() {
     source["properties"]["tiles"] =
         property("object", R"(Tiles by "column,row" in the texture's grid, as "2,0".)");
     source["properties"]["tiles"]["additionalProperties"]["$ref"] = "#/$defs/tile";
+    source["properties"]["normal_texture"] =
+        property("string", "A normal map laid out as the texture, OpenGL style (green up), for "
+                           "2D lights; \"\" faces the viewer. Lights need a height to show it.");
+    source["properties"]["normal_texture"]["default"] = "";
+    source["properties"]["specular_texture"] =
+        property("string", "A specular map laid out as the texture: highlight color and, in "
+                           "alpha, shininess. Needs a normal_texture.");
+    source["properties"]["specular_texture"]["default"] = "";
+    source["properties"]["specular_color"] =
+        property("array", "Multiplies the specular map's color, as RGBA from 0 to 1.");
+    source["properties"]["specular_color"]["items"]["type"] = "number";
+    source["properties"]["specular_color"]["items"]["minimum"] = 0;
+    source["properties"]["specular_color"]["items"]["maximum"] = 1;
+    source["properties"]["specular_color"]["minItems"] = 4;
+    source["properties"]["specular_color"]["maxItems"] = 4;
+    source["properties"]["specular_color"]["default"] = json::Array{1, 1, 1, 1};
+    source["properties"]["specular_shininess"] =
+        property("number", "Multiplies the specular map's shininess, from 0 to 1.");
+    source["properties"]["specular_shininess"]["minimum"] = 0;
+    source["properties"]["specular_shininess"]["maximum"] = 1;
+    source["properties"]["specular_shininess"]["default"] = 1;
 
     json::Value terrain_set;
     terrain_set["type"] = "object";
@@ -377,8 +398,12 @@ private:
         if (name.empty()) {
             fail(at, "name the source");
         }
-        if (!is_project_path(source.find("texture")->as_string())) {
-            fail(at + "/texture", path_error());
+        for (const std::string_view field : {"texture", "normal_texture", "specular_texture"}) {
+            const json::Value* path = source.find(field);
+            if (path != nullptr && (field == "texture" || !path->as_string().empty()) &&
+                !is_project_path(path->as_string())) {
+                fail(at + "/" + std::string(field), path_error());
+            }
         }
         const json::Value* tiles = source.find("tiles");
         if (tiles == nullptr) {
@@ -774,6 +799,22 @@ Result<TileSet> parse_tileset(const json::Value& doc) {
         source.region_size = pair_of(json_source.find("region_size"), set.tile_size);
         source.margins = pair_of(json_source.find("margins"), {});
         source.separation = pair_of(json_source.find("separation"), {});
+        if (const json::Value* path = json_source.find("normal_texture"); path != nullptr) {
+            source.normal_texture = path->as_string();
+        }
+        if (const json::Value* path = json_source.find("specular_texture"); path != nullptr) {
+            source.specular_texture = path->as_string();
+        }
+        if (const json::Value* color = json_source.find("specular_color"); color != nullptr) {
+            const json::Array& rgba = color->as_array();
+            source.specular_color = {
+                static_cast<float>(rgba[0].as_double()), static_cast<float>(rgba[1].as_double()),
+                static_cast<float>(rgba[2].as_double()), static_cast<float>(rgba[3].as_double())};
+        }
+        if (const json::Value* shininess = json_source.find("specular_shininess");
+            shininess != nullptr) {
+            source.specular_shininess = static_cast<float>(shininess->as_double());
+        }
         if (const json::Value* tiles = json_source.find("tiles"); tiles != nullptr) {
             for (const auto& [key, json_tile] : tiles->as_object()) {
                 const Vec2i atlas = parse_atlas(key).value_or(Vec2i{});

@@ -255,8 +255,9 @@ private:
     Result<const TileSet*> tile_set(const std::string& path);
     // A light texture's image.
     Result<const render::Image*> light_image(const std::string& path);
-    // The frame's lights, with the atlas and shadow map uploaded; none when the world is unlit.
-    render::Lighting lighting(const world::World& world, const TransformOf& transform_of);
+    // The frame's lights, with the atlas and shadow map uploaded; none when no canvas is lit.
+    render::Lighting lighting(const world::World& world, const TransformOf& transform_of,
+                              const world::Canvases& canvases);
     // The GPU texture of a glyph atlas page, uploaded again when the page changed.
     Result<render::TextureId> atlas_page(const text::Fonts& fonts, std::uint32_t page);
     const LayerCells& cells(entt::entity entity, const world::TileMapLayer& layer,
@@ -279,7 +280,8 @@ private:
     render::TextureId shadow_map_ = render::TextureId::None;
     std::uint32_t shadow_rows_ = 0;
     std::vector<std::uint8_t> shadow_pixels_;
-    bool lit_ = false;
+    // How lights shade each canvas this frame, by its place in world::Canvases::all().
+    std::vector<CanvasLighting> canvas_lighting_;
     std::unordered_map<entt::entity, world::Transform2D> previous_;
     // Each Parallax2D's position before the last tick, to tell when its repeat wrapped.
     std::unordered_map<entt::entity, Vec2> previous_parallax_;
