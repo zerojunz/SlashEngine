@@ -1035,13 +1035,20 @@ its tiles. `slash-cli schema tileset` prints the schema, `slash-cli scene valida
 | `tiles/<cell>/peering` | No | The terrain each side and corner must touch for the tile to fit, by compass direction: `n`, `ne`, `e`, `se`, `s`, `sw`, `w`, `nw` for squares, as Godot's terrain peering bits; the [shape](#tile-shapes) says which directions it has. A direction left out must have the tile's own terrain; `null` means none |
 | `tiles/<cell>/probability` | No | How often painting picks the tile over others that fit as well; default `1`, and `0` only when nothing else fits |
 | `tiles/<cell>/texture_origin` | No | Pixels to move its texture by, up and to the left, as Godot's `texture_origin`: `[0, 8]` draws it 8 pixels higher in its cell. It turns with the cell; collision polygons stay put. Default `[0, 0]` |
+| `tiles/<cell>/size_in_atlas` | No | Its width and height in the texture's cells, as Godot's: `[2, 1]` is two cells wide. Default `[1, 1]`. See [animated and large tiles](#animated-and-large-tiles) |
+| `tiles/<cell>/animation_frames` | No | Each frame's duration in seconds, above 0, 1 to 256 frames; default `[1]`, one frame |
+| `tiles/<cell>/animation_columns` | No | Frames per row before they wrap to the next, 0 to 256; default `0`, all in one row |
+| `tiles/<cell>/animation_separation` | No | Texture cells to skip between frames, across and down; default `[0, 0]` |
+| `tiles/<cell>/animation_speed` | No | Multiplies the animation's speed, above 0; default `1` |
+| `tiles/<cell>/animation_mode` | No | `default`, every cell in step, or `random_start_times`, each cell from its own point of the loop |
 | `tiles/<cell>/collision` | No | Its [collision polygons](#tile-collision) |
 | `tiles/<cell>/alternatives` | No | [Alternative tiles](#alternative-tiles-and-turned-cells) by number, from `"1"` to `"4095"` |
 
-A tile's pixels start at `margins + column × (region_size + separation)` on each axis. Peering
-names only directions the shape has and the terrain set's mode connects by, and only terrains of
-the tile's own set. Mistakes fail with the JSON Pointer of the bad value and, for a misspelled
-terrain, the closest one. Tile sets reload when they change, like every asset.
+A tile's pixels start at `margins + column × (region_size + separation)` on each axis, and
+span `region_size × size_in_atlas + separation × (size_in_atlas - 1)`. Peering names only
+directions the shape has and the terrain set's mode connects by, and only terrains of the tile's
+own set. Mistakes fail with the JSON Pointer of the bad value and, for a misspelled terrain, the
+closest one. Tile sets reload when they change, like every asset.
 
 ### Tile shapes
 
@@ -1165,6 +1172,34 @@ written in that order (`"slope:h"`, `"rock:1:hv"`, `"ground:3,2:vt"`). A quarter
 is `:ht`, counterclockwise `:vt`. The tile draws turned, its collision polygons turn with it, and
 an alternative's own flips combine with the cell's. Commands give each turned or alternative tile
 a legend key of its own.
+
+### Animated and large tiles
+
+A tile can span several of its texture's cells and play frames, as Godot's
+`TileSetAtlasSource`:
+
+```json
+"0,0": {"name": "water", "animation_frames": [0.4, 0.4, 0.4]},
+"0,1": {"name": "torch", "animation_frames": [0.25, 0.25, 0.25, 0.25],
+        "animation_columns": 2, "animation_mode": "random_start_times"},
+"3,0": {"name": "bridge", "size_in_atlas": [2, 1], "texture_origin": [-8, 0]}
+```
+
+- `size_in_atlas` makes a tile that many texture cells wide and high. It is still one cell of a
+  layer, keyed by its top left texture cell, and draws centered on its layer cell, so a 2x1 tile
+  covers half of each neighbor; a `texture_origin` of `[-8, 0]` (for 16-pixel cells) moves it to
+  cover its cell and the next instead. Its collision polygons are its own, as any tile's.
+- Frame `f` is the tile's texture cell plus `(f mod columns, f / columns)` steps of
+  `size_in_atlas + animation_separation`, or `(f, 0)` steps with `animation_columns` `0`. The
+  water above plays texture cells `0,0`, `1,0` and `2,0`; the torch `0,1`, `1,1`, `0,2` and
+  `1,2`.
+- A tile, its size and its frames cover texture cells no other tile does, as Godot's
+  `has_room_for_tile`: a tile on another's frame fails at its key, and at most 65,536 cells a
+  tile. Every frame must fit in the texture, or the layer reports it when it draws.
+- Tiles play on game time: the loop lasts the frames' durations added up, over
+  `animation_speed`. With `random_start_times`, each cell starts from its own point of the loop,
+  picked from the layer's entity ID and the cell, the same on every run. Alternatives play
+  their tile's frames. [`frame.capture`](commands.md#framecapture) draws any moment with `time`.
 
 ## 2D camera
 

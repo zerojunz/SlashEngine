@@ -44,6 +44,8 @@ using godot::Value;
 constexpr std::string_view kReportFile = "import/godot.json";
 constexpr std::string_view kFramesSuffix = ".frames.json";
 constexpr int kMaxInstanceDepth = 16;
+// A tile set's most animation frames per tile.
+constexpr std::int64_t kMaxAnimationFrames = 256;
 
 // --- Paths and names ---------------------------------------------------------------------------
 
@@ -1803,6 +1805,8 @@ private:
             Polygons polygons;
             std::map<std::int64_t, json::Value> alternatives;
             std::map<std::int64_t, Polygons> alternative_polygons;
+            std::int64_t frames = 1;                  // animation_frames_count, if given
+            std::map<std::int64_t, double> durations; // animation_frame_N/duration
         };
         // A tile's "physics_layer_N/..." property: polygons go into polygons, and constant
         // velocities other than zero are reported. False if it is another property.
@@ -1904,13 +1908,51 @@ private:
             const std::string_view rest = std::string_view(name).substr(slash + 1);
             const std::vector<std::string_view> parts = split_path(rest);
             Tile& tile = tiles[{*row, *column}];
+            if (tile.json.is_null() &&
+                (rest == "size_in_atlas" || rest.starts_with("animation_"))) {
+                tile.json = json::Object{};
+            }
+            // Cell counts, kept to what a tile set takes.
+            const auto cells = [](double number, double least) {
+                return std::llround(std::clamp(number, least, 16384.0));
+            };
             if (rest == "size_in_atlas") {
-                if (const auto xy = value.numbers(); xy && (xy->at(0) != 1.0 || xy->at(1) != 1.0)) {
-                    problems_.add("tiles larger than one cell", where,
-                                  "each tile covers one cell; split the tile in the texture");
+                if (const auto xy = value.numbers();
+                    xy && xy->size() == 2 && (xy->at(0) != 1.0 || xy->at(1) != 1.0)) {
+                    tile.json["size_in_atlas"] =
+                        json::Array{cells(xy->at(0), 1.0), cells(xy->at(1), 1.0)};
+                }
+            } else if (rest == "animation_columns") {
+                if (value.number() > 0.0) {
+                    tile.json["animation_columns"] =
+                        std::min<std::int64_t>(std::llround(value.number()), kMaxAnimationFrames);
+                }
+            } else if (rest == "animation_separation") {
+                if (const auto xy = value.numbers();
+                    xy && xy->size() == 2 && (xy->at(0) != 0.0 || xy->at(1) != 0.0)) {
+                    tile.json["animation_separation"] =
+                        json::Array{cells(xy->at(0), 0.0), cells(xy->at(1), 0.0)};
+                }
+            } else if (rest == "animation_speed") {
+                if (value.number() > 0.0 && value.number() != 1.0) {
+                    tile.json["animation_speed"] = value.number();
+                }
+            } else if (rest == "animation_mode") {
+                if (value.number() == 1.0) {
+                    tile.json["animation_mode"] = "random_start_times";
+                }
+            } else if (rest == "animation_frames_count") {
+                tile.frames =
+                    std::clamp<std::int64_t>(std::llround(value.number()), 1, kMaxAnimationFrames);
+            } else if (parts.size() == 2 && parts[0].starts_with("animation_frame_") &&
+                       parts[1] == "duration") {
+                const auto frame =
+                    parse_int(parts[0].substr(std::string_view("animation_frame_").size()));
+                if (frame && *frame >= 0 && *frame < kMaxAnimationFrames) {
+                    tile.durations[*frame] = value.number();
                 }
             } else if (rest.starts_with("animation_")) {
-                problems_.add("animated tiles", where, "each tile shows its first frame");
+                problems_.add("TileSetAtlasSource." + name, where);
             } else if (rest == "next_alternative_id") {
                 continue;
             } else if (parts[0] != "0") {
@@ -2004,6 +2046,27 @@ private:
                     alternative["collision"] = std::move(polygons);
                 }
                 tile.json["alternatives"][std::to_string(number)] = std::move(alternative);
+            }
+            // Godot stores each frame's duration once there are two frames or more.
+            std::int64_t frames = tile.frames;
+            if (!tile.durations.empty()) {
+                frames = std::max(frames, tile.durations.rbegin()->first + 1);
+            }
+            if (frames > 1) {
+                json::Array durations;
+                for (std::int64_t frame = 0; frame < frames; ++frame) {
+                    const auto given = tile.durations.find(frame);
+                    // Godot refuses durations of 0 or less; such a frame keeps the default.
+                    durations.emplace_back(
+                        given != tile.durations.end() && given->second > 0.0 ? given->second : 1.0);
+                }
+                tile.json["animation_frames"] = std::move(durations);
+            } else if (tile.json.is_object()) {
+                // One frame: where the others would go doesn't matter.
+                for (const std::string_view key : {"animation_columns", "animation_separation",
+                                                   "animation_speed", "animation_mode"}) {
+                    tile.json.as_object().erase(std::string(key));
+                }
             }
             if (tile.json.is_null()) {
                 tile.json = json::Object{}; // a plain tile

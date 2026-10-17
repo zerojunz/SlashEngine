@@ -430,7 +430,8 @@ item_1/shortcut = null
 [connection signal="pressed" from="UI/Menu/Play" to="." method="_on_play_pressed"]
 )";
 
-// A tile set with two terrains connected by their sides, an alternative tile and collision.
+// A tile set with two terrains connected by their sides, an alternative tile, collision, a tile
+// two cells wide and an animated tile.
 constexpr std::string_view kTileSet = R"([gd_resource type="TileSet" load_steps=4 format=3]
 
 [ext_resource type="Texture2D" path="res://art/tiles.png" id="1_tex"]
@@ -462,6 +463,14 @@ texture = ExtResource("1_tex")
 2:0/0 = 0
 2:0/0/probability = 0.5
 2:0/0/texture_origin = Vector2i(0, 4)
+3:0/size_in_atlas = Vector2i(2, 1)
+3:0/0 = 0
+0:2/animation_separation = Vector2i(1, 0)
+0:2/animation_speed = 2.0
+0:2/animation_mode = 1
+0:2/animation_frame_0/duration = 0.5
+0:2/animation_frame_1/duration = 0.25
+0:2/0 = 0
 0:1/0 = 0
 0:1/0/physics_layer_0/polygon_0/points = PackedVector2Array(-8, -8, 8, -8, 8, 8, -8, 8)
 0:1/0/physics_layer_1/polygon_0/points = PackedVector2Array(-8, -8, 8, -8, 8, -4, -8, -4)
@@ -929,6 +938,9 @@ TEST_CASE("importing Godot tile maps, themes and bus layouts writes their SlashE
                     "alternatives": {"1": {"flip_v": true, "modulate": [1.0, 0.5, 0.5, 1.0],
                                            "texture_origin": [1, 2]}}},
             "2,0": {"probability": 0.5, "texture_origin": [0, 4]},
+            "3,0": {"size_in_atlas": [2, 1]},
+            "0,2": {"animation_frames": [0.5, 0.25], "animation_separation": [1, 0],
+                    "animation_speed": 2.0, "animation_mode": "random_start_times"},
             "0,1": {"collision": [
                 {"points": [[-8.0, -8.0], [8.0, -8.0], [8.0, 8.0], [-8.0, 8.0]]},
                 {"layer": 1, "one_way": true,

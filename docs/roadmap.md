@@ -215,8 +215,12 @@ rendering on top.
       Godot's, 16 compass peering directions, terrain painting by each shape's sides and corners,
       `tilemap.convert` between cells and points, and Godot's shapes imported, with tiles'
       `texture_origin` lifting tall tiles on their cells
-- [ ] The rest of Godot's TileSet: animated tiles, tiles larger than one cell, custom data
-      layers and occlusion polygons; tile navigation polygons come with navigation in milestone 7
+- [x] Animated tiles and tiles larger than one cell, as Godot's TileSetAtlasSource: frames
+      laid out after the tile with columns and separation, per-frame durations, speed, random
+      start times per cell, `size_in_atlas`, overlap checks, and Godot's animated and large tiles
+      and Unity's `AnimatedTile`s imported
+- [ ] The rest of Godot's TileSet: custom data layers and occlusion polygons; tile navigation
+      polygons come with navigation in milestone 7
 - [x] 2D lights, occluders and normal-mapped sprites, as Godot's: `PointLight2D` (textured,
       with a height for normal maps), `DirectionalLight2D` and `CanvasModulate`, with light masks,
       z ranges and add, sub and mix blending; `LightOccluder2D` shadows with cull modes and PCF

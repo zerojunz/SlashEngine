@@ -4573,7 +4573,8 @@ void register_builtin_commands(Registry& registry) {
     capture_scale["minimum"] = kMinCaptureScale;
     capture_scale["maximum"] = kMaxCaptureScale;
     json::Value capture_time =
-        property("number", "Seconds of game time materials read. Default: the tick's.");
+        property("number", "Seconds of game time materials and animated tiles read. Default: the "
+                           "tick's.");
     capture_time["minimum"] = 0;
     registry.add({
         .name = "frame.capture",
