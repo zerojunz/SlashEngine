@@ -1034,6 +1034,7 @@ its tiles. `slash-cli schema tileset` prints the schema, `slash-cli scene valida
 | `tiles/<cell>/terrain` | No | The terrain it paints |
 | `tiles/<cell>/peering` | No | The terrain each side and corner must touch for the tile to fit, by compass direction: `n`, `ne`, `e`, `se`, `s`, `sw`, `w`, `nw` for squares, as Godot's terrain peering bits; the [shape](#tile-shapes) says which directions it has. A direction left out must have the tile's own terrain; `null` means none |
 | `tiles/<cell>/probability` | No | How often painting picks the tile over others that fit as well; default `1`, and `0` only when nothing else fits |
+| `tiles/<cell>/texture_origin` | No | Pixels to move its texture by, up and to the left, as Godot's `texture_origin`: `[0, 8]` draws it 8 pixels higher in its cell. It turns with the cell; collision polygons stay put. Default `[0, 0]` |
 | `tiles/<cell>/collision` | No | Its [collision polygons](#tile-collision) |
 | `tiles/<cell>/alternatives` | No | [Alternative tiles](#alternative-tiles-and-turned-cells) by number, from `"1"` to `"4095"` |
 
@@ -1104,7 +1105,7 @@ the rows that changed:
   paint always gives the same tiles. [`tilemap.set`](commands.md#tilemapset) places tiles
   without changing their neighbors, and [`tilemap.get`](commands.md#tilemapget) reads the rows.
 - A layer draws at its entity's `Transform2D` if it has one, each tile's region centered on its
-  cell (a square cell `(c, r)` spans `c × tile_size` to `(c + 1) × tile_size`; other shapes are
+  cell, less its `texture_origin` (a square cell `(c, r)` spans `c × tile_size` to `(c + 1) × tile_size`; other shapes are
   placed as [tile shapes](#tile-shapes) says). Cells draw down the screen by their centers, then
   left to right, as Godot draws a layer with Y-sort on, so a tile taller than its cell covers the
   cells behind it. Tiles from one texture draw together, so a layer whose tiles share an atlas
@@ -1147,8 +1148,8 @@ balls on a level of tiles.
 ### Alternative tiles and turned cells
 
 A tile's `alternatives` are other versions of it, numbered from 1, as Godot's alternative tiles.
-Each has its own flips, color and collision, and a legend or `tilemap.set` names one after the
-tile: `"rock:1"` or `"ground:3,2:1"`.
+Each has its own flips, color, collision and texture origin, and a legend or `tilemap.set` names
+one after the tile: `"rock:1"` or `"ground:3,2:1"`.
 
 | Key | Required | Meaning |
 | --- | --- | --- |
@@ -1156,6 +1157,7 @@ tile: `"rock:1"` or `"ground:3,2:1"`.
 | `alternatives/<n>/transpose` | No | Draw it with its axes swapped, before the flips |
 | `alternatives/<n>/modulate` | No | Color it is multiplied by, as [r, g, b, a] from 0 to 1 |
 | `alternatives/<n>/collision` | No | Its own collision polygons, as a tile's; an alternative without them has none |
+| `alternatives/<n>/texture_origin` | No | Its own texture origin, as a tile's; `[0, 0]` if left out, whatever the tile's is |
 
 A cell can also turn whatever tile it holds, as Godot's cell transform flags: after the tile, and
 its alternative if any, `:h` flips it left to right, `:v` top to bottom and `:t` swaps its axes,

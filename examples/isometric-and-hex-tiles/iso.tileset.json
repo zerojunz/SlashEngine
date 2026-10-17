@@ -124,6 +124,16 @@
           "terrain": "grass"
         }
       }
+    },
+    "props": {
+      "region_size": [32, 32],
+      "texture": "props.png",
+      "tiles": {
+        "0,0": {
+          "name": "tree",
+          "texture_origin": [0, 8]
+        }
+      }
     }
   },
   "terrain_sets": {
