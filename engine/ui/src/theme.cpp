@@ -20,13 +20,15 @@ namespace slash::ui {
 namespace {
 
 // Each control type and the type it is built on, as Godot's classes.
-constexpr std::array<std::pair<std::string_view, std::string_view>, 33> kTypes{{
+constexpr std::array<std::pair<std::string_view, std::string_view>, 36> kTypes{{
     {"Control", ""},
     {"Label", "Control"},
     {"BaseButton", "Control"},
     {"Button", "BaseButton"},
     {"CheckBox", "Button"},
     {"CheckButton", "Button"},
+    {"OptionButton", "Button"},
+    {"MenuButton", "Button"},
     {"TextureButton", "BaseButton"},
     {"LineEdit", "Control"},
     {"TextEdit", "Control"},
@@ -54,6 +56,8 @@ constexpr std::array<std::pair<std::string_view, std::string_view>, 33> kTypes{{
     {"VFlowContainer", "FlowContainer"},
     {"PanelContainer", "Container"},
     {"ScrollContainer", "Container"},
+    // A window in Godot, not a control.
+    {"PopupMenu", ""},
 }};
 
 constexpr std::array<std::string_view, 6> kKinds{"colors",     "constants", "fonts",
@@ -176,6 +180,77 @@ const std::map<std::string, ThemeItems, std::less<>>& own_defaults() {
             {"unchecked_disabled_mirrored", "builtin:toggle_off_disabled_mirrored"}};
         check_button.colors.emplace("button_checked_color", white);
         check_button.colors.emplace("button_unchecked_color", white);
+        // Option buttons: wider margins, and an arrow at the end.
+        ThemeItems& option = themes["OptionButton"];
+        const std::array<float, 4> option_margins{2.0F * kMargin, kMargin, 2.0F * kMargin, kMargin};
+        for (const auto& [state, color] :
+             {std::pair{"normal", style_normal_color}, std::pair{"hover", style_hover_color},
+              std::pair{"pressed", style_pressed_color},
+              std::pair{"disabled", style_disabled_color}}) {
+            option.styles.emplace(state, flat_style(color, option_margins, kCornerRadius));
+            option.styles.emplace(std::string(state) + "_mirrored",
+                                  flat_style(color, option_margins, kCornerRadius));
+        }
+        option.styles.emplace("focus", focus);
+        option.icons = {{"arrow", "builtin:option_button_arrow"}};
+        option.colors = {{"font_color", control_font_color},
+                         {"font_pressed_color", control_font_pressed_color},
+                         {"font_hover_color", control_font_hover_color},
+                         {"font_hover_pressed_color", control_font_pressed_color},
+                         {"font_focus_color", control_font_focus_color},
+                         {"font_disabled_color", control_font_disabled_color},
+                         {"font_outline_color", {0.0F, 0.0F, 0.0F, 1.0F}}};
+        option.constants = {{"h_separation", kSeparation},
+                            {"arrow_margin", 4},
+                            {"outline_size", 0},
+                            {"modulate_arrow", 0}};
+        option.fonts = {{"font", ""}};
+        option.font_sizes = {{"font_size", text::kDefaultFontSize}};
+        // Menu buttons are flat buttons, dimmer when disabled.
+        ThemeItems& menu_button = themes["MenuButton"];
+        menu_button.styles = button.styles;
+        menu_button.colors = {{"font_color", control_font_color},
+                              {"font_pressed_color", control_font_pressed_color},
+                              {"font_hover_color", control_font_hover_color},
+                              {"font_focus_color", control_font_focus_color},
+                              {"font_disabled_color", {1.0F, 1.0F, 1.0F, 0.3F}},
+                              {"font_outline_color", {0.0F, 0.0F, 0.0F, 1.0F}}};
+        menu_button.constants = {{"h_separation", kSeparation}, {"outline_size", 0}};
+        menu_button.fonts = {{"font", ""}};
+        menu_button.font_sizes = {{"font_size", text::kDefaultFontSize}};
+        // Popup menus always have a border, so they stand out from what is under them, and
+        // separate items with a thin line.
+        ThemeItems& popup = themes["PopupMenu"];
+        StyleBox popup_panel =
+            flat_style({0.25F, 0.25F, 0.25F, 1.0F}, kMargin, kCornerRadius, true, 2);
+        popup_panel.border_color = {0.175F, 0.175F, 0.175F, 1.0F};
+        StyleBox separator;
+        separator.type = StyleBox::Type::Line;
+        separator.color = {0.5F, 0.5F, 0.5F, 1.0F};
+        separator.content_margin = {kMargin, 0.0F, kMargin, 0.0F};
+        popup.styles = {{"panel", popup_panel},
+                        {"hover", flat_style({0.4F, 0.4F, 0.4F, 1.0F}, kMargin, kCornerRadius)},
+                        {"separator", separator},
+                        {"labeled_separator_left", separator},
+                        {"labeled_separator_right", separator}};
+        popup.icons = check_box.icons;
+        popup.colors = {{"font_color", control_font_color},
+                        {"font_hover_color", control_font_color},
+                        {"font_disabled_color", {0.4F, 0.4F, 0.4F, 0.8F}},
+                        {"font_separator_color", control_font_color},
+                        {"font_outline_color", {0.0F, 0.0F, 0.0F, 1.0F}},
+                        {"font_separator_outline_color", {0.0F, 0.0F, 0.0F, 1.0F}}};
+        popup.constants = {{"indent", 10},
+                           {"h_separation", kSeparation},
+                           {"v_separation", kSeparation},
+                           {"item_start_padding", 2},
+                           {"item_end_padding", 2},
+                           {"icon_max_width", 0},
+                           {"outline_size", 0},
+                           {"separator_outline_size", 0}};
+        popup.fonts = {{"font", ""}, {"font_separator", ""}};
+        popup.font_sizes = {{"font_size", text::kDefaultFontSize},
+                            {"font_separator_size", text::kDefaultFontSize}};
         // A line along the bottom tells a LineEdit from a Button.
         ThemeItems& line_edit = themes["LineEdit"];
         StyleBox line_normal = flat_style(style_normal_color, kMargin, kCornerRadius);

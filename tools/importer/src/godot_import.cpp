@@ -276,6 +276,9 @@ constexpr std::array kNodeTypes{
     NodeType{"Button", Family::Control, "Button", ""},
     NodeType{"CheckBox", Family::Control, "CheckBox", ""},
     NodeType{"CheckButton", Family::Control, "CheckButton", ""},
+    NodeType{"OptionButton", Family::Control, "OptionButton", ""},
+    NodeType{"MenuButton", Family::Control, "MenuButton", ""},
+    NodeType{"PopupMenu", Family::Plain, "PopupMenu", ""},
     NodeType{"TextureButton", Family::Control, "TextureButton", ""},
     NodeType{"LineEdit", Family::Control, "LineEdit", ""},
     NodeType{"TextEdit", Family::Control, "TextEdit", ""},
@@ -427,6 +430,7 @@ const std::vector<std::string_view>* enum_names(std::string_view component,
         {"Control.focus_mode", {"none", "click", "all", "none"}},
         {"Control.mouse_filter", {"stop", "pass", "ignore"}},
         {"Control.layout_direction", {"inherited", "inherited", "ltr", "rtl", "inherited"}},
+        {"PopupMenu.layout_direction", {"inherited", "inherited", "ltr", "rtl", "inherited"}},
         {"TextEdit.autowrap_mode", {"", "arbitrary", "word", "word_smart"}},
     };
     const std::string exact = std::string(component) + "." + std::string(field);
@@ -2673,12 +2677,102 @@ private:
         return false;
     }
 
+    // A PopupMenu's, OptionButton's or MenuButton's items: item_count, then item_<n>/text, icon,
+    // checkable, checked, id, disabled and separator, under "popup/" on a button.
+    bool item_property(const Node& node, const Property& property, json::Object& components) {
+        const char* owner = nullptr;
+        for (const char* each : {"PopupMenu", "OptionButton", "MenuButton"}) {
+            if (components.contains(each)) {
+                owner = each;
+                break;
+            }
+        }
+        if (owner == nullptr) {
+            return false;
+        }
+        const std::string_view kind = owner;
+        std::string_view name = property.name;
+        const Value& value = *property.value;
+        json::Value& items = components[owner]["items"];
+        if (items.is_null()) {
+            items = json::Array{};
+        }
+        const auto grow = [&](std::size_t count) {
+            while (items.size() < count) {
+                items.push_back(json::Object{});
+            }
+        };
+        if (name == "item_count") {
+            if (value.kind == Value::Kind::Int && value.integer > 0) {
+                grow(static_cast<std::size_t>(value.integer));
+            }
+            return true;
+        }
+        const std::string_view prefix = kind == "PopupMenu" ? "item_" : "popup/item_";
+        if (!name.starts_with(prefix)) {
+            return false;
+        }
+        name.remove_prefix(prefix.size());
+        const auto slash = name.find('/');
+        if (slash == std::string_view::npos) {
+            return false;
+        }
+        std::size_t index = 0;
+        const auto [end, error] = std::from_chars(name.data(), name.data() + slash, index);
+        if (error != std::errc{} || end != name.data() + slash || index > 4096) {
+            return false;
+        }
+        const std::string_view field = name.substr(slash + 1);
+        grow(index + 1);
+        json::Value& item = items.as_array()[index];
+        // Reported once for every item.
+        const std::string where = node.type + "." + std::string(prefix) + "*/" + std::string(field);
+        const bool option = kind == "OptionButton";
+        if (field == "text" && value.is_string()) {
+            item["text"] = value.text;
+        } else if (field == "icon") {
+            std::string why;
+            if (std::string path = resource_path(value, *property.file, why); !path.empty()) {
+                item["icon"] = std::move(path);
+            } else {
+                problems_.add(where, node.declared, why);
+            }
+        } else if (field == "checkable" && !option && value.kind == Value::Kind::Int &&
+                   value.integer >= 0 && value.integer <= 2) {
+            static constexpr std::array<std::string_view, 3> kCheckable{"none", "check", "radio"};
+            item["checkable"] = kCheckable.at(static_cast<std::size_t>(value.integer));
+        } else if (field == "id" && value.kind == Value::Kind::Int) {
+            // Godot gives an item its index as its ID; -1 says the same here.
+            if (value.integer != static_cast<std::int64_t>(index)) {
+                item["id"] = value.integer;
+            }
+        } else if ((field == "disabled" || field == "separator" ||
+                    (field == "checked" && !option)) &&
+                   value.kind == Value::Kind::Bool) {
+            item[std::string(field)] = value.boolean;
+        } else {
+            problems_.add(where, node.declared);
+        }
+        return true;
+    }
+
     // Godot properties that don't match a field one to one.
     bool special_property(const Node& node, const Property& property, json::Object& components) {
         const std::string& name = property.name;
         const Value& value = *property.value;
         const TextFile& file = *property.file;
         std::string why;
+        if (item_property(node, property, components)) {
+            return true;
+        }
+        // An OptionButton shows its selected option's text and icon.
+        if (components.contains("OptionButton") && (name == "text" || name == "icon")) {
+            return true;
+        }
+        if (components.contains("PopupMenu") && name == "size") {
+            problems_.add("PopupMenu.size", node.declared, "a popup menu is as big as its items");
+            return true;
+        }
         if (name == "region_enabled" || name == "region_rect" ||
             name == "region_filter_clip_enabled") {
             if (name == "region_rect" && components.contains("Sprite2D")) {
@@ -3544,6 +3638,7 @@ private:
             has_transform[i] =
                 families[i] == Family::Node2D ||
                 (families[i] == Family::Plain && nodes[i].type != "AudioStreamPlayer" &&
+                 nodes[i].type != "PopupMenu" &&
                  (parent < 0 || (families[static_cast<std::size_t>(parent)] == Family::Plain &&
                                  has_transform[static_cast<std::size_t>(parent)])));
         }

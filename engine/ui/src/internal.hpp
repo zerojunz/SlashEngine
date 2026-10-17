@@ -28,11 +28,12 @@ namespace slash::ui {
 [[nodiscard]] std::vector<std::string_view> control_classes(const world::World& world,
                                                             entt::entity entity);
 
-// The Button an entity has: its Button, or its CheckBox or CheckButton, which are buttons too;
-// nullptr for none.
+// The Button an entity has: its Button, or its CheckBox, CheckButton, OptionButton or
+// MenuButton, which are buttons too; nullptr for none.
 [[nodiscard]] const world::Button* button_of(const world::World& world, entt::entity entity);
 [[nodiscard]] world::Button* button_of(world::World& world, entt::entity entity);
-// Which component button_of found: "Button", "CheckBox" or "CheckButton"; "" for none.
+// Which component button_of found: "Button", "CheckBox", "CheckButton", "OptionButton" or
+// "MenuButton"; "" for none.
 [[nodiscard]] std::string_view button_type(const world::World& world, entt::entity entity);
 
 // A Range's fields, as Godot's Range keeps them: max_value at least min_value, page at most the
@@ -73,6 +74,19 @@ enum class Bar : std::uint8_t { Own, Horizontal, Vertical };
 // component's.
 [[nodiscard]] std::array<double, 2> wanted_scroll(const world::World& world,
                                                   entt::entity container);
+
+// What the gui system keeps for an open popup menu that the layout needs: the item the pointer
+// or keys are on, how far its list is scrolled, and an item to scroll into view, as
+// PopupMenu::scroll_to_item asks.
+struct PopupState {
+    entt::entity owner = entt::null;
+    int focused = -1;
+    float scroll = 0.0F;
+    int scroll_to = -1;
+};
+// The popup menus open, the last on top: those the gui system keeps, then PopupMenus that are
+// visible and it hasn't seen yet (gui.cpp).
+[[nodiscard]] std::vector<PopupState> popup_states(const world::World& world);
 
 // Gives the world the gui system and its state (gui.cpp).
 void install_gui(world::World& world);

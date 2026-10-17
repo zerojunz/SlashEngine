@@ -81,11 +81,11 @@ void set_viewport(world::World& world, Vec2 viewport);
 
 // A style box, as Godot's StyleBox: what a panel or a bar draws behind its content, and the
 // margins its content keeps. Flat ones are rects with rounded corners, borders and a shadow
-// (StyleBoxFlat), texture ones a texture cut into nine parts (StyleBoxTexture), and empty ones
-// draw nothing (StyleBoxEmpty). Sides are left, top, right and bottom; corners top left, top
-// right, bottom right and bottom left.
+// (StyleBoxFlat), texture ones a texture cut into nine parts (StyleBoxTexture), line ones a line
+// across the rect (StyleBoxLine), and empty ones draw nothing (StyleBoxEmpty). Sides are left,
+// top, right and bottom; corners top left, top right, bottom right and bottom left.
 struct StyleBox {
-    enum class Type : std::uint8_t { Flat, Texture, Empty };
+    enum class Type : std::uint8_t { Flat, Texture, Empty, Line };
     enum class Stretch : std::uint8_t { Stretch, Tile, TileFit };
     Type type = Type::Flat;
     // The content's margins; -1 takes the style's own: its borders, or its texture margins.
@@ -114,6 +114,12 @@ struct StyleBox {
     Stretch axis_stretch_vertical = Stretch::Stretch;
     bool flip_h = false; // for TextureRect: drawn mirrored
     bool flip_v = false;
+    // Line: along the top of the rect, or down its left side when vertical.
+    Vec4 color{0.0F, 0.0F, 0.0F, 1.0F};
+    float grow_begin = 1.0F; // drawn this far before the rect's start
+    float grow_end = 1.0F;   // and this far past its end
+    int thickness = 1;
+    bool vertical = false;
 
     // The content's margin on a side: content_margin, or the style's own.
     [[nodiscard]] float margin(std::size_t side) const;
@@ -122,7 +128,7 @@ struct StyleBox {
     bool operator==(const StyleBox&) const = default;
 };
 
-// JSON Schema for a style box: an object with "type" ("flat", the default, "texture" or
+// JSON Schema for a style box: an object with "type" ("flat", the default, "texture", "line" or
 // "empty") and Godot's property names. "content_margin", "expand_margin", "texture_margin",
 // "border_width" and "corner_radius" set all four sides or corners; the named ones override them.
 [[nodiscard]] json::Value style_box_schema();
@@ -352,6 +358,41 @@ struct TextEditView {
     bool placeholder = false; // it shows its placeholder text
 };
 
+// One item of an open popup menu as laid out, as PopupMenu caches it while drawing.
+struct PopupItemView {
+    float y = 0.0F;      // its top in the menu's list, before scrolling
+    float height = 0.0F; // its height; v_separation keeps items apart
+    std::string text;
+    bool selectable = false; // neither a separator nor disabled
+};
+
+// An open popup menu as laid out: a PopupMenu's, or the list an OptionButton or MenuButton
+// opened. Godot draws it in a window of its own: a panel, with the list scrolled inside its
+// margins.
+struct PopupView {
+    entt::entity owner = entt::null; // the PopupMenu, OptionButton or MenuButton
+    Vec2 position;                   // its top left corner in the viewport, moved to fit inside it
+    Vec2 size;                       // its contents' minimum size, at most the viewport's
+    std::array<float, 4> margins{};  // its panel's content margins, which the list keeps inside
+    float bar_width = 0.0F; // its scroll bar's, when the list is taller than its room; else 0
+    // The part of the list in view, in its rect: inside the panel's margins, beside the scroll
+    // bar.
+    Vec2 list_position;
+    Vec2 list_size;
+    float scroll = 0.0F; // how far the list is scrolled down, in pixels
+    float scroll_max = 0.0F;
+    int focused = -1; // the item hovered or moved to with the keys; -1 for none
+    int v_separation = 0;
+    bool rtl = false;
+    std::vector<PopupItemView> items;
+    // What it draws, in its rect: the panel; then, cut to the list, each item's hover box,
+    // separator lines and icons, then the items' text; then the scroll bar.
+    std::vector<Box> panel;
+    std::vector<Box> boxes;
+    std::vector<LabelText> labels;
+    std::vector<Box> bar;
+};
+
 // What one control the layout can't place properly is doing wrong.
 struct Problem {
     std::string id;
@@ -384,6 +425,8 @@ struct Layout {
     // What each control draws over its children, after the last of them with its z: a
     // ScrollContainer's scroll bars and focus border.
     std::map<entt::entity, std::vector<Box>> over_children;
+    // The popup menus open, over every control, the last on top.
+    std::vector<PopupView> popups;
 
     [[nodiscard]] const Placed* find(entt::entity entity) const;
     [[nodiscard]] const LabelText* label(entt::entity entity) const;
@@ -480,16 +523,18 @@ struct DrawSpan {
     std::size_t call = 0;
     std::size_t first = 0;
     std::size_t count = 0;
+    bool popup = false; // the entity's popup menu drew them
 };
 
 // A control's triangles as they would draw if nothing clipped them, for a control a clip cut.
 struct UncutDraw {
     entt::entity entity = entt::null;
     DrawCall call;
+    bool popup = false;
 };
 
 // What drawing a layout takes, in order: draws in a row with the same texture are merged.
-// Controls draw cut to their clip.
+// Controls draw cut to their clip, then the popup menus open over them.
 struct DrawList {
     std::vector<DrawCall> calls;
     std::vector<DrawSpan> spans;  // in drawing order
@@ -507,12 +552,15 @@ struct DrawList {
 // "button_up" from buttons; "text_changed", "text_submitted", "text_change_rejected" and
 // "editing_toggled" from LineEdits; "value_changed", "drag_started" and "drag_ended" from
 // sliders; "value_changed" and "scrolling" from scroll bars; "scroll_started" and
-// "scroll_ended" from scroll containers; and "mouse_entered", "mouse_exited", "focus_entered"
-// and "focus_exited" from any control. Each is a world event (World::emit) too, with data
-// {"toggled_on": bool} for toggled
-// and editing_toggled, {"text": string} for text_changed and text_submitted,
-// {"rejected_substring": string} for text_change_rejected, {"value": number} for value_changed
-// and {"value_changed": bool} for drag_ended.
+// "scroll_ended" from scroll containers; "item_selected" and "item_focused" from option
+// buttons; "id_pressed", "index_pressed", "id_focused", "about_to_popup" and "popup_hide" from
+// menu buttons and popup menus; and "mouse_entered", "mouse_exited",
+// "focus_entered" and "focus_exited" from any control. Each is a world event (World::emit) too,
+// with data {"toggled_on": bool} for toggled and editing_toggled, {"text": string} for
+// text_changed and text_submitted, {"rejected_substring": string} for text_change_rejected,
+// {"value": number} for value_changed, {"value_changed": bool} for drag_ended, {"index"} for
+// item_selected and item_focused, {"id", "index"} for id_pressed and index_pressed and {"id"}
+// for id_focused.
 struct UiEvent {
     std::string kind;
     std::string id;          // the control's entity ID
@@ -522,6 +570,8 @@ struct UiEvent {
     int to_line = 0;
     double value = 0.0;         // for value_changed
     bool value_changed = false; // for drag_ended: the drag changed the value
+    int index = -1;             // the item, for item_selected, item_focused and *_pressed
+    int item_id = -1;           // the item's ID, for id_pressed, index_pressed and id_focused
 };
 
 // The UI events of the tick the "gui" system last ran (inside a system: this tick), in order.
@@ -542,6 +592,29 @@ bool grab_focus(world::World& world, entt::entity control);
 void release_focus(world::World& world);
 // The control under the mouse, or entt::null.
 [[nodiscard]] entt::entity hovered(const world::World& world);
+
+// ---- Popup menus ----
+
+// The items an entity's popup menu shows: a PopupMenu's or MenuButton's, or an OptionButton's
+// options as radio items with the selected one checked, as OptionButton fills its PopupMenu;
+// empty for an entity with none of them.
+[[nodiscard]] std::vector<world::PopupMenuItem> popup_items(const world::World& world,
+                                                            entt::entity owner);
+// An item's ID, as PopupMenu::add_item gives one: its own, or its index when it has none.
+[[nodiscard]] int item_id(const world::PopupMenuItem& item, std::size_t index);
+// Opens a popup menu: a PopupMenu at its position (setting visible), or the list of an
+// OptionButton or MenuButton below it, as their show_popup does, closing any other. False for
+// an entity that has none of them.
+bool open_popup(world::World& world, entt::entity owner);
+// Closes a popup menu that is open, emitting popup_hide; false if it isn't open.
+bool close_popup(world::World& world, entt::entity owner);
+// The entities whose popup menus are open, the last on top.
+[[nodiscard]] std::vector<entt::entity> open_popups(const world::World& world);
+// Picks an item at the next tick as a click on it would: a PopupMenu's or MenuButton's item
+// emits id_pressed and index_pressed and closes the menu as it says, and an OptionButton's option
+// is selected, emitting item_selected. False for an item that doesn't exist, is a separator or
+// is disabled, or a disabled button.
+bool select_item(world::World& world, entt::entity owner, int index);
 
 // ---- Text fields ----
 

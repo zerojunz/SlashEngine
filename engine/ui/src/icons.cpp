@@ -11,20 +11,20 @@
 #include <vector>
 
 // The icons of Godot's default theme (scene/theme/icons/*.svg), drawn here from the same shapes:
-// rounded rects, circles, rings and a check mark, each in one color. Pixels are covered by 8x8
-// samples each, with only exactly rounded math, so every machine draws them alike.
+// rounded rects, circles, rings, a check mark and stroked lines, each in one color. Pixels are
+// covered by 8x8 samples each, with only exactly rounded math, so every machine draws them alike.
 namespace slash::ui {
 namespace {
 
 constexpr int kSamples = 8; // per pixel, each way
 
 struct Shape {
-    enum class Kind : std::uint8_t { Rect, Circle, Ring, Polygon };
+    enum class Kind : std::uint8_t { Rect, Circle, Ring, Polygon, Stroke };
     Kind kind = Kind::Rect;
     // Rect: x, y, width, height and corner radius. Circle and ring: center x, y, radius and,
-    // for a ring, inner radius.
+    // for a ring, inner radius. Stroke: half the line's width.
     std::array<float, 5> v{};
-    std::vector<Vec2> points; // Polygon
+    std::vector<Vec2> points; // Polygon; Stroke, the line's points, with round caps and joins
     Vec4 color;               // straight, its alpha the SVG's fill-opacity
 };
 
@@ -82,6 +82,25 @@ bool inside(const Shape& shape, float x, float y) {
             }
         }
         return in;
+    }
+    case Shape::Kind::Stroke: {
+        // Within half the width of a segment.
+        const std::vector<Vec2>& p = shape.points;
+        for (std::size_t i = 0; i + 1 < p.size(); ++i) {
+            const float ex = p[i + 1].x - p[i].x;
+            const float ey = p[i + 1].y - p[i].y;
+            const float length = (ex * ex) + (ey * ey);
+            const float along =
+                length > 0.0F
+                    ? std::clamp((((x - p[i].x) * ex) + ((y - p[i].y) * ey)) / length, 0.0F, 1.0F)
+                    : 0.0F;
+            const float dx = x - (p[i].x + (along * ex));
+            const float dy = y - (p[i].y + (along * ey));
+            if ((dx * dx) + (dy * dy) <= v[0] * v[0]) {
+                return true;
+            }
+        }
+        return false;
     }
     }
     return false;
@@ -183,6 +202,14 @@ const std::map<std::string, render::Image, std::less<>>& icons() {
         out.emplace("slider_grabber_disabled", grabber(0.37F));
         out.emplace("hslider_tick", draw(4, 8, {rect(1.0F, 0.0F, 2.0F, 8.0F, 0.0F, white(0.25F))}));
         out.emplace("vslider_tick", draw(8, 4, {rect(0.0F, 1.0F, 8.0F, 2.0F, 0.0F, white(0.25F))}));
+        // option_button_arrow.svg: a chevron stroked 2 wide in #b2b2b2 at 0.85.
+        constexpr float kArrow = 178.0F / 255.0F;
+        out.emplace("option_button_arrow",
+                    draw(12, 12,
+                         {{.kind = Shape::Kind::Stroke,
+                           .v = {1.0F, 0.0F, 0.0F, 0.0F, 0.0F},
+                           .points = {{2.0F, 4.0F}, {6.0F, 8.0F}, {10.0F, 4.0F}},
+                           .color = {kArrow, kArrow, kArrow, 0.85F}}}));
         return out;
     }();
     return kIcons;

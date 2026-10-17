@@ -408,7 +408,7 @@ TEST_CASE("theme icons come from overrides, then themes, then the built-in ones"
 
 TEST_CASE("the built-in icons are drawn in code, the same on every machine") {
     const std::vector<std::string_view>& names = ui::builtin_icon_names();
-    CHECK(names.size() == 21);
+    CHECK(names.size() == 22);
     for (const std::string_view name : names) {
         const render::Image* image =
             ui::builtin_icon(std::string(ui::kBuiltinPrefix) + std::string(name));

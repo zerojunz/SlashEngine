@@ -1,9 +1,11 @@
 # Shared compiler settings for SlashEngine targets.
 
-# Warnings for every target we own (engine, tools and tests).
+# Warnings, and MSVC's /bigobj, for every target we own (engine, tools and tests).
 function(slash_target_warnings target)
     if(MSVC)
-        target_compile_options(${target} PRIVATE /W4 /permissive- /utf-8)
+        # /bigobj: sources that register every component, and the tests, make more sections
+        # than an MSVC object file holds by default.
+        target_compile_options(${target} PRIVATE /W4 /permissive- /utf-8 /bigobj)
         if(SLASH_WARNINGS_AS_ERRORS)
             target_compile_options(${target} PRIVATE /WX)
         endif()

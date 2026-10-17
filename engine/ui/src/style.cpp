@@ -11,7 +11,7 @@
 #include <utility>
 #include <vector>
 
-// Style boxes as Godot's StyleBoxFlat, StyleBoxTexture and StyleBoxEmpty
+// Style boxes as Godot's StyleBoxFlat, StyleBoxTexture, StyleBoxLine and StyleBoxEmpty
 // (scene/resources/style_box*.cpp), read from JSON with Godot's property names.
 namespace slash::ui {
 namespace {
@@ -19,9 +19,10 @@ namespace {
 constexpr std::array<std::string_view, 4> kSides{"left", "top", "right", "bottom"};
 constexpr std::array<std::string_view, 4> kCorners{"top_left", "top_right", "bottom_right",
                                                    "bottom_left"};
-constexpr std::array<std::pair<std::string_view, StyleBox::Type>, 3> kTypes{{
+constexpr std::array<std::pair<std::string_view, StyleBox::Type>, 4> kTypes{{
     {"flat", StyleBox::Type::Flat},
     {"texture", StyleBox::Type::Texture},
+    {"line", StyleBox::Type::Line},
     {"empty", StyleBox::Type::Empty},
 }};
 constexpr std::array<std::pair<std::string_view, StyleBox::Stretch>, 3> kStretches{{
@@ -32,7 +33,7 @@ constexpr std::array<std::pair<std::string_view, StyleBox::Stretch>, 3> kStretch
 constexpr std::array<std::string_view, 2> kTextureSuffixes{".png", ".bmp"};
 
 // Which types a property applies to.
-enum Applies : std::uint8_t { kAll = 7, kFlat = 1, kTexture = 2, kFlatAndTexture = 3 };
+enum Applies : std::uint8_t { kAll = 15, kFlat = 1, kTexture = 2, kFlatAndTexture = 3, kLine = 8 };
 
 std::uint8_t type_bit(StyleBox::Type type) {
     switch (type) {
@@ -40,6 +41,8 @@ std::uint8_t type_bit(StyleBox::Type type) {
         return kFlat;
     case StyleBox::Type::Texture:
         return kTexture;
+    case StyleBox::Type::Line:
+        return kLine;
     case StyleBox::Type::Empty:
         break;
     }
@@ -130,7 +133,8 @@ const std::vector<Property>& properties() {
         std::vector<Property> out;
         out.push_back({"type", kAll,
                        choice("flat draws rects with rounded corners, borders and a shadow; "
-                              "texture a texture cut into nine parts; empty nothing.",
+                              "texture a texture cut into nine parts; line a line across the "
+                              "top of the rect, or down its left side; empty nothing.",
                               kTypes)});
         add_four(out, "content_margin", kSides, kAll, number("", -1.0),
                  "The content's margin in pixels; -1 takes the borders' or texture margins'");
@@ -183,6 +187,13 @@ const std::vector<Property>& properties() {
                        choice("How the middle fills the rect down.", kStretches)});
         out.push_back(
             {"modulate_color", kTexture, numbers("Tints the texture, as [r, g, b, a].", 4, 0.0)});
+        out.push_back({"color", kLine, numbers("The line's color, as [r, g, b, a].", 4, 0.0)});
+        out.push_back(
+            {"thickness", kLine, number("The line's width in pixels.", 0.0, std::nullopt, true)});
+        out.push_back(
+            {"grow_begin", kLine, number("Pixels the line reaches before the rect's start.")});
+        out.push_back({"grow_end", kLine, number("Pixels the line reaches past the rect's end.")});
+        out.push_back({"vertical", kLine, boolean("Run down the rect's left side.")});
         return out;
     }();
     return kProperties;
@@ -292,6 +303,12 @@ float StyleBox::margin(std::size_t side) const {
         return static_cast<float>(border_width.at(side));
     case Type::Texture:
         return texture_margin.at(side);
+    case Type::Line:
+        // Half the line across it, on each side.
+        if ((side % 2 == 1) != vertical) {
+            return static_cast<float>(thickness) / 2.0F;
+        }
+        break;
     case Type::Empty:
         break;
     }
@@ -306,8 +323,8 @@ json::Value style_box_schema() {
     json::Value schema;
     schema["type"] = "object";
     schema["additionalProperties"] = false;
-    schema["description"] = "A style box, as Godot's StyleBoxFlat, StyleBoxTexture and "
-                            "StyleBoxEmpty. Sides are left, top, right and bottom.";
+    schema["description"] = "A style box, as Godot's StyleBoxFlat, StyleBoxTexture, StyleBoxLine "
+                            "and StyleBoxEmpty. Sides are left, top, right and bottom.";
     json::Value& out = schema["properties"];
     for (const Property& property : properties()) {
         json::Value each = property.schema;
@@ -317,6 +334,8 @@ json::Value style_box_schema() {
                 description += " (flat)";
             } else if (property.applies == kTexture) {
                 description += " (texture)";
+            } else if (property.applies == kLine) {
+                description += " (line)";
             } else {
                 description += " (flat and texture)";
             }
@@ -341,6 +360,8 @@ std::vector<json::ValidationError> validate_style_box(const json::Value& doc) {
                 message += R"(; it is for "type": "texture")";
             } else if ((property->applies & kFlat) != 0) {
                 message += R"(; it is for "type": "flat")";
+            } else if ((property->applies & kLine) != 0) {
+                message += R"(; it is for "type": "line")";
             }
             errors.push_back({"/" + json::pointer_escape(name), std::move(message)});
         }
@@ -426,6 +447,21 @@ Result<StyleBox> parse_style_box(const json::Value& doc) {
     if (const json::Value* value = doc.find("modulate_color"); value != nullptr) {
         out.modulate_color = vec4(*value);
     }
+    if (const json::Value* value = doc.find("color"); value != nullptr) {
+        out.color = vec4(*value);
+    }
+    if (const json::Value* value = doc.find("thickness"); value != nullptr) {
+        out.thickness = static_cast<int>(value->as_int());
+    }
+    if (const json::Value* value = doc.find("grow_begin"); value != nullptr) {
+        out.grow_begin = static_cast<float>(value->as_double());
+    }
+    if (const json::Value* value = doc.find("grow_end"); value != nullptr) {
+        out.grow_end = static_cast<float>(value->as_double());
+    }
+    if (const json::Value* value = doc.find("vertical"); value != nullptr) {
+        out.vertical = value->as_bool();
+    }
     return out;
 }
 
@@ -437,6 +473,24 @@ json::Value style_box_json(const StyleBox& style) {
     }
     write_four(out, "content_margin", kSides, style.content_margin, -1.0F);
     if (style.type == StyleBox::Type::Empty) {
+        return out;
+    }
+    if (style.type == StyleBox::Type::Line) {
+        if (style.color != defaults.color) {
+            out["color"] = color_json(style.color);
+        }
+        if (style.thickness != defaults.thickness) {
+            out["thickness"] = style.thickness;
+        }
+        if (style.grow_begin != defaults.grow_begin) {
+            out["grow_begin"] = decimal(style.grow_begin);
+        }
+        if (style.grow_end != defaults.grow_end) {
+            out["grow_end"] = decimal(style.grow_end);
+        }
+        if (style.vertical) {
+            out["vertical"] = true;
+        }
         return out;
     }
     write_four(out, "expand_margin", kSides, style.expand_margin, 0.0F);

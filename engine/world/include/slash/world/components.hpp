@@ -855,6 +855,101 @@ SLASH_COMPONENT(CheckButton, text, icon, flat, alignment, text_overrun_behavior,
                 toggle_mode, button_pressed, action_mode, button_mask, keep_pressed_outside,
                 button_group, shortcut, shortcut_feedback, text_direction, language)
 
+// One item of a PopupMenu or MenuButton, as Godot's PopupMenu items: text with an icon, a
+// check box or radio button beside it, or a separator line.
+struct PopupMenuItem {
+    std::string text;
+    std::string icon;               // project path of a PNG or BMP file; "" for none
+    std::string checkable = "none"; // "none", "check" (a check box) or "radio" (a radio button)
+    int id = -1;                    // what id_pressed reports; -1 for the item's index
+    int indent = 0;                 // indented this many times the theme's indent
+    bool checked = false;
+    bool disabled = false;
+    bool separator = false; // a line across the menu, around the text if it has some
+
+    friend bool operator==(const PopupMenuItem&, const PopupMenuItem&) = default;
+};
+SLASH_REFLECT(PopupMenuItem, text, icon, checkable, checked, id, disabled, separator, indent)
+
+// One option of an OptionButton, as Godot's OptionButton items.
+struct OptionButtonItem {
+    std::string text;
+    std::string icon; // project path of a PNG or BMP file; "" for none
+    int id = -1;      // what the option is known by; -1 for its index
+    bool disabled = false;
+    bool separator = false; // a line between options, around the text if it has some
+
+    friend bool operator==(const OptionButtonItem&, const OptionButtonItem&) = default;
+};
+SLASH_REFLECT(OptionButtonItem, text, icon, id, disabled, separator)
+
+// A list of items shown over everything at a point of the viewport, as Godot's PopupMenu:
+// picked with a click, the arrow keys and ui_accept, or by typing the start of one. It shows
+// while visible, which closes it again when an item is picked (as the hide_on_* fields say), a
+// click lands outside it or ui_cancel is pressed. It emits about_to_popup, popup_hide,
+// id_pressed and index_pressed (data {"id", "index"}) and id_focused (data {"id"}), when the
+// keys move to an item. Its theme items are PopupMenu's in the project's theme or its own.
+struct PopupMenu {
+    std::vector<PopupMenuItem> items;
+    std::string theme;                          // project path of a .theme.json file; "" for none
+    std::string layout_direction = "inherited"; // "inherited" (left to right), "ltr" or "rtl"
+    Vec2 position;                              // its top left corner in the viewport, in pixels
+    bool visible = false;
+    bool hide_on_item_selection = true;
+    bool hide_on_checkable_item_selection = true;
+    bool allow_search = true; // typing the start of an item's text moves to it
+
+    friend bool operator==(const PopupMenu&, const PopupMenu&) = default;
+};
+SLASH_COMPONENT(PopupMenu, items, position, visible, hide_on_item_selection,
+                hide_on_checkable_item_selection, allow_search, theme, layout_direction)
+
+// A button that shows the option picked and opens a list of them below it when pressed, as
+// Godot's OptionButton. Its text and icon are the selected option's. Picking one sets selected
+// and emits item_selected (data {"index"}); moving to one with the keys emits item_focused.
+struct OptionButton : Button {
+    OptionButton() {
+        toggle_mode = true;
+        alignment = "left";
+        action_mode = "press";
+    }
+
+    std::vector<OptionButtonItem> items;
+    int selected = -1;               // the option shown, by index; -1 for none
+    bool fit_to_longest_item = true; // as wide as its widest option, not only the one shown
+    bool allow_reselect = false;     // picking the option already shown emits item_selected
+
+    friend bool operator==(const OptionButton&, const OptionButton&) = default;
+};
+SLASH_COMPONENT(OptionButton, items, selected, fit_to_longest_item, allow_reselect, flat, alignment,
+                text_overrun_behavior, autowrap_mode, clip_text, icon_alignment,
+                vertical_icon_alignment, expand_icon, disabled, toggle_mode, button_pressed,
+                action_mode, button_mask, keep_pressed_outside, button_group, shortcut,
+                shortcut_feedback, text_direction, language)
+
+// A flat button that opens a menu of items below it when pressed, as Godot's MenuButton. Picking
+// an item emits id_pressed and index_pressed (data {"id", "index"}) from the button; it emits
+// about_to_popup and popup_hide as the menu opens and closes, and id_focused (data {"id"}) when
+// the keys move to an item. With switch_on_hover, moving onto it while another
+// MenuButton's menu is open opens its menu instead, as a menu bar does.
+struct MenuButton : Button {
+    MenuButton() {
+        flat = true;
+        toggle_mode = true;
+        action_mode = "press";
+    }
+
+    std::vector<PopupMenuItem> items;
+    bool switch_on_hover = false;
+
+    friend bool operator==(const MenuButton&, const MenuButton&) = default;
+};
+SLASH_COMPONENT(MenuButton, items, switch_on_hover, text, icon, flat, alignment,
+                text_overrun_behavior, autowrap_mode, clip_text, icon_alignment,
+                vertical_icon_alignment, expand_icon, disabled, toggle_mode, button_pressed,
+                action_mode, button_mask, keep_pressed_outside, button_group, shortcut,
+                shortcut_feedback, text_direction, language)
+
 // A button drawn with a texture per state, as Godot's TextureButton.
 struct TextureButton {
     std::vector<std::string> button_mask{"left"};

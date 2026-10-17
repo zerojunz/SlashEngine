@@ -62,6 +62,13 @@ struct FloatArray<Quat> {
     static constexpr std::array<float Quat::*, 4> kMembers{&Quat::x, &Quat::y, &Quat::z, &Quat::w};
 };
 
+// A default value of T, to compare fields against.
+template <typename T>
+const T& defaults_of() {
+    static const T kValue{};
+    return kValue;
+}
+
 template <typename T>
 concept FloatArrayType = requires { FloatArray<T>::kMembers; };
 
@@ -169,8 +176,16 @@ json::Value to_json(const World& world, const T& value) {
     } else if constexpr (std::is_same_v<T, json::Value>) {
         return value;
     } else if constexpr (reflect::Reflected<T>) {
+        // A struct inside a component, such as a menu item, leaves out fields equal to their
+        // defaults, as saved components do. Components are written whole: saving leaves theirs
+        // out, against ComponentType::defaults.
         json::Object members;
         reflect::for_each_field<T>([&](const auto& field) {
+            if constexpr (!reflect::Component<T>) {
+                if (field.get(value) == field.get(detail::defaults_of<T>())) {
+                    return;
+                }
+            }
             members.emplace(std::string(field.name), to_json(world, field.get(value)));
         });
         return members;
