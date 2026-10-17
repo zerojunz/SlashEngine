@@ -1,0 +1,78 @@
+{
+  "custom_data_layers": [
+    {
+      "name": "damage",
+      "type": "int"
+    },
+    {
+      "name": "kind",
+      "type": "string"
+    },
+    {
+      "name": "speed",
+      "type": "float"
+    }
+  ],
+  "format": 1,
+  "occlusion_layers": [
+    {}
+  ],
+  "sources": {
+    "dungeon": {
+      "texture": "dungeon.png",
+      "tiles": {
+        "0,0": {
+          "custom_data": {
+            "kind": "stone",
+            "speed": 1.0
+          },
+          "name": "floor"
+        },
+        "1,0": {
+          "custom_data": {
+            "kind": "wall"
+          },
+          "name": "wall",
+          "occlusion": [
+            {
+              "points": [
+                [-8, -8],
+                [8, -8],
+                [8, 8],
+                [-8, 8]
+              ]
+            }
+          ]
+        },
+        "2,0": {
+          "custom_data": {
+            "damage": 10,
+            "kind": "lava",
+            "speed": 0.5
+          },
+          "name": "lava"
+        },
+        "3,0": {
+          "custom_data": {
+            "kind": "pillar"
+          },
+          "name": "pillar",
+          "occlusion": [
+            {
+              "points": [
+                [-2, -5],
+                [2, -5],
+                [5, -2],
+                [5, 2],
+                [2, 5],
+                [-2, 5],
+                [-5, 2],
+                [-5, -2]
+              ]
+            }
+          ]
+        }
+      }
+    }
+  }
+}

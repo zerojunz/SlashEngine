@@ -183,6 +183,127 @@ bool connects(std::int64_t mode, const canvas::TileSet& shape, canvas::Neighbor 
                       : mode != 2 || kind == canvas::PeeringKind::Side);
 }
 
+// A Godot custom data layer's Variant::Type as the type a tile set's layer holds, if it has one.
+std::optional<canvas::CustomDataType> custom_data_type(std::int64_t variant) {
+    switch (variant) {
+    case 1:
+        return canvas::CustomDataType::Bool;
+    case 2:
+        return canvas::CustomDataType::Int;
+    case 3:
+        return canvas::CustomDataType::Float;
+    case 4:  // String
+    case 21: // StringName
+        return canvas::CustomDataType::String;
+    case 5:
+        return canvas::CustomDataType::Vector2;
+    case 6:
+        return canvas::CustomDataType::Vector2i;
+    case 20:
+        return canvas::CustomDataType::Color;
+    default:
+        return std::nullopt;
+    }
+}
+
+// Godot's name for a Variant::Type, for the report.
+std::string variant_type_name(std::int64_t variant) {
+    constexpr std::array<std::string_view, 39> kNames{"Any",
+                                                      "bool",
+                                                      "int",
+                                                      "float",
+                                                      "String",
+                                                      "Vector2",
+                                                      "Vector2i",
+                                                      "Rect2",
+                                                      "Rect2i",
+                                                      "Vector3",
+                                                      "Vector3i",
+                                                      "Transform2D",
+                                                      "Vector4",
+                                                      "Vector4i",
+                                                      "Plane",
+                                                      "Quaternion",
+                                                      "AABB",
+                                                      "Basis",
+                                                      "Transform3D",
+                                                      "Projection",
+                                                      "Color",
+                                                      "StringName",
+                                                      "NodePath",
+                                                      "RID",
+                                                      "Object",
+                                                      "Callable",
+                                                      "Signal",
+                                                      "Dictionary",
+                                                      "Array",
+                                                      "PackedByteArray",
+                                                      "PackedInt32Array",
+                                                      "PackedInt64Array",
+                                                      "PackedFloat32Array",
+                                                      "PackedFloat64Array",
+                                                      "PackedStringArray",
+                                                      "PackedVector2Array",
+                                                      "PackedVector3Array",
+                                                      "PackedColorArray",
+                                                      "PackedVector4Array"};
+    return variant >= 0 && static_cast<std::size_t>(variant) < kNames.size()
+               ? std::string(kNames.at(static_cast<std::size_t>(variant)))
+               : std::to_string(variant);
+}
+
+// A tile's custom data value as a layer of this type holds it, with numbers converted as Godot's
+// Variant::construct converts them (truncated to whole numbers); nullopt when Godot couldn't
+// convert it either. null is the type's default.
+std::optional<json::Value> custom_data_value(const Value& value, canvas::CustomDataType type) {
+    if (value.kind == Value::Kind::Nil) {
+        return canvas::custom_data_default(type);
+    }
+    const bool scalar = value.is_number() || value.kind == Value::Kind::Bool;
+    double real = value.number();
+    if (value.kind == Value::Kind::Bool) {
+        real = value.boolean ? 1.0 : 0.0;
+    }
+    // A float as a whole number, kept in range.
+    const auto whole = [](double number) {
+        constexpr double kLimit = 9.0e18;
+        return static_cast<std::int64_t>(std::clamp(number, -kLimit, kLimit));
+    };
+    const auto numbers = value.numbers();
+    switch (type) {
+    case canvas::CustomDataType::Bool:
+        return scalar ? std::optional<json::Value>(real != 0.0) : std::nullopt;
+    case canvas::CustomDataType::Int:
+        if (value.kind == Value::Kind::Int) {
+            return json::Value(value.integer);
+        }
+        return scalar ? std::optional<json::Value>(whole(real)) : std::nullopt;
+    case canvas::CustomDataType::Float:
+        return scalar ? std::optional<json::Value>(real) : std::nullopt;
+    case canvas::CustomDataType::String:
+        return value.is_string() ? std::optional<json::Value>(value.text) : std::nullopt;
+    case canvas::CustomDataType::Vector2:
+    case canvas::CustomDataType::Vector2i:
+        if ((!value.is_call("Vector2") && !value.is_call("Vector2i")) || !numbers ||
+            numbers->size() != 2) {
+            return std::nullopt;
+        }
+        if (type == canvas::CustomDataType::Vector2i) {
+            constexpr double kLimit = 2147483647.0;
+            return json::Value(json::Array{whole(std::clamp(numbers->at(0), -kLimit, kLimit)),
+                                           whole(std::clamp(numbers->at(1), -kLimit, kLimit))});
+        }
+        return json::Value(json::Array{numbers->at(0), numbers->at(1)});
+    case canvas::CustomDataType::Color:
+        if (!value.is_call("Color") || !numbers || numbers->size() != 4) {
+            return std::nullopt;
+        }
+        return json::Value(
+            json::Array{numbers->at(0), numbers->at(1), numbers->at(2), numbers->at(3)});
+    }
+    return std::nullopt;
+}
+
 // --- Godot files -------------------------------------------------------------------------------
 
 struct ExtResource {
@@ -1597,6 +1718,13 @@ private:
         std::optional<canvas::TileSet> set;
     };
 
+    // What a tile set's tiles may refer to: how many occlusion layers it has, and its custom
+    // data layers that carry over, by Godot's index.
+    struct TileLayers {
+        std::size_t occlusion = 0;
+        std::map<std::int64_t, canvas::CustomDataLayer> data;
+    };
+
     // Writes a TileSet resource as a .tileset.json file once.
     TileSetFile& tile_set_file(const TextFile& file, const Section& resource,
                                const std::string& base) {
@@ -1615,7 +1743,10 @@ private:
         // Terrain sets by index: their modes and their terrains' names by index.
         std::map<std::int64_t, std::int64_t> modes;
         std::map<std::pair<std::int64_t, std::int64_t>, std::string> terrains;
-        std::map<std::int64_t, json::Value> physics; // physics layers by index
+        std::map<std::int64_t, json::Value> physics;    // physics layers by index
+        std::map<std::int64_t, std::int64_t> occlusion; // occlusion layers' light masks by index
+        // Custom data layers' names and Variant types by index.
+        std::map<std::int64_t, std::pair<std::string, std::int64_t>> data;
         std::vector<std::pair<std::int64_t, const Value*>> sources;
         for (const auto& [name, value] : resource.properties) {
             const std::vector<std::string_view> parts = split_path(name);
@@ -1690,12 +1821,37 @@ private:
                 } else {
                     problems_.add("TileSet." + name, where);
                 }
-            } else if (parts[0].starts_with("navigation_layer_") ||
-                       parts[0].starts_with("occlusion_layer_") ||
-                       parts[0].starts_with("custom_data_layer_")) {
-                problems_.add("tile set " + std::string(parts[0].substr(0, parts[0].rfind('_'))) +
-                                  "s",
-                              where);
+            } else if (parts[0].starts_with("occlusion_layer_")) {
+                const auto index =
+                    parse_int(parts[0].substr(std::string_view("occlusion_layer_").size()));
+                const std::string_view field = parts.size() == 2 ? parts[1] : "";
+                if (index && *index >= 0 && field == "light_mask") {
+                    // Godot's int, as the bits it holds.
+                    occlusion[*index] = static_cast<std::uint32_t>(
+                        static_cast<std::int64_t>(value.number()) & 0xFFFFFFFF);
+                } else if (index && *index >= 0 && field == "sdf_collision") {
+                    occlusion.try_emplace(*index, 1);
+                    if (value.boolean) {
+                        problems_.add("tile set occlusion SDF collision", where,
+                                      "there is no signed distance field; occluders only cast "
+                                      "shadows");
+                    }
+                } else {
+                    problems_.add("TileSet." + name, where);
+                }
+            } else if (parts[0].starts_with("custom_data_layer_")) {
+                const auto index =
+                    parse_int(parts[0].substr(std::string_view("custom_data_layer_").size()));
+                const std::string_view field = parts.size() == 2 ? parts[1] : "";
+                if (index && *index >= 0 && field == "name") {
+                    data[*index].first = value.text;
+                } else if (index && *index >= 0 && field == "type") {
+                    data[*index].second = static_cast<std::int64_t>(value.number());
+                } else {
+                    problems_.add("TileSet." + name, where);
+                }
+            } else if (parts[0].starts_with("navigation_layer_")) {
+                problems_.add("tile set navigation layers", where);
             } else {
                 problems_.add("TileSet." + name, where);
             }
@@ -1711,6 +1867,46 @@ private:
                                                         : json::Value(json::Object{}));
             }
             doc["physics_layers"] = std::move(layers);
+        }
+        TileLayers layers;
+        if (!occlusion.empty()) {
+            json::Array out_layers;
+            for (std::int64_t index = 0; index <= occlusion.rbegin()->first; ++index) {
+                const auto found = occlusion.find(index);
+                json::Value layer = json::Object{};
+                if (found != occlusion.end() && found->second != 1) {
+                    layer["light_mask"] = found->second;
+                }
+                out_layers.push_back(std::move(layer));
+            }
+            layers.occlusion = out_layers.size();
+            doc["occlusion_layers"] = std::move(out_layers);
+        }
+        // Custom data layers of the types a tile set holds; Godot's names are unique already.
+        std::set<std::string> data_names;
+        for (const auto& [index, layer] : data) {
+            const auto type = custom_data_type(layer.second);
+            if (!type) {
+                problems_.add("tile set custom data layer type " +
+                                  std::string(variant_type_name(layer.second)),
+                              where,
+                              "layer " + std::to_string(index) +
+                                  " left out; layers hold bool, int, float, String, StringName, "
+                                  "Vector2, Vector2i or Color");
+                continue;
+            }
+            std::string layer_name = layer.first;
+            if (layer_name.empty() || data_names.contains(layer_name)) {
+                layer_name = "custom_data_" + std::to_string(index);
+                problems_.add("unnamed or repeated custom data layer", where,
+                              "named " + layer_name);
+            }
+            data_names.insert(layer_name);
+            json::Value out_layer;
+            out_layer["name"] = layer_name;
+            out_layer["type"] = canvas::kCustomDataTypeNames.at(static_cast<std::size_t>(*type));
+            doc["custom_data_layers"].push_back(std::move(out_layer));
+            layers.data[index] = {.name = std::move(layer_name), .type = *type};
         }
         // Terrain names must be unique in the file; Godot's need only be unique in their set.
         std::set<std::string> taken;
@@ -1743,7 +1939,8 @@ private:
                                   : "");
                 continue;
             }
-            json::Value source = atlas_source(*section, *owner, tile_size, shape, terrains, modes);
+            json::Value source =
+                atlas_source(*section, *owner, tile_size, shape, terrains, modes, layers);
             if (source.is_null()) {
                 continue;
             }
@@ -1775,7 +1972,7 @@ private:
     atlas_source(const Section& section, const TextFile& file,
                  const std::array<std::int64_t, 2>& tile_size, const canvas::TileSet& shape,
                  const std::map<std::pair<std::int64_t, std::int64_t>, std::string>& terrains,
-                 const std::map<std::int64_t, std::int64_t>& modes) {
+                 const std::map<std::int64_t, std::int64_t>& modes, const TileLayers& layers) {
         const std::string where = resource_where(section, file);
         json::Value source;
         std::string why;
@@ -1803,8 +2000,10 @@ private:
             std::int64_t terrain = -1;
             std::map<canvas::Neighbor, std::int64_t> bits;
             Polygons polygons;
+            Polygons occluders; // by occlusion layer and polygon number
             std::map<std::int64_t, json::Value> alternatives;
             std::map<std::int64_t, Polygons> alternative_polygons;
+            std::map<std::int64_t, Polygons> alternative_occluders;
             std::int64_t frames = 1;                  // animation_frames_count, if given
             std::map<std::int64_t, double> durations; // animation_frame_N/duration
         };
@@ -1850,6 +2049,97 @@ private:
             }
             if (*layer != 0) {
                 out["layer"] = *layer;
+            }
+            return true;
+        };
+        // A tile's "occlusion_layer_N/polygon" (before Godot 4.4) or
+        // "occlusion_layer_N/polygon_M/polygon": its OccluderPolygon2D goes into occluders. Godot
+        // drops polygons on layers the tile set lacks, and so does this. False if it is another
+        // property.
+        const auto occlusion_property = [&](std::span<const std::string_view> path,
+                                            const Value& value, Polygons& occluders) {
+            if (path.empty() || !path[0].starts_with("occlusion_layer_")) {
+                return false;
+            }
+            const auto layer =
+                parse_int(path[0].substr(std::string_view("occlusion_layer_").size()));
+            std::optional<std::int64_t> polygon;
+            if (path.size() == 2 && path[1] == "polygon") {
+                polygon = 0;
+            } else if (path.size() == 3 && path[1].starts_with("polygon_") &&
+                       path[2] == "polygon") {
+                polygon = parse_int(path[1].substr(std::string_view("polygon_").size()));
+            }
+            if (!layer || !polygon || *layer < 0 || *polygon < 0) {
+                return path.size() == 2 && path[1] == "polygons_count";
+            }
+            if (static_cast<std::uint64_t>(*layer) >= layers.occlusion) {
+                return true;
+            }
+            const auto [occluder, owner] = resource_section(value, file);
+            if (occluder == nullptr || resource_type(*occluder, *owner) != "OccluderPolygon2D") {
+                return true; // no polygon
+            }
+            json::Value out;
+            json::Array points;
+            const Value* given = occluder->property("polygon");
+            const auto numbers = given != nullptr ? given->numbers().value_or(std::vector<double>{})
+                                                  : std::vector<double>{};
+            for (std::size_t i = 0; i + 1 < numbers.size(); i += 2) {
+                points.emplace_back(json::Array{numbers[i], numbers[i + 1]});
+            }
+            const Value* closed = occluder->property("closed");
+            const bool open =
+                closed != nullptr && closed->kind == Value::Kind::Bool && !closed->boolean;
+            // Godot draws no shadow from a closed polygon of fewer than three points.
+            if (points.size() < (open ? 2U : 3U)) {
+                return true;
+            }
+            out["points"] = std::move(points);
+            if (*layer != 0) {
+                out["layer"] = *layer;
+            }
+            if (open) {
+                out["closed"] = false;
+            }
+            if (const Value* cull = occluder->property("cull_mode");
+                cull != nullptr && cull->kind == Value::Kind::Int && cull->integer > 0 &&
+                cull->integer < 3) {
+                out["cull_mode"] =
+                    canvas::kTileCullNames.at(static_cast<std::size_t>(cull->integer));
+            }
+            occluders[{*layer, *polygon}] = std::move(out);
+            return true;
+        };
+        // A tile's or an alternative's "custom_data_N", into its custom_data by the layer's name,
+        // converted to the layer's type as Godot converts it. Values equal to the type's default
+        // are left out, as are layers the tile set lacks or that didn't carry over. False if it is
+        // another property.
+        const auto custom_data_property = [&](std::span<const std::string_view> path,
+                                              const Value& value, json::Value& out) {
+            if (path.size() != 1 || !path[0].starts_with("custom_data_")) {
+                return false;
+            }
+            const auto index = parse_int(path[0].substr(std::string_view("custom_data_").size()));
+            if (!index) {
+                return false;
+            }
+            const auto layer = layers.data.find(*index);
+            if (layer == layers.data.end()) {
+                return true;
+            }
+            std::optional<json::Value> converted = custom_data_value(value, layer->second.type);
+            if (!converted) {
+                problems_.add("tile custom data value", where,
+                              "a value that isn't " +
+                                  std::string(canvas::kCustomDataTypeNames.at(
+                                      static_cast<std::size_t>(layer->second.type))) +
+                                  " in layer \"" + layer->second.name + "\"" +
+                                  " takes the type's default");
+                return true;
+            }
+            if (*converted != canvas::custom_data_default(layer->second.type)) {
+                out["custom_data"][layer->second.name] = std::move(*converted);
             }
             return true;
         };
@@ -1984,7 +2274,10 @@ private:
                            (path[0] == "texture_origin" || path[0] == "texture_offset")) {
                     texture_origin(value, own);
                 } else if (!physics_property(path, value,
-                                             tile.alternative_polygons[*alternative])) {
+                                             tile.alternative_polygons[*alternative]) &&
+                           !occlusion_property(path, value,
+                                               tile.alternative_occluders[*alternative]) &&
+                           !custom_data_property(path, value, own)) {
                     problems_.add("alternative tile property " + std::string(path[0]), where);
                 }
             } else if (parts.size() == 2 && parts[1] == "terrain_set") {
@@ -2006,7 +2299,11 @@ private:
                 texture_origin(value, tile.json);
             } else if (parts.size() > 1 &&
                        !physics_property(std::span<const std::string_view>(parts).subspan(1), value,
-                                         tile.polygons)) {
+                                         tile.polygons) &&
+                       !occlusion_property(std::span<const std::string_view>(parts).subspan(1),
+                                           value, tile.occluders) &&
+                       !custom_data_property(std::span<const std::string_view>(parts).subspan(1),
+                                             value, tile.json)) {
                 problems_.add("tile property " + std::string(parts[1]), where);
             }
         }
@@ -2040,10 +2337,17 @@ private:
             if (json::Array polygons = collision(tile.polygons); !polygons.empty()) {
                 tile.json["collision"] = std::move(polygons);
             }
+            if (json::Array occluders = collision(tile.occluders); !occluders.empty()) {
+                tile.json["occlusion"] = std::move(occluders);
+            }
             for (auto& [number, alternative] : tile.alternatives) {
                 if (json::Array polygons = collision(tile.alternative_polygons[number]);
                     !polygons.empty()) {
                     alternative["collision"] = std::move(polygons);
+                }
+                if (json::Array occluders = collision(tile.alternative_occluders[number]);
+                    !occluders.empty()) {
+                    alternative["occlusion"] = std::move(occluders);
                 }
                 tile.json["alternatives"][std::to_string(number)] = std::move(alternative);
             }

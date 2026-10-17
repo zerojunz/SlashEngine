@@ -1,5 +1,6 @@
 #pragma once
 
+#include "slash/canvas/tilemap.hpp"
 #include "slash/core/result.hpp"
 #include "slash/render/device.hpp"
 #include "slash/render/light.hpp"
@@ -72,6 +73,8 @@ struct LightProblem {
 
 // A light texture's image, by project path.
 using LightImage = std::function<Result<const render::Image*>(const std::string& path)>;
+// A tile set, by project path, for the occluders of tile map layers' tiles.
+using TileSetOf = std::function<Result<const TileSet*>(const std::string& path)>;
 // Where an entity is drawn, given its Transform2D: by default its global transform, after its
 // parents' (world::Tree2D); the renderer moves it part of the way from the last tick.
 using TransformOf =
@@ -95,13 +98,15 @@ struct ShadowCache {
 };
 
 // The world's lighting, through its canvases (or all in the world's with none). A light that
-// can't shine, such as one whose texture doesn't load, is left out with a problem. transform_of,
-// cache and canvases may be empty.
+// can't shine, such as one whose texture doesn't load, is left out with a problem. Tiles cast
+// shadows through their occluders when tile_sets loads their tile sets, as Godot's TileMapLayer
+// makes a light occluder of each. transform_of, cache, canvases and tile_sets may be empty.
 [[nodiscard]] SceneLighting collect_lighting(const world::World& world, const LightImage& images,
                                              const TransformOf& transform_of,
                                              std::vector<LightProblem>& problems,
                                              ShadowCache* cache = nullptr,
-                                             const world::Canvases* canvases = nullptr);
+                                             const world::Canvases* canvases = nullptr,
+                                             const TileSetOf& tile_sets = {});
 
 // A light's shadow row from the edges that occlude it, as render::encode_shadow_depth texels.
 // A point light's position and shadow_far must be set; a directional light gets its

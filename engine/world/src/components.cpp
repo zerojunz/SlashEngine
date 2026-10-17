@@ -1058,7 +1058,8 @@ void register_builtin_components(ComponentRegistry& registry) {
     const FieldMeta cull_mask{.doc = "Lights sprites and layers whose light_mask shares a bit.",
                               .min = 0,
                               .max = kMaxMask};
-    const FieldMeta shadow_enabled{.doc = "LightOccluder2D polygons cast shadows from it."};
+    const FieldMeta shadow_enabled{.doc = "LightOccluder2D polygons and tiles' occluders cast "
+                                          "shadows from it."};
     const FieldMeta shadow_color{.doc = "What shadowed pixels get instead of the light, as [r, g, "
                                         "b, a]; alpha is times the light's.",
                                  .min = 0,
@@ -1201,13 +1202,15 @@ void register_builtin_components(ComponentRegistry& registry) {
                    .choices = {"inherit", "linear", "nearest"}})
         .describe("light_mask", light_mask)
         .describe("collision_enabled", {.doc = "Its tiles' collision polygons are solid in 2D "
-                                               "physics."});
+                                               "physics."})
+        .describe("occlusion_enabled",
+                  {.doc = "Its tiles' occluders cast shadows from 2D lights while it is visible."});
 
     registry.add<PointLight2D>()
         .set_doc("A light shining from the entity's Transform2D through a texture. It lights "
                  "sprites and tile map layers whose light_mask shares a bit with "
                  "range_item_cull_mask, in canvases its layer range holds; with shadow_enabled, "
-                 "LightOccluder2D polygons cast shadows from it.")
+                 "LightOccluder2D polygons and tiles' occluders cast shadows from it.")
         .describe("enabled", {.doc = "Shine."})
         .describe("texture", {.doc = "Project path of a PNG or BMP file whose color and alpha "
                                      "shape the light; \"\" is a soft round light 256 pixels "

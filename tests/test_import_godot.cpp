@@ -1081,6 +1081,119 @@ tile_layout = -1
     CHECK(unsupported(plan.report, "TileSet.tile_layout").find("where")->as_string() == "odd.tres");
 }
 
+TEST_CASE("importing a Godot tile set keeps its occluders and custom data") {
+    const fs::path project = "import_godot_tile_data";
+    fs::remove_all(project);
+    write(project / "godot/project.godot",
+          "config_version=5\n\n[application]\n\nconfig/name=\"Dungeon\"\n");
+    write_png(project / "godot/art/dungeon.png", 48, 16);
+    // Godot 4.4 saves each occluder as polygon_M/polygon; before, a tile had one, as polygon.
+    // Every tile saves a value for each custom data layer; those equal to the type's default
+    // go, as do occluders on layers the tile set lacks, which Godot drops too.
+    write(project / "godot/level.tscn", R"([gd_scene format=3]
+
+[ext_resource type="Texture2D" path="res://art/dungeon.png" id="1_tex"]
+
+[sub_resource type="OccluderPolygon2D" id="OccluderPolygon2D_wall"]
+polygon = PackedVector2Array(-8, -8, 8, -8, 8, 8, -8, 8)
+cull_mode = 1
+
+[sub_resource type="OccluderPolygon2D" id="OccluderPolygon2D_rail"]
+closed = false
+polygon = PackedVector2Array(-8, 0, 8, 0)
+
+[sub_resource type="OccluderPolygon2D" id="OccluderPolygon2D_dot"]
+polygon = PackedVector2Array(0, 0, 1, 1)
+
+[sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_1"]
+texture = ExtResource("1_tex")
+0:0/0 = 0
+0:0/0/occlusion_layer_0/polygon_0/polygon = SubResource("OccluderPolygon2D_wall")
+0:0/0/occlusion_layer_1/polygon_0/polygon = SubResource("OccluderPolygon2D_rail")
+0:0/0/occlusion_layer_4/polygon_0/polygon = SubResource("OccluderPolygon2D_wall")
+0:0/0/custom_data_0 = 0
+0:0/0/custom_data_1 = "wall"
+0:0/0/custom_data_2 = Vector2(0, 0)
+0:0/0/custom_data_3 = Color(0, 0, 0, 1)
+0:0/0/custom_data_4 = {}
+0:0/0/custom_data_5 = false
+0:0/1 = 1
+0:0/1/flip_h = true
+0:0/1/custom_data_0 = 2.7
+1:0/0 = 0
+1:0/0/occlusion_layer_0/polygon = SubResource("OccluderPolygon2D_rail")
+1:0/0/custom_data_0 = 5
+1:0/0/custom_data_1 = &"lava"
+1:0/0/custom_data_2 = Vector2(1.5, 0)
+1:0/0/custom_data_3 = Color(1, 0.5, 0, 1)
+1:0/0/custom_data_5 = true
+2:0/0 = 0
+2:0/0/occlusion_layer_0/polygon_0/polygon = SubResource("OccluderPolygon2D_dot")
+2:0/0/custom_data_1 = 7
+
+[sub_resource type="TileSet" id="TileSet_1"]
+occlusion_layer_0/light_mask = 1
+occlusion_layer_1/light_mask = 6
+occlusion_layer_1/sdf_collision = true
+custom_data_layer_0/name = "damage"
+custom_data_layer_0/type = 2
+custom_data_layer_1/name = "kind"
+custom_data_layer_1/type = 4
+custom_data_layer_2/name = "push"
+custom_data_layer_2/type = 5
+custom_data_layer_3/name = "tint"
+custom_data_layer_3/type = 20
+custom_data_layer_4/name = "loot"
+custom_data_layer_4/type = 27
+custom_data_layer_5/name = "hot"
+custom_data_layer_5/type = 1
+sources/0 = SubResource("TileSetAtlasSource_1")
+
+[node name="Level" type="Node2D"]
+
+[node name="Walls" type="TileMapLayer" parent="."]
+tile_set = SubResource("TileSet_1")
+occlusion_enabled = false
+)");
+    const importer::ImportPlan plan = plan_inside(project);
+    const auto files = files_of(plan);
+    const std::string level = "godot/level.scene.json";
+    REQUIRE(files.contains(level));
+    const json::Value walls = *entity(files, level, "walls").find("TileMapLayer");
+    CHECK_FALSE(walls.find("occlusion_enabled")->as_bool());
+    const std::string tileset = walls.find("tile_set")->as_string();
+    REQUIRE(files.contains(tileset));
+    CHECK(slash::canvas::validate_tileset(parse(files.at(tileset))).empty());
+    CHECK(parse(files.at(tileset)) == parse(R"({
+        "format": 1,
+        "occlusion_layers": [{}, {"light_mask": 6}],
+        "custom_data_layers": [{"name": "damage", "type": "int"},
+                               {"name": "kind", "type": "string"},
+                               {"name": "push", "type": "vector2"},
+                               {"name": "tint", "type": "color"},
+                               {"name": "hot", "type": "bool"}],
+        "sources": {"dungeon": {"texture": "godot/art/dungeon.png", "tiles": {
+            "0,0": {"occlusion": [{"points": [[-8, -8], [8, -8], [8, 8], [-8, 8]],
+                                   "cull_mode": "clockwise"},
+                                  {"layer": 1, "points": [[-8, 0], [8, 0]], "closed": false}],
+                    "custom_data": {"kind": "wall"},
+                    "alternatives": {"1": {"flip_h": true, "custom_data": {"damage": 2}}}},
+            "1,0": {"occlusion": [{"points": [[-8, 0], [8, 0]], "closed": false}],
+                    "custom_data": {"damage": 5, "kind": "lava", "push": [1.5, 0],
+                                    "tint": [1, 0.5, 0, 1], "hot": true}},
+            "2,0": {}}}}})"));
+    CHECK(unsupported(plan.report, "tile set occlusion SDF collision").find("where") != nullptr);
+    const auto why = [&](std::string_view what) {
+        const json::Value item = unsupported(plan.report, what);
+        REQUIRE_MESSAGE(item.is_object(), what);
+        return item.find("why")->as_string();
+    };
+    CHECK(why("tile set custom data layer type Dictionary").starts_with("layer 4 left out"));
+    CHECK(why("tile custom data value") ==
+          "a value that isn't string in layer \"kind\" takes the type's default");
+    fs::remove_all(project);
+}
+
 TEST_CASE("an instanced Godot TileMap keeps its layers' entities under the instance") {
     const fs::path project = "import_godot_tile_instances";
     fs::remove_all(project);

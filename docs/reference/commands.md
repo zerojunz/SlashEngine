@@ -505,12 +505,14 @@ turn with it.
 ### tilemap.get
 
 Returns a layer's cells as rows of legend keys from an origin, with `.` for an empty cell: the
-whole layer as stored, or a window of it in the layer's own keys.
+whole layer as stored, or a window of it in the layer's own keys. Given `cells`, it returns each
+one's tile and [custom data](scene-format.md#tile-occluders-and-custom-data) instead.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `id` | string | required | An entity with a `TileMapLayer` |
 | `rect` | `[column, row, width, height]` | the whole layer | Only these cells |
+| `cells` | array of `[column, row]` | | 1 to 1024 cells whose tiles and custom data to return. Not with `rect` |
 
 Needs: `read`.
 
@@ -524,6 +526,20 @@ Needs: `read`.
 
 With `rect`, `origin` is the rect's top left, there is a row for each of its rows, and each row
 ends at its last tile. `legend` holds only the keys the rows use.
+
+With `cells`, in [examples/tile-data-and-occluders](../../examples/tile-data-and-occluders/):
+
+```json
+{"id": "ground", "cells": [[2, 3], [5, 3]]}
+```
+
+```json
+{"cells":[{"cell":[2,3],"data":{"damage":10,"kind":"lava","speed":0.5},"tile":"lava"},{"cell":[5,3],"data":{"damage":0,"kind":"stone","speed":1.0},"tile":"floor"}]}
+```
+
+Each cell has its `tile` as a legend would name it, or `null` when empty, and `data`, its value
+in every custom data layer of the tile set, the layer type's default where the tile sets none.
+A tile set with no custom data layers gives no `data`.
 
 ### tilemap.convert
 
@@ -726,8 +742,9 @@ torch and one behind the crate from it:
 - Each point's `color` is `[r, g, b]` after the ambient color and every light, before clamping,
   so a value above 1 means the light is saturated there.
 - `lights` lists the lights that reach the point, in draw order, each with its color there times
-  its alpha (what it adds with `blend_mode` `add`). A light with `shadow_enabled` also has
-  `shadow`, from 0 (lit) to 1 (hidden by occluders). A light whose texture is clear at the point
+  its alpha (what it adds with `blend_mode` `add`). A light with `shadow_enabled` and occluders
+  in the scene, `LightOccluder2D`s or tiles' occluders, also has `shadow`, from 0 (lit) to 1
+  (hidden by occluders). A light whose texture is clear at the point
   is left out.
 - Normal maps aren't sampled: the pixel faces the viewer. Values are rounded to three decimals.
 - A light that can't shine, such as one whose texture doesn't load, is left out and listed in
