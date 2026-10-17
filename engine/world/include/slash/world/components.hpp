@@ -119,16 +119,18 @@ struct TileMapLayer {
     std::string texture_filter = "inherit"; // "linear", "nearest" or "inherit"
     int light_mask = 1;                     // lit by lights sharing a bit
     bool collision_enabled = true;          // its tiles' collision polygons are solid
+    bool occlusion_enabled = true;          // its tiles' occluders cast shadows
 };
 SLASH_COMPONENT(TileMapLayer, tile_set, origin, legend, rows, z_index, visible, modulate,
-                texture_filter, light_mask, collision_enabled)
+                texture_filter, light_mask, collision_enabled, occlusion_enabled)
 
 // A light shining from the entity's Transform2D (or the origin) through a texture, as Godot's
 // PointLight2D. It lights the sprites and tile map layers whose light_mask shares a bit with
 // range_item_cull_mask, whose z_index is in its range and whose canvas's layer is in its layer
 // range, and with shadow_enabled, the LightOccluder2D polygons whose occluder_light_mask shares a
-// bit with shadow_item_cull_mask cast shadows from it. In a CanvasLayer, it shines from where its
-// canvas puts it on the screen.
+// bit with shadow_item_cull_mask cast shadows from it, as do tiles' occluders whose occlusion
+// layer's light_mask does. In a CanvasLayer, it shines from where its canvas puts it on the
+// screen.
 struct PointLight2D {
     bool enabled = true;
     std::string texture; // project path of a PNG or BMP file; "" is a soft round light

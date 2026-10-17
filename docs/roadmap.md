@@ -219,8 +219,10 @@ rendering on top.
       laid out after the tile with columns and separation, per-frame durations, speed, random
       start times per cell, `size_in_atlas`, overlap checks, and Godot's animated and large tiles
       and Unity's `AnimatedTile`s imported
-- [ ] The rest of Godot's TileSet: custom data layers and occlusion polygons; tile navigation
-      polygons come with navigation in milestone 7
+- [x] The rest of Godot's TileSet: custom data layers of seven types read with `tilemap.get`'s
+      `cells` and `TileSet::custom_data`, and occlusion layers whose tiles' occluders cast
+      shadows, turn with their cells and switch off with `occlusion_enabled`, both imported from
+      Godot; tile navigation polygons come with navigation in milestone 7
 - [x] 2D lights, occluders and normal-mapped sprites, as Godot's: `PointLight2D` (textured,
       with a height for normal maps), `DirectionalLight2D` and `CanvasModulate`, with light masks,
       z ranges and add, sub and mix blending; `LightOccluder2D` shadows with cull modes and PCF

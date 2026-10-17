@@ -1,0 +1,26 @@
+scene.open {"path":"main.scene.json"}
+{"entities":4,"path":"main.scene.json"}
+-- a stone floor with two cells of lava, and above it a wall two cells high and a pillar
+tilemap.set {"id":"ground","rect":[0,0,8,4],"tile":"floor"}
+{"changed":32,"id":"ground"}
+tilemap.set {"cells":[[2,3],[3,3]],"id":"ground","tile":"lava"}
+{"changed":2,"id":"ground"}
+tilemap.set {"cells":[[4,0],[4,1]],"id":"walls","tile":"wall"}
+{"changed":2,"id":"walls"}
+tilemap.set {"cells":[[2,2]],"id":"walls","tile":"pillar"}
+{"changed":1,"id":"walls"}
+-- what is under these cells: each layer's value, or its type's default
+tilemap.get {"cells":[[2,3],[5,3]],"id":"ground"}
+{"cells":[{"cell":[2,3],"data":{"damage":10,"kind":"lava","speed":0.5},"tile":"lava"},{"cell":[5,3],"data":{"damage":0,"kind":"stone","speed":1.0},"tile":"floor"}]}
+tilemap.get {"cells":[[4,0],[5,0]],"id":"walls"}
+{"cells":[{"cell":[4,0],"data":{"damage":0,"kind":"wall","speed":0.0},"tile":"wall"},{"cell":[5,0],"tile":null}]}
+-- the torch lights the open floor and the floor past the wall's end; the wall and the pillar shadow the floor behind them
+light.sample {"points":[[40,8],[100,16],[100,56],[56,56]]}
+{"ambient":[0.1,0.1,0.15],"lit":true,"points":[{"color":[1.119,0.916,0.66],"lights":[{"color":[1.019,0.816,0.51],"id":"torch","shadow":0}]},{"color":[0.1,0.1,0.15],"lights":[{"color":[0,0,0],"id":"torch","shadow":1}]},{"color":[0.295,0.256,0.247],"lights":[{"color":[0.195,0.156,0.097],"id":"torch","shadow":0}]},{"color":[0.1,0.1,0.15],"lights":[{"color":[0,0,0],"id":"torch","shadow":1}]}]}
+frame.capture {"points":[[40,8],[100,16],[100,56],[56,56]]}
+{"colors":[[0.482,0.396,0.31,1],[0.043,0.043,0.071,1],[0.125,0.11,0.114,1],[0.102,0.047,0,1]],"drawn":{"lights":1,"tiles":35},"height":64,"width":128}
+-- with the wall layer's occlusion off, its tiles cast no shadows
+component.set {"components":{"TileMapLayer":{"occlusion_enabled":false}},"id":"walls"}
+{"changed":{"TileMapLayer":{"occlusion_enabled":false}},"id":"walls"}
+light.sample {"points":[[100,16],[56,56]]}
+{"ambient":[0.1,0.1,0.15],"lit":true,"points":[{"color":[0.349,0.299,0.275],"lights":[{"color":[0.249,0.199,0.125],"id":"torch"}]},{"color":[0.733,0.606,0.466],"lights":[{"color":[0.633,0.506,0.316],"id":"torch"}]}]}

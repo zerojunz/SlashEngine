@@ -1,0 +1,39 @@
+{
+  "entities": {
+    "ground": {
+      "components": {
+        "TileMapLayer": {
+          "tile_set": "dungeon.tileset.json"
+        }
+      }
+    },
+    "night": {
+      "components": {
+        "CanvasModulate": {
+          "color": [0.1, 0.1, 0.15, 1.0]
+        }
+      }
+    },
+    "torch": {
+      "components": {
+        "PointLight2D": {
+          "color": [1.0, 0.8, 0.5, 1.0],
+          "energy": 1.5,
+          "shadow_enabled": true
+        },
+        "Transform2D": {
+          "position": [24.0, 24.0]
+        }
+      }
+    },
+    "walls": {
+      "components": {
+        "TileMapLayer": {
+          "tile_set": "dungeon.tileset.json",
+          "z_index": 1
+        }
+      }
+    }
+  },
+  "format": 1
+}
