@@ -297,6 +297,10 @@ void register_ui_components(ComponentRegistry& registry) {
                           "or pass it by (ignore); \"\" takes its type's: ignore for Label and "
                           "NinePatchRect, pass for containers and TextureRect, stop for the rest.",
                    .choices = {"", "stop", "pass", "ignore"}})
+        .describe("tooltip_text",
+                  {.doc = "Shown in a box beside the pointer once it rests on the control for "
+                          "the project's gui.tooltip_delay_sec, or on a child without one; \"\" "
+                          "for none. Theme types TooltipPanel and TooltipLabel style it."})
         .describe("focus_mode",
                   {.doc = "Whether clicks and the keyboard or gamepad give it focus (all), only "
                           "clicks (click) or nothing (none); \"\" takes its type's: all for "
@@ -317,6 +321,21 @@ void register_ui_components(ComponentRegistry& registry) {
         .describe("focus_previous",
                   {.doc = "The control ui_focus_prev (Shift+Tab) moves focus to; null for the "
                           "previous in the tree."});
+    registry.add<DragAndDrop>()
+        .set_doc("Lets a control be dragged and take drops, as a Godot script's _get_drag_data, "
+                 "_can_drop_data and _drop_data. Moving the mouse past the project's "
+                 "gui.drag_threshold with the left button held on it drags drag_data; letting "
+                 "go over a control whose can_drop takes the data emits drop_data there (data "
+                 "{\"data\", \"from\", \"position\"}). The control dragged emits drag_begin and "
+                 "drag_end (data {\"successful\"}); a right click or ui_cancel cancels.")
+        .describe("drag_data", {.doc = "What a drag from it carries, any JSON; null: it can't "
+                                       "be dragged."})
+        .describe("can_drop",
+                  {.doc = "What it takes: data matching one of these, where an object needs "
+                          "only the members given, e.g. [{\"kind\": \"item\"}]; anything else "
+                          "must be equal. Empty takes nothing."})
+        .describe("drag_preview", {.doc = "A control with no parent shown at the pointer while "
+                                          "a drag from it goes on, even if hidden."});
 
     const FieldMeta text_direction{
         .doc = "The text's base direction: auto takes its first letter's (right to left for "
@@ -567,7 +586,8 @@ void register_ui_components(ComponentRegistry& registry) {
 
     const FieldMeta items{.doc = "The items, in order: {\"text\", \"icon\", \"checkable\": "
                                  "\"none\", \"check\" or \"radio\", \"checked\", \"id\" (-1 for "
-                                 "its index), \"disabled\", \"separator\", \"indent\"}."};
+                                 "its index), \"disabled\", \"separator\", \"indent\", "
+                                 "\"tooltip\"}."};
     registry.add<PopupMenu>()
         .set_doc("A list of items shown over everything at a point of the viewport while "
                  "visible, as Godot's PopupMenu: picked with a click, the arrow keys and "
@@ -602,7 +622,8 @@ void register_ui_components(ComponentRegistry& registry) {
                              "Button's, plus the arrow icon, arrow_margin and modulate_arrow, "
                              "and PopupMenu's for the list."))
         .describe("items", {.doc = "The options, in order: {\"text\", \"icon\", \"id\" (-1 "
-                                   "for its index), \"disabled\", \"separator\"}."})
+                                   "for its index), \"disabled\", \"separator\", "
+                                   "\"tooltip\"}."})
         .describe("selected", {.doc = "The option shown, by index; -1 for none.", .min = -1})
         .describe("fit_to_longest_item",
                   {.doc = "Be as wide as the widest option, not only the one shown."})
@@ -683,6 +704,9 @@ void register_ui_components(ComponentRegistry& registry) {
                   {.doc = "Cut, copy, paste, select all, undo and redo by keyboard shortcut."})
         .describe("selecting_enabled", {.doc = "Text can be selected."})
         .describe("deselect_on_focus_loss_enabled", {.doc = "Losing focus drops the selection."})
+        .describe("drag_and_drop_selection_enabled",
+                  {.doc = "The selected text can be dragged into another text field, or moved "
+                          "within this one."})
         .describe("right_icon", {.doc = "Project path of a PNG or BMP file drawn at the end; "
                                         "\"\" for none."})
         .describe("icon_expand_mode",
@@ -728,6 +752,9 @@ void register_ui_components(ComponentRegistry& registry) {
                   {.doc = "Cut, copy, paste, select all, undo and redo by keyboard shortcut."})
         .describe("selecting_enabled", {.doc = "Text can be selected."})
         .describe("deselect_on_focus_loss_enabled", {.doc = "Losing focus drops the selection."})
+        .describe("drag_and_drop_selection_enabled",
+                  {.doc = "The selected text can be dragged into another text field, or moved "
+                          "within this one."})
         .describe("empty_selection_clipboard_enabled",
                   {.doc = "Cut and copy with nothing selected take the caret's line."})
         .describe("wrap_mode", {.doc = "Wrap lines wider than the field (boundary).",

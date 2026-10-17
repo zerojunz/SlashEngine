@@ -199,6 +199,15 @@ public:
                     return false; // mouse up is ignored while composing
                 }
                 if (event.button == input::MouseButton::Left) {
+                    if (!context_.dragging && s_.selection_drag_attempt && over_selection(mpos)) {
+                        // Not a drag after all: the click places the caret.
+                        s_.selection_drag_attempt = false;
+                        deselect();
+                        const auto [column, line] =
+                            area_.line_column_at(mpos, true, true, edit_.caret_mid_grapheme);
+                        set_caret_line(line, false, -1);
+                        set_caret_column(column, true);
+                    }
                     s_.dragging_selection = false;
                     s_.selecting_mode = SelectionMode::None;
                     s_.click_held = -1.0;
@@ -1038,11 +1047,19 @@ private:
                                   std::hypot(apart.x, apart.y) < kTripleClickTolerance;
         if (!event.double_click && !triple_click) {
             if (!event.modifiers.shift) {
+                if (edit_.drag_and_drop_selection_enabled && over_selection(mpos)) {
+                    // The selection may be dragged away; the caret waits to see.
+                    s_.selecting_mode = SelectionMode::None;
+                    s_.selection_drag_attempt = true;
+                    s_.last_double_click = -1.0;
+                    return;
+                }
                 deselect();
             }
             push_current_op(s_);
             set_caret_line(line, false, -1);
             set_caret_column(col, false);
+            s_.selection_drag_attempt = false;
             const bool caret_moved = s_.caret.column != prev_col || s_.caret.line != prev_line;
             if (edit_.selecting_enabled && event.modifiers.shift && !has_selection() &&
                 caret_moved) {
@@ -1084,17 +1101,109 @@ private:
         }
     }
 
-    // _on_drag_or_mouse_motion_event.
+    // _on_drag_or_mouse_motion_event: a held button selects, unless a drag is going on; a drag
+    // that can drop here moves the drag caret to where it would go.
     void drag_or_mouse_motion(bool left) {
-        if (!left) {
+        if (left && !context_.dragging) {
+            reset_caret_blink_timer();
+            if (s_.ime_text.empty()) {
+                selection_mode_update();
+            }
+        }
+        if (!context_.dragging || !context_.can_drop) {
             return;
         }
-        reset_caret_blink_timer();
-        if (s_.ime_text.empty()) {
-            selection_mode_update();
-        }
+        apply_ime();
+        const auto [column, line] =
+            area_.line_column_at(s_.mouse, true, true, edit_.caret_mid_grapheme);
+        TextEditState::Caret drag;
+        drag.line = line;
+        drag.column = column;
+        drag.last_fit_x = area_.column_x_offset(line, column, s_.input_direction);
+        s_.drag_caret = drag;
+        s_.drag_caret_force_displayed = true;
+        // set_caret_column with adjust_viewport, for the drag caret.
+        std::swap(s_.caret, *s_.drag_caret);
+        adjust_viewport_to_caret();
+        std::swap(s_.caret, *s_.drag_caret);
+        s_.dragging_selection = true;
     }
 
+    // is_mouse_over_selection: a point (mirrored) falls on the selection or its ends.
+    [[nodiscard]] bool over_selection(Vec2 point) const {
+        if (!has_selection()) {
+            return false;
+        }
+        const auto [column, line] =
+            area_.line_column_at(point, true, true, edit_.caret_mid_grapheme);
+        const SelectionRange range = selection_range(s_.caret);
+        return in_range(line, column, range.from_line, range.from_column, range.to_line,
+                        range.to_column, true);
+    }
+
+public:
+    // drop_data, for text: in at a point in its rect, then selected. Dragged from its own
+    // selection, the selection moves there unless Command (Ctrl) is held to copy it; dropped
+    // on that selection, nothing changes. Whether the text went in.
+    bool drop_text(Vec2 local, std::u32string_view text, bool command) {
+        if (!edit_.editable) {
+            return false;
+        }
+        const auto [column, line] =
+            area_.line_column_at(mirrored(local), true, true, edit_.caret_mid_grapheme);
+        int drop_line = line;
+        int drop_column = column;
+        const SelectionRange range = selection_range(s_.caret);
+        const bool on_selection =
+            has_selection() && in_range(line, column, range.from_line, range.from_column,
+                                        range.to_line, range.to_column, !command);
+        s_.drag_caret.reset();
+        if (s_.selection_drag_attempt && on_selection) {
+            s_.selection_drag_attempt = false;
+            return false;
+        }
+        begin_complex(s_);
+        if (s_.selection_drag_attempt) {
+            s_.selection_drag_attempt = false;
+            if (!command && has_selection()) {
+                // The drop point moves back over the selection taken out before it.
+                const bool after = drop_line > range.to_line ||
+                                   (drop_line == range.to_line && drop_column >= range.to_column);
+                if (after) {
+                    if (drop_line == range.to_line) {
+                        drop_column += range.from_column - range.to_column;
+                    }
+                    drop_line += range.from_line - range.to_line;
+                }
+                delete_selection();
+            }
+        }
+        deselect();
+        set_caret_line(drop_line, true, -1);
+        set_caret_column(drop_column, true);
+        insert_text_at_caret(text);
+        select(drop_line, drop_column, s_.caret.line, s_.caret.column);
+        adjust_viewport_to_caret();
+        end_complex(s_);
+        return true;
+    }
+
+    // NOTIFICATION_DRAG_END, after its selection was dropped elsewhere.
+    void drag_end(bool command) {
+        s_.drag_caret.reset();
+        if (s_.selection_drag_attempt) {
+            if (edit_.editable && !command) {
+                delete_selection();
+            } else if (edit_.deselect_on_focus_loss_enabled) {
+                deselect();
+            }
+        }
+        s_.selection_drag_attempt = false;
+        s_.drag_caret_force_displayed = false;
+        s_.dragging_selection = false;
+    }
+
+private:
     // _scroll_up and _scroll_down, without smooth scrolling.
     void scroll_up(double delta) { area_.set_v_scroll(area_.v_scroll() - delta); }
     void scroll_down(double delta) { area_.set_v_scroll(area_.v_scroll() + delta); }
@@ -1983,9 +2092,25 @@ void text_edit_focus_exit(const TextEditContext& context, world::TextEdit& edit,
     if (edit.caret_blink) {
         state.draw_caret = false; // as a redraw without focus leaves it
     }
-    if (edit.deselect_on_focus_loss_enabled) {
+    if (edit.deselect_on_focus_loss_enabled && !state.selection_drag_attempt) {
         state.caret.selection.active = false;
     }
+}
+
+bool text_edit_drop_text(const TextEditContext& context, world::TextEdit& edit,
+                         TextEditState& state, TextArea& area, Vec2 local, std::u32string_view text,
+                         bool command) {
+    Editor editor(context, edit, state, area);
+    const bool dropped = editor.drop_text(local, text, command);
+    editor.finish();
+    return dropped;
+}
+
+void text_edit_drag_end(const TextEditContext& context, world::TextEdit& edit, TextEditState& state,
+                        TextArea& area, bool command) {
+    Editor editor(context, edit, state, area);
+    editor.drag_end(command);
+    editor.finish();
 }
 
 void text_edit_ime_update(const TextEditContext& context, world::TextEdit& edit,

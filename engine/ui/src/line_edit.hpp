@@ -54,6 +54,10 @@ struct EditState {
     Vec2 last_double_click_position;
     bool clear_press_attempt = false;
     bool clear_pressing_inside = false;
+    // selection.drag_attempt, kept out of the selection, which deselect clears: a press landed
+    // on the selection, which a drag may carry away.
+    bool drag_attempt = false;
+    bool drag_caret_force_displayed = false; // a drag over it shows where text would drop
     // The text as last seen, so a change made from outside resets the history as set_text does.
     std::string known_text;
     bool known = false;

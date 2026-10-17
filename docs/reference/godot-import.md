@@ -92,6 +92,10 @@ type:
   `separator` become its `items`; other item properties, such as shortcuts and submenus, are
   reported. An `OptionButton`'s `text` and `icon` are its selected option's, and a
   `PopupMenu`'s `size` is reported: a popup menu is as big as its items.
+- `tooltip_text` is `Control`'s, and `drag_and_drop_selection_enabled` a text field's. A
+  script's `_get_drag_data`, `_can_drop_data` and `_drop_data` are script code like the rest;
+  in C++ they become a [`DragAndDrop`](scene-format.md#tooltips-and-drag-and-drop) component or
+  `ui::set_drag_forwarding`.
 
 ## Tile sets and tile maps
 

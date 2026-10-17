@@ -476,6 +476,14 @@ Result<FrameSummary> summarize(world::World& world, asset::Assets& assets,
                             .x1 = popup->position.x + popup->size.x,
                             .y1 = popup->position.y + popup->size.y};
                 }
+            } else if (items[i].kind == FrameItem::Kind::Tooltip) {
+                if (const std::optional<ui::TooltipView>& tip = summary.contents.layout.tooltip;
+                    tip && tip->owner == items[i].entity) {
+                    rect = {.x0 = tip->position.x,
+                            .y0 = tip->position.y,
+                            .x1 = tip->position.x + tip->size.x,
+                            .y1 = tip->position.y + tip->size.y};
+                }
             }
             place[i] = static_cast<std::ptrdiff_t>(summary.shown.size());
             summary.shown.push_back(

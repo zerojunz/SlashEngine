@@ -58,6 +58,12 @@ struct Project {
     // A .theme.json file every control uses after its own themes, as Godot's gui/theme/custom;
     // empty for none.
     std::string gui_theme;
+    // Seconds the mouse rests on a control before its tooltip shows.
+    double tooltip_delay_sec = 0.5;
+    // Where a tooltip shows from the pointer, in pixels.
+    Vec2 tooltip_position_offset{10.0F, 10.0F};
+    // Pixels the mouse moves with the left button held before a drag starts.
+    int drag_threshold = 10;
     // Text may use fonts installed on the machine for characters the project's fonts lack.
     bool allow_system_fallback = true;
     // Input actions and their bindings: Godot's ui_* actions, then the project's.

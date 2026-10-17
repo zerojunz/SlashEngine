@@ -97,8 +97,10 @@ void install_gui(world::World& world);
 [[nodiscard]] bool is_pressed(const world::World& world, entt::entity button);
 // Whether the mouse is over a control or a control inside it, as Godot's mouse_entered says.
 [[nodiscard]] bool is_hovered(const world::World& world, entt::entity control);
-// Mistakes in buttons and focus: shortcuts that aren't bindings or actions, groups on buttons
-// that don't toggle, focus fields that name no control, a Label or a second button on a button.
+// Mistakes in buttons, focus, tooltips and drags: shortcuts that aren't bindings or actions,
+// groups on buttons that don't toggle, focus fields that name no control, a Label or a second
+// button on a button, tooltips the pointer can't reach and drag previews that aren't root
+// controls.
 void check_buttons(const world::World& world, std::vector<Problem>& problems);
 
 } // namespace slash::ui

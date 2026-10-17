@@ -65,7 +65,7 @@ as `entity.get`, reject it as an unknown param.
 | Physics | [`physics.raycast`](#physicsraycast), [`physics.overlap`](#physicsoverlap), [`physics.contacts`](#physicscontacts) |
 | Particles | [`particles.eval`](#particleseval) |
 | Lights | [`light.sample`](#lightsample) |
-| UI and text | [`ui.layout`](#uilayout), [`ui.theme`](#uitheme), [`ui.press`](#uipress), [`ui.popup`](#uipopup), [`ui.select`](#uiselect), [`ui.focus`](#uifocus), [`ui.clipboard`](#uiclipboard), [`text.measure`](#textmeasure) |
+| UI and text | [`ui.layout`](#uilayout), [`ui.theme`](#uitheme), [`ui.press`](#uipress), [`ui.popup`](#uipopup), [`ui.select`](#uiselect), [`ui.drag`](#uidrag), [`ui.tooltip`](#uitooltip), [`ui.focus`](#uifocus), [`ui.clipboard`](#uiclipboard), [`text.measure`](#textmeasure) |
 | Input | [`input.inject`](#inputinject), [`input.state`](#inputstate), [`input.actions`](#inputactions) |
 | Audio | [`audio.state`](#audiostate), [`audio.capture`](#audiocapture), [`audio.play`](#audioplay), [`audio.stop`](#audiostop), [`audio.set_bus`](#audioset_bus) |
 | Storyboard | [`storyboard.query`](#storyboardquery), [`storyboard.brief`](#storyboardbrief), [`storyboard.check`](#storyboardcheck), [`storyboard.edit`](#storyboardedit) |
@@ -756,6 +756,18 @@ the sign on a smaller window:
   {"popups":[{"id":"game","items":[{"rect":[4,36,89,22],"text":"New Game"},{"rect":[4,62,89,22],"selectable":false,"text":"Load"},{"rect":[4,88,89,0],"selectable":false,"text":""},{"rect":[4,92,89,22],"text":"Quit"}],"rect":[0,30,97,90]}]}
   ```
 
+- `tooltip` is the [tooltip](scene-format.md#tooltips-and-drag-and-drop) shown: `id`, the
+  control it belongs to (or the popup menu whose item's it is), `text` and `rect` in the viewport.
+  It is left out when `ids` doesn't name its control.
+- `drag` is the drag going on: `from`, the control dragged, `data`, what it carries, `position`,
+  the pointer, `over`, the control that would take the drop there (left out for none), and
+  `preview`, the control following the pointer, or `preview_text`, a text field's dragged text.
+  From [examples/ui-drag-and-drop](../../examples/ui-drag-and-drop/):
+
+  ```json
+  {"drag":{"data":{"id":"sword","kind":"item"},"from":"sword","over":"slot_3","position":[152,64],"preview":"sword_ghost"}}
+  ```
+
 - A `Slider` has `value`, on its step and in range, and `ratio`, how far along it is from 0 to
   1, e.g. `{"id": "volume", "ratio": 0.8, "rect": [66, 147, 226, 16], "value": 80}`. A
   `ScrollBar` has them too.
@@ -801,7 +813,9 @@ the sign on a smaller window:
   names no control, a `LineEdit` with a `Label` or button on its entity, a
   `secret_character` longer than one character, a `TextEdit` with a `Label`, button or
   `LineEdit` on its entity, a menu item's `checkable` that isn't `none`, `check` or `radio`, a
-  `PopupMenu` on a control entity and an `OptionButton`'s `selected` past its options. Each has
+  `PopupMenu` on a control entity, an `OptionButton`'s `selected` past its options, a
+  `tooltip_text` on a control the pointer passes by, a `drag_preview` that isn't a control with
+  no parent and a `DragAndDrop` on an entity with no `Control`. Each has
   the
   control's `id`, the JSON Pointer `path` of the value in the entity and a `message`:
 
@@ -927,6 +941,61 @@ Needs: `run`. Give one of `index`, `item_id` and `text`. From
 `index` is the item picked and `tick` the tick it is picked at, which the next `step` runs. An
 item that doesn't exist (with the closest text), a separator, a disabled item and a disabled
 button are errors at their param.
+
+### ui.drag
+
+Drags one control onto another at the next tick, as the mouse would from the middle of `from` to
+the middle of `to`: `from` (or the first parent that gives something) gives its
+[`DragAndDrop`](scene-format.md#tooltips-and-drag-and-drop) `drag_data` or a text field's
+selection, and `to` (or the first parent that takes it) takes it if one of its `can_drop`
+patterns matches, or as a text field takes text.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `from` | string | required | The control dragged |
+| `to` | string | required | The control it is dropped on |
+
+Needs: `run`. The tick emits `drag_begin` from the control dragged, `drop_data` from the one
+that takes it (data `{"data", "from", "position"}`) and `drag_end` (data `{"successful"}`);
+read them with [`events.read`](#eventsread). What a drop changes is up to the game's code. From
+[examples/ui-drag-and-drop](../../examples/ui-drag-and-drop/):
+
+```json
+{"from": "potion", "to": "sword"}
+```
+
+```json
+{"tick":32}
+```
+
+`tick` is the tick the drag happens at, which the next `step` runs. Nothing happens when `from`
+gives nothing. An ID that names no entity (with the closest one) or an entity that isn't a
+control is an error at its param. To drag the way a player does, with the pointer moving over
+other controls, send the mouse events with [`input.inject`](#inputinject).
+
+### ui.tooltip
+
+Shows a control's [tooltip](scene-format.md#tooltips-and-drag-and-drop) now, below the middle
+of the control, as Godot's `Viewport::show_tooltip`: its `tooltip_text`, or the first parent's up
+to one that stops the mouse. `"show": false` hides the tooltip shown instead.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `id` | string | | The control; needed unless `show` is `false` |
+| `show` | boolean | `true` | `false` hides the tooltip |
+
+Needs: `run`. From [examples/ui-drag-and-drop](../../examples/ui-drag-and-drop/):
+
+```json
+{"id": "trash"}
+```
+
+```json
+{"tooltip":{"id":"trash","text":"Drop an item here to throw it away"}}
+```
+
+`tooltip` is `null` when the control has none. [`ui.layout`](#uilayout) gives the tooltip's
+rect. Mouse motion and presses hide it as they would hide one the pointer showed.
 
 ### ui.focus
 
@@ -2086,7 +2155,8 @@ With `"map": [40, 12]` over the whole frame, the reply adds:
 ```
 
 - `drawn` lists what shows: `id`, `kind` (`Sprite2D`, `TileMapLayer`, `CPUParticles2D`,
-  `PopupMenu` for an open popup menu, named by the entity it belongs to, or the control's type,
+  `PopupMenu` for an open popup menu, named by the entity it belongs to, `Tooltip` for the
+  tooltip shown, named by its control, or the control's type,
   such as `Label` or `Button`) and `rect`, its bounds in window pixels to a
   tenth, `[x, y, width, height]`, not cut to the window: a control's rect as
   [`ui.layout`](#uilayout) places it (only the part its clip leaves, inside a
@@ -2098,7 +2168,7 @@ With `"map": [40, 12]` over the whole frame, the reply adds:
   out (lines joined with `\n`, cut short with its ellipsis, only the characters
   `visible_characters` shows), a button's `draw_mode` when it isn't `"normal"`, a slider's or
   scroll bar's `value`, a scroll container's `scroll` and `focused`, and a popup menu's `items`
-  (their texts), `focused_item` and `scroll`.
+  (their texts), `focused_item` and `scroll`, and the tooltip's `text`.
 - `covered` lists what is in the window but wholly under what was drawn after it, `offscreen`
   what drew only outside the window (left out with a `region`) and `clear` what drew no pixel
   that can be seen, such as a sprite whose `modulate` alpha is below 0.25. `clipped` lists

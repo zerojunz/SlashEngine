@@ -211,6 +211,24 @@ json::Value project_schema() {
     gui["properties"]["allow_system_fallback"]["description"] =
         "Use fonts installed on the machine for characters the project's fonts lack. Off, text "
         "lays out the same everywhere, as on the web, which has none.";
+    gui["properties"]["tooltip_delay_sec"]["type"] = "number";
+    gui["properties"]["tooltip_delay_sec"]["minimum"] = 0;
+    gui["properties"]["tooltip_delay_sec"]["default"] = 0.5;
+    gui["properties"]["tooltip_delay_sec"]["description"] =
+        "Seconds the mouse rests on a control before its tooltip_text shows.";
+    json::Value offset;
+    offset["type"] = "array";
+    offset["items"]["type"] = "number";
+    offset["minItems"] = 2;
+    offset["maxItems"] = 2;
+    offset["default"] = json::Array{10, 10};
+    offset["description"] = "Where a tooltip shows from the pointer, [x, y] pixels.";
+    gui["properties"]["tooltip_position_offset"] = std::move(offset);
+    gui["properties"]["drag_threshold"]["type"] = "integer";
+    gui["properties"]["drag_threshold"]["minimum"] = 0;
+    gui["properties"]["drag_threshold"]["default"] = 10;
+    gui["properties"]["drag_threshold"]["description"] =
+        "Pixels the mouse moves with the left button held before a drag and drop starts.";
     properties["gui"] = std::move(gui);
     properties["input"] = input::map_schema();
     properties["input_devices"] = input::settings_schema();
@@ -324,6 +342,16 @@ Result<Project> parse_project(const json::Value& project) {
         }
         if (const json::Value* system = gui->find("allow_system_fallback"); system != nullptr) {
             out.allow_system_fallback = system->as_bool();
+        }
+        if (const json::Value* delay = gui->find("tooltip_delay_sec"); delay != nullptr) {
+            out.tooltip_delay_sec = delay->as_double();
+        }
+        if (const json::Value* offset = gui->find("tooltip_position_offset"); offset != nullptr) {
+            out.tooltip_position_offset = {static_cast<float>(offset->as_array()[0].as_double()),
+                                           static_cast<float>(offset->as_array()[1].as_double())};
+        }
+        if (const json::Value* threshold = gui->find("drag_threshold"); threshold != nullptr) {
+            out.drag_threshold = static_cast<int>(threshold->as_int());
         }
     }
     if (const json::Value* input = project.find("input"); input != nullptr) {

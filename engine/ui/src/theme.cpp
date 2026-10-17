@@ -20,9 +20,10 @@ namespace slash::ui {
 namespace {
 
 // Each control type and the type it is built on, as Godot's classes.
-constexpr std::array<std::pair<std::string_view, std::string_view>, 36> kTypes{{
+constexpr std::array<std::pair<std::string_view, std::string_view>, 38> kTypes{{
     {"Control", ""},
     {"Label", "Control"},
+    {"TooltipLabel", "Label"},
     {"BaseButton", "Control"},
     {"Button", "BaseButton"},
     {"CheckBox", "Button"},
@@ -56,8 +57,9 @@ constexpr std::array<std::pair<std::string_view, std::string_view>, 36> kTypes{{
     {"VFlowContainer", "FlowContainer"},
     {"PanelContainer", "Container"},
     {"ScrollContainer", "Container"},
-    // A window in Godot, not a control.
+    // Windows in Godot, not controls.
     {"PopupMenu", ""},
+    {"TooltipPanel", ""},
 }};
 
 constexpr std::array<std::string_view, 6> kKinds{"colors",     "constants", "fonts",
@@ -357,6 +359,17 @@ const std::map<std::string, ThemeItems, std::less<>>& own_defaults() {
                            {"shadow_offset_y", 1}, {"shadow_outline_size", 1}};
         label.fonts = {{"font", ""}};
         label.font_sizes = {{"font_size", text::kDefaultFontSize}};
+        // Tooltips: a Label in a see-through panel.
+        ThemeItems& tooltip_label = themes["TooltipLabel"];
+        tooltip_label.colors = {{"font_color", control_font_color},
+                                {"font_shadow_color", {0.0F, 0.0F, 0.0F, 0.0F}},
+                                {"font_outline_color", {0.0F, 0.0F, 0.0F, 1.0F}}};
+        tooltip_label.constants = {
+            {"shadow_offset_x", 1}, {"shadow_offset_y", 1}, {"outline_size", 0}};
+        themes["TooltipPanel"].styles = {
+            {"panel", flat_style({0.0F, 0.0F, 0.0F, 0.5F},
+                                 {2.0F * kMargin, 0.5F * kMargin, 2.0F * kMargin, 0.5F * kMargin},
+                                 kCornerRadius)}};
         themes["Panel"].styles = {{"panel", flat_style(style_normal_color, 0.0F, 3)}};
         themes["PanelContainer"].styles = themes["Panel"].styles;
         ThemeItems& bar = themes["ProgressBar"];
