@@ -20,6 +20,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -1253,6 +1254,149 @@ TEST_CASE("a tile's texture origin moves its texture, and turns with the cell, a
         CHECK(pixel(image.value(), 27, 6) == green);
         CHECK(pixel(image.value(), 31, 6) == red);
         CHECK(pixel(image.value(), 25, 6) == black);
+    }
+}
+
+TEST_CASE("animated tiles and tiles larger than one cell, as Godot's TileSetAtlasSource") {
+    CHECK(first_error(R"({"format": 1, "sources": {"a": {"texture": "a.png",
+          "tiles": {"0,0": {"size_in_atlas": [2, 1]}, "1,0": {}}}}})") ==
+          "/sources/a/tiles/1,0: it covers the texture's cell 1,0, as the tile \"0,0\" does; a "
+          "tile, its size_in_atlas and its animation frames cover cells no other tile does");
+    CHECK(first_error(R"({"format": 1, "sources": {"a": {"texture": "a.png",
+          "tiles": {"0,1": {}, "0,0": {"animation_frames": [1, 1], "animation_columns": 1}}}}})") ==
+          "/sources/a/tiles/0,1: it covers the texture's cell 0,1, as the tile \"0,0\" does; a "
+          "tile, its size_in_atlas and its animation frames cover cells no other tile does");
+    CHECK(first_error(R"({"format": 1, "sources": {"a": {"texture": "a.png",
+          "tiles": {"0,0": {"animation_frames": [1, 1], "animation_separation": [1, 0]},
+                    "1,0": {}}}}})") == "(valid)");
+    CHECK(first_error(R"({"format": 1, "sources": {"a": {"texture": "a.png",
+          "tiles": {"0,0": {"animation_speed": 0}}}}})")
+              .starts_with("/sources/a/tiles/0,0/animation_speed: "));
+    CHECK(first_error(R"({"format": 1, "sources": {"a": {"texture": "a.png",
+          "tiles": {"0,0": {"animation_frames": [0.5, 0]}}}}})")
+              .starts_with("/sources/a/tiles/0,0/animation_frames/1: "));
+    CHECK(first_error(R"({"format": 1, "sources": {"a": {"texture": "a.png",
+          "tiles": {"0,0": {"animation_mode": "loop"}}}}})")
+              .starts_with("/sources/a/tiles/0,0/animation_mode: "));
+    CHECK(first_error(R"({"format": 1, "sources": {"a": {"texture": "a.png",
+          "tiles": {"0,0": {"size_in_atlas": [300, 300]}}}}})") ==
+          "/sources/a/tiles/0,0/size_in_atlas: a tile and its animation frames cover at most "
+          "65536 of the texture's cells");
+
+    // Each frame's region: frames follow the tile, its size plus the separation apart, two to a
+    // row here; the region of a tile two cells wide takes the pixels between them too.
+    auto set = canvas::parse_tileset(parse(R"({"format": 1, "tile_size": [8, 4],
+        "sources": {"a": {"texture": "a.png", "margins": [1, 2], "separation": [2, 1],
+        "tiles": {"1,0": {"size_in_atlas": [2, 1], "animation_frames": [0.5, 0.25, 0.25],
+                          "animation_columns": 2, "animation_separation": [1, 0],
+                          "animation_mode": "random_start_times"},
+                  "0,0": {}}}}})"));
+    REQUIRE(set.ok());
+    const canvas::AtlasSource& source = set.value().sources.at("a");
+    const canvas::TileData& tile = source.tiles.at({1, 0});
+    CHECK(tile.size_in_atlas == Vec2i{2, 1});
+    CHECK(tile.animation_frames == std::vector<double>{0.5, 0.25, 0.25});
+    CHECK(tile.animation_columns == 2);
+    CHECK(tile.animation_separation == Vec2i{1, 0});
+    CHECK(tile.animation_mode == canvas::TileAnimationMode::RandomStartTimes);
+    CHECK(source.tiles.at({0, 0}).animation_frames == std::vector<double>{1.0});
+    CHECK(canvas::tile_region(source, {1, 0}) == std::array<int, 4>{1 + 10, 2, 18, 4});
+    CHECK(canvas::tile_region(source, {1, 0}, 1) == std::array<int, 4>{1 + 40, 2, 18, 4});
+    CHECK(canvas::tile_region(source, {1, 0}, 2) == std::array<int, 4>{1 + 10, 2 + 5, 18, 4});
+    CHECK(canvas::tile_region(source, {0, 0}) == std::array<int, 4>{1, 2, 8, 4});
+    const canvas::TileLook look =
+        canvas::tile_look(set.value(), canvas::TileRef{.source = "a", .atlas = {1, 0}});
+    CHECK(look.size == slash::Vec2{18.0F, 4.0F});
+    CHECK(look.position == slash::Vec2{-9.0F, -2.0F});
+
+    // The frame for a time: each shows from its start up to its end, the animation repeats, and
+    // speed divides the durations; an offset starts that far into the animation.
+    CHECK(canvas::tile_frame(tile, 0.0) == 0);
+    CHECK(canvas::tile_frame(tile, 0.49) == 0);
+    CHECK(canvas::tile_frame(tile, 0.5) == 1);
+    CHECK(canvas::tile_frame(tile, 0.8) == 2);
+    CHECK(canvas::tile_frame(tile, 1.1) == 0);
+    CHECK(canvas::tile_frame(tile, -0.1) == 2);
+    CHECK(canvas::tile_frame(tile, 0.0, 0.5) == 1);
+    canvas::TileData fast = tile;
+    fast.animation_speed = 2.0;
+    CHECK(canvas::tile_frame(fast, 0.3) == 1);
+    CHECK(canvas::tile_frame(source.tiles.at({0, 0}), 123.0) == 0);
+    // Random start times hash the layer and the cell: the same every run, different by cell.
+    const double start = canvas::tile_animation_offset("map", {3, 1});
+    CHECK(start >= 0.0);
+    CHECK(start < 1.0);
+    CHECK(start == canvas::tile_animation_offset("map", {3, 1}));
+    CHECK(start != canvas::tile_animation_offset("map", {1, 3}));
+    CHECK(start != canvas::tile_animation_offset("other", {3, 1}));
+
+    // Drawn: a tile that flashes red then green, a blue and white tile two cells wide centered
+    // on its cell, and the flashing tile again starting where its cells' hashes say.
+    const Rgba red{255, 0, 0, 255};
+    const Rgba green{0, 255, 0, 255};
+    const Rgba blue{0, 0, 255, 255};
+    const Rgba white{255, 255, 255, 255};
+    const Rgba black{0, 0, 0, 255};
+    std::vector<std::unique_ptr<render::RenderDevice>> devices;
+    devices.push_back(render::create_software_device());
+    if (auto gpu = gpu_device(); gpu != nullptr) {
+        devices.push_back(std::move(gpu));
+    }
+    for (const auto& device : devices) {
+        CAPTURE(render::backend_name(device->backend()));
+        Scene scene;
+        scene.files.write("strip.png", grid_png({{red, green, blue, white}}, 4));
+        scene.files.write("strip.tileset.json", R"({"format": 1, "tile_size": [4, 4],
+            "sources": {"s": {"texture": "strip.png", "tiles": {
+                "0,0": {"name": "flash", "animation_frames": [0.5, 0.5]},
+                "2,0": {"name": "wide", "size_in_atlas": [2, 1]}}}}})");
+        scene.files.write("random.tileset.json", R"({"format": 1, "tile_size": [4, 4],
+            "sources": {"s": {"texture": "strip.png", "tiles": {
+                "0,0": {"name": "flash", "animation_frames": [0.5, 0.5],
+                        "animation_mode": "random_start_times"}}}}})");
+        scene.create("map", R"({"TileMapLayer": {"tile_set": "strip.tileset.json",
+            "texture_filter": "nearest", "legend": {"f": "flash", "w": "wide"},
+            "rows": ["f.w"]}})");
+        scene.create("random", R"({"Transform2D": {"position": [0, 4]},
+            "TileMapLayer": {"tile_set": "random.tileset.json", "texture_filter": "nearest",
+            "legend": {"f": "flash"}, "rows": ["f.f.f"]}})");
+        auto target = device->create_texture(
+            {.width = 20, .height = 8, .filter = render::Filter::Nearest, .render_target = true});
+        REQUIRE(target.ok());
+        canvas::CanvasRenderer renderer(*device, scene.assets);
+        const auto draw = [&](double time) {
+            canvas::CanvasOptions options;
+            options.target = target.value();
+            options.clear = {.r = 0.0F, .g = 0.0F, .b = 0.0F, .a = 1.0F};
+            options.time = time;
+            REQUIRE(renderer.draw(scene.world, options).ok());
+            auto image = device->read_texture(target.value());
+            REQUIRE(image.ok());
+            return std::move(image.value());
+        };
+        const render::Image first = draw(0.0);
+        CHECK(pixel(first, 1, 1) == red);
+        // The wide tile covers x 6 to 14 around its cell's center at 10.
+        CHECK(pixel(first, 5, 1) == black);
+        CHECK(pixel(first, 7, 1) == blue);
+        CHECK(pixel(first, 12, 1) == white);
+        CHECK(pixel(first, 14, 1) == black);
+        const render::Image later = draw(0.6);
+        CHECK(pixel(later, 1, 1) == green);
+        CHECK(pixel(later, 7, 1) == blue);
+        const auto random_set = scene.assets.load<canvas::TileSet>("random.tileset.json");
+        REQUIRE(random_set.ok());
+        const canvas::TileData& flash = random_set.value()->sources.at("s").tiles.at({0, 0});
+        std::set<int> shown;
+        for (const int column : {0, 2, 4}) {
+            CAPTURE(column);
+            const int frame = canvas::tile_frame(
+                flash, 0.0, canvas::tile_animation_offset("random", {column, 0}));
+            shown.insert(frame);
+            CHECK(pixel(first, static_cast<std::uint32_t>((column * 4) + 1), 5) ==
+                  (frame == 0 ? red : green));
+        }
+        CHECK(shown.size() == 2); // these cells don't all start together
     }
 }
 

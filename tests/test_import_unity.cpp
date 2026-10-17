@@ -725,6 +725,130 @@ void write_shaped_tiles(const fs::path& folder) {
     write(folder / "Assets/Scenes/Board.unity.meta", meta("a1000000000000000000000000000e04"));
 }
 
+constexpr std::string_view kPoolPng = "a1000000000000000000000000000f01";
+constexpr std::string_view kSparePng = "a1000000000000000000000000000f0b";
+
+// "Pool": a sheet of water, lava and torch frames and a rock, a sprite on its own, AnimatedTiles of
+// Unity's 2D Tilemap Extras playing them, and two tile maps: one with frame rate 2, and one with
+// smaller cells, so its own tile set, where the frames clash with still tiles.
+void write_animated_tiles(const fs::path& folder) {
+    write_png(folder / "Assets/Art/pool.png", 64, 48);
+    // Unity's sprite rects go up from the bottom: row 0 is the top one, y 32.
+    const auto sprite = [](std::string_view name, int column, int row, int id) {
+        return "    - serializedVersion: 2\n      name: " + std::string(name) +
+               "\n      rect:\n        serializedVersion: 2\n        x: " +
+               std::to_string(column * 16) + "\n        y: " + std::to_string(32 - (row * 16)) +
+               "\n        width: 16\n        height: 16\n      alignment: 0\n"
+               "      pivot: {x: 0.5, y: 0.5}\n      internalID: " +
+               std::to_string(id) + "\n";
+    };
+    write(folder / "Assets/Art/pool.png.meta",
+          texture_meta(kPoolPng, 16,
+                       "  spriteMode: 2\n  spriteSheet:\n    serializedVersion: 2\n"
+                       "    sprites:\n" +
+                           sprite("Water0", 0, 0, 2001) + sprite("Water1", 1, 0, 2002) +
+                           sprite("Water2", 2, 0, 2003) + sprite("Rock", 3, 0, 2004) +
+                           sprite("Lava0", 0, 1, 2005) + sprite("Lava1", 0, 2, 2006) +
+                           sprite("Torch0", 2, 1, 2007) + sprite("Torch1", 3, 1, 2008) +
+                           sprite("Torch2", 2, 2, 2009) + sprite("Torch3", 3, 2, 2010)));
+    // A sprite on another texture.
+    write_png(folder / "Assets/Art/spare.png", 16, 16);
+    write(folder / "Assets/Art/spare.png.meta", texture_meta(kSparePng, 16, "  spriteMode: 1\n"));
+    const auto animated = [&](std::string_view name, std::string_view guid,
+                              std::initializer_list<std::string> sprites, std::string_view more) {
+        std::string list;
+        for (const std::string& frame : sprites) {
+            list += "  - " + frame + "\n";
+        }
+        const fs::path path = folder / "Assets/Tiles" / (std::string(name) + ".asset");
+        write(path, std::string(kHeader) + "--- !u!114 &11400000\nMonoBehaviour:\n" +
+                        std::string(kSource) +
+                        "  m_GameObject: {fileID: 0}\n  m_Enabled: 1\n  m_Script: " +
+                        ref(11500000, "a1000000000000000000000000000f0f") +
+                        "\n  m_Name: " + std::string(name) + "\n  m_AnimatedSprites:\n" + list +
+                        std::string(more) + "  m_TileColliderType: 1\n");
+        write(path.string() + ".meta",
+              meta(guid, "NativeFormatImporter", "  mainObjectFileID: 11400000\n"));
+    };
+    constexpr std::string_view kStill = "{fileID: 13312, guid: 0000000000000000e000000000000000, "
+                                        "type: 0}";
+    // Water plays at 2 frames a second, and torches between 0.5 and 1.5; lava starts a second in.
+    const auto pool = [](std::int64_t sprite) { return ref(sprite, kPoolPng); };
+    animated("Water", "a1000000000000000000000000000f02", {pool(2001), pool(2002), pool(2003)},
+             "  m_MinSpeed: 2\n  m_MaxSpeed: 2\n");
+    animated("Torch", "a1000000000000000000000000000f03",
+             {pool(2007), pool(2008), pool(2009), pool(2010)},
+             "  m_MinSpeed: 0.5\n  m_MaxSpeed: 1.5\n");
+    animated("Lava", "a1000000000000000000000000000f04", {pool(2005), pool(2006)},
+             "  m_MinSpeed: 1\n  m_MaxSpeed: 1\n  m_AnimationStartTime: 1\n");
+    // Frames that go back along the row, and frames on two textures, which Godot's can't play.
+    animated("Jumble", "a1000000000000000000000000000f05", {pool(2004), pool(2001)}, "");
+    animated("Elsewhere", "a1000000000000000000000000000f0a",
+             {pool(2004), ref(kWholeSprite, kSparePng)}, "");
+    write_tile(folder / "Assets/Tiles/Rock.asset", "a1000000000000000000000000000f06", kStill, 0);
+    write_tile(folder / "Assets/Tiles/Foam.asset", "a1000000000000000000000000000f07", kStill, 0);
+    write_tile(folder / "Assets/Tiles/Brazier.asset", "a1000000000000000000000000000f08", kStill,
+               0);
+
+    constexpr std::int64_t kNone = 1;
+    const auto tile_map = [](std::int64_t grid, std::string_view name, std::string_view cell_size,
+                             std::string_view cells, std::string_view assets,
+                             std::string_view sprites, std::string_view more) {
+        const std::int64_t tiles = grid + 100;
+        return game_object(grid, std::string(name) + " Grid", {grid + 1, grid + 2}) +
+               transform(grid + 1, grid, "{x: 0, y: 0, z: 0}", 0, {tiles + 1}) +
+               component(156049354, "Grid", grid + 2, grid,
+                         "  m_CellSize: " + std::string(cell_size) +
+                             "\n  m_CellGap: {x: 0, y: 0, z: 0}\n  m_CellLayout: 0\n"
+                             "  m_CellSwizzle: 0\n") +
+               game_object(tiles, std::string(name) + " Tiles", {tiles + 1, tiles + 2, tiles + 3}) +
+               transform(tiles + 1, tiles, "{x: 0, y: 0, z: 0}", grid + 1) +
+               component(1839735485, "Tilemap", tiles + 2, tiles,
+                         "  m_Tiles:\n" + std::string(cells) + "  m_TileAssetArray:\n" +
+                             std::string(assets) + "  m_TileSpriteArray:\n" + std::string(sprites) +
+                             "  m_TileMatrixArray:\n" + tile_matrix(1, 0, 0, 1) +
+                             std::string(more) +
+                             "  m_TileAnchor: {x: 0.5, y: 0.5, z: 0}\n"
+                             "  m_TileOrientation: 0\n") +
+               component(483693784, "TilemapRenderer", tiles + 3, tiles,
+                         "  m_SortingLayerID: 0\n  m_SortingOrder: 0\n  m_MaskInteraction: 0\n");
+    };
+    const auto entries = [](std::initializer_list<std::string> refs) {
+        std::string out;
+        for (const std::string& item : refs) {
+            out += "  - m_RefCount: 1\n    m_Data: " + item + "\n";
+        }
+        return out;
+    };
+    const auto asset = [](std::string_view guid) { return ref(11400000, guid, 2); };
+    std::string scene(kHeader);
+    // Unity saves each animated cell with the sprite it showed then; water's second frame.
+    scene += tile_map(
+        3000, "Pool", "{x: 1, y: 1, z: 0}",
+        tile_cell(0, 0, 0, 0, 0, 0, kNone) + tile_cell(1, 0, 0, 0, 0, 0, kNone) +
+            tile_cell(2, 0, 1, 1, 0, 0, kNone) + tile_cell(3, 0, 2, 2, 0, 0, kNone) +
+            tile_cell(4, 0, 3, 3, 0, 0, kNone) + tile_cell(5, 0, 4, 3, 0, 0, kNone) +
+            tile_cell(6, 0, 5, 3, 0, 0, kNone),
+        entries(
+            {asset("a1000000000000000000000000000f02"), asset("a1000000000000000000000000000f03"),
+             asset("a1000000000000000000000000000f04"), asset("a1000000000000000000000000000f06"),
+             asset("a1000000000000000000000000000f05"), asset("a1000000000000000000000000000f0a")}),
+        entries(
+            {ref(2002, kPoolPng), ref(2007, kPoolPng), ref(2005, kPoolPng), ref(2004, kPoolPng)}),
+        "  m_AnimationFrameRate: 2\n");
+    // Foam shows water's last frame and a brazier a torch's first, still.
+    scene += tile_map(4000, "Edge", "{x: 0.5, y: 0.5, z: 0}",
+                      tile_cell(0, 0, 0, 0, 0, 0, kNone) + tile_cell(1, 0, 1, 1, 0, 0, kNone) +
+                          tile_cell(2, 0, 2, 2, 0, 0, kNone) + tile_cell(3, 0, 3, 2, 0, 0, kNone),
+                      entries({asset("a1000000000000000000000000000f02"),
+                               asset("a1000000000000000000000000000f07"),
+                               asset("a1000000000000000000000000000f03"),
+                               asset("a1000000000000000000000000000f08")}),
+                      entries({ref(2001, kPoolPng), ref(2003, kPoolPng), ref(2007, kPoolPng)}), "");
+    write(folder / "Assets/Scenes/Pool.unity", scene);
+    write(folder / "Assets/Scenes/Pool.unity.meta", meta("a1000000000000000000000000000f09"));
+}
+
 constexpr std::string_view kFrogPng = "a1000000000000000000000000000012";
 constexpr std::string_view kIdleAnim = "a1000000000000000000000000000013";
 constexpr std::string_view kJumpAnim = "a1000000000000000000000000000014";
@@ -2302,9 +2426,9 @@ TEST_CASE("Unity tile maps become tile map layers, their sprites a tile set") {
                                                        "tile": "slope"},
                     "unity/Assets/Tiles/Rule.asset": {"tile_set": "unity/Assets/tiles.tileset.json",
                                                       "tile": "plank"}})"));
-    CHECK(unsupported(report, "scripted tiles (rule tiles, animated tiles)")
-              .find("where")
-              ->as_string() == "Assets/Scenes/Level.unity: Grid/Ground");
+    CHECK(
+        unsupported(report, "scripted tiles (rule tiles and others)").find("where")->as_string() ==
+        "Assets/Scenes/Level.unity: Grid/Ground");
 
     // The tiles are solid where their polygons are: a ray down through the plank, which has
     // none, stops on the block under it, and one through the flipped slope on its face.
@@ -2442,6 +2566,66 @@ TEST_CASE("Unity's isometric and hexagonal tile maps keep their cells where Unit
               .find("where")
               ->as_string() == "Assets/Scenes/Board.unity: Iso Grid/Iso Tiles");
     CHECK(unsupported(report, "tile anchor off a hexagon's center").is_null());
+}
+
+TEST_CASE("Unity's AnimatedTiles become animated tiles, their frames along the sheet's grid") {
+    const fs::path project = "import_unity_animated_tiles";
+    fs::remove_all(project);
+    make_project(project / "unity");
+    write_animated_tiles(project / "unity");
+    auto imported = importer::import_project(
+        {.source = (project / "unity").string(), .destination = project.string()});
+    REQUIRE_MESSAGE(imported.ok(), (imported.ok() ? std::string() : imported.error().message));
+    const auto files = files_of(imported.value());
+    CHECK(parse(files.at("unity/Assets/tiles.tileset.json")).find("sources")->size() == 1);
+    const auto tiles_of = [&](const std::string& path) {
+        return *parse(files.at(path)).find("sources")->find("pool")->find("tiles");
+    };
+
+    // Each frame lasts a second over the AnimatedTile's speed (the middle of its range) times
+    // the tile map's frame rate. Water's frames follow along a row, the torch's wrap after two
+    // columns and the lava's go down one. Tiles whose frames go back, or are on two textures,
+    // show their first, and the other texture isn't a source.
+    CHECK(tiles_of("unity/Assets/tiles.tileset.json") == parse(R"({
+        "0,0": {"name": "water0", "animation_frames": [0.25, 0.25, 0.25]},
+        "2,1": {"name": "torch0", "animation_frames": [0.5, 0.5, 0.5, 0.5],
+                "animation_columns": 2},
+        "0,1": {"name": "lava0", "animation_frames": [0.5, 0.5], "animation_columns": 1},
+        "3,0": {"name": "rock"}
+    })"));
+    // Cells show an AnimatedTile's first frame, whichever Unity saved them showing.
+    const json::Value pool = entity(files, "unity/Assets/Scenes/Pool.scene.json", "pool_tiles");
+    const json::Value& layer = *pool.find("TileMapLayer");
+    CHECK(*layer.find("rows") == parse(R"(["wwtlrrr"])"));
+    CHECK(*layer.find("legend") ==
+          parse(R"({"l": "lava0", "r": "rock", "t": "torch0", "w": "water0"})"));
+
+    // In the smaller cells' tile set, foam shows a frame of the water, which stops; the brazier
+    // shows the torch still, which plays there too, at the frame rate of 1.
+    CHECK(tiles_of("unity/Assets/tiles_2.tileset.json") == parse(R"({
+        "0,0": {"name": "water0"},
+        "2,0": {"name": "water2"},
+        "2,1": {"name": "torch0", "animation_frames": [1.0, 1.0, 1.0, 1.0],
+                "animation_columns": 2}
+    })"));
+
+    const json::Value report = parse(files.at("import/unity.json"));
+    const auto where = [&](std::string_view what) {
+        const json::Value item = unsupported(report, what);
+        return item.is_null() ? std::string() : item.find("where")->as_string();
+    };
+    CHECK(where("animated tiles with a random speed") ==
+          "Assets/Scenes/Pool.unity: Pool Grid/Pool Tiles");
+    CHECK(where("animated tile start times") == "Assets/Scenes/Pool.unity: Pool Grid/Pool Tiles");
+    CHECK(where("animated tiles whose sprites aren't in order along the texture's grid") ==
+          "Assets/Scenes/Pool.unity: Pool Grid/Pool Tiles");
+    CHECK(where("animated tiles whose sprites aren't on one texture's grid") ==
+          "Assets/Scenes/Pool.unity: Pool Grid/Pool Tiles");
+    CHECK(where("animated tiles whose frames other tiles show") ==
+          "Assets/Scenes/Pool.unity: Edge Grid/Edge Tiles");
+    CHECK(where("sprites shown both by animated tiles and still ones") ==
+          "Assets/Scenes/Pool.unity: Edge Grid/Edge Tiles");
+    CHECK(where("scripted tiles (rule tiles and others)").empty());
 }
 
 TEST_CASE("Unity Animator controllers become animation libraries, their states animations") {

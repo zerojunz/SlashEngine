@@ -1,0 +1,22 @@
+{
+  "entities": {
+    "deck": {
+      "components": {
+        "TileMapLayer": {
+          "tile_set": "pond.tileset.json",
+          "z_index": 1
+        },
+        "Transform2D": {}
+      }
+    },
+    "pond": {
+      "components": {
+        "TileMapLayer": {
+          "tile_set": "pond.tileset.json"
+        },
+        "Transform2D": {}
+      }
+    }
+  },
+  "format": 1
+}

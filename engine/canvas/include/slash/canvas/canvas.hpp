@@ -136,8 +136,8 @@ struct CanvasOptions {
     double interpolation = 1.0;
     // The filter for sprites whose texture_filter is "inherit".
     render::Filter texture_filter = render::Filter::Linear;
-    // Seconds of game time, which materials read as time. Callers pass the moment the frame
-    // shows, between ticks too; see material_time.
+    // Seconds of game time, which materials read as time and animated tiles play by. Callers
+    // pass the moment the frame shows, between ticks too; see material_time.
     double time = 0.0;
     // Draw every collision shape over the world, as Godot's Visible Collision Shapes
     // (debug_draw.hpp).
@@ -320,8 +320,8 @@ void set_settings(world::World& world, const Settings& settings);
 struct CaptureOptions {
     // Image pixels per world pixel: 0.5 halves the width and height.
     float scale = 1.0F;
-    // Seconds of game time materials read; below 0, the world's tick times the settings'
-    // tick_seconds.
+    // Seconds of game time materials and animated tiles read; below 0, the world's tick times the
+    // settings' tick_seconds.
     double time = -1.0;
     // Draw the collision shapes too, as CanvasOptions::collisions.
     bool collisions = false;

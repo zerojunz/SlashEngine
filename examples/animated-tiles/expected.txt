@@ -1,0 +1,26 @@
+wrote pond.png: 80x48, 4 tiles
+scene.open {"path":"main.scene.json"}
+{"entities":2,"path":"main.scene.json"}
+-- a pond of water, and on the layer above it a bridge across two cells, torches and stones
+tilemap.set {"id":"pond","rect":[0,0,8,3],"tile":"water"}
+{"changed":24,"id":"pond"}
+tilemap.set {"cells":[[2,1]],"id":"deck","tile":"bridge"}
+{"changed":1,"id":"deck"}
+tilemap.set {"cells":[[1,3],[3,3],[4,3]],"id":"deck","tile":"torch"}
+{"changed":3,"id":"deck"}
+tilemap.set {"cells":[[0,3],[7,3]],"id":"deck","tile":"stone"}
+{"changed":2,"id":"deck"}
+-- the bridge is one cell of the layer; it draws over the next one too
+tilemap.get {"id":"deck"}
+{"legend":{"b":"bridge","s":"stone","t":"torch"},"origin":[0,1],"rows":["..b","","st.tt..s"]}
+-- at the start: the water's first frame, also just left of the bridge, the bridge's planks over its cell and the next, and each torch at its own point of the loop
+frame.capture {"points":[[8,8],[28,24],[40,24],[56,24],[24,56],[56,56],[72,56]]}
+{"colors":[[0.098,0.463,0.824,1],[0.098,0.463,0.824,1],[0.631,0.533,0.498,1],[0.631,0.533,0.498,1],[1,0.596,0,1],[1,0.922,0.231,1],[0.957,0.263,0.212,1]],"drawn":{"tiles":30},"height":64,"width":128}
+-- half a second of ticks later the water shows its second frame
+step {"ticks":30}
+{"tick":30,"ticks":30}
+frame.capture {"points":[[8,8],[28,24],[40,24],[56,24],[24,56],[56,56],[72,56]]}
+{"colors":[[0.259,0.647,0.961,1],[0.259,0.647,0.961,1],[0.631,0.533,0.498,1],[0.631,0.533,0.498,1],[1,0.341,0.133,1],[0.957,0.263,0.212,1],[1,0.922,0.231,1]],"drawn":{"tiles":30},"height":64,"width":128}
+-- frame.capture can draw any moment: at one second, the third frame
+frame.capture {"points":[[8,8],[28,24],[40,24],[56,24],[24,56],[56,56],[72,56]],"time":1.0}
+{"colors":[[0.565,0.792,0.976,1],[0.565,0.792,0.976,1],[0.631,0.533,0.498,1],[0.631,0.533,0.498,1],[1,0.596,0,1],[1,0.922,0.231,1],[0.957,0.263,0.212,1]],"drawn":{"tiles":30},"height":64,"width":128}

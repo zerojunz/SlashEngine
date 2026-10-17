@@ -154,6 +154,10 @@ struct AlternativeTile {
     std::vector<TilePolygon> collision;
 };
 
+// How an animated tile's cells start, as Godot's TileSetAtlasSource::TileAnimationMode: all on
+// the first frame together, or each at a random point in the animation, the same every run.
+enum class TileAnimationMode : std::uint8_t { Default, RandomStartTimes };
+
 struct TileData {
     std::string name;
     int terrain = -1; // into TileSet::terrains, or -1 for none
@@ -168,6 +172,17 @@ struct TileData {
     Vec2i texture_origin;
     std::vector<TilePolygon> collision;
     std::map<int, AlternativeTile> alternatives; // by number, from 1
+    // The texture's cells the tile covers from its own, as Godot's size_in_atlas: its region is
+    // that many cells and the separations between them, drawn centered on one map cell.
+    Vec2i size_in_atlas{1, 1};
+    // Its animation, as Godot's: each frame's duration in seconds, at animation_speed times
+    // speed. Frames follow the tile in the texture, animation_separation cells apart, wrapping
+    // after animation_columns of them (0: all in one row).
+    std::vector<double> animation_frames{1.0};
+    int animation_columns = 0;
+    Vec2i animation_separation;
+    double animation_speed = 1.0;
+    TileAnimationMode animation_mode = TileAnimationMode::Default;
 };
 
 // A tile set's physics layer, as Godot's: what its tiles' polygons collide as, and with.
@@ -282,8 +297,18 @@ struct TileLook {
 // TileData::get_transformed_vertices).
 [[nodiscard]] std::vector<TilePolygon> tile_collision(const TileSet& set, const TileRef& tile);
 
-// The pixels a tile takes in its atlas texture, as [x, y, width, height].
-[[nodiscard]] std::array<int, 4> tile_region(const AtlasSource& source, Vec2i atlas);
+// The pixels a tile's frame takes in its atlas texture, as [x, y, width, height], as Godot's
+// TileSetAtlasSource::get_tile_texture_region.
+[[nodiscard]] std::array<int, 4> tile_region(const AtlasSource& source, Vec2i atlas, int frame = 0);
+
+// The frame a tile shows time seconds into the game, as Godot's draw_tile picks it: offset, from
+// 0 to 1, is how far into its animation the cell starts.
+[[nodiscard]] int tile_frame(const TileData& tile, double time, double offset = 0.0);
+
+// Where in its animation a layer's cell starts when its tile's animation_mode is
+// RandomStartTimes, from 0 up to 1: a hash of the layer's ID and the cell, as Godot hashes the
+// cell's position and the layer's instance.
+[[nodiscard]] double tile_animation_offset(std::string_view layer, Vec2i cell);
 
 using Cells = std::map<Vec2i, TileRef, CellOrder>;
 
