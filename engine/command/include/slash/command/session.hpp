@@ -4,6 +4,7 @@
 #include "slash/command/command.hpp"
 #include "slash/core/json.hpp"
 #include "slash/core/result.hpp"
+#include "slash/platform/file.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/tree2d.hpp"
 #include "slash/world/world.hpp"
@@ -98,7 +99,9 @@ public:
     // Hot reload: reloads assets whose files changed and updates the instances of changed prefabs,
     // keeping their overrides. Queues an "asset.reloaded" event per changed file and a "command"
     // event named "asset.reload" with the changes to the world. It is not an undo step. Every
-    // command polls first; hosts that tick the world also poll between ticks.
+    // command polls first; hosts that tick the world also poll between ticks. A changed
+    // project.json applies its window, rendering, physics, input and audio settings again, so
+    // what project.import or an edit writes there takes effect at once.
     void poll_assets();
 
     // Project files that commands change, such as the storyboard. A command's changes are staged
@@ -239,8 +242,12 @@ private:
     // Runs a step's undo calls (or its redo calls) as one staged change.
     Reply replay(const Snapshot& step, bool undo);
 
+    // Applies project.json's settings to the world if the file changed since they last were.
+    void poll_project();
+
     const Registry* commands_;
     SessionOptions options_;
+    std::optional<platform::FileStamp> project_stamp_; // project.json's when last applied
     asset::Assets assets_;
     world::World world_;
     std::string scene_path_;

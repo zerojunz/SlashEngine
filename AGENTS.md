@@ -96,9 +96,10 @@ set, each `AnimationPlayer` against its library and that its controls lay out as
 `text::add_asset_types` adds fonts (`.ttf`, `.otf`, `.font.json`), `audio::add_asset_types`
 adds sounds (`.wav`, `.ogg`, `.mp3`), `.audio.json` and `.bus_layout.json` files, and games add types
 with `add_type`. Sessions and games own an `asset::Assets`, and prefab files are read through it.
-`Session::poll_assets()` reloads changed files and updates prefab instances (keeping overrides);
-every command polls first, and `slash-cli run` and `serve` poll between ticks. `asset.list` shows
-what is loaded, and subscribers get `asset.reloaded` events.
+`Session::poll_assets()` reloads changed files, updates prefab instances (keeping overrides) and
+applies a changed `project.json`'s settings again; every command polls first, and `slash-cli run`
+and `serve` poll between ticks. `asset.list` shows what is loaded, and subscribers get
+`asset.reloaded` events.
 
 ## Storyboard
 
@@ -312,9 +313,11 @@ unit most sprites use, tile maps as `TileMapLayer`s over a `.tileset.json` cut f
 their cells show, each Animator controller as a `.anim.json` library with an animation per state
 (Unity's curves keyed every 60th of a second where they bend; tracks target objects by their
 paths from the Animator), every `.mixer` file as one `.bus_layout.json`, 2D joints as Godot's,
-settings and both input systems merged into `project.json`, and a task per C# script and per
-state machine. Objects a prefab brings are written whole, so `format_scene` keeps only what
-differs. `src/common.cpp` holds what both importers share: paths, the report and the tasks.
+objects under a `Canvas` as controls (rects as anchors and offsets, uGUI and TextMesh Pro
+widgets as Godot's, their parts folded into the control's theme and fields), settings and both
+input systems merged into `project.json`, and a task per C# script and per state machine.
+Objects a prefab brings are written whole, so `format_scene` keeps only what differs.
+`src/common.cpp` holds what both importers share: paths, the report and the tasks.
 `docs/reference/unity-import.md` maps each component and setting; `examples/import-unity`
 imports a small platformer.
 
