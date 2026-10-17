@@ -1514,6 +1514,85 @@ void write_menu(const fs::path& folder) {
     write(folder / "Assets/Scenes/Menu.unity.meta", meta("a1000000000000000000000000000025"));
 }
 
+constexpr std::string_view kDropdownCs = "0d0b652f32a2cc243917e4028fa0f046";
+constexpr std::string_view kTmpDropdownCs = "7b743370ac3e4ec2a1668f5455a8ef8a";
+
+// An options screen beside the menu: a canvas holding Unity's default dropdown, which calls
+// Menu.SetQuality, and a TextMesh Pro dropdown that can't be used, with a placeholder and an
+// arrow of the project's own.
+void write_options(const fs::path& folder) {
+    std::string scene(kHeader);
+    scene += ui_object(5000, "Canvas", {5001, 5009, 5002, 1005});
+    scene += rect_transform(5001, 5000, "0, 0", "0, 0", "0, 0", "0, 0", "0, 0", 0, {5101, 5201});
+    scene += component(223, "Canvas", 5002, 5000,
+                       "  serializedVersion: 3\n  m_RenderMode: 0\n  m_Camera: {fileID: 0}\n"
+                       "  m_PixelPerfect: 0\n  m_OverrideSorting: 0\n  m_SortingOrder: 0\n");
+    scene += script(1005, 5000, kMenuCs, "");
+    const auto options =
+        [](std::initializer_list<std::pair<std::string_view, std::string_view>> entries) {
+            std::string out = "  m_Options:\n    m_Options:\n";
+            for (const auto& [text, sprite] : entries) {
+                out += "    - m_Text: " + std::string(text) +
+                       "\n      m_Image: " + std::string(sprite) + "\n";
+            }
+            return out;
+        };
+    // The default dropdown: a caption, Unity's arrow and a hidden template for its list.
+    scene += ui_object(5100, "Quality", {5101, 5109, 5102, 5103});
+    scene += rect_transform(5101, 5100, "0.5, 0.5", "0.5, 0.5", "0, 40", "160, 30", "0.5, 0.5",
+                            5001, {5111, 5121, 5131});
+    scene += image(5102, 5100, ref(10905, kBuiltin, 0), "{r: 1, g: 1, b: 1, a: 1}", 1);
+    scene += script(5103, 5100, kDropdownCs,
+                    selectable(5102) +
+                        "  m_Template: {fileID: 5131}\n  m_CaptionText: {fileID: 5112}\n"
+                        "  m_CaptionImage: {fileID: 0}\n  m_ItemText: {fileID: 0}\n"
+                        "  m_ItemImage: {fileID: 0}\n  m_Value: 1\n" +
+                        options({{"Low", "{fileID: 0}"}, {"High", ref(21300000, kIconPng)}}) +
+                        ui_call("m_OnValueChanged", "SetQuality", 0));
+    scene += ui_object(5110, "Label", {5111, 5119, 5112});
+    scene += rect_transform(5111, 5110, "0, 0", "1, 1", "-7.5, -0.5", "-35, -13", "0.5, 0.5", 5101);
+    scene += legacy_text(5112, 5110, "High", 14, 3);
+    scene += ui_object(5120, "Arrow", {5121, 5129, 5122});
+    scene += rect_transform(5121, 5120, "1, 0.5", "1, 0.5", "-15, 0", "20, 20", "0.5, 0.5", 5101);
+    scene += image(5122, 5120, ref(10915, kBuiltin, 0));
+    scene += ui_object(5130, "Template", {5131, 5139, 5132}, false);
+    scene += rect_transform(5131, 5130, "0, 0", "1, 0", "0, 2", "0, 150", "0.5, 1", 5101);
+    scene += image(5132, 5130, ref(10905, kBuiltin, 0), "{r: 1, g: 1, b: 1, a: 1}", 1);
+    // The TextMesh Pro dropdown, its value past its options, drawn in the project's sprites.
+    std::string locked = selectable(5202);
+    locked.replace(locked.find("m_Interactable: 1"), 17, "m_Interactable: 0");
+    scene += ui_object(5200, "Mode", {5201, 5209, 5202, 5203});
+    scene += rect_transform(5201, 5200, "0.5, 0.5", "0.5, 0.5", "0, -10", "160, 30", "0.5, 0.5",
+                            5001, {5211, 5221, 5231, 5241});
+    scene += image(5202, 5200, ref(21300000, kButtonPng), "{r: 1, g: 1, b: 1, a: 1}", 1);
+    scene += script(5203, 5200, kTmpDropdownCs,
+                    locked +
+                        "  m_Template: {fileID: 5241}\n  m_CaptionText: {fileID: 5212}\n"
+                        "  m_CaptionImage: {fileID: 0}\n  m_Placeholder: {fileID: 5222}\n"
+                        "  m_ItemText: {fileID: 0}\n  m_ItemImage: {fileID: 0}\n  m_Value: 5\n" +
+                        options({{"Easy", "{fileID: 0}"}, {"Hard", "{fileID: 0}"}}));
+    scene += ui_object(5210, "Label", {5211, 5219, 5212});
+    scene += rect_transform(5211, 5210, "0, 0", "1, 1", "-7.5, -0.5", "-35, -13", "0.5, 0.5", 5201);
+    scene += tmp_text(5212, 5210, "Hard", "{r: 0.2, g: 0.2, b: 0.2, a: 1}",
+                      "  m_fontSize: 14\n  m_fontStyle: 0\n  m_HorizontalAlignment: 1\n"
+                      "  m_VerticalAlignment: 512\n  m_TextWrappingMode: 0\n");
+    scene += ui_object(5220, "Placeholder", {5221, 5229, 5222}, false);
+    scene += rect_transform(5221, 5220, "0, 0", "1, 1", "-7.5, -0.5", "-35, -13", "0.5, 0.5", 5201);
+    scene += tmp_text(5222, 5220, "Pick one", "{r: 0.2, g: 0.2, b: 0.2, a: 0.5}",
+                      "  m_fontSize: 14\n  m_fontStyle: 2\n  m_HorizontalAlignment: 1\n"
+                      "  m_VerticalAlignment: 512\n  m_TextWrappingMode: 0\n");
+    scene += ui_object(5230, "Arrow", {5231, 5239, 5232});
+    scene += rect_transform(5231, 5230, "1, 0.5", "1, 0.5", "-15, 0", "20, 20", "0.5, 0.5", 5201);
+    scene += image(5232, 5230, ref(21300000, kIconPng));
+    scene += ui_object(5240, "Template", {5241, 5249, 5242}, false);
+    scene += rect_transform(5241, 5240, "0, 0", "1, 0", "0, 2", "0, 150", "0.5, 1", 5201);
+    scene += image(5242, 5240, ref(10905, kBuiltin, 0), "{r: 1, g: 1, b: 1, a: 1}", 1);
+    scene += "--- !u!1660057539 &9223372036854775807\nSceneRoots:\n  m_ObjectHideFlags: 0\n"
+             "  m_Roots:\n  - {fileID: 5001}\n";
+    write(folder / "Assets/Scenes/Options.unity", scene);
+    write(folder / "Assets/Scenes/Options.unity.meta", meta("a1000000000000000000000000000026"));
+}
+
 constexpr std::string_view kLight2DCs = "073797afb82c5a1438f328866b10b3f0";
 constexpr std::string_view kShadowCasterCs = "7db70e0ea77f5ac47a8f4565a9406397";
 constexpr std::string_view kCompositeCasterCs = "38f48a8d66b2adc46887f23a3a88ac01";
@@ -2672,6 +2751,75 @@ TEST_CASE("Unity UI becomes controls: canvases, text, images, widgets and layout
     CHECK(rects["lily"] == parse("[548, 28, 224, 48]"));
     CHECK(rects["key"] == parse("[92, 380, 64, 64]"));
     CHECK(rects["logo"] == parse("[16, 16, 192, 96]"));
+}
+
+TEST_CASE("Unity dropdowns become option buttons, their captions, arrows and lists part of them") {
+    const fs::path project = "import_unity_options";
+    fs::remove_all(project);
+    make_project(project / "unity");
+    write_menu(project / "unity");
+    write_options(project / "unity");
+    auto imported = importer::import_project(
+        {.source = (project / "unity").string(), .destination = project.string()});
+    REQUIRE_MESSAGE(imported.ok(), (imported.ok() ? std::string() : imported.error().message));
+    const auto files = files_of(imported.value());
+    const std::string scene = "unity/Assets/Scenes/Options.scene.json";
+
+    // Its options, the one shown, its background's styles and its caption's look; the caption,
+    // the arrow and the template are part of it.
+    json::Value quality = entity(files, scene, "quality");
+    CHECK(quality["OptionButton"] == parse(R"({"selected": 1, "items": [{"text": "Low"},
+        {"text": "High", "icon": "unity/Assets/UI/icon.png"}]})"));
+    CHECK(quality["Control"].find("children") == nullptr);
+    // Unity's rounded sprite draws as a flat style box.
+    CHECK(quality["Control"]["theme_override_styles"]["normal"]["type"].as_string() == "flat");
+    CHECK(quality["Control"]["theme_override_font_sizes"] == parse(R"({"font_size": 14})"));
+    CHECK(quality["Control"].find("theme_override_icons") == nullptr); // Unity's arrow
+    const json::Value report = parse(files.at("import/unity.json"));
+    const json::Value& objects =
+        *report.find("scenes")->find("Assets/Scenes/Options.unity")->find("entities");
+    CHECK(objects.find("Canvas/Quality/Template")->as_string() == "quality");
+    CHECK(unsupported(report, "Dropdown template").find("where")->as_string() ==
+          "Assets/Scenes/Options.unity: Canvas/Quality");
+
+    // A value past the options is the last; one that can't be used is disabled, and an arrow
+    // of the project's own is the button's arrow icon.
+    json::Value mode = entity(files, scene, "mode");
+    CHECK(mode["OptionButton"] == parse(R"({"selected": 1, "disabled": true,
+        "items": [{"text": "Easy"}, {"text": "Hard"}]})"));
+    CHECK(mode["Control"]["theme_override_icons"] ==
+          parse(R"({"arrow": "unity/Assets/UI/icon.png"})"));
+    CHECK(mode["Control"]["theme_override_styles"]["normal"]["texture"].as_string() ==
+          "unity/Assets/UI/button.png");
+    CHECK(objects.find("Canvas/Mode/Placeholder")->as_string() == "mode");
+
+    // Picking an option calls the script's method, in its task.
+    const json::Value work = parse(files.at("storyboard/work.json"));
+    const std::string& task =
+        work.find("entries")->find("task/port-menu")->find("text")->as_string();
+    CHECK(task.find("quality in " + scene + " calls SetQuality() on item_selected") !=
+          std::string::npos);
+
+    // It opens its list as an OptionButton does.
+    slash::world::ComponentRegistry components;
+    slash::world::register_builtin_components(components);
+    command::Registry commands;
+    command::register_builtin_commands(commands);
+    command::SessionOptions options;
+    options.project_root = project.string();
+    options.capture_logs = false;
+    command::Session session(components, commands, options);
+    const command::Reply opened =
+        session.call("scene.open", parse(R"({"path": ")" + scene + "\"}"));
+    REQUIRE_MESSAGE(opened.ok, opened.message);
+    const command::Reply popup = session.call("ui.popup", parse(R"({"id": "quality"})"));
+    REQUIRE_MESSAGE(popup.ok, popup.message);
+    const command::Reply laid = session.call("ui.layout", parse(R"({"ids": ["quality"]})"));
+    REQUIRE_MESSAGE(laid.ok, laid.message);
+    CHECK(laid.value.find("problems") == nullptr);
+    const json::Value& list = laid.value.find("popups")->as_array().at(0);
+    CHECK(list.find("focused_item")->as_int() == 1);
+    CHECK(list.find("items")->as_array().size() == 2);
 }
 
 TEST_CASE("Unity's 2D lights become Godot's lights, its shadow casters occluders") {

@@ -24,7 +24,7 @@ step {"ticks":30}
 events.read {"subscription":"events_1"}
 {"dropped":0,"events":[{"id":"sparks","kind":"finished","seq":1,"tick":35}],"more":false}
 entity.get {"components":["CPUParticles2D"],"id":"sparks","omit_defaults":true}
-{"components":{"CPUParticles2D":{"amount":24,"color_ramp":[{"color":[1.0,0.95,0.5,1.0],"offset":0.0},{"color":[1.0,0.2,0.0,0.0],"offset":1.0}],"damping_max":60.0,"damping_min":40.0,"emitting":false,"explosiveness":1.0,"gravity":[0.0,200.0],"initial_velocity_max":140.0,"initial_velocity_min":80.0,"lifetime":0.6,"one_shot":true,"particle_flag_align_y":true,"scale_amount_max":3.0,"scale_amount_min":2.0,"seed":7,"spread":180.0}},"id":"sparks"}
+{"components":{"CPUParticles2D":{"amount":24,"color_ramp":[{"color":[1.0,0.95,0.5,1.0]},{"color":[1.0,0.2,0.0,0.0],"offset":1.0}],"damping_max":60.0,"damping_min":40.0,"emitting":false,"explosiveness":1.0,"gravity":[0.0,200.0],"initial_velocity_max":140.0,"initial_velocity_min":80.0,"lifetime":0.6,"one_shot":true,"particle_flag_align_y":true,"scale_amount_max":3.0,"scale_amount_min":2.0,"seed":7,"spread":180.0}},"id":"sparks"}
 component.set {"components":{"CPUParticles2D":{"emitting":true}},"id":"sparks"}
 {"changed":{"CPUParticles2D":{"emitting":true}},"id":"sparks"}
 step {"ticks":1}

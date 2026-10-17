@@ -65,7 +65,7 @@ as `entity.get`, reject it as an unknown param.
 | Physics | [`physics.raycast`](#physicsraycast), [`physics.overlap`](#physicsoverlap), [`physics.contacts`](#physicscontacts) |
 | Particles | [`particles.eval`](#particleseval) |
 | Lights | [`light.sample`](#lightsample) |
-| UI and text | [`ui.layout`](#uilayout), [`ui.theme`](#uitheme), [`ui.press`](#uipress), [`ui.focus`](#uifocus), [`ui.clipboard`](#uiclipboard), [`text.measure`](#textmeasure) |
+| UI and text | [`ui.layout`](#uilayout), [`ui.theme`](#uitheme), [`ui.press`](#uipress), [`ui.popup`](#uipopup), [`ui.select`](#uiselect), [`ui.focus`](#uifocus), [`ui.clipboard`](#uiclipboard), [`text.measure`](#textmeasure) |
 | Input | [`input.inject`](#inputinject), [`input.state`](#inputstate), [`input.actions`](#inputactions) |
 | Audio | [`audio.state`](#audiostate), [`audio.capture`](#audiocapture), [`audio.play`](#audioplay), [`audio.stop`](#audiostop), [`audio.set_bus`](#audioset_bus) |
 | Storyboard | [`storyboard.query`](#storyboardquery), [`storyboard.brief`](#storyboardbrief), [`storyboard.check`](#storyboardcheck), [`storyboard.edit`](#storyboardedit) |
@@ -710,12 +710,13 @@ lines each label, button, progress bar and text field shows, how each
 [button](scene-format.md#buttons) draws, each [slider](scene-format.md#sliders)'s value, where
 each [text field](scene-format.md#text-fields)'s caret and selection are, how far each
 [scroll container](scene-format.md#scrolling) is scrolled and what its clip cuts off, which
-control has focus and which is hovered, and the mistakes that keep controls from laying out or
-working as written. A check that needs no screenshot.
+[popup menus](scene-format.md#menus) are open and where their items are, which control has
+focus and which is hovered, and the mistakes that keep controls from laying out or working as
+written. A check that needs no screenshot.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `ids` | array of strings | all | Only these controls, and only their problems |
+| `ids` | array of strings | all | Only these controls (and the popups of these menus), and only their problems |
 | `viewport` | `[width, height]` | the project's `window` size | The viewport to lay out in, to try another window size |
 
 Needs: `read`. In the scene of [examples/ui-and-text](../../examples/ui-and-text/), the panel and
@@ -739,11 +740,22 @@ the sign on a smaller window:
   `system_glyphs` characters drawn from fonts installed on the machine (other machines may lack
   them), and `font_error` says why its font didn't load, in which case the built-in font drew
   it.
-- A `Button`, `CheckBox`, `CheckButton` or `TextureButton` has `draw_mode`: `"normal"`,
+- A `Button`, `CheckBox`, `CheckButton`, `OptionButton`, `MenuButton` or `TextureButton` has
+  `draw_mode`: `"normal"`,
   `"hover"`, `"pressed"`, `"hover_pressed"` or `"disabled"`, as Godot's. A toggle button that is
   on (a check box that is checked) draws `"pressed"`, and `"hover_pressed"` while hovered; a
   button its shortcut just pressed draws `"hover_pressed"` for 0.2 seconds. The control with focus has `"focused": true`, and the one under the mouse
   `"hovered": true`.
+- `popups` lists the popup menus open, the last on top: `id`, the `PopupMenu`, `OptionButton` or
+  `MenuButton` it belongs to, `rect` in the viewport, `items` (each with its `text`, `rect` in
+  the viewport and `"selectable": false` for a separator or a disabled item), `focused_item`
+  while an item is focused, and `scroll` and `scroll_max` when it scrolls. From
+  [examples/ui-menus](../../examples/ui-menus/):
+
+  ```json
+  {"popups":[{"id":"game","items":[{"rect":[4,36,89,22],"text":"New Game"},{"rect":[4,62,89,22],"selectable":false,"text":"Load"},{"rect":[4,88,89,0],"selectable":false,"text":""},{"rect":[4,92,89,22],"text":"Quit"}],"rect":[0,30,97,90]}]}
+  ```
+
 - A `Slider` has `value`, on its step and in range, and `ratio`, how far along it is from 0 to
   1, e.g. `{"id": "volume", "ratio": 0.8, "rect": [66, 147, 226, 16], "value": 80}`. A
   `ScrollBar` has them too.
@@ -787,8 +799,10 @@ the sign on a smaller window:
   or names no action, a `button_group` on a button without `toggle_mode`, a `Label` on a button
   entity (a button draws its own text), two buttons on one entity, a `focus_*` field that
   names no control, a `LineEdit` with a `Label` or button on its entity, a
-  `secret_character` longer than one character and a `TextEdit` with a `Label`, button or
-  `LineEdit` on its entity. Each has the
+  `secret_character` longer than one character, a `TextEdit` with a `Label`, button or
+  `LineEdit` on its entity, a menu item's `checkable` that isn't `none`, `check` or `radio`, a
+  `PopupMenu` on a control entity and an `OptionButton`'s `selected` past its options. Each has
+  the
   control's `id`, the JSON Pointer `path` of the value in the entity and a `message`:
 
 ```json
@@ -829,10 +843,11 @@ panel, from the theme's `Slot` variation:
 
 ### ui.press
 
-Presses a [`Button`, `CheckBox`, `CheckButton` or `TextureButton`](scene-format.md#buttons) at
-the next tick, as a click
-released over it would: a toggle button toggles (and turns the others in its `button_group`
-off), then it emits `pressed`. Nothing else about the pointer or focus changes.
+Presses a [`Button`, `CheckBox`, `CheckButton`, `OptionButton`, `MenuButton` or
+`TextureButton`](scene-format.md#buttons) at the next tick, as a click released over it would: a
+toggle button toggles (and turns the others in its `button_group` off), an `OptionButton` or
+`MenuButton` opens its list (or closes it, if open) with the option shown or its first item
+focused, as a key would, then it emits `pressed`. Nothing else about the pointer or focus changes.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -855,6 +870,63 @@ button.
 
 To press a button the way a player does, with hover, focus, `button_down` and `button_up`, send
 the click or tap with [`input.inject`](#inputinject) instead.
+
+### ui.popup
+
+Opens a [popup menu](scene-format.md#menus): a `PopupMenu` at its `position` (setting
+`visible`), or an `OptionButton`'s or `MenuButton`'s list below it, as their `show_popup` does,
+with the option shown (or the first item) focused. Any other popup closes. `"open": false`
+closes it instead.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `id` | string | required | The `PopupMenu`, `OptionButton` or `MenuButton` |
+| `open` | boolean | `true` | `false` closes it |
+
+Needs: `run`. A `PopupMenu` or `MenuButton` emits `about_to_popup` as it opens and
+`popup_hide` as it closes; there is nothing to undo. From [examples/ui-menus](../../examples/ui-menus/):
+
+```json
+{"id": "context"}
+```
+
+```json
+{"open":["context"]}
+```
+
+`open` lists the popups open now. Unlike a press, opening an option button's or menu button's
+list this way doesn't press the button. An ID that names no entity is an error with the closest
+one, and so are an entity with none of the three components and a button that is hidden.
+
+### ui.select
+
+Picks an item of a [popup menu](scene-format.md#menus) at the next tick, as a click on it would,
+whether its list is open or not: an `OptionButton` selects the option, setting `selected` and
+emitting `item_selected` (unless it is selected already and `allow_reselect` is off); a
+`PopupMenu` or `MenuButton` emits `id_pressed` and `index_pressed`. An open list closes as a
+click would close it.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `id` | string | required | The `PopupMenu`, `OptionButton` or `MenuButton` |
+| `index` | integer | | The item's index |
+| `item_id` | integer | | The item's `id` (its index, if it has none) |
+| `text` | string | | The first item with this text |
+
+Needs: `run`. Give one of `index`, `item_id` and `text`. From
+[examples/ui-menus](../../examples/ui-menus/):
+
+```json
+{"id": "context", "text": "Rename"}
+```
+
+```json
+{"index":3,"tick":5}
+```
+
+`index` is the item picked and `tick` the tick it is picked at, which the next `step` runs. An
+item that doesn't exist (with the closest text), a separator, a disabled item and a disabled
+button are errors at their param.
 
 ### ui.focus
 
@@ -2013,8 +2085,9 @@ With `"map": [40, 12]` over the whole frame, the reply adds:
                 "gggggggggggggggggggggggggggggggggggggggg"]}}
 ```
 
-- `drawn` lists what shows: `id`, `kind` (`Sprite2D`, `TileMapLayer`, `CPUParticles2D` or the
-  control's type, such as `Label` or `Button`) and `rect`, its bounds in window pixels to a
+- `drawn` lists what shows: `id`, `kind` (`Sprite2D`, `TileMapLayer`, `CPUParticles2D`,
+  `PopupMenu` for an open popup menu, named by the entity it belongs to, or the control's type,
+  such as `Label` or `Button`) and `rect`, its bounds in window pixels to a
   tenth, `[x, y, width, height]`, not cut to the window: a control's rect as
   [`ui.layout`](#uilayout) places it (only the part its clip leaves, inside a
   `ScrollContainer` or a parent with `clip_contents`), else the bounds of what it drew. `shown`,
@@ -2024,7 +2097,8 @@ With `"map": [40, 12]` over the whole frame, the reply adds:
   layer's `tiles` and an emitter's `particles` (how many drew), and a control's `text` as laid
   out (lines joined with `\n`, cut short with its ellipsis, only the characters
   `visible_characters` shows), a button's `draw_mode` when it isn't `"normal"`, a slider's or
-  scroll bar's `value`, a scroll container's `scroll` and `focused`.
+  scroll bar's `value`, a scroll container's `scroll` and `focused`, and a popup menu's `items`
+  (their texts), `focused_item` and `scroll`.
 - `covered` lists what is in the window but wholly under what was drawn after it, `offscreen`
   what drew only outside the window (left out with a `region`) and `clear` what drew no pixel
   that can be seen, such as a sprite whose `modulate` alpha is below 0.25. `clipped` lists

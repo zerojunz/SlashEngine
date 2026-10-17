@@ -544,6 +544,21 @@ component holds Godot's whole pixels: `absorb_scrolls` takes in changes made out
 `process_scrolls` glides touch drags, follows focus (`ensure_control_visible`) and holds each
 scroll to the layout's range every tick. `examples/ui-scrolling` is a quest log.
 
+`OptionButton`, `MenuButton` and `PopupMenu` are Godot's. A `PopupMenu` is an entity of its own,
+not a control, since Godot's is a window; the gui state keeps each open popup's `PopupStatus`
+(focused item, scroll, the held click that opened it) by owner ID, one open at a time as
+embedded windows are. `ui::popup_items` gives an owner's items, an option button's as radio
+items. Layout places each open popup as `PopupMenu::_get_contents_minimum_size`, the buttons'
+`show_popup` and `Popup::_popup_adjust_rect` do and draws it as `_draw_items` does
+(`Layout::popups`, `ui::PopupView`); `CanvasRenderer` draws popups over every control
+(`canvas::FrameItem::Kind::Popup`). In `src/gui.cpp` the focused popup takes every event first
+(`forward_to_popup`, as `Viewport::_sub_windows_forward_input`): `popup_menu_input` follows
+`PopupMenu::_input_from_window_internal`, a left press outside marks it closing (hidden at the
+end of the tick, as `Popup::_close_pressed` defers it) and goes on to the controls;
+`show_popup`, `hide_popup` and `activate_item` follow the three classes' functions of those
+names. `ui.popup`, `ui.select` (`ui::open_popup`, `ui::select_item`) drive them.
+`examples/ui-menus` is a settings screen with a menu bar.
+
 Text fields are Godot's `LineEdit`. The gui system edits them (`Editor` in `src/gui.cpp`, which
 follows `LineEdit::gui_input`, its undo stack and its caret and selection calls) from key events
 with a `unicode` character, `ime` events and the `ui_text_*`, `ui_cut`/`copy`/`paste` and

@@ -62,6 +62,8 @@ their children in place. Controls draw on the screen above the world, as in a `C
 | `Label`, `ColorRect`, `Panel`, `TextureRect`, `NinePatchRect`, `ProgressBar`, `Button`, `CheckBox`, `CheckButton`, `TextureButton`, `LineEdit`, `TextEdit`, `ScrollContainer`, `MarginContainer`, `CenterContainer`, `PanelContainer`, `GridContainer` | `Control` and the component of the same name |
 | `HBoxContainer`, `VBoxContainer`, `BoxContainer` | `Control` and `BoxContainer` (`vertical` for `VBoxContainer`) |
 | `HFlowContainer`, `VFlowContainer`, `FlowContainer` | `Control` and `FlowContainer` |
+| `OptionButton`, `MenuButton` | `Control` and the component of the same name, with its `popup/item_<n>/` items |
+| `PopupMenu` | `PopupMenu`, an entity of its own with no `Control`, with its `item_<n>/` items |
 | `HSlider`, `VSlider` | `Control` and `Slider` |
 | `HScrollBar`, `VScrollBar` | `Control` and `ScrollBar` |
 | `TileMapLayer` | `Transform2D` and `TileMapLayer` |
@@ -85,6 +87,11 @@ type:
   points and color ramps; a label's theme overrides; a body's `friction` and `bounce`.
 - `region_enabled` and `region_rect` are `Sprite2D`'s `region`; `self_modulate` multiplies
   into its `modulate`; an `AnimatedSprite2D` plays only with `autoplay`, as in Godot.
+- A menu's `item_count` and each item's `text`, `icon`, `checkable` (0, 1, 2 for `none`,
+  `check`, `radio`), `checked`, `id` (left out when it is the item's index), `disabled` and
+  `separator` become its `items`; other item properties, such as shortcuts and submenus, are
+  reported. An `OptionButton`'s `text` and `icon` are its selected option's, and a
+  `PopupMenu`'s `size` is reported: a popup menu is as big as its items.
 
 ## Tile sets and tile maps
 

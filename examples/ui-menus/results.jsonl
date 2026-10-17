@@ -1,0 +1,24 @@
+{"id":1,"jsonrpc":"2.0","result":{"entities":6,"path":"main.scene.json"}}
+{"id":2,"jsonrpc":"2.0","result":{"subscription":"events_1"}}
+{"id":3,"jsonrpc":"2.0","result":{"controls":[{"draw_mode":"normal","id":"game","lines":["Game"],"rect":[0,0,50,30]},{"draw_mode":"normal","id":"view","lines":["View"],"rect":[54,0,42,30]},{"draw_mode":"normal","id":"quality","lines":["Medium"],"rect":[96,56,90,30]}],"viewport":[320,180]}}
+{"id":4,"jsonrpc":"2.0","result":{"queued":2,"tick":0}}
+{"id":5,"jsonrpc":"2.0","result":{"tick":1,"ticks":1}}
+{"id":6,"jsonrpc":"2.0","result":{"controls":[{"draw_mode":"hover_pressed","hovered":true,"id":"game","lines":["Game"],"rect":[0,0,50,30]}],"popups":[{"id":"game","items":[{"rect":[4,36,89,22],"text":"New Game"},{"rect":[4,62,89,22],"selectable":false,"text":"Load"},{"rect":[4,88,89,0],"selectable":false,"text":""},{"rect":[4,92,89,22],"text":"Quit"}],"rect":[0,30,97,90]}],"viewport":[320,180]}}
+{"id":7,"jsonrpc":"2.0","result":{"queued":1,"tick":1}}
+{"id":8,"jsonrpc":"2.0","result":{"tick":2,"ticks":1}}
+{"id":9,"jsonrpc":"2.0","result":{"queued":2,"tick":2}}
+{"id":10,"jsonrpc":"2.0","result":{"tick":3,"ticks":1}}
+{"id":11,"jsonrpc":"2.0","result":{"dropped":0,"events":[{"id":"game","kind":"about_to_popup","seq":1,"tick":0},{"id":"game","kind":"popup_hide","seq":2,"tick":1},{"id":"view","kind":"about_to_popup","seq":3,"tick":1},{"id":"view","kind":"popup_hide","seq":4,"tick":2},{"data":{"id":3,"index":3},"id":"view","kind":"id_pressed","seq":5,"tick":2}],"more":false}}
+{"id":12,"jsonrpc":"2.0","result":{"focused":"quality"}}
+{"id":13,"jsonrpc":"2.0","result":{"queued":2,"tick":3}}
+{"id":14,"jsonrpc":"2.0","result":{"tick":4,"ticks":1}}
+{"id":15,"jsonrpc":"2.0","result":{"drawn":[{"draw_mode":"pressed","focused":true,"id":"quality","kind":"OptionButton","rect":[96,56,90,30],"shown":0.94,"text":"Medium"},{"focused_item":1,"id":"quality","items":["Low","Medium","High"],"kind":"PopupMenu","rect":[96,86,98,86]}],"viewport":[320,180]}}
+{"id":16,"jsonrpc":"2.0","result":{"queued":4,"tick":4}}
+{"id":17,"jsonrpc":"2.0","result":{"tick":5,"ticks":1}}
+{"id":18,"jsonrpc":"2.0","result":{"dropped":0,"events":[{"data":{"index":2},"id":"quality","kind":"item_focused","seq":6,"tick":4},{"data":{"index":2},"id":"quality","kind":"item_selected","seq":7,"tick":4}],"more":false}}
+{"id":19,"jsonrpc":"2.0","result":{"controls":[{"draw_mode":"normal","focused":true,"id":"quality","lines":["High"],"rect":[96,56,90,30]}],"viewport":[320,180]}}
+{"id":20,"jsonrpc":"2.0","result":{"open":["context"]}}
+{"error":{"code":-32602,"data":{"path":"/text"},"message":"/text: item 1 of \"context\" is disabled"},"id":21,"jsonrpc":"2.0"}
+{"id":22,"jsonrpc":"2.0","result":{"index":3,"tick":5}}
+{"id":23,"jsonrpc":"2.0","result":{"tick":6,"ticks":1}}
+{"id":24,"jsonrpc":"2.0","result":{"dropped":0,"events":[{"id":"context","kind":"about_to_popup","seq":8,"tick":5},{"id":"context","kind":"popup_hide","seq":9,"tick":5},{"data":{"id":3,"index":3},"id":"context","kind":"id_pressed","seq":10,"tick":5}],"more":false}}
