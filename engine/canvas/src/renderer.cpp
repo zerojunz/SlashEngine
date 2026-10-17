@@ -1015,19 +1015,24 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             }
         }
         // A control draws as one item, though what it draws over its children comes later; the
-        // popup menu it opened is another.
+        // popup menu it opened is another, and its tooltip another.
         std::unordered_map<entt::entity, std::size_t> control_items;
         std::unordered_map<entt::entity, std::size_t> popup_items;
-        const auto control_item = [&](entt::entity entity, bool popup) -> FrameItem& {
-            const auto [found, made] =
-                (popup ? popup_items : control_items).try_emplace(entity, contents->items.size());
+        std::unordered_map<entt::entity, std::size_t> tooltip_items;
+        const auto control_item = [&](entt::entity entity, bool popup, bool tooltip) -> FrameItem& {
+            FrameItem::Kind kind = FrameItem::Kind::Control;
+            auto* kept = &control_items;
+            if (tooltip) {
+                kind = FrameItem::Kind::Tooltip;
+                kept = &tooltip_items;
+            } else if (popup) {
+                kind = FrameItem::Kind::Popup;
+                kept = &popup_items;
+            }
+            const auto [found, made] = kept->try_emplace(entity, contents->items.size());
             if (made) {
                 contents->items.push_back(
-                    {.kind = popup ? FrameItem::Kind::Popup : FrameItem::Kind::Control,
-                     .entity = entity,
-                     .count = 0,
-                     .pieces = {},
-                     .uncut = {}});
+                    {.kind = kind, .entity = entity, .count = 0, .pieces = {}, .uncut = {}});
             }
             return contents->items[found->second];
         };
@@ -1068,14 +1073,15 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
                     control_piece(call, from, from + static_cast<std::ptrdiff_t>(span.count));
                 piece) {
                 ++order;
-                control_item(span.entity, span.popup).pieces.push_back(std::move(*piece));
+                control_item(span.entity, span.popup, span.tooltip)
+                    .pieces.push_back(std::move(*piece));
             }
         }
         for (const ui::UncutDraw& uncut : controls.uncut) {
             if (auto piece = control_piece(uncut.call, uncut.call.vertices.begin(),
                                            uncut.call.vertices.end());
                 piece) {
-                control_item(uncut.entity, uncut.popup).uncut.push_back(std::move(*piece));
+                control_item(uncut.entity, uncut.popup, false).uncut.push_back(std::move(*piece));
             }
         }
         contents->layout = std::move(layout);

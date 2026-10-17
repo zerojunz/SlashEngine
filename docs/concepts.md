@@ -403,6 +403,14 @@ outside closes it. An agent opens one with `ui.popup` and picks an item with `ui
 `ui.layout` and `frame.summary` show the lists open and their items. The
 [UI menus example](../examples/ui-menus/) is a settings screen with a menu bar.
 
+A **tooltip** (`tooltip_text`) shows beside the pointer once it rests on a control. **Drag and
+drop** moves data from one control to another: a control's `DragAndDrop` component says what
+dragging it carries and what it takes, and a **drag preview** follows the pointer meanwhile.
+The control dropped on emits `drop_data`, and the game's code decides what that changes, such
+as moving an item between inventory slots. Text fields drag their selected text the same way.
+An agent drags with `ui.drag` and shows a tooltip with `ui.tooltip`. The
+[UI drag and drop example](../examples/ui-drag-and-drop/) is an inventory.
+
 Text in every language follows Godot's text server. **BiDi** (the Unicode Bidirectional
 Algorithm) orders each paragraph: Arabic and Hebrew go right to left, with English words and
 numbers in them still left to right, and a label's `text_direction` can set the paragraph's

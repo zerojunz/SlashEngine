@@ -506,7 +506,10 @@ TEST_CASE("clicks place the caret; double clicks select words and triple clicks 
     // Shift-click selects from the caret.
     f.send({click(at(1.0F), 40, true, kShift), click(at(1.0F), 40, false, kShift)});
     CHECK(f.selection("line") == Selection{{0, 11}});
-    // A click drops it; a drag selects.
+    // A click drops it; a drag selects. (A press on the selection and a drag would drag its
+    // text instead, as test_ui_drag.cpp checks.)
+    f.send({click(at(1.0F), 40, true), click(at(1.0F), 40, false)});
+    CHECK(f.selection("line") == Selection{});
     f.send(
         {click(at(1.0F), 40, true), drag(at(3.0F * kBox), 40), click(at(3.0F * kBox), 40, false)});
     CHECK(f.selection("line") == Selection{{0, 3}});

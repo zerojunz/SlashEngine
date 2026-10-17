@@ -90,8 +90,9 @@ struct FramePiece {
 // ScrollContainer's scroll bars) draws after them.
 struct FrameItem {
     // Popup is an open popup menu, over every control: its entity is the PopupMenu, OptionButton
-    // or MenuButton that shows it.
-    enum class Kind : std::uint8_t { Sprite, Tiles, Particles, Control, Popup };
+    // or MenuButton that shows it. Tooltip is the tooltip shown, over those: its entity is the
+    // control (or popup menu) whose tooltip it is.
+    enum class Kind : std::uint8_t { Sprite, Tiles, Particles, Control, Popup, Tooltip };
     Kind kind = Kind::Sprite;
     entt::entity entity = entt::null;
     std::size_t count = 0; // tiles or particles drawn

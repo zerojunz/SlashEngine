@@ -1,0 +1,54 @@
+scene.open {"path":"main.scene.json"}
+{"entities":9,"path":"main.scene.json"}
+events.subscribe {"kinds":["drag_begin","drop_data","drag_end"]}
+{"subscription":"events_1"}
+ui.layout {"ids":["slot_1","slot_2","slot_3","trash","sword"]}
+{"controls":[{"id":"slot_1","rect":[16,40,48,48]},{"id":"sword","rect":[24,48,32,32]},{"id":"slot_2","rect":[72,40,48,48]},{"id":"slot_3","rect":[128,40,48,48]},{"id":"trash","rect":[256,40,48,48]}],"viewport":[320,180]}
+input.inject {"events":[{"position":[40,64],"type":"mouse_motion"}]}
+{"queued":1,"tick":0}
+step {"ticks":31}
+{"tick":31,"ticks":31}
+ui.layout {"ids":["sword"]}
+{"controls":[{"hovered":true,"id":"sword","rect":[24,48,32,32]}],"tooltip":{"id":"sword","rect":[50,74,149,26],"text":"Sword: 12 damage"},"viewport":[320,180]}
+frame.summary {"ids":["sword"]}
+{"drawn":[{"id":"sword","kind":"ColorRect","rect":[24,48,32,32],"shown":0.99},{"id":"sword","kind":"Tooltip","rect":[50,74,149,26],"text":"Sword: 12 damage"}],"viewport":[320,180]}
+input.inject {"events":[{"button":"left","position":[40,64],"pressed":true,"type":"mouse_button"},{"position":[60,64],"type":"mouse_motion"},{"position":[152,64],"type":"mouse_motion"}]}
+{"queued":2,"tick":31}
+step {}
+{"tick":32,"ticks":1}
+ui.layout {"ids":["sword_ghost"]}
+{"controls":[{"id":"sword_ghost","rect":[152,64,32,32]}],"drag":{"data":{"id":"sword","kind":"item"},"from":"sword","over":"slot_3","position":[152,64],"preview":"sword_ghost"},"viewport":[320,180]}
+input.inject {"events":[{"button":"left","position":[152,64],"pressed":false,"type":"mouse_button"}]}
+{"queued":1,"tick":32}
+step {}
+{"tick":33,"ticks":1}
+events.read {"subscription":"events_1"}
+{"dropped":0,"events":[{"data":{"data":{"id":"sword","kind":"item"}},"id":"sword","kind":"drag_begin","seq":1,"tick":31},{"data":{"data":{"id":"sword","kind":"item"},"from":"sword","position":[24,24]},"id":"slot_3","kind":"drop_data","seq":2,"tick":32},{"data":{"successful":true},"id":"sword","kind":"drag_end","seq":3,"tick":32}],"more":false}
+ui.layout {"ids":["sword"]}
+{"controls":[{"id":"sword","rect":[136,48,32,32]}],"viewport":[320,180]}
+ui.drag {"from":"potion","to":"sword"}
+{"tick":33}
+step {}
+{"tick":34,"ticks":1}
+events.read {"subscription":"events_1"}
+{"dropped":0,"events":[{"data":{"data":{"id":"potion","kind":"item"}},"id":"potion","kind":"drag_begin","seq":4,"tick":33},{"data":{"data":{"id":"potion","kind":"item"},"from":"potion","position":[24,24]},"id":"slot_3","kind":"drop_data","seq":5,"tick":33},{"data":{"successful":true},"id":"potion","kind":"drag_end","seq":6,"tick":33}],"more":false}
+ui.layout {"ids":["sword","potion"]}
+{"controls":[{"id":"sword","rect":[80,48,32,32]},{"id":"potion","rect":[136,48,32,32]}],"viewport":[320,180]}
+input.inject {"events":[{"button":"left","position":[96,64],"pressed":true,"type":"mouse_button"},{"position":[200,120],"type":"mouse_motion"},{"button":"right","position":[200,120],"pressed":true,"type":"mouse_button"},{"button":"right","position":[200,120],"pressed":false,"type":"mouse_button"},{"button":"left","position":[200,120],"pressed":false,"type":"mouse_button"}]}
+{"queued":5,"tick":34}
+step {}
+{"tick":35,"ticks":1}
+events.read {"subscription":"events_1"}
+{"dropped":0,"events":[{"data":{"data":{"id":"sword","kind":"item"}},"id":"sword","kind":"drag_begin","seq":7,"tick":34},{"data":{"successful":false},"id":"sword","kind":"drag_end","seq":8,"tick":34}],"more":false}
+ui.drag {"from":"sword","to":"trash"}
+{"tick":35}
+step {}
+{"tick":36,"ticks":1}
+events.read {"subscription":"events_1"}
+{"dropped":0,"events":[{"data":{"data":{"id":"sword","kind":"item"}},"id":"sword","kind":"drag_begin","seq":9,"tick":35},{"data":{"data":{"id":"sword","kind":"item"},"from":"sword","position":[24,24]},"id":"trash","kind":"drop_data","seq":10,"tick":35},{"data":{"successful":true},"id":"sword","kind":"drag_end","seq":11,"tick":35}],"more":false}
+world.query {"with":["DragAndDrop"]}
+{"count":5,"entities":["potion","slot_1","slot_2","slot_3","trash"],"truncated":false}
+ui.tooltip {"id":"trash"}
+{"tooltip":{"id":"trash","text":"Drop an item here to throw it away"}}
+ui.tooltip {"id":"title"}
+{"tooltip":null}

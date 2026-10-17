@@ -858,7 +858,7 @@ DrawList draw_calls(const Layout& layout, const world::World& world, text::Fonts
     // What a control drew since calls_before (and vertices_before of the call before it), cut
     // to its clip, as spans.
     const auto finish = [&](const Placed& placed, std::size_t calls_before,
-                            std::size_t vertices_before, bool popup) {
+                            std::size_t vertices_before, bool popup, bool tooltip = false) {
         const std::size_t from = calls_before == 0 ? 0 : calls_before - 1;
         if (placed.clip) {
             for (std::size_t call = from; call < list.calls.size(); ++call) {
@@ -896,7 +896,8 @@ DrawList draw_calls(const Layout& layout, const world::World& world, text::Fonts
                                       .call = call,
                                       .first = first,
                                       .count = end - first,
-                                      .popup = popup});
+                                      .popup = popup,
+                                      .tooltip = tooltip});
             }
         }
     };
@@ -983,6 +984,32 @@ DrawList draw_calls(const Layout& layout, const world::World& world, text::Fonts
             finish(container, calls_before, vertices_before, false);
         }
     }
+    const Vec4 white{1.0F, 1.0F, 1.0F, 1.0F};
+    // A label's passes, as a Label draws them.
+    const auto draw_label = [&](const LabelText& label, const Placed& at) {
+        if (label.shadow_color.w != 0.0F && label.shadow_outline_size > 0) {
+            draw_label_pass(drawer, list, fonts, label, at, white, Pass::ShadowOutline,
+                            std::nullopt);
+        }
+        if (label.shadow_color.w > 0.0F) {
+            draw_label_pass(drawer, list, fonts, label, at, white, Pass::Shadow, std::nullopt);
+        }
+        if (label.outline_size > 0 && label.outline_color.w != 0.0F) {
+            draw_label_pass(drawer, list, fonts, label, at, white, Pass::Outline, std::nullopt);
+        }
+        draw_label_pass(drawer, list, fonts, label, at, white, Pass::Text, std::nullopt);
+    };
+    // A text field's dragged text, at the pointer over the controls.
+    if (layout.drag && layout.drag->text && world.valid(layout.drag->from)) {
+        Placed placed;
+        placed.entity = layout.drag->from;
+        placed.transform.tx = layout.drag->position.x;
+        placed.transform.ty = layout.drag->position.y;
+        const std::size_t calls_before = list.calls.size();
+        const std::size_t vertices_before = vertices_now();
+        draw_label(*layout.drag->text, placed);
+        finish(placed, calls_before, vertices_before, false);
+    }
     // The popup menus open, over every control, as Godot draws embedded windows over the
     // viewport's canvas: the panel, then the items cut to the list's room, then the scroll bar.
     for (const PopupView& popup : layout.popups) {
@@ -993,7 +1020,6 @@ DrawList draw_calls(const Layout& layout, const world::World& world, text::Fonts
         placed.entity = popup.owner;
         placed.transform.tx = popup.position.x;
         placed.transform.ty = popup.position.y;
-        const Vec4 white{1.0F, 1.0F, 1.0F, 1.0F};
         const auto boxes = [&](const Placed& at, const std::vector<Box>& list_boxes) {
             const std::size_t calls_before = list.calls.size();
             const std::size_t vertices_before = vertices_now();
@@ -1024,6 +1050,23 @@ DrawList draw_calls(const Layout& layout, const world::World& world, text::Fonts
         }
         finish(items, calls_before, vertices_before, true);
         boxes(placed, popup.bar);
+        ++list.controls;
+    }
+    // The tooltip, a window over the popup menus too.
+    if (layout.tooltip && world.valid(layout.tooltip->owner)) {
+        const TooltipView& tip = *layout.tooltip;
+        Placed placed;
+        placed.entity = tip.owner;
+        placed.transform.tx = tip.position.x;
+        placed.transform.ty = tip.position.y;
+        const std::size_t calls_before = list.calls.size();
+        const std::size_t vertices_before = vertices_now();
+        for (const Box& box : tip.panel) {
+            draw_box(drawer, box, placed, white);
+            ++list.boxes;
+        }
+        draw_label(tip.label, placed);
+        finish(placed, calls_before, vertices_before, false, true);
         ++list.controls;
     }
     return list;

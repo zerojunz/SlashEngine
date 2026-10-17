@@ -1080,6 +1080,7 @@ void TextArea::draw(const world::TextEdit& edit, const TextEditState& state, boo
     if (!edit.editable) {
         draw_caret = edit.caret_draw_when_editable_disabled;
     }
+    const bool shown = draw_caret || state.drag_caret_force_displayed;
     const int xmargin_beg = to_int(std::ceil(st.margin(0)));
     const int xmargin_end = to_int(size.x - std::floor(st.margin(2)));
     const int visible_rows = visible_line_count() + 1;
@@ -1090,6 +1091,14 @@ void TextArea::draw(const world::TextEdit& edit, const TextEditState& state, boo
     const bool placeholder = using_placeholder();
     const TextEditState::Caret& caret = state.caret;
     const int caret_wrap = wrap_index_at_column(caret.line, caret.column);
+    int drag_line = -1;
+    int drag_wrap = -1;
+    int drag_column = 0;
+    if (state.drag_caret && state.drag_caret->line < line_count()) {
+        drag_line = state.drag_caret->line;
+        drag_column = state.drag_caret->column;
+        drag_wrap = wrap_index_at_column(drag_line, drag_column);
+    }
     const SelectionRange selection = selection_range(caret);
     const bool selecting = caret.selection.active;
     const int first_line = first_visible_line() - 1;
@@ -1339,19 +1348,19 @@ void TextArea::draw(const world::TextEdit& edit, const TextEditState& state, boo
             text.pens.push_back({margin + shaped.origin(), base});
             text.stretch.push_back(0.0F);
 
-            // The caret.
-            if (line != caret.line || wrap != caret_wrap) {
-                continue;
-            }
-            view.caret_position.y = base + descent;
+            // The carets: the drag caret, where text dragged over it would drop, then the
+            // caret.
             const bool composing = !state.ime_text.empty();
-            if (!composing || state.ime_selection_length == 0) {
+            const auto draw_caret_at = [&](int column, bool main) {
+                if (composing && state.ime_selection_length != 0) {
+                    return;
+                }
+                float caret_x = 0.0F;
                 CaretPair carets;
                 const bool row_empty = shaped.clusters().empty();
                 if (!row_empty || composing) {
                     carets = carets_of(
-                        shaped, composing ? caret.column + state.ime_selection_start : caret.column,
-                        ascent);
+                        shaped, composing ? column + state.ime_selection_start : column, ascent);
                 } else {
                     // No carets: one at the start.
                     carets.leading.found = true;
@@ -1365,14 +1374,19 @@ void TextArea::draw(const world::TextEdit& edit, const TextEditState& state, boo
                 if ((l.found && (l.direction == text::Direction::Auto ||
                                  l.direction == state.input_direction)) ||
                     !t.found) {
-                    view.caret_position.x = margin + l.position.x;
+                    caret_x = margin + l.position.x;
                 } else {
-                    view.caret_position.x = margin + t.position.x;
+                    caret_x = margin + t.position.x;
                 }
-                const float x = view.caret_position.x;
+                if (main) {
+                    view.caret_position.x = caret_x;
+                }
+                const float x = caret_x;
                 if (x >= static_cast<float>(xmargin_beg) && x <= static_cast<float>(xmargin_end)) {
-                    view.caret_visible = true;
-                    if (draw_caret) {
+                    if (main) {
+                        view.caret_visible = true;
+                    }
+                    if (shown) {
                         if (edit.caret_type == "block" || state.overtype_mode) {
                             // A box round the character after it, or a line under it.
                             if (t.found) {
@@ -1474,7 +1488,15 @@ void TextArea::draw(const world::TextEdit& edit, const TextEditState& state, boo
                         }
                     }
                 }
+            };
+            if (line == drag_line && wrap == drag_wrap) {
+                draw_caret_at(drag_column, false);
             }
+            if (line != caret.line || wrap != caret_wrap) {
+                continue;
+            }
+            view.caret_position.y = base + descent;
+            draw_caret_at(caret.column, true);
             if (composing) {
                 // The composition underlined on the baseline, its selection thicker.
                 const auto underline = [&](int from, int to, float thickness) {
