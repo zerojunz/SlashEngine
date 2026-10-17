@@ -134,6 +134,10 @@ and alternative tiles:
   separation. Each tile is keyed by its column and row
   (`"2,0"` for Godot's `2:0`) and keeps its probability and `texture_origin` (or its old name,
   `texture_offset`).
+- A tile's `size_in_atlas` and its animation (each frame's duration, `animation_columns`,
+  `animation_separation`, `animation_speed` and `animation_mode`) carry over as the same keys,
+  with frame durations as [`animation_frames`](scene-format.md#animated-and-large-tiles). A
+  duration of 0 or less, which Godot refuses to load, stays at its default of a second.
 - Each terrain set is `set_<n>`, with its mode and its terrains' names; a name used in two sets
   gets the set's number added, since names are unique in the file.
 - A tile's terrain and its peering bits become `terrain` and `peering`, named for the way each
@@ -267,7 +271,6 @@ The report lists each of these once per kind, with how many and where it was fir
 | Tracks on a control's `position` or `size` | Animate its offsets instead |
 | Animation libraries no `AnimationPlayer` plays | A track's fields depend on the node it animates |
 | Tile navigation, occlusion and custom data layers, and tiles' constant velocities | Tile sets hold collision only; add `LightOccluder2D` entities for shadows, and move a layer rather than give its tiles a velocity |
-| Tiles larger than one cell, animated tiles | Tiles are one cell each; an animated tile shows its first frame |
 | Tiles' other properties, such as `z_index` and `y_sort_origin`, a base tile's flips and `modulate`, and scene collection sources | Tiles keep their texture origin and collision, and alternatives their flips and color too; place scenes as entities |
 | Y-sorting tile map layers | Layers draw in order, by `z_index` |
 | `gui/theme/custom_font` | Set `default_font` in the project's theme |

@@ -142,8 +142,16 @@ and a hexagonal tile map.
 - The renderer's sorting layer and order are the layer's `z_index`, the Tilemap's color its
   `modulate`, and the texture's filter mode its `texture_filter` when it differs from the
   project's. A tile map without a `TilemapRenderer` is hidden.
+- An `AnimatedTile` from Unity's 2D Tilemap Extras becomes an
+  [animated tile](scene-format.md#animated-and-large-tiles): its first sprite is the tile and
+  its other sprites the frames, which must follow it along the sheet's grid as Godot's do (in
+  one row, or wrapping to the next rows after some columns, evenly spaced). Each frame lasts a
+  second over its speed times the Tilemap's animation frame rate; a random speed plays at the
+  middle of its range, and start times and flags are reported. Frames out of grid order, or on
+  cells other tiles show, are reported and the tile shows its first frame; a sprite shown both
+  by an animated tile and a plain one plays in both, reported.
 - The report's `tile_assets` names, for each tile asset (`.asset`), the tile set and tile it
-  became. Scripted tiles (rule tiles, animated tiles) keep the sprite each cell shows and are
+  became. Other scripted tiles (rule tiles and the like) keep the sprite each cell shows and are
   reported, as is a tile map moved by a dynamic or kinematic `Rigidbody2D`. A `CompositeCollider2D` needs nothing, since a layer's
   tiles are one static body.
 

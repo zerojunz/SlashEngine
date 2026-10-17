@@ -1,0 +1,28 @@
+{
+  "format": 1,
+  "sources": {
+    "pond": {
+      "texture": "pond.png",
+      "tiles": {
+        "0,0": {
+          "animation_frames": [0.4, 0.4, 0.4],
+          "name": "water"
+        },
+        "0,1": {
+          "animation_columns": 2,
+          "animation_frames": [0.25, 0.25, 0.25, 0.25],
+          "animation_mode": "random_start_times",
+          "name": "torch"
+        },
+        "3,0": {
+          "name": "bridge",
+          "size_in_atlas": [2, 1],
+          "texture_origin": [-8, 0]
+        },
+        "3,1": {
+          "name": "stone"
+        }
+      }
+    }
+  }
+}

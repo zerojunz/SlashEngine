@@ -2129,7 +2129,7 @@ no GPU. Nothing changes. [examples/frame-capture](../../examples/frame-capture/)
 | `scale` | number, 0.05 to 4 | `1` | Image pixels per window pixel |
 | `image` | boolean | `false` | Return the image as a base64 PNG in `png` |
 | `path` | string | | A `.png` file to write, relative to the project |
-| `time` | number | the tick's | Seconds of game time for materials' `time` nodes |
+| `time` | number | the tick's | Seconds of game time for materials' `time` nodes and [animated tiles](scene-format.md#animated-and-large-tiles) |
 | `collisions` | boolean | `false` | Draw every `CollisionShape2D` and `CollisionPolygon2D` over the world, as Godot's Visible Collision Shapes |
 
 Needs: `read`, and `filesystem` with `path`. A HUD with a health bar at 75%:
