@@ -61,8 +61,10 @@ sprite_quad(const world::Sprite2D& sprite, const world::Transform2D& transform,
                                              const world::Transform2D& to, double alpha);
 
 // What a 2D entity takes from the sprites, tile map layers and particles of its parents, as
-// Godot's CanvasItem: their z_index added to its own (Godot's z_as_relative), hidden with them,
-// and tinted by their modulate.
+// Godot's CanvasItem: their z_index added to its own, hidden with them, and tinted by their
+// modulate. As Godot's, the sum of z_index stops at a parent whose z_as_relative is false, and a
+// top_level entity takes neither z_index nor tint from the parents it is placed above, though
+// they still hide it.
 struct Inherited {
     int z_index = 0;
     bool visible = true;
@@ -70,8 +72,9 @@ struct Inherited {
 };
 [[nodiscard]] Inherited inherited(const world::World& world, const world::Tree2D& tree,
                                   entt::entity entity);
-// An entity's z_index with its parents', held to Godot's -4096 to 4096.
-[[nodiscard]] int z_index(int own, const Inherited& from_parents);
+// An entity's z_index with its parents' when relative (Godot's z_as_relative), held to Godot's
+// -4096 to 4096.
+[[nodiscard]] int z_index(int own, bool relative, const Inherited& from_parents);
 
 // ---- What a frame drew, for frame summaries ----
 

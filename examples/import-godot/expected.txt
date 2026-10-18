@@ -472,7 +472,8 @@ world.query {"include":["AnimatedSprite2D","Transform2D"],"with":["AnimatedSprit
           "position": [0.0, -2.7777777],
           "rotation": 0.0,
           "scale": [1.0, 1.0],
-          "skew": 0.0
+          "skew": 0.0,
+          "top_level": false
         }
       },
       "id": "animated_sprite2d"
@@ -492,7 +493,8 @@ world.query {"include":["AnimatedSprite2D","Transform2D"],"with":["AnimatedSprit
           "position": [0.0, 0.0],
           "rotation": 0.0,
           "scale": [1.0, 1.0],
-          "skew": 0.0
+          "skew": 0.0,
+          "top_level": false
         }
       },
       "id": "player/animated_sprite2d"

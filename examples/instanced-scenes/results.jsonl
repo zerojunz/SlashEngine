@@ -1,6 +1,6 @@
 {"id":1,"jsonrpc":"2.0","result":{"entities":4,"path":"scenes/level.scene.json"}}
 {"id":2,"jsonrpc":"2.0","result":{"count":4,"entities":["hero","hero/body","hero/gun","hero/gun/muzzle"],"truncated":false}}
-{"id":3,"jsonrpc":"2.0","result":{"components":{"Transform2D":{"children":[],"position":[6.0,0.0],"rotation":0.0,"scale":[1.0,1.0],"skew":0.0}},"global":{"position":[78,32],"rotation":0,"scale":[1,1]},"id":"hero/gun/muzzle","parent":"hero/gun"}}
+{"id":3,"jsonrpc":"2.0","result":{"components":{"Transform2D":{"children":[],"position":[6.0,0.0],"rotation":0.0,"scale":[1.0,1.0],"skew":0.0,"top_level":false}},"global":{"position":[78,32],"rotation":0,"scale":[1,1]},"id":"hero/gun/muzzle","parent":"hero/gun"}}
 {"id":4,"jsonrpc":"2.0","result":{"id":"rival"}}
 {"id":5,"jsonrpc":"2.0","result":{"changed":{"Sprite2D":{"modulate":[1.0,0.3,0.3,1.0]}},"id":"rival/body"}}
 {"id":6,"jsonrpc":"2.0","result":{"descendants":["hero/gun/muzzle"],"destroyed":"hero/gun"}}
@@ -11,4 +11,4 @@
 {"id":11,"jsonrpc":"2.0","result":{"changed":{"Transform2D":{"scale":[2.0,2.0]}},"id":"body"}}
 {"id":12,"jsonrpc":"2.0","result":{"entities":4,"path":"scenes/player.scene.json","root":"player"}}
 {"id":13,"jsonrpc":"2.0","result":{"entities":6,"path":"scenes/level.scene.json"}}
-{"id":14,"jsonrpc":"2.0","result":{"components":{"Sprite2D":{"centered":true,"flip_h":false,"flip_v":false,"frame":0,"hframes":1,"light_mask":1,"material":"","material_params":{},"modulate":[1.0,0.3,0.3,1.0],"normal_texture":"","offset":[0.0,0.0],"region":[0.0,0.0,0.0,0.0],"specular_color":[1.0,1.0,1.0,1.0],"specular_shininess":1.0,"specular_texture":"","texture":"","texture_filter":"inherit","vframes":1,"visible":true,"z_index":0},"Transform2D":{"children":[],"position":[0.0,0.0],"rotation":0.0,"scale":[2.0,2.0],"skew":0.0}},"global":{"position":[160,32],"rotation":0,"scale":[3,3]},"id":"rival/body","parent":"rival"}}
+{"id":14,"jsonrpc":"2.0","result":{"components":{"Sprite2D":{"centered":true,"flip_h":false,"flip_v":false,"frame":0,"hframes":1,"light_mask":1,"material":"","material_params":{},"modulate":[1.0,0.3,0.3,1.0],"normal_texture":"","offset":[0.0,0.0],"region":[0.0,0.0,0.0,0.0],"specular_color":[1.0,1.0,1.0,1.0],"specular_shininess":1.0,"specular_texture":"","texture":"","texture_filter":"inherit","vframes":1,"visible":true,"z_as_relative":true,"z_index":0},"Transform2D":{"children":[],"position":[0.0,0.0],"rotation":0.0,"scale":[2.0,2.0],"skew":0.0,"top_level":false}},"global":{"position":[160,32],"rotation":0,"scale":[3,3]},"id":"rival/body","parent":"rival"}}

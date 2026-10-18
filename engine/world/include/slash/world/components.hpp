@@ -24,9 +24,12 @@ struct Transform2D {
     float rotation = 0.0F; // radians, clockwise
     Vec2 scale{1.0F, 1.0F};
     float skew = 0.0F; // radians the y axis leans from square to the x axis, as Godot's skew
+    // Placed in the world, not its parent's space, and drawn after its parent's tree without its
+    // parent's tint or z_index, as Godot's top_level; a hidden parent still hides it.
+    bool top_level = false;
     std::vector<entt::entity> children; // entities placed in its space, in drawing order
 };
-SLASH_COMPONENT(Transform2D, position, rotation, scale, skew, children)
+SLASH_COMPONENT(Transform2D, position, rotation, scale, skew, top_level, children)
 
 // Position, rotation and scale in 3D. Units are meters, and y points up, as in Godot.
 struct Transform3D {
@@ -60,6 +63,7 @@ struct Sprite2D {
     Vec4 region; // [x, y, width, height] in pixels; a zero size uses the whole texture
     Vec4 modulate{1.0F, 1.0F, 1.0F, 1.0F};
     int z_index = 0;
+    bool z_as_relative = true; // z_index adds to its parents'; false makes it the whole of it
     bool visible = true;
     std::string texture_filter = "inherit"; // "inherit", "linear" or "nearest"
     std::string material;                   // project path of a .material.json file; "" for none
@@ -71,8 +75,9 @@ struct Sprite2D {
     float specular_shininess = 1.0F;
 };
 SLASH_COMPONENT(Sprite2D, texture, centered, offset, flip_h, flip_v, hframes, vframes, frame,
-                region, modulate, z_index, visible, texture_filter, material, material_params,
-                light_mask, normal_texture, specular_texture, specular_color, specular_shininess)
+                region, modulate, z_index, z_as_relative, visible, texture_filter, material,
+                material_params, light_mask, normal_texture, specular_texture, specular_color,
+                specular_shininess)
 
 // Plays animations from a .frames.json file (Godot's SpriteFrames) on the entity's Sprite2D,
 // as Godot's AnimatedSprite2D: each tick it sets the sprite's texture, sheet and frame.
@@ -114,6 +119,7 @@ struct TileMapLayer {
     std::map<std::string, std::string> legend;
     std::vector<std::string> rows;
     int z_index = 0;
+    bool z_as_relative = true; // as Sprite2D's
     bool visible = true;
     Vec4 modulate{1.0F, 1.0F, 1.0F, 1.0F};
     std::string texture_filter = "inherit"; // "linear", "nearest" or "inherit"
@@ -121,8 +127,8 @@ struct TileMapLayer {
     bool collision_enabled = true;          // its tiles' collision polygons are solid
     bool occlusion_enabled = true;          // its tiles' occluders cast shadows
 };
-SLASH_COMPONENT(TileMapLayer, tile_set, origin, legend, rows, z_index, visible, modulate,
-                texture_filter, light_mask, collision_enabled, occlusion_enabled)
+SLASH_COMPONENT(TileMapLayer, tile_set, origin, legend, rows, z_index, z_as_relative, visible,
+                modulate, texture_filter, light_mask, collision_enabled, occlusion_enabled)
 
 // A light shining from the entity's Transform2D (or the origin) through a texture, as Godot's
 // PointLight2D. It lights the sprites and tile map layers whose light_mask shares a bit with
@@ -535,6 +541,7 @@ struct CPUParticles2D {
     int hframes = 1; // the texture's frames, as Godot's CanvasItemMaterial particles_anim_*
     int vframes = 1;
     int z_index = 0;
+    bool z_as_relative = true; // as Sprite2D's
     int light_mask = 1;
     float lifetime = 1.0F;
     float preprocess = 0.0F;
@@ -585,20 +592,21 @@ struct CPUParticles2D {
 };
 SLASH_COMPONENT(CPUParticles2D, emitting, amount, lifetime, one_shot, preprocess, speed_scale,
                 explosiveness, randomness, lifetime_randomness, seed, local_coords, draw_order,
-                texture, texture_filter, hframes, vframes, anim_loop, z_index, visible, material,
-                material_params, light_mask, emission_shape, emission_sphere_radius,
-                emission_rect_extents, emission_ring_radius, emission_ring_inner_radius,
-                emission_points, emission_normals, emission_colors, particle_flag_align_y,
-                direction, spread, gravity, initial_velocity_min, initial_velocity_max,
-                angular_velocity_min, angular_velocity_max, angular_velocity_curve,
-                orbit_velocity_min, orbit_velocity_max, orbit_velocity_curve, linear_accel_min,
-                linear_accel_max, linear_accel_curve, radial_accel_min, radial_accel_max,
-                radial_accel_curve, tangential_accel_min, tangential_accel_max,
-                tangential_accel_curve, damping_min, damping_max, damping_curve, angle_min,
-                angle_max, angle_curve, scale_amount_min, scale_amount_max, scale_amount_curve,
-                color, color_ramp, color_initial_ramp, hue_variation_min, hue_variation_max,
-                hue_variation_curve, anim_speed_min, anim_speed_max, anim_speed_curve,
-                anim_offset_min, anim_offset_max, anim_offset_curve)
+                texture, texture_filter, hframes, vframes, anim_loop, z_index, z_as_relative,
+                visible, material, material_params, light_mask, emission_shape,
+                emission_sphere_radius, emission_rect_extents, emission_ring_radius,
+                emission_ring_inner_radius, emission_points, emission_normals, emission_colors,
+                particle_flag_align_y, direction, spread, gravity, initial_velocity_min,
+                initial_velocity_max, angular_velocity_min, angular_velocity_max,
+                angular_velocity_curve, orbit_velocity_min, orbit_velocity_max,
+                orbit_velocity_curve, linear_accel_min, linear_accel_max, linear_accel_curve,
+                radial_accel_min, radial_accel_max, radial_accel_curve, tangential_accel_min,
+                tangential_accel_max, tangential_accel_curve, damping_min, damping_max,
+                damping_curve, angle_min, angle_max, angle_curve, scale_amount_min,
+                scale_amount_max, scale_amount_curve, color, color_ramp, color_initial_ramp,
+                hue_variation_min, hue_variation_max, hue_variation_curve, anim_speed_min,
+                anim_speed_max, anim_speed_curve, anim_offset_min, anim_offset_max,
+                anim_offset_curve)
 
 // ---- Audio, as Godot's AudioStreamPlayer nodes.
 
@@ -706,6 +714,7 @@ struct Control {
     float rotation = 0.0F; // radians, around pivot_offset
     float size_flags_stretch_ratio = 1.0F;
     int z_index = 0;
+    bool z_as_relative = true; // z_index adds to its parent's; false makes it the whole of it
     // The controls focus moves to with ui_left, ui_up, ui_right and ui_down, and with
     // ui_focus_next and ui_focus_prev (Tab and Shift+Tab); null finds the closest one that way.
     entt::entity focus_neighbor_left = entt::null;
@@ -728,7 +737,7 @@ SLASH_COMPONENT(Control, children, anchor_left, anchor_top, anchor_right, anchor
                 focus_neighbor_left, focus_neighbor_top, focus_neighbor_right,
                 focus_neighbor_bottom, focus_next, focus_previous, focus_mode, mouse_filter,
                 tooltip_text, layout_direction, visible, modulate, self_modulate, z_index,
-                texture_filter, theme, theme_type_variation, theme_override_colors,
+                z_as_relative, texture_filter, theme, theme_type_variation, theme_override_colors,
                 theme_override_constants, theme_override_fonts, theme_override_font_sizes,
                 theme_override_icons, theme_override_styles)
 

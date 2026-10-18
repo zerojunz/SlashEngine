@@ -1658,6 +1658,46 @@ safe_margin = 0.5
     fs::remove_all(project);
 }
 
+TEST_CASE("importing Godot's top_level and z_as_relative keeps them") {
+    const fs::path project = "import_godot_top_level";
+    fs::remove_all(project);
+    write(project / "godot/project.godot",
+          "config_version=5\n\n[application]\n\nconfig/name=\"Flares\"\n");
+    write(project / "godot/level.tscn", R"([gd_scene format=3]
+
+[node name="Level" type="Node2D"]
+
+[node name="Ship" type="Sprite2D" parent="."]
+z_index = 2
+
+[node name="Flare" type="Sprite2D" parent="Ship"]
+top_level = true
+position = Vector2(40, 10)
+
+[node name="Wake" type="Sprite2D" parent="Ship"]
+z_index = -1
+z_as_relative = false
+
+[node name="Hud" type="Label" parent="."]
+z_as_relative = false
+)");
+    const importer::ImportPlan plan = plan_inside(project);
+    const auto files = files_of(plan);
+    const std::string level = "godot/level.scene.json";
+    REQUIRE(files.contains(level));
+    CHECK(*entity(files, level, "flare").find("Transform2D") ==
+          parse(R"({"position": [40.0, 10.0], "top_level": true})"));
+    CHECK(*entity(files, level, "wake").find("Sprite2D") ==
+          parse(R"({"z_index": -1, "z_as_relative": false})"));
+    CHECK(*entity(files, level, "hud").find("Control") == parse(R"({"z_as_relative": false})"));
+    for (const json::Value& item : plan.report.find("unsupported")->as_array()) {
+        const std::string& what = item.find("what")->as_string();
+        CHECK_MESSAGE(what.find("top_level") == std::string::npos, what);
+        CHECK_MESSAGE(what.find("z_as_relative") == std::string::npos, what);
+    }
+    fs::remove_all(project);
+}
+
 TEST_CASE("importing a Godot AnimationPlayer writes its libraries and targets the nodes they "
           "animate") {
     const fs::path project = "import_godot_animation";

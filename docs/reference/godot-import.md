@@ -74,9 +74,9 @@ above the world.
 | `TileMapLayer` | `Transform2D` and `TileMapLayer` |
 | `TileMap` | `Transform2D` and `TileMapLayer`, and an entity per layer (see [tile maps](#tile-sets-and-tile-maps)) |
 
-Each property goes to the field of the same name: `position`, `rotation`, `scale` and `skew` to
-`Transform2D`, `offset_left` to `Control`, `texture` to `Sprite2D`. Values convert by the field's
-type:
+Each property goes to the field of the same name: `position`, `rotation`, `scale`, `skew` and
+`top_level` to `Transform2D`, `offset_left` to `Control`, `texture` and `z_as_relative` to
+`Sprite2D`. Values convert by the field's type:
 
 - Enums are stored as numbers in Godot and names here, so `horizontal_alignment = 1` is
   `"center"` and `size_flags_horizontal = 3` is `"expand_fill"`.

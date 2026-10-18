@@ -1089,7 +1089,8 @@ world.query {"include":["Transform2D"],"with":["RigidBody2D"]}
           "position": [-96.0, 132.00336],
           "rotation": 0.0,
           "scale": [1.0, 1.0],
-          "skew": 0.0
+          "skew": 0.0,
+          "top_level": false
         }
       },
       "id": "frog"
@@ -1101,7 +1102,8 @@ world.query {"include":["Transform2D"],"with":["RigidBody2D"]}
           "position": [-204.59196, -56.028595],
           "rotation": 0.44261828,
           "scale": [1.0, 1.0],
-          "skew": 0.0
+          "skew": 0.0,
+          "top_level": false
         }
       },
       "id": "lantern"

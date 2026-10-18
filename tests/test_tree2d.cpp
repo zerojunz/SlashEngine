@@ -280,6 +280,46 @@ TEST_CASE("children draw after their parent, before the next root") {
     }
 }
 
+TEST_CASE("a top_level child is placed in the world and draws after its tree, as Godot's") {
+    Scene scene;
+    const entt::entity ship = scene.add("ship", {100.0F, 50.0F}, kPi / 2.0F, {2.0F, 2.0F});
+    const entt::entity deck = scene.add("deck", {10.0F, 0.0F});
+    const entt::entity flare = scene.add("flare", {30.0F, 40.0F}, 0.5F);
+    const entt::entity spark = scene.add("spark", {5.0F, 0.0F});
+    const entt::entity smoke = scene.add("smoke", {1.0F, 2.0F});
+    const entt::entity hull = scene.add("hull");
+    const entt::entity buoy = scene.add("buoy");
+    scene.transform(flare).top_level = true;
+    scene.transform(smoke).top_level = true;
+    scene.adopt(ship, {deck, flare, hull});
+    scene.adopt(flare, {smoke, spark});
+    const world::Tree2D tree(scene.world);
+
+    // It keeps its parent, but its own transform is its global one; what it holds is placed in
+    // its space.
+    CHECK(tree.parent(flare) == ship);
+    CHECK((tree.transform_parent(flare) == entt::null));
+    CHECK(tree.transform_parent(deck) == ship);
+    CHECK(tree.global(flare).position == Vec2{30.0F, 40.0F});
+    CHECK(tree.global(flare).rotation == 0.5F);
+    check_near(tree.global(deck).position, {100.0F, 70.0F});
+    const Vec2 cs = slash::cos_sin(0.5F);
+    check_near(tree.global(spark).position, {30.0F + (5.0F * cs.x), 40.0F + (5.0F * cs.y)});
+    CHECK(tree.global(smoke).position == Vec2{1.0F, 2.0F});
+    tree.set_global_position(scene.world, flare, {7.0F, 8.0F});
+    CHECK(scene.transform(flare).position == Vec2{7.0F, 8.0F});
+    tree.set_global_rotation(scene.world, flare, 0.25F);
+    CHECK(scene.transform(flare).rotation == 0.25F);
+
+    // Top-level entities draw after the rest of their tree, in tree order, each with what it
+    // holds, and before roots made later.
+    const std::vector<entt::entity> order{ship, deck, hull, flare, spark, smoke, buoy};
+    for (std::size_t i = 1; i < order.size(); ++i) {
+        CAPTURE(i);
+        CHECK(tree.draw_key(order[i - 1]) < tree.draw_key(order[i]));
+    }
+}
+
 TEST_CASE("set_global_position and set_global_rotation place a child in the world") {
     Scene scene;
     const entt::entity parent = scene.add("parent", {100.0F, 0.0F}, kPi / 2.0F, {2.0F, 2.0F});
@@ -379,6 +419,58 @@ TEST_CASE("children draw after their parent with its z_index, visibility and mod
         "modulate": [1, 1, 1, 1], "visible": false}}})");
     CHECK(drawn() == compact(parse(R"({"viewport": [160, 90], "drawn": [
         {"id": "crate", "kind": "Sprite2D", "rect": [48, 37, 16, 16]}]})")));
+}
+
+TEST_CASE("top_level and z_as_relative stop what children take from their parents") {
+    const Project project("tree2d_top_level_project");
+    project.ok("batch", R"({"commands": [
+        {"command": "entity.create", "params": {"id": "ship", "components": {
+            "Transform2D": {"position": [40, 45], "scale": [4, 4]},
+            "Sprite2D": {"texture": "white.png", "z_index": 1, "modulate": [1, 1, 1, 0]}}}},
+        {"command": "entity.create", "params": {"id": "crate", "components": {
+            "Transform2D": {"position": [56, 45], "scale": [4, 4]},
+            "Sprite2D": {"texture": "white.png", "z_index": 1}}}},
+        {"command": "entity.create", "params": {"id": "flag", "components": {
+            "Transform2D": {"position": [48, 45], "scale": [4, 4], "top_level": true},
+            "Sprite2D": {"texture": "white.png"}}}},
+        {"command": "component.set", "params": {"id": "ship", "components": {
+            "Transform2D": {"children": ["flag"]}}}}]})");
+    const auto drawn = [&] { return compact(project.ok("frame.summary")); };
+    // A top-level flag is where its own transform says, not tinted clear by the ship, and below
+    // the crate: it doesn't take the ship's z_index either.
+    CHECK(drawn() == compact(parse(R"({"viewport": [160, 90], "drawn": [
+        {"id": "flag", "kind": "Sprite2D", "rect": [40, 37, 16, 16], "shown": 0.5},
+        {"id": "crate", "kind": "Sprite2D", "rect": [48, 37, 16, 16]}],
+        "clear": ["ship"]})")));
+    // With the same z_index it draws in tree order, as Godot's top-level items: after the
+    // ship's tree, under the crate made after it.
+    project.ok("component.set", R"({"id": "flag", "components": {"Sprite2D": {"z_index": 1}}})");
+    CHECK(drawn() == compact(parse(R"({"viewport": [160, 90], "drawn": [
+        {"id": "flag", "kind": "Sprite2D", "rect": [40, 37, 16, 16], "shown": 0.5},
+        {"id": "crate", "kind": "Sprite2D", "rect": [48, 37, 16, 16]}],
+        "clear": ["ship"]})")));
+    // Hiding the ship still hides it.
+    project.ok("component.set",
+               R"({"id": "ship", "components": {"Sprite2D": {"visible": false}}})");
+    CHECK(drawn() == compact(parse(R"({"viewport": [160, 90], "drawn": [
+        {"id": "crate", "kind": "Sprite2D", "rect": [48, 37, 16, 16]}]})")));
+
+    // Back in the ship's space, a flag whose z_index isn't relative draws at its own, 0, under
+    // the ship; relative, it adds the ship's 1 and draws over it, as it comes after it.
+    project.ok("entity.destroy", R"({"id": "crate"})");
+    project.ok("component.set", R"({"id": "ship", "components": {"Sprite2D": {
+        "visible": true, "modulate": [1, 1, 1, 1]}}})");
+    project.ok("component.set", R"({"id": "flag", "components": {
+        "Transform2D": {"position": [2, 0], "scale": [1, 1], "top_level": false},
+        "Sprite2D": {"z_index": 0, "z_as_relative": false}}})");
+    CHECK(drawn() == compact(parse(R"({"viewport": [160, 90], "drawn": [
+        {"id": "flag", "kind": "Sprite2D", "rect": [40, 37, 16, 16], "shown": 0.5},
+        {"id": "ship", "kind": "Sprite2D", "rect": [32, 37, 16, 16]}]})")));
+    project.ok("component.set",
+               R"({"id": "flag", "components": {"Sprite2D": {"z_as_relative": true}}})");
+    CHECK(drawn() == compact(parse(R"({"viewport": [160, 90], "drawn": [
+        {"id": "ship", "kind": "Sprite2D", "rect": [32, 37, 16, 16], "shown": 0.5},
+        {"id": "flag", "kind": "Sprite2D", "rect": [40, 37, 16, 16]}]})")));
 }
 
 TEST_CASE("entity.get gives a child's parent and global transform") {
@@ -550,6 +642,48 @@ TEST_CASE("physics bodies inside other entities are where their parents put them
     step(1);
     CHECK(game.ecs().get<world::Transform2D>(hero).position.x == doctest::Approx(0.5F));
     CHECK(world::Tree2D(game).global(hero).position.x == doctest::Approx(1001.0F));
+}
+
+TEST_CASE("a top_level body stays where it is when its parent moves") {
+    world::ComponentRegistry components;
+    world::register_builtin_components(components);
+    world::World game(components);
+    physics2d::install(game, {});
+    const auto add = [&](std::string_view id, Vec2 position) {
+        const entt::entity entity = game.create(id).value();
+        game.ecs().emplace<world::Transform2D>(entity).position = position;
+        return entity;
+    };
+    const entt::entity platform = add("platform", {100.0F, 100.0F});
+    const entt::entity floor = add("floor", {100.0F, 150.0F});
+    game.ecs().get<world::Transform2D>(floor).top_level = true;
+    game.ecs().emplace<world::StaticBody2D>(floor);
+    world::CollisionShape2D slab;
+    slab.size = {200.0F, 20.0F};
+    game.ecs().emplace<world::CollisionShape2D>(floor, slab);
+    const entt::entity ball = add("ball", {100.0F, 0.0F});
+    game.ecs().get<world::Transform2D>(ball).top_level = true;
+    game.ecs().emplace<world::RigidBody2D>(ball);
+    world::CollisionShape2D round;
+    round.shape = "circle";
+    round.radius = 5.0F;
+    game.ecs().emplace<world::CollisionShape2D>(ball, round);
+    game.ecs().get<world::Transform2D>(platform).children = {floor, ball};
+    game.step(kTick);
+    game.ecs().get<world::Transform2D>(platform).position = {400.0F, 300.0F};
+    for (int i = 0; i < 60; ++i) {
+        game.step(kTick);
+    }
+    // The floor didn't move with the platform, and the ball fell onto it in the world, its own
+    // position its global one.
+    const auto hit =
+        physics2d::raycast(game, {100.0F, 50.0F}, {100.0F, 300.0F}, {.exclude = {ball}});
+    REQUIRE(hit.has_value());
+    CHECK(hit->entity == floor);
+    CHECK(hit->point.y == doctest::Approx(140.0F));
+    const Vec2 rest = game.ecs().get<world::Transform2D>(ball).position;
+    CHECK(rest.x == doctest::Approx(100.0F));
+    CHECK(rest.y == doctest::Approx(135.0F).epsilon(0.003));
 }
 
 TEST_CASE("particles emit where their emitter's parents put it") {
