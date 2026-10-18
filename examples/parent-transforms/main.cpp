@@ -3,9 +3,10 @@
 // The scene is a boat in a 320x180 window, a static body. Its Transform2D lists a deck (the
 // body's shape), a mast and a cannon as children, and the mast lists a flag, so they all move,
 // turn and draw with the boat. A rock made after the boat draws over it. The agent reads where
-// the flag is, sails and rocks the boat, lifts it over the rock, drops a barrel into it, tries to
-// make the tree a loop and sinks the boat. Games ship PNG files made in an image editor; this
-// example draws its textures in code, so the repository holds no images.
+// the flag is, sails and rocks the boat, lifts it over the rock, drops a barrel into it, fires a
+// top-level shot, puts the cannon under the boat, tries to make the tree a loop and sinks the
+// boat. Games ship PNG files made in an image editor; this example draws its textures in code,
+// so the repository holds no images.
 
 #include "slash/command/builtin.hpp"
 #include "slash/command/command.hpp"
@@ -114,6 +115,27 @@ int main() {
             "Transform2D": {"children": ["deck", "mast", "cannon", "barrel"]}}}}]})");
     agent.call("step", R"({"ticks": 90})");
     agent.call("entity.get", R"({"id": "barrel", "components": ["Transform2D"]})");
+
+    std::puts("-- a shot the cannon fires is top_level: placed in the world, it stays where it was "
+              "fired when the boat sails on");
+    agent.call("batch", R"({"commands": [
+        {"command": "entity.create", "params": {"id": "shot", "components": {
+            "Transform2D": {"position": [200, 100], "top_level": true},
+            "Sprite2D": {"texture": "barrel.png"}}}},
+        {"command": "component.set", "params": {"id": "cannon", "components": {
+            "Transform2D": {"children": ["shot"]}}}}]})");
+    agent.call("component.set", R"({"id": "boat", "components": {
+        "Transform2D": {"position": [110, 120], "rotation": 0}}})");
+    agent.call("entity.get", R"({"id": "shot", "components": ["Transform2D"]})");
+    // Without the boat's z_index it draws under the boat; in tree order, before the rock made
+    // after the boat.
+    agent.call("frame.summary", R"({"ids": ["boat", "cannon", "shot", "rock"]})");
+
+    std::puts("-- the cannon's z_index of -1, not added to the boat's, puts it under the boat and "
+              "the rock");
+    agent.call("component.set", R"({"id": "cannon", "components": {
+        "Sprite2D": {"z_index": -1, "z_as_relative": false}}})");
+    agent.call("frame.summary", R"({"ids": ["boat", "cannon", "rock"]})");
 
     std::puts("-- each child has one parent and is never its own ancestor");
     agent.call("component.set",

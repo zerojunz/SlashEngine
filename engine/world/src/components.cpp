@@ -309,6 +309,8 @@ void register_ui_components(ComponentRegistry& registry) {
         .describe("z_index", {.doc = "Draws over controls with a lower one, added to its parent's.",
                               .min = -4096,
                               .max = 4096})
+        .describe("z_as_relative",
+                  {.doc = "Add z_index to its parent's; false makes it its own, as Godot's."})
         .describe("theme_override_colors",
                   {.doc = "Theme colors for this control by name, e.g. {\"font_color\": "
                           "[1, 0.8, 0.2, 1]}.",
@@ -977,6 +979,7 @@ void register_particle_components(ComponentRegistry& registry) {
             .describe("anim_loop", {.doc = "Frames past the last start again from the first; "
                                            "false stays on the last."})
             .describe("z_index", {.doc = "As Sprite2D's.", .min = -4096, .max = 4096})
+            .describe("z_as_relative", {.doc = "As Sprite2D's."})
             .describe("visible", {.doc = "Draw the particles and its children; they move either "
                                          "way."})
             .describe("material", {.doc = "Project path of a .material.json file; \"\" for none."})
@@ -1135,6 +1138,9 @@ void register_builtin_components(ComponentRegistry& registry) {
                                   "under 89.9 degrees either way.",
                            .min = -1.569,
                            .max = 1.569})
+        .describe("top_level", {.doc = "Placed in the world rather than its parent's space, and "
+                                       "drawn after its parent's tree without its parent's tint "
+                                       "or z_index. A hidden parent still hides it."})
         .describe("children", {.doc = "Entities with a Transform2D placed in its space, in "
                                       "drawing order. Each has one parent."});
 
@@ -1175,6 +1181,8 @@ void register_builtin_components(ComponentRegistry& registry) {
                                .max = 1})
         .describe("z_index",
                   {.doc = "Higher draws on top; added to its parents'.", .min = -4096, .max = 4096})
+        .describe("z_as_relative", {.doc = "Add z_index to its parents'; false makes it its own, "
+                                           "as Godot's."})
         .describe("visible", {.doc = "Draw it and its children."})
         .describe("texture_filter",
                   {.doc = "How the texture is sampled when scaled: \"nearest\" keeps pixel art "
@@ -1242,6 +1250,8 @@ void register_builtin_components(ComponentRegistry& registry) {
                                   "an empty cell."})
         .describe("z_index",
                   {.doc = "Higher draws on top; added to its parents'.", .min = -4096, .max = 4096})
+        .describe("z_as_relative", {.doc = "Add z_index to its parents'; false makes it its own, "
+                                           "as Godot's."})
         .describe("visible", {.doc = "Draw it and its children."})
         .describe("modulate", {.doc = "Color every tile and its children are multiplied by, as "
                                       "[r, g, b, a] from 0 to 1.",
