@@ -478,14 +478,20 @@ character bodies with `move_and_slide` (`src/character.cpp`) and emits `body_ent
 `body_exited`, `area_entered` and `area_exited` events. Box2D's lengths are pixels
 (`b2SetLengthUnitsPerMeter(64)`), and Godot's rules are kept where Box2D differs: layers and
 masks collide when either mask matches, one-way shapes, and waking what rests on a moved body.
-`project.json`'s `physics_2d` sets gravity and damping. `physics.raycast`, `physics.overlap` and
-`physics.contacts` (and `physics2d::raycast` and the rest in C++) ask what is where. Each
+`project.json`'s `physics_2d` sets gravity and damping, and `Area2D`s with space overrides change
+them for the bodies inside, by priority (`Space::forces` and `apply_areas` in `src/space.cpp`,
+applied as forces with Box2D's gravity scale at 0). A `StaticBody2D` with constant velocities is
+a kinematic Box2D body moved back after each step, so it carries what touches it without moving.
+`CharacterBody2D` follows Godot 4's `move_and_slide` with its floor, wall, platform and
+`safe_margin` options. `physics.raycast`, `physics.overlap`, `physics.contacts` and
+`physics.gravity` (and `physics2d::raycast`, `gravity` and the rest in C++) ask what is where. Each
 `TileMapLayer` with collision polygons is a static body: physics2d asks for its shapes through
 the `TileShapeSource` that `canvas::add_systems` sets (`set_tile_shape_source`), so physics2d
 doesn't depend on canvas, and rebuilds the body when they change. Results
 must be the same on every platform: `physics2d` and the examples build with
 `-ffp-contract=off`, and angles go through Box2D's own `b2ComputeCosSin`, not libm.
-`examples/physics-2d` has every kind of body.
+`examples/physics-2d` has every kind of body and `examples/gravity-and-conveyors` gravity zones and a
+conveyor.
 
 ## Particles
 

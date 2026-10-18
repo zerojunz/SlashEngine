@@ -1,0 +1,134 @@
+{
+  "entities": {
+    "conveyor": {
+      "components": {
+        "CollisionShape2D": {
+          "size": [160.0, 10.0]
+        },
+        "StaticBody2D": {
+          "constant_linear_velocity": [60.0, 0.0]
+        },
+        "Transform2D": {
+          "position": [100.0, 200.0]
+        }
+      }
+    },
+    "crate": {
+      "components": {
+        "CollisionShape2D": {
+          "size": [16.0, 16.0]
+        },
+        "RigidBody2D": {
+          "mass": 2.0
+        },
+        "Transform2D": {
+          "position": [120.0, 186.0]
+        }
+      }
+    },
+    "ground": {
+      "components": {
+        "CollisionShape2D": {
+          "size": [480.0, 20.0]
+        },
+        "StaticBody2D": {},
+        "Transform2D": {
+          "position": [240.0, 260.0]
+        }
+      }
+    },
+    "hero": {
+      "components": {
+        "CharacterBody2D": {},
+        "CollisionShape2D": {
+          "height": 32.0,
+          "radius": 8.0,
+          "shape": "capsule"
+        },
+        "Transform2D": {
+          "position": [60.0, 178.0]
+        }
+      }
+    },
+    "planet": {
+      "components": {
+        "CollisionShape2D": {
+          "radius": 30.0,
+          "shape": "circle"
+        },
+        "StaticBody2D": {},
+        "Transform2D": {
+          "position": [370.0, 100.0]
+        }
+      }
+    },
+    "planet_pull": {
+      "components": {
+        "Area2D": {
+          "gravity": 600.0,
+          "gravity_point": true,
+          "gravity_point_center": [0.0, 0.0],
+          "gravity_point_unit_distance": 30.0,
+          "gravity_space_override": "replace",
+          "priority": 1
+        },
+        "CollisionShape2D": {
+          "radius": 80.0,
+          "shape": "circle"
+        },
+        "Transform2D": {
+          "position": [370.0, 100.0]
+        }
+      }
+    },
+    "probe": {
+      "components": {
+        "CollisionShape2D": {
+          "radius": 5.0,
+          "shape": "circle"
+        },
+        "RigidBody2D": {},
+        "Transform2D": {
+          "position": [460.0, 20.0]
+        }
+      }
+    },
+    "rock_below": {
+      "components": {
+        "CollisionShape2D": {
+          "size": [10.0, 10.0]
+        },
+        "RigidBody2D": {},
+        "Transform2D": {
+          "position": [370.0, 170.0]
+        }
+      }
+    },
+    "rock_left": {
+      "components": {
+        "CollisionShape2D": {
+          "size": [10.0, 10.0]
+        },
+        "RigidBody2D": {},
+        "Transform2D": {
+          "position": [300.0, 100.0]
+        }
+      }
+    },
+    "space": {
+      "components": {
+        "Area2D": {
+          "gravity": 0.0,
+          "gravity_space_override": "replace"
+        },
+        "CollisionShape2D": {
+          "size": [220.0, 200.0]
+        },
+        "Transform2D": {
+          "position": [370.0, 100.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

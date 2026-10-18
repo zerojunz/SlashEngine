@@ -242,7 +242,7 @@ rendering on top.
       too), physics layers with a collision layer, mask, friction and bounce, each
       `TileMapLayer` a static body rebuilt when it changes, and `physics.raycast` reporting the
       cell it hit
-- [ ] More of Godot's 2D physics: `Area2D` gravity and damping overrides, `StaticBody2D` constant velocities, and `CharacterBody2D`'s
+- [x] More of Godot's 2D physics: `Area2D` gravity and damping overrides, `StaticBody2D` constant velocities, and `CharacterBody2D`'s
       `floor_block_on_wall`, `floor_constant_speed`, `wall_min_slide_angle` and `safe_margin`
 - [x] CPU particles, as Godot's `CPUParticles2D`: emission shapes, directions and spread,
       gravity, linear, radial and tangential acceleration, orbits, damping, angles and spin,
