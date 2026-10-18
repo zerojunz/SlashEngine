@@ -142,25 +142,40 @@ Tree2D::Tree2D(const World& world) : world_(&world) {
         }
     }
     // Draw keys: the root's place in the order entities were made, then the place in its tree.
-    std::vector<entt::entity> stack;
+    // As Godot, a top_level entity is an item of the canvas of its own, with the entities under
+    // it: it draws after the rest of the tree it is in, top-level items in tree order, and
+    // before the roots made after that tree's.
+    struct Visit {
+        entt::entity entity;
+        std::size_t item; // the place in the tree of its top-level item, or 0 for the root's
+    };
+    std::vector<Visit> stack;
+    std::vector<Visit> visits;
     for (const entt::entity root : entities) {
         if (parents_.contains(root) || ecs.get<Transform2D>(root).children.empty()) {
             continue;
         }
-        const std::uint64_t base = static_cast<std::uint64_t>(entt::to_entity(root)) << 32U;
-        std::uint64_t next = 0;
-        stack.push_back(root);
+        visits.clear();
+        stack.push_back({root, 0});
         while (!stack.empty()) {
-            const entt::entity entity = stack.back();
+            Visit visit = stack.back();
             stack.pop_back();
-            keys_[entity] = base + next++;
-            const auto& children = ecs.get<Transform2D>(entity).children;
+            if (visit.entity != root && ecs.get<Transform2D>(visit.entity).top_level) {
+                visit.item = visits.size();
+            }
+            visits.push_back(visit);
+            const auto& children = ecs.get<Transform2D>(visit.entity).children;
             for (const entt::entity child : std::views::reverse(children)) {
                 if (const auto found = parents_.find(child);
-                    found != parents_.end() && found->second == entity) {
-                    stack.push_back(child);
+                    found != parents_.end() && found->second == visit.entity) {
+                    stack.push_back({child, visit.item});
                 }
             }
+        }
+        std::ranges::stable_sort(visits, {}, &Visit::item);
+        const std::uint64_t base = static_cast<std::uint64_t>(entt::to_entity(root)) << 32U;
+        for (std::size_t i = 0; i < visits.size(); ++i) {
+            keys_[visits[i].entity] = base + i;
         }
     }
 }
@@ -176,6 +191,14 @@ entt::entity Tree2D::parent(entt::entity entity) const {
     return found != parents_.end() ? found->second : entt::entity{entt::null};
 }
 
+entt::entity Tree2D::transform_parent(entt::entity entity) const {
+    const entt::entity up = parent(entity);
+    if (up == entt::null || world_->ecs().get<Transform2D>(entity).top_level) {
+        return entt::null;
+    }
+    return up;
+}
+
 Transform2D Tree2D::global(entt::entity entity) const {
     const auto* own = world_->valid(entity) ? world_->ecs().try_get<Transform2D>(entity) : nullptr;
     if (own == nullptr) {
@@ -186,7 +209,7 @@ Transform2D Tree2D::global(entt::entity entity) const {
     local.rotation = own->rotation;
     local.scale = own->scale;
     local.skew = own->skew;
-    const entt::entity up = parent(entity);
+    const entt::entity up = own->top_level ? entt::entity{entt::null} : parent(entity);
     if (up == entt::null) {
         return local;
     }
@@ -199,13 +222,13 @@ Affine2D Tree2D::global_affine(entt::entity entity) const {
 
 void Tree2D::set_global_position(World& world, entt::entity entity, Vec2 position) const {
     auto& transform = world.ecs().get_or_emplace<Transform2D>(entity);
-    const entt::entity up = parent(entity);
+    const entt::entity up = transform_parent(entity);
     transform.position = up == entt::null ? position : global_affine(up).inverse().apply(position);
 }
 
 void Tree2D::set_global_rotation(World& world, entt::entity entity, float rotation) const {
     auto& transform = world.ecs().get_or_emplace<Transform2D>(entity);
-    const entt::entity up = parent(entity);
+    const entt::entity up = transform_parent(entity);
     transform.rotation = up == entt::null ? rotation : rotation - global(up).rotation;
 }
 

@@ -124,7 +124,7 @@ rendering on top.
       and tint; physics, lights, particles and sound use global transforms; loops and second
       parents are refused; `entity.destroy` takes children along
   - [x] A body's shapes in child entities, as Godot's `CollisionShape2D` nodes
-  - [ ] `top_level` and `z_as_relative` off
+  - [x] `top_level` and `z_as_relative` off
 - [x] Asset handles with reference counting and hot reload, and an `asset.list` command
 - [ ] Storyboard: the game's style, world, story, design rules, names, decisions and open work
       as typed files in the project, so every agent works from the same facts

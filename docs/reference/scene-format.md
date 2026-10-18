@@ -80,6 +80,7 @@ A reference must name an entity that exists in the same scene.
 | | `rotation` | `float` | `0` | Rotation in radians; positive turns clockwise |
 | | `scale` | `Vec2` | `[1, 1]` | Scale factor on each axis |
 | | `skew` | `float` | `0` | Radians its y axis leans from square to its x axis, -1.569 to 1.569 (under 89.9 degrees), as Godot's `skew` |
+| | `top_level` | `bool` | `false` | Placed in the world rather than its parent's space, and drawn after the rest without its parent's tint or `z_index`, as Godot's `top_level` ([parent transforms](#parent-transforms)) |
 | | `children` | Array of entity references | `[]` | Entities with a `Transform2D` placed in its space, in drawing order; each has one parent ([parent transforms](#parent-transforms)) |
 | `Transform3D` | `position` | `Vec3` | `[0, 0, 0]` | Position in meters, as [x, y, z]; y points up |
 | | `rotation` | `Quat` | `[0, 0, 0, 1]` | Unit quaternion [x, y, z, w]; each element from -1 to 1 |
@@ -94,6 +95,7 @@ A reference must name an entity that exists in the same scene.
 | | `region` | `Vec4` | `[0, 0, 0, 0]` | Part of the texture to use, as [x, y, width, height] in pixels, before splitting it into frames; a zero size uses the whole texture |
 | | `modulate` | `Vec4` | `[1, 1, 1, 1]` | Color the texture and its children are multiplied by, as [r, g, b, a] from 0 to 1 |
 | | `z_index` | `int` | `0` | Higher draws on top, -4096 to 4096, added to its parents'; equal values draw in tree order: the roots in the order the entities were made, each followed by its children |
+| | `z_as_relative` | `bool` | `true` | Add `z_index` to its parents'; `false` makes it the whole of it, as Godot's |
 | | `visible` | `bool` | `true` | Draw it and its children |
 | | `texture_filter` | `std::string` | `"inherit"` | `"linear"`, `"nearest"` (sharp pixel art) or `"inherit"`, which uses the project's `rendering.texture_filter` |
 | | `material` | `std::string` | `""` | Project path of a [`.material.json`](#materials) file, which colors the sprite's pixels; `""` draws the texture as it is |
@@ -121,6 +123,7 @@ A reference must name an entity that exists in the same scene.
 | | `legend` | `std::map<std::string, std::string>` | `{}` | The tile each key in `rows` stands for, by name or as `"source:column,row"`, then `:<alternative>` and `:<turns>` if any ([turned cells](#alternative-tiles-and-turned-cells)) |
 | | `rows` | `std::vector<std::string>` | `[]` | The [cells](#tile-map-layers), one string of keys per row from `origin` rightward; `.` is an empty cell |
 | | `z_index` | `int` | `0` | Higher draws on top, -4096 to 4096, added to its parents'; layers and sprites draw in one order |
+| | `z_as_relative` | `bool` | `true` | As `Sprite2D`'s |
 | | `visible` | `bool` | `true` | Draw it and its children |
 | | `modulate` | `Vec4` | `[1, 1, 1, 1]` | Color every tile and its children are multiplied by, as [r, g, b, a] from 0 to 1 |
 | | `texture_filter` | `std::string` | `"inherit"` | `"linear"`, `"nearest"` (sharp pixel art) or `"inherit"`, which uses the project's `rendering.texture_filter` |
@@ -267,7 +270,7 @@ A reference must name an entity that exists in the same scene.
 | | `local_coords` | `bool` | `false` | Particles live in the entity's coordinates and move with it; `false` leaves them where they were emitted |
 | | `draw_order` | `std::string` | `"index"` | `index` draws in emission slot order; `lifetime` draws the oldest first, so the youngest are on top |
 | | `texture` | `std::string` | `""` | Project path of a PNG or BMP file each particle draws, centered on it; `""` draws a white pixel |
-| | `texture_filter`, `z_index`, `visible`, `material`, `material_params`, `light_mask` | | | As `Sprite2D`'s |
+| | `texture_filter`, `z_index`, `z_as_relative`, `visible`, `material`, `material_params`, `light_mask` | | | As `Sprite2D`'s |
 | | `hframes`, `vframes` | `int` | `1` | Columns and rows of frames in the texture, for `anim_speed` and `anim_offset` |
 | | `anim_loop` | `bool` | `false` | Frames past the last start again from the first; `false` stays on the last |
 | | `emission_shape` | `std::string` | `"point"` | Where particles start: `point` (the entity), `sphere` (in a circle), `sphere_surface` (on its edge), `rectangle`, `ring`, `points` or `directed_points` |
@@ -310,6 +313,7 @@ A reference must name an entity that exists in the same scene.
 | | `modulate` | `Vec4` | `[1, 1, 1, 1]` | Tints it and its children, as [r, g, b, a] |
 | | `self_modulate` | `Vec4` | `[1, 1, 1, 1]` | Tints it only |
 | | `z_index` | `int` | `0` | Draws over controls with a lower one, added to its parent's; -4096 to 4096 |
+| | `z_as_relative` | `bool` | `true` | Add `z_index` to its parent's; `false` makes it the whole of it |
 | | `theme_override_colors` | `std::map<std::string, Vec4>` | `{}` | [Theme](#theme-items) colors by name, e.g. `{"font_color": [1, 0.8, 0.2, 1]}` |
 | | `theme_override_constants` | `std::map<std::string, int>` | `{}` | Theme constants by name, e.g. `{"outline_size": 4}` |
 | | `theme_override_fonts` | `std::map<std::string, std::string>` | `{}` | Theme fonts by name: a `.ttf`, `.otf` or [`.font.json`](#fonts) file, e.g. `{"font": "fonts/title.ttf"}` |
@@ -525,10 +529,18 @@ cannon and a deck.
 
 - **Drawing.** Each root draws in the order entities were made, followed by its children in the
   order its list gives and theirs after them, so a child draws over its parent. `z_index` is
-  added to the parents' (Godot's `z_as_relative`), and the sum is held to -4096 to 4096. A
-  parent's `Sprite2D` or `TileMapLayer` passes on its `visible` and `modulate` (`self_modulate`
-  stays its own); a `CPUParticles2D` passes on `visible` and `z_index`. Sprites, tile layers,
-  particles, occluders and lights draw where their global transforms put them.
+  added to the parents' (Godot's `z_as_relative`), and the sum is held to -4096 to 4096; with
+  `z_as_relative` off, an entity's `z_index` is the whole of it, and its children add theirs to
+  it. A parent's `Sprite2D` or `TileMapLayer` passes on its `visible` and `modulate`
+  (`self_modulate` stays its own); a `CPUParticles2D` passes on `visible` and `z_index`.
+  Sprites, tile layers, particles, occluders and lights draw where their global transforms put
+  them.
+- **Top level.** An entity with `top_level` keeps its parent, but its transform is its global
+  one, as Godot's `top_level`: moving the parent leaves it where it is, and what it holds is
+  placed in its space. Like Godot's top-level items, it draws with what it holds after the rest
+  of its tree and before roots made later, top-level entities in tree order, and takes neither
+  its parents' `z_index` nor their `modulate`; hiding a parent still hides it. A body with
+  `top_level` is where its own transform says.
 - **Physics.** Bodies, areas and joints are where their global transforms put them, and a parent
   that moves moves the bodies in it. The physics step writes a `RigidBody2D`'s motion back as
   Godot sets a body's global transform: its own transform becomes what puts it where Box2D says.
@@ -552,8 +564,7 @@ cannon and a deck.
   transform. [`entity.destroy`](commands.md#entitydestroy) destroys the entity's `Transform2D` and
   `Control` children with it, as Godot frees a node's children, and takes destroyed entities out
   of the lists of parents that stay.
-- **Not yet.** Godot's `top_level`, `z_as_relative` off, and Node2D and Control entities in one
-  tree.
+- **Not yet.** Node2D and Control entities in one tree, and `top_level` on controls.
 
 ## Canonical form
 
