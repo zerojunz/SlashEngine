@@ -96,6 +96,19 @@ struct Contacts {
 };
 [[nodiscard]] Contacts contacts(world::World& world, entt::entity entity);
 
+// The gravity on a body and the damping that slows it, as Godot's get_gravity and the body's
+// total damping: from the areas whose space overrides reach it, highest priority first, then
+// the project's physics_2d settings. A rigid body's gravity_scale and own damping are in them;
+// a character body uses the gravity in its own velocity.
+struct Gravity {
+    Vec2 gravity;                      // pixels per second squared
+    float linear_damp = 0.0F;          // per second
+    float angular_damp = 0.0F;         // per second
+    std::vector<entt::entity> areas{}; // NOLINT(readability-redundant-member-init): in order
+};
+// nullopt when the entity is no body.
+[[nodiscard]] std::optional<Gravity> gravity(world::World& world, entt::entity entity);
+
 // A collision polygon of one cell of a TileMapLayer, in pixels in the layer's own space, with
 // its tile set physics layer's settings.
 struct TileShape {

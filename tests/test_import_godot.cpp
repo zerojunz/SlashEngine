@@ -1596,6 +1596,68 @@ range_layer_max = 2
     fs::remove_all(project);
 }
 
+TEST_CASE("importing Godot gravity areas, constant velocities and character options keeps them") {
+    const fs::path project = "import_godot_physics";
+    fs::remove_all(project);
+    write(project / "godot/project.godot",
+          "config_version=5\n\n[application]\n\nconfig/name=\"Planets\"\n");
+    write(project / "godot/level.tscn", R"([gd_scene format=3]
+
+[node name="Level" type="Node2D"]
+
+[node name="Planet" type="Area2D" parent="."]
+priority = 2
+gravity_space_override = 3
+gravity_point = true
+gravity_point_unit_distance = 64.0
+gravity_point_center = Vector2(0, 0)
+gravity_direction = Vector2(0, 0)
+gravity = 400.0
+linear_damp_space_override = 1
+linear_damp = 0.5
+angular_damp_space_override = 4
+angular_damp = 3.0
+
+[node name="Belt" type="StaticBody2D" parent="."]
+constant_linear_velocity = Vector2(60, 0)
+constant_angular_velocity = 0.5
+
+[node name="Lift" type="AnimatableBody2D" parent="."]
+constant_linear_velocity = Vector2(0, -30)
+
+[node name="Hero" type="CharacterBody2D" parent="."]
+wall_min_slide_angle = 0.5
+floor_constant_speed = true
+floor_block_on_wall = false
+platform_floor_layers = 4294967294
+platform_wall_layers = 2
+safe_margin = 0.5
+)");
+    const importer::ImportPlan plan = plan_inside(project);
+    const auto files = files_of(plan);
+    const std::string level = "godot/level.scene.json";
+    REQUIRE(files.contains(level));
+    CHECK(*entity(files, level, "planet").find("Area2D") == parse(R"({
+        "priority": 2, "gravity_space_override": "replace", "gravity_point": true,
+        "gravity_point_unit_distance": 64.0, "gravity_point_center": [0.0, 0.0],
+        "gravity_direction": [0.0, 0.0], "gravity": 400.0,
+        "linear_damp_space_override": "combine", "linear_damp": 0.5,
+        "angular_damp_space_override": "replace_combine", "angular_damp": 3.0})"));
+    CHECK(*entity(files, level, "belt").find("StaticBody2D") ==
+          parse(R"({"constant_linear_velocity": [60.0, 0.0], "constant_angular_velocity": 0.5})"));
+    CHECK(*entity(files, level, "lift").find("AnimatableBody2D") ==
+          parse(R"({"constant_linear_velocity": [0.0, -30.0]})"));
+    CHECK(*entity(files, level, "hero").find("CharacterBody2D") == parse(R"({
+        "wall_min_slide_angle": 0.5, "floor_constant_speed": true,
+        "floor_block_on_wall": false, "platform_floor_layers": 4294967294,
+        "platform_wall_layers": 2, "safe_margin": 0.5})"));
+    for (const json::Value& item : plan.report.find("unsupported")->as_array()) {
+        CHECK_MESSAGE(item.find("what")->as_string().find("2D.") == std::string::npos,
+                      item.find("what")->as_string());
+    }
+    fs::remove_all(project);
+}
+
 TEST_CASE("importing a Godot AnimationPlayer writes its libraries and targets the nodes they "
           "animate") {
     const fs::path project = "import_godot_animation";

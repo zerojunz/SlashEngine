@@ -185,7 +185,10 @@ A reference must name an entity that exists in the same scene.
 | | `collision_mask` | `int` | `1` | The layers it collides with, as bits. Every body and area has it |
 | | `friction` | `float` | `1` | How much it resists sliding: 0 is ice. Two bodies use the smaller friction |
 | | `bounce` | `float` | `0` | How much it bounces, 0 to 1. Two bodies add theirs, up to 1 |
+| | `constant_linear_velocity` | `Vec2` | `[0, 0]` | Moves what touches it as if it moved this fast, in pixels per second, while it stays put: a conveyor belt |
+| | `constant_angular_velocity` | `float` | `0` | The same for turning, in radians per second, clockwise |
 | `AnimatableBody2D` | `collision_layer`, `collision_mask`, `friction`, `bounce` | | | As `StaticBody2D`'s. It goes where its `Transform2D` says, such as a moving platform |
+| | `constant_linear_velocity`, `constant_angular_velocity` | | | As `StaticBody2D`'s, added to how it moves |
 | | `sync_to_physics` | `bool` | `true` | Move there during the physics step, pushing bodies in the way and carrying those on it; `false` jumps there |
 | `RigidBody2D` | `collision_layer`, `collision_mask`, `friction`, `bounce` | | | As `StaticBody2D`'s |
 | | `mass` | `float` | `1` | In kilograms, from 0.001 |
@@ -209,11 +212,17 @@ A reference must name an entity that exists in the same scene.
 | | `up_direction` | `Vec2` | `[0, -1]` | Which way is up, as a unit vector |
 | | `velocity` | `Vec2` | `[0, 0]` | In pixels per second. Gameplay code sets it; each move slides it along what it hits |
 | | `max_slides` | `int` | `4` | Slides per move at most, 1 to 16 |
+| | `slide_on_ceiling` | `bool` | `true` | Slide along ceilings; `false` stops and falls |
+| | `wall_min_slide_angle` | `float` | `0.261799` | In `floating` mode, hitting a wall within this many radians of head-on stops it instead of sliding; 0 always slides |
 | | `floor_stop_on_slope` | `bool` | `true` | Don't slide down slopes while standing |
+| | `floor_constant_speed` | `bool` | `false` | Walk up and down slopes at the speed it walks on flat ground, instead of slower up and faster down |
+| | `floor_block_on_wall` | `bool` | `true` | Walking into a slope too steep to be a floor doesn't push it up the slope |
 | | `floor_max_angle` | `float` | `0.785398` | Steepest floor, in radians from `up_direction` |
 | | `floor_snap_length` | `float` | `1` | How far down it keeps to a floor while walking off steps and slopes, in pixels |
-| | `slide_on_ceiling` | `bool` | `true` | Slide along ceilings; `false` stops and falls |
 | | `platform_on_leave` | `std::string` | `"add_velocity"` | What it keeps of a moving floor's velocity on leaving it: `add_velocity`, `add_upward_velocity` or `do_nothing` |
+| | `platform_floor_layers` | `int` | `4294967295` | The layers, as bits, of floors that carry it when they move; others it stands on without moving |
+| | `platform_wall_layers` | `int` | `0` | The layers of walls that carry it when they move into it |
+| | `safe_margin` | `float` | `0.08` | How close, in pixels, a body counts as touching; larger is steadier against fast moving bodies, smaller more exact |
 | | `on_floor`, `on_wall`, `on_ceiling` | `bool` | `false` | What the last move touched; the physics step writes them |
 | | `floor_normal`, `wall_normal` | `Vec2` | `[0, 0]` | The floor's and the wall's normals in the last move |
 | | `platform_velocity` | `Vec2` | `[0, 0]` | The velocity of the moving floor it stands on |
@@ -221,6 +230,16 @@ A reference must name an entity that exists in the same scene.
 | | `collision_mask` | `int` | `1` | The layers of bodies and areas it detects |
 | | `monitoring` | `bool` | `true` | Emit `body_entered`, `body_exited`, `area_entered` and `area_exited` events |
 | | `monitorable` | `bool` | `true` | Other areas detect it |
+| | `priority` | `int` | `0` | Areas with space overrides apply from the highest priority down; equal ones in the order they were made |
+| | `gravity_space_override` | `std::string` | `"disabled"` | How it changes the gravity of bodies in it: `disabled`, `combine`, `combine_replace`, `replace` or `replace_combine` (see [gravity and damping zones](#gravity-and-damping-zones)) |
+| | `gravity_point` | `bool` | `false` | Pull toward `gravity_point_center` instead of along `gravity_direction` |
+| | `gravity_point_center` | `Vec2` | `[0, 1]` | The point it pulls toward, in the entity's space |
+| | `gravity_point_unit_distance` | `float` | `0` | With a point, the distance at which the pull is `gravity`, weakening with distance squared; 0 pulls the same everywhere |
+| | `gravity_direction` | `Vec2` | `[0, 1]` | Which way it pulls, in the world, as a unit vector |
+| | `gravity` | `float` | `980` | How strongly, in pixels per second squared |
+| | `linear_damp_space_override`, `angular_damp_space_override` | `std::string` | `"disabled"` | How it changes the damping of bodies in it, as `gravity_space_override` |
+| | `linear_damp` | `float` | `0.1` | Slows moving bodies in it, per second |
+| | `angular_damp` | `float` | `1` | Slows turning bodies in it, per second |
 | `PinJoint2D` | `node_a`, `node_b` | Reference to another entity | `null` | The two bodies it joins, at the entity's `Transform2D`; a `null` `node_a` pins `node_b` to the world. Every joint has them |
 | | `disable_collision` | `bool` | `true` | The two bodies don't collide with each other. Every joint has it |
 | | `angular_limit_enabled` | `bool` | `false` | Limit how far `node_b` turns from `node_a` |
@@ -1476,6 +1495,67 @@ animation; gravity and damping come from `physics_2d` in [`project.json`](projec
 - [`physics.raycast`](commands.md#physicsraycast), [`physics.overlap`](commands.md#physicsoverlap)
   and [`physics.contacts`](commands.md#physicscontacts) answer what is where and what touches
   what; C++ code calls `physics2d::raycast`, `overlap_point`, `overlap_shape` and `contacts`.
+
+### Character options
+
+`CharacterBody2D`'s options are Godot's, and `move_and_slide` follows Godot 4's step for step:
+
+- `floor_constant_speed` keeps its speed along a slope the same as on flat ground; without it
+  the slope slows it going up and speeds it going down.
+- `floor_block_on_wall` stops it climbing a slope steeper than `floor_max_angle` by walking
+  into it. It is on by default, as in Godot.
+- `wall_min_slide_angle`, in `floating` mode, stops it against a wall it hits nearly head-on
+  instead of sliding along it.
+- `safe_margin` is how close something must be to count as touching: floors, walls and
+  one-way shapes within it are found, and it keeps that much room from them.
+- `platform_floor_layers` and `platform_wall_layers` say which moving bodies carry it, by
+  their `collision_layer`: floors in any layer by default, walls in none.
+
+### Gravity and damping zones
+
+An `Area2D` with a space override changes the gravity and damping of the bodies in its
+`collision_mask` while they overlap it, whether or not it is `monitoring`, as Godot's areas.
+Areas apply from the highest `priority` down, then the project's gravity and damping fill in
+what no area stopped:
+
+| Override | Its value | Then |
+| --- | --- | --- |
+| `combine` | Added to what higher areas gave | Lower areas and the project's add theirs |
+| `combine_replace` | Added to what higher areas gave | Lower areas and the project's are ignored |
+| `replace` | Replaces what higher areas gave | Lower areas and the project's are ignored |
+| `replace_combine` | Replaces what higher areas gave | Lower areas and the project's add theirs |
+
+```json
+"planet_pull": {
+  "components": {
+    "Area2D": {"gravity": 600.0, "gravity_point": true, "gravity_point_center": [0.0, 0.0],
+               "gravity_point_unit_distance": 30.0, "gravity_space_override": "replace",
+               "priority": 1},
+    "CollisionShape2D": {"radius": 80.0, "shape": "circle"},
+    "Transform2D": {"position": [370.0, 100.0]}
+  }
+}
+```
+
+- Gravity pulls along `gravity_direction`, or with `gravity_point` toward
+  `gravity_point_center` in the area's space, measured from each body's origin. With
+  `gravity_point_unit_distance` the pull is `gravity` at that distance and weakens with
+  distance squared, as a planet's.
+- A `RigidBody2D` multiplies the gravity by its `gravity_scale`, and adds its own
+  `linear_damp` and `angular_damp` or replaces the zones' with them, as its damp modes say.
+- Overrides take effect from the step after a body enters, as in Godot, so on its first step
+  every body falls with the project's gravity. A resting body wakes when its zone changes.
+- Characters aren't pulled, since gameplay code sets their velocity: as in Godot, the code
+  adds the gravity `physics2d::gravity` returns, as Godot's `get_gravity`.
+- [`physics.gravity`](commands.md#physicsgravity) returns each body's gravity, damping and the
+  areas that set them.
+
+A `StaticBody2D` with `constant_linear_velocity` or `constant_angular_velocity` stays where it
+is, but what touches it moves as if it moved: rigid bodies are carried by friction and
+characters standing on it by `platform_velocity`. A conveyor belt is a static box with a
+constant linear velocity. An `AnimatableBody2D` adds its constant velocities to how it moves.
+[examples/gravity-and-conveyors](../../examples/gravity-and-conveyors/) has a belt, a planet and
+a zone with no gravity.
 
 ## Particles
 

@@ -8,6 +8,8 @@
 #include <algorithm>
 #include <array>
 #include <memory>
+#include <optional>
+#include <string>
 #include <string_view>
 #include <utility>
 
@@ -290,6 +292,31 @@ std::vector<entt::entity> overlap_shape(world::World& world, const world::Collis
 Contacts contacts(world::World& world, entt::entity entity) {
     Space* space = synced(world);
     return space != nullptr ? space->contacts(world, entity) : Contacts{};
+}
+
+std::optional<Gravity> gravity(world::World& world, entt::entity entity) {
+    Space* space = synced(world);
+    const detail::Body* body = space != nullptr ? space->body(entity) : nullptr;
+    if (body == nullptr || body->kind == Kind::Area) {
+        return std::nullopt;
+    }
+    const world::Tree2D tree(world);
+    detail::AreaForces forces = space->forces(world, tree, entity);
+    Gravity out{.gravity = forces.gravity,
+                .linear_damp = forces.linear_damp,
+                .angular_damp = forces.angular_damp,
+                .areas = std::move(forces.areas)};
+    if (const auto* rigid = world.ecs().try_get<world::RigidBody2D>(entity);
+        rigid != nullptr && body->kind == Kind::Rigid) {
+        const auto with_own = [](float total, const std::string& mode, float own) {
+            return mode == "replace" ? own : total + own;
+        };
+        out.gravity = out.gravity * rigid->gravity_scale;
+        out.linear_damp = with_own(out.linear_damp, rigid->linear_damp_mode, rigid->linear_damp);
+        out.angular_damp =
+            with_own(out.angular_damp, rigid->angular_damp_mode, rigid->angular_damp);
+    }
+    return out;
 }
 
 void set_tile_shape_source(world::World& world, TileShapeSource source) {

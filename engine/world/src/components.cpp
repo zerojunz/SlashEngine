@@ -64,13 +64,21 @@ void register_physics_components(ComponentRegistry& registry) {
         .describe("one_way_collision", one_way)
         .describe("one_way_collision_margin", one_way_margin);
 
+    const FieldMeta constant_linear{.doc = "Carries what touches it as if it moved at this "
+                                           "many pixels per second, as [x, y], as a conveyor "
+                                           "belt."};
+    const FieldMeta constant_angular{.doc = "Carries what touches it as if it turned at this "
+                                            "many radians per second, clockwise."};
+
     registry.add<StaticBody2D>()
         .set_doc("A physics body that doesn't move on its own, such as a wall. Changing its "
                  "Transform2D moves it at once.")
         .describe("collision_layer", layer)
         .describe("collision_mask", mask)
         .describe("friction", friction)
-        .describe("bounce", bounce);
+        .describe("bounce", bounce)
+        .describe("constant_linear_velocity", constant_linear)
+        .describe("constant_angular_velocity", constant_angular);
 
     registry.add<AnimatableBody2D>()
         .set_doc("A physics body that goes where its Transform2D says, such as a moving "
@@ -79,6 +87,10 @@ void register_physics_components(ComponentRegistry& registry) {
         .describe("collision_mask", mask)
         .describe("friction", friction)
         .describe("bounce", bounce)
+        .describe("constant_linear_velocity",
+                  {.doc = "Added to how it moves, in pixels per second, as [x, y]."})
+        .describe("constant_angular_velocity",
+                  {.doc = "Added to how it turns, in radians per second, clockwise."})
         .describe("sync_to_physics", {.doc = "Move during the physics step, pushing and carrying "
                                              "bodies; false jumps there."});
 
@@ -134,17 +146,32 @@ void register_physics_components(ComponentRegistry& registry) {
         .describe("velocity", {.doc = "In pixels per second, as [x, y]. Gameplay code sets it; "
                                       "each move slides it along what it hits."})
         .describe("max_slides", {.doc = "Slides per move at most.", .min = 1, .max = 16})
+        .describe("slide_on_ceiling", {.doc = "Slide along ceilings; false stops and falls."})
+        .describe("wall_min_slide_angle", {.doc = "Floating: a wall hit more head-on than this, "
+                                                  "in radians, stops it instead of sliding.",
+                                           .min = 0,
+                                           .max = std::numbers::pi})
         .describe("floor_stop_on_slope", {.doc = "Don't slide down slopes while standing."})
+        .describe("floor_constant_speed", {.doc = "Walk up and down slopes at the speed it walks "
+                                                  "on flat floors."})
+        .describe("floor_block_on_wall", {.doc = "Walls too steep to be floors stop it instead "
+                                                 "of letting it climb them."})
         .describe("floor_max_angle", {.doc = "Steepest floor, in radians from up_direction.",
                                       .min = 0,
                                       .max = std::numbers::pi})
         .describe("floor_snap_length", {.doc = "How far down it keeps to a floor while walking "
                                                "off steps and slopes, in pixels.",
                                         .min = 0})
-        .describe("slide_on_ceiling", {.doc = "Slide along ceilings; false stops and falls."})
         .describe("platform_on_leave",
                   {.doc = "What it keeps of a moving floor's velocity on leaving it.",
                    .choices = {"add_velocity", "add_upward_velocity", "do_nothing"}})
+        .describe("platform_floor_layers", {.doc = "Floors in these layers carry it as they "
+                                                   "move, as bits."})
+        .describe("platform_wall_layers", {.doc = "Walls in these layers carry it as they move, "
+                                                  "as bits."})
+        .describe("safe_margin", {.doc = "What is this close, in pixels, counts as touching; at "
+                                         "least Box2D's 0.32.",
+                                  .min = 0.001})
         .describe("on_floor", {.doc = "Touched a floor in the last move."})
         .describe("on_wall", {.doc = "Touched a wall in the last move."})
         .describe("on_ceiling", {.doc = "Touched a ceiling in the last move."})
@@ -152,14 +179,38 @@ void register_physics_components(ComponentRegistry& registry) {
         .describe("wall_normal", {.doc = "The wall's normal in the last move."})
         .describe("platform_velocity", {.doc = "The velocity of the floor it stands on."});
 
+    const FieldMeta override_mode{
+        .doc = "How it changes the bodies in it, by priority: \"combine\" adds its own to "
+               "higher areas' and lets lower areas and the project add theirs, \"replace\" uses "
+               "only its own, \"combine_replace\" adds and stops lower ones, "
+               "\"replace_combine\" drops higher ones' and lets lower ones add.",
+        .choices = {"disabled", "combine", "combine_replace", "replace", "replace_combine"}};
+
     registry.add<Area2D>()
         .set_doc("A region that emits body_entered, body_exited, area_entered and area_exited "
-                 "events. It goes where its Transform2D says.")
+                 "events, and can change the gravity and damping of rigid bodies in it. It goes "
+                 "where its Transform2D says.")
         .describe("collision_layer", layer)
         .describe("collision_mask", {.doc = "The layers of bodies and areas it detects, as "
                                             "bits."})
         .describe("monitoring", {.doc = "Report bodies and areas entering it."})
-        .describe("monitorable", {.doc = "Other areas detect it."});
+        .describe("monitorable", {.doc = "Other areas detect it."})
+        .describe("priority", {.doc = "Areas of higher priority override first."})
+        .describe("gravity_space_override", override_mode)
+        .describe("gravity_point", {.doc = "Pull toward gravity_point_center instead of along "
+                                           "gravity_direction."})
+        .describe("gravity_point_unit_distance",
+                  {.doc = "Above 0, the pull is gravity this many pixels from the center and "
+                          "falls off with distance squared; 0 pulls the same everywhere.",
+                   .min = 0})
+        .describe("gravity_point_center", {.doc = "Where a point pulls toward, in the area's "
+                                                  "space."})
+        .describe("gravity_direction", {.doc = "Which way gravity pulls, as a unit [x, y]."})
+        .describe("gravity", {.doc = "How hard, in pixels per second squared."})
+        .describe("linear_damp_space_override", override_mode)
+        .describe("linear_damp", {.doc = "Slows movement in it, per second.", .min = 0})
+        .describe("angular_damp_space_override", override_mode)
+        .describe("angular_damp", {.doc = "Slows turning in it, per second.", .min = 0});
 
     registry.add<PinJoint2D>()
         .set_doc("Pins two bodies together at the entity's Transform2D, letting them turn.")
