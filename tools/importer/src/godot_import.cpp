@@ -896,14 +896,16 @@ struct ScriptRecord {
 
 class GodotImporter {
 public:
-    GodotImporter(std::string source, std::string prefix, bool copy_assets)
-        : source_(std::move(source)), prefix_(std::move(prefix)), copy_assets_(copy_assets) {
+    GodotImporter(std::string source, const GodotFiles* unpacked, std::string prefix,
+                  bool copy_assets)
+        : source_(std::move(source)), unpacked_(unpacked), prefix_(std::move(prefix)),
+          copy_assets_(copy_assets) {
         world::register_builtin_components(components_);
     }
 
     Result<ImportPlan> run(const std::optional<std::string>& existing_project,
                            const std::optional<std::string>& existing_work) {
-        auto project_text = platform::read_file(source_ + "project.godot");
+        auto project_text = read("project.godot");
         if (!project_text) {
             return Error{.code = ErrorCode::NotFound,
                          .message = "no project.godot in " + source_ +
@@ -920,9 +922,7 @@ public:
                          .message = "a Godot 3 project: open it in Godot 4 and save it there "
                                     "first (Godot converts it), then import it"};
         }
-        auto listed = platform::list_files(source_, [](std::string_view folder) {
-            return folder != "build/" && folder != "addons/";
-        });
+        auto listed = list();
         if (!listed) {
             return listed.error();
         }
@@ -965,6 +965,37 @@ public:
 private:
     // --- Files ---
 
+    // A file of the source project, from its folder or the game it was unpacked from.
+    [[nodiscard]] Result<std::string> read(const std::string& file) const {
+        if (unpacked_ != nullptr) {
+            const auto it = unpacked_->find(file);
+            if (it == unpacked_->end()) {
+                return Error{.code = ErrorCode::NotFound, .message = "no " + file + " in the game"};
+            }
+            return it->second;
+        }
+        return platform::read_file(source_ + file);
+    }
+
+    // Every file of the source project, sorted, but those in its build/ and addons/ folders.
+    [[nodiscard]] Result<std::vector<std::string>> list() const {
+        const auto descend = [](std::string_view folder) {
+            return folder != "build/" && folder != "addons/";
+        };
+        if (unpacked_ == nullptr) {
+            return platform::list_files(source_, descend);
+        }
+        std::vector<std::string> files;
+        for (const auto& [path, contents] : *unpacked_) {
+            const std::size_t slash = path.find('/');
+            if (slash == std::string::npos ||
+                descend(std::string_view(path).substr(0, slash + 1))) {
+                files.push_back(path);
+            }
+        }
+        return files;
+    }
+
     static const Value* find_setting(const std::vector<Section>& settings, std::string_view tag,
                                      std::string_view key) {
         for (const Section& section : settings) {
@@ -1002,7 +1033,7 @@ private:
         for (const std::string& file : files_) {
             const std::string extension = extension_of(file);
             if (extension == ".import" || extension == ".uid") {
-                if (auto text = platform::read_file(source_ + file); text) {
+                if (auto text = read(file); text) {
                     learn_uid(text.value(), without_extension(file));
                 }
                 continue;
@@ -1010,7 +1041,7 @@ private:
             if (extension != ".tscn" && extension != ".tres") {
                 continue;
             }
-            auto text = platform::read_file(source_ + file);
+            auto text = read(file);
             if (!text) {
                 problems_.add("unreadable file", file, text.error().message);
                 continue;
@@ -1082,7 +1113,7 @@ private:
                 scripts_[file];
             }
             if (copy_assets_) {
-                if (auto bytes = platform::read_file(source_ + file); bytes) {
+                if (auto bytes = read(file); bytes) {
                     add_file(destination(file), std::move(bytes.value()));
                 } else {
                     problems_.add("unreadable file", file, bytes.error().message);
@@ -2935,7 +2966,7 @@ private:
         const double width = regions.front()[2];
         const double height = regions.front()[3];
         const std::string sheet_file = strip_res(atlas.substr(prefix_.size()));
-        auto bytes = platform::read_file(source_ + sheet_file);
+        auto bytes = read(sheet_file);
         const auto size = bytes ? png_size(bytes.value()) : std::nullopt;
         if (!size || width <= 0.0 || height <= 0.0) {
             why = "a sheet whose size can't be read";
@@ -4462,7 +4493,7 @@ private:
                            " from Godot: write what it does as C++ components and systems.";
             task.engine = "godot";
             std::string text;
-            if (auto source = platform::read_file(source_ + script); source && !csharp) {
+            if (auto source = read(script); source && !csharp) {
                 const ScriptOutline outline = outline_script(source.value());
                 if (!outline.extends.empty()) {
                     text += "Extends " + outline.extends + ".";
@@ -4584,6 +4615,7 @@ private:
     }
 
     std::string source_;
+    const GodotFiles* unpacked_ = nullptr;
     std::string prefix_;
     bool copy_assets_ = false;
     world::ComponentRegistry components_;
@@ -4622,10 +4654,11 @@ private:
 
 } // namespace
 
-Result<ImportPlan> plan_godot(const std::string& source, const std::string& prefix,
-                              bool copy_assets, const std::optional<std::string>& existing_project,
+Result<ImportPlan> plan_godot(const std::string& source, const GodotFiles* unpacked,
+                              const std::string& prefix, bool copy_assets,
+                              const std::optional<std::string>& existing_project,
                               const std::optional<std::string>& existing_work) {
-    GodotImporter importer(source, prefix, copy_assets);
+    GodotImporter importer(source, unpacked, prefix, copy_assets);
     return importer.run(existing_project, existing_work);
 }
 

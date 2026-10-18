@@ -1,0 +1,18 @@
+[remap]
+
+importer="texture"
+type="CompressedTexture2D"
+uid="uid://bjumperhero"
+path="res://.godot/imported/hero.png-be1798b715779b53ab7dec53f9f9f8c3.ctex"
+metadata={
+"vram_texture": false
+}
+
+[deps]
+
+source_file="res://art/hero.png"
+dest_files=["res://.godot/imported/hero.png-be1798b715779b53ab7dec53f9f9f8c3.ctex"]
+
+[params]
+
+compress/mode=0

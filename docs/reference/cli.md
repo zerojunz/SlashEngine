@@ -383,7 +383,8 @@ An existing `.gitignore` is never replaced, even with `--force`: `init` adds the
 
 Converts a game made with Godot 4 or Unity into a SlashEngine project, with each script turned
 into a storyboard task to port it to C++. From Godot: its scenes, sprite frames, animations, tile
-sets, themes, bus layouts, input map and settings. From Unity: its scenes, prefabs, sprites,
+sets, themes, bus layouts, input map and settings, from its project folder or from the game as
+Godot exported it. From Unity: its scenes, prefabs, sprites,
 tile maps, Animator controllers and clips, cameras, 2D physics and joints, sounds, audio mixers,
 UI, input and settings. It runs
 [`project.import`](commands.md#projectimport) and prints the same report;
@@ -391,12 +392,13 @@ UI, input and settings. It runs
 what.
 
 ```bash
-slash-cli import <folder> [options]
+slash-cli import <folder|file> [options]
 ```
 
 | Flag | Meaning |
 | --- | --- |
 | `--project <dir>` | The SlashEngine project to import into (default `.`); it needn't exist yet |
+| `--unpack-to <dir>` | For an exported game, also write the Godot project unpacked from it to this folder of the project, and use its assets there |
 | `--dry-run` | Print the report and the files it would write; write nothing |
 
 `<folder>` holds the Godot project's `project.godot`, or the Unity project's `Assets/` and
@@ -415,8 +417,22 @@ slash-cli import ~/games/coin-run-godot --project coin-run
 {"converted":{"assets":5,"input_actions":3,"scenes":2,"sprite_frames":2},"engine":"godot","files":15,"main_scene":"main.scene.json","project":"Coin Run","report":"import/godot.json","scripts":[{"entities":0,"script":"game_state.gd","task":"task/port-game-state"},{"entities":1,"script":"main.gd","task":"task/port-main"},{"entities":2,"script":"player.gd","task":"task/port-player"}],"unsupported":[{"count":1,"what":"autoload","where":"project.godot: GameState","why":"autoloads are gameplay code; see the storyboard task"},{"count":1,"what":"file type .svg","where":"icon.svg","why":"textures are PNG or BMP files; save it as PNG"},{"count":1,"what":"node type Timer","where":"main.tscn: Timer","why":"timers are gameplay code: count the ticks in a C++ system"}]}
 ```
 
+`<file>` is a game exported with Godot 4: its `.pck` file, or its executable with the pack
+inside. The game is unpacked back into the Godot project it was made from (binary scenes and
+resources as `.tscn` and `.tres` text, script tokens as source, `project.binary` as
+`project.godot`, imported textures as PNG files, sounds as WAV, Ogg and MP3 files and fonts as
+the files they were), then converted as a project folder is; the report's `unpacked` says what
+came back. With `--unpack-to`, the unpacked project is written to that folder and the import
+uses its assets there; without it, only the assets come along. Unpack only games you made or
+have the rights to: nothing here breaks encryption, so a pack encrypted with the game's own key
+is refused.
+
+```bash
+slash-cli import ~/Downloads/jumper.pck --project jumper --unpack-to godot
+```
+
 It exits 1 if the folder isn't a Godot 4 project or a Unity project saved by Unity 2018.3 or
-later.
+later, or the file holds no Godot 4 pack or one whose file list is encrypted.
 
 ### export
 

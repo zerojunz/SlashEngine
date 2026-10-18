@@ -19,6 +19,8 @@ or license not allowed here, or whose license text changed without review.
 | [msdfgen](https://github.com/Chlumsky/msdfgen) | v1.13 | MIT | Multichannel signed distance fields for fonts | Fetched, its core linked statically |
 | [Roboto](https://github.com/googlefonts/roboto) | v2.138 | Apache 2.0 | The default font | Fetched, Roboto Regular embedded in the engine |
 | [cpp-httplib](https://github.com/yhirose/cpp-httplib) | v0.58.0 | MIT | Localhost HTTP server for the REST mirror and MCP over HTTP | Fetched, header-only |
+| [libwebp](https://github.com/webmproject/libwebp) | v1.5.0 | BSD-3-Clause, with an additional patent grant (`PATENTS`) | Decoding WebP textures when unpacking an exported Godot game (tools only, not shipped in games) | Fetched, its decoder linked into slash-cli and slash-mcp |
+| [Zstandard](https://github.com/facebook/zstd) | v1.5.7 | BSD-3-Clause or GPL 2.0 at the user's choice; SlashEngine uses it under BSD-3-Clause | Decompressing the files of an exported Godot game (tools only, not shipped in games) | Fetched, its decompressor linked into slash-cli and slash-mcp |
 | [doctest](https://github.com/doctest/doctest) | v2.5.2 | MIT | Unit tests (not shipped in games) | Fetched, tests only |
 | [CPM.cmake](https://github.com/cpm-cmake/CPM.cmake) | v0.40.2 | MIT | Dependency fetching | Vendored as `cmake/CPM.cmake` |
 

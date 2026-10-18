@@ -307,6 +307,17 @@ layout or animation) is left out and reported, so one bad value can't stop a fil
 convert goes in `import/godot.json`, once per kind. `docs/reference/godot-import.md` maps each
 node and setting; `examples/import-godot` imports a small platformer.
 
+Games exported with Godot 4 import too: `src/godot_unpack.cpp` finds the pack in a `.pck` file or
+an executable and turns it back into the project (`godot::unpack_game`, in
+`slash/importer/godot_pack.hpp`): `src/godot_binary.cpp` reads binary resources, values and
+`project.binary`, `src/gdscript_tokens.cpp` turns `.gdc` tokens back into source, and textures
+and sounds become PNG, WAV, Ogg and MP3 files. `unpack_to` writes the recovered project into the
+SlashEngine project. Encrypted packs are refused and encrypted files listed, never decrypted.
+`src/godot_pack.cpp` writes all of it as Godot's export does (`godot::export_project`,
+`godot::write_pack`), checked against Godot 4.5's own exports: tests and examples make their
+exported games in code with it rather than committing binary files. `examples/unpack-godot`
+imports a shipped game.
+
 `src/unity_yaml.cpp` reads Unity's YAML (scenes, prefabs, assets, settings and `.meta` files)
 and `src/unity_import.cpp` converts a project with `Assets/` and `ProjectSettings/`: a
 `.scene.json` beside each `.unity` and `.prefab` file, prefabs staying prefabs that scenes
