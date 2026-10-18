@@ -2,7 +2,7 @@ scene.open {"path":"main.scene.json"}
 {"entities":6,"path":"main.scene.json"}
 -- the flag is in the mast's space, and the mast in the boat's
 entity.get {"components":["Transform2D"],"id":"flag"}
-{"components":{"Transform2D":{"children":[],"position":[6.0,-9.0],"rotation":0.0,"scale":[1.0,1.0],"skew":0.0}},"global":{"position":[122,93],"rotation":0,"scale":[1,1]},"id":"flag","parent":"mast"}
+{"components":{"Transform2D":{"children":[],"position":[6.0,-9.0],"rotation":0.0,"scale":[1.0,1.0],"skew":0.0,"top_level":false}},"global":{"position":[122,93],"rotation":0,"scale":[1,1]},"id":"flag","parent":"mast"}
 -- the boat draws, then its children in their order, then the rock made after it
 frame.summary {"ids":["boat","mast","flag","cannon","rock"]}
 {"drawn":[{"id":"boat","kind":"Sprite2D","rect":[96,114,48,12],"shown":0.95},{"id":"mast","kind":"Sprite2D","rect":[115,90,2,24]},{"id":"flag","kind":"Sprite2D","rect":[117,90,10,6]},{"id":"cannon","kind":"Sprite2D","rect":[131.7,107.8,12.6,8.4],"shown":0.5},{"id":"rock","kind":"Sprite2D","rect":[138,102,16,16]}],"viewport":[320,180]}
@@ -10,7 +10,7 @@ frame.summary {"ids":["boat","mast","flag","cannon","rock"]}
 component.set {"components":{"Transform2D":{"position":[160,120],"rotation":0.2}},"id":"boat"}
 {"changed":{"Transform2D":{"position":[160.0,120.0],"rotation":0.2}},"id":"boat"}
 entity.get {"components":["Transform2D"],"id":"flag"}
-{"components":{"Transform2D":{"children":[],"position":[6.0,-9.0],"rotation":0.0,"scale":[1.0,1.0],"skew":0.0}},"global":{"position":[167.3242,93.9355],"rotation":0.2,"scale":[1,1]},"id":"flag","parent":"mast"}
+{"components":{"Transform2D":{"children":[],"position":[6.0,-9.0],"rotation":0.0,"scale":[1.0,1.0],"skew":0.0,"top_level":false}},"global":{"position":[167.3242,93.9355],"rotation":0.2,"scale":[1,1]},"id":"flag","parent":"mast"}
 frame.summary {"ids":["boat","mast","flag","cannon","rock"]}
 {"drawn":[{"id":"boat","kind":"Sprite2D","rect":[135.3,109.4,49.4,21.3],"shown":0.8},{"id":"mast","kind":"Sprite2D","rect":[156.3,89.6,6.7,23.9]},{"id":"flag","kind":"Sprite2D","rect":[161.8,90,11,7.9]},{"id":"cannon","kind":"Sprite2D","rect":[173,112.6,12.6,6.3]},{"id":"rock","kind":"Sprite2D","rect":[138,102,16,16]}],"viewport":[320,180]}
 -- the boat's z_index lifts its children over the rock too
@@ -27,12 +27,26 @@ batch {"commands":[{"command":"entity.create","params":{"components":{"Collision
 step {"ticks":90}
 {"tick":90,"ticks":90}
 entity.get {"components":["Transform2D"],"id":"barrel"}
-{"components":{"Transform2D":{"children":[],"position":[6.0261536,-9.981651],"rotation":0.0020866394,"scale":[1.0,1.0],"skew":0.0}},"global":{"position":[167.8891,111.4145],"rotation":0.2021,"scale":[1,1]},"id":"barrel","parent":"boat"}
+{"components":{"Transform2D":{"children":[],"position":[6.0261536,-9.981651],"rotation":0.0020866394,"scale":[1.0,1.0],"skew":0.0,"top_level":false}},"global":{"position":[167.8891,111.4145],"rotation":0.2021,"scale":[1,1]},"id":"barrel","parent":"boat"}
+-- a shot the cannon fires is top_level: placed in the world, it stays where it was fired when the boat sails on
+batch {"commands":[{"command":"entity.create","params":{"components":{"Sprite2D":{"texture":"barrel.png"},"Transform2D":{"position":[200,100],"top_level":true}},"id":"shot"}},{"command":"component.set","params":{"components":{"Transform2D":{"children":["shot"]}},"id":"cannon"}}]}
+{"results":[{"id":"shot"},{"changed":{"Transform2D":{"children":["shot"]}},"id":"cannon"}]}
+component.set {"components":{"Transform2D":{"position":[110,120],"rotation":0}},"id":"boat"}
+{"changed":{"Transform2D":{"position":[110.0,120.0],"rotation":0.0}},"id":"boat"}
+entity.get {"components":["Transform2D"],"id":"shot"}
+{"components":{"Transform2D":{"children":[],"position":[200.0,100.0],"rotation":0.0,"scale":[1.0,1.0],"skew":0.0,"top_level":true}},"global":{"position":[200,100],"rotation":0,"scale":[1,1]},"id":"shot","parent":"cannon"}
+frame.summary {"ids":["boat","cannon","shot","rock"]}
+{"drawn":[{"id":"shot","kind":"Sprite2D","rect":[196,96,8,8]},{"id":"rock","kind":"Sprite2D","rect":[138,102,16,16]},{"id":"boat","kind":"Sprite2D","rect":[86,114,48,12],"shown":0.99},{"id":"cannon","kind":"Sprite2D","rect":[121.7,107.8,12.6,8.4]}],"viewport":[320,180]}
+-- the cannon's z_index of -1, not added to the boat's, puts it under the boat and the rock
+component.set {"components":{"Sprite2D":{"z_as_relative":false,"z_index":-1}},"id":"cannon"}
+{"changed":{"Sprite2D":{"z_as_relative":false,"z_index":-1}},"id":"cannon"}
+frame.summary {"ids":["boat","cannon","rock"]}
+{"drawn":[{"id":"cannon","kind":"Sprite2D","rect":[121.7,107.8,12.6,8.4],"shown":0.88},{"id":"rock","kind":"Sprite2D","rect":[138,102,16,16]},{"id":"boat","kind":"Sprite2D","rect":[86,114,48,12]}],"viewport":[320,180]}
 -- each child has one parent and is never its own ancestor
 component.set {"components":{"Transform2D":{"children":["boat"]}},"id":"flag"}
 "/entities/flag/components/Transform2D/children/0: \"boat\" is an ancestor of \"flag\", so it can't be its child"
 -- the boat sinks with everything in it
 entity.destroy {"id":"boat"}
-{"descendants":["deck","mast","cannon","barrel","flag"],"destroyed":"boat"}
+{"descendants":["deck","mast","cannon","barrel","flag","shot"],"destroyed":"boat"}
 world.query {}
 {"count":1,"entities":["rock"],"truncated":false}

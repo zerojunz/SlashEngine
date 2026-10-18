@@ -197,31 +197,45 @@ world::Transform2D interpolate(const world::Transform2D& from, const world::Tran
 Inherited inherited(const world::World& world, const world::Tree2D& tree, entt::entity entity) {
     Inherited out;
     const auto& ecs = world.ecs();
+    const auto top_level = [&](entt::entity of) {
+        const auto* transform = ecs.try_get<world::Transform2D>(of);
+        return transform != nullptr && transform->top_level;
+    };
+    // Godot's top-level items hang from the canvas, not their parents: no z_index or tint
+    // comes past one, though hiding a parent still hides it.
+    bool add_z = !top_level(entity);
+    bool add_tint = add_z;
     for (entt::entity up = tree.parent(entity); up != entt::null; up = tree.parent(up)) {
-        const auto tint = [&](const Vec4& color) {
-            out.modulate = {out.modulate.x * color.x, out.modulate.y * color.y,
-                            out.modulate.z * color.z, out.modulate.w * color.w};
+        const auto take = [&](int z, bool relative, bool visible, const Vec4* modulate) {
+            if (add_z) {
+                out.z_index += z;
+                add_z = relative;
+            }
+            out.visible = out.visible && visible;
+            if (add_tint && modulate != nullptr) {
+                out.modulate = {out.modulate.x * modulate->x, out.modulate.y * modulate->y,
+                                out.modulate.z * modulate->z, out.modulate.w * modulate->w};
+            }
         };
         if (const auto* sprite = ecs.try_get<world::Sprite2D>(up); sprite != nullptr) {
-            out.z_index += sprite->z_index;
-            out.visible = out.visible && sprite->visible;
-            tint(sprite->modulate);
+            take(sprite->z_index, sprite->z_as_relative, sprite->visible, &sprite->modulate);
         } else if (const auto* layer = ecs.try_get<world::TileMapLayer>(up); layer != nullptr) {
-            out.z_index += layer->z_index;
-            out.visible = out.visible && layer->visible;
-            tint(layer->modulate);
+            take(layer->z_index, layer->z_as_relative, layer->visible, &layer->modulate);
         } else if (const auto* emitter = ecs.try_get<world::CPUParticles2D>(up);
                    emitter != nullptr) {
-            out.z_index += emitter->z_index;
-            out.visible = out.visible && emitter->visible;
+            take(emitter->z_index, emitter->z_as_relative, emitter->visible, nullptr);
+        }
+        if (top_level(up)) {
+            add_z = false;
+            add_tint = false;
         }
     }
     return out;
 }
 
-int z_index(int own, const Inherited& from_parents) {
+int z_index(int own, bool relative, const Inherited& from_parents) {
     constexpr int kZLimit = 4096;
-    return std::clamp(own + from_parents.z_index, -kZLimit, kZLimit);
+    return std::clamp(relative ? own + from_parents.z_index : own, -kZLimit, kZLimit);
 }
 
 double material_time(std::uint64_t tick, double tick_seconds, double interpolation) {
@@ -598,7 +612,8 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         }
         const auto [found, added] = sources.try_emplace(entity, entt::null);
         if (added) {
-            for (entt::entity up = entity; up != entt::null; up = tree.parent(up)) {
+            // Not past a top_level entity, which hangs from the canvas as Godot's.
+            for (entt::entity up = entity; up != entt::null; up = tree.transform_parent(up)) {
                 if (const auto* parallax = ecs.try_get<world::Parallax2D>(up);
                     parallax != nullptr &&
                     (parallax->repeat_size.x > 0.0F || parallax->repeat_size.y > 0.0F)) {
@@ -738,7 +753,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
                                 own_sprite.modulate.w * from_parents.modulate.w};
         }
         const world::Sprite2D& sprite = tinted ? *tinted : own_sprite;
-        const int z = z_index(sprite.z_index, from_parents);
+        const int z = z_index(sprite.z_index, sprite.z_as_relative, from_parents);
         const render::Filter filter = resolve_filter(sprite.texture_filter, options.texture_filter);
         auto texture = this->texture(sprite.texture, filter);
         if (!texture) {
@@ -811,7 +826,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         if (!emitter.visible || !from_parents.visible || !canvas_list[canvas].visible) {
             continue;
         }
-        const int z = z_index(emitter.z_index, from_parents);
+        const int z = z_index(emitter.z_index, emitter.z_as_relative, from_parents);
         const std::vector<Particle> live = canvas::particles(world, entity);
         if (live.empty()) {
             continue;
@@ -925,7 +940,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             layer.rows.empty() || !canvas_list[canvas].visible) {
             continue;
         }
-        const int z = z_index(layer.z_index, from_parents);
+        const int z = z_index(layer.z_index, layer.z_as_relative, from_parents);
         constexpr std::string_view kEvent = "a tile map layer can't draw";
         auto set = tile_set(layer.tile_set);
         if (!set) {

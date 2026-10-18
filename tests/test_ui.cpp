@@ -222,6 +222,10 @@ TEST_CASE("modulate, visible and z_index pass from parents to children") {
     CHECK(layout.find(a)->z == 2);
     CHECK(layout.find(b)->z == 1);
     CHECK(layout.find(loose)->visible);
+    // A z_index that isn't relative is the whole of it, as Godot's z_as_relative.
+    scene.set(b, R"({"Control": {"z_index": -1, "z_as_relative": false}})");
+    CHECK(scene.layout().find(b)->z == -1);
+    scene.set(b, R"({"Control": {"z_index": -1, "z_as_relative": true}})");
     // By z, then parents before children and in order.
     CHECK(ids(scene.world, layout) == std::vector<std::string>{"loose", "b", "top", "a"});
     // Hidden controls draw nothing.

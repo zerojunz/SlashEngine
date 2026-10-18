@@ -2641,10 +2641,10 @@ Reply light_sample(Session& session, const json::Value& params) {
         const canvas::Inherited from_parents = canvas::inherited(world, tree, entity);
         if (const auto* sprite = ecs.try_get<world::Sprite2D>(entity); sprite != nullptr) {
             item.light_mask = static_cast<std::uint32_t>(sprite->light_mask);
-            item.z_index = canvas::z_index(sprite->z_index, from_parents);
+            item.z_index = canvas::z_index(sprite->z_index, sprite->z_as_relative, from_parents);
         } else if (const auto* layer = ecs.try_get<world::TileMapLayer>(entity); layer != nullptr) {
             item.light_mask = static_cast<std::uint32_t>(layer->light_mask);
-            item.z_index = canvas::z_index(layer->z_index, from_parents);
+            item.z_index = canvas::z_index(layer->z_index, layer->z_as_relative, from_parents);
         }
     }
     if (const json::Value* mask = params.find("light_mask"); mask != nullptr) {

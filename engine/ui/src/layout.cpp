@@ -2796,8 +2796,9 @@ struct Builder {
                          (parent != nullptr ? parent->placed.visible : canvas_visible(node.canvas));
         placed.modulate =
             parent != nullptr ? times(parent->placed.modulate, control.modulate) : control.modulate;
-        placed.z =
-            std::clamp(control.z_index + (parent != nullptr ? parent->placed.z : 0), -kMaxZ, kMaxZ);
+        placed.z = std::clamp(
+            control.z_index + (parent != nullptr && control.z_as_relative ? parent->placed.z : 0),
+            -kMaxZ, kMaxZ);
         placed.texture_filter = control.texture_filter != "inherit" || parent == nullptr
                                     ? control.texture_filter
                                     : parent->placed.texture_filter;

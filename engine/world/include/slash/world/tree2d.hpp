@@ -46,6 +46,9 @@ public:
 
     // The entity whose children list it, or null for a root.
     [[nodiscard]] entt::entity parent(entt::entity entity) const;
+    // The entity whose space it is placed in: its parent, or null for a root or a top_level
+    // entity, as Godot's get_parent_item.
+    [[nodiscard]] entt::entity transform_parent(entt::entity entity) const;
     // Whether any entity has a parent: with none, every global transform is the entity's own.
     [[nodiscard]] bool nested() const { return !parents_.empty(); }
     // The entity's Transform2D after its parents', as Godot's get_global_transform: a root's
@@ -59,7 +62,8 @@ public:
     void set_global_rotation(World& world, entt::entity entity, float rotation) const;
     // Where the entity draws among others of the same z_index, lowest first: the roots in the
     // order entities were made, each followed by its children in list order, theirs after
-    // them. An entity with no Transform2D is a root.
+    // them. An entity with no Transform2D is a root. A top_level entity and the entities under
+    // it draw after the rest of its tree, as Godot raises top-level items in tree order.
     [[nodiscard]] std::uint64_t draw_key(entt::entity entity) const;
 
 private:
