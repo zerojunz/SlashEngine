@@ -1475,6 +1475,35 @@ Reply physics_contacts(Session& session, const json::Value& params) {
     return Reply::success(std::move(result));
 }
 
+Reply physics_gravity(Session& session, const json::Value& params) {
+    world::World& world = session.world();
+    json::Object bodies;
+    const json::Array& ids = params.find("ids")->as_array();
+    for (std::size_t i = 0; i < ids.size(); ++i) {
+        const std::string& id = ids[i].as_string();
+        const entt::entity entity = world.find(id);
+        if (entity == entt::null) {
+            return unknown_entity(world, id, item_path("/ids", i));
+        }
+        const std::optional<physics2d::Gravity> found = physics2d::gravity(world, entity);
+        if (!found) {
+            return param_error(code::kInvalidParams, item_path("/ids", i),
+                               quoted(id) + " is no physics body");
+        }
+        json::Value body;
+        body["gravity"] = point_value(found->gravity);
+        body["linear_damp"] = rounded(found->linear_damp);
+        body["angular_damp"] = rounded(found->angular_damp);
+        if (!found->areas.empty()) {
+            body["areas"] = id_array(world, found->areas);
+        }
+        bodies[id] = std::move(body);
+    }
+    json::Value result;
+    result["bodies"] = std::move(bodies);
+    return Reply::success(std::move(result));
+}
+
 // ---- Particles ----
 
 Reply particles_eval(Session& session, const json::Value& params) {
@@ -4765,6 +4794,19 @@ void register_builtin_commands(Registry& registry) {
         .effect = Effect::Read,
         .params = params_schema({{"id", id_property("A body or area.")}}, {"id"}),
         .handler = physics_contacts,
+    });
+    json::Value gravity_ids = names_property("Bodies to ask about.");
+    gravity_ids["minItems"] = 1;
+    gravity_ids["maxItems"] = 256;
+    registry.add({
+        .name = "physics.gravity",
+        .description = "Returns each body's gravity after the last step, [x, y] in pixels per "
+                       "second squared, its damping per second and the areas that changed them "
+                       "(Area2D space overrides), highest priority first.",
+        .capabilities = {Read},
+        .effect = Effect::Read,
+        .params = params_schema({{"ids", std::move(gravity_ids)}}, {"ids"}),
+        .handler = physics_gravity,
     });
 
     json::Value particles_time = property("number", "Run its settings from a fresh start for this "

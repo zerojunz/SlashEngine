@@ -11,7 +11,7 @@ what is where, as an agent would. [expected.txt](expected.txt) holds its output.
 tick 60: hero at (125.4, 215.8), at a wall
 tick 120: hero at (215.4, 170.0), on the floor
 tick 180: hero at (303.9, 231.0), on the floor
-tick 240: hero at (378.3, 170.3)
+tick 240: hero at (378.3, 170.4)
 tick 300: hero at (420.3, 189.0), on the floor
 physics.raycast {"exclude":["hero"],"from":[420,189],"to":[420,300]}
 {"hit":{"fraction":0.1441,"id":"hill","normal":[0,-1],"point":[420,205]}}

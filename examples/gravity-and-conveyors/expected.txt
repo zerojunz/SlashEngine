@@ -1,0 +1,27 @@
+scene.open {"path":"main.scene.json"}
+{"entities":10,"path":"main.scene.json"}
+tick 60: crate at (177.4, 187.0); hero at (58.0, 178.8) on the floor, carried at 60.0
+  rock_left at (337.8, 118.1), 37.0 from the planet's center
+  rock_below at (370.0, 135.0), 35.0 from the planet's center
+  probe at (460.0, 35.5), 110.8 from the planet's center
+tick 120: crate at (218.7, 242.0); hero at (58.0, 178.8) on the floor, carried at 60.0
+  rock_left at (351.5, 130.8), 35.9 from the planet's center
+  rock_below at (370.0, 135.0), 35.0 from the planet's center
+  probe at (460.0, 49.5), 103.2 from the planet's center
+tick 180: crate at (218.7, 242.0); hero at (58.0, 178.8) on the floor, carried at 60.0
+  rock_left at (351.1, 130.2), 35.6 from the planet's center
+  rock_below at (370.0, 135.0), 35.0 from the planet's center
+  probe at (460.0, 62.3), 97.6 from the planet's center
+physics.gravity {"ids":["hero","rock_below","probe"]}
+{"bodies":{"hero":{"angular_damp":1,"gravity":[0,980],"linear_damp":0.1},"probe":{"angular_damp":1,"areas":["space"],"gravity":[0,0],"linear_damp":0.1},"rock_below":{"angular_damp":1,"areas":["planet_pull"],"gravity":[0,-440.894],"linear_damp":0.1}}}
+physics.raycast {"from":[100,150],"to":[100,250]}
+{"hit":{"fraction":0.45,"id":"conveyor","normal":[0,-1],"point":[100,195]}}
+-- with space's override off, the probe falls with the project's gravity
+component.set {"components":{"Area2D":{"gravity_space_override":"disabled"}},"id":"space"}
+{"changed":{"Area2D":{"gravity_space_override":"disabled"}},"id":"space"}
+tick 240: crate at (218.7, 242.0); hero at (58.0, 178.8) on the floor, carried at 60.0
+  rock_left at (351.0, 129.9), 35.4 from the planet's center
+  rock_below at (370.0, 135.0), 35.0 from the planet's center
+  probe at (460.0, 245.0), 170.7 from the planet's center
+physics.gravity {"ids":["probe"]}
+{"bodies":{"probe":{"angular_damp":1,"gravity":[0,980],"linear_damp":0.1}}}
