@@ -7,7 +7,8 @@ since SlashEngine games are plain C++: each becomes a storyboard task to port it
 port needs. [examples/import-godot](../../examples/import-godot/) imports a small platformer.
 
 Only Godot 4 projects import (`config_version=5` in `project.godot`). Open a Godot 3 project in
-Godot 4 and save it there first; Godot converts it.
+Godot 4 and save it there first; Godot converts it. A game exported with Godot 4 imports too,
+from its `.pck` file or executable: see [Exported games](#exported-games).
 
 ## What an import writes
 
@@ -34,6 +35,44 @@ headers, so a resource that moved still resolves.
 Importing again rewrites the converted files and keeps each task's status and the project's
 other settings, so a project can be imported, ported for a while, and imported again after the
 Godot version changes.
+
+## Exported games
+
+A game exported with Godot 4 imports from its `.pck` file, or from its executable with the pack
+inside (Godot's "Embed PCK"). The game is unpacked back into the Godot project it was made from,
+then converted as a project folder is. With `unpack_to` (`--unpack-to`) the unpacked project is
+written to that folder of the SlashEngine project and the import uses its assets there; without
+it, only the assets come along, at their `res://` paths. The report's `unpacked` says what came
+back and lists what didn't. [examples/unpack-godot](../../examples/unpack-godot/) imports a
+small shipped game.
+
+| In the pack | Comes back as |
+| --- | --- |
+| Binary scenes and resources (`.scn`, `.res`), with the `.remap` files naming the text files they were exported from | `.tscn` and `.tres` text, as Godot's text saver writes it. External resources keep their paths and UIDs, numbered from 1, since the binary form keeps no IDs; groups are sorted, as Godot sorts them; empty object properties are left out |
+| GDScript binary tokens (`.gdc`, versions 100 and 101: Godot 4.3 on), compressed or not | `.gd` source with every line and indent where it was, so errors still point at the right lines. Comments are gone, since tokens don't keep them, and numbers are written as their values (`0x1F` as `31`) |
+| `project.binary` | `project.godot` |
+| Imported textures (`.ctex`): PNG, WebP, or raw and S3TC (BC1 to BC3) pixels | PNG files. One imported from another format comes back as PNG under the new extension (`icon.svg` as `icon.png`), and references to it change to match |
+| Imported sounds: `AudioStreamWAV` (8-bit, 16-bit, IMA-ADPCM and QOA), Ogg Vorbis and MP3 | WAV files with their loop, Ogg Vorbis files rebuilt from their pages, and the MP3 files |
+| Imported fonts | The font files |
+| `.godot/uid_cache.bin` | Each file's UID, in its scene or resource header or a `.uid` file |
+| `.import` files | Kept beside the assets, so scenes still find them by UID |
+| Anything else | As it is |
+
+Packs of format 2 (Godot 4.0 to 4.4), 3 (Godot 4.5 and 4.6) and 4 unpack. A pack whose file list
+is encrypted with the game's own key (Godot's "Encrypt Index") is refused, and a file encrypted
+on its own is listed in `unsupported`: nothing here breaks encryption or DRM, so only the game's
+maker, who has the key, can export it unencrypted. Godot 3 games and sparse packs, whose files
+sit in a folder beside them, are refused too. Basis Universal, BPTC, ETC2 and ASTC textures, 3D
+scenes imported from glTF or Blender files, translations and patch packs' changes to another
+pack are listed. Unpack only games you made or have the rights to.
+
+`slash/importer/godot_pack.hpp` also writes all of this as Godot's export does:
+`export_project` turns a project's files into a pack's, `write_pack` lays out the pack (format 2,
+3 or 4, in an executable or not), and `write_binary_resource`, `write_project_binary` and
+`tokenize_gdscript` write the single formats. Checked against Godot 4.5's own exports, its script
+tokens match byte for byte; textures are stored as PNG, as Godot's export does with
+`rendering/textures/lossless_compression/force_png`. Tests and examples make exported games with
+it, so no binary file is committed.
 
 ## Scenes
 

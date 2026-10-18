@@ -2419,13 +2419,16 @@ TextMesh Pro UI controls, the sprites its tile maps show a `.tileset.json` file,
 controller a `.anim.json` file, its audio mixers a `.bus_layout.json` file,
 and its player, time, physics and input settings `project.json`. Textures, sounds and fonts are used
 where they are. Each script, and each Animator controller's state machine, becomes a storyboard task to port
-it to C++. [godot-import.md](godot-import.md) and
+it to C++. A game exported with Godot 4, its `.pck` file or its executable with the pack inside,
+is first unpacked back into the Godot project it was made from, then converted the same way.
+[godot-import.md](godot-import.md) and
 [unity-import.md](unity-import.md) say what converts to what. Registered by `slash-cli` and
 `slash-mcp`.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `source` | string | required | The folder holding the Godot project's `project.godot`, or the Unity project's `Assets/` and `ProjectSettings/` |
+| `source` | string | required | The folder holding the Godot project's `project.godot`, or the Unity project's `Assets/` and `ProjectSettings/`; or a game exported with Godot 4: its `.pck` file or executable |
+| `unpack_to` | string | | For an exported game, a folder of this project to write the Godot project unpacked from it to; the import then uses its assets there. Left out, only the assets come along, under the paths they had in the game |
 | `dry_run` | boolean | `false` | Return the report and the files it would write; write nothing |
 
 Needs: `read`, `filesystem`. It writes files and changes no scene, so there is nothing to undo;
@@ -2456,10 +2459,26 @@ scale Unity's units convert at:
 {"converted":{"animation_libraries":1,"assets":9,"bus_layouts":1,"input_actions":12,"prefabs":3,"scenes":1,"tile_sets":1},"engine":"unity","files":12,"main_scene":"unity/Assets/Scenes/Pond.scene.json","pixels_per_unit":32.0,"project":"Pond Hop","report":"import/unity.json","scripts":[{"entities":1,"script":"unity/Assets/Scripts/CameraFollow.cs","task":"task/port-camera-follow"},{"entities":6,"script":"unity/Assets/Scripts/Coin.cs","task":"task/port-coin"},{"entities":2,"script":"unity/Assets/Scripts/Frog.cs","task":"task/port-frog"},{"entities":1,"script":"unity/Assets/Scripts/Hud.cs","task":"task/port-hud"}],"unity_version":"2022.3.20f1","unsupported":[{"count":1,"what":"component EventSystem","where":"Assets/Scenes/Pond.unity: EventSystem","why":"not needed: SlashEngine's gui system sends input to controls itself"},{"count":1,"what":"component StandaloneInputModule","where":"Assets/Scenes/Pond.unity: EventSystem","why":"not needed: SlashEngine's gui system sends input to controls itself"},{"count":1,"what":"exposed mixer parameters","where":"Assets/Audio/Pond.mixer","why":"MusicVolume: scripts that set them set buses with audio.set_bus or gameplay code instead"},{"count":1,"what":"inactive object","where":"Assets/Scenes/Pond.unity: Coin (2)","why":"converted hidden, with its shapes disabled; there is no inactive state, so its other components still run"},{"count":1,"what":"input axis Mouse X","where":"ProjectSettings/InputManager.asset","why":"mouse movement axes: read the mouse's motion in code"},{"count":1,"what":"input binding","where":"Assets/Input/Controls.inputactions: Player/Croak","why":"\"<XRController>/trigger\": XRController bindings"},{"count":1,"what":"input interaction","where":"Assets/Input/Controls.inputactions: Player/Croak","why":"Hold: gameplay code times holds and taps"}]}
 ```
 
+For an exported game, `unpacked` says what came back out of it: the pack's format and the
+Godot version that exported it, whether it was inside an executable, the folder `unpack_to`
+wrote, counts of scenes, resources, scripts (`scripts_from_tokens` of them from binary tokens),
+textures, sounds and fonts, `renamed` for files that came back under another extension, and its
+own `unsupported`. From [examples/unpack-godot](../../examples/unpack-godot/):
+
+```json
+{"source": "shipped/jumper.pck", "unpack_to": "godot"}
+```
+
+```json
+{"converted":{"animation_libraries":0,"assets":2,"bus_layouts":0,"input_actions":1,"scenes":1,"sprite_frames":0,"themes":0,"tile_sets":0},"engine":"godot","files":12,"main_scene":"godot/main.scene.json","project":"Jumper","report":"import/godot.json","scripts":[{"entities":1,"script":"godot/player.gd","task":"task/port-player"}],"unpacked":{"files":8,"folder":"godot","fonts":0,"pack":{"embedded":false,"files":10,"format":3,"godot":"4.5.0"},"resources":0,"scenes":1,"scripts":1,"scripts_from_tokens":1,"sounds":1,"textures":1,"unsupported":[]},"unsupported":[]}
+```
+
 With `dry_run`, `files` lists the paths it would write instead of counting them. A missing
 folder fails with `-32001`; a folder that is neither a Godot nor a Unity project, a Godot 3
-project or a project from before Unity 2018.3 with `-32002`; and a path outside the project with
-`-32003`; `data.path` is `/source`.
+project or a project from before Unity 2018.3, and a file that holds no Godot 4 pack, with
+`-32002`; a pack whose file list is encrypted with the game's own key, and a path outside the
+project, with `-32003`; `data.path` is `/source`, or `/unpack_to` for an `unpack_to` outside the
+project.
 
 ## Export
 
