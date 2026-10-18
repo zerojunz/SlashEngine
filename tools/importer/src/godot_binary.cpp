@@ -187,8 +187,8 @@ std::array<std::uint8_t, 16> md5_digest(std::string_view bytes) {
         0x432aff97, 0xab9423a7, 0xfc93a039, 0x655b59c3, 0x8f0ccc92, 0xffeff47d, 0x85845dd1,
         0x6fa87e4f, 0xfe2ce6e0, 0xa3014314, 0x4e0811a1, 0xf7537e82, 0xbd3af235, 0x2ad7d2bb,
         0xeb86d391};
-    static constexpr std::array<int, 16> kShifts = {7, 12, 17, 22, 5, 9,  14, 20,
-                                                    4, 11, 16, 23, 6, 10, 15, 21};
+    static constexpr std::array<std::uint32_t, 16> kShifts = {7, 12, 17, 22, 5, 9,  14, 20,
+                                                              4, 11, 16, 23, 6, 10, 15, 21};
     std::string message(bytes);
     message += static_cast<char>(0x80);
     while (message.size() % 64 != 56) {
@@ -232,7 +232,9 @@ std::array<std::uint8_t, 16> md5_digest(std::string_view bytes) {
             a = d;
             d = c;
             c = b;
-            b += std::rotl(f, kShifts[((i / 16) * 4) + (i % 4)]);
+            // By hand: std::rotl's count is an int in libstdc++ but unsigned in Apple's libc++.
+            const std::uint32_t shift = kShifts[((i / 16) * 4) + (i % 4)];
+            b += (f << shift) | (f >> (32U - shift));
         }
         state[0] += a;
         state[1] += b;
