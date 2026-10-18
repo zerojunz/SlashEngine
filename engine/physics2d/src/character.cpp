@@ -10,8 +10,11 @@
 #include <cfloat>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
+#include <numbers>
 #include <optional>
 #include <span>
+#include <string>
 #include <vector>
 
 namespace slash::physics2d::detail {
@@ -23,15 +26,11 @@ using world::CollisionPolygon2D;
 using world::CollisionShape2D;
 using world::Transform2D;
 
-// Godot's safe margin for character bodies, in pixels.
-constexpr float kMargin = 0.08F;
 // Godot's CMP_EPSILON.
 constexpr float kEpsilon = 0.00001F;
-// Godot adds this to floor_max_angle, so a floor right at the limit counts.
+// Godot adds this to floor_max_angle and wall_min_slide_angle, so a surface right at the limit
+// counts.
 constexpr float kFloorAngleThreshold = 0.01F;
-// Godot's default wall_min_slide_angle: a floating character that hits a wall more head-on than
-// this stops instead of sliding along it.
-constexpr float kWallMinSlideAngle = 0.261799F;
 // How rounded a polygon character's corners are as it moves, in pixels: enough for its sweeps to
 // stop it just touching what it hits, too little to see.
 constexpr float kSkin = 1.0F;
@@ -257,10 +256,11 @@ float min_separation(const b2Manifold& manifold, int* deepest = nullptr) {
 
 // Whether a one-way shape holds a character touching it along normal (from the shape) at a
 // depth, as Godot's: the character comes from within 45 degrees of its up side and is no deeper
-// than its margin.
-bool one_way_holds(b2ShapeId shape, const ShapeInfo& info, b2Vec2 normal, float depth) {
+// than the shape's margin or its own, whichever is more.
+bool one_way_holds(b2ShapeId shape, const ShapeInfo& info, b2Vec2 normal, float depth,
+                   float margin) {
     const b2Vec2 up = b2RotateVector(b2Body_GetRotation(b2Shape_GetBody(shape)), info.one_way_up);
-    return b2Dot(normal, up) >= kOneWayCos && depth <= std::max(info.one_way_margin, kMargin);
+    return b2Dot(normal, up) >= kOneWayCos && depth <= std::max(info.one_way_margin, margin);
 }
 
 // What one move found, as Godot's KinematicCollision2D.
@@ -272,6 +272,7 @@ struct MotionResult {
     entt::entity collider = entt::null;
     b2BodyId collider_body = b2_nullBodyId;
     b2Vec2 collider_velocity = b2Vec2_zero; // where they touch
+    std::uint32_t collider_layer = 0;
     bool collider_is_character = false;
 };
 
@@ -307,13 +308,15 @@ bool collect_candidate(b2ShapeId shape, void* context) {
     return true;
 }
 
-// Moves a character's shape through a Box2D world, as Godot's move_and_collide.
+// Moves a character's shape through a Box2D world, as Godot's move_and_collide. What is within
+// the margin counts as touching, though never less than Box2D's linear slop: its shape casts
+// stop that close.
 class Mover {
 public:
     Mover(b2WorldId world, entt::entity self, const MoverShape& shape, std::uint32_t mask,
-          b2Vec2 start)
+          b2Vec2 start, float margin)
         : position(start), world_(world), self_(self), shape_(shape),
-          filter_{.categoryBits = kQueryBit, .maskBits = mask} {}
+          filter_{.categoryBits = kQueryBit, .maskBits = mask}, margin_(margin) {}
 
     // Moves by motion, or stops at what it hits: first out of what it overlaps, then a surface
     // it touches and moves into stops it at once, else it sweeps along motion. With test_only it
@@ -394,7 +397,7 @@ private:
             box.lowerBound = b2Min(box.lowerBound, proxy.points[i]);
             box.upperBound = b2Max(box.upperBound, proxy.points[i]);
         }
-        const float grow = proxy.radius + (4.0F * kLinearSlop);
+        const float grow = proxy.radius + (4.0F * kLinearSlop) + margin_;
         box.lowerBound = b2Sub(b2Add(box.lowerBound, b2Min(motion, b2Vec2_zero)), {grow, grow});
         box.upperBound = b2Add(b2Add(box.upperBound, b2Max(motion, b2Vec2_zero)), {grow, grow});
         box.lowerBound = b2Add(box.lowerBound, position);
@@ -447,19 +450,21 @@ private:
         }
     }
 
-    // What the character touches or overlaps now.
+    // What the character touches or overlaps now: the grown shape overlaps it, or the body's
+    // own shape is within the margin of it.
     [[nodiscard]] std::vector<Contact> touching(entt::entity exclude) const {
         std::vector<Contact> contacts;
+        const float within = std::max(0.0F, margin_ - kLinearSlop);
         for (const b2ShapeId shape : candidates(b2Vec2_zero, exclude)) {
             const b2Manifold found = manifold(shape);
             int deepest = 0;
             const float separation = min_separation(found, &deepest);
-            if (found.pointCount == 0 || separation > 0.0F || !b2IsNormalized(found.normal)) {
+            if (found.pointCount == 0 || separation > within || !b2IsNormalized(found.normal)) {
                 continue;
             }
             const ShapeInfo& info = *info_of(shape);
             if (info.one_way &&
-                !one_way_holds(shape, info, found.normal, -(separation + kLinearSlop))) {
+                !one_way_holds(shape, info, found.normal, -(separation + kLinearSlop), margin_)) {
                 continue;
             }
             contacts.push_back({.plane = {.normal = found.normal, .offset = -separation},
@@ -484,7 +489,7 @@ private:
                 // A one-way shape the character is already in doesn't stop it.
                 const float separation = min_separation(manifold(shape));
                 if (separation < FLT_MAX &&
-                    -(separation + kLinearSlop) > std::max(info.one_way_margin, kMargin)) {
+                    -(separation + kLinearSlop) > std::max(info.one_way_margin, margin_)) {
                     continue;
                 }
             }
@@ -501,7 +506,7 @@ private:
                 !b2IsNormalized(output.normal)) {
                 continue;
             }
-            if (info.one_way && !one_way_holds(shape, info, output.normal, 0.0F)) {
+            if (info.one_way && !one_way_holds(shape, info, output.normal, 0.0F, margin_)) {
                 continue;
             }
             fraction = output.fraction;
@@ -523,6 +528,7 @@ private:
                 .collider = info.entity,
                 .collider_body = body,
                 .collider_velocity = b2Body_GetWorldPointVelocity(body, point),
+                .collider_layer = info.layer,
                 .collider_is_character = info.kind == Kind::Character};
     }
 
@@ -530,24 +536,26 @@ private:
     entt::entity self_;
     MoverShape shape_;
     b2QueryFilter filter_;
+    float margin_;
 };
 
-// One move_and_slide: Godot's algorithm, step for step, without the options the component leaves
-// out (floor_block_on_wall and floor_constant_speed off, every platform layer on floors and none
-// on walls, wall_min_slide_angle at its default).
+// One move_and_slide: Godot's algorithm (scene/2d/physics/character_body_2d.cpp), step for step.
 class Slide {
 public:
     Slide(Mover& mover, const CharacterBody2D& character, float seconds)
-        : mover_(mover), character_(character), delta_(seconds),
+        : mover_(mover), character_(character), delta_(seconds), margin_(character.safe_margin),
           velocity_(to_b2(character.velocity)), up_(b2Normalize(to_b2(character.up_direction))),
           grounded_(character.motion_mode != "floating" && !zero_approx(up_)),
-          floor_cos_(b2ComputeCosSin(character.floor_max_angle + kFloorAngleThreshold).cosine) {}
+          floor_cos_(b2ComputeCosSin(character.floor_max_angle + kFloorAngleThreshold).cosine),
+          floor_normal_(to_b2(character.floor_normal)) {}
 
     void run(const Body& body) {
         b2Vec2 platform_velocity = to_b2(character_.platform_velocity);
         if ((character_.on_floor || character_.on_wall) && body.platform != entt::null) {
-            // Walls give no platform velocity: Godot's platform_wall_layers default to none.
-            if (character_.on_floor && b2Body_IsValid(body.platform_body)) {
+            // Only platforms in the layers it rides take it along.
+            const std::uint32_t layers = character_.on_floor ? character_.platform_floor_layers
+                                                             : character_.platform_wall_layers;
+            if ((layers & body.platform_layer) != 0U && b2Body_IsValid(body.platform_body)) {
                 platform_velocity =
                     b2Body_GetWorldPointVelocity(body.platform_body, mover_.position);
             } else {
@@ -601,85 +609,77 @@ public:
         }
         body.platform = platform_;
         body.platform_body = platform_body_;
+        body.platform_layer = platform_layer_;
     }
 
 private:
-    struct Apply {
-        bool floor;
-        bool wall;
-        bool ceiling;
-    };
-
     void set_platform(const MotionResult& result) {
         platform_ = result.collider;
         platform_body_ = result.collider_body;
         platform_velocity_ = result.collider_velocity;
+        platform_layer_ = result.collider_layer;
     }
 
-    Apply set_direction(const MotionResult& result) {
-        return set_direction(result, {.floor = true, .wall = true, .ceiling = true});
-    }
-
-    // Godot's _set_collision_direction: whether the surface is a floor, a wall or a ceiling,
-    // recorded where apply says. Returns which.
-    Apply set_direction(const MotionResult& result, Apply apply) {
+    // Godot's _set_collision_direction: whether the surface is a floor, a wall or a ceiling.
+    void set_direction(const MotionResult& result) {
         if (grounded_ && b2Dot(result.normal, up_) >= floor_cos_) {
-            if (apply.floor) {
-                floor_ = true;
-                floor_normal_ = result.normal;
-            }
+            floor_ = true;
+            floor_normal_ = result.normal;
             set_platform(result);
-            return {.floor = true, .wall = false, .ceiling = false};
-        }
-        if (grounded_ && b2Dot(result.normal, b2Neg(up_)) >= floor_cos_) {
-            if (apply.ceiling) {
-                ceiling_velocity_ = result.collider_velocity;
-                ceiling_normal_ = result.normal;
-                ceiling_ = true;
-            }
-            return {.floor = false, .wall = false, .ceiling = true};
-        }
-        if (apply.wall) {
+        } else if (grounded_ && b2Dot(result.normal, b2Neg(up_)) >= floor_cos_) {
+            ceiling_ = true;
+        } else {
             wall_ = true;
             wall_normal_ = result.normal;
+            // A character it bumps into is no platform.
+            if (!result.collider_is_character) {
+                set_platform(result);
+            }
         }
-        // A character it bumps into is no platform.
-        if (!result.collider_is_character) {
-            set_platform(result);
-        }
-        return {.floor = false, .wall = true, .ceiling = false};
     }
 
     void reset_platform() {
         platform_ = entt::null;
         platform_body_ = b2_nullBodyId;
+        platform_layer_ = 0;
         floor_normal_ = b2Vec2_zero;
         platform_velocity_ = b2Vec2_zero;
     }
 
+    [[nodiscard]] bool floor_only() const { return floor_ && !wall_ && !ceiling_; }
+    [[nodiscard]] bool wall_only() const { return wall_ && !floor_ && !ceiling_; }
+
     void move_grounded(bool was_on_floor) {
         b2Vec2 motion = b2MulSV(delta_, velocity_);
         const b2Vec2 motion_slide_up = slide(motion, up_);
+        const b2Vec2 prev_floor_normal = floor_normal_;
         reset_platform();
 
         // No sliding on the first try, so standing on a slope stays put.
         bool sliding_enabled = !character_.floor_stop_on_slope;
+        // Constant speed applies only the first time sliding is on.
+        bool can_apply_constant_speed = sliding_enabled;
         bool apply_ceiling_velocity = false;
+        bool first_slide = true;
         const bool vel_dir_facing_up = b2Dot(velocity_, up_) > 0.0F;
+        b2Vec2 last_travel = b2Vec2_zero;
 
         for (int iteration = 0; iteration < character_.max_slides; ++iteration) {
+            const b2Vec2 prev_position = mover_.position;
             const MotionResult result = mover_.move(motion, false);
-            if (result.collided) {
+            bool collided = result.collided;
+            if (collided) {
                 results_.push_back(result);
                 set_direction(result);
 
                 // A ceiling platform moving down pushes the character down with it.
-                if (ceiling_ && ceiling_velocity_ != b2Vec2_zero &&
-                    b2Dot(ceiling_velocity_, up_) < 0.0F) {
+                if (ceiling_ && result.collider_velocity != b2Vec2_zero &&
+                    b2Dot(result.collider_velocity, up_) < 0.0F) {
                     if (!character_.slide_on_ceiling || b2Dot(motion, up_) < 0.0F ||
-                        b2Length(b2Add(ceiling_normal_, up_)) < 0.01F) {
+                        b2Length(b2Add(result.normal, up_)) < 0.01F) {
                         apply_ceiling_velocity = true;
-                        const b2Vec2 ceiling_vertical = b2MulSV(b2Dot(up_, ceiling_velocity_), up_);
+                        const b2Vec2 ceiling_vertical =
+                            b2MulSV(b2Dot(up_, result.collider_velocity), up_);
                         const b2Vec2 motion_vertical = b2MulSV(b2Dot(up_, velocity_), up_);
                         if (b2Dot(motion_vertical, up_) > 0.0F ||
                             b2LengthSquared(ceiling_vertical) > b2LengthSquared(motion_vertical)) {
@@ -691,7 +691,7 @@ private:
                 // Falling straight onto a floor with stop on slope: stop there.
                 if (floor_ && character_.floor_stop_on_slope &&
                     b2Length(b2Add(b2Normalize(velocity_), up_)) < 0.01F) {
-                    if (b2Length(result.travel) <= kMargin + kEpsilon) {
+                    if (b2Length(result.travel) <= margin_ + kEpsilon) {
                         mover_.position = b2Sub(mover_.position, result.travel);
                     }
                     velocity_ = b2Vec2_zero;
@@ -704,9 +704,38 @@ private:
                     break;
                 }
 
-                if ((sliding_enabled || !floor_) &&
-                    (!ceiling_ || character_.slide_on_ceiling || !vel_dir_facing_up) &&
-                    !apply_ceiling_velocity) {
+                if (character_.floor_block_on_wall && wall_ &&
+                    b2Dot(motion_slide_up, result.normal) <= 0.0F) {
+                    // Walking into a wall too steep to climb.
+                    if (was_on_floor && !floor_ && !vel_dir_facing_up) {
+                        // A large move may stop short of the wall, so only a small one undoes.
+                        if (b2Length(result.travel) <= margin_ + kEpsilon) {
+                            mover_.position = b2Sub(mover_.position, result.travel);
+                        }
+                        snap_on_floor(true, false, true);
+                        velocity_ = b2Vec2_zero;
+                        motion = b2Vec2_zero;
+                        break;
+                    }
+                    if (!floor_) {
+                        // Off the floor, it may only slide along the wall up or down.
+                        motion = slide(b2MulSV(b2Dot(up_, result.remainder), up_), result.normal);
+                    } else {
+                        motion = result.remainder;
+                    }
+                } else if (character_.floor_constant_speed && floor_only() &&
+                           can_apply_constant_speed && was_on_floor &&
+                           b2Dot(motion, result.normal) < 0.0F) {
+                    // Up a slope at the speed it walks on the flat.
+                    can_apply_constant_speed = false;
+                    const b2Vec2 along = b2Normalize(slide(result.remainder, result.normal));
+                    motion =
+                        b2MulSV(b2Length(motion_slide_up) - b2Length(slide(result.travel, up_)) -
+                                    b2Length(slide(last_travel, up_)),
+                                along);
+                } else if ((sliding_enabled || !floor_) &&
+                           (!ceiling_ || character_.slide_on_ceiling || !vel_dir_facing_up) &&
+                           !apply_ceiling_velocity) {
                     const b2Vec2 slide_motion = slide(result.remainder, result.normal);
                     motion = b2Dot(slide_motion, velocity_) > 0.0F ? slide_motion : b2Vec2_zero;
                     if (character_.slide_on_ceiling && ceiling_) {
@@ -722,18 +751,30 @@ private:
                         motion = slide(motion, up_);
                     }
                 }
+                last_travel = result.travel;
+            } else if (character_.floor_constant_speed && first_slide &&
+                       on_floor_if_snapped(was_on_floor, vel_dir_facing_up)) {
+                // Down a slope it would leave by going straight: along the floor at its speed.
+                can_apply_constant_speed = false;
+                sliding_enabled = true;
+                mover_.position = prev_position;
+                const b2Vec2 along = b2Normalize(slide(motion, prev_floor_normal));
+                motion = b2MulSV(b2Length(motion_slide_up), along);
+                collided = true;
             }
 
+            can_apply_constant_speed = !can_apply_constant_speed && !sliding_enabled;
             sliding_enabled = true;
-            if (!result.collided || zero_approx(motion)) {
+            first_slide = false;
+            if (!collided || zero_approx(motion)) {
                 break;
             }
         }
 
-        snap_on_floor(was_on_floor, vel_dir_facing_up);
+        snap_on_floor(was_on_floor, vel_dir_facing_up, false);
 
         // Against a wall in the air, keep only the velocity along it.
-        if (wall_ && !floor_ && !ceiling_ && b2Dot(motion_slide_up, results_.front().normal) < 0) {
+        if (wall_only() && b2Dot(motion_slide_up, results_.front().normal) < 0) {
             const b2Vec2 slide_motion = slide(velocity_, results_.front().normal);
             const b2Vec2 vertical = b2MulSV(b2Dot(up_, velocity_), up_);
             velocity_ = b2Dot(motion_slide_up, slide_motion) < 0.0F
@@ -747,33 +788,52 @@ private:
         }
     }
 
+    // Where a floor snap would land, as Godot's _apply_floor_snap test: none if nothing is
+    // within floor_snap_length below.
+    [[nodiscard]] MotionResult snap_test() const {
+        const float length = std::max(character_.floor_snap_length, margin_);
+        return mover_.move(b2MulSV(-length, up_), true);
+    }
+
+    // Godot's _on_floor_if_snapped: whether a snap would land on a floor.
+    [[nodiscard]] bool on_floor_if_snapped(bool was_on_floor, bool vel_dir_facing_up) const {
+        if (floor_ || !was_on_floor || vel_dir_facing_up) {
+            return false;
+        }
+        const MotionResult result = snap_test();
+        return result.collided && b2Dot(result.normal, up_) >= floor_cos_;
+    }
+
     // Godot's _snap_on_floor: a character that was on a floor and isn't going up stays on it
-    // if it is within floor_snap_length.
-    void snap_on_floor(bool was_on_floor, bool vel_dir_facing_up) {
+    // if it is within floor_snap_length; with wall_as_floor, on anything but a ceiling.
+    void snap_on_floor(bool was_on_floor, bool vel_dir_facing_up, bool wall_as_floor) {
         if (floor_ || !was_on_floor || vel_dir_facing_up) {
             return;
         }
-        const float length = std::max(character_.floor_snap_length, kMargin);
-        const MotionResult result = mover_.move(b2MulSV(-length, up_), true);
+        const MotionResult result = snap_test();
         if (!result.collided) {
             return;
         }
-        if (!set_direction(result, {.floor = true, .wall = false, .ceiling = false}).floor) {
+        const bool floor = b2Dot(result.normal, up_) >= floor_cos_;
+        const bool ceiling = b2Dot(result.normal, b2Neg(up_)) >= floor_cos_;
+        if (!floor && (!wall_as_floor || ceiling)) {
             return;
         }
-        b2Vec2 travel = result.travel;
-        if (character_.floor_stop_on_slope) {
-            // Straight down only, so a slope doesn't pull it sideways.
-            travel = b2Length(travel) > kMargin ? b2MulSV(b2Dot(up_, travel), up_) : b2Vec2_zero;
-        }
+        floor_ = true;
+        floor_normal_ = result.normal;
+        set_platform(result);
+        // Straight down only, so getting unstuck doesn't move it sideways.
+        const b2Vec2 travel = b2Length(result.travel) > margin_
+                                  ? b2MulSV(b2Dot(up_, result.travel), up_)
+                                  : b2Vec2_zero;
         mover_.position = b2Add(mover_.position, travel);
     }
 
     void move_floating() {
         b2Vec2 motion = b2MulSV(delta_, velocity_);
         reset_platform();
-        const float min_slide_cos =
-            b2ComputeCosSin(kWallMinSlideAngle + kFloorAngleThreshold).cosine;
+        const float min_slide_angle = character_.wall_min_slide_angle + kFloorAngleThreshold;
+        const float min_slide_cos = b2ComputeCosSin(min_slide_angle).cosine;
         bool first_slide = true;
         for (int iteration = 0; iteration < character_.max_slides; ++iteration) {
             const MotionResult result = mover_.move(motion, false);
@@ -783,7 +843,9 @@ private:
                 if (zero_approx(result.remainder)) {
                     break;
                 }
-                if (b2Dot(result.normal, b2Neg(b2Normalize(velocity_))) > min_slide_cos) {
+                const float head_on = b2Dot(result.normal, b2Neg(b2Normalize(velocity_)));
+                if (character_.wall_min_slide_angle != 0.0F &&
+                    (min_slide_angle >= std::numbers::pi_v<float> || head_on > min_slide_cos)) {
                     motion = b2Vec2_zero; // too head-on to slide
                 } else if (first_slide) {
                     // The first slide keeps the motion's length.
@@ -806,6 +868,7 @@ private:
     Mover& mover_;
     const CharacterBody2D& character_;
     float delta_;
+    float margin_;
     b2Vec2 velocity_;
     b2Vec2 up_;
     bool grounded_;
@@ -814,12 +877,13 @@ private:
     bool floor_ = false;
     bool wall_ = false;
     bool ceiling_ = false;
-    b2Vec2 floor_normal_ = b2Vec2_zero;
+    // Godot's floor_normal is the last move's until this one resets it, so the constant speed
+    // down a slope can follow it.
+    b2Vec2 floor_normal_;
     b2Vec2 wall_normal_ = b2Vec2_zero;
-    b2Vec2 ceiling_normal_ = b2Vec2_zero;
-    b2Vec2 ceiling_velocity_ = b2Vec2_zero;
     entt::entity platform_ = entt::null;
     b2BodyId platform_body_ = b2_nullBodyId;
+    std::uint32_t platform_layer_ = 0;
     b2Vec2 platform_velocity_ = b2Vec2_zero;
     std::vector<MotionResult> results_;
 };
@@ -841,9 +905,11 @@ void move_character(b2WorldId space, Body& body, Transform2D& transform, Charact
         body.touching.clear();
         body.platform = entt::null;
         body.platform_body = b2_nullBodyId;
+        body.platform_layer = 0;
         return;
     }
-    Mover mover(space, body.entity, *shape, character.collision_mask, to_b2(transform.position));
+    Mover mover(space, body.entity, *shape, character.collision_mask, to_b2(transform.position),
+                character.safe_margin);
     Slide slide(mover, character, seconds);
     slide.run(body);
     slide.write(transform, character, body);

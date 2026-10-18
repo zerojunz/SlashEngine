@@ -59,7 +59,7 @@ above the world.
 | `Node2D`, `Marker2D` | `Transform2D` |
 | `Sprite2D`, `Camera2D`, `CollisionShape2D`, `CollisionPolygon2D`, `PointLight2D`, `DirectionalLight2D`, `LightOccluder2D`, `CanvasModulate`, `CPUParticles2D`, `AudioStreamPlayer2D`, `AudioListener2D` | `Transform2D` and the component of the same name |
 | `AnimatedSprite2D` | `Transform2D`, `AnimatedSprite2D` and `Sprite2D` |
-| `StaticBody2D`, `AnimatableBody2D`, `RigidBody2D`, `CharacterBody2D`, `Area2D` | `Transform2D` and the body; its `CollisionShape2D` children are its shapes |
+| `StaticBody2D`, `AnimatableBody2D`, `RigidBody2D`, `CharacterBody2D`, `Area2D` | `Transform2D` and the body, with its constant velocities, an area's gravity and damping overrides and a character's floor, wall and platform options; its `CollisionShape2D` children are its shapes |
 | `PinJoint2D`, `DampedSpringJoint2D`, `GrooveJoint2D` | `Transform2D` and the joint |
 | `AudioStreamPlayer` | `AudioStreamPlayer` |
 | `AnimationPlayer` | `AnimationPlayer` (see [animations](#animations)) |

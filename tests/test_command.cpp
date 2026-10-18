@@ -1544,6 +1544,35 @@ TEST_CASE("physics commands find bodies by ray, point and shape, and what touche
     engine.fails("physics.contacts", R"({"id": "nobody"})", command::code::kNotFound);
 }
 
+TEST_CASE("physics.gravity reports the gravity and damping areas give bodies") {
+    Engine engine;
+    engine.ok("batch", R"({"commands": [
+        {"command": "entity.create", "params": {"id": "low_gravity", "components": {
+            "Transform2D": {"position": [100, 100]},
+            "Area2D": {"gravity_space_override": "replace", "gravity": 160,
+                       "linear_damp_space_override": "combine", "linear_damp": 2},
+            "CollisionShape2D": {"size": [200, 200]}}}},
+        {"command": "entity.create", "params": {"id": "crate", "components": {
+            "Transform2D": {"position": [100, 100]}, "RigidBody2D": {"gravity_scale": 0.5},
+            "CollisionShape2D": {"size": [24, 24]}}}},
+        {"command": "entity.create", "params": {"id": "rock", "components": {
+            "Transform2D": {"position": [400, 100]}, "RigidBody2D": {},
+            "CollisionShape2D": {"size": [24, 24]}}}}]})");
+    engine.ok("step");
+    CHECK(engine.ok("physics.gravity", R"({"ids": ["crate", "rock"]})") == parse(R"({"bodies": {
+        "crate": {"gravity": [0, 80], "linear_damp": 2.1, "angular_damp": 1,
+                  "areas": ["low_gravity"]},
+        "rock": {"gravity": [0, 980], "linear_damp": 0.1, "angular_damp": 1}}})"));
+    CHECK(
+        engine.fails("physics.gravity", R"({"ids": ["crat"]})", command::code::kNotFound).message ==
+        "/ids/0: no entity has the id \"crat\"; did you mean \"crate\"?");
+    CHECK(
+        engine
+            .fails("physics.gravity", R"({"ids": ["low_gravity"]})", command::code::kInvalidParams)
+            .message == "/ids/0: \"low_gravity\" is no physics body");
+    engine.fails("physics.gravity", R"({"ids": []})", command::code::kInvalidParams);
+}
+
 TEST_CASE("particles.eval counts and lists particles, as they are or after a time") {
     Engine engine;
     engine.ok("entity.create", R"({"id": "sparkler", "components": {

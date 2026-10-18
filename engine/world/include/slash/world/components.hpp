@@ -317,14 +317,18 @@ SLASH_COMPONENT(CollisionPolygon2D, polygon, build_mode, disabled, one_way_colli
                 one_way_collision_margin)
 
 // A body that doesn't move on its own, such as a wall or the ground, as Godot's StaticBody2D.
-// Changing its Transform2D moves it there at once.
+// Changing its Transform2D moves it there at once. Its constant velocities don't move it but
+// carry what touches it as if it moved, as a conveyor belt or a turntable.
 struct StaticBody2D {
     std::uint32_t collision_layer = 1;
     std::uint32_t collision_mask = 1;
     float friction = 1.0F;
     float bounce = 0.0F;
+    Vec2 constant_linear_velocity;          // pixels per second
+    float constant_angular_velocity = 0.0F; // radians per second, clockwise
 };
-SLASH_COMPONENT(StaticBody2D, collision_layer, collision_mask, friction, bounce)
+SLASH_COMPONENT(StaticBody2D, collision_layer, collision_mask, friction, bounce,
+                constant_linear_velocity, constant_angular_velocity)
 
 // A body that goes where its Transform2D says, as Godot's AnimatableBody2D: moving platforms and
 // doors that gameplay code or an AnimationPlayer moves. With sync_to_physics it moves there
@@ -334,10 +338,12 @@ struct AnimatableBody2D {
     std::uint32_t collision_mask = 1;
     float friction = 1.0F;
     float bounce = 0.0F;
+    Vec2 constant_linear_velocity; // added to how it moves, as StaticBody2D's
+    float constant_angular_velocity = 0.0F;
     bool sync_to_physics = true;
 };
 SLASH_COMPONENT(AnimatableBody2D, collision_layer, collision_mask, friction, bounce,
-                sync_to_physics)
+                constant_linear_velocity, constant_angular_velocity, sync_to_physics)
 
 // A body that gravity, collisions, forces and joints move, as Godot's RigidBody2D. The physics
 // step writes its Transform2D, velocities and sleeping back each tick.
@@ -381,11 +387,17 @@ struct CharacterBody2D {
     Vec2 up_direction{0.0F, -1.0F};
     Vec2 velocity;
     int max_slides = 4;
+    bool slide_on_ceiling = true;
+    float wall_min_slide_angle = 0.261799F; // radians; floating characters
     bool floor_stop_on_slope = true;
+    bool floor_constant_speed = false;
+    bool floor_block_on_wall = true;
     float floor_max_angle = 0.785398F; // radians from up_direction
     float floor_snap_length = 1.0F;
-    bool slide_on_ceiling = true;
     std::string platform_on_leave = "add_velocity"; // or "add_upward_velocity", "do_nothing"
+    std::uint32_t platform_floor_layers = 0xFFFFFFFFU;
+    std::uint32_t platform_wall_layers = 0;
+    float safe_margin = 0.08F; // pixels
     // What the last move found.
     bool on_floor = false;
     bool on_wall = false;
@@ -395,20 +407,39 @@ struct CharacterBody2D {
     Vec2 platform_velocity; // of the moving body it stands on
 };
 SLASH_COMPONENT(CharacterBody2D, collision_layer, collision_mask, motion_mode, up_direction,
-                velocity, max_slides, floor_stop_on_slope, floor_max_angle, floor_snap_length,
-                slide_on_ceiling, platform_on_leave, on_floor, on_wall, on_ceiling, floor_normal,
-                wall_normal, platform_velocity)
+                velocity, max_slides, slide_on_ceiling, wall_min_slide_angle, floor_stop_on_slope,
+                floor_constant_speed, floor_block_on_wall, floor_max_angle, floor_snap_length,
+                platform_on_leave, platform_floor_layers, platform_wall_layers, safe_margin,
+                on_floor, on_wall, on_ceiling, floor_normal, wall_normal, platform_velocity)
 
 // A region that reports bodies and areas entering and leaving its shapes, as Godot's Area2D:
 // body_entered, body_exited, area_entered and area_exited events. It goes where its Transform2D
-// says and nothing collides with it.
+// says and nothing collides with it. Its space overrides change the gravity and damping of the
+// rigid bodies in it, as Godot's, going from the highest priority down: "combine" adds its own
+// and lets lower areas and the project add theirs, "replace" uses only its own,
+// "combine_replace" adds its own and stops there, and "replace_combine" drops what higher areas
+// gave and lets lower ones add.
 struct Area2D {
     std::uint32_t collision_layer = 1;
     std::uint32_t collision_mask = 1;
     bool monitoring = true;  // report what enters
     bool monitorable = true; // other areas see it
+    int priority = 0;        // higher overrides first
+    std::string gravity_space_override = "disabled";
+    bool gravity_point = false;               // pull toward gravity_point_center
+    float gravity_point_unit_distance = 0.0F; // pixels; above 0, weakens with distance squared
+    Vec2 gravity_point_center{0.0F, 1.0F};    // in the area's space
+    Vec2 gravity_direction{0.0F, 1.0F};
+    float gravity = 980.0F; // pixels per second squared
+    std::string linear_damp_space_override = "disabled";
+    float linear_damp = 0.1F;
+    std::string angular_damp_space_override = "disabled";
+    float angular_damp = 1.0F;
 };
-SLASH_COMPONENT(Area2D, collision_layer, collision_mask, monitoring, monitorable)
+SLASH_COMPONENT(Area2D, collision_layer, collision_mask, monitoring, monitorable, priority,
+                gravity_space_override, gravity_point, gravity_point_unit_distance,
+                gravity_point_center, gravity_direction, gravity, linear_damp_space_override,
+                linear_damp, angular_damp_space_override, angular_damp)
 
 // Pins two bodies together at the entity's Transform2D, letting them turn, as Godot's
 // PinJoint2D. A missing node_a pins node_b to the world. Every joint is made where its entity is

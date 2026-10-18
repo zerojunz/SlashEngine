@@ -174,6 +174,7 @@ struct ShapeKey {
     float bounce = 0.0F;
     bool monitoring = true;
     bool monitorable = true;
+    bool overrides = false; // an area that changes gravity or damping
 
     friend bool operator==(const ShapeKey&, const ShapeKey&) = default;
 };
@@ -193,6 +194,26 @@ struct RigidKey {
     friend bool operator==(const RigidKey&, const RigidKey&) = default;
 };
 
+// How a rigid body's Box2D body falls and slows, as last set: by its RigidKey, or by the areas it
+// is in, which pull it with a force instead of Box2D's gravity.
+struct Environment {
+    float gravity_scale = 1.0F;
+    float linear_damping = 0.0F;
+    float angular_damping = 0.0F;
+    Vec2 pull; // pixels per second squared, applied as a force; areas only
+
+    friend bool operator==(const Environment&, const Environment&) = default;
+};
+
+// The gravity and damping at a body, before its own gravity scale and damping.
+struct AreaForces {
+    Vec2 gravity;
+    float linear_damp = 0.0F;
+    float angular_damp = 0.0F;
+    bool gravity_overridden = false;   // an area set the gravity, so Box2D's doesn't apply
+    std::vector<entt::entity> areas{}; // NOLINT(readability-redundant-member-init): in order
+};
+
 struct Body {
     entt::entity entity = entt::null;
     std::string name; // the entity's ID
@@ -204,6 +225,11 @@ struct Body {
     std::vector<b2ShapeId> shapes;
     ShapeKey shape_key;
     RigidKey rigid_key;
+    Environment environment; // rigid bodies
+    // Static and animatable bodies: their constant velocities, which make a static body
+    // kinematic in Box2D.
+    Vec2 constant_linear_velocity;
+    float constant_angular_velocity = 0.0F;
     // What the components said after the last sync or step, to tell their edits apart.
     Vec2 position;
     float rotation = 0.0F;
@@ -212,9 +238,11 @@ struct Body {
     bool sleeping = false;
     // Characters: what the last move slid along.
     std::vector<entt::entity> touching;
-    // Characters: the body the last move stood on or slid along, for its platform velocity.
+    // Characters: the body the last move stood on or slid along, for its platform velocity, and
+    // its collision layer.
     entt::entity platform = entt::null;
     b2BodyId platform_body = b2_nullBodyId;
+    std::uint32_t platform_layer = 0;
     // Tile map layers: the shapes the body was built from.
     TileShapes tiles;
 };
@@ -269,6 +297,10 @@ public:
     void queue(const Impulse& impulse) { impulses_.push_back(impulse); }
 
     [[nodiscard]] Contacts contacts(const world::World& world, entt::entity entity) const;
+    // The gravity and damping at a body from the override areas it is in and the project's
+    // settings, as Godot's GodotBody2D::integrate_forces.
+    [[nodiscard]] AreaForces forces(const world::World& world, const world::Tree2D& tree,
+                                    entt::entity entity) const;
 
 private:
     void create_world();
@@ -281,6 +313,15 @@ private:
     void build_tile_shapes(world::World& world, Body& body, TileShapes tiles, Vec2 scale);
     void read_back(world::World& world, const world::Tree2D& tree);
     void move_characters(world::World& world, const world::Tree2D& tree, float seconds);
+    // The areas that change each body's gravity or damping (Godot's area pairs): those whose
+    // shapes overlap the body's and whose mask has its layer, highest priority first, then in
+    // the order the areas were made.
+    using AreaLists = std::unordered_map<entt::entity, std::vector<const Body*>>;
+    [[nodiscard]] AreaLists area_lists(const world::World& world) const;
+    [[nodiscard]] AreaForces forces(const world::World& world, const world::Tree2D& tree,
+                                    const Body& body, const std::vector<const Body*>* areas) const;
+    // Sets each rigid body's gravity and damping from the areas it is in, before a step.
+    void apply_areas(world::World& world, const world::Tree2D& tree);
     void emit_events(world::World& world);
     void destroy(Body& body);
 

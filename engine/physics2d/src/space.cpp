@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <functional>
 #include <limits>
 #include <numbers>
 #include <span>
@@ -119,7 +120,15 @@ struct BodyFields {
     float bounce = 0.0F;
     bool monitoring = true;
     bool monitorable = true;
+    bool overrides = false;
 };
+
+// Whether an area changes the gravity or damping of the bodies in it.
+bool overrides_space(const Area2D& area) {
+    return area.gravity_space_override != "disabled" ||
+           area.linear_damp_space_override != "disabled" ||
+           area.angular_damp_space_override != "disabled";
+}
 
 BodyFields fields_of(const entt::registry& registry, entt::entity entity, Kind kind) {
     const auto material = [](const auto& body) {
@@ -128,7 +137,8 @@ BodyFields fields_of(const entt::registry& registry, entt::entity entity, Kind k
                           .friction = body.friction,
                           .bounce = body.bounce,
                           .monitoring = true,
-                          .monitorable = true};
+                          .monitorable = true,
+                          .overrides = false};
     };
     switch (kind) {
     case Kind::Rigid:
@@ -144,7 +154,8 @@ BodyFields fields_of(const entt::registry& registry, entt::entity entity, Kind k
                 .friction = 0.0F,
                 .bounce = 0.0F,
                 .monitoring = true,
-                .monitorable = true};
+                .monitorable = true,
+                .overrides = false};
     }
     case Kind::Area: {
         const auto& area = registry.get<Area2D>(entity);
@@ -153,7 +164,8 @@ BodyFields fields_of(const entt::registry& registry, entt::entity entity, Kind k
                 .friction = 0.0F,
                 .bounce = 0.0F,
                 .monitoring = area.monitoring,
-                .monitorable = area.monitorable};
+                .monitorable = area.monitorable,
+                .overrides = overrides_space(area)};
     }
     }
     return {};
@@ -194,6 +206,7 @@ ShapeKey shape_key_of(const entt::registry& registry, const world::Tree2D& tree,
     key.bounce = fields.bounce;
     key.monitoring = fields.monitoring;
     key.monitorable = fields.monitorable;
+    key.overrides = fields.overrides;
     return key;
 }
 
@@ -219,12 +232,36 @@ RigidKey rigid_key_of(const RigidBody2D& rigid, const Settings& settings) {
             .sleep_enabled = rigid.can_sleep};
 }
 
-b2BodyType type_of(Kind kind) {
+// A static or animatable body's constant velocities, as Godot's StaticBody2D's; none for others.
+std::pair<Vec2, float> constant_velocity_of(const entt::registry& registry, entt::entity entity,
+                                            Kind kind) {
+    if (kind == Kind::Static) {
+        const auto& body = registry.get<StaticBody2D>(entity);
+        return {body.constant_linear_velocity, body.constant_angular_velocity};
+    }
+    if (kind == Kind::Animatable) {
+        const auto& body = registry.get<AnimatableBody2D>(entity);
+        return {body.constant_linear_velocity, body.constant_angular_velocity};
+    }
+    return {};
+}
+
+bool carries(Vec2 linear, float angular) {
+    return linear != Vec2{} || angular != 0.0F;
+}
+
+bool carries(const Body& body) {
+    return carries(body.constant_linear_velocity, body.constant_angular_velocity);
+}
+
+// Box2D's type for a kind of body. A static body that carries what touches it is kinematic in
+// Box2D, since only moving bodies' velocities reach Box2D's contact solver.
+b2BodyType type_of(Kind kind, bool carrying) {
     switch (kind) {
     case Kind::Rigid:
         return b2_dynamicBody;
     case Kind::Static:
-        return b2_staticBody;
+        return carrying ? b2_kinematicBody : b2_staticBody;
     case Kind::Character:
     case Kind::Animatable:
     case Kind::Area:
@@ -380,7 +417,9 @@ void Space::build_shapes(world::World& world, Body& body, const ShapeKey& key) {
         def.material.restitution = key.bounce;
         def.density = 1.0F;
         def.isSensor = area;
-        def.enableSensorEvents = !area || key.monitoring || key.monitorable;
+        // Areas that change gravity or damping need their overlaps even when they monitor
+        // nothing.
+        def.enableSensorEvents = !area || key.monitoring || key.monitorable || key.overrides;
         def.updateBodyMass = false;
         def.filter.categoryBits = key.layer | kShapeBit;
         def.filter.maskBits = ~std::uint64_t{0};
@@ -530,6 +569,7 @@ void Space::sync_body(world::World& world, const world::Tree2D& tree, entt::enti
     const Transform2D transform = transform_of(tree, entity);
     const ShapeKey shape_key = shape_key_of(registry, tree, entity, kind);
 
+    const auto [constant_linear, constant_angular] = constant_velocity_of(registry, entity, kind);
     std::unique_ptr<Body>* found = bodies_.find(entity);
     if (found == nullptr) {
         auto body = std::make_unique<Body>();
@@ -537,7 +577,7 @@ void Space::sync_body(world::World& world, const world::Tree2D& tree, entt::enti
         body->name = world.id_of(entity);
         body->kind = kind;
         b2BodyDef def = b2DefaultBodyDef();
-        def.type = type_of(kind);
+        def.type = type_of(kind, carries(constant_linear, constant_angular));
         def.position = to_b2(transform.position);
         def.rotation = b2MakeRot(transform.rotation);
         def.userData = body.get();
@@ -591,6 +631,10 @@ void Space::sync_body(world::World& world, const world::Tree2D& tree, entt::enti
                 b2Body_SetMassData(body.id, mass);
             }
             body.rigid_key = key;
+            body.environment = {.gravity_scale = key.gravity_scale,
+                                .linear_damping = key.linear_damping,
+                                .angular_damping = key.angular_damping,
+                                .pull = {}};
         }
         if (rigid.linear_velocity != body.linear_velocity) {
             b2Body_SetLinearVelocity(body.id, to_b2(rigid.linear_velocity));
@@ -603,6 +647,29 @@ void Space::sync_body(world::World& world, const world::Tree2D& tree, entt::enti
         if (rigid.sleeping != body.sleeping) {
             b2Body_SetAwake(body.id, !rigid.sleeping);
             body.sleeping = rigid.sleeping;
+        }
+    }
+
+    if (kind == Kind::Static || kind == Kind::Animatable) {
+        // A body that starts or stops carrying what touches it: Box2D's static bodies have no
+        // velocity, so it becomes kinematic, and it never sleeps, since a sleeping body has none.
+        body.constant_linear_velocity = constant_linear;
+        body.constant_angular_velocity = constant_angular;
+        const bool carrying = carries(body);
+        const b2BodyType type = type_of(kind, carrying);
+        if (type != b2Body_GetType(body.id)) {
+            b2Body_SetType(body.id, type);
+        }
+        if (b2Body_IsSleepEnabled(body.id) == carrying) {
+            b2Body_EnableSleep(body.id, !carrying);
+        }
+        // An animatable body that jumps where it goes keeps no velocity once it stops carrying.
+        if (!carrying && kind == Kind::Animatable &&
+            !registry.get<AnimatableBody2D>(entity).sync_to_physics &&
+            (b2LengthSquared(b2Body_GetLinearVelocity(body.id)) > 0.0F ||
+             b2Body_GetAngularVelocity(body.id) != 0.0F)) {
+            b2Body_SetLinearVelocity(body.id, b2Vec2_zero);
+            b2Body_SetAngularVelocity(body.id, 0.0F);
         }
     }
 
@@ -1035,67 +1102,6 @@ void Space::move_characters(world::World& world, const world::Tree2D& tree, floa
     }
 }
 
-void Space::step(world::World& world, float seconds) {
-    const world::Tree2D tree(world);
-    sync(world, tree);
-    if (!b2World_IsValid(world_)) {
-        impulses_.clear();
-        return;
-    }
-    entt::registry& registry = world.ecs();
-
-    // Animatable bodies move to their Transform2D during the step, pushing what is in the way.
-    for (auto& [entity, body] : bodies_) {
-        if (body->kind != Kind::Animatable ||
-            !registry.get<AnimatableBody2D>(entity).sync_to_physics) {
-            continue;
-        }
-        const Transform2D transform = transform_of(tree, entity);
-        if (transform.position != body->position || transform.rotation != body->rotation) {
-            b2Body_SetTargetTransform(
-                body->id, {to_b2(transform.position), b2MakeRot(transform.rotation)}, seconds);
-            body->position = transform.position;
-            body->rotation = transform.rotation;
-        } else if (b2Body_IsAwake(body->id)) {
-            b2Body_SetLinearVelocity(body->id, b2Vec2_zero);
-            b2Body_SetAngularVelocity(body->id, 0.0F);
-        }
-    }
-
-    // Constant forces every tick, and impulses queued since the last.
-    for (auto& [entity, body] : bodies_) {
-        if (body->kind != Kind::Rigid) {
-            continue;
-        }
-        const auto& rigid = registry.get<RigidBody2D>(entity);
-        if (rigid.constant_force != Vec2{}) {
-            b2Body_ApplyForceToCenter(body->id, to_b2(rigid.constant_force), true);
-        }
-        if (rigid.constant_torque != 0.0F) {
-            b2Body_ApplyTorque(body->id, rigid.constant_torque, true);
-        }
-    }
-    for (const Impulse& impulse : impulses_) {
-        const Body* target = body(impulse.entity);
-        if (target == nullptr || target->kind != Kind::Rigid) {
-            continue;
-        }
-        if (impulse.impulse != Vec2{}) {
-            const b2Vec2 point = b2Add(b2Body_GetPosition(target->id), to_b2(impulse.offset));
-            b2Body_ApplyLinearImpulse(target->id, to_b2(impulse.impulse), point, true);
-        }
-        if (impulse.torque != 0.0F) {
-            b2Body_ApplyAngularImpulse(target->id, impulse.torque, true);
-        }
-    }
-    impulses_.clear();
-
-    b2World_Step(world_, seconds, kSubSteps);
-    read_back(world, tree);
-    move_characters(world, tree, seconds);
-    emit_events(world);
-}
-
 namespace {
 
 // The entities a body touches, by its contacts.
@@ -1150,6 +1156,289 @@ void area_overlaps(const Body& area, std::vector<std::pair<entt::entity, bool>>&
 }
 
 } // namespace
+
+namespace {
+
+// Godot's Vector2::normalized: unchanged when zero.
+Vec2 normalized(Vec2 v) {
+    const float length_squared = (v.x * v.x) + (v.y * v.y);
+    if (length_squared == 0.0F) {
+        return v;
+    }
+    const float length = std::sqrt(length_squared);
+    return {v.x / length, v.y / length};
+}
+
+// An area's gravity at a point, as Godot's GodotArea2D::compute_gravity: along its direction,
+// or toward its center, falling off with distance squared past a unit distance.
+Vec2 area_gravity(const world::Tree2D& tree, entt::entity entity, const Area2D& area,
+                  Vec2 position) {
+    if (!area.gravity_point) {
+        return area.gravity_direction * area.gravity;
+    }
+    const Vec2 to_center = tree.global_affine(entity).apply(area.gravity_point_center) - position;
+    const float unit = area.gravity_point_unit_distance;
+    if (unit > 0.0F) {
+        const float length_squared = (to_center.x * to_center.x) + (to_center.y * to_center.y);
+        if (length_squared <= 0.0F) {
+            return {};
+        }
+        return normalized(to_center) * (area.gravity * unit * unit / length_squared);
+    }
+    return normalized(to_center) * area.gravity;
+}
+
+// A body's damping with its own, as Godot's damp modes.
+float with_own(float total, const std::string& mode, float own) {
+    return mode == "replace" ? own : total + own;
+}
+
+} // namespace
+
+Space::AreaLists Space::area_lists(const world::World& world) const {
+    const entt::registry& registry = world.ecs();
+    AreaLists lists;
+    std::vector<std::pair<entt::entity, bool>> overlaps;
+    for (const auto& [entity, body] : bodies_) {
+        if (body->kind != Kind::Area || !overrides_space(registry.get<Area2D>(entity))) {
+            continue;
+        }
+        overlaps.clear();
+        area_overlaps(*body, overlaps);
+        for (const auto& [other, is_area] : overlaps) {
+            if (is_area) {
+                continue;
+            }
+            std::vector<const Body*>& list = lists[other];
+            if (list.empty() || list.back() != body.get()) {
+                list.push_back(body.get());
+            }
+        }
+    }
+    // Highest priority first, then in the order the areas were made.
+    for (auto& [entity, list] : lists) {
+        std::ranges::stable_sort(list, std::greater<>(), [&](const Body* area) {
+            return registry.get<Area2D>(area->entity).priority;
+        });
+    }
+    return lists;
+}
+
+AreaForces Space::forces(const world::World& world, const world::Tree2D& tree, const Body& body,
+                         const std::vector<const Body*>* areas) const {
+    const entt::registry& registry = world.ecs();
+    AreaForces out;
+    const Vec2 position = from_b2(b2Body_GetPosition(body.id));
+    bool gravity_done = false;
+    bool linear_done = false;
+    bool angular_done = false;
+    // Godot's override modes, each from the highest priority down.
+    const auto apply = [](const std::string& mode, auto value, auto& total, bool& done) {
+        if (done || mode == "disabled") {
+            return false;
+        }
+        if (mode == "combine" || mode == "combine_replace") {
+            total = total + value;
+            done = mode == "combine_replace";
+        } else {
+            total = value;
+            done = mode == "replace";
+        }
+        return true;
+    };
+    const std::span<const Body* const> list =
+        areas != nullptr ? std::span<const Body* const>(*areas) : std::span<const Body* const>();
+    for (const Body* area_body : list) {
+        if (gravity_done && linear_done && angular_done) {
+            break;
+        }
+        const auto& area = registry.get<Area2D>(area_body->entity);
+        bool used = false;
+        if (!gravity_done && area.gravity_space_override != "disabled") {
+            out.gravity_overridden = true;
+            used = apply(area.gravity_space_override,
+                         area_gravity(tree, area_body->entity, area, position), out.gravity,
+                         gravity_done);
+        }
+        used = apply(area.linear_damp_space_override, area.linear_damp, out.linear_damp,
+                     linear_done) ||
+               used;
+        used = apply(area.angular_damp_space_override, area.angular_damp, out.angular_damp,
+                     angular_done) ||
+               used;
+        if (used) {
+            out.areas.push_back(area_body->entity);
+        }
+    }
+    // Then the project's, as Godot's default area.
+    if (!gravity_done) {
+        out.gravity = out.gravity + (settings_.gravity_vector * settings_.gravity);
+    }
+    if (!linear_done) {
+        out.linear_damp += settings_.linear_damp;
+    }
+    if (!angular_done) {
+        out.angular_damp += settings_.angular_damp;
+    }
+    return out;
+}
+
+AreaForces Space::forces(const world::World& world, const world::Tree2D& tree,
+                         entt::entity entity) const {
+    const Body* target = body(entity);
+    if (target == nullptr || !b2World_IsValid(world_)) {
+        return {};
+    }
+    const AreaLists lists = area_lists(world);
+    const auto found = lists.find(entity);
+    return forces(world, tree, *target, found != lists.end() ? &found->second : nullptr);
+}
+
+void Space::apply_areas(world::World& world, const world::Tree2D& tree) {
+    const entt::registry& registry = world.ecs();
+    const AreaLists lists = area_lists(world);
+    for (auto& [entity, body] : bodies_) {
+        if (body->kind != Kind::Rigid || b2Body_GetType(body->id) != b2_dynamicBody) {
+            continue;
+        }
+        const RigidKey& key = body->rigid_key;
+        Environment environment{.gravity_scale = key.gravity_scale,
+                                .linear_damping = key.linear_damping,
+                                .angular_damping = key.angular_damping,
+                                .pull = {}};
+        // A body in no area keeps Box2D's gravity, as before areas: the same calls, the same
+        // results.
+        if (const auto found = lists.find(entity); found != lists.end()) {
+            const AreaForces area = forces(world, tree, *body, &found->second);
+            const auto& rigid = registry.get<RigidBody2D>(entity);
+            environment.linear_damping =
+                with_own(area.linear_damp, rigid.linear_damp_mode, rigid.linear_damp);
+            environment.angular_damping =
+                with_own(area.angular_damp, rigid.angular_damp_mode, rigid.angular_damp);
+            if (area.gravity_overridden) {
+                environment.gravity_scale = 0.0F;
+                environment.pull = area.gravity * rigid.gravity_scale;
+            }
+        }
+        if (environment != body->environment) {
+            const Environment& was = body->environment;
+            if (environment.gravity_scale != was.gravity_scale) {
+                b2Body_SetGravityScale(body->id, environment.gravity_scale);
+            }
+            if (environment.linear_damping != was.linear_damping) {
+                b2Body_SetLinearDamping(body->id, environment.linear_damping);
+            }
+            if (environment.angular_damping != was.angular_damping) {
+                b2Body_SetAngularDamping(body->id, environment.angular_damping);
+            }
+            // What it rests in changed, so it may not rest any more.
+            if (!b2Body_IsAwake(body->id)) {
+                b2Body_SetAwake(body->id, true);
+            }
+            body->environment = environment;
+        }
+        if (environment.pull != Vec2{}) {
+            b2Body_ApplyForceToCenter(body->id, to_b2(environment.pull * b2Body_GetMass(body->id)),
+                                      false);
+        }
+    }
+}
+
+void Space::step(world::World& world, float seconds) {
+    const world::Tree2D tree(world);
+    sync(world, tree);
+    if (!b2World_IsValid(world_)) {
+        impulses_.clear();
+        return;
+    }
+    entt::registry& registry = world.ecs();
+
+    // Animatable bodies move to their Transform2D during the step, pushing what is in the way.
+    // Bodies with constant velocities move at them too, from half a step behind where they are
+    // to half a step ahead, so what touches them moves as if they moved; after the step they go
+    // back.
+    std::vector<Body*> carriers;
+    for (auto& [entity, body] : bodies_) {
+        const bool animated = body->kind == Kind::Animatable &&
+                              registry.get<AnimatableBody2D>(entity).sync_to_physics;
+        const bool carrying =
+            (body->kind == Kind::Static || body->kind == Kind::Animatable) && carries(*body);
+        if (!animated && !carrying) {
+            continue;
+        }
+        const Vec2 half = body->constant_linear_velocity * (0.5F * seconds);
+        const float half_turn = body->constant_angular_velocity * (0.5F * seconds);
+        if (carrying) {
+            b2Body_SetTransform(body->id, to_b2(body->position - half),
+                                b2MakeRot(body->rotation - half_turn));
+            carriers.push_back(body.get());
+        }
+        const Transform2D transform = animated ? transform_of(tree, entity) : Transform2D{};
+        const bool moving = animated && (transform.position != body->position ||
+                                         transform.rotation != body->rotation);
+        if (carrying) {
+            // As Godot's kinematic bodies: the constant velocities plus the move.
+            Vec2 linear = body->constant_linear_velocity;
+            float angular = body->constant_angular_velocity;
+            if (moving) {
+                linear = linear + ((transform.position - body->position) * (1.0F / seconds));
+                angular += std::remainder(transform.rotation - body->rotation,
+                                          2.0F * std::numbers::pi_v<float>) /
+                           seconds;
+                body->position = transform.position;
+                body->rotation = transform.rotation;
+            }
+            b2Body_SetLinearVelocity(body->id, to_b2(linear));
+            b2Body_SetAngularVelocity(body->id, angular);
+        } else if (moving) {
+            b2Body_SetTargetTransform(
+                body->id, {to_b2(transform.position), b2MakeRot(transform.rotation)}, seconds);
+            body->position = transform.position;
+            body->rotation = transform.rotation;
+        } else if (b2Body_IsAwake(body->id)) {
+            b2Body_SetLinearVelocity(body->id, b2Vec2_zero);
+            b2Body_SetAngularVelocity(body->id, 0.0F);
+        }
+    }
+
+    apply_areas(world, tree);
+
+    // Constant forces every tick, and impulses queued since the last.
+    for (auto& [entity, body] : bodies_) {
+        if (body->kind != Kind::Rigid) {
+            continue;
+        }
+        const auto& rigid = registry.get<RigidBody2D>(entity);
+        if (rigid.constant_force != Vec2{}) {
+            b2Body_ApplyForceToCenter(body->id, to_b2(rigid.constant_force), true);
+        }
+        if (rigid.constant_torque != 0.0F) {
+            b2Body_ApplyTorque(body->id, rigid.constant_torque, true);
+        }
+    }
+    for (const Impulse& impulse : impulses_) {
+        const Body* target = body(impulse.entity);
+        if (target == nullptr || target->kind != Kind::Rigid) {
+            continue;
+        }
+        if (impulse.impulse != Vec2{}) {
+            const b2Vec2 point = b2Add(b2Body_GetPosition(target->id), to_b2(impulse.offset));
+            b2Body_ApplyLinearImpulse(target->id, to_b2(impulse.impulse), point, true);
+        }
+        if (impulse.torque != 0.0F) {
+            b2Body_ApplyAngularImpulse(target->id, impulse.torque, true);
+        }
+    }
+    impulses_.clear();
+
+    b2World_Step(world_, seconds, kSubSteps);
+    for (const Body* body : carriers) {
+        b2Body_SetTransform(body->id, to_b2(body->position), b2MakeRot(body->rotation));
+    }
+    read_back(world, tree);
+    move_characters(world, tree, seconds);
+    emit_events(world);
+}
 
 void Space::emit_events(world::World& world) {
     const entt::registry& registry = world.ecs();
