@@ -1,0 +1,316 @@
+The files in shipped/jumper.pck:
+  .godot/exported/0/export-3070c538c03ee49b7677ff960a3f5195-main.scn
+  .godot/imported/hero.png-be1798b715779b53ab7dec53f9f9f8c3.ctex
+  .godot/imported/jump.wav-86b04f40cc1820c332f6911b8abfc17a.sample
+  .godot/uid_cache.bin
+  art/hero.png.import
+  main.tscn.remap
+  player.gd.remap
+  player.gdc
+  project.binary
+  sfx/jump.wav.import
+project.import {"dry_run":true,"source":"shipped/jumper.pck","unpack_to":"godot"}
+{
+  "converted": {
+    "animation_libraries": 0,
+    "assets": 2,
+    "bus_layouts": 0,
+    "input_actions": 1,
+    "scenes": 1,
+    "sprite_frames": 0,
+    "themes": 0,
+    "tile_sets": 0
+  },
+  "dry_run": true,
+  "engine": "godot",
+  "files": ["godot/art/hero.png", "godot/art/hero.png.import", "godot/main.tscn", "godot/player.gd", "godot/player.gd.uid", "godot/project.godot", "godot/sfx/jump.wav", "godot/sfx/jump.wav.import", "project.json", "godot/main.scene.json", "storyboard/work.json", "import/godot.json"],
+  "main_scene": "godot/main.scene.json",
+  "project": "Jumper",
+  "report": "import/godot.json",
+  "scripts": [
+    {
+      "entities": 1,
+      "script": "godot/player.gd",
+      "task": "task/port-player"
+    }
+  ],
+  "unpacked": {
+    "files": 8,
+    "folder": "godot",
+    "fonts": 0,
+    "pack": {
+      "embedded": false,
+      "files": 10,
+      "format": 3,
+      "godot": "4.5.0"
+    },
+    "resources": 0,
+    "scenes": 1,
+    "scripts": 1,
+    "scripts_from_tokens": 1,
+    "sounds": 1,
+    "textures": 1,
+    "unsupported": []
+  },
+  "unsupported": []
+}
+project.import {"source":"shipped/jumper.pck","unpack_to":"godot"}
+{
+  "converted": {
+    "animation_libraries": 0,
+    "assets": 2,
+    "bus_layouts": 0,
+    "input_actions": 1,
+    "scenes": 1,
+    "sprite_frames": 0,
+    "themes": 0,
+    "tile_sets": 0
+  },
+  "engine": "godot",
+  "files": 12,
+  "main_scene": "godot/main.scene.json",
+  "project": "Jumper",
+  "report": "import/godot.json",
+  "scripts": [
+    {
+      "entities": 1,
+      "script": "godot/player.gd",
+      "task": "task/port-player"
+    }
+  ],
+  "unpacked": {
+    "files": 8,
+    "folder": "godot",
+    "fonts": 0,
+    "pack": {
+      "embedded": false,
+      "files": 10,
+      "format": 3,
+      "godot": "4.5.0"
+    },
+    "resources": 0,
+    "scenes": 1,
+    "scripts": 1,
+    "scripts_from_tokens": 1,
+    "sounds": 1,
+    "textures": 1,
+    "unsupported": []
+  },
+  "unsupported": []
+}
+--- godot/player.gd
+extends CharacterBody2D
+
+
+@export var speed := 90.0
+@export var jump_velocity := -260.0
+
+@onready var jump_sound: AudioStreamPlayer = $JumpSound
+
+
+func _physics_process(delta: float) -> void:
+	if not is_on_floor():
+		velocity += get_gravity() * delta
+	if Input.is_action_just_pressed(&"jump") and is_on_floor():
+		velocity.y = jump_velocity
+		jump_sound.play()
+	velocity.x = speed
+	move_and_slide()
+--- godot/main.tscn
+[gd_scene load_steps=6 format=3 uid="uid://cjumpermain"]
+
+[ext_resource type="Script" uid="uid://bjumperplayer" path="res://player.gd" id="1"]
+[ext_resource type="Texture2D" uid="uid://bjumperhero" path="res://art/hero.png" id="2"]
+[ext_resource type="AudioStream" uid="uid://bjumperjump" path="res://sfx/jump.wav" id="3"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_floor"]
+size = Vector2(320, 16)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_player"]
+size = Vector2(12, 16)
+
+[node name="Main" type="Node2D"]
+
+[node name="Floor" type="StaticBody2D" parent="."]
+position = Vector2(160, 172)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Floor"]
+shape = SubResource("RectangleShape2D_floor")
+
+[node name="Player" type="CharacterBody2D" parent="." groups=["player"]]
+position = Vector2(40, 156)
+script = ExtResource("1")
+jump_velocity = -300.0
+
+[node name="Sprite2D" type="Sprite2D" parent="Player"]
+texture = ExtResource("2")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Player"]
+shape = SubResource("RectangleShape2D_player")
+
+[node name="JumpSound" type="AudioStreamPlayer" parent="Player"]
+stream = ExtResource("3")
+volume_db = -6.0
+--- godot/project.godot
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
+
+config_version=5
+
+[application]
+
+config/name="Jumper"
+run/main_scene="res://main.tscn"
+config/features=PackedStringArray("4.5", "GL Compatibility")
+
+[display]
+
+window/size/viewport_width=320
+window/size/viewport_height=180
+
+[input]
+
+jump={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":32,"key_label":0,"unicode":32,"location":0,"echo":false,"script":null)]
+}
+
+[physics]
+
+2d/default_gravity=900.0
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+
+godot/art/hero.png has the game's pixels: yes
+godot/sfx/jump.wav is the game's sound: yes
+--- godot/main.scene.json
+{
+  "entities": {
+    "collision_shape2d": {
+      "components": {
+        "CollisionShape2D": {
+          "size": [320.0, 16.0]
+        },
+        "Transform2D": {}
+      }
+    },
+    "floor": {
+      "components": {
+        "StaticBody2D": {},
+        "Transform2D": {
+          "children": ["collision_shape2d"],
+          "position": [160.0, 172.0]
+        }
+      }
+    },
+    "jump_sound": {
+      "components": {
+        "AudioStreamPlayer": {
+          "stream": "godot/sfx/jump.wav",
+          "volume_db": -6.0
+        }
+      }
+    },
+    "main": {
+      "components": {
+        "Transform2D": {
+          "children": ["floor", "player"]
+        }
+      }
+    },
+    "player": {
+      "components": {
+        "CharacterBody2D": {},
+        "Transform2D": {
+          "children": ["sprite2d", "player_collision_shape2d"],
+          "position": [40.0, 156.0]
+        }
+      }
+    },
+    "player_collision_shape2d": {
+      "components": {
+        "CollisionShape2D": {
+          "size": [12.0, 16.0]
+        },
+        "Transform2D": {}
+      }
+    },
+    "sprite2d": {
+      "components": {
+        "Sprite2D": {
+          "texture": "godot/art/hero.png"
+        },
+        "Transform2D": {}
+      }
+    }
+  },
+  "format": 1,
+  "root": "main"
+}
+--- project.json
+{
+  "format": 1,
+  "input": {
+    "jump": {
+      "deadzone": 0.5,
+      "events": [
+        {
+          "physical_key": "Space",
+          "type": "key"
+        }
+      ]
+    }
+  },
+  "main_scene": "godot/main.scene.json",
+  "name": "Jumper",
+  "physics_2d": {
+    "gravity": 900.0
+  },
+  "version": "0.1.0",
+  "window": {
+    "height": 180,
+    "width": 320
+  }
+}
+scene.open {"path":"godot/main.scene.json"}
+{
+  "entities": 7,
+  "path": "godot/main.scene.json"
+}
+world.query {"include":["Sprite2D"],"omit_defaults":true,"with":["Sprite2D"]}
+{
+  "count": 1,
+  "entities": [
+    {
+      "components": {
+        "Sprite2D": {
+          "texture": "godot/art/hero.png"
+        }
+      },
+      "id": "sprite2d"
+    }
+  ],
+  "truncated": false
+}
+storyboard.query {"kind":"task"}
+{
+  "entries": [
+    {
+      "fields": {
+        "name": "Port player.gd to C++",
+        "summary": "GDScript from Godot: write what it does as C++ components and systems."
+      },
+      "id": "task/port-player",
+      "version": "7fc566cf"
+    }
+  ],
+  "seq": 0
+}

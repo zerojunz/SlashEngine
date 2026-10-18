@@ -32,8 +32,16 @@ Reply project_import(command::Session& session, const json::Value& params) {
     if (!folder) {
         return failure(folder.error(), "/source");
     }
-    const ImportOptions options{.source = folder.value(),
-                                .destination = session.options().project_root};
+    ImportOptions options{
+        .source = folder.value(), .destination = session.options().project_root, .unpack_to = {}};
+    if (const json::Value* unpack_to = params.find("unpack_to"); unpack_to != nullptr) {
+        // Checked here so the error names the parameter; the import takes it relative to the
+        // project.
+        if (auto unpack_folder = session.resolve_path(unpack_to->as_string()); !unpack_folder) {
+            return failure(unpack_folder.error(), "/unpack_to");
+        }
+        options.unpack_to = unpack_to->as_string();
+    }
     auto plan = plan_import(options);
     if (!plan) {
         return failure(plan.error(), "/source");
@@ -72,7 +80,11 @@ void register_import_commands(command::Registry& registry) {
     params["required"] = json::Array{"source"};
     params["properties"]["source"] =
         property("string", "Folder holding a Godot 4 project (with project.godot) or a Unity "
-                           "project (with Assets/ and ProjectSettings/).");
+                           "project (with Assets/ and ProjectSettings/), or a game exported "
+                           "with Godot 4: its .pck file or executable.");
+    params["properties"]["unpack_to"] =
+        property("string", "For an exported game: folder to write the Godot project unpacked "
+                           "from it to, whose assets the import then uses.");
     params["properties"]["dry_run"] =
         property("boolean", "Return the report and the files it would write; write nothing.");
 
@@ -80,8 +92,9 @@ void register_import_commands(command::Registry& registry) {
         .name = "project.import",
         .description =
             "Converts a Godot 4 or Unity project's scenes, prefabs, resources, input and "
-            "settings into this project, using its assets where they are. Each script "
-            "becomes a storyboard task to port it to C++. Reports what didn't convert.",
+            "settings into this project, using its assets where they are; a game exported "
+            "with Godot 4 is unpacked first. Each script becomes a storyboard task to port it "
+            "to C++. Reports what didn't convert.",
         .capabilities = {Capability::Read, Capability::Filesystem},
         .effect = command::Effect::Read,
         .params = std::move(params),

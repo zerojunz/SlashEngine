@@ -1,6 +1,9 @@
 #include "slash/importer/godot_text.hpp"
 
+#include "slash/core/json.hpp"
+
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstdlib>
 #include <string>
@@ -771,6 +774,191 @@ Result<std::vector<Section>> parse_resource(std::string_view text) {
 
 Result<std::vector<Section>> parse_project_settings(std::string_view text) {
     return parse_sections(text, true);
+}
+
+namespace {
+
+// A number as Godot's rtos_fix writes it: the shortest decimal that reads back as the same
+// double, whole numbers without a fraction unless `decimal` asks for ".0" (a float of its own,
+// not a component of a vector).
+std::string real_text(double number, bool decimal) {
+    if (std::isnan(number)) {
+        return "nan";
+    }
+    if (std::isinf(number)) {
+        return number > 0 ? "inf" : "-inf";
+    }
+    constexpr double kExact = 1e15;
+    if (number == std::floor(number) && std::abs(number) < kExact) {
+        std::string text = std::to_string(static_cast<std::int64_t>(number));
+        if (number == 0.0 && std::signbit(number)) {
+            text = "-0";
+        }
+        return decimal ? text + ".0" : text;
+    }
+    return json::write(json::Value(number), json::Style::Compact);
+}
+
+// String::c_escape, or c_escape_multiline when `multiline` keeps new lines as they are.
+std::string escape(std::string_view text, bool multiline) {
+    std::string out;
+    for (const char c : text) {
+        switch (c) {
+        case '\\':
+            out += "\\\\";
+            break;
+        case '"':
+            out += "\\\"";
+            break;
+        case '\n':
+            out += multiline ? "\n" : "\\n";
+            break;
+        case '\t':
+            out += multiline ? "\t" : "\\t";
+            break;
+        case '\r':
+            out += multiline ? "\r" : "\\r";
+            break;
+        default:
+            out += c;
+            break;
+        }
+    }
+    return out;
+}
+
+void write_value_to(const Value& value, std::string& out, bool component, bool multiline) {
+    switch (value.kind) {
+    case Value::Kind::Nil:
+        out += "null";
+        return;
+    case Value::Kind::Bool:
+        out += value.boolean ? "true" : "false";
+        return;
+    case Value::Kind::Int:
+        out += std::to_string(value.integer);
+        return;
+    case Value::Kind::Float:
+        out += real_text(value.real, !component);
+        return;
+    case Value::Kind::String:
+        out += "\"" + escape(value.text, multiline) + "\"";
+        return;
+    case Value::Kind::StringName:
+        out += "&\"" + escape(value.text, multiline) + "\"";
+        return;
+    case Value::Kind::Array:
+        out += "[";
+        for (std::size_t i = 0; i < value.items.size(); ++i) {
+            out += i > 0 ? ", " : "";
+            write_value_to(value.items[i], out, false, multiline);
+        }
+        out += "]";
+        return;
+    case Value::Kind::Dictionary:
+        if (value.entries.empty()) {
+            out += "{}";
+            return;
+        }
+        out += "{\n";
+        for (std::size_t i = 0; i < value.entries.size(); ++i) {
+            write_value_to(value.entries[i].key, out, false, multiline);
+            out += ": ";
+            write_value_to(value.entries[i].value, out, false, multiline);
+            out += i + 1 < value.entries.size() ? ",\n" : "\n";
+        }
+        out += "}";
+        return;
+    case Value::Kind::Call:
+        if (value.text == "Object") {
+            out += "Object(";
+            out += value.items.empty() ? std::string("Object") : value.items.front().text;
+            for (const auto& [key, item] : value.entries) {
+                out += ",";
+                write_value_to(key, out, false, multiline);
+                out += ":";
+                write_value_to(item, out, false, multiline);
+            }
+            out += ")";
+            return;
+        }
+        out += value.text + "(";
+        for (std::size_t i = 0; i < value.items.size(); ++i) {
+            out += i > 0 ? ", " : "";
+            write_value_to(value.items[i], out, true, multiline);
+        }
+        out += ")";
+        return;
+    }
+}
+
+// String::property_name_encode: quoted when it holds characters a key can't.
+std::string property_name(std::string_view name) {
+    const bool plain = !name.empty() && std::ranges::none_of(name, [](char c) {
+        const auto code = static_cast<unsigned char>(c);
+        return c == '=' || c == '"' || c == ';' || c == '[' || c == ']' || code < 33 || code > 126;
+    });
+    return plain ? std::string(name) : "\"" + escape(name, false) + "\"";
+}
+
+std::string tag_line(const Section& section) {
+    std::string out = "[" + section.tag;
+    for (const auto& [name, value] : section.fields) {
+        out += " " + name + "=";
+        write_value_to(value, out, false, false);
+    }
+    return out + "]\n";
+}
+
+} // namespace
+
+std::string write_value(const Value& value) {
+    std::string out;
+    write_value_to(value, out, false, true);
+    return out;
+}
+
+std::string write_resource(const std::vector<Section>& sections) {
+    std::string out;
+    for (std::size_t i = 0; i < sections.size(); ++i) {
+        const Section& section = sections[i];
+        if (i > 0 && !(section.tag == "ext_resource" && sections[i - 1].tag == "ext_resource") &&
+            !(section.tag == "connection" && sections[i - 1].tag == "connection") &&
+            !(section.tag == "editable" && sections[i - 1].tag == "editable")) {
+            out += "\n";
+        }
+        out += tag_line(section);
+        for (const auto& [name, value] : section.properties) {
+            out += property_name(name) + " = " + write_value(value) + "\n";
+        }
+    }
+    return out;
+}
+
+std::string write_project_settings(const std::vector<Section>& sections) {
+    std::string out = "; Engine configuration file.\n"
+                      "; It's best edited using the editor UI and not directly,\n"
+                      "; since the parameters that go here are not all obvious.\n"
+                      ";\n"
+                      "; Format:\n"
+                      ";   [section] ; section goes between []\n"
+                      ";   param=value ; assign values to parameters\n\n";
+    const auto top = std::ranges::find(sections, std::string(), &Section::tag);
+    if (top == sections.end() || top->property("config_version") == nullptr) {
+        out += "config_version=5\n\n";
+    }
+    for (const Section& section : sections) {
+        if (!section.tag.empty()) {
+            out += "[" + section.tag + "]\n\n";
+        }
+        for (const auto& [name, value] : section.properties) {
+            out += property_name(name) + "=" + write_value(value) + "\n";
+        }
+        if (!section.properties.empty() || !section.tag.empty()) {
+            out += "\n";
+        }
+    }
+    return out;
 }
 
 } // namespace slash::importer::godot

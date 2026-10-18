@@ -125,12 +125,15 @@ Usage:
   slash-cli init [dir]               Set a project up for Claude Code, Codex and Cursor
       --force                        Replace files that already exist
       --mcp-command <cmd>            How agents launch slash-mcp (default "slash-mcp")
-  slash-cli import <folder>          Convert a Godot 4 project (the folder with project.godot)
+  slash-cli import <folder|file>     Convert a Godot 4 project (the folder with project.godot)
                                      or a Unity project (the folder with Assets/) into the
                                      project: scenes, prefabs, sprites, input and settings;
                                      each script becomes a storyboard task. A folder outside
-                                     the project is copied in
+                                     the project is copied in. A game exported with Godot 4
+                                     (its .pck file or executable) is unpacked first
       --project <dir>                Project folder to import into (default ".")
+      --unpack-to <dir>              Also write the Godot project unpacked from a game to
+                                     this folder of the project, and use its assets there
       --dry-run                      Print the report and the files it would write; write
                                      nothing
   slash-cli export <preset>          Build and sign the game with a preset from
@@ -1222,6 +1225,8 @@ int cmd_import(const std::vector<std::string>& args) {
             dry_run = true;
         } else if (arg == "--project" && i + 1 < args.size()) {
             options.destination = args[++i];
+        } else if (arg == "--unpack-to" && i + 1 < args.size()) {
+            options.unpack_to = args[++i];
         } else if (options.source.empty() && !arg.starts_with("--")) {
             options.source = arg;
         } else {
@@ -1229,7 +1234,8 @@ int cmd_import(const std::vector<std::string>& args) {
         }
     }
     if (options.source.empty()) {
-        return usage_error("import needs the folder of a Godot 4 or Unity project");
+        return usage_error("import needs the folder of a Godot 4 or Unity project, or a game "
+                           "exported with Godot 4");
     }
     if (dry_run) {
         auto plan = slash::importer::plan_import(options);
