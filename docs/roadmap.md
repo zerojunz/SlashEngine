@@ -386,9 +386,12 @@ rendering on top.
   - [x] Unity's isometric and hexagonal tile maps: each Grid's cell layout and swizzle as a tile
         set's shape, layout and offset axis, layers moved so their cells stay where Unity draws
         them, and tile anchors and sprite pivots as `texture_origin`
-  - [ ] Exported games (a Godot `.pck`, a Unity build) unpacked back into a project, for games
-        the user made or has the rights to. Nothing breaks encryption or DRM, and GPL tools such
-        as AssetRipper run as separate programs, never linked
+  - [x] Godot games exported as a `.pck` file or an executable unpacked back into their
+        projects and imported: binary scenes and resources as text, script tokens as source,
+        `project.binary`, textures, sounds and fonts, for games the user made or has the rights
+        to. Encrypted packs are refused, never decrypted
+  - [ ] Unity builds unpacked back into a project, the same way. Nothing breaks encryption or
+        DRM, and GPL tools such as AssetRipper run as separate programs, never linked
 
 Exit: an agent builds `samples/pong` end to end and exports it to all six platforms.
 

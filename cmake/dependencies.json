@@ -56,6 +56,13 @@
       "repository": "https://github.com/yhirose/cpp-httplib.git",
       "tag": "v0.58.0"
     },
+    "libwebp": {
+      "license": "BSD-3-Clause",
+      "license_file": "COPYING",
+      "license_sha256": "5aec868f669e384a22372a4e8a1a6cd7d44c64cd451f960ca69cc170d1e13acf",
+      "repository": "https://github.com/webmproject/libwebp.git",
+      "tag": "v1.5.0"
+    },
     "miniaudio": {
       "license": "MIT-0 OR Unlicense",
       "license_file": "LICENSE",
@@ -83,6 +90,13 @@
       "license_sha256": "45e384d3d52c73cba3a64d6e6c25d47cd738cd8a55c30629e3201046eda62947",
       "repository": "https://github.com/ibireme/yyjson.git",
       "tag": "0.13.0"
+    },
+    "zstd": {
+      "license": "BSD-3-Clause OR GPL-2.0-only",
+      "license_file": "LICENSE",
+      "license_sha256": "7055266497633c9025b777c78eb7235af13922117480ed5c674677adc381c9d8",
+      "repository": "https://github.com/facebook/zstd.git",
+      "tag": "v1.5.7"
     }
   },
   "format": 1,

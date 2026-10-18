@@ -1,0 +1,34 @@
+[gd_scene load_steps=6 format=3 uid="uid://cjumpermain"]
+
+[ext_resource type="Script" uid="uid://bjumperplayer" path="res://player.gd" id="1_player"]
+[ext_resource type="Texture2D" uid="uid://bjumperhero" path="res://art/hero.png" id="2_hero"]
+[ext_resource type="AudioStream" uid="uid://bjumperjump" path="res://sfx/jump.wav" id="3_jump"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_floor"]
+size = Vector2(320, 16)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_player"]
+size = Vector2(12, 16)
+
+[node name="Main" type="Node2D"]
+
+[node name="Floor" type="StaticBody2D" parent="."]
+position = Vector2(160, 172)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Floor"]
+shape = SubResource("RectangleShape2D_floor")
+
+[node name="Player" type="CharacterBody2D" parent="." groups=["player"]]
+position = Vector2(40, 156)
+script = ExtResource("1_player")
+jump_velocity = -300.0
+
+[node name="Sprite2D" type="Sprite2D" parent="Player"]
+texture = ExtResource("2_hero")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Player"]
+shape = SubResource("RectangleShape2D_player")
+
+[node name="JumpSound" type="AudioStreamPlayer" parent="Player"]
+stream = ExtResource("3_jump")
+volume_db = -6.0

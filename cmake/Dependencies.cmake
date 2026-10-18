@@ -141,3 +141,35 @@ slash_add_dependency(roboto DOWNLOAD_ONLY TRUE)
 # stb_vorbis from its extras. engine/audio builds them (src/miniaudio.c) with no device backends,
 # threads or engine, since SDL plays the sound and the engine mixes it.
 slash_add_dependency(miniaudio DOWNLOAD_ONLY TRUE)
+
+# Reading exported Godot games back into projects (tools/importer): libwebp decodes the WebP images
+# Godot stores imported textures as, and zstd the compressed GDScript tokens and resources. Tools
+# only, decoders only: games never link them.
+if(SLASH_BUILD_TOOLS)
+    slash_add_dependency(libwebp
+        SYSTEM TRUE
+        EXCLUDE_FROM_ALL TRUE
+        OPTIONS
+            "WEBP_BUILD_ANIM_UTILS OFF"
+            "WEBP_BUILD_CWEBP OFF"
+            "WEBP_BUILD_DWEBP OFF"
+            "WEBP_BUILD_GIF2WEBP OFF"
+            "WEBP_BUILD_IMG2WEBP OFF"
+            "WEBP_BUILD_VWEBP OFF"
+            "WEBP_BUILD_WEBPINFO OFF"
+            "WEBP_BUILD_LIBWEBPMUX OFF"
+            "WEBP_BUILD_WEBPMUX OFF"
+            "WEBP_BUILD_EXTRAS OFF"
+            "WEBP_BUILD_FUZZTEST OFF"
+            "WEBP_USE_THREAD OFF")
+
+    slash_add_dependency(zstd DOWNLOAD_ONLY TRUE)
+    if(zstd_ADDED)
+        file(GLOB _slash_zstd_sources ${zstd_SOURCE_DIR}/lib/common/*.c
+            ${zstd_SOURCE_DIR}/lib/decompress/*.c)
+        add_library(slash_zstd STATIC ${_slash_zstd_sources})
+        target_include_directories(slash_zstd SYSTEM PUBLIC ${zstd_SOURCE_DIR}/lib)
+        # The C decoder everywhere, without the x86-64 assembly one, and no multithreading.
+        target_compile_definitions(slash_zstd PRIVATE ZSTD_DISABLE_ASM ZSTD_MULTITHREAD=0)
+    endif()
+endif()

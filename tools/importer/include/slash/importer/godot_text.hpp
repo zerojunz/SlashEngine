@@ -91,4 +91,13 @@ struct Section {
 // Parses project.godot, whose tags are plain section names such as [application].
 [[nodiscard]] Result<std::vector<Section>> parse_project_settings(std::string_view text);
 
+// Writes a value as Godot's VariantWriter does, which parse_value reads back.
+[[nodiscard]] std::string write_value(const Value& value);
+
+// Writes a .tscn or .tres file's sections as ResourceFormatSaverText lays them out.
+[[nodiscard]] std::string write_resource(const std::vector<Section>& sections);
+
+// Writes project.godot's sections as ProjectSettings::_save_settings_text lays them out.
+[[nodiscard]] std::string write_project_settings(const std::vector<Section>& sections);
+
 } // namespace slash::importer::godot
