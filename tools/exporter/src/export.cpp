@@ -20,6 +20,7 @@
 #include "slash/platform/process.hpp"
 #include "slash/render/image.hpp"
 #include "slash/render/shader.hpp"
+#include "slash/runtime/gameplay.hpp"
 #include "slash/runtime/project.hpp"
 #include "slash/shader_compiler/shader_compiler.hpp"
 #include "slash/text/text.hpp"
@@ -335,6 +336,8 @@ bool stage_data(const fs::path& project_dir, const runtime::Project& project, co
 
     world::ComponentRegistry components;
     world::register_builtin_components(components);
+    // The game's own components, checked by the names and fields its sources declare.
+    (void)runtime::add_gameplay_types(components, project_dir.string(), project, false);
     const world::FileReader reader = runtime::folder_reader(project_dir.string());
     json::Array problems;
     bool found_main = false;
@@ -891,6 +894,16 @@ ExportResult export_game(const ExportOptions& options) {
                                        "-DSLASH_GAME_ID=" + project.value().bundle_id(),
                                        "-DSLASH_GAME_VERSION=" + project.value().version,
                                        "-DSLASH_GAME_DATA=" + data.generic_string()};
+    // The game's own C++ code, linked in. Always passed, so a project that drops its code
+    // doesn't keep the last export's.
+    std::string sources;
+    for (const std::string& source : project.value().gameplay_sources) {
+        if (!sources.empty()) {
+            sources += ';';
+        }
+        sources += fs::absolute(project_dir / source, error).lexically_normal().generic_string();
+    }
+    configure.push_back("-DSLASH_GAME_SOURCES=" + sources);
     if (const audio::Settings& sound = project.value().audio; sound.enable_input) {
         // Games that record ask for the microphone: Info.plist's reason on macOS and iOS, the
         // RECORD_AUDIO permission on Android.

@@ -111,9 +111,21 @@ asset files reload while it runs: prefab instances update and keep their overrid
   version this project pins:
   https://github.com/zerojunz/SlashEngine/tree/@ENGINE_REF@/examples
 
+## Gameplay code
+
+The game's own components and systems are plain C++ in `src/` (`project.json`'s
+`gameplay.sources`), as Godot's scripts are; there is no scripting language. `src/game.cpp`
+registers them in its `SLASH_GAME_MODULE` function; copy its pattern. After changing the code,
+call `gameplay_build` (or run `slash-cli build`): it compiles the code, returns each compiler
+error with its file and line, and swaps the new code into the open world, which keeps its
+entities and every field the code still has. `engine_describe` then lists the new components and
+systems. Keep gameplay state in registered components, so it is saved, undone and kept when the
+code is rebuilt. Exports link the code into the game.
+
 ## Run and export
 
-`slash-game --data .` runs the game the way its exports do. `slash-cli export <platform> --test`
+`slash-game --data .` runs the game the way its exports do, once `slash-cli build` has built its
+code. `slash-cli export <platform> --test`
 (or the `export_run` tool) builds it for macos, windows, linux, web, android or ios into
 `build/export/<platform>`, then runs the build headless where this machine can (Android games on
 a connected device or emulator, iOS games in the Simulator). A failed export reports the step and
@@ -126,6 +138,7 @@ environment variables, never from the file.
 
 ## Files
 
+- `src/`: the game's C++ code (see Gameplay code).
 - `project.json`: the game's name, version and main scene. `slash-cli project validate` checks it,
   `export_presets.json` and the storyboard.
 - `scenes/`: scenes as canonical JSON, keyed by stable entity ID. Run
@@ -172,6 +185,40 @@ environment variables, never from the file.
   `journal.jsonl`, the record of who changed them. Commit both.
 - `tests/`: `.test.json` tests that `test_run` and `slash-cli test` run, and the export workflow
   runs on every push.
+)";
+
+constexpr std::string_view kGameCode =
+    R"(// The game's own C++ code, as Godot's scripts: components that scenes use and systems the world
+// runs every tick. `slash-cli build` (or the gameplay_build tool) compiles it, and the tools swap
+// it into the open world, keeping its entities and their fields. Exports link it in.
+
+#include "slash/world/components.hpp"
+#include "slash/world/game_module.hpp"
+
+namespace {
+
+// A starter component: replace it with the game's own.
+struct Spin {
+    float speed = 1.0F; // radians a second
+};
+SLASH_COMPONENT(Spin, speed)
+
+void spin(slash::world::World& world, double tick_seconds) {
+    const auto seconds = static_cast<float>(tick_seconds);
+    world.ecs().view<slash::world::Transform2D, const Spin>().each(
+        [seconds](slash::world::Transform2D& transform, const Spin& turn) {
+            transform.rotation += turn.speed * seconds;
+        });
+}
+
+} // namespace
+
+SLASH_GAME_MODULE(game) {
+    game.add_component<Spin>()
+        .set_doc("Turns an entity at a steady speed.")
+        .describe("speed", {.doc = "Radians a second, clockwise."});
+    game.add_system("spin", spin, {.doc = "Turns entities that have Spin."});
+}
 )";
 
 constexpr std::string_view kSkill = R"(---
@@ -500,8 +547,10 @@ Result<json::Value> init_project(const InitOptions& options) {
     const std::string name = project_name(options.directory);
     const std::string glossary = storyboard::file_path("glossary");
     const std::string work = storyboard::file_path("work");
+    json::Value project = runtime::new_project(name, kMainScene);
+    project["gameplay"]["sources"] = json::Array{"src"};
     const std::vector<std::pair<std::string_view, std::string>> files{
-        {runtime::kProjectFile, json::write(runtime::new_project(name, kMainScene)) + "\n"},
+        {runtime::kProjectFile, json::write(project) + "\n"},
         {"AGENTS.md", with_engine_ref(kAgents)},
         {"CLAUDE.md", "@AGENTS.md\n"},
         {".mcp.json", json_config(options, ".")},
@@ -510,6 +559,7 @@ Result<json::Value> init_project(const InitOptions& options) {
         {".claude/skills/slashengine/SKILL.md", std::string(kSkill)},
         {".github/workflows/export.yml", with_engine_ref(kWorkflow)},
         {kMainScene, empty_scene()},
+        {"src/game.cpp", std::string(kGameCode)},
         {"tests/main.test.json", starter_test()},
         {glossary, starter_glossary(name)},
         {work, starter_work()},

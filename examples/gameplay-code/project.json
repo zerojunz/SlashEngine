@@ -1,0 +1,10 @@
+{
+  "format": 1,
+  "gameplay": {
+    "sources": [
+      "src"
+    ]
+  },
+  "main_scene": "scenes/main.scene.json",
+  "name": "Gameplay Code"
+}

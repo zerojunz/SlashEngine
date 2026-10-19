@@ -20,6 +20,7 @@
 #include "slash/core/log.hpp"
 #include "slash/core/text.hpp"
 #include "slash/core/version.hpp"
+#include "slash/gameplay/host.hpp"
 #include "slash/input/input.hpp"
 #include "slash/physics2d/physics2d.hpp"
 #include "slash/platform/file.hpp"
@@ -353,6 +354,13 @@ Reply engine_describe(Session& session, const json::Value& params) {
         systems.push_back(std::move(item));
     }
     result["systems"] = std::move(systems);
+    // The game's own code, when it has some loaded or failing.
+    if (const gameplay::Host* code = session.options().gameplay; code != nullptr) {
+        json::Value status = code->status();
+        if (code->loaded() || status.find("error") != nullptr) {
+            result["gameplay"] = std::move(status);
+        }
+    }
 
     result["scene"]["path"] = session.scene_path();
     result["scene"]["entities"] = session.world().size();

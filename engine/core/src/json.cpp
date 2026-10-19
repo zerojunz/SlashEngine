@@ -393,4 +393,23 @@ std::string pointer_escape(std::string_view key) {
     return out;
 }
 
+std::string pointer_first_key(std::string_view pointer) {
+    if (!pointer.starts_with('/')) {
+        return {};
+    }
+    pointer.remove_prefix(1);
+    const std::string_view segment = pointer.substr(0, pointer.find('/'));
+    std::string out;
+    out.reserve(segment.size());
+    for (std::size_t i = 0; i < segment.size(); ++i) {
+        if (segment[i] == '~' && i + 1 < segment.size()) {
+            out += segment[i + 1] == '1' ? '/' : '~';
+            ++i;
+        } else {
+            out += segment[i];
+        }
+    }
+    return out;
+}
+
 } // namespace slash::json

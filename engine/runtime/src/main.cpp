@@ -5,6 +5,7 @@
 #include "slash/core/json.hpp"
 #include "slash/core/log.hpp"
 #include "slash/runtime/game.hpp"
+#include "slash/world/game_module.hpp"
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
@@ -16,6 +17,11 @@
 
 #ifdef __ANDROID__
 #include <android/log.h>
+#endif
+
+// An export links the game's own code in (export/CMakeLists.txt); slash-game loads it instead.
+#ifdef SLASH_GAMEPLAY_LINKED
+extern "C" void slash_game_module(slash::world::GameModule& game);
 #endif
 
 namespace {
@@ -50,6 +56,9 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
         slash::log::error("usage error", {{"detail", options.error().message}});
         return SDL_APP_FAILURE;
     }
+#ifdef SLASH_GAMEPLAY_LINKED
+    options.value().gameplay = slash_game_module;
+#endif
     auto game = slash::runtime::Game::start(options.value());
     if (!game) {
         slash::log::error("could not start the game", {{"detail", game.error().message}});

@@ -26,8 +26,9 @@
 // Optional fields: "id" (reverse-DNS identifier for bundles and stores), "version"
 // ("major.minor.patch"), "window" ({"width", "height", "vsync_mode"}), "tick_hz", "max_fps",
 // "rendering" ({"clear_color", "driver", "texture_filter", "interpolation"}), "physics_2d",
-// "gui" ({"theme"}), "input" (actions by name), "input_devices" ({"pointing"}) and "audio"
-// ({"bus_layout", "mix_rate", "output_latency", "panning_strength_2d"}).
+// "gui" ({"theme"}), "input" (actions by name), "input_devices" ({"pointing"}), "audio"
+// ({"bus_layout", "mix_rate", "output_latency", "panning_strength_2d"}) and "gameplay"
+// ({"sources"}, the game's own C++ code).
 namespace slash::runtime {
 
 inline constexpr std::string_view kProjectFile = "project.json";
@@ -72,6 +73,9 @@ struct Project {
     input::Settings input_devices;
     // The bus layout, mix rate, output latency and 2D panning strength.
     audio::Settings audio;
+    // Folders and .cpp files of the game's own C++ code (slash/world/game_module.hpp); empty if
+    // it has none.
+    std::vector<std::string> gameplay_sources;
 
     // The identifier to use: id, or the default derived from the name.
     [[nodiscard]] std::string bundle_id() const;

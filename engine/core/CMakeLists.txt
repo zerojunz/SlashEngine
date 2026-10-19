@@ -9,7 +9,23 @@ add_library(slash_core
     src/version.cpp)
 add_library(slash::core ALIAS slash_core)
 
-target_include_directories(slash_core PUBLIC include)
+# slash/core/api_hash.hpp, a hash of every engine header that gameplay libraries record (see
+# cmake/api_hash.cmake).
+set(api_hash_header ${CMAKE_CURRENT_BINARY_DIR}/generated/slash/core/api_hash.hpp)
+file(GLOB_RECURSE engine_headers CONFIGURE_DEPENDS ${PROJECT_SOURCE_DIR}/engine/*/include/*.hpp)
+add_custom_command(OUTPUT ${api_hash_header}
+    COMMAND ${CMAKE_COMMAND} -DENGINE=${PROJECT_SOURCE_DIR}/engine
+        -DDEPENDENCIES=${PROJECT_SOURCE_DIR}/cmake/dependencies.json -DOUTPUT=${api_hash_header}
+        -P ${PROJECT_SOURCE_DIR}/cmake/api_hash.cmake
+    DEPENDS ${engine_headers} ${PROJECT_SOURCE_DIR}/cmake/dependencies.json
+        ${PROJECT_SOURCE_DIR}/cmake/api_hash.cmake
+    COMMENT "Hashing the engine headers"
+    VERBATIM)
+target_sources(slash_core PRIVATE ${api_hash_header})
+# CI's clang-tidy job configures without building, so it builds the header alone.
+add_custom_target(slash_api_hash DEPENDS ${api_hash_header})
+
+target_include_directories(slash_core PUBLIC include ${CMAKE_CURRENT_BINARY_DIR}/generated)
 target_compile_features(slash_core PUBLIC cxx_std_20)
 target_link_libraries(slash_core PRIVATE yyjson)
 if(ANDROID)

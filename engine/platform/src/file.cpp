@@ -122,6 +122,18 @@ bool exists(std::string_view path) {
     return SDL_GetPathInfo(name.c_str(), nullptr);
 }
 
+Result<void> remove_file(std::string_view path) {
+    const std::string name(path);
+    if (!SDL_GetPathInfo(name.c_str(), nullptr)) {
+        return {};
+    }
+    if (!SDL_RemovePath(name.c_str())) {
+        return make_error(ErrorCode::PlatformFailure,
+                          "could not delete \"" + name + "\": " + SDL_GetError());
+    }
+    return {};
+}
+
 std::optional<FileStamp> file_stamp(std::string_view path) {
     const std::string name(path);
     SDL_PathInfo info;

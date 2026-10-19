@@ -10,6 +10,8 @@
 #   SLASH_IOS_BUILD     CFBundleVersion, if not the version (iOS only)
 #   SLASH_GAME_MICROPHONE        ON if the game records (project.json's audio.enable_input)
 #   SLASH_GAME_MICROPHONE_USAGE  why, shown when macOS and iOS ask for the microphone
+#   SLASH_GAME_SOURCES  the game's own C++ code (project.json's gameplay.sources): absolute
+#                       paths of folders, whose .cpp files are compiled in, and files
 #
 # `cmake --install <build> --component game --prefix <out>` lays the game out for its platform:
 # <out>/<binary>.app on macOS, <out>/<binary>[.exe] with <out>/data on Windows and Linux, and
@@ -91,7 +93,32 @@ else()
     set_target_properties(game PROPERTIES OUTPUT_NAME ${SLASH_GAME_BINARY})
 endif()
 target_link_libraries(game PRIVATE slash::game_main)
-slash_target_warnings(game)
+# Built as the engine is, with no exceptions or RTTI, as the tools build the game's code.
+slash_engine_target(game)
+
+# The game's own code, with its SLASH_GAME_MODULE function, which main() installs.
+set(game_sources "")
+foreach(source IN LISTS SLASH_GAME_SOURCES)
+    if(IS_DIRECTORY "${source}")
+        file(GLOB_RECURSE found CONFIGURE_DEPENDS "${source}/*.cpp")
+        list(APPEND game_sources ${found})
+        target_include_directories(game PRIVATE "${source}")
+    elseif(source MATCHES "\\.cpp$")
+        list(APPEND game_sources "${source}")
+    elseif(EXISTS "${source}")
+        get_filename_component(folder "${source}" DIRECTORY)
+        target_include_directories(game PRIVATE "${folder}")
+    else()
+        message(FATAL_ERROR "SLASH_GAME_SOURCES names ${source}, which does not exist")
+    endif()
+endforeach()
+if(SLASH_GAME_SOURCES AND NOT game_sources)
+    message(FATAL_ERROR "the game's gameplay sources have no .cpp files")
+endif()
+if(game_sources)
+    target_sources(game PRIVATE ${game_sources})
+    target_compile_definitions(game PRIVATE SLASH_GAMEPLAY_LINKED)
+endif()
 
 if(EMSCRIPTEN)
     set_target_properties(game PROPERTIES SUFFIX ".js")

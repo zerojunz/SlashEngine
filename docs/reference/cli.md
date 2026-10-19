@@ -192,6 +192,10 @@ fields, and each bus must send to a bus before it:
 {"errors":[{"message":"expected one of \"amplify\", \"low_pass_filter\", ... \"stereo_enhance\", got \"revreb\"; did you mean \"reverb\"?","path":"/buses/1/effects/0/type"}],"valid":false}
 ```
 
+Components of the game's own [code](#build) are checked too: in full against its library when it
+is built, otherwise by the names and fields its sources declare with `SLASH_COMPONENT`, with any
+value accepted.
+
 When the project has a
 [storyboard](storyboard-format.md#storyref), each `StoryRef` ID must name one of its entries:
 
@@ -209,6 +213,9 @@ Rewrites a scene, prefab, `.frames.json`, `.material.json`, `.anim.json`,
 slash-cli scene format <file>
 slash-cli scene format --check <file>    # change nothing; exit 1 if not canonical
 ```
+
+Formatting a scene or prefab with components of the game's own code needs that code
+[built](#build), since it loads the file into a world.
 
 ### schema
 
@@ -367,10 +374,13 @@ slash-cli init [dir]
 | `--mcp-command <cmd>` | How agents launch `slash-mcp` (default `slash-mcp`, found on `PATH`) |
 
 ```json
-{"created":["project.json","AGENTS.md","CLAUDE.md",".mcp.json",".cursor/mcp.json",".codex/config.toml",".claude/skills/slashengine/SKILL.md",".github/workflows/export.yml","scenes/main.scene.json","tests/main.test.json","storyboard/glossary.json","storyboard/work.json",".gitignore"],"skipped":[]}
+{"created":["project.json","AGENTS.md","CLAUDE.md",".mcp.json",".cursor/mcp.json",".codex/config.toml",".claude/skills/slashengine/SKILL.md",".github/workflows/export.yml","scenes/main.scene.json","src/game.cpp","tests/main.test.json","storyboard/glossary.json","storyboard/work.json",".gitignore"],"skipped":[]}
 ```
 
-The `project.json` it writes is named after the folder and points at `scenes/main.scene.json`.
+The `project.json` it writes is named after the folder, points at `scenes/main.scene.json` and
+names `src` as its [gameplay sources](project-format.md#gameplay-code). `src/game.cpp` is starter
+code, a `Spin` component and the system that turns entities with it, and `AGENTS.md` tells
+agents how to change it and [build](#build) it.
 The starter [storyboard](storyboard-format.md) records the game's title in the glossary and an
 open task to fill in the rest, and `AGENTS.md` and the skill tell agents to call
 `storyboard_brief` before a task and `storyboard_check` after it. `tests/main.test.json` is a
@@ -456,6 +466,42 @@ slash-cli import ~/Downloads/Hopper --project hopper --unpack-to unity
 It exits 1 if the folder isn't a Godot 4 project or a Unity project saved by Unity 2018.3 or
 later, the file holds no Godot 4 pack or one whose file list is encrypted, or AssetRipper can't
 rebuild a Unity build's project.
+
+### build
+
+Compiles the game's own C++ code, the folders and files `project.json`'s
+[`gameplay.sources`](project-format.md#gameplay-code) names, into the library `slash-cli`,
+`slash-mcp` and `slash-game` load (`.slash/gameplay/game.so`), then loads it once to check it.
+Programs that have the project open swap the new code in before their next command or tick,
+keeping the world. [`gameplay.build`](commands.md#gameplaybuild) does the same over MCP,
+JSON-RPC and REST, and swaps it into that session at once. macOS and Linux only; exports for
+every platform link the code in.
+
+```bash
+slash-cli build [--project <dir>] [--engine <dir>]
+```
+
+| Flag | Meaning |
+| --- | --- |
+| `--project <dir>` | Game folder with `project.json` (default `.`) |
+| `--engine <dir>` | Engine sources (default: `SLASH_ENGINE_DIR`, else the checkout this program was built from) |
+
+It builds with CMake (3.25 or newer on `PATH`) in `.slash/gameplay/build`, with the compiler and
+flags of the engine build this program came from, so only files that changed compile again.
+
+```json
+{"components":["Spin"],"library":".slash/gameplay/game.so","log":".slash/gameplay/build.log","systems":["spin"]}
+```
+
+Compiler errors exit 1 with each error's file (relative to the project), line, column and
+message:
+
+```json
+{"error":{"errors":[{"column":19,"file":"src/game.cpp","line":12,"message":"expected ';' at end of member declaration"}],"log":".slash/gameplay/build.log","message":"the game's code has 1 error","step":"build"}}
+```
+
+A project with no gameplay sources exits 2. Code that builds but won't load (a name used twice,
+or named like one of the engine's components or systems) exits 1 with `step` `"load"`.
 
 ### export
 
@@ -630,6 +676,10 @@ slash-game --data tests/data/game --headless --ticks 60
 {"entities":3,"headless":true,"name":"Test Game","quit_requested":false,"renderer":"null","scene":"scenes/main.scene.json","sprites":0,"ticks":60}
 ```
 
+A project with [gameplay sources](project-format.md#gameplay-code) runs its code from the
+library [`slash-cli build`](#build) makes, and loads it again when it is rebuilt; it won't start
+until the code is built. Exports link the code in.
+
 `sprites` counts the sprites the last frame drew. Headless and on the null device nothing is
 drawn, but the sprites are still checked and counted, so a test can see that they would draw.
 
@@ -639,7 +689,7 @@ drawn, but the sprites are still checked and counted, so a test can see that the
 | --- | --- |
 | `SDL_VIDEO_DRIVER` | SDL3's video driver. `dummy` runs the windowed path with no display; on Linux, `offscreen` does too and still draws on the GPU |
 | `SDL_GPU_DRIVER` | SDL3's GPU backend (`vulkan`, `metal` or `direct3d12`), overriding the project's `rendering.driver` |
-| `SLASH_ENGINE_DIR` | Engine sources `slash-cli export` builds against |
+| `SLASH_ENGINE_DIR` | Engine sources `slash-cli export` and `slash-cli build` build against |
 | `EMSDK` | The Emscripten SDK, needed for web exports |
 | `SLASH_TOOLCHAINS_DIR` | Where `slash-cli toolchain` installs cross toolchains (default `~/.slash/toolchains`) |
 | `SLASH_APPLE_API_KEY_PATH`, `SLASH_APPLE_API_KEY_ID`, `SLASH_APPLE_API_ISSUER` | An App Store Connect API key (the `.p8` file, its ID and issuer) for notarizing macOS exports |

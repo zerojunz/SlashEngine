@@ -122,6 +122,9 @@ public:
 
     // Adds a system. Names must be unique; IDs such as "movement" or "physics2d" read best.
     void add_system(std::string name, System system, SystemOptions options = {});
+    // Removes a system, as the engine does when a game's code is reloaded. False if no system has
+    // this name.
+    bool remove_system(std::string_view name);
     // Every system, in the order they run.
     [[nodiscard]] std::vector<SystemInfo> systems() const;
     [[nodiscard]] std::vector<std::string_view> system_names() const;

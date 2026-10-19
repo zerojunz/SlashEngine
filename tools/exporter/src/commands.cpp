@@ -2,6 +2,8 @@
 
 #include "slash/command/session.hpp"
 #include "slash/exporter/export.hpp"
+#include "slash/exporter/gameplay.hpp"
+#include "slash/gameplay/host.hpp"
 
 #include <string>
 #include <utility>
@@ -49,6 +51,29 @@ Reply export_run(command::Session& session, const json::Value& params) {
                           "the exported game failed its headless test", std::move(result.json));
 }
 
+Reply gameplay_build(command::Session& session, const json::Value& /*params*/) {
+    const GameplayBuild built = build_gameplay(session.options().project_root);
+    json::Value result = built.to_json();
+    if (!built.ok) {
+        // Compiler errors are the caller's code to fix; a build that fails without any is not.
+        const int code = built.step == "options" || !built.errors.empty()
+                             ? command::code::kInvalidArgument
+                             : command::code::kPlatformFailure;
+        return Reply::failure(code, built.message, std::move(result));
+    }
+    // Swap the new code in now rather than before the next command.
+    if (const std::optional<gameplay::Load> load = session.poll_gameplay(); load) {
+        if (!load->error.empty()) {
+            result["error"] = load->error;
+            return Reply::failure(command::code::kInvalidArgument,
+                                  "the game's code built but did not load: " + load->error,
+                                  std::move(result));
+        }
+        result["reload"] = load->to_json();
+    }
+    return Reply::success(std::move(result));
+}
+
 } // namespace
 
 void register_export_commands(command::Registry& registry) {
@@ -71,6 +96,21 @@ void register_export_commands(command::Registry& registry) {
         .effect = command::Effect::Read,
         .params = std::move(params),
         .handler = export_run,
+    });
+
+    json::Value no_params;
+    no_params["type"] = "object";
+    no_params["additionalProperties"] = false;
+    no_params["properties"] = json::Object{};
+    registry.add({
+        .name = "gameplay.build",
+        .description = "Compiles the project's gameplay C++ (project.json gameplay.sources) and "
+                       "swaps it into the world, keeping entities and the fields still in the "
+                       "code. Returns compiler errors with file and line.",
+        .capabilities = {Capability::Filesystem, Capability::Build},
+        .effect = command::Effect::Read,
+        .params = std::move(no_params),
+        .handler = gameplay_build,
     });
 }
 

@@ -50,6 +50,7 @@ checks it.
 | `audio.panning_strength_2d` | No | `0.5` | How far [`AudioStreamPlayer2D`](scene-format.md#audio) sounds pan left and right, 0 to 4, as Godot's `audio/general/2d_panning_strength`. Each player's `panning_strength` multiplies it |
 | `audio.enable_input` | No | `false` | Let [microphone](scene-format.md#microphone) players record, as Godot's `audio/driver/enable_input`. Exports then ask for the microphone: `NSMicrophoneUsageDescription` in macOS and iOS apps, the `RECORD_AUDIO` permission on Android, and the `com.apple.security.device.audio-input` entitlement for a Mac app signed with a Developer ID and no `entitlements` file of its own (one that has its own needs that key) |
 | `audio.input_usage_description` | No | "*name* listens to the microphone." | Why the game records, which macOS and iOS show when they ask the player for the microphone. App Store review expects it to say what the game does with it |
+| `gameplay.sources` | No | | The game's own [C++ code](#gameplay-code): folders and files relative to the project, at least one |
 | `input` | No | Godot's `ui_*` actions | [Input actions](#input-actions) by name, each with the events that press it |
 | `input_devices.pointing.emulate_mouse_from_touch` | No | `true` | A touch also clicks the left mouse button and dragging it moves the mouse, so mouse code works on phones, as Godot's setting of the same name |
 | `input_devices.pointing.emulate_touch_from_mouse` | No | `false` | A left click also touches the screen and dragging with it drags a finger, so touch code can be tried with a mouse |
@@ -64,6 +65,52 @@ display's refresh rate. Exports ask phones for their fastest refresh rate: iOS a
 `CADisableMinimumFrameDurationOnPhone`, so iPhones with ProMotion run at 120 Hz, and Android apps
 pick the display's fastest mode at its current resolution. On the web the browser calls each
 frame at the display's rate, and a frame cap sets how often it calls instead.
+
+## Gameplay code
+
+A game's own components and systems are plain C++, as Godot's scripts are; there is no scripting
+language. `gameplay.sources` names where the code is: every `.cpp` file in a folder and its
+subfolders is compiled, and so is each `.cpp` file listed. The folders, and the folders of
+listed headers, are searched for includes.
+
+```json
+"gameplay": {"sources": ["src"]}
+```
+
+One source file defines the game's registration function with `SLASH_GAME_MODULE`
+(`slash/world/game_module.hpp`):
+
+```cpp
+#include "slash/world/components.hpp"
+#include "slash/world/game_module.hpp"
+
+struct Wallet {
+    int coins = 0;
+    int income = 1;
+};
+SLASH_COMPONENT(Wallet, coins, income)
+
+void earn(slash::world::World& world, double /*tick_seconds*/) {
+    world.ecs().view<Wallet>().each([](Wallet& wallet) { wallet.coins += wallet.income; });
+}
+
+SLASH_GAME_MODULE(game) {
+    game.add_component<Wallet>().set_doc("Coins an entity holds.");
+    game.add_system("earn", earn, {.doc = "Pays each wallet its income."});
+}
+```
+
+Exports compile the sources into the game for every platform. The tools build them into
+`.slash/gameplay/game.so` with [`slash-cli build`](cli.md#build) or
+[`gameplay.build`](commands.md#gameplaybuild) and load that, on macOS and Linux; when it is
+rebuilt they swap it in, and the world keeps its entities and each field the new code still has.
+Libraries built against other engine headers or with another compiler are refused.
+
+Code is built as the engine is, with no exceptions or RTTI. Keep the game's state in registered
+components, so scenes save it, `undo` restores it and rebuilding keeps it: values of components
+the code never registered, and anything kept in globals, are lost when the code is rebuilt, and
+the world's context (`World::ecs().ctx()`) must hold no values of the game's own types. A
+component or system named like one of the engine's is refused.
 
 ## Input actions
 
@@ -244,8 +291,11 @@ my-game/
   fonts/                # optional: .ttf and .otf fonts, and .font.json files with settings,
     title.ttf           #   in any folder
     title.font.json
+  src/                  # optional: the game's C++ code, as gameplay.sources names it
+    game.cpp
   build/           # exports land in build/export/<preset>/ (gitignored)
-  .slash/          # caches, export logs, a running server's token (gitignored)
+  .slash/          # caches, export logs, a running server's token, the built gameplay
+                   # library (gitignored)
 ```
 
 Only `project.json`, `.scene.json`, `.prefab.json`, `.frames.json`, `.material.json`,
@@ -253,5 +303,6 @@ Only `project.json`, `.scene.json`, `.prefab.json`, `.frames.json`, `.material.j
 and `.bmp` files ship in an export, and each is checked first: a texture SDL can't read or a
 font FreeType can't draw is an error, like a scene, material, process material, animation, tile
 set or font settings file that fails validation, a tile map layer whose legend or rows don't
-match its tile set, or controls that don't lay out as written. See
+match its tile set, or controls that don't lay out as written. Components of the game's own code
+are checked by the names and fields its sources declare. See
 [cli.md](cli.md#export) for `slash-cli export` and [scene-format.md](scene-format.md) for scenes.
