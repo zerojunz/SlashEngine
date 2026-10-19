@@ -1,3 +1,5 @@
+#include "devices.hpp"
+
 #include "slash/asset/assets.hpp"
 #include "slash/canvas/canvas.hpp"
 #include "slash/canvas/debug_draw.hpp"
@@ -33,6 +35,8 @@ namespace render = slash::render;
 namespace world = slash::world;
 using slash::Vec2;
 using slash::Vec2i;
+using slash::test::drawing_devices;
+using slash::test::hardware_devices;
 
 namespace {
 
@@ -910,18 +914,6 @@ TEST_CASE("the canvas draws tile map layers, one draw per run of a texture") {
 
 namespace {
 
-std::unique_ptr<render::RenderDevice> gpu_device() {
-    auto device = render::create_device({.window = nullptr, .driver = "auto", .debug = false});
-    if (!device) {
-        if (!slash::platform::environment_variable("SLASH_EXPECT_GPU").empty()) {
-            FAIL("SLASH_EXPECT_GPU is set, but no GPU device works: " << device.error().message);
-        }
-        MESSAGE("no GPU here, so tile pixels are not checked: " << device.error().message);
-        return nullptr;
-    }
-    return std::move(device).value();
-}
-
 Rgba pixel(const render::Image& image, std::uint32_t x, std::uint32_t y) {
     const std::size_t at = ((std::size_t{y} * image.width) + x) * 4;
     return {image.pixels[at], image.pixels[at + 1], image.pixels[at + 2], image.pixels[at + 3]};
@@ -930,38 +922,37 @@ Rgba pixel(const render::Image& image, std::uint32_t x, std::uint32_t y) {
 } // namespace
 
 TEST_CASE("tiles draw centered on their cells, moved by the layer's transform, on a GPU") {
-    auto device = gpu_device();
-    if (device == nullptr) {
-        return;
+    for (const auto& device : hardware_devices()) {
+        CAPTURE(render::backend_name(device->backend()));
+        Scene scene;
+        scene.create("map", R"({"Transform2D": {"position": [8, 0]},
+            "TileMapLayer": {"tile_set": "map.tileset.json", "texture_filter": "nearest",
+                             "origin": [-1, 1], "legend": {"r": "red", "b": "blue", "g": "green"},
+                             "rows": ["rb", ".g"]}})");
+        // A sprite above the layer covers one tile.
+        scene.files.write("white.png", grid_png({{{255, 255, 255, 255}}}, 8));
+        scene.create("marker", R"({"Transform2D": {"position": [12, 12]},
+            "Sprite2D": {"texture": "white.png", "texture_filter": "nearest", "z_index": 1}})");
+        auto target = device->create_texture(
+            {.width = 32, .height = 32, .filter = render::Filter::Nearest, .render_target = true});
+        REQUIRE(target.ok());
+        canvas::CanvasRenderer renderer(*device, scene.assets);
+        canvas::CanvasOptions options;
+        options.target = target.value();
+        options.clear = {.r = 0.0F, .g = 0.0F, .b = 0.0F, .a = 1.0F};
+        REQUIRE(renderer.draw(scene.world, options).ok());
+        CHECK(renderer.tiles_drawn() == 3);
+        auto image = device->read_texture(target.value());
+        REQUIRE(image.ok());
+        // Cell (-1, 1) spans x 0..8 after the transform, y 8..16: red, under the sprite.
+        CHECK(pixel(image.value(), 3, 9) == Rgba{255, 0, 0, 255});
+        CHECK(pixel(image.value(), 9, 9) == Rgba{255, 255, 255, 255}); // the sprite, over blue
+        CHECK(pixel(image.value(), 17, 9) == Rgba{0, 0, 0, 255});      // past the blue tile
+        // The 4x4 green tile sits centered in cell (0, 2): x 10..14, y 18..22.
+        CHECK(pixel(image.value(), 12, 20) == Rgba{0, 255, 0, 255});
+        CHECK(pixel(image.value(), 9, 20) == Rgba{0, 0, 0, 255});
+        CHECK(pixel(image.value(), 12, 17) == Rgba{0, 0, 0, 255});
     }
-    Scene scene;
-    scene.create("map", R"({"Transform2D": {"position": [8, 0]},
-        "TileMapLayer": {"tile_set": "map.tileset.json", "texture_filter": "nearest",
-                         "origin": [-1, 1], "legend": {"r": "red", "b": "blue", "g": "green"},
-                         "rows": ["rb", ".g"]}})");
-    // A sprite above the layer covers one tile.
-    scene.files.write("white.png", grid_png({{{255, 255, 255, 255}}}, 8));
-    scene.create("marker", R"({"Transform2D": {"position": [12, 12]},
-        "Sprite2D": {"texture": "white.png", "texture_filter": "nearest", "z_index": 1}})");
-    auto target = device->create_texture(
-        {.width = 32, .height = 32, .filter = render::Filter::Nearest, .render_target = true});
-    REQUIRE(target.ok());
-    canvas::CanvasRenderer renderer(*device, scene.assets);
-    canvas::CanvasOptions options;
-    options.target = target.value();
-    options.clear = {.r = 0.0F, .g = 0.0F, .b = 0.0F, .a = 1.0F};
-    REQUIRE(renderer.draw(scene.world, options).ok());
-    CHECK(renderer.tiles_drawn() == 3);
-    auto image = device->read_texture(target.value());
-    REQUIRE(image.ok());
-    // Cell (-1, 1) spans x 0..8 after the transform, y 8..16: red, under the sprite.
-    CHECK(pixel(image.value(), 3, 9) == Rgba{255, 0, 0, 255});
-    CHECK(pixel(image.value(), 9, 9) == Rgba{255, 255, 255, 255}); // the sprite, over blue
-    CHECK(pixel(image.value(), 17, 9) == Rgba{0, 0, 0, 255});      // past the blue tile
-    // The 4x4 green tile sits centered in cell (0, 2): x 10..14, y 18..22.
-    CHECK(pixel(image.value(), 12, 20) == Rgba{0, 255, 0, 255});
-    CHECK(pixel(image.value(), 9, 20) == Rgba{0, 0, 0, 255});
-    CHECK(pixel(image.value(), 12, 17) == Rgba{0, 0, 0, 255});
 }
 
 namespace {
@@ -1132,11 +1123,7 @@ TEST_CASE("turned and alternative tiles draw as Godot's draw_tile draws them") {
     const Rgba blue{0, 0, 255, 255};
     const Rgba white{255, 255, 255, 255};
     const Rgba black{0, 0, 0, 255};
-    std::vector<std::unique_ptr<render::RenderDevice>> devices;
-    devices.push_back(render::create_software_device());
-    if (auto gpu = gpu_device(); gpu != nullptr) {
-        devices.push_back(std::move(gpu));
-    }
+    const std::vector<std::unique_ptr<render::RenderDevice>> devices = drawing_devices();
     for (const auto& device : devices) {
         CAPTURE(render::backend_name(device->backend()));
         Scene scene;
@@ -1220,11 +1207,7 @@ TEST_CASE("a tile's texture origin moves its texture, and turns with the cell, a
     const Rgba blue{0, 0, 255, 255};
     const Rgba white{255, 255, 255, 255};
     const Rgba black{0, 0, 0, 255};
-    std::vector<std::unique_ptr<render::RenderDevice>> devices;
-    devices.push_back(render::create_software_device());
-    if (auto gpu = gpu_device(); gpu != nullptr) {
-        devices.push_back(std::move(gpu));
-    }
+    const std::vector<std::unique_ptr<render::RenderDevice>> devices = drawing_devices();
     for (const auto& device : devices) {
         CAPTURE(render::backend_name(device->backend()));
         Scene scene;
@@ -1337,11 +1320,7 @@ TEST_CASE("animated tiles and tiles larger than one cell, as Godot's TileSetAtla
     const Rgba blue{0, 0, 255, 255};
     const Rgba white{255, 255, 255, 255};
     const Rgba black{0, 0, 0, 255};
-    std::vector<std::unique_ptr<render::RenderDevice>> devices;
-    devices.push_back(render::create_software_device());
-    if (auto gpu = gpu_device(); gpu != nullptr) {
-        devices.push_back(std::move(gpu));
-    }
+    const std::vector<std::unique_ptr<render::RenderDevice>> devices = drawing_devices();
     for (const auto& device : devices) {
         CAPTURE(render::backend_name(device->backend()));
         Scene scene;
@@ -1406,11 +1385,7 @@ TEST_CASE("a tile set source's normal map turns light on its tiles, flipped with
     // with no normal map is lit as a flat tile, by light from any side.
     const Rgba white{255, 255, 255, 255};
     const Rgba black{0, 0, 0, 255};
-    std::vector<std::unique_ptr<render::RenderDevice>> devices;
-    devices.push_back(render::create_software_device());
-    if (auto gpu = gpu_device(); gpu != nullptr) {
-        devices.push_back(std::move(gpu));
-    }
+    const std::vector<std::unique_ptr<render::RenderDevice>> devices = drawing_devices();
     for (const auto& device : devices) {
         CAPTURE(render::backend_name(device->backend()));
         Scene scene;
@@ -1523,11 +1498,7 @@ TEST_CASE("isometric cells draw and collide at their centers, down the screen") 
     const Rgba red{255, 0, 0, 255};
     const Rgba blue{0, 0, 255, 255};
     const Rgba black{0, 0, 0, 255};
-    std::vector<std::unique_ptr<render::RenderDevice>> devices;
-    devices.push_back(render::create_software_device());
-    if (auto gpu = gpu_device(); gpu != nullptr) {
-        devices.push_back(std::move(gpu));
-    }
+    const std::vector<std::unique_ptr<render::RenderDevice>> devices = drawing_devices();
     for (const auto& device : devices) {
         CAPTURE(render::backend_name(device->backend()));
         Scene scene;
@@ -1713,11 +1684,7 @@ TEST_CASE("tiles' occluders cast shadows, as Godot's TileMapLayer places them in
     // doesn't shadow, until the sun's shadow_item_cull_mask takes it in.
     const Rgba white{255, 255, 255, 255};
     const Rgba black{0, 0, 0, 255};
-    std::vector<std::unique_ptr<render::RenderDevice>> devices;
-    devices.push_back(render::create_software_device());
-    if (auto gpu = gpu_device(); gpu != nullptr) {
-        devices.push_back(std::move(gpu));
-    }
+    const std::vector<std::unique_ptr<render::RenderDevice>> devices = drawing_devices();
     for (const auto& device : devices) {
         CAPTURE(render::backend_name(device->backend()));
         Scene scene;

@@ -1,0 +1,56 @@
+{
+  "entities": {
+    "ground": {
+      "components": {
+        "Sprite2D": {
+          "centered": false,
+          "texture": "ground.png"
+        },
+        "Transform2D": {
+          "position": [0.0, 9.0]
+        }
+      }
+    },
+    "hero": {
+      "components": {
+        "Sprite2D": {
+          "centered": false,
+          "material": "flash.material.json",
+          "material_params": {
+            "flash": 0.5
+          },
+          "texture": "hero.png",
+          "z_index": 1
+        },
+        "Transform2D": {
+          "position": [6.0, 4.0]
+        }
+      }
+    },
+    "sun": {
+      "components": {
+        "Sprite2D": {
+          "centered": false,
+          "texture": "sun.png"
+        },
+        "Transform2D": {
+          "position": [24.0, 1.0]
+        }
+      }
+    },
+    "tree": {
+      "components": {
+        "Sprite2D": {
+          "centered": false,
+          "modulate": [0.0, 0.6, 0.0, 1.0],
+          "texture": "white.png"
+        },
+        "Transform2D": {
+          "position": [14.0, 3.0],
+          "scale": [2.0, 3.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

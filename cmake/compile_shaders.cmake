@@ -1,7 +1,8 @@
-# Compiles an HLSL shader with vs_main and fs_main entry points into the forms SDL's GPU API
-# takes, and writes them to a C++ header: SPIR-V for Vulkan (glslang), MSL for Metal
-# (SPIRV-Cross), and the HLSL source itself, which Direct3D 12 compiles at startup with Windows'
-# own d3dcompiler. The headers are committed, so building the engine needs no shader tools.
+# Compiles an HLSL shader with vs_main and fs_main entry points into the forms the render devices
+# take, and writes them to a C++ header: SPIR-V for Vulkan (glslang), MSL for Metal and GLSL ES
+# 3.00 for OpenGL ES and WebGL 2 (SPIRV-Cross), and the HLSL source itself, which Direct3D 12
+# compiles at startup with Windows' own d3dcompiler. The headers are committed, so building the
+# engine needs no shader tools.
 #
 #   cmake -DSOURCE=<shader.hlsl> -DOUTPUT=<header> -DNAME=<Sprite> -DWORKDIR=<dir>
 #         -DGLSLANG=<glslangValidator> -DSPIRV_CROSS=<spirv-cross> -P compile_shaders.cmake
@@ -98,17 +99,32 @@ foreach(stage IN ITEMS vert frag)
     endif()
     set(spirv "${WORKDIR}/${base}.${stage}.spv")
     set(msl "${WORKDIR}/${base}.${stage}.msl")
+    set(glsl "${WORKDIR}/${base}.${stage}.glsl")
     run(glslang "${GLSLANG}" -D -V -S ${stage} -e ${entry} --auto-sampled-textures "${SOURCE}"
         -o "${spirv}")
     # Metal's texture, sampler and buffer indexes are the HLSL registers, as SDL binds them.
     run(spirv-cross "${SPIRV_CROSS}" --msl --msl-version 20100 --msl-decoration-binding
         --stage ${stage} --entry ${entry} "${spirv}" --output "${msl}")
+    # GLSL ES 3.00 can't place varyings by location, so both stages name them alike to link,
+    # and fragment shaders compute in full precision as the other backends do.
+    if(stage STREQUAL "vert")
+        set(io out)
+    else()
+        set(io in)
+    endif()
+    run(spirv-cross "${SPIRV_CROSS}" --es --version 300 --stage ${stage} --entry ${entry}
+        --rename-interface-variable ${io} 0 v_uv --rename-interface-variable ${io} 1 v_color
+        --rename-interface-variable ${io} 2 v_world "${spirv}" --output "${glsl}")
     hex_array("${spirv}" bytes)
     file(READ "${msl}" msl_text)
     raw_literals("${msl_text}" msl msl_literals)
+    file(READ "${glsl}" glsl_text)
+    string(REPLACE "precision mediump float;" "precision highp float;" glsl_text "${glsl_text}")
+    raw_literals("${glsl_text}" glsl glsl_literals)
     string(APPEND body
         "alignas(4) inline constexpr unsigned char k${NAME}${label}Spirv[] = {\n${bytes}};\n\n"
-        "inline constexpr char k${NAME}${label}Msl[] = ${msl_literals};\n\n")
+        "inline constexpr char k${NAME}${label}Msl[] = ${msl_literals};\n\n"
+        "inline constexpr char k${NAME}${label}Glsl[] = ${glsl_literals};\n\n")
 endforeach()
 file(READ "${SOURCE}" hlsl_text)
 raw_literals("${hlsl_text}" hlsl hlsl_literals)

@@ -140,6 +140,31 @@ vertex vs_main_out vs_main(vs_main_in in [[stage_in]], constant View& _32 [[buff
 
 )msl";
 
+inline constexpr char kSpriteVertexGlsl[] = R"glsl(#version 300 es
+
+layout(std140) uniform View
+{
+    layout(row_major) mat4 view_projection;
+} _32;
+
+layout(location = 0) in vec2 input_position;
+layout(location = 1) in vec2 input_uv;
+layout(location = 2) in vec4 input_color;
+out vec2 v_uv;
+out vec4 v_color;
+
+highp mat4 spvWorkaroundRowMajor(highp mat4 wrap) { return wrap; }
+mediump mat4 spvWorkaroundRowMajorMP(mediump mat4 wrap) { return wrap; }
+
+void main()
+{
+    v_uv = input_uv;
+    v_color = input_color;
+    gl_Position = vec4(input_position, 0.0, 1.0) * spvWorkaroundRowMajor(_32.view_projection);
+}
+
+)glsl";
+
 alignas(4) inline constexpr unsigned char kSpriteFragmentSpirv[] = {
     0x03, 0x02, 0x23, 0x07, 0x00, 0x00, 0x01, 0x00, 0x0b, 0x00, 0x08, 0x00,
     0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x11, 0x00, 0x02, 0x00,
@@ -224,6 +249,23 @@ fragment fs_main_out fs_main(fs_main_in in [[stage_in]], texture2d<float> sprite
 }
 
 )msl";
+
+inline constexpr char kSpriteFragmentGlsl[] = R"glsl(#version 300 es
+precision highp float;
+precision highp int;
+
+uniform highp sampler2D sprite_texture;
+
+in highp vec2 v_uv;
+in highp vec4 v_color;
+layout(location = 0) out highp vec4 _entryPointOutput;
+
+void main()
+{
+    _entryPointOutput = texture(sprite_texture, v_uv) * v_color;
+}
+
+)glsl";
 
 inline constexpr char kSpriteHlsl[] = R"hlsl(// The 2D shader: triangles with a position in pixels, a texture coordinate and a color that
 // multiplies the texture. Registers follow SDL's GPU conventions: vertex uniforms in space1,

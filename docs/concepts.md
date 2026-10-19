@@ -49,7 +49,7 @@ The code follows the same split, one CMake library per module under `engine/`:
 | --- | --- |
 | `core` | `Result<T>`, JSON logging, JSON parsing and schemas, reflection, math, the fixed-step clock |
 | `platform` | The SDL3 window, the run loop and file access |
-| `render` | The render device: SDL3's GPU API (Vulkan, Metal, Direct3D 12), the software device that draws on the CPU, or the null device for headless runs |
+| `render` | The render device: SDL3's GPU API (Vulkan, Metal, Direct3D 12), OpenGL ES 3.0 (WebGL 2 on the web), the software device that draws on the CPU, or the null device for headless runs |
 | `asset` | Asset handles, loaders and hot reload |
 | `world` | The EnTT world, components, the component registry, scenes and prefabs |
 | `input` | Input, as Godot's: key, mouse, touch and gamepad events from SDL, rebindable actions and the state gameplay code reads |
@@ -268,7 +268,9 @@ hear, and `audio.play`, `audio.stop` and `audio.set_bus` change what plays. The
 
 Everything draws through a **render device**, about a dozen calls: make and update textures,
 begin a frame, draw triangles, end it, and read a texture's pixels back. On a GPU it is SDL3's GPU
-API, which uses Metal, Direct3D 12 or Vulkan, whichever the machine has. Headless runs, and
+API, which uses Metal, Direct3D 12 or Vulkan, whichever the machine has. On the web, where SDL3's
+GPU API has no backend, it is OpenGL ES 3.0, which browsers call WebGL 2; the `opengl` driver
+picks it elsewhere too, as Godot's compatibility renderer. Headless runs, and
 machines where no backend starts, use the **null device**: it keeps textures and checks every
 call exactly as the GPU device does, but draws nothing. So code tested headless fails the same
 way on a GPU, and `slash-cli run` and `slash-game` report which device drew in their summary's
@@ -286,9 +288,9 @@ much of it shows, what is covered, offscreen or transparent, and what can't draw
 map of the window if asked. It answers "can the player see the coin?" in a few dozen tokens,
 where an image costs hundreds and needs a model that sees.
 
-Shaders are written once in HLSL. Vulkan's SPIR-V and Metal's MSL are compiled ahead of time
-and committed, so building the engine needs no shader tools, and Direct3D 12 compiles the HLSL at
-startup with the compiler that comes with Windows. The
+Shaders are written once in HLSL. Vulkan's SPIR-V, Metal's MSL and OpenGL ES's GLSL are compiled
+ahead of time and committed, so building the engine needs no shader tools, and Direct3D 12
+compiles the HLSL at startup with the compiler that comes with Windows. The
 [draw-offscreen example](../examples/draw-offscreen/) draws into a texture and reads it back,
 which is how tests check what a game draws.
 
