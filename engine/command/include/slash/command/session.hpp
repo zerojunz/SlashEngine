@@ -20,6 +20,11 @@
 #include <string_view>
 #include <vector>
 
+namespace slash::gameplay {
+class Host;
+struct Load;
+} // namespace slash::gameplay
+
 namespace slash::command {
 
 struct SessionOptions {
@@ -36,6 +41,11 @@ struct SessionOptions {
     // Whether commands may write files. Sessions that run tests don't, so a test leaves the
     // project as it was: a command that would write a file fails instead.
     bool write_files = true;
+    // The game's own C++ code, made with the same component types as the session
+    // (slash/gameplay/host.hpp). The session attaches its world and polls it with the assets, so
+    // a rebuilt gameplay library is swapped in between commands and ticks. It must outlive the
+    // session.
+    gameplay::Host* gameplay = nullptr;
 };
 
 // One editing session: a world, the commands that act on it, undo history and recent logs.
@@ -103,6 +113,10 @@ public:
     // project.json applies its window, rendering, physics, input and audio settings again, so
     // what project.import or an edit writes there takes effect at once.
     void poll_assets();
+    // The gameplay half of poll_assets: if the gameplay library was rebuilt, swaps the new code in
+    // (keeping the world's values the new types still take), queues a "gameplay.reloaded" event
+    // with what changed and returns it. nullopt if there is no gameplay code or it is unchanged.
+    std::optional<gameplay::Load> poll_gameplay();
 
     // Project files that commands change, such as the storyboard. A command's changes are staged
     // and written together when the outermost command succeeds, so a failed command or a dry run

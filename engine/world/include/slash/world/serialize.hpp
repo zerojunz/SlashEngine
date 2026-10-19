@@ -107,6 +107,8 @@ public:
 
     // The definition named name; it must already exist.
     [[nodiscard]] json::Value& definition(std::string_view name);
+    // Adds a definition no C++ type stands behind, and returns a $ref to it.
+    json::Value define(std::string_view name, json::Value schema);
 
     [[nodiscard]] const json::Object& definitions() const noexcept { return definitions_; }
 

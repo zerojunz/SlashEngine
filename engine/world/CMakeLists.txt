@@ -3,6 +3,7 @@ add_library(slash_world
     src/canvas_layer.cpp
     src/component_registry.cpp
     src/components.cpp
+    src/game_module.cpp
     src/scene.cpp
     src/tree2d.cpp
     src/world.cpp)

@@ -127,4 +127,7 @@ enum class Style : std::uint8_t {
 // becomes "~1".
 [[nodiscard]] std::string pointer_escape(std::string_view key);
 
+// The key a JSON Pointer's first segment names, unescaped: "armor" for "/armor/0". "" for "".
+[[nodiscard]] std::string pointer_first_key(std::string_view pointer);
+
 } // namespace slash::json

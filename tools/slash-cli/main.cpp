@@ -22,8 +22,10 @@
 #include "slash/debug/overlay.hpp"
 #include "slash/exporter/commands.hpp"
 #include "slash/exporter/export.hpp"
+#include "slash/exporter/gameplay.hpp"
 #include "slash/exporter/presets.hpp"
 #include "slash/exporter/toolchains.hpp"
+#include "slash/gameplay/host.hpp"
 #include "slash/importer/commands.hpp"
 #include "slash/importer/import.hpp"
 #include "slash/input/sdl.hpp"
@@ -31,6 +33,7 @@
 #include "slash/platform/platform.hpp"
 #include "slash/platform/run.hpp"
 #include "slash/render/device.hpp"
+#include "slash/runtime/gameplay.hpp"
 #include "slash/runtime/project.hpp"
 #include "slash/server/server.hpp"
 #include "slash/shader_compiler/shader_compiler.hpp"
@@ -146,6 +149,11 @@ Usage:
                                      there
       --dry-run                      Print the report and the files it would write; write
                                      nothing
+  slash-cli build                    Compile the project's gameplay C++ (project.json
+                                     "gameplay") into the library the tools load; running
+                                     tools swap it in, keeping the world
+      --project <dir>                Game folder with project.json (default ".")
+      --engine <dir>                 Engine sources (default: SLASH_ENGINE_DIR or built in)
   slash-cli export <preset>          Build and sign the game with a preset from
                                      export_presets.json, or with a platform's defaults:
                                      macos, windows, linux, web, android or ios
@@ -278,9 +286,12 @@ json::Value error_json(const command::Reply& reply) {
 struct Engine {
     world::ComponentRegistry components = make_registry();
     command::Registry commands;
+    // The project's own C++ code, from its gameplay library.
+    slash::gameplay::Host gameplay;
     std::unique_ptr<command::Session> session;
 
-    explicit Engine(const command::SessionOptions& options, bool running = false) {
+    explicit Engine(const command::SessionOptions& options, bool running = false)
+        : gameplay(components, slash::gameplay::library_path(options.project_root)) {
         command::register_builtin_commands(commands);
         slash::importer::register_import_commands(commands, {.unpack_builds = !running});
         if (running) {
@@ -290,6 +301,7 @@ struct Engine {
         }
         command::SessionOptions session_options = options;
         session_options.capture_logs = false;
+        session_options.gameplay = &gameplay;
         session = std::make_unique<command::Session>(components, commands, session_options);
     }
 };
@@ -680,6 +692,18 @@ world::FileReader prefab_reader(const std::string& file) {
     return slash::runtime::folder_reader(project_folder(file));
 }
 
+// Adds the component types of the game's own code to a registry, for checking a file of its
+// project: from its gameplay library if it is built, else stand-ins for what its sources declare.
+slash::runtime::GameplayTypes add_project_types(world::ComponentRegistry& registry,
+                                                const std::string& file) {
+    const std::string folder = project_folder(file);
+    auto project = slash::runtime::load_project(folder);
+    if (!project) {
+        return slash::runtime::GameplayTypes::None;
+    }
+    return slash::runtime::add_gameplay_types(registry, folder, project.value(), true);
+}
+
 // Errors for StoryRef IDs in a scene or prefab that name no entry in its project's storyboard.
 void check_story_refs(const std::string& file, const json::Value& document,
                       std::vector<json::ValidationError>& errors) {
@@ -711,7 +735,8 @@ int cmd_scene_validate(const std::string& path) {
     if (!text) {
         return failure("could not read the file", text.error());
     }
-    const world::ComponentRegistry registry = make_registry();
+    world::ComponentRegistry registry = make_registry();
+    (void)add_project_types(registry, path);
     const bool prefab = path.ends_with(world::kPrefabSuffix);
     const bool frames = path.ends_with(slash::canvas::kSpriteFramesSuffix);
     const bool material = path.ends_with(slash::canvas::kMaterialSuffix);
@@ -846,7 +871,14 @@ int cmd_scene_format(const std::string& path, bool check) {
     if (!text) {
         return failure("could not read the file", text.error());
     }
-    const world::ComponentRegistry registry = make_registry();
+    // Formatting loads the file into a world, so it needs the game's code built: stand-ins would
+    // leave its components out.
+    world::ComponentRegistry registry = make_registry();
+    const bool unbuilt =
+        add_project_types(registry, path) == slash::runtime::GameplayTypes::Declared;
+    if (unbuilt) {
+        registry = make_registry();
+    }
     auto formatted = [&]() -> slash::Result<std::string> {
         if (path.ends_with(slash::canvas::kSpriteFramesSuffix)) {
             return format_checked(text.value(), slash::canvas::parse_sprite_frames);
@@ -897,6 +929,11 @@ int cmd_scene_format(const std::string& path, bool check) {
         return world::format_scene(registry, text.value(), prefab_reader(path));
     }();
     if (!formatted) {
+        if (unbuilt) {
+            return failure("could not format the file; the game's code is not built, so its "
+                           "components are unknown (build it with \"slash-cli build\")",
+                           formatted.error());
+        }
         return failure("could not format the file", formatted.error());
     }
     const bool canonical = formatted.value() == text.value();
@@ -1303,6 +1340,46 @@ int cmd_import(const std::vector<std::string>& args) {
     return kExitOk;
 }
 
+int cmd_build(const std::vector<std::string>& args) {
+    std::string project = ".";
+    std::string engine;
+    for (std::size_t i = 0; i < args.size(); ++i) {
+        const std::string& arg = args[i];
+        const bool has_value = i + 1 < args.size();
+        if (arg == "--project" && has_value) {
+            project = args[++i];
+        } else if (arg == "--engine" && has_value) {
+            engine = args[++i];
+        } else {
+            return usage_error("unexpected argument for build: " + arg);
+        }
+    }
+    const slash::exporter::GameplayBuild built = slash::exporter::build_gameplay(project, engine);
+    json::Value result = built.to_json();
+    std::string message = built.message;
+    if (built.ok) {
+        // Load it as the tools will, to catch what only loading finds.
+        world::ComponentRegistry components = make_registry();
+        world::World world(components);
+        slash::gameplay::Host host(components, slash::gameplay::library_path(project));
+        const slash::gameplay::Load load = host.attach(world);
+        if (load.error.empty()) {
+            const json::Value status = host.status();
+            result["components"] = *status.find("components");
+            result["systems"] = *status.find("systems");
+            print(result);
+            return kExitOk;
+        }
+        result["step"] = "load";
+        message = "the game's code built but did not load: " + load.error;
+    }
+    result["message"] = message;
+    json::Value out;
+    out["error"] = std::move(result);
+    print(out);
+    return built.step == "options" ? kExitUsage : kExitFailure;
+}
+
 int cmd_export(const std::vector<std::string>& args) {
     slash::exporter::ExportOptions options;
     for (std::size_t i = 0; i < args.size(); ++i) {
@@ -1525,6 +1602,9 @@ int main(int argc, char** argv) {
     }
     if (name == "import") {
         return cmd_import(args);
+    }
+    if (name == "build") {
+        return cmd_build(args);
     }
     if (name == "export") {
         return cmd_export(args);

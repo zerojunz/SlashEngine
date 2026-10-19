@@ -394,6 +394,9 @@ jobs:
       - name: Configure for clang-tidy
         run: cmake --preset ci -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18
 
+      - name: Generate headers
+        run: cmake --build build/ci --target slash_api_hash
+
       - name: Check licenses
         run: ctest --preset ci -R licenses
 

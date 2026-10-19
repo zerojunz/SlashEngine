@@ -119,6 +119,12 @@ void World::add_system(std::string name, System system, SystemOptions options) {
     systems_.insert(position, {std::move(name), std::move(system), std::move(options)});
 }
 
+bool World::remove_system(std::string_view name) {
+    SLASH_ASSERT(!stepping_, "systems cannot be removed while the world is stepping");
+    return std::erase_if(systems_, [&](const NamedSystem& added) { return added.name == name; }) >
+           0;
+}
+
 std::vector<SystemInfo> World::systems() const {
     std::vector<SystemInfo> out;
     out.reserve(systems_.size());

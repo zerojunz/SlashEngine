@@ -11,6 +11,7 @@ add_executable(slash_tests
     test_exporter.cpp
     test_fixed_step.cpp
     test_frame_summary.cpp
+    test_gameplay.cpp
     test_godot_pack.cpp
     test_gpu_particles.cpp
     test_gpu_particles_2d.cpp
@@ -61,6 +62,7 @@ target_link_libraries(slash_tests PRIVATE
 target_compile_definitions(slash_tests PRIVATE DOCTEST_CONFIG_USE_STD_HEADERS
     SLASH_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data" SLASH_TEST_CMAKE="${CMAKE_COMMAND}")
 slash_target_warnings(slash_tests)
+slash_gameplay_host(slash_tests)
 
 # A stand-in for AssetRipper's web interface, so the Unity build tests and the unpack-unity
 # example run without downloading it.
@@ -70,6 +72,29 @@ slash_target_warnings(fake-assetripper)
 add_dependencies(slash_tests fake-assetripper)
 target_compile_definitions(slash_tests PRIVATE
     SLASH_FAKE_ASSETRIPPER="$<TARGET_FILE:fake-assetripper>")
+
+# Gameplay libraries for test_gameplay.cpp, built as cmake/gameplay builds a game's code: with the
+# engine's headers, and its functions left for the program that loads them.
+if(APPLE OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    foreach(variant IN ITEMS v1 v2 v3 duplicate engine_component engine_system no_entry bad_abi)
+        string(TOUPPER ${variant} upper)
+        add_library(gameplay_${variant} MODULE gameplay_module.cpp)
+        set_target_properties(gameplay_${variant} PROPERTIES PREFIX "" SUFFIX ".so"
+            LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/gameplay_modules)
+        target_include_directories(gameplay_${variant} PRIVATE
+            $<TARGET_PROPERTY:slash_runtime,INTERFACE_INCLUDE_DIRECTORIES>)
+        target_compile_definitions(gameplay_${variant} PRIVATE SLASH_TEST_MODULE_${upper}
+            $<TARGET_PROPERTY:slash_runtime,INTERFACE_COMPILE_DEFINITIONS>)
+        target_compile_options(gameplay_${variant} PRIVATE -fno-exceptions -fno-rtti
+            $<$<CXX_COMPILER_ID:GNU>:-fno-gnu-unique>)
+        if(APPLE)
+            target_link_options(gameplay_${variant} PRIVATE -undefined dynamic_lookup)
+        endif()
+        add_dependencies(slash_tests gameplay_${variant})
+    endforeach()
+    target_compile_definitions(slash_tests PRIVATE
+        SLASH_TEST_GAMEPLAY_DIR="${CMAKE_CURRENT_BINARY_DIR}/gameplay_modules")
+endif()
 
 add_test(NAME unit COMMAND slash_tests WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 

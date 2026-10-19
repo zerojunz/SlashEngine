@@ -429,9 +429,16 @@ rendering on top.
 
 Exit: an agent builds `samples/pong` end to end and exports it to all six platforms.
 
-### Milestone 6: Hot reload, AI and profiling (Planned)
+### Milestone 6: Hot reload, AI and profiling (In progress)
 
-- [ ] Gameplay as a C++ shared library that reloads on rebuild and keeps world state
+- [x] Gameplay as a C++ shared library that reloads on rebuild and keeps world state: a game's
+      code in `project.json`'s `gameplay.sources`, registered with `SLASH_GAME_MODULE`, linked
+      into exports for every platform and loaded by the tools on macOS and Linux.
+      `gameplay.build` and `slash-cli build` compile it and return compiler errors with file and
+      line; the new code swaps into the running world, keeping each entity and the fields the
+      code still has and reporting what it dropped. Libraries built against other engine headers
+      or with another compiler are refused, and scenes are checked by the components the sources
+      declare when the code isn't built
 - [ ] SDK packages, so a game adds a closed vendor SDK (an ad network, DLSS, Steamworks, a store
       or analytics service) without touching the engine, as Godot's Android and iOS plugins and
       Unity's External Dependency Manager do. Nothing from the SDKs enters this repository
@@ -670,7 +677,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Area | SlashEngine approach | Milestone | Status |
 | --- | --- | --- | --- |
 | Editor | No GUI editor: MCP and REST command API, debug overlay, frame capture | 3, 5 | Done |
-| Gameplay code | C++ with hot reload; plugins as C++ modules with a stable C ABI | 6 | Planned |
+| Gameplay code | C++ with hot reload; plugins as C++ modules with a stable C ABI | 6 | In part: game code in C++ that hot reloads in the tools and links into exports is done; plugin modules with a C ABI in 6 |
 | Scenes and prefabs | JSON scenes, prefabs and instanced scenes with overrides, on EnTT | 2, 5 | Done |
 | 2D sprites and animation | Batched sprites, sprite sheets, flipbooks | 5 | Done |
 | Tilemaps | Tilemap layers with terrain autotiling, stored as text | 5 | In part: square, isometric and hexagonal tiles, alternatives, turned cells and collision are done; animated and multi-cell tiles in 5 |

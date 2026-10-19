@@ -293,6 +293,35 @@ version is 10.0; llvm-mingw builds keep 6.0, since Windows 11 won't start a MinG
 marked 10.0), Android 11 (API level 30, targeting 36), and Chrome 85, Firefox 79 and Safari 15
 (pinned in `export/CMakeLists.txt`).
 
+## Gameplay code
+
+A game's own components and systems are plain C++ in the folders and files `project.json`'s
+`gameplay.sources` names (`src` in games `slash-cli init` makes), registered in one
+`SLASH_GAME_MODULE(game) { ... }` function (`engine/world/include/slash/world/game_module.hpp`),
+as Godot's scripts are. Exports compile the sources into the game (`SLASH_GAME_SOURCES` in
+`export/CMakeLists.txt`). The tools load them as a library instead, on macOS and Linux:
+
+```bash
+$cli build --project path/to/game     # or the gameplay.build command; compiler errors with file and line
+```
+
+`exporter::build_gameplay` configures `cmake/gameplay/CMakeLists.txt` with the compiler, flags
+and include folders of the engine build the program came from (`build/<preset>/gameplay-sdk.cmake`)
+and builds `.slash/gameplay/game.so`, its engine symbols left for the program to supply.
+`gameplay::Host` (`engine/gameplay`) loads it from a copy with a name of its own, refuses one
+built against other headers (`SLASH_API_HASH`, a hash of `engine/*/include` and the pinned
+dependencies) or with another compiler, and when the file changes swaps the code in: it saves
+each entity's components of the old types as JSON, removes the old systems and their pools,
+moves the new types into the world's `ComponentRegistry` and puts the values back field by
+field, reporting what it had to drop. Libraries are never unloaded. Hosts link the engine
+libraries whole and export their symbols (`slash_gameplay_host` in CMake). Sessions poll it
+before each command (`gameplay.reloaded` events), `slash-game` before each tick, and
+`scene validate` and exports check the game's components by what its sources declare when the
+library isn't there (`runtime::add_gameplay_types`, `ComponentRegistry::add_stand_in`). Because
+the swap goes through JSON, gameplay state belongs in registered components. Restoring a world
+saved under older code (`undo`, `world.restore`) leaves out what no longer fits.
+`examples/gameplay-code` builds, changes and breaks a game's code while it runs.
+
 ## Importing games from other engines
 
 `tools/importer` converts a game made in another engine into a SlashEngine project: Godot 4 and
@@ -779,6 +808,9 @@ registry.add<Health>()
     .describe("current", {.doc = "Hit points left.", .min = 0.0});
 ```
 
+A game's own components are registered the same way in its `SLASH_GAME_MODULE` function, with
+`game.add_component<Health>()` (see [Gameplay code](#gameplay-code)).
+
 Supported field types are listed in `engine/world/include/slash/world/serialize.hpp`. Use
 `SLASH_REFLECT` for structs that appear inside components. Built-in components are in
 `engine/world/include/slash/world/components.hpp`.
@@ -830,8 +862,9 @@ CI rejects unformatted code and any clang-tidy finding.
   animations and the system that plays them),
   `physics2d` (2D bodies, areas, joints and queries on Box2D), `storyboard` (storyboard kinds, files, versions,
   queries, edits, briefs and checks), `command` (commands, sessions with undo, JSON-RPC and MCP),
-  `debug` (the debug overlay over a running game), `server` (localhost HTTP over a session) and
-  `runtime` (project files and the game executable).
+  `debug` (the debug overlay over a running game), `server` (localhost HTTP over a session),
+  `gameplay` (loading and reloading a game's own code) and `runtime` (project files and the game
+  executable).
   Tool-only libraries such as `tools/exporter`, `tools/importer` and `tools/shader_compiler` use
   the same layout and may use exceptions.
 - New dependencies are pinned in `cmake/dependencies.json` (repository, tag, SPDX license and
