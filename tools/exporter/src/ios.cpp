@@ -401,6 +401,12 @@ bool sign_ios_app(const IosSigning& signing, const fs::path& app,
                                  "--generate-entitlement-der"});
     }
     args.push_back(bundle);
+    // What SDK packages embed is signed first, with the same identity and no entitlements.
+    if (!sign_nested(app / "Frameworks",
+                     {"codesign", "--force", "--sign", signing.identity, "--timestamp=none"},
+                     process, failure)) {
+        return false;
+    }
     return step("sign", args, process, failure) &&
            step("sign", {"codesign", "--verify", "--strict", bundle}, process, failure);
 }

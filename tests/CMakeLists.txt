@@ -36,6 +36,7 @@ add_executable(slash_tests
     test_rpc.cpp
     test_runtime.cpp
     test_scene.cpp
+    test_sdk.cpp
     test_server.cpp
     test_shader.cpp
     test_storyboard.cpp

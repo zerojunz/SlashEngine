@@ -247,6 +247,12 @@ json::Value project_schema() {
         "file in it and its subfolders. gameplay.build makes the library the tools load, and "
         "exports link the code in.";
     properties["gameplay"] = std::move(gameplay);
+    json::Value& sdks = properties["sdks"];
+    sdks["type"] = "array";
+    sdks["items"]["type"] = "string";
+    sdks["description"] =
+        "Folders of SDK packages, relative to the project: closed vendor SDKs, each with an "
+        "sdk.json (\"slash-cli schema sdk\"), that exports link into the game.";
     return schema;
 }
 
@@ -289,6 +295,16 @@ std::vector<json::ValidationError> validate_project(const json::Value& project) 
                 errors.push_back({"/gameplay/sources/" + std::to_string(i),
                                   "expected a path inside the project folder, separated by '/', "
                                   "with no \".\" or \"..\" parts"});
+            }
+        }
+    }
+    if (const json::Value* sdks = project.find("sdks"); sdks != nullptr) {
+        const json::Array& folders = sdks->as_array();
+        for (std::size_t i = 0; i < folders.size(); ++i) {
+            if (!is_project_path(folders[i].as_string())) {
+                errors.push_back({"/sdks/" + std::to_string(i),
+                                  "expected a folder inside the project, separated by '/', with "
+                                  "no \".\" or \"..\" parts"});
             }
         }
     }
@@ -395,6 +411,11 @@ Result<Project> parse_project(const json::Value& project) {
     if (const json::Value* gameplay = project.find("gameplay"); gameplay != nullptr) {
         for (const json::Value& source : gameplay->find("sources")->as_array()) {
             out.gameplay_sources.push_back(source.as_string());
+        }
+    }
+    if (const json::Value* sdks = project.find("sdks"); sdks != nullptr) {
+        for (const json::Value& folder : sdks->as_array()) {
+            out.sdks.push_back(folder.as_string());
         }
     }
     return out;

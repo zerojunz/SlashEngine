@@ -27,5 +27,6 @@
     <key>NSHighResolutionCapable</key>
     <true/>
     ${SLASH_MICROPHONE_PLIST}
+    ${SLASH_SDK_PLIST}
 </dict>
 </plist>

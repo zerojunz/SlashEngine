@@ -2,6 +2,7 @@
 
 #include "slash/core/log.hpp"
 
+#include <algorithm>
 #include <system_error>
 #include <utility>
 
@@ -68,6 +69,27 @@ bool step(const std::string& name, const std::vector<std::string>& args,
                           std::to_string(result.value().exit_code) + " during " + name;
         failure.details["tail"] = result.value().tail;
         return false;
+    }
+    return true;
+}
+
+bool sign_nested(const fs::path& frameworks, const std::vector<std::string>& args,
+                 const platform::ProcessOptions& process, Failure& failure) {
+    std::error_code error;
+    if (!fs::is_directory(frameworks, error)) {
+        return true;
+    }
+    std::vector<fs::path> items;
+    for (const fs::directory_entry& entry : fs::directory_iterator(frameworks, error)) {
+        items.push_back(entry.path());
+    }
+    std::ranges::sort(items);
+    for (const fs::path& item : items) {
+        std::vector<std::string> sign = args;
+        sign.push_back(item.string());
+        if (!step("sign", sign, process, failure)) {
+            return false;
+        }
     }
     return true;
 }

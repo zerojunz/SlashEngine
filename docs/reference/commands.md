@@ -80,7 +80,7 @@ as `entity.get`, reject it as an unknown param.
 | Observe | [`events.subscribe`](#eventssubscribe), [`events.read`](#eventsread), [`events.unsubscribe`](#eventsunsubscribe), [`log.tail`](#logtail), [`frame.capture`](#framecapture), [`frame.summary`](#framesummary), [`canvas.convert`](#canvasconvert) |
 | Display | [`display.list`](#displaylist), [`display.set`](#displayset), [`perf.stats`](#perfstats), [`debug.overlay`](#debugoverlay) |
 | Import | [`project.import`](#projectimport) |
-| Export | [`export.run`](#exportrun) |
+| Export | [`export.run`](#exportrun), [`sdk.check`](#sdkcheck), [`sdk.add`](#sdkadd) |
 | Gameplay code | [`gameplay.build`](#gameplaybuild) |
 
 
@@ -2744,6 +2744,63 @@ path.
 ```json
 {"code":-32002,"data":{"step":"options"},"message":"no preset or platform called \"macso\"; did you mean \"macos\"?"}
 ```
+
+### sdk.check
+
+Checks the project's [SDK packages](sdk-format.md#sdk-check): each `sdk.json`, the presets'
+`sdks`, the keys in the environment and that every file a platform links exists, for each
+architecture the presets build. Registered next to `export.run`.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `platform` | string | every platform | Check only this platform's builds: `macos`, `windows`, `linux`, `web`, `android` or `ios` |
+| `fetch` | boolean | `false` | Download the files not fetched yet, so they are checked too |
+
+Needs: `read`, `filesystem`; `fetch` also needs `build` (`-32003` without it, with `data.path`
+`/fetch`).
+
+```json
+{"platform": "linux"}
+```
+
+```json
+{"ok":false,"problems":[{"message":"set the environment variable HELLO_APP_ID: The game's ID on the Hello dashboard; any text does for the stand-in.","path":"/keys/HELLO_APP_ID","sdk":"sdks/hello"}],"sdks":[{"folder":"sdks/hello","license":"MIT","name":"hello","platforms":["android","ios","linux","macos","web","windows"],"version":"1.0.0"}]}
+```
+
+Problems don't fail the command: `ok` says whether there were any. Each names the package's
+folder in `sdk` (or `export_presets.json` for a preset's `sdks`), the JSON Pointer into its file
+in `path` and the `message`. A package's downloads not fetched yet are listed in its `unchecked`.
+
+### sdk.add
+
+Adds an [SDK package](sdk-format.md#sdk-add) to `project.json`'s `sdks`. A folder in the project
+is listed where it is; a git repository or an `https://` `.zip` or `.tar` archive is copied into
+`sdks/<name>`. Listing a package twice does nothing.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `source` | string | required | A package folder in the project, a git repository URL, or an archive's `https://` URL |
+| `name` | string | the package's name | Folder under `sdks/` for a copied package |
+| `ref` | string | the default branch | Git branch or tag to clone |
+| `sha256` | string | not checked | The archive's SHA-256; a mismatch adds nothing |
+| `dry_run` | boolean | `false` | Check the package and return what would be added; change nothing |
+
+Needs: `read`, `filesystem`; a URL also needs `build`. It changes no scene, so there is nothing to
+undo; remove the folder from `sdks` to take a package out.
+
+```json
+{"source": "vendor/greeter"}
+```
+
+```json
+{"copied":false,"folder":"vendor/greeter","keys":[],"license":"MIT","name":"greeter","platforms":["linux","macos","windows"],"version":"0.3.0"}
+```
+
+`keys` lists the environment variables to set before exporting. A folder outside the project
+fails with `-32003`, a missing folder with `-32001`, a folder with no `sdk.json` or an invalid
+one with `-32002`, a package whose
+folder under `sdks/` exists with `-32005`, and a failed clone or download with `-32004`;
+`data.path` is `/source`.
 
 ## Gameplay code
 

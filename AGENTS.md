@@ -79,7 +79,7 @@ body of their own (`shape_key_of` in `engine/physics2d/src/space.cpp`), as Godot
 `CollisionShape2D` nodes. `examples/parent-transforms` sails a boat.
 
 ```bash
-$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, process_material, tileset, font, theme, audio, bus_layout, replay, test)
+$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, process_material, tileset, font, theme, audio, bus_layout, replay, test, sdk)
 $cli scene validate tests/data/basic.scene.json     # every error, with its JSON Pointer path
 $cli scene format level.scene.json                  # rewrite in canonical form
 $cli scene format --check level.scene.json          # exit 1 if not canonical
@@ -259,6 +259,18 @@ SDK, NDK and a JDK on any host. CI exports and runs an empty game for macOS, Win
 Android (on an emulator) and iOS (in the Simulator) on every PR, cross-exports Windows and Linux
 (x86_64 and arm64) from macOS and runs them on Windows and Ubuntu 20.04, and `slash-cli init` writes
 the per-platform workflow into new games.
+
+Closed vendor SDKs (ads, stores, Steamworks) come in as SDK packages, as Godot's Android and
+iOS plugins: a folder with an `sdk.json` (`$cli schema sdk`; `tools/exporter/src/sdk.cpp`) naming
+per platform the libraries, frameworks, defines, files, Info.plist, entitlement and Android
+manifest entries and `.jar` files, with the vendor's binaries downloaded by URL and SHA-256 into
+`~/.slash/sdks` or found at a local path, and API keys as environment variables.
+`project.json`'s `sdks` lists them and a preset's `sdks` picks which it links. Exports build each
+package's own CMake project with the game's compilers, write `slash_game_sdk()` calls into
+`<build>/sdks.cmake` for `export/CMakeLists.txt`, ship shared libraries where each platform's
+loader looks and define `SLASH_SDK_<NAME>` for the game's code. `$cli sdk add` and `sdk check`
+(and the `sdk.add` and `sdk.check` commands) add and check packages; `examples/sdk-package` has
+a stand-in SDK built from source, which CI links into every platform's export.
 
 The export code is the `tools/exporter` library, shared by slash-cli and slash-mcp. It also
 registers `export.run`, the one command that needs the `build` capability; a running game leaves

@@ -51,6 +51,7 @@ checks it.
 | `audio.enable_input` | No | `false` | Let [microphone](scene-format.md#microphone) players record, as Godot's `audio/driver/enable_input`. Exports then ask for the microphone: `NSMicrophoneUsageDescription` in macOS and iOS apps, the `RECORD_AUDIO` permission on Android, and the `com.apple.security.device.audio-input` entitlement for a Mac app signed with a Developer ID and no `entitlements` file of its own (one that has its own needs that key) |
 | `audio.input_usage_description` | No | "*name* listens to the microphone." | Why the game records, which macOS and iOS show when they ask the player for the microphone. App Store review expects it to say what the game does with it |
 | `gameplay.sources` | No | | The game's own [C++ code](#gameplay-code): folders and files relative to the project, at least one |
+| `sdks` | No | | [SDK packages](sdk-format.md) exports link: folders relative to the project, each with an `sdk.json`. `slash-cli sdk add` adds one |
 | `input` | No | Godot's `ui_*` actions | [Input actions](#input-actions) by name, each with the events that press it |
 | `input_devices.pointing.emulate_mouse_from_touch` | No | `true` | A touch also clicks the left mouse button and dragging it moves the mouse, so mouse code works on phones, as Godot's setting of the same name |
 | `input_devices.pointing.emulate_touch_from_mouse` | No | `false` | A left click also touches the screen and dragging with it drags a finger, so touch code can be tried with a mouse |
@@ -252,6 +253,7 @@ that platform's defaults, so `slash-cli export windows` above signs.
 | `ios.bundle_id` | the project's `id` | Bundle ID; parts use letters, digits and `-` |
 | `ios.codesign_identity` | the team's `Apple Development` identity (debug) or `Apple Distribution` (release) | Keychain identity for device builds, by name or SHA-1; `"-"` signs ad hoc with no profile, so it needs no team but the `.ipa` installs nowhere until re-signed |
 | `ios.build_number` | from `version` | CFBundleVersion, which must grow with each upload of the same version to App Store Connect |
+| `sdks` | every package with a section for the platform | The [SDK packages](sdk-format.md#in-projectjson-and-presets) to link, by name, such as an ad network only in store builds; `[]` links none |
 
 A `macos`, `windows`, `linux`, `android` or `ios` section is allowed only in a preset for that
 platform.
@@ -275,6 +277,8 @@ a distribution one (App Store or Ad Hoc) for release.
 my-game/
   project.json
   export_presets.json   # optional
+  sdks/                 # optional: SDK packages, each a folder with an sdk.json
+    hello/sdk.json
   scenes/
     main.scene.json
   prefabs/              # optional: .prefab.json files that entities extend
