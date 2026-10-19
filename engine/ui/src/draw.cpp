@@ -7,9 +7,11 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <iterator>
 #include <map>
 #include <numbers>
 #include <optional>
+#include <utility>
 #include <vector>
 
 namespace slash::ui {
@@ -711,7 +713,18 @@ void draw_label_pass(Drawer& drawer, DrawList& list, text::Fonts& fonts, const L
             }
             const bool in_selection = pass == Pass::Text && glyph.cluster >= label.selected_start &&
                                       glyph.cluster < label.selected_end;
-            drawer.quad(source, placed.transform, rect, uv, in_selection ? selected : color, clip);
+            Vec4 glyph_color = color;
+            if (in_selection) {
+                glyph_color = selected;
+            } else if (pass == Pass::Text && !label.colors.empty()) {
+                const auto after = std::ranges::upper_bound(
+                    label.colors, glyph.cluster, std::less{},
+                    [](const std::pair<std::size_t, Vec4>& entry) { return entry.first; });
+                if (after != label.colors.begin()) {
+                    glyph_color = times(std::prev(after)->second, tint);
+                }
+            }
+            drawer.quad(source, placed.transform, rect, uv, glyph_color, clip);
             ++list.glyphs;
         }
     }

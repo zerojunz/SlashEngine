@@ -173,7 +173,7 @@ void append_utf8(std::string& out, char32_t code) {
 }
 
 // Unicode's simple upper-case mapping for Latin, Greek and Cyrillic letters.
-char32_t upper(char32_t c) {
+char32_t upper_of(char32_t c) {
     // Pairs where the upper case letter is even and the lower case one odd, or the other way.
     const auto pair = [c](char32_t first, char32_t last, bool upper_even) {
         return c >= first && c <= last && ((c % 2U == 1U) == upper_even);
@@ -449,12 +449,16 @@ std::span<const std::uint8_t> default_font() {
     return {detail::kDefaultFont, detail::kDefaultFont_size};
 }
 
+char32_t to_upper(char32_t c) {
+    return upper_of(c);
+}
+
 std::string to_upper(std::string_view text) {
     std::string out;
     out.reserve(text.size());
     std::size_t i = 0;
     while (i < text.size()) {
-        append_utf8(out, upper(next_char(text, i)));
+        append_utf8(out, upper_of(next_char(text, i)));
     }
     return out;
 }

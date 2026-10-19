@@ -1,6 +1,7 @@
 #include "slash/ui/ui.hpp"
 
 #include "internal.hpp"
+#include "syntax_highlighter.hpp"
 
 #include "slash/core/text.hpp"
 #include "slash/input/input.hpp"
@@ -451,6 +452,32 @@ std::vector<Problem> check(const world::World& world, text::Fonts& fonts) {
     }
     std::ranges::sort(entities);
     check_buttons(world, problems);
+    // A CodeHighlighter colors the TextEdit on its entity, by color regions that keep to
+    // add_color_region's rules.
+    std::vector<std::pair<std::string, entt::entity>> highlighters;
+    for (const auto [entity, highlighter] : world.ecs().view<world::CodeHighlighter>().each()) {
+        if (!world.id_of(entity).empty()) {
+            highlighters.emplace_back(world.id_of(entity), entity);
+        }
+    }
+    std::ranges::sort(highlighters);
+    for (const auto& [id, entity] : highlighters) {
+        const auto& highlighter = world.ecs().get<world::CodeHighlighter>(entity);
+        if (!world.ecs().all_of<world::TextEdit>(entity)) {
+            problems.push_back({.id = id,
+                                .path = "/components/CodeHighlighter",
+                                .message = "a CodeHighlighter colors the TextEdit on its entity, "
+                                           "and this one has none"});
+        }
+        for (const auto& [key, color] : highlighter.color_regions) {
+            if (std::string error = color_region_error(highlighter, key); !error.empty()) {
+                problems.push_back({.id = id,
+                                    .path = "/components/CodeHighlighter/color_regions/" +
+                                            json::pointer_escape(key),
+                                    .message = std::move(error)});
+            }
+        }
+    }
     for (const auto& [id, entity] : entities) {
         const auto& ecs = world.ecs();
         // One container places the children; the first in control_classes' order.

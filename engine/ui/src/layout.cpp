@@ -1105,9 +1105,13 @@ struct Node {
     std::unique_ptr<LineEditView> edit_view;
     std::optional<Field> field;
     EditState edit;
-    // A TextEdit, its theme items and the gui system's state for it.
+    // A TextEdit, its theme items, its scroll bars' and how they look, its CodeHighlighter and
+    // the gui system's state for it.
     const world::TextEdit* text_edit = nullptr;
     std::unique_ptr<TextEditView> text_view;
+    std::unique_ptr<std::array<BarTheme, 2>> text_bars; // horizontal, vertical
+    std::array<BarLook, 2> text_bar_looks{};
+    const world::CodeHighlighter* highlighter = nullptr;
     const TextEditState* text_state = nullptr;
 
     // Each pass.
@@ -1796,24 +1800,26 @@ struct Builder {
         view->selection_color = theme.color("selection_color");
         view->current_line_color = theme.color("current_line_color");
         view->background_color = theme.color("background_color");
+        view->word_highlighted_color = theme.color("word_highlighted_color");
+        view->search_result_color = theme.color("search_result_color");
+        view->search_result_border_color = theme.color("search_result_border_color");
         view->line_spacing = theme.constant("line_spacing");
         view->outline_size = theme.constant("outline_size");
         view->caret_width = theme.constant("caret_width");
         view->wrap_offset = theme.constant("wrap_offset");
         static const world::Control kNoOverrides;
-        const Resolver v_bar(node.themes, kNoOverrides, "VScrollBar");
-        view->v_scroll = v_bar.style("scroll");
-        view->v_grabber = v_bar.style("grabber");
-        view->v_padding_left = v_bar.constant("padding_left");
-        view->v_padding_right = v_bar.constant("padding_right");
-        const Resolver h_bar(node.themes, kNoOverrides, "HScrollBar");
-        view->h_scroll = h_bar.style("scroll");
-        view->h_grabber = h_bar.style("grabber");
-        view->h_padding_top = h_bar.constant("padding_top");
-        view->h_padding_bottom = h_bar.constant("padding_bottom");
+        auto bars = std::make_unique<std::array<BarTheme, 2>>();
+        bars->at(0) = bar_theme(Resolver(node.themes, kNoOverrides, "HScrollBar"), false);
+        bars->at(1) = bar_theme(Resolver(node.themes, kNoOverrides, "VScrollBar"), true);
+        view->h_bar_minimum = bar_minimum(bars->at(0));
+        view->v_bar_minimum = bar_minimum(bars->at(1));
         view->rtl = node.rtl;
         node.text_edit = &edit;
         node.text_view = std::move(view);
+        node.text_bars = std::move(bars);
+        node.text_bar_looks = {bar_look(world, node.entity, Bar::Horizontal),
+                               bar_look(world, node.entity, Bar::Vertical)};
+        node.highlighter = world.ecs().try_get<world::CodeHighlighter>(node.entity);
         node.text_state = text_edit_state(world, node.entity);
         if (edit.scroll_fit_content_height && edit.wrap_mode == "boundary") {
             node.depends = Depends::Width;
@@ -3117,8 +3123,28 @@ struct Builder {
         const TextEditState& shown = shown_state(edit, node.text_state, area, fallback);
         TextArea::Draw draw;
         TextEditView view = *node.text_view;
-        area.draw(edit, shown, has_focus(world, node.entity), draw, view);
+        area.draw(edit, shown, has_focus(world, node.entity), node.highlighter, draw, view);
         view.error = area.error();
+        // Its scroll bars over the rest, as children of its own.
+        for (const bool vertical : {true, false}) {
+            const TextArea::BarPlace place = area.bar_place(vertical);
+            if (!place.visible) {
+                continue;
+            }
+            const BarTheme& bar = node.text_bars->at(vertical ? 1 : 0);
+            const Range range{.min = 0.0,
+                              .max = place.max,
+                              .step = 0.0,
+                              .page = place.page,
+                              .value = place.value,
+                              .rounded = false,
+                              .allow_greater = false,
+                              .allow_lesser = false};
+            ScrollBarView& measured = vertical ? view.v_bar : view.h_bar;
+            measured = measure_bar(bar, range, -1.0F, place.position, place.size);
+            scroll_bar_boxes(bar, measured, node.text_bar_looks.at(vertical ? 1 : 0), false,
+                             draw.over);
+        }
         boxes.insert(boxes.end(), std::make_move_iterator(draw.under.begin()),
                      std::make_move_iterator(draw.under.end()));
         out.labels.emplace(node.entity, std::move(draw.text));

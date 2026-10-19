@@ -288,7 +288,10 @@ const std::map<std::string, ThemeItems, std::less<>>& own_defaults() {
                             {"selection_color", {0.5F, 0.5F, 0.5F, 1.0F}},
                             {"current_line_color", {0.25F, 0.25F, 0.26F, 0.8F}},
                             {"caret_color", control_font_color},
-                            {"caret_background_color", {0.0F, 0.0F, 0.0F, 1.0F}}};
+                            {"caret_background_color", {0.0F, 0.0F, 0.0F, 1.0F}},
+                            {"word_highlighted_color", {0.5F, 0.5F, 0.5F, 0.25F}},
+                            {"search_result_color", {0.3F, 0.3F, 0.3F, 1.0F}},
+                            {"search_result_border_color", {0.3F, 0.3F, 0.3F, 0.4F}}};
         text_edit.constants = {
             {"line_spacing", 4}, {"outline_size", 0}, {"caret_width", 1}, {"wrap_offset", 10}};
         text_edit.fonts = {{"font", ""}};
