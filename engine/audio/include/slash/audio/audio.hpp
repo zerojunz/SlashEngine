@@ -20,7 +20,9 @@
 // as they play. A .audio.json file gives a sound Godot's import settings (loops and beats), picks
 // one of several sounds at random each time it plays, as Godot's AudioStreamRandomizer, or plays
 // music as Godot's interactive_music module: streams in turn (AudioStreamPlaylist), together
-// (AudioStreamSynchronized), or as clips a game switches between (AudioStreamInteractive):
+// (AudioStreamSynchronized), or as clips a game switches between (AudioStreamInteractive). It can
+// also play frames a game makes as it goes (AudioStreamGenerator), or sounds a game starts on one
+// player (AudioStreamPolyphonic):
 //
 //   {"format": 1, "loop": true, "loop_offset": 4, "source": "music/theme.ogg"}
 //   {"format": 1, "random_pitch": 1.1, "streams": [{"stream": "sfx/step1.wav"},
@@ -31,6 +33,8 @@
 //   {"format": 1, "clips": [{"name": "explore", "stream": "music/explore.ogg"},
 //                           {"name": "battle", "stream": "music/battle.ogg"}],
 //    "transitions": [{"to": "battle", "from_time": "next_bar", "fade_mode": "cross"}]}
+//   {"format": 1, "generator": {"mix_rate": 22050, "buffer_length": 0.25}}
+//   {"format": 1, "polyphonic": {"polyphony": 16}}
 //
 // AudioStreamPlayer and AudioStreamPlayer2D components play them through the buses a
 // .bus_layout.json file sets up, each bus with Godot's volume, mute, solo, effects and send.
@@ -92,10 +96,22 @@ enum class TransitionFrom : std::uint8_t { Immediate, NextBeat, NextBar, End };
 enum class TransitionTo : std::uint8_t { SamePosition, Start, PreviousPosition };
 enum class FadeMode : std::uint8_t { Disabled, In, Out, Cross, Automatic };
 
-// A .audio.json file: a sound with settings, a randomizer of streams, or music. Members are
-// ordered by size, to pack.
+// Godot's AudioStreamGenerator mix rates: the server's, the rate microphone input is recorded at
+// (the server's), or the generator's own.
+enum class MixRateMode : std::uint8_t { Output, Input, Custom };
+
+// A .audio.json file: a sound with settings, a randomizer of streams, music, a generator or a
+// polyphonic stream. Members are ordered by size, to pack.
 struct StreamFile {
-    enum class Kind : std::uint8_t { Sound, Randomizer, Playlist, Synchronized, Interactive };
+    enum class Kind : std::uint8_t {
+        Sound,
+        Randomizer,
+        Playlist,
+        Synchronized,
+        Interactive,
+        Generator,
+        Polyphonic
+    };
 
     std::string source; // a sound's file
 
@@ -143,6 +159,9 @@ struct StreamFile {
     float random_volume_offset_db = 0.0F; // volume up to this far up or down
     float fade_time = 0.3F;               // playlists: seconds the stream before fades over
     int initial_clip = 0;
+    float mix_rate = 44100.0F;  // generators: frames per second pushed, with MixRateMode::Custom
+    float buffer_length = 0.5F; // generators: seconds of frames it holds
+    int polyphony = 32;         // polyphonic streams: streams that can play at once
 
     Kind kind = Kind::Sound;
     LoopMode loop_mode = LoopMode::Disabled;
@@ -151,6 +170,7 @@ struct StreamFile {
     bool loop = false;
     PlaybackMode playback_mode = PlaybackMode::RandomNoRepeats;
     bool shuffle = false; // playlists: a new order each time round
+    MixRateMode mix_rate_mode = MixRateMode::Custom;
 };
 
 [[nodiscard]] std::string_view loop_mode_name(LoopMode mode);
@@ -203,6 +223,9 @@ struct BusLayout {
 // Playbacks and the server
 
 class EffectInstance; // effects.hpp
+class GeneratorPlayback;
+class PolyphonicPlayback;
+class Stream;
 
 // A stream playing, as Godot's AudioStreamPlayback.
 class Playback {
@@ -229,6 +252,58 @@ public:
     [[nodiscard]] virtual json::Value parameter(std::string_view /*name*/) const { return {}; }
     // The interactive music clip playing, or "".
     [[nodiscard]] virtual std::string_view clip() const { return {}; }
+    // This playback as Godot's AudioStreamGeneratorPlayback or AudioStreamPlaybackPolyphonic, or
+    // nullptr if it plays another kind of stream.
+    [[nodiscard]] virtual GeneratorPlayback* generator() { return nullptr; }
+    [[nodiscard]] virtual const GeneratorPlayback* generator() const { return nullptr; }
+    [[nodiscard]] virtual PolyphonicPlayback* polyphonic() { return nullptr; }
+    [[nodiscard]] virtual const PolyphonicPlayback* polyphonic() const { return nullptr; }
+};
+
+// A generator playing, as Godot's AudioStreamGeneratorPlayback: frames a game pushes, at the
+// generator's mix rate, played as they come. Push at least a tick's worth of frames each tick,
+// before the audio system mixes them; a mix that runs out plays silence and counts a skip.
+class GeneratorPlayback {
+public:
+    // Adds a frame, or fails when the buffer is full.
+    virtual bool push_frame(Frame frame) = 0;
+    [[nodiscard]] virtual bool can_push_buffer(int frames) const = 0;
+    // Adds every frame, or fails and adds none when they don't fit.
+    virtual bool push_buffer(std::span<const Frame> frames) = 0;
+    // Frames that can be pushed before the buffer is full.
+    [[nodiscard]] virtual int frames_available() const = 0;
+    // Mixes that ran out of frames since it started.
+    [[nodiscard]] virtual int skips() const = 0;
+    // Drops the frames pushed; as Godot's, only once it stopped.
+    virtual void clear_buffer() = 0;
+
+protected:
+    ~GeneratorPlayback() = default;
+};
+
+// A polyphonic stream playing, as Godot's AudioStreamPlaybackPolyphonic: streams a game starts on
+// one player, each with its own volume and pitch, up to the stream's polyphony at once.
+class PolyphonicPlayback {
+public:
+    using StreamId = std::int64_t;
+    static constexpr StreamId kInvalidId = -1;
+
+    // Starts a stream at the next mix, from a position in seconds; its ID, or kInvalidId when
+    // polyphony streams are playing already.
+    virtual StreamId play_stream(std::shared_ptr<const Stream> stream, double from_seconds,
+                                 float volume_db, float pitch_scale) = 0;
+    virtual void set_stream_volume(StreamId id, float volume_db) = 0;
+    virtual void set_stream_pitch_scale(StreamId id, float pitch_scale) = 0;
+    // Whether it plays still: false once it ended or was stopped.
+    [[nodiscard]] virtual bool is_stream_playing(StreamId id) const = 0;
+    // Fades it out over the next mix.
+    virtual void stop_stream(StreamId id) = 0;
+    // The streams playing, and how many can.
+    [[nodiscard]] virtual int streams_playing() const = 0;
+    [[nodiscard]] virtual int polyphony() const = 0;
+
+protected:
+    ~PolyphonicPlayback() = default;
 };
 
 // A stream ready to play: a sound with its settings, or a randomizer of streams.
@@ -251,6 +326,9 @@ public:
     [[nodiscard]] virtual int beat_count() const { return 0; }
     [[nodiscard]] virtual int bar_beats() const { return 0; }
     [[nodiscard]] virtual bool has_loop() const { return false; }
+    // Whether a player's play() starts it over rather than adding a voice, as Godot's
+    // is_monophonic: music, generators, polyphonic streams and randomizers of any of them.
+    [[nodiscard]] virtual bool is_monophonic() const { return false; }
 };
 
 // A stream for a sound with a .audio.json file's settings (or none).
@@ -268,6 +346,9 @@ playlist_stream(std::vector<std::shared_ptr<const Stream>> streams, const Stream
 synchronized_stream(std::vector<std::shared_ptr<const Stream>> streams, const StreamFile& settings);
 [[nodiscard]] std::shared_ptr<const Stream>
 interactive_stream(std::vector<std::shared_ptr<const Stream>> clips, const StreamFile& settings);
+// Godot's AudioStreamGenerator and AudioStreamPolyphonic.
+[[nodiscard]] std::shared_ptr<const Stream> generator_stream(const StreamFile& settings);
+[[nodiscard]] std::shared_ptr<const Stream> polyphonic_stream(const StreamFile& settings);
 
 // A stream loaded through assets, with handles to the files it was made from, which keep them
 // loaded and tell when one was reloaded.
@@ -412,6 +493,17 @@ void set_sink(world::World& world, Sink sink);
 void play(world::World& world, entt::entity entity, double from_seconds = 0.0);
 // Stops it at the next tick, as Godot's stop().
 void stop(world::World& world, entt::entity entity);
+// Plays a stream (a sound or a .audio.json file) on a player whose stream is polyphonic, at the
+// next tick, as Godot's AudioStreamPlaybackPolyphonic::play_stream; the player starts first if
+// it isn't playing. Fails if the player's stream isn't polyphonic or the stream can't load.
+Result<void> play_stream(world::World& world, entt::entity entity, std::string_view stream,
+                         double from_seconds = 0.0, float volume_db = 0.0F,
+                         float pitch_scale = 1.0F);
+// The playback of a player's newest voice, as Godot's get_stream_playback, or nullptr when it
+// isn't playing. A voice starts when the audio system runs after play() (or autoplay), so
+// gameplay systems, which run before it, see it from the next tick; ask again each tick, as it
+// goes away when the voice ends. generator() and polyphonic() give the kind of playback.
+[[nodiscard]] Playback* stream_playback(world::World& world, entt::entity entity);
 // Where its newest voice is, in seconds, or 0.
 [[nodiscard]] double playback_position(const world::World& world, entt::entity entity);
 // Starts or stops a bus's record effect at the next tick, as play does, so sessions can take it
@@ -430,8 +522,11 @@ struct RecordingAsks {
 struct Snapshot {
     struct Request {
         std::string player; // "<kind>/<entity ID>"
-        bool play = true;
+        std::string stream; // play_stream's stream, if any
         double from_seconds = 0.0;
+        float volume_db = 0.0F;   // play_stream's
+        float pitch_scale = 1.0F; // play_stream's
+        bool play = true;
     };
     struct Recording {
         int bus = 0;
@@ -458,6 +553,18 @@ struct PlayerInfo {
     Frame volume{};    // the gain mixed in, after distance and panning for 2D players
     std::string clip;  // the interactive music clip playing, if any
     std::string error; // why its stream did not load
+    // A generator's frames that can be pushed and mixes that ran out of frames.
+    struct Generator {
+        int frames_available = 0;
+        int skips = 0;
+    };
+    std::optional<Generator> generator;
+    // A polyphonic stream's streams playing and how many can.
+    struct Polyphonic {
+        int playing = 0;
+        int polyphony = 0;
+    };
+    std::optional<Polyphonic> polyphonic;
 };
 // Every player with an ID, by ID.
 [[nodiscard]] std::vector<PlayerInfo> players(const world::World& world);

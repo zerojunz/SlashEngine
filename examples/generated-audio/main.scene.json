@@ -1,0 +1,20 @@
+{
+  "entities": {
+    "sfx": {
+      "components": {
+        "AudioStreamPlayer": {
+          "stream": "audio/sfx.audio.json"
+        }
+      }
+    },
+    "synth": {
+      "components": {
+        "AudioStreamPlayer": {
+          "autoplay": true,
+          "stream": "audio/synth.audio.json"
+        }
+      }
+    }
+  },
+  "format": 1
+}

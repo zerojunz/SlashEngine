@@ -2335,6 +2335,63 @@ TEST_CASE("tilemap.get reads cells' custom data, and light.sample sees tiles' sh
     std::filesystem::remove_all(root);
 }
 
+TEST_CASE("audio.play plays streams on a polyphonic player, and audio.state reports them") {
+    const std::string root = "command_polyphonic_project";
+    REQUIRE(slash::platform::create_directories(root).ok());
+    const std::vector<slash::audio::Frame> hit(4410, slash::audio::Frame{0.25F, 0.25F});
+    REQUIRE(
+        slash::platform::write_file(root + "/hit.wav", slash::audio::encode_wav(hit, 44100)).ok());
+    REQUIRE(slash::platform::write_file(root + "/sfx.audio.json",
+                                        R"({"format": 1, "polyphonic": {"polyphony": 8}})")
+                .ok());
+    REQUIRE(slash::platform::write_file(root + "/synth.audio.json",
+                                        R"({"format": 1, "generator": {"buffer_length": 0.1}})")
+                .ok());
+    command::SessionOptions options;
+    options.project_root = root;
+    Engine engine(options);
+    engine.ok(
+        "entity.create",
+        R"({"id": "sfx", "components": {"AudioStreamPlayer": {"stream": "sfx.audio.json"}}})");
+    engine.ok("entity.create", R"({"id": "synth", "components": {"AudioStreamPlayer":
+        {"stream": "synth.audio.json", "autoplay": true}}})");
+
+    CHECK(engine.ok("audio.play", R"({"id": "sfx", "stream": "hit.wav", "volume_db": -6})") ==
+          parse(R"({"tick": 0})"));
+    engine.ok("audio.play", R"({"id": "sfx", "stream": "hit.wav", "pitch_scale": 0.5})");
+    engine.ok("step");
+    const json::Value state = engine.ok("audio.state", R"({"ids": ["sfx", "synth"]})");
+    const json::Array& players = state.find("players")->as_array();
+    REQUIRE(players.size() == 2);
+    CHECK(*players[0].find("polyphonic") == parse(R"({"playing": 2, "polyphony": 8})"));
+    CHECK(players[0].find("voices")->as_int() == 1);
+    // Nothing pushes frames to the generator, so every mix runs out.
+    CHECK(players[1].find("generator")->find("frames_available")->as_int() == 8191);
+    CHECK(players[1].find("generator")->find("skips")->as_int() > 0);
+
+    // A failed batch takes a play back, as it does play().
+    engine.call("batch", R"({"commands": [
+        {"command": "audio.play", "params": {"id": "sfx", "stream": "hit.wav"}},
+        {"command": "entity.destroy", "params": {"id": "nobody"}}]})");
+    engine.ok("step");
+    CHECK(*engine.ok("audio.state", R"({"ids": ["sfx"]})")
+               .find("players")
+               ->as_array()[0]
+               .find("polyphonic") == parse(R"({"playing": 2, "polyphony": 8})"));
+
+    const auto refused = engine.fails("audio.play", R"({"id": "synth", "stream": "hit.wav"})",
+                                      command::code::kInvalidParams);
+    CHECK(refused.data.find("path")->as_string() == "/id");
+    CHECK(contains(refused.message, "isn't polyphonic"));
+    const auto missing = engine.fails("audio.play", R"({"id": "sfx", "stream": "miss.wav"})",
+                                      command::code::kNotFound);
+    CHECK(missing.data.find("path")->as_string() == "/stream");
+    const auto alone = engine.fails("audio.play", R"({"id": "sfx", "volume_db": -6})",
+                                    command::code::kInvalidParams);
+    CHECK(alone.data.find("path")->as_string() == "/volume_db");
+    std::filesystem::remove_all(root);
+}
+
 TEST_CASE("log.tail returns recent log lines as objects") {
     Engine engine({}, /*capture_logs=*/true);
     slash::log::info("first", {{"n", 1}});

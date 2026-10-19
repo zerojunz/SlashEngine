@@ -1363,6 +1363,11 @@ Needs: `read`. With the footsteps playing:
   is in the stream playing and its `length` the whole list's.
 - `clip` names the clip [interactive music](scene-format.md#interactive-music) is playing; its
   `position` is in that clip, and it has no `length`.
+- A [generator](scene-format.md#generators-and-polyphonic-streams) lists
+  `"generator": {"frames_available", "skips"}`: the frames a game can push before its buffer is
+  full, and the mixes that ran out of frames and played silence since it started. A polyphonic
+  player lists `"polyphonic": {"playing", "polyphony"}`: the streams it has going and how many it
+  can.
 - `volume` is the `[left, right]` gain mixed in: the player's `volume_db`, then for an
   `AudioStreamPlayer2D` its fade with distance and its pan from the listener.
 - `paused` is listed when `stream_paused` holds the player, and `error` when its stream did not
@@ -1405,12 +1410,19 @@ and so is a `path` that doesn't end in `.wav`. In a dry-run `batch`, `path` writ
 ### audio.play
 
 Plays an `AudioStreamPlayer` or `AudioStreamPlayer2D` at the next tick, as Godot's `play()`: with
-`max_polyphony` 1 it starts over, with more another voice joins, up to that many.
+`max_polyphony` 1 it starts over, with more another voice joins, up to that many. Music,
+generators and polyphonic streams always start over, as Godot's monophonic streams do. With
+`stream`, it plays that sound or `.audio.json` file on a player whose stream is
+[polyphonic](scene-format.md#generators-and-polyphonic-streams) instead, as Godot's
+`play_stream`, starting the player first if it isn't playing.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `id` | string | required | The player's entity |
 | `from` | number | `0` | Seconds into the stream |
+| `stream` | string | | A sound or `.audio.json` file to play on the polyphonic player |
+| `volume_db` | number, -80 to 24 | `0` | With `stream`: its volume |
+| `pitch_scale` | number, 0.01 to 16 | `1` | With `stream`: how fast it plays |
 
 Needs: `run`. Changes no entities until the next `step`, so there is nothing to undo; a failed
 `batch` takes the play back.
@@ -1427,6 +1439,17 @@ Needs: `run`. Changes no entities until the next `step`, so there is nothing to 
 An ID that names no entity is an error with the closest one, and so is an entity with neither
 player component. Setting `playing` to `true` with [`component.set`](#componentset) plays it
 too.
+
+From [examples/generated-audio](../../examples/generated-audio/), a hit an octave up on the
+polyphonic `sfx` player:
+
+```json
+{"id": "sfx", "stream": "audio/hit.wav", "pitch_scale": 2}
+```
+
+A `stream` that doesn't load is an error at `/stream`, and a player whose stream isn't
+polyphonic one at `/id`; `volume_db` and `pitch_scale` go only with `stream`. When every slot of
+the player's `polyphony` is playing, the new stream is dropped with a warning in the log.
 
 ### audio.stop
 
