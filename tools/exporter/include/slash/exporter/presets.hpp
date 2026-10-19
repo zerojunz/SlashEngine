@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <map>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -103,6 +104,9 @@ struct Preset {
     std::string platform;
     std::string output; // project-relative; "" means build/export/<name>
     bool debug = false;
+    // The SDK packages it links, by name; nullopt means every one with a section for the
+    // platform (slash/exporter/sdk.hpp).
+    std::optional<std::vector<std::string>> sdks;
     MacosOptions macos;
     WindowsOptions windows;
     AndroidOptions android;

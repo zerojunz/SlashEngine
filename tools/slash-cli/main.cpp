@@ -24,6 +24,7 @@
 #include "slash/exporter/export.hpp"
 #include "slash/exporter/gameplay.hpp"
 #include "slash/exporter/presets.hpp"
+#include "slash/exporter/sdk.hpp"
 #include "slash/exporter/toolchains.hpp"
 #include "slash/gameplay/host.hpp"
 #include "slash/importer/commands.hpp"
@@ -109,10 +110,11 @@ Usage:
                                      tileset (.tileset.json), font (.font.json), theme
                                      (.theme.json), audio (.audio.json), bus_layout
                                      (.bus_layout.json), replay (.replay.json), test
-                                     (.test.json), storyboard, project (project.json) or
-                                     presets (export_presets.json)
+                                     (.test.json), storyboard, project (project.json),
+                                     presets (export_presets.json) or sdk (sdk.json)
   slash-cli project validate [dir]   Check project.json, export_presets.json, the project's
-                                     theme, bus layout and storyboard; lists every error
+                                     theme, bus layout, storyboard and SDK packages; lists
+                                     every error
   slash-cli test [path...]           Run the project's .test.json tests headless, or those in
                                      the files and folders given, and print only the checks
                                      that failed; exits 1 if any did
@@ -163,6 +165,22 @@ Usage:
       --debug                        Debug build instead of Release
       --test                         Run the exported game headless afterwards, if possible
       --engine <dir>                 Engine sources (default: SLASH_ENGINE_DIR or built in)
+  slash-cli sdk add <source>         Add an SDK package (a folder with sdk.json) to
+                                     project.json's "sdks", so exports link it: a folder in
+                                     the project where it is; any other folder, a git
+                                     repository or an https:// .zip or .tar archive is copied
+                                     into sdks/<name>
+      --project <dir>                Game folder with project.json (default ".")
+      --name <folder>                Folder under sdks/ (default: the package's name)
+      --ref <branch|tag>             Git branch or tag to clone
+      --sha256 <hash>                The archive's expected SHA-256
+      --dry-run                      Check the package and print what would be added
+  slash-cli sdk check                Check the project's SDK packages: their sdk.json files,
+                                     the presets' "sdks", keys in the environment and every
+                                     file a platform links; exits 1 on a problem
+      --project <dir>                Game folder with project.json (default ".")
+      --platform <name>              Check only this platform's builds
+      --fetch                        Download files not fetched yet, so they are checked too
   slash-cli toolchain list           List the cross toolchains and tools this machine can
                                      install
   slash-cli toolchain install [name] Download the toolchains exports use to build other
@@ -979,14 +997,14 @@ int cmd_scene(const std::vector<std::string>& args) {
 }
 
 int cmd_schema(const std::vector<std::string>& args) {
-    constexpr std::array<std::string_view, 16> kKinds = {
-        "scene",   "prefab",     "frames",  "material", "process_material", "animation",
-        "tileset", "font",       "theme",   "audio",    "bus_layout",       "replay",
-        "test",    "storyboard", "project", "presets"};
+    constexpr std::array<std::string_view, 17> kKinds = {
+        "scene",   "prefab",  "frames", "material",   "process_material", "animation", "tileset",
+        "font",    "theme",   "audio",  "bus_layout", "replay",           "test",      "storyboard",
+        "project", "presets", "sdk"};
     if (args.size() != 1 || std::ranges::find(kKinds, args[0]) == kKinds.end()) {
         return usage_error("schema takes one argument: scene, prefab, frames, material, "
                            "process_material, animation, tileset, font, theme, audio, "
-                           "bus_layout, replay, test, storyboard, project or presets");
+                           "bus_layout, replay, test, storyboard, project, presets or sdk");
     }
     json::Value schema;
     if (args[0] == "scene") {
@@ -1019,6 +1037,8 @@ int cmd_schema(const std::vector<std::string>& args) {
         schema = slash::storyboard::file_schema();
     } else if (args[0] == "project") {
         schema = slash::runtime::project_schema();
+    } else if (args[0] == "sdk") {
+        schema = slash::exporter::sdk_schema();
     } else {
         schema = slash::exporter::presets_schema();
     }
@@ -1085,6 +1105,21 @@ int cmd_project(const std::vector<std::string>& args) {
         check(project.value().gui_theme, "/gui/theme", slash::ui::validate_theme);
         check(project.value().audio.bus_layout, "/audio/bus_layout",
               slash::audio::validate_bus_layout);
+        // SDK packages: their sdk.json files, the presets' "sdks" and the files in the packages.
+        // Keys and downloads belong to the machine that exports, which sdk check looks at.
+        const json::Value sdks = slash::exporter::check_sdks(folder, "", false, false);
+        for (const json::Value& problem : sdks.find("problems")->as_array()) {
+            const std::string& sdk = problem.find("sdk")->as_string();
+            json::Value item;
+            item["file"] =
+                sdk == slash::exporter::kPresetsFile || sdk == slash::runtime::kProjectFile
+                    ? sdk
+                    : sdk + "/" + std::string(slash::exporter::kSdkFile);
+            const json::Value* at = problem.find("path");
+            item["path"] = at != nullptr ? at->as_string() : std::string();
+            item["message"] = *problem.find("message");
+            errors.push_back(std::move(item));
+        }
     }
     // The storyboard, and the StoryRef IDs in every scene and prefab.
     command::SessionOptions options;
@@ -1380,6 +1415,60 @@ int cmd_build(const std::vector<std::string>& args) {
     return built.step == "options" ? kExitUsage : kExitFailure;
 }
 
+int cmd_sdk(const std::vector<std::string>& args) {
+    if (args.empty() || (args[0] != "add" && args[0] != "check")) {
+        return usage_error("sdk takes a subcommand: add <source> or check");
+    }
+    const bool adding = args[0] == "add";
+    slash::exporter::AddSdkOptions options;
+    options.project = ".";
+    std::string platform;
+    bool fetch = false;
+    for (std::size_t i = 1; i < args.size(); ++i) {
+        const std::string& arg = args[i];
+        const bool has_value = i + 1 < args.size();
+        if (arg == "--project" && has_value) {
+            options.project = args[++i];
+        } else if (adding && arg == "--name" && has_value) {
+            options.name = args[++i];
+        } else if (adding && arg == "--ref" && has_value) {
+            options.ref = args[++i];
+        } else if (adding && arg == "--sha256" && has_value) {
+            options.sha256 = args[++i];
+        } else if (adding && arg == "--dry-run") {
+            options.dry_run = true;
+        } else if (!adding && arg == "--platform" && has_value) {
+            platform = args[++i];
+        } else if (!adding && arg == "--fetch") {
+            fetch = true;
+        } else if (adding && options.source.empty() && !arg.starts_with("--")) {
+            options.source = arg;
+        } else {
+            return usage_error("unexpected argument for sdk " + args[0] + ": " + arg);
+        }
+    }
+    if (adding) {
+        if (options.source.empty()) {
+            return usage_error("sdk add needs a package folder, git repository or archive URL");
+        }
+        auto added = slash::exporter::add_sdk(options);
+        if (!added) {
+            return failure("could not add the SDK package", added.error());
+        }
+        print(added.value());
+        return kExitOk;
+    }
+    if (!platform.empty() && std::ranges::find(slash::exporter::kPlatforms, platform) ==
+                                 slash::exporter::kPlatforms.end()) {
+        return usage_error("--platform takes macos, windows, linux, web, android or ios");
+    }
+    json::Value result = slash::exporter::check_sdks(options.project, platform, fetch);
+    const bool ok = result.find("problems")->as_array().empty();
+    result["ok"] = ok;
+    print(result);
+    return ok ? kExitOk : kExitFailure;
+}
+
 int cmd_export(const std::vector<std::string>& args) {
     slash::exporter::ExportOptions options;
     for (std::size_t i = 0; i < args.size(); ++i) {
@@ -1608,6 +1697,9 @@ int main(int argc, char** argv) {
     }
     if (name == "export") {
         return cmd_export(args);
+    }
+    if (name == "sdk") {
+        return cmd_sdk(args);
     }
     if (name == "toolchain") {
         return cmd_toolchain(args);

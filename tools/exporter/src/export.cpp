@@ -15,6 +15,7 @@
 #include "slash/core/text.hpp"
 #include "slash/exporter/android.hpp"
 #include "slash/exporter/presets.hpp"
+#include "slash/exporter/sdk.hpp"
 #include "slash/exporter/toolchains.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/platform/process.hpp"
@@ -33,7 +34,9 @@
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
+#include <map>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -644,6 +647,133 @@ bool prepare_signing(const Preset& preset, const fs::path& project_dir, Signing&
     return true;
 }
 
+// A failure naming the first problem with the game's SDK packages, with all of them in
+// "problems".
+Failure sdk_failure(std::string step, const std::vector<SdkProblem>& problems) {
+    const SdkProblem& first = problems.front();
+    Failure failure{std::move(step),
+                    "SDK package " + first.sdk + (first.path.empty() ? "" : " " + first.path) +
+                        ": " + first.message,
+                    {}};
+    json::Array items;
+    for (const SdkProblem& problem : problems) {
+        json::Value item;
+        item["sdk"] = problem.sdk;
+        if (!problem.path.empty()) {
+            item["path"] = problem.path;
+        }
+        item["message"] = problem.message;
+        items.push_back(std::move(item));
+    }
+    failure.details["problems"] = std::move(items);
+    return failure;
+}
+
+// The keys an Info.plist template sets itself, which SDK packages can't set again.
+std::set<std::string, std::less<>> template_plist_keys(const fs::path& path) {
+    std::set<std::string, std::less<>> keys;
+    auto text = platform::read_file(path.string());
+    if (!text) {
+        return keys;
+    }
+    const std::string_view all = text.value();
+    constexpr std::string_view kOpen = "<key>";
+    constexpr std::string_view kClose = "</key>";
+    for (std::size_t at = all.find(kOpen); at != std::string_view::npos; at = all.find(kOpen, at)) {
+        at += kOpen.size();
+        const std::size_t end = all.find(kClose, at);
+        if (end == std::string_view::npos) {
+            break;
+        }
+        keys.emplace(all.substr(at, end - at));
+        at = end;
+    }
+    return keys;
+}
+
+// Writes the entitlements at existing (if any) with entries added to out, for codesign. With
+// granted, existing is a provisioning profile's entitlements, which are what the app ID may
+// use: each entry's key must be there already, and nothing is written.
+bool merge_entitlements(const fs::path& existing, const json::Value& entries, bool granted,
+                        const fs::path& out, Failure& failure) {
+    json::Value merged = json::Object{};
+    if (!existing.empty()) {
+        auto read = read_plist(existing);
+        if (!read) {
+            failure = {"sdks", read.error().message, {}};
+            return false;
+        }
+        merged = std::move(read).value();
+    }
+    for (const auto& [key, value] : entries.as_object()) {
+        const json::Value* found = merged.find(key);
+        if (found == nullptr && granted) {
+            failure = {"sdks",
+                       "an SDK package needs the entitlement " + key +
+                           ", which the provisioning profile doesn't grant; turn the capability "
+                           "on for the app ID and download the profile again",
+                       {}};
+            return false;
+        }
+        if (found != nullptr && !(*found == value) && !granted) {
+            failure = {"sdks",
+                       "an SDK package sets the entitlement " + key + ", which " +
+                           display(existing) + " sets to something else",
+                       {}};
+            return false;
+        }
+        merged[key] = value;
+    }
+    if (granted) {
+        return true;
+    }
+    if (!platform::write_file(out.string(), plist_document(merged))) {
+        failure = {"sdks", "could not write " + display(out), {}};
+        return false;
+    }
+    return true;
+}
+
+// Gives each dylib an SDK package put in a Mac app's Frameworks folder an @rpath install name and
+// points the game at it, so libraries made to sit beside the executable (@loader_path) or at a
+// vendor's install path load from Frameworks.
+bool fix_install_names(const fs::path& frameworks, const fs::path& executable,
+                       const platform::ProcessOptions& process, Failure& failure) {
+    std::error_code error;
+    if (!fs::is_directory(frameworks, error)) {
+        return true;
+    }
+    platform::ProcessOptions quiet = process;
+    quiet.tail_lines = 1;
+    for (const fs::directory_entry& entry : fs::directory_iterator(frameworks, error)) {
+        if (entry.path().extension() != ".dylib" || !entry.is_regular_file(error)) {
+            continue;
+        }
+        // "<file>:" then the install name, once per architecture in a universal library.
+        auto shown = platform::run_process({"otool", "-D", entry.path().string()}, quiet);
+        if (!shown || shown.value().exit_code != 0) {
+            failure = {"sign", "otool could not read " + display(entry.path()), {}};
+            return false;
+        }
+        std::string name = shown.value().tail;
+        while (!name.empty() &&
+               (name.back() == '\n' || name.back() == '\r' || name.back() == ' ')) {
+            name.pop_back();
+        }
+        const std::string wanted = "@rpath/" + entry.path().filename().string();
+        if (name.empty() || name.ends_with(':') || name == wanted) {
+            continue;
+        }
+        if (!step("sign", {"install_name_tool", "-id", wanted, entry.path().string()}, process,
+                  failure) ||
+            !step("sign", {"install_name_tool", "-change", name, wanted, executable.string()},
+                  process, failure)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 // Signs the packaged game in place, before it is published, and records what it signed with in
 // signed_with. Leaves signed_with null when the preset doesn't sign.
 bool sign(const Preset& preset, const Signing& signing, const fs::path& package,
@@ -658,6 +788,13 @@ bool sign(const Preset& preset, const Signing& signing, const fs::path& package,
         std::vector<std::string> args{"codesign", "--force", "--sign", macos.codesign_identity};
         if (macos.codesign_identity != kAdHocIdentity) {
             args.insert(args.end(), {"--options", "runtime", "--timestamp"});
+        }
+        // What SDK packages put in Contents/Frameworks is signed first, without entitlements.
+        const fs::path contents = fs::path(app) / "Contents";
+        if (!fix_install_names(contents / "Frameworks", contents / "MacOS" / binary, process,
+                               failure) ||
+            !detail::sign_nested(contents / "Frameworks", args, process, failure)) {
+            return false;
         }
         if (!signing.entitlements.empty()) {
             args.insert(args.end(), {"--entitlements", signing.entitlements.string()});
@@ -762,6 +899,22 @@ ExportResult export_game(const ExportOptions& options) {
             {"validate", project.error().message,
              describe_errors(project_dir, runtime::kProjectFile, runtime::validate_project)},
             {});
+    }
+
+    // The SDK packages this export links, with their keys from the environment.
+    std::vector<SdkProblem> sdk_problems;
+    const std::vector<Sdk> sdks =
+        load_project_sdks(project_dir, project.value().sdks, sdk_problems);
+    const std::vector<const Sdk*> linked = sdks_for_preset(sdks, preset, sdk_problems);
+    if (!sdk_problems.empty()) {
+        return fail(sdk_failure("validate", sdk_problems), {});
+    }
+    std::map<std::string, SdkPlaces> sdk_places;
+    for (const Sdk* sdk : linked) {
+        sdk_places[sdk->name].keys = sdk_keys(*sdk, sdk_problems);
+    }
+    if (!sdk_problems.empty()) {
+        return fail(sdk_failure("options", sdk_problems), {});
     }
 
     const std::optional<std::string> engine = find_engine(options.engine);
@@ -882,6 +1035,25 @@ ExportResult export_game(const ExportOptions& options) {
     if (!stage_data(project_dir, project.value(), data, platform, failure)) {
         return fail(failure, log_path);
     }
+    if (!linked.empty()) {
+        // Each download once, kept in sdks_dir() for every project and export after this one.
+        log::info("export step", {{"step", "sdks"}});
+        const fs::path dir = sdks_dir();
+        for (const Sdk* sdk : linked) {
+            for (const SdkDownload& download : sdk->downloads) {
+                auto location = fetch_download(download, sdk->folder, dir, log_path.string());
+                if (!location) {
+                    json::Value details;
+                    details["sdk"] = sdk->location;
+                    details["path"] = "/downloads/" + download.id;
+                    return fail({"sdks", sdk->location + ": " + location.error().message,
+                                 std::move(details)},
+                                log_path);
+                }
+                sdk_places[sdk->name].downloads[download.id] = location.value();
+            }
+        }
+    }
 
     const std::string config = debug ? "Debug" : "Release";
     const fs::path engine_dir = engine.value();
@@ -904,6 +1076,8 @@ ExportResult export_game(const ExportOptions& options) {
         sources += fs::absolute(project_dir / source, error).lexically_normal().generic_string();
     }
     configure.push_back("-DSLASH_GAME_SOURCES=" + sources);
+    // Arguments that pick the compilers and targets, shared with SDK packages' CMake projects.
+    std::vector<std::string> toolchain_args;
     if (const audio::Settings& sound = project.value().audio; sound.enable_input) {
         // Games that record ask for the microphone: Info.plist's reason on macOS and iOS, the
         // RECORD_AUDIO permission on Android.
@@ -911,15 +1085,17 @@ ExportResult export_game(const ExportOptions& options) {
         configure.push_back("-DSLASH_GAME_MICROPHONE_USAGE=" + sound.input_usage_description);
     }
     if (platform == "macos") {
-        configure.push_back("-DCMAKE_OSX_DEPLOYMENT_TARGET=" + std::string(kMacosDeploymentTarget));
+        toolchain_args.push_back("-DCMAKE_OSX_DEPLOYMENT_TARGET=" +
+                                 std::string(kMacosDeploymentTarget));
         // Release builds run on Apple silicon and Intel Macs; debug builds only on this one.
         if (!debug) {
-            configure.emplace_back("-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64");
+            toolchain_args.emplace_back("-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64");
         }
     }
     if (toolchain) {
-        configure.push_back("-DCMAKE_TOOLCHAIN_FILE=" + toolchain->generic_string());
+        toolchain_args.push_back("-DCMAKE_TOOLCHAIN_FILE=" + toolchain->generic_string());
     }
+    configure.insert(configure.end(), toolchain_args.begin(), toolchain_args.end());
 
     platform::ProcessOptions process;
     process.log_path = log_path.string();
@@ -940,18 +1116,132 @@ ExportResult export_game(const ExportOptions& options) {
     process.environment.insert(process.environment.end(), cross.environment.begin(),
                                cross.environment.end());
 
-    // Configures, builds and installs export/CMakeLists.txt in build, into prefix.
-    const auto build_into = [&](const fs::path& build, const std::vector<std::string>& extra,
-                                const fs::path& prefix, bool strip) {
-        std::vector<std::string> args = configure;
-        args.insert(args.begin() + 1, {"-B", build.string()});
-        args.insert(args.end(), extra.begin(), extra.end());
+    // Ninja for a build folder configured for the first time, where there is one.
+    const auto add_generator = [&](std::vector<std::string>& args, const fs::path& build) {
         if (!fs::exists(build / "CMakeCache.txt", error) && !ninja.empty()) {
             args.insert(args.begin() + 1, {"-G", "Ninja"});
             if (ninja != "ninja") {
                 args.push_back("-DCMAKE_MAKE_PROGRAM=" + fs::path(ninja).generic_string());
             }
         }
+    };
+
+    // For one build of the game: builds the SDK packages' own CMake projects with its compilers,
+    // fills in their paths for its {arch}, copies their licenses into the data and writes the
+    // slash_game_sdk() calls export/CMakeLists.txt includes. Returns that file.
+    json::Value sdk_entitlements = json::Object{};
+    const auto link_sdks = [&](const fs::path& build, const std::vector<std::string>& extra,
+                               std::string_view build_arch) -> std::optional<std::string> {
+        std::vector<ResolvedSdk> resolved;
+        std::vector<SdkProblem> problems;
+        for (const Sdk* sdk : linked) {
+            SdkPlaces places = sdk_places[sdk->name];
+            if (!sdk->build.empty()) {
+                const fs::path sdk_build = fs::absolute(build / "sdks" / sdk->name, error);
+                places.build = sdk_build / "install";
+                std::vector<std::string> args{"cmake",
+                                              "-S",
+                                              (sdk->folder / sdk->build).string(),
+                                              "-B",
+                                              (sdk_build / "build").string(),
+                                              "-DCMAKE_BUILD_TYPE=" + config,
+                                              "-DCMAKE_INSTALL_PREFIX=" +
+                                                  places.build.generic_string()};
+                add_generator(args, sdk_build / "build");
+                args.insert(args.end(), toolchain_args.begin(), toolchain_args.end());
+                args.insert(args.end(), extra.begin(), extra.end());
+                for (const auto& [option, value] : sdk->build_options) {
+                    std::string define = "-D" + option;
+                    define += "=";
+                    define += value;
+                    args.push_back(std::move(define));
+                }
+                if (!step("sdks", args, process, failure) ||
+                    !step("sdks",
+                          {"cmake", "--build", (sdk_build / "build").string(), "--config", config,
+                           "--parallel"},
+                          process, failure) ||
+                    !step(
+                        "sdks",
+                        {"cmake", "--install", (sdk_build / "build").string(), "--config", config},
+                        process, failure)) {
+                    failure.details["sdk"] = sdk->location;
+                    return std::nullopt;
+                }
+            }
+            resolved.push_back(resolve_sdk(*sdk, platform, build_arch, places, true, problems));
+        }
+        const json::Value plist = merge_sdk_entries(resolved, "plist", problems);
+        const json::Value entitlements = merge_sdk_entries(resolved, "entitlements", problems);
+        if (platform == "macos" || platform == "ios") {
+            std::set<std::string, std::less<>> reserved =
+                template_plist_keys(engine_dir / "export" / platform / "Info.plist.in");
+            if (project.value().audio.enable_input) {
+                reserved.emplace("NSMicrophoneUsageDescription");
+            }
+            for (const ResolvedSdk& sdk : resolved) {
+                if (!sdk.plist.is_object()) {
+                    continue;
+                }
+                for (const auto& [key, value] : sdk.plist.as_object()) {
+                    if (reserved.contains(key)) {
+                        problems.push_back(
+                            {sdk.sdk->location,
+                             "/platforms/" + platform + "/plist/" + json::pointer_escape(key),
+                             "the engine sets " + key + " itself"});
+                    }
+                }
+            }
+        }
+        if (!problems.empty()) {
+            failure = sdk_failure("sdks", problems);
+            return std::nullopt;
+        }
+        // License files ship with the game's data, in licenses/<package>/.
+        for (const ResolvedSdk& sdk : resolved) {
+            if (sdk.license_file.empty()) {
+                continue;
+            }
+            const fs::path to =
+                data / "licenses" / sdk.sdk->name / fs::path(sdk.license_file).filename();
+            fs::create_directories(to.parent_path(), error);
+            fs::copy_file(sdk.license_file, to, fs::copy_options::overwrite_existing, error);
+            if (error) {
+                failure = {"sdks",
+                           "could not copy " + sdk.license_file +
+                               " into the game's data: " + error.message(),
+                           {}};
+                return std::nullopt;
+            }
+        }
+        sdk_entitlements = entitlements;
+        const fs::path file = fs::absolute(build / "sdks.cmake", error);
+        fs::create_directories(build, error);
+        if (!platform::write_file(file.string(), sdk_cmake(resolved, plist))) {
+            failure = {"sdks", "could not write " + display(file), {}};
+            return std::nullopt;
+        }
+        return file.generic_string();
+    };
+
+    // Configures, builds and installs export/CMakeLists.txt in build, into prefix. build_arch is
+    // what {arch} means in SDK packages' paths for this build.
+    const auto build_into = [&](const fs::path& build, const std::vector<std::string>& extra,
+                                const fs::path& prefix, bool strip, std::string_view build_arch) {
+        std::vector<std::string> args = configure;
+        args.insert(args.begin() + 1, {"-B", build.string()});
+        args.insert(args.end(), extra.begin(), extra.end());
+        add_generator(args, build);
+        // Always passed, so a game that stops linking packages doesn't keep the last build's.
+        std::string sdk_file;
+        if (!linked.empty()) {
+            std::optional<std::string> written = link_sdks(build, extra, build_arch);
+            if (!written) {
+                return false;
+            }
+            sdk_file = std::move(*written);
+        }
+        args.push_back("-DSLASH_GAME_SDKS=" + sdk_file);
         std::vector<std::string> install{
             "cmake",    "--install", build.string(),
             "--config", config,      "--component",
@@ -976,7 +1266,7 @@ ExportResult export_game(const ExportOptions& options) {
         for (const std::string& abi : preset.android.abis) {
             if (!build_into(work / ("build-" + abi),
                             detail::android_configure_args(*android, abi, apk_info.package), tree,
-                            !debug)) {
+                            !debug, abi)) {
                 failure.details["abi"] = abi;
                 return fail(failure, log_path);
             }
@@ -992,8 +1282,15 @@ ExportResult export_game(const ExportOptions& options) {
         const fs::path app = package / (binary + ".app");
         if (!build_into(work / ("build-" + preset.ios.destination),
                         detail::ios_configure_args(preset.ios, debug, ios_bundle_id), package,
-                        !debug) ||
-            !detail::sign_ios_app(ios_signing, app, process, failure)) {
+                        !debug, preset.ios.destination)) {
+            return fail(failure, log_path);
+        }
+        // A device build's entitlements are its profile's, which must grant what SDKs need.
+        if (!sdk_entitlements.as_object().empty() && !ios_signing.profile.empty() &&
+            !merge_entitlements(ios_signing.entitlements, sdk_entitlements, true, {}, failure)) {
+            return fail(failure, log_path);
+        }
+        if (!detail::sign_ios_app(ios_signing, app, process, failure)) {
             return fail(failure, log_path);
         }
         // Devices install .ipa files; the Simulator installs the app itself.
@@ -1008,16 +1305,28 @@ ExportResult export_game(const ExportOptions& options) {
         if (!ios_signing.profile.empty()) {
             signed_with["profile"] = ios_signing.profile_name;
         }
-    } else if (!cross.toolchain_file.empty()) {
-        if (!build_into(work / ("build-" + cross.build_name),
-                        {"-DCMAKE_TOOLCHAIN_FILE=" + cross.toolchain_file.generic_string()},
-                        package, false) ||
-            !sign(preset, signing, package, binary, work, process, signed_with, failure)) {
+    } else {
+        const std::string sdk_arch = sdk_archs(preset).front();
+        const bool built =
+            cross.toolchain_file.empty()
+                ? build_into(work / "build", {}, package, false, sdk_arch)
+                : build_into(work / ("build-" + cross.build_name),
+                             {"-DCMAKE_TOOLCHAIN_FILE=" + cross.toolchain_file.generic_string()},
+                             package, false, sdk_arch);
+        if (!built) {
             return fail(failure, log_path);
         }
-    } else if (!build_into(work / "build", {}, package, false) ||
-               !sign(preset, signing, package, binary, work, process, signed_with, failure)) {
-        return fail(failure, log_path);
+        if (platform == "macos" && !sdk_entitlements.as_object().empty()) {
+            const fs::path merged = fs::absolute(work / "sdk-entitlements.plist", error);
+            if (!merge_entitlements(signing.entitlements, sdk_entitlements, false, merged,
+                                    failure)) {
+                return fail(failure, log_path);
+            }
+            signing.entitlements = merged;
+        }
+        if (!sign(preset, signing, package, binary, work, process, signed_with, failure)) {
+            return fail(failure, log_path);
+        }
     }
     if (!publish(package, output, work / "output.json", failure)) {
         return fail(failure, log_path);
@@ -1056,6 +1365,17 @@ ExportResult export_game(const ExportOptions& options) {
     out["log"] = display(log_path);
     if (!signed_with.is_null()) {
         out["signed"] = std::move(signed_with);
+    }
+    if (!linked.empty()) {
+        json::Array linked_sdks;
+        for (const Sdk* sdk : linked) {
+            json::Value item;
+            item["name"] = sdk->name;
+            item["version"] = sdk->version;
+            item["license"] = sdk->license;
+            linked_sdks.push_back(std::move(item));
+        }
+        out["sdks"] = std::move(linked_sdks);
     }
     if (android) {
         json::Value& info = out["android"];

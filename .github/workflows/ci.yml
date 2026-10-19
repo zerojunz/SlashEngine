@@ -93,6 +93,7 @@ jobs:
             os: macos-14
     env:
       EMSDK_VERSION: 6.0.10
+      HELLO_APP_ID: ci # the key examples/sdk-package's stand-in SDK reads
     steps:
       - uses: actions/checkout@v4
 
@@ -143,7 +144,13 @@ jobs:
         run: |
           cli=./build/release/tools/slash-cli/slash-cli
           $cli init build/empty-game
-          $cli export ${{ matrix.platform }} --project build/empty-game --test
+          # An SDK package built from source with the game's compilers, which the game calls
+          # before main, so each export proves packages link, ship and load.
+          $cli sdk add examples/sdk-package/sdks/hello --project build/empty-game
+          cp .github/scripts/hello-sdk-check.cpp build/empty-game/src/
+          $cli export ${{ matrix.platform }} --project build/empty-game --test > build/export.json || { cat build/export.json; exit 1; }
+          cat build/export.json
+          jq -e '.sdks[0].name == "hello"' build/export.json
 
       - name: Check the signature and minimum macOS
         if: matrix.platform == 'macos'
@@ -151,10 +158,18 @@ jobs:
           app=$(ls -d build/empty-game/build/export/macos/*.app)
           codesign --verify --strict --verbose=2 "$app"
           test "$(plutil -extract LSMinimumSystemVersion raw "$app/Contents/Info.plist")" = "11.0"
+          # The SDK's dylib is embedded, universal, and found through @rpath.
+          test "$(plutil -extract HelloAppID raw "$app/Contents/Info.plist")" = "ci"
+          lipo -archs "$app/Contents/Frameworks/libhello.dylib" | grep -q x86_64
+          otool -L "$app/Contents/MacOS/"* | grep -q "@rpath/libhello.dylib"
 
       - name: Check the glibc the Linux game needs and run it on Ubuntu 20.04
         if: matrix.platform == 'linux'
-        run: .github/scripts/check-linux-game.sh build/empty-game/build/export/linux amd64
+        run: |
+          .github/scripts/check-linux-game.sh build/empty-game/build/export/linux amd64
+          # The SDK's library ships beside the game, which finds it through $ORIGIN.
+          test -f build/empty-game/build/export/linux/libhello.so
+          test -f build/empty-game/build/export/linux/data/licenses/hello/LICENSE.txt
 
       - name: Check the Simulator app and build an ad hoc .ipa for devices
         if: matrix.platform == 'ios'
@@ -162,6 +177,7 @@ jobs:
           app=$(ls -d build/empty-game/build/export/ios/*.app)
           codesign --verify --strict --verbose=2 "$app"
           test "$(plutil -extract MinimumOSVersion raw "$app/Info.plist")" = "14.0"
+          test "$(plutil -extract HelloAppID raw "$app/Info.plist")" = "ci"
           binary="$app/$(plutil -extract CFBundleExecutable raw "$app/Info.plist")"
           lipo -archs "$binary" | grep -q x86_64
           lipo -archs "$binary" | grep -q arm64
@@ -183,6 +199,9 @@ jobs:
           $exe = (Get-ChildItem build/empty-game/build/export/windows/*.exe)[0].FullName
           $headers = dumpbin /headers $exe
           if (-not ($headers -match '10\.00 subsystem version')) { $headers; exit 1 }
+          # The SDK's DLL ships beside the game.
+          if (-not (dumpbin /dependents $exe | Select-String 'hello\.dll')) { exit 1 }
+          if (-not (Test-Path build/empty-game/build/export/windows/hello.dll)) { exit 1 }
           # A throwaway certificate, exported the way a developer would hand one over.
           $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject 'CN=SlashEngine CI' `
             -CertStoreLocation Cert:\CurrentUser\My
@@ -210,6 +229,10 @@ jobs:
           grep -q "targetSdkVersion:'36'" <<< "$badging"
           grep -q "native-code:.*'arm64-v8a'" <<< "$badging"
           grep -q "native-code:.*'x86_64'" <<< "$badging"
+          # The SDK's library is in each ABI, and its permission and meta-data in the manifest.
+          unzip -l "$apk" | grep -q "lib/arm64-v8a/libhello.so"
+          unzip -l "$apk" | grep -q "lib/x86_64/libhello.so"
+          grep -q "uses-permission: name='android.permission.INTERNET'" <<< "$badging"
           "$tools/apksigner" verify --min-sdk-version 30 "$apk"
           # A throwaway release keystore, passed the way a developer would.
           keytool -genkeypair -noprompt -keystore "$RUNNER_TEMP/release.jks" -storepass ci-only \
@@ -254,6 +277,8 @@ jobs:
   cross-export:
     name: Cross-export from macOS
     runs-on: macos-14
+    env:
+      HELLO_APP_ID: ci
     steps:
       - uses: actions/checkout@v4
 
@@ -283,6 +308,8 @@ jobs:
           $cli toolchain install
           $cli toolchain list
           $cli init build/empty-game
+          $cli sdk add examples/sdk-package/sdks/hello --project build/empty-game
+          cp .github/scripts/hello-sdk-check.cpp build/empty-game/src/
           echo '{"format": 1, "presets": {"linux-arm64": {"platform": "linux", "linux": {"arch": "arm64"}}}}' \
             > build/empty-game/export_presets.json
           for preset in windows linux linux-arm64; do
@@ -347,6 +374,8 @@ jobs:
           $dependents = dumpbin /dependents $exe
           $dependents
           if ($dependents -match '(c\+\+|unwind|winpthread|gcc).*\.dll') { exit 1 }
+          # Except the SDK package's, shipped beside it.
+          if (-not ($dependents -match 'hello\.dll')) { exit 1 }
           # Start-Process waits for the game, which uses the GUI subsystem, and keeps its exit code.
           $out = "$env:RUNNER_TEMP\game-out.txt"
           $err = "$env:RUNNER_TEMP\game-err.txt"

@@ -3,6 +3,7 @@
 #include "slash/command/session.hpp"
 #include "slash/exporter/export.hpp"
 #include "slash/exporter/gameplay.hpp"
+#include "slash/exporter/sdk.hpp"
 #include "slash/gameplay/host.hpp"
 
 #include <string>
@@ -74,6 +75,67 @@ Reply gameplay_build(command::Session& session, const json::Value& /*params*/) {
     return Reply::success(std::move(result));
 }
 
+Reply needs_build(std::string_view what, std::string_view pointer) {
+    Reply reply = Reply::failure(command::code::kPermissionDenied,
+                                 std::string(what) + " needs the \"build\" capability, which "
+                                                     "this session does not grant");
+    reply.data["path"] = pointer;
+    reply.data["capability"] = "build";
+    return reply;
+}
+
+Reply sdk_check(command::Session& session, const json::Value& params) {
+    std::string platform;
+    if (const json::Value* value = params.find("platform"); value != nullptr) {
+        platform = value->as_string();
+    }
+    const json::Value* fetch = params.find("fetch");
+    const bool fetching = fetch != nullptr && fetch->as_bool();
+    if (fetching && !session.allowed(Capability::Build)) {
+        return needs_build("downloading SDKs", "/fetch");
+    }
+    json::Value result = check_sdks(session.options().project_root, platform, fetching);
+    result["ok"] = result.find("problems")->as_array().empty();
+    return Reply::success(std::move(result));
+}
+
+Reply sdk_add(command::Session& session, const json::Value& params) {
+    AddSdkOptions options;
+    options.project = session.options().project_root;
+    options.source = params.find("source")->as_string();
+    const bool remote =
+        options.source.find("://") != std::string::npos || options.source.starts_with("git@");
+    if (remote) {
+        if (!session.allowed(Capability::Build)) {
+            return needs_build("adding an SDK from a URL", "/source");
+        }
+    } else if (auto folder = session.resolve_path(options.source); !folder) {
+        Reply reply = Reply::failure(folder.error());
+        reply.data["path"] = "/source";
+        return reply;
+    } else {
+        options.source = folder.value();
+    }
+    if (const json::Value* name = params.find("name"); name != nullptr) {
+        options.name = name->as_string();
+    }
+    if (const json::Value* ref = params.find("ref"); ref != nullptr) {
+        options.ref = ref->as_string();
+    }
+    if (const json::Value* sha256 = params.find("sha256"); sha256 != nullptr) {
+        options.sha256 = sha256->as_string();
+    }
+    const json::Value* dry_run = params.find("dry_run");
+    options.dry_run = (dry_run != nullptr && dry_run->as_bool()) || !session.options().write_files;
+    auto added = add_sdk(options);
+    if (!added) {
+        Reply reply = Reply::failure(added.error());
+        reply.data["path"] = "/source";
+        return reply;
+    }
+    return Reply::success(std::move(added).value());
+}
+
 } // namespace
 
 void register_export_commands(command::Registry& registry) {
@@ -111,6 +173,53 @@ void register_export_commands(command::Registry& registry) {
         .effect = command::Effect::Read,
         .params = std::move(no_params),
         .handler = gameplay_build,
+    });
+
+    json::Value check_params;
+    check_params["type"] = "object";
+    check_params["additionalProperties"] = false;
+    check_params["properties"]["platform"] = property(
+        "string", "Check only this platform's builds: macos, windows, linux, web, android or ios.");
+    check_params["properties"]["platform"]["enum"] =
+        json::Array{"macos", "windows", "linux", "web", "android", "ios"};
+    check_params["properties"]["fetch"] =
+        property("boolean", "Download the packages' files not fetched yet, so they are checked "
+                            "too (needs the build capability).");
+    registry.add({
+        .name = "sdk.check",
+        .description = "Checks the project's SDK packages (project.json sdks): each sdk.json, "
+                       "the presets' sdks, keys in the environment and that every file a "
+                       "platform links exists. Returns the packages and every problem.",
+        .capabilities = {Capability::Read, Capability::Filesystem},
+        .effect = command::Effect::Read,
+        .params = std::move(check_params),
+        .handler = sdk_check,
+    });
+
+    json::Value add_params;
+    add_params["type"] = "object";
+    add_params["additionalProperties"] = false;
+    add_params["required"] = json::Array{"source"};
+    add_params["properties"]["source"] =
+        property("string", "A package folder in the project (added where it is), a git "
+                           "repository URL, or the https:// URL of a .zip or .tar archive "
+                           "(copied into sdks/; URLs need the build capability).");
+    add_params["properties"]["name"] =
+        property("string", "Folder under sdks/ for a copied package; default its name.");
+    add_params["properties"]["ref"] = property("string", "Git branch or tag to clone.");
+    add_params["properties"]["sha256"] =
+        property("string", "The archive's expected SHA-256; a mismatch adds nothing.");
+    add_params["properties"]["dry_run"] =
+        property("boolean", "Check the package and return what would be added; change nothing.");
+    registry.add({
+        .name = "sdk.add",
+        .description = "Adds a closed vendor SDK package (a folder with sdk.json) to "
+                       "project.json's sdks, so exports link it. Returns its name, platforms "
+                       "and the keys to set in the environment.",
+        .capabilities = {Capability::Read, Capability::Filesystem},
+        .effect = command::Effect::Read,
+        .params = std::move(add_params),
+        .handler = sdk_add,
     });
 }
 

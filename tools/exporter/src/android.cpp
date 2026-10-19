@@ -502,6 +502,21 @@ bool package_apk(const AndroidTools& tools, const AndroidKey& key, const ApkInfo
         return false;
     }
     const std::string android_jar = (fs::path(tools.platform) / "android.jar").string();
+    // Java libraries from SDK packages: compiled against, and dexed into the APK with the game.
+    std::vector<std::string> jars;
+    for (const fs::directory_entry& entry : fs::directory_iterator(tree / "jars", error)) {
+        if (entry.path().extension() == ".jar") {
+            jars.push_back(fs::absolute(entry.path(), error).string());
+        }
+    }
+    error.clear();
+    std::ranges::sort(jars);
+    std::string classpath = android_jar;
+    for (const std::string& jar : jars) {
+        classpath += kPathSeparator;
+        classpath += jar;
+    }
+
     const fs::path sources = apk_work / "sources.txt";
     if (!platform::write_file(sources.string(), java_sources(tree / "java"))) {
         failure = {"package", "could not write " + display(sources), {}};
@@ -511,6 +526,16 @@ bool package_apk(const AndroidTools& tools, const AndroidKey& key, const ApkInfo
     const std::string unaligned = (apk_work / "unaligned.apk").string();
     const std::string aligned = (apk_work / "aligned.apk").string();
     const std::string signed_apk = (apk_work / "signed.apk").string();
+    std::vector<std::string> d8{tool(tools, "d8", kScript),
+                                info.debug ? "--debug" : "--release",
+                                "--min-api",
+                                std::to_string(kAndroidMinSdk),
+                                "--lib",
+                                android_jar,
+                                "--output",
+                                dex.string(),
+                                classes_jar};
+    d8.insert(d8.end(), jars.begin(), jars.end());
 
     std::vector<std::string> link{tool(tools, "aapt2", kExe),
                                   "link",
@@ -535,18 +560,14 @@ bool package_apk(const AndroidTools& tools, const AndroidKey& key, const ApkInfo
     }
     if (!detail::step("package",
                       {java_tool(tools, "javac"), "-encoding", "UTF-8", "-source", "11", "-target",
-                       "11", "-Xlint:-options", "-nowarn", "-classpath", android_jar, "-d",
+                       "11", "-Xlint:-options", "-nowarn", "-classpath", classpath, "-d",
                        classes.string(), "@" + sources.string()},
                       process, failure) ||
         !detail::step("package",
                       {java_tool(tools, "jar"), "--create", "--file", classes_jar, "-C",
                        classes.string(), "."},
                       process, failure) ||
-        !detail::step("package",
-                      {tool(tools, "d8", kScript), info.debug ? "--debug" : "--release",
-                       "--min-api", std::to_string(kAndroidMinSdk), "--lib", android_jar,
-                       "--output", dex.string(), classes_jar},
-                      process, failure) ||
+        !detail::step("package", d8, process, failure) ||
         !detail::step("package", link, process, failure) ||
         // Code and libraries are stored uncompressed: Android maps the libraries straight
         // from the APK.

@@ -1,0 +1,100 @@
+{
+  "build": {
+    "cmake": "stand-in"
+  },
+  "description": "A stand-in for a vendor SDK: two C functions in a library built from source.",
+  "format": 1,
+  "keys": {
+    "HELLO_APP_ID": {
+      "description": "The game's ID on the Hello dashboard; any text does for the stand-in."
+    }
+  },
+  "license": "MIT",
+  "license_file": "LICENSE.txt",
+  "name": "hello",
+  "platforms": {
+    "android": {
+      "application": [
+        "<meta-data android:name=\"com.example.hello.APP_ID\" android:value=\"${HELLO_APP_ID}\" />"
+      ],
+      "defines": [
+        "HELLO_APP_ID=\"${HELLO_APP_ID}\""
+      ],
+      "include": [
+        "{build}/include"
+      ],
+      "libraries": [
+        "{build}/lib/libhello.so"
+      ],
+      "permissions": [
+        "android.permission.INTERNET"
+      ]
+    },
+    "ios": {
+      "defines": [
+        "HELLO_APP_ID=\"${HELLO_APP_ID}\""
+      ],
+      "include": [
+        "{build}/include"
+      ],
+      "libraries": [
+        "{build}/lib/libhello.a"
+      ],
+      "plist": {
+        "HelloAppID": "${HELLO_APP_ID}"
+      }
+    },
+    "linux": {
+      "defines": [
+        "HELLO_APP_ID=\"${HELLO_APP_ID}\""
+      ],
+      "include": [
+        "{build}/include"
+      ],
+      "libraries": [
+        "{build}/lib/libhello.so"
+      ]
+    },
+    "macos": {
+      "defines": [
+        "HELLO_APP_ID=\"${HELLO_APP_ID}\""
+      ],
+      "include": [
+        "{build}/include"
+      ],
+      "libraries": [
+        "{build}/lib/libhello.dylib"
+      ],
+      "plist": {
+        "HelloAppID": "${HELLO_APP_ID}"
+      }
+    },
+    "web": {
+      "defines": [
+        "HELLO_APP_ID=\"${HELLO_APP_ID}\""
+      ],
+      "include": [
+        "{build}/include"
+      ],
+      "libraries": [
+        "{build}/lib/libhello.a"
+      ]
+    },
+    "windows": {
+      "defines": [
+        "HELLO_APP_ID=\"${HELLO_APP_ID}\""
+      ],
+      "files": [
+        "{build}/bin/hello.dll"
+      ],
+      "include": [
+        "{build}/include"
+      ],
+      "libraries": [
+        "{build}/lib/hello.lib"
+      ]
+    }
+  },
+  "vendor": "SlashEngine examples",
+  "version": "1.0.0"
+}

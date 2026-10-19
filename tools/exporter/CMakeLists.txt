@@ -8,6 +8,7 @@ add_library(slash_exporter
     src/gameplay.cpp
     src/ios.cpp
     src/presets.cpp
+    src/sdk.cpp
     src/steps.cpp
     src/toolchains.cpp)
 add_library(slash::exporter ALIAS slash_exporter)

@@ -230,7 +230,8 @@ for [`.theme.json` files](scene-format.md#themes), for
 [`.bus_layout.json` files](scene-format.md#bus-layouts), for
 [`.replay.json` files](scene-format.md#replays), for [`.test.json` files](scene-format.md#tests),
 for [storyboard files](storyboard-format.md),
-for [`project.json`](project-format.md) or for [`export_presets.json`](project-format.md#export-presets).
+for [`project.json`](project-format.md), for [`export_presets.json`](project-format.md#export-presets)
+or for [`sdk.json`](sdk-format.md).
 
 ```bash
 slash-cli schema scene
@@ -249,13 +250,16 @@ slash-cli schema test
 slash-cli schema storyboard
 slash-cli schema project
 slash-cli schema presets
+slash-cli schema sdk
 ```
 
 ### project validate
 
 Checks a folder's `project.json`, its `export_presets.json` if there is one, the theme its
-`gui.theme` names, the bus layout its `audio.bus_layout` names, and its storyboard with [`storyboard.check`](commands.md#storyboardcheck), and
-lists every error with its file and JSON Pointer path. Exit code 1 if any is invalid. Storyboard warnings, such as a link to a file
+`gui.theme` names, the bus layout its `audio.bus_layout` names, its storyboard with [`storyboard.check`](commands.md#storyboardcheck), and
+its [SDK packages](sdk-format.md#sdk-check) (their `sdk.json` files, the presets' `sdks` and the
+files in the packages, not keys or downloads), and lists every error with its file and JSON
+Pointer path. Exit code 1 if any is invalid. Storyboard warnings, such as a link to a file
 that does not exist yet, are listed under `warnings` and do not fail. The folder defaults to `.`.
 
 ```bash
@@ -523,7 +527,8 @@ or a platform for its defaults: `macos`, `windows`, `linux`, `web`, `android` or
 | `--test` | Run the exported game headless afterwards, if this machine can |
 | `--engine <dir>` | Engine sources (default: `SLASH_ENGINE_DIR`, an installed copy, or the checkout `slash-cli` was built from) |
 
-Export validates the project, its presets and every scene and prefab, copies `project.json` and
+Export validates the project, its presets, its [SDK packages](sdk-format.md#exports) and every
+scene and prefab, copies `project.json` and
 the `.scene.json` and `.prefab.json` files into a staging folder (nothing else, so stray files such as `.env` never
 ship), builds the game with CMake, signs it and installs it into the output folder. Each
 material's [shader](scene-format.md#shaders) is compiled for the platform into its staged file,
@@ -554,7 +559,8 @@ slash-cli export linux --project my-game --test
 {"bytes":5335403,"executable":"my-game/build/export/linux/mygame","linux":{"arch":"x86_64"},"log":"my-game/.slash/export/linux/export.log","output":"my-game/build/export/linux","platform":"linux","preset":"linux","seconds":66.6,"test":{"entities":0,"passed":true,"ticks":60}}
 ```
 
-A signed export adds `signed`: `{"identity", "notarized"}` on macOS,
+An export that links [SDK packages](sdk-format.md) lists them in `sdks`, each with its `name`,
+`version` and `license`. A signed export adds `signed`: `{"identity", "notarized"}` on macOS,
 `{"certificate", "timestamped"}` on Windows, `{"keystore", "release"}` on Android or
 `{"identity", "profile"}` on iOS. Linux exports also return `linux`: the `arch`; their `--test`
 runs only on a Linux machine of that architecture. Android exports also return `android`: the
@@ -566,13 +572,36 @@ the one with the newest iOS and shuts it down afterwards, runs the game headless
 summary; device builds and Macs with no Simulator skip the test and say so.
 
 The full build log is at `log`. A failure names the step that failed (`options`, `validate`,
-`toolchain`, `stage`, `configure`, `build`, `install`, `package`, `sign`, `notarize` or `publish`; Android
+`toolchain`, `stage`, `sdks`, `configure`, `build`, `install`, `package`, `sign`, `notarize` or `publish`; Android
 build failures also name the `abi`) and ends with the last lines of
 the log in `tail`, so the log rarely needs opening. A step of `options` means the request itself
 was wrong, and exits with 2:
 
 ```json
 {"error":{"message":"no preset or platform called \"web-relase\"; did you mean \"web-release\"?","step":"options"}}
+```
+
+### sdk
+
+```bash
+slash-cli sdk add <folder|git URL|https archive> [--project <dir>] [--name <folder>] [--ref <ref>] [--sha256 <hash>] [--dry-run]
+slash-cli sdk check [--project <dir>] [--platform <name>] [--fetch]
+```
+
+`sdk add` adds an [SDK package](sdk-format.md#sdk-add) to `project.json`'s `sdks`: a folder in
+the project where it is, or copied into `sdks/<name>` from a folder elsewhere, a git repository
+(at `--ref`) or an `https://` archive (checked against `--sha256`). `--dry-run` checks the package
+and prints what it would add. `sdk check` checks the [packages](sdk-format.md#sdk-check), the
+presets' `sdks`, keys in the environment and every file a platform links (`--platform` for one),
+and exits 1 on a problem, for CI; `--fetch` downloads what isn't fetched yet so it is checked too.
+The [`sdk.add`](commands.md#sdkadd) and [`sdk.check`](commands.md#sdkcheck) commands do the same.
+
+```bash
+slash-cli sdk add ~/Downloads/hello-sdk --project my-game
+```
+
+```json
+{"copied":true,"folder":"sdks/hello","keys":["HELLO_APP_ID"],"license":"Proprietary","name":"hello","platforms":["android","ios","linux","windows"],"version":"2.1.0"}
 ```
 
 ### toolchain
@@ -692,6 +721,7 @@ drawn, but the sprites are still checked and counted, so a test can see that the
 | `SLASH_ENGINE_DIR` | Engine sources `slash-cli export` and `slash-cli build` build against |
 | `EMSDK` | The Emscripten SDK, needed for web exports |
 | `SLASH_TOOLCHAINS_DIR` | Where `slash-cli toolchain` installs cross toolchains (default `~/.slash/toolchains`) |
+| `SLASH_SDKS_DIR` | Where exports keep [SDK packages'](sdk-format.md#downloads) downloads (default `~/.slash/sdks`) |
 | `SLASH_APPLE_API_KEY_PATH`, `SLASH_APPLE_API_KEY_ID`, `SLASH_APPLE_API_ISSUER` | An App Store Connect API key (the `.p8` file, its ID and issuer) for notarizing macOS exports |
 | `SLASH_WINDOWS_CERTIFICATE_PATH`, `SLASH_WINDOWS_CERTIFICATE_PASSWORD` | A `.pfx` code-signing certificate and its password for signing Windows exports |
 | `SLASH_ANDROID_KEYSTORE_PATH`, `SLASH_ANDROID_KEYSTORE_PASSWORD`, `SLASH_ANDROID_KEY_ALIAS`, `SLASH_ANDROID_KEY_PASSWORD` | The keystore, its password, the key's alias and the key's password (default: the keystore's) for signing release Android exports |

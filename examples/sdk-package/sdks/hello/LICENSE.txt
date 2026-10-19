@@ -1,0 +1,3 @@
+The "hello" stand-in SDK is part of SlashEngine's examples and is licensed under the MIT License,
+as SlashEngine is. A real vendor SDK's license text goes here; exports ship it in the game's data
+under licenses/.
