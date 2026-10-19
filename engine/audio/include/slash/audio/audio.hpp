@@ -17,12 +17,20 @@
 
 // Sound, as Godot's AudioServer and its players. Sound files load as assets: .wav files decode to
 // samples when loaded, as Godot imports them, and .ogg and .mp3 files stay compressed and decode
-// as they play. A .audio.json file gives a sound Godot's import settings (loops), or picks one of
-// several sounds at random each time it plays, as Godot's AudioStreamRandomizer:
+// as they play. A .audio.json file gives a sound Godot's import settings (loops and beats), picks
+// one of several sounds at random each time it plays, as Godot's AudioStreamRandomizer, or plays
+// music as Godot's interactive_music module: streams in turn (AudioStreamPlaylist), together
+// (AudioStreamSynchronized), or as clips a game switches between (AudioStreamInteractive):
 //
 //   {"format": 1, "loop": true, "loop_offset": 4, "source": "music/theme.ogg"}
 //   {"format": 1, "random_pitch": 1.1, "streams": [{"stream": "sfx/step1.wav"},
 //                                                  {"stream": "sfx/step2.wav"}]}
+//   {"format": 1, "playlist": [{"stream": "music/a.ogg"}, {"stream": "music/b.ogg"}]}
+//   {"format": 1, "synchronized": [{"stream": "music/drums.ogg"},
+//                                  {"stream": "music/strings.ogg", "volume_db": -80}]}
+//   {"format": 1, "clips": [{"name": "explore", "stream": "music/explore.ogg"},
+//                           {"name": "battle", "stream": "music/battle.ogg"}],
+//    "transitions": [{"to": "battle", "from_time": "next_bar", "fade_mode": "cross"}]}
 //
 // AudioStreamPlayer and AudioStreamPlayer2D components play them through the buses a
 // .bus_layout.json file sets up, each bus with Godot's volume, mute, solo, effects and send.
@@ -77,29 +85,72 @@ enum class LoopMode : std::uint8_t { Disabled, Forward, PingPong, Backward };
 // Godot's AudioStreamRandomizer playback modes.
 enum class PlaybackMode : std::uint8_t { RandomNoRepeats, Random, Sequential };
 
-// A .audio.json file: a sound with settings, or a randomizer of streams.
+// Godot's AudioStreamInteractive settings: what a clip does when it ends, and how a transition
+// times its change and fades.
+enum class AutoAdvance : std::uint8_t { Disabled, Enabled, ReturnToHold };
+enum class TransitionFrom : std::uint8_t { Immediate, NextBeat, NextBar, End };
+enum class TransitionTo : std::uint8_t { SamePosition, Start, PreviousPosition };
+enum class FadeMode : std::uint8_t { Disabled, In, Out, Cross, Automatic };
+
+// A .audio.json file: a sound with settings, a randomizer of streams, or music. Members are
+// ordered by size, to pack.
 struct StreamFile {
-    std::string source; // a sound file, or "" for a randomizer
+    enum class Kind : std::uint8_t { Sound, Randomizer, Playlist, Synchronized, Interactive };
 
-    // .wav sources, as Godot's import settings: loop_end -1 is the sound's end.
-    LoopMode loop_mode = LoopMode::Disabled;
-    std::int64_t loop_begin = 0; // frames
-    std::int64_t loop_end = -1;
-    // .ogg and .mp3 sources: after the end (or beat_count beats at bpm), go to loop_offset.
-    bool loop = false;
-    double loop_offset = 0.0; // seconds
-    double bpm = 0.0;
-    int beat_count = 0;
+    std::string source; // a sound's file
 
-    // Randomizers.
+    // A randomizer's, playlist's or synchronized stream's streams.
     struct Entry {
-        std::string stream; // a sound file or another .audio.json file
-        float weight = 1.0F;
+        std::string stream;     // a sound file or another .audio.json file
+        float weight = 1.0F;    // randomizers
+        float volume_db = 0.0F; // synchronized streams
     };
     std::vector<Entry> streams;
-    PlaybackMode playback_mode = PlaybackMode::RandomNoRepeats;
+
+    // Interactive music. Clips and transitions name clips by index; -1 is any clip.
+    struct Clip {
+        std::string name;
+        std::string stream;
+        AutoAdvance auto_advance = AutoAdvance::Disabled;
+        int next_clip = -1;
+    };
+    struct Transition {
+        int from_clip = -1;
+        int to_clip = -1;
+        TransitionFrom from_time = TransitionFrom::NextBeat;
+        TransitionTo to_time = TransitionTo::Start;
+        FadeMode fade_mode = FadeMode::Automatic;
+        float fade_beats = 1.0F;
+        int filler_clip = -1; // a clip played between the two, or -1
+        bool hold_previous = false;
+    };
+    std::vector<Clip> clips;
+    std::vector<Transition> transitions;
+
+    // .wav sources, as Godot's import settings (with loop_mode): loop_end -1 is the sound's end.
+    std::int64_t loop_begin = 0; // frames
+    std::int64_t loop_end = -1;
+    // .ogg and .mp3 sources: after the end (or beat_count beats at bpm), go to loop_offset (with
+    // loop).
+    double loop_offset = 0.0; // seconds
+    // A sound's beats, as Godot's bpm, beat_count and bar_beats, which interactive music and
+    // playlists time their changes by.
+    double bpm = 0.0;
+    int beat_count = 0;
+    int bar_beats = 4;
+
     float random_pitch = 1.0F;            // pitch scale up to this far up or down, at least 1
     float random_volume_offset_db = 0.0F; // volume up to this far up or down
+    float fade_time = 0.3F;               // playlists: seconds the stream before fades over
+    int initial_clip = 0;
+
+    Kind kind = Kind::Sound;
+    LoopMode loop_mode = LoopMode::Disabled;
+    // .ogg and .mp3 sources: play again from loop_offset. Playlists: start over after the last
+    // stream.
+    bool loop = false;
+    PlaybackMode playback_mode = PlaybackMode::RandomNoRepeats;
+    bool shuffle = false; // playlists: a new order each time round
 };
 
 [[nodiscard]] std::string_view loop_mode_name(LoopMode mode);
@@ -171,6 +222,13 @@ public:
     // Writes frames at the server's mix rate, played rate_scale times as fast; returns how many
     // came from the stream (fewer once it ends).
     virtual int mix(Frame* buffer, float rate_scale, int frames) = 0;
+    // A player's parameter, as Godot's set_parameter: an interactive stream's "switch_to_clip"
+    // and a synchronized stream's "stream_<index>_volume_db". Others are ignored.
+    virtual void set_parameter(std::string_view /*name*/, const json::Value& /*value*/) {}
+    // A parameter as the playback has it now, as Godot's get_parameter, or null.
+    [[nodiscard]] virtual json::Value parameter(std::string_view /*name*/) const { return {}; }
+    // The interactive music clip playing, or "".
+    [[nodiscard]] virtual std::string_view clip() const { return {}; }
 };
 
 // A stream ready to play: a sound with its settings, or a randomizer of streams.
@@ -187,6 +245,12 @@ public:
     [[nodiscard]] virtual std::unique_ptr<Playback> instantiate(int mix_rate,
                                                                 std::uint32_t random) const = 0;
     [[nodiscard]] virtual double length() const = 0; // seconds, 0 if unknown
+    // Its beats and whether it loops, as Godot's get_bpm, get_beat_count, get_bar_beats and
+    // has_loop; 0 where it has none.
+    [[nodiscard]] virtual double bpm() const { return 0.0; }
+    [[nodiscard]] virtual int beat_count() const { return 0; }
+    [[nodiscard]] virtual int bar_beats() const { return 0; }
+    [[nodiscard]] virtual bool has_loop() const { return false; }
 };
 
 // A stream for a sound with a .audio.json file's settings (or none).
@@ -196,6 +260,14 @@ public:
 [[nodiscard]] std::shared_ptr<const Stream>
 randomizer_stream(std::vector<std::pair<std::shared_ptr<const Stream>, float>> streams,
                   const StreamFile& settings);
+// Music, as Godot's AudioStreamPlaylist, AudioStreamSynchronized and AudioStreamInteractive:
+// streams holds a stream for each of settings.streams, or of settings.clips.
+[[nodiscard]] std::shared_ptr<const Stream>
+playlist_stream(std::vector<std::shared_ptr<const Stream>> streams, const StreamFile& settings);
+[[nodiscard]] std::shared_ptr<const Stream>
+synchronized_stream(std::vector<std::shared_ptr<const Stream>> streams, const StreamFile& settings);
+[[nodiscard]] std::shared_ptr<const Stream>
+interactive_stream(std::vector<std::shared_ptr<const Stream>> clips, const StreamFile& settings);
 
 // A stream loaded through assets, with handles to the files it was made from, which keep them
 // loaded and tell when one was reloaded.
@@ -262,6 +334,9 @@ public:
     [[nodiscard]] bool is_active(PlaybackId id) const;
     [[nodiscard]] bool is_paused(PlaybackId id) const;
     [[nodiscard]] double position(PlaybackId id) const;
+    // The playback itself, to set parameters on and read, or nullptr once it is gone.
+    [[nodiscard]] Playback* playback(PlaybackId id);
+    [[nodiscard]] const Playback* playback(PlaybackId id) const;
     [[nodiscard]] std::size_t playback_count() const;
 
     // The next frames of the Master bus, from -1 to 1, as Godot's driver asks for them. Each 512
@@ -381,6 +456,7 @@ struct PlayerInfo {
     double position = 0.0;
     double length = 0.0;
     Frame volume{};    // the gain mixed in, after distance and panning for 2D players
+    std::string clip;  // the interactive music clip playing, if any
     std::string error; // why its stream did not load
 };
 // Every player with an ID, by ID.

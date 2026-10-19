@@ -81,10 +81,11 @@ std::string pcm_wav(int channels, int bits, int rate, const std::vector<std::int
     return out;
 }
 
-std::shared_ptr<const audio::Stream> steady_stream(int frames, Frame value) {
+std::shared_ptr<const audio::Stream> steady_stream(int frames, Frame value,
+                                                   const audio::StreamFile& settings = {}) {
     auto sound = audio::decode_sound(steady_wav(frames, value), "steady.wav");
     REQUIRE(sound.ok());
-    return audio::sound_stream(std::make_shared<audio::Sound>(std::move(sound).value()));
+    return audio::sound_stream(std::make_shared<audio::Sound>(std::move(sound).value()), settings);
 }
 
 std::vector<Frame> mix(audio::Server& server, int frames) {
@@ -315,9 +316,11 @@ TEST_CASE(".audio.json files give a sound settings or pick one of several stream
         return found.front();
     };
     CHECK(first(R"({"format": 1})").message ==
-          "needs \"source\" (a sound with settings) or \"streams\" (a randomizer)");
+          "needs one of \"source\" (a sound with settings), \"streams\" (a randomizer), "
+          "\"playlist\", \"synchronized\" or \"clips\" (music)");
     CHECK(first(R"({"format": 1, "source": "a.wav", "streams": [{"stream": "b.wav"}]})").message ==
-          "has both \"source\" and \"streams\"; a file is one sound or a randomizer");
+          "has both \"source\" and \"streams\"; a file is one sound, randomizer or piece of "
+          "music");
     CHECK(first(R"({"format": 1, "source": "a.wav", "loop": true})").path == "/loop");
     CHECK(first(R"({"format": 1, "source": "a.ogg", "loop_mode": "forward"})").path ==
           "/loop_mode");
@@ -342,6 +345,305 @@ TEST_CASE(".audio.json files give a sound settings or pick one of several stream
     auto bad = audio::parse_stream_file(parse(R"({"format": 1, "source": "a.wav", "loop": 1})"));
     REQUIRE_FALSE(bad.ok());
     CHECK(contains(bad.error().message, "/loop: "));
+}
+
+TEST_CASE(".audio.json files play music: playlists, synchronized streams and clips") {
+    const auto errors = [](std::string_view text) {
+        return audio::validate_stream_file(parse(text));
+    };
+    CHECK(errors(R"({"format": 1, "playlist": [{"stream": "a.ogg"}, {"stream": "b.audio.json"}],
+                     "shuffle": true, "loop": false, "fade_time": 0.5})")
+              .empty());
+    CHECK(errors(R"({"format": 1, "synchronized": [{"stream": "drums.ogg"},
+                     {"stream": "strings.ogg", "volume_db": -80}]})")
+              .empty());
+    CHECK(errors(R"({"format": 1, "source": "loop.wav", "loop_mode": "forward", "bpm": 120,
+                     "beat_count": 16, "bar_beats": 3})")
+              .empty());
+    const std::string music = R"({"format": 1, "initial_clip": "explore",
+        "clips": [{"name": "explore", "stream": "explore.ogg"},
+                  {"name": "battle", "stream": "battle.ogg", "auto_advance": "enabled",
+                   "next_clip": "explore"},
+                  {"name": "sting", "stream": "sting.wav", "auto_advance": "return_to_hold"}],
+        "transitions": [{"to": "battle", "from_time": "next_bar", "to_time": "same_position",
+                         "fade_mode": "cross", "fade_beats": 2, "filler_clip": "sting"},
+                        {"from": "battle", "to": "sting", "hold_previous": true}]})";
+    CHECK(errors(music).empty());
+
+    const auto first = [&](std::string_view text) {
+        const auto found = errors(text);
+        REQUIRE_FALSE(found.empty());
+        return found.front();
+    };
+    // Members only some kinds take.
+    CHECK(first(R"({"format": 1, "source": "a.wav", "shuffle": true})").message ==
+          "only a playlist takes this");
+    CHECK(first(R"({"format": 1, "streams": [{"stream": "a.wav"}], "loop": true})").message ==
+          "only a sound or a playlist takes this");
+    CHECK(first(R"({"format": 1, "playlist": [{"stream": "a.wav"}], "transitions": []})").path ==
+          "/transitions");
+    CHECK(first(R"({"format": 1, "playlist": [{"stream": "a.wav", "weight": 2}]})").path ==
+          "/playlist/0/weight");
+    CHECK(first(R"({"format": 1, "synchronized": [{"stream": "a.png"}]})").path ==
+          "/synchronized/0/stream");
+    // Clips are named, and every name must be a clip.
+    const auto unknown = first(R"({"format": 1, "clips": [{"name": "explore", "stream": "a.ogg"}],
+        "transitions": [{"to": "explor"}]})");
+    CHECK(unknown.path == "/transitions/0/to");
+    CHECK(unknown.message == R"(no clip is named "explor"; did you mean "explore"?)");
+    CHECK(first(R"({"format": 1, "clips": [{"name": "a", "stream": "a.ogg"}],
+        "initial_clip": "b"})")
+              .path == "/initial_clip");
+    CHECK(first(R"({"format": 1, "clips": [{"name": "a", "stream": "a.ogg"},
+        {"name": "a", "stream": "b.ogg"}]})")
+              .message == "clip 0 already has this name");
+    CHECK(first(R"({"format": 1, "clips": [{"name": "a", "stream": "a.ogg",
+        "auto_advance": "enabled"}]})")
+              .message == "auto_advance \"enabled\" needs next_clip");
+    CHECK(first(R"({"format": 1, "clips": [{"name": "a", "stream": "a.ogg",
+        "auto_advance": "enabled", "next_clip": "a"}]})")
+              .path == "/clips/0/next_clip");
+    CHECK(first(R"({"format": 1, "clips": [{"name": "a", "stream": "a.ogg"},
+        {"name": "b", "stream": "b.ogg", "next_clip": "a"}]})")
+              .path == "/clips/1/next_clip");
+    CHECK(first(R"({"format": 1, "clips": [{"name": "a", "stream": "a.ogg"}],
+        "transitions": [{"to": "a"}, {"to": "a", "fade_mode": "in"}]})")
+              .message == "transition 0 is already from and to the same clips");
+
+    auto parsed = audio::parse_stream_file(parse(music));
+    REQUIRE(parsed.ok());
+    const audio::StreamFile& file = parsed.value();
+    CHECK(file.kind == audio::StreamFile::Kind::Interactive);
+    REQUIRE(file.clips.size() == 3);
+    CHECK(file.clips[1].auto_advance == audio::AutoAdvance::Enabled);
+    CHECK(file.clips[1].next_clip == 0);
+    REQUIRE(file.transitions.size() == 2);
+    CHECK(file.transitions[0].from_clip == -1);
+    CHECK(file.transitions[0].to_clip == 1);
+    CHECK(file.transitions[0].from_time == audio::TransitionFrom::NextBar);
+    CHECK(file.transitions[0].to_time == audio::TransitionTo::SamePosition);
+    CHECK(file.transitions[0].fade_mode == audio::FadeMode::Cross);
+    CHECK(file.transitions[0].fade_beats == 2.0F);
+    CHECK(file.transitions[0].filler_clip == 2);
+    CHECK(file.transitions[1].hold_previous);
+    // As Godot's, a playlist loops unless told not to.
+    auto playlist = audio::parse_stream_file(parse(R"({"format": 1, "playlist": [
+        {"stream": "a.wav"}]})"));
+    REQUIRE(playlist.ok());
+    CHECK(playlist.value().kind == audio::StreamFile::Kind::Playlist);
+    CHECK(playlist.value().loop);
+    CHECK(playlist.value().fade_time == doctest::Approx(0.3));
+}
+
+TEST_CASE("a playlist plays its streams in turn, each for its beats or its length") {
+    // Each sound plays two frames late, for the cubic history its resampler keeps.
+    audio::StreamFile beats;
+    beats.bpm = 600; // a beat is a tenth of a second
+    beats.beat_count = 1;
+    audio::StreamFile settings;
+    settings.loop = false;
+    settings.fade_time = 0.01F;
+    const auto list = audio::playlist_stream(
+        {steady_stream(kRate, {0.5F, 0.5F}, beats), steady_stream(kRate / 10, {0.25F, 0.25F})},
+        settings);
+    CHECK(list->length() == doctest::Approx(0.2));
+    CHECK(list->bpm() == 600.0);
+    auto playback = list->instantiate(kRate, 7);
+    playback->start(0.0);
+    std::vector<Frame> out(static_cast<std::size_t>(kRate / 2));
+    const int mixed = playback->mix(out.data(), 1.0F, static_cast<int>(out.size()));
+    // The first sound for its one beat, though it is a second long...
+    check_frame(out[2000], 0.5F, 0.5F);
+    // ...then the second, as the first fades out under it over a hundredth of a second.
+    CHECK(out[4500].left > 0.25F);
+    CHECK(out[4500].left < 0.75F);
+    check_frame(out[6000], 0.25F, 0.25F);
+    // It doesn't loop, so it ends after both: a frame past 8820, as Godot counts each stream's
+    // time down a frame at a time.
+    CHECK(mixed == 8821);
+    CHECK_FALSE(playback->is_playing());
+
+    // Looping, it starts over and counts the loop.
+    settings.loop = true;
+    const auto looping = audio::playlist_stream(
+        {steady_stream(kRate / 10, {0.5F, 0.5F}), steady_stream(kRate / 10, {0.25F, 0.25F})},
+        settings);
+    CHECK(looping->has_loop());
+    auto again = looping->instantiate(kRate, 7);
+    again->start(0.15);
+    CHECK(again->position() == doctest::Approx(0.15));
+    std::vector<Frame> second(static_cast<std::size_t>(kRate / 10));
+    CHECK(again->mix(second.data(), 1.0F, static_cast<int>(second.size())) == kRate / 10);
+    check_frame(second[1000], 0.25F, 0.25F);
+    check_frame(second[3500], 0.5F, 0.5F);
+    CHECK(again->loop_count() == 1);
+    CHECK(again->position() == doctest::Approx(0.05).epsilon(0.01));
+}
+
+TEST_CASE("a synchronized stream plays its layers together, each at its volume") {
+    audio::StreamFile settings;
+    settings.streams = {{.stream = "a.wav"}, {.stream = "b.wav", .volume_db = half_db()}};
+    const auto layers = audio::synchronized_stream(
+        {steady_stream(kRate, {0.5F, 0.5F}), steady_stream(kRate / 2, {0.25F, 0.25F})}, settings);
+    CHECK(layers->length() == doctest::Approx(1.0));
+    auto playback = layers->instantiate(kRate, 0);
+    playback->start(0.0);
+    std::vector<Frame> out(1024);
+    CHECK(playback->mix(out.data(), 1.0F, 1024) == 1024);
+    check_frame(out[500], 0.625F, 0.625F);
+
+    // A player's parameter changes a layer's volume, ramping over the next 128 frames.
+    CHECK(playback->parameter("stream_1_volume_db").as_double() == doctest::Approx(half_db()));
+    playback->set_parameter("stream_1_volume_db", json::Value(0.0));
+    playback->set_parameter("stream_7_volume_db", json::Value(0.0)); // no such layer
+    playback->set_parameter("volume_db", json::Value(-80.0));
+    CHECK(playback->parameter("stream_7_volume_db").is_null());
+    CHECK(playback->mix(out.data(), 1.0F, 1024) == 1024);
+    CHECK(out[0].left > 0.625F);
+    CHECK(out[0].left < 0.64F);
+    check_frame(out[127], 0.75F, 0.75F);
+    check_frame(out[1000], 0.75F, 0.75F);
+    // Once the shorter layer ends, the other plays on alone, and the whole ends with the last.
+    std::vector<Frame> rest(static_cast<std::size_t>(kRate));
+    CHECK(playback->mix(rest.data(), 1.0F, kRate) == kRate);
+    check_frame(rest[30000], 0.5F, 0.5F);
+    check_frame(rest[43000], 0.0F, 0.0F);
+    // As Godot's, the first call that finds no layer playing still returns its frames, silent.
+    CHECK(playback->mix(rest.data(), 1.0F, 128) == 128);
+    CHECK_FALSE(playback->is_playing());
+    CHECK(playback->mix(rest.data(), 1.0F, 128) == 0);
+}
+
+TEST_CASE("interactive music switches clips as its transitions say") {
+    // Clips by index: a and b are steady sounds, a with a beat every tenth of a second; sting is
+    // short and goes on to b; solo is short and goes on to back, which returns to the clip a
+    // hold_previous transition left.
+    audio::StreamFile beats;
+    beats.bpm = 600;
+    beats.loop_mode = audio::LoopMode::Forward;
+    audio::StreamFile settings;
+    // The streams are given below, so the clips name none.
+    const auto clip = [](std::string name, audio::AutoAdvance advance = {}, int next = -1) {
+        audio::StreamFile::Clip made;
+        made.name = std::move(name);
+        made.auto_advance = advance;
+        made.next_clip = next;
+        return made;
+    };
+    settings.clips = {clip("a"), clip("b"), clip("sting", audio::AutoAdvance::Enabled, 1),
+                      clip("back", audio::AutoAdvance::ReturnToHold),
+                      clip("solo", audio::AutoAdvance::Enabled, 3)};
+    settings.transitions = {
+        {.from_clip = 0,
+         .to_clip = 1,
+         .from_time = audio::TransitionFrom::NextBeat,
+         .fade_mode = audio::FadeMode::Disabled},
+        {.from_clip = 1,
+         .to_clip = 4,
+         .from_time = audio::TransitionFrom::Immediate,
+         .fade_mode = audio::FadeMode::Disabled,
+         .hold_previous = true},
+        {.from_time = audio::TransitionFrom::Immediate, .fade_mode = audio::FadeMode::Disabled}};
+    const auto music = audio::interactive_stream(
+        {steady_stream(kRate, {0.5F, 0.5F}, beats), steady_stream(kRate, {0.25F, 0.25F}),
+         steady_stream(kRate / 10, {0.125F, 0.125F}), steady_stream(kRate / 10, {0.75F, 0.75F}),
+         steady_stream(kRate / 10, {0.375F, 0.375F})},
+        settings);
+    CHECK(music->length() == 0.0);
+    auto playback = music->instantiate(kRate, 0);
+    playback->start(0.0);
+    std::vector<Frame> out(2048);
+    const auto mix_frames = [&](int frames) {
+        out.resize(static_cast<std::size_t>(frames));
+        REQUIRE(playback->mix(out.data(), 1.0F, frames) == frames);
+    };
+    mix_frames(2048);
+    CHECK(playback->clip() == "a");
+    CHECK(playback->parameter("switch_to_clip") == json::Value("a"));
+    check_frame(out[1000], 0.5F, 0.5F);
+
+    // A switch to b waits for a's next beat, at frame 4410; it names b at once.
+    playback->set_parameter("switch_to_clip", json::Value("b"));
+    CHECK(playback->parameter("switch_to_clip") == json::Value("b"));
+    mix_frames(2048);
+    CHECK(playback->clip() == "a");
+    CHECK(playback->parameter("switch_to_clip") == json::Value("b"));
+    check_frame(out[2000], 0.5F, 0.5F); // frame 4096
+    mix_frames(2048);
+    CHECK(playback->clip() == "b");
+    check_frame(out[1000], 0.25F, 0.25F); // frame 5144
+    // Asking for the clip it plays changes nothing.
+    playback->set_parameter("switch_to_clip", json::Value("b"));
+    playback->set_parameter("switch_to_clip", json::Value("nothing"));
+    mix_frames(2048);
+    check_frame(out[2000], 0.25F, 0.25F);
+
+    // The sting plays at once, then goes on to b at its end.
+    playback->set_parameter("switch_to_clip", json::Value("sting"));
+    mix_frames(2048);
+    CHECK(playback->clip() == "sting");
+    check_frame(out[1000], 0.125F, 0.125F);
+    mix_frames(4096);
+    CHECK(playback->clip() == "b");
+    CHECK(playback->parameter("switch_to_clip") == json::Value("b"));
+    check_frame(out[4000], 0.25F, 0.25F);
+
+    // From b to solo holds b; solo goes on to back, and at back's end the music returns to b.
+    playback->set_parameter("switch_to_clip", json::Value("solo"));
+    mix_frames(2048);
+    CHECK(playback->clip() == "solo");
+    check_frame(out[1000], 0.375F, 0.375F);
+    mix_frames(4096);
+    CHECK(playback->clip() == "back");
+    check_frame(out[4000], 0.75F, 0.75F);
+    mix_frames(4096);
+    CHECK(playback->clip() == "b");
+    check_frame(out[4000], 0.25F, 0.25F);
+    CHECK(playback->position() > 0.0);
+}
+
+TEST_CASE("a player's parameters reach its playbacks, and switch_to_clip follows the music") {
+    Sounds sounds;
+    sounds.files.write("music/a.wav", steady_wav(kRate, {0.5F, 0.5F}));
+    sounds.files.write("music/b.wav", steady_wav(kRate / 10, {0.25F, 0.25F}));
+    sounds.files.write("music/score.audio.json", R"({"format": 1,
+        "clips": [{"name": "calm", "stream": "music/a.wav"},
+                  {"name": "fight", "stream": "music/b.wav", "auto_advance": "enabled",
+                   "next_clip": "calm"}],
+        "transitions": [{"from_time": "immediate", "fade_mode": "disabled"}]})");
+    const entt::entity music = sounds.add("music", "AudioStreamPlayer",
+                                          R"({"stream": "music/score.audio.json", "autoplay": true,
+            "parameters": {"switch_to_clip": "calm"}})");
+    sounds.step();
+    CHECK(sounds.player("music")->clip == "calm");
+    check_frame(sounds.last(), 0.5F, 0.5F);
+
+    auto& player = sounds.world.ecs().get<world::AudioStreamPlayer>(music);
+    player.parameters["switch_to_clip"] = json::Value("fight");
+    sounds.step();
+    CHECK(sounds.player("music")->clip == "fight");
+    check_frame(sounds.last(), 0.25F, 0.25F);
+    // Fight lasts a tenth of a second, then goes back to calm, and the parameter follows.
+    sounds.step(8);
+    CHECK(sounds.player("music")->clip == "calm");
+    CHECK(sounds.world.ecs().get<world::AudioStreamPlayer>(music).parameters.at("switch_to_clip") ==
+          json::Value("calm"));
+    check_frame(sounds.last(), 0.5F, 0.5F);
+    // So asking for fight again plays it again.
+    sounds.world.ecs().get<world::AudioStreamPlayer>(music).parameters["switch_to_clip"] =
+        json::Value("fight");
+    sounds.step();
+    CHECK(sounds.player("music")->clip == "fight");
+
+    // A voice that starts later gets the parameters it was given before it plays.
+    sounds.files.write("music/layers.audio.json", R"({"format": 1, "synchronized": [
+        {"stream": "music/a.wav"}, {"stream": "music/a.wav", "volume_db": -80}]})");
+    sounds.add("layers", "AudioStreamPlayer",
+               R"({"stream": "music/layers.audio.json", "volume_db": -80,
+                   "parameters": {"stream_1_volume_db": 0}})");
+    const auto& layers =
+        sounds.world.ecs().get<world::AudioStreamPlayer>(sounds.world.find("layers"));
+    CHECK(layers.parameters.size() == 1);
 }
 
 TEST_CASE("a sound plays through Master a lookahead late, then its playback ends") {

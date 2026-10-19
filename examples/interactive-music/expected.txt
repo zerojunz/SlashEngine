@@ -1,0 +1,55 @@
+wrote the sounds in audio/
+scene.open {"path":"main.scene.json"}
+{"entities":3,"path":"main.scene.json"}
+step {"ticks":30}
+{"tick":30,"ticks":30}
+audio.state {"ids":["score"]}
+{"buses":[{"name":"Master","peak_db":-12,"volume_db":0}],"mix_rate":44100,"players":[{"bus":"Master","clip":"explore","id":"score","kind":"AudioStreamPlayer","position":0.5137,"stream":"audio/score.audio.json","voices":1,"volume":[1,1]}]}
+component.set {"components":{"AudioStreamPlayer":{"parameters":{"switch_to_clip":"combat"}}},"id":"score"}
+{"changed":{"AudioStreamPlayer":{"parameters":{"switch_to_clip":"combat"}}},"id":"score"}
+step {"ticks":30}
+{"tick":60,"ticks":30}
+audio.state {"ids":["score"]}
+{"buses":[{"name":"Master","peak_db":-12,"volume_db":0}],"mix_rate":44100,"players":[{"bus":"Master","clip":"explore","id":"score","kind":"AudioStreamPlayer","position":1.013,"stream":"audio/score.audio.json","voices":1,"volume":[1,1]}]}
+step {"ticks":90}
+{"tick":150,"ticks":90}
+audio.state {"ids":["score"]}
+{"buses":[{"name":"Master","peak_db":-6,"volume_db":0}],"mix_rate":44100,"players":[{"bus":"Master","clip":"combat","id":"score","kind":"AudioStreamPlayer","position":0.5108,"stream":"audio/score.audio.json","voices":1,"volume":[1,1]}]}
+component.set {"components":{"AudioStreamPlayer":{"parameters":{"switch_to_clip":"victory"}}},"id":"score"}
+{"changed":{"AudioStreamPlayer":{"parameters":{"switch_to_clip":"victory"}}},"id":"score"}
+step {"ticks":45}
+{"tick":195,"ticks":45}
+audio.state {"ids":["score"]}
+{"buses":[{"name":"Master","peak_db":-8.3,"volume_db":0}],"mix_rate":44100,"players":[{"bus":"Master","clip":"victory","id":"score","kind":"AudioStreamPlayer","position":0.2554,"stream":"audio/score.audio.json","voices":1,"volume":[1,1]}]}
+entity.get {"components":["AudioStreamPlayer"],"id":"score"}
+{"components":{"AudioStreamPlayer":{"autoplay":true,"bus":"Master","max_polyphony":1,"parameters":{"switch_to_clip":"explore"},"pitch_scale":1.0,"playing":true,"stream":"audio/score.audio.json","stream_paused":false,"volume_db":0.0}},"id":"score"}
+step {"ticks":75}
+{"tick":270,"ticks":75}
+audio.state {"ids":["score"]}
+{"buses":[{"name":"Master","peak_db":-12,"volume_db":0}],"mix_rate":44100,"players":[{"bus":"Master","clip":"explore","id":"score","kind":"AudioStreamPlayer","position":0.5108,"stream":"audio/score.audio.json","voices":1,"volume":[1,1]}]}
+audio.stop {"id":"score"}
+{"tick":270}
+audio.play {"id":"layers"}
+{"tick":270}
+step {"ticks":10}
+{"tick":280,"ticks":10}
+audio.state {"ids":["layers"]}
+{"buses":[{"name":"Master","peak_db":-12,"volume_db":0}],"mix_rate":44100,"players":[{"bus":"Master","id":"layers","kind":"AudioStreamPlayer","length":4,"position":0.1654,"stream":"audio/layers.audio.json","voices":1,"volume":[1,1]}]}
+component.set {"components":{"AudioStreamPlayer":{"parameters":{"stream_1_volume_db":0}}},"id":"layers"}
+{"changed":{"AudioStreamPlayer":{"parameters":{"stream_1_volume_db":0}}},"id":"layers"}
+step {"ticks":10}
+{"tick":290,"ticks":10}
+audio.state {"ids":["layers"]}
+{"buses":[{"name":"Master","peak_db":-6,"volume_db":0}],"mix_rate":44100,"players":[{"bus":"Master","id":"layers","kind":"AudioStreamPlayer","length":4,"position":0.3396,"stream":"audio/layers.audio.json","voices":1,"volume":[1,1]}]}
+audio.stop {"id":"layers"}
+{"tick":290}
+audio.play {"id":"radio"}
+{"tick":290}
+step {"ticks":30}
+{"tick":320,"ticks":30}
+audio.state {"ids":["radio"]}
+{"buses":[{"name":"Master","peak_db":-6,"volume_db":0}],"mix_rate":44100,"players":[{"bus":"Master","id":"radio","kind":"AudioStreamPlayer","length":2,"position":0.4992,"stream":"audio/radio.audio.json","voices":1,"volume":[1,1]}]}
+step {"ticks":60}
+{"tick":380,"ticks":60}
+audio.state {"ids":["radio"]}
+{"buses":[{"name":"Master","peak_db":-18.1,"volume_db":0}],"mix_rate":44100,"players":[{"bus":"Master","id":"radio","kind":"AudioStreamPlayer","length":2,"position":1.4977,"stream":"audio/radio.audio.json","voices":1,"volume":[1,1]}]}

@@ -496,6 +496,16 @@ double Server::position(PlaybackId id) const {
     return node != nullptr ? node->playback->position() : 0.0;
 }
 
+Playback* Server::playback(PlaybackId id) {
+    Impl::Node* node = impl_->find(id);
+    return node != nullptr ? node->playback.get() : nullptr;
+}
+
+const Playback* Server::playback(PlaybackId id) const {
+    const Impl::Node* node = impl_->find(id);
+    return node != nullptr ? node->playback.get() : nullptr;
+}
+
 std::size_t Server::playback_count() const {
     return impl_->playbacks.size();
 }

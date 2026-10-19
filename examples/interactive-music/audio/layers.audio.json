@@ -1,0 +1,11 @@
+{
+  "format": 1,
+  "synchronized": [
+    {
+      "stream": "audio/drums.wav"
+    },
+    {
+      "stream": "audio/melody.wav"
+    }
+  ]
+}
