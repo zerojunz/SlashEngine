@@ -484,6 +484,32 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
         a library server that `slash-cli` runs, so a teammate's request finds assets someone
         else already made
   - [ ] A test generator, so agents and CI can use the library headless with no model or key
+- [ ] Soundtracks: agents plan, write, arrange and check a game's music, played by the
+      interactive music already built in milestone 5 ([design](design.md#soundtracks)). The
+      parts that need no model (scores, analysis, arranging and checks) can come first
+  - [ ] Music in the storyboard: themes for characters, places and factions (key, tempo,
+        instruments, mood), a loudness target, and a cue sheet saying which cue plays in each
+        scene, story beat and game state; `soundtrack.plan` drafts the cue sheet from the
+        storyboard and the project's scenes
+  - [ ] Scores as text: `.score.json` tracks of notes in beats, with tempo, meter, key and named
+        sections, plus MIDI import and export, so an agent can change one bar or one instrument
+        exactly instead of making the whole piece again
+  - [ ] `soundtrack.render`: scores played through a SoundFont synth (TinySoundFont) into one
+        `.ogg` stem per track, with `bpm`, `beat_count` and `bar_beats` filled in
+  - [ ] Generated and imported music: music models through the asset library's generator
+        adapters, and composers' tracks and stems imported as library assets, each with its
+        generator or author and license recorded
+  - [ ] `soundtrack.arrange`: turns a cue sheet into `.audio.json` files the runtime already
+        plays: cues become interactive clips, intensity levels become synchronized layers,
+        and transitions land on the bar, with filler clips as stingers
+  - [ ] `audio.analyze`: tempo and beat grid, key, loudness (LUFS) and true peak, clipping,
+        silence, frequency balance and how cleanly a loop joins, so agents judge music without
+        listening
+  - [ ] `soundtrack.check`: missing cues, beat counts that don't match a file's length, loops
+        that click, transitions off the bar, keys that clash across a transition and
+        loudness off target; run by the headless test command and CI
+  - [ ] A music timeline: `run.until` and `playtest.run` report which clip played when and
+        every transition, so agents can check the music follows the game
 
 ### Milestone 7: 3D feature set (Planned)
 
@@ -655,6 +681,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Skeletal animation | Skinned meshes, blending, root motion | 7 | Planned |
 | Animation blending | Blend trees and state machines in text, two-bone and FABRIK IK | 7 | Planned |
 | Particles | CPU and GPU particles, particle graphs in text | 5 | In part: CPU particles and GPU particles with process materials are done; sub-emitters, trails, collision, turbulence, attractors and particle graphs in 5 |
+| Soundtracks | Music planned in the storyboard, written as scores or generated, arranged into interactive music and checked by analysis, all through commands | 6 | Planned |
 | Audio | miniaudio: buses, effects, 3D spatial audio | 5, 7 | In part: 2D players, buses, effects, area bus overrides and interactive music are done; generated streams and microphone input in 5, 3D audio in 7 |
 | Input | Rebindable action maps over SDL3, injectable by agents | 5 | Done |
 | Refresh rates and frame pacing | V-Sync modes, frame cap, display refresh rates, variable refresh rate, rendering interpolated between fixed ticks | 5 | Done |
@@ -714,6 +741,7 @@ calls and tokens ([design section 6](design.md#6-cheap-for-agents-to-use)).
 | `build.check`: C++ compile errors as data from an incremental build | 6 | Planned |
 | `api.search`: real signatures and examples instead of guessed function names | 6 | Planned |
 | `playtest.run`: many headless bot runs and tuning sweeps in one call | 6 | Planned |
+| `audio.analyze`: tempo, key, loudness and loop seams as data instead of listening | 6 | Planned |
 | `project.map`: where things are in a large project, without reading the source | 6 | Planned |
 | A scheduled benchmark of standard agent tasks counting calls and tokens | 6 | Planned |
 | The asset library: search before generating, and read a text description instead of the file | 6 | Planned |
