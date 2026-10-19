@@ -12,6 +12,8 @@
 #   SLASH_GAME_MICROPHONE_USAGE  why, shown when macOS and iOS ask for the microphone
 #   SLASH_GAME_SOURCES  the game's own C++ code (project.json's gameplay.sources): absolute
 #                       paths of folders, whose .cpp files are compiled in, and files
+#   SLASH_GAME_SDKS     a CMake file of slash_game_sdk() calls for the SDK packages the game
+#                       links, written per build by slash-cli export (tools/exporter/src/sdk.cpp)
 #
 # `cmake --install <build> --component game --prefix <out>` lays the game out for its platform:
 # <out>/<binary>.app on macOS, <out>/<binary>[.exe] with <out>/data on Windows and Linux, and
@@ -118,6 +120,101 @@ endif()
 if(game_sources)
     target_sources(game PRIVATE ${game_sources})
     target_compile_definitions(game PRIVATE SLASH_GAMEPLAY_LINKED)
+endif()
+
+# Links one SDK package (sdk.json) into the game: SLASH_SDK_<NAME> and its defines, its include
+# folders, libraries and frameworks. Shared libraries and frameworks ship where the platform's
+# loader finds them: beside a Linux game (found through $ORIGIN), in the bundle's Frameworks
+# folder on macOS and iOS, in lib/<abi> on Android. Files ship beside the executable on Windows
+# and Linux, in Resources on macOS, in the app on iOS, in assets on Android and beside index.html
+# on the web. Java libraries go in jars/, which slash-cli export compiles against and puts in the
+# APK.
+set(SLASH_SDK_PLIST "")
+set(SLASH_SDK_ANDROID_MANIFEST "")
+set(SLASH_SDK_ANDROID_APPLICATION "")
+function(slash_game_sdk name)
+    cmake_parse_arguments(PARSE_ARGV 1 sdk "" ""
+        "DEFINES;INCLUDE;LIBRARIES;SHARED;FRAMEWORKS;EMBED;SYSTEM_LIBRARIES;SYSTEM_FRAMEWORKS;LINK_OPTIONS;FILES;JARS")
+    target_compile_definitions(game PRIVATE ${sdk_DEFINES})
+    target_include_directories(game SYSTEM PRIVATE ${sdk_INCLUDE})
+    if(APPLE)
+        if(IOS)
+            set(frameworks_dir ${SLASH_GAME_BINARY}.app/Frameworks)
+            set(beside_dir ${SLASH_GAME_BINARY}.app)
+        else()
+            set(frameworks_dir ${SLASH_GAME_BINARY}.app/Contents/Frameworks)
+            # Contents/MacOS is only for code, which codesign seals differently.
+            set(beside_dir ${SLASH_GAME_BINARY}.app/Contents/Resources)
+        endif()
+    elseif(ANDROID)
+        set(beside_dir assets)
+    else()
+        set(beside_dir .)
+    endif()
+    foreach(library IN LISTS sdk_LIBRARIES)
+        if(library IN_LIST sdk_SHARED AND (ANDROID OR (UNIX AND NOT APPLE)))
+            # By file name, so the game asks for it by name even when it has no SONAME.
+            get_filename_component(folder "${library}" DIRECTORY)
+            get_filename_component(file "${library}" NAME)
+            target_link_directories(game PRIVATE "${folder}")
+            target_link_libraries(game PRIVATE "-l:${file}")
+        else()
+            target_link_libraries(game PRIVATE "${library}")
+        endif()
+    endforeach()
+    foreach(library IN LISTS sdk_SHARED)
+        if(ANDROID)
+            install(FILES "${library}" DESTINATION lib/${ANDROID_ABI} COMPONENT game)
+        elseif(APPLE)
+            install(FILES "${library}" DESTINATION ${frameworks_dir} COMPONENT game)
+        else()
+            install(FILES "${library}" DESTINATION . COMPONENT game)
+        endif()
+    endforeach()
+    foreach(framework IN LISTS sdk_FRAMEWORKS)
+        get_filename_component(folder "${framework}" DIRECTORY)
+        target_compile_options(game PRIVATE "-F${folder}")
+        target_link_libraries(game PRIVATE "$<LINK_LIBRARY:FRAMEWORK,${framework}>")
+    endforeach()
+    foreach(framework IN LISTS sdk_EMBED)
+        install(DIRECTORY "${framework}" DESTINATION ${frameworks_dir} USE_SOURCE_PERMISSIONS
+            COMPONENT game)
+    endforeach()
+    target_link_libraries(game PRIVATE ${sdk_SYSTEM_LIBRARIES})
+    foreach(framework IN LISTS sdk_SYSTEM_FRAMEWORKS)
+        target_link_libraries(game PRIVATE "$<LINK_LIBRARY:FRAMEWORK,${framework}>")
+    endforeach()
+    target_link_options(game PRIVATE ${sdk_LINK_OPTIONS})
+    foreach(file IN LISTS sdk_FILES)
+        if(IS_DIRECTORY "${file}")
+            install(DIRECTORY "${file}" DESTINATION ${beside_dir} USE_SOURCE_PERMISSIONS
+                COMPONENT game)
+        elseif(ANDROID AND file MATCHES "\\.so$")
+            install(FILES "${file}" DESTINATION lib/${ANDROID_ABI} COMPONENT game)
+        elseif(APPLE AND file MATCHES "\\.dylib$")
+            install(FILES "${file}" DESTINATION ${frameworks_dir} COMPONENT game)
+        else()
+            install(FILES "${file}" DESTINATION ${beside_dir} COMPONENT game)
+        endif()
+    endforeach()
+    if(sdk_JARS)
+        install(FILES ${sdk_JARS} DESTINATION jars COMPONENT game)
+    endif()
+    set(rpath "")
+    if(IOS)
+        set(rpath "@executable_path/Frameworks")
+    elseif(APPLE)
+        set(rpath "@executable_path/../Frameworks")
+    elseif(UNIX AND NOT ANDROID AND NOT EMSCRIPTEN)
+        set(rpath "$ORIGIN")
+    endif()
+    get_target_property(rpaths game INSTALL_RPATH)
+    if(rpath AND (sdk_SHARED OR sdk_EMBED OR sdk_FILES) AND NOT rpath IN_LIST rpaths)
+        set_property(TARGET game APPEND PROPERTY INSTALL_RPATH "${rpath}")
+    endif()
+endfunction()
+if(SLASH_GAME_SDKS)
+    include("${SLASH_GAME_SDKS}")
 endif()
 
 if(EMSCRIPTEN)

@@ -1,0 +1,24 @@
+{
+  "description": "A stand-in SDK that only ships a file beside the game.",
+  "format": 1,
+  "license": "MIT",
+  "name": "greeter",
+  "platforms": {
+    "linux": {
+      "files": [
+        "greetings.txt"
+      ]
+    },
+    "macos": {
+      "files": [
+        "greetings.txt"
+      ]
+    },
+    "windows": {
+      "files": [
+        "greetings.txt"
+      ]
+    }
+  },
+  "version": "0.3.0"
+}

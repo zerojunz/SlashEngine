@@ -1,0 +1,4 @@
+{"jsonrpc":"2.0","id":1,"method":"sdk.check","params":{"platform":"linux"}}
+{"jsonrpc":"2.0","id":2,"method":"sdk.add","params":{"source":"vendor/greeter","dry_run":true}}
+{"jsonrpc":"2.0","id":3,"method":"sdk.add","params":{"source":"vendor/greeter"}}
+{"jsonrpc":"2.0","id":4,"method":"sdk.check","params":{"platform":"linux"}}

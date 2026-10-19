@@ -1,0 +1,10 @@
+{
+  "entities": {
+    "greeter": {
+      "components": {
+        "Greeter": {}
+      }
+    }
+  },
+  "format": 1
+}
