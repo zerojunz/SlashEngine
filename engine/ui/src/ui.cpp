@@ -86,6 +86,79 @@ void check_names(std::vector<Problem>& problems, const std::string& id, std::str
     }
 }
 
+// A CodeEdit makes the TextEdit on its entity a code editor; its lines, and the lines of the
+// TextEdit's gutters, are lines of the text, and a gutter shows text or icons.
+void check_code_edits(const world::World& world, std::vector<Problem>& problems) {
+    std::vector<std::pair<std::string, entt::entity>> found;
+    for (const auto [entity] : world.ecs().storage<entt::entity>()->each()) {
+        if (!world.id_of(entity).empty() &&
+            world.ecs().any_of<world::CodeEdit, world::TextEdit>(entity)) {
+            found.emplace_back(world.id_of(entity), entity);
+        }
+    }
+    std::ranges::sort(found);
+    for (const auto& [id, entity] : found) {
+        const auto* edit = world.ecs().try_get<world::TextEdit>(entity);
+        const auto* code = world.ecs().try_get<world::CodeEdit>(entity);
+        if (edit == nullptr) {
+            problems.push_back({.id = id,
+                                .path = "/components/CodeEdit",
+                                .message = "a CodeEdit makes the TextEdit on its entity a code "
+                                           "editor, and this one has none"});
+            continue;
+        }
+        const int last = static_cast<int>(std::ranges::count(edit->text, '\n'));
+        const auto past = [&](const std::string& path, int line) {
+            if (line > last) {
+                problems.push_back({.id = id,
+                                    .path = path,
+                                    .message = "line " + std::to_string(line) +
+                                               " is past the text's last line, " +
+                                               std::to_string(last)});
+            }
+        };
+        if (code != nullptr) {
+            for (const auto& [field, lines] :
+                 {std::pair{"breakpointed_lines", &code->breakpointed_lines},
+                  std::pair{"bookmarked_lines", &code->bookmarked_lines},
+                  std::pair{"executing_lines", &code->executing_lines}}) {
+                for (std::size_t i = 0; i < lines->size(); ++i) {
+                    past("/components/CodeEdit/" + std::string(field) + "/" + std::to_string(i),
+                         (*lines)[i]);
+                }
+            }
+        }
+        for (std::size_t g = 0; g < edit->gutters.size(); ++g) {
+            const world::TextEditGutter& gutter = edit->gutters[g];
+            const std::string at = "/components/TextEdit/gutters/" + std::to_string(g);
+            if (gutter.type != "string" && gutter.type != "icon") {
+                std::string message =
+                    R"(a gutter shows "string" or "icon", not ")" + gutter.type + "\"";
+                const std::array<std::string_view, 2> types{"string", "icon"};
+                if (const std::string_view hint = closest_match(gutter.type, types);
+                    !hint.empty()) {
+                    message += "; did you mean \"" + std::string(hint) + "\"?";
+                }
+                problems.push_back({.id = id, .path = at + "/type", .message = message});
+            }
+            if (gutter.width < 0) {
+                problems.push_back({.id = id,
+                                    .path = at + "/width",
+                                    .message = "a gutter's width can't be less "
+                                               "than 0"});
+            }
+            for (std::size_t i = 0; i < gutter.lines.size(); ++i) {
+                const std::string entry = at + "/lines/" + std::to_string(i);
+                if (gutter.lines[i].line < 0) {
+                    problems.push_back(
+                        {.id = id, .path = entry + "/line", .message = "lines count from 0"});
+                }
+                past(entry + "/line", gutter.lines[i].line);
+            }
+        }
+    }
+}
+
 } // namespace
 
 Transform Transform::operator*(const Transform& o) const {
@@ -200,6 +273,9 @@ std::vector<std::string_view> control_classes(const world::World& world, entt::e
     }
     if (ecs.all_of<world::LineEdit>(entity)) {
         classes.emplace_back("LineEdit");
+    }
+    if (ecs.all_of<world::TextEdit, world::CodeEdit>(entity)) {
+        classes.emplace_back("CodeEdit");
     }
     if (ecs.all_of<world::TextEdit>(entity)) {
         classes.emplace_back("TextEdit");
@@ -478,6 +554,7 @@ std::vector<Problem> check(const world::World& world, text::Fonts& fonts) {
             }
         }
     }
+    check_code_edits(world, problems);
     for (const auto& [id, entity] : entities) {
         const auto& ecs = world.ecs();
         // One container places the children; the first in control_classes' order.

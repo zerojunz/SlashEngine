@@ -689,8 +689,12 @@ three-second pause). `TextEdit.text`, `caret_line`, `caret_column` and the scrol
 the tick, as Godot defers them. Its scroll bars are the gui system's virtual bar targets, as a
 `ScrollContainer`'s are. `src/syntax_highlighter.cpp` ports Godot's `CodeHighlighter` line by
 line for the `CodeHighlighter` component, and `text_edit_search` (in `src/text_edit.cpp`) its
-`TextEdit::search` for `search_text` and `ui.search`. `examples/text-editor` writes a letter and
-`examples/code-editor` colors, searches and scrolls code.
+`TextEdit::search` for `search_text` and `ui.search`. Gutters are Godot's: `TextArea` sizes,
+draws and hit tests them (a `CodeEdit`'s `main_gutter` and `line_numbers`, then the
+`TextEdit`'s own), and tags each line with the line it came from (`mark_lines`, `moved_lines`)
+so the editor's `move_line_marks` keeps breakpoints and gutter entries on their lines as
+Godot's per-line data does. `examples/text-editor` writes a letter and `examples/code-editor`
+colors, numbers, searches and scrolls code.
 
 ## Input
 
