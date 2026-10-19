@@ -93,8 +93,10 @@ private:
     // Declared after the device, so its textures go before the device does.
     std::unique_ptr<canvas::CanvasRenderer> canvas_;
     std::unique_ptr<platform::Loop> loop_;
-    // The speakers, in a window; declared after the platform, so it closes before SDL quits.
+    // The speakers and the microphone, in a window; declared after the platform, so they close
+    // before SDL quits.
     std::unique_ptr<audio::SdlOutput> audio_output_;
+    std::unique_ptr<audio::SdlInput> audio_input_;
     bool draw_failed_ = false;
 };
 

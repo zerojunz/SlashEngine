@@ -2392,6 +2392,70 @@ TEST_CASE("audio.play plays streams on a polyphonic player, and audio.state repo
     std::filesystem::remove_all(root);
 }
 
+TEST_CASE("audio.input plays a sound into the microphone input, and audio.state reports it") {
+    const std::string root = "command_microphone_project";
+    REQUIRE(slash::platform::create_directories(root).ok());
+    const std::vector<slash::audio::Frame> voice(44100, slash::audio::Frame{0.25F, 0.25F});
+    REQUIRE(slash::platform::write_file(root + "/voice.wav", slash::audio::encode_wav(voice, 44100))
+                .ok());
+    REQUIRE(
+        slash::platform::write_file(root + "/mic.audio.json", R"({"format": 1, "microphone": {}})")
+            .ok());
+    REQUIRE(
+        slash::platform::write_file(root + "/sfx.audio.json", R"({"format": 1, "polyphonic": {}})")
+            .ok());
+    // Without audio.enable_input, nothing records.
+    {
+        command::SessionOptions options;
+        options.project_root = root;
+        Engine engine(options);
+        const auto off = engine.fails("audio.input", R"({"stream": "voice.wav"})",
+                                      command::code::kInvalidArgument);
+        CHECK(contains(off.message, "audio.enable_input"));
+        CHECK(engine.ok("audio.state").find("input") == nullptr);
+    }
+    REQUIRE(slash::platform::write_file(root + "/project.json",
+                                        R"({"format": 1, "name": "Mic", "version": "0.1.0",
+                                            "main_scene": "main.scene.json",
+                                            "audio": {"enable_input": true}})")
+                .ok());
+    command::SessionOptions options;
+    options.project_root = root;
+    Engine engine(options);
+    engine.ok("entity.create", R"({"id": "voice", "components": {"AudioStreamPlayer":
+        {"stream": "mic.audio.json", "autoplay": true}}})");
+    engine.ok(
+        "entity.create",
+        R"({"id": "sfx", "components": {"AudioStreamPlayer": {"stream": "sfx.audio.json"}}})");
+    engine.ok("step");
+    CHECK(*engine.ok("audio.state", R"({"ids": []})").find("input") ==
+          parse(R"({"active": true, "source": "", "peak_db": null})"));
+
+    // A failed batch takes the sound back.
+    engine.call("batch", R"({"commands": [
+        {"command": "audio.input", "params": {"stream": "voice.wav"}},
+        {"command": "entity.destroy", "params": {"id": "nobody"}}]})");
+    CHECK(engine.ok("audio.state").find("input")->find("source")->as_string().empty());
+
+    CHECK(engine.ok("audio.input", R"({"stream": "voice.wav"})") == parse(R"({"tick": 1})"));
+    engine.ok("step", R"({"ticks": 10})");
+    const json::Value state = engine.ok("audio.state");
+    CHECK(*state.find("input") ==
+          parse(R"({"active": true, "source": "voice.wav", "peak_db": -12.0})"));
+    // The microphone player plays it, 50 ms late.
+    const json::Value heard = engine.ok("audio.capture", R"({"seconds": 0.05, "slices": 0})");
+    CHECK(heard.find("peak_db")->as_double() == -12.0);
+
+    const auto missing =
+        engine.fails("audio.input", R"({"stream": "miss.wav"})", command::code::kNotFound);
+    CHECK(missing.data.find("path")->as_string() == "/stream");
+    const auto nested = engine.fails("audio.play", R"({"id": "sfx", "stream": "mic.audio.json"})",
+                                     command::code::kInvalidArgument);
+    CHECK(nested.data.find("path")->as_string() == "/stream");
+    CHECK(contains(nested.message, "plays only as a player's own stream"));
+    std::filesystem::remove_all(root);
+}
+
 TEST_CASE("log.tail returns recent log lines as objects") {
     Engine engine({}, /*capture_logs=*/true);
     slash::log::info("first", {{"n", 1}});

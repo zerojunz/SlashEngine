@@ -1,0 +1,27 @@
+wrote audio/song.wav
+scene.open {"path":"main.scene.json"}
+{"entities":1,"path":"main.scene.json"}
+events.subscribe {"kinds":["lantern_lit"]}
+{"subscription":"events_1"}
+step {"ticks":5}
+{"tick":5,"ticks":5}
+audio.state {"ids":["voice"]}
+{"buses":[{"name":"Master","peak_db":null,"volume_db":0},{"effects":[{"type":"spectrum_analyzer"},{"type":"record"}],"mute":true,"name":"Mic","peak_db":null,"volume_db":0}],"input":{"active":true,"peak_db":null,"source":""},"mix_rate":44100,"players":[{"bus":"Mic","id":"voice","kind":"AudioStreamPlayer","position":0,"stream":"audio/mic.audio.json","voices":1,"volume":[1,1]}]}
+audio.input {"stream":"audio/song.wav"}
+{"tick":5}
+audio.record {"bus":"Mic","recording":true}
+{"recording":true,"seconds":0}
+step {"ticks":60}
+{"tick":65,"ticks":60}
+audio.spectrum {"bus":"Mic","ranges":[[300,360],[960,1020],[1900,2100]]}
+{"db":[-12.5,-21.4,-59.7]}
+audio.capture {"bus":"Master","seconds":1,"slices":0}
+{"peak_db":null,"rms_db":null,"seconds":1,"slices":[]}
+step {"ticks":50}
+{"tick":115,"ticks":50}
+audio.state {"ids":["voice"]}
+{"buses":[{"name":"Master","peak_db":null,"volume_db":0},{"effects":[{"type":"spectrum_analyzer"},{"recording":true,"seconds":1.8344,"type":"record"}],"mute":true,"name":"Mic","peak_db":null,"volume_db":0}],"input":{"active":true,"peak_db":-26,"source":"audio/song.wav"},"mix_rate":44100,"players":[{"bus":"Mic","id":"voice","kind":"AudioStreamPlayer","position":0,"stream":"audio/mic.audio.json","voices":1,"volume":[1,1]}]}
+events.read {"subscription":"events_1"}
+{"dropped":0,"events":[{"data":{"lantern":1},"id":"voice","kind":"lantern_lit","seq":1,"tick":59},{"data":{"lantern":2},"id":"voice","kind":"lantern_lit","seq":2,"tick":89}],"more":false}
+audio.record {"bus":"Mic","recording":false}
+{"recording":false,"seconds":1.8344}

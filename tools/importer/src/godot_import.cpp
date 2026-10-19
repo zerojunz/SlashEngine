@@ -1350,6 +1350,10 @@ private:
         if (const Value* strength = number("audio", "general/2d_panning_strength")) {
             project["audio"]["panning_strength_2d"] = strength->number();
         }
+        if (const Value* input = setting("audio", "driver/enable_input");
+            input != nullptr && input->kind == Value::Kind::Bool && input->boolean) {
+            project["audio"]["enable_input"] = true;
+        }
         convert_input(settings, project);
         for (const Section& section : settings) {
             if (section.tag != "autoload") {
@@ -1835,7 +1839,8 @@ private:
     static bool is_audio_stream_type(std::string_view type) {
         return type == "AudioStreamRandomizer" || type == "AudioStreamPlaylist" ||
                type == "AudioStreamSynchronized" || type == "AudioStreamInteractive" ||
-               type == "AudioStreamGenerator" || type == "AudioStreamPolyphonic";
+               type == "AudioStreamGenerator" || type == "AudioStreamPolyphonic" ||
+               type == "AudioStreamMicrophone";
     }
 
     // The path a sound becomes: the file itself, or a .audio.json file beside it with the loop
@@ -1960,8 +1965,9 @@ private:
     }
 
     // An AudioStreamRandomizer, AudioStreamPlaylist, AudioStreamSynchronized,
-    // AudioStreamInteractive, AudioStreamGenerator or AudioStreamPolyphonic as a .audio.json
-    // file, written once; "" if it has streams and none of them convert.
+    // AudioStreamInteractive, AudioStreamGenerator, AudioStreamPolyphonic or
+    // AudioStreamMicrophone as a .audio.json file, written once; "" if it has streams and none of
+    // them convert.
     std::string audio_stream_file(const TextFile& file, const Section& resource,
                                   const std::string& type, const std::string& base) {
         const std::string key = file.path + "#" + base;
@@ -2010,6 +2016,9 @@ private:
                 polyphonic["polyphony"] = polyphony;
             }
             out["polyphonic"] = std::move(polyphonic);
+            streams = 1;
+        } else if (type == "AudioStreamMicrophone") {
+            out["microphone"] = json::Object{};
             streams = 1;
         } else if (type == "AudioStreamInteractive") {
             streams = interactive_music(resource, where, stream, out);

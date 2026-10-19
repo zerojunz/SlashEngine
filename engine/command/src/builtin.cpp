@@ -2692,6 +2692,15 @@ Reply audio_state(Session& session, const json::Value& params) {
         players.push_back(std::move(item));
     }
     result["players"] = std::move(players);
+    if (const audio::InputInfo input = audio::input_info(session.world()); input.enabled) {
+        json::Value& item = result["input"];
+        item["active"] = input.active;
+        item["source"] = input.source;
+        item["peak_db"] = level(input.peak_db);
+        if (!input.error.empty()) {
+            item["error"] = input.error;
+        }
+    }
     return Reply::success(std::move(result));
 }
 
@@ -2965,6 +2974,12 @@ Reply audio_play_or_stop(Session& session, const json::Value& params, bool play)
         if (!loaded) {
             return param_error(loaded.error(), "/stream");
         }
+        if (!loaded.value().files.empty() &&
+            loaded.value().files.front()->kind == audio::StreamFile::Kind::Microphone) {
+            return param_error(code::kInvalidArgument, "/stream",
+                               quoted(stream->as_string()) +
+                                   " is a microphone, which plays only as a player's own stream");
+        }
         const json::Value* volume = params.find("volume_db");
         const json::Value* pitch = params.find("pitch_scale");
         if (auto played = audio::play_stream(
@@ -2979,6 +2994,21 @@ Reply audio_play_or_stop(Session& session, const json::Value& params, bool play)
         audio::play(world, entity.value(), from_seconds);
     } else {
         audio::stop(world, entity.value());
+    }
+    json::Value result;
+    result["tick"] = world.tick();
+    return Reply::success(std::move(result));
+}
+
+Reply audio_input(Session& session, const json::Value& params) {
+    world::World& world = session.world();
+    if (!audio::settings(world).enable_input) {
+        return Reply::failure(code::kInvalidArgument,
+                              "microphone input is off; turn on audio.enable_input in "
+                              "project.json");
+    }
+    if (auto set = audio::set_input_stream(world, text(params, "stream")); !set) {
+        return param_error(set.error(), "/stream");
     }
     json::Value result;
     result["tick"] = world.tick();
@@ -5549,7 +5579,8 @@ void register_builtin_commands(Registry& registry) {
                        "flags, send, effects) and each player with an ID: stream, bus, voices, "
                        "position and length in seconds, volume after 2D distance and panning, "
                        "and a generator's free frames and skips or a polyphonic player's "
-                       "streams playing.",
+                       "streams playing. With audio.enable_input, the microphone input: active, "
+                       "source and last tick's peak dB.",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema({{"ids", names_property("Only these players. Default: all.")}}),
@@ -5614,6 +5645,19 @@ void register_builtin_commands(Registry& registry) {
             [](Session& session, const json::Value& params) {
                 return audio_play_or_stop(session, params, false);
             },
+    });
+    registry.add({
+        .name = "audio.input",
+        .description = "Plays a sound or .audio.json file into the microphone input from the next "
+                       "tick, in place of the microphone, so AudioStreamMicrophone players hear "
+                       "it; \"\" goes back to the microphone. Needs audio.enable_input. Returns "
+                       "the tick.",
+        .capabilities = {Run},
+        .effect = Effect::Read,
+        .params = params_schema({{"stream", property("string", "The sound or .audio.json file, "
+                                                               "or \"\" for the microphone.")}},
+                                {"stream"}),
+        .handler = audio_input,
     });
     json::Value bus_volume = property("number", "Gain in dB.");
     bus_volume["minimum"] = -80;

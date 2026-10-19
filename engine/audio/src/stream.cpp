@@ -473,6 +473,76 @@ private:
     bool active_ = false;
 };
 
+// Godot's AudioStreamPlaybackMicrophone: what the server's input records, at the mix rate, played
+// once 50 ms of it waits. Starting turns input on, which fails while it isn't enabled; stopping
+// lets it go.
+class MicrophonePlayback final : public Resampled {
+public:
+    explicit MicrophonePlayback(int mix_rate)
+        : Resampled(mix_rate), rate_(static_cast<float>(mix_rate)) {}
+    ~MicrophonePlayback() override { release(); }
+    MicrophonePlayback(const MicrophonePlayback&) = delete;
+    MicrophonePlayback& operator=(const MicrophonePlayback&) = delete;
+    MicrophonePlayback(MicrophonePlayback&&) = delete;
+    MicrophonePlayback& operator=(MicrophonePlayback&&) = delete;
+
+    void attach(Server& server) override { server_ = &server; }
+    void start(double /*from_seconds*/) override {
+        if (active_ || server_ == nullptr || !server_->acquire_input()) {
+            return;
+        }
+        active_ = true;
+        cursor_.reset();
+        begin_resample();
+    }
+    void stop() override { release(); }
+    [[nodiscard]] bool is_playing() const override { return active_; }
+    [[nodiscard]] double position() const override { return 0.0; }
+
+protected:
+    int mix_internal(Frame* buffer, int frames) override {
+        std::fill(buffer, buffer + frames, Frame{});
+        if (!active_) {
+            // Input didn't turn on, so the voice ends rather than playing silence as Godot's.
+            return 0;
+        }
+        const std::uint64_t recorded = server_->input_recorded();
+        const auto length = static_cast<std::uint64_t>(server_->input_buffer_length_frames());
+        // Godot's playback_delay: 50 ms, or half the buffer if that is less.
+        const auto delay = std::min<std::uint64_t>(
+            static_cast<std::uint64_t>(50 * server_->mix_rate() / 1000), length / 2);
+        if (cursor_ && (*cursor_ > recorded || *cursor_ + length < recorded)) {
+            // Input started over, or ran past what it kept.
+            cursor_.reset();
+        }
+        if (!cursor_) {
+            if (recorded < delay) {
+                return frames;
+            }
+            cursor_ = recorded - delay;
+        }
+        // Frames not recorded yet stay silent, and the delay grows by them, as Godot's.
+        for (int i = 0; i < frames && *cursor_ < recorded; ++i) {
+            buffer[i] = server_->input_frame((*cursor_)++);
+        }
+        return frames;
+    }
+    [[nodiscard]] float stream_rate() const override { return rate_; }
+
+private:
+    void release() {
+        if (active_) {
+            server_->release_input();
+            active_ = false;
+        }
+    }
+
+    Server* server_ = nullptr;
+    std::optional<std::uint64_t> cursor_; // the next input frame, once 50 ms waits
+    float rate_;
+    bool active_ = false;
+};
+
 // Godot's AudioStreamPlaybackPolyphonic: a slot per stream it can play, each mixed into the
 // output at its volume, which ramps down to silence over the mix a stop asks for.
 class PolyphonicPlaybackImpl final : public Playback, public PolyphonicPlayback {
@@ -854,6 +924,17 @@ private:
     int polyphony_;
 };
 
+// Godot's AudioStreamMicrophone.
+class MicrophoneStream final : public Stream {
+public:
+    [[nodiscard]] std::unique_ptr<Playback> instantiate(int mix_rate,
+                                                        std::uint32_t /*random*/) const override {
+        return std::make_unique<MicrophonePlayback>(mix_rate);
+    }
+    [[nodiscard]] double length() const override { return 0.0; }
+    [[nodiscard]] bool is_monophonic() const override { return true; }
+};
+
 constexpr int kMaxNesting = 8;
 
 Result<std::shared_ptr<const Stream>> load_stream_at(asset::Assets& assets, std::string_view path,
@@ -891,6 +972,15 @@ Result<std::shared_ptr<const Stream>> load_stream_at(asset::Assets& assets, std:
     if (settings->kind == StreamFile::Kind::Polyphonic) {
         return polyphonic_stream(*settings);
     }
+    if (settings->kind == StreamFile::Kind::Microphone) {
+        if (depth > 0) {
+            // It reads the server's input, which only a player's own playback is given.
+            return make_error(ErrorCode::InvalidArgument,
+                              "\"" + std::string(path) +
+                                  "\" is a microphone, which plays only as a player's own stream");
+        }
+        return microphone_stream();
+    }
     if (!settings->source.empty()) {
         auto sound = load_sound(settings->source);
         if (!sound) {
@@ -927,6 +1017,7 @@ Result<std::shared_ptr<const Stream>> load_stream_at(asset::Assets& assets, std:
     case StreamFile::Kind::Randomizer:
     case StreamFile::Kind::Generator:
     case StreamFile::Kind::Polyphonic:
+    case StreamFile::Kind::Microphone:
         break;
     }
     std::vector<std::pair<std::shared_ptr<const Stream>, float>> pool;
@@ -955,6 +1046,10 @@ std::shared_ptr<const Stream> generator_stream(const StreamFile& settings) {
 
 std::shared_ptr<const Stream> polyphonic_stream(const StreamFile& settings) {
     return std::make_shared<PolyphonicStream>(std::clamp(settings.polyphony, 0, 128));
+}
+
+std::shared_ptr<const Stream> microphone_stream() {
+    return std::make_shared<MicrophoneStream>();
 }
 
 bool LoadedStream::stale() const {
