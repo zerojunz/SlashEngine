@@ -391,6 +391,8 @@ private:
 
 // Text in upper case, as Godot's Label uppercase: Latin, Greek and Cyrillic letters.
 [[nodiscard]] std::string to_upper(std::string_view text);
+// One character in upper case, the same way.
+[[nodiscard]] char32_t to_upper(char32_t c);
 
 // The first count Unicode characters of UTF-8 text.
 [[nodiscard]] std::string_view first_characters(std::string_view text, std::size_t count);

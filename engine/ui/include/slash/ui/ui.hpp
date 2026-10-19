@@ -189,6 +189,9 @@ struct LabelText {
     std::size_t selected_start = 0;
     std::size_t selected_end = 0;
     Vec4 selected_color;
+    // Glyphs of the source's bytes from each entry's on draw in its color, until the next
+    // entry's (a TextEdit's syntax highlighting); before the first, in font_color.
+    std::vector<std::pair<std::size_t, Vec4>> colors;
     bool overflow = false; // a line is wider than the rect, or lines don't fit its height
     bool clip = false;     // drawn cut off at the rect
     std::string error;     // why its font didn't load, so the default font drew it
@@ -342,30 +345,30 @@ struct TextEditView {
     Vec4 selection_color;
     Vec4 current_line_color;
     Vec4 background_color;
+    Vec4 word_highlighted_color;
+    Vec4 search_result_color;
+    Vec4 search_result_border_color;
     int line_spacing = 4;
     int outline_size = 0;
     int caret_width = 1;
     int wrap_offset = 10;
-    // Its scroll bars' theme items, as VScrollBar's and HScrollBar's.
-    StyleBox v_scroll;
-    StyleBox v_grabber;
-    int v_padding_left = 0;
-    int v_padding_right = 0;
-    StyleBox h_scroll;
-    StyleBox h_grabber;
-    int h_padding_top = 0;
-    int h_padding_bottom = 0;
+    // Its scroll bars' minimum sizes, as VScrollBar's and HScrollBar's get_minimum_size: the room
+    // a bar takes across.
+    Vec2 v_bar_minimum;
+    Vec2 h_bar_minimum;
     bool rtl = false;  // laid out right to left
     std::string error; // why its font didn't load, so the default font drew it
     // What it shows: the first and last lines with a row in view, the rows in all, how far it
-    // is scrolled and whether each scroll bar shows, and where the caret draws in its rect.
+    // is scrolled, its scroll bars (visible when they show), and where the caret draws in its
+    // rect.
     int first_visible_line = 0;
     int last_visible_line = 0;
     int total_rows = 1;
     double scroll_vertical = 0.0;
     int scroll_horizontal = 0;
-    bool v_scroll_visible = false;
-    bool h_scroll_visible = false;
+    ScrollBarView v_bar;
+    ScrollBarView h_bar;
+    std::vector<std::array<int, 2>> search_results; // where search_text shows, [line, column]
     Vec2 caret_position; // on the caret's row's baseline, plus its descent
     bool caret_visible = false;
     float font_height = 0.0F; // the font's height, for the input method's area
@@ -743,6 +746,26 @@ struct Drag {
                                                            entt::entity line_edit);
 // The text an input method is composing in a LineEdit, shown at its caret until it is done.
 [[nodiscard]] std::string ime_text(const world::World& world, entt::entity line_edit);
+
+// How TextEdit::search matches, as its SearchFlags: match_case compares letters by case,
+// whole_words takes a match only with a symbol, a space or the line's end on each side, and
+// backwards looks before the position instead of after.
+struct SearchOptions {
+    bool match_case = false;
+    bool whole_words = false;
+    bool backwards = false;
+};
+// TextEdit::search over a TextEdit's text: where key next occurs from [line, column] on, as
+// [line, column] (columns in characters), going round the end to the start (or the start to the
+// end) until it has looked at every line; nullopt if it occurs nowhere or the position is past
+// the text.
+[[nodiscard]] std::optional<std::array<int, 2>> text_edit_search(std::string_view text,
+                                                                 std::string_view key,
+                                                                 const SearchOptions& options,
+                                                                 int from_line, int from_column);
+// Every place key occurs in a TextEdit's text, in order from the start, ignoring backwards.
+[[nodiscard]] std::vector<std::array<int, 2>>
+text_edit_search_all(std::string_view text, std::string_view key, const SearchOptions& options);
 
 // What the LineEdit being edited asks of the platform (text input, where its caret is, the
 // on-screen keyboard), as Godot's LineEdit asks DisplayServer; inactive when none is. Games pass

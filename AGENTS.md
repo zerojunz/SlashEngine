@@ -686,7 +686,11 @@ calls and Godot's undo history (operations chained into complex steps, typing me
 three-second pause). `TextEdit.text`, `caret_line`, `caret_column` and the scroll are the truth;
 `TextEditState` keeps the rest in the gui state, and text set from outside goes in as Godot's
 `set_text`, as an undoable step. `text_changed` and `caret_changed` are deferred to the end of
-the tick, as Godot defers them. `examples/text-editor` writes a letter.
+the tick, as Godot defers them. Its scroll bars are the gui system's virtual bar targets, as a
+`ScrollContainer`'s are. `src/syntax_highlighter.cpp` ports Godot's `CodeHighlighter` line by
+line for the `CodeHighlighter` component, and `text_edit_search` (in `src/text_edit.cpp`) its
+`TextEdit::search` for `search_text` and `ui.search`. `examples/text-editor` writes a letter and
+`examples/code-editor` colors, searches and scrolls code.
 
 ## Input
 

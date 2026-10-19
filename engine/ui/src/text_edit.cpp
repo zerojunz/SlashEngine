@@ -1,12 +1,16 @@
 #include "text_edit.hpp"
 
+#include "syntax_highlighter.hpp"
+
 #include "slash/core/text.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <numbers>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -191,6 +195,201 @@ std::string join_lines(const std::vector<std::u32string>& lines) {
         all += lines[i];
     }
     return to_utf8(all);
+}
+
+// ---- Search ----
+
+namespace {
+
+// Text as String::findn and rfindn compare it: each character in upper case.
+std::u32string folded(std::u32string_view text) {
+    std::u32string out(text);
+    for (char32_t& c : out) {
+        c = text::to_upper(c);
+    }
+    return out;
+}
+
+// String::find: where key first occurs from a position on, or -1.
+int find_from(std::u32string_view line, std::u32string_view key, int from) {
+    if (from < 0 || key.empty() || line.empty()) {
+        return -1;
+    }
+    const std::size_t at = line.find(key, static_cast<std::size_t>(from));
+    return at == std::u32string_view::npos ? -1 : static_cast<int>(at);
+}
+
+// String::rfind: where key last occurs starting at or before a position, from the end when
+// it is negative or past the last place key fits, or -1.
+int rfind_from(std::u32string_view line, std::u32string_view key, int from) {
+    const int limit = static_cast<int>(line.size()) - static_cast<int>(key.size());
+    if (limit < 0 || key.empty() || line.empty()) {
+        return -1;
+    }
+    if (from < 0 || from > limit) {
+        from = limit;
+    }
+    const std::size_t at = line.rfind(key, static_cast<std::size_t>(from));
+    return at == std::u32string_view::npos ? -1 : static_cast<int>(at);
+}
+
+// Whole words: the match has a symbol, a space or the line's end on each side, unless key
+// itself starts or ends with a symbol there.
+bool whole_word_at(std::u32string_view line, std::u32string_view key, int column) {
+    const auto length = static_cast<int>(key.size());
+    if (!is_symbol(key.front()) && column > 0 &&
+        !is_symbol(line[static_cast<std::size_t>(column - 1)])) {
+        return false;
+    }
+    return is_symbol(key.back()) || column + length >= static_cast<int>(line.size()) ||
+           is_symbol(line[static_cast<std::size_t>(column) + key.size()]);
+}
+
+} // namespace
+
+std::uint32_t search_flags(const std::vector<std::string>& names) {
+    std::uint32_t flags = 0;
+    for (const std::string& name : names) {
+        if (name == "match_case") {
+            flags |= kSearchMatchCase;
+        } else if (name == "whole_words") {
+            flags |= kSearchWholeWords;
+        } else if (name == "backwards") {
+            flags |= kSearchBackwards;
+        }
+    }
+    return flags;
+}
+
+int column_pos_of_word(std::u32string_view key, std::u32string_view search, std::uint32_t flags,
+                       int from_column) {
+    int col = -1;
+    if (key.empty() || search.empty()) {
+        return col;
+    }
+    const bool match_case = (flags & kSearchMatchCase) != 0;
+    const std::u32string key_folded = match_case ? std::u32string() : folded(key);
+    const std::u32string search_folded = match_case ? std::u32string() : folded(search);
+    const std::u32string_view find_key = match_case ? key : key_folded;
+    const std::u32string_view in = match_case ? search : search_folded;
+    if (from_column < 0 || from_column > static_cast<int>(search.size())) {
+        from_column = 0;
+    }
+    while (col == -1 && from_column <= static_cast<int>(search.size())) {
+        col = find_from(in, find_key, from_column);
+        if (col == -1) {
+            break;
+        }
+        if ((flags & kSearchWholeWords) != 0) {
+            from_column = col;
+            if (!whole_word_at(search, key, col)) {
+                col = -1;
+            }
+        }
+        ++from_column;
+    }
+    return col;
+}
+
+std::pair<int, int> search_lines(const std::vector<std::u32string>& lines, std::u32string_view key,
+                                 std::uint32_t flags, int from_line, int from_column) {
+    constexpr std::pair<int, int> kNotFound{-1, -1};
+    const auto count = static_cast<int>(lines.size());
+    if (key.empty() || from_line < 0 || from_line >= count || from_column < 0 ||
+        from_column > static_cast<int>(lines[static_cast<std::size_t>(from_line)].size())) {
+        return kNotFound;
+    }
+    const bool match_case = (flags & kSearchMatchCase) != 0;
+    const bool backwards = (flags & kSearchBackwards) != 0;
+    const std::u32string key_folded = match_case ? std::u32string(key) : folded(key);
+    const auto key_length = static_cast<int>(key.size());
+    // Every line from the one it starts on, round the end to the start, then the start of its
+    // own line again.
+    int current_line = from_line;
+    int current_column = from_column;
+    if (backwards) {
+        // rfind needs a position where the key could still fit.
+        current_column = std::min(
+            current_column,
+            static_cast<int>(lines[static_cast<std::size_t>(from_line)].size()) - key_length);
+    }
+    for (int i = 0; i < count + 1; ++i) {
+        const std::u32string& text_line = lines[static_cast<std::size_t>(current_line)];
+        const std::u32string line_folded = match_case ? std::u32string() : folded(text_line);
+        const std::u32string_view in = match_case ? text_line : line_folded;
+        while (true) {
+            current_column = backwards ? rfind_from(in, key_folded, current_column)
+                                       : find_from(in, key_folded, current_column);
+            if (current_column == -1) {
+                break;
+            }
+            if ((flags & kSearchWholeWords) == 0 || whole_word_at(text_line, key, current_column)) {
+                return {current_column, current_line};
+            }
+            current_column += backwards ? -1 : 1;
+            // Godot's rfind would start again from the end here, and never stop.
+            if (current_column < 0) {
+                break;
+            }
+        }
+        if (backwards) {
+            current_column = -1;
+            if (--current_line < 0) {
+                current_line = count - 1;
+            }
+        } else {
+            current_column = 0;
+            if (++current_line == count) {
+                current_line = 0;
+            }
+        }
+    }
+    return kNotFound;
+}
+
+namespace {
+
+std::uint32_t flags_of(const SearchOptions& options) {
+    std::uint32_t flags = 0;
+    flags |= options.match_case ? kSearchMatchCase : 0U;
+    flags |= options.whole_words ? kSearchWholeWords : 0U;
+    flags |= options.backwards ? kSearchBackwards : 0U;
+    return flags;
+}
+
+} // namespace
+
+std::optional<std::array<int, 2>> text_edit_search(std::string_view text, std::string_view key,
+                                                   const SearchOptions& options, int from_line,
+                                                   int from_column) {
+    const auto [column, line] =
+        search_lines(split_lines(text), to_utf32(key), flags_of(options), from_line, from_column);
+    if (line < 0) {
+        return std::nullopt;
+    }
+    return std::array<int, 2>{line, column};
+}
+
+std::vector<std::array<int, 2>> text_edit_search_all(std::string_view text, std::string_view key,
+                                                     const SearchOptions& options) {
+    const std::vector<std::u32string> lines = split_lines(text);
+    const std::u32string find = to_utf32(key);
+    const std::uint32_t flags = flags_of(options) & ~kSearchBackwards;
+    std::vector<std::array<int, 2>> found;
+    // Each search goes on from just after the last match, until it comes round to the start.
+    int line = 0;
+    int column = 0;
+    while (true) {
+        const auto [at_column, at_line] = search_lines(lines, find, flags, line, column);
+        if (at_line < 0 ||
+            (!found.empty() && std::array<int, 2>{at_line, at_column} <= found.back())) {
+            break;
+        }
+        found.push_back({at_line, at_column});
+        line = at_line;
+        column = at_column + 1;
+    }
+    return found;
 }
 
 SelectionRange selection_range(const TextEditState::Caret& caret) {
@@ -644,17 +843,11 @@ double TextArea::visible_lines_offset() const {
 }
 
 Vec2 TextArea::v_scroll_min() const {
-    const Vec2 scroll = view_->v_scroll.minimum_size();
-    const auto padding = static_cast<float>(std::max(view_->v_padding_left, 0) +
-                                            std::max(view_->v_padding_right, 0));
-    return {std::max(0.0F, scroll.x) + padding, scroll.y + view_->v_grabber.minimum_size().y};
+    return view_->v_bar_minimum;
 }
 
 Vec2 TextArea::h_scroll_min() const {
-    const Vec2 scroll = view_->h_scroll.minimum_size();
-    const auto padding = static_cast<float>(std::max(view_->h_padding_top, 0) +
-                                            std::max(view_->h_padding_bottom, 0));
-    return {scroll.x + view_->h_grabber.minimum_size().x, std::max(0.0F, scroll.y) + padding};
+    return view_->h_bar_minimum;
 }
 
 void TextArea::set_v_scroll(double value) {
@@ -1016,57 +1209,36 @@ Vec2 TextArea::minimum_size() const {
 
 // ---- Drawing ----
 
-// ScrollBar's NOTIFICATION_DRAW for one of the TextEdit's scroll bars, placed where
-// _update_scrollbars puts it (no buttons: the default theme's icons are empty).
-void TextArea::draw_scroll_bar(bool vertical, std::vector<Box>& out) const {
+// Where _update_scrollbars puts one of its scroll bars: the vertical one down its right side
+// inside its style's top margin, the horizontal one along its bottom beside the vertical one.
+TextArea::BarPlace TextArea::bar_place(bool vertical) const {
     const Vec2 vmin = v_scroll_min();
     const Vec2 hmin = h_scroll_min();
     const StyleBox& st = style();
-    Vec2 position;
-    Vec2 size;
-    if (vertical) {
-        position = {size_.x - vmin.x, st.margin(1)};
-        const Vec2 end{size_.x, size_.y - st.margin(1) - st.margin(3)};
-        size = {std::max(end.x - position.x, vmin.x), std::max(end.y - position.y, vmin.y)};
-    } else {
-        position = {0.0F, size_.y - hmin.y};
-        const Vec2 end{size_.x - vmin.x, size_.y};
-        size = {std::max(end.x - position.x, hmin.x), std::max(end.y - position.y, hmin.y)};
-    }
     const Bar& bar = vertical ? v_ : h_;
-    const StyleBox& scroll = vertical ? view_->v_scroll : view_->h_scroll;
-    const StyleBox& grabber = vertical ? view_->v_grabber : view_->h_grabber;
-    out.push_back({.style = scroll, .position = position, .size = size, .texture_size = {}});
-    const double grabber_min = vertical ? grabber.minimum_size().y : grabber.minimum_size().x;
-    const double area =
-        (vertical ? size.y - scroll.minimum_size().y : size.x - scroll.minimum_size().x) -
-        grabber_min;
-    double grabber_size = 0.0;
-    if (const auto range = static_cast<float>(bar.max); range > 0.0F) {
-        const float page = bar.page > 0.0 ? static_cast<float>(bar.page) : 0.0F;
-        grabber_size = (static_cast<double>(page / range) * area) + grabber_min;
-    }
-    constexpr double kApprox = 0.00001; // CMP_EPSILON, for is_equal_approx
-    const double ratio =
-        std::abs(bar.max) < kApprox ? 1.0 : std::clamp(bar.value / bar.max, 0.0, 1.0);
-    const auto offset = static_cast<float>(area * ratio);
-    Box box{.style = grabber, .position = {}, .size = {}, .texture_size = {}};
+    BarPlace place{.position = {},
+                   .size = {},
+                   .max = bar.max,
+                   .page = bar.page,
+                   .value = bar.value,
+                   .visible = bar.visible};
     if (vertical) {
-        const auto left = static_cast<float>(std::max(view_->v_padding_left, 0));
-        const auto right = static_cast<float>(std::max(view_->v_padding_right, 0));
-        box.position = position + Vec2{left, offset + scroll.margin(1)};
-        box.size = {size.x - left - right, static_cast<float>(grabber_size)};
+        place.position = {size_.x - vmin.x, st.margin(1)};
+        const Vec2 end{size_.x, size_.y - st.margin(1) - st.margin(3)};
+        place.size = {std::max(end.x - place.position.x, vmin.x),
+                      std::max(end.y - place.position.y, vmin.y)};
     } else {
-        const auto top = static_cast<float>(std::max(view_->h_padding_top, 0));
-        const auto bottom = static_cast<float>(std::max(view_->h_padding_bottom, 0));
-        box.position = position + Vec2{offset + scroll.margin(0), top};
-        box.size = {static_cast<float>(grabber_size), size.y - top - bottom};
+        place.position = {0.0F, size_.y - hmin.y};
+        const Vec2 end{size_.x - vmin.x, size_.y};
+        place.size = {std::max(end.x - place.position.x, hmin.x),
+                      std::max(end.y - place.position.y, hmin.y)};
     }
-    out.push_back(std::move(box));
+    return place;
 }
 
 void TextArea::draw(const world::TextEdit& edit, const TextEditState& state, bool focused,
-                    Draw& out, TextEditView& view) const {
+                    const world::CodeHighlighter* highlighter, Draw& out,
+                    TextEditView& view) const {
     const TextEditView& theme = *view_;
     const StyleBox& st = style();
     const bool rtl = theme.rtl;
@@ -1143,6 +1315,42 @@ void TextArea::draw(const world::TextEdit& edit, const TextEditState& state, boo
         return i;
     };
 
+    // The highlighter's colors for each line (_update_line_syntax_highlighting), from the color
+    // region the lines before it leave open; lines are asked for in order. Not editable, no color
+    // is more opaque than font_readonly_color.
+    std::optional<CodeHighlight> highlight;
+    if (highlighter != nullptr && !placeholder) {
+        highlight.emplace(*highlighter, theme.font_color);
+    }
+    int region_line = 0;
+    int region = -1;
+    const auto color_map_of = [&](int of) {
+        for (; region_line < of; ++region_line) {
+            static_cast<void>(highlight->line(this->shown(region_line), region));
+        }
+        ColorMap map = highlight->line(this->shown(of), region);
+        region_line = of + 1;
+        if (!edit.editable) {
+            for (auto& [column, color] : map) {
+                color.w = std::min(color.w, theme.font_readonly_color.w);
+            }
+        }
+        return map;
+    };
+    // search_text, and the selected text when highlight_all_occurrences: unless it is nothing
+    // but whitespace, as strip_edges finds.
+    const std::u32string search = to_utf32(edit.search_text);
+    const std::uint32_t flags = search_flags(edit.search_flags);
+    std::u32string highlighted;
+    if (edit.highlight_all_occurrences && selecting && !placeholder) {
+        highlighted =
+            get(selection.from_line, selection.from_column, selection.to_line, selection.to_column);
+        if (std::ranges::all_of(highlighted, [](char32_t c) { return c <= U' '; })) {
+            highlighted.clear();
+        }
+    }
+    view.search_results.clear();
+
     view.caret_visible = false;
     int first_drawn = -1; // the first and last lines with a row in view
     int last_drawn = -1;
@@ -1156,6 +1364,15 @@ void TextArea::draw(const world::TextEdit& edit, const TextEditState& state, boo
         const int wrap_amount = static_cast<int>(d.rows.size()) - 1;
         const std::size_t source_offset = text.source.size();
         text.source += d.utf8;
+        // Each line starts in the font's color.
+        ColorMap colors;
+        if (highlight) {
+            colors = color_map_of(line);
+            text.colors.emplace_back(source_offset, font_color);
+            for (const auto& [column, color] : colors) {
+                text.colors.emplace_back(source_offset + byte_of(d.utf8, column), color);
+            }
+        }
         if (!placeholder && selecting && use_selected_color) {
             if (line == selection.from_line) {
                 selected_start = source_offset + byte_of(d.utf8, selection.from_column);
@@ -1248,6 +1465,63 @@ void TextArea::draw(const world::TextEdit& edit, const TextEditState& state, boo
                 }
             }
 
+            // Where search_text occurs in the row, then the selected text: rects between the
+            // margins (cut on one side only, as Godot cuts these).
+            if (!clipped && !placeholder) {
+                const auto row_start = static_cast<int>(shaped.start());
+                const std::u32string_view str =
+                    std::u32string_view(this->shown(line))
+                        .substr(
+                            static_cast<std::size_t>(row_start),
+                            static_cast<std::size_t>(static_cast<int>(shaped.end()) - row_start));
+                // Calls rect for each rect where key occurs and found for each column.
+                const auto occurrences = [&](std::u32string_view key, std::uint32_t key_flags,
+                                             auto&& rect, auto&& found) {
+                    const auto key_length = static_cast<int>(key.size());
+                    const auto beg = static_cast<float>(xmargin_beg);
+                    const auto end = static_cast<float>(xmargin_end);
+                    for (int col = column_pos_of_word(key, str, key_flags, 0); col != -1;
+                         col = column_pos_of_word(key, str, key_flags, col + key_length)) {
+                        found(row_start + col);
+                        for (const auto& [left, right] : shaped.selection(
+                                 static_cast<std::uint32_t>(row_start + col),
+                                 static_cast<std::uint32_t>(row_start + col + key_length))) {
+                            float x = left + margin;
+                            float w = right - left;
+                            if (x + w <= beg || x > end) {
+                                continue;
+                            }
+                            if (x < beg) {
+                                w -= beg - x;
+                                x = beg;
+                            } else if (x + w > end) {
+                                w = end - x;
+                            }
+                            rect(Vec2{x, static_cast<float>(ofs_y)},
+                                 Vec2{w, static_cast<float>(row_height)});
+                        }
+                    }
+                };
+                if (!search.empty()) {
+                    occurrences(
+                        search, flags,
+                        [&](Vec2 at, Vec2 extent) {
+                            push_clipped(out.under, size, at, extent, theme.search_result_color);
+                            push_unfilled(out.under, size, at, extent,
+                                          theme.search_result_border_color);
+                        },
+                        [&](int column) { view.search_results.push_back({line, column}); });
+                }
+                if (!highlighted.empty()) {
+                    occurrences(
+                        highlighted, kSearchMatchCase | kSearchWholeWords,
+                        [&](Vec2 at, Vec2 extent) {
+                            push_clipped(out.under, size, at, extent, theme.word_highlighted_color);
+                        },
+                        [](int /*column*/) {});
+                }
+            }
+
             const float text_height = shaped.height();
             const float ascent = d.layout.metrics.ascent;
             const float descent = d.layout.metrics.descent;
@@ -1273,10 +1547,17 @@ void TextArea::draw(const world::TextEdit& edit, const TextEditState& state, boo
                     (edit.draw_tabs || edit.draw_spaces)) {
                     std::size_t at = glyph.cluster;
                     const char32_t c = at < d.utf8.size() ? next_utf8(d.utf8, at) : U'\0';
+                    const int column =
+                        static_cast<int>(text::character_index(d.utf8, glyph.cluster));
+                    // The glyph's color: the last of the line's colors starting at or before it.
                     Vec4 color = font_color;
+                    for (const auto& [from, each] : colors) {
+                        if (from > column) {
+                            break;
+                        }
+                        color = each;
+                    }
                     if (!placeholder && selecting && use_selected_color) {
-                        const int column =
-                            static_cast<int>(text::character_index(d.utf8, glyph.cluster));
                         const bool after =
                             line > selection.from_line || column >= selection.from_column;
                         const bool before =
@@ -1528,21 +1809,12 @@ void TextArea::draw(const world::TextEdit& edit, const TextEditState& state, boo
         text.selected_end = selected_end;
         text.selected_color = theme.font_selected_color;
     }
-    if (v_.visible) {
-        draw_scroll_bar(true, out.over);
-    }
-    if (h_.visible) {
-        draw_scroll_bar(false, out.over);
-    }
-
     view.error = error_;
     view.first_visible_line = first_drawn >= 0 ? first_drawn : first_visible_line();
     view.last_visible_line = last_drawn >= 0 ? last_drawn : view.first_visible_line;
     view.total_rows = total_rows();
     view.scroll_vertical = v_.value;
     view.scroll_horizontal = h_scroll();
-    view.v_scroll_visible = v_.visible;
-    view.h_scroll_visible = h_.visible;
     view.font_height = font_height_;
     view.caret_line = caret.line;
     view.caret_column = caret.column;

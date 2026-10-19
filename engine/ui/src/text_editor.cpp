@@ -2062,6 +2062,17 @@ bool text_edit_input(const TextEditContext& context, world::TextEdit& edit, Text
     return taken;
 }
 
+void text_edit_scroll_to(const TextEditContext& context, world::TextEdit& edit,
+                         TextEditState& state, TextArea& area, bool vertical, double value) {
+    Editor editor(context, edit, state, area);
+    if (vertical) {
+        area.set_v_scroll(value);
+    } else {
+        area.set_h_scroll(value);
+    }
+    editor.finish();
+}
+
 bool text_edit_unhandled_key(const TextEditContext& context, world::TextEdit& edit,
                              TextEditState& state, TextArea& area, const input::Event& event) {
     Editor editor(context, edit, state, area);
