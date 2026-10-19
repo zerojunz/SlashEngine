@@ -6,8 +6,11 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstring>
+#include <memory>
 #include <optional>
 #include <set>
+#include <sstream>
 #include <string>
 #include <utility>
 
@@ -369,6 +372,26 @@ json::Value schema(bool list_ops) {
     properties["color"]["$ref"] = "#/$defs/arg";
     properties["color"]["description"] = "The pixel's color, a vec4. Left out: the texture times "
                                          "the vertex color.";
+    properties["shader"] = text_schema(
+        "A game's own shader instead of nodes and color: an .hlsl file's project path, with "
+        "fragment() and vertex() functions as Godot's canvas_item shaders.");
+
+    json::Value compiled;
+    compiled["type"] = "object";
+    compiled["additionalProperties"] = false;
+    compiled["required"] = json::Array{"cpu_fragment"};
+    compiled["description"] = "The shader compiled for each backend, which exports write; never "
+                              "written by hand.";
+    for (const char* key : {"spirv_vertex", "spirv_fragment", "cpu_vertex", "cpu_fragment"}) {
+        compiled["properties"][key] = text_schema("SPIR-V, in base64.");
+    }
+    for (const char* key : {"msl_vertex", "msl_fragment", "glsl_vertex", "glsl_fragment", "hlsl"}) {
+        compiled["properties"][key] = text_schema("Source code.");
+    }
+    for (const char* key : {"normal_map_used", "specular_used"}) {
+        compiled["properties"][key]["type"] = "boolean";
+    }
+    properties["compiled"] = std::move(compiled);
     out["$defs"]["node"] = std::move(node);
     out["$defs"]["arg"] = std::move(arg);
     return out;
@@ -390,6 +413,13 @@ public:
                 render::parse_light_mode(mode->as_string()).value_or(render::LightMode::Normal);
         }
         read_params();
+        if (const json::Value* shader = doc_.find("shader"); shader != nullptr) {
+            read_shader(shader->as_string());
+            return;
+        }
+        if (doc_.find("compiled") != nullptr) {
+            fail("/compiled", "only a material with a shader has compiled code");
+        }
         if (const json::Value* nodes = doc_.find("nodes"); nodes != nullptr) {
             nodes_ = &nodes->as_object();
             for (const auto& [name, node] : *nodes_) {
@@ -487,6 +517,91 @@ private:
             }
             material_.params.emplace(name, std::move(param));
         }
+    }
+
+    // A game's shader: every param gets a slot, in name order, and the time the last constant.
+    void read_shader(const std::string& path) {
+        if (!is_project_path(path) || !path.ends_with(kShaderSuffix)) {
+            fail("/shader", "expected an .hlsl file's path inside the project folder, separated "
+                            "by '/', with no \".\" or \"..\" parts");
+        }
+        for (const char* key : {"nodes", "color"}) {
+            if (doc_.find(key) != nullptr) {
+                fail(std::string("/") + key, std::string("a material with a shader has no ") + key +
+                                                 "; the shader colors the pixels");
+            }
+        }
+        material_.shader = path;
+        material_.time_constant = render::kShaderTimeConstant;
+        material_.program.constants.assign(render::cpu_shader::kConstants, {});
+        std::uint32_t constant = 0;
+        std::uint32_t texture = 0;
+        for (auto& [name, param] : material_.params) {
+            const std::string at = "/params/" + json::pointer_escape(name);
+            const bool sampled = param.type == "texture";
+            if (render::shader_name_reserved(name) ||
+                (sampled && render::shader_name_reserved(name + "_sampler"))) {
+                fail(at, "\"" + name +
+                             "\" is taken in shaders, by HLSL or the code around the shader; "
+                             "name the param something else");
+            } else if (sampled) {
+                param.slot = ++texture;
+            } else if (constant == render::kShaderTimeConstant) {
+                fail(at, "a shader reads at most " + std::to_string(render::kShaderTimeConstant) +
+                             " number params");
+            } else {
+                param.slot = constant;
+                material_.program.constants.at(constant++) = param.value;
+            }
+        }
+        if (const json::Value* compiled = doc_.find("compiled"); compiled != nullptr) {
+            read_compiled(*compiled);
+        }
+    }
+
+    void read_compiled(const json::Value& compiled) {
+        auto shader = std::make_shared<render::CompiledShader>();
+        const auto words = [&](const char* key, std::vector<std::uint32_t>& out) {
+            const json::Value* value = compiled.find(key);
+            if (value == nullptr) {
+                return;
+            }
+            const std::optional<std::string> bytes = base64_decode(value->as_string());
+            if (!bytes || bytes->size() % 4 != 0) {
+                fail("/compiled/" + std::string(key), "expected SPIR-V in base64");
+                return;
+            }
+            out.resize(bytes->size() / 4);
+            for (std::size_t i = 0; i < out.size(); ++i) {
+                std::uint32_t word = 0;
+                for (std::size_t k = 0; k < 4; ++k) {
+                    word |= std::uint32_t{static_cast<unsigned char>((*bytes)[(i * 4) + k])}
+                            << (8 * k);
+                }
+                out[i] = word;
+            }
+        };
+        const auto text = [&](const char* key, std::string& out) {
+            if (const json::Value* value = compiled.find(key); value != nullptr) {
+                out = value->as_string();
+            }
+        };
+        const auto flag = [&](const char* key) {
+            const json::Value* value = compiled.find(key);
+            return value != nullptr && value->as_bool();
+        };
+        words("spirv_vertex", shader->spirv_vertex);
+        words("spirv_fragment", shader->spirv_fragment);
+        words("cpu_vertex", shader->cpu_vertex);
+        words("cpu_fragment", shader->cpu_fragment);
+        text("msl_vertex", shader->msl_vertex);
+        text("msl_fragment", shader->msl_fragment);
+        text("glsl_vertex", shader->glsl_vertex);
+        text("glsl_fragment", shader->glsl_fragment);
+        text("hlsl", shader->hlsl);
+        shader->normal_map_used = flag("normal_map_used");
+        shader->specular_used = flag("specular_used");
+        material_.compiled = std::move(shader);
     }
 
     // A named node, compiled the first time it is asked for.
@@ -1104,6 +1219,97 @@ Result<CanvasMaterial> parse_material(const json::Value& doc) {
                           first.message);
 }
 
+render::ShaderSource shader_source(const CanvasMaterial& material, std::string code) {
+    render::ShaderSource source{.path = material.shader, .code = std::move(code), .params = {}};
+    for (const auto& [name, param] : material.params) {
+        if (!param.slot) {
+            continue;
+        }
+        const auto components = param.type == "texture"
+                                    ? 0U
+                                    : static_cast<std::uint32_t>(size_of(param_kind(param.type)));
+        source.params.push_back({.name = name, .components = components, .slot = *param.slot});
+    }
+    return source;
+}
+
+Result<std::shared_ptr<const render::CompiledShader>>
+compile_material_shader(const CanvasMaterial& material, const world::FileReader& read) {
+    if (material.compiled || material.shader.empty()) {
+        return material.compiled;
+    }
+    auto code = read(material.shader);
+    if (!code) {
+        return code.error();
+    }
+    return render::compile_shader(shader_source(material, std::move(code).value()));
+}
+
+std::vector<json::ValidationError> check_material_shader(const json::Value& doc,
+                                                         const world::FileReader& read) {
+    auto material = parse_material(doc);
+    if (!material || material.value().shader.empty()) {
+        return {};
+    }
+    auto compiled = compile_material_shader(material.value(), read);
+    if (compiled) {
+        return {};
+    }
+    std::vector<json::ValidationError> errors;
+    std::istringstream lines(compiled.error().message);
+    std::string line;
+    while (std::getline(lines, line)) {
+        errors.push_back({"/shader", line});
+    }
+    return errors;
+}
+
+json::Value compiled_shader_json(const render::CompiledShader& shader,
+                                 const ShaderTargets& targets) {
+    json::Value out = json::Object{};
+    const auto words = [&](const char* key, const std::vector<std::uint32_t>& code) {
+        if (code.empty()) {
+            return;
+        }
+        std::string bytes(code.size() * 4, '\0');
+        for (std::size_t i = 0; i < code.size(); ++i) {
+            for (std::size_t k = 0; k < 4; ++k) {
+                bytes[(i * 4) + k] = static_cast<char>((code[i] >> (8 * k)) & 0xFFU);
+            }
+        }
+        out[key] = base64_encode(bytes);
+    };
+    const auto text = [&](const char* key, const std::string& code) {
+        if (!code.empty()) {
+            out[key] = code;
+        }
+    };
+    if (targets.spirv) {
+        words("spirv_vertex", shader.spirv_vertex);
+        words("spirv_fragment", shader.spirv_fragment);
+    }
+    if (targets.msl) {
+        text("msl_vertex", shader.msl_vertex);
+        text("msl_fragment", shader.msl_fragment);
+    }
+    if (targets.glsl) {
+        text("glsl_vertex", shader.glsl_vertex);
+        text("glsl_fragment", shader.glsl_fragment);
+    }
+    if (targets.hlsl) {
+        text("hlsl", shader.hlsl);
+    }
+    words("cpu_vertex", shader.cpu_vertex);
+    words("cpu_fragment", shader.cpu_fragment);
+    if (shader.normal_map_used) {
+        out["normal_map_used"] = true;
+    }
+    if (shader.specular_used) {
+        out["specular_used"] = true;
+    }
+    return out;
+}
+
 Result<void> read_param_value(const json::Value& value, MaterialParam& param) {
     if (param.type == "texture") {
         if (!value.is_string()) {
@@ -1169,6 +1375,8 @@ Result<MaterialInstance> instantiate(const CanvasMaterial& material,
     instance.blend = material.blend;
     instance.light_mode = material.light_mode;
     instance.program = material.program;
+    instance.shader = material.shader;
+    instance.compiled = material.compiled;
     const auto place = [&](const MaterialParam& param) {
         if (!param.slot) {
             return;
@@ -1268,22 +1476,99 @@ Result<std::vector<std::array<float, 4>>> evaluate(const MaterialInstance& insta
     }
     std::vector<std::array<float, 4>> colors;
     colors.reserve(uvs.size());
-    for (const auto& uv : uvs) {
-        pixel.uv = uv;
-        std::array<float, 4> color{};
-        if (instance.program.code.empty()) {
-            const std::array<float, 4> texel = sample(0, uv[0], uv[1]);
-            for (std::size_t i = 0; i < 4; ++i) {
-                color.at(i) = texel.at(i) * inputs.color.at(i);
-            }
-        } else {
-            color = render::run_program(instance.program, pixel, sample);
-        }
-        // What an 8-bit target keeps; NaN becomes 0, as on the GPU.
+    // What an 8-bit target keeps; NaN becomes 0, as on the GPU.
+    const auto keep = [&](std::array<float, 4> color) {
         for (float& channel : color) {
             channel = channel > 0.0F ? std::min(channel, 1.0F) : 0.0F;
         }
         colors.push_back(color);
+    };
+    if (!instance.shader.empty()) {
+        if (!instance.compiled) {
+            return make_error(ErrorCode::InvalidArgument,
+                              instance.shader + ": the shader isn't compiled");
+        }
+        auto loaded = render::ShaderVm::load(instance.compiled->cpu_fragment);
+        if (!loaded) {
+            return make_error(loaded.error().code, instance.shader + ": " + loaded.error().message);
+        }
+        render::ShaderVm vm = std::move(loaded).value();
+        // The constants, then the texel size, as render::cpu_shader lays them out.
+        std::array<std::byte, render::cpu_shader::kUniformBytes> uniforms{};
+        const std::array<float, 4> texel{pixel.texel[0], pixel.texel[1], 0.0F, 0.0F};
+        std::memcpy(uniforms.data(), instance.program.constants.data(),
+                    std::min(instance.program.constants.size(), render::cpu_shader::kConstants) *
+                        sizeof(texel));
+        std::memcpy(uniforms.data() + (render::cpu_shader::kConstants * sizeof(texel)),
+                    texel.data(), sizeof(texel));
+        const std::array<std::span<const std::byte>, 1> buffers{uniforms};
+        const auto image_of = [&](std::uint32_t binding) {
+            return slots.at(std::min<std::size_t>(binding, slots.size() - 1)).image;
+        };
+        const render::ShaderVm::Textures textures{
+            .sample = [&](std::uint32_t binding, float u,
+                          float v) { return sample(std::min(binding, 3U), u, v); },
+            .fetch = [&](std::uint32_t binding, std::int32_t x,
+                         std::int32_t y) -> std::array<float, 4> {
+                const render::Image* image = image_of(binding);
+                if (image == nullptr) {
+                    return {1.0F, 1.0F, 1.0F, 1.0F};
+                }
+                if (x < 0 || y < 0 || std::cmp_greater_equal(x, image->width) ||
+                    std::cmp_greater_equal(y, image->height)) {
+                    return {0.0F, 0.0F, 0.0F, 0.0F};
+                }
+                const std::size_t at =
+                    ((static_cast<std::size_t>(y) * image->width) + static_cast<std::size_t>(x)) *
+                    4;
+                const auto channel = [&](std::size_t i) {
+                    return static_cast<float>(image->pixels[at + i]) / 255.0F;
+                };
+                return {channel(0), channel(1), channel(2), channel(3)};
+            },
+            .size = [&](std::uint32_t binding) -> std::array<std::uint32_t, 2> {
+                const render::Image* image = image_of(binding);
+                if (image == nullptr) {
+                    return {1, 1};
+                }
+                return {image->width, image->height};
+            }};
+        namespace cpu = render::cpu_shader;
+        for (std::size_t first = 0; first < uvs.size(); first += render::ShaderVm::kLanes) {
+            render::ShaderVm::Lanes lanes;
+            lanes.count =
+                static_cast<std::uint32_t>(std::min(render::ShaderVm::kLanes, uvs.size() - first));
+            for (std::uint32_t lane = 0; lane < lanes.count; ++lane) {
+                const std::array<float, 2>& uv = uvs[first + lane];
+                auto& in = lanes.inputs.at(lane);
+                in.at(cpu::kUv) = {uv[0], uv[1], 0.0F, 0.0F};
+                in.at(cpu::kColor) = inputs.color;
+                in.at(cpu::kFragCoord) = {inputs.frag_coord[0], inputs.frag_coord[1], 0.0F, 0.0F};
+                in.at(cpu::kTextureColor) = sample(0, uv[0], uv[1]);
+                in.at(cpu::kNormalTexel) = {0.5F, 0.5F, 1.0F, 1.0F};
+                in.at(cpu::kSpecular) = {1.0F, 1.0F, 1.0F, 1.0F};
+            }
+            vm.run(lanes, buffers, textures);
+            for (std::uint32_t lane = 0; lane < lanes.count; ++lane) {
+                // A discarded pixel draws nothing.
+                keep(lanes.discarded.at(lane) ? std::array<float, 4>{}
+                                              : lanes.outputs.at(lane).at(cpu::kOutColor));
+            }
+        }
+        return colors;
+    }
+    for (const auto& uv : uvs) {
+        pixel.uv = uv;
+        if (instance.program.code.empty()) {
+            const std::array<float, 4> texel = sample(0, uv[0], uv[1]);
+            std::array<float, 4> color{};
+            for (std::size_t i = 0; i < 4; ++i) {
+                color.at(i) = texel.at(i) * inputs.color.at(i);
+            }
+            keep(color);
+        } else {
+            keep(render::run_program(instance.program, pixel, sample));
+        }
     }
     return colors;
 }

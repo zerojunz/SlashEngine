@@ -31,6 +31,15 @@ ProgramUniforms program_uniforms(const Material& material, const std::array<floa
     return uniforms;
 }
 
+VertexProgramUniforms vertex_program_uniforms(const Material& material,
+                                              const std::array<float, 4>& texel) {
+    VertexProgramUniforms uniforms;
+    const std::size_t count = std::min(material.program.constants.size(), kMaxConstants);
+    std::copy_n(material.program.constants.begin(), count, uniforms.constants.begin());
+    uniforms.texel = texel;
+    return uniforms;
+}
+
 LightsUniforms lights_uniforms(const Lighting& lighting) {
     LightsUniforms out;
     const std::size_t count = std::min(lighting.lights.size(), kMaxLights);

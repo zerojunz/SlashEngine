@@ -178,8 +178,10 @@ rendering on top.
       modes, compiled on load to a program one HLSL shader runs, so materials hot reload and need
       no shader compiler. `material.eval` runs the same program on the CPU to check colors without
       a screenshot; exports check and ship the files. Milestone 7 adds the PBR inputs
-- [ ] A game's own HLSL shaders for canvas materials, compiled at export with the engine's
-      shader tools, for effects the graph can't express
+- [x] A game's own HLSL shaders for canvas materials, for effects the graph can't express:
+      `fragment()` and `vertex()` with Godot's built-ins, which slash-cli and slash-mcp compile
+      with glslang and SPIRV-Cross for every backend and the CPU (`material.eval`, frame
+      captures), hot reloaded, and compiled into the material files at export
 - [x] Sprites, sprite sheets and flipbooks, as in Godot: `Sprite2D` (frames, regions, flips,
       tint, `z_index`) and `AnimatedSprite2D` playing `.frames.json` files (Godot's
       SpriteFrames), drawn in order and interpolated between fixed ticks so high refresh rates
@@ -626,7 +628,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | 3D renderer | Clustered forward+ with PBR, plus a low-end path for web and mobile | 7 | Planned |
 | Shadows | Cascaded, omni and spot shadow maps | 7 | Planned |
 | Post-processing | Tonemap, bloom, SSAO, SSR, DoF, auto exposure, color grading | 7 | Planned |
-| Materials and shaders | HLSL shaders plus a JSON material graph | 5, 7 | In part: canvas material graphs are done; a game's own HLSL shaders in 5, PBR inputs in 7 |
+| Materials and shaders | HLSL shaders plus a JSON material graph | 5, 7 | In part: canvas material graphs and a game's own HLSL canvas shaders are done; PBR inputs in 7 |
 | Keyframe animation | Keyframe tracks on any reflected property | 5 | Done |
 | Skeletal animation | Skinned meshes, blending, root motion | 7 | Planned |
 | Animation blending | Blend trees and state machines in text, two-bone and FABRIK IK | 7 | Planned |

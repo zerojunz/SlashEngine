@@ -3,6 +3,7 @@
 #include "slash/core/result.hpp"
 #include "slash/render/light.hpp"
 #include "slash/render/material.hpp"
+#include "slash/render/shader.hpp"
 
 #include <array>
 #include <cstdint>
@@ -148,6 +149,9 @@ struct Material {
     // canvas transform moves the world under a Camera2D: the view times this. Lights shade the
     // positions as given.
     std::optional<Mat4> transform;
+    // A game's own shader (create_shader), drawn instead of a program: program has no code, and
+    // its constants hold the shader's params and, at kShaderTimeConstant, the time.
+    ShaderId shader = ShaderId::None;
 
     bool operator==(const Material&) const = default;
 };
@@ -218,6 +222,12 @@ public:
     [[nodiscard]] virtual Result<void> update_texture(TextureId texture,
                                                       std::span<const std::uint8_t> rgba) = 0;
     virtual void destroy_texture(TextureId texture) = 0;
+
+    // A game's shader for materials to draw with. Fails when the shader has no code for this
+    // backend, or the backend refuses it. The null device takes any.
+    [[nodiscard]] virtual Result<ShaderId> create_shader(const CompiledShader& shader) = 0;
+    // A shader in use by the frame being built goes once the frame is sent.
+    virtual void destroy_shader(ShaderId shader) = 0;
 
     // Starts a frame and clears its target. Returns false when there is nothing to draw to,
     // such as a minimized window: draws are still checked but dropped, and end_frame ends it.

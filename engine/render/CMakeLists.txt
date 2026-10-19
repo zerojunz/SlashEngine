@@ -6,6 +6,8 @@ add_library(slash_render
     src/image.cpp
     src/light.cpp
     src/material.cpp
+    src/shader.cpp
+    src/shader_vm.cpp
     src/software_device.cpp
     src/uniforms.cpp)
 add_library(slash::render ALIAS slash_render)
@@ -17,7 +19,7 @@ target_link_libraries(slash_render
 slash_engine_target(slash_render)
 # The software device draws the same pixels on every platform: no fused multiply-adds, which
 # arm64 compilers would otherwise emit and x86-64 ones not.
-set_source_files_properties(src/device.cpp src/software_device.cpp PROPERTIES
+set_source_files_properties(src/device.cpp src/shader_vm.cpp src/software_device.cpp PROPERTIES
     COMPILE_OPTIONS "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>")
 
 # Regenerates src/*_shaders.hpp from shaders/*.hlsl. The headers are committed, so only someone
@@ -39,7 +41,8 @@ foreach(shader IN ITEMS sprite material)
             -DGLSLANG=${SLASH_GLSLANG} -DSPIRV_CROSS=${SLASH_SPIRV_CROSS}
             -P ${PROJECT_SOURCE_DIR}/cmake/compile_shaders.cmake
         COMMAND ${CMAKE_COMMAND} -E touch ${stamp}
-        DEPENDS shaders/${shader}.hlsl ${PROJECT_SOURCE_DIR}/cmake/compile_shaders.cmake
+        DEPENDS shaders/${shader}.hlsl shaders/canvas.hlsl
+            ${PROJECT_SOURCE_DIR}/cmake/compile_shaders.cmake
         COMMENT "Compiling ${shader}.hlsl"
         VERBATIM)
     list(APPEND slash_shader_headers ${stamp})

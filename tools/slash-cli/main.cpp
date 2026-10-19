@@ -32,6 +32,7 @@
 #include "slash/render/device.hpp"
 #include "slash/runtime/project.hpp"
 #include "slash/server/server.hpp"
+#include "slash/shader_compiler/shader_compiler.hpp"
 #include "slash/storyboard/storyboard.hpp"
 #include "slash/text/text.hpp"
 #include "slash/ui/ui.hpp"
@@ -715,6 +716,9 @@ int cmd_scene_validate(const std::string& path) {
         errors = slash::canvas::validate_sprite_frames(parsed.value());
     } else if (material) {
         errors = slash::canvas::validate_material(parsed.value());
+        if (errors.empty()) {
+            errors = slash::canvas::check_material_shader(parsed.value(), prefab_reader(path));
+        }
     } else if (animation) {
         errors = slash::animation::validate_animation_library(parsed.value(), &registry);
     } else if (tileset) {
@@ -761,9 +765,11 @@ int cmd_scene_validate(const std::string& path) {
         };
         result["ticks"] = tick("end") - tick("start");
     } else if (material) {
-        // How much of the material shader's budget the graph uses.
-        result["instructions"] =
-            slash::canvas::parse_material(parsed.value()).value().program.code.size();
+        // How much of the material shader's budget the graph uses; a game's shader has no graph.
+        const auto parsed_material = slash::canvas::parse_material(parsed.value());
+        if (parsed_material.value().shader.empty()) {
+            result["instructions"] = parsed_material.value().program.code.size();
+        }
     } else {
         const char* counted = "entities";
         if (theme) {
@@ -1442,6 +1448,8 @@ int cmd_init(const std::vector<std::string>& args) {
 } // namespace
 
 int main(int argc, char** argv) {
+    // Materials with a game's own shader compile when they first draw or validate.
+    slash::shader_compiler::install();
     std::vector<std::string> args(argv + 1, argv + argc);
     if (args.empty() || args[0] == "help" || args[0] == "--help" || args[0] == "-h") {
         std::fwrite(kUsage.data(), 1, kUsage.size(), stdout);

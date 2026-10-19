@@ -145,7 +145,9 @@ For a prefab the result counts its `components` instead of `entities`, for a `.f
 `.anim.json` file its `animations`, for a `.tileset.json` file its `tiles`, for a `.theme.json`
 file its `types`, for a `.bus_layout.json` file its `buses`, for a `.replay.json` file the
 `ticks` it covers, for a `.test.json` file its `tests`, for a `.font.json` or `.audio.json` file nothing more, and for a `.material.json` file the
-`instructions` its graph compiles to, of the 64 a material can run:
+`instructions` its graph compiles to, of the 64 a material can run. A material with a
+[shader](scene-format.md#shaders) has no graph: its shader is compiled, and each error in it is
+reported at `/shader` with the shader file and line.
 
 ```json
 {"instructions":5,"valid":true}
@@ -457,7 +459,9 @@ or a platform for its defaults: `macos`, `windows`, `linux`, `web`, `android` or
 
 Export validates the project, its presets and every scene and prefab, copies `project.json` and
 the `.scene.json` and `.prefab.json` files into a staging folder (nothing else, so stray files such as `.env` never
-ship), builds the game with CMake, signs it and installs it into the output folder. A Mac builds every
+ship), builds the game with CMake, signs it and installs it into the output folder. Each
+material's [shader](scene-format.md#shaders) is compiled for the platform into its staged file,
+since games can't compile shaders, and the `.hlsl` files stay behind. A Mac builds every
 platform: macOS and iOS with Xcode's command-line tools and SDKs, and Windows and Linux with the
 toolchains in [toolchain](#toolchain), which the first such export downloads. A Linux machine
 builds Linux and Windows the same way, and a Windows machine builds Windows with MSVC. Web

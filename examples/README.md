@@ -27,6 +27,7 @@ engine. Copy from them.
 | [canvas-layers](canvas-layers/) | `CanvasLayer` and `Parallax2D`: hills that scroll at a quarter of the camera's speed and repeat to fill the window, drifting clouds, a HUD layer that stays put, and `canvas.convert` turning a click into the world |
 | [sprites](sprites/) | `Sprite2D`, sprite sheets and `AnimatedSprite2D` flipbooks from a `.frames.json` file, drawn offscreen |
 | [materials](materials/) | `.material.json` node graphs that color sprites, their params and blend modes, and `material.eval` |
+| [custom-shaders](custom-shaders/) | A game's own HLSL shaders with `fragment()` and `vertex()`, run by `material.eval` and `frame.capture` and reloaded on edit |
 | [keyframe-animation](keyframe-animation/) | `AnimationPlayer` and `.anim.json` files: tracks for any field, on the player's entity or another it targets, easing, loops, event keys and `animation.eval` |
 | [tilemaps](tilemaps/) | `TileMapLayer` and `.tileset.json` files: terrain autotiling with `tilemap.paint`, `tilemap.set` and `tilemap.get`, drawn offscreen |
 | [isometric-and-hex-tiles](isometric-and-hex-tiles/) | Isometric and hexagonal tile sets with Godot's `tile_shape`, `tile_layout` and `tile_offset_axis`: an island painted on diamonds by their sides and corners, a board of hexagons, trees lifted by their `texture_origin`, `tilemap.convert` between cells and points, checked with `frame.capture` |

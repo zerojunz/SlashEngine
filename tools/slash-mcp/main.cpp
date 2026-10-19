@@ -13,6 +13,7 @@
 #include "slash/platform/file.hpp"
 #include "slash/server/client.hpp"
 #include "slash/server/server.hpp"
+#include "slash/shader_compiler/shader_compiler.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
 
@@ -61,6 +62,7 @@ void send(const std::string& line) {
 } // namespace
 
 int main(int argc, char** argv) {
+    slash::shader_compiler::install(); // for materials with a game's own shader
     const std::vector<std::string> args(argv + 1, argv + argc);
     command::SessionOptions options;
     std::string scene;
