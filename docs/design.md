@@ -91,6 +91,7 @@ SlashEngine covers nearly every Godot 4 feature area at launch and adds UE5 feat
 | Animation blending | AnimationTree, state machines, blend spaces | Animation Blueprints, Control Rig | Blend trees and state machines in text, two-bone and FABRIK IK | Launch |
 | Particles | GPU and CPU particles | Niagara | CPU and GPU particles, particle graphs in text | Launch |
 | Audio | Buses, effects, 3D audio | MetaSounds, spatial audio | miniaudio: buses, effects, 3D spatial audio | Launch |
+| Soundtracks | Interactive, synchronized and playlist streams (playback only) | MetaSounds, Quartz | Music planned in the storyboard, written as scores or generated, arranged into Godot's interactive music and checked by analysis, all through commands | Launch |
 | Input | Action maps, gamepads | Enhanced Input | Rebindable action maps over SDL3, injectable by agents | Launch |
 | Refresh rates and frame pacing | V-Sync modes, max FPS | V-Sync, max FPS, frame rate smoothing | V-Sync modes, frame cap, display refresh rates, variable refresh rate, rendering interpolated between fixed ticks | Launch |
 | UI | Control nodes, containers, themes | UMG | Retained UI with flexbox layout and themes, defined in text | Launch |
@@ -165,6 +166,9 @@ Every line in the repo is Apache 2.0 or comes from a dependency under a permissi
 | dav1d | Video | BSD |
 | AccessKit | Accessibility | MIT or Apache 2.0 |
 | Tracy | Profiling | BSD |
+| TinySoundFont | Rendering music scores | MIT |
+| libebur128 | Loudness measurement | MIT |
+| libogg, libvorbis | Encoding rendered music | BSD |
 | doctest | Tests | MIT |
 
 ## Core architecture
@@ -290,6 +294,7 @@ Agents can't be forced to prefer a tool, but they reliably use what the project 
 | `build.check` compiles only changed gameplay files and returns errors as data with the compiler's suggested fixes | Reading build logs, and full rebuilds | 6 |
 | `api.search` returns real C++ signatures, docs and the verified examples that use them | Guessed function names and failed builds | 6 |
 | `playtest.run` runs many headless copies at once with scripted bots and different tuning values, and returns a summary | One run per call when tuning gameplay | 6 |
+| `audio.analyze` returns tempo, key, loudness and loop seams as data | Audio an agent cannot hear | 6 |
 | `project.map` says where systems, components, scenes and source files are | Searching a large codebase | 6 |
 | A benchmark of standard agent tasks counts calls and tokens on a schedule | Regressions in agent efficiency | 6 |
 | The asset library returns an earlier asset instead of generating it again, and describes assets in text | Generation calls and image tokens | 6 |
@@ -385,6 +390,16 @@ my-game/storyboard/
 
 What it cannot do: no tool can stop a model from inventing things in prose it writes. The storyboard makes that much less likely by putting the right facts in front of the agent, and it catches every contradiction in typed, linked data. Contradictions in free text, such as plot logic or tone, are caught only as well as the reviewing model reads them.
 
+## Soundtracks
+
+A game's music has to fit its story, change with play and loop cleanly, and an agent cannot listen to it. So the soundtrack feature turns music into things an agent can read, write and check, and builds on the interactive music the engine already plays (Godot's playlist, synchronized and interactive streams in `.audio.json`). It adds no new music runtime.
+
+- **Planned in the storyboard.** The storyboard gets a music section: themes for characters, places and factions (key, tempo, instruments, mood), a loudness target, and a cue sheet saying which cue plays in each scene, story beat and game state. `soundtrack.plan` drafts the cue sheet from the storyboard and the project's scenes, and `storyboard.check` reports scenes and states with no music.
+- **Scores as text.** Music an agent writes is a `.score.json` file: tracks of notes in beats with tempo, meter, key and named sections, plus MIDI import and export. Changing one bar or one instrument is an exact edit, not a new generation. `soundtrack.render` plays a score through a SoundFont synth (TinySoundFont) into one `.ogg` stem per track and fills in `bpm`, `beat_count` and `bar_beats`. The SoundFont is the developer's choice, with a permissively licensed General MIDI one as the default.
+- **Generated or imported.** Music models are generator adapters in the [asset library](#asset-library-and-generation), and a composer's tracks and stems import as library assets. Each records its generator or author and license, and themes are searched before new ones are made, so a theme can be reused in a new arrangement.
+- **Arranged into interactive music.** `soundtrack.arrange` turns a cue sheet into the `.audio.json` files the runtime plays. Cues become interactive clips, intensity levels become synchronized layers, transitions land on the bar, and stingers become filler clips. The game steers it through the player's `parameters`, as it does today.
+- **Checked without ears.** `audio.analyze` measures tempo and beat grid, key, loudness (LUFS, with libebur128) and true peak, clipping, silence, frequency balance and how cleanly a loop joins. `soundtrack.check` reports missing cues, beat counts that don't match a file, loops that click, transitions off the bar, keys that clash across a transition and loudness off target, in the headless test command and CI. `run.until` and `playtest.run` report a music timeline (which clip played when, and every transition), so an agent can confirm the music follows the game. With `ai::Provider`, a model that accepts audio can add an advisory review.
+
 ## Languages
 
 Games ship in many languages, and the people and agents making them work in many languages too. Following Godot, the engine treats no language as special.
@@ -436,7 +451,7 @@ SlashEngine/
 3. **Commands.** Command registry, undo, JSON-RPC server, `slash-mcp`, REST mirror, `slash-cli`. Exit: Claude Code, Codex and Cursor each open, edit and save a scene over MCP.
 4. **Export pipeline.** `slash-cli export` and toolchain install for all six platforms, plus the CI workflow. Exit: an empty project exports and passes headless tests everywhere. It comes this early so every later feature stays exportable. Built in two parts: (a) project files, the game runtime and exports for macOS, Windows, Linux and web on their own hosts, tested in CI; (b) iOS and Android, cross toolchains from a Mac, export presets with signing, and the `export.run` command.
 5. **2D feature set.** Systems, play and pause, event subscriptions, prefabs, asset handles with hot reload, the storyboard, dry runs, world snapshots and diffs, verified examples and the CI license check first; then the renderer, materials, sprites, keyframe animation, tilemaps, 2D lights, Box2D physics, particles, UI and text with IME input, audio, input injection, frame capture, replays with time travel, `run.until`, the debug overlay, `test.run` and frame summaries. Exit: an agent builds `samples/pong` and exports it to all six platforms.
-6. **Hot reload, AI and profiling.** Hot-reloadable C++ game module with `build.check`, SDK packages for closed vendor SDKs, `api.search`, `playtest.run` with tuning sweeps, `ai::Provider` with three adapters and `ReplayProvider`, the asset library and generator for images and audio, storyboard review by a model and the project map, the job system, Tracy, `perf.stats` and the per-system memory report.
+6. **Hot reload, AI and profiling.** Hot-reloadable C++ game module with `build.check`, SDK packages for closed vendor SDKs, `api.search`, `playtest.run` with tuning sweeps, `ai::Provider` with three adapters and `ReplayProvider`, the asset library and generator for images and audio, storyboard review by a model and the project map, soundtracks, the job system, Tracy, `perf.stats` and the per-system memory report.
 7. **3D feature set.** Forward+ PBR renderer, shadows, post-processing, GI, ray tracing, path-traced lightmaps and reference stills, upscalers, sky, decals, LODs, Jolt physics, skeletal animation and blending, navigation, terrain, CSG, glTF and FBX import, and 3D in the asset library: parametric models, game-ready cleanup, automatic review, rigging and scene assembly. Exit: an agent builds a small 3D sample end to end.
 8. **Systems and platform services.** Networking, XR, localization, video, accessibility, and analytics, ads and in-app purchases behind one API with a headless test backend.
 9. **Launch.** Every Launch row of the parity table done, the Mac engine and tools released, exports for all six platforms, reference docs generated from `engine.describe`.
