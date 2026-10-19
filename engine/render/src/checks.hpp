@@ -27,6 +27,15 @@ inline constexpr std::size_t kMaxFrameVertices = std::size_t{1} << 22;
 [[nodiscard]] Error unknown_shader(ShaderId shader);
 // That a compiled shader has code for the backend.
 [[nodiscard]] Result<void> check_compiled_shader(const CompiledShader& shader, Backend backend);
+[[nodiscard]] Error unknown_particles(ParticlesId particles);
+[[nodiscard]] Result<void> check_particle_amount(std::uint32_t amount);
+// That a process material's curves, gradients and points fit, and its steps' numbers are sound.
+[[nodiscard]] Result<void> check_particle_process(const ParticleProcess& process,
+                                                  std::span<const ParticleStep> steps);
+// Each particle draws six vertices, which count towards the frame's; in_frame is how many vertices
+// the frame has drawn so far.
+[[nodiscard]] Result<void> check_particle_draw(const ParticleDraw& look, std::uint32_t amount,
+                                               std::size_t in_frame);
 [[nodiscard]] Error not_a_render_target(TextureId texture);
 [[nodiscard]] Error target_in_use(TextureId texture);
 [[nodiscard]] Error no_frame(std::string_view call);

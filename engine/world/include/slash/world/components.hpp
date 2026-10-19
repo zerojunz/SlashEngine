@@ -608,6 +608,52 @@ SLASH_COMPONENT(CPUParticles2D, emitting, amount, lifetime, one_shot, preprocess
                 anim_speed_max, anim_speed_curve, anim_offset_min, anim_offset_max,
                 anim_offset_curve)
 
+// Emits particles from the entity's Transform2D and moves them on the GPU, as Godot's
+// GPUParticles2D: process_material names a .process_material.json file (Godot's
+// ParticleProcessMaterial) that says how they start and move. The gpu_particles_2d system steps
+// each emitter's emission cycle every tick; renderers run the steps on their device and draw the
+// particles, the same on every device. The particles themselves are not saved.
+struct GPUParticles2D {
+    // Fields are grouped by type so the struct packs tightly; SLASH_COMPONENT lists them as
+    // Godot groups them.
+    std::string process_material; // project path of a .process_material.json file
+    std::string texture;          // project path of a PNG or BMP file; "" draws pixels
+    std::string texture_filter = "inherit";
+    std::string material;
+    std::string draw_order = "lifetime"; // "index", "lifetime" or "reverse_lifetime"
+    std::map<std::string, json::Value> material_params;
+    int amount = 8;
+    int seed = 0;
+    int fixed_fps = 30;
+    int hframes = 1; // the texture's frames, as Godot's CanvasItemMaterial particles_anim_*
+    int vframes = 1;
+    int z_index = 0;
+    bool z_as_relative = true; // as Sprite2D's
+    int light_mask = 1;
+    float amount_ratio = 1.0F;
+    float lifetime = 1.0F;
+    float interp_to_end = 0.0F;
+    float preprocess = 0.0F;
+    float speed_scale = 1.0F;
+    float explosiveness = 0.0F;
+    float randomness = 0.0F;
+    bool emitting = true;
+    bool one_shot = false;
+    bool use_fixed_seed = false;
+    bool interpolate = true;
+    bool fract_delta = true;
+    bool local_coords = false;
+    bool anim_loop = false;
+    bool visible = true;
+
+    friend bool operator==(const GPUParticles2D&, const GPUParticles2D&) = default;
+};
+SLASH_COMPONENT(GPUParticles2D, emitting, amount, amount_ratio, process_material, texture, lifetime,
+                interp_to_end, one_shot, preprocess, speed_scale, explosiveness, randomness,
+                use_fixed_seed, seed, fixed_fps, interpolate, fract_delta, local_coords, draw_order,
+                texture_filter, hframes, vframes, anim_loop, z_index, z_as_relative, visible,
+                material, material_params, light_mask)
+
 // ---- Audio, as Godot's AudioStreamPlayer nodes.
 
 // Plays a sound through a bus, as Godot's AudioStreamPlayer: the same wherever the entity is.

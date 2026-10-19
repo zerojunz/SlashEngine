@@ -2,6 +2,7 @@
 
 #include "slash/asset/assets.hpp"
 #include "slash/canvas/debug_draw.hpp"
+#include "slash/canvas/gpu_particles.hpp"
 #include "slash/canvas/light.hpp"
 #include "slash/canvas/material.hpp"
 #include "slash/canvas/tilemap.hpp"
@@ -21,13 +22,15 @@
 #include <memory>
 #include <optional>
 #include <set>
+#include <span>
 #include <string>
 #include <string_view>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
-// 2D drawing, as Godot's canvas: Sprite2D, AnimatedSprite2D, TileMapLayer and CPUParticles2D
+// 2D drawing, as Godot's canvas: Sprite2D, AnimatedSprite2D, TileMapLayer, CPUParticles2D and
+// GPUParticles2D
 // entities drawn through a render device, in world pixels with y down, seen through the current
 // Camera2D (camera2d.hpp) and shaded by 2D lights (light.hpp).
 namespace slash::canvas {
@@ -89,14 +92,23 @@ struct FramePiece {
     std::size_t order = 0; // where it drew among the frame's pieces
 };
 
-// Something a frame drew: a sprite, a tile map layer, a CPUParticles2D's particles or a control.
+// Something a frame drew: a sprite, a tile map layer, a CPUParticles2D's or GPUParticles2D's
+// particles, or a control.
 // A control's pieces are cut to its clip, and what it draws over its children (a
 // ScrollContainer's scroll bars) draws after them.
 struct FrameItem {
     // Popup is an open popup menu, over every control: its entity is the PopupMenu, OptionButton
     // or MenuButton that shows it. Tooltip is the tooltip shown, over those: its entity is the
     // control (or popup menu) whose tooltip it is.
-    enum class Kind : std::uint8_t { Sprite, Tiles, Particles, Control, Popup, Tooltip };
+    enum class Kind : std::uint8_t {
+        Sprite,
+        Tiles,
+        Particles, // a CPUParticles2D's
+        GpuParticles,
+        Control,
+        Popup,
+        Tooltip
+    };
     Kind kind = Kind::Sprite;
     entt::entity entity = entt::null;
     std::size_t count = 0; // tiles or particles drawn
@@ -184,7 +196,7 @@ public:
 
     // Draws one frame: the target cleared, then each canvas in order (world::Canvases), then
     // the popup menus, tooltip and drag preview, then the overlay's controls. The world's
-    // canvas is every visible sprite, tile map layer and CPUParticles2D not in a CanvasLayer, in
+    // canvas is every visible sprite, tile map layer and particles not in a CanvasLayer, in
     // z_index order, then the order entities were made, seen through the current Camera2D,
     // then the collision shapes if the options ask, then the controls not in a CanvasLayer
     // (ui.hpp), on the screen. A CanvasLayer's is its own sprites, layers and particles, then
@@ -194,7 +206,8 @@ public:
     // draws its
     // cells row by row, each tile's region centered on its cell, moved by the entity's
     // Transform2D if it has one. Particles draw as their emitter's draw_order says, each its
-    // texture's frame (or a white pixel) centered on it, turned, scaled and colored. A
+    // texture's frame (or a white pixel) centered on it, turned, scaled and colored; a
+    // GPUParticles2D's system on the device first runs the steps it hasn't (gpu_particles.hpp). A
     // sprite or tile that can't draw, such as one whose texture or material is missing, or whose
     // material_params name a param the material doesn't have, is left out with one warning in the
     // log. On the null device a window frame checks and counts them but draws nothing.
@@ -210,7 +223,8 @@ public:
     [[nodiscard]] std::size_t sprites_drawn() const noexcept { return sprites_drawn_; }
     // Tiles the last frame drew, over every layer.
     [[nodiscard]] std::size_t tiles_drawn() const noexcept { return tiles_drawn_; }
-    // Particles the last frame drew, over every CPUParticles2D.
+    // Particles the last frame drew: every CPUParticles2D's live ones, and each GPUParticles2D's
+    // amount (the device draws each one, those not live with no area).
     [[nodiscard]] std::size_t particles_drawn() const noexcept { return particles_drawn_; }
     // Lights the last frame shaded with, and how many of them cast shadows.
     [[nodiscard]] std::size_t lights_drawn() const noexcept { return lights_drawn_; }
@@ -258,6 +272,42 @@ private:
     // The material a sprite draws with, its params and the time filled in, and its light mode.
     Result<render::Material> material(const world::Sprite2D& sprite, render::Filter filter,
                                       double time, render::LightMode* light_mode);
+    // A GPUParticles2D's process material.
+    Result<const render::ParticleProcess*> process_material(const std::string& path);
+    // A GPUParticles2D's particle system on the device, and the steps run on it; and the same
+    // on the CPU for FrameContents, run only when a frame asks for them.
+    struct GpuSystem {
+        render::ParticlesId id = render::ParticlesId::None;
+        std::uint64_t serial = 0;
+        std::uint32_t amount = 0;
+        std::uint64_t next = 0; // the next step to run
+        std::vector<render::Particle> cpu;
+        std::uint64_t cpu_serial = 0;
+        std::uint64_t cpu_next = 0;
+        bool seen = false;
+    };
+    // Steps to run on a GPUParticles2D's system before it draws: the first one, made to clear
+    // the system for a system made anew, then the rest.
+    struct ParticleJob {
+        render::ParticlesId particles = render::ParticlesId::None;
+        const render::ParticleProcess* process = nullptr;
+        std::optional<render::ParticleStep> first;
+        std::span<const render::ParticleStep> rest;
+    };
+    // The steps a GPUParticles2D's system hasn't run, none if it has run them all. The system is
+    // made again when the emitter started over or this renderer missed steps no longer kept;
+    // then it runs every step kept, the first clearing it. Fails if it can't be made.
+    Result<std::optional<ParticleJob>> particle_job(GpuSystem& system, const ParticleSteps& kept,
+                                                    const render::ParticleProcess* process);
+    // Brings a system's CPU copy up to its steps kept, as the device runs them, and returns how
+    // many of its particles are live.
+    static std::size_t mirror(GpuSystem& system, const ParticleSteps& kept,
+                              const render::ParticleProcess& process);
+    // Runs the steps, before the systems draw. If they can't run, the systems are made again
+    // next frame.
+    Result<void> run_particle_jobs(std::span<const ParticleJob> jobs);
+    // Destroys the systems of emitters this frame didn't see.
+    void drop_unseen_gpu_systems();
     // A layer's cells, decoded again only when the layer or its tile set changes.
     struct LayerCells {
         std::uint64_t set_version = 0;
@@ -287,6 +337,8 @@ private:
     std::map<std::pair<std::string, render::Filter>, Texture> textures_;
     std::map<std::string, MaterialEntry, std::less<>> materials_;
     std::map<std::string, asset::Handle<TileSet>, std::less<>> tile_sets_;
+    std::map<std::string, asset::Handle<render::ParticleProcess>, std::less<>> processes_;
+    std::unordered_map<entt::entity, GpuSystem> gpu_systems_;
     std::unordered_map<entt::entity, LayerCells> layer_cells_;
     std::map<std::string, asset::Handle<render::Image>, std::less<>> light_images_;
     ShadowCache shadow_cache_;

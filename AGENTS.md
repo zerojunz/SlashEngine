@@ -79,14 +79,15 @@ body of their own (`shape_key_of` in `engine/physics2d/src/space.cpp`), as Godot
 `CollisionShape2D` nodes. `examples/parent-transforms` sails a boat.
 
 ```bash
-$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, tileset, font, theme, audio, bus_layout, replay, test)
+$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, process_material, tileset, font, theme, audio, bus_layout, replay, test)
 $cli scene validate tests/data/basic.scene.json     # every error, with its JSON Pointer path
 $cli scene format level.scene.json                  # rewrite in canonical form
 $cli scene format --check level.scene.json          # exit 1 if not canonical
 ```
 
 Validate after editing a scene or prefab by hand, and format before committing one. Both
-commands take `.prefab.json`, `.frames.json`, `.material.json`, `.anim.json`, `.tileset.json`,
+commands take `.prefab.json`, `.frames.json`, `.material.json`, `.anim.json`,
+`.process_material.json`, `.tileset.json`,
 `.font.json`, `.theme.json`, `.audio.json`, `.bus_layout.json`, `.replay.json` and `.test.json` files too; validating a scene also checks each tile map layer against its tile
 set, each `AnimationPlayer` against its library and that its controls lay out as written.
 
@@ -94,8 +95,8 @@ set, each `AnimationPlayer` against its library and that its controls lay out as
 
 `engine/asset` loads files by project path into shared, reference-counted handles
 (`assets.load<json::Value>("data/tuning.json")`); `.json`, `.txt` and `.csv` load out of the box,
-`canvas::add_asset_types` adds textures (`.png`, `.bmp`), `.frames.json`, `.material.json` and
-`.tileset.json` files, `animation::add_asset_types` adds `.anim.json` files,
+`canvas::add_asset_types` adds textures (`.png`, `.bmp`), `.frames.json`, `.material.json`,
+`.process_material.json` and `.tileset.json` files, `animation::add_asset_types` adds `.anim.json` files,
 `text::add_asset_types` adds fonts (`.ttf`, `.otf`, `.font.json`), `audio::add_asset_types`
 adds sounds (`.wav`, `.ogg`, `.mp3`), `.audio.json` and `.bus_layout.json` files, and games add types
 with `add_type`. Sessions and games own an `asset::Assets`, and prefab files are read through it.
@@ -244,7 +245,8 @@ $cli export linux --project path/to/game --test        # build, lay out and run 
 ```
 
 `slash-cli export <preset>` validates the project, its presets and every scene, prefab, texture,
-font, sound, `.frames.json`, `.material.json`, `.audio.json` and `.bus_layout.json` file, stages them as the game's data, configures
+font, sound, `.frames.json`, `.material.json`, `.process_material.json`, `.audio.json` and
+`.bus_layout.json` file, stages them as the game's data, configures
 `export/CMakeLists.txt` with the engine sources, builds, signs and installs into
 `<project>/build/export/<preset>`. Its work folder
 and full build log are in `<project>/.slash/export/<preset>/`; a failure reports the step and the
@@ -376,7 +378,8 @@ player behind a bush and off the screen.
 sprite sheet, at the entity's `Transform2D`, in `z_index` order, then the order entities were
 made. `AnimatedSprite2D` plays a `.frames.json` file's animations on it through the
 `animated_sprite_2d` system (`$cli schema frames`; `animation_finished` events). `canvas::install`
-adds the asset types and the systems (that one, `camera_2d`, `parallax_2d` and `cpu_particles_2d`) to a world;
+adds the asset types and the systems (that one, `camera_2d`, `parallax_2d`, `cpu_particles_2d` and
+`gpu_particles_2d`) to a world;
 sessions and games call it. `CanvasRenderer`
 draws a world through a render device over the project's `rendering.clear_color`: games and
 `slash-cli run` call `before_tick` before each tick and draw between ticks with
@@ -540,6 +543,19 @@ particle math in `engine/canvas` (built with `-ffp-contract=off`) and use `slash
 snapshots and undo leave them alone. `particles.eval` returns live particles, or runs the
 settings for a time with `canvas::simulate`; `examples/particles` has a fountain, sparks, smoke
 and a portal.
+
+`GPUParticles2D` is Godot's too, its particles moved on the device as a `.process_material.json`
+file (Godot's `ParticleProcessMaterial`; `$cli schema process_material`) says. The
+`gpu_particles_2d` system (priority 1110; `engine/canvas/src/gpu_particles.cpp`) ports Godot's
+node and particles storage: each tick it works out each emitter's `render::ParticleStep`s
+(`fixed_fps`, preprocess, the emission cycle, one-shot timing) and keeps those that can still
+have made a live particle (`canvas::particle_steps`). `CanvasRenderer` runs the steps its device
+hasn't with `RenderDevice::process_particles` and draws with `draw_particles`, so a late
+renderer catches up from the steps kept. `engine/render/shaders/particles_process.hlsl` is the
+compute shader and `render::process_particles` (`engine/render/src/particles.cpp`) its CPU twin,
+which the software and OpenGL ES devices run; a test holds them to the same particles, so a
+change to the particle math goes in both. `particles.eval` runs the steps kept on the CPU
+(`canvas::gpu_particles`); `examples/gpu-particles` has a fire, sparks and snow.
 
 ## UI and text
 
@@ -767,12 +783,12 @@ CI rejects unformatted code and any clang-tidy finding.
 - Headers live in `engine/<module>/include/slash/<module>/`, sources in `engine/<module>/src/`.
   Modules: `core` (Result, logging, JSON, reflection, math), `platform` (SDL3 window, run loop,
   files and folder listings, child processes), `render` (the render device over SDL3's GPU API and OpenGL ES 3.0 / WebGL 2,
-  the software and null devices, HLSL shaders, material programs and 2D light shading), `asset` (asset handles, loaders, hot reload),
+  the software and null devices, HLSL shaders, material programs, 2D light shading and particles), `asset` (asset handles, loaders, hot reload),
   `world` (EnTT world, components, scenes and prefabs), `input` (input events, action maps,
   the input state and reading SDL's events), `audio` (sound files and streams, the mixer, buses
   and effects, players and SDL's audio output), `canvas` (sprites, `.frames.json`
   animations, `.material.json` materials, `.tileset.json` tile maps, 2D lights and shadows, CPU
-  particles and drawing them), `text` (fonts, shaping, line breaking, carets and selections, and glyph atlases), `ui`
+  particles, GPU particles' steps and drawing them), `text` (fonts, shaping, line breaking, carets and selections, and glyph atlases), `ui`
   (controls, containers and themes: layout, draw calls, buttons, focus and text fields), `animation` (`.anim.json` keyframe
   animations and the system that plays them),
   `physics2d` (2D bodies, areas, joints and queries on Box2D), `storyboard` (storyboard kinds, files, versions,

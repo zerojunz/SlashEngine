@@ -5,6 +5,7 @@
 // edges fall on the same pixels as on a GPU.
 
 #include "checks.hpp"
+#include "cpu_particles.hpp"
 
 #include "slash/render/device.hpp"
 #include "slash/render/image.hpp"
@@ -220,6 +221,40 @@ public:
         shaders_.erase(it);
     }
 
+    Result<ParticlesId> create_particles(std::uint32_t amount) override {
+        return particles_.create(amount);
+    }
+
+    void destroy_particles(ParticlesId particles) override { particles_.destroy(particles); }
+
+    Result<void> process_particles(ParticlesId particles, const ParticleProcess& process,
+                                   std::span<const ParticleStep> steps) override {
+        return particles_.process(particles, process, steps);
+    }
+
+    Result<void> draw_particles(ParticlesId particles, TextureId texture, const ParticleDraw& look,
+                                const Material& material) override {
+        if (!in_frame_) {
+            return detail::no_frame("draw_particles");
+        }
+        if (auto made = particles_.vertices(particles, look, vertices_.size(), particle_vertices_);
+            !made) {
+            return made;
+        }
+        // As the GPU device, each draw of particles is a draw of its own.
+        break_batch_ = true;
+        auto drawn = draw(texture, particle_vertices_, material);
+        break_batch_ = true;
+        return drawn;
+    }
+
+    Result<std::vector<Particle>> read_particles(ParticlesId particles) override {
+        if (in_frame_) {
+            return detail::frame_in_progress("read_particles");
+        }
+        return particles_.read(particles);
+    }
+
     Result<bool> begin_frame(const Frame& frame) override {
         if (in_frame_) {
             return detail::frame_in_progress("begin_frame");
@@ -280,11 +315,12 @@ public:
         if (vertices.empty()) {
             return {};
         }
-        if (batches_.empty() || batches_.back().texture != texture ||
+        if (batches_.empty() || break_batch_ || batches_.back().texture != texture ||
             batches_.back().material != material) {
             batches_.push_back(
                 {.texture = texture, .material = material, .first = vertices_.size(), .count = 0});
             ++stats_.draws;
+            break_batch_ = false;
         }
         batches_.back().count += vertices.size();
         vertices_.insert(vertices_.end(), vertices.begin(), vertices.end());
@@ -887,10 +923,13 @@ private:
     std::unordered_map<ShaderId, std::shared_ptr<SoftwareShader>> shaders_;
     std::unordered_map<ShaderId, std::shared_ptr<SoftwareShader>> retired_shaders_;
     std::uint32_t next_shader_ = 1;
+    detail::CpuParticles particles_;
+    std::vector<Vertex2D> particle_vertices_;
     bool in_frame_ = false;
     Frame frame_;
     std::vector<Vertex2D> vertices_;
     std::vector<Batch> batches_;
+    bool break_batch_ = false; // the next draw starts a batch
     VsyncMode vsync_ = VsyncMode::Enabled;
     Stats stats_;
 };

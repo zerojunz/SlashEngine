@@ -1,0 +1,36 @@
+wrote dot.png: 8x8
+scene.open {"path":"main.scene.json"}
+{"entities":3,"path":"main.scene.json"}
+particles.eval {"id":"fire","time":0.5}
+{"alive":24,"bounds":[74.5837,113.1188,14.8968,37.7536]}
+events.subscribe {"kinds":["finished"]}
+{"subscription":"events_1"}
+step {"ticks":30}
+{"tick":30,"ticks":30}
+particles.eval {"id":"fire"}
+{"alive":24,"bounds":[74.5837,113.1188,14.8968,37.7536]}
+particles.eval {"id":"sparks","list":true,"max_results":2}
+{"alive":24,"bounds":[149.9838,60.0504,103.64,108.6221],"particles":[{"age":0.5,"color":[0.9999,0.3249,0.0833,0.1667],"position":[159.8985,122.0658],"rotation":0,"scale":1.1394},{"age":0.5,"color":[0.9999,0.3249,0.0833,0.1667],"position":[202.1766,65.1117],"rotation":0,"scale":1.7056}]}
+particles.eval {"id":"snow"}
+{"alive":40,"bounds":[1.3617,0.2324,329.91,171.0353]}
+step {"ticks":30}
+{"tick":60,"ticks":30}
+events.read {"subscription":"events_1"}
+{"dropped":0,"events":[{"id":"sparks","kind":"finished","seq":1,"tick":36}],"more":false}
+entity.get {"components":["GPUParticles2D"],"id":"sparks","omit_defaults":true}
+{"components":{"GPUParticles2D":{"amount":24,"emitting":false,"explosiveness":1.0,"lifetime":0.6,"one_shot":true,"process_material":"sparks.process_material.json","seed":7,"texture":"dot.png","use_fixed_seed":true}},"id":"sparks"}
+component.set {"components":{"GPUParticles2D":{"emitting":true}},"id":"sparks"}
+{"changed":{"GPUParticles2D":{"emitting":true}},"id":"sparks"}
+step {"ticks":30}
+{"tick":90,"ticks":30}
+particles.eval {"id":"sparks","list":true,"max_results":2}
+{"alive":24,"bounds":[149.9838,60.0504,103.64,108.6221],"particles":[{"age":0.5,"color":[0.9999,0.3249,0.0833,0.1667],"position":[159.8985,122.0658],"rotation":0,"scale":1.1394},{"age":0.5,"color":[0.9999,0.3249,0.0833,0.1667],"position":[202.1766,65.1117],"rotation":0,"scale":1.7056}]}
+component.set {"components":{"GPUParticles2D":{"process_material":"broken.process_material.json"}},"id":"fire"}
+{"changed":{"GPUParticles2D":{"process_material":"broken.process_material.json"}},"id":"fire"}
+particles.eval {"id":"fire"}
+"asset \"broken.process_material.json\" did not load: /emission_shape: expected one of \"point\", \"sphere\", \"sphere_surface\", \"box\", \"points\", \"directed_points\", \"ring\", got \"sphear\""
+undo {}
+{"can_redo":1,"can_undo":4,"undone":"component.set"}
+frame.capture {"points":[[80,140],[130,140]]}
+{"colors":[[1,0.843,0.361,1],[0.051,0.051,0.122,1]],"drawn":{"particles":112},"height":180,"width":320}
+particles drawn: 112, GPU draws: 3

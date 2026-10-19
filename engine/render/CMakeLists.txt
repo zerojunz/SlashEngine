@@ -6,6 +6,8 @@ add_library(slash_render
     src/image.cpp
     src/light.cpp
     src/material.cpp
+    src/particle_layout.cpp
+    src/particles.cpp
     src/shader.cpp
     src/shader_vm.cpp
     src/software_device.cpp
@@ -19,7 +21,8 @@ target_link_libraries(slash_render
 slash_engine_target(slash_render)
 # The software device draws the same pixels on every platform: no fused multiply-adds, which
 # arm64 compilers would otherwise emit and x86-64 ones not.
-set_source_files_properties(src/device.cpp src/shader_vm.cpp src/software_device.cpp PROPERTIES
+set_source_files_properties(src/device.cpp src/particles.cpp src/shader_vm.cpp
+    src/software_device.cpp PROPERTIES
     COMPILE_OPTIONS "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>")
 
 # Regenerates src/*_shaders.hpp from shaders/*.hlsl. The headers are committed, so only someone
@@ -27,21 +30,31 @@ set_source_files_properties(src/device.cpp src/shader_vm.cpp src/software_device
 find_program(SLASH_GLSLANG NAMES glslangValidator glslang)
 find_program(SLASH_SPIRV_CROSS NAMES spirv-cross)
 set(slash_shader_headers "")
-foreach(shader IN ITEMS sprite material)
+# Each shader as file:Name, with the compute shaders after the vertex and fragment pairs.
+set(slash_shaders sprite:Sprite material:Material particles_process:ParticlesProcess:compute
+    particles_draw:ParticlesDraw:compute)
+foreach(entry IN LISTS slash_shaders)
+    string(REPLACE ":" ";" parts ${entry})
+    list(GET parts 0 shader)
+    list(GET parts 1 name)
+    list(LENGTH parts count)
+    set(compute OFF)
+    set(include canvas)
+    if(count GREATER 2)
+        set(compute ON)
+        set(include particles)
+    endif()
     set(header ${CMAKE_CURRENT_SOURCE_DIR}/src/${shader}_shaders.hpp)
     set(stamp ${CMAKE_CURRENT_BINARY_DIR}/shaders/${shader}.stamp)
-    string(SUBSTRING ${shader} 0 1 first)
-    string(TOUPPER ${first} first)
-    string(SUBSTRING ${shader} 1 -1 rest)
     add_custom_command(
         OUTPUT ${stamp}
         COMMAND ${CMAKE_COMMAND}
             -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/shaders/${shader}.hlsl -DOUTPUT=${header}
-            -DNAME=${first}${rest} -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}/shaders
+            -DNAME=${name} -DCOMPUTE=${compute} -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}/shaders
             -DGLSLANG=${SLASH_GLSLANG} -DSPIRV_CROSS=${SLASH_SPIRV_CROSS}
             -P ${PROJECT_SOURCE_DIR}/cmake/compile_shaders.cmake
         COMMAND ${CMAKE_COMMAND} -E touch ${stamp}
-        DEPENDS shaders/${shader}.hlsl shaders/canvas.hlsl
+        DEPENDS shaders/${shader}.hlsl shaders/${include}.hlsl
             ${PROJECT_SOURCE_DIR}/cmake/compile_shaders.cmake
         COMMENT "Compiling ${shader}.hlsl"
         VERBATIM)

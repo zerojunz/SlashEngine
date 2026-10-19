@@ -143,8 +143,10 @@ environment variables, never from the file.
 - Physics bodies and areas are components on scene entities, as Godot's nodes: `RigidBody2D`,
   `CharacterBody2D`, `Area2D` and the rest, with `CollisionShape2D` shapes. Ask what is where
   with `physics_raycast`, `physics_overlap` and `physics_contacts` rather than by geometry.
-- Particles are `CPUParticles2D` components, as Godot's, with a texture from `sprites/`. Check
-  them with `particles_eval` (how many, where, and each one) rather than a screenshot.
+- Particles are `CPUParticles2D` components, as Godot's, with a texture from `sprites/`, or
+  `GPUParticles2D` ones for many thousands, moved on the GPU as a `.process_material.json` file
+  (`slash-cli schema process_material`) says. Check either with `particles_eval` (how many,
+  where, and each one) rather than a screenshot.
 - UI is `Control`, `Label`, `Button` and the other UI components, as Godot's Control nodes,
   laid out in the window by anchors and offsets or by containers. `fonts/` (or any folder):
   `.ttf` and `.otf` files, and `.font.json` files (`slash-cli schema font`) for distance-field

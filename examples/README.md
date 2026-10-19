@@ -39,6 +39,7 @@ engine. Copy from them.
 | [physics-2d](physics-2d/) | Static, rigid and character bodies, areas, concave and one-way shapes, a joint, and `physics.raycast`, `physics.overlap` and `physics.contacts` |
 | [gravity-and-conveyors](gravity-and-conveyors/) | `Area2D` gravity and damping overrides by priority, a planet's point gravity, a conveyor belt made with a `StaticBody2D`'s `constant_linear_velocity`, and `physics.gravity` |
 | [particles](particles/) | `CPUParticles2D`: emission shapes, curves and color ramps, a one-shot burst, preprocess, local coordinates and `particles.eval` |
+| [gpu-particles](gpu-particles/) | `GPUParticles2D` and `.process_material.json` files: a fire, a one-shot burst that is the same each time with `use_fixed_seed`, snow already falling with `preprocess`, `particles.eval` running the steps on the CPU, `frame.capture` and the device running them |
 | [ui-and-text](ui-and-text/) | `Control`, `Label` and `ColorRect`: anchors, wrapping and trimmed text, fonts and theme overrides, `ui.layout` and `text.measure`, drawn offscreen |
 | [ui-containers](ui-containers/) | Box, grid, flow, center, margin and panel containers, `.theme.json` themes and variations, style boxes, `ProgressBar`, `TextureRect`, `NinePatchRect` and `ui.theme`, drawn offscreen |
 | [ui-buttons](ui-buttons/) | `Button` and `TextureButton`: clicks, taps, hover, focus moved by keys and gamepads, toggle groups, shortcuts, UI events, `ui.press` and `ui.focus`, drawn offscreen |
