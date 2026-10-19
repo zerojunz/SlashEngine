@@ -895,6 +895,59 @@ struct ScriptRecord {
     json::Array connections; // signal connections whose method is in the script
 };
 
+// --- Sounds ------------------------------------------------------------------------------------
+
+constexpr std::array<std::string_view, 3> kWavLoopModes{"forward", "pingpong", "backward"};
+constexpr std::array<std::string_view, 3> kPlaybackModes{"random_no_repeats", "random",
+                                                         "sequential"};
+constexpr std::array<std::string_view, 4> kTransitionFromTimes{"immediate", "next_beat", "next_bar",
+                                                               "end"};
+constexpr std::array<std::string_view, 3> kTransitionToTimes{"same_position", "start",
+                                                             "previous_position"};
+constexpr std::array<std::string_view, 5> kFadeModes{"disabled", "in", "out", "cross", "automatic"};
+
+// A WAV file's loop, as Godot's importer reads it from a "smpl" chunk when a sound's
+// edit/loop_mode is "Detect From WAV".
+struct WavLoop {
+    std::string_view mode;
+    std::int64_t begin = 0;
+    std::int64_t end = 0;
+};
+
+std::optional<WavLoop> wav_smpl_loop(std::string_view bytes) {
+    const auto u32 = [&](std::size_t at) {
+        std::uint32_t value = 0;
+        for (std::size_t i = 0; i < 4; ++i) {
+            value |= static_cast<std::uint32_t>(static_cast<unsigned char>(bytes[at + i]))
+                     << (8 * i);
+        }
+        return value;
+    };
+    if (bytes.size() < 12 || bytes.substr(0, 4) != "RIFF" || bytes.substr(8, 4) != "WAVE") {
+        return std::nullopt;
+    }
+    std::size_t at = 12;
+    while (at + 8 <= bytes.size()) {
+        const std::size_t size = u32(at + 4);
+        const std::size_t data = at + 8;
+        if (size > bytes.size() - data) {
+            break;
+        }
+        // Godot skips ten words, the chunk's header and the first loop's cue point, then reads
+        // that loop's type (0 forward, 1 ping-pong, 2 backward), start and end.
+        if (bytes.substr(at, 4) == "smpl" && size >= 52) {
+            const std::uint32_t type = u32(data + 40);
+            if (type >= kWavLoopModes.size()) {
+                return std::nullopt;
+            }
+            return WavLoop{
+                .mode = kWavLoopModes.at(type), .begin = u32(data + 44), .end = u32(data + 48)};
+        }
+        at = data + size + (size & 1U);
+    }
+    return std::nullopt;
+}
+
 // --- The importer ------------------------------------------------------------------------------
 
 class GodotImporter {
@@ -940,7 +993,8 @@ public:
             if (extension_of(path) == ".tscn") {
                 convert_scene(*text_file);
             } else if (text_file->resource != nullptr &&
-                       (type == "SpriteFrames" || type == "TileSet" || type == "Theme")) {
+                       (type == "SpriteFrames" || type == "TileSet" || type == "Theme" ||
+                        is_audio_stream_type(type))) {
                 std::string why;
                 (void)converted_resource(*text_file->resource, *text_file, why);
             } else if (text_file->resource != nullptr && type == "AudioBusLayout") {
@@ -1038,6 +1092,9 @@ private:
             if (extension == ".import" || extension == ".uid") {
                 if (auto text = read(file); text) {
                     learn_uid(text.value(), without_extension(file));
+                    if (extension == ".import") {
+                        learn_import_settings(text.value(), file);
+                    }
                 }
                 continue;
             }
@@ -1084,6 +1141,24 @@ private:
             ++end;
         }
         uids_[std::string(text.substr(at, end - at))] = file;
+    }
+
+    // Keeps a sound's import settings: its .import file's [params].
+    void learn_import_settings(std::string_view text, const std::string& file) {
+        const std::string sound = without_extension(file);
+        if (!is_sound_file(extension_of(sound))) {
+            return;
+        }
+        auto sections = godot::parse_project_settings(text);
+        if (!sections) {
+            problems_.add("unreadable file", file, sections.error().message);
+            return;
+        }
+        for (Section& section : sections.value()) {
+            if (section.tag == "params") {
+                sound_settings_[sound] = std::move(section);
+            }
+        }
     }
 
     void index_resources(TextFile& file) {
@@ -1656,7 +1731,10 @@ private:
                 why = "missing file " + path;
                 return {};
             }
-            if (is_texture_file(extension) || is_sound_file(extension) || is_font_file(extension)) {
+            if (is_sound_file(extension)) {
+                return sound_path(path);
+            }
+            if (is_texture_file(extension) || is_font_file(extension)) {
                 return destination(path);
             }
             if (extension == ".tscn") {
@@ -1711,6 +1789,13 @@ private:
         if (type == "ParticleProcessMaterial") {
             return process_material_file(file, section, base);
         }
+        if (is_audio_stream_type(type)) {
+            std::string path = audio_stream_file(file, section, type, base);
+            if (path.empty()) {
+                why = "a " + type + " with no stream that converts";
+            }
+            return path;
+        }
         why = type + " resources";
         return {};
     }
@@ -1743,6 +1828,358 @@ private:
                 }
             }
         }
+    }
+
+    // --- Sounds and music ---
+
+    static bool is_audio_stream_type(std::string_view type) {
+        return type == "AudioStreamRandomizer" || type == "AudioStreamPlaylist" ||
+               type == "AudioStreamSynchronized" || type == "AudioStreamInteractive";
+    }
+
+    // The path a sound becomes: the file itself, or a .audio.json file beside it with the loop
+    // and beats Godot imports it with, written once.
+    std::string sound_path(const std::string& path) {
+        if (const auto done = sounds_written_.find(path); done != sounds_written_.end()) {
+            return done->second;
+        }
+        std::string& written = sounds_written_[path];
+        written = destination(path);
+        const auto found = sound_settings_.find(path);
+        const Section* settings = found != sound_settings_.end() ? &found->second : nullptr;
+        json::Value out = extension_of(path) == ".wav" ? wav_settings(path, settings)
+                                                       : compressed_sound_settings(settings);
+        if (out.is_null()) {
+            return written;
+        }
+        out["format"] = 1;
+        out["source"] = destination(path);
+        written = destination(path) + std::string(audio::kStreamSuffix);
+        keep_valid(out, written,
+                   [](const json::Value& doc) { return audio::validate_stream_file(doc); });
+        add_file(written, json::write(out) + "\n");
+        ++stream_files_;
+        return written;
+    }
+
+    // A WAV file's loop, from its import settings or, as Godot detects it by default, its own
+    // "smpl" chunk; null for none.
+    json::Value wav_settings(const std::string& path, const Section* settings) {
+        std::int64_t mode = 0; // Detect From WAV
+        std::int64_t begin = 0;
+        std::int64_t end = -1;
+        if (settings != nullptr) {
+            for (const auto& [name, value] : settings->properties) {
+                if (name == "edit/loop_mode" && value.kind == Value::Kind::Int) {
+                    mode = value.integer;
+                } else if (name == "edit/loop_begin" && value.kind == Value::Kind::Int) {
+                    begin = value.integer;
+                } else if (name == "edit/loop_end" && value.kind == Value::Kind::Int) {
+                    end = value.integer;
+                } else if ((name == "edit/trim" || name == "edit/normalize") &&
+                           value.kind == Value::Kind::Bool && value.boolean) {
+                    problems_.add("WAV import option " + name, path + ".import",
+                                  "sounds play as they are in the file");
+                }
+            }
+        }
+        json::Value out;
+        if (mode == 0) {
+            const auto bytes = read(path);
+            const auto loop = bytes ? wav_smpl_loop(bytes.value()) : std::nullopt;
+            if (loop) {
+                out["loop_mode"] = loop->mode;
+                out["loop_begin"] = loop->begin;
+                out["loop_end"] = loop->end;
+            }
+            return out;
+        }
+        if (mode < 2 || mode > 4) {
+            return out; // disabled
+        }
+        // Godot counts a negative frame back from the end, so -1 is the last frame.
+        if (begin < 0 || end < 0) {
+            const auto bytes = read(path);
+            if (!bytes) {
+                problems_.add("WAV loop", path + ".import", bytes.error().message);
+                return out;
+            }
+            const auto sound = audio::decode_sound(bytes.value(), path);
+            if (!sound) {
+                problems_.add("WAV loop", path + ".import", sound.error().message);
+                return out;
+            }
+            const std::int64_t frames = sound.value().frames;
+            const std::int64_t last = std::max<std::int64_t>(frames - 1, 0);
+            begin = begin < 0 ? std::clamp<std::int64_t>(begin + frames, 0, last) : begin;
+            end = end < 0 ? std::clamp<std::int64_t>(end + frames, 0, last) : end;
+        }
+        out["loop_mode"] = kWavLoopModes.at(static_cast<std::size_t>(mode - 2));
+        if (begin != 0) {
+            out["loop_begin"] = begin;
+        }
+        out["loop_end"] = end;
+        return out;
+    }
+
+    // An Ogg Vorbis or MP3 file's loop and beats from its import settings; null for none.
+    static json::Value compressed_sound_settings(const Section* settings) {
+        json::Value out;
+        if (settings == nullptr) {
+            return out;
+        }
+        for (const auto& [name, value] : settings->properties) {
+            if (name == "loop" && value.kind == Value::Kind::Bool && value.boolean) {
+                out["loop"] = true;
+            } else if ((name == "loop_offset" || name == "bpm") && value.is_number() &&
+                       value.number() != 0.0) {
+                out[name] = value.number();
+            } else if ((name == "beat_count" || name == "bar_beats") &&
+                       value.kind == Value::Kind::Int &&
+                       value.integer != (name == "bar_beats" ? 4 : 0)) {
+                out[name] = value.integer;
+            }
+        }
+        return out;
+    }
+
+    // A property of a music resource, as Godot's default when it's missing or of another type.
+    static double number_of(const Section& resource, const std::string& name, double fallback) {
+        const Value* value = resource.property(name);
+        return value != nullptr && value->is_number() ? value->number() : fallback;
+    }
+    static std::int64_t integer_of(const Section& resource, const std::string& name,
+                                   std::int64_t fallback) {
+        const Value* value = resource.property(name);
+        return value != nullptr && value->kind == Value::Kind::Int ? value->integer : fallback;
+    }
+    static bool boolean_of(const Section& resource, const std::string& name, bool fallback) {
+        const Value* value = resource.property(name);
+        return value != nullptr && value->kind == Value::Kind::Bool ? value->boolean : fallback;
+    }
+
+    // An AudioStreamRandomizer, AudioStreamPlaylist, AudioStreamSynchronized or
+    // AudioStreamInteractive as a .audio.json file, written once; "" if none of its streams
+    // convert.
+    std::string audio_stream_file(const TextFile& file, const Section& resource,
+                                  const std::string& type, const std::string& base) {
+        const std::string key = file.path + "#" + base;
+        if (const auto done = streams_written_.find(key); done != streams_written_.end()) {
+            return done->second;
+        }
+        streams_written_[key] = ""; // until it converts
+        resources_used_.insert(type);
+        const std::string where = resource_where(resource, file);
+        // The file a stream property names, or "" after reporting why not.
+        const auto stream = [&](const std::string& name) -> std::string {
+            const Value* value = resource.property(name);
+            if (value == nullptr || value->kind == Value::Kind::Nil) {
+                return {};
+            }
+            std::string why;
+            std::string converted = resource_path(*value, file, why);
+            if (converted.empty()) {
+                problems_.add(type + "." + name, where, why);
+            }
+            return converted;
+        };
+        json::Value out;
+        out["format"] = 1;
+        std::size_t streams = 0;
+        if (type == "AudioStreamInteractive") {
+            streams = interactive_music(resource, where, stream, out);
+        } else {
+            // Godot's randomizer counts "streams_count", the others "stream_count".
+            const bool randomizer = type == "AudioStreamRandomizer";
+            const bool playlist = type == "AudioStreamPlaylist";
+            const std::int64_t count =
+                integer_of(resource, randomizer ? "streams_count" : "stream_count", 0);
+            json::Array entries;
+            for (std::int64_t i = 0; i < count; ++i) {
+                const std::string prefix = "stream_" + std::to_string(i);
+                std::string found = stream(playlist ? prefix : prefix + "/stream");
+                if (found.empty()) {
+                    continue;
+                }
+                json::Value entry;
+                entry["stream"] = std::move(found);
+                if (const double weight = number_of(resource, prefix + "/weight", 1.0);
+                    randomizer && weight != 1.0) {
+                    entry["weight"] = weight;
+                }
+                if (const double volume = number_of(resource, prefix + "/volume", 0.0);
+                    !randomizer && !playlist && volume != 0.0) {
+                    entry["volume_db"] = volume;
+                }
+                entries.push_back(std::move(entry));
+            }
+            streams = entries.size();
+            std::string_view kind = "synchronized";
+            if (randomizer) {
+                kind = "streams";
+            } else if (playlist) {
+                kind = "playlist";
+            }
+            out[std::string(kind)] = std::move(entries);
+            if (randomizer) {
+                if (const std::int64_t mode = integer_of(resource, "playback_mode", 0);
+                    mode > 0 && mode < static_cast<std::int64_t>(kPlaybackModes.size())) {
+                    out["playback_mode"] = kPlaybackModes.at(static_cast<std::size_t>(mode));
+                }
+                if (const double pitch = number_of(resource, "random_pitch", 1.0); pitch != 1.0) {
+                    out["random_pitch"] = pitch;
+                }
+                if (const double offset = number_of(resource, "random_volume_offset_db", 0.0);
+                    offset != 0.0) {
+                    out["random_volume_offset_db"] = offset;
+                }
+            } else if (playlist) {
+                if (boolean_of(resource, "shuffle", false)) {
+                    out["shuffle"] = true;
+                }
+                if (!boolean_of(resource, "loop", true)) {
+                    out["loop"] = false;
+                }
+                if (const double fade = number_of(resource, "fade_time", 0.3); fade != 0.3) {
+                    out["fade_time"] = fade;
+                }
+            }
+        }
+        if (streams == 0) {
+            return {};
+        }
+        std::string path = destination(base + std::string(audio::kStreamSuffix));
+        streams_written_[key] = path;
+        keep_valid(out, path,
+                   [](const json::Value& doc) { return audio::validate_stream_file(doc); });
+        add_file(path, json::write(out) + "\n");
+        ++stream_files_;
+        return path;
+    }
+
+    // An AudioStreamInteractive's clips, initial clip and transitions, naming clips by name;
+    // returns how many clips have a stream that converts.
+    template <typename StreamOf>
+    std::size_t interactive_music(const Section& resource, const std::string& where,
+                                  const StreamOf& stream, json::Value& out) {
+        constexpr std::int64_t kMaxClips = 63; // Godot's MAX_CLIPS
+        const std::int64_t count =
+            std::clamp<std::int64_t>(integer_of(resource, "clip_count", 0), 0, kMaxClips);
+        // Godot lets clips share a name, or have none; switch_to_clip needs one each.
+        std::vector<std::string> names;
+        std::set<std::string> taken;
+        for (std::int64_t i = 0; i < count; ++i) {
+            std::string name = resource.field_string("clip_" + std::to_string(i) + "/name");
+            if (name.empty() || taken.contains(name)) {
+                std::string renamed = "clip_" + std::to_string(i);
+                while (taken.contains(renamed)) {
+                    renamed += "_";
+                }
+                std::string why = name.empty() ? std::string("it has no name")
+                                               : "another clip is named \"" + name + "\"";
+                why += "; it is named \"" + renamed + "\"";
+                problems_.add("AudioStreamInteractive clip " + std::to_string(i), where, why);
+                name = std::move(renamed);
+            }
+            taken.insert(name);
+            names.push_back(std::move(name));
+        }
+        const auto clip_name = [&](std::int64_t index) -> const std::string* {
+            return index >= 0 && index < count ? &names.at(static_cast<std::size_t>(index))
+                                               : nullptr;
+        };
+        json::Array clips;
+        std::size_t playable = 0;
+        for (std::int64_t i = 0; i < count; ++i) {
+            const std::string prefix = "clip_" + std::to_string(i) + "/";
+            json::Value clip;
+            clip["name"] = names.at(static_cast<std::size_t>(i));
+            if (std::string found = stream(prefix + "stream"); !found.empty()) {
+                clip["stream"] = std::move(found);
+                ++playable;
+            }
+            // Godot ignores an enabled auto advance to the clip itself or to no clip.
+            const std::int64_t advance = integer_of(resource, prefix + "auto_advance", 0);
+            const std::int64_t next = integer_of(resource, prefix + "next_clip", 0);
+            if (advance == 1 && next != i && clip_name(next) != nullptr) {
+                clip["auto_advance"] = "enabled";
+                clip["next_clip"] = *clip_name(next);
+            } else if (advance == 2) {
+                clip["auto_advance"] = "return_to_hold";
+            }
+            clips.push_back(std::move(clip));
+        }
+        out["clips"] = std::move(clips);
+        if (const std::int64_t initial = integer_of(resource, "initial_clip", 0);
+            initial != 0 && clip_name(initial) != nullptr) {
+            out["initial_clip"] = *clip_name(initial);
+        }
+        const Value* map = resource.property("_transitions");
+        if (map == nullptr || map->kind != Value::Kind::Dictionary) {
+            return playable;
+        }
+        // Each entry is keyed by Vector2i(from, to), -1 for any clip.
+        json::Array transitions;
+        for (const Value::Entry& entry : map->entries) {
+            const auto ends = entry.key.numbers();
+            if (!ends || ends->size() != 2 || entry.value.kind != Value::Kind::Dictionary) {
+                problems_.add("AudioStreamInteractive transition", where,
+                              "not a Vector2i of two clips and a dictionary");
+                continue;
+            }
+            json::Value transition = json::Object{};
+            bool known = true;
+            const std::array<std::pair<std::int64_t, std::string_view>, 2> sides{
+                std::pair{static_cast<std::int64_t>(ends->at(0)), std::string_view("from")},
+                std::pair{static_cast<std::int64_t>(ends->at(1)), std::string_view("to")}};
+            for (const auto& [index, side] : sides) {
+                if (const std::string* name = clip_name(index); name != nullptr) {
+                    transition[std::string(side)] = *name;
+                } else if (index != -1) {
+                    known = false;
+                }
+            }
+            if (!known) {
+                problems_.add("AudioStreamInteractive transition", where,
+                              "it names a clip past the last");
+                continue;
+            }
+            const auto setting = [&](std::string_view name) -> std::int64_t {
+                const Value* value = entry.value.get(name);
+                return value != nullptr && value->kind == Value::Kind::Int ? value->integer : -1;
+            };
+            // An enum by name, left out at Godot's default.
+            const auto named = [&](const std::string& field, std::span<const std::string_view> of,
+                                   std::int64_t fallback) {
+                const std::int64_t value = setting(field);
+                if (value >= 0 && value < static_cast<std::int64_t>(of.size()) &&
+                    value != fallback) {
+                    transition[field] = of[static_cast<std::size_t>(value)];
+                }
+            };
+            named("from_time", kTransitionFromTimes, 1);
+            named("to_time", kTransitionToTimes, 1);
+            named("fade_mode", kFadeModes, 4);
+            if (const Value* beats = entry.value.get("fade_beats");
+                beats != nullptr && beats->is_number() && beats->number() != 1.0) {
+                transition["fade_beats"] = beats->number();
+            }
+            if (const Value* filler = entry.value.get("use_filler_clip");
+                filler != nullptr && filler->kind == Value::Kind::Bool && filler->boolean) {
+                if (const std::string* name = clip_name(setting("filler_clip")); name != nullptr) {
+                    transition["filler_clip"] = *name;
+                }
+            }
+            if (const Value* hold = entry.value.get("hold_previous");
+                hold != nullptr && hold->kind == Value::Kind::Bool && hold->boolean) {
+                transition["hold_previous"] = true;
+            }
+            transitions.push_back(std::move(transition));
+        }
+        if (!transitions.empty()) {
+            out["transitions"] = std::move(transitions);
+        }
+        return playable;
     }
 
     // --- Tile sets and tile maps ---
@@ -4840,6 +5277,7 @@ private:
         out["converted"]["bus_layouts"] = bus_layout_files_;
         out["converted"]["animation_libraries"] = animation_files_;
         out["converted"]["process_materials"] = process_files_;
+        out["converted"]["audio_streams"] = stream_files_;
         out["converted"]["input_actions"] = input_actions_;
         out["converted"]["assets"] = assets_;
         out["scripts"] = std::move(summary);
@@ -4860,6 +5298,9 @@ private:
     std::set<std::string> resources_read_; // .tres files a converted value read
     std::map<std::string, std::string> frames_written_;
     std::map<std::string, std::string> process_written_;
+    std::map<std::string, Section> sound_settings_;      // .import [params], by sound
+    std::map<std::string, std::string> sounds_written_;  // by sound
+    std::map<std::string, std::string> streams_written_; // by file and resource
     std::map<std::string, TileSetFile> tile_sets_;
     std::map<std::string, std::string> themes_written_;
     std::set<std::string> bus_layouts_written_;
@@ -4883,6 +5324,7 @@ private:
     int bus_layout_files_ = 0;
     int animation_files_ = 0;
     int process_files_ = 0;
+    int stream_files_ = 0;
     int input_actions_ = 0;
     int assets_ = 0;
 };

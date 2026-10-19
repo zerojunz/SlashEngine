@@ -391,6 +391,9 @@ rendering on top.
         transposed cells
   - [x] Godot's `AnimationPlayer` nodes and their animation libraries, with value, bezier and
         method tracks, through track targets
+  - [x] Godot's music and sound settings: `AudioStreamRandomizer`, `AudioStreamPlaylist`,
+        `AudioStreamSynchronized` and `AudioStreamInteractive` resources, and the loops and
+        beats sounds' `.import` settings give them (a WAV file's own `smpl` loop included)
   - [x] Unity projects: 2D scenes, prefabs (nested prefabs and variants staying instances),
         sprites, cameras, 2D physics, sounds, both input systems and project settings, measured
         in pixels. Each C# script becomes a storyboard task, with the values each object gave

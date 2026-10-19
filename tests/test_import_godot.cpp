@@ -1,4 +1,5 @@
 #include "slash/animation/animation.hpp"
+#include "slash/audio/audio.hpp"
 #include "slash/canvas/gpu_particles.hpp"
 #include "slash/canvas/tilemap.hpp"
 #include "slash/command/builtin.hpp"
@@ -933,7 +934,7 @@ TEST_CASE("importing Godot tile maps, themes and bus layouts writes their SlashE
     CHECK(*plan.report.find("converted") ==
           parse(R"({"scenes": 2, "sprite_frames": 0, "tile_sets": 1, "themes": 1,
                     "bus_layouts": 1, "animation_libraries": 0, "process_materials": 0,
-                    "input_actions": 1,
+                    "audio_streams": 0, "input_actions": 1,
                     "assets": 3})"));
     const std::string level = "godot/scenes/level.scene.json";
 
@@ -1858,6 +1859,213 @@ trail_enabled = true
     CHECK(unsupported(plan.report, "GPUParticles2D.trail_enabled").find("why")->as_string() ==
           "trails and sub-emitters are on the roadmap");
     CHECK(unsupported(plan.report, "resource ParticleProcessMaterial").is_null());
+    fs::remove_all(project);
+}
+
+TEST_CASE("importing Godot's music resources and sound import settings writes .audio.json files") {
+    const fs::path project = "import_godot_music";
+    fs::remove_all(project);
+    write(project / "godot/project.godot",
+          "config_version=5\n\n[application]\n\nconfig/name=\"Score\"\n");
+    // An Ogg Vorbis file whose import settings give it beats and a loop (its bytes don't matter
+    // here), and one imported as it is.
+    write(project / "godot/music/explore.ogg", "OggS");
+    write(project / "godot/music/explore.ogg.import", R"([remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://explore"
+
+[params]
+
+loop=true
+loop_offset=0
+bpm=120.0
+beat_count=8
+bar_beats=4
+)");
+    write(project / "godot/music/combat.ogg", "OggS");
+    // A WAV file looping from its own "smpl" chunk, as Godot detects by default, and one whose
+    // import settings loop it from frame 10 to the last frame.
+    const std::vector<slash::audio::Frame> frames(1000, slash::audio::Frame{0.25F, 0.25F});
+    std::string hit = slash::audio::encode_wav(frames, 44100);
+    std::string smpl = "smpl";
+    const auto word = [](std::string& out, std::uint32_t value) {
+        for (int i = 0; i < 4; ++i) {
+            out.push_back(static_cast<char>((value >> (8 * i)) & 0xFFU));
+        }
+    };
+    word(smpl, 60);
+    for (const std::uint32_t value : {0U, 0U, 0U, 60U, 0U, 0U, 0U, 1U, 0U}) {
+        word(smpl, value); // the chunk's header, one loop
+    }
+    for (const std::uint32_t value : {0U, 1U, 100U, 400U, 0U, 0U}) {
+        word(smpl, value); // cue point, ping-pong, start, end, fraction, play count
+    }
+    hit += smpl;
+    std::string riff_size;
+    word(riff_size, static_cast<std::uint32_t>(hit.size() - 8));
+    hit.replace(4, 4, riff_size);
+    write(project / "godot/sfx/hit.wav", hit);
+    write(project / "godot/sfx/step.wav", slash::audio::encode_wav(frames, 44100));
+    write(project / "godot/sfx/step.wav.import", R"([remap]
+
+importer="wav"
+type="AudioStreamWAV"
+
+[params]
+
+edit/trim=true
+edit/loop_mode=2
+edit/loop_begin=10
+edit/loop_end=-1
+)");
+    write(project / "godot/sfx/steps.tres",
+          R"([gd_resource type="AudioStreamRandomizer" load_steps=3 format=3]
+
+[ext_resource type="AudioStream" path="res://sfx/step.wav" id="1_step"]
+[ext_resource type="AudioStream" path="res://sfx/hit.wav" id="2_hit"]
+
+[resource]
+playback_mode = 2
+random_pitch = 1.2
+streams_count = 2
+stream_0/stream = ExtResource("1_step")
+stream_1/stream = ExtResource("2_hit")
+stream_1/weight = 2.0
+)");
+    // Interactive music whose combat clip is layers, and whose two last clips share a name.
+    write(project / "godot/music/score.tres",
+          R"([gd_resource type="AudioStreamInteractive" load_steps=5 format=3]
+
+[ext_resource type="AudioStream" path="res://music/explore.ogg" id="1_explore"]
+[ext_resource type="AudioStream" path="res://music/combat.ogg" id="2_combat"]
+
+[sub_resource type="AudioStreamSynchronized" id="AudioStreamSynchronized_1"]
+stream_count = 2
+stream_0/stream = ExtResource("2_combat")
+stream_1/stream = ExtResource("1_explore")
+stream_1/volume = -80.0
+
+[sub_resource type="AudioStreamPlaylist" id="AudioStreamPlaylist_1"]
+shuffle = true
+loop = false
+fade_time = 0.5
+stream_count = 2
+stream_0 = ExtResource("1_explore")
+stream_1 = ExtResource("2_combat")
+
+[resource]
+clip_count = 4
+clip_0/name = &"explore"
+clip_0/stream = ExtResource("1_explore")
+clip_0/auto_advance = 0
+clip_1/name = &"combat"
+clip_1/stream = SubResource("AudioStreamSynchronized_1")
+clip_1/auto_advance = 0
+clip_2/name = &"sting"
+clip_2/stream = SubResource("AudioStreamPlaylist_1")
+clip_2/auto_advance = 1
+clip_2/next_clip = 0
+clip_3/name = &"sting"
+clip_3/stream = ExtResource("1_explore")
+clip_3/auto_advance = 2
+initial_clip = 1
+_transitions = {
+Vector2i(-1, -1): {
+"fade_beats": 1.0,
+"fade_mode": 4,
+"from_time": 1,
+"to_time": 1
+},
+Vector2i(0, 1): {
+"fade_beats": 2.0,
+"fade_mode": 3,
+"filler_clip": 2,
+"from_time": 2,
+"hold_previous": true,
+"to_time": 0,
+"use_filler_clip": true
+}
+}
+)");
+    write(project / "godot/main.tscn", R"([gd_scene load_steps=3 format=3]
+
+[ext_resource type="AudioStreamInteractive" path="res://music/score.tres" id="1_score"]
+[ext_resource type="AudioStreamRandomizer" path="res://sfx/steps.tres" id="2_steps"]
+
+[node name="Main" type="Node2D"]
+
+[node name="Music" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("1_score")
+autoplay = true
+
+[node name="Steps" type="AudioStreamPlayer2D" parent="."]
+stream = ExtResource("2_steps")
+)");
+    const importer::ImportPlan plan = plan_inside(project);
+    const auto files = files_of(plan);
+    const auto valid = [&](const std::string& path) {
+        REQUIRE_MESSAGE(files.contains(path), path);
+        const json::Value doc = parse(files.at(path));
+        CHECK_MESSAGE(slash::audio::validate_stream_file(doc).empty(), path);
+        return doc;
+    };
+
+    // Sounds whose import settings matter get a .audio.json file beside them.
+    CHECK(valid("godot/music/explore.ogg.audio.json") ==
+          parse(R"({"format": 1, "source": "godot/music/explore.ogg", "loop": true,
+                    "bpm": 120.0, "beat_count": 8})"));
+    CHECK_FALSE(files.contains("godot/music/combat.ogg.audio.json"));
+    CHECK(valid("godot/sfx/hit.wav.audio.json") ==
+          parse(R"({"format": 1, "source": "godot/sfx/hit.wav", "loop_mode": "pingpong",
+                    "loop_begin": 100, "loop_end": 400})"));
+    CHECK(valid("godot/sfx/step.wav.audio.json") ==
+          parse(R"({"format": 1, "source": "godot/sfx/step.wav", "loop_mode": "forward",
+                    "loop_begin": 10, "loop_end": 999})"));
+    CHECK(unsupported(plan.report, "WAV import option edit/trim").find("why")->as_string() ==
+          "sounds play as they are in the file");
+
+    // The randomizer, and the music with its layers and playlist, each as Godot has it.
+    CHECK(valid("godot/sfx/steps.audio.json") ==
+          parse(R"({"format": 1, "playback_mode": "sequential", "random_pitch": 1.2,
+                    "streams": [{"stream": "godot/sfx/step.wav.audio.json"},
+                                {"stream": "godot/sfx/hit.wav.audio.json", "weight": 2.0}]})"));
+    CHECK(valid("godot/music/score_audio_stream_synchronized_1.audio.json") ==
+          parse(R"({"format": 1, "synchronized": [
+                    {"stream": "godot/music/combat.ogg"},
+                    {"stream": "godot/music/explore.ogg.audio.json", "volume_db": -80.0}]})"));
+    CHECK(valid("godot/music/score_audio_stream_playlist_1.audio.json") ==
+          parse(R"({"format": 1, "shuffle": true, "loop": false, "fade_time": 0.5,
+                    "playlist": [{"stream": "godot/music/explore.ogg.audio.json"},
+                                 {"stream": "godot/music/combat.ogg"}]})"));
+    CHECK(valid("godot/music/score.audio.json") == parse(R"({
+        "format": 1,
+        "clips": [
+            {"name": "explore", "stream": "godot/music/explore.ogg.audio.json"},
+            {"name": "combat",
+             "stream": "godot/music/score_audio_stream_synchronized_1.audio.json"},
+            {"name": "sting", "stream": "godot/music/score_audio_stream_playlist_1.audio.json",
+             "auto_advance": "enabled", "next_clip": "explore"},
+            {"name": "clip_3", "stream": "godot/music/explore.ogg.audio.json",
+             "auto_advance": "return_to_hold"}],
+        "initial_clip": "combat",
+        "transitions": [
+            {},
+            {"from": "explore", "to": "combat", "from_time": "next_bar",
+             "to_time": "same_position", "fade_mode": "cross", "fade_beats": 2.0,
+             "filler_clip": "sting", "hold_previous": true}]})"));
+    CHECK(unsupported(plan.report, "AudioStreamInteractive clip 3").find("why")->as_string() ==
+          R"(another clip is named "sting"; it is named "clip_3")");
+    CHECK(plan.report.find("converted")->find("audio_streams")->as_int() == 7);
+    CHECK(unsupported(plan.report, "resource AudioStreamInteractive").is_null());
+
+    // The players play them.
+    const std::string main = "godot/main.scene.json";
+    CHECK(*entity(files, main, "music").find("AudioStreamPlayer") ==
+          parse(R"({"stream": "godot/music/score.audio.json", "autoplay": true})"));
+    CHECK(*entity(files, main, "steps").find("AudioStreamPlayer2D") ==
+          parse(R"({"stream": "godot/sfx/steps.audio.json"})"));
     fs::remove_all(project);
 }
 
