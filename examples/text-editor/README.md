@@ -36,5 +36,5 @@ ui.layout {"ids":["letter"]}
   reads them with `ui::events(world)`.
 - `ui.layout` reports each TextEdit's `text_edit`: its `caret` and `selection` as
   `[line, column]`, input method text, whether it shows its `placeholder`, the `visible_lines`
-  when they aren't all of them, its `rows` when wrapping makes more rows than lines, and which
-  scroll bars show. Its `lines` are the rows in view.
+  when they aren't all of them, its `rows` when wrapping makes more rows than lines, and the
+  grabber of each scroll bar that shows. Its `lines` are the rows in view.

@@ -127,6 +127,20 @@ struct SelectionRange {
 [[nodiscard]] std::vector<std::u32string> split_lines(std::string_view text);
 [[nodiscard]] std::string join_lines(const std::vector<std::u32string>& lines);
 
+// Godot's TextEdit::SearchFlags.
+inline constexpr std::uint32_t kSearchMatchCase = 1U;
+inline constexpr std::uint32_t kSearchWholeWords = 2U;
+inline constexpr std::uint32_t kSearchBackwards = 4U;
+// A TextEdit's search_flags as SearchFlags.
+[[nodiscard]] std::uint32_t search_flags(const std::vector<std::string>& names);
+// _get_column_pos_of_word: where key first occurs in search from a column on, or -1.
+[[nodiscard]] int column_pos_of_word(std::u32string_view key, std::u32string_view search,
+                                     std::uint32_t flags, int from_column);
+// TextEdit::search over lines: the [column, line] where key next occurs, or [-1, -1].
+[[nodiscard]] std::pair<int, int> search_lines(const std::vector<std::u32string>& lines,
+                                               std::u32string_view key, std::uint32_t flags,
+                                               int from_line, int from_column);
+
 // A TextEdit's lines shaped and wrapped for its rect, and where Godot's TextEdit puts things in
 // them. Rows are a line's wrapped parts; scroll_vertical counts rows, scroll_horizontal pixels.
 class TextArea {
@@ -238,9 +252,22 @@ public:
         LabelText text;
         std::vector<Box> over; // carets, the composition's underline, the scroll bars
     };
-    // NOTIFICATION_DRAW, and what it shows for ui.layout.
-    void draw(const world::TextEdit& edit, const TextEditState& state, bool focused, Draw& out,
-              TextEditView& view) const;
+    // NOTIFICATION_DRAW, and what it shows for ui.layout; its text in a CodeHighlighter's colors
+    // when it has one.
+    void draw(const world::TextEdit& edit, const TextEditState& state, bool focused,
+              const world::CodeHighlighter* highlighter, Draw& out, TextEditView& view) const;
+
+    // Where one of its scroll bars is in its rect and its range, which starts at 0 and has no
+    // step, as Godot's ScrollBar; the layout draws it and the gui system drags it.
+    struct BarPlace {
+        Vec2 position;
+        Vec2 size;
+        double max = 0.0;
+        double page = 0.0;
+        double value = 0.0;
+        bool visible = false;
+    };
+    [[nodiscard]] BarPlace bar_place(bool vertical) const;
 
     [[nodiscard]] const std::string& error() const { return error_; }
     [[nodiscard]] Vec2 size() const { return size_; }
@@ -273,7 +300,6 @@ private:
     [[nodiscard]] int row_count(int line) const; // with the placeholder's rows
     [[nodiscard]] Vec2 v_scroll_min() const;
     [[nodiscard]] Vec2 h_scroll_min() const;
-    void draw_scroll_bar(bool vertical, std::vector<Box>& out) const;
 
     text::Fonts* fonts_;
     const TextEditView* view_;
@@ -345,6 +371,10 @@ void sync_text_edit(const TextEditContext& context, world::TextEdit& edit, TextE
 // whether it took the event (accept_event).
 bool text_edit_input(const TextEditContext& context, world::TextEdit& edit, TextEditState& state,
                      TextArea& area, const input::Event& event, Vec2 local, Vec2 relative);
+// One of its scroll bars moved (by a drag, a click or the wheel on it): _scroll_moved shows the
+// lines and columns the bar's value puts in view.
+void text_edit_scroll_to(const TextEditContext& context, world::TextEdit& edit,
+                         TextEditState& state, TextArea& area, bool vertical, double value);
 // unhandled_key_input: a character typed with modifiers no shortcut took.
 bool text_edit_unhandled_key(const TextEditContext& context, world::TextEdit& edit,
                              TextEditState& state, TextArea& area, const input::Event& event);

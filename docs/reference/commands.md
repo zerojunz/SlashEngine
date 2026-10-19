@@ -65,7 +65,7 @@ as `entity.get`, reject it as an unknown param.
 | Physics | [`physics.raycast`](#physicsraycast), [`physics.overlap`](#physicsoverlap), [`physics.contacts`](#physicscontacts), [`physics.gravity`](#physicsgravity) |
 | Particles | [`particles.eval`](#particleseval) |
 | Lights | [`light.sample`](#lightsample) |
-| UI and text | [`ui.layout`](#uilayout), [`ui.theme`](#uitheme), [`ui.press`](#uipress), [`ui.popup`](#uipopup), [`ui.select`](#uiselect), [`ui.drag`](#uidrag), [`ui.tooltip`](#uitooltip), [`ui.focus`](#uifocus), [`ui.clipboard`](#uiclipboard), [`text.measure`](#textmeasure) |
+| UI and text | [`ui.layout`](#uilayout), [`ui.theme`](#uitheme), [`ui.press`](#uipress), [`ui.popup`](#uipopup), [`ui.select`](#uiselect), [`ui.drag`](#uidrag), [`ui.tooltip`](#uitooltip), [`ui.focus`](#uifocus), [`ui.search`](#uisearch), [`ui.clipboard`](#uiclipboard), [`text.measure`](#textmeasure) |
 | Input | [`input.inject`](#inputinject), [`input.state`](#inputstate), [`input.actions`](#inputactions) |
 | Audio | [`audio.state`](#audiostate), [`audio.capture`](#audiocapture), [`audio.play`](#audioplay), [`audio.stop`](#audiostop), [`audio.set_bus`](#audioset_bus) |
 | Storyboard | [`storyboard.query`](#storyboardquery), [`storyboard.brief`](#storyboardbrief), [`storyboard.check`](#storyboardcheck), [`storyboard.edit`](#storyboardedit) |
@@ -880,7 +880,7 @@ the sign on a smaller window:
   [examples/text-editor](../../examples/text-editor/):
 
   ```json
-  {"focused":true,"id":"letter","lines":["Meet me at the old lighthouse before","the tide turns.","","\tBring the lantern.","Kai"],"rect":[16,38,288,124],"text_edit":{"caret":[4,3],"rows":7,"v_scroll_bar":true,"visible_lines":[1,4]}}
+  {"focused":true,"id":"letter","lines":["Meet me at the old lighthouse before","the tide turns.","","\tBring the lantern.","Kai"],"rect":[16,38,288,124],"text_edit":{"caret":[4,3],"rows":7,"v_scroll_bar":{"grabber":[296,79.7143,8,74.2857]},"visible_lines":[1,4]}}
   ```
 
   `caret` is `[line, column]`, from 0, the column counting characters; `selection`
@@ -888,7 +888,9 @@ the sign on a smaller window:
   while an input method is composing, `placeholder` while the placeholder shows,
   `visible_lines` (the first and last lines with a row in view) when some are scrolled out,
   `rows` when wrapping makes more rows than lines, `v_scroll_bar` and `h_scroll_bar` while
-  they show, and `font_error` for a font that doesn't load.
+  they show (`grabber`, the grabber's rect on screen, for a drag with
+  [`input.inject`](#inputinject)), `search_results` (`[line, column]` of each match of its
+  `search_text` in view) and `font_error` for a font that doesn't load.
 - `problems` lists, for each control, a `children` entry that can't be laid out (no such
   entity, not a control, the control itself, a second parent or a loop), a second container on
   one entity, a theme override name its type doesn't have, with the closest one, a style box
@@ -1107,6 +1109,38 @@ Needs: `run`. Emits `focus_exited` and `focus_entered` at the next `step`.
 `focus_mode` is `"none"` (the default for controls other than buttons and `LineEdit`s), can't
 take focus, and that is an error. [`ui.layout`](#uilayout) marks the control with focus
 `"focused": true`.
+
+### ui.search
+
+Finds text in a [`TextEdit`](scene-format.md#searching-and-highlighting-code), as Godot's
+`TextEdit::search`: the next place it occurs from a position (the caret unless told), going
+round past the end to the start, or with `backwards` from the position back, round past the
+start. With `all`, every place it occurs, in order from the start.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `id` | string | required | The `TextEdit` |
+| `text` | string | its `search_text` | What to find |
+| `flags` | array of strings | its `search_flags` | `match_case`, `whole_words` (with a symbol, a space or the line's edge on each side) and `backwards` |
+| `from` | `[line, column]` | the caret | Where to look from; a match may start there |
+| `all` | boolean | `false` | Return every match instead |
+| `max_results` | integer | `100` | With `all`, at most this many matches, 1 to 10000 |
+
+Needs: `read`. From [examples/code-editor](../../examples/code-editor/):
+
+```json
+{"id": "script", "text": "player", "from": [12, 0], "flags": ["backwards"]}
+```
+
+```json
+{"found":[11,1]}
+```
+
+`found` is `[line, column]`, from 0, the column counting characters, or `null` when the text
+occurs nowhere. With `all`, the reply is `{"matches": [[line, column], ...], "count": n}`,
+`count` covering every match. An empty `text`, no `text` for a `TextEdit` with no
+`search_text`, and a `from` past the text are errors at the param's path. Case is ignored
+unless `match_case`, for Latin, Greek and Cyrillic letters.
 
 ### ui.clipboard
 

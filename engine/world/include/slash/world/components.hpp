@@ -1217,8 +1217,11 @@ struct TextEdit {
     bool highlight_current_line = false;
     bool draw_tabs = false;
     bool draw_spaces = false;
-    std::string text_direction = "auto"; // as Label's
-    std::string language{};              // NOLINT(readability-redundant-member-init)
+    bool highlight_all_occurrences = false; // mark the other copies of the selected text
+    std::string search_text;                // marked wherever it occurs in view
+    std::vector<std::string> search_flags;  // "match_case", "whole_words"
+    std::string text_direction = "auto";    // as Label's
+    std::string language{};                 // NOLINT(readability-redundant-member-init)
 
     friend bool operator==(const TextEdit&, const TextEdit&) = default;
 };
@@ -1231,7 +1234,24 @@ SLASH_COMPONENT(TextEdit, text, placeholder_text, editable,
                 scroll_fit_content_width, caret_type, caret_blink, caret_blink_interval,
                 caret_draw_when_editable_disabled, caret_move_on_right_click, caret_mid_grapheme,
                 caret_line, caret_column, highlight_current_line, draw_tabs, draw_spaces,
-                text_direction, language)
+                highlight_all_occurrences, search_text, search_flags, text_direction, language)
+
+// Colors the text of the TextEdit on its entity as code, as Godot's CodeHighlighter set as a
+// TextEdit's syntax_highlighter: keywords, numbers, symbols, function names, members after a
+// '.', and regions such as strings and comments that may run over several lines.
+struct CodeHighlighter {
+    Vec4 number_color{0.0F, 0.0F, 0.0F, 1.0F};
+    Vec4 symbol_color{0.0F, 0.0F, 0.0F, 1.0F};
+    Vec4 function_color{0.0F, 0.0F, 0.0F, 1.0F};
+    Vec4 member_variable_color{0.0F, 0.0F, 0.0F, 1.0F};
+    std::map<std::string, Vec4> keyword_colors;
+    std::map<std::string, Vec4> member_keyword_colors; // not after a '.'
+    std::map<std::string, Vec4> color_regions;         // "start end", or "start" to the line's end
+
+    friend bool operator==(const CodeHighlighter&, const CodeHighlighter&) = default;
+};
+SLASH_COMPONENT(CodeHighlighter, number_color, symbol_color, function_color, member_variable_color,
+                keyword_colors, member_keyword_colors, color_regions)
 
 // Containers place the controls in their children lists, which ignore their anchors and
 // offsets and are sized by their minimum sizes and size flags. An entity has at most one.

@@ -1703,13 +1703,31 @@ json::Value line_edit_json(const world::World& world, entt::entity entity,
     return out;
 }
 
+// A rect of a control's on screen: the bounds of its corners, turned and scaled as it draws, as
+// [x, y, w, h].
+json::Value screen_rect(const ui::Transform& transform, Vec2 position, Vec2 size) {
+    const std::array<Vec2, 4> corners{
+        transform.apply(position),
+        transform.apply(position + Vec2{size.x, 0.0F}),
+        transform.apply(position + Vec2{0.0F, size.y}),
+        transform.apply(position + size),
+    };
+    Vec2 low = corners[0];
+    Vec2 high = corners[0];
+    for (const Vec2 corner : corners) {
+        low = {std::min(low.x, corner.x), std::min(low.y, corner.y)};
+        high = {std::max(high.x, corner.x), std::max(high.y, corner.y)};
+    }
+    return rounded(json::Array{low.x, low.y, high.x - low.x, high.y - low.y});
+}
+
 // A TextEdit as ui.layout reports it: its caret and selection as [line, column], what an input
 // method is composing, whether it shows its placeholder, the first and last lines in view when
-// they aren't all of them, its rows when wrapping makes more of them than lines, and which
-// scroll bars show.
-json::Value text_edit_json(const world::World& world, entt::entity entity,
+// they aren't all of them, its rows when wrapping makes more of them than lines, the scroll
+// bars shown and where search_text shows.
+json::Value text_edit_json(const world::World& world, const ui::Placed& placed,
                            const ui::TextEditView& view) {
-    const auto& edit = world.ecs().get<world::TextEdit>(entity);
+    const auto& edit = world.ecs().get<world::TextEdit>(placed.entity);
     json::Value out;
     out["caret"] = json::Array{view.caret_line, view.caret_column};
     if (view.selection) {
@@ -1730,11 +1748,26 @@ json::Value text_edit_json(const world::World& world, entt::entity entity,
     if (view.total_rows != lines) {
         out["rows"] = view.total_rows;
     }
-    if (view.v_scroll_visible) {
-        out["v_scroll_bar"] = true;
+    // Each scroll bar shown, with its grabber's rect on screen, where a drag takes it.
+    const auto bar_json = [&placed](const ui::ScrollBarView& bar) {
+        const auto offset = bar.begin + bar.decrement + static_cast<float>(bar.grabber_offset);
+        const auto length = static_cast<float>(bar.grabber_size);
+        const Vec2 at = bar.position + (bar.vertical ? Vec2{0.0F, offset} : Vec2{offset, 0.0F});
+        const Vec2 size = bar.vertical ? Vec2{bar.size.x, length} : Vec2{length, bar.size.y};
+        return json::Value(json::Object{{"grabber", screen_rect(placed.transform, at, size)}});
+    };
+    if (view.v_bar.visible) {
+        out["v_scroll_bar"] = bar_json(view.v_bar);
     }
-    if (view.h_scroll_visible) {
-        out["h_scroll_bar"] = true;
+    if (view.h_bar.visible) {
+        out["h_scroll_bar"] = bar_json(view.h_bar);
+    }
+    if (!view.search_results.empty()) {
+        json::Array found;
+        for (const auto& [line, column] : view.search_results) {
+            found.emplace_back(json::Array{line, column});
+        }
+        out["search_results"] = std::move(found);
     }
     if (!view.error.empty()) {
         out["font_error"] = view.error;
@@ -1855,7 +1888,7 @@ Reply ui_layout(Session& session, const json::Value& params) {
         }
         if (const auto edit = layout.text_edits.find(placed.entity);
             edit != layout.text_edits.end()) {
-            item["text_edit"] = text_edit_json(world, placed.entity, edit->second);
+            item["text_edit"] = text_edit_json(world, placed, edit->second);
         }
         if (const ui::LabelText* label = layout.label(placed.entity); label != nullptr) {
             item["lines"] = line_texts(label->text, label->source, label->first, label->last,
@@ -2302,6 +2335,84 @@ Reply ui_tooltip(Session& session, const json::Value& params) {
         result["tooltip"] =
             json::Object{{"id", std::string(world.id_of(shown.owner))}, {"text", shown.text}};
     }
+    return Reply::success(std::move(result));
+}
+
+// ui.search: TextEdit::search, or every place the text occurs.
+Reply ui_search(Session& session, const json::Value& params) {
+    const world::World& world = session.world();
+    const std::string id = text(params, "id");
+    const entt::entity entity = world.find(id);
+    if (entity == entt::null) {
+        return unknown_entity(world, id, "/id");
+    }
+    const auto* edit = world.ecs().try_get<world::TextEdit>(entity);
+    if (edit == nullptr) {
+        return param_error(code::kInvalidParams, "/id", quoted(id) + " has no TextEdit");
+    }
+    const json::Value* given_key = params.find("text");
+    const std::string key = given_key != nullptr ? given_key->as_string() : edit->search_text;
+    if (key.empty()) {
+        return param_error(code::kInvalidParams, "/text",
+                           given_key != nullptr
+                               ? std::string("the text to find is empty")
+                               : quoted(id) + " has no search_text; give the text to find");
+    }
+    std::vector<std::string> flags = edit->search_flags;
+    if (const json::Value* given = params.find("flags"); given != nullptr) {
+        flags.clear();
+        for (const json::Value& flag : given->as_array()) {
+            flags.push_back(flag.as_string());
+        }
+    }
+    const ui::SearchOptions options{
+        .match_case = std::ranges::find(flags, "match_case") != flags.end(),
+        .whole_words = std::ranges::find(flags, "whole_words") != flags.end(),
+        .backwards = std::ranges::find(flags, "backwards") != flags.end(),
+    };
+    json::Value result;
+    if (params.find("all") != nullptr && params.find("all")->as_bool()) {
+        const auto found = ui::text_edit_search_all(edit->text, key, options);
+        const auto max_results = static_cast<std::size_t>(integer(params, "max_results", 100));
+        json::Array matches;
+        for (std::size_t i = 0; i < found.size() && i < max_results; ++i) {
+            matches.emplace_back(json::Array{found[i][0], found[i][1]});
+        }
+        result["matches"] = std::move(matches);
+        result["count"] = static_cast<std::int64_t>(found.size());
+        return Reply::success(std::move(result));
+    }
+    // From the caret unless told where, kept in the text as the caret is.
+    const std::vector<std::u32string> lines = [&] {
+        std::vector<std::u32string> split{{}};
+        for (const char32_t c : to_utf32(edit->text)) {
+            if (c == U'\n') {
+                split.emplace_back();
+            } else if (c != U'\r') {
+                split.back().push_back(c);
+            }
+        }
+        return split;
+    }();
+    int line = std::clamp(edit->caret_line, 0, static_cast<int>(lines.size()) - 1);
+    int column = std::clamp(edit->caret_column, 0,
+                            static_cast<int>(lines[static_cast<std::size_t>(line)].size()));
+    if (const json::Value* from = params.find("from"); from != nullptr) {
+        line = static_cast<int>(from->as_array()[0].as_double());
+        column = static_cast<int>(from->as_array()[1].as_double());
+        if (line >= static_cast<int>(lines.size())) {
+            return param_error(code::kInvalidParams, "/from/0",
+                               quoted(id) + " has " + std::to_string(lines.size()) + " lines");
+        }
+        if (column > static_cast<int>(lines[static_cast<std::size_t>(line)].size())) {
+            return param_error(code::kInvalidParams, "/from/1",
+                               "line " + std::to_string(line) + " has " +
+                                   std::to_string(lines[static_cast<std::size_t>(line)].size()) +
+                                   " characters");
+        }
+    }
+    const auto found = ui::text_edit_search(edit->text, key, options, line, column);
+    result["found"] = found ? json::Value(json::Array{(*found)[0], (*found)[1]}) : json::Value();
     return Reply::success(std::move(result));
 }
 
@@ -5058,6 +5169,37 @@ void register_builtin_commands(Registry& registry) {
             {"show", property("boolean", "False hides the tooltip. Default true.")},
         }),
         .handler = ui_tooltip,
+    });
+    json::Value search_flags = property("array", "How it matches. Default: the TextEdit's "
+                                                 "search_flags.");
+    search_flags["items"]["enum"] = json::Array{"match_case", "whole_words", "backwards"};
+    json::Value search_from =
+        property("array", "[line, column] to search from (columns in characters). Default: the "
+                          "caret.");
+    search_from["items"]["type"] = "integer";
+    search_from["items"]["minimum"] = 0;
+    search_from["minItems"] = 2;
+    search_from["maxItems"] = 2;
+    registry.add({
+        .name = "ui.search",
+        .description = "Finds text in a TextEdit, as its search(): the next place it occurs from "
+                       "a position, going round past the end (or, backwards, the start), as "
+                       "found [line, column], or null. With all, every place in order (matches) "
+                       "and how many (count).",
+        .capabilities = {Read},
+        .effect = Effect::Read,
+        .params = params_schema(
+            {
+                {"id", property("string", "The TextEdit.")},
+                {"text", property("string", "What to find. Default: its search_text.")},
+                {"flags", std::move(search_flags)},
+                {"from", std::move(search_from)},
+                {"all", property("boolean", "Every place it occurs. Default false.")},
+                {"max_results",
+                 integer_property("With all, at most this many matches.", 1, 10000, 100)},
+            },
+            {"id"}),
+        .handler = ui_search,
     });
     json::Value clipboard_text = property("string", "Text to put on the clipboard first.");
     clipboard_text["maxLength"] = 65536;

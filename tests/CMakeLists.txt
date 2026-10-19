@@ -38,6 +38,7 @@ add_executable(slash_tests
     test_server.cpp
     test_shader.cpp
     test_storyboard.cpp
+    test_syntax_highlighter.cpp
     test_test_run.cpp
     test_text.cpp
     test_text_edit.cpp
