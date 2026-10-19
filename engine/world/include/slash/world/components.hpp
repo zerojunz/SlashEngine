@@ -1184,6 +1184,30 @@ SLASH_COMPONENT(LineEdit, text, placeholder_text, alignment, max_length, editabl
                 caret_force_displayed, caret_mid_grapheme, secret, secret_character, text_direction,
                 language)
 
+// One line's entry in a TextEdit gutter, as Godot's line gutter text, icon and item color.
+struct TextEditGutterLine {
+    int line = 0;
+    std::string text; // what a "string" gutter shows on the line
+    std::string icon; // what an "icon" gutter shows: a PNG or BMP file, or a built-in icon
+    Vec4 color{1.0F, 1.0F, 1.0F, 1.0F};
+
+    friend bool operator==(const TextEditGutterLine&, const TextEditGutterLine&) = default;
+};
+SLASH_REFLECT(TextEditGutterLine, line, text, icon, color)
+
+// A column left of a TextEdit's text, as Godot's TextEdit gutters: text or an icon per line,
+// kept with their lines as the text is edited.
+struct TextEditGutter {
+    std::string name;
+    std::string type = "string"; // "string" or "icon"
+    int width = 24;
+    bool draw = true;
+    std::vector<TextEditGutterLine> lines;
+
+    friend bool operator==(const TextEditGutter&, const TextEditGutter&) = default;
+};
+SLASH_REFLECT(TextEditGutter, name, type, width, draw, lines)
+
 // A text field of several lines, as Godot's TextEdit: typed into while it has focus, with one
 // caret, selection, undo, the clipboard, line wrapping and scrolling.
 struct TextEdit {
@@ -1222,6 +1246,7 @@ struct TextEdit {
     std::vector<std::string> search_flags;  // "match_case", "whole_words"
     std::string text_direction = "auto";    // as Label's
     std::string language{};                 // NOLINT(readability-redundant-member-init)
+    std::vector<TextEditGutter> gutters;    // after a CodeEdit's, left to right
 
     friend bool operator==(const TextEdit&, const TextEdit&) = default;
 };
@@ -1234,7 +1259,8 @@ SLASH_COMPONENT(TextEdit, text, placeholder_text, editable,
                 scroll_fit_content_width, caret_type, caret_blink, caret_blink_interval,
                 caret_draw_when_editable_disabled, caret_move_on_right_click, caret_mid_grapheme,
                 caret_line, caret_column, highlight_current_line, draw_tabs, draw_spaces,
-                highlight_all_occurrences, search_text, search_flags, text_direction, language)
+                highlight_all_occurrences, search_text, search_flags, text_direction, language,
+                gutters)
 
 // Colors the text of the TextEdit on its entity as code, as Godot's CodeHighlighter set as a
 // TextEdit's syntax_highlighter: keywords, numbers, symbols, function names, members after a
@@ -1252,6 +1278,29 @@ struct CodeHighlighter {
 };
 SLASH_COMPONENT(CodeHighlighter, number_color, symbol_color, function_color, member_variable_color,
                 keyword_colors, member_keyword_colors, color_regions)
+
+// Makes the TextEdit on its entity a code editor, as Godot's CodeEdit: line numbers, and a
+// gutter of breakpoints, bookmarks and executing lines, kept with their lines as the text is
+// edited, and lines marking columns. Clicking the gutter toggles a breakpoint (a bookmark with
+// Shift); clicking a line number selects the line.
+struct CodeEdit {
+    bool gutters_draw_breakpoints_gutter = false;
+    bool gutters_draw_bookmarks = false;
+    bool gutters_draw_executing_lines = false;
+    bool gutters_draw_line_numbers = false;
+    bool gutters_zero_pad_line_numbers = false;
+    int gutters_line_numbers_min_digits = 3;
+    std::vector<int> line_length_guidelines; // columns, the first drawn brighter
+    std::vector<int> breakpointed_lines;
+    std::vector<int> bookmarked_lines;
+    std::vector<int> executing_lines;
+
+    friend bool operator==(const CodeEdit&, const CodeEdit&) = default;
+};
+SLASH_COMPONENT(CodeEdit, gutters_draw_breakpoints_gutter, gutters_draw_bookmarks,
+                gutters_draw_executing_lines, gutters_draw_line_numbers,
+                gutters_zero_pad_line_numbers, gutters_line_numbers_min_digits,
+                line_length_guidelines, breakpointed_lines, bookmarked_lines, executing_lines)
 
 // Containers place the controls in their children lists, which ignore their anchors and
 // offsets and are sized by their minimum sizes and size flags. An entity has at most one.

@@ -890,7 +890,18 @@ the sign on a smaller window:
   `rows` when wrapping makes more rows than lines, `v_scroll_bar` and `h_scroll_bar` while
   they show (`grabber`, the grabber's rect on screen, for a drag with
   [`input.inject`](#inputinject)), `search_results` (`[line, column]` of each match of its
-  `search_text` in view) and `font_error` for a font that doesn't load.
+  `search_text` in view), `gutters` and `line_height` while it draws
+  [gutters](scene-format.md#gutters-and-line-numbers), and `font_error` for a font that doesn't
+  load. Each gutter has its `name` (a `CodeEdit`'s are `main_gutter` and `line_numbers`) and
+  `rect` on screen, from the first row's top: a line in view is
+  `(line - visible_lines[0]) * line_height` below it when scrolled to a whole row, as in
+  [examples/code-editor](../../examples/code-editor/):
+
+  ```json
+  "gutters":[{"name":"main_gutter","rect":[12,12,26,152]},{"name":"line_numbers","rect":[38,12,36,152]}],"line_height":26
+  ```
+
+  The gutters' text is left out of `lines`.
 - `problems` lists, for each control, a `children` entry that can't be laid out (no such
   entity, not a control, the control itself, a second parent or a loop), a second container on
   one entity, a theme override name its type doesn't have, with the closest one, a style box

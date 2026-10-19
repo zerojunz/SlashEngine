@@ -210,6 +210,32 @@ const std::map<std::string, render::Image, std::less<>>& icons() {
                            .v = {1.0F, 0.0F, 0.0F, 0.0F, 0.0F},
                            .points = {{2.0F, 4.0F}, {6.0F, 8.0F}, {10.0F, 4.0F}},
                            .color = {kArrow, kArrow, kArrow, 0.85F}}}));
+        // arrow_right.svg, CodeEdit's executing line: a chevron stroked 2 wide at 0.45.
+        out.emplace("arrow_right", draw(16, 16,
+                                        {{.kind = Shape::Kind::Stroke,
+                                          .v = {1.0F, 0.0F, 0.0F, 0.0F, 0.0F},
+                                          .points = {{6.0F, 11.0F}, {9.0F, 8.0F}, {6.0F, 5.0F}},
+                                          .color = {kArrow, kArrow, kArrow, 0.45F}}}));
+        // breakpoint.svg: a #ff5d5d dot at 0.5.
+        out.emplace(
+            "breakpoint",
+            draw(16, 16, {circle(8.0F, 8.0F, 7.0F, {1.0F, 93.0F / 255.0F, 93.0F / 255.0F, 0.5F})}));
+        // bookmark.svg: a ribbon filled at 0.85 in #fefffe, drawn twice and outlined, as its
+        // two paths are.
+        constexpr float kRibbon = 254.0F / 255.0F;
+        const Vec4 ribbon{kRibbon, 1.0F, kRibbon, 0.85F};
+        const std::vector<Vec2> outline{
+            {14.5F, 1.5F}, {1.5F, 1.5F}, {1.5F, 14.5F}, {8.0F, 9.25F}, {14.5F, 14.5F}};
+        const Shape fill{.kind = Shape::Kind::Polygon, .v = {}, .points = outline, .color = ribbon};
+        std::vector<Vec2> closed = outline;
+        closed.push_back(outline.front());
+        out.emplace("bookmark", draw(16, 16,
+                                     {fill,
+                                      fill,
+                                      {.kind = Shape::Kind::Stroke,
+                                       .v = {0.5F, 0.0F, 0.0F, 0.0F, 0.0F},
+                                       .points = closed,
+                                       .color = ribbon}}));
         return out;
     }();
     return kIcons;

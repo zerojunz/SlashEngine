@@ -13,6 +13,7 @@
 
 #include <doctest/doctest.h>
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <initializer_list>
@@ -202,9 +203,11 @@ struct Editors {
         return send({key(name, true, modifiers), key(name, false, modifiers)});
     }
     std::string step() { return send({}); }
+    // Where text starts in a TextEdit: after its style's margin and its gutters.
+    float text_start = kMargin;
     // A click and its release where a line and column of a TextEdit at (20, 20) are.
     std::string click_at(int line, int column, std::string_view extra = "") {
-        const float x = 20.0F + kMargin + (static_cast<float>(column) * kBox) + 2.0F;
+        const float x = 20.0F + text_start + (static_cast<float>(column) * kBox) + 2.0F;
         const float y = 20.0F + kMargin + (static_cast<float>(line) * kRow) + (kRow / 2.0F);
         return send({click(x, y, true, extra), click(x, y, false)});
     }
@@ -218,6 +221,10 @@ struct Editors {
             out += event.kind + " " + event.id;
             if (event.kind == "lines_edited_from") {
                 out += " " + std::to_string(event.from_line) + "-" + std::to_string(event.to_line);
+            } else if (event.kind == "gutter_clicked") {
+                out += " " + std::to_string(event.line) + " " + event.gutter;
+            } else if (event.kind == "breakpoint_toggled") {
+                out += " " + std::to_string(event.line);
             }
         }
         return out;
@@ -241,18 +248,21 @@ struct Editors {
         return found->second;
     }
     Selection selection(std::string_view id) { return view(id).selection; }
-    // The rows a TextEdit shows, as ui.layout's lines.
-    std::vector<std::string> rows(std::string_view id) {
+    // The rows a TextEdit shows, as ui.layout's lines, or the text its gutters show.
+    std::vector<std::string> rows(std::string_view id, bool gutters = false) {
         const ui::Layout placed = layout();
         const ui::LabelText* label = placed.label(world.find(id));
         REQUIRE(label != nullptr);
         std::vector<std::string> out;
-        for (std::size_t l = label->first; l < label->last; ++l) {
+        const std::size_t from = gutters ? label->gutters_from : label->first;
+        const std::size_t to = gutters ? label->last : std::min(label->last, label->gutters_from);
+        for (std::size_t l = from; l < to; ++l) {
             const text::Line& line = label->text.lines[l];
             out.push_back(label->source.substr(line.start, line.end - line.start));
         }
         return out;
     }
+    std::vector<std::string> gutter_text(std::string_view id) { return rows(id, true); }
 };
 
 Selection range(int from_line, int from_column, int to_line, int to_column) {
@@ -1007,6 +1017,269 @@ TEST_CASE("a CodeHighlighter colors a TextEdit's text, fainter when it can't be 
 
 namespace {
 
+// The rows down a TextEdit at (20, 20), on screen: the middle of each.
+float row_y(int line) {
+    return 20.0F + kMargin + (static_cast<float>(line) * kRow) + (kRow / 2.0F);
+}
+
+bool near(slash::Vec4 a, slash::Vec4 b) {
+    return a.x == doctest::Approx(b.x) && a.y == doctest::Approx(b.y) &&
+           a.z == doctest::Approx(b.z) && a.w == doctest::Approx(b.w);
+}
+
+// The icons a TextEdit draws under its text.
+std::vector<ui::Box> icons(Editors& f, std::string_view id) {
+    const ui::Layout placed = f.layout();
+    std::vector<ui::Box> out;
+    for (const ui::Box& box : placed.boxes.at(f.world.find(id))) {
+        if (box.style.type == ui::StyleBox::Type::Texture) {
+            out.push_back(box);
+        }
+    }
+    return out;
+}
+
+const world::CodeEdit& code_of(Editors& f, std::string_view id) {
+    return f.world.ecs().get<world::CodeEdit>(f.world.find(id));
+}
+
+} // namespace
+
+TEST_CASE("a CodeEdit numbers its lines in a gutter before the text") {
+    Editors f;
+    f.editor("code", {20, 20, 300, 104}, R"("text": "a\nbb\nc")");
+    f.set("code", R"({"CodeEdit": {"gutters_draw_line_numbers": true}})");
+    const ui::TextEditView view = f.view("code");
+    REQUIRE(view.gutters.size() == 2);
+    // The main gutter hides until it has breakpoints, bookmarks or executing lines to show.
+    CHECK(view.gutters[0].name == "main_gutter");
+    CHECK_FALSE(view.gutters[0].draw);
+    // Line numbers take a '0' more than their digits, three at the fewest.
+    CHECK(view.gutters[1].name == "line_numbers");
+    CHECK(view.gutters[1].x == kMargin);
+    CHECK(view.gutters[1].width == 48);
+    CHECK(f.rows("code") == std::vector<std::string>{"a", "bb", "c"});
+    CHECK(f.gutter_text("code") == std::vector<std::string>{"  1", "  2", "  3"});
+    {
+        const ui::Layout placed = f.layout();
+        const ui::LabelText* label = placed.label(f.world.find("code"));
+        REQUIRE(label != nullptr);
+        // The text starts 2 pixels after the gutters; the numbers at the gutter's start, on the
+        // same rows, in line_number_color.
+        CHECK(label->pens[0].x == kMargin + 48.0F + 2.0F);
+        CHECK(label->pens[3].x == kMargin);
+        CHECK(label->pens[4].y == label->pens[1].y);
+        REQUIRE(label->colors.size() == 3);
+        for (std::size_t i = 0; i < 3; ++i) {
+            CHECK(label->colors[i].first == label->text.lines[3 + i].start);
+            CHECK(near(label->colors[i].second, {0.67F, 0.67F, 0.67F, 0.4F}));
+        }
+    }
+    // Clicks on the text land after the gutter.
+    f.text_start = kMargin + 50.0F;
+    f.click_at(1, 1);
+    CHECK(f.caret("code") == Caret{1, 1});
+
+    f.set("code", R"({"CodeEdit": {"gutters_zero_pad_line_numbers": true,
+                                   "gutters_line_numbers_min_digits": 2}})");
+    CHECK(f.gutter_text("code") == std::vector<std::string>{"01", "02", "03"});
+    CHECK(f.view("code").gutters[1].width == 36);
+    // More lines than the digits take more.
+    f.set("code", R"({"TextEdit": {"text": "0\n1\n2\n3\n4\n5\n6\n7\n8\n9"},
+                      "CodeEdit": {"gutters_zero_pad_line_numbers": false,
+                                   "gutters_line_numbers_min_digits": 1}})");
+    CHECK(f.gutter_text("code").front() == " 1");
+    CHECK(f.view("code").gutters[1].width == 36);
+}
+
+TEST_CASE("clicking a CodeEdit's main gutter toggles breakpoints, and a line number selects") {
+    Editors f;
+    f.editor("code", {20, 20, 300, 104}, R"("text": "a\nbb\nc")");
+    f.set("code", R"({"CodeEdit": {"gutters_draw_breakpoints_gutter": true,
+                                   "gutters_draw_bookmarks": true,
+                                   "gutters_draw_line_numbers": true}})");
+    // The main gutter is a row wide; the line numbers come after it.
+    const float main = 20.0F + kMargin + 12.0F;
+    const float numbers = 20.0F + kMargin + kRow + 10.0F;
+    const auto click_gutter = [&](float x, int line, std::string_view extra = "") {
+        return f.send({click(x, row_y(line), true, extra), click(x, row_y(line), false)});
+    };
+    CHECK(click_gutter(main, 1) == "mouse_entered code, focus_entered code, gutter_clicked code 1 "
+                                   "main_gutter, breakpoint_toggled code 1");
+    CHECK(code_of(f, "code").breakpointed_lines == std::vector<int>{1});
+    CHECK(click_gutter(main, 2) == "gutter_clicked code 2 main_gutter, breakpoint_toggled code 2");
+    CHECK(code_of(f, "code").breakpointed_lines == std::vector<int>{1, 2});
+    CHECK(click_gutter(main, 1) == "gutter_clicked code 1 main_gutter, breakpoint_toggled code 1");
+    CHECK(code_of(f, "code").breakpointed_lines == std::vector<int>{2});
+    // With Shift, a bookmark.
+    CHECK(click_gutter(main, 0, kShift) == "gutter_clicked code 0 main_gutter");
+    CHECK(code_of(f, "code").bookmarked_lines == std::vector<int>{0});
+    CHECK(code_of(f, "code").breakpointed_lines == std::vector<int>{2});
+    // A line number selects its line, up to the next one's start; the last line's to its end.
+    CHECK(click_gutter(numbers, 0) == "gutter_clicked code 0 line_numbers, caret_changed code");
+    CHECK(f.selection("code") == range(0, 0, 1, 0));
+    CHECK(f.caret("code") == Caret{1, 0});
+    click_gutter(numbers, 2);
+    CHECK(f.selection("code") == range(2, 0, 2, 1));
+    // Dragging from a line number selects whole lines.
+    f.send(click(numbers, row_y(0), true));
+    f.send(drag(numbers, row_y(1)));
+    f.send(click(numbers, row_y(1), false));
+    CHECK(f.selection("code") == range(0, 0, 2, 0));
+}
+
+TEST_CASE("breakpoints, bookmarks and gutter entries move with the lines they're on") {
+    Editors f;
+    f.editor("code", {20, 20, 300, 200}, R"("text": "a\nb\nc\nd",
+        "gutters": [{"name": "marks", "lines": [{"line": 2, "text": "!"}]}])");
+    f.set("code", R"({"CodeEdit": {"gutters_draw_breakpoints_gutter": true,
+                                   "breakpointed_lines": [1, 3], "bookmarked_lines": [2],
+                                   "executing_lines": [3]}})");
+    const auto lines = [&] {
+        const world::CodeEdit& code = code_of(f, "code");
+        return std::vector<std::vector<int>>{code.breakpointed_lines,
+                                             code.bookmarked_lines,
+                                             code.executing_lines,
+                                             {f.edit("code").gutters[0].lines.at(0).line}};
+    };
+    using Lines = std::vector<std::vector<int>>;
+    // After the main gutter and the marks gutter.
+    f.text_start = kMargin + kRow + 24.0F + 2.0F;
+    f.click_at(0, 1);
+    // A new line in the middle of a line: the lines after it move down.
+    CHECK(f.tap("Enter") ==
+          "lines_edited_from code 0-1, breakpoint_toggled code 1, breakpoint_toggled code 2, "
+          "breakpoint_toggled code 3, breakpoint_toggled code 4, text_changed code, "
+          "caret_changed code");
+    CHECK(lines() == Lines{{2, 4}, {3}, {4}, {3}});
+    // A new line at a line's start: that line moves down too.
+    f.click_at(2, 0);
+    f.tap("Enter");
+    CHECK(f.text("code") == "a\n\n\nb\nc\nd");
+    CHECK(lines() == Lines{{3, 5}, {4}, {5}, {4}});
+    // Joining a line onto the one before drops what was on it, as Godot does.
+    CHECK(f.tap("Backspace") ==
+          "lines_edited_from code 3-2, breakpoint_toggled code 3, breakpoint_toggled code 5, "
+          "breakpoint_toggled code 4, text_changed code, caret_changed code");
+    CHECK(lines() == Lines{{4}, {3}, {4}, {3}});
+    // Text set from outside leaves them, and check finds the ones past its end.
+    f.set("code", R"({"TextEdit": {"text": "x"}})");
+    f.step();
+    CHECK(lines() == Lines{{4}, {3}, {4}, {3}});
+    std::vector<std::string> problems;
+    for (const ui::Problem& problem : ui::check(f.world, *ui::fonts(f.world))) {
+        problems.push_back(problem.path + ": " + problem.message);
+    }
+    CHECK(problems == std::vector<std::string>{
+                          "/components/CodeEdit/breakpointed_lines/0: line 4 is past the text's "
+                          "last line, 0",
+                          "/components/CodeEdit/bookmarked_lines/0: line 3 is past the text's "
+                          "last line, 0",
+                          "/components/CodeEdit/executing_lines/0: line 4 is past the text's "
+                          "last line, 0",
+                          "/components/TextEdit/gutters/0/lines/0/line: line 3 is past the "
+                          "text's last line, 0",
+                      });
+}
+
+TEST_CASE("a TextEdit's own gutters show text and icons on the lines they name") {
+    Editors f;
+    f.editor("notes", {20, 20, 300, 104}, R"("text": "a\nb", "gutters": [
+        {"name": "marks", "width": 20, "lines": [{"line": 1, "text": "!", "color": [1, 0, 0, 1]}]},
+        {"name": "icons", "type": "icon", "lines": [{"line": 0, "icon": "builtin:breakpoint"}]},
+        {"name": "hidden", "draw": false, "lines": [{"line": 0, "text": "x"}]}])");
+    const ui::TextEditView view = f.view("notes");
+    REQUIRE(view.gutters.size() == 3);
+    CHECK(view.gutters[0].x == kMargin);
+    CHECK(view.gutters[1].x == kMargin + 20.0F);
+    CHECK(view.gutters[1].width == 24);
+    CHECK_FALSE(view.gutters[2].draw);
+    CHECK(f.gutter_text("notes") == std::vector<std::string>{"!"});
+    {
+        const ui::Layout placed = f.layout();
+        const ui::LabelText* label = placed.label(f.world.find("notes"));
+        REQUIRE(label != nullptr);
+        CHECK(label->pens[0].x == kMargin + 44.0F + 2.0F);
+        CHECK(label->pens[2].x == kMargin);
+        CHECK(label->pens[2].y == label->pens[1].y);
+        CHECK(label->colors.back().second == slash::Vec4{1.0F, 0.0F, 0.0F, 1.0F});
+    }
+    // The icon fits a sixth in from the gutter's sides, keeping its shape.
+    const std::vector<ui::Box> drawn = icons(f, "notes");
+    REQUIRE(drawn.size() == 1);
+    CHECK(drawn[0].style.texture == "builtin:breakpoint");
+    CHECK(drawn[0].position == Vec2{kMargin + 24.0F, kMargin + 4.0F});
+    CHECK(drawn[0].size == Vec2{16.0F, 16.0F});
+    // Clicks report the gutter by name.
+    CHECK(f.send({click(20.0F + kMargin + 30.0F, row_y(0), true),
+                  click(20.0F + kMargin + 30.0F, row_y(0), false)}) ==
+          "mouse_entered notes, focus_entered notes, gutter_clicked notes 0 icons");
+    // Right to left, they're at the right, in the same order.
+    f.set("notes", R"({"Control": {"layout_direction": "rtl"}})");
+    CHECK(f.view("notes").gutters[0].x == 300.0F - kMargin - 20.0F);
+    CHECK(icons(f, "notes").at(0).position.x == 300.0F - kMargin - 24.0F - 16.0F);
+    // The control is mirrored in the viewport too, to 80 from the left.
+    const float icon_x = 400.0F - 20.0F - kMargin - 30.0F;
+    CHECK(f.send({click(icon_x, row_y(0), true), click(icon_x, row_y(0), false)}) ==
+          "gutter_clicked notes 0 icons");
+}
+
+TEST_CASE("a CodeEdit draws its guidelines, and previews a breakpoint under the pointer") {
+    Editors f;
+    f.editor("code", {20, 20, 300, 104}, R"("text": "a\nb")");
+    f.set("code", R"({"CodeEdit": {"line_length_guidelines": [2, 5]}})");
+    const auto guidelines = [&] {
+        const ui::Layout placed = f.layout();
+        std::vector<ui::Box> out;
+        for (const ui::Box& box : placed.boxes.at(f.world.find("code"))) {
+            if (box.size.x == 1.0F) {
+                out.push_back(box);
+            }
+        }
+        return out;
+    };
+    // A pixel wide down the whole rect at those columns of '0's; the first the brightest.
+    std::vector<ui::Box> lines = guidelines();
+    REQUIRE(lines.size() == 2);
+    CHECK(lines[0].position == Vec2{kMargin + 24.0F, 0.0F});
+    CHECK(lines[0].size == Vec2{1.0F, 104.0F});
+    CHECK(near(lines[0].style.bg_color, {0.3F, 0.5F, 0.8F, 0.1F}));
+    CHECK(lines[1].position.x == kMargin + 60.0F);
+    CHECK(near(lines[1].style.bg_color, {0.3F, 0.5F, 0.8F, 0.06F}));
+    // After the gutters.
+    f.set("code", R"({"CodeEdit": {"gutters_draw_breakpoints_gutter": true,
+                                   "breakpointed_lines": [1]}})");
+    lines = guidelines();
+    REQUIRE(lines.size() == 2);
+    CHECK(lines[0].position.x == kMargin + kRow + 2.0F + 24.0F);
+    // A breakpoint, a sixth in from its row's sides.
+    std::vector<ui::Box> drawn = icons(f, "code");
+    REQUIRE(drawn.size() == 1);
+    CHECK(drawn[0].style.texture == "builtin:breakpoint");
+    CHECK(drawn[0].position == Vec2{kMargin + 4.0F, kMargin + kRow + 4.0F});
+    CHECK(drawn[0].size == Vec2{16.0F, 16.0F});
+    CHECK(near(drawn[0].style.modulate_color, {0.9F, 0.29F, 0.3F, 1.0F}));
+    // Under the pointer, a darker one shows where a click would put one, and the one there
+    // lightens.
+    const float main = 20.0F + kMargin + 12.0F;
+    f.send(drag(main, row_y(0)));
+    drawn = icons(f, "code");
+    REQUIRE(drawn.size() == 2);
+    CHECK(drawn[0].position.y == kMargin + 4.0F);
+    CHECK(near(drawn[0].style.modulate_color, {0.45F, 0.145F, 0.15F, 1.0F}));
+    f.send(drag(main, row_y(1)));
+    drawn = icons(f, "code");
+    REQUIRE(drawn.size() == 1);
+    CHECK(near(drawn[0].style.modulate_color, {0.93F, 0.503F, 0.51F, 1.0F}));
+    // Not with Shift held, which bookmarks.
+    f.send(key("Shift", true));
+    drawn = icons(f, "code");
+    REQUIRE(drawn.size() == 1);
+    CHECK(near(drawn[0].style.modulate_color, {0.9F, 0.29F, 0.3F, 1.0F}));
+}
+
+namespace {
+
 struct Session {
     world::ComponentRegistry components;
     command::Registry commands;
@@ -1112,4 +1385,50 @@ TEST_CASE("ui.search finds text in a TextEdit, and ui.layout reports its matches
     CHECK(fails(R"({"id": "notes", "text": ""})") == "/text: the text to find is empty");
     s.ok("entity.create", R"({"id": "label", "components": {"Label": {}}})");
     CHECK(fails(R"({"id": "label", "text": "a"})") == "/id: \"label\" has no TextEdit");
+}
+
+TEST_CASE("ui.layout reports a CodeEdit's gutters, and check finds gutters it can't show") {
+    Session s;
+    s.ok("entity.create", R"({"id": "code", "components": {
+        "Control": {"offset_left": 20, "offset_top": 20, "offset_right": 320,
+                    "offset_bottom": 120,
+                    "theme_override_colors": {"breakpoint_color": [0, 1, 0, 1]}},
+        "TextEdit": {"text": "a\nb"},
+        "CodeEdit": {"gutters_draw_breakpoints_gutter": true,
+                     "gutters_draw_line_numbers": true}}})");
+    json::Value layout = s.ok("ui.layout", R"({"ids": ["code"]})");
+    json::Value& control = layout["controls"].as_array()[0];
+    // The lines leave out the line numbers.
+    CHECK(control["lines"] == parse(R"(["a", "b"])"));
+    // Each gutter drawn, on screen, inside the style's margins; the main gutter is a row wide.
+    json::Value& edit = control["text_edit"];
+    const std::int64_t row = edit["line_height"].as_int();
+    CHECK(row > 10);
+    json::Array& gutters = edit["gutters"].as_array();
+    REQUIRE(gutters.size() == 2);
+    CHECK(gutters[0] ==
+          parse(R"({"name": "main_gutter", "rect": [24, 24, )" + std::to_string(row) + ", 92]}"));
+    CHECK(gutters[1]["name"] == "line_numbers");
+    CHECK(gutters[1]["rect"].as_array()[0].as_int() == 24 + row);
+    // CodeEdit's theme items are known, so the override is no problem.
+    CHECK(layout.find("problems") == nullptr);
+
+    s.ok("entity.create", R"({"id": "loose", "components": {"CodeEdit": {}}})");
+    s.ok("component.set", R"({"id": "code", "components": {"TextEdit": {"gutters": [
+        {"name": "marks", "type": "icons", "width": -1, "lines": [{"line": -1}]}]}}})");
+    std::vector<std::string> problems;
+    json::Value checked = s.ok("ui.layout");
+    for (json::Value& problem : checked["problems"].as_array()) {
+        problems.push_back(std::string(problem["path"].as_string()) + ": " +
+                           std::string(problem["message"].as_string()));
+    }
+    CHECK(problems ==
+          std::vector<std::string>{
+              "/components/TextEdit/gutters/0/type: a gutter shows \"string\" or \"icon\", not "
+              "\"icons\"; did you mean \"icon\"?",
+              "/components/TextEdit/gutters/0/width: a gutter's width can't be less than 0",
+              "/components/TextEdit/gutters/0/lines/0/line: lines count from 0",
+              "/components/CodeEdit: a CodeEdit makes the TextEdit on its entity a code editor, "
+              "and this one has none",
+          });
 }

@@ -106,6 +106,7 @@ above the world.
 | `AnimationPlayer` | `AnimationPlayer` (see [animations](#animations)) |
 | `Control` | `Control` |
 | `Label`, `ColorRect`, `Panel`, `TextureRect`, `NinePatchRect`, `ProgressBar`, `Button`, `CheckBox`, `CheckButton`, `TextureButton`, `LineEdit`, `TextEdit`, `ScrollContainer`, `MarginContainer`, `CenterContainer`, `PanelContainer`, `GridContainer` | `Control` and the component of the same name |
+| `CodeEdit` | `Control`, `TextEdit` and `CodeEdit`: its text, gutters and guidelines |
 | `HBoxContainer`, `VBoxContainer`, `BoxContainer` | `Control` and `BoxContainer` (`vertical` for `VBoxContainer`) |
 | `HFlowContainer`, `VFlowContainer`, `FlowContainer` | `Control` and `FlowContainer` |
 | `OptionButton`, `MenuButton` | `Control` and the component of the same name, with its `popup/item_<n>/` items |

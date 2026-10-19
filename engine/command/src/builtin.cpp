@@ -1724,7 +1724,7 @@ json::Value screen_rect(const ui::Transform& transform, Vec2 position, Vec2 size
 // A TextEdit as ui.layout reports it: its caret and selection as [line, column], what an input
 // method is composing, whether it shows its placeholder, the first and last lines in view when
 // they aren't all of them, its rows when wrapping makes more of them than lines, the scroll
-// bars shown and where search_text shows.
+// bars shown, where search_text shows and its gutters.
 json::Value text_edit_json(const world::World& world, const ui::Placed& placed,
                            const ui::TextEditView& view) {
     const auto& edit = world.ecs().get<world::TextEdit>(placed.entity);
@@ -1768,6 +1768,21 @@ json::Value text_edit_json(const world::World& world, const ui::Placed& placed,
             found.emplace_back(json::Array{line, column});
         }
         out["search_results"] = std::move(found);
+    }
+    // Each gutter drawn, its column's rect on screen, from the first row's top: rows are
+    // line_height high from there.
+    json::Array gutters;
+    for (const ui::TextEditGutterView& gutter : view.gutters) {
+        if (gutter.draw && gutter.width > 0) {
+            gutters.emplace_back(json::Object{
+                {"name", gutter.name},
+                {"rect", screen_rect(placed.transform, {gutter.x, view.rows_top},
+                                     {static_cast<float>(gutter.width), view.rows_height})}});
+        }
+    }
+    if (!gutters.empty()) {
+        out["gutters"] = std::move(gutters);
+        out["line_height"] = view.line_height;
     }
     if (!view.error.empty()) {
         out["font_error"] = view.error;
@@ -1891,10 +1906,10 @@ Reply ui_layout(Session& session, const json::Value& params) {
             item["text_edit"] = text_edit_json(world, placed, edit->second);
         }
         if (const ui::LabelText* label = layout.label(placed.entity); label != nullptr) {
-            item["lines"] = line_texts(label->text, label->source, label->first, label->last,
+            const std::size_t last = std::min(label->last, label->gutters_from);
+            item["lines"] = line_texts(label->text, label->source, label->first, last,
                                        label->trimmed, label->ellipsis);
-            if (json::Value rtl = rtl_lines(label->text, label->first, label->last);
-                !rtl.is_null()) {
+            if (json::Value rtl = rtl_lines(label->text, label->first, last); !rtl.is_null()) {
                 item["rtl"] = std::move(rtl);
             }
             if (label->overflow) {
@@ -3196,7 +3211,8 @@ std::vector<std::string> map_keys(const std::vector<std::string>& names) {
 // ellipsis, as far as visible_characters lets them show.
 std::string shown_text(const ui::LabelText& label) {
     std::string out;
-    for (std::size_t l = label.first; l < label.last && l < label.text.lines.size(); ++l) {
+    const std::size_t last = std::min(label.last, label.gutters_from);
+    for (std::size_t l = label.first; l < last && l < label.text.lines.size(); ++l) {
         const text::Line& line = label.text.lines[l];
         const std::size_t start = line.start;
         const std::size_t end =

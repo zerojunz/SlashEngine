@@ -4,6 +4,7 @@
 #include "slash/text/text.hpp"
 #include "slash/ui/ui.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -164,6 +165,12 @@ public:
     std::pair<int, int> insert(int line, int column, std::u32string_view inserted);
     // Replaces the lines, as Text::clear and insert do.
     void set_lines(std::vector<std::u32string> lines);
+    // Where the lines are since mark_lines: for each line then, its line now, or -1 if it was
+    // removed. Lines keep what their gutters show as Godot's Text::Line does: an insertion
+    // keeps it on its first line (on the second for one new line at a line's start), and a
+    // removal on the line it starts in.
+    void mark_lines();
+    [[nodiscard]] std::vector<int> moved_lines() const;
     // _base_remove_text and _base_get_text.
     void remove(int from_line, int from_column, int to_line, int to_column);
     [[nodiscard]] std::u32string get(int from_line, int from_column, int to_line,
@@ -230,6 +237,22 @@ public:
     // selection when maximize_selection) shows.
     void adjust_viewport_to_caret(const TextEditState& state, bool maximize_selection = false);
 
+    // ---- Gutters ----
+
+    // A gutter's width (TextEditView::gutters), a CodeEdit's worked out as Godot's: the main
+    // gutter is a line high (half as wide with only bookmarks), the line numbers' as wide as
+    // their digits and one more '0'.
+    [[nodiscard]] int gutter_width(std::size_t gutter) const;
+    // Godot's get_total_gutter_width: the drawn gutters' widths, and 2 between them and the text.
+    [[nodiscard]] int gutters_room() const { return gutters_width_ + gutter_padding_; }
+    // Where the text starts: the style's left margin, then the gutters (mirrored when right to
+    // left).
+    [[nodiscard]] int text_start() const;
+    // _get_hovered_gutter: the [gutter, line] a point (mirrored) is over, or [-1, -1].
+    [[nodiscard]] std::pair<int, int> gutter_at(Vec2 point) const;
+    // The digits the line numbers have room for: the line count's, at least min_digits.
+    [[nodiscard]] int line_number_digits() const;
+
     // ---- Positions ----
 
     // get_line_column_at_pos: the [column, line] a point in its rect falls on (already
@@ -252,10 +275,18 @@ public:
         LabelText text;
         std::vector<Box> over; // carets, the composition's underline, the scroll bars
     };
-    // NOTIFICATION_DRAW, and what it shows for ui.layout; its text in a CodeHighlighter's colors
-    // when it has one.
+    // What draws besides the TextEdit: a CodeHighlighter colors its text and a CodeEdit's lines
+    // show in its gutters; a breakpoint, or with Shift a bookmark, shows dimmed where the
+    // pointer is over the main gutter.
+    struct Extras {
+        const world::CodeHighlighter* highlighter = nullptr;
+        const world::CodeEdit* code = nullptr;
+        bool hovered = false; // the pointer is over it, at the state's mouse
+        bool shift = false;   // Shift is held
+    };
+    // NOTIFICATION_DRAW, and what it shows for ui.layout.
     void draw(const world::TextEdit& edit, const TextEditState& state, bool focused,
-              const world::CodeHighlighter* highlighter, Draw& out, TextEditView& view) const;
+              const Extras& extras, Draw& out, TextEditView& view) const;
 
     // Where one of its scroll bars is in its rect and its range, which starts at 0 and has no
     // step, as Godot's ScrollBar; the layout draws it and the gui system drags it.
@@ -289,6 +320,22 @@ private:
     [[nodiscard]] const LineData& placeholder_data() const;
     void shape(LineData& data, std::u32string_view source, bool placeholder) const;
     void invalidate(int line);
+    // _update_gutter_width.
+    void update_gutter_width();
+    // CodeEdit::_draw_guidelines and the gutters of a line's first row (NOTIFICATION_DRAW).
+    void draw_guidelines(const world::CodeEdit& code, const CodeEditView& look,
+                         std::vector<Box>& out) const;
+    struct GutterText {
+        std::string utf8;
+        text::TextLayout layout;
+        Vec2 pen; // the top left of its first line
+        Vec4 color;
+    };
+    // A gutter's text laid out in the font, as a TextLine, or nullopt.
+    [[nodiscard]] std::optional<GutterText> gutter_text(std::string utf8, Vec4 color) const;
+    void draw_gutters(const world::TextEdit& edit, const TextEditState& state, const Extras& extras,
+                      int line, int ofs_y, int row_height, Draw& out,
+                      std::vector<GutterText>& texts) const;
     void update_scrollbars();
     void scroll_moved();
     // _update_wrap_at_column: whether the width lines wrap at changed.
@@ -317,6 +364,11 @@ private:
     float font_height_ = 0.0F;
     float space_width_ = 0.0F; // the advance of ' '
     float m_width_ = 0.0F;     // and of 'm', for a block caret at the end of a line
+    float zero_width_ = 0.0F;  // and of '0', for line numbers and guidelines
+    int gutters_width_ = 0;
+    int gutter_padding_ = 0;
+    std::vector<int> origins_; // each line's line at mark_lines, or -1 for one added since
+    int marked_ = 0;           // the lines there were then
     float wrap_at_ = 0.0F;
     std::vector<std::u32string> lines_;
     std::vector<std::u32string> ime_; // each line's text with the composition, or empty
@@ -342,11 +394,14 @@ private:
 
 // ---- Editing (text_editor.cpp) ----
 
-// A signal a TextEdit emitted at once: "text_set" or "lines_edited_from" (with its lines).
+// A signal a TextEdit emitted at once: "text_set", "lines_edited_from" (with its lines),
+// "gutter_clicked" (with the line and the gutter's name) or "breakpoint_toggled" (with the line).
 struct TextEditSignal {
     std::string kind;
     int from_line = 0;
     int to_line = 0;
+    int line = 0;
+    std::string gutter;
 };
 
 // What editing a TextEdit needs from the gui system.
@@ -358,6 +413,7 @@ struct TextEditContext {
     bool dragging = false; // a drag with data is going on (Godot's drag_action)
     bool can_drop = false; // and the TextEdit would take it at the event's point
     std::vector<TextEditSignal>* signals = nullptr;
+    world::CodeEdit* code = nullptr; // the CodeEdit on its entity, whose lines move with edits
 };
 
 // Each call first brings the state up to the component: text changed from outside (a command

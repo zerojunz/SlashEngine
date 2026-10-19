@@ -1440,7 +1440,9 @@ struct Builder {
             start_line_edit(node, *edit, resolver("LineEdit"));
         }
         if (const auto* edit = ecs.try_get<world::TextEdit>(entity); edit != nullptr) {
-            start_text_edit(node, *edit, resolver("TextEdit"));
+            start_text_edit(
+                node, *edit,
+                resolver(ecs.all_of<world::CodeEdit>(entity) ? "CodeEdit" : "TextEdit"));
         }
         if (const auto* texture = ecs.try_get<world::TextureButton>(entity); texture != nullptr) {
             node.texture_button = texture;
@@ -1814,6 +1816,7 @@ struct Builder {
         view->h_bar_minimum = bar_minimum(bars->at(0));
         view->v_bar_minimum = bar_minimum(bars->at(1));
         view->rtl = node.rtl;
+        start_gutters(node, edit, theme, *view);
         node.text_edit = &edit;
         node.text_view = std::move(view);
         node.text_bars = std::move(bars);
@@ -1823,6 +1826,67 @@ struct Builder {
         node.text_state = text_edit_state(world, node.entity);
         if (edit.scroll_fit_content_height && edit.wrap_mode == "boundary") {
             node.depends = Depends::Width;
+        }
+    }
+
+    // A TextEdit's gutters: a CodeEdit's main gutter and line numbers, as CodeEdit's
+    // constructor adds them, then its own, with the icons they show.
+    void start_gutters(const Node& node, const world::TextEdit& edit, const Resolver& theme,
+                       TextEditView& view) {
+        using GutterKind = TextEditGutterView::Kind;
+        const auto icon_size = [&](const std::string& path, const std::string& at) {
+            std::string error;
+            if (const auto size = texture_size(path, &error); size) {
+                view.icon_sizes.emplace(path, *size);
+            } else if (!error.empty() && !at.empty()) {
+                problem(node.entity, at, error);
+            }
+        };
+        if (const auto* code = world.ecs().try_get<world::CodeEdit>(node.entity); code != nullptr) {
+            CodeEditView& look = view.code.emplace();
+            look.breakpoint_icon = theme.icon("breakpoint");
+            look.bookmark_icon = theme.icon("bookmark");
+            look.executing_line_icon = theme.icon("executing_line");
+            look.breakpoint_color = theme.color("breakpoint_color");
+            look.bookmark_color = theme.color("bookmark_color");
+            look.executing_line_color = theme.color("executing_line_color");
+            look.line_number_color = theme.color("line_number_color");
+            look.line_length_guideline_color = theme.color("line_length_guideline_color");
+            look.draw_breakpoints = code->gutters_draw_breakpoints_gutter;
+            look.draw_bookmarks = code->gutters_draw_bookmarks;
+            look.draw_executing_lines = code->gutters_draw_executing_lines;
+            look.zero_pad_line_numbers = code->gutters_zero_pad_line_numbers;
+            look.line_numbers_min_digits = std::clamp(code->gutters_line_numbers_min_digits, 1, 5);
+            for (const std::string* icon :
+                 {&look.breakpoint_icon, &look.bookmark_icon, &look.executing_line_icon}) {
+                icon_size(*icon, "");
+            }
+            view.gutters.push_back({.name = "main_gutter",
+                                    .kind = GutterKind::Main,
+                                    .draw = look.draw_breakpoints || look.draw_bookmarks ||
+                                            look.draw_executing_lines});
+            view.gutters.push_back({.name = "line_numbers",
+                                    .kind = GutterKind::LineNumbers,
+                                    .draw = code->gutters_draw_line_numbers});
+        }
+        for (std::size_t i = 0; i < edit.gutters.size(); ++i) {
+            const world::TextEditGutter& gutter = edit.gutters[i];
+            const bool icons = gutter.type == "icon";
+            view.gutters.push_back({.name = gutter.name,
+                                    .kind = icons ? GutterKind::Icon : GutterKind::String,
+                                    .draw = gutter.draw,
+                                    .width = gutter.width});
+            if (!icons) {
+                continue;
+            }
+            for (std::size_t j = 0; j < gutter.lines.size(); ++j) {
+                if (!gutter.lines[j].icon.empty() &&
+                    !view.icon_sizes.contains(gutter.lines[j].icon)) {
+                    icon_size(gutter.lines[j].icon, "/components/TextEdit/gutters/" +
+                                                        std::to_string(i) + "/lines/" +
+                                                        std::to_string(j) + "/icon");
+                }
+            }
         }
     }
 
@@ -3123,7 +3187,11 @@ struct Builder {
         const TextEditState& shown = shown_state(edit, node.text_state, area, fallback);
         TextArea::Draw draw;
         TextEditView view = *node.text_view;
-        area.draw(edit, shown, has_focus(world, node.entity), node.highlighter, draw, view);
+        const TextArea::Extras extras{.highlighter = node.highlighter,
+                                      .code = world.ecs().try_get<world::CodeEdit>(node.entity),
+                                      .hovered = hovered(world) == node.entity,
+                                      .shift = input::is_key_pressed(world, input::Key::Shift)};
+        area.draw(edit, shown, has_focus(world, node.entity), extras, draw, view);
         view.error = area.error();
         // Its scroll bars over the rest, as children of its own.
         for (const bool vertical : {true, false}) {
@@ -3781,8 +3849,13 @@ struct Builder {
         if (node == nodes.end()) {
             return;
         }
-        const bool field = world.ecs().all_of<world::LineEdit>(going.from);
-        const Resolver source(node->themes, *node->control, field ? "LineEdit" : "TextEdit");
+        std::string_view type = "TextEdit";
+        if (world.ecs().all_of<world::LineEdit>(going.from)) {
+            type = "LineEdit";
+        } else if (world.ecs().all_of<world::CodeEdit>(going.from)) {
+            type = "CodeEdit";
+        }
+        const Resolver source(node->themes, *node->control, type);
         world::Label label;
         label.text = going.preview_text;
         LabelWork work =

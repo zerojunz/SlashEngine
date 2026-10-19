@@ -180,6 +180,8 @@ struct LabelText {
     std::string ellipsis;  // what they end with: "" unless text_overrun_behavior adds one
     std::size_t first = 0; // the lines shown: [first, last)
     std::size_t last = 0;
+    // Lines from here on show a TextEdit's gutters (its line numbers): drawn, but not its text.
+    std::size_t gutters_from = static_cast<std::size_t>(-1);
     std::vector<Vec2> pens;     // where each shown line starts, on its baseline, in the rect
     std::vector<float> stretch; // extra pixels after each space of a shown line, for fill
     // Glyphs of the source's bytes from here on are hidden (visible_characters after shaping).
@@ -327,6 +329,35 @@ struct LineEditView {
     float caret_x = 0.0F;
 };
 
+// One of a TextEdit's gutters as laid out, as Godot's TextEdit::GutterInfo: a CodeEdit's
+// main_gutter (breakpoints, bookmarks and executing lines) and line_numbers come first, then the
+// TextEdit's own gutters.
+struct TextEditGutterView {
+    enum class Kind : std::uint8_t { Main, LineNumbers, String, Icon };
+    std::string name;
+    Kind kind = Kind::String;
+    bool draw = true;
+    int width = 0;  // a CodeEdit's are worked out from the font and the lines when drawn
+    float x = 0.0F; // where it was drawn in the rect, from the left
+};
+
+// What a CodeEdit's gutters and guidelines draw with: its theme items (type CodeEdit).
+struct CodeEditView {
+    std::string breakpoint_icon;
+    std::string bookmark_icon;
+    std::string executing_line_icon;
+    Vec4 breakpoint_color;
+    Vec4 bookmark_color;
+    Vec4 executing_line_color;
+    Vec4 line_number_color;
+    Vec4 line_length_guideline_color;
+    bool draw_breakpoints = false;
+    bool draw_bookmarks = false;
+    bool draw_executing_lines = false;
+    bool zero_pad_line_numbers = false;
+    int line_numbers_min_digits = 3;
+};
+
 // A TextEdit as laid out: its theme items and what it shows. Lines and columns count from 0,
 // columns in characters (code points); rows are lines as wrapped.
 struct TextEditView {
@@ -356,7 +387,10 @@ struct TextEditView {
     // a bar takes across.
     Vec2 v_bar_minimum;
     Vec2 h_bar_minimum;
-    bool rtl = false;  // laid out right to left
+    std::vector<TextEditGutterView> gutters;
+    std::optional<CodeEditView> code;                    // with a CodeEdit
+    std::map<std::string, Vec2, std::less<>> icon_sizes; // the gutters' icons that load
+    bool rtl = false;                                    // laid out right to left
     std::string error; // why its font didn't load, so the default font drew it
     // What it shows: the first and last lines with a row in view, the rows in all, how far it
     // is scrolled, its scroll bars (visible when they show), and where the caret draws in its
@@ -369,7 +403,10 @@ struct TextEditView {
     ScrollBarView v_bar;
     ScrollBarView h_bar;
     std::vector<std::array<int, 2>> search_results; // where search_text shows, [line, column]
-    Vec2 caret_position; // on the caret's row's baseline, plus its descent
+    int line_height = 0;                            // each row's height
+    float rows_top = 0.0F;    // where the first row starts, below the style's top margin
+    float rows_height = 0.0F; // from there down to the style's bottom margin
+    Vec2 caret_position;      // on the caret's row's baseline, plus its descent
     bool caret_visible = false;
     float font_height = 0.0F; // the font's height, for the input method's area
     // The caret and the selection it shows, and what an input method is composing.
@@ -627,6 +664,8 @@ struct UiEvent {
     std::string text;  // for a LineEdit's text_changed, text_submitted and text_change_rejected
     int from_line = 0; // for lines_edited_from
     int to_line = 0;
+    int line = 0;               // for gutter_clicked and breakpoint_toggled
+    std::string gutter;         // the gutter's name, for gutter_clicked
     double value = 0.0;         // for value_changed
     bool value_changed = false; // for drag_ended: the drag changed the value
     int index = -1;             // the item, for item_selected, item_focused and *_pressed
