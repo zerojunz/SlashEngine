@@ -442,19 +442,20 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
 - [ ] SDK packages, so a game adds a closed vendor SDK (an ad network, DLSS, Steamworks, a store
       or analytics service) without touching the engine, as Godot's Android and iOS plugins and
       Unity's External Dependency Manager do. Nothing from the SDKs enters this repository
-  - [ ] An `sdk.json` file per SDK (`$cli schema sdk`): for each platform the static or dynamic
-        libraries, Apple frameworks, Android `.aar` files or Maven packages, the files shipped
+  - [x] An `sdk.json` file per SDK (`$cli schema sdk`): for each platform the static or dynamic
+        libraries, Apple frameworks and xcframeworks, Java `.jar` files, the files shipped
         beside the game, and the Info.plist, entitlement and Android manifest entries it needs.
         Binaries come from the vendor's URL pinned by SHA-256, or from a path the developer
         gives; API keys are named environment variables, as signing secrets are
-  - [ ] Exports fetch, check and link each preset's SDKs on all six platforms, resolving Maven
-        dependencies without Gradle and Apple frameworks without CocoaPods, and list the closed
-        SDKs each build includes so their licenses stay visible
+  - [x] Exports fetch, check and link each preset's SDKs on all six platforms, Apple frameworks
+        without CocoaPods, and list the SDKs each build includes, shipping their license files
+        with the game so they stay visible
+  - [ ] Android `.aar` files and Maven packages, their dependencies resolved without Gradle
   - [ ] Engine interfaces that SDK glue code implements (ads, analytics, purchases and
         `render::Upscaler` first, achievements and sign-in later), bridges for calling Java and
         Objective-C from C++, and a test backend for each interface, so headless runs and CI
         need no vendor binary
-  - [ ] `sdk.add` (from a folder, a git repository or a URL) and `sdk.check` (missing files,
+  - [x] `sdk.add` (from a folder, a git repository or a URL) and `sdk.check` (missing files,
         keys and platforms), with an example SDK package built in CI from a stand-in library
 - [ ] Imported scripts as C++ skeletons: `project.import` writes a component for each script's
       exported variables, events for its signals and a system with its functions for the agent
@@ -718,7 +719,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Accessibility | AccessKit | 8 | Planned |
 | Storyboard | Style, world, story, design rules and decisions as typed project files that agents query and checks enforce | 5, 6 | In progress: files, commands and checks, palette and texture budget checks included, are done; model review and the project map in 6; triangle budgets with meshes in 7 |
 | Analytics, ads and in-app purchases | One API for analytics, ads and purchases; StoreKit, Play Billing and a developer-chosen analytics endpoint in the repo, ad networks as outside adapters | 8 | Planned |
-| Closed vendor SDKs | SDK packages: an `sdk.json` per SDK that exports fetch, check and link on all six platforms, with JNI and Objective-C bridges and engine interfaces for the glue | 6 | Planned |
+| Closed vendor SDKs | SDK packages: an `sdk.json` per SDK that exports fetch, check and link on all six platforms, with JNI and Objective-C bridges and engine interfaces for the glue | 6 | In progress: packages, exports, `sdk.add` and `sdk.check` |
 | One-command export | `slash-cli export` to macOS, Windows, Linux, iOS, Android and web | 4 | In progress: every platform exports (4a, 4b); building them all from one Mac is next |
 | Large worlds | Double-precision transforms, world streaming | After launch | After launch |
 | Cinematics | Timeline tracks for cameras and events | After launch | After launch |

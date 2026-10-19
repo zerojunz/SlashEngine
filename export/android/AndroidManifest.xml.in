@@ -10,6 +10,7 @@
     <uses-feature android:name="android.hardware.type.pc" android:required="false" />
     <uses-permission android:name="android.permission.VIBRATE" />
     @SLASH_ANDROID_PERMISSIONS@
+    @SLASH_SDK_ANDROID_MANIFEST@
     <application
         android:label="@SLASH_ANDROID_LABEL@"
         android:allowBackup="true"
@@ -31,5 +32,6 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        @SLASH_SDK_ANDROID_APPLICATION@
     </application>
 </manifest>

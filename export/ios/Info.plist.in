@@ -51,6 +51,7 @@
     <key>MinimumOSVersion</key>
     <string>${CMAKE_OSX_DEPLOYMENT_TARGET}</string>
     ${SLASH_MICROPHONE_PLIST}
+    ${SLASH_SDK_PLIST}
     <key>UIApplicationSupportsIndirectInputEvents</key>
     <true/>
     <key>UIDeviceFamily</key>

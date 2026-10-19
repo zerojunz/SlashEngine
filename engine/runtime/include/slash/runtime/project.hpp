@@ -27,8 +27,8 @@
 // ("major.minor.patch"), "window" ({"width", "height", "vsync_mode"}), "tick_hz", "max_fps",
 // "rendering" ({"clear_color", "driver", "texture_filter", "interpolation"}), "physics_2d",
 // "gui" ({"theme"}), "input" (actions by name), "input_devices" ({"pointing"}), "audio"
-// ({"bus_layout", "mix_rate", "output_latency", "panning_strength_2d"}) and "gameplay"
-// ({"sources"}, the game's own C++ code).
+// ({"bus_layout", "mix_rate", "output_latency", "panning_strength_2d"}), "gameplay"
+// ({"sources"}, the game's own C++ code) and "sdks" (folders of SDK packages).
 namespace slash::runtime {
 
 inline constexpr std::string_view kProjectFile = "project.json";
@@ -76,6 +76,8 @@ struct Project {
     // Folders and .cpp files of the game's own C++ code (slash/world/game_module.hpp); empty if
     // it has none.
     std::vector<std::string> gameplay_sources;
+    // Folders of SDK packages (tools/exporter's slash/exporter/sdk.hpp), which exports link.
+    std::vector<std::string> sdks;
 
     // The identifier to use: id, or the default derived from the name.
     [[nodiscard]] std::string bundle_id() const;

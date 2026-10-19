@@ -1,0 +1,13 @@
+{
+  "format": 1,
+  "gameplay": {
+    "sources": [
+      "src"
+    ]
+  },
+  "main_scene": "scenes/main.scene.json",
+  "name": "SDK Package",
+  "sdks": [
+    "sdks/hello"
+  ]
+}

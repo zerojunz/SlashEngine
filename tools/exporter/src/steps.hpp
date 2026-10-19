@@ -44,6 +44,12 @@ struct Failure {
 bool step(const std::string& name, const std::vector<std::string>& args,
           const platform::ProcessOptions& process, Failure& failure);
 
+// Signs each library and framework in a bundle's Frameworks folder with args (codesign and its
+// options) followed by its path, as Apple wants nested code signed before the bundle around it.
+// Does nothing if there is no such folder.
+bool sign_nested(const std::filesystem::path& frameworks, const std::vector<std::string>& args,
+                 const platform::ProcessOptions& process, Failure& failure);
+
 // The finished game's summary line in the output of `<game> --headless --ticks n`.
 [[nodiscard]] std::optional<json::Value> find_summary(const std::string& output);
 

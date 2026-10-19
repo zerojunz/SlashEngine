@@ -341,6 +341,10 @@ json::Value presets_schema() {
     platform["enum"] = std::move(platforms);
     json::Value debug = property("boolean", "Debug build instead of Release.");
     debug["default"] = false;
+    json::Value sdks = property("array", "The SDK packages this preset links, by name. Default: "
+                                         "every package in project.json's \"sdks\" with a "
+                                         "section for the platform.");
+    sdks["items"]["type"] = "string";
 
     json::Value preset = object_schema(
         {
@@ -348,6 +352,7 @@ json::Value presets_schema() {
             {"output", property("string", "Output folder relative to the project. Default: "
                                           "build/export/<preset name>.")},
             {"debug", std::move(debug)},
+            {"sdks", std::move(sdks)},
             {"macos", std::move(macos)},
             {"windows", std::move(windows)},
             {"linux", std::move(linux_section)},
@@ -415,6 +420,12 @@ Result<Presets> parse_presets(const json::Value& presets) {
         }
         if (const json::Value* debug = value.find("debug"); debug != nullptr) {
             preset.debug = debug->as_bool();
+        }
+        if (const json::Value* sdks = value.find("sdks"); sdks != nullptr) {
+            preset.sdks.emplace();
+            for (const json::Value& sdk : sdks->as_array()) {
+                preset.sdks->push_back(sdk.as_string());
+            }
         }
         if (const json::Value* macos = value.find("macos"); macos != nullptr) {
             if (const json::Value* identity = macos->find("codesign_identity");
