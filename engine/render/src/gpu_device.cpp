@@ -4,6 +4,7 @@
 #include "hlsl_compiler.hpp"
 #include "material_shaders.hpp"
 #include "sprite_shaders.hpp"
+#include "uniforms.hpp"
 
 #include "slash/core/log.hpp"
 
@@ -35,78 +36,6 @@ constexpr SDL_GPUShaderFormat kHlslFormats = 0;
 #endif
 // The vertex buffer's first size: 3,276 vertices.
 constexpr std::uint32_t kMinVertexBytes = 64 * 1024;
-
-// The material shader's fragment uniforms, laid out as its Program cbuffer.
-struct ProgramUniforms {
-    std::array<Instruction, kMaxInstructions> code{};
-    std::array<std::array<float, 4>, kMaxConstants> constants{};
-    std::array<float, 4> texel{};
-    std::array<std::uint32_t, 4> counts{};
-    std::array<std::int32_t, 4> shading{};
-    std::array<float, 4> specular{};
-    std::array<float, 4> field{};
-    std::array<std::int32_t, 4> layer{};
-    std::array<float, 4> ambient{};
-    std::array<float, 4> to_lights_x{};
-    std::array<float, 4> to_lights_y{};
-};
-static_assert(sizeof(ProgramUniforms) == 1680);
-
-// One light, laid out as the material shader's Light struct.
-struct LightUniform {
-    std::array<float, 4> color{};
-    std::array<float, 4> position{};
-    std::array<float, 4> texture_u{};
-    std::array<float, 4> texture_v{};
-    std::array<float, 4> atlas{};
-    std::array<float, 4> shadow{};
-    std::array<float, 4> shadow_origin{};
-    std::array<float, 4> shadow_color{};
-    std::array<std::uint32_t, 4> flags{};
-    std::array<std::int32_t, 4> range{};
-};
-static_assert(sizeof(LightUniform) == 160);
-
-// The material shader's Lights cbuffer.
-struct LightsUniforms {
-    std::array<std::uint32_t, 4> count{};
-    std::array<LightUniform, kMaxLights> lights{};
-};
-static_assert(sizeof(LightsUniforms) == 16 + (160 * kMaxLights));
-
-// The material shader's samplers: the draw's texture, the material's three, the draw's normal and
-// specular maps, then the frame's light atlas and shadow map.
-constexpr std::size_t kMaterialSamplers = kMaterialTextureSlots + 4;
-
-LightsUniforms lights_uniforms(const Lighting& lighting) {
-    LightsUniforms out;
-    const std::size_t count = std::min(lighting.lights.size(), kMaxLights);
-    out.count.at(0) = static_cast<std::uint32_t>(count);
-    for (std::size_t i = 0; i < count; ++i) {
-        const Light& light = lighting.lights[i];
-        LightUniform& u = out.lights.at(i);
-        const bool point = light.kind == LightKind::Point;
-        const auto& m = light.texture_transform;
-        u.color = light.color;
-        u.position = {light.position[0], light.position[1], light.height, point ? 0.0F : 1.0F};
-        u.texture_u = {m[0], m[1], m[2], 0.0F};
-        u.texture_v = {m[3], m[4], m[5], 0.0F};
-        u.atlas = light.atlas_rect;
-        u.shadow = {static_cast<float>(light.shadow_row), light.shadow_far,
-                    1.0F + light.shadow_smooth, light.shadow_reach};
-        u.shadow_origin = {light.shadow_origin[0], light.shadow_origin[1], light.shadow_span, 0.0F};
-        u.shadow_color = light.shadow_color;
-        std::uint32_t taps = 0;
-        if (light.shadow_filter == ShadowFilter::Pcf5) {
-            taps = 2;
-        } else if (light.shadow_filter == ShadowFilter::Pcf13) {
-            taps = 6;
-        }
-        u.flags = {static_cast<std::uint32_t>(light.blend), taps, light.item_cull_mask, 0};
-        u.range = {light.z_min, light.z_max, light.layer_min, light.layer_max};
-    }
-    return out;
-}
 
 // The two shaders: plain sprites, and materials that run a program.
 enum class ShaderKind : std::uint8_t { Sprite, Material };
@@ -176,23 +105,6 @@ SDL_GPUColorTargetBlendState blend_state(BlendMode mode) {
 
 Error sdl_error(std::string_view what) {
     return make_error(ErrorCode::PlatformFailure, std::string(what) + ": " + SDL_GetError());
-}
-
-// SDL's GPU API needs the video subsystem even with no window. A machine with no display
-// can't start the usual video driver, so the offscreen one stands in.
-Result<void> init_video() {
-    if (SDL_InitSubSystem(SDL_INIT_VIDEO)) {
-        return {};
-    }
-    const std::string first_error = SDL_GetError();
-    SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "offscreen");
-    const bool started = SDL_InitSubSystem(SDL_INIT_VIDEO);
-    SDL_ResetHint(SDL_HINT_VIDEO_DRIVER);
-    if (!started) {
-        return make_error(ErrorCode::PlatformFailure,
-                          "SDL's video subsystem didn't start: " + first_error);
-    }
-    return {};
 }
 
 Backend backend_of(SDL_GPUDevice* device) {
@@ -480,11 +392,8 @@ public:
         const auto count = static_cast<std::uint32_t>(vertices.size());
         if (batches_.empty() || batches_.back().texture != texture ||
             batches_.back().material != material) {
-            const ShaderKind kind = material.program.code.empty() &&
-                                            material.shading.mode == LightMode::Unshaded &&
-                                            material.field.pixel_range == 0.0F
-                                        ? ShaderKind::Sprite
-                                        : ShaderKind::Material;
+            const ShaderKind kind =
+                uses_material_shader(material) ? ShaderKind::Material : ShaderKind::Sprite;
             auto pipeline = pipeline_for(frame_format_, kind, material.blend);
             if (!pipeline) {
                 return pipeline.error();
@@ -722,25 +631,7 @@ private:
     }
 
     static void push_program(SDL_GPUCommandBuffer* commands, const Batch& batch) {
-        ProgramUniforms uniforms;
-        std::ranges::copy(batch.material.program.code, uniforms.code.begin());
-        std::ranges::copy(batch.material.program.constants, uniforms.constants.begin());
-        uniforms.texel = batch.texel;
-        uniforms.counts.at(0) = static_cast<std::uint32_t>(batch.material.program.code.size());
-        const Shading& shading = batch.material.shading;
-        uniforms.shading = {static_cast<std::int32_t>(shading.mode),
-                            static_cast<std::int32_t>(shading.light_mask), shading.z_index,
-                            (shading.normal_map != TextureId::None ? 1 : 0) |
-                                (shading.specular_map != TextureId::None ? 2 : 0)};
-        uniforms.specular = shading.specular;
-        uniforms.field = {batch.material.field.pixel_range, batch.material.field.outline, 0.0F,
-                          0.0F};
-        uniforms.layer = {shading.layer, 0, 0, 0};
-        uniforms.ambient = shading.ambient;
-        const std::array<float, 6> to_lights =
-            shading.to_lights.value_or(std::array{1.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F});
-        uniforms.to_lights_x = {to_lights[0], to_lights[1], to_lights[2], 0.0F};
-        uniforms.to_lights_y = {to_lights[3], to_lights[4], to_lights[5], 0.0F};
+        const ProgramUniforms uniforms = program_uniforms(batch.material, batch.texel);
         SDL_PushGPUFragmentUniformData(commands, 0, &uniforms,
                                        static_cast<std::uint32_t>(sizeof(uniforms)));
     }
@@ -1047,6 +938,21 @@ private:
 };
 
 } // namespace
+
+Result<void> init_video() {
+    if (SDL_InitSubSystem(SDL_INIT_VIDEO)) {
+        return {};
+    }
+    const std::string first_error = SDL_GetError();
+    SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "offscreen");
+    const bool started = SDL_InitSubSystem(SDL_INIT_VIDEO);
+    SDL_ResetHint(SDL_HINT_VIDEO_DRIVER);
+    if (!started) {
+        return make_error(ErrorCode::PlatformFailure,
+                          "SDL's video subsystem didn't start: " + first_error);
+    }
+    return {};
+}
 
 Result<std::unique_ptr<RenderDevice>> create_gpu_device(const DeviceOptions& options) {
     const bool owns_video = options.window == nullptr;

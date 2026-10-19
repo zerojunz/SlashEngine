@@ -41,6 +41,7 @@
 #include "slash/world/world.hpp"
 
 #include <algorithm>
+#include <array>
 #include <charconv>
 #include <chrono>
 #include <csignal>
@@ -79,6 +80,7 @@ Usage:
       --hz <rate>                    Fixed tick rate in Hz (default 60)
       --vsync <mode>                 disabled, enabled (default), adaptive or mailbox
       --max-fps <n>                  Frames per second at most; 0 (default) means no cap
+      --driver <name>                auto (default), vulkan, metal, d3d12, opengl or null
       --scene <file>                 Load a .scene.json file before the first tick
       --save <file>                  Save the scene to this file after the last tick
       --record <file>                Record the run to a .replay.json file in the project,
@@ -356,6 +358,7 @@ int cmd_run(const std::vector<std::string>& args) {
     config.title = "SlashEngine";
     slash::platform::RunOptions options;
     slash::render::VsyncMode vsync = slash::render::VsyncMode::Enabled;
+    std::string driver = "auto";
     std::string scene_path;
     std::string save_path;
     std::string record_path;
@@ -394,6 +397,13 @@ int cmd_run(const std::vector<std::string>& args) {
                                    std::to_string(slash::platform::kMaxFps));
             }
             options.max_fps = static_cast<int>(max_fps);
+        } else if (arg == "--driver") {
+            constexpr std::array<std::string_view, 6> kDrivers{"auto",  "vulkan", "metal",
+                                                               "d3d12", "opengl", "null"};
+            if (!has_value || std::ranges::find(kDrivers, args[i + 1]) == kDrivers.end()) {
+                return usage_error("--driver needs auto, vulkan, metal, d3d12, opengl or null");
+            }
+            driver = args[++i];
         } else if (arg == "--scene" || arg == "--save" || arg == "--record") {
             if (!has_value) {
                 return usage_error(arg + " needs a file path");
@@ -461,6 +471,7 @@ int cmd_run(const std::vector<std::string>& args) {
         }
     }
 
+    config.opengl = driver == "opengl";
     auto platform = slash::platform::Platform::create(config);
     if (!platform) {
         return failure("could not start the platform", platform.error());
@@ -502,7 +513,7 @@ int cmd_run(const std::vector<std::string>& args) {
         config.headless
             ? slash::render::create_null_device()
             : slash::render::create_device_or_null(
-                  {.window = platform.value().window(), .driver = "auto", .debug = false});
+                  {.window = platform.value().window(), .driver = driver, .debug = false});
     renderer->set_vsync(vsync);
     bool draw_failed = false;
     auto loop = slash::platform::Loop::create(platform.value(), options);

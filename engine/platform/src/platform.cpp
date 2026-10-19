@@ -31,8 +31,24 @@ Result<Platform> Platform::create(const Config& config) {
 
     SDL_Window* window = nullptr;
     if (!config.headless) {
-        window = SDL_CreateWindow(config.title.c_str(), config.width, config.height,
-                                  SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
+        SDL_WindowFlags window_flags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY;
+#ifdef __EMSCRIPTEN__
+        const bool opengl = true;
+#else
+        const bool opengl = config.opengl;
+#endif
+        if (opengl) {
+            // The OpenGL ES 3.0 context the render device makes, with nothing but color in the
+            // window's buffer. Some platforms pick a window's pixel format when it is made.
+            SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+            SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+            SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+            SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 0);
+            SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 0);
+            SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 0);
+            window_flags |= SDL_WINDOW_OPENGL;
+        }
+        window = SDL_CreateWindow(config.title.c_str(), config.width, config.height, window_flags);
         if (window == nullptr) {
             std::string message = std::string("SDL_CreateWindow failed: ") + SDL_GetError();
             SDL_Quit();

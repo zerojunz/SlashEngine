@@ -72,6 +72,7 @@ Result<std::unique_ptr<Game>> Game::start(const GameOptions& options) {
     config.width = project.value().window_width;
     config.height = project.value().window_height;
     config.headless = options.headless;
+    config.opengl = project.value().rendering_driver == "opengl";
     auto platform = platform::Platform::create(config);
     if (!platform) {
         return platform.error();

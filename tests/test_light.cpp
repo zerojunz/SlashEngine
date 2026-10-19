@@ -1,3 +1,5 @@
+#include "devices.hpp"
+
 #include "slash/platform/platform.hpp"
 #include "slash/platform/process.hpp"
 #include "slash/render/device.hpp"
@@ -30,6 +32,9 @@ using slash::render::ShadePixel;
 using slash::render::ShadowFilter;
 using slash::render::TextureId;
 using slash::render::Vertex2D;
+using slash::test::drawing_devices;
+using slash::test::gl_device;
+using slash::test::gpu_device;
 
 namespace {
 
@@ -67,29 +72,6 @@ bool near(const Float4& a, const Float4& b) {
 std::string text(const Float4& c) {
     return std::to_string(c[0]) + "," + std::to_string(c[1]) + "," + std::to_string(c[2]) + "," +
            std::to_string(c[3]);
-}
-
-std::unique_ptr<RenderDevice> gpu_device() {
-    auto device =
-        slash::render::create_device({.window = nullptr, .driver = "auto", .debug = false});
-    if (!device) {
-        if (!slash::platform::environment_variable("SLASH_EXPECT_GPU").empty()) {
-            FAIL("SLASH_EXPECT_GPU is set, but no GPU device works: " << device.error().message);
-        }
-        MESSAGE("no GPU here, so GPU checks are skipped: " << device.error().message);
-        return nullptr;
-    }
-    return std::move(device).value();
-}
-
-// The devices that draw pixels: the software device, and a GPU device where one works.
-std::vector<std::unique_ptr<RenderDevice>> drawing_devices() {
-    std::vector<std::unique_ptr<RenderDevice>> devices;
-    devices.push_back(slash::render::create_software_device());
-    if (auto gpu = gpu_device(); gpu != nullptr) {
-        devices.push_back(std::move(gpu));
-    }
-    return devices;
 }
 
 // Two triangles covering a rectangle, the texture's u running from u0 to u1.
@@ -305,10 +287,15 @@ TEST_CASE("occluders' depths in the shadow map hide pixels behind them") {
 }
 
 TEST_CASE("every device checks a frame's lights") {
-    for (int kind = 0; kind < 3; ++kind) {
-        auto device = kind == 0   ? slash::render::create_null_device()
-                      : kind == 1 ? slash::render::create_software_device()
-                                  : gpu_device();
+    for (int kind = 0; kind < 4; ++kind) {
+        std::unique_ptr<RenderDevice> device;
+        if (kind == 0) {
+            device = slash::render::create_null_device();
+        } else if (kind == 1) {
+            device = slash::render::create_software_device();
+        } else {
+            device = kind == 2 ? gpu_device() : gl_device();
+        }
         if (device == nullptr) {
             continue;
         }

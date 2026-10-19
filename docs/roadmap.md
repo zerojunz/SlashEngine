@@ -159,8 +159,13 @@ rendering on top.
       compiled ahead of time with glslang and SPIRV-Cross and committed, and Direct3D 12 compiles
       the HLSL at startup with Windows' own compiler. Games clear their window to
       `rendering.clear_color`
-- [ ] A web backend behind `RenderDevice`, since SDL3's GPU API has none: WebGPU, with WebGL2
-      for browsers without it. Web games run with the null device until then
+- [x] A web backend behind `RenderDevice`, since SDL3's GPU API has none: an OpenGL ES 3.0
+      device (the `opengl` driver, Godot's compatibility tier), which is WebGL 2 in browsers and
+      also runs on Android and Linux. The GLSL ES is compiled from the same HLSL and committed,
+      and tests hold it to the software device's pixels on Mesa
+- [ ] WebGPU on the web where browsers have it, with WebGL 2 kept for the rest; desktop OpenGL
+      3.3 for the `opengl` driver on Windows and macOS, and falling back to it where no Vulkan,
+      Metal or Direct3D 12 starts, as Godot's `fallback_to_opengl3`
 - [x] Refresh rates and frame pacing, following Godot's settings: the displays, their modes and
       refresh rates as data (`display.list`); V-Sync modes (disabled, enabled, adaptive,
       mailbox) and a frame cap (`max_fps`, 0 for none) in `project.json`, changeable while the
