@@ -1834,7 +1834,8 @@ private:
 
     static bool is_audio_stream_type(std::string_view type) {
         return type == "AudioStreamRandomizer" || type == "AudioStreamPlaylist" ||
-               type == "AudioStreamSynchronized" || type == "AudioStreamInteractive";
+               type == "AudioStreamSynchronized" || type == "AudioStreamInteractive" ||
+               type == "AudioStreamGenerator" || type == "AudioStreamPolyphonic";
     }
 
     // The path a sound becomes: the file itself, or a .audio.json file beside it with the loop
@@ -1958,9 +1959,9 @@ private:
         return value != nullptr && value->kind == Value::Kind::Bool ? value->boolean : fallback;
     }
 
-    // An AudioStreamRandomizer, AudioStreamPlaylist, AudioStreamSynchronized or
-    // AudioStreamInteractive as a .audio.json file, written once; "" if none of its streams
-    // convert.
+    // An AudioStreamRandomizer, AudioStreamPlaylist, AudioStreamSynchronized,
+    // AudioStreamInteractive, AudioStreamGenerator or AudioStreamPolyphonic as a .audio.json
+    // file, written once; "" if it has streams and none of them convert.
     std::string audio_stream_file(const TextFile& file, const Section& resource,
                                   const std::string& type, const std::string& base) {
         const std::string key = file.path + "#" + base;
@@ -1986,7 +1987,31 @@ private:
         json::Value out;
         out["format"] = 1;
         std::size_t streams = 0;
-        if (type == "AudioStreamInteractive") {
+        if (type == "AudioStreamGenerator") {
+            // Godot's MIX_RATE_OUTPUT, MIX_RATE_INPUT and MIX_RATE_CUSTOM, the default.
+            json::Value generator = json::Object{};
+            if (const std::int64_t mode = integer_of(resource, "mix_rate_mode", 2); mode == 0) {
+                generator["mix_rate_mode"] = "output";
+            } else if (mode == 1) {
+                generator["mix_rate_mode"] = "input";
+            }
+            if (const double rate = number_of(resource, "mix_rate", 44100.0); rate != 44100.0) {
+                generator["mix_rate"] = rate;
+            }
+            if (const double length = number_of(resource, "buffer_length", 0.5); length != 0.5) {
+                generator["buffer_length"] = length;
+            }
+            out["generator"] = std::move(generator);
+            streams = 1; // it needs none
+        } else if (type == "AudioStreamPolyphonic") {
+            json::Value polyphonic = json::Object{};
+            if (const std::int64_t polyphony = integer_of(resource, "polyphony", 32);
+                polyphony != 32) {
+                polyphonic["polyphony"] = polyphony;
+            }
+            out["polyphonic"] = std::move(polyphonic);
+            streams = 1;
+        } else if (type == "AudioStreamInteractive") {
             streams = interactive_music(resource, where, stream, out);
         } else {
             // Godot's randomizer counts "streams_count", the others "stream_count".

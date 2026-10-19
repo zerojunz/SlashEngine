@@ -258,6 +258,8 @@ public:
         return 0.0;
     }
     [[nodiscard]] bool has_loop() const override { return loop_; }
+    // Godot's music streams keep AudioStream's default: play() starts them over.
+    [[nodiscard]] bool is_monophonic() const override { return true; }
 
 private:
     std::vector<std::shared_ptr<const Stream>> streams_;
@@ -450,6 +452,7 @@ public:
     [[nodiscard]] bool has_loop() const override {
         return std::ranges::any_of(streams_, [](const auto& stream) { return stream->has_loop(); });
     }
+    [[nodiscard]] bool is_monophonic() const override { return true; }
 
 private:
     std::vector<std::shared_ptr<const Stream>> streams_;
@@ -923,6 +926,7 @@ public:
     }
     // As Godot's: it plays until it is stopped, or a clip that doesn't go on ends.
     [[nodiscard]] double length() const override { return 0.0; }
+    [[nodiscard]] bool is_monophonic() const override { return true; }
 
 private:
     std::shared_ptr<const Interactive> data_;

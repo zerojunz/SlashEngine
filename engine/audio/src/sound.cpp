@@ -55,6 +55,12 @@ constexpr std::array<std::pair<std::string_view, FadeMode>, 5> kFadeModes{{
     {"automatic", FadeMode::Automatic},
 }};
 
+constexpr std::array<std::pair<std::string_view, MixRateMode>, 3> kMixRateModes{{
+    {"output", MixRateMode::Output},
+    {"input", MixRateMode::Input},
+    {"custom", MixRateMode::Custom},
+}};
+
 constexpr std::string_view kPathMessage =
     R"(expected a path inside the project folder, separated by '/', with no "." or ".." parts)";
 
@@ -302,9 +308,10 @@ json::Value stream_file_schema() {
     schema["title"] = "SlashEngine audio stream";
     schema["description"] =
         "One of: a sound with Godot's import settings (source); Godot's AudioStreamRandomizer, "
-        "one of several sounds each time it plays (streams); or music, as Godot's "
+        "one of several sounds each time it plays (streams); music, as Godot's "
         "AudioStreamPlaylist (playlist), AudioStreamSynchronized (synchronized) and "
-        "AudioStreamInteractive (clips).";
+        "AudioStreamInteractive (clips); or Godot's AudioStreamGenerator (generator) or "
+        "AudioStreamPolyphonic (polyphonic), which a game's code plays frames or streams on.";
     schema["type"] = "object";
     schema["additionalProperties"] = false;
     schema["required"] = json::Array{"format"};
@@ -440,18 +447,44 @@ json::Value stream_file_schema() {
     fields["hold_previous"]["default"] = false;
     fields["hold_previous"]["description"] =
         "Remember the clip it left, for a clip with auto_advance \"return_to_hold\".";
+    json::Value& generator = properties["generator"];
+    generator["type"] = "object";
+    generator["additionalProperties"] = false;
+    generator["description"] =
+        "Plays frames a game's code pushes as it runs, as Godot's AudioStreamGenerator.";
+    generator["properties"]["mix_rate_mode"] =
+        choice("The rate frames are pushed at: the mix rate, the rate microphone input is "
+               "recorded at (the mix rate), or mix_rate.",
+               kMixRateModes, "custom");
+    generator["properties"]["mix_rate"] =
+        number("Frames per second pushed, with mix_rate_mode \"custom\".", 20, 192000, 44100);
+    generator["properties"]["buffer_length"] = number(
+        "Seconds of frames it holds; a game pushes more before they run out.", 0.01, 10, 0.5);
+    json::Value& polyphonic = properties["polyphonic"];
+    polyphonic["type"] = "object";
+    polyphonic["additionalProperties"] = false;
+    polyphonic["description"] = "Plays streams a game starts on one player, each with its own "
+                                "volume and pitch, as Godot's AudioStreamPolyphonic.";
+    json::Value& polyphony = polyphonic["properties"]["polyphony"];
+    polyphony["type"] = "integer";
+    polyphony["minimum"] = 1;
+    polyphony["maximum"] = 128;
+    polyphony["default"] = 32;
+    polyphony["description"] = "Streams that can play at once.";
     return schema;
 }
 
 namespace {
 
 // The kinds of .audio.json file, by the member that makes one.
-constexpr std::array<std::pair<std::string_view, StreamFile::Kind>, 5> kKinds{{
+constexpr std::array<std::pair<std::string_view, StreamFile::Kind>, 7> kKinds{{
     {"source", StreamFile::Kind::Sound},
     {"streams", StreamFile::Kind::Randomizer},
     {"playlist", StreamFile::Kind::Playlist},
     {"synchronized", StreamFile::Kind::Synchronized},
     {"clips", StreamFile::Kind::Interactive},
+    {"generator", StreamFile::Kind::Generator},
+    {"polyphonic", StreamFile::Kind::Polyphonic},
 }};
 
 // Members only some kinds take, and the message for the others.
@@ -582,10 +615,11 @@ std::vector<json::ValidationError> validate_stream_file(const json::Value& doc) 
         errors.push_back(
             {"", found.empty()
                      ? "needs one of \"source\" (a sound with settings), \"streams\" (a "
-                       "randomizer), \"playlist\", \"synchronized\" or \"clips\" (music)"
+                       "randomizer), \"playlist\", \"synchronized\", \"clips\" (music), "
+                       "\"generator\" or \"polyphonic\""
                      : "has both \"" + std::string(found[0]) + "\" and \"" + std::string(found[1]) +
-                           "\"; a file is one sound, randomizer or piece "
-                           "of music"});
+                           "\"; a file is one sound, randomizer, piece of music, generator or "
+                           "polyphonic stream"});
         return errors;
     }
     for (const auto& [key, value] : doc.as_object()) {
@@ -631,6 +665,9 @@ std::vector<json::ValidationError> validate_stream_file(const json::Value& doc) 
                 }
             }
         }
+        return errors;
+    }
+    if (kind == StreamFile::Kind::Generator || kind == StreamFile::Kind::Polyphonic) {
         return errors;
     }
     const std::string member(found[0]);
@@ -714,6 +751,21 @@ Result<StreamFile> parse_stream_file(const json::Value& doc) {
     }
     if (const json::Value* fade = doc.find("fade_time"); fade != nullptr) {
         out.fade_time = static_cast<float>(fade->as_double());
+    }
+    if (const json::Value* generator = doc.find("generator"); generator != nullptr) {
+        out.mix_rate_mode =
+            parse_choice(generator->find("mix_rate_mode"), kMixRateModes, out.mix_rate_mode);
+        if (const json::Value* rate = generator->find("mix_rate"); rate != nullptr) {
+            out.mix_rate = static_cast<float>(rate->as_double());
+        }
+        if (const json::Value* length = generator->find("buffer_length"); length != nullptr) {
+            out.buffer_length = static_cast<float>(length->as_double());
+        }
+    }
+    if (const json::Value* polyphonic = doc.find("polyphonic"); polyphonic != nullptr) {
+        if (const json::Value* polyphony = polyphonic->find("polyphony"); polyphony != nullptr) {
+            out.polyphony = static_cast<int>(polyphony->as_int());
+        }
     }
     if (const json::Value* clips = doc.find("clips"); clips != nullptr) {
         const json::Array& list = clips->as_array();
