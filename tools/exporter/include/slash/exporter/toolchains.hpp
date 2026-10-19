@@ -29,6 +29,14 @@ struct Toolchain {
 // The toolchains this host can install. Empty on Windows, whose exports use MSVC.
 [[nodiscard]] std::vector<Toolchain> host_toolchains();
 
+// AssetRipper, which turns a Unity build back into a Unity project for the Unity importer, for
+// this host, or nullopt where it has no build. It is GPL 3.0, so it only ever runs as a separate
+// program. Installed like a toolchain, but not one of host_toolchains.
+inline constexpr std::string_view kAssetRipper = "assetripper";
+[[nodiscard]] std::optional<Toolchain> assetripper();
+// Its program in its installed folder.
+[[nodiscard]] std::string_view assetripper_program();
+
 // The names of the toolchains an export for platform needs on this host, or none when the
 // host's own compilers build it. arch matters only for Linux.
 [[nodiscard]] std::vector<std::string> toolchains_for(std::string_view platform,

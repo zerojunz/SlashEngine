@@ -2624,18 +2624,21 @@ controller a `.anim.json` file, its audio mixers a `.bus_layout.json` file,
 and its player, time, physics and input settings `project.json`. Textures, sounds and fonts are used
 where they are. Each script, and each Animator controller's state machine, becomes a storyboard task to port
 it to C++. A game exported with Godot 4, its `.pck` file or its executable with the pack inside,
-is first unpacked back into the Godot project it was made from, then converted the same way.
+is first unpacked back into the Godot project it was made from, then converted the same way, and
+so is a game built with Unity, whose project AssetRipper rebuilds
+([Unity builds](unity-import.md#unity-builds)).
 [godot-import.md](godot-import.md) and
 [unity-import.md](unity-import.md) say what converts to what. Registered by `slash-cli` and
 `slash-mcp`.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `source` | string | required | The folder holding the Godot project's `project.godot`, or the Unity project's `Assets/` and `ProjectSettings/`; or a game exported with Godot 4: its `.pck` file or executable |
-| `unpack_to` | string | | For an exported game, a folder of this project to write the Godot project unpacked from it to; the import then uses its assets there. Left out, only the assets come along, under the paths they had in the game |
+| `source` | string | required | The folder holding the Godot project's `project.godot`, or the Unity project's `Assets/` and `ProjectSettings/`; a game exported with Godot 4: its `.pck` file or executable; or a game built with Unity: its folder, executable, `.app`, `.apk` or `.ipa` file or web build |
+| `unpack_to` | string | | For an exported or built game, a folder of this project to write the Godot or Unity project unpacked from it to; the import then uses its assets there. Left out, only the assets come along, under the paths they had in the game |
 | `dry_run` | boolean | `false` | Return the report and the files it would write; write nothing |
 
-Needs: `read`, `filesystem`. It writes files and changes no scene, so there is nothing to undo;
+Needs: `read`, `filesystem`, and `build` for a Unity build, since AssetRipper runs as a program
+of its own; a game served with `slash-cli run --serve` refuses Unity builds. It writes files and changes no scene, so there is nothing to undo;
 importing again rewrites the converted files and keeps each task's status. The result counts
 what converted, lists each script's task, and lists what didn't convert, once per kind with how
 many, the first place it was seen and why. The full report, with the values scripts need, is
@@ -2677,12 +2680,27 @@ own `unsupported`. From [examples/unpack-godot](../../examples/unpack-godot/):
 {"converted":{"animation_libraries":0,"assets":2,"bus_layouts":0,"input_actions":1,"scenes":1,"sprite_frames":0,"themes":0,"tile_sets":0},"engine":"godot","files":12,"main_scene":"godot/main.scene.json","project":"Jumper","report":"import/godot.json","scripts":[{"entities":1,"script":"godot/player.gd","task":"task/port-player"}],"unpacked":{"files":8,"folder":"godot","fonts":0,"pack":{"embedded":false,"files":10,"format":3,"godot":"4.5.0"},"resources":0,"scenes":1,"scripts":1,"scripts_from_tokens":1,"sounds":1,"textures":1,"unsupported":[]},"unsupported":[]}
 ```
 
-With `dry_run`, `files` lists the paths it would write instead of counting them. A missing
-folder fails with `-32001`; a folder that is neither a Godot nor a Unity project, a Godot 3
-project or a project from before Unity 2018.3, and a file that holds no Godot 4 pack, with
-`-32002`; a pack whose file list is encrypted with the game's own key, and a path outside the
-project, with `-32003`; `data.path` is `/source`, or `/unpack_to` for an `unpack_to` outside the
-project.
+For a Unity build, `unpacked` names the build's `platform`, scripting `backend` and `unity`
+version, AssetRipper's version, the folder `unpack_to` wrote, counts of scenes, prefabs, scripts,
+`package_scripts` and files, the `log` of AssetRipper's run and its own `unsupported`. From
+[examples/unpack-unity](../../examples/unpack-unity/):
+
+```json
+{"source": "shipped/Hopper", "unpack_to": "unity"}
+```
+
+```json
+{"converted":{"animation_libraries":0,"assets":1,"bus_layouts":0,"input_actions":0,"prefabs":0,"scenes":1,"tile_sets":0},"engine":"unity","files":17,"main_scene":"unity/Assets/Scenes/Main.scene.json","pixels_per_unit":16.0,"project":"Hopper","report":"import/unity.json","scripts":[{"entities":1,"script":"unity/Assets/Scripts/Assembly-CSharp/Hopper.cs","task":"task/port-hopper"}],"unity_version":"2022.3.20f1","unpacked":{"assetripper":"2.0.0","build":{"backend":"il2cpp","platform":"linux","unity":"2022.3.20f1"},"files":5,"folder":"unity","log":".slash/import/unity/assetripper.log","package_scripts":4,"prefabs":0,"scenes":1,"scripts":1,"unsupported":[{"count":1,"what":"script without its code","where":"Assets/Scripts/Assembly-CSharp/Hopper.cs","why":"the build's code couldn't be read back (IL2CPP builds keep it compiled), so only the script's name and the objects using it came back"}]},"unsupported":[{"count":1,"what":"component EventSystem","where":"Assets/Scenes/Main.unity: EventSystem","why":"not needed: SlashEngine's gui system sends input to controls itself"},{"count":1,"what":"component StandaloneInputModule","where":"Assets/Scenes/Main.unity: EventSystem","why":"not needed: SlashEngine's gui system sends input to controls itself"}]}
+```
+
+With `dry_run`, `files` lists the paths it would write instead of counting them (a Unity build
+is still unpacked into `.slash/import/unity/`). A missing folder fails with `-32001`; a folder
+that is neither a Godot nor a Unity project, a Godot 3 project or a project from before Unity
+2018.3, and a file that holds no Godot 4 pack, with `-32002`; a pack whose file list is encrypted
+with the game's own key, a Unity build with encrypted bundles, a Unity build in a session without
+`build` (`data.capability` is `"build"`) or in a running game, and a path outside the project,
+with `-32003`; AssetRipper failing to start or to rebuild the project, with `-32004` and the end
+of its output. `data.path` is `/source`, or `/unpack_to` for an `unpack_to` outside the project.
 
 ## Export
 

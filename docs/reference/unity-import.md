@@ -12,7 +12,7 @@ A folder imports as a Unity project when it has `Assets/` and
 `ProjectSettings/ProjectVersion.txt`. Projects saved by Unity 2018.3 or later import (prefabs
 were saved another way before); open an older project in a newer Unity and save it there first.
 Unity must have saved the project's assets as text, its default ("Force Text" asset
-serialization).
+serialization). A game built with Unity imports too: see [Unity builds](#unity-builds).
 
 ## What an import writes
 
@@ -90,6 +90,13 @@ and its sounds not playing, and is reported, since entities have no inactive sta
 | `m_Enabled` | `visible` |
 | The texture's filter mode | `texture_filter`, when it differs from the project's (`rendering.texture_filter` is what most textures use) |
 | The texture's `_NormalMap` secondary texture | `normal_texture`, which [2D lights](#2d-lights) shade with |
+
+A sprite saved as an asset of its own (a `.asset` file holding a Sprite, as projects rebuilt
+from builds have them) converts from its own rect, pivot, pixels per unit and physics shape on the
+texture it draws from, which is an atlas's when it was packed into one: `region` is where its
+pixels are, and `offset` moves them by the transparent edges packing trimmed. A sprite turned in
+its atlas doesn't convert, and one packed to its outline converts with a warning, since its
+neighbors may show at its edges.
 
 Unity's sprites don't pass their order, visibility or color to the objects under them, and
 Sprite2D's do, as Godot's do. So an object with children draws its sprite on a child entity of its
@@ -447,6 +454,41 @@ Components from Unity's packages convert where SlashEngine has them and are repo
 doesn't: uGUI and TextMesh Pro components convert under a canvas (see [UI](#ui)) and are
 reported elsewhere, the event system isn't needed (the gui system sends input to controls
 itself), and other package scripts are named in the report.
+
+## Unity builds
+
+A game built with Unity imports from its folder (with `<Game>_Data/`, on Windows and Linux), its
+executable or a file in its data folder, a macOS `.app`, an iOS `.app` or `Payload/`, an Android
+build's `assets/bin/Data`, an `.apk` or `.ipa` file, or a web build's folder (its `Build/*.data`
+file, gzip or brotli compressed or not). [AssetRipper](https://github.com/AssetRipper/AssetRipper)
+rebuilds the Unity project the game was made from, the importer tidies it, then converts it as it
+would a project made in Unity. With `unpack_to` (`--unpack-to`) the rebuilt project is written to
+that folder and the import uses its assets there; without it, only the assets come along. Unpack
+only games you made or have the rights to. [examples/unpack-unity](../../examples/unpack-unity/)
+imports a shipped game.
+
+AssetRipper is GPL 3.0, so it only ever runs as a program of its own: the importer starts its
+headless web server, asks it to load the build and export its project into
+`.slash/import/unity/` (with its log, `assetripper.log`), then stops it. `SLASH_ASSETRIPPER`
+names the program; otherwise the first import installs AssetRipper 2.0.0 as the `assetripper`
+toolchain ([`slash-cli toolchain`](cli.md#toolchain)). Starting a program needs the `build`
+capability, so `project.import` refuses a build in a session that doesn't grant it, and a running
+game refuses it outright, since unpacking takes minutes.
+
+| What the tidying fixes | How |
+| --- | --- |
+| Scripts of Unity's packages (uGUI, TextMesh Pro, the event system, URP's 2D lights), which come back decompiled with GUIDs of AssetRipper's own | References to them take the GUIDs those scripts have in every Unity project, so their components convert, and the stand-ins are dropped |
+| Other scripts from Unity's assemblies (`UnityEngine.*`, `Unity.*`) | Dropped, with their class written into each use's `m_EditorClassIdentifier` as Unity 6 writes it, so the report names them |
+| Sprites saved as assets of their own | Converted from their own rects (see [Sprites](#sprites)), and the project's pixels per unit comes from them, not from the textures, which AssetRipper gives Unity's default of 100 |
+| UI components whose values didn't survive (AssetRipper read them without the build's scripts) | Reported, not converted with Unity's defaults |
+
+The report's `unpacked` names the build's platform, scripting backend (`mono` or `il2cpp`) and
+Unity version, AssetRipper's version, counts of scenes, prefabs, scripts, package scripts and
+files, and its own `unsupported`. A Mono build's scripts come back as decompiled C#; an IL2CPP
+build keeps its code compiled, so each script comes back as a stand-in (reported as "script
+without its code") whose task still lists the objects using it and their values. Sounds a web
+build keeps as AAC (`.audioclip` files) are reported. A build whose asset bundles are encrypted
+(UnityCN) is refused, never decrypted.
 
 ## Not yet converted
 

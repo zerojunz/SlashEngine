@@ -1,9 +1,14 @@
 # Runs one example in a copy of its folder and checks its output exactly; see CMakeLists.txt.
 #
 #   cmake -DEXAMPLE=<folder> -DWORKDIR=<dir> -DCLI=<slash-cli> [-DPROGRAM=<exe>]
-#         -P run_example.cmake
+#         [-DASSETRIPPER=<fake-assetripper>] -P run_example.cmake
 
 set(update "$ENV{SLASH_UPDATE_EXAMPLES}")
+# Unpacking a Unity build runs AssetRipper's stand-in, which exports the example's ripped/ folder.
+if(ASSETRIPPER)
+    set(ENV{SLASH_ASSETRIPPER} "${ASSETRIPPER}")
+    set(ENV{FAKE_ASSETRIPPER_PROJECT} "${WORKDIR}/ripped")
+endif()
 
 # Compares output with an expected file in the example's folder, or rewrites that file.
 function(check what output expected_file)

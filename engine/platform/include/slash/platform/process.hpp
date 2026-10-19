@@ -2,6 +2,7 @@
 
 #include "slash/core/result.hpp"
 
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -35,5 +36,34 @@ struct ProcessResult {
 // Fails only if the program could not be started; a nonzero exit code is a successful result.
 [[nodiscard]] Result<ProcessResult> run_process(const std::vector<std::string>& args,
                                                 const ProcessOptions& options = {});
+
+// A program running beside this one, such as a local server a tool talks to. What it prints is
+// read as it comes, so it never blocks on a full pipe, and appended to the options' log file.
+// Destroying it stops the program.
+class ChildProcess {
+public:
+    struct Impl;
+    explicit ChildProcess(std::unique_ptr<Impl> impl);
+    ~ChildProcess();
+    ChildProcess(const ChildProcess&) = delete;
+    ChildProcess& operator=(const ChildProcess&) = delete;
+    ChildProcess(ChildProcess&&) = delete;
+    ChildProcess& operator=(ChildProcess&&) = delete;
+
+    // Whether it is still running.
+    [[nodiscard]] bool running() const;
+    // What it has printed so far: the first 64 KiB, then its last lines (the options'
+    // tail_lines).
+    [[nodiscard]] std::string output() const;
+    // Kills it if it is still running, waits for it to end and returns its exit code.
+    int stop();
+
+private:
+    std::unique_ptr<Impl> impl_;
+};
+
+// Starts a program and returns at once. args[0] is found as run_process finds it.
+[[nodiscard]] Result<std::unique_ptr<ChildProcess>>
+start_process(const std::vector<std::string>& args, const ProcessOptions& options = {});
 
 } // namespace slash::platform

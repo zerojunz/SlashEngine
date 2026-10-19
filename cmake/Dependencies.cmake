@@ -142,9 +142,10 @@ slash_add_dependency(roboto DOWNLOAD_ONLY TRUE)
 # threads or engine, since SDL plays the sound and the engine mixes it.
 slash_add_dependency(miniaudio DOWNLOAD_ONLY TRUE)
 
-# Reading exported Godot games back into projects (tools/importer): libwebp decodes the WebP images
-# Godot stores imported textures as, and zstd the compressed GDScript tokens and resources. Tools
-# only, decoders only: games never link them. The tests link the tools' libraries too.
+# Reading exported games back into projects (tools/importer): libwebp decodes the WebP images
+# Godot stores imported textures as, zstd the compressed GDScript tokens and resources, and brotli
+# Unity's compressed web builds. Tools only, decoders only: games never link them. The tests link
+# the tools' libraries too.
 if(SLASH_BUILD_TOOLS OR SLASH_BUILD_TESTS)
     slash_add_dependency(libwebp
         SYSTEM TRUE
@@ -171,6 +172,14 @@ if(SLASH_BUILD_TOOLS OR SLASH_BUILD_TESTS)
         target_include_directories(slash_zstd SYSTEM PUBLIC ${zstd_SOURCE_DIR}/lib)
         # The C decoder everywhere, without the x86-64 assembly one, and no multithreading.
         target_compile_definitions(slash_zstd PRIVATE ZSTD_DISABLE_ASM ZSTD_MULTITHREAD=0)
+    endif()
+
+    slash_add_dependency(brotli DOWNLOAD_ONLY TRUE)
+    if(brotli_ADDED)
+        file(GLOB _slash_brotli_sources ${brotli_SOURCE_DIR}/c/common/*.c
+            ${brotli_SOURCE_DIR}/c/dec/*.c)
+        add_library(slash_brotli STATIC ${_slash_brotli_sources})
+        target_include_directories(slash_brotli SYSTEM PUBLIC ${brotli_SOURCE_DIR}/c/include)
     endif()
 
     # A game's own shaders, compiled by the tools (tools/shader_compiler): glslang turns HLSL into

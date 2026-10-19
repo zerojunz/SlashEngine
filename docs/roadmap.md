@@ -421,8 +421,11 @@ rendering on top.
         projects and imported: binary scenes and resources as text, script tokens as source,
         `project.binary`, textures, sounds and fonts, for games the user made or has the rights
         to. Encrypted packs are refused, never decrypted
-  - [ ] Unity builds unpacked back into a project, the same way. Nothing breaks encryption or
-        DRM, and GPL tools such as AssetRipper run as separate programs, never linked
+  - [x] Unity builds unpacked back into a project, the same way: Windows, macOS, Linux, web,
+        Android and iOS builds, Mono or IL2CPP, rebuilt by AssetRipper (GPL, so run as a program
+        of its own and installed on first use), with Unity's package scripts given their GUIDs
+        back and sprites saved as assets kept on their atlases. Encrypted bundles are refused,
+        never decrypted
 
 Exit: an agent builds `samples/pong` end to end and exports it to all six platforms.
 

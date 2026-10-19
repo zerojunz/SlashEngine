@@ -16,6 +16,7 @@
 #include "slash/world/scene.hpp"
 #include "slash/world/world.hpp"
 
+#include <SDL3/SDL_stdinc.h>
 #include <doctest/doctest.h>
 
 #include <algorithm>
@@ -3335,4 +3336,344 @@ TEST_CASE("Unity's 2D lights become Godot's lights, its shadow casters occluders
     const json::Value& point = sampled.value.find("points")->as_array()[0];
     CHECK(*point.find("color") == parse("[1.9, 1.6, 1.7]")); // as URP adds them
     CHECK(point.find("lights")->as_array()[0].find("id")->as_string() == "torch");
+}
+
+namespace {
+
+// The GUIDs AssetRipper gives the scripts it writes, which aren't the ones Unity's packages have.
+constexpr std::string_view kRipHop = "b2000000000000000000000000000001";
+constexpr std::string_view kRipImage = "b2000000000000000000000000000002";
+constexpr std::string_view kRipMask = "b2000000000000000000000000000003";
+constexpr std::string_view kRipEvents = "b2000000000000000000000000000004";
+constexpr std::string_view kRipModule = "b2000000000000000000000000000005";
+constexpr std::string_view kRipSheet = "b2000000000000000000000000000006";
+constexpr std::string_view kRipCoin = "b2000000000000000000000000000007";
+constexpr std::string_view kRipTrimmed = "b2000000000000000000000000000008";
+constexpr std::string_view kRipTurned = "b2000000000000000000000000000009";
+constexpr std::string_view kRipTight = "b200000000000000000000000000000a";
+
+// A sprite saved as an asset of its own, as AssetRipper writes a build's sprites: its rect on
+// the texture ("x, y, width, height", from the bottom left), where its pixels are after
+// trimming, its pivot, pixels per unit, packing settings and physics shape in units.
+std::string sprite_asset(std::string_view name, std::string_view rect,
+                         std::string_view texture_rect, std::string_view offset,
+                         std::string_view pivot, int ppu, int settings,
+                         std::string_view shape = "  m_PhysicsShape: []\n") {
+    const auto rect_of = [](std::string_view text, std::string_view indent) {
+        std::array<std::string, 4> parts;
+        std::size_t part = 0;
+        for (const char c : text) {
+            if (c == ',') {
+                ++part;
+            } else if (c != ' ') {
+                parts.at(part) += c;
+            }
+        }
+        const std::string in(indent);
+        return in + "serializedVersion: 2\n" + in + "x: " + parts[0] + "\n" + in +
+               "y: " + parts[1] + "\n" + in + "width: " + parts[2] + "\n" + in +
+               "height: " + parts[3] + "\n";
+    };
+    return std::string(kHeader) + "--- !u!213 &21300000\nSprite:\n" + std::string(kSource) +
+           "  m_Name: " + std::string(name) + "\n  m_Rect:\n" + rect_of(rect, "    ") +
+           "  m_Offset: {x: 0, y: 0}\n  m_Border: {x: 0, y: 0, z: 0, w: 0}\n"
+           "  m_PixelsToUnits: " +
+           std::to_string(ppu) + "\n  m_Pivot: " + std::string(pivot) +
+           "\n  m_Extrude: 1\n  m_RD:\n    serializedVersion: 3\n    texture: " +
+           ref(2800000, kRipSheet) + "\n    alphaTexture: {fileID: 0}\n    textureRect:\n" +
+           rect_of(texture_rect, "      ") + "    textureRectOffset: " + std::string(offset) +
+           "\n    settingsRaw: " + std::to_string(settings) + "\n" + std::string(shape);
+}
+
+// "Hopper" as AssetRipper rebuilds its project from an IL2CPP build: the scripts of Unity's
+// packages decompiled under Assets/Scripts/<assembly>/ with GUIDs of AssetRipper's own, the
+// game's script a stand-in whose code didn't come back, sprites as assets of their own, and a
+// scene whose UI components kept their values or, read without the build's scripts, lost them.
+void write_ripped(const fs::path& folder) {
+    fs::remove_all(folder);
+    write(
+        folder / "ProjectSettings/ProjectVersion.txt",
+        "m_EditorVersion: 2022.3.20f1\nm_EditorVersionWithRevision: 2022.3.20f1 (61c2feb0970d)\n");
+    write(folder / "ProjectSettings/ProjectSettings.asset",
+          std::string(kHeader) +
+              "--- !u!129 &1\nPlayerSettings:\n  m_ObjectHideFlags: 0\n  companyName: Test\n"
+              "  productName: Hopper\n  defaultScreenWidth: 320\n  defaultScreenHeight: 180\n");
+    const auto script_file = [&](std::string_view path, std::string_view guid,
+                                 std::string_view code) {
+        write(folder / "Assets/Scripts" / path, code);
+        write(folder / "Assets/Scripts" / (std::string(path) + ".meta"),
+              meta(guid, "MonoImporter"));
+    };
+    script_file("Assembly-CSharp/Hop.cs", kRipHop,
+                "using UnityEngine;\n\npublic class Hop : MonoBehaviour\n{\n\t/*\n\tDummy class. "
+                "This could have happened for several reasons:\n\t*/\n}\n");
+    script_file("UnityEngine.UI/UnityEngine/UI/Image.cs", kRipImage,
+                "namespace UnityEngine.UI\n{\n\tpublic class Image : MaskableGraphic {}\n}\n");
+    script_file("UnityEngine.UI/UnityEngine/UI/RectMask2D.cs", kRipMask,
+                "namespace UnityEngine.UI\n{\n\tpublic class RectMask2D : UIBehaviour {}\n}\n");
+    script_file("UnityEngine.UI/UnityEngine/EventSystems/EventSystem.cs", kRipEvents,
+                "namespace UnityEngine.EventSystems\n{\n\tpublic class EventSystem : "
+                "UIBehaviour {}\n}\n");
+    script_file("Unity.InputSystem/UnityEngine/InputSystem/UI/InputSystemUIInputModule.cs",
+                kRipModule,
+                "namespace UnityEngine.InputSystem.UI\n{\n\tpublic class InputSystemUIInputModule "
+                ": BaseInputModule {}\n}\n");
+    write(folder / "Assets/Scripts/UnityEngine.UI.meta", meta("b20000000000000000000000000000f1"));
+
+    write_png(folder / "Assets/Texture2D/sheet.png", 64, 32);
+    write(folder / "Assets/Texture2D/sheet.png.meta",
+          texture_meta(kRipSheet, 100, "  spriteMode: 1\n"));
+    const auto sprite_file = [&](std::string_view name, std::string_view guid,
+                                 const std::string& text) {
+        write(folder / "Assets/Sprite" / (std::string(name) + ".asset"), text);
+        write(folder / "Assets/Sprite" / (std::string(name) + ".asset.meta"),
+              meta(guid, "NativeFormatImporter", "  mainObjectFileID: 21300000\n"));
+    };
+    // The coin, the sheet's top right square, with a square physics shape.
+    sprite_file("coin", kRipCoin,
+                sprite_asset("coin", "48, 16, 16, 16", "48, 16, 16, 16", "{x: 0, y: 0}",
+                             "{x: 0.5, y: 0.5}", 16, 64,
+                             "  m_PhysicsShape:\n  - - {x: -0.5, y: 0.5}\n"
+                             "    - {x: -0.5, y: -0.5}\n    - {x: 0.5, y: -0.5}\n"
+                             "    - {x: 0.5, y: 0.5}\n"));
+    // A 32x16 sprite standing on its bottom middle, its 4 transparent columns on each side
+    // trimmed off.
+    sprite_file("trimmed", kRipTrimmed,
+                sprite_asset("trimmed", "0, 0, 32, 16", "4, 0, 24, 16", "{x: 4, y: 0}",
+                             "{x: 0.5, y: 0}", 16, 64));
+    // Packed into an atlas turned, and packed tightly.
+    sprite_file("turned", kRipTurned,
+                sprite_asset("turned", "0, 16, 16, 16", "0, 16, 16, 16", "{x: 0, y: 0}",
+                             "{x: 0.5, y: 0.5}", 16, 1 | (1 << 2)));
+    sprite_file("tight", kRipTight,
+                sprite_asset("tight", "16, 16, 16, 16", "16, 16, 16, 16", "{x: 0, y: 0}",
+                             "{x: 0.5, y: 0.5}", 16, 1));
+
+    std::string scene(kHeader);
+    const auto sprite_object = [&](std::int64_t object, std::string_view name,
+                                   std::string_view guid, std::string_view position) {
+        scene += game_object(object, name, {object + 1, object + 2});
+        scene += transform(object + 1, object, position);
+        scene += sprite_renderer(object + 2, object, ref(21300000, guid, 2));
+    };
+    sprite_object(100, "Coin", kRipCoin, "{x: 0, y: 0, z: 0}");
+    sprite_object(110, "Ledge", kRipTrimmed, "{x: 2, y: 0, z: 0}");
+    sprite_object(120, "Turned", kRipTurned, "{x: 4, y: 0, z: 0}");
+    sprite_object(130, "Tight", kRipTight, "{x: 6, y: 0, z: 0}");
+    // The player, with the game's script.
+    scene += game_object(200, "Player", {201, 202});
+    scene += transform(201, 200, "{x: 0, y: 2, z: 0}");
+    scene += script(202, 200, kRipHop, "  jumpHeight: 3\n");
+    // A tile map of coins, whose collider takes the coin's physics shape.
+    scene += game_object(300, "Grid", {301, 302});
+    scene += transform(301, 300, "{x: 0, y: 0, z: 0}", 0, {311});
+    scene += component(156049354, "Grid", 302, 300,
+                       "  m_CellSize: {x: 1, y: 1, z: 0}\n  m_CellGap: {x: 0, y: 0, z: 0}\n"
+                       "  m_CellLayout: 0\n  m_CellSwizzle: 0\n");
+    scene += game_object(310, "Coins", {311, 312, 313, 314});
+    scene += transform(311, 310, "{x: 0, y: 0, z: 0}", 301);
+    scene += component(
+        1839735485, "Tilemap", 312, 310,
+        // Collider type 1 (the sprite's physics shape) in the flags' top bits.
+        "  m_Tiles:\n" + tile_cell(0, 0, 0, 0, 0, 0, (std::int64_t{1} << 30) | 1) +
+            "  m_TileSpriteArray:\n  - m_RefCount: 1\n    m_Data: " + ref(21300000, kRipCoin, 2) +
+            "\n  m_TileMatrixArray:\n" + tile_matrix(1, 0, 0, 1) +
+            "  m_TileAnchor: {x: 0.5, y: 0.5, z: 0}\n  m_TileOrientation: 0\n");
+    scene += component(483693784, "TilemapRenderer", 313, 310,
+                       "  m_SortingLayerID: 0\n  m_SortingOrder: 0\n  m_MaskInteraction: 0\n");
+    scene += component(19719996, "TilemapCollider2D", 314, 310,
+                       "  m_Density: 1\n  m_Material: {fileID: 0}\n  m_IsTrigger: 0\n"
+                       "  m_UsedByEffector: 0\n  m_Offset: {x: 0, y: 0}\n");
+    // The HUD: a panel whose Image kept its values (a Mono build's, or one bundled with its
+    // type tree), one whose Image lost them, and a RectMask2D, which has none to lose.
+    scene += ui_object(1000, "Hud", {1001, 1009, 1002});
+    scene +=
+        rect_transform(1001, 1000, "0, 0", "0, 0", "0, 0", "0, 0", "0, 0", 0, {1101, 1201, 1301});
+    scene += component(223, "Canvas", 1002, 1000,
+                       "  serializedVersion: 3\n  m_RenderMode: 0\n  m_Camera: {fileID: 0}\n"
+                       "  m_PixelPerfect: 0\n  m_OverrideSorting: 0\n  m_SortingOrder: 0\n");
+    scene += ui_object(1100, "Panel", {1101, 1109, 1102});
+    scene += rect_transform(1101, 1100, "0, 1", "0, 1", "40, -20", "80, 40", "0.5, 0.5", 1001);
+    scene += script(1102, 1100, kRipImage,
+                    "  m_Material: {fileID: 0}\n  m_Color: {r: 0, g: 0, b: 1, a: 1}\n"
+                    "  m_RaycastTarget: 1\n  m_Sprite: {fileID: 0}\n  m_Type: 0\n"
+                    "  m_PreserveAspect: 0\n  m_FillCenter: 1\n");
+    scene += ui_object(1200, "Lost", {1201, 1209, 1202});
+    scene += rect_transform(1201, 1200, "1, 1", "1, 1", "-40, -20", "80, 40", "0.5, 0.5", 1001);
+    scene += script(1202, 1200, kRipImage, "");
+    scene += ui_object(1300, "Clip", {1301, 1309, 1302});
+    scene += rect_transform(1301, 1300, "0, 0", "1, 1", "0, 0", "0, 0", "0.5, 0.5", 1001);
+    scene += script(1302, 1300, kRipMask, "");
+    // The event system, with the Input System's module.
+    scene += game_object(1400, "EventSystem", {1401, 1402, 1403});
+    scene += transform(1401, 1400, "{x: 0, y: 0, z: 0}");
+    scene += script(1402, 1400, kRipEvents, "  m_FirstSelected: {fileID: 0}\n");
+    scene += script(1403, 1400, kRipModule, "  m_MoveRepeatDelay: 0.5\n");
+    write(folder / "Assets/Scenes/Main.unity", scene);
+    write(folder / "Assets/Scenes/Main.unity.meta", meta("b20000000000000000000000000000f2"));
+}
+
+// An IL2CPP build for Linux: what find_build looks for. The stand-in AssetRipper exports the
+// folder FAKE_ASSETRIPPER_PROJECT names, whatever the build holds.
+void write_build(const fs::path& folder) {
+    write(folder / "Hopper.x86_64", "");
+    write(folder / "GameAssembly.so", "");
+    write(folder / "UnityPlayer.so", "");
+    write(folder / "Hopper_Data/globalgamemanagers", "");
+    write(folder / "Hopper_Data/il2cpp_data/Metadata/global-metadata.dat", "");
+}
+
+// Sets an environment variable for the length of a test.
+struct ScopedVariable {
+    std::string name;
+    ScopedVariable(std::string variable, const std::string& value) : name(std::move(variable)) {
+        REQUIRE(SDL_setenv_unsafe(name.c_str(), value.c_str(), 1) == 0);
+    }
+    ScopedVariable(const ScopedVariable&) = delete;
+    ScopedVariable& operator=(const ScopedVariable&) = delete;
+    ScopedVariable(ScopedVariable&&) = delete;
+    ScopedVariable& operator=(ScopedVariable&&) = delete;
+    ~ScopedVariable() { SDL_unsetenv_unsafe(name.c_str()); }
+};
+
+} // namespace
+
+TEST_CASE("a Unity build imports through AssetRipper, its package scripts and sprites fixed") {
+    const fs::path project = fs::absolute("import_unity_build");
+    fs::remove_all(project);
+    write_ripped(project / "ripped");
+    write_build(project / "Hopper");
+    const ScopedVariable exported("FAKE_ASSETRIPPER_PROJECT", (project / "ripped").string());
+    auto plan = importer::plan_import({.source = (project / "Hopper").string(),
+                                       .destination = project.string(),
+                                       .unpack_to = {},
+                                       .assetripper = SLASH_FAKE_ASSETRIPPER});
+    REQUIRE_MESSAGE(plan.ok(), (plan.ok() ? std::string() : plan.error().message));
+    const json::Value& report = plan.value().report;
+    CHECK(*report.find("unpacked") == parse(R"({
+        "assetripper": "2.0.0",
+        "build": {"backend": "il2cpp", "platform": "linux", "unity": "2022.3.20f1"},
+        "files": 7, "log": ".slash/import/unity/assetripper.log", "package_scripts": 3,
+        "prefabs": 0, "scenes": 1, "scripts": 1,
+        "unsupported": [{"count": 1, "what": "script without its code",
+                         "where": "Assets/Scripts/Assembly-CSharp/Hop.cs",
+                         "why": "the build's code couldn't be read back (IL2CPP builds keep it compiled), so only the script's name and the objects using it came back"}]})"));
+
+    // The package scripts' references now name Unity's GUIDs, and the scripts of Unity's own
+    // assemblies are gone; a script the importer doesn't know is named as Unity 6 names one.
+    const fs::path ripped = project / ".slash/import/unity/export/ExportedProject";
+    const std::string main =
+        slash::platform::read_file((ripped / "Assets/Scenes/Main.unity").string()).value();
+    CHECK(main.find(std::string(kImageCs)) != std::string::npos);
+    CHECK(main.find(std::string(kRipImage)) == std::string::npos);
+    CHECK(main.find(std::string(kRipModule)) != std::string::npos);
+    CHECK(main.find("m_EditorClassIdentifier: "
+                    "Unity.InputSystem::UnityEngine.InputSystem.UI.InputSystemUIInputModule\n") !=
+          std::string::npos);
+    CHECK_FALSE(fs::exists(ripped / "Assets/Scripts/UnityEngine.UI"));
+    CHECK_FALSE(fs::exists(ripped / "Assets/Scripts/UnityEngine.UI.meta"));
+    CHECK_FALSE(fs::exists(ripped / "Assets/Scripts/Unity.InputSystem"));
+    CHECK(fs::exists(ripped / "Assets/Scripts/Assembly-CSharp/Hop.cs"));
+    CHECK(slash::platform::read_file((project / ".slash/import/unity/assetripper.log").string())
+              .value()
+              .starts_with("LoadFolder " + (project / "Hopper").string() + "\n"));
+
+    // The project converts as one made in Unity would, its assets copied in.
+    const auto files = files_of(plan.value());
+    const std::string main_scene = "Assets/Scenes/Main.scene.json";
+    CHECK(files.contains("Assets/Texture2D/sheet.png"));
+    CHECK(files.contains("Assets/Scripts/Assembly-CSharp/Hop.cs"));
+    CHECK_FALSE(files.contains("Assets/Scripts/UnityEngine.UI/UnityEngine/UI/Image.cs"));
+    CHECK(*entity(files, main_scene, "coin").find("Sprite2D") ==
+          parse(R"({"texture": "Assets/Texture2D/sheet.png", "region": [48.0, 0.0, 16.0, 16.0]})"));
+    // Trimmed: its pixels start 4 in, and its pivot is still its rect's bottom middle.
+    CHECK(*entity(files, main_scene, "ledge").find("Sprite2D") ==
+          parse(R"({"texture": "Assets/Texture2D/sheet.png", "region": [4.0, 16.0, 24.0, 16.0],
+                    "offset": [0.0, -8.0]})"));
+    CHECK(*entity(files, main_scene, "turned").find("Sprite2D") == parse("{}"));
+    const json::Value full = parse(files.at("import/unity.json"));
+    CHECK(unsupported(full, "tightly packed sprite").find("why")->as_string() ==
+          "packed to its outline in an atlas, so its neighbors may show at its edges");
+    CHECK(unsupported(full, "sprite").find("why")->as_string() ==
+          "Assets/Sprite/turned.asset: a sprite turned in its atlas");
+    // The coin tile's collision is the coin's physics shape, in pixels.
+    const json::Value tiles = parse(files.at("Assets/tiles.tileset.json"));
+    CHECK(*tiles.find("sources")->find("sheet")->find("tiles")->find("3,0")->find("collision") ==
+          parse(R"([{"points": [[-8.0, -8.0], [-8.0, 8.0], [8.0, 8.0], [8.0, -8.0]]}])"));
+    // UI: the panel's Image converts, the one read without the build's scripts is reported,
+    // and the RectMask2D, which keeps no values, clips.
+    CHECK(*entity(files, main_scene, "panel").find("ColorRect") ==
+          parse(R"({"color": [0.0, 0.0, 1.0, 1.0]})"));
+    CHECK(unsupported(full, "component Image").find("why")->as_string() ==
+          "its values didn't survive the game's build: the build's scripts couldn't be read");
+    CHECK(entity(files, main_scene, "clip").find("Control")->find("clip_contents")->as_bool());
+    CHECK(unsupported(full, "component InputSystemUIInputModule").find("why")->as_string() ==
+          "a script from a Unity package");
+    CHECK(*report.find("scripts") == parse(R"([{"entities": 1, "script":
+        "Assets/Scripts/Assembly-CSharp/Hop.cs", "task": "task/port-hop"}])"));
+
+    // With unpack_to, the whole Unity project comes along, and the import uses it there.
+    auto unpacked = importer::plan_import({.source = (project / "Hopper").string(),
+                                           .destination = project.string(),
+                                           .unpack_to = "unity",
+                                           .assetripper = SLASH_FAKE_ASSETRIPPER});
+    REQUIRE(unpacked.ok());
+    const auto unpacked_files = files_of(unpacked.value());
+    CHECK(unpacked_files.contains("unity/ProjectSettings/ProjectVersion.txt"));
+    CHECK(unpacked_files.contains("unity/Assets/Scenes/Main.unity"));
+    CHECK(unpacked_files.contains("unity/Assets/Scenes/Main.scene.json"));
+    CHECK(unpacked.value().report.find("unpacked")->find("folder")->as_string() == "unity");
+    CHECK(entity(unpacked_files, "unity/Assets/Scenes/Main.scene.json", "coin")
+              .find("Sprite2D")
+              ->find("texture")
+              ->as_string() == "unity/Assets/Texture2D/sheet.png");
+    fs::remove_all(project);
+}
+
+TEST_CASE("project.import unpacks a Unity build only where it may run AssetRipper") {
+    const fs::path project = fs::absolute("import_unity_build_command");
+    fs::remove_all(project);
+    write_ripped(project / "ripped");
+    write_build(project / "builds/Hopper");
+    const ScopedVariable exported("FAKE_ASSETRIPPER_PROJECT", (project / "ripped").string());
+    const ScopedVariable program("SLASH_ASSETRIPPER", SLASH_FAKE_ASSETRIPPER);
+    slash::world::ComponentRegistry components;
+    slash::world::register_builtin_components(components);
+    const json::Value params = parse(R"({"source": "builds/Hopper"})");
+
+    // A session without the build capability.
+    command::Registry commands;
+    command::register_builtin_commands(commands);
+    importer::register_import_commands(commands);
+    command::SessionOptions options;
+    options.project_root = project.string();
+    options.capture_logs = false;
+    options.capabilities = {command::Capability::Read, command::Capability::Filesystem};
+    command::Session limited(components, commands, options);
+    const command::Reply refused = limited.call("project.import", params);
+    CHECK_FALSE(refused.ok);
+    CHECK(refused.code == command::code::kPermissionDenied);
+    CHECK(refused.message == "unpacking a Unity build runs AssetRipper, which needs the \"build\" "
+                             "capability, which this session does not grant");
+    CHECK(refused.data.find("capability")->as_string() == "build");
+
+    // A running game's commands, which don't unpack builds.
+    command::Registry running;
+    command::register_builtin_commands(running);
+    importer::register_import_commands(running, {.unpack_builds = false});
+    options.capabilities = command::SessionOptions{}.capabilities;
+    command::Session game(components, running, options);
+    const command::Reply stalled = game.call("project.import", params);
+    CHECK_FALSE(stalled.ok);
+    CHECK(stalled.message ==
+          "a running game doesn't unpack Unity builds, which takes minutes; use slash-cli import");
+
+    command::Session session(components, commands, options);
+    const command::Reply done = session.call("project.import", params);
+    REQUIRE_MESSAGE(done.ok, done.message);
+    CHECK(done.value.find("unpacked")->find("build")->find("platform")->as_string() == "linux");
+    CHECK(fs::exists(project / "Assets/Scenes/Main.scene.json"));
+    CHECK(fs::exists(project / "Assets/Texture2D/sheet.png"));
+    CHECK(session.call("scene.open", parse(R"({"path": "Assets/Scenes/Main.scene.json"})")).ok);
+    fs::remove_all(project);
 }

@@ -35,6 +35,13 @@
       "repository": "https://github.com/erincatto/box2d.git",
       "tag": "v3.1.1"
     },
+    "brotli": {
+      "license": "MIT",
+      "license_file": "LICENSE",
+      "license_sha256": "3d180008e36922a4e8daec11c34c7af264fed5962d07924aea928c38e8663c94",
+      "repository": "https://github.com/google/brotli.git",
+      "tag": "v1.1.0"
+    },
     "doctest": {
       "license": "MIT",
       "license_file": "LICENSE.txt",

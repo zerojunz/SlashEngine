@@ -10,6 +10,7 @@
 #include "slash/ui/ui.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
+#include "slash/world/scene.hpp"
 #include "slash/world/world.hpp"
 
 #include <doctest/doctest.h>
@@ -165,6 +166,22 @@ TEST_CASE("controls are placed in their parent's rect by anchors and offsets") {
         CHECK(wide.find(panel)->size == Vec2{780.0F, 280.0F});
         CHECK(wide.find(box)->position == Vec2{340.0F, 120.0F});
     }
+}
+
+TEST_CASE("anchors past 0 and 1 anchor a control outside its parent's rect, as Godot allows") {
+    Scene scene;
+    const std::string_view control = R"({"Control": {"anchor_left": -0.5, "anchor_top": 1.5,
+                                                    "anchor_right": 1.25, "anchor_bottom": 2}})";
+    CHECK(world::validate_scene(scene.components,
+                                parse(R"({"format": 1, "entities": {"wide": {"components": )" +
+                                      std::string(control) + "}}}"))
+              .empty());
+    const entt::entity wide = scene.create("wide", control);
+    const ui::Layout layout = scene.layout();
+    const ui::Placed* placed = layout.find(wide);
+    REQUIRE(placed != nullptr);
+    CHECK(placed->position == Vec2{-200.0F, 450.0F});
+    CHECK(placed->size == Vec2{700.0F, 150.0F});
 }
 
 TEST_CASE("a control smaller than its minimum size grows as grow_horizontal and _vertical say") {
