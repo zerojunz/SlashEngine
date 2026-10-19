@@ -4,7 +4,10 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cstddef>
+#include <mutex>
+#include <thread>
 
 namespace slash::platform {
 namespace {
@@ -62,17 +65,11 @@ private:
     std::string text_;
 };
 
-} // namespace
-
-std::string environment_variable(const std::string& name) {
-    const char* value = SDL_getenv(name.c_str());
-    return value == nullptr ? std::string() : std::string(value);
-}
-
-Result<ProcessResult> run_process(const std::vector<std::string>& args,
-                                  const ProcessOptions& options) {
+// Starts a program with its stdout and stderr in one pipe this process reads.
+Result<SDL_Process*> create_process(const std::vector<std::string>& args,
+                                    const ProcessOptions& options) {
     if (args.empty()) {
-        return make_error(ErrorCode::InvalidArgument, "run_process needs a program to run");
+        return make_error(ErrorCode::InvalidArgument, "a process needs a program to run");
     }
     std::vector<const char*> argv;
     argv.reserve(args.size() + 1);
@@ -109,21 +106,18 @@ Result<ProcessResult> run_process(const std::vector<std::string>& args,
         return make_error(ErrorCode::PlatformFailure,
                           "could not start \"" + args[0] + "\": " + SDL_GetError());
     }
+    return process;
+}
 
-    SDL_IOStream* log = nullptr;
-    if (!options.log_path.empty()) {
-        log = SDL_IOFromFile(options.log_path.c_str(), "ab");
-    }
-    Tail tail(options.tail_lines);
+// Reads a process's output until it ends, handing each piece to sink.
+template <typename Sink>
+void read_output(SDL_Process* process, Sink&& sink) {
     SDL_IOStream* output = SDL_GetProcessOutput(process);
     std::array<char, 4096> buffer{};
     for (;;) {
         const std::size_t read = SDL_ReadIO(output, buffer.data(), buffer.size());
         if (read > 0) {
-            tail.append(buffer.data(), read);
-            if (log != nullptr) {
-                SDL_WriteIO(log, buffer.data(), read);
-            }
+            sink(buffer.data(), read);
             continue;
         }
         if (SDL_GetIOStatus(output) == SDL_IO_STATUS_NOT_READY) {
@@ -132,6 +126,34 @@ Result<ProcessResult> run_process(const std::vector<std::string>& args,
         }
         break; // end of output or an error
     }
+}
+
+} // namespace
+
+std::string environment_variable(const std::string& name) {
+    const char* value = SDL_getenv(name.c_str());
+    return value == nullptr ? std::string() : std::string(value);
+}
+
+Result<ProcessResult> run_process(const std::vector<std::string>& args,
+                                  const ProcessOptions& options) {
+    auto created = create_process(args, options);
+    if (!created) {
+        return created.error();
+    }
+    SDL_Process* process = created.value();
+
+    SDL_IOStream* log = nullptr;
+    if (!options.log_path.empty()) {
+        log = SDL_IOFromFile(options.log_path.c_str(), "ab");
+    }
+    Tail tail(options.tail_lines);
+    read_output(process, [&](const char* data, std::size_t size) {
+        tail.append(data, size);
+        if (log != nullptr) {
+            SDL_WriteIO(log, data, size);
+        }
+    });
     if (log != nullptr) {
         SDL_CloseIO(log);
     }
@@ -141,6 +163,88 @@ Result<ProcessResult> run_process(const std::vector<std::string>& args,
     SDL_DestroyProcess(process);
     result.tail = tail.lines();
     return result;
+}
+
+struct ChildProcess::Impl {
+    SDL_Process* process = nullptr;
+    SDL_IOStream* log = nullptr;
+    std::thread reader;
+    std::atomic<bool> ended{false};
+    mutable std::mutex mutex;
+    std::string start; // the first kStartBytes of its output
+    Tail tail{40};
+    int exit_code = 0;
+    bool stopped = false;
+
+    static constexpr std::size_t kStartBytes = std::size_t{64} * 1024;
+};
+
+ChildProcess::ChildProcess(std::unique_ptr<Impl> impl) : impl_(std::move(impl)) {}
+
+ChildProcess::~ChildProcess() {
+    stop();
+}
+
+bool ChildProcess::running() const {
+    return !impl_->ended.load();
+}
+
+std::string ChildProcess::output() const {
+    const std::scoped_lock lock(impl_->mutex);
+    if (impl_->start.size() < Impl::kStartBytes) {
+        return impl_->start;
+    }
+    return impl_->start + "\n...\n" + impl_->tail.lines();
+}
+
+int ChildProcess::stop() {
+    Impl& impl = *impl_;
+    if (impl.stopped) {
+        return impl.exit_code;
+    }
+    impl.stopped = true;
+    if (!impl.ended.load()) {
+        SDL_KillProcess(impl.process, true);
+    }
+    impl.reader.join();
+    SDL_WaitProcess(impl.process, true, &impl.exit_code);
+    SDL_DestroyProcess(impl.process);
+    if (impl.log != nullptr) {
+        SDL_CloseIO(impl.log);
+    }
+    return impl.exit_code;
+}
+
+Result<std::unique_ptr<ChildProcess>> start_process(const std::vector<std::string>& args,
+                                                    const ProcessOptions& options) {
+    auto created = create_process(args, options);
+    if (!created) {
+        return created.error();
+    }
+    auto impl = std::make_unique<ChildProcess::Impl>();
+    impl->process = created.value();
+    impl->tail = Tail(options.tail_lines);
+    if (!options.log_path.empty()) {
+        impl->log = SDL_IOFromFile(options.log_path.c_str(), "ab");
+    }
+    ChildProcess::Impl* shared = impl.get();
+    impl->reader = std::thread([shared] {
+        read_output(shared->process, [shared](const char* data, std::size_t size) {
+            {
+                const std::scoped_lock lock(shared->mutex);
+                const std::size_t room =
+                    ChildProcess::Impl::kStartBytes -
+                    std::min(shared->start.size(), ChildProcess::Impl::kStartBytes);
+                shared->start.append(data, std::min(size, room));
+                shared->tail.append(data, size);
+            }
+            if (shared->log != nullptr) {
+                SDL_WriteIO(shared->log, data, size);
+            }
+        });
+        shared->ended.store(true);
+    });
+    return std::make_unique<ChildProcess>(std::move(impl));
 }
 
 } // namespace slash::platform

@@ -256,9 +256,8 @@ void register_physics_components(ComponentRegistry& registry) {
 // The UI components, as Godot's Control nodes.
 void register_ui_components(ComponentRegistry& registry) {
     const FieldMeta anchor{.doc = "Where the edge is anchored in the parent's rect: 0 at its left "
-                                  "or top, 1 at its right or bottom.",
-                           .min = 0,
-                           .max = 1};
+                                  "or top, 1 at its right or bottom, and past them outside 0 to "
+                                  "1, as Godot allows."};
     const FieldMeta offset{.doc = "Pixels from the edge's anchor to the edge."};
     const FieldMeta grow{.doc = "Which way it grows when its minimum size is bigger than its "
                                 "anchors and offsets make it.",

@@ -406,7 +406,7 @@ slash-cli import <folder|file> [options]
 | Flag | Meaning |
 | --- | --- |
 | `--project <dir>` | The SlashEngine project to import into (default `.`); it needn't exist yet |
-| `--unpack-to <dir>` | For an exported game, also write the Godot project unpacked from it to this folder of the project, and use its assets there |
+| `--unpack-to <dir>` | For an exported game or a Unity build, also write the Godot or Unity project unpacked from it to this folder of the project, and use its assets there |
 | `--dry-run` | Print the report and the files it would write; write nothing |
 
 `<folder>` holds the Godot project's `project.godot`, or the Unity project's `Assets/` and
@@ -439,8 +439,23 @@ is refused.
 slash-cli import ~/Downloads/jumper.pck --project jumper --unpack-to godot
 ```
 
+`<folder|file>` can also be a game built with Unity: its folder (with `<Game>_Data/`), its
+executable, a macOS `.app`, a web build's folder, an Android build's `assets/bin/Data` or an
+`.apk` or `.ipa` file. [AssetRipper](https://github.com/AssetRipper/AssetRipper) rebuilds the
+Unity project it was made from in `<project>/.slash/import/unity/`, the scripts of Unity's
+packages get the GUIDs they have in every Unity project, and the project is converted as one made
+in Unity; the report's `unpacked` names the platform, scripting backend and Unity version and
+lists what didn't come back, such as the code of an IL2CPP build's scripts. AssetRipper is GPL
+3.0, so it only ever runs as a program of its own: `SLASH_ASSETRIPPER` names it, else the first
+import installs it as the `assetripper` toolchain. A build with encrypted bundles is refused.
+
+```bash
+slash-cli import ~/Downloads/Hopper --project hopper --unpack-to unity
+```
+
 It exits 1 if the folder isn't a Godot 4 project or a Unity project saved by Unity 2018.3 or
-later, or the file holds no Godot 4 pack or one whose file list is encrypted.
+later, the file holds no Godot 4 pack or one whose file list is encrypted, or AssetRipper can't
+rebuild a Unity build's project.
 
 ### export
 
@@ -528,10 +543,12 @@ that `slash-cli` downloads, pinned to exact versions and SHA-256 hashes:
 | --- | --- | --- |
 | `llvm-mingw` | Clang and LLD; mingw-w64 for Windows exports | Apache 2.0 with LLVM exception, ZPL, MIT and public domain |
 | `linux-sysroot-x86_64`, `linux-sysroot-arm64` | Debian 11's glibc 2.31, GCC 10's libstdc++ and the X11, ALSA and PulseAudio headers that Linux exports build against | Debian's: glibc under the LGPL and libstdc++ under the GPL with the GCC Runtime Library Exception, both used from the player's system; X11 under MIT |
+| `assetripper` | [AssetRipper](https://github.com/AssetRipper/AssetRipper) 2.0.0, which [import](#import) runs to turn a Unity build back into a project; on every machine, Windows included | GPL 3.0, run as a program of its own and never linked |
 
 An export downloads what it needs the first time, so `toolchain install` is only needed to get
 them ahead of time, for example before going offline. With no names it installs every toolchain
-for this machine; a name can also be a platform (`windows`, `linux`) or `linux-arm64`. Each
+for this machine; a name can also be a platform (`windows`, `linux`), `linux-arm64` or
+`assetripper`, which `import` installs the first time it unpacks a Unity build. Each
 download is checked against its pinned hash and deleted if it differs. They are installed in
 `SLASH_TOOLCHAINS_DIR`, else `~/.slash/toolchains`; delete a folder there to remove one.
 
@@ -540,7 +557,7 @@ download is checked against its pinned hash and deleted if it differs. They are 
 ```
 
 `install` returns the `installed` toolchains and those `already_installed`, each with its `path`.
-Windows machines have no toolchains to install.
+Windows machines have no toolchains to install, except `assetripper`.
 
 ## slash-mcp
 

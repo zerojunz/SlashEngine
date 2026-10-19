@@ -8,6 +8,7 @@
 #include "slash/canvas/tilemap.hpp"
 #include "slash/core/json.hpp"
 #include "slash/core/math.hpp"
+#include "slash/importer/unity_build.hpp"
 #include "slash/importer/unity_yaml.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/render/image.hpp"
@@ -118,6 +119,8 @@ constexpr std::int64_t kKnobSprite = 10913;
 constexpr std::int64_t kMaskSprite = 10917;
 
 constexpr std::string_view kUiWhy = "a UI component outside a Canvas; put it under one";
+constexpr std::string_view kLostWhy =
+    "its values didn't survive the game's build: the build's scripts couldn't be read";
 constexpr std::string_view kEventWhy =
     "not needed: SlashEngine's gui system sends input to controls itself";
 
@@ -128,6 +131,7 @@ struct KnownScript {
     std::string_view name;
     std::string_view why;
     bool ui = false;
+    bool no_values = false; // it serializes nothing, or may not, in some Unity versions
 };
 constexpr std::array kKnownScripts{
     KnownScript{"fe87c0e1cc204ed48ad3b37840f39efc", "Image", "", true},
@@ -142,7 +146,7 @@ constexpr std::array kKnownScripts{
     KnownScript{"0d0b652f32a2cc243917e4028fa0f046", "Dropdown", "", true},
     KnownScript{"d199490a83bb2b844b9695cbf13b01ef", "InputField", "", true},
     KnownScript{"31a19414c41e5ae4aae2af33fee712f6", "Mask", "", true},
-    KnownScript{"3312d7739989d2b4e91e6319e9a96d76", "RectMask2D", "", true},
+    KnownScript{"3312d7739989d2b4e91e6319e9a96d76", "RectMask2D", "", true, true},
     KnownScript{"30649d3a9faa99c48a7b1166b86bf2a0", "HorizontalLayoutGroup", "", true},
     KnownScript{"59f8146938fff824cb5fd77236b75775", "VerticalLayoutGroup", "", true},
     KnownScript{"8a8695521f0d02e499659fee002a26c2", "GridLayoutGroup", "", true},
@@ -164,7 +168,7 @@ constexpr std::array kKnownScripts{
                 "text in the world isn't converted yet; use a Label in a Control"},
     KnownScript{"76c392e42b5098c458856cdf6ecaaaa1", "EventSystem", kEventWhy},
     KnownScript{"4f231c4fb786f3946a6b90b886c48677", "StandaloneInputModule", kEventWhy},
-    KnownScript{"1511ccae7919cfc46b603b9b337fdc94", "BaseInput", kEventWhy},
+    KnownScript{"1511ccae7919cfc46b603b9b337fdc94", "BaseInput", kEventWhy, false, true},
     KnownScript{"56666c5a40171f54783dd416a44f42bf", "Physics2DRaycaster", kEventWhy},
     KnownScript{"c49b4cc203aa6414fae5c798d1d0e7d6", "PhysicsRaycaster", kEventWhy},
     // URP's 2D lights and shadow casters convert on objects outside a Canvas.
@@ -172,7 +176,7 @@ constexpr std::array kKnownScripts{
                 "2D lights shade sprites and tile maps, not controls"},
     KnownScript{"7db70e0ea77f5ac47a8f4565a9406397", "ShadowCaster2D", "controls cast no shadows"},
     KnownScript{"38f48a8d66b2adc46887f23a3a88ac01", "CompositeShadowCaster2D",
-                "controls cast no shadows"},
+                "controls cast no shadows", false, true},
 };
 
 // Keys every MonoBehaviour has, which aren't a script's own values.
@@ -957,12 +961,36 @@ private:
             height != nullptr && height->number()) {
             window_height_ = *height->number();
         }
-        // The units: the pixels per unit most of the project's sprites use.
+        // The units: the pixels per unit most of the project's sprites use. Sprites saved as
+        // assets of their own, as projects recovered from games have them, carry theirs; the
+        // textures they draw from keep the default.
         std::map<double, int> ppus;
+        std::set<std::string> drawn_from;
+        for (const auto& [guid, asset] : assets_by_guid_) {
+            if (extension_of(asset.path) != ".asset") {
+                continue;
+            }
+            const auto text = platform::read_file(source_ + asset.path);
+            if (!text || text.value().find("\nSprite:") == std::string::npos) {
+                continue;
+            }
+            const auto objects = unity::parse_file(text.value());
+            for (const Object& object : objects ? objects.value() : std::vector<Object>{}) {
+                if (object.type == "Sprite") {
+                    ++ppus[object.body.number_at("m_PixelsToUnits", 100.0)];
+                    if (const auto texture = object_ref_at(object.body, "m_RD.texture")) {
+                        drawn_from.insert(texture->guid);
+                    }
+                }
+            }
+        }
         for (const auto& [guid, asset] : assets_by_guid_) {
             const Node* importer = asset.meta.get("TextureImporter");
-            if (importer != nullptr && importer->integer_at("textureType", 0) == 8) {
-                ++ppus[importer->number_at("spritePixelsToUnits", 100.0)];
+            const bool drawn = drawn_from.contains(guid);
+            if (importer != nullptr && (importer->integer_at("textureType", 0) == 8 || drawn)) {
+                if (!drawn) {
+                    ++ppus[importer->number_at("spritePixelsToUnits", 100.0)];
+                }
                 const std::int64_t filter = importer->integer_at("textureSettings.filterMode", 1);
                 ++(filter == 0 ? nearest_textures_ : linear_textures_);
             }
@@ -1128,6 +1156,7 @@ private:
         int width = 0;
         int height = 0;
         std::map<std::int64_t, Sprite> sprites; // by file ID
+        Sprite base;                            // the settings its sprites start from
     };
 
     static std::vector<Outline> outlines(const Node* node) {
@@ -1156,6 +1185,10 @@ private:
             return out;
         }
         const std::string extension = extension_of(asset->path);
+        if (extension == ".asset") {
+            sprite_asset(out, *asset);
+            return out;
+        }
         if (!is_texture_file(extension)) {
             const std::string why = unsupported_asset(extension);
             out.why = asset->path + ": " + (why.empty() ? "not a texture" : why);
@@ -1200,6 +1233,7 @@ private:
                 }
             }
         }
+        out.base = base;
         const Node* sheet = importer->path("spriteSheet.sprites");
         if (importer->integer_at("spriteMode", 1) == 2 && sheet != nullptr) {
             // Each sprite's file ID: its internalID, or (before Unity 2019.3) the ID its name has
@@ -1260,6 +1294,91 @@ private:
         }
         out.ok = true;
         return out;
+    }
+
+    // A sprite saved as an asset of its own, a .asset file holding a Sprite, as projects
+    // recovered from games have them: its rect, pivot and physics shape on the texture its render
+    // data draws from.
+    void sprite_asset(Texture& out, const Asset& asset) {
+        auto text = platform::read_file(source_ + asset.path);
+        auto objects =
+            text ? unity::parse_file(text.value()) : Result<std::vector<Object>>(text.error());
+        const Object* found = nullptr;
+        if (objects) {
+            const auto sprite = std::ranges::find(objects.value(), "Sprite", &Object::type);
+            found = sprite != objects.value().end() ? &*sprite : nullptr;
+        }
+        if (found == nullptr) {
+            out.why = asset.path + ": not a texture or a sprite";
+            return;
+        }
+        const Node& body = found->body;
+        const auto ref = object_ref_at(body, "m_RD.texture");
+        if (!ref || ref->null() || ref->guid.empty()) {
+            out.why = asset.path + ": a sprite with no texture";
+            return;
+        }
+        const Texture& source = texture(ref->guid);
+        if (!source.ok) {
+            out.why = asset.path + ": " + source.why;
+            return;
+        }
+        // Unity's SpriteSettings: packed, packing mode (0 tight) and rotation in an atlas.
+        const std::int64_t settings = body.integer_at("m_RD.settingsRaw", 0);
+        if ((settings & 1) != 0 && ((settings >> 2) & 0xF) != 0) {
+            out.why = asset.path + ": a sprite turned in its atlas";
+            return;
+        }
+        if ((settings & 1) != 0 && ((settings >> 1) & 1) == 0) {
+            problems_.add("tightly packed sprite", asset.path,
+                          "packed to its outline in an atlas, so its neighbors may show at its "
+                          "edges");
+        }
+        Sprite sprite = source.base;
+        sprite.name = body.string_at("m_Name");
+        const double rect_width = body.number_at("m_Rect.width");
+        const double rect_height = body.number_at("m_Rect.height");
+        // Where its pixels are on the texture, which is an atlas's when it was packed into one,
+        // and how far that is inside its rect when transparent edges were trimmed.
+        const double x = body.number_at("m_RD.textureRect.x", body.number_at("m_Rect.x"));
+        const double y = body.number_at("m_RD.textureRect.y", body.number_at("m_Rect.y"));
+        sprite.width = body.number_at("m_RD.textureRect.width", rect_width);
+        sprite.height = body.number_at("m_RD.textureRect.height", rect_height);
+        if (sprite.width <= 0.0 || sprite.height <= 0.0) {
+            sprite.width = rect_width;
+            sprite.height = rect_height;
+        }
+        const double offset_x = body.number_at("m_RD.textureRectOffset.x");
+        const double offset_y = body.number_at("m_RD.textureRectOffset.y");
+        sprite.region = {x, static_cast<double>(source.height) - y - sprite.height, sprite.width,
+                         sprite.height};
+        sprite.whole =
+            x == 0.0 && y == 0.0 && sprite.width == source.width && sprite.height == source.height;
+        sprite.ppu = body.number_at("m_PixelsToUnits", 100.0);
+        if (sprite.ppu <= 0.0) {
+            sprite.ppu = 100.0;
+        }
+        sprite.border = {body.number_at("m_Border.x"), body.number_at("m_Border.y"),
+                         body.number_at("m_Border.z"), body.number_at("m_Border.w")};
+        const double pivot_x = (body.number_at("m_Pivot.x", 0.5) * rect_width) - offset_x;
+        const double pivot_y = (body.number_at("m_Pivot.y", 0.5) * rect_height) - offset_y;
+        sprite.pivot_x = pivot_x / sprite.width;
+        sprite.pivot_y = pivot_y / sprite.height;
+        // Its physics shape is in units around the pivot; the sprite's outlines are in pixels
+        // around the middle of its rect.
+        sprite.shape.clear();
+        for (Outline outline : outlines(body.get("m_PhysicsShape"))) {
+            for (auto& point : outline) {
+                point = {tidy((point[0] * sprite.ppu) + pivot_x - (sprite.width / 2.0)),
+                         tidy((point[1] * sprite.ppu) + pivot_y - (sprite.height / 2.0))};
+            }
+            sprite.shape.push_back(std::move(outline));
+        }
+        out.path = source.path;
+        out.width = source.width;
+        out.height = source.height;
+        out.sprites[found->file_id] = std::move(sprite);
+        out.ok = true;
     }
 
     const Sprite* sprite(const ObjectRef& ref, std::string& why) {
@@ -2444,6 +2563,13 @@ private:
                 effector = &component;
                 break;
             case kMonoBehaviour: {
+                // A UI component here is outside a Canvas, which mono_behaviour reports.
+                if (const KnownScript* lost = lost_script(component);
+                    lost != nullptr && !lost->ui) {
+                    problems_.add("component " + std::string(lost->name), ctx.where,
+                                  std::string(kLostWhy));
+                    break;
+                }
                 const KnownScript* known = known_script(component);
                 const std::string_view name = known != nullptr ? known->name : std::string_view();
                 if (name == "Light2D") {
@@ -2508,6 +2634,11 @@ private:
                 out.animator = &component;
                 break;
             case kMonoBehaviour: {
+                if (const KnownScript* lost = lost_script(component)) {
+                    problems_.add("component " + std::string(lost->name), ctx.where,
+                                  std::string(kLostWhy));
+                    break;
+                }
                 const KnownScript* known = known_script(component);
                 if (known == nullptr || !known->ui) {
                     mono_behaviour(component, ctx);
@@ -3895,7 +4026,7 @@ private:
     }
 
     // The known package script a component is, or nullptr.
-    static const KnownScript* known_script(const Component& component) {
+    static const KnownScript* package_script(const Component& component) {
         if (component.class_id != kMonoBehaviour) {
             return nullptr;
         }
@@ -3909,6 +4040,27 @@ private:
             }
         }
         return nullptr;
+    }
+
+    // The known package script of a component that has lost its values, or nullptr. A project
+    // recovered from a build whose scripts couldn't be read (an IL2CPP one, often) keeps only the
+    // values every MonoBehaviour has; Unity writes the rest for every script that has any.
+    static const KnownScript* lost_script(const Component& component) {
+        const KnownScript* known = package_script(component);
+        if (known == nullptr || known->no_values) {
+            return nullptr;
+        }
+        for (const auto& [key, value] : component.body.entries) {
+            if (!standard_key(key)) {
+                return nullptr;
+            }
+        }
+        return known;
+    }
+
+    // The known package script a component is, or nullptr, also when its values are lost.
+    static const KnownScript* known_script(const Component& component) {
+        return lost_script(component) == nullptr ? package_script(component) : nullptr;
     }
 
     // The object a local reference names, through the component it names, or -1.
@@ -8967,6 +9119,37 @@ Result<ImportPlan> plan_unity(const std::string& source, const std::string& pref
                               const std::optional<std::string>& existing_work) {
     UnityImporter importer(source, prefix, copy_assets);
     return importer.run(existing_project, existing_work);
+}
+
+std::string_view unity::package_script_guid(std::string_view space, std::string_view name) {
+    // uGUI's scripts are in UnityEngine.UI and UnityEngine.EventSystems, TextMesh Pro's in TMPro,
+    // and URP's 2D lights in UnityEngine.Rendering.Universal (in its Experimental namespace
+    // before URP 11).
+    static constexpr std::array<std::string_view, 6> kEvents{
+        "EventSystem",  "StandaloneInputModule", "BaseInput",
+        "EventTrigger", "Physics2DRaycaster",    "PhysicsRaycaster"};
+    static constexpr std::array<std::string_view, 3> kLights{"Light2D", "ShadowCaster2D",
+                                                             "CompositeShadowCaster2D"};
+    bool known_space = false;
+    if (name.starts_with("TMP_") || name.starts_with("TextMeshPro")) {
+        known_space = space == "TMPro";
+    } else if (contains(kEvents, name)) {
+        known_space = space == "UnityEngine.EventSystems";
+    } else if (contains(kLights, name)) {
+        known_space = space == "UnityEngine.Rendering.Universal" ||
+                      space == "UnityEngine.Experimental.Rendering.Universal";
+    } else {
+        known_space = space == "UnityEngine.UI";
+    }
+    if (!known_space) {
+        return {};
+    }
+    for (const KnownScript& known : kKnownScripts) {
+        if (known.name == name) {
+            return known.guid;
+        }
+    }
+    return {};
 }
 
 } // namespace slash::importer

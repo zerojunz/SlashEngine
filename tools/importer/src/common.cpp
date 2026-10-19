@@ -161,6 +161,10 @@ std::string unsupported_asset(std::string_view extension) {
         extension == ".mod" || extension == ".it" || extension == ".s3m" || extension == ".xm") {
         return "sounds are WAV, Ogg Vorbis or MP3 files";
     }
+    if (extension == ".audioclip") {
+        return "a sound left in Unity's own format, which doesn't decode (web builds keep sounds "
+               "as AAC); sounds are WAV, Ogg Vorbis or MP3 files";
+    }
     return {};
 }
 
