@@ -67,7 +67,7 @@ as `entity.get`, reject it as an unknown param.
 | Lights | [`light.sample`](#lightsample) |
 | UI and text | [`ui.layout`](#uilayout), [`ui.theme`](#uitheme), [`ui.press`](#uipress), [`ui.popup`](#uipopup), [`ui.select`](#uiselect), [`ui.drag`](#uidrag), [`ui.tooltip`](#uitooltip), [`ui.focus`](#uifocus), [`ui.search`](#uisearch), [`ui.clipboard`](#uiclipboard), [`text.measure`](#textmeasure) |
 | Input | [`input.inject`](#inputinject), [`input.state`](#inputstate), [`input.actions`](#inputactions) |
-| Audio | [`audio.state`](#audiostate), [`audio.capture`](#audiocapture), [`audio.play`](#audioplay), [`audio.stop`](#audiostop), [`audio.set_bus`](#audioset_bus), [`audio.spectrum`](#audiospectrum), [`audio.record`](#audiorecord) |
+| Audio | [`audio.state`](#audiostate), [`audio.capture`](#audiocapture), [`audio.play`](#audioplay), [`audio.stop`](#audiostop), [`audio.set_bus`](#audioset_bus), [`audio.spectrum`](#audiospectrum), [`audio.record`](#audiorecord), [`audio.input`](#audioinput) |
 | Storyboard | [`storyboard.query`](#storyboardquery), [`storyboard.brief`](#storyboardbrief), [`storyboard.check`](#storyboardcheck), [`storyboard.edit`](#storyboardedit) |
 | Components | [`component.set`](#componentset), [`component.remove`](#componentremove) |
 | Query | [`world.query`](#worldquery) |
@@ -1378,6 +1378,13 @@ Needs: `read`. With the footsteps playing:
   `discarded_frames` once a full buffer has dropped some. A `record` effect lists
   `"recording": true` while it records and `seconds` once it holds a recording; both show the
   state at the next tick, after any [`audio.record`](#audiorecord) waiting for it.
+- With the project's `audio.enable_input`, `input` shows the [microphone](scene-format.md#microphone)
+  input: `active` while a microphone player or the game keeps it on, `source` (the sound
+  [`audio.input`](#audioinput) plays into it, the microphone's name, or `""` for silence, as
+  headless), `peak_db` over the last tick (`null` when silent), and `error` when the microphone
+  wouldn't open, such as when the player refused it. From
+  [examples/microphone](../../examples/microphone/):
+  `"input":{"active":true,"peak_db":-26,"source":"audio/song.wav"}`.
 
 ### audio.capture
 
@@ -1411,7 +1418,8 @@ and so is a `path` that doesn't end in `.wav`. In a dry-run `batch`, `path` writ
 
 Plays an `AudioStreamPlayer` or `AudioStreamPlayer2D` at the next tick, as Godot's `play()`: with
 `max_polyphony` 1 it starts over, with more another voice joins, up to that many. Music,
-generators and polyphonic streams always start over, as Godot's monophonic streams do. With
+generators, polyphonic streams and microphones always start over, as Godot's monophonic streams
+do. With
 `stream`, it plays that sound or `.audio.json` file on a player whose stream is
 [polyphonic](scene-format.md#generators-and-polyphonic-streams) instead, as Godot's
 `play_stream`, starting the player first if it isn't playing.
@@ -1447,8 +1455,8 @@ polyphonic `sfx` player:
 {"id": "sfx", "stream": "audio/hit.wav", "pitch_scale": 2}
 ```
 
-A `stream` that doesn't load is an error at `/stream`, and a player whose stream isn't
-polyphonic one at `/id`; `volume_db` and `pitch_scale` go only with `stream`. When every slot of
+A `stream` that doesn't load or is a microphone is an error at `/stream`, and a player whose
+stream isn't polyphonic one at `/id`; `volume_db` and `pitch_scale` go only with `stream`. When every slot of
 the player's `polyphony` is playing, the new stream is dropped with a warning in the log.
 
 ### audio.stop
@@ -1570,6 +1578,34 @@ Needs: `run`, and `filesystem` with `path`. Recording 30 ticks of a bat in a cav
 recording. The mixer records whole steps of 512 frames, so `seconds` can run a step ahead of the
 ticks. A `path` with nothing recorded, with `"recording": true` or not ending in `.wav` is an
 error. In a dry run, `path` writes nothing.
+
+### audio.input
+
+Plays a sound or `.audio.json` file into the [microphone](scene-format.md#microphone) input from
+the next tick, in place of the microphone, so an agent can test a game that listens: microphone
+players play it 50 ms late and gameplay code reading the input hears it. It plays while input is
+on, from where input turns on, and the input is silent once it ends. `""` goes back to the
+microphone (silence when headless).
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `stream` | string | required | The sound or `.audio.json` file, or `""` for the microphone |
+
+Needs: `run`. From [examples/microphone](../../examples/microphone/), singing into a game that
+lights lanterns:
+
+```json
+{"stream": "audio/song.wav"}
+```
+
+```json
+{"tick":5}
+```
+
+Like `audio.play`, it waits for the next tick, so a failed `batch` or a dry run takes it back.
+It is an error when the project's `audio.enable_input` is off, and at `/stream` when the stream
+doesn't load or is itself a microphone. [`audio.state`](#audiostate)'s `input` shows what feeds
+the input.
 
 ## Storyboard
 

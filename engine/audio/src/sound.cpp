@@ -310,8 +310,9 @@ json::Value stream_file_schema() {
         "One of: a sound with Godot's import settings (source); Godot's AudioStreamRandomizer, "
         "one of several sounds each time it plays (streams); music, as Godot's "
         "AudioStreamPlaylist (playlist), AudioStreamSynchronized (synchronized) and "
-        "AudioStreamInteractive (clips); or Godot's AudioStreamGenerator (generator) or "
-        "AudioStreamPolyphonic (polyphonic), which a game's code plays frames or streams on.";
+        "AudioStreamInteractive (clips); Godot's AudioStreamGenerator (generator) or "
+        "AudioStreamPolyphonic (polyphonic), which a game's code plays frames or streams on; or "
+        "Godot's AudioStreamMicrophone (microphone).";
     schema["type"] = "object";
     schema["additionalProperties"] = false;
     schema["required"] = json::Array{"format"};
@@ -471,13 +472,20 @@ json::Value stream_file_schema() {
     polyphony["maximum"] = 128;
     polyphony["default"] = 32;
     polyphony["description"] = "Streams that can play at once.";
+    json::Value& microphone = properties["microphone"];
+    microphone["type"] = "object";
+    microphone["additionalProperties"] = false;
+    microphone["properties"] = json::Object{};
+    microphone["description"] =
+        "Plays what the microphone records, 50 ms late, as Godot's AudioStreamMicrophone; only as "
+        "a player's own stream, with project.json's audio.enable_input on.";
     return schema;
 }
 
 namespace {
 
 // The kinds of .audio.json file, by the member that makes one.
-constexpr std::array<std::pair<std::string_view, StreamFile::Kind>, 7> kKinds{{
+constexpr std::array<std::pair<std::string_view, StreamFile::Kind>, 8> kKinds{{
     {"source", StreamFile::Kind::Sound},
     {"streams", StreamFile::Kind::Randomizer},
     {"playlist", StreamFile::Kind::Playlist},
@@ -485,6 +493,7 @@ constexpr std::array<std::pair<std::string_view, StreamFile::Kind>, 7> kKinds{{
     {"clips", StreamFile::Kind::Interactive},
     {"generator", StreamFile::Kind::Generator},
     {"polyphonic", StreamFile::Kind::Polyphonic},
+    {"microphone", StreamFile::Kind::Microphone},
 }};
 
 // Members only some kinds take, and the message for the others.
@@ -616,10 +625,10 @@ std::vector<json::ValidationError> validate_stream_file(const json::Value& doc) 
             {"", found.empty()
                      ? "needs one of \"source\" (a sound with settings), \"streams\" (a "
                        "randomizer), \"playlist\", \"synchronized\", \"clips\" (music), "
-                       "\"generator\" or \"polyphonic\""
+                       "\"generator\", \"polyphonic\" or \"microphone\""
                      : "has both \"" + std::string(found[0]) + "\" and \"" + std::string(found[1]) +
-                           "\"; a file is one sound, randomizer, piece of music, generator or "
-                           "polyphonic stream"});
+                           "\"; a file is one sound, randomizer, piece of music, generator, "
+                           "polyphonic stream or microphone"});
         return errors;
     }
     for (const auto& [key, value] : doc.as_object()) {
@@ -667,7 +676,8 @@ std::vector<json::ValidationError> validate_stream_file(const json::Value& doc) 
         }
         return errors;
     }
-    if (kind == StreamFile::Kind::Generator || kind == StreamFile::Kind::Polyphonic) {
+    if (kind == StreamFile::Kind::Generator || kind == StreamFile::Kind::Polyphonic ||
+        kind == StreamFile::Kind::Microphone) {
         return errors;
     }
     const std::string member(found[0]);

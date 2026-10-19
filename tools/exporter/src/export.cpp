@@ -60,6 +60,18 @@ using detail::step;
 
 constexpr std::string_view kMacosDeploymentTarget = "11.0";
 
+// What a Mac app signed with the hardened runtime needs to record the microphone.
+constexpr std::string_view kMicrophoneEntitlements =
+    R"(<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+</dict>
+</plist>
+)";
+
 #if defined(__x86_64__) || defined(_M_X64)
 constexpr std::string_view kHostArch = kLinuxX86_64;
 #elif defined(__aarch64__) || defined(_M_ARM64)
@@ -776,6 +788,16 @@ ExportResult export_game(const ExportOptions& options) {
     if (!prepare_signing(preset, project_dir, signing, failure)) {
         return fail(failure, {});
     }
+    if (platform == "macos" && project.value().audio.enable_input &&
+        preset.macos.codesign_identity != kAdHocIdentity && signing.entitlements.empty()) {
+        // The hardened runtime keeps the microphone from apps not entitled to it.
+        std::error_code error;
+        signing.entitlements = fs::absolute(work / "entitlements.plist", error);
+        fs::create_directories(work, error);
+        if (!platform::write_file(signing.entitlements.string(), kMicrophoneEntitlements)) {
+            return fail({"options", "could not write " + signing.entitlements.string(), {}}, {});
+        }
+    }
 
     std::optional<AndroidTools> android;
     detail::AndroidKey android_key;
@@ -869,6 +891,12 @@ ExportResult export_game(const ExportOptions& options) {
                                        "-DSLASH_GAME_ID=" + project.value().bundle_id(),
                                        "-DSLASH_GAME_VERSION=" + project.value().version,
                                        "-DSLASH_GAME_DATA=" + data.generic_string()};
+    if (const audio::Settings& sound = project.value().audio; sound.enable_input) {
+        // Games that record ask for the microphone: Info.plist's reason on macOS and iOS, the
+        // RECORD_AUDIO permission on Android.
+        configure.emplace_back("-DSLASH_GAME_MICROPHONE=ON");
+        configure.push_back("-DSLASH_GAME_MICROPHONE_USAGE=" + sound.input_usage_description);
+    }
     if (platform == "macos") {
         configure.push_back("-DCMAKE_OSX_DEPLOYMENT_TARGET=" + std::string(kMacosDeploymentTarget));
         // Release builds run on Apple silicon and Intel Macs; debug builds only on this one.

@@ -8,6 +8,8 @@
 #   SLASH_GAME_DATA     absolute path of the folder to ship as the game's data
 #   SLASH_ANDROID_PACKAGE  Android application ID (Android only)
 #   SLASH_IOS_BUILD     CFBundleVersion, if not the version (iOS only)
+#   SLASH_GAME_MICROPHONE        ON if the game records (project.json's audio.enable_input)
+#   SLASH_GAME_MICROPHONE_USAGE  why, shown when macOS and iOS ask for the microphone
 #
 # `cmake --install <build> --component game --prefix <out>` lays the game out for its platform:
 # <out>/<binary>.app on macOS, <out>/<binary>[.exe] with <out>/data on Windows and Linux, and
@@ -44,12 +46,31 @@ if(MSVC)
     set(CMAKE_CXX_CREATE_WIN32_EXE "/subsystem:windows,10.00")
 endif()
 
-# The name, escaped for the XML of Info.plist and AndroidManifest.xml.
-string(REPLACE "&" "&amp;" SLASH_GAME_NAME_XML "${SLASH_GAME_NAME}")
-string(REPLACE "<" "&lt;" SLASH_GAME_NAME_XML "${SLASH_GAME_NAME_XML}")
-string(REPLACE ">" "&gt;" SLASH_GAME_NAME_XML "${SLASH_GAME_NAME_XML}")
-string(REPLACE "\"" "&quot;" SLASH_GAME_NAME_XML "${SLASH_GAME_NAME_XML}")
-string(REPLACE "'" "&apos;" SLASH_GAME_NAME_XML "${SLASH_GAME_NAME_XML}")
+# Text escaped for the XML of Info.plist and AndroidManifest.xml.
+function(slash_escape_xml out text)
+    string(REPLACE "&" "&amp;" text "${text}")
+    string(REPLACE "<" "&lt;" text "${text}")
+    string(REPLACE ">" "&gt;" text "${text}")
+    string(REPLACE "\"" "&quot;" text "${text}")
+    string(REPLACE "'" "&apos;" text "${text}")
+    set(${out} "${text}" PARENT_SCOPE)
+endfunction()
+slash_escape_xml(SLASH_GAME_NAME_XML "${SLASH_GAME_NAME}")
+
+# A game that records asks for the microphone, with a reason on macOS and iOS (whose systems stop
+# apps that record without one) and the RECORD_AUDIO permission on Android.
+set(SLASH_MICROPHONE_PLIST "")
+set(SLASH_ANDROID_PERMISSIONS "")
+if(SLASH_GAME_MICROPHONE)
+    if(NOT SLASH_GAME_MICROPHONE_USAGE)
+        set(SLASH_GAME_MICROPHONE_USAGE "${SLASH_GAME_NAME} listens to the microphone.")
+    endif()
+    slash_escape_xml(usage_xml "${SLASH_GAME_MICROPHONE_USAGE}")
+    set(SLASH_MICROPHONE_PLIST
+        "<key>NSMicrophoneUsageDescription</key>\n    <string>${usage_xml}</string>")
+    set(SLASH_ANDROID_PERMISSIONS
+        "<uses-permission android:name=\"android.permission.RECORD_AUDIO\" />")
+endif()
 
 # Linux builds use a glibc 2.31 sysroot (see tools/exporter), whose Wayland headers are older than
 # the code any host's wayland-scanner writes. So Linux games use X11, which Wayland desktops run

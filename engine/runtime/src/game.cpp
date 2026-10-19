@@ -144,6 +144,11 @@ Game::Game(Project project, platform::Platform platform, const std::string& data
         } else {
             log::warn("no sound", {{"error", output.error().message}});
         }
+        if (project_.audio.enable_input) {
+            // The microphone opens when a microphone player turns input on.
+            audio_input_ = std::make_unique<audio::SdlInput>();
+            audio::set_input_device(world_, audio_input_.get());
+        }
         // LineEdits cut, copy and paste with the system's clipboard.
         ui::set_clipboard_backend(
             world_,
@@ -154,6 +159,7 @@ Game::Game(Project project, platform::Platform platform, const std::string& data
 
 Game::~Game() {
     audio::set_sink(world_, nullptr);
+    audio::set_input_device(world_, nullptr);
 }
 
 bool Game::frame() {

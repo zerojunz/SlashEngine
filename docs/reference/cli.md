@@ -73,7 +73,9 @@ ticks as the game moves (see [`rendering.interpolation`](project-format.md)). Th
 mouse, touches and gamepads press the [input actions](project-format.md#input-actions) of the
 project folder's `project.json`, or only Godot's `ui_*` actions without one. Its
 [sound](scene-format.md#audio) plays on the default output device; with none, a warning says so
-and the game runs silent. Headless runs mix sound but play it nowhere.
+and the game runs silent. Headless runs mix sound but play it nowhere. With the project's
+`audio.enable_input`, [microphone](scene-format.md#microphone) players record the default
+microphone; headless, they hear silence or what `audio.input` plays.
 
 With `--serve`, the result also carries the server's `url`, and the game takes the `play` and
 `pause` commands: while paused it keeps serving requests but does not step the world, and
