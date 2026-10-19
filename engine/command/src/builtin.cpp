@@ -4,6 +4,7 @@
 
 #include "slash/animation/animation.hpp"
 #include "slash/audio/audio.hpp"
+#include "slash/audio/effects.hpp"
 #include "slash/canvas/canvas.hpp"
 #include "slash/canvas/gpu_particles.hpp"
 #include "slash/canvas/light.hpp"
@@ -2568,7 +2569,7 @@ json::Value level(float db) {
     return db > kSilent ? decibels(db) : json::Value(nullptr);
 }
 
-json::Value bus_json(const audio::Server& server, int index) {
+json::Value bus_json(const world::World& world, audio::Server& server, int index) {
     const audio::BusSettings& bus = server.layout().buses[static_cast<std::size_t>(index)];
     json::Value item;
     item["name"] = bus.name;
@@ -2589,11 +2590,32 @@ json::Value bus_json(const audio::Server& server, int index) {
     }
     if (!bus.effects.empty()) {
         json::Array effects;
-        for (const audio::EffectSlot& slot : bus.effects) {
+        for (std::size_t i = 0; i < bus.effects.size(); ++i) {
+            const audio::EffectSlot& slot = bus.effects[i];
             json::Value effect;
             effect["type"] = slot.type;
             if (!slot.enabled) {
                 effect["enabled"] = false;
+            }
+            const int slot_index = static_cast<int>(i);
+            if (const audio::CaptureInstance* capture =
+                    audio::capture_effect(server, index, slot_index)) {
+                effect["frames_available"] = capture->frames_available();
+                if (capture->discarded_frames() > 0) {
+                    effect["discarded_frames"] = capture->discarded_frames();
+                }
+            }
+            if (const audio::RecordInstance* record =
+                    audio::record_effect(server, index, slot_index)) {
+                // As it will be at the next tick, when audio.record's asks apply.
+                const audio::RecordingAsks asks = audio::recording_asks(world, index, slot_index);
+                if (asks.active.value_or(record->is_recording_active())) {
+                    effect["recording"] = true;
+                }
+                if (!asks.restarts && !record->frames().empty()) {
+                    effect["seconds"] =
+                        rounded(static_cast<double>(record->frames().size()) / server.mix_rate());
+                }
             }
             effects.push_back(std::move(effect));
         }
@@ -2618,12 +2640,12 @@ Result<int> find_bus(const audio::Server& server, std::string_view name) {
 }
 
 Reply audio_state(Session& session, const json::Value& params) {
-    const audio::Server& server = audio_server(session);
+    audio::Server& server = audio_server(session);
     json::Value result;
     result["mix_rate"] = server.mix_rate();
     json::Array buses;
     for (std::size_t i = 0; i < server.layout().buses.size(); ++i) {
-        buses.push_back(bus_json(server, static_cast<int>(i)));
+        buses.push_back(bus_json(session.world(), server, static_cast<int>(i)));
     }
     result["buses"] = std::move(buses);
     std::set<std::string, std::less<>> wanted;
@@ -2714,6 +2736,184 @@ Reply audio_capture(Session& session, const json::Value& params) {
     return Reply::success(std::move(result));
 }
 
+// The index of the effect of a type on a bus: the "effect" asked for, or the first such.
+Result<int> find_effect(const audio::Server& server, int bus, const json::Value& params,
+                        std::string_view type) {
+    const audio::BusSettings& settings = server.layout().buses[static_cast<std::size_t>(bus)];
+    const auto count = static_cast<std::int64_t>(settings.effects.size());
+    if (const json::Value* effect = params.find("effect"); effect != nullptr) {
+        const std::int64_t index = effect->as_int();
+        if (index >= count) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "/effect: " + quoted(settings.name) + " has " +
+                                  std::to_string(count) + (count == 1 ? " effect" : " effects"));
+        }
+        const std::string& found = settings.effects[static_cast<std::size_t>(index)].type;
+        if (found != type) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "/effect: effect " + std::to_string(index) + " of " +
+                                  quoted(settings.name) + " is " + quoted(found) + ", not " +
+                                  quoted(type));
+        }
+        return static_cast<int>(index);
+    }
+    for (std::int64_t i = 0; i < count; ++i) {
+        if (settings.effects[static_cast<std::size_t>(i)].type == type) {
+            return static_cast<int>(i);
+        }
+    }
+    return make_error(ErrorCode::InvalidArgument,
+                      "/bus: " + quoted(settings.name) + " has no " + quoted(type) + " effect");
+}
+
+// A failure for find_bus or find_effect, at the pointer its message starts with.
+Reply effect_error(const Error& error) {
+    const std::string_view message = error.message;
+    const std::size_t colon = message.find(": ");
+    if (message.starts_with('/') && colon != std::string_view::npos) {
+        return param_error(code::kInvalidArgument, message.substr(0, colon),
+                           std::string(message.substr(colon + 2)));
+    }
+    return param_error(error, "/bus");
+}
+
+// Octave bands around 31.5 Hz to 16 kHz, as sound level meters show them.
+constexpr std::array<std::array<double, 2>, 10> kOctaveBands{{{22, 44},
+                                                              {44, 88},
+                                                              {88, 177},
+                                                              {177, 355},
+                                                              {355, 710},
+                                                              {710, 1420},
+                                                              {1420, 2840},
+                                                              {2840, 5680},
+                                                              {5680, 11360},
+                                                              {11360, 22720}}};
+
+Reply audio_spectrum(Session& session, const json::Value& params) {
+    audio::Server& server = audio_server(session);
+    const std::string bus_name = params.find("bus") != nullptr ? text(params, "bus") : "Master";
+    auto bus = find_bus(server, bus_name);
+    if (!bus) {
+        return param_error(bus.error(), "/bus");
+    }
+    auto effect = find_effect(server, bus.value(), params, "spectrum_analyzer");
+    if (!effect) {
+        return effect_error(effect.error());
+    }
+    const audio::SpectrumAnalyzerInstance* analyzer =
+        audio::spectrum_analyzer(server, bus.value(), effect.value());
+    if (analyzer == nullptr) {
+        return param_error(code::kInvalidArgument, "/effect", "that spectrum analyzer can't run");
+    }
+    const auto mode = text(params, "mode") == "average"
+                          ? audio::SpectrumAnalyzerInstance::MagnitudeMode::Average
+                          : audio::SpectrumAnalyzerInstance::MagnitudeMode::Max;
+    std::vector<std::array<double, 2>> ranges;
+    const json::Value* asked = params.find("ranges");
+    if (asked != nullptr) {
+        for (const json::Value& range : asked->as_array()) {
+            ranges.push_back({range.as_array()[0].as_double(), range.as_array()[1].as_double()});
+        }
+    } else {
+        ranges.assign(kOctaveBands.begin(), kOctaveBands.end());
+    }
+    json::Value result;
+    if (asked == nullptr) {
+        json::Array bands;
+        for (const auto& [from, to] : ranges) {
+            bands.emplace_back(json::Array{short_number(from), short_number(to)});
+        }
+        result["ranges"] = std::move(bands);
+    }
+    // Below 16-bit sound's floor, only the FFT's rounding is left.
+    constexpr float kQuietest = -100.0F;
+    json::Array levels;
+    for (const auto& [from, to] : ranges) {
+        const audio::Frame magnitude = analyzer->magnitude_for_frequency_range(
+            static_cast<float>(from), static_cast<float>(to), mode);
+        const float loudest = std::max(magnitude.left, magnitude.right);
+        const float db = loudest > 0.0F ? audio::linear_to_db(loudest) : kQuietest;
+        levels.push_back(db > kQuietest ? decibels(db) : json::Value(nullptr));
+    }
+    result["db"] = std::move(levels);
+    return Reply::success(std::move(result));
+}
+
+Reply audio_record(Session& session, const json::Value& params) {
+    audio::Server& server = audio_server(session);
+    const std::string path = text(params, "path");
+    if (!path.empty()) {
+        if (!session.allowed(Capability::Filesystem)) {
+            json::Value data;
+            data["capability"] = "filesystem";
+            data["path"] = "/path";
+            return Reply::failure(code::kPermissionDenied,
+                                  "/path: writing a file needs the \"filesystem\" capability, "
+                                  "which this session does not grant",
+                                  std::move(data));
+        }
+        if (!path.ends_with(".wav") || path.size() == 4) {
+            return param_error(code::kInvalidArgument, "/path",
+                               R"(recordings are .wav files, e.g. "build/take.wav")");
+        }
+    }
+    const std::string bus_name = params.find("bus") != nullptr ? text(params, "bus") : "Master";
+    auto bus = find_bus(server, bus_name);
+    if (!bus) {
+        return param_error(bus.error(), "/bus");
+    }
+    auto effect = find_effect(server, bus.value(), params, "record");
+    if (!effect) {
+        return effect_error(effect.error());
+    }
+    audio::RecordInstance* record = audio::record_effect(server, bus.value(), effect.value());
+    if (record == nullptr) {
+        return param_error(code::kInvalidArgument, "/effect", "that record effect can't run");
+    }
+    const json::Value* recording = params.find("recording");
+    const bool starting = recording != nullptr && recording->as_bool();
+    // Starts and stops wait for the next tick, as audio.play does; a start waiting will drop what
+    // was recorded.
+    const audio::RecordingAsks asks =
+        audio::recording_asks(session.world(), bus.value(), effect.value());
+    const std::span<const audio::Frame> recorded =
+        asks.restarts ? std::span<const audio::Frame>{} : record->frames();
+    if (!path.empty()) {
+        if (starting) {
+            return param_error(code::kInvalidArgument, "/path",
+                               "a recording just starting has nothing to write yet");
+        }
+        if (recorded.empty()) {
+            return param_error(code::kInvalidArgument, "/path", "nothing has been recorded");
+        }
+    }
+    json::Value result;
+    if (!path.empty()) {
+        auto file = session.resolve_path(path);
+        if (!file) {
+            return param_error(file.error(), "/path");
+        }
+        if (!session.dry_running()) {
+            const int bits = record->format() == audio::RecordInstance::Format::Bits8 ? 8 : 16;
+            if (auto written = session.write_file(
+                    file.value(), audio::encode_wav(recorded, server.mix_rate(), bits));
+                !written) {
+                return Reply::failure(written.error());
+            }
+        }
+        result["path"] = path;
+    }
+    if (recording != nullptr) {
+        audio::set_recording(session.world(), bus.value(), effect.value(), starting);
+    }
+    result["recording"] =
+        recording != nullptr ? starting : asks.active.value_or(record->is_recording_active());
+    // A new recording starts empty.
+    const std::size_t frames = starting ? 0 : recorded.size();
+    result["seconds"] = rounded(static_cast<double>(frames) / server.mix_rate());
+    return Reply::success(std::move(result));
+}
+
 // The entity a player command names, or why it can't play.
 Result<entt::entity> audio_player(const world::World& world, std::string_view id) {
     const entt::entity entity = world.find(id);
@@ -2787,7 +2987,7 @@ Reply audio_set_bus(Session& session, const json::Value& params) {
     if (effect != nullptr) {
         server.set_bus_effect_enabled(bus, static_cast<int>(effect->as_int()), enabled->as_bool());
     }
-    return Reply::success(bus_json(server, bus));
+    return Reply::success(bus_json(session.world(), server, bus));
 }
 
 // ---- Lights ----
@@ -5381,6 +5581,52 @@ void register_builtin_commands(Registry& registry) {
              {"enabled", property("boolean", "Turns that effect on or off.")}},
             {"bus"}),
         .handler = audio_set_bus,
+    });
+    json::Value spectrum_ranges = property("array", "Frequency ranges as [from_hz, to_hz]. "
+                                                    "Default: ten octave bands from 22 Hz, "
+                                                    "returned as ranges.");
+    spectrum_ranges["items"]["type"] = "array";
+    spectrum_ranges["items"]["items"]["type"] = "number";
+    spectrum_ranges["items"]["items"]["minimum"] = 0;
+    spectrum_ranges["items"]["minItems"] = 2;
+    spectrum_ranges["items"]["maxItems"] = 2;
+    spectrum_ranges["minItems"] = 1;
+    spectrum_ranges["maxItems"] = 64;
+    json::Value spectrum_mode = property("string", "\"max\" (default): each range's strongest "
+                                                   "frequency; \"average\": their mean.");
+    spectrum_mode["enum"] = json::Array{"max", "average"};
+    registry.add({
+        .name = "audio.spectrum",
+        .description = "Measures frequencies a bus's spectrum_analyzer effect heard in its newest "
+                       "window: dB per range (the louder channel), null below -100 dB.",
+        .capabilities = {Read},
+        .effect = Effect::Read,
+        .params = params_schema(
+            {{"bus", id_property("The bus. Default: \"Master\".")},
+             {"effect", integer_property("The effect's index. Default: the bus's first "
+                                         "spectrum_analyzer.",
+                                         0, 15, 0)},
+             {"ranges", std::move(spectrum_ranges)},
+             {"mode", std::move(spectrum_mode)}}),
+        .handler = audio_spectrum,
+    });
+    registry.add({
+        .name = "audio.record",
+        .description = "Starts or stops a bus's record effect at the next tick, as Godot's "
+                       "set_recording_active; starting drops the last recording. \"path\" writes "
+                       "the recording as a "
+                       ".wav file (needs the filesystem capability). Returns recording and "
+                       "seconds recorded.",
+        .capabilities = {Run},
+        .effect = Effect::Read,
+        .params = params_schema(
+            {{"bus", id_property("The bus. Default: \"Master\".")},
+             {"effect",
+              integer_property("The effect's index. Default: the bus's first record.", 0, 15, 0)},
+             {"recording", property("boolean", "true starts a new recording, false stops. "
+                                               "Default: unchanged.")},
+             {"path", property("string", "A .wav file to write the recording to.")}}),
+        .handler = audio_record,
     });
 
     json::Value set_components =

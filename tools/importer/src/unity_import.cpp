@@ -1344,6 +1344,9 @@ private:
         static const std::map<std::pair<std::string_view, std::string_view>, double> kDefaults{
             {{"Lowpass", "cutofffreq"}, 5000.0},
             {{"Lowpass", "resonance"}, 1.0},
+            {{"Pitch Shifter", "pitch"}, 1.0},
+            {{"Pitch Shifter", "fftsize"}, 1024.0},
+            {{"Pitch Shifter", "overlap"}, 4.0},
             {{"Highpass", "cutofffreq"}, 5000.0},
             {{"Highpass", "resonance"}, 1.0},
             {{"Lowpass Simple", "cutofffreq"}, 5000.0},
@@ -1528,6 +1531,22 @@ private:
             out["predelay_msec"] = tidy(std::clamp(
                 (setting("reflectdelay") + setting("reverbdelay")) * 1000.0, 20.0, 500.0));
             out["predelay_feedback"] = 0.0;
+        } else if (name == "Pitch Shifter") {
+            // Both are Bernsee's phase vocoder: Unity's overlap is Godot's oversampling, from 4.
+            const double overlap = setting("overlap");
+            if (overlap < 4.0) {
+                problems_.add("pitch shifter overlap below 4", where,
+                              "a pitch shift oversamples at least 4 times, as Godot's");
+            }
+            std::int64_t fft_size = 256;
+            while (fft_size < 4096 && static_cast<double>(fft_size) < setting("fftsize")) {
+                fft_size *= 2;
+            }
+            out["type"] = "pitch_shift";
+            out["pitch_scale"] = tidy(std::clamp(setting("pitch"), 0.01, 16.0));
+            out["fft_size"] = fft_size;
+            out["oversampling"] =
+                static_cast<std::int64_t>(std::clamp(std::round(overlap), 4.0, 32.0));
         } else if (name == "Attenuation" || name == "Send" || name == "Receive") {
             why.clear();
             return std::nullopt;
@@ -1536,7 +1555,6 @@ private:
                 {"Flange", "Godot's effects have no flanger"},
                 {"Normalize", "Godot's effects have no normalizer"},
                 {"ParamEQ", "Godot's EQs have fixed bands; one movable band doesn't convert"},
-                {"Pitch Shifter", "pitch shift is on the roadmap"},
             };
             const auto it = kWhys.find(name);
             why = it != kWhys.end() ? std::string(it->second) : "an audio plugin's effect";

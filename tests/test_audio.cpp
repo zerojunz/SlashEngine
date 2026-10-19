@@ -4,6 +4,7 @@
 #include "slash/core/json.hpp"
 #include "slash/core/json_schema.hpp"
 #include "slash/core/math.hpp"
+#include "slash/physics2d/physics2d.hpp"
 #include "slash/ui/ui.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
@@ -21,6 +22,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -480,7 +482,7 @@ TEST_CASE("stopping fades out over one mix step, and pausing keeps the position"
 TEST_CASE("every effect runs with its defaults") {
     TestContext context;
     const std::vector<std::string_view> types = audio::effect_types();
-    CHECK(types.size() == 20);
+    CHECK(types.size() == 24);
     CHECK(std::ranges::find(types, "reverb") != types.end());
     const std::vector<Frame> in = sine(440.0, 0.5F, 8 * audio::Server::kMixStep);
     for (const std::string_view type : types) {
@@ -539,6 +541,187 @@ TEST_CASE("effects change the sound as Godot's do") {
     CHECK(peak(std::span(squeezed).subspan(4096)) < 0.5F);
 }
 
+// The spectrum analyzer's measure of one frequency, give or take a bin.
+float magnitude_at(const audio::SpectrumAnalyzerInstance& analyzer, float hz) {
+    return analyzer.magnitude_for_frequency_range(hz - 20.0F, hz + 20.0F).left;
+}
+
+TEST_CASE("a spectrum analyzer measures frequencies as Godot's does") {
+    TestContext context;
+    auto made = effect(context, "spectrum_analyzer");
+    auto& analyzer = static_cast<audio::SpectrumAnalyzerInstance&>(*made);
+    // Nothing analyzed yet.
+    CHECK(analyzer.magnitude_for_frequency_range(0, 22050).left == 0.0F);
+
+    // It passes the sound through, and a full-scale sine measures about 0.5 at its frequency
+    // (half of it lost to the Hann window), next to nothing an octave away.
+    const std::vector<Frame> in = sine(1000.0, 1.0F, 8192);
+    const std::vector<Frame> out = run(analyzer, in);
+    CHECK(out[1000].left == in[1000].left);
+    CHECK(magnitude_at(analyzer, 1000.0F) == doctest::Approx(0.5F).epsilon(0.05));
+    CHECK(magnitude_at(analyzer, 2000.0F) < 0.01F);
+    // The average of a wide range is far below its strongest bin, and ranges read either way.
+    using Mode = audio::SpectrumAnalyzerInstance::MagnitudeMode;
+    const Frame wide = analyzer.magnitude_for_frequency_range(500, 1500, Mode::Average);
+    CHECK(wide.left < 0.05F);
+    CHECK(wide.left > 0.0F);
+    CHECK(analyzer.magnitude_for_frequency_range(1020, 980).left == magnitude_at(analyzer, 1000));
+    // Out of range clamps to the bins there are.
+    CHECK(analyzer.magnitude_for_frequency_range(-100, 0).left < 0.01F);
+    CHECK(analyzer.magnitude_for_frequency_range(30000, 40000).left < 0.01F);
+
+    // Only the newest window answers: after a pause in the sound, it hears silence.
+    run(analyzer, std::vector<Frame>(4096));
+    CHECK(magnitude_at(analyzer, 1000.0F) < 0.001F);
+}
+
+TEST_CASE("a pitch shift moves a sine's frequency and keeps its level") {
+    TestContext context;
+    const std::vector<Frame> in = sine(440.0, 0.5F, kRate);
+    for (const auto& [params, from, to] :
+         {std::tuple{R"({"pitch_scale": 2})", 440.0F, 880.0F},
+          std::tuple{R"({"pitch_scale": 0.5, "fft_size": 4096, "oversampling": 8})", 440.0F,
+                     220.0F}}) {
+        CAPTURE(params);
+        const std::vector<Frame> shifted = run(*effect(context, "pitch_shift", params), in);
+        auto analyzer = effect(context, "spectrum_analyzer", R"({"fft_size": 2048})");
+        run(*analyzer, shifted);
+        const auto& spectrum = static_cast<const audio::SpectrumAnalyzerInstance&>(*analyzer);
+        CHECK(magnitude_at(spectrum, to) > 0.15F);
+        CHECK(magnitude_at(spectrum, from) < magnitude_at(spectrum, to) / 10.0F);
+        // About as loud as it went in, once the window's latency has passed.
+        CHECK(rms(std::span(shifted).subspan(kRate / 2)) == doctest::Approx(rms(in)).epsilon(0.15));
+    }
+    // At a pitch scale of 1 the sound passes through untouched, as Godot skips it.
+    CHECK(run(*effect(context, "pitch_shift"), in) == in);
+}
+
+TEST_CASE("a capture holds what passes, one mix step at a time, for game code to take") {
+    TestContext context;
+    auto made = effect(context, "capture");
+    auto& capture = static_cast<audio::CaptureInstance&>(*made);
+    CHECK(capture.process_silence());
+    // 0.1 s at 44100 Hz is 4410 frames, rounded up to 8192; a ring of 8192 holds 8191.
+    CHECK(capture.buffer_length_frames() == 8192);
+    const std::vector<Frame> in = sine(440.0, 0.5F, 20 * audio::Server::kMixStep);
+    CHECK(run(capture, in) == in);
+    // A step that doesn't fit whole is discarded: 15 steps fit.
+    CHECK(capture.frames_available() == 15 * audio::Server::kMixStep);
+    CHECK(capture.pushed_frames() == 15 * audio::Server::kMixStep);
+    CHECK(capture.discarded_frames() == 5 * audio::Server::kMixStep);
+
+    CHECK(capture.can_get_buffer(100));
+    const std::vector<Frame> taken = capture.get_buffer(100);
+    REQUIRE(taken.size() == 100);
+    CHECK(taken[99] == in[99]);
+    CHECK(capture.frames_available() == 15 * audio::Server::kMixStep - 100);
+    CHECK(capture.get_buffer(0).empty());
+    CHECK(capture.get_buffer(8192).empty()); // past the ring, as Godot refuses
+    CHECK_FALSE(capture.can_get_buffer(8000));
+    CHECK(capture.get_buffer(8000).empty()); // more than it holds takes nothing
+    CHECK(capture.get_buffer(1)[0] == in[100]);
+    capture.clear_buffer();
+    CHECK(capture.frames_available() == 0);
+    run(capture, std::vector<Frame>(audio::Server::kMixStep, Frame{0.25F, 0.5F}));
+    CHECK(capture.get_buffer(audio::Server::kMixStep - 1).back() == Frame{0.25F, 0.5F});
+
+    auto tiny = effect(context, "capture", R"({"buffer_length": 0.01})");
+    CHECK(static_cast<audio::CaptureInstance&>(*tiny).buffer_length_frames() == 512);
+}
+
+TEST_CASE("a record effect keeps what passes while recording, to play back or write") {
+    TestContext context;
+    auto made = effect(context, "record");
+    auto& record = static_cast<audio::RecordInstance&>(*made);
+    CHECK(record.process_silence());
+    CHECK(record.format() == audio::RecordInstance::Format::Bits16);
+    const std::vector<Frame> steady(1024, Frame{0.3F, -0.6F});
+    CHECK(run(record, steady) == steady);
+    CHECK(record.frames().empty()); // not recording yet
+    record.set_recording_active(true);
+    CHECK(record.is_recording_active());
+    run(record, steady);
+    run(record, std::vector<Frame>(512));
+    CHECK(record.frames().size() == 1536);
+    record.set_recording_active(false);
+    run(record, steady);
+    CHECK(record.frames().size() == 1536);
+    CHECK(record.frames()[0] == Frame{0.3F, -0.6F});
+
+    // As a sound, at 16 bits, as Godot's get_recording makes an AudioStreamWAV.
+    const audio::Sound sound = record.recording();
+    CHECK(sound.mix_rate == kRate);
+    CHECK(sound.channels == 2);
+    CHECK(sound.frames == 1536);
+    REQUIRE(sound.samples.size() == 3072);
+    CHECK(sound.samples[0] == std::trunc(0.3F * 32768.0F) / 32768.0F);
+    CHECK(sound.samples[1] == std::trunc(-0.6F * 32768.0F) / 32768.0F);
+    // It plays back.
+    audio::Server server(kRate);
+    server.start(audio::sound_stream(std::make_shared<audio::Sound>(sound))->instantiate(kRate, 0),
+                 "Master", {1.0F, 1.0F}, 0.0, 1.0F);
+    check_frame(mix(server, 512).back(), 0.3F, -0.6F);
+
+    // Starting again drops the last recording.
+    record.set_recording_active(true);
+    CHECK(record.frames().empty());
+    run(record, steady);
+    CHECK(record.frames().size() == 1024);
+
+    auto eight = effect(context, "record", R"({"format": "8_bits"})");
+    auto& coarse = static_cast<audio::RecordInstance&>(*eight);
+    coarse.set_recording_active(true);
+    run(coarse, steady);
+    CHECK(coarse.recording().samples[0] == 38.0F / 128.0F); // trunc(0.3 * 128)
+    // A .wav file of it, 8-bit samples unsigned around 128.
+    const std::string wav = audio::encode_wav(coarse.frames(), kRate, 8);
+    CHECK(wav.size() == 44 + 2048);
+    CHECK(static_cast<unsigned char>(wav[34]) == 8); // bits per sample
+    CHECK(static_cast<unsigned char>(wav[44]) == 128 + 38);
+    auto decoded = audio::decode_sound(wav, "take.wav");
+    REQUIRE(decoded.ok());
+    CHECK(decoded.value().frames == 1024);
+    CHECK(decoded.value().samples[1] == doctest::Approx(-0.6F).epsilon(0.02));
+}
+
+TEST_CASE("the server gives a slot's running effect by its type, as get_bus_effect_instance") {
+    audio::Server server(kRate);
+    auto layout = audio::parse_bus_layout(parse(R"({"format": 1, "buses": [
+        {"name": "Master", "effects": [{"type": "spectrum_analyzer"}, {"type": "capture"},
+                                       {"type": "record", "enabled": false}]}]})"));
+    REQUIRE(layout.ok());
+    server.set_layout(layout.value());
+    CHECK(audio::spectrum_analyzer(server, 0, 0) != nullptr);
+    CHECK(audio::capture_effect(server, 0, 1) != nullptr);
+    CHECK(audio::record_effect(server, 0, 2) != nullptr);
+    CHECK(audio::capture_effect(server, 0, 0) == nullptr); // another type
+    CHECK(audio::spectrum_analyzer(server, 0, 3) == nullptr);
+    CHECK(audio::spectrum_analyzer(server, 1, 0) == nullptr);
+    CHECK(server.effect_instance(0, 0, "spectrum_analyzer") ==
+          audio::spectrum_analyzer(server, 0, 0));
+
+    // A capture keeps running while its bus is silent, as Godot's process_silence says; a
+    // turned off record effect doesn't run at all.
+    audio::record_effect(server, 0, 2)->set_recording_active(true);
+    mix(server, 2048);
+    CHECK(audio::capture_effect(server, 0, 1)->pushed_frames() == 2048);
+    CHECK(audio::record_effect(server, 0, 2)->frames().empty());
+    server.set_bus_effect_enabled(0, 2, true);
+    server.start(steady_stream(kRate, {0.25F, 0.25F})->instantiate(kRate, 0), "Master",
+                 {1.0F, 1.0F}, 0.0, 1.0F);
+    mix(server, 1024);
+    REQUIRE(audio::record_effect(server, 0, 2)->frames().size() == 1024);
+    // The sound starts a lookahead and two frames of resampling history late.
+    CHECK(audio::record_effect(server, 0, 2)->frames()[65] == Frame{});
+    CHECK(audio::record_effect(server, 0, 2)->frames()[66].left == doctest::Approx(0.25F));
+    // The spectrum analyzer answers once a window of 2048 frames has filled: the steady sound
+    // is all in the first bin.
+    CHECK(audio::spectrum_analyzer(server, 0, 0)->magnitude_for_frequency_range(0, 20).left ==
+          0.0F);
+    mix(server, 1024);
+    CHECK(audio::spectrum_analyzer(server, 0, 0)->magnitude_for_frequency_range(0, 20).left > 0.2F);
+}
+
 TEST_CASE("effect settings are checked, naming the closest type") {
     const json::Value schema = audio::effect_schema();
     const auto errors = [&](std::string_view text) { return json::validate(parse(text), schema); };
@@ -563,6 +746,12 @@ TEST_CASE("effect settings are checked, naming the closest type") {
     CHECK(errors(R"({"type": "distortion", "mode": "clipp"})").front().path == "/mode");
     CHECK(errors(R"({"type": "eq10", "band_db": {"1000_hz": 0, "999_hz": 1}})").front().path ==
           "/band_db/999_hz");
+    CHECK(errors(R"({"type": "pitch_shift", "pitch_scale": 2, "fft_size": 512})").empty());
+    CHECK(errors(R"({"type": "pitch_shift", "fft_size": 1000})").front().path == "/fft_size");
+    CHECK(errors(R"({"type": "spectrum_analyzer", "fft_size": 3000})").front().path == "/fft_size");
+    CHECK(errors(R"({"type": "record", "format": "8_bits"})").empty());
+    CHECK(errors(R"({"type": "record", "format": "qoa"})").front().path == "/format");
+    CHECK(errors(R"({"type": "capture", "buffer_length": 11})").front().path == "/buffer_length");
 }
 
 TEST_CASE(".bus_layout.json files list the buses, Master first") {
@@ -788,6 +977,60 @@ TEST_CASE("an AudioStreamPlayer2D pans and fades with its distance from the list
                                                                 viewport.y / 2.0F};
     sounds.step();
     check_frame(sounds.player("hum")->volume, 0.5F, 0.5F);
+}
+
+TEST_CASE("an Area2D with audio_bus_override sends the 2D sounds inside it to its bus") {
+    audio::Settings settings;
+    settings.bus_layout = "buses.bus_layout.json";
+    Sounds sounds(settings);
+    slash::physics2d::install(sounds.world);
+    sounds.files.write("buses.bus_layout.json", R"({"format": 1, "buses": [{"name": "Master"},
+        {"name": "Sfx"}, {"name": "Cave", "volume_db": -6.0206}, {"name": "Lake"}]})");
+    sounds.files.write("hum.wav", steady_wav(kRate, {0.5F, 0.5F}));
+    const auto area = [&](std::string_view id, std::string_view fields, slash::Vec2 at) {
+        const entt::entity entity = sounds.add(id, "Area2D", fields);
+        sounds.world.ecs().emplace<world::Transform2D>(entity).position = at;
+        sounds.world.ecs().emplace<world::CollisionShape2D>(entity).size = {100.0F, 100.0F};
+        return entity;
+    };
+    area("cave", R"({"audio_bus_override": true, "audio_bus_name": "Cave"})", {500.0F, 0.0F});
+    // Overlapping the cave's right half: the first by ID wins.
+    area("lake", R"({"audio_bus_override": true, "audio_bus_name": "Lake"})", {550.0F, 0.0F});
+    // On layer 2, which players' default area_mask leaves out.
+    area("wind", R"({"audio_bus_override": true, "audio_bus_name": "Lake", "collision_layer": 2})",
+         {-500.0F, 0.0F});
+    // An area that doesn't override changes nothing.
+    area("field", "{}", {0.0F, 300.0F});
+    const entt::entity hum = sounds.add(
+        "hum", "AudioStreamPlayer2D",
+        R"({"stream": "hum.wav", "autoplay": true, "bus": "Sfx", "max_distance": 100000})");
+    auto& at = sounds.world.ecs().emplace<world::Transform2D>(hum).position;
+    const auto bus_at = [&](slash::Vec2 where) {
+        at = where;
+        sounds.step();
+        return sounds.player("hum")->bus;
+    };
+    CHECK(bus_at({0.0F, 0.0F}) == "Sfx");
+    CHECK(bus_at({480.0F, 0.0F}) == "Cave");
+    // The cave's volume, while the bus it left fades out.
+    sounds.step();
+    CHECK(audio::server(sounds.world)->bus_peak_db(2).left ==
+          doctest::Approx(audio::server(sounds.world)->bus_peak_db(0).left));
+    CHECK(audio::server(sounds.world)->bus_peak_db(1).left < -100.0F);
+    CHECK(bus_at({540.0F, 0.0F}) == "Cave");
+    CHECK(bus_at({590.0F, 0.0F}) == "Lake");
+    CHECK(bus_at({0.0F, 300.0F}) == "Sfx");
+    CHECK(bus_at({-500.0F, 0.0F}) == "Sfx");
+    sounds.world.ecs().get<world::AudioStreamPlayer2D>(hum).area_mask = 3;
+    CHECK(bus_at({-500.0F, 0.0F}) == "Lake");
+    // area_mask 0 ignores areas, as Godot's.
+    sounds.world.ecs().get<world::AudioStreamPlayer2D>(hum).area_mask = 0;
+    CHECK(bus_at({480.0F, 0.0F}) == "Sfx");
+    // A sound that starts inside starts on the area's bus.
+    sounds.world.ecs().get<world::AudioStreamPlayer2D>(hum).area_mask = 1;
+    audio::play(sounds.world, hum);
+    CHECK(bus_at({480.0F, 0.0F}) == "Cave");
+    CHECK(sounds.player("hum")->voices == 1);
 }
 
 TEST_CASE("an AudioStreamPlayer2D inside another entity is heard from where it is") {

@@ -2428,6 +2428,107 @@ TEST_CASE("audio commands play players, report buses and capture what was heard"
     CHECK(reader.ok("audio.capture").find("seconds")->as_double() == 0.0);
 }
 
+TEST_CASE("audio.spectrum reads a bus's analyzer and audio.record drives its recorder") {
+    const std::string root = "command_audio_effects_project";
+    std::filesystem::remove_all(root);
+    REQUIRE(slash::platform::create_directories(root).ok());
+    REQUIRE(slash::platform::write_file(root + "/project.json", R"({"format": 1, "name": "Effects",
+        "main_scene": "main.scene.json", "version": "1.0.0",
+        "audio": {"bus_layout": "buses.bus_layout.json"}})")
+                .ok());
+    REQUIRE(slash::platform::write_file(root + "/buses.bus_layout.json", R"({"format": 1, "buses": [
+        {"name": "Master", "effects": [{"type": "spectrum_analyzer"}, {"type": "record"},
+                                       {"type": "capture"}]},
+        {"name": "Music"}]})")
+                .ok());
+    // A steady 0.5 is all in the lowest bin.
+    const std::vector<slash::audio::Frame> hum(44100, slash::audio::Frame{0.5F, 0.5F});
+    REQUIRE(
+        slash::platform::write_file(root + "/hum.wav", slash::audio::encode_wav(hum, 44100)).ok());
+    command::SessionOptions options;
+    options.project_root = root;
+    Engine engine(options);
+    engine.ok("entity.create", R"({"id": "music", "components": {"AudioStreamPlayer":
+        {"stream": "hum.wav", "autoplay": true}}})");
+    engine.ok("step", R"({"ticks": 6})");
+
+    // Ten octave bands by default, returned with the levels; ranges given come back as levels.
+    const json::Value bands = engine.ok("audio.spectrum");
+    CHECK(bands.find("ranges")->size() == 10);
+    CHECK(bands.find("ranges")->as_array()[0] == parse("[22, 44]"));
+    REQUIRE(bands.find("db")->size() == 10);
+    // The Hann window spreads the steady sound into the next bin, 21.5 Hz, and no further.
+    CHECK(bands.find("db")->as_array()[0] == json::Value(-12));
+    CHECK(bands.find("db")->as_array()[1].is_null());
+    CHECK(engine.ok("audio.spectrum", R"({"ranges": [[0, 10]], "mode": "average"})") ==
+          parse(R"({"db": [-6]})"));
+    CHECK(engine.ok("audio.spectrum", R"({"bus": "Master", "effect": 0, "ranges": [[0, 10],
+        [1000, 2000]]})") == parse(R"({"db": [-6, null]})"));
+    const auto none =
+        engine.fails("audio.spectrum", R"({"bus": "Music"})", command::code::kInvalidArgument);
+    CHECK(none.message == R"(/bus: "Music" has no "spectrum_analyzer" effect)");
+    const auto other =
+        engine.fails("audio.spectrum", R"({"effect": 1})", command::code::kInvalidArgument);
+    CHECK(other.message == R"(/effect: effect 1 of "Master" is "record", not "spectrum_analyzer")");
+    CHECK(engine.fails("audio.spectrum", R"({"effect": 5})", command::code::kInvalidArgument)
+              .message == R"(/effect: "Master" has 3 effects)");
+    engine.fails("audio.spectrum", R"({"bus": "Musik"})", command::code::kNotFound);
+    engine.fails("audio.spectrum", R"({"ranges": [[1]]})", command::code::kInvalidParams);
+
+    // Nothing recorded yet: there is nothing to write.
+    CHECK(engine.ok("audio.record") == parse(R"({"recording": false, "seconds": 0})"));
+    CHECK(engine.fails("audio.record", R"({"path": "take.wav"})", command::code::kInvalidArgument)
+              .message == "/path: nothing has been recorded");
+    CHECK(engine.ok("audio.record", R"({"recording": true})") ==
+          parse(R"({"recording": true, "seconds": 0})"));
+    CHECK(engine.ok("audio.state").find("buses")->as_array()[0].find("effects")->as_array()[1] ==
+          parse(R"({"type": "record", "recording": true})"));
+    engine.fails("audio.record", R"({"recording": true, "path": "take.wav"})",
+                 command::code::kInvalidArgument);
+    // A start waits for the next tick, as audio.play does, so a failed batch takes it back with
+    // the recording it would have dropped.
+    engine.ok("step", R"({"ticks": 2})");
+    CHECK(engine.ok("audio.record") == parse(R"({"recording": true, "seconds": 0.0348})"));
+    engine.fails("batch",
+                 R"({"commands": [{"command": "audio.record", "params": {"recording": true}},
+                                  {"command": "audio.record", "params": {"bus": "Music"}}]})",
+                 command::code::kInvalidArgument);
+    CHECK(engine.ok("audio.record", R"({"recording": false})") ==
+          parse(R"({"recording": false, "seconds": 0.0348})"));
+    CHECK(engine.ok("audio.state").find("buses")->as_array()[0].find("effects")->as_array()[1] ==
+          parse(R"({"type": "record", "seconds": 0.0348})"));
+    CHECK(engine.ok("audio.record", R"({"recording": true})") ==
+          parse(R"({"recording": true, "seconds": 0})"));
+    // The mixer runs a step of 512 frames whenever it needs more: ten ticks of 735 frames start
+    // 14 steps here, each recorded whole.
+    engine.ok("step", R"({"ticks": 10})");
+    CHECK(engine.ok("audio.record") == parse(R"({"recording": true, "seconds": 0.1625})"));
+    CHECK(engine.ok("audio.record", R"({"recording": false, "path": "takes/one.wav"})") ==
+          parse(R"({"recording": false, "seconds": 0.1625, "path": "takes/one.wav"})"));
+    const auto wav = slash::platform::read_file(root + "/takes/one.wav");
+    REQUIRE(wav.ok());
+    auto take = slash::audio::decode_sound(wav.value(), "one.wav");
+    REQUIRE(take.ok());
+    CHECK(take.value().frames == 14 * 512);
+    CHECK(take.value().samples[100] == doctest::Approx(0.5F).epsilon(0.001));
+    engine.fails("audio.record", R"({"path": "take.ogg"})", command::code::kInvalidArgument);
+    engine.fails("audio.record", R"({"bus": "Music"})", command::code::kInvalidArgument);
+    // Stopped, the recording stays; the capture beside it holds what it could and shows what
+    // it discarded.
+    engine.ok("step", R"({"ticks": 5})");
+    const json::Value effects =
+        *engine.ok("audio.state").find("buses")->as_array()[0].find("effects");
+    CHECK(effects.as_array()[1] == parse(R"({"type": "record", "seconds": 0.1625})"));
+    CHECK(effects.as_array()[2].find("frames_available")->as_int() == 15 * 512);
+    CHECK(effects.as_array()[2].find("discarded_frames")->as_int() > 0);
+
+    // Writing a recording needs the filesystem capability.
+    options.capabilities = {Capability::Read, Capability::Run};
+    Engine reader(options);
+    reader.fails("audio.record", R"({"path": "x.wav"})", command::code::kPermissionDenied);
+    std::filesystem::remove_all(root);
+}
+
 TEST_CASE("the call listener hears each command that ran, with the tick it started at") {
     Engine engine;
     std::vector<std::string> heard;

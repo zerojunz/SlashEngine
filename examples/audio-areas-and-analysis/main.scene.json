@@ -1,0 +1,38 @@
+{
+  "entities": {
+    "bat": {
+      "components": {
+        "AudioStreamPlayer2D": {
+          "stream": "audio/chirp.wav"
+        },
+        "Transform2D": {
+          "position": [120.0, 180.0]
+        }
+      }
+    },
+    "cave": {
+      "components": {
+        "Area2D": {
+          "audio_bus_name": "Cave",
+          "audio_bus_override": true
+        },
+        "CollisionShape2D": {
+          "size": [200.0, 120.0]
+        },
+        "Transform2D": {
+          "position": [480.0, 180.0]
+        }
+      }
+    },
+    "voice": {
+      "components": {
+        "AudioStreamPlayer": {
+          "autoplay": true,
+          "bus": "Voice",
+          "stream": "audio/hum.wav"
+        }
+      }
+    }
+  },
+  "format": 1
+}

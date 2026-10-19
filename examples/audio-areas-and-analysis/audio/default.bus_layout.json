@@ -1,0 +1,21 @@
+{
+  "buses": [
+    {
+      "effects": [
+        {"type": "spectrum_analyzer"},
+        {"type": "capture"},
+        {"type": "record"}
+      ],
+      "name": "Master"
+    },
+    {
+      "effects": [{"pitch_scale": 2, "type": "pitch_shift"}],
+      "name": "Voice"
+    },
+    {
+      "effects": [{"room_size": 0.9, "type": "reverb", "wet": 0.6}],
+      "name": "Cave"
+    }
+  ],
+  "format": 1
+}
