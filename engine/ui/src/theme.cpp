@@ -20,7 +20,7 @@ namespace slash::ui {
 namespace {
 
 // Each control type and the type it is built on, as Godot's classes.
-constexpr std::array<std::pair<std::string_view, std::string_view>, 38> kTypes{{
+constexpr std::array<std::pair<std::string_view, std::string_view>, 39> kTypes{{
     {"Control", ""},
     {"Label", "Control"},
     {"TooltipLabel", "Label"},
@@ -33,6 +33,7 @@ constexpr std::array<std::pair<std::string_view, std::string_view>, 38> kTypes{{
     {"TextureButton", "BaseButton"},
     {"LineEdit", "Control"},
     {"TextEdit", "Control"},
+    {"CodeEdit", "TextEdit"},
     {"ColorRect", "Control"},
     {"Panel", "Control"},
     {"TextureRect", "Control"},
@@ -296,6 +297,17 @@ const std::map<std::string, ThemeItems, std::less<>>& own_defaults() {
             {"line_spacing", 4}, {"outline_size", 0}, {"caret_width", 1}, {"wrap_offset", 10}};
         text_edit.fonts = {{"font", ""}};
         text_edit.font_sizes = {{"font_size", text::kDefaultFontSize}};
+        // CodeEdit: TextEdit's, with its gutters' icons and colors.
+        ThemeItems& code_edit = themes["CodeEdit"];
+        code_edit.icons = {{"breakpoint", "builtin:breakpoint"},
+                           {"bookmark", "builtin:bookmark"},
+                           {"executing_line", "builtin:arrow_right"}};
+        code_edit.colors = {{"bookmark_color", {0.5F, 0.64F, 1.0F, 0.8F}},
+                            {"breakpoint_color", {0.9F, 0.29F, 0.3F, 1.0F}},
+                            {"executing_line_color", {0.98F, 0.89F, 0.27F, 1.0F}},
+                            {"line_number_color", {0.67F, 0.67F, 0.67F, 0.4F}},
+                            {"word_highlighted_color", {0.8F, 0.9F, 0.9F, 0.15F}},
+                            {"line_length_guideline_color", {0.3F, 0.5F, 0.8F, 0.1F}}};
         // Scroll bars: a track and a rounded grabber, with no arrows.
         const StyleBox grabber = flat_style(style_progress_color, 4.0F, 10);
         const StyleBox grabber_highlight = flat_style(style_focus_color, 4.0F, 10);

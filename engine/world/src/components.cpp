@@ -790,8 +790,10 @@ void register_ui_components(ComponentRegistry& registry) {
                  "caret; ui_text_newline breaks the line; ui_text_* actions move the caret, "
                  "select, delete and scroll; ui_cut, ui_copy, ui_paste, ui_undo and ui_redo "
                  "work the clipboard and undo; its scroll bars page, drag and take the wheel. "
-                 "A CodeHighlighter on the entity colors its text. Emits text_changed, text_set, "
-                 "lines_edited_from {\"from_line\", \"to_line\"} and caret_changed. Theme "
+                 "A CodeHighlighter on the entity colors its text and a CodeEdit makes it a code "
+                 "editor. Emits text_changed, text_set, lines_edited_from {\"from_line\", "
+                 "\"to_line\"}, caret_changed and, for a click on a gutter, gutter_clicked "
+                 "{\"line\", \"gutter\"} with the gutter's name. Theme "
                  "items: normal, read_only and focus styles, font, font_size, font_color, "
                  "font_readonly_color, font_selected_color, font_placeholder_color, "
                  "font_outline_color, outline_size, caret_color, caret_background_color, "
@@ -863,7 +865,12 @@ void register_ui_components(ComponentRegistry& registry) {
         .describe("search_flags",
                   {.doc = "How search_text matches.", .choices = {"match_case", "whole_words"}})
         .describe("text_direction", text_direction)
-        .describe("language", language);
+        .describe("language", language)
+        .describe("gutters",
+                  {.doc = "Columns left of the text, after a CodeEdit's: {\"name\", \"type\" "
+                          "(\"string\" or \"icon\"), \"width\" (24), \"draw\", \"lines\": "
+                          "[{\"line\", \"text\", \"icon\", \"color\"}]}. Entries move with "
+                          "their lines as the text is typed in, and go with a deleted line."});
 
     registry.add<CodeHighlighter>()
         .set_doc("Colors the text of the TextEdit on its entity as code, as Godot's "
@@ -884,6 +891,33 @@ void register_ui_components(ComponentRegistry& registry) {
                   {.doc = "Regions by \"start end\" keys of symbols, e.g. {\"\\\" \\\"\": "
                           "string color, \"/* */\": comment color}; a key with no end, e.g. "
                           "\"#\", runs to the line's end. Longer start keys are tried first."});
+
+    registry.add<CodeEdit>()
+        .set_doc("Makes the TextEdit on its entity a code editor, as Godot's CodeEdit: line "
+                 "numbers, and a gutter left of them for breakpoints, bookmarks and executing "
+                 "lines, which move with their lines as the text is typed in. A click on that "
+                 "gutter toggles a breakpoint (with Shift, a bookmark) and emits "
+                 "breakpoint_toggled {\"line\"}, as an edit moving or deleting one does; a "
+                 "click on a line number selects the line. Theme items (type CodeEdit, then "
+                 "TextEdit's): breakpoint, bookmark and executing_line icons, breakpoint_color, "
+                 "bookmark_color, executing_line_color, line_number_color and "
+                 "line_length_guideline_color.")
+        .describe("gutters_draw_breakpoints_gutter",
+                  {.doc = "Draw breakpoints, and toggle them with a click."})
+        .describe("gutters_draw_bookmarks",
+                  {.doc = "Draw bookmarks, and toggle them with Shift and a click."})
+        .describe("gutters_draw_executing_lines", {.doc = "Draw an arrow on executing lines."})
+        .describe("gutters_draw_line_numbers", {.doc = "Number the lines, from 1."})
+        .describe("gutters_zero_pad_line_numbers",
+                  {.doc = "Pad line numbers with zeros instead of spaces."})
+        .describe(
+            "gutters_line_numbers_min_digits",
+            {.doc = "Digits the line numbers' gutter has room for at least.", .min = 1, .max = 5})
+        .describe("line_length_guidelines",
+                  {.doc = "Columns to draw a line at, the first brighter than the rest.", .min = 0})
+        .describe("breakpointed_lines", {.doc = "Lines with a breakpoint, from 0.", .min = 0})
+        .describe("bookmarked_lines", {.doc = "Lines with a bookmark, from 0.", .min = 0})
+        .describe("executing_lines", {.doc = "Lines marked as executing, from 0.", .min = 0});
 
     registry.add<BoxContainer>()
         .set_doc("Lays out its children in a row, or a column when vertical, as Godot's "

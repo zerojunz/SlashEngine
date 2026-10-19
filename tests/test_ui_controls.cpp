@@ -408,7 +408,7 @@ TEST_CASE("theme icons come from overrides, then themes, then the built-in ones"
 
 TEST_CASE("the built-in icons are drawn in code, the same on every machine") {
     const std::vector<std::string_view>& names = ui::builtin_icon_names();
-    CHECK(names.size() == 22);
+    CHECK(names.size() == 25);
     for (const std::string_view name : names) {
         const render::Image* image =
             ui::builtin_icon(std::string(ui::kBuiltinPrefix) + std::string(name));
@@ -437,6 +437,16 @@ TEST_CASE("the built-in icons are drawn in code, the same on every machine") {
     // The knob is at the end that is on.
     CHECK(pixel(toggle, 24, 8) == "[26,26,26,255]");
     CHECK(pixel(*ui::builtin_icon("builtin:toggle_on_mirrored"), 8, 8) == "[26,26,26,255]");
+    // CodeEdit's: a red dot at half opacity, a bookmark notched at the bottom and an arrow.
+    const render::Image& breakpoint = *ui::builtin_icon("builtin:breakpoint");
+    CHECK(pixel(breakpoint, 8, 8) == "[255,93,93,128]");
+    CHECK(pixel(breakpoint, 0, 0) == "[0,0,0,0]");
+    const render::Image& bookmark = *ui::builtin_icon("builtin:bookmark");
+    CHECK(pixel(bookmark, 8, 4) == "[254,255,254,249]");
+    CHECK(pixel(bookmark, 8, 13) == "[0,0,0,0]");
+    const render::Image& arrow = *ui::builtin_icon("builtin:arrow_right");
+    CHECK(pixel(arrow, 7, 8) == "[178,178,178,97]");
+    CHECK(pixel(arrow, 3, 8) == "[0,0,0,0]");
 }
 
 TEST_CASE("a slider places its grabber by its value, with ticks under it") {

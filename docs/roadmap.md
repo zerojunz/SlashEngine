@@ -323,7 +323,9 @@ rendering on top.
 - [x] Syntax highlighting, search and scroll bars that can be dragged in a `TextEdit`, as
       Godot's `CodeHighlighter`, `TextEdit::search` and `ScrollBar`: `search_text` and
       `highlight_all_occurrences` marked, `ui.search`, and grabbers in `ui.layout`
-- [ ] Line numbers and other gutters, as Godot's `CodeEdit`
+- [x] Line numbers and other gutters, as Godot's `CodeEdit`: breakpoints, bookmarks and
+      executing lines that move with their lines, clicks in gutters, line length guidelines
+      and a `TextEdit`'s own gutters of text or icons, with their rects in `ui.layout`
 - [x] Audio, as Godot's AudioServer, on miniaudio's decoders: `.wav`, `.ogg` and `.mp3`
       sounds, `.audio.json` loops and randomizers, `AudioStreamPlayer` and
       `AudioStreamPlayer2D` with polyphony, pitch, pausing, distance and panning from an
@@ -645,7 +647,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Audio | miniaudio: buses, effects, 3D spatial audio | 5, 7 | In part: 2D players, buses and effects are done; area overrides, pitch shift and interactive music in 5, 3D audio in 7 |
 | Input | Rebindable action maps over SDL3, injectable by agents | 5 | Done |
 | Refresh rates and frame pacing | V-Sync modes, frame cap, display refresh rates, variable refresh rate, rendering interpolated between fixed ticks | 5 | Done |
-| UI | Retained UI with flexbox layout and themes, defined in text | 5 | In part: controls that draw, containers, themes, style boxes, buttons, check boxes, sliders, scrolling, drop-down lists, menus, tooltips, drag and drop, focus and text fields are done; syntax highlighting and search are done; a code editor's gutters in 5 |
+| UI | Retained UI with flexbox layout and themes, defined in text | 5 | Done |
 | Text and fonts | FreeType, HarfBuzz, MSDF fonts, BiDi, IME input, fallback fonts | 5 | Done |
 | Navigation | Recast and Detour, 2D and 3D, avoidance | 7 | Planned |
 | Asset import | glTF 2.0, FBX, OBJ, PNG, JPG, KTX2, WAV, OGG, MP3, and `.blend` through the artist's own Blender | 7 | Planned |

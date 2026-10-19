@@ -504,10 +504,17 @@ A reference must name an entity that exists in the same scene.
 | | `highlight_all_occurrences` | `bool` | `false` | Mark the other copies of the selected text in view, whole words of the same case |
 | | `search_text` | `std::string` | `""` | [Marked](#searching-and-highlighting-code) wherever it occurs in view |
 | | `search_flags` | `std::vector<std::string>` | `[]` | How `search_text` matches: `match_case`, `whole_words` |
+| | `gutters` | `std::vector<TextEditGutter>` | `[]` | [Columns](#gutters-and-line-numbers) left of the text: `name`, `type` (`string` or `icon`), `width` (`24`), `draw` (`true`) and `lines`, each `{"line": int, "text": string, "icon": string, "color": Vec4}` |
 | `CodeHighlighter` | `number_color`, `symbol_color`, `function_color`, `member_variable_color` | `Vec4` | `[0, 0, 0, 1]` | [Colors](#searching-and-highlighting-code) for numbers, symbols, a word before `(` and a word after `.` in the `TextEdit` on its entity |
 | | `keyword_colors` | `std::map<std::string, Vec4>` | `{}` | Words and their colors; opaque black colors nothing, as Godot's `Color()` |
 | | `member_keyword_colors` | `std::map<std::string, Vec4>` | `{}` | Words colored as keywords unless they come after a `.` |
 | | `color_regions` | `std::map<std::string, Vec4>` | `{}` | Regions by `"start end"` keys of symbols, such as `"/* */"`; a key with no end, such as `"#"`, runs to the line's end |
+| `CodeEdit` | `gutters_draw_line_numbers` | `bool` | `false` | Number the lines of the `TextEdit` on its entity, in a [gutter](#gutters-and-line-numbers) |
+| | `gutters_zero_pad_line_numbers` | `bool` | `false` | Pad the numbers with `0`s rather than spaces |
+| | `gutters_line_numbers_min_digits` | `int` | `3` | The fewest digits the numbers take room for, `1` to `5` |
+| | `gutters_draw_breakpoints_gutter`, `gutters_draw_bookmarks`, `gutters_draw_executing_lines` | `bool` | `false` | Show breakpoints, bookmarks and executing lines in the main gutter |
+| | `breakpointed_lines`, `bookmarked_lines`, `executing_lines` | `std::vector<int>` | `[]` | The lines that have them, from 0 |
+| | `line_length_guidelines` | `std::vector<int>` | `[]` | Columns, in widths of `0`, to draw a line down the text at |
 | `BoxContainer` | `vertical` | `bool` | `false` | Lays its children out in a column instead of a row |
 | | `alignment` | `std::string` | `"begin"` | Where they go when none expands: `begin`, `center` or `end` |
 | `GridContainer` | `columns` | `int` | `1` | Children per row, 1 to 1024 |
@@ -2342,8 +2349,8 @@ input events as Godot's `TextEdit::gui_input` does. From
   the `VScrollBar` and `HScrollBar` theme types' styles, the grabber lit under the pointer and
   while dragged. Its minimum size is its style box's margins, plus its text with
   `scroll_fit_content_height` or `scroll_fit_content_width`.
-- Not yet: several carets, the context menu, gutters, the minimap, drag and drop of text,
-  middle-click paste and smooth scrolling.
+- Not yet: several carets, the context menu, the minimap, drag and drop of text, middle-click
+  paste and smooth scrolling.
 
 ### Searching and highlighting code
 
@@ -2385,6 +2392,55 @@ highlights and `CodeHighlighter` do:
 - `scene validate` reports a `CodeHighlighter` with no `TextEdit` beside it and color region
   keys Godot's `add_color_region` refuses: a start or end that isn't all symbols, an empty
   start, or two regions with the same start.
+
+### Gutters and line numbers
+
+A `TextEdit` draws columns left of its text, Godot's gutters, and a `CodeEdit` beside it makes
+it a code editor, as Godot's `CodeEdit`: line numbers, breakpoints, bookmarks, executing lines
+and line length guidelines.
+
+```json
+"script": {
+  "components": {
+    "Control": {"custom_minimum_size": [0.0, 160.0]},
+    "TextEdit": {"text": "func jump():\n\tvelocity.y = -400",
+                 "gutters": [{"name": "warnings", "width": 16,
+                              "lines": [{"line": 1, "text": "!", "color": [1, 0.8, 0.2, 1]}]}]},
+    "CodeEdit": {"gutters_draw_line_numbers": true, "gutters_draw_breakpoints_gutter": true,
+                 "breakpointed_lines": [1], "line_length_guidelines": [80]}
+  }
+}
+```
+
+- A `CodeEdit` adds two gutters before the `TextEdit`'s own: `main_gutter`, a row wide (half
+  that when it shows only bookmarks), drawn when it shows breakpoints, bookmarks or executing
+  lines, and `line_numbers`, a `0` wider than the digits of the line count (at least
+  `gutters_line_numbers_min_digits`), drawn with `gutters_draw_line_numbers`. The text starts 2
+  pixels after the last gutter drawn. Gutters take the right side when the control is laid out
+  right to left.
+- The main gutter draws the `breakpoint` icon on `breakpointed_lines` in `breakpoint_color`,
+  the `bookmark` icon on `bookmarked_lines` in `bookmark_color` and the `executing_line` icon on
+  `executing_lines` in `executing_line_color`, each inset as Godot's
+  `_main_gutter_draw_callback` does. Under the pointer it shows where a click would put a
+  breakpoint (darker) or take one off (lighter), or a bookmark with Shift held. Line numbers are
+  drawn in `line_number_color`, padded to their digits, and `line_length_guidelines` as lines a
+  pixel wide in `line_length_guideline_color`, the first one brightest.
+- The `TextEdit`'s own gutters show each entry's `text` (`string`) or `icon` (`icon`, inset a
+  sixth of the gutter on each side, keeping its shape) in its `color` on its `line`.
+- A left click or a tap in a gutter emits `gutter_clicked` (`{"line": int, "gutter": string}`).
+  In a `CodeEdit`, a click in the main gutter toggles a breakpoint (a bookmark with Shift) and
+  emits `breakpoint_toggled` (`{"line": int}`); a click on a line number selects the line, and
+  dragging from it selects whole lines.
+- Breakpoints, bookmarks, executing lines and gutter entries stay on their lines as the user
+  types, as Godot keeps them in each line's data: lines inserted above move them down, a new
+  line at a line's start moves that line's down with it, and a line joined onto the one before
+  loses its own. `breakpoint_toggled` is emitted for each line a breakpoint left or came to.
+  Unlike Godot, which clears breakpoints when text is set from outside, they are part of the
+  component and stay as they are then.
+- [`ui.layout`](commands.md#uilayout) reports each gutter drawn with its rect on screen and the
+  rows' `line_height`. `scene validate` reports a `CodeEdit` with no `TextEdit`, a gutter `type`
+  other than `string` or `icon`, a negative `width`, and lines below 0 or past the text's last.
+- A `CodeEdit` uses its own theme type, which falls back to `TextEdit`'s.
 
 ### Theme items
 
@@ -2509,6 +2565,14 @@ its `theme_override_*` fields, then its [themes](#themes), then the defaults bel
 | | constant | `outline_size` | `0` |
 | | constant | `caret_width` | `1` |
 | | constant | `wrap_offset` | `10`, pixels left free at the right of wrapped rows |
+| `CodeEdit` | icon | `breakpoint`, `bookmark`, `executing_line` | Godot's, built in |
+| | color | `breakpoint_color` | `[0.9, 0.29, 0.3, 1]` |
+| | color | `bookmark_color` | `[0.5, 0.64, 1, 0.8]` |
+| | color | `executing_line_color` | `[0.98, 0.89, 0.27, 1]` |
+| | color | `line_number_color` | `[0.67, 0.67, 0.67, 0.4]` |
+| | color | `line_length_guideline_color` | `[0.3, 0.5, 0.8, 0.1]` |
+| | color | `word_highlighted_color` | `[0.8, 0.9, 0.9, 0.15]` |
+| | others | | As `TextEdit`'s |
 | `HScrollBar`, `VScrollBar` | style | `scroll` | flat `[0.1, 0.1, 0.1, 0.6]`, `corner_radius` 10, `content_margin` 4 across it |
 | | style | `scroll_focus` | as `Button`'s `focus` |
 | | style | `grabber` | flat `[1, 1, 1, 0.4]`, `corner_radius` 10, `content_margin` 4 |

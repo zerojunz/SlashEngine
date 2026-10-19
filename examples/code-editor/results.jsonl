@@ -1,12 +1,21 @@
 {"id":1,"jsonrpc":"2.0","result":{"entities":1,"path":"main.scene.json"}}
-{"id":2,"jsonrpc":"2.0","result":{"controls":[{"id":"script","lines":["// Jumps when the button is pressed.","void jump(Player& player) {","\tif (player.on_floor) {","\t\tplayer.velocity.y = -400.0f;","\t\tplay(\"jump.wav\");","\t}"],"rect":[8,8,304,160],"text_edit":{"caret":[0,0],"search_results":[[3,9]],"v_scroll_bar":{"grabber":[304,12,8,70.9586]},"visible_lines":[0,5]}}],"viewport":[320,240]}}
-{"id":3,"jsonrpc":"2.0","result":{"found":[1,10]}}
-{"id":4,"jsonrpc":"2.0","result":{"found":[11,1]}}
-{"id":5,"jsonrpc":"2.0","result":{"count":2,"matches":[[1,10],[10,10]]}}
-{"id":6,"jsonrpc":"2.0","result":{"count":2,"matches":[[3,9],[11,8]]}}
-{"id":7,"jsonrpc":"2.0","result":{"queued":2,"tick":0}}
-{"id":8,"jsonrpc":"2.0","result":{"tick":1,"ticks":1}}
-{"id":9,"jsonrpc":"2.0","result":{"controls":[{"hovered":true,"id":"script","lines":["\t}","}","","/* Falls faster than it rises,","   as players expect. */","void fall(Player& player, float delta) {","\tplayer.velocity.y += 980.0f * delta;"],"rect":[8,8,304,160],"text_edit":{"caret":[0,0],"search_results":[[11,8]],"v_scroll_bar":{"grabber":[304,74.9586,8,70.9586]},"visible_lines":[5,11]}}],"viewport":[320,240]}}
-{"id":10,"jsonrpc":"2.0","result":{"queued":3,"tick":1}}
-{"id":11,"jsonrpc":"2.0","result":{"tick":2,"ticks":1}}
-{"id":12,"jsonrpc":"2.0","result":{"controls":[{"hovered":true,"id":"script","lines":["\t\tplayer.velocity.y = -400.0f;","\t\tplay(\"jump.wav\");","\t}","}","","/* Falls faster than it rises,","   as players expect. */"],"rect":[8,8,304,160],"text_edit":{"caret":[0,0],"search_results":[[3,9]],"v_scroll_bar":{"grabber":[304,46.9586,8,70.9586]},"visible_lines":[3,9]}}],"viewport":[320,240]}}
+{"id":2,"jsonrpc":"2.0","result":{"subscription":"events_1"}}
+{"id":3,"jsonrpc":"2.0","result":{"controls":[{"id":"script","lines":["// Jumps when the button is pressed.","void jump(Player& player) {","\tif (player.on_floor) {","\t\tplayer.velocity.y = -400.0f;","\t\tplay(\"jump.wav\");","\t}"],"rect":[8,8,384,160],"text_edit":{"caret":[0,0],"gutters":[{"name":"main_gutter","rect":[12,12,26,152]},{"name":"line_numbers","rect":[38,12,36,152]}],"line_height":26,"search_results":[[3,9]],"v_scroll_bar":{"grabber":[384,12,8,70.9586]},"visible_lines":[0,5]}}],"viewport":[400,240]}}
+{"id":4,"jsonrpc":"2.0","result":{"found":[1,10]}}
+{"id":5,"jsonrpc":"2.0","result":{"found":[11,1]}}
+{"id":6,"jsonrpc":"2.0","result":{"count":2,"matches":[[1,10],[10,10]]}}
+{"id":7,"jsonrpc":"2.0","result":{"count":2,"matches":[[3,9],[11,8]]}}
+{"id":8,"jsonrpc":"2.0","result":{"queued":4,"tick":0}}
+{"id":9,"jsonrpc":"2.0","result":{"tick":1,"ticks":1}}
+{"id":10,"jsonrpc":"2.0","result":{"dropped":0,"events":[{"data":{"gutter":"main_gutter","line":1},"id":"script","kind":"gutter_clicked","seq":1,"tick":0},{"data":{"line":1},"id":"script","kind":"breakpoint_toggled","seq":2,"tick":0},{"data":{"gutter":"line_numbers","line":2},"id":"script","kind":"gutter_clicked","seq":3,"tick":0}],"more":false}}
+{"id":11,"jsonrpc":"2.0","result":{"controls":[{"focused":true,"hovered":true,"id":"script","lines":["// Jumps when the button is pressed.","void jump(Player& player) {","\tif (player.on_floor) {","\t\tplayer.velocity.y = -400.0f;","\t\tplay(\"jump.wav\");","\t}"],"rect":[8,8,384,160],"text_edit":{"caret":[3,0],"gutters":[{"name":"main_gutter","rect":[12,12,26,152]},{"name":"line_numbers","rect":[38,12,36,152]}],"line_height":26,"search_results":[[3,9]],"selection":[[2,0],[3,0]],"v_scroll_bar":{"grabber":[384,12,8,70.9586]},"visible_lines":[0,5]}}],"viewport":[400,240]}}
+{"id":12,"jsonrpc":"2.0","result":{"queued":4,"tick":1}}
+{"id":13,"jsonrpc":"2.0","result":{"tick":2,"ticks":1}}
+{"id":14,"jsonrpc":"2.0","result":{"dropped":0,"events":[{"data":{"line":1},"id":"script","kind":"breakpoint_toggled","seq":4,"tick":1},{"data":{"line":2},"id":"script","kind":"breakpoint_toggled","seq":5,"tick":1},{"data":{"line":3},"id":"script","kind":"breakpoint_toggled","seq":6,"tick":1},{"data":{"line":4},"id":"script","kind":"breakpoint_toggled","seq":7,"tick":1}],"more":false}}
+{"id":15,"jsonrpc":"2.0","result":{"components":{"CodeEdit":{"bookmarked_lines":[],"breakpointed_lines":[2,4],"executing_lines":[],"gutters_draw_bookmarks":false,"gutters_draw_breakpoints_gutter":true,"gutters_draw_executing_lines":false,"gutters_draw_line_numbers":true,"gutters_line_numbers_min_digits":3,"gutters_zero_pad_line_numbers":false,"line_length_guidelines":[40]}},"id":"script"}}
+{"id":16,"jsonrpc":"2.0","result":{"queued":2,"tick":2}}
+{"id":17,"jsonrpc":"2.0","result":{"tick":3,"ticks":1}}
+{"id":18,"jsonrpc":"2.0","result":{"controls":[{"focused":true,"hovered":true,"id":"script","lines":["\t\tplay(\"jump.wav\");","\t}","}","","/* Falls faster than it rises,","   as players expect. */","void fall(Player& player, float delta) {"],"rect":[8,8,384,160],"text_edit":{"caret":[1,0],"gutters":[{"name":"main_gutter","rect":[12,12,26,152]},{"name":"line_numbers","rect":[38,12,36,152]}],"line_height":26,"v_scroll_bar":{"grabber":[384,70.4615,8,66.4615]},"visible_lines":[5,11]}}],"viewport":[400,240]}}
+{"id":19,"jsonrpc":"2.0","result":{"queued":3,"tick":3}}
+{"id":20,"jsonrpc":"2.0","result":{"tick":4,"ticks":1}}
+{"id":21,"jsonrpc":"2.0","result":{"controls":[{"focused":true,"hovered":true,"id":"script","lines":["\tif (player.on_floor) {","\t\tplayer.velocity.y = -400.0f;","\t\tplay(\"jump.wav\");","\t}","}",""],"rect":[8,8,384,160],"text_edit":{"caret":[1,0],"gutters":[{"name":"main_gutter","rect":[12,12,26,152]},{"name":"line_numbers","rect":[38,12,36,152]}],"line_height":26,"search_results":[[4,9]],"v_scroll_bar":{"grabber":[384,42.4615,8,66.4615]},"visible_lines":[3,8]}}],"viewport":[400,240]}}

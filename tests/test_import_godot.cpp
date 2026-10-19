@@ -1700,6 +1700,38 @@ z_as_relative = false
     fs::remove_all(project);
 }
 
+TEST_CASE("importing a Godot CodeEdit keeps its text and gutters") {
+    const fs::path project = "import_godot_code_edit";
+    fs::remove_all(project);
+    write(project / "godot/project.godot",
+          "config_version=5\n\n[application]\n\nconfig/name=\"Editor\"\n");
+    write(project / "godot/editor.tscn", R"([gd_scene format=3]
+
+[node name="Editor" type="CodeEdit"]
+offset_right = 400.0
+offset_bottom = 300.0
+text = "func _ready():\n\tpass"
+line_length_guidelines = PackedInt32Array(80, 100)
+gutters_draw_breakpoints_gutter = true
+gutters_draw_line_numbers = true
+gutters_zero_pad_line_numbers = true
+)");
+    const importer::ImportPlan plan = plan_inside(project);
+    const auto files = files_of(plan);
+    const std::string scene = "godot/editor.scene.json";
+    REQUIRE(files.contains(scene));
+    CHECK(*entity(files, scene, "editor").find("TextEdit") ==
+          parse(R"({"text": "func _ready():\n\tpass"})"));
+    CHECK(*entity(files, scene, "editor").find("CodeEdit") ==
+          parse(R"({"gutters_draw_breakpoints_gutter": true, "gutters_draw_line_numbers": true,
+                    "gutters_zero_pad_line_numbers": true, "line_length_guidelines": [80, 100]})"));
+    for (const json::Value& item : plan.report.find("unsupported")->as_array()) {
+        CHECK_MESSAGE(item.find("what")->as_string().find("CodeEdit") == std::string::npos,
+                      item.find("what")->as_string());
+    }
+    fs::remove_all(project);
+}
+
 TEST_CASE("importing Godot's GPUParticles2D writes its process material") {
     const fs::path project = "import_godot_gpu_particles";
     fs::remove_all(project);

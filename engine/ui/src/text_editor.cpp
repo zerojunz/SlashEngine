@@ -164,6 +164,7 @@ public:
            TextArea& area)
         : context_(context), edit_(edit), s_(state), area_(area) {
         sync();
+        area_.mark_lines();
     }
 
     // What changed goes back to the component, after the scroll bars catch up as a redraw
@@ -172,6 +173,7 @@ public:
         area_.refresh();
         if (text_dirty_) {
             edit_.text = join_lines(area_.lines());
+            move_line_marks();
         }
         s_.known_text = edit_.text;
         s_.known = true;
@@ -234,7 +236,11 @@ public:
                 apply_ime();
                 const auto [col, line] =
                     area_.line_column_at(touch_pos, true, true, edit_.caret_mid_grapheme);
-                if (touch_pos.x < static_cast<float>(line_start_margin())) {
+                if (const auto [gutter, row] = area_.gutter_at(touch_pos); gutter != -1) {
+                    gutter_clicked(row, gutter, event.modifiers.shift);
+                    return false;
+                }
+                if (touch_pos.x < static_cast<float>(area_.text_start())) {
                     return false;
                 }
                 if (!event.double_click) {
@@ -394,7 +400,11 @@ private:
     }
     void emit(std::string_view kind, int from_line, int to_line) const {
         if (!quiet_ && context_.signals != nullptr) {
-            context_.signals->push_back({std::string(kind), from_line, to_line});
+            context_.signals->push_back({.kind = std::string(kind),
+                                         .from_line = from_line,
+                                         .to_line = to_line,
+                                         .line = 0,
+                                         .gutter = {}});
         }
     }
     // _text_changed: text_changed at the end of the tick, but not for set_text.
@@ -814,10 +824,6 @@ private:
 
     void adjust_viewport_to_caret() { area_.adjust_viewport_to_caret(s_); }
 
-    [[nodiscard]] int line_start_margin() const {
-        return static_cast<int>(std::ceil(area_.style().margin(0)));
-    }
-
     [[nodiscard]] Vec2 mirrored(Vec2 point) const {
         if (area_.view().rtl) {
             point.x = area_.size().x - point.x;
@@ -980,6 +986,111 @@ private:
         s_.caret.selection.active = true;
     }
 
+    // ---- Gutters ----
+
+    // gutter_clicked, then CodeEdit::_gutter_clicked: its main gutter toggles a breakpoint, or
+    // with Shift a bookmark, and a line number selects the line.
+    void gutter_clicked(int line, int gutter, bool shift) {
+        const TextEditGutterView& clicked =
+            area_.view().gutters.at(static_cast<std::size_t>(gutter));
+        if (!quiet_ && context_.signals != nullptr) {
+            context_.signals->push_back({.kind = "gutter_clicked",
+                                         .from_line = 0,
+                                         .to_line = 0,
+                                         .line = line,
+                                         .gutter = clicked.name});
+        }
+        world::CodeEdit* code = context_.code;
+        if (code == nullptr || !area_.view().code) {
+            return;
+        }
+        if (clicked.kind == TextEditGutterView::Kind::Main) {
+            if (code->gutters_draw_breakpoints_gutter && !shift) {
+                toggle_line(code->breakpointed_lines, line);
+                emit_line("breakpoint_toggled", line);
+            } else if (code->gutters_draw_bookmarks && shift) {
+                toggle_line(code->bookmarked_lines, line);
+            }
+        } else if (clicked.kind == TextEditGutterView::Kind::LineNumbers) {
+            s_.selecting_mode = SelectionMode::Line;
+            if (line == area_.line_count() - 1) {
+                select(line, 0, line, area_.length(line));
+            } else {
+                select(line, 0, line + 1, 0);
+            }
+        }
+    }
+
+    static void toggle_line(std::vector<int>& lines, int line) {
+        if (const auto found = std::ranges::find(lines, line); found != lines.end()) {
+            lines.erase(found);
+            return;
+        }
+        lines.push_back(line);
+        std::ranges::sort(lines);
+    }
+
+    void emit_line(std::string_view kind, int line) const {
+        if (!quiet_ && context_.signals != nullptr) {
+            context_.signals->push_back({.kind = std::string(kind),
+                                         .from_line = 0,
+                                         .to_line = 0,
+                                         .line = line,
+                                         .gutter = {}});
+        }
+    }
+
+    // What the gutters show moves with the lines the edits since mark_lines moved, as Godot's
+    // Text::Line keeps it, and goes with a line removed: CodeEdit's lines, with
+    // breakpoint_toggled for each line a breakpoint left or came to (_text_changed, which can
+    // miss a line a breakpoint came to when another moved off it), and the TextEdit's gutters'
+    // entries. Lines past the end, which nothing moves, stay as they are.
+    void move_line_marks() {
+        const std::vector<int> to = area_.moved_lines();
+        const auto moved = [&to](int line) {
+            return line >= 0 && std::cmp_less(line, to.size()) ? to[static_cast<std::size_t>(line)]
+                                                               : line;
+        };
+        const auto move = [&](std::vector<int>& lines) {
+            std::vector<int> kept;
+            for (const int line : lines) {
+                if (const int now = moved(line); now != -1) {
+                    kept.push_back(now);
+                }
+            }
+            lines = std::move(kept);
+        };
+        if (world::CodeEdit* code = context_.code; code != nullptr) {
+            std::vector<int> before = code->breakpointed_lines;
+            std::sort(before.begin(), before.end());
+            move(code->breakpointed_lines);
+            move(code->bookmarked_lines);
+            move(code->executing_lines);
+            for (const int line : before) {
+                if (!has(code->breakpointed_lines, line)) {
+                    emit_line("breakpoint_toggled", line);
+                }
+                if (const int now = moved(line); now != -1 && !has(before, now)) {
+                    emit_line("breakpoint_toggled", now);
+                }
+            }
+        }
+        for (world::TextEditGutter& gutter : edit_.gutters) {
+            std::vector<world::TextEditGutterLine> kept;
+            for (world::TextEditGutterLine& entry : gutter.lines) {
+                if (const int now = moved(entry.line); now != -1) {
+                    entry.line = now;
+                    kept.push_back(std::move(entry));
+                }
+            }
+            gutter.lines = std::move(kept);
+        }
+    }
+
+    [[nodiscard]] static bool has(const std::vector<int>& lines, int line) {
+        return std::ranges::find(lines, line) != lines.end();
+    }
+
     // ---- Mouse ----
 
     void mouse_pressed(const input::Event& event, Vec2 mpos, Vec2 local) {
@@ -1036,7 +1147,11 @@ private:
         reset_caret_blink_timer();
         apply_ime();
         const auto [col, line] = area_.line_column_at(mpos, true, true, edit_.caret_mid_grapheme);
-        if (mpos.x < static_cast<float>(line_start_margin())) {
+        if (const auto [gutter, row] = area_.gutter_at(mpos); gutter != -1) {
+            gutter_clicked(row, gutter, event.modifiers.shift);
+            return;
+        }
+        if (mpos.x < static_cast<float>(area_.text_start())) {
             return;
         }
         const int prev_col = s_.caret.column;
