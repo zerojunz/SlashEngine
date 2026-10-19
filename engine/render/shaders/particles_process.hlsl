@@ -191,24 +191,36 @@ float2 curve_point(uint curve, uint i) {
     return (i % 2u) == 0u ? pair.xy : pair.zw;
 }
 
+// The first point after offset, past the first: count when there is none. The loop runs to its
+// end and the samplers interpolate after it: with returns inside the loop, FXC's code for
+// Direct3D 12 gave some particles NaN colors.
+uint curve_segment(uint curve, uint count, float offset) {
+    uint found = count;
+    for (uint i = count - 1u; i > 0u; --i) {
+        if (offset < curve_point(curve, i).x) {
+            found = i;
+        }
+    }
+    return found;
+}
+
 float sample_curve(uint curve, float offset, float fallback) {
     uint count = curve_count(curve);
     if (count == 0u) {
         return fallback;
     }
-    float2 previous = curve_point(curve, 0u);
-    if (!(offset > previous.x)) {
-        return previous.y;
+    float2 first = curve_point(curve, 0u);
+    uint next = curve_segment(curve, count, offset);
+    float value = curve_point(curve, count - 1u).y;
+    if (!(offset > first.x)) {
+        value = first.y;
+    } else if (next < count) {
+        float2 a = curve_point(curve, next - 1u);
+        float2 b = curve_point(curve, next);
+        float t = (offset - a.x) / (b.x - a.x);
+        value = a.y + ((b.y - a.y) * t);
     }
-    for (uint i = 1u; i < count; ++i) {
-        float2 next = curve_point(curve, i);
-        if (offset < next.x) {
-            float t = (offset - previous.x) / (next.x - previous.x);
-            return previous.y + ((next.y - previous.y) * t);
-        }
-        previous = next;
-    }
-    return previous.y;
+    return value;
 }
 
 uint gradient_count(uint gradient) {
@@ -216,7 +228,9 @@ uint gradient_count(uint gradient) {
 }
 
 float gradient_offset(uint gradient, uint i) {
-    return word(kGradientsAt + (gradient * kGradientWords) + (i / 4u))[i % 4u];
+    float4 offsets = word(kGradientsAt + (gradient * kGradientWords) + (i / 4u));
+    uint lane = i % 4u;
+    return lane == 0u ? offsets.x : (lane == 1u ? offsets.y : (lane == 2u ? offsets.z : offsets.w));
 }
 
 float4 gradient_color(uint gradient, uint i) {
@@ -228,21 +242,25 @@ float4 sample_gradient(uint gradient, float offset) {
     if (count == 0u) {
         return float4(1.0, 1.0, 1.0, 1.0);
     }
-    float first = gradient_offset(gradient, 0u);
-    if (!(offset > first)) {
-        return gradient_color(gradient, 0u);
-    }
-    for (uint i = 1u; i < count; ++i) {
-        float b = gradient_offset(gradient, i);
-        if (offset < b) {
-            float a = gradient_offset(gradient, i - 1u);
-            float t = (offset - a) / (b - a);
-            float4 x = gradient_color(gradient, i - 1u);
-            float4 y = gradient_color(gradient, i);
-            return x + ((y - x) * t);
+    // The first stop after offset, past the first, as curve_segment finds a curve's.
+    uint next = count;
+    for (uint i = count - 1u; i > 0u; --i) {
+        if (offset < gradient_offset(gradient, i)) {
+            next = i;
         }
     }
-    return gradient_color(gradient, count - 1u);
+    float4 color = gradient_color(gradient, count - 1u);
+    if (!(offset > gradient_offset(gradient, 0u))) {
+        color = gradient_color(gradient, 0u);
+    } else if (next < count) {
+        float a = gradient_offset(gradient, next - 1u);
+        float b = gradient_offset(gradient, next);
+        float t = (offset - a) / (b - a);
+        float4 x = gradient_color(gradient, next - 1u);
+        float4 y = gradient_color(gradient, next);
+        color = x + ((y - x) * t);
+    }
+    return color;
 }
 
 bool from_points() {
