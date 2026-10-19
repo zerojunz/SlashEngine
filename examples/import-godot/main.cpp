@@ -2,15 +2,16 @@
 //
 // godot/ holds "Coin Run", a small Godot 4 platformer as Godot saves it: project.godot, two
 // scenes (the level instances the player scene), a SpriteFrames resource, an AnimationPlayer, a
-// tile set, a theme, a bus layout and three GDScript files. One call converts it. Its scenes
-// become .scene.json files beside the originals, its sprite frames .frames.json files, its
-// animation library a .anim.json file, its tile set a .tileset.json file, its theme a
-// .theme.json file, its buses a .bus_layout.json file, its window, physics, rendering, GUI, audio
-// and input settings project.json, and each script a storyboard task to port it to C++, since
-// SlashEngine games are plain C++. The report lists what didn't convert, and
-// why. Games ship PNG files made in an image editor; this example draws its textures in code, so
-// the repository holds no images.
+// tile set, a theme, a bus layout, interactive music and three GDScript files. One call converts
+// it. Its scenes become .scene.json files beside the originals, its sprite frames .frames.json
+// files, its animation library a .anim.json file, its tile set a .tileset.json file, its theme a
+// .theme.json file, its buses a .bus_layout.json file, its music and a sound's loop .audio.json
+// files, its window, physics, rendering, GUI, audio and input settings project.json, and each
+// script a storyboard task to port it to C++, since SlashEngine games are plain C++. The report
+// lists what didn't convert, and why. Games ship PNG and sound files made in other tools; this
+// example makes its textures and sounds in code, so the repository holds no images or sounds.
 
+#include "slash/audio/audio.hpp"
 #include "slash/command/builtin.hpp"
 #include "slash/command/command.hpp"
 #include "slash/command/session.hpp"
@@ -28,9 +29,11 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace {
 
+namespace audio = slash::audio;
 namespace command = slash::command;
 namespace json = slash::json;
 namespace render = slash::render;
@@ -48,6 +51,20 @@ void write_texture(const std::string& path, std::uint32_t width, std::uint32_t h
         image.pixels[at + 3] = 255;
     }
     if (!slash::platform::write_file(path, render::encode_png(image).value()).ok()) {
+        std::fprintf(stderr, "can't write %s\n", path.c_str());
+        std::exit(1);
+    }
+}
+
+// Writes a second of a square wave, made without libm so it is the same everywhere.
+void write_sound(const std::string& path, int hz, float amplitude) {
+    constexpr int kRate = 44100;
+    std::vector<audio::Frame> frames(kRate);
+    for (int i = 0; i < kRate; ++i) {
+        const float value = (i * 2 * hz / kRate) % 2 == 0 ? amplitude : -amplitude;
+        frames[static_cast<std::size_t>(i)] = {value, value};
+    }
+    if (!slash::platform::write_file(path, audio::encode_wav(frames, kRate)).ok()) {
         std::fprintf(stderr, "can't write %s\n", path.c_str());
         std::exit(1);
     }
@@ -94,6 +111,8 @@ int main() {
     write_texture("godot/art/player_idle.png", 12, 16, {220, 80, 60});
     write_texture("godot/art/player_walk_0.png", 12, 16, {230, 90, 70});
     write_texture("godot/art/player_walk_1.png", 12, 16, {210, 70, 50});
+    write_sound("godot/audio/calm.wav", 220, 0.25F);
+    write_sound("godot/audio/chase.wav", 330, 0.5F);
 
     const Agent agent;
     // A dry run first: what the import would write, writing nothing.
@@ -101,13 +120,16 @@ int main() {
     agent.call("project.import", R"({"source": "godot"})");
 
     // The level, the player's sprite frames, the coin's animations, the platforms' tile set, the
-    // theme, the buses and the project's settings.
+    // theme, the buses, the music, the loop calm.wav's import settings give it and the project's
+    // settings.
     print_file("godot/main.scene.json");
     print_file("godot/player_frames.frames.json");
     print_file("godot/main_animation_library_coin.anim.json");
     print_file("godot/tiles.tileset.json");
     print_file("godot/ui_theme.theme.json");
     print_file("godot/default_bus_layout.bus_layout.json");
+    print_file("godot/music.audio.json");
+    print_file("godot/audio/calm.wav.audio.json");
     print_file("project.json");
 
     // The converted level opens and runs; the coin spins and bobs, and glints each loop.
