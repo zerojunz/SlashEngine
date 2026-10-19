@@ -2,9 +2,11 @@ add_library(slash_canvas
     src/canvas.cpp
     src/capture.cpp
     src/debug_draw.cpp
+    src/gpu_particles.cpp
     src/light.cpp
     src/material.cpp
     src/particles.cpp
+    src/process_material.cpp
     src/renderer.cpp
     src/sprite_frames.cpp
     src/summary.cpp

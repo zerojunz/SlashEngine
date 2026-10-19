@@ -1,0 +1,30 @@
+{
+  "color_ramp": [
+    {
+      "color": [1, 0.9, 0.4, 1],
+      "offset": 0
+    },
+    {
+      "color": [1, 0.4, 0.1, 0.8],
+      "offset": 0.5
+    },
+    {
+      "color": [0.4, 0.1, 0.05, 0],
+      "offset": 1
+    }
+  ],
+  "direction": [0, -1],
+  "emission_shape": "sphere",
+  "emission_sphere_radius": 6,
+  "format": 1,
+  "gravity": [0, -40],
+  "initial_velocity_max": 60,
+  "initial_velocity_min": 30,
+  "scale_curve": [
+    [0, 1],
+    [1, 0.2]
+  ],
+  "scale_max": 2.5,
+  "scale_min": 1.5,
+  "spread": 15
+}

@@ -98,6 +98,98 @@ Result<void> check_compiled_shader(const CompiledShader& shader, Backend backend
     return {};
 }
 
+Error unknown_particles(ParticlesId particles) {
+    return make_error(ErrorCode::NotFound,
+                      "no particle system " +
+                          std::to_string(static_cast<std::uint32_t>(particles)));
+}
+
+Result<void> check_particle_amount(std::uint32_t amount) {
+    if (amount < 1 || amount > kMaxParticles) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "a particle system has from 1 to " + std::to_string(kMaxParticles) +
+                              " particles, not " + std::to_string(amount));
+    }
+    return {};
+}
+
+Result<void> check_particle_process(const ParticleProcess& process,
+                                    std::span<const ParticleStep> steps) {
+    const auto finite = [](float value) { return std::isfinite(value); };
+    const auto check_offsets = [&](std::string_view what, std::size_t count,
+                                   const auto& offset_at) -> Result<void> {
+        if (count > kMaxParticleCurvePoints) {
+            return make_error(ErrorCode::InvalidArgument,
+                              std::string(what) + " has more than " +
+                                  std::to_string(kMaxParticleCurvePoints) + " points");
+        }
+        for (std::size_t i = 0; i < count; ++i) {
+            const float offset = offset_at(i);
+            if (!finite(offset) || (i > 0 && offset < offset_at(i - 1))) {
+                return make_error(ErrorCode::InvalidArgument,
+                                  std::string(what) + "'s offsets must be numbers in order");
+            }
+        }
+        return {};
+    };
+    const auto check_curve = [&](std::string_view what, const ParticleCurve& curve) {
+        return check_offsets(what, curve.size(), [&](std::size_t i) { return curve[i].x; });
+    };
+    for (const ParticleCurve& curve : process.param_curve) {
+        if (auto checked = check_curve("a parameter's curve", curve); !checked) {
+            return checked;
+        }
+    }
+    for (const auto& [what, curve] :
+         {std::pair{"velocity_limit_curve", &process.velocity_limit_curve},
+          std::pair{"alpha_curve", &process.alpha_curve},
+          std::pair{"emission_curve", &process.emission_curve}}) {
+        if (auto checked = check_curve(what, *curve); !checked) {
+            return checked;
+        }
+    }
+    for (const auto& [what, gradient] :
+         {std::pair{"color_ramp", &process.color_ramp},
+          std::pair{"color_initial_ramp", &process.color_initial_ramp}}) {
+        const ParticleGradient& stops = *gradient;
+        if (auto checked = check_offsets(what, stops.size(),
+                                         [&stops](std::size_t i) { return stops[i].offset; });
+            !checked) {
+            return checked;
+        }
+    }
+    constexpr std::size_t kMaxPoints = 65536;
+    if (process.emission_points.size() > kMaxPoints) {
+        return make_error(ErrorCode::InvalidArgument, "a process material has at most " +
+                                                          std::to_string(kMaxPoints) +
+                                                          " emission points");
+    }
+    for (const ParticleStep& step : steps) {
+        if (!(step.lifetime > 0.0F) || !finite(step.lifetime) || !(step.delta >= 0.0F) ||
+            !finite(step.delta)) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "a particle step's lifetime is more than 0 and its delta 0 or more");
+        }
+    }
+    return {};
+}
+
+Result<void> check_particle_draw(const ParticleDraw& look, std::uint32_t amount,
+                                 std::size_t in_frame) {
+    const std::size_t vertices = std::size_t{amount} * 6;
+    if (vertices > kMaxFrameVertices - std::min(in_frame, kMaxFrameVertices)) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "a frame draws up to " + std::to_string(kMaxFrameVertices) +
+                              " vertices, six a particle; these " + std::to_string(amount) +
+                              " particles would make " + std::to_string(in_frame + vertices));
+    }
+    if (look.hframes < 1 || look.vframes < 1) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "particles' hframes and vframes are at least 1");
+    }
+    return {};
+}
+
 Error not_a_render_target(TextureId texture) {
     return make_error(ErrorCode::InvalidArgument,
                       "texture " + std::to_string(static_cast<std::uint32_t>(texture)) +
@@ -173,6 +265,60 @@ public:
 
     void destroy_shader(ShaderId shader) override { shaders_.erase(shader); }
 
+    Result<ParticlesId> create_particles(std::uint32_t amount) override {
+        if (auto checked = detail::check_particle_amount(amount); !checked) {
+            return checked.error();
+        }
+        const auto id = static_cast<ParticlesId>(next_particles_++);
+        particles_[id] = amount;
+        return id;
+    }
+
+    void destroy_particles(ParticlesId particles) override { particles_.erase(particles); }
+
+    Result<void> process_particles(ParticlesId particles, const ParticleProcess& process,
+                                   std::span<const ParticleStep> steps) override {
+        if (!particles_.contains(particles)) {
+            return detail::unknown_particles(particles);
+        }
+        return detail::check_particle_process(process, steps);
+    }
+
+    Result<void> draw_particles(ParticlesId particles, TextureId texture, const ParticleDraw& look,
+                                const Material& material) override {
+        if (!in_frame_) {
+            return detail::no_frame("draw_particles");
+        }
+        const auto it = particles_.find(particles);
+        if (it == particles_.end()) {
+            return detail::unknown_particles(particles);
+        }
+        if (auto checked = detail::check_particle_draw(look, it->second, frame_vertices_);
+            !checked) {
+            return checked;
+        }
+        if (auto checked = check_draw(texture, {}, material); !checked) {
+            return checked;
+        }
+        // As the GPU device, each draw of particles is a draw of its own.
+        ++stats_.draws;
+        last_texture_.reset();
+        frame_vertices_ += std::size_t{it->second} * 6;
+        stats_.triangles += std::uint64_t{it->second} * 2;
+        return {};
+    }
+
+    Result<std::vector<Particle>> read_particles(ParticlesId particles) override {
+        if (in_frame_) {
+            return detail::frame_in_progress("read_particles");
+        }
+        const auto it = particles_.find(particles);
+        if (it == particles_.end()) {
+            return detail::unknown_particles(particles);
+        }
+        return std::vector<Particle>(it->second);
+    }
+
     Result<bool> begin_frame(const Frame& frame) override {
         if (in_frame_) {
             return detail::frame_in_progress("begin_frame");
@@ -211,24 +357,7 @@ public:
         if (!in_frame_) {
             return detail::no_frame("draw");
         }
-        if (texture != TextureId::None && !textures_.contains(texture)) {
-            return detail::unknown_texture(texture);
-        }
-        if (texture != TextureId::None && texture == target_) {
-            return detail::target_in_use(texture);
-        }
-        if (auto checked = detail::check_material(
-                material, target_, [&](TextureId id) { return textures_.contains(id); },
-                [&](ShaderId id) { return shaders_.contains(id); });
-            !checked) {
-            return checked;
-        }
-        if (auto checked = check_vertices(vertices, frame_vertices_); !checked) {
-            return checked;
-        }
-        if (auto checked = detail::check_lighting_textures(
-                lighting_, [&](TextureId id) { return textures_.contains(id); });
-            !checked) {
+        if (auto checked = check_draw(texture, vertices, material); !checked) {
             return checked;
         }
         if (vertices.empty()) {
@@ -293,10 +422,34 @@ private:
         std::array<std::uint8_t, 4> cleared{};
     };
 
+    // What every draw checks: its texture, material, vertices and the frame's lights.
+    Result<void> check_draw(TextureId texture, std::span<const Vertex2D> vertices,
+                            const Material& material) {
+        if (texture != TextureId::None && !textures_.contains(texture)) {
+            return detail::unknown_texture(texture);
+        }
+        if (texture != TextureId::None && texture == target_) {
+            return detail::target_in_use(texture);
+        }
+        if (auto checked = detail::check_material(
+                material, target_, [&](TextureId id) { return textures_.contains(id); },
+                [&](ShaderId id) { return shaders_.contains(id); });
+            !checked) {
+            return checked;
+        }
+        if (auto checked = check_vertices(vertices, frame_vertices_); !checked) {
+            return checked;
+        }
+        return detail::check_lighting_textures(
+            lighting_, [&](TextureId id) { return textures_.contains(id); });
+    }
+
     std::unordered_map<TextureId, Texture> textures_;
     std::uint32_t next_texture_ = 1;
     std::unordered_set<ShaderId> shaders_;
     std::uint32_t next_shader_ = 1;
+    std::unordered_map<ParticlesId, std::uint32_t> particles_; // their amounts
+    std::uint32_t next_particles_ = 1;
     bool in_frame_ = false;
     TextureId target_ = TextureId::None;
     std::size_t frame_vertices_ = 0;

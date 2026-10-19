@@ -300,6 +300,28 @@ A reference must name an entity that exists in the same scene.
 | | `color` | `Vec4` | `[1, 1, 1, 1]` | Multiplies the texture, as [r, g, b, a] from 0 to 1 |
 | | `color_ramp` | `std::vector<GradientPoint>` | `[]` | Colors over each particle's life, multiplying `color`: points `{"offset", "color"}`, blended between |
 | | `color_initial_ramp` | `std::vector<GradientPoint>` | `[]` | Each particle multiplies its color by one picked at random from this gradient |
+| `GPUParticles2D` | `emitting` | `bool` | `true` | Emit new [particles on the GPU](#gpu-particles); setting it again restarts a `one_shot` |
+| | `amount` | `int` | `8` | Particles alive at most, 1 to 1000000: each cycle emits this many |
+| | `amount_ratio` | `float` | `1` | The share of `amount` it emits, 0 to 1 |
+| | `process_material` | `std::string` | `""` | Project path of a [`.process_material.json`](#process-materials) file: how particles start and move; `""` emits still white pixels |
+| | `texture` | `std::string` | `""` | Project path of a PNG or BMP file each particle draws, centered on it; `""` draws a white pixel |
+| | `lifetime` | `float` | `1` | Seconds each particle lives and each cycle lasts, from 0.001 |
+| | `interp_to_end` | `float` | `0` | Ages every particle toward the end of its life, 0 to 1 |
+| | `one_shot` | `bool` | `false` | Emit one cycle, then set `emitting` to false |
+| | `preprocess` | `float` | `0` | Seconds it runs ahead when it starts, so it starts full |
+| | `speed_scale` | `float` | `1` | Multiplies time for its particles |
+| | `explosiveness` | `float` | `0` | 0 spreads a cycle's particles evenly over it; 1 emits them all at once |
+| | `randomness` | `float` | `0` | Randomizes when each particle is emitted, 0 to 1 |
+| | `use_fixed_seed` | `bool` | `false` | Use `seed` as it is, so every run and restart repeats; otherwise `seed` and the entity's ID vary the particles, and each `one_shot` restart differs |
+| | `seed` | `int` | `0` | The random seed |
+| | `fixed_fps` | `int` | `30` | Steps per second the particles move in, 0 to 1000; 0 steps once a tick |
+| | `interpolate` | `bool` | `true` | Draw particles where they are between steps |
+| | `fract_delta` | `bool` | `true` | A particle emitted partway through a step moves for that part only, so emission is smooth |
+| | `local_coords` | `bool` | `false` | Particles live in the entity's coordinates and move with it; `false` leaves them where they were emitted |
+| | `draw_order` | `std::string` | `"lifetime"` | `index` draws in emission slot order; `lifetime` draws the youngest on top, `reverse_lifetime` the oldest |
+| | `hframes`, `vframes` | `int` | `1` | Columns and rows of frames in the texture, for the process material's `anim_speed` and `anim_offset` |
+| | `anim_loop` | `bool` | `false` | Frames past the last start again from the first; `false` stays on the last |
+| | `texture_filter`, `z_index`, `z_as_relative`, `visible`, `material`, `material_params`, `light_mask` | | | As `Sprite2D`'s |
 | `Control` | `children` | `std::vector<entity>` | `[]` | [Controls](#ui-and-text) placed in its rect and drawn over it, in this order; each control has one parent at most |
 | | `anchor_left`, `anchor_top`, `anchor_right`, `anchor_bottom` | `float` | `0` | Where each edge is anchored in the parent's rect (or the viewport's): 0 at its left or top, 1 at its right or bottom |
 | | `offset_left`, `offset_top`, `offset_right`, `offset_bottom` | `float` | `0` | Pixels from each edge's anchor to the edge |
@@ -532,7 +554,8 @@ cannon and a deck.
   added to the parents' (Godot's `z_as_relative`), and the sum is held to -4096 to 4096; with
   `z_as_relative` off, an entity's `z_index` is the whole of it, and its children add theirs to
   it. A parent's `Sprite2D` or `TileMapLayer` passes on its `visible` and `modulate`
-  (`self_modulate` stays its own); a `CPUParticles2D` passes on `visible` and `z_index`.
+  (`self_modulate` stays its own); a `CPUParticles2D` or `GPUParticles2D` passes on `visible`
+  and `z_index`.
   Sprites, tile layers, particles, occluders and lights draw where their global transforms put
   them.
 - **Top level.** An entity with `top_level` keeps its parent, but its transform is its global
@@ -550,8 +573,8 @@ cannon and a deck.
   transforms, as a Godot `CollisionObject2D` takes its shape nodes'; hits and events name the
   body. A character moves as the first of its shapes. Shapes and light textures don't lean
   with `skew`.
-- **Sound and particles.** `AudioStreamPlayer2D`, `AudioListener2D` and `CPUParticles2D` work
-  from global transforms; particles with `local_coords` move with the emitter's.
+- **Sound and particles.** `AudioStreamPlayer2D`, `AudioListener2D`, `CPUParticles2D` and
+  `GPUParticles2D` work from global transforms; particles with `local_coords` move with the emitter's.
 - **Rules.** A child needs a `Transform2D`, has one parent and is never its own ancestor. `scene
   validate` reports each broken rule at the entry's JSON Pointer, and a command that would break
   one fails and changes nothing, as Godot's `add_child` refuses:
@@ -1695,7 +1718,118 @@ a fountain, a one-shot burst, smoke and a ring of orbiting particles.
 - Particles are not saved: scenes, snapshots, [`undo`](commands.md#undo), dry runs and failed
   commands leave them as they are. An emitter whose entity is destroyed or loses its
   `CPUParticles2D` loses its particles.
-- `GPUParticles2D`, with process materials, is on the [roadmap](../roadmap.md).
+
+### GPU particles
+
+`GPUParticles2D` follows Godot's: the device moves and draws its particles, as a process material
+says. Each tick, after the CPU particles, the `gpu_particles_2d` system (priority 1110) works out
+each emitter's steps as Godot's node and its particles storage do, and keeps them; the renderer
+runs the steps it hasn't run on its device, then draws the particles there. On Metal, Direct3D 12
+and Vulkan a compute shader (`particles_process.hlsl`) runs them and the particles stay on the
+GPU, so the CPU's work is the same for ten particles or a hundred thousand. WebGL 2 has no
+compute shaders, so the OpenGL ES device (web exports) runs them on the CPU, as the software
+device does. [examples/gpu-particles](../../examples/gpu-particles/) has a fire, a burst of
+sparks and snow.
+
+```json
+"fire": {
+  "components": {
+    "GPUParticles2D": {
+      "amount": 48,
+      "process_material": "fire.process_material.json",
+      "texture": "dot.png"
+    },
+    "Transform2D": {"position": [80.0, 150.0]}
+  }
+}
+```
+
+- A step moves the particles on by `1 / fixed_fps` seconds (times `speed_scale`); with
+  `fixed_fps` 0 there is one a tick. With `interpolate`, particles draw where they are between
+  steps. `preprocess` runs steps of `1 / fixed_fps` seconds (`1 / 30` with `fixed_fps` 0) when
+  the emitter starts.
+- The emission cycle is Godot's: slot `i` of `amount` emits `i / amount` of the way through each
+  `lifetime`, pulled toward the start by `explosiveness` and moved by up to `randomness`; only
+  the share `amount_ratio` emits. A particle starts and moves as its process material says,
+  through the entity's `Transform2D` unless `local_coords`, with the emitter's velocity for
+  `inherit_velocity_ratio`.
+- The steps are the same on every machine, and every device (Metal, Direct3D 12, Vulkan, OpenGL
+  ES, the software device) runs them to the same particles, as `render::process_particles` does
+  on the CPU. A renderer that starts late, or misses frames, catches up from the steps kept:
+  those since the last restart that can still have made a live particle.
+- Random values come from `seed` with `use_fixed_seed`; otherwise from the entity's ID and
+  `seed`, varied by each `one_shot` restart.
+  [`particles.eval`](commands.md#particleseval) runs the steps kept on the CPU to return the
+  particles as numbers, or runs the settings from the start for a `time`.
+- A `one_shot` stops emitting after one `lifetime` and sets `emitting` to false; it emits a
+  `finished` event `lifetime` × (2 - `explosiveness`) after it started, when its particles have
+  had time to die, as Godot's. Setting `emitting` to true starts a new cycle at once, as Godot's
+  `restart` does (Godot's renderer waits for the last cycle's phase to come round, so a burst set
+  off from `finished` can emit nothing there). Turning `one_shot` off while it emits restarts
+  it. Changing `amount` starts it over.
+- Particles are not saved: scenes, snapshots, [`undo`](commands.md#undo), dry runs and failed
+  commands leave them as they are.
+- Sub-emitters, trails, collisions, turbulence and attractors are on the
+  [roadmap](../roadmap.md).
+
+### Process materials
+
+A `.process_material.json` file is Godot's `ParticleProcessMaterial` in 2D, with its property
+names and Godot's defaults, except `gravity`: `[0, 98]`, as Godot gives a process material on a
+`GPUParticles2D`. `slash-cli schema process_material` prints its JSON Schema, and
+`slash-cli scene validate` and `scene format` take these files.
+
+```json
+{
+  "format": 1,
+  "emission_shape": "sphere",
+  "emission_sphere_radius": 6,
+  "direction": [0, -1],
+  "spread": 15,
+  "gravity": [0, -40],
+  "initial_velocity_min": 30,
+  "initial_velocity_max": 60,
+  "scale_curve": [[0, 1], [1, 0.2]],
+  "color_ramp": [{"offset": 0, "color": [1, 0.9, 0.4, 1]}, {"offset": 1, "color": [0.4, 0.1, 0.05, 0]}]
+}
+```
+
+| Field | Default | What |
+| --- | --- | --- |
+| `format` | | Must be 1 |
+| `emission_shape` | `"point"` | Where particles start: `point`, `sphere` (in a circle), `sphere_surface` (on its edge), `box`, `points`, `directed_points` or `ring` |
+| `emission_shape_offset`, `emission_shape_scale` | `[0, 0]`, `[1, 1]` | Move and scale the shape, in pixels |
+| `emission_sphere_radius` | `1` | The circle's radius |
+| `emission_box_extents` | `[1, 1]` | Half the box's width and height |
+| `emission_ring_radius`, `emission_ring_inner_radius` | `1`, `0` | The ring's radii |
+| `emission_points`, `emission_normals`, `emission_colors` | `[]` | For `points` and `directed_points`: points in pixels, each one's direction (`directed_points`) and color multiplying its particles; normals and colors are none or one per point |
+| `direction`, `spread` | `[1, 0]`, `45` | Which way particles go, and degrees either side, 0 to 180 |
+| `gravity` | `[0, 98]` | Pixels per second squared |
+| `inherit_velocity_ratio` | `0` | How much of the emitter's velocity particles start with |
+| `velocity_pivot` | `[0, 0]` | What `radial_velocity` pushes away from |
+| `initial_velocity_min`, `_max` | `0` | Starting speed in pixels per second |
+| `angular_velocity_min`, `_max` | `0` | Degrees per second it turns |
+| `orbit_velocity_min`, `_max` | `0` | Turns per second round the emitter |
+| `radial_velocity_min`, `_max` | `0` | Pixels per second away from `velocity_pivot` |
+| `linear_accel_min`, `_max` | `0` | Pixels per second squared along its velocity |
+| `radial_accel_min`, `_max` | `0` | Pixels per second squared away from the emitter |
+| `tangential_accel_min`, `_max` | `0` | Pixels per second squared round the emitter |
+| `damping_min`, `_max` | `0` | Pixels per second squared it slows by, from 0 |
+| `angle_min`, `_max` | `0` | Rotation in degrees |
+| `scale_min`, `_max` | `1` | Size, times the texture's |
+| `hue_variation_min`, `_max` | `0` | Turns its hue by this fraction of the color wheel, -1 to 1 |
+| `anim_speed_min`, `_max` | `0` | Times its frames play over its life, from 0 |
+| `anim_offset_min`, `_max` | `0` | The frame it starts on, as a fraction of the frames, 0 to 1 |
+| `*_curve` | `[]` | Each parameter but `initial_velocity` has one: points `[offset, value]` that multiply it over each particle's life (`anim_offset_curve` adds), offsets from 0 to 1 in order, joined by straight lines |
+| `velocity_limit_curve` | `[]` | The fastest a particle moves over its life, in pixels per second |
+| `alpha_curve` | `[]` | Multiplies alpha over its life |
+| `emission_curve` | `[]` | Brightens it over its life: its color times 1 plus this |
+| `color` | `[1, 1, 1, 1]` | Multiplies the texture |
+| `color_ramp` | `[]` | Colors over each particle's life, multiplying `color`: stops `{"offset", "color"}` in order |
+| `color_initial_ramp` | `[]` | Each particle multiplies its color by one picked at random from this gradient |
+| `lifetime_randomness` | `0` | Shortens each particle's life by up to this fraction, 0 to 1 |
+| `particle_flag_align_y` | `false` | Turn each particle so its y axis points along its velocity |
+| `particle_flag_damping_as_friction` | `false` | Damping grows with speed, as friction |
 
 ## UI and text
 

@@ -4,6 +4,7 @@
 
 #include "slash/animation/animation.hpp"
 #include "slash/audio/audio.hpp"
+#include "slash/canvas/gpu_particles.hpp"
 #include "slash/canvas/tilemap.hpp"
 #include "slash/core/json.hpp"
 #include "slash/core/text.hpp"
@@ -389,6 +390,7 @@ constexpr std::array kNodeTypes{
     NodeType{"LightOccluder2D", Family::Node2D, "LightOccluder2D", ""},
     NodeType{"CanvasModulate", Family::Node2D, "CanvasModulate", ""},
     NodeType{"CPUParticles2D", Family::Node2D, "CPUParticles2D", ""},
+    NodeType{"GPUParticles2D", Family::Node2D, "GPUParticles2D", ""},
     NodeType{"AudioStreamPlayer2D", Family::Node2D, "AudioStreamPlayer2D", ""},
     NodeType{"AudioListener2D", Family::Node2D, "AudioListener2D", ""},
     NodeType{"AudioStreamPlayer", Family::Plain, "AudioStreamPlayer", ""},
@@ -1704,6 +1706,9 @@ private:
         }
         if (type == "Theme") {
             return theme_file(file, section, base);
+        }
+        if (type == "ParticleProcessMaterial") {
+            return process_material_file(file, section, base);
         }
         why = type + " resources";
         return {};
@@ -3048,6 +3053,182 @@ private:
         return json::Value(std::move(points));
     }
 
+    // A ParticleProcessMaterial as a .process_material.json file, its 3D vectors cut to 2D and
+    // its CurveTextures and GradientTextures to their curves and gradients.
+    std::string process_material_file(const TextFile& file, const Section& material,
+                                      const std::string& base) {
+        const std::string key = file.path + "#" + base;
+        if (const auto done = process_written_.find(key); done != process_written_.end()) {
+            return done->second;
+        }
+        const std::string path = destination(base + std::string(canvas::kProcessMaterialSuffix));
+        process_written_[key] = path;
+        resources_used_.insert("ParticleProcessMaterial");
+        const std::string where = resource_where(material, file);
+        static constexpr std::array<std::string_view, 7> kShapes{
+            "point", "sphere", "sphere_surface", "box", "points", "directed_points", "ring"};
+        static constexpr std::array<std::string_view, 13> kParams{"initial_velocity",
+                                                                  "angular_velocity",
+                                                                  "orbit_velocity",
+                                                                  "radial_velocity",
+                                                                  "linear_accel",
+                                                                  "radial_accel",
+                                                                  "tangential_accel",
+                                                                  "damping",
+                                                                  "angle",
+                                                                  "scale",
+                                                                  "hue_variation",
+                                                                  "anim_speed",
+                                                                  "anim_offset"};
+        static constexpr std::array<std::string_view, 5> kVectors{
+            "emission_shape_offset", "emission_shape_scale", "emission_box_extents", "direction",
+            "velocity_pivot"};
+        static constexpr std::array<std::string_view, 6> kNumbers{
+            "emission_sphere_radius",     "emission_ring_radius",
+            "emission_ring_inner_radius", "spread",
+            "inherit_velocity_ratio",     "lifetime_randomness"};
+        // What a 2D game can't see, or what particles do without.
+        static constexpr std::array<std::string_view, 9> kIgnored{"resource_local_to_scene",
+                                                                  "resource_name",
+                                                                  "particle_flag_disable_z",
+                                                                  "particle_flag_rotate_y",
+                                                                  "flatness",
+                                                                  "emission_ring_height",
+                                                                  "emission_ring_cone_angle",
+                                                                  "attractor_interaction_enabled",
+                                                                  "collision_use_scale"};
+        json::Value out;
+        out["format"] = 1;
+        bool disable_z = false;
+        const auto texture_resource = [&](const Value& value, std::string_view type,
+                                          std::string_view property) -> const Value* {
+            const auto [section, owner] = resource_section(value, file);
+            if (section == nullptr || owner != &file || resource_type(*section, file) != type) {
+                return nullptr;
+            }
+            return section->property(property);
+        };
+        for (const auto& [name, value] : material.properties) {
+            std::string why;
+            const auto vector = value.numbers();
+            if (contains(kIgnored, std::string_view(name))) {
+                disable_z = disable_z || (name == "particle_flag_disable_z" && value.boolean);
+                continue;
+            }
+            if (name == "emission_shape" && value.kind == Value::Kind::Int && value.integer >= 0 &&
+                value.integer < 7) {
+                out[name] = kShapes.at(static_cast<std::size_t>(value.integer));
+            } else if ((contains(kVectors, std::string_view(name)) || name == "gravity") &&
+                       vector && vector->size() >= 2) {
+                out[name] = json::Array{vector->at(0), vector->at(1)};
+            } else if (name == "emission_ring_axis") {
+                if (!vector || vector->size() != 3 || vector->at(0) != 0.0 ||
+                    vector->at(1) != 0.0) {
+                    problems_.add("ParticleProcessMaterial.emission_ring_axis", where,
+                                  "rings face the screen");
+                }
+            } else if ((contains(kNumbers, std::string_view(name)) ||
+                        std::ranges::any_of(kParams,
+                                            [&](std::string_view param) {
+                                                return name == std::string(param) + "_min" ||
+                                                       name == std::string(param) + "_max";
+                                            })) &&
+                       value.is_number()) {
+                out[name] = value.number();
+            } else if ((name == "particle_flag_align_y" ||
+                        name == "particle_flag_damping_as_friction") &&
+                       value.kind == Value::Kind::Bool) {
+                out[name] = value.boolean;
+            } else if (name == "color" && vector && vector->size() == 4) {
+                out[name] = json::Array{vector->at(0), vector->at(1), vector->at(2), vector->at(3)};
+            } else if (name.ends_with("_curve") &&
+                       (name == "velocity_limit_curve" || name == "alpha_curve" ||
+                        name == "emission_curve" ||
+                        std::ranges::any_of(kParams, [&](std::string_view param) {
+                            return param != "initial_velocity" &&
+                                   name == std::string(param) + "_curve";
+                        }))) {
+                const Value* curve = texture_resource(value, "CurveTexture", "curve");
+                if (curve == nullptr) {
+                    problems_.add("ParticleProcessMaterial." + name, where,
+                                  "only a CurveTexture of one curve converts");
+                } else if (auto points = curve_points(*curve, file, why); points) {
+                    out[name] = std::move(*points);
+                } else {
+                    problems_.add("ParticleProcessMaterial." + name, where, why);
+                }
+            } else if (name == "color_ramp" || name == "color_initial_ramp") {
+                const Value* gradient = texture_resource(value, "GradientTexture1D", "gradient");
+                if (gradient == nullptr) {
+                    problems_.add("ParticleProcessMaterial." + name, where,
+                                  "only a GradientTexture1D converts");
+                } else if (auto points = gradient_points(*gradient, file, why); points) {
+                    out[name] = std::move(*points);
+                } else {
+                    problems_.add("ParticleProcessMaterial." + name, where, why);
+                }
+            } else if (name.starts_with("emission_point_") || name == "emission_normal_texture" ||
+                       name == "emission_color_texture") {
+                if (name == "emission_point_texture") {
+                    problems_.add("ParticleProcessMaterial emission points", where,
+                                  "points in a texture don't convert; list them as "
+                                  "emission_points");
+                }
+            } else if ((name == "turbulence_enabled" && value.boolean) ||
+                       (name == "collision_mode" && value.integer != 0) ||
+                       (name == "sub_emitter_mode" && value.integer != 0)) {
+                problems_.add("ParticleProcessMaterial." + name, where,
+                              "turbulence, collisions and sub-emitters are on the roadmap");
+            } else if (name.starts_with("turbulence_") || name.starts_with("collision_") ||
+                       name.starts_with("sub_emitter_")) {
+                continue; // their settings, with them off
+            } else {
+                problems_.add("ParticleProcessMaterial." + name, where);
+            }
+        }
+        // Godot makes a material with the 3D default gravity a 2D one with 98 pixels a second
+        // squared down, unless it was already 2D.
+        if (out.find("gravity") == nullptr) {
+            out["gravity"] = disable_z ? json::Array{0.0, -9.8} : json::Array{0.0, 98.0};
+        }
+        for (const json::ValidationError& error : canvas::validate_process_material(out)) {
+            problems_.add("ParticleProcessMaterial", where, error.path + ": " + error.message);
+        }
+        add_file(path, json::write(out) + "\n");
+        ++process_files_;
+        return path;
+    }
+
+    // A CPUParticles2D's or GPUParticles2D's CanvasItemMaterial: its particle animation's frames.
+    void particle_material(const Value& reference, const TextFile& file, json::Value& emitter,
+                           const Node& node) {
+        const auto [section, owner] = resource_section(reference, file);
+        if (section == nullptr || resource_type(*section, *owner) != "CanvasItemMaterial") {
+            problems_.add(node.type + ".material", node.declared,
+                          "only a CanvasItemMaterial's particle animation converts");
+            return;
+        }
+        const Value* animated = section->property("particles_animation");
+        for (const auto& [name, value] : section->properties) {
+            if (name == "particles_anim_h_frames" || name == "particles_anim_v_frames") {
+                if (animated != nullptr && animated->boolean && value.kind == Value::Kind::Int) {
+                    emitter[name == "particles_anim_h_frames" ? "hframes" : "vframes"] =
+                        value.integer;
+                }
+            } else if (name == "particles_anim_loop") {
+                if (animated != nullptr && animated->boolean && value.kind == Value::Kind::Bool) {
+                    emitter["anim_loop"] = value.boolean;
+                }
+            } else if ((name == "blend_mode" || name == "light_mode") && value.integer != 0) {
+                problems_.add(node.type + ".material " + name, node.declared,
+                              "write a .material.json material for it");
+            } else if (name != "particles_animation" && name != "resource_local_to_scene" &&
+                       name != "resource_name") {
+                problems_.add(node.type + ".material " + name, node.declared);
+            }
+        }
+    }
+
     // A style box resource in a theme's form: {"type": "flat", ...Godot's properties}.
     std::optional<json::Value> style_box(const Value& reference, const TextFile& file,
                                          std::string& why) {
@@ -3448,6 +3629,39 @@ private:
                 return true;
             }
             return false;
+        }
+        const char* particles = nullptr;
+        if (components.contains("GPUParticles2D") && node.type == "GPUParticles2D") {
+            particles = "GPUParticles2D";
+        } else if (components.contains("CPUParticles2D") && node.type == "CPUParticles2D") {
+            particles = "CPUParticles2D";
+        }
+        if (particles != nullptr && name == "material") {
+            particle_material(value, file, components[particles], node);
+            return true;
+        }
+        if (particles != nullptr && std::string_view(particles) == "GPUParticles2D") {
+            // visibility_rect only culls, and collision_base_size goes with collisions.
+            if (name == "visibility_rect" || name == "collision_base_size") {
+                return true;
+            }
+            if (name == "seed") {
+                // Godot's GPUParticles2D picks a seed at random unless use_fixed_seed.
+                const Property* fixed = node.find("use_fixed_seed");
+                if (fixed != nullptr && fixed->value->boolean && value.kind == Value::Kind::Int) {
+                    components[particles]["seed"] =
+                        static_cast<std::int32_t>(static_cast<std::uint32_t>(value.integer));
+                }
+                return true;
+            }
+            if (name.starts_with("trail_") || name == "sub_emitter") {
+                if ((name == "trail_enabled" && value.boolean) ||
+                    (name == "sub_emitter" && !value.string_argument().value_or("").empty())) {
+                    problems_.add("GPUParticles2D." + name, node.declared,
+                                  "trails and sub-emitters are on the roadmap");
+                }
+                return true;
+            }
         }
         if (name == "label_settings" && components.contains("Label")) {
             convert_label_settings(value, file, components["Control"], node);
@@ -4607,6 +4821,7 @@ private:
         out["converted"]["themes"] = theme_files_;
         out["converted"]["bus_layouts"] = bus_layout_files_;
         out["converted"]["animation_libraries"] = animation_files_;
+        out["converted"]["process_materials"] = process_files_;
         out["converted"]["input_actions"] = input_actions_;
         out["converted"]["assets"] = assets_;
         out["scripts"] = std::move(summary);
@@ -4626,6 +4841,7 @@ private:
     std::set<std::string> resources_used_;
     std::set<std::string> resources_read_; // .tres files a converted value read
     std::map<std::string, std::string> frames_written_;
+    std::map<std::string, std::string> process_written_;
     std::map<std::string, TileSetFile> tile_sets_;
     std::map<std::string, std::string> themes_written_;
     std::set<std::string> bus_layouts_written_;
@@ -4648,6 +4864,7 @@ private:
     int theme_files_ = 0;
     int bus_layout_files_ = 0;
     int animation_files_ = 0;
+    int process_files_ = 0;
     int input_actions_ = 0;
     int assets_ = 0;
 };

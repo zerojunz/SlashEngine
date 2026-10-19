@@ -3,6 +3,9 @@
 #include "checks.hpp"
 #include "hlsl_compiler.hpp"
 #include "material_shaders.hpp"
+#include "particle_layout.hpp"
+#include "particles_draw_shaders.hpp"
+#include "particles_process_shaders.hpp"
 #include "sprite_shaders.hpp"
 #include "uniforms.hpp"
 
@@ -36,9 +39,13 @@ constexpr SDL_GPUShaderFormat kHlslFormats = 0;
 #endif
 // The vertex buffer's first size: 3,276 vertices.
 constexpr std::uint32_t kMinVertexBytes = 64 * 1024;
+// Threads in a group of the particle shaders, as their [numthreads].
+constexpr std::uint32_t kParticleThreads = 64;
 
 // The two shaders: plain sprites, and materials that run a program.
 enum class ShaderKind : std::uint8_t { Sprite, Material };
+// The compute shaders: running particle steps, and turning particles into quads.
+enum class ComputeKind : std::uint8_t { Process, Draw };
 
 struct ShaderCode {
     std::span<const unsigned char> vertex_spirv;
@@ -177,6 +184,18 @@ public:
         }
         for (const Pipeline& pipeline : pipelines_) {
             SDL_ReleaseGPUGraphicsPipeline(device_, pipeline.pipeline);
+        }
+        for (SDL_GPUComputePipeline* pipeline : compute_pipelines_) {
+            if (pipeline != nullptr) {
+                SDL_ReleaseGPUComputePipeline(device_, pipeline);
+            }
+        }
+        for (const auto& [id, system] : particle_systems_) {
+            SDL_ReleaseGPUBuffer(device_, system.buffer);
+        }
+        if (particle_data_ != nullptr) {
+            SDL_ReleaseGPUBuffer(device_, particle_data_);
+            SDL_ReleaseGPUTransferBuffer(device_, particle_transfer_);
         }
         if (vertex_buffer_ != nullptr) {
             SDL_ReleaseGPUBuffer(device_, vertex_buffer_);
@@ -355,6 +374,151 @@ public:
         game_shaders_.erase(it);
     }
 
+    Result<ParticlesId> create_particles(std::uint32_t amount) override {
+        if (auto checked = check_particle_amount(amount); !checked) {
+            return checked.error();
+        }
+        if (auto pipeline = compute_pipeline(ComputeKind::Process); !pipeline) {
+            return pipeline.error();
+        }
+        SDL_GPUBufferCreateInfo info{};
+        info.usage =
+            SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ | SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE;
+        info.size = amount * static_cast<std::uint32_t>(sizeof(Particle));
+        SDL_GPUBuffer* buffer = SDL_CreateGPUBuffer(device_, &info);
+        if (buffer == nullptr) {
+            return sdl_error("creating a system of " + std::to_string(amount) +
+                             " particles failed");
+        }
+        // New GPU memory holds whatever was there before, so the system starts by clearing it.
+        if (auto queued =
+                queue_particle_job({.particles = buffer, .amount = amount, .reset = true});
+            !queued) {
+            SDL_ReleaseGPUBuffer(device_, buffer);
+            return queued.error();
+        }
+        const auto id = static_cast<ParticlesId>(next_particles_++);
+        particle_systems_[id] = {.buffer = buffer, .amount = amount};
+        return id;
+    }
+
+    void destroy_particles(ParticlesId particles) override {
+        const auto it = particle_systems_.find(particles);
+        if (it == particle_systems_.end()) {
+            return;
+        }
+        // Jobs waiting for the frame may still use it, so it goes once they are sent.
+        if (particle_jobs_.empty()) {
+            SDL_ReleaseGPUBuffer(device_, it->second.buffer);
+        } else {
+            pending_buffers_.push_back(it->second.buffer);
+        }
+        particle_systems_.erase(it);
+    }
+
+    Result<void> process_particles(ParticlesId particles, const ParticleProcess& process,
+                                   std::span<const ParticleStep> steps) override {
+        const auto it = particle_systems_.find(particles);
+        if (it == particle_systems_.end()) {
+            return unknown_particles(particles);
+        }
+        if (auto checked = check_particle_process(process, steps); !checked) {
+            return checked;
+        }
+        if (steps.empty()) {
+            return {};
+        }
+        ParticleJob job{.particles = it->second.buffer, .amount = it->second.amount};
+        job.material = material_words(process);
+        job.steps = static_cast<std::uint32_t>(particle_words_.size());
+        job.step_count = static_cast<std::uint32_t>(steps.size());
+        pack_particle_steps(steps, particle_words_);
+        return queue_particle_job(job);
+    }
+
+    Result<void> draw_particles(ParticlesId particles, TextureId texture, const ParticleDraw& look,
+                                const Material& material) override {
+        if (!in_frame_) {
+            return no_frame("draw_particles");
+        }
+        const auto it = particle_systems_.find(particles);
+        if (it == particle_systems_.end()) {
+            return unknown_particles(particles);
+        }
+        const std::uint32_t amount = it->second.amount;
+        if (auto checked = check_particle_draw(look, amount, frame_vertex_count()); !checked) {
+            return checked;
+        }
+        if (auto checked = check_draw(texture, material); !checked) {
+            return checked;
+        }
+        if (frame_commands_ == nullptr) {
+            return {}; // a skipped frame
+        }
+        if (auto pipeline = compute_pipeline(ComputeKind::Draw); !pipeline) {
+            return pipeline.error();
+        }
+        // The quads go after the frame's other vertices, written there by the draw shader.
+        auto batch = make_batch(texture, material, particle_vertices_);
+        if (!batch) {
+            return batch.error();
+        }
+        const std::uint32_t count = amount * 6;
+        batch.value().particles = true;
+        batch.value().count = count;
+        batches_.push_back(std::move(batch).value());
+        ++stats_.draws;
+        stats_.triangles += count / 3;
+        particle_jobs_.push_back({.particles = it->second.buffer,
+                                  .amount = amount,
+                                  .draw = true,
+                                  .look = draw_uniforms(look, amount, particle_vertices_)});
+        particle_vertices_ += count;
+        return {};
+    }
+
+    Result<std::vector<Particle>> read_particles(ParticlesId particles) override {
+        if (in_frame_) {
+            return frame_in_progress("read_particles");
+        }
+        const auto it = particle_systems_.find(particles);
+        if (it == particle_systems_.end()) {
+            return unknown_particles(particles);
+        }
+        const std::uint32_t size = it->second.amount * static_cast<std::uint32_t>(sizeof(Particle));
+        const TransferBuffer transfer(device_, SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD, size);
+        if (transfer.get() == nullptr) {
+            return sdl_error("making room to read the particles failed");
+        }
+        SDL_GPUCommandBuffer* commands = SDL_AcquireGPUCommandBuffer(device_);
+        if (commands == nullptr) {
+            return sdl_error("reading the particles failed");
+        }
+        SDL_GPUCopyPass* copy = SDL_BeginGPUCopyPass(commands);
+        const SDL_GPUBufferRegion source{.buffer = it->second.buffer, .offset = 0, .size = size};
+        const SDL_GPUTransferBufferLocation destination{.transfer_buffer = transfer.get(),
+                                                        .offset = 0};
+        SDL_DownloadFromGPUBuffer(copy, &source, &destination);
+        SDL_EndGPUCopyPass(copy);
+        SDL_GPUFence* fence = SDL_SubmitGPUCommandBufferAndAcquireFence(commands);
+        if (fence == nullptr) {
+            return sdl_error("reading the particles failed");
+        }
+        const bool finished = SDL_WaitForGPUFences(device_, true, &fence, 1);
+        SDL_ReleaseGPUFence(device_, fence);
+        if (!finished) {
+            return sdl_error("waiting for the GPU failed");
+        }
+        const void* mapped = SDL_MapGPUTransferBuffer(device_, transfer.get(), false);
+        if (mapped == nullptr) {
+            return sdl_error("reading the particles failed");
+        }
+        std::vector<Particle> out(it->second.amount);
+        std::memcpy(out.data(), mapped, size);
+        SDL_UnmapGPUTransferBuffer(device_, transfer.get());
+        return out;
+    }
+
     Result<bool> begin_frame(const Frame& frame) override {
         if (in_frame_) {
             return frame_in_progress("begin_frame");
@@ -423,69 +587,24 @@ public:
         if (!in_frame_) {
             return no_frame("draw");
         }
-        if (texture != TextureId::None) {
-            const auto it = textures_.find(texture);
-            if (it == textures_.end()) {
-                return unknown_texture(texture);
-            }
-            if (texture == frame_.target) {
-                return target_in_use(texture);
-            }
-        }
-        if (auto checked = check_material(
-                material, frame_.target, [&](TextureId id) { return textures_.contains(id); },
-                [&](ShaderId id) { return game_shaders_.contains(id); });
-            !checked) {
+        if (auto checked = check_draw(texture, material); !checked) {
             return checked;
         }
-        if (auto checked = check_vertices(vertices, vertices_.size()); !checked) {
-            return checked;
-        }
-        if (auto checked = check_lighting_textures(
-                frame_.lighting, [&](TextureId id) { return textures_.contains(id); });
-            !checked) {
+        if (auto checked = check_vertices(vertices, frame_vertex_count()); !checked) {
             return checked;
         }
         if (vertices.empty() || frame_commands_ == nullptr) {
             return {}; // nothing to draw, or a skipped frame
         }
-        const auto first = static_cast<std::uint32_t>(vertices_.size());
         const auto count = static_cast<std::uint32_t>(vertices.size());
-        if (batches_.empty() || batches_.back().texture != texture ||
+        if (batches_.empty() || batches_.back().particles || batches_.back().texture != texture ||
             batches_.back().material != material) {
-            const ShaderKind kind =
-                material.shader != ShaderId::None || uses_material_shader(material)
-                    ? ShaderKind::Material
-                    : ShaderKind::Sprite;
-            auto pipeline = pipeline_for(frame_format_, kind, material.blend, material.shader);
-            if (!pipeline) {
-                return pipeline.error();
+            auto batch =
+                make_batch(texture, material, static_cast<std::uint32_t>(vertices_.size()));
+            if (!batch) {
+                return batch.error();
             }
-            Batch batch{.texture = texture,
-                        .material = material,
-                        .kind = kind,
-                        .pipeline = pipeline.value(),
-                        .samplers = {},
-                        .texel = {1.0F, 1.0F, 0.0F, 0.0F},
-                        .first = first,
-                        .count = 0};
-            batch.samplers.at(0) = binding(texture, false);
-            for (std::size_t slot = 1; slot < kMaterialTextureSlots; ++slot) {
-                const MaterialTexture& bound = material.textures.at(slot - 1);
-                batch.samplers.at(slot) = binding(bound.texture, bound.repeat);
-            }
-            batch.samplers.at(kMaterialTextureSlots) = binding(material.shading.normal_map, false);
-            batch.samplers.at(kMaterialTextureSlots + 1) =
-                binding(material.shading.specular_map, false);
-            batch.samplers.at(kMaterialTextureSlots + 2) = binding(frame_.lighting.atlas, false);
-            batch.samplers.at(kMaterialTextureSlots + 3) =
-                binding(frame_.lighting.shadow_map, false);
-            if (texture != TextureId::None) {
-                const TextureDesc& desc = textures_.at(texture).desc;
-                batch.texel = {1.0F / static_cast<float>(desc.width),
-                               1.0F / static_cast<float>(desc.height), 0.0F, 0.0F};
-            }
-            batches_.push_back(std::move(batch));
+            batches_.push_back(std::move(batch).value());
             ++stats_.draws;
         }
         batches_.back().count += count;
@@ -500,16 +619,22 @@ public:
         }
         in_frame_ = false;
         if (frame_commands_ == nullptr) {
+            // A skipped frame draws nothing, but its particles still run.
+            Result<void> flushed = flush_particle_jobs();
             finish_frame();
-            return {};
+            return flushed;
         }
         SDL_GPUCommandBuffer* commands = std::exchange(frame_commands_, nullptr);
-        Result<void> uploaded = upload_vertices(commands);
+        Result<void> uploaded = upload_frame(commands);
         if (!uploaded) {
+            particle_jobs_.clear();
             SDL_SubmitGPUCommandBuffer(commands);
             finish_frame();
             return uploaded;
         }
+        // Particles run and write their quads ahead of the render pass that draws them.
+        const auto base = static_cast<std::uint32_t>(vertices_.size());
+        dispatch_particle_jobs(commands, base, vertices_.empty());
 
         SDL_GPUColorTargetInfo color{};
         color.texture = frame_texture_;
@@ -558,7 +683,8 @@ public:
                     SDL_BindGPUFragmentSamplers(pass, 0, batch.samplers.data(),
                                                 static_cast<std::uint32_t>(batch.samplers.size()));
                 }
-                SDL_DrawGPUPrimitives(pass, batch.count, 1, batch.first, 0);
+                SDL_DrawGPUPrimitives(pass, batch.count, 1,
+                                      batch.particles ? base + batch.first : batch.first, 0);
             }
         }
         SDL_EndGPURenderPass(pass);
@@ -669,8 +795,11 @@ private:
         // The draw's texture, the material's, the shading's and the frame's lighting textures.
         std::array<SDL_GPUTextureSamplerBinding, kMaterialSamplers> samplers{};
         std::array<float, 4> texel{};
+        // Its first vertex: in the frame's particle quads, after the other vertices, for
+        // particles.
         std::uint32_t first = 0;
         std::uint32_t count = 0;
+        bool particles = false; // a draw of particles, which is never batched with others
     };
 
     struct Pipeline {
@@ -685,6 +814,24 @@ private:
     struct GameShader {
         SDL_GPUShader* vertex = nullptr;
         SDL_GPUShader* fragment = nullptr;
+    };
+
+    struct ParticleSystem {
+        SDL_GPUBuffer* buffer = nullptr;
+        std::uint32_t amount = 0;
+    };
+
+    // A compute pass for the GPU to run ahead of the frame's draws, in the order called: steps
+    // of a system, or a draw turning it into quads.
+    struct ParticleJob {
+        SDL_GPUBuffer* particles = nullptr;
+        std::uint32_t amount = 0;
+        bool draw = false;
+        bool reset = false;         // clears every particle first
+        std::uint32_t material = 0; // where its process material is in particle_words_
+        std::uint32_t steps = 0;    // and its steps
+        std::uint32_t step_count = 0;
+        DrawUniforms look{}; // for a draw; its first vertex is in the particle quads
     };
 
     static std::size_t shader_index(ShaderKind kind, SDL_GPUShaderStage stage) {
@@ -719,6 +866,264 @@ private:
         region.h = desc.height;
         region.d = 1;
         return region;
+    }
+
+    // The checks every draw makes: its texture, its material and the frame's lights.
+    Result<void> check_draw(TextureId texture, const Material& material) const {
+        if (texture != TextureId::None) {
+            if (!textures_.contains(texture)) {
+                return unknown_texture(texture);
+            }
+            if (texture == frame_.target) {
+                return target_in_use(texture);
+            }
+        }
+        if (auto checked = check_material(
+                material, frame_.target, [&](TextureId id) { return textures_.contains(id); },
+                [&](ShaderId id) { return game_shaders_.contains(id); });
+            !checked) {
+            return checked;
+        }
+        return check_lighting_textures(frame_.lighting,
+                                       [&](TextureId id) { return textures_.contains(id); });
+    }
+
+    // A batch drawing with a texture and a material from a first vertex, with no vertices yet.
+    Result<Batch> make_batch(TextureId texture, const Material& material, std::uint32_t first) {
+        const ShaderKind kind = material.shader != ShaderId::None || uses_material_shader(material)
+                                    ? ShaderKind::Material
+                                    : ShaderKind::Sprite;
+        auto pipeline = pipeline_for(frame_format_, kind, material.blend, material.shader);
+        if (!pipeline) {
+            return pipeline.error();
+        }
+        Batch batch{.texture = texture,
+                    .material = material,
+                    .kind = kind,
+                    .pipeline = pipeline.value(),
+                    .samplers = {},
+                    .texel = {1.0F, 1.0F, 0.0F, 0.0F},
+                    .first = first,
+                    .count = 0};
+        batch.samplers.at(0) = binding(texture, false);
+        for (std::size_t slot = 1; slot < kMaterialTextureSlots; ++slot) {
+            const MaterialTexture& bound = material.textures.at(slot - 1);
+            batch.samplers.at(slot) = binding(bound.texture, bound.repeat);
+        }
+        batch.samplers.at(kMaterialTextureSlots) = binding(material.shading.normal_map, false);
+        batch.samplers.at(kMaterialTextureSlots + 1) =
+            binding(material.shading.specular_map, false);
+        batch.samplers.at(kMaterialTextureSlots + 2) = binding(frame_.lighting.atlas, false);
+        batch.samplers.at(kMaterialTextureSlots + 3) = binding(frame_.lighting.shadow_map, false);
+        if (texture != TextureId::None) {
+            const TextureDesc& desc = textures_.at(texture).desc;
+            batch.texel = {1.0F / static_cast<float>(desc.width),
+                           1.0F / static_cast<float>(desc.height), 0.0F, 0.0F};
+        }
+        return batch;
+    }
+
+    // The vertices the frame draws so far, its particles' quads included.
+    [[nodiscard]] std::size_t frame_vertex_count() const {
+        return vertices_.size() + particle_vertices_;
+    }
+
+    // A compute shader's pipeline, made the first time it is needed.
+    Result<SDL_GPUComputePipeline*> compute_pipeline(ComputeKind kind) {
+        SDL_GPUComputePipeline*& slot = compute_pipelines_.at(static_cast<std::size_t>(kind));
+        if (slot != nullptr) {
+            return slot;
+        }
+        const bool process = kind == ComputeKind::Process;
+        SDL_GPUComputePipelineCreateInfo info{};
+        info.entrypoint = "cs_main";
+        info.num_readonly_storage_buffers = 1;
+        info.num_readwrite_storage_buffers = 1;
+        info.num_uniform_buffers = 1;
+        info.threadcount_x = kParticleThreads;
+        info.threadcount_y = 1;
+        info.threadcount_z = 1;
+        const SDL_GPUShaderFormat formats = SDL_GetGPUShaderFormats(device_);
+        std::vector<std::uint8_t> compiled;
+        std::string msl;
+        if ((formats & SDL_GPU_SHADERFORMAT_SPIRV) != 0) {
+            const std::span<const unsigned char> spirv =
+                process ? std::span<const unsigned char>(shaders::kParticlesProcessComputeSpirv)
+                        : std::span<const unsigned char>(shaders::kParticlesDrawComputeSpirv);
+            info.format = SDL_GPU_SHADERFORMAT_SPIRV;
+            info.code = spirv.data();
+            info.code_size = spirv.size();
+        } else if ((formats & SDL_GPU_SHADERFORMAT_MSL) != 0) {
+            // In pieces, since no string literal may be as long as the whole.
+            const std::span<const char* const> pieces =
+                process ? std::span<const char* const>(shaders::kParticlesProcessComputeMsl)
+                        : std::span<const char* const>(shaders::kParticlesDrawComputeMsl);
+            for (const char* piece : pieces) {
+                msl += piece;
+            }
+            info.format = SDL_GPU_SHADERFORMAT_MSL;
+            info.code = reinterpret_cast<const std::uint8_t*>(msl.data());
+            info.code_size = msl.size();
+        } else if ((formats & SDL_GPU_SHADERFORMAT_DXBC) != 0) {
+            auto bytecode =
+                compile_hlsl(process ? shaders::kParticlesProcessHlsl : shaders::kParticlesDrawHlsl,
+                             "cs_main", "cs_5_1");
+            if (!bytecode) {
+                return bytecode.error();
+            }
+            compiled = std::move(bytecode).value();
+            info.format = SDL_GPU_SHADERFORMAT_DXBC;
+            info.code = compiled.data();
+            info.code_size = compiled.size();
+        } else {
+            return make_error(ErrorCode::PlatformFailure,
+                              "the GPU backend takes no shader format SlashEngine ships");
+        }
+        slot = SDL_CreateGPUComputePipeline(device_, &info);
+        if (slot == nullptr) {
+            return sdl_error("creating the particle pipeline failed");
+        }
+        return slot;
+    }
+
+    // Where a process material's words are, packed after the others unless it is the one packed
+    // last.
+    std::uint32_t material_words(const ParticleProcess& process) {
+        if (last_material_ && last_material_->first == process) {
+            return last_material_->second;
+        }
+        const auto at = static_cast<std::uint32_t>(particle_words_.size());
+        pack_particle_process(process, particle_words_);
+        last_material_.emplace(process, at);
+        return at;
+    }
+
+    // Queues a job, which runs at once outside a frame and with the frame inside one.
+    Result<void> queue_particle_job(const ParticleJob& job) {
+        particle_jobs_.push_back(job);
+        return in_frame_ ? Result<void>{} : flush_particle_jobs();
+    }
+
+    // Sends the queued jobs to the GPU on their own, with nothing drawn.
+    Result<void> flush_particle_jobs() {
+        if (particle_jobs_.empty()) {
+            return {};
+        }
+        SDL_GPUCommandBuffer* commands = SDL_AcquireGPUCommandBuffer(device_);
+        if (commands == nullptr) {
+            clear_particle_jobs();
+            return sdl_error("running particles failed");
+        }
+        SDL_GPUCopyPass* copy = SDL_BeginGPUCopyPass(commands);
+        Result<void> uploaded = upload_particle_words(copy);
+        SDL_EndGPUCopyPass(copy);
+        if (uploaded) {
+            dispatch_particle_jobs(commands, 0, false);
+        }
+        clear_particle_jobs();
+        const bool submitted = SDL_SubmitGPUCommandBuffer(commands);
+        release_pending_buffers();
+        if (!uploaded) {
+            return uploaded;
+        }
+        if (!submitted) {
+            return sdl_error("running particles failed");
+        }
+        return {};
+    }
+
+    // Copies what the queued jobs read to the GPU.
+    Result<void> upload_particle_words(SDL_GPUCopyPass* copy) {
+        if (particle_jobs_.empty()) {
+            return {};
+        }
+        if (particle_words_.empty()) {
+            particle_words_.push_back({}); // the process shader always reads a buffer
+        }
+        const auto size = static_cast<std::uint32_t>(particle_words_.size() * sizeof(Word));
+        if (size > particle_capacity_) {
+            const std::uint32_t capacity =
+                std::max({size, particle_capacity_ * 2, kMinVertexBytes});
+            if (particle_data_ != nullptr) {
+                SDL_ReleaseGPUBuffer(device_, particle_data_);
+                SDL_ReleaseGPUTransferBuffer(device_, particle_transfer_);
+                particle_data_ = nullptr;
+                particle_transfer_ = nullptr;
+                particle_capacity_ = 0;
+            }
+            SDL_GPUBufferCreateInfo buffer{};
+            buffer.usage = SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ;
+            buffer.size = capacity;
+            particle_data_ = SDL_CreateGPUBuffer(device_, &buffer);
+            SDL_GPUTransferBufferCreateInfo transfer{};
+            transfer.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
+            transfer.size = capacity;
+            particle_transfer_ = SDL_CreateGPUTransferBuffer(device_, &transfer);
+            if (particle_data_ == nullptr || particle_transfer_ == nullptr) {
+                return sdl_error("making room for the particles' steps failed");
+            }
+            particle_capacity_ = capacity;
+        }
+        void* mapped = SDL_MapGPUTransferBuffer(device_, particle_transfer_, true);
+        if (mapped == nullptr) {
+            return sdl_error("uploading the particles' steps failed");
+        }
+        std::memcpy(mapped, particle_words_.data(), size);
+        SDL_UnmapGPUTransferBuffer(device_, particle_transfer_);
+        const SDL_GPUTransferBufferLocation source{.transfer_buffer = particle_transfer_,
+                                                   .offset = 0};
+        const SDL_GPUBufferRegion destination{.buffer = particle_data_, .offset = 0, .size = size};
+        SDL_UploadToGPUBuffer(copy, &source, &destination, true);
+        return {};
+    }
+
+    // Records the queued jobs as compute passes, in order. Draws write their quads into the
+    // vertex buffer from vertex base, cycling it first when nothing has written it this frame.
+    void dispatch_particle_jobs(SDL_GPUCommandBuffer* commands, std::uint32_t base,
+                                bool cycle_vertices) {
+        for (const ParticleJob& job : particle_jobs_) {
+            const std::uint32_t groups = (job.amount + kParticleThreads - 1) / kParticleThreads;
+            SDL_GPUStorageBufferReadWriteBinding output{};
+            output.buffer = job.draw ? vertex_buffer_ : job.particles;
+            output.cycle = job.draw && cycle_vertices;
+            SDL_GPUComputePass* pass = SDL_BeginGPUComputePass(commands, nullptr, 0, &output, 1);
+            if (job.draw) {
+                cycle_vertices = false;
+                SDL_BindGPUComputePipeline(
+                    pass, compute_pipelines_.at(static_cast<std::size_t>(ComputeKind::Draw)));
+                SDL_BindGPUComputeStorageBuffers(pass, 0, &job.particles, 1);
+                DrawUniforms uniforms = job.look;
+                uniforms.counts[3] += base;
+                SDL_PushGPUComputeUniformData(commands, 0, &uniforms,
+                                              static_cast<std::uint32_t>(sizeof(uniforms)));
+            } else {
+                SDL_BindGPUComputePipeline(
+                    pass, compute_pipelines_.at(static_cast<std::size_t>(ComputeKind::Process)));
+                SDL_BindGPUComputeStorageBuffers(pass, 0, &particle_data_, 1);
+                const ProcessUniforms uniforms{.amount = job.amount,
+                                               .material = job.material,
+                                               .steps = job.steps,
+                                               .step_count = job.step_count,
+                                               .reset = job.reset ? 1U : 0U};
+                SDL_PushGPUComputeUniformData(commands, 0, &uniforms,
+                                              static_cast<std::uint32_t>(sizeof(uniforms)));
+            }
+            SDL_DispatchGPUCompute(pass, groups, 1, 1);
+            SDL_EndGPUComputePass(pass);
+        }
+    }
+
+    void clear_particle_jobs() {
+        particle_jobs_.clear();
+        particle_words_.clear();
+        last_material_.reset();
+    }
+
+    void release_pending_buffers() {
+        for (SDL_GPUBuffer* buffer : pending_buffers_) {
+            SDL_ReleaseGPUBuffer(device_, buffer);
+        }
+        pending_buffers_.clear();
     }
 
     // Both of a kind's shaders, unless they are made already.
@@ -925,15 +1330,17 @@ private:
         return {};
     }
 
-    // Copies the frame's vertices to the GPU ahead of its render pass.
-    Result<void> upload_vertices(SDL_GPUCommandBuffer* commands) {
-        if (vertices_.empty()) {
+    // Copies the frame's vertices, and what its particle jobs read, to the GPU ahead of its
+    // passes, with room after the vertices for the particles' quads.
+    Result<void> upload_frame(SDL_GPUCommandBuffer* commands) {
+        const auto total = static_cast<std::uint32_t>(frame_vertex_count() * sizeof(Vertex2D));
+        if (total == 0 && particle_jobs_.empty()) {
             return {};
         }
         const auto size = static_cast<std::uint32_t>(vertices_.size() * sizeof(Vertex2D));
-        if (size > vertex_capacity_) {
+        if (total > vertex_capacity_) {
             // Grows by doubling, so a busy game settles on one size.
-            const std::uint32_t capacity = std::max({size, vertex_capacity_ * 2, kMinVertexBytes});
+            const std::uint32_t capacity = std::max({total, vertex_capacity_ * 2, kMinVertexBytes});
             if (vertex_buffer_ != nullptr) {
                 SDL_ReleaseGPUBuffer(device_, vertex_buffer_);
                 SDL_ReleaseGPUTransferBuffer(device_, vertex_transfer_);
@@ -942,7 +1349,7 @@ private:
                 vertex_capacity_ = 0;
             }
             SDL_GPUBufferCreateInfo buffer{};
-            buffer.usage = SDL_GPU_BUFFERUSAGE_VERTEX;
+            buffer.usage = SDL_GPU_BUFFERUSAGE_VERTEX | SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE;
             buffer.size = capacity;
             vertex_buffer_ = SDL_CreateGPUBuffer(device_, &buffer);
             SDL_GPUTransferBufferCreateInfo transfer{};
@@ -954,20 +1361,25 @@ private:
             }
             vertex_capacity_ = capacity;
         }
-        // Cycling hands over fresh memory while earlier frames still read the old.
-        void* mapped = SDL_MapGPUTransferBuffer(device_, vertex_transfer_, true);
-        if (mapped == nullptr) {
-            return sdl_error("uploading the frame's vertices failed");
-        }
-        std::memcpy(mapped, vertices_.data(), size);
-        SDL_UnmapGPUTransferBuffer(device_, vertex_transfer_);
         SDL_GPUCopyPass* copy = SDL_BeginGPUCopyPass(commands);
-        const SDL_GPUTransferBufferLocation source{.transfer_buffer = vertex_transfer_,
-                                                   .offset = 0};
-        const SDL_GPUBufferRegion destination{.buffer = vertex_buffer_, .offset = 0, .size = size};
-        SDL_UploadToGPUBuffer(copy, &source, &destination, true);
+        if (size > 0) {
+            // Cycling hands over fresh memory while earlier frames still read the old.
+            void* mapped = SDL_MapGPUTransferBuffer(device_, vertex_transfer_, true);
+            if (mapped == nullptr) {
+                SDL_EndGPUCopyPass(copy);
+                return sdl_error("uploading the frame's vertices failed");
+            }
+            std::memcpy(mapped, vertices_.data(), size);
+            SDL_UnmapGPUTransferBuffer(device_, vertex_transfer_);
+            const SDL_GPUTransferBufferLocation source{.transfer_buffer = vertex_transfer_,
+                                                       .offset = 0};
+            const SDL_GPUBufferRegion destination{
+                .buffer = vertex_buffer_, .offset = 0, .size = size};
+            SDL_UploadToGPUBuffer(copy, &source, &destination, true);
+        }
+        Result<void> uploaded = upload_particle_words(copy);
         SDL_EndGPUCopyPass(copy);
-        return {};
+        return uploaded;
     }
 
     void start_frame(const Frame& frame, SDL_GPUCommandBuffer* commands, SDL_GPUTexture* target,
@@ -980,6 +1392,7 @@ private:
         frame_height_ = height;
         vertices_.clear();
         batches_.clear();
+        particle_vertices_ = 0;
     }
 
     void finish_frame() {
@@ -987,6 +1400,8 @@ private:
         frame_texture_ = nullptr;
         vertices_.clear();
         batches_.clear();
+        particle_vertices_ = 0;
+        clear_particle_jobs();
         release_pending();
     }
 
@@ -999,6 +1414,7 @@ private:
             SDL_ReleaseGPUGraphicsPipeline(device_, pipeline);
         }
         pending_pipelines_.clear();
+        release_pending_buffers();
     }
 
     SDL_GPUDevice* device_;
@@ -1018,6 +1434,17 @@ private:
     std::unordered_map<ShaderId, GameShader> game_shaders_;
     std::uint32_t next_shader_ = 1;
     std::vector<SDL_GPUGraphicsPipeline*> pending_pipelines_;
+    std::array<SDL_GPUComputePipeline*, 2> compute_pipelines_{}; // by ComputeKind
+    std::unordered_map<ParticlesId, ParticleSystem> particle_systems_;
+    std::uint32_t next_particles_ = 1;
+    std::vector<SDL_GPUBuffer*> pending_buffers_;
+    // Jobs waiting to run, and the words they read.
+    std::vector<ParticleJob> particle_jobs_;
+    std::vector<Word> particle_words_;
+    std::optional<std::pair<ParticleProcess, std::uint32_t>> last_material_;
+    SDL_GPUBuffer* particle_data_ = nullptr;
+    SDL_GPUTransferBuffer* particle_transfer_ = nullptr;
+    std::uint32_t particle_capacity_ = 0;
 
     // The frame being built. A skipped frame has no command buffer.
     bool in_frame_ = false;
@@ -1029,6 +1456,7 @@ private:
     std::uint32_t frame_height_ = 0;
     std::vector<Vertex2D> vertices_;
     std::vector<Batch> batches_;
+    std::uint32_t particle_vertices_ = 0;  // the particles' quads, after vertices_
     VsyncMode vsync_ = VsyncMode::Enabled; // SDL's default present mode
     Stats stats_;
 };

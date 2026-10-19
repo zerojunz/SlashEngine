@@ -5,6 +5,7 @@
 #include "slash/animation/animation.hpp"
 #include "slash/audio/audio.hpp"
 #include "slash/canvas/canvas.hpp"
+#include "slash/canvas/gpu_particles.hpp"
 #include "slash/canvas/light.hpp"
 #include "slash/canvas/material.hpp"
 #include "slash/canvas/particles.hpp"
@@ -379,6 +380,9 @@ Reply schema_get(Session& session, const json::Value& params) {
     }
     if (kind == "material") {
         return Reply::success(canvas::material_schema());
+    }
+    if (kind == "process_material") {
+        return Reply::success(canvas::process_material_schema());
     }
     if (kind == "animation") {
         return Reply::success(animation::animation_schema());
@@ -1520,6 +1524,15 @@ Reply physics_gravity(Session& session, const json::Value& params) {
 
 // ---- Particles ----
 
+// A particle as particles.eval reports it.
+struct EvalParticle {
+    Vec2 position; // in the world
+    float rotation = 0.0F;
+    float scale = 1.0F;
+    Vec4 color;
+    float age = 0.0F; // seconds
+};
+
 Reply particles_eval(Session& session, const json::Value& params) {
     const world::World& world = session.world();
     const std::string id = text(params, "id");
@@ -1528,34 +1541,74 @@ Reply particles_eval(Session& session, const json::Value& params) {
         return unknown_entity(world, id, "/id");
     }
     const auto* emitter = world.ecs().try_get<world::CPUParticles2D>(entity);
-    if (emitter == nullptr) {
-        return param_error(code::kInvalidParams, "/id", quoted(id) + " has no CPUParticles2D");
+    const auto* gpu = world.ecs().try_get<world::GPUParticles2D>(entity);
+    if (emitter == nullptr && gpu == nullptr) {
+        return param_error(code::kInvalidParams, "/id",
+                           quoted(id) + " has no CPUParticles2D or GPUParticles2D");
     }
     // Where it is after its parents.
     const world::Transform2D transform = world::Tree2D(world).global(entity);
-    std::vector<canvas::Particle> live;
-    if (const json::Value* time = params.find("time"); time != nullptr) {
-        const json::Value* seconds = params.find("tick_seconds");
-        live = canvas::simulate(*emitter, transform, canvas::particle_seed(id, emitter->seed),
-                                time->as_double(),
-                                seconds != nullptr ? seconds->as_double() : kDefaultTickSeconds);
+    const json::Value* time = params.find("time");
+    const json::Value* seconds = params.find("tick_seconds");
+    const double tick_seconds = seconds != nullptr ? seconds->as_double() : kDefaultTickSeconds;
+    std::vector<EvalParticle> live;
+    if (emitter != nullptr) {
+        const std::vector<canvas::Particle> particles =
+            time != nullptr
+                ? canvas::simulate(*emitter, transform, canvas::particle_seed(id, emitter->seed),
+                                   time->as_double(), tick_seconds)
+                : canvas::particles(world, entity);
+        for (const canvas::Particle& particle : particles) {
+            live.push_back(
+                {.position = canvas::world_position(*emitter, transform, particle.position),
+                 .rotation =
+                     particle.rotation + (emitter->local_coords ? transform.rotation : 0.0F),
+                 .scale = particle.scale,
+                 .color = particle.color,
+                 .age = particle.age});
+        }
     } else {
-        live = canvas::particles(world, entity);
+        std::vector<render::Particle> particles;
+        if (time != nullptr) {
+            render::ParticleProcess process;
+            if (!gpu->process_material.empty()) {
+                auto loaded = session.assets().load<render::ParticleProcess>(gpu->process_material);
+                if (!loaded) {
+                    return Reply::failure(code::kInvalidArgument, loaded.error().message);
+                }
+                process = *loaded.value();
+            }
+            particles =
+                canvas::simulate(*gpu, process, transform, id, time->as_double(), tick_seconds);
+        } else {
+            auto ran = canvas::gpu_particles(world, entity, session.assets());
+            if (!ran) {
+                return Reply::failure(code::kInvalidArgument, ran.error().message);
+            }
+            particles = std::move(ran).value();
+        }
+        const world::Affine2D placed =
+            gpu->local_coords ? world::affine(transform) : world::Affine2D{};
+        for (const render::Particle& particle : particles) {
+            live.push_back(
+                {.position = placed.apply(particle.origin),
+                 .rotation = particle.custom.x + (gpu->local_coords ? transform.rotation : 0.0F),
+                 .scale = std::sqrt((particle.basis.x * particle.basis.x) +
+                                    (particle.basis.y * particle.basis.y)),
+                 .color = particle.color,
+                 .age = particle.custom.y * gpu->lifetime});
+        }
     }
-    const auto place = [&](Vec2 point) {
-        return canvas::world_position(*emitter, transform, point);
-    };
     json::Value result;
     result["alive"] = static_cast<std::int64_t>(live.size());
     if (live.empty()) {
         result["bounds"] = nullptr;
     } else {
-        Vec2 low = place(live.front().position);
+        Vec2 low = live.front().position;
         Vec2 high = low;
-        for (const canvas::Particle& particle : live) {
-            const Vec2 at = place(particle.position);
-            low = {std::min(low.x, at.x), std::min(low.y, at.y)};
-            high = {std::max(high.x, at.x), std::max(high.y, at.y)};
+        for (const EvalParticle& particle : live) {
+            low = {std::min(low.x, particle.position.x), std::min(low.y, particle.position.y)};
+            high = {std::max(high.x, particle.position.x), std::max(high.y, particle.position.y)};
         }
         result["bounds"] = rounded(json::Array{low.x, low.y, high.x - low.x, high.y - low.y});
     }
@@ -1563,11 +1616,10 @@ Reply particles_eval(Session& session, const json::Value& params) {
         const auto max_results = static_cast<std::size_t>(integer(params, "max_results", 32));
         json::Array items;
         for (std::size_t i = 0; i < live.size() && i < max_results; ++i) {
-            const canvas::Particle& particle = live[i];
+            const EvalParticle& particle = live[i];
             json::Value item;
-            item["position"] = point_value(place(particle.position));
-            item["rotation"] =
-                rounded(particle.rotation + (emitter->local_coords ? transform.rotation : 0.0F));
+            item["position"] = point_value(particle.position);
+            item["rotation"] = rounded(particle.rotation);
             item["scale"] = rounded(particle.scale);
             item["color"] = rounded(json::Array{particle.color.x, particle.color.y,
                                                 particle.color.z, particle.color.w});
@@ -3108,6 +3160,8 @@ Reply frame_summary(Session& session, const json::Value& params) {
             return "TileMapLayer";
         case canvas::FrameItem::Kind::Particles:
             return "CPUParticles2D";
+        case canvas::FrameItem::Kind::GpuParticles:
+            return "GPUParticles2D";
         case canvas::FrameItem::Kind::Popup:
             return "PopupMenu";
         case canvas::FrameItem::Kind::Tooltip:
@@ -3182,6 +3236,7 @@ Reply frame_summary(Session& session, const json::Value& params) {
             each["tiles"] = static_cast<std::int64_t>(item.count);
             break;
         case canvas::FrameItem::Kind::Particles:
+        case canvas::FrameItem::Kind::GpuParticles:
             each["particles"] = static_cast<std::int64_t>(item.count);
             break;
         case canvas::FrameItem::Kind::Control: {
@@ -4312,20 +4367,24 @@ void register_builtin_commands(Registry& registry) {
 
     json::Value kind = property("string", "\"scene\", \"prefab\", \"frames\" (.frames.json), "
                                           "\"material\" (.material.json), \"animation\" "
-                                          "(.anim.json), \"tileset\" (.tileset.json), \"font\" "
+                                          "(.anim.json), \"process_material\" "
+                                          "(.process_material.json), \"tileset\" "
+                                          "(.tileset.json), \"font\" "
                                           "(.font.json), \"theme\" (.theme.json), \"audio\" "
                                           "(.audio.json), \"bus_layout\" (.bus_layout.json), "
                                           "\"replay\" (.replay.json) or \"storyboard\" for "
                                           "those files, \"component\" for "
                                           "one component's fields, \"command\" for a command's "
                                           "params.");
-    kind["enum"] = json::Array{"scene",   "prefab", "frames",     "material",  "animation",
-                               "tileset", "font",   "theme",      "audio",     "bus_layout",
-                               "replay",  "test",   "storyboard", "component", "command"};
+    kind["enum"] = json::Array{
+        "scene",   "prefab",     "frames",    "material", "animation",  "process_material",
+        "tileset", "font",       "theme",     "audio",    "bus_layout", "replay",
+        "test",    "storyboard", "component", "command"};
     registry.add({
         .name = "schema.get",
         .description = "Returns a JSON Schema: for scene, prefab, .frames.json, .material.json, "
-                       ".anim.json, .tileset.json, .font.json, .theme.json, .audio.json, "
+                       ".anim.json, .process_material.json, .tileset.json, .font.json, "
+                       ".theme.json, .audio.json, "
                        ".bus_layout.json, .replay.json, .test.json or storyboard files, one "
                        "component or one command.",
         .capabilities = {Read},
@@ -4853,14 +4912,14 @@ void register_builtin_commands(Registry& registry) {
     particles_tick["maximum"] = 1;
     registry.add({
         .name = "particles.eval",
-        .description = "Returns a CPUParticles2D's live particles: how many, their bounds [x, y, "
-                       "w, h] in the world and, with list, each one. A check without a "
-                       "screenshot.",
+        .description = "Returns a CPUParticles2D's or GPUParticles2D's live particles: how many, "
+                       "their bounds [x, y, w, h] in the world and, with list, each one. A check "
+                       "without a screenshot.",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema(
             {
-                {"id", id_property("An entity with a CPUParticles2D.")},
+                {"id", id_property("An entity with a CPUParticles2D or GPUParticles2D.")},
                 {"time", std::move(particles_time)},
                 {"tick_seconds", std::move(particles_tick)},
                 {"list", property("boolean", "Also return each particle. Default false.")},

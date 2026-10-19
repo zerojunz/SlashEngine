@@ -8,6 +8,11 @@
 #         -DGLSLANG=<glslangValidator> -DSPIRV_CROSS=<spirv-cross> -P compile_shaders.cmake
 #   cmake -DSOURCE=<shader.hlsl> -DOUTPUT=<header> -DCHECK=ON -P compile_shaders.cmake
 #
+# With COMPUTE, the shader is a compute shader with a cs_main entry point instead, and there is no
+# GLSL ES (OpenGL ES runs particles on the CPU). Its MSL comes from SPIR-V compiled with
+# SLASH_MSL defined, since Metal numbers buffers in one list where the others use three, and is
+# an array of pieces to join.
+#
 # With CHECK, nothing is compiled: it fails if the HLSL in OUTPUT differs from SOURCE, which means
 # the shader changed and the header wasn't regenerated. It needs no shader tools, so every build
 # can run it; compiled bytes differ between tool versions, so they aren't compared.
@@ -108,7 +113,29 @@ read_with_includes(hlsl_text)
 set(standalone "${WORKDIR}/${base}.hlsl")
 file(WRITE "${standalone}" "${hlsl_text}")
 set(body "")
-foreach(stage IN ITEMS vert frag)
+if(COMPUTE)
+    set(stages "")
+    set(spirv "${WORKDIR}/${base}.comp.spv")
+    set(msl_spirv "${WORKDIR}/${base}.comp.msl.spv")
+    set(msl "${WORKDIR}/${base}.comp.msl")
+    run(glslang "${GLSLANG}" -D -V -S comp -e cs_main "${standalone}" -o "${spirv}")
+    run(glslang "${GLSLANG}" -D -V -S comp -e cs_main -DSLASH_MSL "${standalone}"
+        -o "${msl_spirv}")
+    run(spirv-cross "${SPIRV_CROSS}" --msl --msl-version 20100 --msl-decoration-binding
+        --stage comp --entry cs_main "${msl_spirv}" --output "${msl}")
+    hex_array("${spirv}" bytes)
+    file(READ "${msl}" msl_text)
+    raw_literals("${msl_text}" msl msl_literals)
+    # Clang refuses a string literal over 65536 bytes, which a compute shader's MSL can be, so its
+    # pieces stay apart for the device to join.
+    string(REPLACE ")msl\"\nR\"msl(" ")msl\",\nR\"msl(" msl_literals "${msl_literals}")
+    string(APPEND body
+        "alignas(4) inline constexpr unsigned char k${NAME}ComputeSpirv[] = {\n${bytes}};\n\n"
+        "inline constexpr const char* k${NAME}ComputeMsl[] = {\n${msl_literals}};\n\n")
+else()
+    set(stages vert frag)
+endif()
+foreach(stage IN LISTS stages)
     if(stage STREQUAL "vert")
         set(entry vs_main)
         set(label Vertex)
