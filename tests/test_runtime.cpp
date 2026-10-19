@@ -329,6 +329,11 @@ TEST_CASE("a program started beside this one prints as it goes and stops when as
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     CHECK(echo.value()->output().starts_with("hello"));
+    // Once it has ended on its own, stopping it returns its exit code. Its output can come in
+    // before it ends, and stopping it then would kill it.
+    while (echo.value()->running() && std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
     CHECK(echo.value()->stop() == 0);
     CHECK_FALSE(echo.value()->running());
     auto logged = platform::read_file(log);

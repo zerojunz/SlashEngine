@@ -54,8 +54,9 @@ int main(int argc, char** argv) {
         std::puts("Unhandled exception. System.IO.FileNotFoundException: no .NET runtime");
         return 3;
     }
+    // Binary, so the calls end in '\n' on Windows too.
     const auto record = [&log_path](const std::string& line) {
-        std::ofstream(log_path, std::ios::app) << line << '\n';
+        std::ofstream(log_path, std::ios::app | std::ios::binary) << line << '\n';
     };
     httplib::Server server;
     for (const std::string route : {"/LoadFolder", "/LoadFile"}) {
