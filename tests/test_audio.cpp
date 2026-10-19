@@ -317,11 +317,11 @@ TEST_CASE(".audio.json files give a sound settings or pick one of several stream
     };
     CHECK(first(R"({"format": 1})").message ==
           "needs one of \"source\" (a sound with settings), \"streams\" (a randomizer), "
-          "\"playlist\", \"synchronized\", \"clips\" (music), \"generator\" or "
-          "\"polyphonic\"");
+          "\"playlist\", \"synchronized\", \"clips\" (music), \"generator\", "
+          "\"polyphonic\" or \"microphone\"");
     CHECK(first(R"({"format": 1, "source": "a.wav", "streams": [{"stream": "b.wav"}]})").message ==
           "has both \"source\" and \"streams\"; a file is one sound, randomizer, piece of "
-          "music, generator or polyphonic stream");
+          "music, generator, polyphonic stream or microphone");
     CHECK(first(R"({"format": 1, "source": "a.wav", "loop": true})").path == "/loop");
     CHECK(first(R"({"format": 1, "source": "a.ogg", "loop_mode": "forward"})").path ==
           "/loop_mode");
@@ -903,6 +903,211 @@ TEST_CASE("a game pushes frames to a generator player and plays streams on a pol
     REQUIRE_FALSE(refused.ok());
     CHECK(contains(refused.error().message, "isn't polyphonic"));
     CHECK_FALSE(audio::play_stream(sounds.world, sfx, "audio/missing.wav").ok());
+}
+
+// A microphone for tests: a ramp from -0.5 to 0.5 every 1000 frames, mirrored on the right, so
+// each frame tells where in the recording it came from.
+class RampMicrophone final : public audio::InputDevice {
+public:
+    slash::Result<void> start(int mix_rate) override {
+        ++starts;
+        rate = mix_rate;
+        if (refuse) {
+            return slash::make_error(slash::ErrorCode::PlatformFailure, "permission denied");
+        }
+        return {};
+    }
+    void stop() override { ++stops; }
+    void read(std::span<Frame> frames) override {
+        for (Frame& frame : frames) {
+            frame = sample(next++);
+        }
+    }
+    [[nodiscard]] std::string name() const override { return "ramp"; }
+
+    static Frame sample(std::uint64_t index) {
+        const float value = static_cast<float>(index % 1000) / 1000.0F - 0.5F;
+        return {value, -value};
+    }
+
+    int starts = 0;
+    int stops = 0;
+    int rate = 0;
+    std::uint64_t next = 0;
+    bool refuse = false;
+};
+
+audio::Settings with_input() {
+    audio::Settings settings;
+    settings.enable_input = true;
+    return settings;
+}
+
+TEST_CASE("the server records input once it is enabled, as Godot's AudioServer input calls") {
+    audio::Server server(kRate);
+    CHECK_FALSE(server.set_input_active(true));
+    CHECK_FALSE(server.input_active());
+    CHECK_FALSE(server.acquire_input());
+    server.set_input_enabled(true);
+    CHECK(server.input_buffer_length_frames() == kRate);
+    std::vector<Frame> frames(100);
+    for (std::size_t i = 0; i < frames.size(); ++i) {
+        frames[i] = {static_cast<float>(i) / 100.0F, -static_cast<float>(i) / 100.0F};
+    }
+    server.push_input(frames); // input is off, so nothing records
+    CHECK(server.input_recorded() == 0);
+    REQUIRE(server.set_input_active(true));
+    CHECK(server.input_active());
+    server.push_input(frames);
+    CHECK(server.input_frames_available() == 100);
+    CHECK(server.input_frames(101).empty());
+    const std::vector<Frame> read = server.input_frames(40);
+    REQUIRE(read.size() == 40);
+    CHECK(read.front() == frames[0]);
+    CHECK(read.back() == frames[39]);
+    CHECK(server.input_frames_available() == 60);
+    CHECK(server.input_frame(99) == frames[99]);
+    CHECK(server.input_frame(100) == Frame{});
+    // The buffer keeps the newest second.
+    server.push_input(std::vector<Frame>(kRate, Frame{0.5F, 0.5F}));
+    CHECK(server.input_frames_available() == kRate);
+    CHECK(server.input_frame(0) == Frame{});
+    CHECK(server.input_frames(kRate).back() == Frame{0.5F, 0.5F});
+    // A microphone playback keeps input on after the game lets go, and it starts over when it
+    // next turns on.
+    REQUIRE(server.acquire_input());
+    REQUIRE(server.set_input_active(false));
+    CHECK(server.input_active());
+    server.release_input();
+    CHECK_FALSE(server.input_active());
+    REQUIRE(server.set_input_active(true));
+    CHECK(server.input_recorded() == 0);
+    CHECK(server.input_frames_available() == 0);
+}
+
+TEST_CASE("a microphone player plays what the input device records, 50 ms late") {
+    Sounds sounds(with_input());
+    sounds.files.write("audio/mic.audio.json", R"({"format": 1, "microphone": {}})");
+    RampMicrophone microphone;
+    audio::set_input_device(sounds.world, &microphone);
+    CHECK(audio::input_info(sounds.world).source == "ramp");
+    sounds.step();
+    // Nothing turned input on, so the microphone stays closed.
+    CHECK(microphone.starts == 0);
+    CHECK_FALSE(audio::input_info(sounds.world).active);
+
+    sounds.add("voice", "AudioStreamPlayer",
+               R"({"stream": "audio/mic.audio.json", "autoplay": true})");
+    sounds.heard.clear();
+    sounds.step(30);
+    CHECK(microphone.starts == 1);
+    CHECK(microphone.rate == kRate);
+    CHECK(sounds.player("voice")->voices == 1);
+    audio::InputInfo info = audio::input_info(sounds.world);
+    CHECK(info.active);
+    CHECK(info.peak_db == doctest::Approx(-6.0206F).epsilon(0.001));
+    // At the mix rate the resampler copies frames, so the output is the recording. Input turned
+    // on at frame 735 of the mix, and 50 ms (2205 frames) was recorded by the end of the fourth
+    // tick, so the mix step starting at frame 2560 is the first to play it, after the
+    // resampler's buffer (130 frames) and the lookahead (64): frame 2754, 2019 frames after
+    // input turned on. The mix runs up to a step ahead of the ticks, so that is under 50 ms.
+    std::size_t first = 0;
+    while (first < sounds.heard.size() && sounds.heard[first] == Frame{}) {
+        ++first;
+    }
+    REQUIRE(first < sounds.heard.size());
+    CHECK(first == 2560 + 130 + 64 - 735);
+    for (std::size_t i = first; i < sounds.heard.size(); ++i) {
+        REQUIRE(sounds.heard[i] == RampMicrophone::sample(i - first));
+    }
+
+    // Stopping the player turns input off, which closes the microphone.
+    audio::stop(sounds.world, sounds.world.find("voice"));
+    sounds.step(2);
+    CHECK(microphone.stops == 1);
+    CHECK_FALSE(audio::input_info(sounds.world).active);
+    // A microphone that can't open records silence, and says why.
+    microphone.refuse = true;
+    audio::play(sounds.world, sounds.world.find("voice"));
+    sounds.step(10);
+    CHECK(microphone.starts == 2);
+    info = audio::input_info(sounds.world);
+    CHECK(info.error == "permission denied");
+    CHECK(info.peak_db == -200.0F);
+    check_frame(sounds.last(), 0.0F, 0.0F);
+    audio::set_input_device(sounds.world, nullptr);
+    CHECK(audio::input_info(sounds.world).source.empty());
+}
+
+TEST_CASE("agents play a sound into the input in place of the microphone") {
+    Sounds sounds(with_input());
+    sounds.files.write("audio/mic.audio.json", R"({"format": 1, "microphone": {}})");
+    sounds.files.write("audio/voice.wav", steady_wav(kRate, {0.25F, -0.25F}));
+    RampMicrophone microphone;
+    audio::set_input_device(sounds.world, &microphone);
+    sounds.add("voice", "AudioStreamPlayer",
+               R"({"stream": "audio/mic.audio.json", "autoplay": true})");
+    sounds.step();
+    CHECK(microphone.starts == 1);
+
+    // A failed command takes its ask back.
+    const audio::Snapshot before = audio::save(sounds.world);
+    REQUIRE(audio::set_input_stream(sounds.world, "audio/voice.wav").ok());
+    CHECK(audio::save(sounds.world).input_stream == "audio/voice.wav");
+    audio::restore(sounds.world, before);
+    CHECK(audio::input_info(sounds.world).source == "ramp");
+
+    REQUIRE(audio::set_input_stream(sounds.world, "audio/voice.wav").ok());
+    CHECK(audio::input_info(sounds.world).source == "audio/voice.wav");
+    sounds.step(10);
+    // The sound plays in place of the microphone, which closes.
+    CHECK(microphone.stops == 1);
+    CHECK(audio::input_info(sounds.world).peak_db == doctest::Approx(-12.0412F).epsilon(0.001));
+    check_frame(sounds.last(), 0.25F, -0.25F);
+    // The sound ends, and the input is silent until it goes back to the microphone.
+    sounds.step(60);
+    check_frame(sounds.last(), 0.0F, 0.0F);
+    REQUIRE(audio::set_input_stream(sounds.world, "").ok());
+    sounds.step(10);
+    CHECK(microphone.starts == 2);
+    CHECK(audio::input_info(sounds.world).source == "ramp");
+
+    auto missing = audio::set_input_stream(sounds.world, "audio/missing.wav");
+    CHECK_FALSE(missing.ok());
+    auto itself = audio::set_input_stream(sounds.world, "audio/mic.audio.json");
+    REQUIRE_FALSE(itself.ok());
+    CHECK(contains(itself.error().message, "is a microphone"));
+}
+
+TEST_CASE("a microphone needs audio.enable_input and plays only as a player's own stream") {
+    Sounds sounds;
+    sounds.files.write("audio/mic.audio.json", R"({"format": 1, "microphone": {}})");
+    sounds.files.write("audio/random.audio.json",
+                       R"({"format": 1, "streams": [{"stream": "audio/mic.audio.json"}]})");
+    sounds.files.write("audio/sfx.audio.json", R"({"format": 1, "polyphonic": {}})");
+    CHECK(audio::validate_stream_file(parse(R"({"format": 1, "microphone": {}})")).empty());
+    CHECK(audio::load_stream(sounds.assets, "audio/mic.audio.json").ok());
+    auto nested = audio::load_stream(sounds.assets, "audio/random.audio.json");
+    REQUIRE_FALSE(nested.ok());
+    CHECK(nested.error().message ==
+          R"("audio/mic.audio.json" is a microphone, which plays only as a player's own stream)");
+
+    // Without enable_input, input doesn't turn on, so the microphone player stops.
+    sounds.add("voice", "AudioStreamPlayer",
+               R"({"stream": "audio/mic.audio.json", "autoplay": true})");
+    sounds.step();
+    CHECK(sounds.player("voice")->voices == 0);
+    CHECK(sounds.count("finished") == 1);
+    CHECK_FALSE(audio::input_info(sounds.world).enabled);
+    auto off = audio::set_input_stream(sounds.world, "audio/mic.audio.json");
+    REQUIRE_FALSE(off.ok());
+    CHECK(contains(off.error().message, "audio.enable_input"));
+
+    const entt::entity sfx =
+        sounds.add("sfx", "AudioStreamPlayer", R"({"stream": "audio/sfx.audio.json"})");
+    auto played = audio::play_stream(sounds.world, sfx, "audio/mic.audio.json");
+    REQUIRE_FALSE(played.ok());
+    CHECK(contains(played.error().message, "plays only as a player's own stream"));
 }
 
 TEST_CASE("a sound plays through Master a lookahead late, then its playback ends") {
@@ -1733,10 +1938,13 @@ TEST_CASE("project.json's audio settings are checked") {
 
     const audio::Settings parsed = audio::parse_settings(
         parse(R"({"bus_layout": "a.bus_layout.json", "mix_rate": 48000, "output_latency": 30,
-                  "panning_strength_2d": 1})"));
+                  "panning_strength_2d": 1, "enable_input": true,
+                  "input_usage_description": "Sing to the lanterns."})"));
     CHECK(parsed.bus_layout == "a.bus_layout.json");
     CHECK(parsed.mix_rate == 48000);
     CHECK(parsed.output_latency == 30.0F);
     CHECK(parsed.panning_strength_2d == 1.0F);
+    CHECK(parsed.enable_input);
+    CHECK(parsed.input_usage_description == "Sing to the lanterns.");
     CHECK(audio::parse_settings(parse("{}")) == audio::Settings{});
 }

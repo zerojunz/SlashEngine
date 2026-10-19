@@ -26,5 +26,6 @@
     <string>${CMAKE_OSX_DEPLOYMENT_TARGET}</string>
     <key>NSHighResolutionCapable</key>
     <true/>
+    ${SLASH_MICROPHONE_PLIST}
 </dict>
 </plist>

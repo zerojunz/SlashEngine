@@ -502,8 +502,14 @@ int cmd_run(const std::vector<std::string>& args) {
     }
     // Sound out of the speakers, made after the platform so it closes before SDL quits.
     std::unique_ptr<slash::audio::SdlOutput> audio_output;
+    std::unique_ptr<slash::audio::SdlInput> audio_input;
     if (!config.headless) {
         const slash::audio::Settings sound = slash::audio::settings(game);
+        if (sound.enable_input) {
+            // The microphone opens when a microphone player turns input on.
+            audio_input = std::make_unique<slash::audio::SdlInput>();
+            slash::audio::set_input_device(game, audio_input.get());
+        }
         auto opened = slash::audio::SdlOutput::open(sound.mix_rate, sound.output_latency);
         if (opened) {
             audio_output = std::move(opened).value();
@@ -611,6 +617,7 @@ int cmd_run(const std::vector<std::string>& args) {
     }
     slash::ui::set_clipboard_backend(game, {});
     slash::audio::set_sink(game, nullptr);
+    slash::audio::set_input_device(game, nullptr);
 
     // An agent may have stopped it already with replay.stop.
     json::Value recorded;

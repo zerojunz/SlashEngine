@@ -22,6 +22,8 @@ constexpr float kPeakOffset = 1e-10F;                // AuSC::AUDIO_PEAK_OFFSET
 constexpr float kMinPeakDb = -200.0F;                // AuSC::AUDIO_MIN_PEAK_DB
 constexpr float kChannelDisableThresholdDb = -60.0F; // audio/buses/channel_disable_threshold_db
 constexpr double kChannelDisableTime = 2.0;          // audio/buses/channel_disable_time
+// Seconds of microphone input kept, enough for a slow tick's frames and the microphone's delay.
+constexpr double kInputBufferSeconds = 1.0;
 
 Frame operator*(Frame a, Frame b) {
     return {a.left * b.left, a.right * b.right};
@@ -343,7 +345,10 @@ Server::Server(int mix_rate) : impl_(std::make_unique<Impl>(mix_rate)), mix_rate
     set_layout(default_bus_layout());
 }
 
-Server::~Server() = default;
+Server::~Server() {
+    // Microphone playbacks let go of the input as they go, so they go first.
+    impl_->playbacks.clear();
+}
 
 void Server::set_layout(const BusLayout& layout) {
     layout_ = layout.buses.empty() ? default_bus_layout() : layout;
@@ -430,6 +435,7 @@ Server::PlaybackId Server::start(std::unique_ptr<Playback> playback, std::string
     node.id = impl_->next_id++;
     node.state = paused ? Impl::State::Paused : Impl::State::Playing;
     node.playback = std::move(playback);
+    node.playback->attach(*this);
     node.playback->start(from_seconds);
     node.bus = {std::move(bus), volume, true};
     node.pitch_scale = pitch_scale;
@@ -508,6 +514,99 @@ const Playback* Server::playback(PlaybackId id) const {
 
 std::size_t Server::playback_count() const {
     return impl_->playbacks.size();
+}
+
+void Server::set_input_enabled(bool enabled) {
+    input_.enabled = enabled;
+    if (!enabled) {
+        input_.game = false;
+    }
+}
+
+bool Server::input_active() const noexcept {
+    return input_.enabled && (input_.game || input_.users > 0);
+}
+
+void Server::begin_input() {
+    // As Godot's set_input_device_active and the driver's input_start: the buffer starts over.
+    input_.buffer.assign(static_cast<std::size_t>(input_buffer_length_frames()), Frame{});
+    input_.recorded = 0;
+    input_.read = 0;
+}
+
+bool Server::set_input_active(bool active) {
+    if (active == input_.game) {
+        return true;
+    }
+    if (active) {
+        if (!input_.enabled) {
+            log::warn("microphone input is off; turn on audio.enable_input in project.json");
+            return false;
+        }
+        if (!input_active()) {
+            begin_input();
+        }
+    }
+    input_.game = active;
+    return true;
+}
+
+bool Server::acquire_input() {
+    if (!input_.enabled) {
+        log::warn("microphone input is off; turn on audio.enable_input in project.json");
+        return false;
+    }
+    if (!input_active()) {
+        begin_input();
+    }
+    ++input_.users;
+    return true;
+}
+
+void Server::release_input() {
+    input_.users = std::max(input_.users - 1, 0);
+}
+
+void Server::push_input(std::span<const Frame> frames) {
+    if (!input_active() || input_.buffer.empty()) {
+        return;
+    }
+    for (const Frame& frame : frames) {
+        input_.buffer[input_.recorded % input_.buffer.size()] = frame;
+        ++input_.recorded;
+    }
+}
+
+int Server::input_frames_available() const {
+    // Frames the buffer has dropped since are lost.
+    return static_cast<int>(
+        std::min<std::uint64_t>(input_.recorded - input_.read, input_.buffer.size()));
+}
+
+int Server::input_buffer_length_frames() const {
+    return static_cast<int>(kInputBufferSeconds * mix_rate_);
+}
+
+std::vector<Frame> Server::input_frames(int frames) {
+    if (frames < 0 || frames > input_frames_available()) {
+        return {};
+    }
+    if (input_.recorded > input_.buffer.size()) {
+        input_.read = std::max(input_.read, input_.recorded - input_.buffer.size());
+    }
+    std::vector<Frame> out(static_cast<std::size_t>(frames));
+    for (Frame& frame : out) {
+        frame = input_.buffer[input_.read % input_.buffer.size()];
+        ++input_.read;
+    }
+    return out;
+}
+
+Frame Server::input_frame(std::uint64_t index) const {
+    if (index >= input_.recorded || index + input_.buffer.size() < input_.recorded) {
+        return {};
+    }
+    return input_.buffer[index % input_.buffer.size()];
 }
 
 void Server::mix(std::span<Frame> out) {

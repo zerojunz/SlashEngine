@@ -2756,9 +2756,9 @@ from the current `AudioListener2D`. Each plays through a bus of the project's
 - As in Godot, `autoplay` plays when the player is first seen and `playing` plays or stops when
   it changes; [`audio.play`](commands.md#audioplay) and `audio.stop` (and `audio::play` and
   `audio::stop` in C++) do so at the next tick. Playing again restarts the sound, or with
-  `max_polyphony` over 1, adds a voice and stops the oldest past the limit. Music, generators
-  and polyphonic streams are monophonic, as in Godot: playing again always starts them over. A
-  new `stream` stops the old one.
+  `max_polyphony` over 1, adds a voice and stops the oldest past the limit. Music, generators,
+  polyphonic streams and microphones are monophonic, as in Godot: playing again always starts
+  them over. A new `stream` stops the old one.
 - When a player's last sound ends, it sets `playing` to false and emits a `finished` event with
   `{"component": "AudioStreamPlayer"}` (or `AudioStreamPlayer2D`) as its data.
 - An `AudioStreamPlayer2D` fades and pans as Godot's `_update_panning`: its volume is times
@@ -2875,15 +2875,17 @@ settings it takes.
 
 ### Audio streams
 
-A `.audio.json` file is one of seven kinds of stream, each Godot's: a sound with its import
+A `.audio.json` file is one of eight kinds of stream, each Godot's: a sound with its import
 settings, an `AudioStreamRandomizer` (one of several streams each time it plays), an
 `AudioStreamPlaylist` (streams in turn), an `AudioStreamSynchronized` (streams together, as
 layers), an `AudioStreamInteractive` ([music in clips](#interactive-music) that switch as the
 game asks), an `AudioStreamGenerator` or an `AudioStreamPolyphonic`
-([sound a game makes as it runs](#generators-and-polyphonic-streams)). A player's `stream` can
-name one, as can another file's streams and clips.
-[examples/interactive-music](../../examples/interactive-music/) plays the music kinds and
-[examples/generated-audio](../../examples/generated-audio/) the last two.
+([sound a game makes as it runs](#generators-and-polyphonic-streams)), or an
+`AudioStreamMicrophone` ([what the microphone records](#microphone)). A player's `stream` can
+name one, as can another file's streams and clips (except a microphone).
+[examples/interactive-music](../../examples/interactive-music/) plays the music kinds,
+[examples/generated-audio](../../examples/generated-audio/) generators and polyphonic streams and
+[examples/microphone](../../examples/microphone/) a microphone.
 
 ```json
 {"format": 1, "loop": true, "loop_offset": 4, "source": "music/theme.ogg"}
@@ -3026,6 +3028,42 @@ has both.
   needed.
 - [`audio.state`](commands.md#audiostate) shows a generator's free frames and skips, and the
   streams a polyphonic player has going.
+
+### Microphone
+
+A `microphone` stream, as Godot's `AudioStreamMicrophone`, plays what the microphone records. It
+needs the project's [`audio.enable_input`](project-format.md), as Godot's
+`audio/driver/enable_input`, and plays only as a player's own `stream`, not inside another
+`.audio.json` file or with `audio.play`'s `stream`. As in Godot's microphone demo, a game
+usually plays it on a muted bus whose effects (a `record`, `capture` or `spectrum_analyzer`)
+hear the player without the speakers playing them back.
+[examples/microphone](../../examples/microphone/) lights lanterns when the player sings.
+
+```json
+{"format": 1, "microphone": {}}
+```
+
+- A playing microphone player turns input on, which opens the microphone (`audio::SdlInput` in
+  games and `slash-cli run`); input turns off, and the microphone closes, when no microphone
+  player plays and the game hasn't turned it on. Without `enable_input` the player stops at
+  once and a warning is logged.
+- Each tick, before the tick is mixed, the audio system pushes that tick's frames from the input
+  into the server's input buffer, which holds one second at the mix rate. A microphone plays
+  them once 50 ms is recorded, Godot's delay; the mix runs up to a mix step ahead of the ticks,
+  so the delay heard is a little under that.
+- Gameplay code reads input too, with the server's Godot calls: `set_input_active` (turns input
+  on for the game; fails without `enable_input`), `input_frames_available`,
+  `input_buffer_length_frames` and `input_frames(n)`, which returns the next `n` frames or none
+  when fewer are waiting. Frames pushed in a tick are there for gameplay systems the next tick.
+- Headless there is no microphone, so the input is silent.
+  [`audio.input`](commands.md#audioinput) (`audio::set_input_stream` in C++) plays a sound into
+  the input from the next tick in place of the microphone, so agents and tests can speak into a
+  game; `audio::set_input_device` gives the world another `audio::InputDevice`.
+- [`audio.state`](commands.md#audiostate) shows whether input is on, what feeds it and its peak
+  over the last tick.
+- On Android, opening the microphone asks the player for the `RECORD_AUDIO` permission and waits
+  for the answer. Exports of a project with `enable_input` ask for the microphone on every
+  platform that needs it: see [`audio.input_usage_description`](project-format.md).
 
 ## Replays
 

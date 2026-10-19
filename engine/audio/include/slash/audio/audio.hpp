@@ -21,8 +21,8 @@
 // one of several sounds at random each time it plays, as Godot's AudioStreamRandomizer, or plays
 // music as Godot's interactive_music module: streams in turn (AudioStreamPlaylist), together
 // (AudioStreamSynchronized), or as clips a game switches between (AudioStreamInteractive). It can
-// also play frames a game makes as it goes (AudioStreamGenerator), or sounds a game starts on one
-// player (AudioStreamPolyphonic):
+// also play frames a game makes as it goes (AudioStreamGenerator), sounds a game starts on one
+// player (AudioStreamPolyphonic), or what the microphone records (AudioStreamMicrophone):
 //
 //   {"format": 1, "loop": true, "loop_offset": 4, "source": "music/theme.ogg"}
 //   {"format": 1, "random_pitch": 1.1, "streams": [{"stream": "sfx/step1.wav"},
@@ -35,6 +35,7 @@
 //    "transitions": [{"to": "battle", "from_time": "next_bar", "fade_mode": "cross"}]}
 //   {"format": 1, "generator": {"mix_rate": 22050, "buffer_length": 0.25}}
 //   {"format": 1, "polyphonic": {"polyphony": 16}}
+//   {"format": 1, "microphone": {}}
 //
 // AudioStreamPlayer and AudioStreamPlayer2D components play them through the buses a
 // .bus_layout.json file sets up, each bus with Godot's volume, mute, solo, effects and send.
@@ -100,8 +101,8 @@ enum class FadeMode : std::uint8_t { Disabled, In, Out, Cross, Automatic };
 // (the server's), or the generator's own.
 enum class MixRateMode : std::uint8_t { Output, Input, Custom };
 
-// A .audio.json file: a sound with settings, a randomizer of streams, music, a generator or a
-// polyphonic stream. Members are ordered by size, to pack.
+// A .audio.json file: a sound with settings, a randomizer of streams, music, a generator, a
+// polyphonic stream or the microphone. Members are ordered by size, to pack.
 struct StreamFile {
     enum class Kind : std::uint8_t {
         Sound,
@@ -110,7 +111,8 @@ struct StreamFile {
         Synchronized,
         Interactive,
         Generator,
-        Polyphonic
+        Polyphonic,
+        Microphone
     };
 
     std::string source; // a sound's file
@@ -225,6 +227,7 @@ struct BusLayout {
 class EffectInstance; // effects.hpp
 class GeneratorPlayback;
 class PolyphonicPlayback;
+class Server;
 class Stream;
 
 // A stream playing, as Godot's AudioStreamPlayback.
@@ -237,6 +240,9 @@ public:
     Playback(Playback&&) = delete;
     Playback& operator=(Playback&&) = delete;
 
+    // Called by Server::start before start(), for playbacks that read the server, as a
+    // microphone reads its input.
+    virtual void attach(Server& /*server*/) {}
     virtual void start(double from_seconds) = 0;
     virtual void stop() = 0;
     [[nodiscard]] virtual bool is_playing() const = 0;
@@ -346,9 +352,10 @@ playlist_stream(std::vector<std::shared_ptr<const Stream>> streams, const Stream
 synchronized_stream(std::vector<std::shared_ptr<const Stream>> streams, const StreamFile& settings);
 [[nodiscard]] std::shared_ptr<const Stream>
 interactive_stream(std::vector<std::shared_ptr<const Stream>> clips, const StreamFile& settings);
-// Godot's AudioStreamGenerator and AudioStreamPolyphonic.
+// Godot's AudioStreamGenerator, AudioStreamPolyphonic and AudioStreamMicrophone.
 [[nodiscard]] std::shared_ptr<const Stream> generator_stream(const StreamFile& settings);
 [[nodiscard]] std::shared_ptr<const Stream> polyphonic_stream(const StreamFile& settings);
+[[nodiscard]] std::shared_ptr<const Stream> microphone_stream();
 
 // A stream loaded through assets, with handles to the files it was made from, which keep them
 // loaded and tell when one was reloaded.
@@ -431,13 +438,50 @@ public:
     using BusListener = std::function<void(int bus, std::span<const Frame> frames)>;
     void set_bus_listener(BusListener listener) { bus_listener_ = std::move(listener); }
 
+    // Microphone input, as Godot's AudioServer input calls. Input records only while it is on,
+    // and turns on only once set_input_enabled allows it, as Godot's audio/driver/enable_input.
+    // Each tick the audio system pushes that tick's frames from the input device.
+    void set_input_enabled(bool enabled);
+    [[nodiscard]] bool input_enabled() const noexcept { return input_.enabled; }
+    // Turns input on or off for the game, as Godot's set_input_device_active; fails, with a
+    // warning, when input isn't enabled. Microphone playbacks keep it on while they play too.
+    bool set_input_active(bool active);
+    // Whether input is on, for the game or a microphone playback.
+    [[nodiscard]] bool input_active() const noexcept;
+    // Adds frames recorded, while input is on. Turning it on starts the buffer over.
+    void push_input(std::span<const Frame> frames);
+    // Godot's get_input_frames_available, get_input_buffer_length_frames and get_input_frames:
+    // the frames recorded that the game hasn't read, how many the buffer holds, and the next
+    // frames, or none when fewer than that many are waiting.
+    [[nodiscard]] int input_frames_available() const;
+    [[nodiscard]] int input_buffer_length_frames() const;
+    [[nodiscard]] std::vector<Frame> input_frames(int frames);
+    // For microphone playbacks: keep input on (false when it isn't enabled) and let it go, the
+    // frames recorded since input turned on, and one of them by that count while the buffer
+    // holds it.
+    bool acquire_input();
+    void release_input();
+    [[nodiscard]] std::uint64_t input_recorded() const noexcept { return input_.recorded; }
+    [[nodiscard]] Frame input_frame(std::uint64_t index) const;
+
 private:
+    struct Input {
+        std::vector<Frame> buffer;
+        std::uint64_t recorded = 0; // frames pushed since input turned on
+        std::uint64_t read = 0;     // frames input_frames read
+        int users = 0;              // microphone playbacks playing
+        bool enabled = false;
+        bool game = false; // set_input_active
+    };
+    void begin_input();
+
     struct Impl;
     std::unique_ptr<Impl> impl_;
     int mix_rate_;
     BusLayout layout_;
     std::uint64_t mixed_frames_ = 0;
     BusListener bus_listener_;
+    Input input_;
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -455,6 +499,11 @@ struct Settings {
     float panning_strength_2d = 0.5F;
     // Seconds of each bus's output kept for capture(); sessions keep some, games none.
     double history_seconds = 0.0;
+    // Whether microphone input can turn on, as Godot's audio/driver/enable_input. Exports then
+    // ask the player for the microphone, giving input_usage_description as the reason on macOS
+    // and iOS.
+    bool enable_input = false;
+    std::string input_usage_description;
 
     friend bool operator==(const Settings&, const Settings&) = default;
 };
@@ -487,6 +536,40 @@ void set_settings(world::World& world, const Settings& settings);
 // Where each tick's mixed sound goes, such as an SdlOutput; nullptr for nowhere.
 using Sink = std::function<void(std::span<const Frame> frames)>;
 void set_sink(world::World& world, Sink sink);
+
+// Where microphone input comes from, such as an SdlInput. The audio system starts it when input
+// turns on, reads each tick's frames from it and stops it when input turns off.
+class InputDevice {
+public:
+    InputDevice() = default;
+    virtual ~InputDevice() = default;
+    InputDevice(const InputDevice&) = delete;
+    InputDevice& operator=(const InputDevice&) = delete;
+    InputDevice(InputDevice&&) = delete;
+    InputDevice& operator=(InputDevice&&) = delete;
+
+    // Starts recording at the mix rate; fails where there is no microphone or the player said no.
+    virtual Result<void> start(int mix_rate) = 0;
+    virtual void stop() = 0;
+    // The next frames recorded; any it doesn't have yet are silence.
+    virtual void read(std::span<Frame> frames) = 0;
+    [[nodiscard]] virtual std::string name() const = 0;
+};
+// The world's input device, which must outlive its use there; nullptr records silence.
+void set_input_device(world::World& world, InputDevice* device);
+// Plays a stream (a sound or a .audio.json file) into the input from the next tick, in place of
+// the device, so agents and tests can speak into a game; "" goes back to the device. It plays
+// while input is on, from where input turned on. Fails if the stream can't load.
+Result<void> set_input_stream(world::World& world, std::string_view stream);
+// What feeds the input and what it recorded last tick.
+struct InputInfo {
+    bool enabled = false;
+    bool active = false;
+    std::string source; // the input stream, the device's name, or "" for silence
+    std::string error;  // why the device didn't start
+    float peak_db = -200.0F;
+};
+[[nodiscard]] InputInfo input_info(const world::World& world);
 
 // Plays an AudioStreamPlayer or AudioStreamPlayer2D from a position in seconds at the next
 // tick, as Godot's play(): with max_polyphony 1 it restarts, with more another voice joins.
@@ -536,6 +619,7 @@ struct Snapshot {
     std::vector<Request> requests;
     std::vector<Recording> recordings;
     std::vector<BusSettings> buses;
+    std::optional<std::string> input_stream; // set_input_stream's ask for the next tick
 };
 [[nodiscard]] Snapshot save(const world::World& world);
 void restore(world::World& world, const Snapshot& snapshot);
@@ -568,6 +652,31 @@ struct PlayerInfo {
 };
 // Every player with an ID, by ID.
 [[nodiscard]] std::vector<PlayerInfo> players(const world::World& world);
+
+// Records the default microphone through SDL, as Godot's audio drivers do once input turns on.
+// On Android, starting asks the player for the RECORD_AUDIO permission and waits for the answer.
+class SdlInput final : public InputDevice {
+public:
+    SdlInput() = default;
+    ~SdlInput() override;
+    SdlInput(const SdlInput&) = delete;
+    SdlInput& operator=(const SdlInput&) = delete;
+    SdlInput(SdlInput&&) = delete;
+    SdlInput& operator=(SdlInput&&) = delete;
+
+    Result<void> start(int mix_rate) override;
+    void stop() override;
+    void read(std::span<Frame> frames) override;
+    [[nodiscard]] std::string name() const override { return name_; }
+
+private:
+    void close();
+
+    void* stream_ = nullptr; // SDL_AudioStream
+    std::string name_ = "microphone";
+    int latency_frames_ = 0;
+    bool primed_ = false; // latency_frames_ waited since it started or ran dry
+};
 
 // Plays each tick's sound on the default output device through SDL, as Godot's audio driver,
 // keeping about output_latency milliseconds queued.

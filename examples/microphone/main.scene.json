@@ -1,0 +1,14 @@
+{
+  "entities": {
+    "voice": {
+      "components": {
+        "AudioStreamPlayer": {
+          "autoplay": true,
+          "bus": "Mic",
+          "stream": "audio/mic.audio.json"
+        }
+      }
+    }
+  },
+  "format": 1
+}

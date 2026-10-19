@@ -1,0 +1,20 @@
+{
+  "buses": [
+    {
+      "name": "Master"
+    },
+    {
+      "effects": [
+        {
+          "type": "spectrum_analyzer"
+        },
+        {
+          "type": "record"
+        }
+      ],
+      "mute": true,
+      "name": "Mic"
+    }
+  ],
+  "format": 1
+}
