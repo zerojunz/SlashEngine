@@ -344,7 +344,8 @@ rendering on top.
       beat or bar, fades, filler clips, auto advance and hold and return), steered by a
       player's `parameters` (`switch_to_clip`, `stream_<index>_volume_db`), with the clip
       playing in `audio.state`
-- [ ] More of Godot's audio: generated and polyphonic streams, and microphone input
+- [x] More of Godot's audio: generated and polyphonic streams
+- [ ] More of Godot's audio: microphone input
 - [x] `frame.capture`: the frame the window shows, drawn on the CPU by a software render
       device that shades as the GPU device does, so the pixels are the same on every machine;
       returns pixel colors, a PNG (an image block over MCP) or a file, for a region and at a
@@ -655,7 +656,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Skeletal animation | Skinned meshes, blending, root motion | 7 | Planned |
 | Animation blending | Blend trees and state machines in text, two-bone and FABRIK IK | 7 | Planned |
 | Particles | CPU and GPU particles, particle graphs in text | 5 | In part: CPU particles and GPU particles with process materials are done; sub-emitters, trails, collision, turbulence, attractors and particle graphs in 5 |
-| Audio | miniaudio: buses, effects, 3D spatial audio | 5, 7 | In part: 2D players, buses, effects, area bus overrides and interactive music are done; generated streams and microphone input in 5, 3D audio in 7 |
+| Audio | miniaudio: buses, effects, 3D spatial audio | 5, 7 | In part: 2D players, buses, effects, area bus overrides, interactive music, generated and polyphonic streams are done; microphone input in 5, 3D audio in 7 |
 | Input | Rebindable action maps over SDL3, injectable by agents | 5 | Done |
 | Refresh rates and frame pacing | V-Sync modes, frame cap, display refresh rates, variable refresh rate, rendering interpolated between fixed ticks | 5 | Done |
 | UI | Retained UI with flexbox layout and themes, defined in text | 5 | Done |

@@ -1989,10 +1989,17 @@ Vector2i(0, 1): {
 }
 }
 )");
-    write(project / "godot/main.tscn", R"([gd_scene load_steps=3 format=3]
+    write(project / "godot/main.tscn", R"([gd_scene load_steps=5 format=3]
 
 [ext_resource type="AudioStreamInteractive" path="res://music/score.tres" id="1_score"]
 [ext_resource type="AudioStreamRandomizer" path="res://sfx/steps.tres" id="2_steps"]
+
+[sub_resource type="AudioStreamGenerator" id="AudioStreamGenerator_1"]
+mix_rate_mode = 0
+buffer_length = 0.1
+
+[sub_resource type="AudioStreamPolyphonic" id="AudioStreamPolyphonic_1"]
+polyphony = 8
 
 [node name="Main" type="Node2D"]
 
@@ -2002,6 +2009,12 @@ autoplay = true
 
 [node name="Steps" type="AudioStreamPlayer2D" parent="."]
 stream = ExtResource("2_steps")
+
+[node name="Synth" type="AudioStreamPlayer" parent="."]
+stream = SubResource("AudioStreamGenerator_1")
+
+[node name="Sfx" type="AudioStreamPlayer" parent="."]
+stream = SubResource("AudioStreamPolyphonic_1")
 )");
     const importer::ImportPlan plan = plan_inside(project);
     const auto files = files_of(plan);
@@ -2057,7 +2070,13 @@ stream = ExtResource("2_steps")
              "filler_clip": "sting", "hold_previous": true}]})"));
     CHECK(unsupported(plan.report, "AudioStreamInteractive clip 3").find("why")->as_string() ==
           R"(another clip is named "sting"; it is named "clip_3")");
-    CHECK(plan.report.find("converted")->find("audio_streams")->as_int() == 7);
+    // A generator and a polyphonic stream, which a game's code plays frames and sounds on.
+    CHECK(valid("godot/main_audio_stream_generator_1.audio.json") ==
+          parse(R"({"format": 1, "generator": {"mix_rate_mode": "output",
+                                               "buffer_length": 0.1}})"));
+    CHECK(valid("godot/main_audio_stream_polyphonic_1.audio.json") ==
+          parse(R"({"format": 1, "polyphonic": {"polyphony": 8}})"));
+    CHECK(plan.report.find("converted")->find("audio_streams")->as_int() == 9);
     CHECK(unsupported(plan.report, "resource AudioStreamInteractive").is_null());
 
     // The players play them.
@@ -2066,6 +2085,8 @@ stream = ExtResource("2_steps")
           parse(R"({"stream": "godot/music/score.audio.json", "autoplay": true})"));
     CHECK(*entity(files, main, "steps").find("AudioStreamPlayer2D") ==
           parse(R"({"stream": "godot/sfx/steps.audio.json"})"));
+    CHECK(*entity(files, main, "synth").find("AudioStreamPlayer") ==
+          parse(R"({"stream": "godot/main_audio_stream_generator_1.audio.json"})"));
     fs::remove_all(project);
 }
 

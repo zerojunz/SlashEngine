@@ -2756,8 +2756,9 @@ from the current `AudioListener2D`. Each plays through a bus of the project's
 - As in Godot, `autoplay` plays when the player is first seen and `playing` plays or stops when
   it changes; [`audio.play`](commands.md#audioplay) and `audio.stop` (and `audio::play` and
   `audio::stop` in C++) do so at the next tick. Playing again restarts the sound, or with
-  `max_polyphony` over 1, adds a voice and stops the oldest past the limit. A new `stream`
-  stops the old one.
+  `max_polyphony` over 1, adds a voice and stops the oldest past the limit. Music, generators
+  and polyphonic streams are monophonic, as in Godot: playing again always starts them over. A
+  new `stream` stops the old one.
 - When a player's last sound ends, it sets `playing` to false and emits a `finished` event with
   `{"component": "AudioStreamPlayer"}` (or `AudioStreamPlayer2D`) as its data.
 - An `AudioStreamPlayer2D` fades and pans as Godot's `_update_panning`: its volume is times
@@ -2874,12 +2875,15 @@ settings it takes.
 
 ### Audio streams
 
-A `.audio.json` file is one of five kinds of stream, each Godot's: a sound with its import
+A `.audio.json` file is one of seven kinds of stream, each Godot's: a sound with its import
 settings, an `AudioStreamRandomizer` (one of several streams each time it plays), an
 `AudioStreamPlaylist` (streams in turn), an `AudioStreamSynchronized` (streams together, as
-layers) or an `AudioStreamInteractive` ([music in clips](#interactive-music) that switch as the
-game asks). A player's `stream` can name one, as can another file's streams and clips.
-[examples/interactive-music](../../examples/interactive-music/) plays the last three.
+layers), an `AudioStreamInteractive` ([music in clips](#interactive-music) that switch as the
+game asks), an `AudioStreamGenerator` or an `AudioStreamPolyphonic`
+([sound a game makes as it runs](#generators-and-polyphonic-streams)). A player's `stream` can
+name one, as can another file's streams and clips.
+[examples/interactive-music](../../examples/interactive-music/) plays the music kinds and
+[examples/generated-audio](../../examples/generated-audio/) the last two.
 
 ```json
 {"format": 1, "loop": true, "loop_offset": 4, "source": "music/theme.ogg"}
@@ -2909,10 +2913,11 @@ game asks). A player's `stream` can name one, as can another file's streams and 
 | `fade_time` | `0.3` | Seconds a playlist's stream fades out over the start of the next |
 | `synchronized` | | A synchronized stream's layers, at most 32, each `{"stream": path, "volume_db": 0}` |
 | `clips`, `initial_clip`, `transitions` | | [Interactive music](#interactive-music) |
+| `generator`, `polyphonic` | | [Generators and polyphonic streams](#generators-and-polyphonic-streams) |
 
 - A file is one kind, named by the field it has: `source`, `streams`, `playlist`,
-  `synchronized` or `clips`. It takes only that kind's fields; `bpm`, `beat_count` and
-  `bar_beats` go with a sound or a playlist.
+  `synchronized`, `clips`, `generator` or `polyphonic`. It takes only that kind's fields; `bpm`,
+  `beat_count` and `bar_beats` go with a sound or a playlist.
 - A randomizer's choices, and a shuffled playlist's order, come from the player's entity ID and
   how many times it has played, so a scene makes the same picks every run.
 - A playlist plays each stream for its `beat_count` beats at `bpm` if it has them, else to its
@@ -2982,6 +2987,45 @@ They reach each new playback before it starts, and every playback when they chan
 - Asking for the clip the music plays, or is heading to, changes nothing; Godot would start it
   over.
 - [`audio.state`](commands.md#audiostate) names the clip each player's music is playing.
+
+### Generators and polyphonic streams
+
+A `generator`, as Godot's `AudioStreamGenerator`, plays frames a game's code pushes as it runs:
+a synthesizer, speech from a library, sound decoded from a network. A `polyphonic` stream, as
+Godot's `AudioStreamPolyphonic`, plays streams a game starts on it, many at once on one player,
+each with its own volume and pitch. [examples/generated-audio](../../examples/generated-audio/)
+has both.
+
+```json
+{"format": 1, "generator": {"buffer_length": 0.1, "mix_rate": 22050}}
+{"format": 1, "polyphonic": {"polyphony": 16}}
+```
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `generator.mix_rate_mode` | `"custom"` | The rate frames are pushed at: `output` (the project's `audio.mix_rate`), `input` (the rate microphone input is recorded at, which is the mix rate) or `custom` (`mix_rate`) |
+| `generator.mix_rate` | `44100` | Frames per second pushed, 20 to 192000, with `custom` |
+| `generator.buffer_length` | `0.5` | Seconds of frames it holds, 0.01 to 10; it holds the smallest power of two frames above that, less one, as Godot's ring buffer |
+| `polyphonic.polyphony` | `32` | Streams that can play at once, 1 to 128 |
+
+- Gameplay code gets a player's playback with `audio::stream_playback(world, entity)`, as
+  Godot's `get_stream_playback`, and its `generator()` or `polyphonic()`. The playback exists
+  from the tick after the player starts (the audio system starts voices after gameplay systems
+  run) until its voice ends, so ask for it each tick.
+- A generator's playback has Godot's `push_frame`, `push_buffer`, `can_push_buffer`,
+  `frames_available`, `skips` and `clear_buffer`. Push each tick at least the frames the tick
+  will mix (`mix_rate` / 60 at 60 ticks a second); a mix that runs out plays silence for the
+  rest and counts a skip. Its frames are resampled to the mix rate as other sounds are, which
+  delays them by 128 of its frames. It plays until stopped and has no length.
+- A polyphonic playback has Godot's `play_stream` (a `Stream`, from seconds, volume in dB, pitch
+  scale), `set_stream_volume`, `set_stream_pitch_scale`, `is_stream_playing` and `stop_stream`,
+  with Godot's stream IDs (slot and count). A stream starts at the next mix, a stop fades it out
+  over one mix step, and a new volume applies at the next mix. It plays until stopped, silent
+  when no stream is going. Agents and `audio::play_stream` play a stream on one with
+  [`audio.play`](commands.md#audioplay)'s `stream` at the next tick, starting the player if
+  needed.
+- [`audio.state`](commands.md#audiostate) shows a generator's free frames and skips, and the
+  streams a polyphonic player has going.
 
 ## Replays
 

@@ -2677,6 +2677,14 @@ Reply audio_state(Session& session, const json::Value& params) {
         if (!info.clip.empty()) {
             item["clip"] = info.clip;
         }
+        if (info.generator.has_value()) {
+            item["generator"]["frames_available"] = info.generator->frames_available;
+            item["generator"]["skips"] = info.generator->skips;
+        }
+        if (info.polyphonic.has_value()) {
+            item["polyphonic"]["playing"] = info.polyphonic->playing;
+            item["polyphonic"]["polyphony"] = info.polyphonic->polyphony;
+        }
         item["volume"] = rounded(json::Array{info.volume.left, info.volume.right});
         if (!info.error.empty()) {
             item["error"] = info.error;
@@ -2939,9 +2947,36 @@ Reply audio_play_or_stop(Session& session, const json::Value& params, bool play)
                    ? unknown_entity(world, id, "/id")
                    : param_error(code::kInvalidParams, "/id", entity.error().message);
     }
-    if (play) {
-        const json::Value* from = params.find("from");
-        audio::play(world, entity.value(), from != nullptr ? from->as_double() : 0.0);
+    const json::Value* stream = params.find("stream");
+    if (stream == nullptr) {
+        for (const char* key : {"volume_db", "pitch_scale"}) {
+            if (params.find(key) != nullptr) {
+                return param_error(code::kInvalidParams, "/" + std::string(key),
+                                   "only a stream played on a polyphonic player (\"stream\") "
+                                   "takes this");
+            }
+        }
+    }
+    const json::Value* from = params.find("from");
+    const double from_seconds = from != nullptr ? from->as_double() : 0.0;
+    if (stream != nullptr) {
+        // The stream is checked first, so what play_stream finds wrong is the player.
+        const auto loaded = audio::load_stream(session.assets(), stream->as_string());
+        if (!loaded) {
+            return param_error(loaded.error(), "/stream");
+        }
+        const json::Value* volume = params.find("volume_db");
+        const json::Value* pitch = params.find("pitch_scale");
+        if (auto played = audio::play_stream(
+                world, entity.value(), stream->as_string(), from_seconds,
+                volume != nullptr ? static_cast<float>(volume->as_double()) : 0.0F,
+                pitch != nullptr ? static_cast<float>(pitch->as_double()) : 1.0F);
+            !played) {
+            return param_error(code::kInvalidParams, "/id",
+                               quoted(id) + ": " + played.error().message);
+        }
+    } else if (play) {
+        audio::play(world, entity.value(), from_seconds);
     } else {
         audio::stop(world, entity.value());
     }
@@ -5512,7 +5547,9 @@ void register_builtin_commands(Registry& registry) {
         .name = "audio.state",
         .description = "Returns the buses (volume, peak dB over the last mix step, null if silent, "
                        "flags, send, effects) and each player with an ID: stream, bus, voices, "
-                       "position and length in seconds, volume after 2D distance and panning.",
+                       "position and length in seconds, volume after 2D distance and panning, "
+                       "and a generator's free frames and skips or a polyphonic player's "
+                       "streams playing.",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema({{"ids", names_property("Only these players. Default: all.")}}),
@@ -5538,15 +5575,29 @@ void register_builtin_commands(Registry& registry) {
     });
     json::Value play_from = property("number", "Seconds into the stream. Default: 0.");
     play_from["minimum"] = 0;
+    json::Value play_volume = property("number", "With stream: its volume in dB. Default: 0.");
+    play_volume["minimum"] = -80;
+    play_volume["maximum"] = 24;
+    json::Value play_pitch = property("number", "With stream: its pitch scale. Default: 1.");
+    play_pitch["minimum"] = 0.01;
+    play_pitch["maximum"] = 16;
     registry.add({
         .name = "audio.play",
         .description = "Plays an AudioStreamPlayer or AudioStreamPlayer2D at the next tick, as "
-                       "Godot's play(): it restarts, or adds a voice up to max_polyphony. "
-                       "Returns the tick it plays at.",
+                       "Godot's play(): it restarts, or adds a voice up to max_polyphony. With "
+                       "stream, plays that sound or .audio.json file on a polyphonic player "
+                       "instead, as Godot's play_stream, starting the player if needed. Returns "
+                       "the tick it plays at.",
         .capabilities = {Run},
         .effect = Effect::Read,
         .params = params_schema(
-            {{"id", id_property("The player's entity.")}, {"from", std::move(play_from)}}, {"id"}),
+            {{"id", id_property("The player's entity.")},
+             {"from", std::move(play_from)},
+             {"stream", property("string", "A sound or .audio.json file to play on the player, "
+                                           "whose stream is polyphonic.")},
+             {"volume_db", std::move(play_volume)},
+             {"pitch_scale", std::move(play_pitch)}},
+            {"id"}),
         .handler =
             [](Session& session, const json::Value& params) {
                 return audio_play_or_stop(session, params, true);

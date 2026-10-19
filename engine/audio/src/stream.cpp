@@ -2,8 +2,10 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
 #include <miniaudio.h>
+#include <optional>
 #include <utility>
 
 namespace slash::audio {
@@ -381,6 +383,271 @@ private:
     bool active_ = false;
 };
 
+// Godot's AudioStreamGeneratorPlayback: the frames a game pushes, in a ring as Godot's RingBuffer
+// keeps them (one slot always empty), resampled from the generator's rate.
+class GeneratorPlaybackImpl final : public Resampled, public GeneratorPlayback {
+public:
+    GeneratorPlaybackImpl(float rate, std::size_t size, int mix_rate)
+        : Resampled(mix_rate), ring_(size), rate_(rate) {}
+
+    void start(double /*from_seconds*/) override {
+        if (mixed_ == 0.0) {
+            begin_resample();
+        }
+        skips_ = 0;
+        active_ = true;
+        mixed_ = 0.0;
+    }
+    void stop() override { active_ = false; }
+    [[nodiscard]] bool is_playing() const override { return active_; }
+    [[nodiscard]] double position() const override { return mixed_; }
+    [[nodiscard]] GeneratorPlayback* generator() override { return this; }
+    [[nodiscard]] const GeneratorPlayback* generator() const override { return this; }
+
+    bool push_frame(Frame frame) override {
+        if (space_left() < 1) {
+            return false;
+        }
+        write(std::span<const Frame>(&frame, 1));
+        return true;
+    }
+    [[nodiscard]] bool can_push_buffer(int frames) const override { return space_left() >= frames; }
+    bool push_buffer(std::span<const Frame> frames) override {
+        if (static_cast<std::size_t>(space_left()) < frames.size()) {
+            return false;
+        }
+        write(frames);
+        return true;
+    }
+    [[nodiscard]] int frames_available() const override { return space_left(); }
+    [[nodiscard]] int skips() const override { return skips_; }
+    void clear_buffer() override {
+        if (active_) {
+            return;
+        }
+        read_ = 0;
+        write_ = 0;
+        mixed_ = 0.0;
+    }
+
+protected:
+    int mix_internal(Frame* buffer, int frames) override {
+        if (!active_) {
+            return 0;
+        }
+        const int read_amount = std::min(data_left(), frames);
+        for (int i = 0; i < read_amount; ++i) {
+            buffer[i] = ring_[read_];
+            read_ = (read_ + 1) % ring_.size();
+        }
+        if (read_amount < frames) {
+            // Silence, as the frames ran out.
+            std::fill(buffer + read_amount, buffer + frames, Frame{});
+            ++skips_;
+        }
+        mixed_ += static_cast<float>(frames) / rate_;
+        return frames;
+    }
+    [[nodiscard]] float stream_rate() const override { return rate_; }
+
+private:
+    [[nodiscard]] int space_left() const {
+        return static_cast<int>(ring_.size()) - data_left() - 1;
+    }
+    [[nodiscard]] int data_left() const {
+        return static_cast<int>((write_ + ring_.size() - read_) % ring_.size());
+    }
+    void write(std::span<const Frame> frames) {
+        for (const Frame& frame : frames) {
+            ring_[write_] = frame;
+            write_ = (write_ + 1) % ring_.size();
+        }
+    }
+
+    std::vector<Frame> ring_;
+    std::size_t read_ = 0;
+    std::size_t write_ = 0;
+    double mixed_ = 0.0; // seconds mixed since it started
+    float rate_;
+    int skips_ = 0;
+    bool active_ = false;
+};
+
+// Godot's AudioStreamPlaybackPolyphonic: a slot per stream it can play, each mixed into the
+// output at its volume, which ramps down to silence over the mix a stop asks for.
+class PolyphonicPlaybackImpl final : public Playback, public PolyphonicPlayback {
+public:
+    PolyphonicPlaybackImpl(int polyphony, int mix_rate, std::uint32_t random)
+        : slots_(static_cast<std::size_t>(polyphony)), mix_rate_(mix_rate), random_(random) {}
+
+    void start(double /*from_seconds*/) override {
+        if (active_) {
+            stop();
+        }
+        active_ = true;
+    }
+    void stop() override {
+        if (!active_) {
+            return;
+        }
+        for (Slot& slot : slots_) {
+            slot.active = false;
+            slot.finish_request = false;
+            slot.playback.reset();
+            slot.stream.reset();
+        }
+        active_ = false;
+    }
+    [[nodiscard]] bool is_playing() const override { return active_; }
+    [[nodiscard]] double position() const override { return 0.0; }
+    [[nodiscard]] PolyphonicPlayback* polyphonic() override { return this; }
+    [[nodiscard]] const PolyphonicPlayback* polyphonic() const override { return this; }
+
+    int mix(Frame* buffer, float rate_scale, int frames) override {
+        if (!active_) {
+            return 0;
+        }
+        std::fill(buffer, buffer + frames, Frame{});
+        for (Slot& slot : slots_) {
+            if (!slot.active) {
+                continue;
+            }
+            // As Godot's, a new volume applies at once; only a stop ramps, to silence.
+            const float volume_db = slot.volume_db;
+            float next_volume = db_to_linear(volume_db);
+            slot.prev_volume_db = volume_db;
+            if (slot.finish_request) {
+                if (slot.pending_play) {
+                    // Stopped before it had a chance to play.
+                    slot.active = false;
+                    continue;
+                }
+                next_volume = 0.0F;
+            }
+            if (slot.pending_play) {
+                slot.playback->start(slot.play_offset);
+                slot.pending_play = false;
+            }
+            const float prev_volume = db_to_linear(slot.prev_volume_db);
+            const float volume_inc = (next_volume - prev_volume) / static_cast<float>(frames);
+            int todo = frames;
+            int offset = 0;
+            float volume = prev_volume;
+            bool stream_done = false;
+            while (todo > 0) {
+                const int to_mix = std::min(todo, kInternalLen);
+                const int mixed =
+                    slot.playback->mix(internal_.data(), rate_scale * slot.pitch_scale, to_mix);
+                for (int i = 0; i < to_mix; ++i) {
+                    const Frame& frame = internal_[static_cast<std::size_t>(i)];
+                    buffer[offset + i].left += frame.left * volume;
+                    buffer[offset + i].right += frame.right * volume;
+                    volume += volume_inc;
+                }
+                if (mixed < to_mix) {
+                    slot.active = false;
+                    stream_done = true;
+                    break;
+                }
+                todo -= to_mix;
+                offset += to_mix;
+            }
+            if (!stream_done && slot.finish_request) {
+                slot.active = false;
+            }
+        }
+        return frames;
+    }
+
+    StreamId play_stream(std::shared_ptr<const Stream> stream, double from_seconds, float volume_db,
+                         float pitch_scale) override {
+        if (stream == nullptr) {
+            return kInvalidId;
+        }
+        for (std::size_t i = 0; i < slots_.size(); ++i) {
+            Slot& slot = slots_[i];
+            if (slot.active) {
+                continue;
+            }
+            static_cast<void>(next_random(random_));
+            slot.playback = stream->instantiate(mix_rate_, random_);
+            slot.stream = std::move(stream);
+            slot.play_offset = from_seconds;
+            slot.volume_db = volume_db;
+            slot.prev_volume_db = volume_db;
+            slot.pitch_scale = pitch_scale;
+            slot.id = id_counter_++;
+            slot.finish_request = false;
+            slot.pending_play = true;
+            slot.active = true;
+            return (static_cast<StreamId>(i) << kIndexShift) | static_cast<StreamId>(slot.id);
+        }
+        return kInvalidId;
+    }
+    void set_stream_volume(StreamId id, float volume_db) override {
+        if (Slot* slot = find(id)) {
+            slot->volume_db = volume_db;
+        }
+    }
+    void set_stream_pitch_scale(StreamId id, float pitch_scale) override {
+        if (Slot* slot = find(id)) {
+            slot->pitch_scale = pitch_scale;
+        }
+    }
+    [[nodiscard]] bool is_stream_playing(StreamId id) const override {
+        return slot_of(id).has_value();
+    }
+    void stop_stream(StreamId id) override {
+        if (Slot* slot = find(id)) {
+            slot->finish_request = true;
+        }
+    }
+    [[nodiscard]] int streams_playing() const override {
+        return static_cast<int>(
+            std::ranges::count_if(slots_, [](const Slot& slot) { return slot.active; }));
+    }
+    [[nodiscard]] int polyphony() const override { return static_cast<int>(slots_.size()); }
+
+private:
+    static constexpr int kInternalLen = 128;
+    static constexpr unsigned kIndexShift = 32;
+
+    struct Slot {
+        std::shared_ptr<const Stream> stream;
+        std::unique_ptr<Playback> playback;
+        double play_offset = 0.0;
+        float pitch_scale = 1.0F;
+        float volume_db = 0.0F;
+        float prev_volume_db = 0.0F;
+        std::uint32_t id = 0;
+        bool active = false;
+        bool pending_play = false;
+        bool finish_request = false;
+    };
+
+    // The slot an ID names while it plays, as Godot's _find_stream.
+    [[nodiscard]] std::optional<std::size_t> slot_of(StreamId id) const {
+        const auto bits = static_cast<std::uint64_t>(id);
+        const std::uint64_t index = bits >> kIndexShift;
+        if (id < 0 || index >= slots_.size() || !slots_[index].active ||
+            slots_[index].id != (bits & 0xFFFFFFFFU)) {
+            return std::nullopt;
+        }
+        return static_cast<std::size_t>(index);
+    }
+    Slot* find(StreamId id) {
+        const std::optional<std::size_t> index = slot_of(id);
+        return index.has_value() ? &slots_[*index] : nullptr;
+    }
+
+    std::vector<Slot> slots_;
+    std::array<Frame, kInternalLen> internal_{};
+    int mix_rate_;
+    std::uint32_t random_;
+    std::uint32_t id_counter_ = 1;
+    bool active_ = false;
+};
+
 // Godot's AudioStreamPlaybackRandomizer: the stream it picked, at a random pitch and volume.
 class RandomizerPlayback final : public Playback {
 public:
@@ -490,6 +757,11 @@ public:
     [[nodiscard]] double length() const override {
         return last_ != nullptr ? last_->length() : 0.0;
     }
+    [[nodiscard]] bool is_monophonic() const override {
+        return std::ranges::any_of(pool_, [](const auto& entry) {
+            return entry.first != nullptr && entry.first->is_monophonic();
+        });
+    }
 
 private:
     const Stream* pick_random(std::uint32_t& state, const Stream* skip) const {
@@ -540,6 +812,48 @@ private:
     mutable const Stream* last_ = nullptr;
 };
 
+// Godot's AudioStreamGenerator. Its buffer holds a power of two frames, the smallest above
+// buffer_length seconds, as Godot's.
+class GeneratorStream final : public Stream {
+public:
+    explicit GeneratorStream(const StreamFile& settings)
+        : mode_(settings.mix_rate_mode), mix_rate_(settings.mix_rate),
+          buffer_length_(settings.buffer_length) {}
+
+    [[nodiscard]] std::unique_ptr<Playback> instantiate(int mix_rate,
+                                                        std::uint32_t /*random*/) const override {
+        // The microphone is recorded at the mix rate, so Input is the output's rate too.
+        const float rate = mode_ == MixRateMode::Custom ? mix_rate_ : static_cast<float>(mix_rate);
+        const auto target = static_cast<std::uint32_t>(rate * buffer_length_);
+        return std::make_unique<GeneratorPlaybackImpl>(
+            rate, std::size_t{1} << static_cast<unsigned>(std::bit_width(target)), mix_rate);
+    }
+    [[nodiscard]] double length() const override { return 0.0; }
+    [[nodiscard]] bool is_monophonic() const override { return true; }
+
+private:
+    MixRateMode mode_;
+    float mix_rate_;
+    float buffer_length_;
+};
+
+// Godot's AudioStreamPolyphonic.
+class PolyphonicStream final : public Stream {
+public:
+    explicit PolyphonicStream(int polyphony) : polyphony_(polyphony) {}
+
+    [[nodiscard]] std::unique_ptr<Playback> instantiate(int mix_rate,
+                                                        std::uint32_t random) const override {
+        return std::make_unique<PolyphonicPlaybackImpl>(polyphony_, mix_rate,
+                                                        random == 0 ? 0x9E3779B9U : random);
+    }
+    [[nodiscard]] double length() const override { return 0.0; }
+    [[nodiscard]] bool is_monophonic() const override { return true; }
+
+private:
+    int polyphony_;
+};
+
 constexpr int kMaxNesting = 8;
 
 Result<std::shared_ptr<const Stream>> load_stream_at(asset::Assets& assets, std::string_view path,
@@ -571,6 +885,12 @@ Result<std::shared_ptr<const Stream>> load_stream_at(asset::Assets& assets, std:
     }
     loaded.files.push_back(file.value());
     const std::shared_ptr<const StreamFile> settings = file.value().share();
+    if (settings->kind == StreamFile::Kind::Generator) {
+        return generator_stream(*settings);
+    }
+    if (settings->kind == StreamFile::Kind::Polyphonic) {
+        return polyphonic_stream(*settings);
+    }
     if (!settings->source.empty()) {
         auto sound = load_sound(settings->source);
         if (!sound) {
@@ -605,6 +925,8 @@ Result<std::shared_ptr<const Stream>> load_stream_at(asset::Assets& assets, std:
         return interactive_stream(std::move(streams), *settings);
     case StreamFile::Kind::Sound:
     case StreamFile::Kind::Randomizer:
+    case StreamFile::Kind::Generator:
+    case StreamFile::Kind::Polyphonic:
         break;
     }
     std::vector<std::pair<std::shared_ptr<const Stream>, float>> pool;
@@ -625,6 +947,14 @@ std::shared_ptr<const Stream>
 randomizer_stream(std::vector<std::pair<std::shared_ptr<const Stream>, float>> streams,
                   const StreamFile& settings) {
     return std::make_shared<RandomizerStream>(std::move(streams), settings);
+}
+
+std::shared_ptr<const Stream> generator_stream(const StreamFile& settings) {
+    return std::make_shared<GeneratorStream>(settings);
+}
+
+std::shared_ptr<const Stream> polyphonic_stream(const StreamFile& settings) {
+    return std::make_shared<PolyphonicStream>(std::clamp(settings.polyphony, 0, 128));
 }
 
 bool LoadedStream::stale() const {
