@@ -5,6 +5,7 @@
 // --version prints a version as AssetRipper's does. FAKE_ASSETRIPPER_FAIL=start makes it stop
 // before it serves, and =export fail the export.
 
+#include <cstddef>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -17,8 +18,20 @@ namespace fs = std::filesystem;
 namespace {
 
 std::string environment(const char* name) {
+#if defined(_MSC_VER)
+    // MSVC deprecates getenv.
+    char* value = nullptr;
+    std::size_t size = 0;
+    if (_dupenv_s(&value, &size, name) != 0 || value == nullptr) {
+        return {};
+    }
+    std::string out(value);
+    std::free(value);
+    return out;
+#else
     const char* value = std::getenv(name); // NOLINT(concurrency-mt-unsafe): read before serving
     return value == nullptr ? std::string() : std::string(value);
+#endif
 }
 
 } // namespace
