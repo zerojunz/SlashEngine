@@ -3188,7 +3188,7 @@ private:
         }
         // Godot makes a material with the 3D default gravity a 2D one with 98 pixels a second
         // squared down, unless it was already 2D.
-        if (!out.find("gravity")) {
+        if (out.find("gravity") == nullptr) {
             out["gravity"] = disable_z ? json::Array{0.0, -9.8} : json::Array{0.0, 98.0};
         }
         for (const json::ValidationError& error : canvas::validate_process_material(out)) {

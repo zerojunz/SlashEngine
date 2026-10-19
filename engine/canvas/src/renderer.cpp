@@ -77,6 +77,21 @@ std::vector<Vec2> repeat_offsets(const world::Parallax2D& parallax, const world:
     return out;
 }
 
+// Adds a GPUParticles2D's live particles' quads, as the device draws them: one not live has no
+// area.
+void append_live_quads(std::span<const render::Particle> particles, const render::ParticleDraw& at,
+                       std::vector<render::Vertex2D>& vertices) {
+    std::vector<render::Vertex2D> quads;
+    render::particle_vertices(particles, at, quads);
+    for (std::size_t q = 0; q + 6 <= quads.size(); q += 6) {
+        const auto quad = std::span(quads).subspan(q, 6);
+        if (std::ranges::any_of(quad, [](const render::Vertex2D& v) {
+                return v.rgba != std::array<std::uint8_t, 4>{};
+            })) {
+            vertices.insert(vertices.end(), quad.begin(), quad.end());
+        }
+    }
+}
 } // namespace
 
 Vec2 to_world(const world::World& world, Vec2 point, entt::entity in) {
@@ -330,6 +345,89 @@ Result<const render::ParticleProcess*> CanvasRenderer::process_material(const st
         it = processes_.emplace(path, std::move(loaded).value()).first;
     }
     return it->second.get();
+}
+
+Result<std::optional<CanvasRenderer::ParticleJob>>
+CanvasRenderer::particle_job(GpuSystem& system, const ParticleSteps& kept,
+                             const render::ParticleProcess* process) {
+    const std::uint64_t end = kept.first + kept.steps.size();
+    std::optional<ParticleJob> job;
+    if (system.id == render::ParticlesId::None || system.serial != kept.serial ||
+        system.amount != kept.amount || system.next < kept.first) {
+        if (system.id != render::ParticlesId::None) {
+            device_->destroy_particles(system.id);
+            system.id = render::ParticlesId::None;
+        }
+        auto made = device_->create_particles(kept.amount);
+        if (!made) {
+            return made.error();
+        }
+        system.id = made.value();
+        system.serial = kept.serial;
+        system.amount = kept.amount;
+        render::ParticleStep first = kept.steps.front();
+        first.clear = true;
+        job = ParticleJob{.particles = system.id,
+                          .process = process,
+                          .first = first,
+                          .rest = kept.steps.subspan(1)};
+    } else if (system.next < end) {
+        job = ParticleJob{
+            .particles = system.id,
+            .process = process,
+            .first = std::nullopt,
+            .rest = kept.steps.subspan(static_cast<std::size_t>(system.next - kept.first))};
+    }
+    system.next = end;
+    return job;
+}
+
+std::size_t CanvasRenderer::mirror(GpuSystem& system, const ParticleSteps& kept,
+                                   const render::ParticleProcess& process) {
+    const std::uint64_t end = kept.first + kept.steps.size();
+    if (system.cpu.size() != kept.amount || system.cpu_serial != kept.serial ||
+        system.cpu_next < kept.first) {
+        system.cpu = run_steps(kept.amount, process, kept.steps);
+    } else if (system.cpu_next < end) {
+        render::process_particles(
+            system.cpu, process,
+            kept.steps.subspan(static_cast<std::size_t>(system.cpu_next - kept.first)));
+    }
+    system.cpu_serial = kept.serial;
+    system.cpu_next = end;
+    return static_cast<std::size_t>(
+        std::ranges::count_if(system.cpu, [](const render::Particle& p) { return p.active(); }));
+}
+
+Result<void> CanvasRenderer::run_particle_jobs(std::span<const ParticleJob> jobs) {
+    for (const ParticleJob& job : jobs) {
+        Result<void> ran;
+        if (job.first) {
+            ran = device_->process_particles(job.particles, *job.process, {&*job.first, 1});
+        }
+        if (ran && !job.rest.empty()) {
+            ran = device_->process_particles(job.particles, *job.process, job.rest);
+        }
+        if (!ran) {
+            for (auto& [entity, system] : gpu_systems_) {
+                system.serial = 0;
+            }
+            return ran;
+        }
+    }
+    return {};
+}
+
+void CanvasRenderer::drop_unseen_gpu_systems() {
+    std::erase_if(gpu_systems_, [&](const auto& entry) {
+        if (entry.second.seen) {
+            return false;
+        }
+        if (entry.second.id != render::ParticlesId::None) {
+            device_->destroy_particles(entry.second.id);
+        }
+        return true;
+    });
 }
 
 const CanvasRenderer::LayerCells& CanvasRenderer::cells(entt::entity entity,
@@ -682,14 +780,6 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         // A GPUParticles2D's particles, which the device draws instead of the vertices.
         render::ParticlesId particles = render::ParticlesId::None;
         render::ParticleDraw look;
-    };
-    // Steps to run on a GPUParticles2D's system before it draws: the first one, made to clear
-    // the system for a system made anew, then the rest.
-    struct ParticleJob {
-        render::ParticlesId particles = render::ParticlesId::None;
-        const render::ParticleProcess* process = nullptr;
-        std::optional<render::ParticleStep> first;
-        std::span<const render::ParticleStep> rest;
     };
     std::vector<ParticleJob> particle_jobs;
     std::vector<Item> items;
@@ -1106,38 +1196,15 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             material = std::move(made).value();
         }
         material.shading = shading_for(light_mode, emitter.light_mask, z, canvas);
-        // The system is made again when the emitter started over, or when this renderer missed
-        // steps that are no longer kept; then it runs every step kept, the first clearing it.
-        const std::uint64_t end = kept->first + kept->steps.size();
-        if (cached.id == render::ParticlesId::None || cached.serial != kept->serial ||
-            cached.amount != kept->amount || cached.next < kept->first) {
-            if (cached.id != render::ParticlesId::None) {
-                device_->destroy_particles(cached.id);
-                cached.id = render::ParticlesId::None;
-            }
-            auto made = device_->create_particles(kept->amount);
-            if (!made) {
-                warn_once(name_of(entity), made.error().message, "id", kEvent);
-                problem(entity, "/components/GPUParticles2D/amount", made.error().message);
-                continue;
-            }
-            cached.id = made.value();
-            cached.serial = kept->serial;
-            cached.amount = kept->amount;
-            ParticleJob job{.particles = cached.id,
-                            .process = process,
-                            .first = kept->steps.front(),
-                            .rest = kept->steps.subspan(1)};
-            job.first->clear = true;
-            particle_jobs.push_back(job);
-        } else if (cached.next < end) {
-            particle_jobs.push_back(
-                {.particles = cached.id,
-                 .process = process,
-                 .first = std::nullopt,
-                 .rest = kept->steps.subspan(static_cast<std::size_t>(cached.next - kept->first))});
+        auto job = particle_job(cached, *kept, process);
+        if (!job) {
+            warn_once(name_of(entity), job.error().message, "id", kEvent);
+            problem(entity, "/components/GPUParticles2D/amount", job.error().message);
+            continue;
         }
-        cached.next = end;
+        if (job.value()) {
+            particle_jobs.push_back(*job.value());
+        }
         look.order = particle_order(emitter.draw_order);
         if (look.order != render::ParticleOrder::Index) {
             look.lifetime_split =
@@ -1158,21 +1225,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             placed = world::affine(transform_of(entity, world::Transform2D{}));
         }
         // FrameContents gets the particles run on the CPU, as the device runs them.
-        std::size_t live = 0;
-        if (contents != nullptr) {
-            if (cached.cpu.size() != kept->amount || cached.cpu_serial != kept->serial ||
-                cached.cpu_next < kept->first) {
-                cached.cpu = run_steps(kept->amount, *process, kept->steps);
-            } else if (cached.cpu_next < end) {
-                render::process_particles(
-                    cached.cpu, *process,
-                    kept->steps.subspan(static_cast<std::size_t>(cached.cpu_next - kept->first)));
-            }
-            cached.cpu_serial = kept->serial;
-            cached.cpu_next = end;
-            live = static_cast<std::size_t>(std::ranges::count_if(
-                cached.cpu, [](const render::Particle& p) { return p.active(); }));
-        }
+        const std::size_t live = contents != nullptr ? mirror(cached, *kept, *process) : 0;
         // Again at each repeat of the Parallax2D it is under.
         const entt::entity source = repeat_source(entity);
         const std::vector<Vec2> unmoved{Vec2{}};
@@ -1187,17 +1240,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
                             placed.origin.y + offsets[r].y};
             const std::size_t first = vertices.size();
             if (contents != nullptr) {
-                // Live particles only: one not live has no area.
-                std::vector<render::Vertex2D> quads;
-                render::particle_vertices(cached.cpu, at, quads);
-                for (std::size_t q = 0; q + 6 <= quads.size(); q += 6) {
-                    const auto quad = std::span(quads).subspan(q, 6);
-                    if (std::ranges::any_of(quad, [](const render::Vertex2D& v) {
-                            return v.rgba != std::array<std::uint8_t, 4>{};
-                        })) {
-                        vertices.insert(vertices.end(), quad.begin(), quad.end());
-                    }
-                }
+                append_live_quads(cached.cpu, at, vertices);
             }
             items.push_back({.canvas = canvas,
                              .z_index = z,
@@ -1216,35 +1259,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         }
         particles += kept->amount;
     }
-    std::erase_if(gpu_systems_, [&](const auto& entry) {
-        if (entry.second.seen) {
-            return false;
-        }
-        if (entry.second.id != render::ParticlesId::None) {
-            device_->destroy_particles(entry.second.id);
-        }
-        return true;
-    });
-    // Runs the steps, before the systems draw. If they can't run, the systems are made again
-    // next frame.
-    const auto run_particles = [&]() -> Result<void> {
-        for (const ParticleJob& job : particle_jobs) {
-            Result<void> ran;
-            if (job.first) {
-                ran = device_->process_particles(job.particles, *job.process, {&*job.first, 1});
-            }
-            if (ran && !job.rest.empty()) {
-                ran = device_->process_particles(job.particles, *job.process, job.rest);
-            }
-            if (!ran) {
-                for (auto& [entity, cached] : gpu_systems_) {
-                    cached.serial = 0;
-                }
-                return ran;
-            }
-        }
-        return {};
-    };
+    drop_unseen_gpu_systems();
 
     for (auto& [entity, cached] : layer_cells_) {
         cached.seen = false;
@@ -1669,7 +1684,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
     const auto shadows = static_cast<std::size_t>(std::ranges::count_if(
         lights.lights, [](const render::Light& l) { return l.shadow_row >= 0; }));
     if (options.target == render::TextureId::None && device_->backend() == render::Backend::Null) {
-        if (auto ran = run_particles(); !ran) {
+        if (auto ran = run_particle_jobs(particle_jobs); !ran) {
             return ran.error();
         }
         sprites_drawn_ = sprites;
@@ -1701,7 +1716,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         (void)device_->end_frame();
         return error;
     };
-    if (auto ran = run_particles(); !ran) {
+    if (auto ran = run_particle_jobs(particle_jobs); !ran) {
         return failed(ran.error());
     }
     const auto draw_control = [&](const ui::DrawCall& call,

@@ -22,6 +22,7 @@
 #include <memory>
 #include <optional>
 #include <set>
+#include <span>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -285,6 +286,28 @@ private:
         std::uint64_t cpu_next = 0;
         bool seen = false;
     };
+    // Steps to run on a GPUParticles2D's system before it draws: the first one, made to clear
+    // the system for a system made anew, then the rest.
+    struct ParticleJob {
+        render::ParticlesId particles = render::ParticlesId::None;
+        const render::ParticleProcess* process = nullptr;
+        std::optional<render::ParticleStep> first;
+        std::span<const render::ParticleStep> rest;
+    };
+    // The steps a GPUParticles2D's system hasn't run, none if it has run them all. The system is
+    // made again when the emitter started over or this renderer missed steps no longer kept;
+    // then it runs every step kept, the first clearing it. Fails if it can't be made.
+    Result<std::optional<ParticleJob>> particle_job(GpuSystem& system, const ParticleSteps& kept,
+                                                    const render::ParticleProcess* process);
+    // Brings a system's CPU copy up to its steps kept, as the device runs them, and returns how
+    // many of its particles are live.
+    static std::size_t mirror(GpuSystem& system, const ParticleSteps& kept,
+                              const render::ParticleProcess& process);
+    // Runs the steps, before the systems draw. If they can't run, the systems are made again
+    // next frame.
+    Result<void> run_particle_jobs(std::span<const ParticleJob> jobs);
+    // Destroys the systems of emitters this frame didn't see.
+    void drop_unseen_gpu_systems();
     // A layer's cells, decoded again only when the layer or its tile set changes.
     struct LayerCells {
         std::uint64_t set_version = 0;
