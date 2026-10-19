@@ -401,20 +401,30 @@ std::string literal_string(std::span<const std::uint32_t> words) {
     return out;
 }
 
+// A value's bits as another type of the same size. std::bit_cast would do, but the glibc 2.31
+// sysroot Linux exports build against has libstdc++ 10, which lacks it.
+template <typename To, typename From>
+To same_bits(From value) {
+    static_assert(sizeof(To) == sizeof(From));
+    To out{};
+    std::memcpy(&out, &value, sizeof(out));
+    return out;
+}
+
 float to_float(std::uint32_t bits) {
-    return std::bit_cast<float>(bits);
+    return same_bits<float>(bits);
 }
 
 std::uint32_t from_float(float value) {
-    return std::bit_cast<std::uint32_t>(value);
+    return same_bits<std::uint32_t>(value);
 }
 
 std::int32_t to_int(std::uint32_t bits) {
-    return std::bit_cast<std::int32_t>(bits);
+    return same_bits<std::int32_t>(bits);
 }
 
 std::uint32_t from_int(std::int32_t value) {
-    return std::bit_cast<std::uint32_t>(value);
+    return same_bits<std::uint32_t>(value);
 }
 
 // float to int as Direct3D converts: toward 0, saturating, NaN to 0.
