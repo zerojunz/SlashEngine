@@ -3,6 +3,7 @@
 #include "slash/core/result.hpp"
 #include "slash/render/light.hpp"
 #include "slash/render/material.hpp"
+#include "slash/render/particles.hpp"
 #include "slash/render/shader.hpp"
 
 #include <array>
@@ -27,7 +28,7 @@ struct SDL_Window;
 //   device->end_frame();                               // submits and presents
 //
 // A frame can carry lights (light.hpp); draws whose material's shading isn't unshaded are lit by
-// them.
+// them. Particle systems (particles.hpp) run and draw on the device itself.
 namespace slash::render {
 
 enum class Backend : std::uint8_t { Null, Vulkan, Metal, D3D12, Software, OpenGl };
@@ -228,6 +229,25 @@ public:
     [[nodiscard]] virtual Result<ShaderId> create_shader(const CompiledShader& shader) = 0;
     // A shader in use by the frame being built goes once the frame is sent.
     virtual void destroy_shader(ShaderId shader) = 0;
+
+    // A particle system of amount particles, from 1 to kMaxParticles, none of them live.
+    [[nodiscard]] virtual Result<ParticlesId> create_particles(std::uint32_t amount) = 0;
+    // A system in use by the frame being built goes once the frame is sent.
+    virtual void destroy_particles(ParticlesId particles) = 0;
+    // Runs steps on a system with a process material, in order after the steps before. The GPU
+    // device runs them on the GPU: during a frame, when the frame is sent, ahead of its draws;
+    // outside one, at once. The null device keeps no particles and runs nothing.
+    [[nodiscard]] virtual Result<void> process_particles(ParticlesId particles,
+                                                         const ParticleProcess& process,
+                                                         std::span<const ParticleStep> steps) = 0;
+    // Draws a system's particles as they are after the steps run so far, as quads (ParticleDraw)
+    // with a texture and a material, as draw does: two triangles a particle.
+    [[nodiscard]] virtual Result<void> draw_particles(ParticlesId particles, TextureId texture,
+                                                      const ParticleDraw& look,
+                                                      const Material& material) = 0;
+    // Waits for the GPU, then returns a system's particles; not during a frame. The null
+    // device's are none live.
+    [[nodiscard]] virtual Result<std::vector<Particle>> read_particles(ParticlesId particles) = 0;
 
     // Starts a frame and clears its target. Returns false when there is nothing to draw to,
     // such as a minimized window: draws are still checked but dropped, and end_frame ends it.

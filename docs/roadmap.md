@@ -259,8 +259,15 @@ rendering on top.
       explosiveness, local coordinates and draw orders. Seeded by entity ID, so the same scene
       makes the same particles on every platform, and `particles.eval` checks them without a
       screenshot
-- [ ] GPU particles, as Godot's `GPUParticles2D`: process materials as text graphs on the GPU,
-      for many thousands of particles, with sub-emitters, trails and collision with the scene
+- [x] GPU particles, as Godot's `GPUParticles2D`: `.process_material.json` files with Godot's
+      `ParticleProcessMaterial` properties, stepped as Godot's node and particles storage step
+      them (emission cycles, `fixed_fps` with interpolation, preprocess, one-shots with a
+      `finished` event) and run by a compute shader on Metal, Direct3D 12 and Vulkan, for many
+      thousands of particles; the same steps make the same particles on every device and on
+      the CPU, where `particles.eval` lists them. Godot's `GPUParticles2D` nodes and
+      `ParticleProcessMaterial` resources import
+- [ ] Sub-emitters, trails, collision with the scene, turbulence and attractors for GPU
+      particles, and particle graphs in text (Godot's particle shaders)
 - [x] Text with FreeType, HarfBuzz and MSDF fonts, and Godot's `Control`, `Label` and
       `ColorRect`: anchors, offsets and grow directions, rotation, scale and modulate, labels
       that wrap, align, trim with an ellipsis and draw outlines and shadows, theme overrides and
@@ -632,7 +639,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Keyframe animation | Keyframe tracks on any reflected property | 5 | Done |
 | Skeletal animation | Skinned meshes, blending, root motion | 7 | Planned |
 | Animation blending | Blend trees and state machines in text, two-bone and FABRIK IK | 7 | Planned |
-| Particles | CPU and GPU particles, particle graphs in text | 5 | In part: CPU particles are done; GPU particles in 5 |
+| Particles | CPU and GPU particles, particle graphs in text | 5 | In part: CPU particles and GPU particles with process materials are done; sub-emitters, trails, collision, turbulence, attractors and particle graphs in 5 |
 | Audio | miniaudio: buses, effects, 3D spatial audio | 5, 7 | In part: 2D players, buses and effects are done; area overrides, pitch shift and interactive music in 5, 3D audio in 7 |
 | Input | Rebindable action maps over SDL3, injectable by agents | 5 | Done |
 | Refresh rates and frame pacing | V-Sync modes, frame cap, display refresh rates, variable refresh rate, rendering interpolated between fixed ticks | 5 | Done |

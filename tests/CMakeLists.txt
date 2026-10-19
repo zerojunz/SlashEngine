@@ -12,6 +12,8 @@ add_executable(slash_tests
     test_fixed_step.cpp
     test_frame_summary.cpp
     test_godot_pack.cpp
+    test_gpu_particles.cpp
+    test_gpu_particles_2d.cpp
     test_import_godot.cpp
     test_import_unity.cpp
     test_gui.cpp
@@ -62,7 +64,7 @@ add_test(NAME unit COMMAND slash_tests WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_
 
 # The compiled shaders committed in engine/render/src match their HLSL; see
 # cmake/compile_shaders.cmake.
-foreach(shader IN ITEMS sprite material)
+foreach(shader IN ITEMS sprite material particles_process particles_draw)
     add_test(NAME shaders_up_to_date_${shader}
         COMMAND ${CMAKE_COMMAND} -DSOURCE=${PROJECT_SOURCE_DIR}/engine/render/shaders/${shader}.hlsl
             -DOUTPUT=${PROJECT_SOURCE_DIR}/engine/render/src/${shader}_shaders.hpp -DCHECK=ON

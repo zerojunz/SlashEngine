@@ -1,0 +1,22 @@
+{
+  "color_ramp": [
+    {
+      "color": [1, 0.95, 0.5, 1],
+      "offset": 0
+    },
+    {
+      "color": [1, 0.2, 0, 0],
+      "offset": 1
+    }
+  ],
+  "damping_max": 60,
+  "damping_min": 40,
+  "format": 1,
+  "gravity": [0, 200],
+  "initial_velocity_max": 140,
+  "initial_velocity_min": 80,
+  "particle_flag_align_y": true,
+  "scale_max": 2,
+  "scale_min": 1,
+  "spread": 180
+}

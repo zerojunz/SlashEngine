@@ -14,6 +14,8 @@
 // The renderer's own headers, for its HLSL and Windows' compiler.
 #include "../engine/render/src/hlsl_compiler.hpp"
 #include "../engine/render/src/material_shaders.hpp"
+#include "../engine/render/src/particles_draw_shaders.hpp"
+#include "../engine/render/src/particles_process_shaders.hpp"
 #include "../engine/render/src/sprite_shaders.hpp"
 #endif
 
@@ -743,6 +745,12 @@ TEST_CASE("every shader compiles with Windows' HLSL compiler") {
             CHECK_MESSAGE(compiled.ok(), name, " ", entry, ": ",
                           (compiled.ok() ? std::string() : compiled.error().message));
         }
+    }
+    for (const auto& [name, hlsl] : {std::pair{"particles_process", shaders::kParticlesProcessHlsl},
+                                     std::pair{"particles_draw", shaders::kParticlesDrawHlsl}}) {
+        const auto compiled = slash::render::detail::compile_hlsl(hlsl, "cs_main", "cs_5_1");
+        CHECK_MESSAGE(compiled.ok(), name, ": ",
+                      (compiled.ok() ? std::string() : compiled.error().message));
     }
 #else
     MESSAGE("HLSL compiles only on Windows");

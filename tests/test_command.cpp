@@ -1265,7 +1265,7 @@ TEST_CASE("engine.describe lists systems in the order they run") {
     CHECK(*engine.ok("engine.describe").find("systems") ==
           parse(R"(["input", "gui", "controls", "movement", "animation_player", "physics2d",
                     "animated_sprite_2d", "camera_2d", "parallax_2d", "cpu_particles_2d",
-                    "audio"])"));
+                    "gpu_particles_2d", "audio"])"));
     CHECK(*engine.ok("engine.describe", R"({"full": true})").find("systems") == parse(R"([
         {"name": "input", "doc": "Applies the input events queued since the last tick.",
          "priority": -1000},
@@ -1289,6 +1289,8 @@ TEST_CASE("engine.describe lists systems in the order they run") {
          "priority": 1060},
         {"name": "cpu_particles_2d",
          "doc": "Emits, moves and ages each CPUParticles2D's particles.", "priority": 1100},
+        {"name": "gpu_particles_2d",
+         "doc": "Steps each GPUParticles2D's emission for renderers to run.", "priority": 1110},
         {"name": "audio",
          "doc": "Plays each AudioStreamPlayer and AudioStreamPlayer2D and mixes the tick's sound through the bus layout.",
          "priority": 1200}
@@ -1653,9 +1655,46 @@ TEST_CASE("particles.eval counts and lists particles, as they are or after a tim
         "/id: no entity has the id \"sparkle\"; did you mean \"sparkler\"?");
     engine.ok("entity.create", R"({"id": "rock", "components": {"Transform2D": {}}})");
     CHECK(engine.fails("particles.eval", R"({"id": "rock"})", command::code::kInvalidParams)
-              .message == "/id: \"rock\" has no CPUParticles2D");
+              .message == "/id: \"rock\" has no CPUParticles2D or GPUParticles2D");
     engine.fails("particles.eval", R"({"id": "sparkler", "time": -1})",
                  command::code::kInvalidParams);
+}
+
+TEST_CASE("particles.eval runs a GPUParticles2D's steps on the CPU") {
+    const std::string root = "command_gpu_particles_project";
+    std::filesystem::remove_all(root);
+    REQUIRE(slash::platform::create_directories(root).ok());
+    REQUIRE(slash::platform::write_file(root + "/up.process_material.json",
+                                        R"({"format": 1, "direction": [0, -1], "spread": 0,
+                                            "gravity": [0, 0], "initial_velocity_min": 60,
+                                            "initial_velocity_max": 60})")
+                .ok());
+    command::SessionOptions options;
+    options.project_root = root;
+    Engine engine(options);
+    engine.ok("entity.create", R"({"id": "jet", "components": {
+        "Transform2D": {"position": [100, 50]},
+        "GPUParticles2D": {"amount": 4, "explosiveness": 1, "fixed_fps": 0,
+                           "process_material": "up.process_material.json"}}})");
+    CHECK(engine.ok("particles.eval", R"({"id": "jet"})") ==
+          parse(R"({"alive": 0, "bounds": null})"));
+    engine.ok("step", R"({"ticks": 30})");
+    // White is Godot's hue matrix's white, as its particles are.
+    CHECK(engine.ok("particles.eval", R"({"id": "jet", "list": true, "max_results": 1})") ==
+          parse(R"({"alive": 4, "bounds": [100, 20, 0, 0], "particles": [
+              {"age": 0.5, "color": [0.999, 0.999, 1, 1], "position": [100, 20], "rotation": 0,
+               "scale": 1}]})"));
+    // A time runs the settings from the start, apart from the world, as stepping would.
+    CHECK(engine.ok("particles.eval", R"({"id": "jet", "time": 0.5})") ==
+          parse(R"({"alive": 4, "bounds": [100, 20, 0, 0]})"));
+    CHECK(*engine.ok("schema.get", R"({"kind": "process_material"})").find("title") ==
+          "SlashEngine particle process material");
+    engine.ok("component.set", R"({"id": "jet", "components": {
+        "GPUParticles2D": {"process_material": "gone.process_material.json"}}})");
+    CHECK(contains(
+        engine.fails("particles.eval", R"({"id": "jet"})", command::code::kInvalidArgument).message,
+        "gone.process_material.json"));
+    std::filesystem::remove_all(root);
 }
 
 TEST_CASE("ui.layout returns where controls are and the lines labels show") {

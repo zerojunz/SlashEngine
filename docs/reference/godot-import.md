@@ -19,6 +19,7 @@ from its `.pck` file or executable: see [Exported games](#exported-games).
 | `<name>.tileset.json` | Each `TileSet` resource, named the same way |
 | `<name>.theme.json` | Each `Theme` resource, named the same way |
 | `<name>.bus_layout.json` | Each `AudioBusLayout` resource, such as `default_bus_layout.tres` |
+| `<name>.process_material.json` | Each `ParticleProcessMaterial` resource, named as frames are (see [particles](#particles)) |
 | `<name>.anim.json` | Each `AnimationPlayer`'s animation libraries: one library's named as above, several together as `<scene>_<player>.anim.json` |
 | `project.json` | `project.godot`'s settings and input map, merged into the project's own if it has one |
 | `storyboard/work.json` | A task per script, merged into the project's own tasks |
@@ -98,6 +99,7 @@ above the world.
 | `Node2D`, `Marker2D` | `Transform2D` |
 | `Sprite2D`, `Camera2D`, `CollisionShape2D`, `CollisionPolygon2D`, `PointLight2D`, `DirectionalLight2D`, `LightOccluder2D`, `CanvasModulate`, `CPUParticles2D`, `AudioStreamPlayer2D`, `AudioListener2D` | `Transform2D` and the component of the same name |
 | `AnimatedSprite2D` | `Transform2D`, `AnimatedSprite2D` and `Sprite2D` |
+| `GPUParticles2D` | `Transform2D` and `GPUParticles2D` (see [particles](#particles)) |
 | `StaticBody2D`, `AnimatableBody2D`, `RigidBody2D`, `CharacterBody2D`, `Area2D` | `Transform2D` and the body, with its constant velocities, an area's gravity and damping overrides and a character's floor, wall and platform options; its `CollisionShape2D` children are its shapes |
 | `PinJoint2D`, `DampedSpringJoint2D`, `GrooveJoint2D` | `Transform2D` and the joint |
 | `AudioStreamPlayer` | `AudioStreamPlayer` |
@@ -257,6 +259,26 @@ An instance of the scene has the same library, with its targets under the instan
 
 Each animation keeps its `length` and loop mode (`loop_mode` 1 is `linear`, 2 is `pingpong`).
 Keys past the end, which Godot never plays, are left out, and so are disabled tracks.
+
+## Particles
+
+A `CPUParticles2D` keeps its settings in its component. A `GPUParticles2D` keeps the node's, and
+its `ParticleProcessMaterial` becomes a [`.process_material.json`](scene-format.md#process-materials)
+file that its `process_material` names:
+
+- Vectors lose their z: `direction = Vector3(0, -1, 0)` is `[0, -1]`. `emission_shape` is named
+  (`1` is `"sphere"`), and the rest keep their names and values.
+- A `CurveTexture`'s curve becomes the `_curve`'s points, and a `GradientTexture1D`'s gradient the
+  ramp's stops.
+- A material with no `gravity` gets `[0, 98]`, as Godot gives a 3D one on a `GPUParticles2D`;
+  with `particle_flag_disable_z` it keeps Godot's `[0, -9.8]`.
+- The node's `CanvasItemMaterial` gives its particle animation: `particles_anim_h_frames`,
+  `particles_anim_v_frames` and `particles_anim_loop` become `hframes`, `vframes` and
+  `anim_loop`. Its `blend_mode` and `light_mode` are reported: write a `.material.json` for them.
+- `seed` is kept only with `use_fixed_seed`, since Godot picks another at random otherwise.
+- Turbulence, collisions, sub-emitters, trails, points given as textures and rings that don't
+  face the screen are reported: SlashEngine doesn't have them yet.
+  `report.converted.process_materials` counts the files written.
 
 ## Project settings
 

@@ -124,7 +124,7 @@ the flags change nothing there.
 
 Checks a scene, a `.prefab.json` file, a [`.frames.json`](scene-format.md#sprite-frames) file, a
 [`.material.json`](scene-format.md#materials) file, a [`.anim.json`](scene-format.md#animations)
-file, a [`.tileset.json`](scene-format.md#tile-sets) file, a [`.font.json`](scene-format.md#fonts)
+file, a [`.process_material.json`](scene-format.md#process-materials) file, a [`.tileset.json`](scene-format.md#tile-sets) file, a [`.font.json`](scene-format.md#fonts)
 file, a [`.theme.json`](scene-format.md#themes) file, an
 [`.audio.json`](scene-format.md#audio-streams) file, a
 [`.bus_layout.json`](scene-format.md#bus-layouts) file, a
@@ -144,7 +144,7 @@ slash-cli scene validate <file>
 For a prefab the result counts its `components` instead of `entities`, for a `.frames.json` or
 `.anim.json` file its `animations`, for a `.tileset.json` file its `tiles`, for a `.theme.json`
 file its `types`, for a `.bus_layout.json` file its `buses`, for a `.replay.json` file the
-`ticks` it covers, for a `.test.json` file its `tests`, for a `.font.json` or `.audio.json` file nothing more, and for a `.material.json` file the
+`ticks` it covers, for a `.test.json` file its `tests`, for a `.font.json`, `.audio.json` or `.process_material.json` file nothing more, and for a `.material.json` file the
 `instructions` its graph compiles to, of the 64 a material can run. A material with a
 [shader](scene-format.md#shaders) has no graph: its shader is compiled, and each error in it is
 reported at `/shader` with the shader file and line.
@@ -199,7 +199,8 @@ When the project has a
 
 ### scene format
 
-Rewrites a scene, prefab, `.frames.json`, `.material.json`, `.anim.json`, `.tileset.json`,
+Rewrites a scene, prefab, `.frames.json`, `.material.json`, `.anim.json`,
+`.process_material.json`, `.tileset.json`,
 `.font.json`, `.theme.json`, `.audio.json`, `.bus_layout.json`, `.replay.json` or `.test.json` file in [canonical form](scene-format.md#canonical-form).
 
 ```bash
@@ -213,6 +214,7 @@ Prints a JSON Schema: for scene or prefab files (generated from the registered c
 [`.frames.json` files](scene-format.md#sprite-frames), for
 [`.material.json` files](scene-format.md#materials), for
 [`.anim.json` files](scene-format.md#animations), for
+[`.process_material.json` files](scene-format.md#process-materials), for
 [`.tileset.json` files](scene-format.md#tile-sets), for [`.font.json` files](scene-format.md#fonts),
 for [`.theme.json` files](scene-format.md#themes), for
 [`.audio.json` files](scene-format.md#audio-streams), for
@@ -227,6 +229,7 @@ slash-cli schema prefab
 slash-cli schema frames
 slash-cli schema material
 slash-cli schema animation
+slash-cli schema process_material
 slash-cli schema tileset
 slash-cli schema font
 slash-cli schema theme

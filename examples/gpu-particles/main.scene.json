@@ -1,0 +1,50 @@
+{
+  "entities": {
+    "fire": {
+      "components": {
+        "GPUParticles2D": {
+          "amount": 48,
+          "process_material": "fire.process_material.json",
+          "texture": "dot.png"
+        },
+        "Transform2D": {
+          "position": [80.0, 150.0]
+        }
+      }
+    },
+    "snow": {
+      "components": {
+        "GPUParticles2D": {
+          "amount": 40,
+          "draw_order": "index",
+          "fixed_fps": 0,
+          "lifetime": 6.0,
+          "preprocess": 6.0,
+          "process_material": "snow.process_material.json",
+          "texture": "dot.png"
+        },
+        "Transform2D": {
+          "position": [160.0, 0.0]
+        }
+      }
+    },
+    "sparks": {
+      "components": {
+        "GPUParticles2D": {
+          "amount": 24,
+          "explosiveness": 1.0,
+          "lifetime": 0.6,
+          "one_shot": true,
+          "process_material": "sparks.process_material.json",
+          "seed": 7,
+          "texture": "dot.png",
+          "use_fixed_seed": true
+        },
+        "Transform2D": {
+          "position": [200.0, 90.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

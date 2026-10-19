@@ -1034,6 +1034,68 @@ void register_particle_components(ComponentRegistry& registry) {
         .describe("anim_speed_curve", curve);
     range(type, "anim_offset", "The frame it starts on, as a fraction of the frames", 0, 1)
         .describe("anim_offset_curve", curve);
+
+    registry.add<GPUParticles2D>()
+        .set_doc("Emits particles from the entity's Transform2D and moves them on the GPU, as "
+                 "Godot's GPUParticles2D, as its process_material file says. Emits finished "
+                 "when a one_shot's cycle has had time to end.")
+        .describe("emitting", {.doc = "Emit new particles. Setting it again restarts a one_shot, "
+                                      "which sets it back to false after one lifetime."})
+        .describe("amount", {.doc = "Particles alive at most: one cycle emits this many, spread "
+                                    "over lifetime.",
+                             .min = 1,
+                             .max = 1000000})
+        .describe("amount_ratio", {.doc = "The share of amount it emits.", .min = 0, .max = 1})
+        .describe("process_material",
+                  {.doc = "Project path of a .process_material.json file: how particles start "
+                          "and move. \"\" emits still white pixels."})
+        .describe("texture", {.doc = "Project path of a PNG or BMP file each particle draws; "
+                                     "\"\" draws a white pixel."})
+        .describe("lifetime",
+                  {.doc = "Seconds each particle lives and each cycle lasts.", .min = 0.001})
+        .describe(
+            "interp_to_end",
+            {.doc = "Ages every particle toward the end of its life, 0 to 1.", .min = 0, .max = 1})
+        .describe("one_shot", {.doc = "Emit one cycle, then stop."})
+        .describe("preprocess",
+                  {.doc = "Seconds it runs ahead when it starts, so it starts full.", .min = 0})
+        .describe("speed_scale", {.doc = "Multiplies time for its particles.", .min = 0})
+        .describe(
+            "explosiveness",
+            {.doc = "0 spreads emission over the cycle; 1 emits all at once.", .min = 0, .max = 1})
+        .describe("randomness",
+                  {.doc = "Randomizes when each particle is emitted, 0 to 1.", .min = 0, .max = 1})
+        .describe("use_fixed_seed",
+                  {.doc = "Use seed as it is, so every restart repeats; otherwise seed and the "
+                          "entity's ID vary the particles, and each one_shot restart differs."})
+        .describe("seed", {.doc = "The random seed; see use_fixed_seed."})
+        .describe("fixed_fps", {.doc = "Steps per second the particles move in; 0 steps once a "
+                                       "tick.",
+                                .min = 0,
+                                .max = 1000})
+        .describe("interpolate", {.doc = "Draw particles where they are between steps."})
+        .describe("fract_delta", {.doc = "A particle emitted partway through a step moves for "
+                                         "that part only, so emission is smooth."})
+        .describe("local_coords", {.doc = "Particles move with the entity; false leaves them "
+                                          "where they were emitted."})
+        .describe("draw_order",
+                  {.doc = "\"index\" draws in emission slots' order; \"lifetime\" draws the "
+                          "youngest on top, \"reverse_lifetime\" the oldest.",
+                   .choices = {"index", "lifetime", "reverse_lifetime"}})
+        .describe("texture_filter",
+                  {.doc = "As Sprite2D's.", .choices = {"inherit", "linear", "nearest"}})
+        .describe("hframes", {.doc = "Columns of frames in the texture.", .min = 1, .max = 16384})
+        .describe("vframes", {.doc = "Rows of frames in the texture.", .min = 1, .max = 16384})
+        .describe("anim_loop", {.doc = "Frames past the last start again from the first; false "
+                                       "stays on the last."})
+        .describe("z_index", {.doc = "As Sprite2D's.", .min = -4096, .max = 4096})
+        .describe("z_as_relative", {.doc = "As Sprite2D's."})
+        .describe("visible", {.doc = "Draw the particles and its children; they move either way."})
+        .describe("material", {.doc = "Project path of a .material.json file; \"\" for none."})
+        .describe("material_params", {.doc = "Values for the material's params by name."})
+        .describe("light_mask", {.doc = "Lit by lights whose range_item_cull_mask shares a bit.",
+                                 .min = 0,
+                                 .max = kMaxMask});
 }
 
 void register_audio_components(ComponentRegistry& registry) {
