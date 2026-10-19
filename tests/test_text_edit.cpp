@@ -517,8 +517,8 @@ TEST_CASE("the wheel scrolls, the caret stays in view and a scroll bar shows whe
     }
     f.editor("notes", {20, 20, 300, 104}, "\"text\": \"" + lines + "\"");
     ui::TextEditView view = f.view("notes");
-    CHECK(view.v_scroll_visible);
-    CHECK_FALSE(view.h_scroll_visible);
+    CHECK(view.v_bar.visible);
+    CHECK_FALSE(view.h_bar.visible);
     CHECK(view.total_rows == 10);
     CHECK(view.first_visible_line == 0);
     CHECK(view.last_visible_line == 3);
@@ -673,7 +673,7 @@ TEST_CASE("a tap puts the caret where the finger lifts, and a drag scrolls") {
     f.send(touch_drag(x, y - kRow, 0.0F, -kRow));
     f.send(touch_drag(x, y - (2.0F * kRow), 0.0F, -kRow));
     f.send(touch(x, y - (2.0F * kRow), false));
-    CHECK(f.edit("notes").scroll_vertical == 2.0);
+    CHECK(f.edit("notes").scroll_vertical == doctest::Approx(2.0));
     CHECK(f.caret("notes") == Caret{1, 2});
 }
 
@@ -805,6 +805,206 @@ TEST_CASE("check finds a Label on a TextEdit and a language that isn't one") {
                    });
 }
 
+TEST_CASE("a TextEdit's scroll bar pages, drags and takes the wheel, and leaves the caret") {
+    Editors f;
+    std::string lines;
+    for (int i = 0; i < 10; ++i) {
+        lines += (i == 0 ? "" : "\\n") + std::string("line ") + std::to_string(i);
+    }
+    f.editor("notes", {20, 20, 300, 104}, "\"text\": \"" + lines + "\"");
+    f.step();
+    // Four rows show of ten: the bar's page and range, as _update_scrollbars sets them.
+    ui::TextEditView view = f.view("notes");
+    CHECK(view.v_bar.visible);
+    CHECK_FALSE(view.h_bar.visible);
+    CHECK(view.v_bar.page == 4.0);
+    CHECK(view.v_bar.max_value == 10.0);
+    // Its grabber is 4 / 10 of the 84 pixels it moves in, and 8: 24 to 65.6 on screen. A
+    // click below it goes down a page; the pointer over the bar has left the TextEdit's text.
+    CHECK(f.send({click(316, 100, true), click(316, 100, false)}).empty());
+    CHECK(f.edit("notes").scroll_vertical == 4.0);
+    CHECK(f.rows("notes").front() == "line 4");
+    CHECK(f.caret("notes") == Caret{0, 0});
+    const bool unfocused = ui::focus_owner(f.world) == entt::null;
+    CHECK(unfocused);
+    // Now it spans 57.6 to 99.2. Grabbed and dragged 21 pixels up, a quarter of its area, it
+    // goes back two and a half lines.
+    f.send({click(316, 70, true), drag(316, 49)});
+    CHECK(f.edit("notes").scroll_vertical == doctest::Approx(1.5));
+    f.send(click(316, 49, false));
+    // The wheel over it moves an eighth of a page.
+    f.send(wheel(316, 60, "wheel_down"));
+    CHECK(f.edit("notes").scroll_vertical == doctest::Approx(2.0));
+    CHECK(f.caret("notes") == Caret{0, 0});
+    // Back over the text, the pointer enters the TextEdit again.
+    CHECK(f.send(drag(100, 60)) == "mouse_entered notes");
+}
+
+TEST_CASE("a TextEdit's horizontal scroll bar pages its text sideways") {
+    Editors f;
+    f.editor("notes", {20, 20, 200, 80}, R"("text": "abcdefghijklmnopqrstuvwxyzabcdefghij")");
+    f.step();
+    // 36 characters are 432 pixels, and 192 show between the margins.
+    const ui::TextEditView view = f.view("notes");
+    CHECK(view.h_bar.visible);
+    CHECK_FALSE(view.v_bar.visible);
+    CHECK(view.h_bar.page == 192.0);
+    CHECK(view.h_bar.max_value == 432.0);
+    // The bar runs along the bottom, short of where the vertical one would be.
+    CHECK(view.h_bar.position.x == 0.0F);
+    CHECK(view.h_bar.size.x == 192.0F);
+    // Right of its grabber: a page on.
+    const float y = 20.0F + 80.0F - (view.h_bar.size.y / 2.0F);
+    f.send({click(200, y, true), click(200, y, false)});
+    CHECK(f.edit("notes").scroll_horizontal == 192);
+    CHECK(f.caret("notes") == Caret{0, 0});
+}
+
+TEST_CASE("a TextEdit's scroll bar grabber lights up under the pointer and while dragged") {
+    Editors f;
+    std::string lines;
+    for (int i = 0; i < 10; ++i) {
+        lines += (i == 0 ? "" : "\\n") + std::string("line ") + std::to_string(i);
+    }
+    f.editor("notes", {20, 20, 300, 104}, "\"text\": \"" + lines + "\"");
+    f.step();
+    // The grabber is the last thing drawn over the TextEdit.
+    const auto grabber = [&] {
+        const ui::Layout placed = f.layout();
+        return placed.overlays.at(f.world.find("notes")).back().style.bg_color;
+    };
+    const slash::Vec4 normal = grabber();
+    f.send(drag(316, 40));
+    const slash::Vec4 highlight = grabber();
+    CHECK(highlight != normal);
+    f.send(click(316, 40, true));
+    const slash::Vec4 pressed = grabber();
+    CHECK(pressed != highlight);
+    CHECK(pressed != normal);
+    f.send(click(316, 40, false));
+    CHECK(grabber() == highlight);
+    f.send(drag(100, 200));
+    CHECK(grabber() == normal);
+}
+
+TEST_CASE("search finds text forwards and backwards, by case and whole words, going round") {
+    const std::string_view text = "one two one\nOne\ntwone";
+    using Found = std::optional<std::array<int, 2>>;
+    const auto at = [](int line, int column) { return Found{{line, column}}; };
+    const ui::SearchOptions none;
+    CHECK(ui::text_edit_search(text, "one", none, 0, 0) == at(0, 0));
+    CHECK(ui::text_edit_search(text, "one", none, 0, 1) == at(0, 8));
+    // Not matching case, "One" is one; then inside "twone"; then round to the start.
+    CHECK(ui::text_edit_search(text, "one", none, 0, 9) == at(1, 0));
+    CHECK(ui::text_edit_search(text, "one", none, 1, 1) == at(2, 2));
+    CHECK(ui::text_edit_search(text, "one", none, 2, 3) == at(0, 0));
+    CHECK(ui::text_edit_search(text, "one", {.match_case = true}, 0, 9) == at(2, 2));
+    CHECK(ui::text_edit_search(text, "one", {.whole_words = true}, 1, 1) == at(0, 0));
+    // Backwards takes a match starting at or before the column.
+    const ui::SearchOptions back{.backwards = true};
+    CHECK(ui::text_edit_search(text, "one", back, 0, 8) == at(0, 8));
+    CHECK(ui::text_edit_search(text, "one", back, 0, 7) == at(0, 0));
+    CHECK(ui::text_edit_search(text, "one", back, 2, 1) == at(1, 0));
+    CHECK(ui::text_edit_search(text, "one", {.match_case = true, .backwards = true}, 1, 0) ==
+          at(0, 8));
+    CHECK(ui::text_edit_search(text, "zzz", none, 0, 0) == Found{});
+    CHECK(ui::text_edit_search(text, "one", none, 5, 0) == Found{});
+    // Every match in order, ignoring backwards.
+    CHECK(ui::text_edit_search_all(text, "one", back) ==
+          std::vector<std::array<int, 2>>{{0, 0}, {0, 8}, {1, 0}, {2, 2}});
+    CHECK(ui::text_edit_search_all(text, "one", {.match_case = true, .whole_words = true}) ==
+          std::vector<std::array<int, 2>>{{0, 0}, {0, 8}});
+    // Non-Latin letters fold too.
+    CHECK(ui::text_edit_search("ΑΛΦΑ alpha", "λφ", none, 0, 0) == at(0, 1));
+}
+
+TEST_CASE("search_text draws its matches, and highlight_all_occurrences the selected word's") {
+    Editors f;
+    f.editor("notes", {20, 20, 360, 104}, R"("text": "one two one\nOne\ntwone",
+                                              "search_text": "one")");
+    // A box under each match, and its outline: "one two " is 82 pixels.
+    ui::Layout placed = f.layout();
+    const entt::entity entity = f.world.find("notes");
+    const ui::TextEditView& view = placed.text_edits.at(entity);
+    CHECK(view.search_results == std::vector<std::array<int, 2>>{{0, 0}, {0, 8}, {1, 0}, {2, 2}});
+    std::vector<ui::Box> under = placed.boxes.at(entity);
+    REQUIRE(under.size() == 1 + (4 * 5));
+    CHECK(under[1].position == Vec2{kMargin, kMargin});
+    CHECK(under[1].size == Vec2{3.0F * kBox, kRow});
+    CHECK(under[1].style.bg_color == slash::Vec4{0.3F, 0.3F, 0.3F, 1.0F});
+    // The outline is a pixel wide, centered on the box's edges.
+    CHECK(under[2].position == Vec2{kMargin - 0.5F, kMargin - 0.5F});
+    CHECK(under[2].size == Vec2{(3.0F * kBox) + 1.0F, 1.0F});
+    CHECK(under[2].style.bg_color == slash::Vec4{0.3F, 0.3F, 0.3F, 0.4F});
+    CHECK(under[6].position == Vec2{kMargin + 82.0F, kMargin});
+    // Whole words and matching case leave the first line's two.
+    f.set("notes", R"({"TextEdit": {"search_flags": ["match_case", "whole_words"]}})");
+    CHECK(f.view("notes").search_results == std::vector<std::array<int, 2>>{{0, 0}, {0, 8}});
+
+    // The selected word's occurrences, matching case and whole words, under the text too.
+    f.set("notes", R"({"TextEdit": {"search_text": "", "highlight_all_occurrences": true}})");
+    ui::grab_focus(f.world, entity);
+    f.step();
+    f.send({key("Right", true, kShift), key("Right", true, kShift), key("Right", true, kShift)});
+    CHECK(f.selection("notes") == range(0, 0, 0, 3));
+    placed = f.layout();
+    under = placed.boxes.at(entity);
+    // The style box, the focus box, the selection, then the two occurrences.
+    REQUIRE(under.size() == 5);
+    CHECK(under[3].position == Vec2{kMargin, kMargin});
+    CHECK(under[3].style.bg_color == slash::Vec4{0.5F, 0.5F, 0.5F, 0.25F});
+    CHECK(under[4].position == Vec2{kMargin + 82.0F, kMargin});
+    CHECK(under[4].size == Vec2{3.0F * kBox, kRow});
+    // Selected whitespace highlights nothing.
+    f.send({key("Home", true), key("End", true, kShift)});
+    f.set("notes", R"({"TextEdit": {"text": "a  b"}})");
+    f.send({key("Home", true), key("Right", true), key("Right", true, kShift)});
+    CHECK(f.selection("notes") == range(0, 1, 0, 2));
+    CHECK(f.layout().boxes.at(entity).size() == 3);
+}
+
+TEST_CASE("a CodeHighlighter colors a TextEdit's text, fainter when it can't be edited") {
+    Editors f;
+    f.editor("code", {20, 20, 360, 104}, R"("text": "if 1\nx")");
+    f.set("code", R"({"CodeHighlighter": {"number_color": [0, 1, 0, 1],
+                                          "symbol_color": [0, 0, 1, 1],
+                                          "keyword_colors": {"if": [1, 0, 0, 1]}}})");
+    const slash::Vec4 font{0.875F, 0.875F, 0.875F, 1.0F};
+    const auto colors = [&] {
+        const ui::Layout placed = f.layout();
+        return placed.label(f.world.find("code"))->colors;
+    };
+    using Colors = std::vector<std::pair<std::size_t, slash::Vec4>>;
+    // Each line starts in the font's color, then the highlighter's, at byte offsets in the
+    // drawn text: "if" red, the space blue, "1" green, and "x" the font's.
+    CHECK(colors() == Colors{{0, font},
+                             {0, {1, 0, 0, 1}},
+                             {2, {0, 0, 1, 1}},
+                             {3, {0, 1, 0, 1}},
+                             {4, font},
+                             {4, font}});
+    // Not editable, the text is drawn in font_readonly_color and no color is more opaque.
+    f.set("code", R"({"TextEdit": {"editable": false}})");
+    const slash::Vec4 readonly{0.875F, 0.875F, 0.875F, 0.5F};
+    CHECK(colors() == Colors{{0, readonly},
+                             {0, {1, 0, 0, 0.5F}},
+                             {2, {0, 0, 1, 0.5F}},
+                             {3, {0, 1, 0, 0.5F}},
+                             {4, readonly},
+                             {4, readonly}});
+    // The glyphs take them: the "1" is drawn green.
+    const ui::Layout placed = f.layout();
+    const ui::DrawList drawn = ui::draw_calls(placed, f.world, *ui::fonts(f.world));
+    bool green = false;
+    for (const ui::DrawCall& call : drawn.calls) {
+        for (const auto& vertex : call.vertices) {
+            green = green || (call.source == ui::DrawCall::Source::Atlas && vertex.rgba[0] == 0 &&
+                              vertex.rgba[1] > 0 && vertex.rgba[2] == 0);
+        }
+    }
+    CHECK(green);
+}
+
 namespace {
 
 struct Session {
@@ -859,4 +1059,57 @@ TEST_CASE("input.inject types into a TextEdit, and ui.layout reports its caret a
     CHECK(edit["text"] == "Dear Mira,\nSee you");
     CHECK(edit["caret_line"] == 1);
     CHECK(edit["caret_column"] == 4);
+}
+
+TEST_CASE("ui.search finds text in a TextEdit, and ui.layout reports its matches and bars") {
+    Session s;
+    s.ok("entity.create", R"({"id": "notes", "components": {
+        "Control": {"offset_left": 20, "offset_top": 20, "offset_right": 320,
+                    "offset_bottom": 70},
+        "TextEdit": {"text": "one two one\nOne\ntwone", "caret_line": 0, "caret_column": 1}}})");
+    // From the caret, or from where it is told.
+    CHECK(s.ok("ui.search", R"({"id": "notes", "text": "one"})") == parse(R"({"found": [0, 8]})"));
+    CHECK(s.ok("ui.search", R"({"id": "notes", "text": "one", "from": [1, 1]})") ==
+          parse(R"({"found": [2, 2]})"));
+    CHECK(s.ok("ui.search", R"({"id": "notes", "text": "one", "from": [0, 7],
+                                "flags": ["backwards"]})") == parse(R"({"found": [0, 0]})"));
+    CHECK(s.ok("ui.search", R"({"id": "notes", "text": "zzz"})") == parse(R"({"found": null})"));
+    CHECK(s.ok("ui.search", R"({"id": "notes", "text": "one", "all": true,
+                                "flags": ["match_case", "whole_words"]})") ==
+          parse(R"({"matches": [[0, 0], [0, 8]], "count": 2})"));
+    CHECK(s.ok("ui.search", R"({"id": "notes", "text": "one", "all": true, "max_results": 1})") ==
+          parse(R"({"matches": [[0, 0]], "count": 4})"));
+    // With no text, the TextEdit's search_text and search_flags.
+    s.ok("component.set", R"({"id": "notes", "components": {"TextEdit": {
+        "search_text": "ONE", "search_flags": ["match_case"]}}})");
+    CHECK(s.ok("ui.search", R"({"id": "notes", "all": true})") ==
+          parse(R"({"matches": [], "count": 0})"));
+    // ui.layout reports where search_text shows and each scroll bar's grabber, on screen: the
+    // vertical one at the right, between the style's margins.
+    s.ok("component.set", R"({"id": "notes", "components": {"TextEdit": {
+        "search_text": "one", "search_flags": []}}})");
+    json::Value layout = s.ok("ui.layout", R"({"ids": ["notes"]})");
+    json::Value& edit = layout["controls"].as_array()[0]["text_edit"];
+    // Rows partly in view count: two show of the three.
+    CHECK(edit["search_results"] == parse("[[0, 0], [0, 8], [1, 0]]"));
+    REQUIRE(edit["v_scroll_bar"].is_object());
+    const json::Array& grabber = edit["v_scroll_bar"]["grabber"].as_array();
+    REQUIRE(grabber.size() == 4);
+    CHECK(grabber[0] == 312);
+    CHECK(grabber[1] == 24);
+    CHECK(grabber[2] == 8);
+
+    // Errors name the param.
+    const auto fails = [&](std::string_view params) {
+        command::Reply reply = s.session->call("ui.search", parse(params));
+        CHECK_FALSE(reply.ok);
+        return reply.message;
+    };
+    CHECK(fails(R"({"id": "notes", "text": "one", "from": [3, 0]})") ==
+          "/from/0: \"notes\" has 3 lines");
+    CHECK(fails(R"({"id": "notes", "text": "one", "from": [1, 4]})") ==
+          "/from/1: line 1 has 3 characters");
+    CHECK(fails(R"({"id": "notes", "text": ""})") == "/text: the text to find is empty");
+    s.ok("entity.create", R"({"id": "label", "components": {"Label": {}}})");
+    CHECK(fails(R"({"id": "label", "text": "a"})") == "/id: \"label\" has no TextEdit");
 }

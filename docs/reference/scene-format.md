@@ -501,6 +501,13 @@ A reference must name an entity that exists in the same scene.
 | | `highlight_current_line` | `bool` | `false` | Draw `current_line_color` behind the caret's row |
 | | `draw_tabs`, `draw_spaces` | `bool` | `false` | Draw an arrow for each tab, a dot for each space |
 | | `text_direction`, `language` | `std::string` | `"auto"`, `""` | As `Label`'s |
+| | `highlight_all_occurrences` | `bool` | `false` | Mark the other copies of the selected text in view, whole words of the same case |
+| | `search_text` | `std::string` | `""` | [Marked](#searching-and-highlighting-code) wherever it occurs in view |
+| | `search_flags` | `std::vector<std::string>` | `[]` | How `search_text` matches: `match_case`, `whole_words` |
+| `CodeHighlighter` | `number_color`, `symbol_color`, `function_color`, `member_variable_color` | `Vec4` | `[0, 0, 0, 1]` | [Colors](#searching-and-highlighting-code) for numbers, symbols, a word before `(` and a word after `.` in the `TextEdit` on its entity |
+| | `keyword_colors` | `std::map<std::string, Vec4>` | `{}` | Words and their colors; opaque black colors nothing, as Godot's `Color()` |
+| | `member_keyword_colors` | `std::map<std::string, Vec4>` | `{}` | Words colored as keywords unless they come after a `.` |
+| | `color_regions` | `std::map<std::string, Vec4>` | `{}` | Regions by `"start end"` keys of symbols, such as `"/* */"`; a key with no end, such as `"#"`, runs to the line's end |
 | `BoxContainer` | `vertical` | `bool` | `false` | Lays its children out in a column instead of a row |
 | | `alignment` | `std::string` | `"begin"` | Where they go when none expands: `begin`, `center` or `end` |
 | `GridContainer` | `columns` | `int` | `1` | Children per row, 1 to 1024 |
@@ -2316,7 +2323,9 @@ input events as Godot's `TextEdit::gui_input` does. From
   triple click a line, and a drag selects by character, word or line.
 - The wheel scrolls three lines a notch (fifteen with Alt, sideways with Shift); a finger's
   tap places the caret and its drag scrolls. The view follows the caret, a scroll bar shows when
-  the text doesn't fit (it can't be dragged yet), and tabs stop every four spaces.
+  the text doesn't fit, and tabs stop every four spaces. The scroll bars work as a
+  `ScrollBar`'s: a click beside the grabber pages, the grabber drags and the wheel over one
+  moves an eighth of a page; the caret stays where it is.
 - `text`, `caret_line`, `caret_column`, `scroll_vertical` and `scroll_horizontal` are the
   truth: the field writes them as it is edited. Text set from outside is set as Godot's
   `set_text` sets it, as one step undo takes back, and a caret moved from outside drops the
@@ -2330,10 +2339,52 @@ input events as Godot's `TextEdit::gui_input` does. From
   `highlight_current_line`, the selection, the text (`font_readonly_color` when not `editable`,
   `font_placeholder_color` for the placeholder, `font_selected_color` where selected if not
   transparent), the caret, an input method's composition underlined and the scroll bars, in
-  the `VScrollBar` and `HScrollBar` theme types' styles. Its minimum size is its style box's
-  margins, plus its text with `scroll_fit_content_height` or `scroll_fit_content_width`.
-- Not yet: several carets, the context menu, gutters, the minimap, syntax highlighting, search,
-  drag and drop of text, middle-click paste, dragging the scroll bars and smooth scrolling.
+  the `VScrollBar` and `HScrollBar` theme types' styles, the grabber lit under the pointer and
+  while dragged. Its minimum size is its style box's margins, plus its text with
+  `scroll_fit_content_height` or `scroll_fit_content_width`.
+- Not yet: several carets, the context menu, gutters, the minimap, drag and drop of text,
+  middle-click paste and smooth scrolling.
+
+### Searching and highlighting code
+
+A `TextEdit` marks text it is told to look for and colors code, as Godot's `TextEdit` search
+highlights and `CodeHighlighter` do:
+
+```json
+"script": {
+  "components": {
+    "Control": {"custom_minimum_size": [0.0, 120.0]},
+    "TextEdit": {"text": "func jump():\n\tvelocity.y = -400 # up", "search_text": "velocity",
+                 "highlight_all_occurrences": true},
+    "CodeHighlighter": {"number_color": [0.6, 1, 0.7, 1], "symbol_color": [0.7, 0.8, 1, 1],
+                        "function_color": [0.3, 0.8, 1, 1],
+                        "member_variable_color": [0.7, 0.9, 1, 1],
+                        "keyword_colors": {"func": [1, 0.4, 0.5, 1]},
+                        "color_regions": {"#": [0.8, 0.8, 0.8, 0.5], "\" \"": [1, 0.9, 0.6, 1]}}
+  }
+}
+```
+
+- `search_text` is marked wherever it occurs in the rows in view, in `search_result_color`
+  with a one-pixel `search_result_border_color` outline. It ignores case unless `search_flags`
+  has `match_case`, and with `whole_words` takes only matches with a symbol, a space or the
+  line's edge on each side. [`ui.search`](commands.md#uisearch) finds the next match from the
+  caret, or every match, and `ui.layout` reports the ones in view.
+- With `highlight_all_occurrences`, a selection that isn't only whitespace marks its other
+  copies in view, whole words of the same case, in `word_highlighted_color`.
+- A `CodeHighlighter` on the entity colors each line as Godot's
+  `CodeHighlighter::_get_line_syntax_highlighting_impl` does: color regions first, from their
+  start key to their end key (over several lines until it comes) or to the line's end, the
+  longest start key tried first; in a region that starts with `"` or `'`, a `\` and the
+  character after it take `symbol_color`. Then keywords, member keywords (not after a `.`), a
+  word before `(` (spaces between allowed) in `function_color`, a word after `.` in
+  `member_variable_color`, symbols, and numbers, with hex digits after `0x`, a decimal point,
+  an `f` and an exponent's `e`. The rest takes the `TextEdit`'s font color, and when it isn't
+  `editable` no color is more opaque than `font_readonly_color`. Selected text takes
+  `font_selected_color` when it isn't transparent.
+- `scene validate` reports a `CodeHighlighter` with no `TextEdit` beside it and color region
+  keys Godot's `add_color_region` refuses: a start or end that isn't all symbols, an empty
+  start, or two regions with the same start.
 
 ### Theme items
 
@@ -2450,6 +2501,9 @@ its `theme_override_*` fields, then its [themes](#themes), then the defaults bel
 | | color | `caret_color` | `[0.875, 0.875, 0.875, 1]` |
 | | color | `selection_color` | `[0.5, 0.5, 0.5, 1]` |
 | | color | `current_line_color` | `[0.25, 0.25, 0.26, 0.8]` |
+| | color | `word_highlighted_color` | `[0.5, 0.5, 0.5, 0.25]` |
+| | color | `search_result_color` | `[0.3, 0.3, 0.3, 1]` |
+| | color | `search_result_border_color` | `[0.3, 0.3, 0.3, 0.4]` |
 | | color | `background_color` | `[0, 0, 0, 0]`, none |
 | | constant | `line_spacing` | `4` |
 | | constant | `outline_size` | `0` |

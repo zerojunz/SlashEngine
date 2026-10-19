@@ -1,0 +1,36 @@
+{
+  "entities": {
+    "script": {
+      "components": {
+        "CodeHighlighter": {
+          "color_regions": {
+            "\" \"": [1.0, 0.93, 0.63, 1.0],
+            "/* */": [0.8, 0.85, 0.92, 0.5],
+            "//": [0.8, 0.85, 0.92, 0.5]
+          },
+          "function_color": [0.34, 0.69, 1.0, 1.0],
+          "keyword_colors": {
+            "float": [1.0, 0.44, 0.52, 1.0],
+            "if": [1.0, 0.55, 0.8, 1.0],
+            "void": [1.0, 0.44, 0.52, 1.0]
+          },
+          "member_variable_color": [0.74, 0.88, 1.0, 1.0],
+          "number_color": [0.63, 1.0, 0.88, 1.0],
+          "symbol_color": [0.67, 0.79, 1.0, 1.0]
+        },
+        "Control": {
+          "offset_bottom": 168.0,
+          "offset_left": 8.0,
+          "offset_right": 312.0,
+          "offset_top": 8.0
+        },
+        "TextEdit": {
+          "highlight_all_occurrences": true,
+          "search_text": "velocity",
+          "text": "// Jumps when the button is pressed.\nvoid jump(Player& player) {\n\tif (player.on_floor) {\n\t\tplayer.velocity.y = -400.0f;\n\t\tplay(\"jump.wav\");\n\t}\n}\n\n/* Falls faster than it rises,\n   as players expect. */\nvoid fall(Player& player, float delta) {\n\tplayer.velocity.y += 980.0f * delta;\n}"
+        }
+      }
+    }
+  },
+  "format": 1
+}

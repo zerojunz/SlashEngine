@@ -789,12 +789,15 @@ void register_ui_components(ComponentRegistry& registry) {
                  "caret in it; typing, an input method and the on-screen keyboard insert at the "
                  "caret; ui_text_newline breaks the line; ui_text_* actions move the caret, "
                  "select, delete and scroll; ui_cut, ui_copy, ui_paste, ui_undo and ui_redo "
-                 "work the clipboard and undo. Emits text_changed, text_set, lines_edited_from "
-                 "{\"from_line\", \"to_line\"} and caret_changed. Theme items: normal, "
-                 "read_only and focus styles, font, font_size, font_color, font_readonly_color, "
-                 "font_selected_color, font_placeholder_color, font_outline_color, outline_size, "
-                 "caret_color, caret_background_color, caret_width, selection_color, "
-                 "current_line_color, background_color and line_spacing.")
+                 "work the clipboard and undo; its scroll bars page, drag and take the wheel. "
+                 "A CodeHighlighter on the entity colors its text. Emits text_changed, text_set, "
+                 "lines_edited_from {\"from_line\", \"to_line\"} and caret_changed. Theme "
+                 "items: normal, read_only and focus styles, font, font_size, font_color, "
+                 "font_readonly_color, font_selected_color, font_placeholder_color, "
+                 "font_outline_color, outline_size, caret_color, caret_background_color, "
+                 "caret_width, selection_color, current_line_color, word_highlighted_color, "
+                 "search_result_color, search_result_border_color, background_color and "
+                 "line_spacing, and the scroll bars' ScrollBar items.")
         .describe("text", {.doc = R"(Lines break at "\n".)"})
         .describe("placeholder_text", {.doc = "Shown, dimmed, while the text is empty."})
         .describe("editable", {.doc = "Typing changes the text; off, it can still be selected "
@@ -851,8 +854,36 @@ void register_ui_components(ComponentRegistry& registry) {
                   {.doc = "Draw current_line_color behind the caret's line."})
         .describe("draw_tabs", {.doc = "Draw an arrow for each tab."})
         .describe("draw_spaces", {.doc = "Draw a dot for each space."})
+        .describe("highlight_all_occurrences",
+                  {.doc = "Mark the other copies of the selected text in view, whole words of "
+                          "the same case, in word_highlighted_color."})
+        .describe("search_text",
+                  {.doc = "Marked wherever it occurs in view, in search_result_color with a "
+                          "search_result_border_color border. ui.search finds it."})
+        .describe("search_flags",
+                  {.doc = "How search_text matches.", .choices = {"match_case", "whole_words"}})
         .describe("text_direction", text_direction)
         .describe("language", language);
+
+    registry.add<CodeHighlighter>()
+        .set_doc("Colors the text of the TextEdit on its entity as code, as Godot's "
+                 "CodeHighlighter: keywords, then members not after a '.', function names before "
+                 "'(', member variables after '.', symbols and numbers (hex, floats, exponents) "
+                 "in their colors, the rest in the TextEdit's font_color. A color region colors "
+                 "from its start key to its end key, over several lines, or to the line's end; a "
+                 "'\\' escapes the next character in a region that starts with a quote.")
+        .describe("number_color", {.doc = "Numbers."})
+        .describe("symbol_color", {.doc = "Punctuation and operators, and escapes in strings."})
+        .describe("function_color", {.doc = "A word before '('."})
+        .describe("member_variable_color", {.doc = "A word after '.'."})
+        .describe("keyword_colors", {.doc = "Words and their colors, e.g. {\"func\": [1, 0.4, 0.4, "
+                                            "1]}; opaque black colors nothing."})
+        .describe("member_keyword_colors",
+                  {.doc = "Words colored as keywords unless they come after a '.'."})
+        .describe("color_regions",
+                  {.doc = "Regions by \"start end\" keys of symbols, e.g. {\"\\\" \\\"\": "
+                          "string color, \"/* */\": comment color}; a key with no end, e.g. "
+                          "\"#\", runs to the line's end. Longer start keys are tried first."});
 
     registry.add<BoxContainer>()
         .set_doc("Lays out its children in a row, or a column when vertical, as Godot's "

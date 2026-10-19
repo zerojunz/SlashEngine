@@ -109,6 +109,12 @@ struct ScrollStatus {
     double time_since_motion = 0.0;
 };
 
+// A TextEdit's scroll bars', which are its children in Godot.
+struct TextEditBars {
+    BarStatus h;
+    BarStatus v;
+};
+
 [[nodiscard]] bool idle(const BarStatus& status) {
     return status.highlight == 0 && !status.decrement_pressed && !status.increment_pressed &&
            !status.dragging;
@@ -191,6 +197,7 @@ struct GuiState {
     std::map<std::string, SliderStatus, std::less<>> sliders;     // each Slider's
     std::map<std::string, ScrollBarStatus, std::less<>> scroll_bars; // each ScrollBar's
     std::map<std::string, ScrollStatus, std::less<>> scrolls;        // each ScrollContainer's
+    std::map<std::string, TextEditBars, std::less<>> text_edit_bars; // each TextEdit's in use
     std::string followed;  // the focus follow_focus last scrolled to
     std::string clipboard; // the world's clipboard, which a backend shares with the system's
     std::vector<PopupStatus> popups;                  // the popup menus open, the last on top
@@ -241,8 +248,9 @@ const GuiState* state_of(const world::World& world) {
     return found != nullptr ? found->get() : nullptr;
 }
 
-// A ScrollContainer's bars have no entities, so the gui system names one by its container's ID
-// and the bar's name, as Godot names them _h_scroll and _v_scroll. IDs have no '/'.
+// A ScrollContainer's or TextEdit's bars have no entities, so the gui system names one by its
+// control's ID and the bar's name, as Godot names a ScrollContainer's _h_scroll and _v_scroll.
+// IDs have no '/'.
 constexpr std::string_view kHBar = "/h_scroll";
 constexpr std::string_view kVBar = "/v_scroll";
 
@@ -276,8 +284,11 @@ auto* bar_status(State& state, std::string_view id) {
         const auto found = state.scroll_bars.find(id);
         return found != state.scroll_bars.end() ? &found->second.bar : none;
     }
-    const auto found = state.scrolls.find(owner_of(id));
-    if (found == state.scrolls.end()) {
+    if (const auto found = state.scrolls.find(owner_of(id)); found != state.scrolls.end()) {
+        return bar == Bar::Horizontal ? &found->second.h : &found->second.v;
+    }
+    const auto found = state.text_edit_bars.find(owner_of(id));
+    if (found == state.text_edit_bars.end()) {
         return none;
     }
     return bar == Bar::Horizontal ? &found->second.h : &found->second.v;
@@ -2582,7 +2593,8 @@ private:
         const Bar bar = bar_named(id);
         const std::string_view owner = owner_of(id);
         const entt::entity entity = owner.empty() ? entt::null : world_.find(owner);
-        if (bar != Bar::Own && !layout_.scrolls.contains(entity)) {
+        if (bar != Bar::Own && !layout_.scrolls.contains(entity) &&
+            !layout_.text_edits.contains(entity)) {
             return {};
         }
         return {.entity = entity, .bar = bar};
@@ -2670,15 +2682,8 @@ private:
         }
         const Vec2 at = local->apply(point);
         if (!found->clips || inside(found->size, at)) {
-            if (const auto scroll = layout_.scrolls.find(entity);
-                scroll != layout_.scrolls.end() && !world_.id_of(entity).empty()) {
-                for (const Bar bar : {Bar::Vertical, Bar::Horizontal}) {
-                    const ScrollBarView& view =
-                        bar == Bar::Vertical ? scroll->second.v : scroll->second.h;
-                    if (view.visible && inside(view.size, at - view.position)) {
-                        return {.entity = entity, .bar = bar};
-                    }
-                }
+            if (const Bar bar = bar_at(entity, at); bar != Bar::Own) {
+                return {.entity = entity, .bar = bar};
             }
             const std::vector<entt::entity>& children = kids(entity);
             for (const entt::entity child : std::views::reverse(children)) {
@@ -2691,6 +2696,20 @@ private:
             return {};
         }
         return has_point(entity, at) ? Target{.entity = entity, .bar = Bar::Own} : Target{};
+    }
+
+    // The bar of a ScrollContainer's or TextEdit's at a point in its rect, if one is there.
+    [[nodiscard]] Bar bar_at(entt::entity entity, Vec2 at) const {
+        if (world_.id_of(entity).empty()) {
+            return Bar::Own;
+        }
+        for (const Bar bar : {Bar::Vertical, Bar::Horizontal}) {
+            const ScrollBarView* view = bar_view(entity, bar);
+            if (view != nullptr && view->visible && inside(view->size, at - view->position)) {
+                return bar;
+            }
+        }
+        return Bar::Own;
     }
 
     // Rect2::has_point for a rect at the origin.
@@ -3730,36 +3749,61 @@ private:
         if (bar == Bar::Own) {
             return state_.scroll_bars[id(entity)].bar;
         }
+        if (layout_.text_edits.contains(entity)) {
+            TextEditBars& bars = state_.text_edit_bars[id(entity)];
+            return bar == Bar::Horizontal ? bars.h : bars.v;
+        }
         ScrollStatus& scroll = scroll_status(entity);
         return bar == Bar::Horizontal ? scroll.h : scroll.v;
     }
 
-    // A bar as the layout measured it: a ScrollBar's, or one of a ScrollContainer's.
+    // A bar as the layout measured it: a ScrollBar's, or one of a ScrollContainer's or
+    // TextEdit's.
     [[nodiscard]] const ScrollBarView* bar_view(entt::entity entity, Bar bar) const {
         if (bar == Bar::Own) {
             const auto found = layout_.scroll_bars.find(entity);
             return found != layout_.scroll_bars.end() ? &found->second : nullptr;
         }
-        const auto found = layout_.scrolls.find(entity);
-        if (found == layout_.scrolls.end()) {
+        if (const auto found = layout_.scrolls.find(entity); found != layout_.scrolls.end()) {
+            return bar == Bar::Horizontal ? &found->second.h : &found->second.v;
+        }
+        const auto found = layout_.text_edits.find(entity);
+        if (found == layout_.text_edits.end()) {
             return nullptr;
         }
-        return bar == Bar::Horizontal ? &found->second.h : &found->second.v;
+        return bar == Bar::Horizontal ? &found->second.h_bar : &found->second.v_bar;
     }
 
-    // A bar's range holding the value it has now: a ScrollBar's own, or its container's scroll
+    // A bar's range holding the value it has now: a ScrollBar's own, or its control's scroll
     // along it.
     [[nodiscard]] Range bar_range(entt::entity entity, Bar bar, const ScrollBarView& view) const {
         if (bar == Bar::Own) {
             const auto* own = world_.ecs().try_get<world::ScrollBar>(entity);
             return own != nullptr ? range_of(*own) : view_range(view, view.value);
         }
+        if (const auto* edit = world_.ecs().try_get<world::TextEdit>(entity);
+            edit != nullptr && layout_.text_edits.contains(entity)) {
+            // Its scroll as the editing last left it, kept in its bars' range.
+            const double now = bar == Bar::Horizontal ? static_cast<double>(edit->scroll_horizontal)
+                                                      : edit->scroll_vertical;
+            Range range = view_range(view, now);
+            range.value = std::clamp(now, range.min, std::max(range.min, range.max - range.page));
+            return range;
+        }
         const std::array<double, 2> now = scroll_now(world_, &state_, entity);
         return view_range(view, now.at(bar == Bar::Horizontal ? 0 : 1));
     }
 
-    // ScrollBar::scroll_to: its value set, and scrolling emitted when it moved.
+    // ScrollBar::scroll_to: its value set, and scrolling emitted when it moved. A TextEdit's
+    // bar scrolls it as its _scroll_moved follows the bar.
     void bar_scroll_to(entt::entity entity, Bar bar, const ScrollBarView& view, double value) {
+        if (bar != Bar::Own && is_text_edit(entity)) {
+            edit_text(entity, [&](const TextEditContext& context, world::TextEdit& edit,
+                                  TextEditState& s, TextArea& area) {
+                text_edit_scroll_to(context, edit, s, area, bar == Bar::Vertical, value);
+            });
+            return;
+        }
         if (bar != Bar::Own) {
             set_scroll(world_, state_, entity, bar == Bar::Horizontal ? 0 : 1, view, value);
             return;
@@ -5042,6 +5086,10 @@ void edit_upkeep(world::World& world, GuiState& state, double tick_seconds) {
 // changed from outside catches up, as set_text does, and a drag selection held still follows
 // the pointer.
 void text_edit_upkeep(world::World& world, GuiState& state, double tick_seconds) {
+    std::erase_if(state.text_edit_bars, [&](const auto& each) {
+        const entt::entity entity = world.find(each.first);
+        return entity == entt::null || !world.ecs().all_of<world::TextEdit>(entity);
+    });
     std::vector<std::string> stale;
     std::vector<std::string> held;
     const bool left = input::is_mouse_button_pressed(world, input::MouseButton::Left);
@@ -5154,7 +5202,8 @@ void upkeep(world::World& world, GuiState& state, double tick_seconds) {
     const auto shown = [&](const std::string& id) {
         const entt::entity entity = world.find(owner_of(id));
         return entity != entt::null && is_control(world, entity) &&
-               (bar_named(id) == Bar::Own || world.ecs().all_of<world::ScrollContainer>(entity)) &&
+               (bar_named(id) == Bar::Own ||
+                world.ecs().any_of<world::ScrollContainer, world::TextEdit>(entity)) &&
                parents.visible_in_tree(entity);
     };
     // A control that was destroyed goes quietly: its entity.destroyed event says so.
@@ -5338,6 +5387,8 @@ void run(world::World& world, double tick_seconds) {
     state->popups_changed = false;
     repeat_sliders(world, *state, tick_seconds);
     std::erase_if(state->buttons, [](const auto& each) { return idle(each.second); });
+    std::erase_if(state->text_edit_bars,
+                  [](const auto& each) { return idle(each.second.h) && idle(each.second.v); });
     // LineEdit's deferred _text_changed: one text_changed a tick, and one step to undo.
     for (auto& [id, edit] : state->edits) {
         if (!edit.text_changed_dirty) {

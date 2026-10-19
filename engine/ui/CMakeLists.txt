@@ -5,6 +5,7 @@ add_library(slash_ui
     src/layout.cpp
     src/line_edit.cpp
     src/style.cpp
+    src/syntax_highlighter.cpp
     src/text_edit.cpp
     src/text_editor.cpp
     src/theme.cpp
