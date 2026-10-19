@@ -9144,8 +9144,12 @@ std::string_view unity::package_script_guid(std::string_view space, std::string_
     if (!known_space) {
         return {};
     }
-    const auto* known = std::ranges::find(kKnownScripts, name, &KnownScript::name);
-    return known == kKnownScripts.end() ? std::string_view() : known->guid;
+    for (const KnownScript& known : kKnownScripts) {
+        if (known.name == name) {
+            return known.guid;
+        }
+    }
+    return {};
 }
 
 } // namespace slash::importer
