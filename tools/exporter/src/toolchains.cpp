@@ -14,6 +14,7 @@
 #include <cstdint>
 #include <fstream>
 #include <ios>
+#include <optional>
 #include <string>
 #include <system_error>
 #include <utility>
@@ -191,6 +192,60 @@ std::vector<Toolchain> host_toolchains() {
     }
 #endif
     return toolchains;
+}
+
+std::optional<Toolchain> assetripper() {
+    constexpr std::string_view kVersion = "2.0.0";
+    constexpr std::string_view kRelease =
+        "https://github.com/AssetRipper/AssetRipper/releases/download/2.0.0/";
+#if defined(__APPLE__) && defined(__aarch64__)
+    constexpr std::string_view kArchive = "AssetRipper_mac_arm64.tar.xz";
+    constexpr std::string_view kSha256 =
+        "237a6da404bf089c5e5c71a5a9a698c2ea580872292dfa5ce21e25fd1dbe9045";
+#elif defined(__APPLE__) && defined(__x86_64__)
+    constexpr std::string_view kArchive = "AssetRipper_mac_x64.tar.xz";
+    constexpr std::string_view kSha256 =
+        "1b3836f135d16845cb57595fadff5739cbb86d28caaf621005b4301dba9b5a56";
+#elif defined(__linux__) && defined(__x86_64__)
+    constexpr std::string_view kArchive = "AssetRipper_linux_x64.tar.xz";
+    constexpr std::string_view kSha256 =
+        "6f5d4352d36795b944243eb3ec790ec37dbca6d6756e52605bc8616e042d384e";
+#elif defined(__linux__) && defined(__aarch64__)
+    constexpr std::string_view kArchive = "AssetRipper_linux_arm64.tar.xz";
+    constexpr std::string_view kSha256 =
+        "8031752621d7fb27addab6108bad8bfbd43546bbb07b36912a987dfb4029c914";
+#elif defined(_WIN32) && defined(_M_ARM64)
+    constexpr std::string_view kArchive = "AssetRipper_win_arm64.zip"; // Windows' tar unpacks zip
+    constexpr std::string_view kSha256 =
+        "c2c3a335948aa0ecaf26baf22ac77e36993d1a1695b5db291cb63f66872627f1";
+#elif defined(_WIN32) && (defined(_M_X64) || defined(__x86_64__))
+    constexpr std::string_view kArchive = "AssetRipper_win_x64.zip";
+    constexpr std::string_view kSha256 =
+        "9a7ef0e7c5c3ea5b90b4e6d855e2d98d5f7ec8c3f9e26fccbc194c6a7b01baf7";
+#else
+#define SLASH_NO_ASSETRIPPER
+#endif
+#ifdef SLASH_NO_ASSETRIPPER
+    (void)kVersion;
+    (void)kRelease;
+    return std::nullopt;
+#else
+    return Toolchain{std::string(kAssetRipper),
+                     std::string(kVersion),
+                     "AssetRipper, which turns Unity builds back into projects for import (GPL "
+                     "3.0, run as a separate program)",
+                     std::string(kRelease) + std::string(kArchive),
+                     std::string(kSha256),
+                     {}};
+#endif
+}
+
+std::string_view assetripper_program() {
+#ifdef _WIN32
+    return "AssetRipper.GUI.Free.exe";
+#else
+    return "AssetRipper.GUI.Free";
+#endif
 }
 
 std::vector<std::string> toolchains_for(std::string_view platform, std::string_view arch) {

@@ -15,9 +15,11 @@
 #include <doctest/doctest.h>
 
 #include <array>
+#include <chrono>
 #include <cstdio>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <vector>
 
 namespace json = slash::json;
@@ -313,6 +315,37 @@ TEST_CASE("processes run with their output logged") {
 
     CHECK_FALSE(platform::run_process({"slash-no-such-program-anywhere"}).ok());
     CHECK_FALSE(platform::run_process({}).ok());
+}
+
+TEST_CASE("a program started beside this one prints as it goes and stops when asked") {
+    const std::string log = "process_test.log";
+    std::remove(log.c_str());
+    platform::ProcessOptions options;
+    options.log_path = log;
+    auto echo = platform::start_process({SLASH_TEST_CMAKE, "-E", "echo", "hello"}, options);
+    REQUIRE(echo.ok());
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
+    while (echo.value()->output().empty() && std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    CHECK(echo.value()->output().starts_with("hello"));
+    CHECK(echo.value()->stop() == 0);
+    CHECK_FALSE(echo.value()->running());
+    auto logged = platform::read_file(log);
+    REQUIRE(logged.ok());
+    CHECK(logged.value().find("hello") != std::string::npos);
+
+    // One that would run for a minute is killed.
+    auto sleeper = platform::start_process({SLASH_TEST_CMAKE, "-E", "sleep", "60"});
+    REQUIRE(sleeper.ok());
+    CHECK(sleeper.value()->running());
+    const auto started = std::chrono::steady_clock::now();
+    CHECK(sleeper.value()->stop() != 0);
+    CHECK_FALSE(sleeper.value()->running());
+    CHECK(std::chrono::steady_clock::now() - started < std::chrono::seconds(30));
+
+    CHECK_FALSE(platform::start_process({"slash-no-such-program-anywhere"}).ok());
+    CHECK_FALSE(platform::start_process({}).ok());
 }
 
 TEST_CASE("environment variables are read") {

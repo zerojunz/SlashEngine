@@ -2,6 +2,7 @@
 
 #include "slash/command/session.hpp"
 #include "slash/importer/import.hpp"
+#include "slash/importer/unity_build.hpp"
 
 #include <string>
 #include <string_view>
@@ -26,11 +27,30 @@ Reply failure(const Error& error, std::string_view pointer) {
     return reply;
 }
 
-Reply project_import(command::Session& session, const json::Value& params) {
+Reply project_import(command::Session& session, const json::Value& params,
+                     const ImportCommandOptions& command_options) {
     const std::string& source = params.find("source")->as_string();
     auto folder = session.resolve_path(source);
     if (!folder) {
         return failure(folder.error(), "/source");
+    }
+    if (unity::find_build(folder.value())) {
+        if (!command_options.unpack_builds) {
+            Reply reply = Reply::failure(command::code::kPermissionDenied,
+                                         "a running game doesn't unpack Unity builds, which "
+                                         "takes minutes; use slash-cli import");
+            reply.data["path"] = "/source";
+            return reply;
+        }
+        if (!session.allowed(Capability::Build)) {
+            Reply reply = Reply::failure(command::code::kPermissionDenied,
+                                         "unpacking a Unity build runs AssetRipper, which needs "
+                                         "the \"build\" capability, which this session does not "
+                                         "grant");
+            reply.data["path"] = "/source";
+            reply.data["capability"] = "build";
+            return reply;
+        }
     }
     ImportOptions options{
         .source = folder.value(), .destination = session.options().project_root, .unpack_to = {}};
@@ -73,18 +93,19 @@ Reply project_import(command::Session& session, const json::Value& params) {
 
 } // namespace
 
-void register_import_commands(command::Registry& registry) {
+void register_import_commands(command::Registry& registry, ImportCommandOptions options) {
     json::Value params;
     params["type"] = "object";
     params["additionalProperties"] = false;
     params["required"] = json::Array{"source"};
     params["properties"]["source"] =
         property("string", "Folder holding a Godot 4 project (with project.godot) or a Unity "
-                           "project (with Assets/ and ProjectSettings/), or a game exported "
-                           "with Godot 4: its .pck file or executable.");
+                           "project (with Assets/ and ProjectSettings/), a game exported "
+                           "with Godot 4 (its .pck file or executable), or a game built with "
+                           "Unity (its folder, .apk or .ipa).");
     params["properties"]["unpack_to"] =
-        property("string", "For an exported game: folder to write the Godot project unpacked "
-                           "from it to, whose assets the import then uses.");
+        property("string", "For an exported or built game: folder to write the Godot or Unity "
+                           "project unpacked from it to, whose assets the import then uses.");
     params["properties"]["dry_run"] =
         property("boolean", "Return the report and the files it would write; write nothing.");
 
@@ -93,12 +114,16 @@ void register_import_commands(command::Registry& registry) {
         .description =
             "Converts a Godot 4 or Unity project's scenes, prefabs, resources, input and "
             "settings into this project, using its assets where they are; a game exported "
-            "with Godot 4 is unpacked first. Each script becomes a storyboard task to port it "
-            "to C++. Reports what didn't convert.",
+            "with Godot 4 or built with Unity is unpacked first (a Unity build with AssetRipper, "
+            "which needs the build capability). Each script becomes a storyboard task to port "
+            "it to C++. Reports what didn't convert.",
         .capabilities = {Capability::Read, Capability::Filesystem},
         .effect = command::Effect::Read,
         .params = std::move(params),
-        .handler = project_import,
+        .handler =
+            [options](command::Session& session, const json::Value& args) {
+                return project_import(session, args, options);
+            },
     });
 }
 

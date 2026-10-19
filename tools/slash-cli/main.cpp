@@ -136,10 +136,14 @@ Usage:
                                      project: scenes, prefabs, sprites, input and settings;
                                      each script becomes a storyboard task. A folder outside
                                      the project is copied in. A game exported with Godot 4
-                                     (its .pck file or executable) is unpacked first
+                                     (its .pck file or executable) is unpacked first, and so
+                                     is a game built with Unity (its folder, .apk or .ipa),
+                                     with AssetRipper (SLASH_ASSETRIPPER, else installed on
+                                     first use)
       --project <dir>                Project folder to import into (default ".")
-      --unpack-to <dir>              Also write the Godot project unpacked from a game to
-                                     this folder of the project, and use its assets there
+      --unpack-to <dir>              Also write the Godot or Unity project unpacked from a
+                                     game to this folder of the project, and use its assets
+                                     there
       --dry-run                      Print the report and the files it would write; write
                                      nothing
   slash-cli export <preset>          Build and sign the game with a preset from
@@ -151,11 +155,13 @@ Usage:
       --debug                        Debug build instead of Release
       --test                         Run the exported game headless afterwards, if possible
       --engine <dir>                 Engine sources (default: SLASH_ENGINE_DIR or built in)
-  slash-cli toolchain list           List the cross toolchains this machine can install
+  slash-cli toolchain list           List the cross toolchains and tools this machine can
+                                     install
   slash-cli toolchain install [name] Download the toolchains exports use to build other
                                      platforms (default: all); also takes a platform name
-                                     (windows, linux) or linux-arm64; folder:
-                                     SLASH_TOOLCHAINS_DIR, else ~/.slash/toolchains
+                                     (windows, linux), linux-arm64 or assetripper (imports
+                                     Unity builds); folder: SLASH_TOOLCHAINS_DIR, else
+                                     ~/.slash/toolchains
   slash-cli help                     Show this message
 
 call, rpc and serve also take:
@@ -276,7 +282,7 @@ struct Engine {
 
     explicit Engine(const command::SessionOptions& options, bool running = false) {
         command::register_builtin_commands(commands);
-        slash::importer::register_import_commands(commands);
+        slash::importer::register_import_commands(commands, {.unpack_builds = !running});
         if (running) {
             command::register_run_commands(commands);
         } else {
@@ -1271,8 +1277,8 @@ int cmd_import(const std::vector<std::string>& args) {
         }
     }
     if (options.source.empty()) {
-        return usage_error("import needs the folder of a Godot 4 or Unity project, or a game "
-                           "exported with Godot 4");
+        return usage_error("import needs the folder of a Godot 4 or Unity project, a game "
+                           "exported with Godot 4 or a game built with Unity");
     }
     if (dry_run) {
         auto plan = slash::importer::plan_import(options);
@@ -1337,11 +1343,20 @@ json::Value toolchain_json(const slash::exporter::Toolchain& toolchain) {
     return item;
 }
 
+// The export toolchains this host can install, then AssetRipper, which imports Unity builds.
+std::vector<slash::exporter::Toolchain> installable_tools() {
+    std::vector<slash::exporter::Toolchain> tools = slash::exporter::host_toolchains();
+    if (auto assetripper = slash::exporter::assetripper()) {
+        tools.push_back(std::move(*assetripper));
+    }
+    return tools;
+}
+
 int cmd_toolchain_list() {
     namespace exporter = slash::exporter;
     const std::filesystem::path dir = exporter::toolchains_dir();
     json::Array toolchains;
-    for (const exporter::Toolchain& toolchain : exporter::host_toolchains()) {
+    for (const exporter::Toolchain& toolchain : installable_tools()) {
         json::Value item = toolchain_json(toolchain);
         item["description"] = toolchain.description;
         item["installed"] = exporter::installed_toolchain(toolchain, dir).has_value();
@@ -1356,7 +1371,7 @@ int cmd_toolchain_list() {
 
 int cmd_toolchain_install(const std::vector<std::string>& names) {
     namespace exporter = slash::exporter;
-    const std::vector<exporter::Toolchain> available = exporter::host_toolchains();
+    const std::vector<exporter::Toolchain> available = installable_tools();
     if (available.empty()) {
         return usage_error("this machine builds every platform it can with its own compilers; "
                            "there are no toolchains to install");
@@ -1376,7 +1391,7 @@ int cmd_toolchain_install(const std::vector<std::string>& names) {
         if (is_toolchain) {
             expanded = {name};
         } else if (name == "all") {
-            for (const exporter::Toolchain& toolchain : available) {
+            for (const exporter::Toolchain& toolchain : exporter::host_toolchains()) {
                 expanded.push_back(toolchain.name);
             }
         } else if (name == "linux-arm64") {

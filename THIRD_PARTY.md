@@ -21,6 +21,7 @@ or license not allowed here, or whose license text changed without review.
 | [cpp-httplib](https://github.com/yhirose/cpp-httplib) | v0.58.0 | MIT | Localhost HTTP server for the REST mirror and MCP over HTTP | Fetched, header-only |
 | [libwebp](https://github.com/webmproject/libwebp) | v1.5.0 | BSD-3-Clause, with an additional patent grant (`PATENTS`) | Decoding WebP textures when unpacking an exported Godot game (tools only, not shipped in games) | Fetched, its decoder linked into slash-cli and slash-mcp |
 | [Zstandard](https://github.com/facebook/zstd) | v1.5.7 | BSD-3-Clause or GPL 2.0 at the user's choice; SlashEngine uses it under BSD-3-Clause | Decompressing the files of an exported Godot game (tools only, not shipped in games) | Fetched, its decompressor linked into slash-cli and slash-mcp |
+| [Brotli](https://github.com/google/brotli) | v1.1.0 | MIT | Decompressing a Unity web build before it is unpacked (tools only, not shipped in games) | Fetched, its decoder linked into slash-cli and slash-mcp |
 | [glslang](https://github.com/KhronosGroup/glslang) | 16.6.0 | BSD-3-Clause, with parts under BSD-2-Clause, MIT, Apache 2.0, NVIDIA's permissive notice (AML-glslang) and, in its generated parser, GPL 3.0 with the Bison exception, which lets it ship under any terms | Compiling a game's HLSL shaders to SPIR-V (tools only, not shipped in games) | Fetched, linked into slash-cli and slash-mcp |
 | [SPIRV-Cross](https://github.com/KhronosGroup/SPIRV-Cross) | vulkan-sdk-1.4.363.0 | Apache 2.0 or MIT, at the user's choice; its `spirv.hpp` is MIT | Turning a game's compiled shaders into MSL and GLSL ES (tools only, not shipped in games) | Fetched, linked into slash-cli and slash-mcp |
 | [doctest](https://github.com/doctest/doctest) | v2.5.2 | MIT | Unit tests (not shipped in games) | Fetched, tests only |
@@ -64,3 +65,12 @@ Windows exports on Windows use MSVC, and macOS and iOS exports use Apple's comma
 Web exports use [Emscripten](https://github.com/emscripten-core/emscripten) 6.0.10 in CI (MIT or
 University of Illinois/NCSA), whose JavaScript runtime and C/C++ libraries are compiled into the
 game.
+
+Importing a Unity build runs one program that slash-cli and slash-mcp download on first use (or
+`slash-cli toolchain install assetripper`), pinned in `tools/exporter/src/toolchains.cpp`. It runs
+as a separate program, talked to over HTTP on this machine; none of its code is linked into
+SlashEngine or shipped in games:
+
+| Name | Version | License | Used for |
+| --- | --- | --- | --- |
+| [AssetRipper](https://github.com/AssetRipper/AssetRipper) | 2.0.0 | GPL 3.0 | Turning a Unity build back into a Unity project, which the Unity importer then converts |
