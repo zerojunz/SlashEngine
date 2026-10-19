@@ -11,6 +11,7 @@ add_library(slash_audio
     src/buses.cpp
     src/effects.cpp
     src/filter.cpp
+    src/music.cpp
     src/sdl.cpp
     src/server.cpp
     src/sound.cpp

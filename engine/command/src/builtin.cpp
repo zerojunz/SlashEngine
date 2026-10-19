@@ -2674,6 +2674,9 @@ Reply audio_state(Session& session, const json::Value& params) {
         if (info.paused) {
             item["paused"] = true;
         }
+        if (!info.clip.empty()) {
+            item["clip"] = info.clip;
+        }
         item["volume"] = rounded(json::Array{info.volume.left, info.volume.right});
         if (!info.error.empty()) {
             item["error"] = info.error;

@@ -718,7 +718,12 @@ is a dry run. `examples/input-actions` moves a player with keys, a stick and tap
 samples when they load (integer samples scaled as Godot's importer scales them), and `.ogg` and
 `.mp3` files decode as they play. A `.audio.json` file (`$cli schema audio`) gives a sound
 Godot's loop settings, or picks one of several at random each play, as Godot's
-`AudioStreamRandomizer` (`src/stream.cpp`, with Godot 4.4's cubic resampler). `audio::Server`
+`AudioStreamRandomizer` (`src/stream.cpp`, with Godot 4.4's cubic resampler). It can also be
+music, ported from Godot's `modules/interactive_music` (`src/music.cpp`): a playlist, layers
+played together, or interactive clips that switch by its transitions when a player's
+`switch_to_clip` parameter asks; players hand their `parameters` to their playbacks
+(`Playback::set_parameter`), and the audio system writes `switch_to_clip` back as the music
+moves on. `audio::Server`
 (`src/server.cpp`) is the mixer: playbacks mix into buses in steps of 512 frames, with a 64-frame
 lookahead, volume ramps and stop fades; each bus runs its effects (`src/effects.cpp`: 24 of Godot's
 `servers/audio/effects`, each ported from the one of the same name, the pitch shift and spectrum
@@ -736,8 +741,8 @@ frequency bands, `audio.record` starts and stops its `record` effect and writes 
 `audio.state`, `audio.play`, `audio.stop` and `audio.set_bus` do the rest. Sessions put the
 buses back with the world when a command fails or is a dry run. Example sounds are made in code
 without libm, so outputs match everywhere. `examples/audio` plays music and footsteps panned
-around a listener, and `examples/audio-areas-and-analysis` a bat in a cave's reverb, measured
-by its spectrum and recorded.
+around a listener, `examples/audio-areas-and-analysis` a bat in a cave's reverb, measured
+by its spectrum and recorded, and `examples/interactive-music` a score that follows a fight.
 
 ## Add a component
 
