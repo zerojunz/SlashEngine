@@ -173,6 +173,11 @@ void add_asset_types(asset::Assets& assets) {
             }
             return parse_material(doc.value());
         });
+    // A game's shaders, as text: renderers compile them for the materials that name them.
+    assets.add_type<std::string>("shader", {std::string(kShaderSuffix)},
+                                 [](std::string_view text, std::string_view /*path*/) {
+                                     return Result<std::string>(std::string(text));
+                                 });
     assets.add_type<TileSet>(
         "tile_set", {std::string(kTileSetSuffix)},
         [](std::string_view text, std::string_view /*path*/) -> Result<TileSet> {

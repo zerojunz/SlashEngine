@@ -1,0 +1,16 @@
+{
+  "format": 1,
+  "params": {
+    "amount": {
+      "max": 1,
+      "min": 0,
+      "type": "float",
+      "value": 0
+    },
+    "edge_color": {
+      "type": "color",
+      "value": [1, 0.5, 0, 1]
+    }
+  },
+  "shader": "shaders/dissolve.hlsl"
+}

@@ -1,0 +1,32 @@
+{
+  "entities": {
+    "crate": {
+      "components": {
+        "Sprite2D": {
+          "material": "dissolve.material.json",
+          "material_params": {
+            "amount": 0.5
+          },
+          "texture": "crate.png",
+          "texture_filter": "nearest"
+        },
+        "Transform2D": {
+          "position": [24.0, 24.0]
+        }
+      }
+    },
+    "flag": {
+      "components": {
+        "Sprite2D": {
+          "material": "wave.material.json",
+          "texture": "flag.png",
+          "texture_filter": "nearest"
+        },
+        "Transform2D": {
+          "position": [72.0, 24.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

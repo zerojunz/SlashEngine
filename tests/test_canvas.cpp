@@ -2,12 +2,15 @@
 
 #include "slash/asset/assets.hpp"
 #include "slash/canvas/canvas.hpp"
+#include "slash/canvas/material.hpp"
 #include "slash/canvas/sprite_frames.hpp"
 #include "slash/core/json.hpp"
 #include "slash/core/log.hpp"
 #include "slash/platform/process.hpp"
 #include "slash/render/device.hpp"
 #include "slash/render/image.hpp"
+#include "slash/render/shader.hpp"
+#include "slash/shader_compiler/shader_compiler.hpp"
 #include "slash/ui/ui.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
@@ -733,6 +736,130 @@ TEST_CASE("materials color a sprite's pixels on the software device and a GPU, a
         REQUIRE(image.ok());
         CHECK(near(pixel(image.value(), 8, 8), {128, 0, 128, 255}));
     }
+}
+
+TEST_CASE("a game's shaders draw lit on the software device and a GPU, and reload when their "
+          "files change") {
+    std::vector<Rgba> software;
+    for (const auto& device : drawing_devices()) {
+        CAPTURE(slash::render::backend_name(device->backend()));
+        Scene scene;
+        scene.files.write("white.png", strip_png({{255, 255, 255, 255}}, 8));
+        scene.files.write("shaders/tint.hlsl", "void fragment() {\n    COLOR *= tint;\n}\n");
+        // Facing right, toward the lamp.
+        scene.files.write("shaders/bump.hlsl",
+                          "void fragment() {\n    NORMAL_MAP = float3(1.0, 0.5, 0.5);\n}\n");
+        scene.files.write("tint.material.json", R"({"format": 1, "light_mode": "unshaded",
+            "params": {"tint": {"type": "color", "value": [1, 0.5, 0.25, 1]}},
+            "shader": "shaders/tint.hlsl"})");
+        scene.files.write("bump.material.json", R"({"format": 1, "shader": "shaders/bump.hlsl"})");
+        scene.create("dark", R"({"CanvasModulate": {"color": [0.25, 0.25, 0.25, 1]}})");
+        scene.create("lamp", R"({"Transform2D": {"position": [30, 24]},
+            "PointLight2D": {"texture": "white.png", "texture_scale": 4, "height": 4}})");
+        const std::string sprite =
+            R"("Sprite2D": {"texture": "white.png", "texture_filter": "nearest")";
+        scene.create("tinted", R"({"Transform2D": {"position": [8, 8]}, )" + sprite +
+                                   R"(, "material": "tint.material.json",
+                                   "material_params": {"tint": [0, 1, 0, 1]}}})");
+        scene.create("bumped", R"({"Transform2D": {"position": [16, 24]}, )" + sprite +
+                                   R"(, "material": "bump.material.json"}})");
+        scene.create("flat", R"({"Transform2D": {"position": [8, 24]}, )" + sprite + "}}");
+        auto target = device->create_texture(
+            {.width = 32, .height = 32, .filter = render::Filter::Nearest, .render_target = true});
+        REQUIRE(target.ok());
+        canvas::CanvasRenderer renderer(*device, scene.assets);
+        canvas::CanvasOptions options;
+        options.target = target.value();
+        options.clear = {.r = 0.0F, .g = 0.0F, .b = 0.0F, .a = 1.0F};
+        Warnings warnings;
+        REQUIRE(renderer.draw(scene.world, options).ok());
+        CHECK(renderer.sprites_drawn() == 3);
+        auto image = device->read_texture(target.value());
+        REQUIRE(image.ok());
+        // The sprite's param, unshaded.
+        CHECK(pixel(image.value(), 8, 8) == Rgba{0, 255, 0, 255});
+        // The bumped sprite faces the lamp, so it is lit more than the flat one beside it.
+        const Rgba bumped = pixel(image.value(), 18, 24);
+        const Rgba flat = pixel(image.value(), 10, 24);
+        CHECK(int{bumped[0]} > int{flat[0]} + 40);
+        CHECK(int{flat[0]} >= 64);
+        // Every device shades the same pixels as the software device.
+        std::vector<Rgba> grid;
+        for (std::uint32_t y = 2; y < 32; y += 4) {
+            for (std::uint32_t x = 2; x < 32; x += 4) {
+                grid.push_back(pixel(image.value(), x, y));
+            }
+        }
+        if (software.empty()) {
+            software = grid;
+        } else {
+            for (std::size_t i = 0; i < grid.size(); ++i) {
+                CAPTURE(i);
+                for (std::size_t channel = 0; channel < 4; ++channel) {
+                    CHECK(std::abs(int{grid[i].at(channel)} - int{software[i].at(channel)}) <= 3);
+                }
+            }
+        }
+
+        // An edit to the shader file draws on the next frame.
+        scene.files.write("shaders/tint.hlsl", "void fragment() {\n    COLOR *= tint * 0.5;\n}\n");
+        REQUIRE(scene.assets.poll().size() == 1);
+        REQUIRE(renderer.draw(scene.world, options).ok());
+        image = device->read_texture(target.value());
+        REQUIRE(image.ok());
+        CHECK(pixel(image.value(), 8, 8) == Rgba{0, 64, 0, 255}); // half green, half see-through
+        // A mistake leaves the sprite out with its file and line, until it is fixed.
+        scene.files.write("shaders/tint.hlsl", "void fragment() {\n    COLOR *= tnt;\n}\n");
+        REQUIRE(scene.assets.poll().size() == 1);
+        REQUIRE(renderer.draw(scene.world, options).ok());
+        CHECK(renderer.sprites_drawn() == 2);
+        CHECK(warnings.logged(R"("material":"tint.material.json","error":"shaders/tint.hlsl:2: )"
+                              R"('tnt' : unknown variable")"));
+        scene.files.write("shaders/tint.hlsl", "void fragment() {\n    COLOR *= tint;\n}\n");
+        REQUIRE(scene.assets.poll().size() == 1);
+        REQUIRE(renderer.draw(scene.world, options).ok());
+        CHECK(renderer.sprites_drawn() == 3);
+    }
+}
+
+TEST_CASE("a material with its shader compiled in draws where nothing can compile shaders, as in "
+          "a game") {
+    auto shader = slash::shader_compiler::compile({.path = "shaders/half.hlsl",
+                                                   .code = "void fragment() { COLOR.rg *= 0.5; }",
+                                                   .params = {}});
+    REQUIRE(shader.ok());
+    json::Value doc = parse(R"({"format": 1, "shader": "shaders/half.hlsl"})");
+    doc["compiled"] = canvas::compiled_shader_json(shader.value());
+    Scene scene;
+    scene.files.write("white.png", strip_png({{255, 255, 255, 255}}, 4));
+    scene.files.write("half.material.json", json::write(doc));
+    scene.files.write("source.material.json", R"({"format": 1, "shader": "shaders/half.hlsl"})");
+    scene.files.write("shaders/half.hlsl", "void fragment() { COLOR.rg *= 0.5; }");
+    scene.create("built", R"({"Transform2D": {"position": [2, 2]}, "Sprite2D": {
+        "texture": "white.png", "material": "half.material.json"}})");
+    scene.create("source", R"({"Transform2D": {"position": [6, 6]}, "Sprite2D": {
+        "texture": "white.png", "material": "source.material.json"}})");
+
+    slash::render::set_shader_compiler({});
+    const auto device = slash::render::create_software_device();
+    auto target = device->create_texture(
+        {.width = 8, .height = 8, .filter = render::Filter::Nearest, .render_target = true});
+    REQUIRE(target.ok());
+    {
+        canvas::CanvasRenderer renderer(*device, scene.assets);
+        canvas::CanvasOptions options;
+        options.target = target.value();
+        options.clear = {.r = 0.0F, .g = 0.0F, .b = 0.0F, .a = 1.0F};
+        Warnings warnings;
+        REQUIRE(renderer.draw(scene.world, options).ok());
+        CHECK(renderer.sprites_drawn() == 1);
+        CHECK(warnings.logged(R"("error":"shaders/half.hlsl: this program can't compile shaders; )"
+                              R"(slash-cli, slash-mcp and exports can")"));
+        auto image = device->read_texture(target.value());
+        REQUIRE(image.ok());
+        CHECK(pixel(image.value(), 2, 2) == Rgba{128, 128, 255, 255});
+    }
+    slash::shader_compiler::install();
 }
 
 // ---- Lights ----

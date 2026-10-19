@@ -17,9 +17,11 @@ cmake_minimum_required(VERSION 3.25)
 
 # SPDX identifiers that may ship in games built with SlashEngine. Changing this list is a policy
 # change: see docs/design.md. MIT-Modern-Variant is the "Old MIT" text HarfBuzz uses, as
-# permissive as MIT.
+# permissive as MIT. Two are glslang's, which the tools link to compile a game's shaders, as
+# Godot's editor does: AML-glslang, NVIDIA's permissive notice on its preprocessor, and the Bison
+# exception, which lets a parser Bison made ship under any terms.
 set(allowed Apache-2.0 BSD-2-Clause BSD-3-Clause BSL-1.0 FTL MIT MIT-0 MIT-Modern-Variant
-    Unlicense Zlib)
+    Unlicense Zlib AML-glslang "GPL-3.0-or-later WITH Bison-exception-2.2")
 
 set(manifest_path "${ROOT}/cmake/dependencies.json")
 file(READ "${manifest_path}" manifest)

@@ -194,6 +194,8 @@ Result<Gl> load_gl() {
 constexpr GLuint kViewBinding = 0;
 constexpr GLuint kProgramBinding = 1;
 constexpr GLuint kLightsBinding = 2;
+// A game's shader's vertex stage reads the material's constants (tools/shader_compiler).
+constexpr GLuint kVertexProgramBinding = 3;
 
 // The two shaders: plain sprites, and materials that run a program.
 enum class ShaderKind : std::uint8_t { Sprite, Material };
@@ -259,6 +261,9 @@ public:
                 gl_.delete_textures(1, &white_);
                 gl_.delete_samplers(static_cast<GLsizei>(samplers_.size()), samplers_.data());
                 for (const GLuint program : programs_) {
+                    gl_.delete_program(program);
+                }
+                for (const auto& [id, program] : game_programs_) {
                     gl_.delete_program(program);
                 }
                 gl_.delete_buffers(1, &vertex_buffer_);
@@ -407,6 +412,36 @@ public:
         textures_.erase(it);
     }
 
+    Result<ShaderId> create_shader(const CompiledShader& shader) override {
+        if (auto checked = check_compiled_shader(shader, Backend::OpenGl); !checked) {
+            return checked.error();
+        }
+        make_current();
+        auto program = link(shader.glsl_vertex, shader.glsl_fragment, kMaterialSamplerNames,
+                            "the game's shader");
+        if (!program) {
+            return program.error();
+        }
+        const auto id = static_cast<ShaderId>(next_shader_++);
+        game_programs_[id] = program.value();
+        return id;
+    }
+
+    void destroy_shader(ShaderId shader) override {
+        const auto it = game_programs_.find(shader);
+        if (it == game_programs_.end()) {
+            return;
+        }
+        // The frame being built may still draw with it, so it goes once the frame is sent.
+        if (in_frame_) {
+            pending_programs_.push_back(it->second);
+        } else {
+            make_current();
+            gl_.delete_program(it->second);
+        }
+        game_programs_.erase(it);
+    }
+
     Result<bool> begin_frame(const Frame& frame) override {
         if (in_frame_) {
             return frame_in_progress("begin_frame");
@@ -482,8 +517,9 @@ public:
                 return target_in_use(texture);
             }
         }
-        if (auto checked = check_material(material, frame_.target,
-                                          [&](TextureId id) { return textures_.contains(id); });
+        if (auto checked = check_material(
+                material, frame_.target, [&](TextureId id) { return textures_.contains(id); },
+                [&](ShaderId id) { return game_programs_.contains(id); });
             !checked) {
             return checked;
         }
@@ -503,9 +539,13 @@ public:
         if (batches_.empty() || batches_.back().texture != texture ||
             batches_.back().material != material) {
             const ShaderKind kind =
-                uses_material_shader(material) ? ShaderKind::Material : ShaderKind::Sprite;
+                material.shader != ShaderId::None || uses_material_shader(material)
+                    ? ShaderKind::Material
+                    : ShaderKind::Sprite;
             make_current();
-            auto program = program_for(kind);
+            auto program = material.shader != ShaderId::None
+                               ? Result<GLuint>(game_programs_.at(material.shader))
+                               : program_for(kind);
             if (!program) {
                 return program.error();
             }
@@ -783,13 +823,26 @@ private:
             return slot;
         }
         const bool material = kind == ShaderKind::Material;
-        auto vertex = compile(gl::kVertexShader,
-                              material ? shaders::kMaterialVertexGlsl : shaders::kSpriteVertexGlsl);
+        auto program = material ? link(shaders::kMaterialVertexGlsl, shaders::kMaterialFragmentGlsl,
+                                       kMaterialSamplerNames, "the material shader")
+                                : link(shaders::kSpriteVertexGlsl, shaders::kSpriteFragmentGlsl,
+                                       kSpriteSamplers, "the sprite shader");
+        if (!program) {
+            return program.error();
+        }
+        slot = program.value();
+        return slot;
+    }
+
+    // A program made of the two stages, with its uniform blocks and samplers bound where the
+    // device puts them.
+    Result<GLuint> link(std::string_view vertex_source, std::string_view fragment_source,
+                        std::span<const std::string_view> samplers, std::string_view what) {
+        auto vertex = compile(gl::kVertexShader, vertex_source);
         if (!vertex) {
             return vertex.error();
         }
-        auto fragment = compile(gl::kFragmentShader, material ? shaders::kMaterialFragmentGlsl
-                                                              : shaders::kSpriteFragmentGlsl);
+        auto fragment = compile(gl::kFragmentShader, fragment_source);
         if (!fragment) {
             gl_.delete_shader(vertex.value());
             return fragment.error();
@@ -806,21 +859,18 @@ private:
             const std::string log = program_log(program);
             gl_.delete_program(program);
             return make_error(ErrorCode::PlatformFailure,
-                              std::string(material ? "the material" : "the sprite") +
-                                  " shader didn't link: " + log);
+                              std::string(what) + " didn't link: " + log);
         }
         for (const auto& [name, binding] :
              {std::pair{"View", kViewBinding}, std::pair{"Program", kProgramBinding},
-              std::pair{"Lights", kLightsBinding}}) {
+              std::pair{"Lights", kLightsBinding},
+              std::pair{"VertexProgram", kVertexProgramBinding}}) {
             const GLuint index = gl_.get_uniform_block_index(program, name);
             if (index != gl::kInvalidIndex) {
                 gl_.uniform_block_binding(program, index, binding);
             }
         }
         gl_.use_program(program);
-        const std::span<const std::string_view> samplers =
-            material ? std::span<const std::string_view>(kMaterialSamplerNames)
-                     : std::span<const std::string_view>(kSpriteSamplers);
         for (std::size_t unit = 0; unit < samplers.size(); ++unit) {
             const std::string name(samplers[unit]);
             const GLint location = gl_.get_uniform_location(program, name.c_str());
@@ -829,7 +879,6 @@ private:
             }
         }
         gl_.use_program(0);
-        slot = program;
         return program;
     }
 
@@ -921,6 +970,7 @@ private:
         struct Placed {
             std::size_t view = 0;
             std::size_t program = 0;
+            std::size_t vertex_program = 0;
         };
         std::vector<Placed> placed(batches_.size());
         std::optional<Mat4> previous;
@@ -938,6 +988,11 @@ private:
             if (batch.kind == ShaderKind::Material) {
                 const ProgramUniforms uniforms = program_uniforms(batch.material, batch.texel);
                 placed[i].program = place_uniforms(&uniforms, sizeof(uniforms));
+            }
+            if (batch.material.shader != ShaderId::None) {
+                const VertexProgramUniforms uniforms =
+                    vertex_program_uniforms(batch.material, batch.texel);
+                placed[i].vertex_program = place_uniforms(&uniforms, sizeof(uniforms));
             }
         }
         gl_.bind_buffer(gl::kUniformBuffer, uniform_buffer_);
@@ -975,6 +1030,11 @@ private:
                                       static_cast<GLsizeiptr>(sizeof(ProgramUniforms)));
                 units = batch.units.size();
             }
+            if (batch.material.shader != ShaderId::None) {
+                gl_.bind_buffer_range(gl::kUniformBuffer, kVertexProgramBinding, uniform_buffer_,
+                                      static_cast<GLintptr>(placed[i].vertex_program),
+                                      static_cast<GLsizeiptr>(sizeof(VertexProgramUniforms)));
+            }
             for (std::size_t unit = 0; unit < units; ++unit) {
                 gl_.active_texture(gl::kTexture0 + static_cast<GLenum>(unit));
                 gl_.bind_texture(gl::kTexture2D, batch.units.at(unit).texture);
@@ -989,7 +1049,7 @@ private:
     void finish_frame() {
         vertices_.clear();
         batches_.clear();
-        if (!pending_release_.empty()) {
+        if (!pending_release_.empty() || !pending_programs_.empty()) {
             make_current();
             release_pending();
         }
@@ -1000,6 +1060,10 @@ private:
             delete_texture(texture);
         }
         pending_release_.clear();
+        for (const GLuint program : pending_programs_) {
+            gl_.delete_program(program);
+        }
+        pending_programs_.clear();
     }
 
     SDL_Window* window_;
@@ -1019,6 +1083,9 @@ private:
     std::unordered_map<TextureId, Texture> textures_;
     std::uint32_t next_texture_ = 1;
     std::vector<Texture> pending_release_;
+    std::unordered_map<ShaderId, GLuint> game_programs_;
+    std::uint32_t next_shader_ = 1;
+    std::vector<GLuint> pending_programs_;
     Texture present_;
 
     // The frame being built. A skipped frame is 0 wide.

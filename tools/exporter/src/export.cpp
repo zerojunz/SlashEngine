@@ -18,7 +18,9 @@
 #include "slash/platform/file.hpp"
 #include "slash/platform/process.hpp"
 #include "slash/render/image.hpp"
+#include "slash/render/shader.hpp"
 #include "slash/runtime/project.hpp"
+#include "slash/shader_compiler/shader_compiler.hpp"
 #include "slash/text/text.hpp"
 #include "slash/ui/ui.hpp"
 #include "slash/world/component_registry.hpp"
@@ -219,7 +221,11 @@ std::vector<json::ValidationError> check_data_file(DataFile kind, std::string_vi
     case DataFile::SpriteFrames:
         return canvas::validate_sprite_frames(parsed.value());
     case DataFile::Material:
-        return canvas::validate_material(parsed.value());
+        errors = canvas::validate_material(parsed.value());
+        if (errors.empty()) {
+            errors = canvas::check_material_shader(parsed.value(), reader);
+        }
+        return errors;
     case DataFile::Animation:
         return animation::validate_animation_library(parsed.value(), &components);
     case DataFile::TileSet:
@@ -254,11 +260,47 @@ std::vector<json::ValidationError> check_data_file(DataFile kind, std::string_vi
     return errors;
 }
 
+// The backends a platform's games draw with (render::create_device): Metal on Apple's, Vulkan or
+// Direct3D 12 on Windows, Vulkan elsewhere, and OpenGL ES where a game can ask for it or a browser
+// has nothing else.
+canvas::ShaderTargets shader_targets(std::string_view platform) {
+    if (platform == "macos" || platform == "ios") {
+        return {.spirv = false, .msl = true, .glsl = false, .hlsl = false};
+    }
+    if (platform == "web") {
+        return {.spirv = false, .msl = false, .glsl = true, .hlsl = false};
+    }
+    return {.spirv = true, .msl = false, .glsl = true, .hlsl = platform == "windows"};
+}
+
+// A material file with its shader compiled in as "compiled", for a game, which can't compile
+// shaders; nullopt for a graph material, or a shader that doesn't compile (check_data_file says
+// why).
+std::optional<std::string> with_compiled_shader(std::string_view text,
+                                                const world::FileReader& reader,
+                                                std::string_view target) {
+    auto doc = json::parse(text);
+    if (!doc) {
+        return std::nullopt;
+    }
+    auto material = canvas::parse_material(doc.value());
+    if (!material || material.value().shader.empty()) {
+        return std::nullopt;
+    }
+    auto compiled = canvas::compile_material_shader(material.value(), reader);
+    if (!compiled || !compiled.value()) {
+        return std::nullopt;
+    }
+    doc.value()["compiled"] =
+        canvas::compiled_shader_json(*compiled.value(), shader_targets(target));
+    return json::write(doc.value());
+}
+
 // Copies project.json and every scene, prefab, texture, .frames.json, .material.json, .anim.json,
 // .tileset.json, font, .theme.json, sound, .audio.json and .bus_layout.json file into data,
-// checking each on the way.
+// checking each on the way. Materials take their shaders compiled for the platform.
 bool stage_data(const fs::path& project_dir, const runtime::Project& project, const fs::path& data,
-                Failure& failure) {
+                std::string_view target, Failure& failure) {
     std::error_code error;
     fs::remove_all(data, error);
     fs::create_directories(data, error);
@@ -305,6 +347,18 @@ bool stage_data(const fs::path& project_dir, const runtime::Project& project, co
             problems.push_back(std::move(item));
         }
         fs::create_directories((data / relative).parent_path(), error);
+        std::optional<std::string> compiled;
+        if (kind == DataFile::Material && errors.empty()) {
+            compiled = with_compiled_shader(text.value(), reader, target);
+        }
+        if (compiled) {
+            if (auto written = platform::write_file((data / relative).string(), *compiled);
+                !written) {
+                failure = {"stage", "could not write " + file + ": " + written.error().message, {}};
+                return false;
+            }
+            continue;
+        }
         fs::copy_file(entry.path(), data / relative, fs::copy_options::overwrite_existing, error);
         if (error) {
             failure = {"stage", "could not copy " + file + ": " + error.message(), {}};
@@ -789,8 +843,11 @@ ExportResult export_game(const ExportOptions& options) {
         return fail(failure, {});
     }
     log::info("export step", {{"step", "validate"}});
+    if (!render::has_shader_compiler()) {
+        shader_compiler::install(); // games get their materials' shaders compiled
+    }
     const fs::path data = fs::absolute(work / "data", error);
-    if (!stage_data(project_dir, project.value(), data, failure)) {
+    if (!stage_data(project_dir, project.value(), data, platform, failure)) {
         return fail(failure, log_path);
     }
 
