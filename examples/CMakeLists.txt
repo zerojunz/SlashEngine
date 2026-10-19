@@ -7,8 +7,9 @@
 #                   equal results.jsonl, line for line
 #   project.json    the folder is a game project and must pass "slash-cli project validate"
 #
-# Each runs in a copy of its folder. SLASH_UPDATE_EXAMPLES=1 in the environment writes the output
-# to expected.txt or results.jsonl instead of comparing; review the diff before committing it.
+# Each runs in a copy of its folder, with AssetRipper's stand-in from tests/ as SLASH_ASSETRIPPER.
+# SLASH_UPDATE_EXAMPLES=1 in the environment writes the output to expected.txt or results.jsonl
+# instead of comparing; review the diff before committing it.
 
 set(run_example ${CMAKE_CURRENT_SOURCE_DIR}/run_example.cmake)
 file(GLOB examples LIST_DIRECTORIES true CONFIGURE_DEPENDS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
@@ -33,7 +34,8 @@ foreach(name IN LISTS examples)
     endif()
     add_test(NAME example_${name}
         COMMAND ${CMAKE_COMMAND} -DEXAMPLE=${dir} -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}/${name}
-            -DCLI=$<TARGET_FILE:slash-cli> ${program} -P ${run_example})
+            -DCLI=$<TARGET_FILE:slash-cli> -DASSETRIPPER=$<TARGET_FILE:fake-assetripper>
+            ${program} -P ${run_example})
 endforeach()
 
 # README.md lists every example, so agents find them.

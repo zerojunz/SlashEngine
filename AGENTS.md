@@ -321,6 +321,17 @@ SlashEngine project. Encrypted packs are refused and encrypted files listed, nev
 exported games in code with it rather than committing binary files. `examples/unpack-godot`
 imports a shipped game.
 
+Games built with Unity import through AssetRipper, which is GPL and so only ever runs as a
+program of its own: `src/unity_build.cpp` (`slash/importer/unity_build.hpp`) finds a build
+(a player folder on any desktop, an `.apk` or `.ipa` file, a web build, compressed or not),
+refuses encrypted bundles, starts AssetRipper's headless server (`SLASH_ASSETRIPPER`, else the
+`assetripper` toolchain, installed on first use), has it export the Unity project into
+`.slash/import/unity/`, then tidies it: scripts of Unity's packages get the GUIDs they have in
+every project (`unity::package_script_guid`) and their decompiled stand-ins are dropped, so the
+Unity importer converts the project as one made in Unity. Unpacking needs the `build`
+capability, and a running game refuses it. Tests and `examples/unpack-unity` run
+`tests/fake_assetripper.cpp`, a stand-in that serves the same calls and exports a folder.
+
 `src/unity_yaml.cpp` reads Unity's YAML (scenes, prefabs, assets, settings and `.meta` files)
 and `src/unity_import.cpp` converts a project with `Assets/` and `ProjectSettings/`: a
 `.scene.json` beside each `.unity` and `.prefab` file, prefabs staying prefabs that scenes

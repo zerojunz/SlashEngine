@@ -50,6 +50,7 @@ add_executable(slash_tests
     test_ui_menus.cpp
     test_ui_drag.cpp
     test_ui_scroll.cpp
+    test_unity_build.cpp
     test_world.cpp)
 target_link_libraries(slash_tests PRIVATE
     slash::animation slash::asset slash::audio slash::canvas slash::command slash::core slash::debug slash::exporter slash::importer slash::input slash::physics2d
@@ -60,6 +61,15 @@ target_link_libraries(slash_tests PRIVATE
 target_compile_definitions(slash_tests PRIVATE DOCTEST_CONFIG_USE_STD_HEADERS
     SLASH_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data" SLASH_TEST_CMAKE="${CMAKE_COMMAND}")
 slash_target_warnings(slash_tests)
+
+# A stand-in for AssetRipper's web interface, so the Unity build tests and the unpack-unity
+# example run without downloading it.
+add_executable(fake-assetripper fake_assetripper.cpp)
+target_link_libraries(fake-assetripper PRIVATE slash_httplib)
+slash_target_warnings(fake-assetripper)
+add_dependencies(slash_tests fake-assetripper)
+target_compile_definitions(slash_tests PRIVATE
+    SLASH_FAKE_ASSETRIPPER="$<TARGET_FILE:fake-assetripper>")
 
 add_test(NAME unit COMMAND slash_tests WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 
