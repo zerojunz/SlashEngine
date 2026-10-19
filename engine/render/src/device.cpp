@@ -151,8 +151,9 @@ Result<void> check_particle_process(const ParticleProcess& process,
     for (const auto& [what, gradient] :
          {std::pair{"color_ramp", &process.color_ramp},
           std::pair{"color_initial_ramp", &process.color_initial_ramp}}) {
-        if (auto checked = check_offsets(what, gradient->size(),
-                                         [&](std::size_t i) { return (*gradient)[i].offset; });
+        const ParticleGradient& stops = *gradient;
+        if (auto checked = check_offsets(what, stops.size(),
+                                         [&stops](std::size_t i) { return stops[i].offset; });
             !checked) {
             return checked;
         }

@@ -15,7 +15,7 @@ namespace slash::render {
 namespace {
 
 // The value of pi Godot's generated shader uses.
-constexpr float kPi = 3.14159F;
+constexpr float kPi = 3.14159F; // NOLINT(modernize-use-std-numbers): Godot's, not std's
 constexpr float kDegreesToRadians = kPi / 180.0F;
 
 Vec2 operator/(Vec2 v, float s) {

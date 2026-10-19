@@ -216,8 +216,10 @@ public:
         const int fixed_fps = std::clamp(s_.fixed_fps, 0, 1000);
         if (e.clear && s_.preprocess > 0.0F) {
             const float frame_time = 1.0F / static_cast<float>(fixed_fps > 0 ? fixed_fps : 30);
-            for (float todo = s_.preprocess; todo > 0.0F; todo -= frame_time) {
+            float todo = s_.preprocess;
+            while (todo > 0.0F) {
                 process(e, std::min(frame_time, todo));
+                todo -= frame_time;
             }
         }
         const float time_scale = std::max(s_.speed_scale, 0.0F);
