@@ -1,6 +1,7 @@
 add_library(slash_platform
     src/file.cpp
     src/fonts.cpp
+    src/library.cpp
     src/platform.cpp
     src/process.cpp
     src/run.cpp)

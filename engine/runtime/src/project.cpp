@@ -233,6 +233,20 @@ json::Value project_schema() {
     properties["input"] = input::map_schema();
     properties["input_devices"] = input::settings_schema();
     properties["audio"] = audio::settings_schema();
+    json::Value gameplay;
+    gameplay["type"] = "object";
+    gameplay["additionalProperties"] = false;
+    gameplay["required"] = json::Array{"sources"};
+    gameplay["description"] = "The game's own C++ code: its components and systems.";
+    json::Value& sources = gameplay["properties"]["sources"];
+    sources["type"] = "array";
+    sources["minItems"] = 1;
+    sources["items"]["type"] = "string";
+    sources["description"] =
+        "Folders and .cpp files of the code, relative to the project; a folder means every .cpp "
+        "file in it and its subfolders. gameplay.build makes the library the tools load, and "
+        "exports link the code in.";
+    properties["gameplay"] = std::move(gameplay);
     return schema;
 }
 
@@ -265,6 +279,16 @@ std::vector<json::ValidationError> validate_project(const json::Value& project) 
                                                 "separated by '/', with no \".\" or \"..\" parts"});
             } else if (!theme->as_string().ends_with(".theme.json")) {
                 errors.push_back({"/gui/theme", "expected a .theme.json file"});
+            }
+        }
+    }
+    if (const json::Value* gameplay = project.find("gameplay"); gameplay != nullptr) {
+        const json::Array& sources = gameplay->find("sources")->as_array();
+        for (std::size_t i = 0; i < sources.size(); ++i) {
+            if (!is_project_path(sources[i].as_string())) {
+                errors.push_back({"/gameplay/sources/" + std::to_string(i),
+                                  "expected a path inside the project folder, separated by '/', "
+                                  "with no \".\" or \"..\" parts"});
             }
         }
     }
@@ -367,6 +391,11 @@ Result<Project> parse_project(const json::Value& project) {
     }
     if (const json::Value* audio = project.find("audio"); audio != nullptr) {
         out.audio = audio::parse_settings(*audio);
+    }
+    if (const json::Value* gameplay = project.find("gameplay"); gameplay != nullptr) {
+        for (const json::Value& source : gameplay->find("sources")->as_array()) {
+            out.gameplay_sources.push_back(source.as_string());
+        }
     }
     return out;
 }

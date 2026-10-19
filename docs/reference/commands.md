@@ -81,6 +81,7 @@ as `entity.get`, reject it as an unknown param.
 | Display | [`display.list`](#displaylist), [`display.set`](#displayset), [`perf.stats`](#perfstats), [`debug.overlay`](#debugoverlay) |
 | Import | [`project.import`](#projectimport) |
 | Export | [`export.run`](#exportrun) |
+| Gameplay code | [`gameplay.build`](#gameplaybuild) |
 
 
 ## Describe
@@ -107,6 +108,14 @@ Needs: `read`.
 `scene` describes the open scene: how many entities it has, its path (empty for an unsaved one)
 and the current tick. In a running game, which has [`play`](#play) and [`pause`](#pause), it also
 says whether the game is `playing`.
+
+`gameplay` describes the game's own C++ code (see [`gameplay.build`](#gameplaybuild)) when some
+is loaded or failed to load: the `library` it came from, whether it is `loaded`, the
+`components` and `systems` it added, and the `error` of the last load that failed.
+
+```json
+{"components":["Wallet"],"library":".slash/gameplay/game.so","loaded":true,"systems":["earn"]}
+```
 
 `systems` lists the systems in the order they run. With `"full": true`, each is an object:
 
@@ -2287,8 +2296,9 @@ events; when a queue is full the oldest event is dropped.
 | --- | --- | --- |
 | `entity.created` | An entity with an ID is created, by a command or a system | `id` |
 | `entity.destroyed` | An entity with an ID is destroyed | `id` |
-| `command` | A command changed the world, including `step`, `undo` and `redo`, or a prefab reload did (`"command": "asset.reload"`) | `command`, and `changes` as [`world.diff`](#worlddiff) returns them |
+| `command` | A command changed the world, including `step`, `undo` and `redo`, or a prefab reload (`"command": "asset.reload"`) or new gameplay code (`"command": "gameplay.reload"`) did | `command`, and `changes` as [`world.diff`](#worlddiff) returns them |
 | `asset.reloaded` | A loaded asset or prefab file changed on disk | `data`: `path`, `type`, and `version`, or `error` if it no longer loads |
+| `gameplay.reloaded` | The game's code was rebuilt and swapped in, or failed to load | `data` as [`gameplay.build`](#gameplaybuild)'s `reload` |
 | anything else | Gameplay code called `World::emit`, e.g. `"coin_collected"` | `id` and `data`, if the game gave them |
 
 Every event also has `seq`, which counts up across the session, and `tick`, the world's tick when
@@ -2733,6 +2743,52 @@ path.
 
 ```json
 {"code":-32002,"data":{"step":"options"},"message":"no preset or platform called \"macso\"; did you mean \"macos\"?"}
+```
+
+## Gameplay code
+
+A game's own components and systems are C++ in the folders and files `project.json`'s
+[`gameplay.sources`](project-format.md#gameplay-code) names, registered in one
+`SLASH_GAME_MODULE` function (see [AGENTS.md](../../AGENTS.md#gameplay-code)). Exports link them
+in. `slash-cli`, `slash-mcp` and `slash-game` load them from the library this command builds, on
+macOS and Linux, and every command first swaps in a library that changed since, so a build by
+another program (such as [`slash-cli build`](cli.md#build)) goes in too.
+
+### gameplay.build
+
+Compiles the project's gameplay sources into `.slash/gameplay/game.so` and swaps the new code
+into the world. The world keeps its entities; each component of the game's types keeps the
+fields its new type still has. Only files that changed are compiled again. Registered by
+`slash-cli` and `slash-mcp`; a running game leaves it out, and picks up a library another program
+built before its next tick.
+
+No params. Needs: `filesystem`, `build`. The swap is not undone by `undo`, but steps saved before
+it still undo: values that no longer fit the code are left out.
+
+```json
+{}
+```
+
+```json
+{"library":".slash/gameplay/game.so","log":".slash/gameplay/build.log","reload":{"changed":["Wallet"],"dropped":["Wallet.income: no longer in the code (2 entities)"]}}
+```
+
+`reload` says what the swap did: the game's component types `added`, `removed` and `changed`
+(their fields or field types), and in `dropped` each value that could not be kept, with how many
+entities lost it: a field the code no longer has, a value its new type can't hold, or a component
+the old code kept without registering it. A failed swap leaves the old code running and fails
+the command with `-32002` and the reason in `data.error`: a name used twice, a component or
+system named like one of the engine's, no `SLASH_GAME_MODULE` function, or a library built
+against other engine headers or another compiler.
+
+Compiler errors fail with `-32002`, listing at most 20 in `data.errors`, each with `file`
+(relative to the project when inside it), `line`, `column` and `message`; `data.log` is the full
+build log. A project with no `gameplay.sources` fails with `-32002` and `data.step` `"options"`;
+a build that fails without compiler errors, such as a link error, fails with `-32004` and the end
+of the log in `data.tail`.
+
+```json
+{"code":-32002,"data":{"errors":[{"column":97,"file":"src/game.cpp","line":16,"message":"'struct {anonymous}::Wallet' has no member named 'bonsu'; did you mean 'bonus'?"}],"log":".slash/gameplay/build.log","step":"build"},"message":"the game's code has 1 error"}
 ```
 
 ## Adding a command

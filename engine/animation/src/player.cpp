@@ -165,6 +165,7 @@ struct PlayerState {
     struct Cached {
         asset::Handle<AnimationLibrary> library;
         std::uint64_t version = 0;
+        std::uint64_t types = 0; // the component registry's revision when targets resolved
         // By animation name, one per track.
         std::map<std::string, std::vector<Resolved>, std::less<>> targets;
         bool used = false;
@@ -194,13 +195,15 @@ struct PlayerState {
         return &cached;
     }
 
-    // The targets of an animation's tracks, resolved once per version of its file.
+    // The targets of an animation's tracks, resolved once per version of its file and of the
+    // component types, which change when a game's code is reloaded.
     static const std::vector<Resolved>& targets(Cached& cached, const std::string& name,
                                                 const Animation& animation,
                                                 const world::ComponentRegistry& components) {
-        if (cached.version != cached.library.version()) {
+        if (cached.version != cached.library.version() || cached.types != components.revision()) {
             cached.targets.clear();
             cached.version = cached.library.version();
+            cached.types = components.revision();
         }
         auto [it, added] = cached.targets.try_emplace(name);
         if (added) {

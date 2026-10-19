@@ -1,0 +1,21 @@
+gameplay.build {}
+{"library":".slash/gameplay/game.so","log":".slash/gameplay/build.log","reload":{"added":["Wallet"]}}
+scene.open {"path":"scenes/main.scene.json"}
+{"entities":2,"path":"scenes/main.scene.json"}
+step {"ticks":60}
+{"tick":60,"ticks":60}
+world.query {"include":["Wallet"]}
+{"count":2,"entities":[{"components":{"Wallet":{"coins":120,"income":2}},"id":"player"},{"components":{"Wallet":{"coins":560,"income":1}},"id":"shopkeeper"}],"truncated":false}
+gameplay.build {}
+{"library":".slash/gameplay/game.so","log":".slash/gameplay/build.log","reload":{"changed":["Wallet"]}}
+step {"ticks":60}
+{"tick":120,"ticks":60}
+world.query {"include":["Wallet"]}
+{"count":2,"entities":[{"components":{"Wallet":{"bonus":10,"coins":840,"income":2}},"id":"player"},{"components":{"Wallet":{"bonus":10,"coins":1220,"income":1}},"id":"shopkeeper"}],"truncated":false}
+gameplay.build {}
+error: the game's code has 1 error
+  src/game.cpp:16
+step {"ticks":1}
+{"tick":121,"ticks":1}
+world.query {"include":["Wallet"]}
+{"count":2,"entities":[{"components":{"Wallet":{"bonus":10,"coins":852,"income":2}},"id":"player"},{"components":{"Wallet":{"bonus":10,"coins":1231,"income":1}},"id":"shopkeeper"}],"truncated":false}

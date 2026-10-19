@@ -3,6 +3,7 @@
 #include "slash/animation/animation.hpp"
 #include "slash/core/log.hpp"
 #include "slash/core/text.hpp"
+#include "slash/gameplay/host.hpp"
 #include "slash/input/input.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/ui/ui.hpp"
@@ -80,6 +81,23 @@ Result<std::unique_ptr<Game>> Game::start(const GameOptions& options) {
 
     auto game = std::unique_ptr<Game>(
         new Game(std::move(project).value(), std::move(platform).value(), data_dir));
+    if (options.gameplay != nullptr) {
+        game->gameplay_ = std::make_unique<gameplay::Host>(game->components_, options.gameplay);
+    } else if (!game->project_.gameplay_sources.empty()) {
+        game->gameplay_ =
+            std::make_unique<gameplay::Host>(game->components_, gameplay::library_path(data_dir));
+    }
+    if (game->gameplay_ != nullptr) {
+        const gameplay::Load load = game->gameplay_->attach(game->world_);
+        if (!load.error.empty()) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "the game's code did not load: " + load.error);
+        }
+        if (!game->gameplay_->loaded()) {
+            return make_error(ErrorCode::NotFound, "the game's code is not built; build it with "
+                                                   "\"slash-cli build\"");
+        }
+    }
     if (auto loaded = world::load_scene(game->world_, scene.value()); !loaded) {
         return make_error(loaded.error().code,
                           game->project_.main_scene + ": " + loaded.error().message);
@@ -163,6 +181,9 @@ Game::~Game() {
 }
 
 bool Game::frame() {
+    if (gameplay_ != nullptr) {
+        (void)gameplay_->poll();
+    }
     const std::uint64_t ticks = loop_->stats().ticks;
     const bool running = loop_->frame([this](std::uint64_t /*tick*/, double tick_seconds) {
         canvas_->before_tick(world_);

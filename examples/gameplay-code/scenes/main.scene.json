@@ -1,0 +1,19 @@
+{
+  "entities": {
+    "player": {
+      "components": {
+        "Wallet": {
+          "income": 2
+        }
+      }
+    },
+    "shopkeeper": {
+      "components": {
+        "Wallet": {
+          "coins": 500
+        }
+      }
+    }
+  },
+  "format": 1
+}

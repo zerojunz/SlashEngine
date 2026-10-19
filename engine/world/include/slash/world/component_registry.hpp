@@ -7,6 +7,7 @@
 #include "slash/world/serialize.hpp"
 #include "slash/world/world.hpp"
 
+#include <cstdint>
 #include <entt/core/type_info.hpp>
 #include <entt/entity/registry.hpp>
 #include <map>
@@ -108,16 +109,33 @@ public:
 
     // The type with this name, or nullptr.
     [[nodiscard]] const ComponentType* find(std::string_view name) const;
+    [[nodiscard]] ComponentType* find_mutable(std::string_view name);
 
     // Registered types in the order they were added.
     [[nodiscard]] std::span<const std::unique_ptr<ComponentType>> types() const noexcept {
         return types_;
     }
 
+    // A stand-in for a component of a game's own code when the code isn't loaded, so files that
+    // use it can still be checked: scene checks take any value for its fields, and loading a
+    // scene into a world leaves it out. Its name must be new.
+    ComponentType& add_stand_in(std::string name, std::vector<std::string> fields);
+
+    // Moves types between registries, as the engine does with a game's own types when it loads
+    // or reloads its code (slash/world/game_module.hpp). adopt adds a type another registry made;
+    // its name and type must be new here. take removes a type and returns it, or nullptr.
+    ComponentType& adopt(std::unique_ptr<ComponentType> type);
+    std::unique_ptr<ComponentType> take(std::string_view name);
+
+    // Counts the types added and taken, so code that keeps ComponentType pointers between calls
+    // can tell when to look them up again.
+    [[nodiscard]] std::uint64_t revision() const noexcept { return revision_; }
+
 private:
     ComponentType& insert(std::unique_ptr<ComponentType> type);
 
     std::vector<std::unique_ptr<ComponentType>> types_;
+    std::uint64_t revision_ = 0;
 };
 
 template <reflect::Component T>

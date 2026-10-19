@@ -2,3 +2,4 @@
 add_executable(slash-game)
 target_link_libraries(slash-game PRIVATE slash::game_main)
 slash_target_warnings(slash-game)
+slash_gameplay_host(slash-game)

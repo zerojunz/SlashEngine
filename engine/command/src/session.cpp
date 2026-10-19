@@ -7,6 +7,7 @@
 #include "slash/core/json_schema.hpp"
 #include "slash/core/log.hpp"
 #include "slash/core/text.hpp"
+#include "slash/gameplay/host.hpp"
 #include "slash/input/input.hpp"
 #include "slash/physics2d/physics2d.hpp"
 #include "slash/platform/file.hpp"
@@ -187,9 +188,16 @@ Session::Session(const world::ComponentRegistry& component_registry,
             }
         });
     }
+    if (options_.gameplay != nullptr) {
+        // Before any scene loads, so scenes may use the game's components.
+        (void)options_.gameplay->attach(world_);
+    }
 }
 
 Session::~Session() {
+    if (options_.gameplay != nullptr) {
+        options_.gameplay->detach(world_);
+    }
     world_.set_event_listener(nullptr);
     if (options_.capture_logs) {
         log::reset_sink();
@@ -726,8 +734,29 @@ void Session::poll_project() {
     audio::set_settings(world_, audio_settings(project));
 }
 
+std::optional<gameplay::Load> Session::poll_gameplay() {
+    if (options_.gameplay == nullptr || !options_.gameplay->changed()) {
+        return std::nullopt;
+    }
+    std::optional<SavedWorld> before;
+    if (wants("command")) {
+        before = save();
+    }
+    std::optional<gameplay::Load> load = options_.gameplay->poll();
+    if (!load) {
+        return load;
+    }
+    ++revision_;
+    publish({"gameplay.reloaded", "", load->to_json(), world_.tick()});
+    if (before) {
+        publish_changes("gameplay.reload", *before, save());
+    }
+    return load;
+}
+
 void Session::poll_assets() {
     poll_project();
+    (void)poll_gameplay();
     std::vector<asset::Assets::Change> changes = assets_.poll();
     if (changes.empty()) {
         return;

@@ -429,7 +429,7 @@ SlashEngine/
     command/         # Command registry, undo, JSON-RPC and MCP
     server/          # localhost HTTP: REST mirror, OpenAPI, JSON-RPC and MCP
     runtime/         # project.json, the game loop and every game's main()
-    hotreload/       # loads and swaps the C++ game module, keeps world state
+    gameplay/        # loads and swaps the game's C++ code, keeps world state
     ai/              # optional: Provider interface and adapters
     library/         # optional: asset library, generators and feedback
     storyboard/      # storyboard files, briefs, checks and the project map

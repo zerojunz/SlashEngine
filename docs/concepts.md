@@ -61,10 +61,11 @@ The code follows the same split, one CMake library per module under `engine/`:
 | `storyboard` | Storyboard files: kinds, checks, versions, queries and edits |
 | `command` | Commands, sessions with undo, JSON-RPC and MCP |
 | `server` | The localhost HTTP server over a session |
+| `gameplay` | Loading a game's own C++ code into a world, and swapping it when it is rebuilt |
 | `runtime` | Project files and the game executable every export is built from |
 
 The tools in `tools/` are thin front ends over these: `slash-cli` (run, validate, call, serve,
-init, export), `slash-mcp` (MCP over stdio) and `slash-game` (runs a project as its export
+init, build, export), `slash-mcp` (MCP over stdio) and `slash-game` (runs a project as its export
 would).
 
 ## World, entities and components
@@ -189,6 +190,13 @@ data next to it, not a template plus scripts. `slash-cli export <platform>` vali
 and its scenes, builds, signs, and with `--test` runs the result headless to prove it starts.
 It covers macOS, Windows, Linux, the web, Android and iOS; building every platform from one Mac
 is next on the [roadmap](roadmap.md).
+
+A game's **gameplay code** is C++ in the folders `project.json`'s `gameplay.sources` names: its
+own components and systems, registered in one `SLASH_GAME_MODULE` function, as Godot's scripts
+add a game's own behavior. Exports compile it in. The tools build it into a library with
+`slash-cli build` or `gameplay.build` and load it, and when it is rebuilt they swap the new code
+into the running world, which keeps its entities and each field the code still has. See
+[reference/project-format.md](reference/project-format.md#gameplay-code).
 
 An **export preset** is a named way to export, kept in the project's `export_presets.json` like
 Godot's `export_presets.cfg`: a platform, an output folder, a debug flag and how to sign. Signing
@@ -598,8 +606,9 @@ edit a frozen frame or advance it with `step`; `play` lets it run again.
 the working rules and a link to the engine's [examples](../examples/README.md) at the commit the
 project pins, a `CLAUDE.md` that loads it, a Claude Code skill for editing scenes, a GitHub
 Actions workflow that checks the project and exports and tests every platform
-(`.github/workflows/export.yml`), an empty `scenes/main.scene.json`, a starter storyboard, a
-starter test (`tests/main.test.json`), and `.gitignore` entries for `.slash/` and `build/`. The
+(`.github/workflows/export.yml`), an empty `scenes/main.scene.json`, starter gameplay code
+(`src/game.cpp`), a starter storyboard, a starter test (`tests/main.test.json`), and `.gitignore`
+entries for `.slash/` and `build/`. The
 MCP server's own instructions repeat the key rules (call `engine_describe` first, use `batch`,
 brief before a task and check after it, run the tests after a change, don't hand-edit scenes
 while the server runs) to every client that connects.
