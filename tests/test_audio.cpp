@@ -317,10 +317,11 @@ TEST_CASE(".audio.json files give a sound settings or pick one of several stream
     };
     CHECK(first(R"({"format": 1})").message ==
           "needs one of \"source\" (a sound with settings), \"streams\" (a randomizer), "
-          "\"playlist\", \"synchronized\" or \"clips\" (music)");
+          "\"playlist\", \"synchronized\", \"clips\" (music), \"generator\" or "
+          "\"polyphonic\"");
     CHECK(first(R"({"format": 1, "source": "a.wav", "streams": [{"stream": "b.wav"}]})").message ==
-          "has both \"source\" and \"streams\"; a file is one sound, randomizer or piece of "
-          "music");
+          "has both \"source\" and \"streams\"; a file is one sound, randomizer, piece of "
+          "music, generator or polyphonic stream");
     CHECK(first(R"({"format": 1, "source": "a.wav", "loop": true})").path == "/loop");
     CHECK(first(R"({"format": 1, "source": "a.ogg", "loop_mode": "forward"})").path ==
           "/loop_mode");
@@ -659,6 +660,249 @@ TEST_CASE("a player's parameters reach its playbacks, and switch_to_clip follows
     const auto& layers =
         sounds.world.ecs().get<world::AudioStreamPlayer>(sounds.world.find("layers"));
     CHECK(layers.parameters.size() == 1);
+}
+
+TEST_CASE(".audio.json files make generators and polyphonic streams") {
+    const auto generator = audio::parse_stream_file(parse(R"({"format": 1,
+        "generator": {"mix_rate": 22050, "buffer_length": 0.25}})"));
+    REQUIRE(generator.ok());
+    CHECK(generator.value().kind == audio::StreamFile::Kind::Generator);
+    CHECK(generator.value().mix_rate == 22050.0F);
+    CHECK(generator.value().buffer_length == 0.25F);
+    CHECK(generator.value().mix_rate_mode == audio::MixRateMode::Custom);
+    const auto output = audio::parse_stream_file(
+        parse(R"({"format": 1, "generator": {"mix_rate_mode": "output"}})"));
+    REQUIRE(output.ok());
+    CHECK(output.value().mix_rate_mode == audio::MixRateMode::Output);
+    CHECK(output.value().buffer_length == 0.5F);
+    const auto polyphonic = audio::parse_stream_file(parse(R"({"format": 1, "polyphonic": {}})"));
+    REQUIRE(polyphonic.ok());
+    CHECK(polyphonic.value().kind == audio::StreamFile::Kind::Polyphonic);
+    CHECK(polyphonic.value().polyphony == 32);
+
+    const auto errors_of = [](std::string_view text) {
+        return audio::validate_stream_file(parse(text));
+    };
+    auto errors = errors_of(R"({"format": 1, "generator": {}, "polyphonic": {}})");
+    REQUIRE(errors.size() == 1);
+    CHECK(contains(errors[0].message, "has both \"generator\" and \"polyphonic\""));
+    errors = errors_of(R"({"format": 1, "generator": {}, "loop": true})");
+    REQUIRE(errors.size() == 1);
+    CHECK(errors[0].path == "/loop");
+    errors = errors_of(R"({"format": 1, "polyphonic": {"polyphony": 0}})");
+    REQUIRE(errors.size() == 1);
+    CHECK(errors[0].path == "/polyphonic/polyphony");
+    errors = errors_of(R"({"format": 1, "generator": {"rate": 8000}})");
+    REQUIRE_FALSE(errors.empty());
+    CHECK(contains(errors[0].path, "/generator"));
+}
+
+TEST_CASE("a generator plays the frames a game pushes, and counts the mixes that ran out") {
+    audio::StreamFile settings;
+    settings.kind = audio::StreamFile::Kind::Generator;
+    const auto stream = audio::generator_stream(settings);
+    CHECK(stream->is_monophonic());
+    CHECK(stream->length() == 0.0);
+    const auto playback = stream->instantiate(kRate, 0);
+    audio::GeneratorPlayback* generator = playback->generator();
+    REQUIRE(generator != nullptr);
+    CHECK(playback->polyphonic() == nullptr);
+    // Half a second at 44100 Hz rounds up to 32768 frames, one of which Godot's ring buffer
+    // always keeps free.
+    CHECK(generator->frames_available() == 32767);
+    playback->start(0.0);
+    std::vector<Frame> pushed(300);
+    for (std::size_t i = 0; i < pushed.size(); ++i) {
+        const float value = static_cast<float>(i) / 1000.0F;
+        pushed[i] = {value, -value};
+    }
+    CHECK(generator->push_frame(pushed[0]));
+    CHECK(generator->push_buffer(std::span<const Frame>(pushed).subspan(1)));
+    CHECK(generator->frames_available() == 32467);
+    CHECK(generator->can_push_buffer(32467));
+    CHECK_FALSE(generator->can_push_buffer(32468));
+    // Frames that don't all fit aren't added.
+    CHECK_FALSE(generator->push_buffer(std::vector<Frame>(32468)));
+    CHECK(generator->frames_available() == 32467);
+
+    std::vector<Frame> out(1024);
+    CHECK(playback->mix(out.data(), 1.0F, 1024) == 1024);
+    // At the mix rate, the resampler hands the frames through unchanged, 130 frames late: its
+    // 128-frame buffer and two frames of cubic history.
+    check_frame(out[129], 0.0F, 0.0F);
+    for (std::size_t i = 0; i < pushed.size(); ++i) {
+        check_frame(out[130 + i], pushed[i].left, pushed[i].right);
+    }
+    check_frame(out[430], 0.0F, 0.0F);
+    // It read 128 frames eight times: the first two found frames, the others ran out.
+    CHECK(generator->skips() == 6);
+    CHECK(generator->frames_available() == 32767);
+    CHECK(playback->position() == doctest::Approx(1024.0 / kRate));
+
+    // The buffer clears only once the generator stopped, as Godot's.
+    CHECK(generator->push_buffer(std::vector<Frame>(10, {0.5F, 0.5F})));
+    generator->clear_buffer();
+    CHECK(generator->frames_available() == 32757);
+    playback->stop();
+    CHECK_FALSE(playback->is_playing());
+    generator->clear_buffer();
+    CHECK(generator->frames_available() == 32767);
+    // Stopped, it ends at its next read.
+    CHECK(playback->mix(out.data(), 1.0F, 256) == 128);
+
+    // Its own rate sizes the buffer, or the mix rate's with mix_rate_mode "output".
+    settings.mix_rate = 22050.0F;
+    settings.buffer_length = 0.25F;
+    CHECK(
+        audio::generator_stream(settings)->instantiate(kRate, 0)->generator()->frames_available() ==
+        8191);
+    settings.mix_rate_mode = audio::MixRateMode::Output;
+    CHECK(
+        audio::generator_stream(settings)->instantiate(96000, 0)->generator()->frames_available() ==
+        32767);
+}
+
+TEST_CASE("a polyphonic stream plays streams a game starts, each at its own volume") {
+    audio::StreamFile settings;
+    settings.kind = audio::StreamFile::Kind::Polyphonic;
+    settings.polyphony = 2;
+    const auto stream = audio::polyphonic_stream(settings);
+    CHECK(stream->is_monophonic());
+    const auto playback = stream->instantiate(kRate, 7);
+    audio::PolyphonicPlayback* polyphonic = playback->polyphonic();
+    REQUIRE(polyphonic != nullptr);
+    CHECK(playback->generator() == nullptr);
+    CHECK(polyphonic->polyphony() == 2);
+    playback->start(0.0);
+
+    using Id = audio::PolyphonicPlayback::StreamId;
+    const auto loud = steady_stream(kRate, {0.5F, 0.5F});
+    const auto beep = steady_stream(kRate / 100, {0.25F, 0.25F});
+    const Id first = polyphonic->play_stream(loud, 0.0, -6.0206F, 1.0F);
+    const Id second = polyphonic->play_stream(beep, 0.0, 0.0F, 1.0F);
+    // Godot's IDs: the slot in the high 32 bits and a count in the low ones.
+    CHECK(first == 1);
+    CHECK(second == ((Id{1} << 32U) | 2));
+    CHECK(polyphonic->play_stream(loud, 0.0, 0.0F, 1.0F) == audio::PolyphonicPlayback::kInvalidId);
+    CHECK(polyphonic->streams_playing() == 2);
+    CHECK(polyphonic->is_stream_playing(second));
+    CHECK_FALSE(polyphonic->is_stream_playing(second + 1));
+    CHECK_FALSE(polyphonic->is_stream_playing(audio::PolyphonicPlayback::kInvalidId));
+
+    std::vector<Frame> out(512);
+    // A polyphonic stream plays until it is stopped, whatever its streams do.
+    CHECK(playback->mix(out.data(), 1.0F, 512) == 512);
+    check_frame(out[100], 0.5F, 0.5F);
+    // The beep's 441 frames ended, and its slot is free.
+    check_frame(out[480], 0.25F, 0.25F);
+    CHECK_FALSE(polyphonic->is_stream_playing(second));
+    CHECK(polyphonic->streams_playing() == 1);
+
+    // A new volume applies at the next mix, as Godot's.
+    polyphonic->set_stream_volume(first, 0.0F);
+    playback->mix(out.data(), 1.0F, 512);
+    check_frame(out[0], 0.5F, 0.5F);
+    // A stop fades out over the next mix, then frees the slot.
+    polyphonic->stop_stream(first);
+    CHECK(polyphonic->is_stream_playing(first));
+    playback->mix(out.data(), 1.0F, 512);
+    check_frame(out[0], 0.5F, 0.5F);
+    check_frame(out[256], 0.25F, 0.25F);
+    CHECK(out[511].left < 0.01F);
+    CHECK_FALSE(polyphonic->is_stream_playing(first));
+    CHECK(polyphonic->streams_playing() == 0);
+    // A stream stopped before it played never plays.
+    const Id third = polyphonic->play_stream(beep, 0.0, 0.0F, 1.0F);
+    CHECK(third == 3);
+    polyphonic->stop_stream(third);
+    playback->mix(out.data(), 1.0F, 512);
+    check_frame(out[100], 0.0F, 0.0F);
+    CHECK(polyphonic->streams_playing() == 0);
+
+    // A faster pitch scale plays a stream through sooner.
+    const Id fast = polyphonic->play_stream(beep, 0.0, 0.0F, 1.0F);
+    polyphonic->set_stream_pitch_scale(fast, 2.0F);
+    playback->mix(out.data(), 1.0F, 512);
+    check_frame(out[200], 0.25F, 0.25F);
+    check_frame(out[300], 0.0F, 0.0F);
+    // Stopping the playback drops every stream.
+    CHECK(polyphonic->play_stream(loud, 0.0, 0.0F, 1.0F) != audio::PolyphonicPlayback::kInvalidId);
+    playback->stop();
+    CHECK(polyphonic->streams_playing() == 0);
+    CHECK(playback->mix(out.data(), 1.0F, 512) == 0);
+}
+
+TEST_CASE("a game pushes frames to a generator player and plays streams on a polyphonic one") {
+    Sounds sounds;
+    sounds.files.write("audio/synth.audio.json",
+                       R"({"format": 1, "generator": {"buffer_length": 0.1}})");
+    sounds.files.write("audio/sfx.audio.json", R"({"format": 1, "polyphonic": {"polyphony": 4}})");
+    sounds.files.write("audio/hit.wav", steady_wav(kRate / 10, {0.25F, 0.25F}));
+    const entt::entity synth =
+        sounds.add("synth", "AudioStreamPlayer",
+                   R"({"stream": "audio/synth.audio.json", "autoplay": true, "max_polyphony": 3})");
+    // A gameplay system keeps the generator full, as Godot's AudioStreamGenerator demo does.
+    bool pushing = true;
+    sounds.world.add_system("synth", [&](world::World& w, double /*seconds*/) {
+        audio::Playback* playback = audio::stream_playback(w, synth);
+        if (!pushing || playback == nullptr) {
+            return;
+        }
+        audio::GeneratorPlayback* generator = playback->generator();
+        REQUIRE(generator != nullptr);
+        while (generator->push_frame({0.5F, 0.5F})) {
+        }
+    });
+    CHECK(audio::stream_playback(sounds.world, synth) == nullptr);
+    // The voice starts when the audio system runs, after the gameplay systems, so it runs out
+    // of frames in its first tick.
+    sounds.step();
+    CHECK(audio::stream_playback(sounds.world, synth) != nullptr);
+    sounds.step(2);
+    const int skips = sounds.player("synth")->generator->skips;
+    sounds.step(3);
+    check_frame(sounds.last(), 0.5F, 0.5F);
+    auto info = sounds.player("synth");
+    REQUIRE(info->generator.has_value());
+    CHECK(info->generator->skips == skips);
+    CHECK(info->generator->frames_available < 8191);
+    CHECK_FALSE(info->polyphonic.has_value());
+
+    // play() starts a generator over rather than adding a voice, as it is monophonic.
+    audio::play(sounds.world, synth);
+    sounds.step();
+    CHECK(sounds.player("synth")->voices == 1);
+    // When the game stops pushing, the mixes run out: silence, counted as skips.
+    pushing = false;
+    sounds.step(20);
+    check_frame(sounds.last(), 0.0F, 0.0F);
+    CHECK(sounds.player("synth")->generator->skips > 0);
+    CHECK(sounds.player("synth")->generator->frames_available == 8191);
+
+    // play_stream starts the player, then the streams on it.
+    const entt::entity sfx =
+        sounds.add("sfx", "AudioStreamPlayer", R"({"stream": "audio/sfx.audio.json"})");
+    REQUIRE(audio::play_stream(sounds.world, sfx, "audio/hit.wav", 0.0, -6.0206F).ok());
+    REQUIRE(audio::play_stream(sounds.world, sfx, "audio/hit.wav").ok());
+    sounds.step();
+    info = sounds.player("sfx");
+    CHECK(info->voices == 1);
+    REQUIRE(info->polyphonic.has_value());
+    CHECK(info->polyphonic->playing == 2);
+    CHECK(info->polyphonic->polyphony == 4);
+    check_frame(sounds.last(), 0.375F, 0.375F);
+    // The hits end, and the player plays on, silent, for the next ones.
+    sounds.step(10);
+    CHECK(sounds.player("sfx")->polyphonic->playing == 0);
+    CHECK(sounds.player("sfx")->voices == 1);
+    REQUIRE(audio::play_stream(sounds.world, sfx, "audio/hit.wav", 0.0, 0.0F, 2.0F).ok());
+    sounds.step();
+    CHECK(sounds.player("sfx")->polyphonic->playing == 1);
+
+    auto refused = audio::play_stream(sounds.world, synth, "audio/hit.wav");
+    REQUIRE_FALSE(refused.ok());
+    CHECK(contains(refused.error().message, "isn't polyphonic"));
+    CHECK_FALSE(audio::play_stream(sounds.world, sfx, "audio/missing.wav").ok());
 }
 
 TEST_CASE("a sound plays through Master a lookahead late, then its playback ends") {

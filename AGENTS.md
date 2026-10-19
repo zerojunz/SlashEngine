@@ -723,7 +723,9 @@ music, ported from Godot's `modules/interactive_music` (`src/music.cpp`): a play
 played together, or interactive clips that switch by its transitions when a player's
 `switch_to_clip` parameter asks; players hand their `parameters` to their playbacks
 (`Playback::set_parameter`), and the audio system writes `switch_to_clip` back as the music
-moves on. `audio::Server`
+moves on. Generators and polyphonic streams, as Godot's, are what gameplay code pushes frames to
+or starts sounds on, through `audio::stream_playback` (`generator()`, `polyphonic()`).
+`audio::Server`
 (`src/server.cpp`) is the mixer: playbacks mix into buses in steps of 512 frames, with a 64-frame
 lookahead, volume ramps and stop fades; each bus runs its effects (`src/effects.cpp`: 24 of Godot's
 `servers/audio/effects`, each ported from the one of the same name, the pitch shift and spectrum

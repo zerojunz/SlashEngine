@@ -20,7 +20,7 @@ from its `.pck` file or executable: see [Exported games](#exported-games).
 | `<name>.theme.json` | Each `Theme` resource, named the same way |
 | `<name>.bus_layout.json` | Each `AudioBusLayout` resource, such as `default_bus_layout.tres` |
 | `<name>.process_material.json` | Each `ParticleProcessMaterial` resource, named as frames are (see [particles](#particles)) |
-| `<name>.audio.json` | Each `AudioStreamRandomizer`, `AudioStreamPlaylist`, `AudioStreamSynchronized` and `AudioStreamInteractive` resource, named as frames are, and `<sound>.audio.json` beside a sound whose import settings loop it or give it beats (see [sounds and music](#sounds-and-music)) |
+| `<name>.audio.json` | Each `AudioStreamRandomizer`, `AudioStreamPlaylist`, `AudioStreamSynchronized`, `AudioStreamInteractive`, `AudioStreamGenerator` and `AudioStreamPolyphonic` resource, named as frames are, and `<sound>.audio.json` beside a sound whose import settings loop it or give it beats (see [sounds and music](#sounds-and-music)) |
 | `<name>.anim.json` | Each `AnimationPlayer`'s animation libraries: one library's named as above, several together as `<scene>_<player>.anim.json` |
 | `project.json` | `project.godot`'s settings and input map, merged into the project's own if it has one |
 | `storyboard/work.json` | A task per script, merged into the project's own tasks |
@@ -257,9 +257,10 @@ plays that file instead:
   Godot reads it. `edit/trim` and `edit/normalize` are reported: the sound plays as it is in the
   file.
 
-Godot's music resources become `.audio.json` files of the same kinds, a `.tres` file's beside it
-and a scene's own as `<scene>_<id>.audio.json`. Their streams convert as any reference does, so
-a playlist inside interactive music becomes a file of its own that the clip names.
+Godot's music, generator and polyphonic resources become `.audio.json` files of the same kinds,
+a `.tres` file's beside it and a scene's own as `<scene>_<id>.audio.json`. Their streams convert
+as any reference does, so a playlist inside interactive music becomes a file of its own that the
+clip names.
 
 | Godot | `.audio.json` |
 | --- | --- |
@@ -267,6 +268,8 @@ a playlist inside interactive music becomes a file of its own that the clip name
 | `AudioStreamPlaylist` | `playlist`, `shuffle`, `loop` and `fade_time` |
 | `AudioStreamSynchronized` | `synchronized`, each stream's `volume` as `volume_db` |
 | `AudioStreamInteractive` | `clips` (`auto_advance` and `next_clip` by name), `initial_clip` by name and `transitions`: each `Vector2i(from, to)` key becomes `from` and `to` by name, left out for -1 (any clip), and `from_time`, `to_time` and `fade_mode` are named. `filler_clip` comes with `use_filler_clip` |
+| `AudioStreamGenerator` | `generator` with `mix_rate_mode` by name, `mix_rate` and `buffer_length` |
+| `AudioStreamPolyphonic` | `polyphonic` with `polyphony` |
 
 A clip with no name, or one another clip has, is renamed `clip_<index>` and reported, since
 `switch_to_clip` asks for clips by name. A stream that doesn't convert is left out and reported;
