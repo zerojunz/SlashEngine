@@ -1,6 +1,7 @@
 #include "slash/render/device.hpp"
 
 #include "checks.hpp"
+#include "gl_device.hpp"
 #include "gpu_device.hpp"
 
 #include "slash/core/log.hpp"
@@ -290,6 +291,8 @@ std::string_view backend_name(Backend backend) {
         return "d3d12";
     case Backend::Software:
         return "software";
+    case Backend::OpenGl:
+        return "opengl";
     }
     return "null";
 }
@@ -340,11 +343,11 @@ std::unique_ptr<RenderDevice> create_null_device() {
 }
 
 Result<std::unique_ptr<RenderDevice>> create_device(const DeviceOptions& options) {
-    static constexpr std::array<std::string_view, 5> kDrivers = {"auto", "null", "vulkan", "metal",
-                                                                 "d3d12"};
+    static constexpr std::array<std::string_view, 6> kDrivers = {"auto",  "null",  "vulkan",
+                                                                 "metal", "d3d12", "opengl"};
     if (std::ranges::find(kDrivers, options.driver) == kDrivers.end()) {
-        std::string message =
-            "no render driver \"" + options.driver + "\"; use auto, null, vulkan, metal or d3d12";
+        std::string message = "no render driver \"" + options.driver +
+                              "\"; use auto, null, vulkan, metal, d3d12 or opengl";
         if (const std::string_view hint = closest_match(options.driver, kDrivers); !hint.empty()) {
             message += "; did you mean \"" + std::string(hint) + "\"?";
         }
@@ -352,6 +355,15 @@ Result<std::unique_ptr<RenderDevice>> create_device(const DeviceOptions& options
     }
     if (options.driver == "null") {
         return create_null_device();
+    }
+#ifdef __EMSCRIPTEN__
+    // SDL's GPU API has no web backend, so browsers draw with WebGL 2.
+    const bool opengl = options.driver == "auto" || options.driver == "opengl";
+#else
+    const bool opengl = options.driver == "opengl";
+#endif
+    if (opengl) {
+        return detail::create_gl_device(options);
     }
     return detail::create_gpu_device(options);
 }

@@ -1,3 +1,5 @@
+#include "devices.hpp"
+
 #include "slash/asset/assets.hpp"
 #include "slash/canvas/canvas.hpp"
 #include "slash/canvas/sprite_frames.hpp"
@@ -30,6 +32,7 @@ namespace canvas = slash::canvas;
 namespace json = slash::json;
 namespace render = slash::render;
 namespace world = slash::world;
+using slash::test::drawing_devices;
 
 namespace {
 
@@ -527,28 +530,6 @@ TEST_CASE("Sprite2D texture_filter takes only known names") {
 }
 
 namespace {
-
-std::unique_ptr<render::RenderDevice> gpu_device() {
-    auto device = render::create_device({.window = nullptr, .driver = "auto", .debug = false});
-    if (!device) {
-        if (!slash::platform::environment_variable("SLASH_EXPECT_GPU").empty()) {
-            FAIL("SLASH_EXPECT_GPU is set, but no GPU device works: " << device.error().message);
-        }
-        MESSAGE("no GPU here, so sprite pixels are not checked: " << device.error().message);
-        return nullptr;
-    }
-    return std::move(device).value();
-}
-
-// The devices that draw pixels: the software device, and a GPU device where one works.
-std::vector<std::unique_ptr<render::RenderDevice>> drawing_devices() {
-    std::vector<std::unique_ptr<render::RenderDevice>> devices;
-    devices.push_back(render::create_software_device());
-    if (auto gpu = gpu_device(); gpu != nullptr) {
-        devices.push_back(std::move(gpu));
-    }
-    return devices;
-}
 
 Rgba pixel(const render::Image& image, std::uint32_t x, std::uint32_t y) {
     const std::size_t at = ((std::size_t{y} * image.width) + x) * 4;

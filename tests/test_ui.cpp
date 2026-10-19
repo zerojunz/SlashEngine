@@ -1,3 +1,5 @@
+#include "devices.hpp"
+
 #include "slash/asset/assets.hpp"
 #include "slash/canvas/canvas.hpp"
 #include "slash/core/json.hpp"
@@ -550,72 +552,67 @@ std::vector<float> composite(const ui::DrawList& drawn, const text::Fonts& fonts
 } // namespace
 
 TEST_CASE("text draws on a GPU as the CPU works it out, from glyph images and distance fields") {
-    auto created = render::create_device({.window = nullptr, .driver = "auto", .debug = false});
-    if (!created) {
-        if (!slash::platform::environment_variable("SLASH_EXPECT_GPU").empty()) {
-            FAIL("SLASH_EXPECT_GPU is set, but no GPU device works: " << created.error().message);
-        }
-        MESSAGE("no GPU here, so text pixels are not checked: " << created.error().message);
-        return;
-    }
-    const std::unique_ptr<render::RenderDevice> device = std::move(created).value();
-    Scene scene;
-    scene.files.files["fonts/roboto.ttf"] = default_font_bytes();
-    scene.files.files["fonts/sharp.font.json"] =
-        R"({"format": 1, "font": "fonts/roboto.ttf", "multichannel_signed_distance_field": true})";
-    constexpr std::uint32_t kWidth = 96;
-    constexpr std::uint32_t kHeight = 64;
-    scene.create("back", R"({"Control": {"offset_right": 96, "offset_bottom": 64},
-                             "ColorRect": {"color": [0.1, 0.2, 0.6, 1]}})");
-    scene.create("small", R"({"Control": {"offset_left": 3, "offset_top": 2},
-                              "Label": {"text": "Hello!"}})");
-    scene.create("sharp", R"({"Control": {"offset_left": 2, "offset_top": 22,
-                                          "theme_override_fonts": {"font": "fonts/sharp.font.json"},
-                                          "theme_override_font_sizes": {"font_size": 30},
-                                          "theme_override_colors": {"font_color": [1, 0.9, 0.2, 1]}},
-                              "Label": {"text": "Big"}})");
+    for (const auto& device : slash::test::hardware_devices()) {
+        CAPTURE(render::backend_name(device->backend()));
+        Scene scene;
+        scene.files.files["fonts/roboto.ttf"] = default_font_bytes();
+        scene.files.files["fonts/sharp.font.json"] =
+            R"({"format": 1, "font": "fonts/roboto.ttf", "multichannel_signed_distance_field": true})";
+        constexpr std::uint32_t kWidth = 96;
+        constexpr std::uint32_t kHeight = 64;
+        scene.create("back", R"({"Control": {"offset_right": 96, "offset_bottom": 64},
+                                 "ColorRect": {"color": [0.1, 0.2, 0.6, 1]}})");
+        scene.create("small", R"({"Control": {"offset_left": 3, "offset_top": 2},
+                                  "Label": {"text": "Hello!"}})");
+        scene.create("sharp", R"({"Control": {"offset_left": 2, "offset_top": 22,
+                                              "theme_override_fonts": {"font": "fonts/sharp.font.json"},
+                                              "theme_override_font_sizes": {"font_size": 30},
+                                              "theme_override_colors": {"font_color": [1, 0.9, 0.2, 1]}},
+                                  "Label": {"text": "Big"}})");
 
-    auto target = device->create_texture({.width = kWidth,
-                                          .height = kHeight,
-                                          .filter = render::Filter::Nearest,
-                                          .render_target = true});
-    REQUIRE(target.ok());
-    canvas::CanvasRenderer renderer(*device, scene.assets);
-    canvas::CanvasOptions options;
-    options.target = target.value();
-    options.width = kWidth;
-    options.height = kHeight;
-    options.clear = {.r = 0.0F, .g = 0.0F, .b = 0.0F, .a = 1.0F};
-    REQUIRE(renderer.draw(scene.world, options).ok());
-    CHECK(renderer.controls_drawn() == 3);
-    CHECK(renderer.glyphs_drawn() == 9);
-    auto image = device->read_texture(target.value());
-    REQUIRE(image.ok());
+        auto target = device->create_texture({.width = kWidth,
+                                              .height = kHeight,
+                                              .filter = render::Filter::Nearest,
+                                              .render_target = true});
+        REQUIRE(target.ok());
+        canvas::CanvasRenderer renderer(*device, scene.assets);
+        canvas::CanvasOptions options;
+        options.target = target.value();
+        options.width = kWidth;
+        options.height = kHeight;
+        options.clear = {.r = 0.0F, .g = 0.0F, .b = 0.0F, .a = 1.0F};
+        REQUIRE(renderer.draw(scene.world, options).ok());
+        CHECK(renderer.controls_drawn() == 3);
+        CHECK(renderer.glyphs_drawn() == 9);
+        auto image = device->read_texture(target.value());
+        REQUIRE(image.ok());
 
-    const ui::Layout layout = ui::layout(scene.world, scene.fonts(), {96.0F, 64.0F});
-    const ui::DrawList drawn = ui::draw_calls(layout, scene.world, scene.fonts());
-    const std::vector<float> expected = composite(drawn, scene.fonts(), kWidth, kHeight);
-    // The small label's rows, drawn from glyph images, and the big one's, from a distance field.
-    std::array<int, 2> worst{};
-    std::array<int, 2> total{};
-    std::size_t text_pixels = 0;
-    for (std::size_t i = 0; i < expected.size(); i += 4) {
-        const std::size_t part = (i / 4) / kWidth < 22 ? 0 : 1;
-        for (std::size_t c = 0; c < 3; ++c) {
-            const int want = static_cast<int>(std::lround(expected[i + c] * 255.0F));
-            const int diff = std::abs(want - int{image.value().pixels[i + c]});
-            worst.at(part) = std::max(worst.at(part), diff);
-            total.at(part) += diff;
+        const ui::Layout layout = ui::layout(scene.world, scene.fonts(), {96.0F, 64.0F});
+        const ui::DrawList drawn = ui::draw_calls(layout, scene.world, scene.fonts());
+        const std::vector<float> expected = composite(drawn, scene.fonts(), kWidth, kHeight);
+        // The small label's rows, drawn from glyph images, and the big one's, from a distance
+        // field.
+        std::array<int, 2> worst{};
+        std::array<int, 2> total{};
+        std::size_t text_pixels = 0;
+        for (std::size_t i = 0; i < expected.size(); i += 4) {
+            const std::size_t part = (i / 4) / kWidth < 22 ? 0 : 1;
+            for (std::size_t c = 0; c < 3; ++c) {
+                const int want = static_cast<int>(std::lround(expected[i + c] * 255.0F));
+                const int diff = std::abs(want - int{image.value().pixels[i + c]});
+                worst.at(part) = std::max(worst.at(part), diff);
+                total.at(part) += diff;
+            }
+            if (image.value().pixels[i] > 128) {
+                ++text_pixels;
+            }
         }
-        if (image.value().pixels[i] > 128) {
-            ++text_pixels;
-        }
+        // Glyph images are drawn texel for texel, so they match to rounding. Distance fields are
+        // filtered between texels, which GPUs do with less precision than floats (8 bits of weight
+        // on Mesa's software Vulkan), so edge pixels can differ by a few levels.
+        CHECK(worst[0] <= 1);
+        CHECK(worst[1] <= 12);
+        CHECK(total[1] < static_cast<int>(kWidth * (kHeight - 22)));
+        CHECK(text_pixels > 100);
     }
-    // Glyph images are drawn texel for texel, so they match to rounding. Distance fields are
-    // filtered between texels, which GPUs do with less precision than floats (8 bits of weight
-    // on Mesa's software Vulkan), so edge pixels can differ by a few levels.
-    CHECK(worst[0] <= 1);
-    CHECK(worst[1] <= 12);
-    CHECK(total[1] < static_cast<int>(kWidth * (kHeight - 22)));
-    CHECK(text_pixels > 100);
 }

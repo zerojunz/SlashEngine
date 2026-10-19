@@ -75,7 +75,7 @@ slash_target_warnings(game)
 if(EMSCRIPTEN)
     set_target_properties(game PROPERTIES SUFFIX ".js")
     # The data folder becomes <binary>.data, mounted at /data. Node is allowed as well as
-    # browsers, so CI can run the exported game headless.
+    # browsers, so CI can run the exported game headless. Games draw with WebGL 2.
     target_link_options(game PRIVATE
         "SHELL:--preload-file ${SLASH_GAME_DATA}@/data"
         "SHELL:-s ALLOW_MEMORY_GROWTH=1"
@@ -83,6 +83,8 @@ if(EMSCRIPTEN)
         "SHELL:-s MIN_CHROME_VERSION=85"
         "SHELL:-s MIN_FIREFOX_VERSION=79"
         "SHELL:-s MIN_SAFARI_VERSION=150000"
+        "SHELL:-s MIN_WEBGL_VERSION=2"
+        "SHELL:-s MAX_WEBGL_VERSION=2"
         "SHELL:--pre-js ${CMAKE_CURRENT_LIST_DIR}/web/node.js")
     set_property(TARGET game APPEND PROPERTY LINK_DEPENDS
         ${SLASH_GAME_DATA}/project.json ${CMAKE_CURRENT_LIST_DIR}/web/node.js)

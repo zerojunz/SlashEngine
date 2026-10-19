@@ -1,11 +1,13 @@
 add_library(slash_render
     src/device.cpp
+    src/gl_device.cpp
     src/gpu_device.cpp
     src/hlsl_compiler.cpp
     src/image.cpp
     src/light.cpp
     src/material.cpp
-    src/software_device.cpp)
+    src/software_device.cpp
+    src/uniforms.cpp)
 add_library(slash::render ALIAS slash_render)
 
 target_include_directories(slash_render PUBLIC include)

@@ -347,6 +347,14 @@ GPU API (Metal, Direct3D 12 or Vulkan), and a null device for headless runs that
 call the same way but draws nothing. `create_device_or_null` falls back to it, with a warning,
 where no backend starts. `examples/draw-offscreen` draws into a texture and reads it back.
 
+`src/gl_device.cpp` is the same device over OpenGL ES 3.0 (the `opengl` driver, Godot's
+compatibility tier), which is WebGL 2 on the web, where `auto` picks it, since SDL3's GPU API has
+no web backend. It loads its GL functions through SDL (links WebGL's on the web), needs a window
+made with `platform::Config::opengl`, and draws every frame upside down into a texture so rows
+and `gl_FragCoord` match the other backends, then copies window frames over turned back.
+`uniforms.hpp` fills the material shader's uniforms for both hardware devices; a change to how
+the GPU device draws goes in this one too.
+
 `create_software_device` (`src/software_device.cpp`) draws on the CPU, into render targets
 only: it batches as the GPU device does, rasterizes with the GPU's fill rules and shades with
 the CPU twins (`run_program`, `render::shade`, `distance_field_coverage`, `sample_image`), so its
@@ -446,7 +454,7 @@ in canvas layers into the world's canvas and gives each canvas its `CanvasLighti
 `shadows_drawn()`). `examples/lights-2d` has a torch, the moon and a shadowed crate, and
 `examples/lit-tiles-and-layers` a tile set's normal map and a HUD with its own light.
 
-Shaders are HLSL in `engine/render/shaders/`. Their SPIR-V and MSL are committed in
+Shaders are HLSL in `engine/render/shaders/`. Their SPIR-V, MSL and GLSL ES are committed in
 `engine/render/src/*_shaders.hpp`, so only someone changing a shader needs glslang and
 SPIRV-Cross (`glslang-tools` and `spirv-cross` on Debian and Ubuntu, `glslang` and `spirv-cross`
 in Homebrew). After editing one, regenerate and commit the header; the `shaders_up_to_date_*`
@@ -456,10 +464,11 @@ tests fail if the two differ:
 cmake --build --preset dev --target shaders
 ```
 
-The GPU tests in `tests/test_render.cpp` skip when no backend starts. On Linux, Mesa's software
-Vulkan (`mesa-vulkan-drivers`) runs them with no GPU, and `SDL_VIDEO_DRIVER=offscreen` draws
-the windowed path on it too. CI sets `SLASH_EXPECT_GPU=1` on Linux so they fail there instead of
-skipping.
+The GPU tests in `tests/test_render.cpp` skip when no backend starts; `tests/devices.hpp` gives
+them every device that works (`drawing_devices()`, `hardware_devices()`). On Linux, Mesa's
+software Vulkan (`mesa-vulkan-drivers`) and OpenGL ES (`libgles2`, `libegl-mesa0`,
+`libgl1-mesa-dri`) run them with no GPU, and `SDL_VIDEO_DRIVER=offscreen` draws the windowed
+path on them too. CI sets `SLASH_EXPECT_GPU=1` on Linux so they fail there instead of skipping.
 
 V-Sync and the frame cap follow Godot: `window.vsync_mode` and `max_fps` in `project.json`,
 `--vsync` and `--max-fps` on `slash-cli run`, and `display.set` while a served game runs
@@ -747,7 +756,7 @@ CI rejects unformatted code and any clang-tidy finding.
   `kPascalCase` constants.
 - Headers live in `engine/<module>/include/slash/<module>/`, sources in `engine/<module>/src/`.
   Modules: `core` (Result, logging, JSON, reflection, math), `platform` (SDL3 window, run loop,
-  files and folder listings, child processes), `render` (the render device over SDL3's GPU API,
+  files and folder listings, child processes), `render` (the render device over SDL3's GPU API and OpenGL ES 3.0 / WebGL 2,
   the software and null devices, HLSL shaders, material programs and 2D light shading), `asset` (asset handles, loaders, hot reload),
   `world` (EnTT world, components, scenes and prefabs), `input` (input events, action maps,
   the input state and reading SDL's events), `audio` (sound files and streams, the mixer, buses

@@ -44,6 +44,7 @@ slash-cli run [options]
 | `--hz <rate>` | Fixed tick rate in Hz (default 60) |
 | `--vsync <mode>` | `disabled`, `enabled` (default), `adaptive` or `mailbox`; see [project-format.md](project-format.md) |
 | `--max-fps <n>` | Frames per second at most, 0 to 1000; `0` (default) means no cap |
+| `--driver <name>` | The render driver: `auto` (default), `vulkan`, `metal`, `d3d12`, `opengl` or `null`, as [`rendering.driver`](project-format.md) |
 | `--scene <file>` | Load a `.scene.json` file before the first tick |
 | `--save <file>` | Save the scene to this file after the last tick |
 | `--record <file>` | Record the run to a [`.replay.json`](scene-format.md#replays) file inside the project, written when the game stops |
@@ -65,8 +66,8 @@ slash-cli run --headless --ticks 60 --scene tests/data/basic.scene.json
 {"entities":3,"headless":true,"quit_requested":false,"renderer":"null","ticks":60}
 ```
 
-`renderer` names the device that drew the window: `metal`, `d3d12` or `vulkan`, or `null` when
-headless or when no GPU backend works (a warning in the log says why). The window shows the
+`renderer` names the device that drew the window: `metal`, `d3d12`, `vulkan` or `opengl`, or
+`null` when headless or when no GPU backend works (a warning in the log says why). The window shows the
 scene's [sprites](scene-format.md#built-in-components) over Godot's default gray, drawn between
 ticks as the game moves (see [`rendering.interpolation`](project-format.md)). The keyboard,
 mouse, touches and gamepads press the [input actions](project-format.md#input-actions) of the
