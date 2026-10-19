@@ -542,7 +542,8 @@ A reference must name an entity that exists in the same scene.
 | | `stream_paused` | `bool` | `false` | Holds its sounds where they are; clearing it resumes them |
 | | `max_polyphony` | `int` | `1` | Sounds it may play at once, 1 to 64; playing again past this stops the oldest |
 | | `bus` | `std::string` | `"Master"` | The bus it plays through, from the project's [bus layout](#bus-layouts); Master if there is no such bus |
-| `AudioStreamPlayer2D` | `stream`, `volume_db`, `pitch_scale`, `playing`, `autoplay`, `stream_paused`, `max_polyphony`, `bus` | | | As `AudioStreamPlayer`'s; it plays at the entity's `Transform2D` |
+| | `parameters` | `std::map<std::string, json::Value>` | `{}` | Its stream's [parameters](#stream-parameters), as Godot's `parameters/`: `switch_to_clip` for interactive music, `stream_<index>_volume_db` for a synchronized stream |
+| `AudioStreamPlayer2D` | `stream`, `volume_db`, `pitch_scale`, `playing`, `autoplay`, `stream_paused`, `max_polyphony`, `bus`, `parameters` | | | As `AudioStreamPlayer`'s; it plays at the entity's `Transform2D` |
 | | `max_distance` | `float` | `2000` | Pixels from the listener beyond which it is silent, 1 or more |
 | | `attenuation` | `float` | `1` | How fast it fades with distance: volume is (1 - distance / `max_distance`) to this power |
 | | `panning_strength` | `float` | `1` | Times the project's `audio.panning_strength_2d`; 0 for no panning |
@@ -2873,13 +2874,18 @@ settings it takes.
 
 ### Audio streams
 
-A `.audio.json` file is a sound with Godot's import settings, or Godot's
-`AudioStreamRandomizer`: one of several streams each time it plays. A player's `stream` can
-name one, as can a randomizer's `streams`.
+A `.audio.json` file is one of five kinds of stream, each Godot's: a sound with its import
+settings, an `AudioStreamRandomizer` (one of several streams each time it plays), an
+`AudioStreamPlaylist` (streams in turn), an `AudioStreamSynchronized` (streams together, as
+layers) or an `AudioStreamInteractive` ([music in clips](#interactive-music) that switch as the
+game asks). A player's `stream` can name one, as can another file's streams and clips.
+[examples/interactive-music](../../examples/interactive-music/) plays the last three.
 
 ```json
 {"format": 1, "loop": true, "loop_offset": 4, "source": "music/theme.ogg"}
 {"format": 1, "random_pitch": 1.1, "streams": [{"stream": "sfx/step1.wav"}, {"stream": "sfx/step2.wav"}]}
+{"format": 1, "fade_time": 0.5, "playlist": [{"stream": "music/a.ogg"}, {"stream": "music/b.ogg"}]}
+{"format": 1, "synchronized": [{"stream": "music/drums.ogg"}, {"stream": "music/strings.ogg", "volume_db": -80}]}
 ```
 
 | Field | Default | Meaning |
@@ -2890,16 +2896,92 @@ name one, as can a randomizer's `streams`.
 | `loop_begin`, `loop_end` | `0`, `-1` | `.wav`: the frames the loop starts and ends at; -1 is the end of the sound |
 | `loop` | `false` | `.ogg` and `.mp3`: play again from `loop_offset` seconds at the end |
 | `loop_offset` | `0` | `.ogg` and `.mp3`: seconds into the sound a loop goes back to |
-| `bpm`, `beat_count` | `0` | `.ogg` and `.mp3`: with both, loop after that many beats instead of at the end |
+| `bpm` | `0` | Beats per minute, which playlists and interactive music time by; an `.ogg` or `.mp3` with `beat_count` too loops after that many beats instead of at the end |
+| `beat_count` | `0` | Its length in beats at `bpm`, for loops, playlists and transitions |
+| `bar_beats` | `4` | Beats in a bar, 2 to 32, for `next_bar` transitions |
 | `streams` | | A randomizer's streams, each `{"stream": path, "weight": 1}` |
 | `playback_mode` | `"random_no_repeats"` | How a randomizer picks: `random_no_repeats`, `random` or `sequential` |
 | `random_pitch` | `1` | A randomizer's pitch scale varies up to this many times higher or lower |
 | `random_volume_offset_db` | `0` | A randomizer's volume varies up to this many dB louder or quieter |
+| `playlist` | | A playlist's streams, at most 64, each `{"stream": path}`, played in turn |
+| `shuffle` | `false` | A playlist plays in a new random order each time round |
+| `loop` | `true` | A playlist starts over after its last stream |
+| `fade_time` | `0.3` | Seconds a playlist's stream fades out over the start of the next |
+| `synchronized` | | A synchronized stream's layers, at most 32, each `{"stream": path, "volume_db": 0}` |
+| `clips`, `initial_clip`, `transitions` | | [Interactive music](#interactive-music) |
 
-- A file is either a sound (`source`) or a randomizer (`streams`), and takes only that one's
-  fields.
-- A randomizer's choices come from the player's entity ID and how many times it has played,
-  so a scene makes the same picks every run.
+- A file is one kind, named by the field it has: `source`, `streams`, `playlist`,
+  `synchronized` or `clips`. It takes only that kind's fields; `bpm`, `beat_count` and
+  `bar_beats` go with a sound or a playlist.
+- A randomizer's choices, and a shuffled playlist's order, come from the player's entity ID and
+  how many times it has played, so a scene makes the same picks every run.
+- A playlist plays each stream for its `beat_count` beats at `bpm` if it has them, else to its
+  end, then the next starts as that one fades out under it over `fade_time` seconds. It ignores
+  the streams' own loops, and their pitch: as Godot's, it mixes them at their own speed. Its
+  length is the sum of theirs.
+- A synchronized stream starts every layer at once and ends when the last does. Each layer
+  plays at its `volume_db`, which a player's `stream_<index>_volume_db` parameter changes
+  (index from 0), ramping over 128 frames.
+
+### Interactive music
+
+As Godot's `AudioStreamInteractive`, interactive music is `clips`, one playing at a time, that a
+player's `switch_to_clip` [parameter](#stream-parameters) switches between. `transitions` say
+when a switch happens and how the clips fade, timed by the beats of the clip it leaves (its
+`bpm`, `beat_count` and `bar_beats`, from its own `.audio.json` file).
+
+```json
+{
+  "clips": [
+    {"name": "explore", "stream": "music/explore.audio.json"},
+    {"name": "combat", "stream": "music/combat.audio.json"},
+    {"auto_advance": "enabled", "name": "victory", "next_clip": "explore", "stream": "music/victory.ogg"}
+  ],
+  "format": 1,
+  "transitions": [
+    {"fade_mode": "cross", "from": "explore", "from_time": "next_bar", "to": "combat"},
+    {"from_time": "end", "to": "explore"}
+  ]
+}
+```
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `clips` | | At most 63, each `{"name", "stream", "auto_advance", "next_clip"}`; names are unique |
+| `auto_advance` | `"disabled"` | At a clip's end: `disabled` (it ends), `enabled` (go on to `next_clip`) or `return_to_hold` (go back to the clip a `hold_previous` transition left) |
+| `next_clip` | | The clip `enabled` goes on to, by name; another clip |
+| `initial_clip` | the first | The clip it starts with |
+| `transitions` | | Each `{"from", "to", ...}`; leave out `from` or `to` for any clip |
+| `from_time` | `"next_beat"` | When it leaves: `immediate`, `next_beat`, `next_bar` or `end` (of the clip's beats, or its length) |
+| `to_time` | `"start"` | Where the next clip starts: `start`, `same_position` (as far in as the last was) or `previous_position` (where it was last left) |
+| `fade_mode` | `"automatic"` | `disabled`, `in` (the next fades in), `out` (the last fades out), `cross` (both), or `automatic`: `out` when the next starts at its start, else `cross` |
+| `fade_beats` | `1` | Beats a fade takes, or seconds if the clip it leaves has no `bpm` |
+| `filler_clip` | | A clip played once between the two, at full volume |
+| `hold_previous` | `false` | Remember the clip it left, for a `return_to_hold` clip |
+
+- A switch takes the first transition that fits, in Godot's order: from and to both named,
+  then from named, then to named, then neither. With none, it waits for the next beat and fades
+  the last clip out over one. A clip with no `bpm` switches at once for `next_beat` and
+  `next_bar`.
+- A clip that goes on by itself (`auto_advance`) always leaves at its end. Leaving at its
+  `end` with no fade out, a clip that doesn't loop plays on past its beats to the end of its
+  sound, under the next.
+- Two transitions from and to the same clips, a `next_clip` without `"auto_advance":
+  "enabled"`, and a name that is no clip are errors; a misspelled name gets a suggestion.
+
+### Stream parameters
+
+A player's `parameters` steer its stream as it plays, as the `parameters/` of Godot's players.
+They reach each new playback before it starts, and every playback when they change.
+
+| Parameter | Stream | Meaning |
+| --- | --- | --- |
+| `switch_to_clip` | Interactive music | The clip to switch to, by name. It follows the music: the audio system writes back the clip the music plays or is heading to, so it reads the clip a sting will go on to while the sting plays |
+| `stream_<index>_volume_db` | Synchronized | Layer `<index>`'s volume in dB, from 0 |
+
+- Asking for the clip the music plays, or is heading to, changes nothing; Godot would start it
+  over.
+- [`audio.state`](commands.md#audiostate) names the clip each player's music is playing.
 
 ## Replays
 

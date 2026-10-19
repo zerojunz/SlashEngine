@@ -1,0 +1,12 @@
+{
+  "fade_time": 0.25,
+  "format": 1,
+  "playlist": [
+    {
+      "stream": "audio/song.wav"
+    },
+    {
+      "stream": "audio/news.wav"
+    }
+  ]
+}

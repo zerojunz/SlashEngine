@@ -43,9 +43,13 @@ struct PlayerState {
     std::string bus;
     Frame volume{};
     std::uint32_t plays = 0;
+    std::map<std::string, json::Value> parameters; // as last given to its voices
 };
 
 using Request = Snapshot::Request;
+
+// The parameter interactive music reports back, as Godot's get_parameter does.
+constexpr std::string_view kSwitchToClip = "switch_to_clip";
 
 // A bus's last seconds of output, in a ring.
 struct History {
@@ -344,6 +348,10 @@ void start_voice(State& state, PlayerState& player, const T& component, std::str
         return;
     }
     auto playback = stream->instantiate(state.server->mix_rate(), seed_of(key, ++player.plays));
+    // As Godot's play_basic, a new playback gets every parameter before it starts.
+    for (const auto& [name, value] : component.parameters) {
+        playback->set_parameter(name, value);
+    }
     const float pitch = component.pitch_scale > 0.0F ? component.pitch_scale : 1.0F;
     player.voices.push_back(state.server->start(std::move(playback), player.bus, player.volume,
                                                 std::max(from_seconds, 0.0), pitch,
@@ -401,6 +409,21 @@ void reconcile(State& state, world::World& world, const world::Tree2D& tree, std
                 state.server->set_paused(id, player.paused);
             }
         }
+        if (component.parameters != player.parameters) {
+            // As Godot's AudioStreamPlayerInternal::set: each voice gets a changed parameter.
+            for (const auto& [name, value] : component.parameters) {
+                const auto was = player.parameters.find(name);
+                if (was != player.parameters.end() && was->second == value) {
+                    continue;
+                }
+                for (const Server::PlaybackId id : player.voices) {
+                    if (Playback* playback = state.server->playback(id)) {
+                        playback->set_parameter(name, value);
+                    }
+                }
+            }
+            player.parameters = component.parameters;
+        }
         if (const auto asked = requests.find(key); asked != requests.end()) {
             // play() and stop() this tick decide, as calls after the field changed would.
             for (const Request& request : asked->second) {
@@ -415,6 +438,26 @@ void reconcile(State& state, world::World& world, const world::Tree2D& tree, std
         }
         player.playing = !player.voices.empty();
         component.playing = player.playing;
+    }
+}
+
+// A player's switch_to_clip follows the clip its newest voice is going to, so setting it to a
+// clip the music left plays that clip again.
+template <typename T>
+void follow_clip(State& state, world::World& world, PlayerState& player) {
+    T* component = world.ecs().try_get<T>(player.entity);
+    if (component == nullptr || player.voices.empty()) {
+        return;
+    }
+    const auto asked = component->parameters.find(std::string(kSwitchToClip));
+    const Playback* playback = state.server->playback(player.voices.back());
+    if (asked == component->parameters.end() || playback == nullptr) {
+        return;
+    }
+    json::Value heading = playback->parameter(kSwitchToClip);
+    if (heading.is_string() && heading != asked->second) {
+        player.parameters[asked->first] = heading;
+        asked->second = std::move(heading);
     }
 }
 
@@ -458,6 +501,13 @@ void run(State& state, world::World& world, double tick_seconds) {
     state.server->mix(state.out);
     if (state.sink && frames > 0) {
         state.sink(state.out);
+    }
+    for (auto& [key, player] : state.players) {
+        if (player.kind == kPlayer) {
+            follow_clip<world::AudioStreamPlayer>(state, world, player);
+        } else {
+            follow_clip<world::AudioStreamPlayer2D>(state, world, player);
+        }
     }
 
     // Voices that ended are dropped, as Godot's AudioStreamPlayerInternal::process.
@@ -774,6 +824,9 @@ std::vector<PlayerInfo> players(const world::World& world) {
         info.paused = player.paused && !player.voices.empty();
         if (!player.voices.empty()) {
             info.position = state->server->position(player.voices.back());
+            if (const Playback* playback = state->server->playback(player.voices.back())) {
+                info.clip = playback->clip();
+            }
         }
         if (const auto found = state->streams.find(player.stream_path);
             found != state->streams.end()) {

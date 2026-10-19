@@ -671,11 +671,13 @@ struct AudioStreamPlayer {
     bool stream_paused = false; // hold the sound where it is
     int max_polyphony = 1;      // sounds it may play at once
     std::string bus = "Master";
+    // The stream's parameters, as Godot's parameters/*: "switch_to_clip" for interactive music.
+    std::map<std::string, json::Value> parameters;
 
     friend bool operator==(const AudioStreamPlayer&, const AudioStreamPlayer&) = default;
 };
 SLASH_COMPONENT(AudioStreamPlayer, stream, volume_db, pitch_scale, playing, autoplay, stream_paused,
-                max_polyphony, bus)
+                max_polyphony, bus, parameters)
 
 // Plays a sound at the entity's Transform2D, as Godot's AudioStreamPlayer2D: quieter with
 // distance from the listener and panned by where it is on screen.
@@ -692,12 +694,13 @@ struct AudioStreamPlayer2D {
     float panning_strength = 1.0F;
     std::string bus = "Master";
     std::uint32_t area_mask = 1; // Area2D layers whose audio_bus_override applies; 0 for none
+    std::map<std::string, json::Value> parameters;
 
     friend bool operator==(const AudioStreamPlayer2D&, const AudioStreamPlayer2D&) = default;
 };
 SLASH_COMPONENT(AudioStreamPlayer2D, stream, volume_db, pitch_scale, playing, autoplay,
                 stream_paused, max_distance, attenuation, max_polyphony, panning_strength, bus,
-                area_mask)
+                area_mask, parameters)
 
 // Where 2D sounds are heard from, as Godot's AudioListener2D, while current; with none, the
 // middle of the screen.

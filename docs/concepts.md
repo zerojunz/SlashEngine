@@ -258,7 +258,9 @@ or right by where it is. Each player mixes into a **bus**, and each bus runs its
 (filters, EQs, delay, reverb, compression and the rest of Godot's) and sends to another bus,
 down to Master, which plays on the speakers. The project's `.bus_layout.json` file lists the
 buses, so music and sound effects get their own volumes, as in an options menu. An `Area2D` can
-send the sounds inside it to a bus of its own, so a cave echoes.
+send the sounds inside it to a bus of its own, so a cave echoes. Music can be a playlist, layers
+that play together, or **interactive music**: clips such as explore and combat that switch on
+the next beat or bar when the game sets the player's `switch_to_clip`, as Godot's.
 
 Sound is mixed by the fixed ticks, a tick's worth at a time, not by the sound card, so the same
 run makes the same sound, and a headless run makes it too. Agents can't listen, so they measure:
