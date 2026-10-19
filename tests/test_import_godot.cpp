@@ -536,6 +536,16 @@ band_db/100_hz = -3.0
 
 [sub_resource type="AudioEffectRecord" id="AudioEffectRecord_1"]
 resource_name = "Record"
+format = 0
+
+[sub_resource type="AudioEffectPitchShift" id="AudioEffectPitchShift_1"]
+resource_name = "PitchShift"
+pitch_scale = 1.5
+oversampling = 8
+fft_size = 2
+
+[sub_resource type="AudioEffectLimiter" id="AudioEffectLimiter_1"]
+resource_name = "Limiter"
 
 [resource]
 bus/0/name = &"Master"
@@ -566,6 +576,10 @@ bus/2/effect/1/effect = SubResource("AudioEffectEQ6_1")
 bus/2/effect/1/enabled = true
 bus/2/effect/2/effect = SubResource("AudioEffectRecord_1")
 bus/2/effect/2/enabled = true
+bus/2/effect/3/effect = SubResource("AudioEffectPitchShift_1")
+bus/2/effect/3/enabled = true
+bus/2/effect/4/effect = SubResource("AudioEffectLimiter_1")
+bus/2/effect/4/enabled = true
 )";
 
 // A Godot project in a folder of the build tree, with its textures.
@@ -1008,9 +1022,12 @@ TEST_CASE("importing Godot tile maps, themes and bus layouts writes their SlashE
             {"name": "SFX", "mute": true, "send": "Music", "effects": [
                 {"type": "chorus", "voice_count": 3,
                  "voices": [{"delay_ms": 10.0}, {}, {"pan": 0.25}]},
-                {"type": "eq6", "band_db": {"100_hz": -3.0}}]}]})"));
+                {"type": "eq6", "band_db": {"100_hz": -3.0}},
+                {"type": "record", "format": "8_bits"},
+                {"type": "pitch_shift", "pitch_scale": 1.5, "oversampling": 8,
+                 "fft_size": 1024}]}]})"));
     CHECK(unsupported(plan.report, "audio effect").find("why")->as_string() ==
-          "AudioEffectRecord has no SlashEngine equivalent yet");
+          "AudioEffectLimiter has no SlashEngine equivalent yet");
     // Nothing these files hold is reported as an unconverted resource.
     CHECK(unsupported(plan.report, "resource Theme").is_null());
     CHECK(unsupported(plan.report, "resource TileSet").is_null());

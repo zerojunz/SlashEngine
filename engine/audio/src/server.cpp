@@ -37,7 +37,8 @@ Frame operator+(Frame a, Frame b) {
 
 struct Server::Impl final : MixContext {
     struct Effect {
-        std::unique_ptr<EffectInstance> instance;
+        std::string type;
+        std::unique_ptr<EffectInstance> instance; // nullptr when it couldn't be made
         bool enabled = true;
     };
 
@@ -243,7 +244,8 @@ struct Server::Impl final : MixContext {
             }
             if (!bus.bypass) {
                 for (Effect& effect : bus.effects) {
-                    if (!effect.enabled || !(bus.active || effect.instance->process_silence())) {
+                    if (!effect.enabled || effect.instance == nullptr ||
+                        !(bus.active || effect.instance->process_silence())) {
                         continue;
                     }
                     effect.instance->process(bus.buffer.data(), temp_buffer.data(), kBufferSize);
@@ -318,9 +320,10 @@ struct Server::Impl final : MixContext {
                 log::warn(
                     "an audio effect can't run",
                     {{"bus", bus->name}, {"type", slot.type}, {"error", instance.error().message}});
+                bus->effects.push_back({slot.type, nullptr, slot.enabled});
                 continue;
             }
-            bus->effects.push_back({std::move(instance).value(), slot.enabled});
+            bus->effects.push_back({slot.type, std::move(instance).value(), slot.enabled});
         }
         return bus;
     }
@@ -393,16 +396,25 @@ void Server::set_bus_effect_enabled(int bus, int effect, bool enabled) {
     if (bus < 0 || bus >= static_cast<int>(impl_->buses.size())) {
         return;
     }
-    // Effects that couldn't be made are left out of the running bus, so match by slot.
     BusSettings& settings = layout_.buses[static_cast<std::size_t>(bus)];
     if (effect < 0 || effect >= static_cast<int>(settings.effects.size())) {
         return;
     }
     settings.effects[static_cast<std::size_t>(effect)].enabled = enabled;
-    auto& running = impl_->buses[static_cast<std::size_t>(bus)]->effects;
-    if (running.size() == settings.effects.size()) {
-        running[static_cast<std::size_t>(effect)].enabled = enabled;
+    impl_->buses[static_cast<std::size_t>(bus)]->effects[static_cast<std::size_t>(effect)].enabled =
+        enabled;
+}
+
+EffectInstance* Server::effect_instance(int bus, int effect, std::string_view type) {
+    if (bus < 0 || bus >= static_cast<int>(impl_->buses.size())) {
+        return nullptr;
     }
+    auto& effects = impl_->buses[static_cast<std::size_t>(bus)]->effects;
+    if (effect < 0 || effect >= static_cast<int>(effects.size())) {
+        return nullptr;
+    }
+    const Impl::Effect& found = effects[static_cast<std::size_t>(effect)];
+    return found.type == type ? found.instance.get() : nullptr;
 }
 
 Frame Server::bus_peak_db(int bus) const {

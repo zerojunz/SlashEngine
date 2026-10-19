@@ -1284,6 +1284,275 @@ private:
 };
 
 // ---------------------------------------------------------------------------------------------
+// Pitch shift (audio_effect_pitch_shift.cpp)
+//
+// smbFft and the pitch shifter follow smbPitchShift.cpp 1.2, which Godot carries:
+//
+// COPYRIGHT 1999-2015 Stephan M. Bernsee <s.bernsee [AT] zynaptiq [DOT] com>
+//
+//                         The Wide Open License (WOL)
+//
+// Permission to use, copy, modify, distribute and sell this software and its
+// documentation for any purpose is hereby granted without fee, provided that
+// the above copyright notice and this license appear in all source copies.
+// THIS SOFTWARE IS PROVIDED "AS IS" WITHOUT EXPRESS OR IMPLIED WARRANTY OF
+// ANY KIND. See https://dspguru.com/wide-open-license/ for more information.
+
+// Bernsee's FFT: sign -1 transforms, 1 transforms back. buffer holds size complex numbers, real
+// and imaginary parts interleaved; size is a power of two.
+void smb_fft(float* buffer, long size, long sign) {
+    for (long i = 2; i < 2 * size - 2; i += 2) {
+        long j = 0;
+        for (long bitm = 2; bitm < 2 * size; bitm <<= 1) {
+            if ((i & bitm) != 0) {
+                ++j;
+            }
+            j <<= 1;
+        }
+        if (i < j) {
+            std::swap(buffer[i], buffer[j]);
+            std::swap(buffer[i + 1], buffer[j + 1]);
+        }
+    }
+    long stages = 0; // log2(size), as Bernsee's log(size) / log(2) + 0.5
+    while ((1L << stages) < size) {
+        ++stages;
+    }
+    long le = 2;
+    for (long k = 0; k < stages; ++k) {
+        le <<= 1;
+        const long le2 = le >> 1;
+        float ur = 1.0F;
+        float ui = 0.0F;
+        const auto arg = static_cast<float>(std::numbers::pi / static_cast<double>(le2 >> 1));
+        const float wr = std::cos(arg);
+        const float wi = static_cast<float>(sign) * std::sin(arg);
+        for (long j = 0; j < le2; j += 2) {
+            float* p1r = buffer + j;
+            float* p1i = p1r + 1;
+            float* p2r = p1r + le2;
+            float* p2i = p2r + 1;
+            for (long i = j; i < 2 * size; i += le) {
+                const float tr = *p2r * ur - *p2i * ui;
+                const float ti = *p2r * ui + *p2i * ur;
+                *p2r = *p1r - tr;
+                *p2i = *p1i - ti;
+                *p1r += tr;
+                *p1i += ti;
+                p1r += le;
+                p1i += le;
+                p2r += le;
+                p2i += le;
+            }
+            const float next = ur * wr - ui * wi;
+            ui = ur * wi + ui * wr;
+            ur = next;
+        }
+    }
+}
+
+// Bernsee's smbPitchShift for one channel, keeping its state between calls. Its arrays are
+// sized for the FFT size it was made for rather than Bernsee's 8192 frames.
+class SmbPitchShift {
+public:
+    explicit SmbPitchShift(long fft_size)
+        : in_fifo_(static_cast<std::size_t>(fft_size)),
+          out_fifo_(static_cast<std::size_t>(fft_size)),
+          fft_worksp_(static_cast<std::size_t>(2 * fft_size)),
+          last_phase_(static_cast<std::size_t>(fft_size / 2 + 1)),
+          sum_phase_(static_cast<std::size_t>(fft_size / 2 + 1)),
+          output_accum_(static_cast<std::size_t>(2 * fft_size)),
+          ana_freq_(static_cast<std::size_t>(fft_size / 2 + 1)),
+          ana_magn_(static_cast<std::size_t>(fft_size / 2 + 1)),
+          syn_freq_(static_cast<std::size_t>(fft_size)),
+          syn_magn_(static_cast<std::size_t>(fft_size)) {}
+
+    void shift(float pitch_shift, long samples, long fft_frame_size, long osamp, float sample_rate,
+               const Frame* in, Frame* out, float Frame::*channel) {
+        constexpr double kPi = std::numbers::pi;
+        const long fft_frame_size2 = fft_frame_size / 2;
+        const long step_size = fft_frame_size / osamp;
+        const double freq_per_bin = sample_rate / static_cast<double>(fft_frame_size);
+        const double expct =
+            2. * kPi * static_cast<double>(step_size) / static_cast<double>(fft_frame_size);
+        const long in_fifo_latency = fft_frame_size - step_size;
+        if (rover_ == 0) {
+            rover_ = in_fifo_latency;
+        }
+        const auto window_at = [&](long k) {
+            return -.5 * std::cos(2. * kPi * static_cast<double>(k) /
+                                  static_cast<double>(fft_frame_size)) +
+                   .5;
+        };
+
+        for (long i = 0; i < samples; ++i) {
+            // Until there is enough to analyze, just read in.
+            in_fifo_[at(rover_)] = in[i].*channel;
+            out[i].*channel = out_fifo_[at(rover_ - in_fifo_latency)];
+            ++rover_;
+            if (rover_ < fft_frame_size) {
+                continue;
+            }
+            rover_ = in_fifo_latency;
+
+            // Window, and interleave real and imaginary parts.
+            for (long k = 0; k < fft_frame_size; ++k) {
+                fft_worksp_[at(2 * k)] = static_cast<float>(in_fifo_[at(k)] * window_at(k));
+                fft_worksp_[at(2 * k + 1)] = 0.;
+            }
+
+            // Analysis.
+            smb_fft(fft_worksp_.data(), fft_frame_size, -1);
+            for (long k = 0; k <= fft_frame_size2; ++k) {
+                const double real = fft_worksp_[at(2 * k)];
+                const double imag = fft_worksp_[at(2 * k + 1)];
+                const double magn = 2. * std::sqrt(real * real + imag * imag);
+                const double phase = std::atan2(imag, real);
+                // The phase difference, less the expected one, mapped into +/- pi.
+                double tmp = phase - last_phase_[at(k)];
+                last_phase_[at(k)] = static_cast<float>(phase);
+                tmp -= static_cast<double>(k) * expct;
+                auto qpd = static_cast<long>(tmp / kPi);
+                if (qpd >= 0) {
+                    qpd += qpd & 1;
+                } else {
+                    qpd -= qpd & 1;
+                }
+                tmp -= kPi * static_cast<double>(qpd);
+                // The deviation from the bin's frequency gives the partial's true frequency.
+                tmp = static_cast<double>(osamp) * tmp / (2. * kPi);
+                tmp = static_cast<double>(k) * freq_per_bin + tmp * freq_per_bin;
+                ana_magn_[at(k)] = static_cast<float>(magn);
+                ana_freq_[at(k)] = static_cast<float>(tmp);
+            }
+
+            // The shift itself.
+            std::fill_n(syn_magn_.begin(), fft_frame_size, 0.0F);
+            std::fill_n(syn_freq_.begin(), fft_frame_size, 0.0F);
+            for (long k = 0; k <= fft_frame_size2; ++k) {
+                const auto index = static_cast<long>(static_cast<float>(k) * pitch_shift);
+                if (index <= fft_frame_size2) {
+                    syn_magn_[at(index)] += ana_magn_[at(k)];
+                    syn_freq_[at(index)] = ana_freq_[at(k)] * pitch_shift;
+                }
+            }
+
+            // Synthesis.
+            for (long k = 0; k <= fft_frame_size2; ++k) {
+                const double magn = syn_magn_[at(k)];
+                double tmp = syn_freq_[at(k)];
+                tmp -= static_cast<double>(k) * freq_per_bin;
+                tmp /= freq_per_bin;
+                tmp = 2. * kPi * tmp / static_cast<double>(osamp);
+                tmp += static_cast<double>(k) * expct;
+                sum_phase_[at(k)] = static_cast<float>(sum_phase_[at(k)] + tmp);
+                const double phase = sum_phase_[at(k)];
+                fft_worksp_[at(2 * k)] = static_cast<float>(magn * std::cos(phase));
+                fft_worksp_[at(2 * k + 1)] = static_cast<float>(magn * std::sin(phase));
+            }
+            // No negative frequencies.
+            for (long k = fft_frame_size + 2; k < 2 * fft_frame_size; ++k) {
+                fft_worksp_[at(k)] = 0.;
+            }
+            smb_fft(fft_worksp_.data(), fft_frame_size, 1);
+
+            // Window and add to the output.
+            for (long k = 0; k < fft_frame_size; ++k) {
+                output_accum_[at(k)] = static_cast<float>(
+                    output_accum_[at(k)] + 2. * window_at(k) * fft_worksp_[at(2 * k)] /
+                                               static_cast<double>(fft_frame_size2 * osamp));
+            }
+            std::copy_n(output_accum_.begin(), step_size, out_fifo_.begin());
+            std::copy_n(output_accum_.begin() + step_size, fft_frame_size, output_accum_.begin());
+            std::copy_n(in_fifo_.begin() + step_size, in_fifo_latency, in_fifo_.begin());
+        }
+    }
+
+private:
+    static std::size_t at(long index) { return static_cast<std::size_t>(index); }
+
+    std::vector<float> in_fifo_;
+    std::vector<float> out_fifo_;
+    std::vector<float> fft_worksp_;
+    std::vector<float> last_phase_;
+    std::vector<float> sum_phase_;
+    std::vector<float> output_accum_;
+    std::vector<float> ana_freq_;
+    std::vector<float> ana_magn_;
+    std::vector<float> syn_freq_;
+    std::vector<float> syn_magn_;
+    long rover_ = 0;
+};
+
+constexpr std::array<double, 5> kFftSizes{256, 512, 1024, 2048, 4096};
+constexpr std::string_view kFftSizeDoc =
+    "Frames in each analysis window: 256, 512, 1024, 2048 or 4096. Larger windows tell "
+    "frequencies apart better and react later.";
+
+constexpr std::array kPitchShift{
+    number("pitch_scale", 0.01, 16, 1, "Pitch, times the sound's: 2 is an octave up, 0.5 down."),
+    Setting{"oversampling", Kind::Integer, 4, 32, 4,
+            "How much analysis windows overlap; more sounds better and costs more."},
+    Setting{"fft_size", Kind::Integer, 256, 4096, 2048, kFftSizeDoc},
+};
+
+// Godot's Math::is_equal_approx for floats.
+bool is_equal_approx(float a, float b) {
+    constexpr float kCmpEpsilon = 0.00001F;
+    if (a == b) {
+        return true;
+    }
+    const float tolerance = std::max(kCmpEpsilon * std::abs(a), kCmpEpsilon);
+    return std::abs(a - b) < tolerance;
+}
+
+class PitchShift final : public EffectInstance {
+public:
+    PitchShift(const Params& params, int mix_rate)
+        : pitch_scale_(params("pitch_scale")),
+          oversampling_(static_cast<long>(params("oversampling"))),
+          fft_size_(static_cast<long>(params("fft_size"))), mix_rate_(static_cast<float>(mix_rate)),
+          left_(fft_size_), right_(fft_size_) {}
+
+    void process(const Frame* src, Frame* dst, int frames) override {
+        // Skipped at 1, which would only blur the sound.
+        if (is_equal_approx(pitch_scale_, 1.0F)) {
+            std::copy_n(src, frames, dst);
+            return;
+        }
+        left_.shift(pitch_scale_, frames, fft_size_, oversampling_, mix_rate_, src, dst,
+                    &Frame::left);
+        right_.shift(pitch_scale_, frames, fft_size_, oversampling_, mix_rate_, src, dst,
+                     &Frame::right);
+    }
+
+private:
+    float pitch_scale_;
+    long oversampling_;
+    long fft_size_;
+    float mix_rate_;
+    SmbPitchShift left_;
+    SmbPitchShift right_;
+};
+
+// ---------------------------------------------------------------------------------------------
+// Spectrum analyzer, capture and record (audio_effect_spectrum_analyzer.cpp,
+// audio_effect_capture.cpp and audio_effect_record.cpp); their instances are in effects.hpp.
+
+constexpr std::array kSpectrumAnalyzer{
+    number("buffer_length", 0.1, 4, 2,
+           "Seconds of analyses Godot keeps; only the newest is read, here as in Godot."),
+    Setting{"fft_size", Kind::Integer, 256, 4096, 1024, kFftSizeDoc},
+};
+
+constexpr std::array kCapture{
+    number("buffer_length", 0.01, 10, 0.1,
+           "Seconds of sound held for game code to take, rounded up to a power of two frames."),
+};
+
+constexpr std::array<std::string_view, 2> kRecordFormats{"8_bits", "16_bits"};
+
+// ---------------------------------------------------------------------------------------------
 // The table
 
 using Make = std::unique_ptr<EffectInstance> (*)(const Params&, MixContext&);
@@ -1311,7 +1580,7 @@ struct EffectType {
     std::span<const double> bands; // equalizers
 };
 
-const std::array<EffectType, 20> kTypes{{
+const std::array<EffectType, 24> kTypes{{
     {"amplify",
      "Godot's AudioEffectAmplify: changes the volume.",
      kAmplify,
@@ -1420,6 +1689,40 @@ const std::array<EffectType, 20> kTypes{{
      kStereoEnhance,
      make_with_rate<StereoEnhance>,
      {}},
+    {"pitch_shift",
+     "Godot's AudioEffectPitchShift: changes the pitch and keeps the speed.",
+     kPitchShift,
+     make_with_rate<PitchShift>,
+     {}},
+    {"spectrum_analyzer",
+     "Godot's AudioEffectSpectrumAnalyzer: measures frequencies for audio.spectrum and game "
+     "code; the sound passes unchanged.",
+     kSpectrumAnalyzer,
+     [](const Params& p, MixContext& context) -> std::unique_ptr<EffectInstance> {
+         return std::make_unique<SpectrumAnalyzerInstance>(static_cast<int>(p("fft_size")),
+                                                           context.mix_rate());
+     },
+     {}},
+    {"capture",
+     "Godot's AudioEffectCapture: holds what passes for game code to take; the sound passes "
+     "unchanged.",
+     kCapture,
+     [](const Params& p, MixContext& context) -> std::unique_ptr<EffectInstance> {
+         return std::make_unique<CaptureInstance>(p("buffer_length"), context.mix_rate());
+     },
+     {}},
+    {"record",
+     "Godot's AudioEffectRecord: records what passes while audio.record or game code says; the "
+     "sound passes unchanged.",
+     {},
+     [](const Params& p, MixContext& context) -> std::unique_ptr<EffectInstance> {
+         const json::Value* format = p.find("format");
+         const bool eight = format != nullptr && format->as_string() == kRecordFormats[0];
+         return std::make_unique<RecordInstance>(eight ? RecordInstance::Format::Bits8
+                                                       : RecordInstance::Format::Bits16,
+                                                 context.mix_rate());
+     },
+     {}},
 }};
 
 json::Value setting_schema(const Setting& setting) {
@@ -1462,6 +1765,21 @@ json::Value type_schema(const EffectType& type) {
     }
     if (type.settings.data() == kFilter.data() || type.settings.data() == kShelfFilter.data()) {
         properties["db"]["enum"] = json::Array{6, 12, 18, 24};
+    }
+    if (type.name == "pitch_shift" || type.name == "spectrum_analyzer") {
+        json::Array sizes;
+        for (const double size : kFftSizes) {
+            sizes.emplace_back(static_cast<std::int64_t>(size));
+        }
+        properties["fft_size"]["enum"] = std::move(sizes);
+    }
+    if (type.name == "record") {
+        json::Value& format = properties["format"];
+        format["type"] = "string";
+        format["enum"] = json::Array{kRecordFormats[0], kRecordFormats[1]};
+        format["default"] = kRecordFormats[1];
+        format["description"] = "Bits per sample of the recording, as Godot's 8-bit and 16-bit "
+                                "formats.";
     }
     if (!type.bands.empty()) {
         json::Value& bands = properties["band_db"];
@@ -1530,6 +1848,198 @@ json::Value effect_schema() {
     }
     schema["anyOf"] = std::move(options);
     return schema;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Spectrum analyzer (audio_effect_spectrum_analyzer.cpp)
+
+SpectrumAnalyzerInstance::SpectrumAnalyzerInstance(int fft_size, int mix_rate)
+    : fft_size_(fft_size), mix_rate_(static_cast<float>(mix_rate)),
+      // Two channels, twice the frames as frequencies, two floats per complex number.
+      temporal_fft_(static_cast<std::size_t>(fft_size) * 8),
+      magnitudes_(static_cast<std::size_t>(fft_size)) {}
+
+void SpectrumAnalyzerInstance::process(const Frame* src, Frame* dst, int frames) {
+    std::copy_n(src, frames, dst);
+    const int window_size = fft_size_ * 2;
+    const double to_fill_step = kTau / static_cast<double>(window_size);
+    float* fftw = temporal_fft_.data();
+    float* fftw_right = fftw + static_cast<std::ptrdiff_t>(window_size) * 2;
+    while (frames > 0) {
+        const int to_fill = std::min(window_size - temporal_fft_pos_, frames);
+        for (int i = 0; i < to_fill; ++i) {
+            const auto window = static_cast<float>(
+                -0.5 * std::cos(to_fill_step * static_cast<double>(temporal_fft_pos_)) + 0.5);
+            const auto at = static_cast<std::ptrdiff_t>(temporal_fft_pos_) * 2;
+            fftw[at] = window * src->left;
+            fftw[at + 1] = 0;
+            fftw_right[at] = window * src->right;
+            fftw_right[at + 1] = 0;
+            ++src;
+            ++temporal_fft_pos_;
+        }
+        frames -= to_fill;
+        if (temporal_fft_pos_ == window_size) {
+            smb_fft(fftw, window_size, -1);
+            smb_fft(fftw_right, window_size, -1);
+            const auto scale = static_cast<float>(fft_size_);
+            for (int i = 0; i < fft_size_; ++i) {
+                const auto at = static_cast<std::ptrdiff_t>(i) * 2;
+                const float lr = fftw[at];
+                const float li = fftw[at + 1];
+                const float rr = fftw_right[at];
+                const float ri = fftw_right[at + 1];
+                magnitudes_[static_cast<std::size_t>(i)] = {std::sqrt(lr * lr + li * li) / scale,
+                                                            std::sqrt(rr * rr + ri * ri) / scale};
+            }
+            temporal_fft_pos_ = 0;
+        }
+    }
+}
+
+Frame SpectrumAnalyzerInstance::magnitude_for_frequency_range(float from_hz, float to_hz,
+                                                              MagnitudeMode mode) const {
+    const double nyquist = mix_rate_ * 0.5;
+    int begin = std::clamp(static_cast<int>(from_hz * static_cast<float>(fft_size_) / nyquist), 0,
+                           fft_size_ - 1);
+    int end = std::clamp(static_cast<int>(to_hz * static_cast<float>(fft_size_) / nyquist), 0,
+                         fft_size_ - 1);
+    if (begin > end) {
+        std::swap(begin, end);
+    }
+    Frame out;
+    for (int i = begin; i <= end; ++i) {
+        const Frame& bin = magnitudes_[static_cast<std::size_t>(i)];
+        if (mode == MagnitudeMode::Average) {
+            out = out + bin;
+        } else {
+            out = {std::max(out.left, bin.left), std::max(out.right, bin.right)};
+        }
+    }
+    if (mode == MagnitudeMode::Average) {
+        const auto count = static_cast<float>(end - begin + 1);
+        out = {out.left / count, out.right / count};
+    }
+    return out;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Capture (audio_effect_capture.cpp), with Godot's RingBuffer
+
+CaptureInstance::CaptureInstance(float buffer_length_seconds, int mix_rate) {
+    const float target = static_cast<float>(mix_rate) * buffer_length_seconds;
+    // Math::nearest_shift: the bits the size needs.
+    auto size = static_cast<std::uint32_t>(std::clamp(target, 1.0F, static_cast<float>(1 << 26)));
+    int bits = 0;
+    while (size > 0) {
+        ++bits;
+        size >>= 1U;
+    }
+    buffer_.resize(std::size_t{1} << static_cast<unsigned>(bits));
+}
+
+int CaptureInstance::space_left() const {
+    const int left = read_ - write_;
+    if (left < 0) {
+        return buffer_length_frames() + left - 1;
+    }
+    if (left == 0) {
+        return buffer_length_frames() - 1;
+    }
+    return left - 1;
+}
+
+int CaptureInstance::buffer_length_frames() const {
+    return static_cast<int>(buffer_.size());
+}
+
+int CaptureInstance::frames_available() const {
+    return buffer_length_frames() - space_left() - 1;
+}
+
+bool CaptureInstance::can_get_buffer(int frames) const {
+    return frames_available() >= frames;
+}
+
+void CaptureInstance::process(const Frame* src, Frame* dst, int frames) {
+    std::copy_n(src, frames, dst);
+    if (space_left() < frames) {
+        discarded_ += frames;
+        return;
+    }
+    const int mask = buffer_length_frames() - 1;
+    for (int i = 0; i < frames; ++i) {
+        buffer_[static_cast<std::size_t>(write_)] = src[i];
+        write_ = (write_ + 1) & mask;
+    }
+    pushed_ += frames;
+}
+
+std::vector<Frame> CaptureInstance::get_buffer(int frames) {
+    if (frames <= 0 || frames >= buffer_length_frames() || frames_available() < frames) {
+        return {};
+    }
+    std::vector<Frame> out(static_cast<std::size_t>(frames));
+    const int mask = buffer_length_frames() - 1;
+    for (Frame& frame : out) {
+        frame = buffer_[static_cast<std::size_t>(read_)];
+        read_ = (read_ + 1) & mask;
+    }
+    return out;
+}
+
+void CaptureInstance::clear_buffer() {
+    read_ = write_;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Record (audio_effect_record.cpp). Godot copies frames to the recording on a thread; mixing
+// runs on the game's thread here, so they go straight in.
+
+void RecordInstance::process(const Frame* src, Frame* dst, int frames) {
+    std::copy_n(src, frames, dst);
+    if (recording_) {
+        frames_.insert(frames_.end(), src, src + frames);
+    }
+}
+
+void RecordInstance::set_recording_active(bool record) {
+    if (record) {
+        frames_.clear();
+    }
+    recording_ = record;
+}
+
+Sound RecordInstance::recording() const {
+    Sound sound;
+    sound.format = Sound::Format::Wav;
+    sound.mix_rate = mix_rate_;
+    sound.channels = 2;
+    sound.frames = static_cast<std::int64_t>(frames_.size());
+    sound.samples.reserve(frames_.size() * 2);
+    // As get_recording stores them, and as an imported .wav of that format plays.
+    const float scale = format_ == Format::Bits8 ? 128.0F : 32768.0F;
+    const auto quantize = [&](float sample) {
+        return std::trunc(std::clamp(sample * scale, -scale, scale - 1.0F)) / scale;
+    };
+    for (const Frame& frame : frames_) {
+        sound.samples.push_back(quantize(frame.left));
+        sound.samples.push_back(quantize(frame.right));
+    }
+    return sound;
+}
+
+SpectrumAnalyzerInstance* spectrum_analyzer(Server& server, int bus, int effect) {
+    return static_cast<SpectrumAnalyzerInstance*>(
+        server.effect_instance(bus, effect, "spectrum_analyzer"));
+}
+
+CaptureInstance* capture_effect(Server& server, int bus, int effect) {
+    return static_cast<CaptureInstance*>(server.effect_instance(bus, effect, "capture"));
+}
+
+RecordInstance* record_effect(Server& server, int bus, int effect) {
+    return static_cast<RecordInstance*>(server.effect_instance(bus, effect, "record"));
 }
 
 Result<std::unique_ptr<EffectInstance>> make_effect(const EffectSlot& slot, MixContext& context) {

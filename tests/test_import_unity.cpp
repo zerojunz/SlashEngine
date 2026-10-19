@@ -1169,7 +1169,7 @@ void write_mill(const fs::path& folder) {
                     "  - {fileID: 24400028}\n  - {fileID: 24400029}\n  - {fileID: 24400030}\n"
                     "  - {fileID: 24400031}\n  - {fileID: 24400033}\n");
     main += mixer_group(24300030, "Footsteps", " []", "2b000000000000000000000000000004",
-                        "  - {fileID: 24400041}\n  - {fileID: 24400042}\n",
+                        "  - {fileID: 24400042}\n  - {fileID: 24400041}\n",
                         "  m_Mute: 1\n  m_Solo: 1\n  m_BypassEffects: 1\n");
     for (const std::int64_t attenuation : {24400004, 24400011, 24400021, 24400041}) {
         main += mixer_effect(attenuation, "Attenuation", {});
@@ -1210,7 +1210,10 @@ void write_mill(const fs::path& folder) {
     main +=
         mixer_effect(24400033, "Send", {}, "  m_SendTarget: {fileID: 24400032}\n  m_Bypass: 0\n");
     main += mixer_effect(24400032, "Receive", {});
-    main += mixer_effect(24400042, "Pitch Shifter", {});
+    main += mixer_effect(24400042, "Pitch Shifter",
+                         {"Pitch:6f000000000000000000000000000022",
+                          "FFT size:6f000000000000000000000000000023",
+                          "Overlap:6f000000000000000000000000000024"});
     main += mixer_snapshot(24500006, "Snapshot",
                            "\n    2b000000000000000000000000000002: -10"
                            "\n    3b000000000000000000000000000004: 50"
@@ -1232,6 +1235,9 @@ void write_mill(const fs::path& folder) {
                            "\n    6f000000000000000000000000000019: 2"
                            "\n    6f000000000000000000000000000020: 200"
                            "\n    6f000000000000000000000000000021: 0.25"
+                           "\n    6f000000000000000000000000000022: 1.5"
+                           "\n    6f000000000000000000000000000023: 2000"
+                           "\n    6f000000000000000000000000000024: 8"
                            "\n    500000000000000000000024400030: -3"
                            "\n    500000000000000000000024400031: -10");
     main += mixer_snapshot(24500007, "Quiet", "\n    2b000000000000000000000000000001: -20");
@@ -2823,7 +2829,9 @@ TEST_CASE("Unity audio mixers become a bus layout and 2D joints Godot's joints")
                  "pan": 0.0},
                 {"delay_ms": 40.0, "rate_hz": 0.8, "depth_ms": 1.2, "level_db": -6.0206,
                  "pan": 0.0}]}]},
-        {"name": "Footsteps", "send": "SFX", "solo": true, "mute": true, "bypass_effects": true},
+        {"name": "Footsteps", "send": "SFX", "solo": true, "mute": true, "bypass_effects": true,
+         "effects": [{"type": "pitch_shift", "pitch_scale": 1.5, "fft_size": 2048,
+                      "oversampling": 8}]},
         {"name": "UI", "send": "SFX", "volume_db": -3.0},
         {"name": "Music 2", "send": "UI"}
     ]})"));
@@ -2879,7 +2887,6 @@ TEST_CASE("Unity audio mixers become a bus layout and 2D joints Godot's joints")
              {"mixer send", "Assets/Audio/Main.mixer: SFX"},
              {"effect after the fader", "Assets/Audio/Main.mixer: Music"},
              {"mixer group pitch", "Assets/Audio/Main.mixer: Footsteps"},
-             {"mixer effect Pitch Shifter", "Assets/Audio/Main.mixer: Footsteps"},
              {"audio mixer group", "Assets/Scenes/Mill.unity: Lost"},
              {"SliderJoint2D", "Assets/Scenes/Mill.unity: Bead"},
              {"component FixedJoint2D", "Assets/Scenes/Mill.unity: Gate"},

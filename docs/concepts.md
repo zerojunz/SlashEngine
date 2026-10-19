@@ -257,14 +257,17 @@ does, and an `AudioStreamPlayer2D` fades with distance from the `AudioListener2D
 or right by where it is. Each player mixes into a **bus**, and each bus runs its **effects**
 (filters, EQs, delay, reverb, compression and the rest of Godot's) and sends to another bus,
 down to Master, which plays on the speakers. The project's `.bus_layout.json` file lists the
-buses, so music and sound effects get their own volumes, as in an options menu.
+buses, so music and sound effects get their own volumes, as in an options menu. An `Area2D` can
+send the sounds inside it to a bus of its own, so a cave echoes.
 
 Sound is mixed by the fixed ticks, a tick's worth at a time, not by the sound card, so the same
 run makes the same sound, and a headless run makes it too. Agents can't listen, so they measure:
 `audio.state` shows each bus's level in dB and what each player plays, `audio.capture` reports a
 bus's levels over the last seconds, slice by slice, or writes it to a `.wav` file for a person to
-hear, and `audio.play`, `audio.stop` and `audio.set_bus` change what plays. The
-[audio example](../examples/audio/) plays music and footsteps around a listener.
+hear, `audio.spectrum` reads a bus's frequencies, `audio.record` records it for as long as
+asked, and `audio.play`, `audio.stop` and `audio.set_bus` change what plays. The
+[audio example](../examples/audio/) plays music and footsteps around a listener, and
+[audio-areas-and-analysis](../examples/audio-areas-and-analysis/) measures a bat in a cave.
 
 ## Rendering
 
