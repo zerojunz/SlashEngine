@@ -73,4 +73,74 @@ Sink SdlOutput::sink() {
     return [this](std::span<const Frame> frames) { push(frames); };
 }
 
+SdlInput::~SdlInput() {
+    close();
+}
+
+Result<void> SdlInput::start(int mix_rate) {
+    if (stream_ != nullptr) {
+        return {};
+    }
+    if (!SDL_InitSubSystem(SDL_INIT_AUDIO)) {
+        return make_error(ErrorCode::PlatformFailure,
+                          std::string("SDL can't start audio: ") + SDL_GetError());
+    }
+    // SDL converts what the device records to stereo floats at the mix rate. On Android this
+    // asks for the RECORD_AUDIO permission first.
+    const SDL_AudioSpec spec{SDL_AUDIO_F32, 2, mix_rate};
+    SDL_AudioStream* stream =
+        SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_RECORDING, &spec, nullptr, nullptr);
+    if (stream == nullptr) {
+        std::string message = std::string("no microphone to record: ") + SDL_GetError();
+        SDL_QuitSubSystem(SDL_INIT_AUDIO);
+        return make_error(ErrorCode::PlatformFailure, std::move(message));
+    }
+    if (const char* name = SDL_GetAudioDeviceName(SDL_GetAudioStreamDevice(stream));
+        name != nullptr && *name != '\0') {
+        name_ = name;
+    }
+    SDL_ResumeAudioStreamDevice(stream);
+    stream_ = stream;
+    latency_frames_ = std::max(1, mix_rate * 3 / 100); // 30 ms
+    primed_ = false;
+    return {};
+}
+
+void SdlInput::stop() {
+    close();
+}
+
+void SdlInput::close() {
+    if (stream_ != nullptr) {
+        SDL_DestroyAudioStream(as_stream(stream_));
+        SDL_QuitSubSystem(SDL_INIT_AUDIO);
+        stream_ = nullptr;
+    }
+}
+
+void SdlInput::read(std::span<Frame> frames) {
+    std::ranges::fill(frames, Frame{});
+    if (stream_ == nullptr || frames.empty()) {
+        return;
+    }
+    SDL_AudioStream* stream = as_stream(stream_);
+    const auto count = static_cast<int>(frames.size());
+    int available = SDL_GetAudioStreamAvailable(stream) / kBytesPerFrame;
+    if (available > latency_frames_ + 4 * count) {
+        // Recording ran ahead of the ticks (after a stall); drop the oldest frames rather than
+        // letting the delay grow.
+        std::vector<Frame> dropped(static_cast<std::size_t>(available - latency_frames_ - count));
+        SDL_GetAudioStreamData(stream, dropped.data(),
+                               static_cast<int>(dropped.size()) * kBytesPerFrame);
+        available = latency_frames_ + count;
+    }
+    if (!primed_ && available < latency_frames_ + count) {
+        // Starting, or ran dry: wait for the latency to be recorded, so the next late tick
+        // doesn't run dry too.
+        return;
+    }
+    primed_ = available >= count;
+    SDL_GetAudioStreamData(stream, frames.data(), std::min(count, available) * kBytesPerFrame);
+}
+
 } // namespace slash::audio

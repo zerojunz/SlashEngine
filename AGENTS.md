@@ -724,7 +724,12 @@ played together, or interactive clips that switch by its transitions when a play
 `switch_to_clip` parameter asks; players hand their `parameters` to their playbacks
 (`Playback::set_parameter`), and the audio system writes `switch_to_clip` back as the music
 moves on. Generators and polyphonic streams, as Godot's, are what gameplay code pushes frames to
-or starts sounds on, through `audio::stream_playback` (`generator()`, `polyphonic()`).
+or starts sounds on, through `audio::stream_playback` (`generator()`, `polyphonic()`). A
+microphone stream plays the server's input, which records only with project.json's
+`audio.enable_input`: each tick the audio system pushes the tick's frames from an
+`audio::InputDevice` (`audio::SdlInput` in a window, silence headless) or the sound
+`audio.input` plays in its place, before mixing. Exports of such games ask for the microphone
+(`export/CMakeLists.txt`'s `SLASH_GAME_MICROPHONE`).
 `audio::Server`
 (`src/server.cpp`) is the mixer: playbacks mix into buses in steps of 512 frames, with a 64-frame
 lookahead, volume ramps and stop fades; each bus runs its effects (`src/effects.cpp`: 24 of Godot's

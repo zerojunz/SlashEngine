@@ -177,6 +177,7 @@ Music="*res://autoload/music.gd"
 [audio]
 
 driver/mix_rate=48000
+driver/enable_input=true
 general/2d_panning_strength=0.8
 
 [display]
@@ -755,7 +756,7 @@ TEST_CASE("importing a Godot project converts its settings and input map") {
     CHECK(settings.find("gui")->find("theme")->as_string() == "godot/ui/theme.theme.json");
     CHECK(*settings.find("audio") ==
           parse(R"({"bus_layout": "godot/default_bus_layout.bus_layout.json",
-                                              "mix_rate": 48000, "panning_strength_2d": 0.8})"));
+                     "mix_rate": 48000, "panning_strength_2d": 0.8, "enable_input": true})"));
     CHECK(unsupported(report, "file type .gdshader").find("where")->as_string() ==
           "shaders/glow.gdshader");
     // Godot's own folders and add-ons stay out.
@@ -2001,6 +2002,8 @@ buffer_length = 0.1
 [sub_resource type="AudioStreamPolyphonic" id="AudioStreamPolyphonic_1"]
 polyphony = 8
 
+[sub_resource type="AudioStreamMicrophone" id="AudioStreamMicrophone_1"]
+
 [node name="Main" type="Node2D"]
 
 [node name="Music" type="AudioStreamPlayer" parent="."]
@@ -2015,6 +2018,10 @@ stream = SubResource("AudioStreamGenerator_1")
 
 [node name="Sfx" type="AudioStreamPlayer" parent="."]
 stream = SubResource("AudioStreamPolyphonic_1")
+
+[node name="Voice" type="AudioStreamPlayer" parent="."]
+stream = SubResource("AudioStreamMicrophone_1")
+autoplay = true
 )");
     const importer::ImportPlan plan = plan_inside(project);
     const auto files = files_of(plan);
@@ -2070,13 +2077,16 @@ stream = SubResource("AudioStreamPolyphonic_1")
              "filler_clip": "sting", "hold_previous": true}]})"));
     CHECK(unsupported(plan.report, "AudioStreamInteractive clip 3").find("why")->as_string() ==
           R"(another clip is named "sting"; it is named "clip_3")");
-    // A generator and a polyphonic stream, which a game's code plays frames and sounds on.
+    // A generator and a polyphonic stream, which a game's code plays frames and sounds on, and
+    // the microphone.
     CHECK(valid("godot/main_audio_stream_generator_1.audio.json") ==
           parse(R"({"format": 1, "generator": {"mix_rate_mode": "output",
                                                "buffer_length": 0.1}})"));
     CHECK(valid("godot/main_audio_stream_polyphonic_1.audio.json") ==
           parse(R"({"format": 1, "polyphonic": {"polyphony": 8}})"));
-    CHECK(plan.report.find("converted")->find("audio_streams")->as_int() == 9);
+    CHECK(valid("godot/main_audio_stream_microphone_1.audio.json") ==
+          parse(R"({"format": 1, "microphone": {}})"));
+    CHECK(plan.report.find("converted")->find("audio_streams")->as_int() == 10);
     CHECK(unsupported(plan.report, "resource AudioStreamInteractive").is_null());
 
     // The players play them.
@@ -2087,6 +2097,9 @@ stream = SubResource("AudioStreamPolyphonic_1")
           parse(R"({"stream": "godot/sfx/steps.audio.json"})"));
     CHECK(*entity(files, main, "synth").find("AudioStreamPlayer") ==
           parse(R"({"stream": "godot/main_audio_stream_generator_1.audio.json"})"));
+    CHECK(*entity(files, main, "voice").find("AudioStreamPlayer") ==
+          parse(R"({"stream": "godot/main_audio_stream_microphone_1.audio.json",
+                    "autoplay": true})"));
     fs::remove_all(project);
 }
 

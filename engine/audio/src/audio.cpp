@@ -51,6 +51,16 @@ using Request = Snapshot::Request;
 // The parameter interactive music reports back, as Godot's get_parameter does.
 constexpr std::string_view kSwitchToClip = "switch_to_clip";
 
+double level_db(float linear) {
+    return linear > 0.0F ? std::max(static_cast<double>(linear_to_db(linear)), -200.0) : -200.0;
+}
+
+// Whether a stream is a microphone, which plays only as a player's own stream.
+bool is_microphone(const LoadedStream& loaded) {
+    return loaded.sounds.empty() && loaded.files.size() == 1 &&
+           loaded.files.front()->kind == StreamFile::Kind::Microphone;
+}
+
 // A bus's last seconds of output, in a ring.
 struct History {
     std::vector<Frame> frames;
@@ -100,6 +110,27 @@ struct State {
     std::vector<Frame> out;
     std::vector<History> history; // per bus
 
+    // Microphone input: the device, tried once each time input turns on, and the stream agents
+    // play in its place.
+    InputDevice* input_device = nullptr;
+    bool device_tried = false;
+    bool device_started = false;
+    std::string device_error;
+    std::optional<std::string> input_ask; // set_input_stream's, for the next tick
+    std::string input_stream;
+    LoadedStream input_loaded;
+    std::unique_ptr<Playback> input_playback; // until its stream ends
+    std::vector<Frame> input_frames;
+    float input_peak_db = -200.0F;
+
+    void stop_device() {
+        if (device_started) {
+            input_device->stop();
+        }
+        device_tried = false;
+        device_started = false;
+    }
+
     void reset_history() {
         history.assign(server->layout().buses.size(), History{});
         const auto frames = static_cast<std::size_t>(settings.history_seconds * server->mix_rate());
@@ -119,6 +150,7 @@ struct State {
         layout = {};
         layout_version = 0;
         layout_error.clear();
+        server->set_input_enabled(settings.enable_input);
         server->set_layout(default_bus_layout());
         refresh_layout();
         reset_history();
@@ -504,6 +536,67 @@ void follow_clip(State& state, world::World& world, PlayerState& player) {
     }
 }
 
+// The tick's microphone input, pushed before the tick is mixed: the stream agents play into it,
+// else what the device recorded, else silence. Input records only while it is on.
+void feed_input(State& state, std::size_t frames) {
+    Server& server = *state.server;
+    if (state.input_ask) {
+        state.input_stream = std::move(*state.input_ask);
+        state.input_ask.reset();
+        state.input_playback.reset();
+        state.input_loaded = {};
+        if (!state.input_stream.empty()) {
+            if (auto loaded = load_stream(*state.assets, state.input_stream); loaded) {
+                state.input_loaded = std::move(loaded).value();
+                state.input_playback = state.input_loaded.stream->instantiate(
+                    server.mix_rate(), seed_of(state.input_stream, 1));
+                state.input_playback->start(0.0);
+            } else {
+                log::warn("the stream to play into the microphone can't load",
+                          {{"stream", state.input_stream}, {"error", loaded.error().message}});
+            }
+        }
+    }
+    const bool on = server.input_active();
+    const bool use_device = on && state.input_stream.empty() && state.input_device != nullptr;
+    if (use_device && !state.device_tried) {
+        // As Godot's input_start, once each time input turns on.
+        state.device_tried = true;
+        if (auto started = state.input_device->start(server.mix_rate()); started) {
+            state.device_started = true;
+            state.device_error.clear();
+        } else {
+            state.device_error = started.error().message;
+            log::warn("the microphone can't record; input is silent",
+                      {{"error", state.device_error}});
+        }
+    } else if (!use_device && state.device_tried) {
+        state.stop_device();
+    }
+    state.input_peak_db = -200.0F;
+    if (!on || frames == 0) {
+        return;
+    }
+    state.input_frames.assign(frames, Frame{});
+    if (state.input_playback) {
+        const int count = static_cast<int>(frames);
+        const int mixed = state.input_playback->mix(state.input_frames.data(), 1.0F, count);
+        if (mixed < count) {
+            std::fill(state.input_frames.begin() + std::max(mixed, 0), state.input_frames.end(),
+                      Frame{});
+            state.input_playback.reset();
+        }
+    } else if (state.device_started) {
+        state.input_device->read(state.input_frames);
+    }
+    float peak = 0.0F;
+    for (const Frame& frame : state.input_frames) {
+        peak = std::max({peak, std::abs(frame.left), std::abs(frame.right)});
+    }
+    state.input_peak_db = static_cast<float>(level_db(peak));
+    server.push_input(state.input_frames);
+}
+
 void run(State& state, world::World& world, double tick_seconds) {
     state.refresh_layout();
 
@@ -540,6 +633,7 @@ void run(State& state, world::World& world, double tick_seconds) {
     const double exact = state.carry + state.server->mix_rate() * std::max(tick_seconds, 0.0);
     const auto frames = static_cast<std::size_t>(std::floor(exact));
     state.carry = exact - static_cast<double>(frames);
+    feed_input(state, frames);
     state.out.resize(frames);
     state.server->mix(state.out);
     if (state.sink && frames > 0) {
@@ -605,10 +699,6 @@ Result<T> parse_json_file(std::string_view text, Result<T> (*parse)(const json::
     return parse(doc.value());
 }
 
-double level_db(float linear) {
-    return linear > 0.0F ? std::max(static_cast<double>(linear_to_db(linear)), -200.0) : -200.0;
-}
-
 json::Value number_setting(std::string_view doc, double minimum, double maximum, double fallback) {
     json::Value value;
     value["type"] = "number";
@@ -645,6 +735,14 @@ json::Value settings_schema() {
         number_setting("How far AudioStreamPlayer2D sounds pan left and right, as Godot's "
                        "audio/general/2d_panning_strength.",
                        0, 4, Settings{}.panning_strength_2d);
+    properties["enable_input"]["type"] = "boolean";
+    properties["enable_input"]["default"] = false;
+    properties["enable_input"]["description"] =
+        "Let AudioStreamMicrophone players record, as Godot's audio/driver/enable_input; exports "
+        "then ask the player for the microphone.";
+    properties["input_usage_description"]["type"] = "string";
+    properties["input_usage_description"]["description"] =
+        "Why the game records, shown when macOS and iOS ask the player for the microphone.";
     return schema;
 }
 
@@ -687,6 +785,12 @@ Settings parse_settings(const json::Value& settings) {
     if (const json::Value* panning = settings.find("panning_strength_2d"); panning != nullptr) {
         out.panning_strength_2d = static_cast<float>(panning->as_double());
     }
+    if (const json::Value* input = settings.find("enable_input"); input != nullptr) {
+        out.enable_input = input->as_bool();
+    }
+    if (const json::Value* reason = settings.find("input_usage_description"); reason != nullptr) {
+        out.input_usage_description = reason->as_string();
+    }
     return out;
 }
 
@@ -723,6 +827,10 @@ void install(world::World& world, asset::Assets& assets, const Settings& setting
         state->played.clear();
         state->requests.clear();
         state->recordings.clear();
+        state->input_ask.reset();
+        state->input_stream.clear();
+        state->input_playback.reset();
+        state->input_loaded = {};
         state->apply_settings();
     });
     world.add_system(
@@ -758,6 +866,57 @@ void set_sink(world::World& world, Sink sink) {
     if (State* state = state_of(world); state != nullptr) {
         state->sink = std::move(sink);
     }
+}
+
+void set_input_device(world::World& world, InputDevice* device) {
+    if (State* state = state_of(world); state != nullptr && state->input_device != device) {
+        state->stop_device();
+        state->device_error.clear();
+        state->input_device = device;
+    }
+}
+
+Result<void> set_input_stream(world::World& world, std::string_view stream) {
+    State* state = state_of(world);
+    if (state == nullptr) {
+        return make_error(ErrorCode::InvalidArgument, "audio is not installed in this world");
+    }
+    if (!state->settings.enable_input) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "microphone input is off; turn on audio.enable_input in project.json");
+    }
+    if (!stream.empty()) {
+        auto loaded = load_stream(*state->assets, stream);
+        if (!loaded) {
+            return loaded.error();
+        }
+        if (is_microphone(loaded.value())) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "\"" + std::string(stream) +
+                                  "\" is a microphone; play a sound into the input instead");
+        }
+    }
+    state->input_ask = std::string(stream);
+    return {};
+}
+
+InputInfo input_info(const world::World& world) {
+    InputInfo info;
+    const State* state = state_of(world);
+    if (state == nullptr) {
+        return info;
+    }
+    info.enabled = state->settings.enable_input;
+    info.active = state->server->input_active();
+    const std::string& stream = state->input_ask ? *state->input_ask : state->input_stream;
+    if (!stream.empty()) {
+        info.source = stream;
+    } else if (state->input_device != nullptr) {
+        info.source = state->input_device->name();
+    }
+    info.error = state->device_error;
+    info.peak_db = state->input_peak_db;
+    return info;
 }
 
 void play(world::World& world, entt::entity entity, double from_seconds) {
@@ -814,8 +973,14 @@ Result<void> play_stream(world::World& world, entt::entity entity, std::string_v
                               "\" isn't polyphonic; play_stream needs a .audio.json file with "
                               "\"polyphonic\"");
     }
-    if (auto loaded = load_stream(*state->assets, stream); !loaded) {
+    auto loaded = load_stream(*state->assets, stream);
+    if (!loaded) {
         return loaded.error();
+    }
+    if (is_microphone(loaded.value())) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "\"" + std::string(stream) +
+                              "\" is a microphone, which plays only as a player's own stream");
     }
     for (const std::string_view kind : {kPlayer, kPlayer2D}) {
         if (kind == kPlayer ? player != nullptr : player_2d != nullptr) {
@@ -866,9 +1031,9 @@ RecordingAsks recording_asks(const world::World& world, int bus, int effect) {
 
 Snapshot save(const world::World& world) {
     const State* state = state_of(world);
-    return state != nullptr
-               ? Snapshot{state->requests, state->recordings, state->server->layout().buses}
-               : Snapshot{};
+    return state != nullptr ? Snapshot{state->requests, state->recordings,
+                                       state->server->layout().buses, state->input_ask}
+                            : Snapshot{};
 }
 
 void restore(world::World& world, const Snapshot& snapshot) {
@@ -878,6 +1043,7 @@ void restore(world::World& world, const Snapshot& snapshot) {
     }
     state->requests = snapshot.requests;
     state->recordings = snapshot.recordings;
+    state->input_ask = snapshot.input_stream;
     Server& server = *state->server;
     const std::vector<BusSettings>& now = server.layout().buses;
     if (now.size() != snapshot.buses.size()) {
