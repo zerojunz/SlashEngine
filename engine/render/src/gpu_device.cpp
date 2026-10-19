@@ -189,6 +189,10 @@ public:
                 SDL_ReleaseGPUShader(device_, shader);
             }
         }
+        for (const auto& [id, game] : game_shaders_) {
+            SDL_ReleaseGPUShader(device_, game.vertex);
+            SDL_ReleaseGPUShader(device_, game.fragment);
+        }
         if (window_ != nullptr) {
             SDL_ReleaseWindowFromGPUDevice(device_, window_);
         }
@@ -295,6 +299,62 @@ public:
         textures_.erase(it);
     }
 
+    Result<ShaderId> create_shader(const CompiledShader& shader) override {
+        if (auto checked = check_compiled_shader(shader, backend_); !checked) {
+            return checked.error();
+        }
+        const auto bytes = [](const std::vector<std::uint32_t>& words) {
+            return std::span<const unsigned char>(
+                reinterpret_cast<const unsigned char*>(words.data()), words.size() * 4);
+        };
+        auto vertex = make_gpu_shader(SDL_GPU_SHADERSTAGE_VERTEX,
+                                      {.vertex_spirv = bytes(shader.spirv_vertex),
+                                       .fragment_spirv = bytes(shader.spirv_fragment),
+                                       .vertex_msl = shader.msl_vertex,
+                                       .fragment_msl = shader.msl_fragment,
+                                       .hlsl = shader.hlsl},
+                                      0, 2);
+        if (!vertex) {
+            return vertex.error();
+        }
+        auto fragment = make_gpu_shader(SDL_GPU_SHADERSTAGE_FRAGMENT,
+                                        {.vertex_spirv = bytes(shader.spirv_vertex),
+                                         .fragment_spirv = bytes(shader.spirv_fragment),
+                                         .vertex_msl = shader.msl_vertex,
+                                         .fragment_msl = shader.msl_fragment,
+                                         .hlsl = shader.hlsl},
+                                        static_cast<std::uint32_t>(kMaterialSamplers), 2);
+        if (!fragment) {
+            SDL_ReleaseGPUShader(device_, vertex.value());
+            return fragment.error();
+        }
+        const auto id = static_cast<ShaderId>(next_shader_++);
+        game_shaders_[id] = {.vertex = vertex.value(), .fragment = fragment.value()};
+        return id;
+    }
+
+    void destroy_shader(ShaderId shader) override {
+        const auto it = game_shaders_.find(shader);
+        if (it == game_shaders_.end()) {
+            return;
+        }
+        // The frame being built may still draw with its pipelines, so they go once it is sent.
+        std::erase_if(pipelines_, [&](const Pipeline& pipeline) {
+            if (pipeline.game != shader) {
+                return false;
+            }
+            if (in_frame_) {
+                pending_pipelines_.push_back(pipeline.pipeline);
+            } else {
+                SDL_ReleaseGPUGraphicsPipeline(device_, pipeline.pipeline);
+            }
+            return true;
+        });
+        SDL_ReleaseGPUShader(device_, it->second.vertex);
+        SDL_ReleaseGPUShader(device_, it->second.fragment);
+        game_shaders_.erase(it);
+    }
+
     Result<bool> begin_frame(const Frame& frame) override {
         if (in_frame_) {
             return frame_in_progress("begin_frame");
@@ -372,8 +432,9 @@ public:
                 return target_in_use(texture);
             }
         }
-        if (auto checked = check_material(material, frame_.target,
-                                          [&](TextureId id) { return textures_.contains(id); });
+        if (auto checked = check_material(
+                material, frame_.target, [&](TextureId id) { return textures_.contains(id); },
+                [&](ShaderId id) { return game_shaders_.contains(id); });
             !checked) {
             return checked;
         }
@@ -393,8 +454,10 @@ public:
         if (batches_.empty() || batches_.back().texture != texture ||
             batches_.back().material != material) {
             const ShaderKind kind =
-                uses_material_shader(material) ? ShaderKind::Material : ShaderKind::Sprite;
-            auto pipeline = pipeline_for(frame_format_, kind, material.blend);
+                material.shader != ShaderId::None || uses_material_shader(material)
+                    ? ShaderKind::Material
+                    : ShaderKind::Sprite;
+            auto pipeline = pipeline_for(frame_format_, kind, material.blend, material.shader);
             if (!pipeline) {
                 return pipeline.error();
             }
@@ -481,6 +544,12 @@ public:
                 if (batch.pipeline != bound) {
                     SDL_BindGPUGraphicsPipeline(pass, batch.pipeline);
                     bound = batch.pipeline;
+                }
+                if (batch.material.shader != ShaderId::None) {
+                    const VertexProgramUniforms uniforms =
+                        vertex_program_uniforms(batch.material, batch.texel);
+                    SDL_PushGPUVertexUniformData(commands, 1, &uniforms,
+                                                 static_cast<std::uint32_t>(sizeof(uniforms)));
                 }
                 if (batch.kind == ShaderKind::Sprite) {
                     SDL_BindGPUFragmentSamplers(pass, 0, batch.samplers.data(), 1);
@@ -608,7 +677,14 @@ private:
         SDL_GPUTextureFormat format = SDL_GPU_TEXTUREFORMAT_INVALID;
         ShaderKind kind = ShaderKind::Sprite;
         BlendMode blend = BlendMode::Mix;
+        ShaderId game = ShaderId::None; // a game's shader, drawn instead of the kind's
         SDL_GPUGraphicsPipeline* pipeline = nullptr;
+    };
+
+    // A game's shader (create_shader).
+    struct GameShader {
+        SDL_GPUShader* vertex = nullptr;
+        SDL_GPUShader* fragment = nullptr;
     };
 
     static std::size_t shader_index(ShaderKind kind, SDL_GPUShaderStage stage) {
@@ -653,7 +729,15 @@ private:
             if (slot != nullptr) {
                 continue;
             }
-            auto shader = create_shader(kind, stage);
+            const bool material = kind == ShaderKind::Material;
+            const bool vertex = stage == SDL_GPU_SHADERSTAGE_VERTEX;
+            std::uint32_t samplers = 0;
+            std::uint32_t uniforms = 1;
+            if (!vertex) {
+                samplers = material ? static_cast<std::uint32_t>(kMaterialSamplers) : 1;
+                uniforms = material ? 2 : 0;
+            }
+            auto shader = make_gpu_shader(stage, shader_code(kind), samplers, uniforms);
             if (!shader) {
                 return shader.error();
             }
@@ -662,19 +746,15 @@ private:
         return {};
     }
 
-    Result<SDL_GPUShader*> create_shader(ShaderKind kind, SDL_GPUShaderStage stage) {
+    // One stage of a shader, in the format the backend takes.
+    Result<SDL_GPUShader*> make_gpu_shader(SDL_GPUShaderStage stage, const ShaderCode& code,
+                                           std::uint32_t samplers, std::uint32_t uniforms) {
         const bool vertex = stage == SDL_GPU_SHADERSTAGE_VERTEX;
-        const bool material = kind == ShaderKind::Material;
-        const ShaderCode code = shader_code(kind);
         SDL_GPUShaderCreateInfo info{};
         info.stage = stage;
         info.entrypoint = vertex ? "vs_main" : "fs_main";
-        if (vertex) {
-            info.num_uniform_buffers = 1;
-        } else {
-            info.num_samplers = material ? static_cast<std::uint32_t>(kMaterialSamplers) : 1;
-            info.num_uniform_buffers = material ? 2 : 0;
-        }
+        info.num_samplers = samplers;
+        info.num_uniform_buffers = uniforms;
         const SDL_GPUShaderFormat formats = SDL_GetGPUShaderFormats(device_);
         std::vector<std::uint8_t> compiled;
         if ((formats & SDL_GPU_SHADERFORMAT_SPIRV) != 0) {
@@ -712,14 +792,17 @@ private:
     // The 2D pipeline for a target format, shader and blend mode, made the first time a frame
     // needs it.
     Result<SDL_GPUGraphicsPipeline*> pipeline_for(SDL_GPUTextureFormat format, ShaderKind kind,
-                                                  BlendMode blend) {
+                                                  BlendMode blend, ShaderId game = ShaderId::None) {
         for (const Pipeline& made : pipelines_) {
-            if (made.format == format && made.kind == kind && made.blend == blend) {
+            if (made.format == format && made.kind == kind && made.blend == blend &&
+                made.game == game) {
                 return made.pipeline;
             }
         }
-        if (auto made = make_shaders(kind); !made) {
-            return made.error();
+        if (game == ShaderId::None) {
+            if (auto made = make_shaders(kind); !made) {
+                return made.error();
+            }
         }
         SDL_GPUVertexBufferDescription buffer{};
         buffer.slot = 0;
@@ -744,8 +827,14 @@ private:
         color.blend_state = blend_state(blend);
 
         SDL_GPUGraphicsPipelineCreateInfo info{};
-        info.vertex_shader = shaders_.at(shader_index(kind, SDL_GPU_SHADERSTAGE_VERTEX));
-        info.fragment_shader = shaders_.at(shader_index(kind, SDL_GPU_SHADERSTAGE_FRAGMENT));
+        if (game == ShaderId::None) {
+            info.vertex_shader = shaders_.at(shader_index(kind, SDL_GPU_SHADERSTAGE_VERTEX));
+            info.fragment_shader = shaders_.at(shader_index(kind, SDL_GPU_SHADERSTAGE_FRAGMENT));
+        } else {
+            const GameShader& shaders = game_shaders_.at(game);
+            info.vertex_shader = shaders.vertex;
+            info.fragment_shader = shaders.fragment;
+        }
         info.vertex_input_state.vertex_buffer_descriptions = &buffer;
         info.vertex_input_state.num_vertex_buffers = 1;
         info.vertex_input_state.vertex_attributes = attributes.data();
@@ -761,7 +850,7 @@ private:
             return sdl_error("creating the 2D pipeline failed");
         }
         pipelines_.push_back(
-            {.format = format, .kind = kind, .blend = blend, .pipeline = pipeline});
+            {.format = format, .kind = kind, .blend = blend, .game = game, .pipeline = pipeline});
         return pipeline;
     }
 
@@ -906,6 +995,10 @@ private:
             SDL_ReleaseGPUTexture(device_, texture);
         }
         pending_release_.clear();
+        for (SDL_GPUGraphicsPipeline* pipeline : pending_pipelines_) {
+            SDL_ReleaseGPUGraphicsPipeline(device_, pipeline);
+        }
+        pending_pipelines_.clear();
     }
 
     SDL_GPUDevice* device_;
@@ -922,6 +1015,9 @@ private:
     std::unordered_map<TextureId, Texture> textures_;
     std::uint32_t next_texture_ = 1;
     std::vector<SDL_GPUTexture*> pending_release_;
+    std::unordered_map<ShaderId, GameShader> game_shaders_;
+    std::uint32_t next_shader_ = 1;
+    std::vector<SDL_GPUGraphicsPipeline*> pending_pipelines_;
 
     // The frame being built. A skipped frame has no command buffer.
     bool in_frame_ = false;

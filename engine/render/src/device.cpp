@@ -12,6 +12,7 @@
 #include <cstddef>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -61,6 +62,40 @@ Result<void> check_vertices(std::span<const Vertex2D> vertices, std::size_t in_f
 Error unknown_texture(TextureId texture) {
     return make_error(ErrorCode::NotFound,
                       "no texture " + std::to_string(static_cast<std::uint32_t>(texture)));
+}
+
+Error unknown_shader(ShaderId shader) {
+    return make_error(ErrorCode::NotFound,
+                      "no shader " + std::to_string(static_cast<std::uint32_t>(shader)));
+}
+
+Result<void> check_compiled_shader(const CompiledShader& shader, Backend backend) {
+    bool present = true;
+    switch (backend) {
+    case Backend::Vulkan:
+        present = !shader.spirv_vertex.empty() && !shader.spirv_fragment.empty();
+        break;
+    case Backend::Metal:
+        present = !shader.msl_vertex.empty() && !shader.msl_fragment.empty();
+        break;
+    case Backend::D3D12:
+        present = !shader.hlsl.empty();
+        break;
+    case Backend::OpenGl:
+        present = !shader.glsl_vertex.empty() && !shader.glsl_fragment.empty();
+        break;
+    case Backend::Software:
+        present = !shader.cpu_fragment.empty();
+        break;
+    case Backend::Null:
+        break;
+    }
+    if (!present) {
+        return make_error(ErrorCode::InvalidArgument, "the shader has no code for the " +
+                                                          std::string(backend_name(backend)) +
+                                                          " backend");
+    }
+    return {};
 }
 
 Error not_a_render_target(TextureId texture) {
@@ -130,6 +165,14 @@ public:
 
     void destroy_texture(TextureId texture) override { textures_.erase(texture); }
 
+    Result<ShaderId> create_shader(const CompiledShader& /*shader*/) override {
+        const auto id = static_cast<ShaderId>(next_shader_++);
+        shaders_.insert(id);
+        return id;
+    }
+
+    void destroy_shader(ShaderId shader) override { shaders_.erase(shader); }
+
     Result<bool> begin_frame(const Frame& frame) override {
         if (in_frame_) {
             return detail::frame_in_progress("begin_frame");
@@ -175,7 +218,8 @@ public:
             return detail::target_in_use(texture);
         }
         if (auto checked = detail::check_material(
-                material, target_, [&](TextureId id) { return textures_.contains(id); });
+                material, target_, [&](TextureId id) { return textures_.contains(id); },
+                [&](ShaderId id) { return shaders_.contains(id); });
             !checked) {
             return checked;
         }
@@ -251,6 +295,8 @@ private:
 
     std::unordered_map<TextureId, Texture> textures_;
     std::uint32_t next_texture_ = 1;
+    std::unordered_set<ShaderId> shaders_;
+    std::uint32_t next_shader_ = 1;
     bool in_frame_ = false;
     TextureId target_ = TextureId::None;
     std::size_t frame_vertices_ = 0;

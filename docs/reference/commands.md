@@ -403,6 +403,11 @@ Colors are rounded to three decimals. A param the material doesn't have fails wi
 name, and a value of the wrong type or outside the param's range says what it expected; the
 error's `path` is `/params/<name>` for a param given here and `/id` for one of the entity's.
 
+A material with a [shader](scene-format.md#shaders) runs its `fragment()` on the CPU, with
+derivatives of 0 and no `vertex()`; a discarded pixel is `[0, 0, 0, 0]`. A shader that doesn't
+compile fails with its file and line. `color`, `frag_coord` and `time` are what `COLOR` (times
+the texture), `FRAGCOORD` and `TIME` read.
+
 ## Animations
 
 ### animation.eval

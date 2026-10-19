@@ -24,17 +24,20 @@ inline constexpr std::size_t kMaxFrameVertices = std::size_t{1} << 22;
 // in_frame is how many vertices the frame has drawn so far.
 [[nodiscard]] Result<void> check_vertices(std::span<const Vertex2D> vertices, std::size_t in_frame);
 [[nodiscard]] Error unknown_texture(TextureId texture);
+[[nodiscard]] Error unknown_shader(ShaderId shader);
+// That a compiled shader has code for the backend.
+[[nodiscard]] Result<void> check_compiled_shader(const CompiledShader& shader, Backend backend);
 [[nodiscard]] Error not_a_render_target(TextureId texture);
 [[nodiscard]] Error target_in_use(TextureId texture);
 [[nodiscard]] Error no_frame(std::string_view call);
 [[nodiscard]] Error frame_in_progress(std::string_view call);
 [[nodiscard]] std::array<std::uint8_t, 4> to_rgba8(const Color& color);
 
-// The material's program, and that its textures exist (known says whether one does) and aren't
-// the frame's target.
-template <typename Known>
+// The material's program or shader (known_shader says whether one exists), and that its textures
+// exist (known says whether one does) and aren't the frame's target.
+template <typename Known, typename KnownShader>
 [[nodiscard]] Result<void> check_material(const Material& material, TextureId target,
-                                          const Known& known) {
+                                          const Known& known, const KnownShader& known_shader) {
     const DistanceField& field = material.field;
     if (!(field.pixel_range >= 0.0F) || !(field.outline >= 0.0F) ||
         !std::isfinite(field.pixel_range) || !std::isfinite(field.outline)) {
@@ -44,6 +47,20 @@ template <typename Known>
     if (field.pixel_range > 0.0F && !material.program.code.empty()) {
         return make_error(ErrorCode::InvalidArgument,
                           "a material with a program can't draw a distance field too");
+    }
+    if (material.shader != ShaderId::None) {
+        if (!known_shader(material.shader)) {
+            return unknown_shader(material.shader);
+        }
+        if (!material.program.code.empty() || field.pixel_range > 0.0F) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "a material with a shader has no program or distance field");
+        }
+        if (material.program.constants.size() > kMaxConstants) {
+            return make_error(ErrorCode::InvalidArgument, "a shader reads at most " +
+                                                              std::to_string(kMaxConstants) +
+                                                              " constants");
+        }
     }
     if (!material.program.code.empty()) {
         if (auto checked = check_program(material.program); !checked) {

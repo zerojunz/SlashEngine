@@ -1,0 +1,13 @@
+{
+  "format": 1,
+  "main_scene": "main.scene.json",
+  "name": "Custom Shaders",
+  "rendering": {
+    "clear_color": [0.1, 0.1, 0.15, 1.0]
+  },
+  "version": "1.0.0",
+  "window": {
+    "height": 48,
+    "width": 96
+  }
+}

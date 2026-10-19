@@ -1,0 +1,18 @@
+{
+  "format": 1,
+  "params": {
+    "amplitude": {
+      "type": "float",
+      "value": 8
+    },
+    "speed": {
+      "type": "float",
+      "value": 3.1415927
+    },
+    "tint": {
+      "type": "color",
+      "value": [0.5, 1, 0.5, 1]
+    }
+  },
+  "shader": "shaders/wave.hlsl"
+}

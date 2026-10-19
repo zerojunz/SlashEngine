@@ -408,6 +408,15 @@ instructions over 32 registers, which `material.hlsl` interprets on the GPU and 
 runs on the CPU for `material.eval`. A new op goes in all three, with a case in the test that
 runs every op on both. `examples/materials` has three materials.
 
+A material's `"shader"` names a game's own `.hlsl` file with Godot's `fragment()` and `vertex()`
+(the built-ins are in `docs/reference/scene-format.md`). `tools/shader_compiler` wraps it in
+`engine/render/shaders/canvas.hlsl`'s entry points and compiles it with glslang and SPIRV-Cross
+for every backend and for `render::ShaderVm`, which the software device and `material.eval`
+run. slash-cli, slash-mcp and exports link it and install it with `render::set_shader_compiler`;
+games never do, and draw the `"compiled"` code their export wrote into each material file.
+Renderers recompile a shader when its file changes. `examples/custom-shaders` has a dissolve and
+a sway.
+
 Tile maps follow Godot's TileSet and TileMapLayer (`tilemap.hpp` in `engine/canvas`). A
 `.tileset.json` file (`$cli schema tileset`) cuts atlas textures into tiles and names terrain
 sets; a terrain tile's `peering` names the terrain each side and corner must touch. A
@@ -457,8 +466,9 @@ in canvas layers into the world's canvas and gives each canvas its `CanvasLighti
 Shaders are HLSL in `engine/render/shaders/`. Their SPIR-V, MSL and GLSL ES are committed in
 `engine/render/src/*_shaders.hpp`, so only someone changing a shader needs glslang and
 SPIRV-Cross (`glslang-tools` and `spirv-cross` on Debian and Ubuntu, `glslang` and `spirv-cross`
-in Homebrew). After editing one, regenerate and commit the header; the `shaders_up_to_date_*`
-tests fail if the two differ:
+in Homebrew; games' own shaders compile with the copies built as libraries from
+`cmake/dependencies.json`). After editing one, regenerate and commit the header; the
+`shaders_up_to_date_*` tests fail if the two differ:
 
 ```bash
 cmake --build --preset dev --target shaders
@@ -769,13 +779,13 @@ CI rejects unformatted code and any clang-tidy finding.
   queries, edits, briefs and checks), `command` (commands, sessions with undo, JSON-RPC and MCP),
   `debug` (the debug overlay over a running game), `server` (localhost HTTP over a session) and
   `runtime` (project files and the game executable).
-  Tool-only libraries such as `tools/exporter` and `tools/importer` use the same layout and
-  may use exceptions.
+  Tool-only libraries such as `tools/exporter`, `tools/importer` and `tools/shader_compiler` use
+  the same layout and may use exceptions.
 - New dependencies are pinned in `cmake/dependencies.json` (repository, tag, SPDX license and
   the license file's SHA-256), fetched with `slash_add_dependency` in `cmake/Dependencies.cmake`
   and listed in `THIRD_PARTY.md`. Only permissive licenses (MIT and its variants, BSD, zlib,
-  Apache 2.0, Boost, MIT-0, the FreeType License, public domain); the `licenses` test fails
-  anything else. Never copy code from closed
+  Apache 2.0, Boost, MIT-0, the FreeType License, public domain; glslang's Bison-exception
+  parser, in the tools only); the `licenses` test fails anything else. Never copy code from closed
   engines.
 - Every behavior change comes with a test in `tests/`. Tests must pass headless.
 - Every new feature comes with an example in `examples/` (see below).

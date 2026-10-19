@@ -10,12 +10,15 @@
 #include "slash/render/image.hpp"
 #include "slash/render/light.hpp"
 #include "slash/render/material.hpp"
+#include "slash/render/shader.hpp"
 
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
+#include <memory>
 #include <optional>
 #include <unordered_map>
 #include <utility>
@@ -53,6 +56,24 @@ struct ScreenVertex {
     std::int64_t y = 0;
     // u, v, r, g, b, a, then the position lights are placed by.
     std::array<double, 8> varying{};
+};
+
+// A vertex as the vertex stage leaves it: a game's vertex() may move it and change its texture
+// coordinate and color.
+struct ShadedVertex {
+    float x = 0.0F;
+    float y = 0.0F;
+    float u = 0.0F;
+    float v = 0.0F;
+    std::array<double, 4> color{};
+};
+
+// A game's shader on the CPU.
+struct SoftwareShader {
+    std::optional<ShaderVm> vertex;
+    ShaderVm fragment;
+    bool normal_used = false;
+    bool specular_used = false;
 };
 
 // The signed doubled area of a, b, p, positive when p is right of a to b on a y-down target.
@@ -164,6 +185,41 @@ public:
         textures_.erase(it);
     }
 
+    Result<ShaderId> create_shader(const CompiledShader& shader) override {
+        if (auto checked = detail::check_compiled_shader(shader, Backend::Software); !checked) {
+            return checked.error();
+        }
+        auto made = std::make_shared<SoftwareShader>();
+        made->normal_used = shader.normal_map_used;
+        made->specular_used = shader.specular_used;
+        auto fragment = ShaderVm::load(shader.cpu_fragment);
+        if (!fragment) {
+            return fragment.error();
+        }
+        made->fragment = std::move(fragment).value();
+        if (!shader.cpu_vertex.empty()) {
+            auto vertex = ShaderVm::load(shader.cpu_vertex);
+            if (!vertex) {
+                return vertex.error();
+            }
+            made->vertex = std::move(vertex).value();
+        }
+        const auto id = static_cast<ShaderId>(next_shader_++);
+        shaders_[id] = std::move(made);
+        return id;
+    }
+
+    void destroy_shader(ShaderId shader) override {
+        const auto it = shaders_.find(shader);
+        if (it == shaders_.end()) {
+            return;
+        }
+        if (in_frame_) {
+            retired_shaders_[shader] = std::move(it->second);
+        }
+        shaders_.erase(it);
+    }
+
     Result<bool> begin_frame(const Frame& frame) override {
         if (in_frame_) {
             return detail::frame_in_progress("begin_frame");
@@ -208,7 +264,8 @@ public:
             return detail::target_in_use(texture);
         }
         if (auto checked = detail::check_material(
-                material, frame_.target, [&](TextureId id) { return textures_.contains(id); });
+                material, frame_.target, [&](TextureId id) { return textures_.contains(id); },
+                [&](ShaderId id) { return shaders_.contains(id); });
             !checked) {
             return checked;
         }
@@ -255,6 +312,7 @@ public:
                        target);
         }
         retired_.clear();
+        retired_shaders_.clear();
         return {};
     }
 
@@ -318,8 +376,19 @@ private:
         return {.image = &found->image, .filter = found->desc.filter, .repeat = repeat};
     }
 
+    // A vertex as it is drawn, before any vertex().
+    static ShadedVertex shaded(const Vertex2D& vertex) {
+        constexpr double kByte = 255.0;
+        return {.x = vertex.x,
+                .y = vertex.y,
+                .u = vertex.u,
+                .v = vertex.v,
+                .color = {vertex.rgba[0] / kByte, vertex.rgba[1] / kByte, vertex.rgba[2] / kByte,
+                          vertex.rgba[3] / kByte}};
+    }
+
     // Where a vertex lands on a target of this size, or nullopt behind the viewer.
-    static std::optional<ScreenVertex> to_screen(const Vertex2D& vertex, const Mat4& view,
+    static std::optional<ScreenVertex> to_screen(const ShadedVertex& vertex, const Mat4& view,
                                                  const Image& target) {
         const float x = vertex.x;
         const float y = vertex.y;
@@ -339,16 +408,21 @@ private:
         ScreenVertex out;
         out.x = std::llround(sx * kSubpixel);
         out.y = std::llround(sy * kSubpixel);
-        constexpr double kByte = 255.0;
-        out.varying = {vertex.u,
-                       vertex.v,
-                       vertex.rgba[0] / kByte,
-                       vertex.rgba[1] / kByte,
-                       vertex.rgba[2] / kByte,
-                       vertex.rgba[3] / kByte,
-                       x,
-                       y};
+        out.varying = {
+            vertex.u, vertex.v, vertex.color[0], vertex.color[1], vertex.color[2], vertex.color[3],
+            x,        y};
         return out;
+    }
+
+    // A game's shader, if there is one by that ID, live or destroyed during this frame.
+    SoftwareShader* find_shader(ShaderId shader) {
+        if (const auto it = shaders_.find(shader); it != shaders_.end()) {
+            return it->second.get();
+        }
+        if (const auto it = retired_shaders_.find(shader); it != retired_shaders_.end()) {
+            return it->second.get();
+        }
+        return nullptr;
     }
 
     void draw_batch(const Batch& batch, const Mat4& view, Image& target) {
@@ -365,15 +439,38 @@ private:
                       .specular = bound(material.shading.specular_map, false),
                       .atlas = bound(frame_.lighting.atlas, false),
                       .shadows = bound(frame_.lighting.shadow_map, false),
-                      .texel = {1.0F, 1.0F}};
+                      .texel = {1.0F, 1.0F},
+                      .game = nullptr,
+                      .uniforms = {}};
         if (slots[0].image != nullptr) {
             shader.texel = {1.0F / static_cast<float>(slots[0].image->width),
                             1.0F / static_cast<float>(slots[0].image->height)};
         }
-        for (std::size_t i = batch.first; i + 2 < batch.first + batch.count; i += 3) {
-            const auto a = to_screen(vertices_[i], view, target);
-            const auto b = to_screen(vertices_[i + 1], view, target);
-            const auto c = to_screen(vertices_[i + 2], view, target);
+        std::vector<ShadedVertex> corners;
+        corners.reserve(batch.count);
+        for (std::size_t i = batch.first; i < batch.first + batch.count; ++i) {
+            corners.push_back(shaded(vertices_[i]));
+        }
+        if (material.shader != ShaderId::None) {
+            shader.game = find_shader(material.shader);
+            // The constants, then the texel size, as cpu_shader lays them out.
+            const std::size_t constants =
+                std::min(material.program.constants.size(), cpu_shader::kConstants);
+            std::memcpy(shader.uniforms.data(), material.program.constants.data(),
+                        constants * sizeof(std::array<float, 4>));
+            const std::array<float, 4> texel{shader.texel[0], shader.texel[1], 0.0F, 0.0F};
+            std::memcpy(shader.uniforms.data() + (cpu_shader::kConstants * sizeof(texel)),
+                        texel.data(), sizeof(texel));
+            if (shader.game != nullptr) {
+                if (std::optional<ShaderVm>& vertex = shader.game->vertex; vertex.has_value()) {
+                    run_vertex(*vertex, shader, corners);
+                }
+            }
+        }
+        for (std::size_t i = 0; i + 2 < corners.size(); i += 3) {
+            const auto a = to_screen(corners[i], view, target);
+            const auto b = to_screen(corners[i + 1], view, target);
+            const auto c = to_screen(corners[i + 2], view, target);
             if (a && b && c) {
                 rasterize(*a, *b, *c, shader, target);
             }
@@ -389,13 +486,125 @@ private:
         Bound atlas;
         Bound shadows;
         std::array<float, 2> texel{};
+        // A game's shader, and the uniform buffer it reads.
+        SoftwareShader* game = nullptr;
+        std::array<std::byte, cpu_shader::kUniformBytes> uniforms{};
+
+        [[nodiscard]] ShaderVm::Textures textures() const {
+            return {
+                .sample =
+                    [this](std::uint32_t binding, float u, float v) {
+                        return slots.at(std::min<std::size_t>(binding, 3)).sample(u, v);
+                    },
+                .fetch = [this](std::uint32_t binding, std::int32_t x, std::int32_t y) -> Float4 {
+                    const Image* image = slots.at(std::min<std::size_t>(binding, 3)).image;
+                    if (image == nullptr) {
+                        return {1.0F, 1.0F, 1.0F, 1.0F};
+                    }
+                    if (x < 0 || y < 0 || std::cmp_greater_equal(x, image->width) ||
+                        std::cmp_greater_equal(y, image->height)) {
+                        return {0.0F, 0.0F, 0.0F, 0.0F};
+                    }
+                    const std::size_t at = ((static_cast<std::size_t>(y) * image->width) +
+                                            static_cast<std::size_t>(x)) *
+                                           4;
+                    const auto channel = [&](std::size_t i) {
+                        return static_cast<float>(image->pixels[at + i]) / 255.0F;
+                    };
+                    return {channel(0), channel(1), channel(2), channel(3)};
+                },
+                .size = [this](std::uint32_t binding) -> std::array<std::uint32_t, 2> {
+                    const Image* image = slots.at(std::min<std::size_t>(binding, 3)).image;
+                    if (image == nullptr) {
+                        return {1, 1};
+                    }
+                    return {image->width, image->height};
+                }};
+        }
     };
 
-    void rasterize(ScreenVertex a, ScreenVertex b, ScreenVertex c, const Shader& shader,
-                   Image& target) const {
+    // Runs a game's vertex() on each corner, four at a time.
+    static void run_vertex(ShaderVm& vm, const Shader& shader, std::vector<ShadedVertex>& corners) {
+        const std::array<std::span<const std::byte>, 1> uniforms{shader.uniforms};
+        const ShaderVm::Textures textures = shader.textures();
+        for (std::size_t first = 0; first < corners.size(); first += ShaderVm::kLanes) {
+            ShaderVm::Lanes lanes;
+            lanes.count =
+                static_cast<std::uint32_t>(std::min(ShaderVm::kLanes, corners.size() - first));
+            for (std::size_t lane = 0; lane < lanes.count; ++lane) {
+                const ShadedVertex& corner = corners[first + lane];
+                auto& in = lanes.inputs.at(lane);
+                in.at(cpu_shader::kVertex) = {corner.x, corner.y, 0.0F, 1.0F};
+                in.at(cpu_shader::kUv) = {corner.u, corner.v, 0.0F, 0.0F};
+                in.at(cpu_shader::kColor) = {
+                    static_cast<float>(corner.color[0]), static_cast<float>(corner.color[1]),
+                    static_cast<float>(corner.color[2]), static_cast<float>(corner.color[3])};
+            }
+            vm.run(lanes, uniforms, textures);
+            for (std::size_t lane = 0; lane < lanes.count; ++lane) {
+                const auto& out = lanes.outputs.at(lane);
+                ShadedVertex& corner = corners[first + lane];
+                corner.x = out.at(cpu_shader::kVertex)[0];
+                corner.y = out.at(cpu_shader::kVertex)[1];
+                corner.u = out.at(cpu_shader::kUv)[0];
+                corner.v = out.at(cpu_shader::kUv)[1];
+                for (std::size_t k = 0; k < 4; ++k) {
+                    corner.color.at(k) = out.at(cpu_shader::kColor).at(k);
+                }
+            }
+        }
+    }
+
+    // ddx and ddy of each attribute, constant over a triangle.
+    struct Derivatives {
+        std::array<float, 8> dx{};
+        std::array<float, 8> dy{};
+    };
+
+    // A triangle ready to rasterize: its corners with positive area, the pixels whose centers
+    // can be inside, the top-left rule's biases and how its attributes change per pixel.
+    struct Triangle {
+        ScreenVertex a;
+        ScreenVertex b;
+        ScreenVertex c;
+        double area = 0.0;
+        std::int64_t x0 = 0;
+        std::int64_t y0 = 0;
+        std::int64_t x1 = 0;
+        std::int64_t y1 = 0;
+        std::array<std::int64_t, 3> bias{};
+        Derivatives slopes;
+
+        // Whether the pixel's center is inside, and its attributes there when it is. With
+        // outside, outside pixels get them too, as a GPU extrapolates them for the pixels of a
+        // 2x2 quad that a triangle misses.
+        bool at(std::int64_t px, std::int64_t py, std::array<float, 8>& varying,
+                bool outside = false) const {
+            const std::int64_t sx = (px * kSubpixel) + (kSubpixel / 2);
+            const std::int64_t sy = (py * kSubpixel) + (kSubpixel / 2);
+            const std::int64_t wa = edge(b, c, sx, sy);
+            const std::int64_t wb = edge(c, a, sx, sy);
+            const std::int64_t wc = edge(a, b, sx, sy);
+            const bool inside = wa - bias[0] >= 0 && wb - bias[1] >= 0 && wc - bias[2] >= 0;
+            if (!inside && !outside) {
+                return false;
+            }
+            const double la = static_cast<double>(wa) / area;
+            const double lb = static_cast<double>(wb) / area;
+            const double lc = static_cast<double>(wc) / area;
+            for (std::size_t k = 0; k < varying.size(); ++k) {
+                varying.at(k) = static_cast<float>((la * a.varying.at(k)) + (lb * b.varying.at(k)) +
+                                                   (lc * c.varying.at(k)));
+            }
+            return inside;
+        }
+    };
+
+    static std::optional<Triangle> set_up(ScreenVertex a, ScreenVertex b, ScreenVertex c,
+                                          const Image& target) {
         std::int64_t area = edge(a, b, c.x, c.y);
         if (area == 0) {
-            return;
+            return std::nullopt;
         }
         if (area < 0) {
             std::swap(b, c);
@@ -410,18 +619,15 @@ private:
             return shifted <= 0 ? -((-shifted) / kSubpixel)
                                 : ((shifted + kSubpixel - 1) / kSubpixel);
         };
-        const std::int64_t x0 = std::max<std::int64_t>(0, first_pixel(std::min({a.x, b.x, c.x})));
-        const std::int64_t y0 = std::max<std::int64_t>(0, first_pixel(std::min({a.y, b.y, c.y})));
-        const std::int64_t x1 =
-            std::min<std::int64_t>(width - 1, first_pixel(std::max({a.x, b.x, c.x}) + 1) - 1);
-        const std::int64_t y1 =
-            std::min<std::int64_t>(height - 1, first_pixel(std::max({a.y, b.y, c.y}) + 1) - 1);
-        if (x0 > x1 || y0 > y1) {
-            return;
+        Triangle out;
+        out.x0 = std::max<std::int64_t>(0, first_pixel(std::min({a.x, b.x, c.x})));
+        out.y0 = std::max<std::int64_t>(0, first_pixel(std::min({a.y, b.y, c.y})));
+        out.x1 = std::min<std::int64_t>(width - 1, first_pixel(std::max({a.x, b.x, c.x}) + 1) - 1);
+        out.y1 = std::min<std::int64_t>(height - 1, first_pixel(std::max({a.y, b.y, c.y}) + 1) - 1);
+        if (out.x0 > out.x1 || out.y0 > out.y1) {
+            return std::nullopt;
         }
-        const std::int64_t bias_a = top_left(b, c) ? 0 : 1; // the edge opposite a
-        const std::int64_t bias_b = top_left(c, a) ? 0 : 1;
-        const std::int64_t bias_c = top_left(a, b) ? 0 : 1;
+        out.bias = {top_left(b, c) ? 0 : 1, top_left(c, a) ? 0 : 1, top_left(a, b) ? 0 : 1};
 
         // How each attribute changes per pixel across and down, for ddx and ddy.
         const auto area_px = static_cast<double>(area) / static_cast<double>(kSubpixel);
@@ -431,58 +637,126 @@ private:
         const std::array<double, 3> dy{static_cast<double>(c.x - b.x) / area_px,
                                        static_cast<double>(a.x - c.x) / area_px,
                                        static_cast<double>(b.x - a.x) / area_px};
-        Derivatives slopes;
-        for (std::size_t k = 0; k < slopes.dx.size(); ++k) {
-            slopes.dx.at(k) = static_cast<float>(
+        for (std::size_t k = 0; k < out.slopes.dx.size(); ++k) {
+            out.slopes.dx.at(k) = static_cast<float>(
                 (dx[0] * a.varying.at(k)) + (dx[1] * b.varying.at(k)) + (dx[2] * c.varying.at(k)));
-            slopes.dy.at(k) = static_cast<float>(
+            out.slopes.dy.at(k) = static_cast<float>(
                 (dy[0] * a.varying.at(k)) + (dy[1] * b.varying.at(k)) + (dy[2] * c.varying.at(k)));
         }
+        out.a = a;
+        out.b = b;
+        out.c = c;
+        out.area = static_cast<double>(area);
+        return out;
+    }
 
-        const auto total = static_cast<double>(area);
-        for (std::int64_t py = y0; py <= y1; ++py) {
-            const std::int64_t sy = (py * kSubpixel) + (kSubpixel / 2);
-            for (std::int64_t px = x0; px <= x1; ++px) {
-                const std::int64_t sx = (px * kSubpixel) + (kSubpixel / 2);
-                const std::int64_t wa = edge(b, c, sx, sy);
-                const std::int64_t wb = edge(c, a, sx, sy);
-                const std::int64_t wc = edge(a, b, sx, sy);
-                if (wa - bias_a < 0 || wb - bias_b < 0 || wc - bias_c < 0) {
+    void rasterize(const ScreenVertex& a, const ScreenVertex& b, const ScreenVertex& c,
+                   const Shader& shader, Image& target) {
+        const auto triangle = set_up(a, b, c, target);
+        if (!triangle) {
+            return;
+        }
+        if (shader.game != nullptr) {
+            rasterize_quads(*triangle, shader, target);
+            return;
+        }
+        for (std::int64_t py = triangle->y0; py <= triangle->y1; ++py) {
+            for (std::int64_t px = triangle->x0; px <= triangle->x1; ++px) {
+                std::array<float, 8> varying{};
+                if (!triangle->at(px, py, varying)) {
                     continue;
                 }
-                const double la = static_cast<double>(wa) / total;
-                const double lb = static_cast<double>(wb) / total;
-                const double lc = static_cast<double>(wc) / total;
-                std::array<float, 8> varying{};
-                for (std::size_t k = 0; k < varying.size(); ++k) {
-                    varying.at(k) = static_cast<float>(
-                        (la * a.varying.at(k)) + (lb * b.varying.at(k)) + (lc * c.varying.at(k)));
-                }
                 const Float4 color =
-                    shade_pixel(shader, varying, slopes,
+                    shade_pixel(shader, varying, triangle->slopes,
                                 {static_cast<float>(px) + 0.5F, static_cast<float>(py) + 0.5F});
-                const std::size_t at =
-                    ((static_cast<std::size_t>(py) * target.width) + static_cast<std::size_t>(px)) *
-                    4;
-                Float4 dst{};
-                for (std::size_t i = 0; i < 4; ++i) {
-                    dst.at(i) = static_cast<float>(target.pixels[at + i]) / 255.0F;
+                write(shader, target, px, py, color);
+            }
+        }
+    }
+
+    // A game's fragment() runs on 2x2 quads of pixels, as GPUs run it, so ddx and ddy work.
+    void rasterize_quads(const Triangle& triangle, const Shader& shader, Image& target) {
+        const Material& material = *shader.material;
+        const std::array<std::span<const std::byte>, 1> uniforms{shader.uniforms};
+        const ShaderVm::Textures textures = shader.textures();
+        const bool normal_used =
+            material.shading.normal_map != TextureId::None || shader.game->normal_used;
+        const bool specular_used =
+            material.shading.specular_map != TextureId::None || shader.game->specular_used;
+        for (std::int64_t qy = triangle.y0 & ~std::int64_t{1}; qy <= triangle.y1; qy += 2) {
+            for (std::int64_t qx = triangle.x0 & ~std::int64_t{1}; qx <= triangle.x1; qx += 2) {
+                ShaderVm::Lanes lanes;
+                lanes.count = 4;
+                lanes.quad = true;
+                std::array<bool, 4> covered{};
+                std::array<std::array<float, 8>, 4> varyings{};
+                for (std::size_t lane = 0; lane < 4; ++lane) {
+                    const std::int64_t px = qx + static_cast<std::int64_t>(lane & 1U);
+                    const std::int64_t py = qy + static_cast<std::int64_t>(lane >> 1U);
+                    std::array<float, 8>& varying = varyings.at(lane);
+                    covered.at(lane) = triangle.at(px, py, varying, true) && px >= triangle.x0 &&
+                                       px <= triangle.x1 && py >= triangle.y0 && py <= triangle.y1;
+                    const float u = varying[0];
+                    const float v = varying[1];
+                    Float4 normal{0.5F, 0.5F, 1.0F, 1.0F};
+                    if (material.shading.normal_map != TextureId::None) {
+                        normal = shader.normal.sample(u, v);
+                    }
+                    Float4 shine = shader.specular.sample(u, v);
+                    for (std::size_t i = 0; i < 4; ++i) {
+                        shine.at(i) *= material.shading.specular.at(i);
+                    }
+                    auto& in = lanes.inputs.at(lane);
+                    in.at(cpu_shader::kUv) = {u, v, 0.0F, 0.0F};
+                    in.at(cpu_shader::kColor) = {varying[2], varying[3], varying[4], varying[5]};
+                    in.at(cpu_shader::kFragCoord) = {static_cast<float>(px) + 0.5F,
+                                                     static_cast<float>(py) + 0.5F, 0.0F, 1.0F};
+                    in.at(cpu_shader::kTextureColor) = shader.slots[0].sample(u, v);
+                    in.at(cpu_shader::kNormalTexel) = normal;
+                    in.at(cpu_shader::kSpecular) = shine;
                 }
-                const Float4 src{clamp01(color[0]), clamp01(color[1]), clamp01(color[2]),
-                                 clamp01(color[3])};
-                const Float4 out = blend(shader.material->blend, src, dst);
-                for (std::size_t i = 0; i < 4; ++i) {
-                    target.pixels[at + i] = to_byte(out.at(i));
+                if (!covered[0] && !covered[1] && !covered[2] && !covered[3]) {
+                    continue;
+                }
+                shader.game->fragment.run(lanes, uniforms, textures);
+                for (std::size_t lane = 0; lane < 4; ++lane) {
+                    if (!covered.at(lane) || lanes.discarded.at(lane)) {
+                        continue;
+                    }
+                    const auto& out = lanes.outputs.at(lane);
+                    std::optional<Float4> normal;
+                    if (normal_used) {
+                        normal = out.at(cpu_shader::kOutNormalMap);
+                    }
+                    std::optional<Float4> shine;
+                    if (specular_used) {
+                        shine = out.at(cpu_shader::kOutSpecular);
+                    }
+                    const Float4 color = light(shader, out.at(cpu_shader::kOutColor),
+                                               varyings.at(lane), triangle.slopes, normal, shine);
+                    write(shader, target, qx + static_cast<std::int64_t>(lane & 1U),
+                          qy + static_cast<std::int64_t>(lane >> 1U), color);
                 }
             }
         }
     }
 
-    // ddx and ddy of each attribute, constant over a triangle.
-    struct Derivatives {
-        std::array<float, 8> dx{};
-        std::array<float, 8> dy{};
-    };
+    // Blends a pixel's color into the target.
+    static void write(const Shader& shader, Image& target, std::int64_t px, std::int64_t py,
+                      const Float4& color) {
+        const std::size_t at =
+            ((static_cast<std::size_t>(py) * target.width) + static_cast<std::size_t>(px)) * 4;
+        Float4 dst{};
+        for (std::size_t i = 0; i < 4; ++i) {
+            dst.at(i) = static_cast<float>(target.pixels[at + i]) / 255.0F;
+        }
+        const Float4 src{clamp01(color[0]), clamp01(color[1]), clamp01(color[2]),
+                         clamp01(color[3])};
+        const Float4 out = blend(shader.material->blend, src, dst);
+        for (std::size_t i = 0; i < 4; ++i) {
+            target.pixels[at + i] = to_byte(out.at(i));
+        }
+    }
 
     // fs_main in shaders/material.hlsl, or the sprite shader's texture times color.
     [[nodiscard]] Float4 shade_pixel(const Shader& shader, const std::array<float, 8>& varying,
@@ -524,6 +798,30 @@ private:
         if (shading.mode == LightMode::Unshaded) {
             return color;
         }
+        std::optional<Float4> normal;
+        if (shading.normal_map != TextureId::None) {
+            normal = shader.normal.sample(u, v);
+        }
+        std::optional<Float4> shine;
+        if (shading.specular_map != TextureId::None) {
+            shine = shader.specular.sample(u, v);
+            for (std::size_t i = 0; i < 4; ++i) {
+                shine->at(i) *= shading.specular.at(i);
+            }
+        }
+        return light(shader, color, varying, slopes, normal, shine);
+    }
+
+    // shade_canvas_pixel in shaders/canvas.hlsl: a color shaded by the frame's lights, with a
+    // normal map's texel and a specular color and shininess when the draw has them.
+    [[nodiscard]] Float4 light(const Shader& shader, const Float4& color,
+                               const std::array<float, 8>& varying, const Derivatives& slopes,
+                               const std::optional<Float4>& normal_texel,
+                               const std::optional<Float4>& shine) const {
+        const Shading& shading = shader.material->shading;
+        if (shading.mode == LightMode::Unshaded) {
+            return color;
+        }
         // Where the pixel is in the lights' coordinates, and how that changes across the screen.
         std::array<float, 2> position{varying[6], varying[7]};
         std::array<float, 2> position_dx{slopes.dx[6], slopes.dx[7]};
@@ -540,8 +838,8 @@ private:
             position_dy = linear(position_dy);
         }
         ShadePixel pixel{
-            .position = position, .color = color, .normal = std::nullopt, .specular = std::nullopt};
-        if (shading.normal_map != TextureId::None) {
+            .position = position, .color = color, .normal = std::nullopt, .specular = shine};
+        if (normal_texel) {
             // The texture's u and v axes in the frame, from how both change across the screen.
             std::array<float, 2> u_axis{1.0F, 0.0F};
             std::array<float, 2> v_axis{0.0F, 1.0F};
@@ -562,14 +860,7 @@ private:
                     v_axis = {along_v[0] / sv, along_v[1] / sv};
                 }
             }
-            pixel.normal = map_normal(shader.normal.sample(u, v), u_axis, v_axis);
-        }
-        if (shading.specular_map != TextureId::None) {
-            Float4 shine = shader.specular.sample(u, v);
-            for (std::size_t i = 0; i < 4; ++i) {
-                shine.at(i) *= shading.specular.at(i);
-            }
-            pixel.specular = shine;
+            pixel.normal = map_normal(*normal_texel, u_axis, v_axis);
         }
         const Image* shadow_image = shader.shadows.image;
         return shade(
@@ -593,6 +884,9 @@ private:
     std::unordered_map<TextureId, Texture> textures_;
     std::unordered_map<TextureId, Texture> retired_;
     std::uint32_t next_texture_ = 1;
+    std::unordered_map<ShaderId, std::shared_ptr<SoftwareShader>> shaders_;
+    std::unordered_map<ShaderId, std::shared_ptr<SoftwareShader>> retired_shaders_;
+    std::uint32_t next_shader_ = 1;
     bool in_frame_ = false;
     Frame frame_;
     std::vector<Vertex2D> vertices_;

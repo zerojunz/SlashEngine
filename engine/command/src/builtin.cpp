@@ -863,6 +863,20 @@ Reply material_eval(Session& session, const json::Value& params) {
                                                                  instance.error().message),
                            "/id");
     }
+    if (loaded && !instance.value().compiled) {
+        auto compiled = canvas::compile_material_shader(
+            *loaded, [&](std::string_view file) -> Result<std::string> {
+                auto source = session.assets().load<std::string>(file);
+                if (!source) {
+                    return source.error();
+                }
+                return *source.value();
+            });
+        if (!compiled) {
+            return param_error(compiled.error(), id.empty() ? "/path" : "/id");
+        }
+        instance.value().compiled = std::move(compiled).value();
+    }
     std::vector<std::array<float, 2>> uvs;
     for (const json::Value& uv : params.find("uv")->as_array()) {
         uvs.push_back(floats<2>(uv));
