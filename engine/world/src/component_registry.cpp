@@ -173,8 +173,11 @@ ComponentType& ComponentRegistry::add_stand_in(std::string name, std::vector<std
         .rename = [](json::Value& /*fields*/, const EntityRename& /*rename*/) {},
     };
     const entt::id_type hash = entt::hashed_string::value(name.data(), name.size());
+    // A named value rather than a temporary: GCC 13 warns that the temporary's variant may be
+    // used uninitialized once make_unique is inlined.
+    json::Value defaults = json::Object{};
     return insert(std::make_unique<ComponentType>(std::move(name), hash, std::move(fields),
-                                                  json::Object{}, ops));
+                                                  std::move(defaults), ops));
 }
 
 ComponentType& ComponentRegistry::adopt(std::unique_ptr<ComponentType> type) {
