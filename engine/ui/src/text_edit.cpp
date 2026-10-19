@@ -37,6 +37,42 @@ Vec4 times(Vec4 a, Vec4 b) {
     return {a.x * b.x, a.y * b.y, a.z * b.z, a.w * b.w};
 }
 
+// Godot's Color::lightened and darkened.
+Vec4 lightened(Vec4 c, float amount) {
+    return {c.x + ((1.0F - c.x) * amount), c.y + ((1.0F - c.y) * amount),
+            c.z + ((1.0F - c.z) * amount), c.w};
+}
+
+Vec4 darkened(Vec4 c, float amount) {
+    return {c.x * (1.0F - amount), c.y * (1.0F - amount), c.z * (1.0F - amount), c.w};
+}
+
+// An icon stretched over a rect, modulated, as Texture2D::draw_rect draws it. Icons drawn only
+// partly inside the TextEdit's rect, which its text canvas item would cut, aren't drawn.
+void push_icon(std::vector<Box>& out, Vec2 size, const TextEditView& view, const std::string& icon,
+               Vec2 position, Vec2 extent, Vec4 color) {
+    const auto found = view.icon_sizes.find(icon);
+    if (found == view.icon_sizes.end() || extent.x <= 0.0F || extent.y <= 0.0F ||
+        position.x < 0.0F || position.y < 0.0F || position.x + extent.x > size.x ||
+        position.y + extent.y > size.y) {
+        return;
+    }
+    Box box{.style = {}, .position = position, .size = extent, .texture_size = found->second};
+    box.style.type = StyleBox::Type::Texture;
+    box.style.texture = icon;
+    box.style.modulate_color = color;
+    out.push_back(std::move(box));
+}
+
+bool has_line(const std::vector<int>& lines, int line) {
+    return std::ranges::find(lines, line) != lines.end();
+}
+
+const world::TextEditGutterLine* gutter_line(const world::TextEditGutter& gutter, int line) {
+    const auto found = std::ranges::find(gutter.lines, line, &world::TextEditGutterLine::line);
+    return found != gutter.lines.end() ? &*found : nullptr;
+}
+
 // A plain rect in one color, as canvas_item_add_rect draws.
 Box rect_box(Vec2 position, Vec2 size, Vec4 color) {
     Box box;
@@ -471,6 +507,9 @@ TextArea::TextArea(text::Fonts& fonts, const TextEditView& view, Vec2 size,
     };
     space_width_ = advance(" ");
     m_width_ = advance("m");
+    zero_width_ = advance("0");
+    mark_lines();
+    update_gutter_width();
     update_wrap_at_column();
     refresh();
     set_v_scroll(edit.scroll_vertical);
@@ -584,6 +623,14 @@ std::pair<int, int> TextArea::insert(int line, int column, std::u32string_view i
     std::vector<std::unique_ptr<LineData>> fresh(parts.size() - 1);
     data_.insert(data_.begin() + after, std::make_move_iterator(fresh.begin()),
                  std::make_move_iterator(fresh.end()));
+    origins_.insert(origins_.begin() + after, parts.size() - 1, -1);
+    // A new line at a line's start: the line goes on below it, as if the new line came at the
+    // end of the line before (Text::swap_additional_data).
+    if (column == 0 && parts.size() == 2 && std::ranges::count(inserted, U'\n') == 1 &&
+        std::ranges::all_of(inserted, [](char32_t c) { return c == U'\n' || c == U'\r'; })) {
+        std::swap(origins_[static_cast<std::size_t>(line)],
+                  origins_[static_cast<std::size_t>(line) + 1]);
+    }
     const int end_line = line + static_cast<int>(parts.size()) - 1;
     return {end_line, length(end_line) - static_cast<int>(post.size())};
 }
@@ -601,6 +648,7 @@ void TextArea::remove(int from_line, int from_column, int to_line, int to_column
     lines_.erase(lines_.begin() + begin, lines_.begin() + end);
     ime_.erase(ime_.begin() + begin, ime_.begin() + end);
     data_.erase(data_.begin() + begin, data_.begin() + end);
+    origins_.erase(origins_.begin() + begin, origins_.begin() + end);
     lines_[static_cast<std::size_t>(from_line)] = std::move(joined);
     invalidate(from_line);
 }
@@ -613,6 +661,25 @@ void TextArea::set_lines(std::vector<std::u32string> lines) {
     ime_.assign(lines_.size(), std::u32string());
     data_.clear();
     data_.resize(lines_.size());
+    origins_.resize(lines_.size(), -1);
+}
+
+void TextArea::mark_lines() {
+    origins_.resize(lines_.size());
+    for (std::size_t i = 0; i < origins_.size(); ++i) {
+        origins_[i] = static_cast<int>(i);
+    }
+    marked_ = line_count();
+}
+
+std::vector<int> TextArea::moved_lines() const {
+    std::vector<int> to(static_cast<std::size_t>(marked_), -1);
+    for (std::size_t i = 0; i < origins_.size(); ++i) {
+        if (origins_[i] >= 0 && origins_[i] < marked_) {
+            to[static_cast<std::size_t>(origins_[i])] = static_cast<int>(i);
+        }
+    }
+    return to;
 }
 
 std::u32string TextArea::get(int from_line, int from_column, int to_line, int to_column) const {
@@ -778,7 +845,7 @@ int TextArea::max_width() const {
 }
 
 bool TextArea::update_wrap_at_column() {
-    int wrap_at = to_int(size_.x - style().minimum_size().x);
+    int wrap_at = to_int(size_.x - style().minimum_size().x) - gutters_room();
     if (v_.visible) {
         wrap_at = to_int(static_cast<float>(wrap_at) - v_scroll_min().x);
     }
@@ -868,7 +935,7 @@ void TextArea::update_scrollbars() {
         total += visible_rows - 1;
     }
     const int visible_width = to_int(size_.x - style().minimum_size().x);
-    const int total_width = placeholder ? placeholder_data().width : max_width();
+    const int total_width = (placeholder ? placeholder_data().width : max_width()) + gutters_room();
     content_size_ = {static_cast<float>(total_width + 10),
                      static_cast<float>(std::max(total, 1) * line_height())};
     if (!fit_content_height_ && total > visible_rows) {
@@ -897,6 +964,7 @@ void TextArea::update_scrollbars() {
 }
 
 void TextArea::refresh() {
+    update_gutter_width();
     for (int pass = 0; pass < 4; ++pass) {
         const bool v = v_.visible;
         const bool h = h_.visible;
@@ -1059,7 +1127,7 @@ void TextArea::adjust_viewport_to_caret(const TextEditState& state, bool maximiz
         set_h_scroll(0.0);
         return;
     }
-    int visible_width = to_int(size_.x - style().minimum_size().x);
+    int visible_width = to_int(size_.x - style().minimum_size().x) - gutters_room();
     if (v_.visible) {
         visible_width = to_int(static_cast<float>(visible_width) - v_scroll_min().x);
     }
@@ -1108,6 +1176,78 @@ void TextArea::adjust_viewport_to_caret(const TextEditState& state, bool maximiz
     set_h_scroll(col);
 }
 
+// ---- Gutters ----
+
+int TextArea::gutter_width(std::size_t gutter) const {
+    const TextEditGutterView& g = view_->gutters.at(gutter);
+    switch (g.kind) {
+    case TextEditGutterView::Kind::Main: {
+        // _update_draw_main_gutter.
+        if (!view_->code) {
+            return 0;
+        }
+        const CodeEditView& code = *view_->code;
+        const bool bookmark_only =
+            code.draw_bookmarks && !code.draw_breakpoints && !code.draw_executing_lines;
+        return line_height() / (bookmark_only ? 2 : 1);
+    }
+    case TextEditGutterView::Kind::LineNumbers:
+        // _update_line_number_gutter_width: a '0' more than the digits, as there's no fold
+        // gutter.
+        return to_int(static_cast<float>(line_number_digits() + 1) * zero_width_);
+    case TextEditGutterView::Kind::String:
+    case TextEditGutterView::Kind::Icon:
+        break;
+    }
+    return std::max(g.width, 0);
+}
+
+void TextArea::update_gutter_width() {
+    int width = 0;
+    for (std::size_t i = 0; i < view_->gutters.size(); ++i) {
+        if (view_->gutters[i].draw) {
+            width += gutter_width(i);
+        }
+    }
+    gutters_width_ = width;
+    gutter_padding_ = width > 0 ? 2 : 0;
+}
+
+int TextArea::text_start() const {
+    return to_int(std::ceil(style().margin(0))) + gutters_room();
+}
+
+std::pair<int, int> TextArea::gutter_at(Vec2 point) const {
+    int left_margin = to_int(std::ceil(style().margin(0)));
+    if (point.x > static_cast<float>(left_margin + gutters_room())) {
+        return {-1, -1};
+    }
+    const int row = line_column_at(point, false, true, false).second;
+    if (row == -1) {
+        return {-1, -1};
+    }
+    for (std::size_t i = 0; i < view_->gutters.size(); ++i) {
+        const int width = gutter_width(i);
+        if (!view_->gutters[i].draw || width <= 0) {
+            continue;
+        }
+        if (point.x >= static_cast<float>(left_margin) &&
+            point.x < static_cast<float>(left_margin + width)) {
+            return {static_cast<int>(i), row};
+        }
+        left_margin += width;
+    }
+    return {-1, -1};
+}
+
+int TextArea::line_number_digits() const {
+    int digits = 1;
+    for (int count = line_count(); count >= 10; count /= 10) {
+        ++digits;
+    }
+    return std::max(view_->code ? view_->code->line_numbers_min_digits : 1, digits);
+}
+
 // ---- Positions ----
 
 std::pair<int, int> TextArea::line_column_at(Vec2 point, bool clamp_line, bool clamp_column,
@@ -1137,7 +1277,7 @@ std::pair<int, int> TextArea::line_column_at(Vec2 point, bool clamp_line, bool c
         }
         return {-1, -1};
     }
-    int colx = to_int(static_cast<float>(px) - std::ceil(st.margin(0)));
+    int colx = to_int(static_cast<float>(px) - std::ceil(st.margin(0))) - gutters_room();
     colx += first_visible_col_;
     const text::ShapedLine& shaped = this->row(row, wrap_index);
     if (view_->rtl) {
@@ -1237,8 +1377,7 @@ TextArea::BarPlace TextArea::bar_place(bool vertical) const {
 }
 
 void TextArea::draw(const world::TextEdit& edit, const TextEditState& state, bool focused,
-                    const world::CodeHighlighter* highlighter, Draw& out,
-                    TextEditView& view) const {
+                    const Extras& extras, Draw& out, TextEditView& view) const {
     const TextEditView& theme = *view_;
     const StyleBox& st = style();
     const bool rtl = theme.rtl;
@@ -1253,12 +1392,29 @@ void TextArea::draw(const world::TextEdit& edit, const TextEditState& state, boo
         draw_caret = edit.caret_draw_when_editable_disabled;
     }
     const bool shown = draw_caret || state.drag_caret_force_displayed;
-    const int xmargin_beg = to_int(std::ceil(st.margin(0)));
+    const int xmargin_beg = text_start();
     const int xmargin_end = to_int(size.x - std::floor(st.margin(2)));
     const int visible_rows = visible_line_count() + 1;
     if (theme.background_color.w > 0.01F) {
         push_clipped(out.under, size, {}, size, theme.background_color);
     }
+    if (extras.code != nullptr && theme.code) {
+        draw_guidelines(*extras.code, *theme.code, out.under);
+    }
+    // Where each gutter is, for ui.layout.
+    int gutter_x = to_int(std::ceil(st.margin(0)));
+    for (std::size_t g = 0; g < view.gutters.size(); ++g) {
+        TextEditGutterView& gutter = view.gutters[g];
+        gutter.width = gutter_width(g);
+        gutter.x = static_cast<float>(gutter_x);
+        if (rtl) {
+            gutter.x = size.x - gutter.x - static_cast<float>(gutter.width);
+        }
+        if (gutter.draw && gutter.width > 0) {
+            gutter_x += gutter.width;
+        }
+    }
+    std::vector<GutterText> gutter_texts;
 
     const bool placeholder = using_placeholder();
     const TextEditState::Caret& caret = state.caret;
@@ -1319,8 +1475,8 @@ void TextArea::draw(const world::TextEdit& edit, const TextEditState& state, boo
     // region the lines before it leave open; lines are asked for in order. Not editable, no color
     // is more opaque than font_readonly_color.
     std::optional<CodeHighlight> highlight;
-    if (highlighter != nullptr && !placeholder) {
-        highlight.emplace(*highlighter, theme.font_color);
+    if (extras.highlighter != nullptr && !placeholder) {
+        highlight.emplace(*extras.highlighter, theme.font_color);
     }
     int region_line = 0;
     int region = -1;
@@ -1418,6 +1574,9 @@ void TextArea::draw(const world::TextEdit& edit, const TextEditState& state, boo
                                  {static_cast<float>(xmargin_end), static_cast<float>(row_height)},
                                  theme.current_line_color);
                 }
+            }
+            if (wrap == 0 && !clipped) {
+                draw_gutters(edit, state, extras, line, ofs_y, row_height, out, gutter_texts);
             }
             const float row_width = shaped.width();
             if (rtl) {
@@ -1801,6 +1960,32 @@ void TextArea::draw(const world::TextEdit& edit, const TextEditState& state, boo
             }
         }
     }
+    // The gutters' text, after the lines' so the selection's bytes stay one range.
+    text.gutters_from = text.text.lines.size();
+    for (const GutterText& each : gutter_texts) {
+        const text::TextLayout& layout = each.layout;
+        const std::size_t offset = text.source.size();
+        text.source += each.utf8;
+        if (!text.colors.empty() || each.color != font_color) {
+            text.colors.emplace_back(offset, each.color);
+        }
+        // One line, as a TextLine shows it.
+        const text::Line& laid_line = layout.lines.front();
+        text::Line& drawn = text.text.lines.emplace_back();
+        drawn.first = static_cast<std::uint32_t>(text.text.glyphs.size());
+        drawn.start = static_cast<std::uint32_t>(offset) + laid_line.start;
+        drawn.end = static_cast<std::uint32_t>(offset) + laid_line.end;
+        drawn.rtl = laid_line.rtl;
+        for (std::uint32_t g = laid_line.first; g < laid_line.first + laid_line.count; ++g) {
+            text::Glyph copy = layout.glyphs[g];
+            copy.cluster += static_cast<std::uint32_t>(offset);
+            text.text.glyphs.push_back(copy);
+            ++drawn.count;
+        }
+        const text::ShapedLine shaped(each.utf8, layout, 0);
+        text.pens.push_back({each.pen.x + shaped.origin(), each.pen.y + layout.metrics.ascent});
+        text.stretch.push_back(0.0F);
+    }
     text.first = 0;
     text.last = text.text.lines.size();
     if (selected_start != std::string::npos && selected_end != std::string::npos &&
@@ -1816,6 +2001,9 @@ void TextArea::draw(const world::TextEdit& edit, const TextEditState& state, boo
     view.scroll_vertical = v_.value;
     view.scroll_horizontal = h_scroll();
     view.font_height = font_height_;
+    view.line_height = row_height;
+    view.rows_top = st.margin(1);
+    view.rows_height = std::max(size.y - st.margin(1) - st.margin(3), 0.0F);
     view.caret_line = caret.line;
     view.caret_column = caret.column;
     if (selecting) {
@@ -1824,6 +2012,185 @@ void TextArea::draw(const world::TextEdit& edit, const TextEditState& state, boo
     }
     view.ime = to_utf8(state.ime_text);
     view.placeholder = placeholder && !placeholder_.empty();
+}
+
+std::optional<TextArea::GutterText> TextArea::gutter_text(std::string utf8, Vec4 color) const {
+    auto laid = fonts_->layout(utf8, {.font = font_, .font_size = view_->font_size});
+    if (!laid || laid.value().lines.empty()) {
+        return std::nullopt;
+    }
+    return GutterText{
+        .utf8 = std::move(utf8), .layout = std::move(laid.value()), .pen = {}, .color = color};
+}
+
+void TextArea::draw_guidelines(const world::CodeEdit& code, const CodeEditView& look,
+                               std::vector<Box>& out) const {
+    const StyleBox& st = style();
+    const int xmargin_beg = to_int(st.margin(0)) + gutters_room();
+    const int xmargin_end = to_int(size_.x - st.margin(2));
+    for (std::size_t i = 0; i < code.line_length_guidelines.size(); ++i) {
+        const int column_pos =
+            to_int(static_cast<float>(std::max(code.line_length_guidelines[i], 0)) * zero_width_);
+        const int xoffset = xmargin_beg + column_pos - h_scroll();
+        if (xoffset <= xmargin_beg || xoffset >= xmargin_end) {
+            continue;
+        }
+        Vec4 color = look.line_length_guideline_color;
+        if (i != 0) {
+            color.w *= 0.6F;
+        }
+        // A line one pixel wide down the whole rect.
+        const float x =
+            view_->rtl ? size_.x - static_cast<float>(xoffset) : static_cast<float>(xoffset);
+        push_clipped(out, size_, {x, 0.0F}, {1.0F, size_.y}, color);
+    }
+}
+
+void TextArea::draw_gutters(const world::TextEdit& edit, const TextEditState& state,
+                            const Extras& extras, int line, int ofs_y, int row_height, Draw& out,
+                            std::vector<GutterText>& texts) const {
+    using Kind = TextEditGutterView::Kind;
+    const bool rtl = view_->rtl;
+    const std::size_t own = view_->code ? 2 : 0; // the TextEdit's first gutter
+    std::pair<int, int> hovered{-1, -1};
+    if (extras.hovered) {
+        hovered = gutter_at(state.mouse);
+    }
+    int gutter_offset = to_int(std::ceil(style().margin(0)));
+    for (std::size_t g = 0; g < view_->gutters.size(); ++g) {
+        const TextEditGutterView& gutter = view_->gutters[g];
+        const int width = gutter_width(g);
+        if (!gutter.draw || width <= 0) {
+            continue;
+        }
+        Vec2 at{static_cast<float>(gutter_offset), static_cast<float>(ofs_y)};
+        const Vec2 extent{static_cast<float>(width), static_cast<float>(row_height)};
+        if (rtl) {
+            at.x = size_.x - at.x - extent.x;
+        }
+        switch (gutter.kind) {
+        case Kind::String: {
+            // Godot draws these unmirrored; here they keep to their column right to left too.
+            const world::TextEditGutterLine* entry = gutter_line(edit.gutters.at(g - own), line);
+            if (entry == nullptr || entry->text.empty()) {
+                break;
+            }
+            if (std::optional<GutterText> made = gutter_text(entry->text, entry->color); made) {
+                const float height = made->layout.metrics.ascent + made->layout.metrics.descent;
+                made->pen = {at.x, static_cast<float>(
+                                       to_int(static_cast<float>(ofs_y) +
+                                              ((static_cast<float>(row_height) - height) / 2.0F)))};
+                texts.push_back(std::move(*made));
+            }
+            break;
+        }
+        case Kind::Icon: {
+            const world::TextEditGutterLine* entry = gutter_line(edit.gutters.at(g - own), line);
+            if (entry == nullptr || entry->icon.empty()) {
+                break;
+            }
+            const auto icon = view_->icon_sizes.find(entry->icon);
+            if (icon == view_->icon_sizes.end() || icon->second.x <= 0.0F ||
+                icon->second.y <= 0.0F) {
+                break;
+            }
+            // Inside a sixth of the gutter's width and height, keeping the icon's aspect.
+            Vec2 position{static_cast<float>(gutter_offset), static_cast<float>(ofs_y)};
+            Vec2 size = extent;
+            const auto horizontal_padding = static_cast<float>(to_int(size.x / 6.0F));
+            const auto vertical_padding = static_cast<float>(to_int(size.y / 6.0F));
+            position = position + Vec2{horizontal_padding, vertical_padding};
+            size = size - (Vec2{horizontal_padding, vertical_padding} * 2.0F);
+            const float icon_ratio = icon->second.x / icon->second.y;
+            const float gutter_ratio = size.x / size.y;
+            if (gutter_ratio > icon_ratio) {
+                const float ratio_width = std::floor(size.y * icon_ratio);
+                position.x += (size.x - ratio_width) / 2.0F;
+                size.x = ratio_width;
+            } else {
+                const float ratio_height = std::floor(size.x / icon_ratio);
+                position.y += (size.y - ratio_height) / 2.0F;
+                size.y = ratio_height;
+            }
+            if (rtl) {
+                position.x = size_.x - position.x - size.x;
+            }
+            push_icon(out.under, size_, *view_, entry->icon, position, size, entry->color);
+            break;
+        }
+        case Kind::Main: {
+            // CodeEdit::_main_gutter_draw_callback.
+            if (extras.code == nullptr || !view_->code) {
+                break;
+            }
+            const CodeEditView& look = *view_->code;
+            const world::CodeEdit& code = *extras.code;
+            const bool hovering = hovered.first == static_cast<int>(g) && hovered.second == line;
+            const bool shift = extras.shift;
+            if (look.draw_breakpoints) {
+                const bool breakpointed = has_line(code.breakpointed_lines, line);
+                if (breakpointed || (hovering && !state.dragging_selection && !shift)) {
+                    const auto padding = static_cast<float>(to_int(extent.x / 6.0F));
+                    Vec4 color = look.breakpoint_color;
+                    if (hovering && !shift) {
+                        color = breakpointed ? lightened(color, 0.3F) : darkened(color, 0.5F);
+                    }
+                    push_icon(out.under, size_, *view_, look.breakpoint_icon,
+                              at + Vec2{padding, padding}, extent - (Vec2{padding, padding} * 2.0F),
+                              color);
+                }
+            }
+            if (look.draw_bookmarks) {
+                const bool bookmarked = has_line(code.bookmarked_lines, line);
+                if (bookmarked || (hovering && !state.dragging_selection && shift)) {
+                    const bool bookmark_only = !look.draw_breakpoints && !look.draw_executing_lines;
+                    const auto horizontal_padding =
+                        static_cast<float>(to_int(extent.x / (bookmark_only ? 8.0F : 2.0F)));
+                    const auto vertical_padding = static_cast<float>(to_int(extent.y / 4.0F));
+                    Vec4 color = look.bookmark_color;
+                    if (hovering && shift) {
+                        color = bookmarked ? lightened(color, 0.3F) : darkened(color, 0.5F);
+                    }
+                    push_icon(out.under, size_, *view_, look.bookmark_icon,
+                              at + Vec2{horizontal_padding, 0.0F},
+                              extent - Vec2{horizontal_padding * 1.1F, vertical_padding}, color);
+                }
+            }
+            if (look.draw_executing_lines && has_line(code.executing_lines, line)) {
+                const auto horizontal_padding = static_cast<float>(to_int(extent.x / 10.0F));
+                const auto vertical_padding = static_cast<float>(to_int(extent.y / 4.0F));
+                const Vec2 padding{horizontal_padding, vertical_padding};
+                push_icon(out.under, size_, *view_, look.executing_line_icon, at + padding,
+                          extent - (padding * 2.0F), look.executing_line_color);
+            }
+            break;
+        }
+        case Kind::LineNumbers: {
+            // CodeEdit::_line_number_draw_callback: the number padded to the digits, centered
+            // on the row, at the start of the gutter.
+            if (!view_->code || at.y + extent.y <= 0.0F || at.y >= size_.y) {
+                break;
+            }
+            const CodeEditView& look = *view_->code;
+            std::string number = std::to_string(line + 1);
+            const auto digits = static_cast<std::size_t>(line_number_digits());
+            if (number.size() < digits) {
+                number.insert(0, digits - number.size(), look.zero_pad_line_numbers ? '0' : ' ');
+            }
+            std::optional<GutterText> made = gutter_text(std::move(number), look.line_number_color);
+            if (!made) {
+                break;
+            }
+            const text::ShapedLine shaped(made->utf8, made->layout, 0);
+            const float height = made->layout.metrics.ascent + made->layout.metrics.descent;
+            made->pen = {rtl ? at.x + extent.x - shaped.width() : at.x,
+                         at.y + (extent.y / 2.0F) - (height / 2.0F)};
+            texts.push_back(std::move(*made));
+            break;
+        }
+        }
+        gutter_offset += width;
+    }
 }
 
 TextArea text_area_for(text::Fonts& fonts, const TextEditView& view, Vec2 size,

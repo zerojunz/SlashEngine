@@ -413,6 +413,7 @@ constexpr std::array kNodeTypes{
     NodeType{"TextureButton", Family::Control, "TextureButton", ""},
     NodeType{"LineEdit", Family::Control, "LineEdit", ""},
     NodeType{"TextEdit", Family::Control, "TextEdit", ""},
+    NodeType{"CodeEdit", Family::Control, "TextEdit", "CodeEdit"},
     NodeType{"ScrollContainer", Family::Control, "ScrollContainer", ""},
     NodeType{"MarginContainer", Family::Control, "MarginContainer", ""},
     NodeType{"CenterContainer", Family::Control, "CenterContainer", ""},

@@ -2,6 +2,12 @@
   "entities": {
     "script": {
       "components": {
+        "CodeEdit": {
+          "breakpointed_lines": [3],
+          "gutters_draw_breakpoints_gutter": true,
+          "gutters_draw_line_numbers": true,
+          "line_length_guidelines": [40]
+        },
         "CodeHighlighter": {
           "color_regions": {
             "\" \"": [1.0, 0.93, 0.63, 1.0],
@@ -21,7 +27,7 @@
         "Control": {
           "offset_bottom": 168.0,
           "offset_left": 8.0,
-          "offset_right": 312.0,
+          "offset_right": 392.0,
           "offset_top": 8.0
         },
         "TextEdit": {

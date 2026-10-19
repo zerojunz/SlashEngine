@@ -4,5 +4,5 @@
   "main_scene": "main.scene.json",
   "name": "Code editor",
   "version": "0.1.0",
-  "window": {"height": 240, "width": 320}
+  "window": {"height": 240, "width": 400}
 }

@@ -1200,6 +1200,18 @@ void line_edit_focus_exit(world::World& world, GuiState& state, const std::strin
 void emit_text_edit(world::World& world, GuiState& state, const std::string& id,
                     const std::vector<TextEditSignal>& signals) {
     for (const TextEditSignal& signal : signals) {
+        if (signal.kind == "gutter_clicked" || signal.kind == "breakpoint_toggled") {
+            UiEvent event = ui_event(signal.kind, id);
+            event.line = signal.line;
+            event.gutter = signal.gutter;
+            record(world, state, std::move(event));
+            json::Object data{{"line", signal.line}};
+            if (signal.kind == "gutter_clicked") {
+                data.emplace("gutter", signal.gutter);
+            }
+            world.emit(signal.kind, id, std::move(data));
+            continue;
+        }
         if (signal.kind != "lines_edited_from") {
             emit(world, state, signal.kind, id);
             continue;
@@ -1251,7 +1263,8 @@ void text_edit_focus_exited(world::World& world, GuiState& state, const std::str
                                   .map = input::map(std::as_const(world)),
                                   .now = 0.0,
                                   .focused = false,
-                                  .signals = &signals};
+                                  .signals = &signals,
+                                  .code = world.ecs().try_get<world::CodeEdit>(entity)};
     std::optional<Layout> placed;
     if (text::Fonts* fonts_found = fonts(world); fonts_found != nullptr && !s.ime_text.empty()) {
         placed.emplace(layout(world, *fonts_found, settings(world).viewport));
@@ -2915,7 +2928,7 @@ private:
         return cached.area.get();
     }
 
-    [[nodiscard]] TextEditContext text_context(const std::string& id,
+    [[nodiscard]] TextEditContext text_context(entt::entity entity, const std::string& id,
                                                std::vector<TextEditSignal>& signals) const {
         return {.world = &world_,
                 .map = map_,
@@ -2923,7 +2936,8 @@ private:
                 .focused = state_.key_focus == id,
                 .dragging = state_.drag.dragging,
                 .can_drop = false,
-                .signals = &signals};
+                .signals = &signals,
+                .code = world_.ecs().try_get<world::CodeEdit>(entity)};
     }
 
     // Edits a TextEdit with one of the text_edit_* calls, then records its signals.
@@ -2937,7 +2951,7 @@ private:
         }
         auto& edit = world_.ecs().get<world::TextEdit>(entity);
         std::vector<TextEditSignal> signals;
-        const TextEditContext context = text_context(id, signals);
+        const TextEditContext context = text_context(entity, id, signals);
         std::forward<Call>(call)(context, edit, s, *area);
         areas_[entity].text = edit.text;
         emit_text_edit(world_, state_, id, signals);
@@ -5129,7 +5143,8 @@ void text_edit_upkeep(world::World& world, GuiState& state, double tick_seconds)
                                       .map = map,
                                       .now = 0.0,
                                       .focused = state.key_focus == id,
-                                      .signals = &signals};
+                                      .signals = &signals,
+                                      .code = world.ecs().try_get<world::CodeEdit>(entity)};
         call(context, world.ecs().get<world::TextEdit>(entity), s, *area, entity);
         emit_text_edit(world, state, id, signals);
     };
