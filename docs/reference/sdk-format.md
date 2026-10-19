@@ -47,6 +47,8 @@ the packages for its platform. [examples/sdk-package](../../examples/sdk-package
     "android": {
       "libraries": ["{vendor}/lib/{arch}/libhello.so"],
       "jars": ["{vendor}/java/hello.jar"],
+      "aars": ["{vendor}/android/hello.aar"],
+      "maven": ["androidx.core:core:1.13.1"],
       "permissions": ["android.permission.INTERNET"],
       "application": ["<meta-data android:name=\"com.hello.APP_ID\" android:value=\"${HELLO_APP_ID}\" />"]
     }
@@ -110,10 +112,73 @@ instead.
 | `manifest` | Android | XML elements added to `<manifest>`, such as `<queries>`; may use `${KEY}` (escaped for XML) |
 | `application` | Android | XML elements added to `<application>`, such as `<meta-data>` and a vendor's `<activity>`; may use `${KEY}` |
 | `jars` | Android | Java libraries the APK's Java is compiled against and dexed with |
+| `aars` | Android | [Android libraries](#android-libraries): `.aar` files, or folders laid out like an unpacked one (as Unity's `.androidlib` folders are). Their paths can't use `{arch}` or `{build}` |
+| `maven` | Android | [Maven dependencies](#maven-dependencies), `group:artifact:version` with an optional `:classifier` and `@aar` or `@jar`, as Gradle writes them; a version may be a range such as `[1.0,2.0)` |
+| `maven_repositories` | Android | `https://` or `file://` Maven repositories searched in order. Default: Google's (`https://dl.google.com/dl/android/maven2`), then Maven Central |
 
 `sdk.json` files are checked as a whole before anything is built: unknown fields and platforms,
 placeholders and keys that don't exist (with "did you mean"), Apple and Android fields on other
 platforms, malformed defines and XML.
+
+## Android libraries
+
+An Android library adds what Android's Gradle plugin would add from an `.aar`, without Gradle:
+
+- `classes.jar` and the `.jar` files in `libs/` are compiled against and dexed with the game.
+  An APK whose code passes d8's limit gets several `classes*.dex` files.
+- `jni/<abi>/*.so` (or `libs/<abi>/*.so`) for each ABI the preset builds go in `lib/<abi>`.
+- `assets/` goes in the APK's assets. Where two libraries, or a library and the game, ship the
+  same file, the first keeps it: the game, then libraries in the order packages list them.
+- `res/` is compiled with aapt2 and linked into the APK, earlier libraries winning. Each library
+  with resources (or an `R.txt` naming some) gets an R class in its manifest's `package`, which
+  its code reads resource IDs from.
+- `AndroidManifest.xml` is merged into the game's as Android's manifest merger merges it.
+  Elements are matched by tag and `android:name`: new ones are added, permissions and the like
+  before `<application>`, and matching ones gain the attributes and children they lack, the
+  game's and then the earlier library's winning where they disagree. `${applicationId}` becomes
+  the game's package; any other placeholder is an error, since only Gradle fills them.
+  `tools:node="remove"`, `"removeAll"` and `"replace"` are honored and `tools:` attributes
+  dropped. A library whose `minSdkVersion` is above 30 is an error.
+
+A `.jar` listed in `aars` is added like one in `jars`.
+
+## Maven dependencies
+
+`maven` lists libraries from Maven repositories, such as Google's Play services or AndroidX.
+`slash-cli sdk lock` (or [`sdk.lock`](commands.md#sdklock)) resolves them and everything they
+need, as Gradle resolves an app's dependencies, and pins each file in `sdk.lock.json` beside
+`sdk.json`:
+
+- POMs are read with their parents, properties, `dependencyManagement` and imported BOMs.
+- `compile` and `runtime` dependencies are followed; `test`, `provided`, `system` and optional
+  ones are not, and exclusions apply below the dependency that names them.
+- A range takes the newest release in it that a repository's `maven-metadata.xml` lists.
+- Where a module is asked for in several versions, the newest wins.
+- A file's type is the one its dependency names, else its POM's `packaging`; a `.jar` and an
+  `.aar` stand in for each other where a POM says the wrong one. BOMs and other `pom` modules
+  bring their dependencies and no file.
+
+```json
+{
+  "format": 1,
+  "maven": {
+    "dependencies": ["androidx.core:core:1.13.1"],
+    "repositories": ["https://dl.google.com/dl/android/maven2", "https://repo.maven.apache.org/maven2"],
+    "artifacts": [
+      {"id": "androidx.core:core:1.13.1", "type": "aar",
+       "url": "https://dl.google.com/dl/android/maven2/androidx/core/core/1.13.1/core-1.13.1.aar",
+       "sha256": "<64 lowercase hex digits>"}
+    ]
+  }
+}
+```
+
+Commit `sdk.lock.json` with the package. Android exports fetch each file it lists into
+`maven/` in `SLASH_SDKS_DIR` (or `~/.slash/sdks`), check its SHA-256, and add it as an
+[Android library](#android-libraries) after the package's own `aars`. Where two packages pin
+different versions of a module, the newest is linked. A package whose `maven` or
+`maven_repositories` changed since its lock, or that has none, fails the export and `sdk check`
+until `sdk lock` runs again.
 
 ## In project.json and presets
 
@@ -140,7 +205,8 @@ An export with packages adds an `sdks` step after staging the data: it fetches e
 fetched yet, then for each build (each Android ABI, each Linux architecture) builds the packages'
 CMake projects with the same compilers and options as the game, fills in the paths for its
 `{arch}`, checks every file exists, and writes the `slash_game_sdk()` calls that
-`export/CMakeLists.txt` includes into `<build>/sdks.cmake`. A missing key, file or download fails
+`export/CMakeLists.txt` includes into `<build>/sdks.cmake`. Android exports also fetch the
+locked Maven files and, once every ABI is built, add the Android libraries to the APK. A missing key, file or download fails
 the export before the game is built, with the package and the JSON Pointer of the bad value. The
 reply lists the packages linked as `"sdks": [{"name", "version", "license"}]`.
 
@@ -149,7 +215,9 @@ reply lists the packages linked as `"sdks": [{"name", "version", "license"}]`.
 `slash-cli sdk check` and `sdk.check` load the packages, the presets' `sdks` and the keys from
 the environment, and check that each file a platform links exists, for every architecture the
 presets build. Downloads not fetched yet are listed as `unchecked` unless `--fetch` (or
-`"fetch": true`, which needs the `build` capability) fetches them. `{build}` paths are checked
+`"fetch": true`, which needs the `build` capability) fetches them; so are locked Maven files
+(`"unchecked": ["maven"]`), and a package with Maven dependencies needs an up-to-date
+`sdk.lock.json`. Each package's `maven` is the number of files its lock pins. `{build}` paths are checked
 when an export builds the package. `slash-cli project validate` runs the same checks except keys
 and downloads, which belong to the machine that exports.
 
@@ -171,3 +239,12 @@ with `--depth 1` at `--ref`), or an `https://` `.zip` or `.tar` archive with `sd
 root or in its one folder, checked against `--sha256` when given. The command takes folders in
 the project, and URLs with the `build` capability. The reply names the package, its platforms and
 the keys to set.
+A package with Maven dependencies and no lock adds `"needs_lock": true`.
+
+## sdk lock
+
+`slash-cli sdk lock [--sdk <name>] [--dry-run]` and `sdk.lock` resolve each package's `maven`
+dependencies (or one package's) and write its `sdk.lock.json`, downloading POMs and files into
+`maven/` in `SLASH_SDKS_DIR`, or `~/.slash/sdks`. The command needs the `build` capability. The
+reply lists `{"name", "lock", "artifacts", "changed"}` for each package; `--dry-run` resolves
+and writes nothing. The error names the module that couldn't be found or resolved.

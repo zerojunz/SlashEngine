@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- An Android library folder, laid out like an unpacked .aar: exports merge this manifest into
+     the game's, compile res/ and give com.example.hello an R class. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.example.hello">
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <application>
+        <meta-data
+            android:name="com.example.hello.SDK_VERSION"
+            android:value="@string/hello_sdk_version" />
+    </application>
+</manifest>

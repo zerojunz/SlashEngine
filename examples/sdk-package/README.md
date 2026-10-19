@@ -16,6 +16,13 @@ package whose `sdk.json` says what each platform's build links:
   `Contents/Frameworks`, in the APK's `lib/<abi>`, and `hello.dll` (listed in `files`) beside
   the Windows game.
 
+- Android's `aars` lists [android/](sdks/hello/android/AndroidManifest.xml), a library folder
+  laid out like an unpacked `.aar`. Android exports merge its manifest into the game's (a
+  permission and a `<meta-data>` whose value is a string resource), compile its `res/` with
+  aapt2 and give `com.example.hello` an R class. A real package lists the vendor's `.aar` files,
+  and Maven coordinates such as `"maven": ["androidx.core:core:1.13.1"]`, which
+  `slash-cli sdk lock` resolves and pins in `sdk.lock.json` beside `sdk.json`.
+
 [src/game.cpp](src/game.cpp) calls the SDK under `#ifdef SLASH_SDK_HELLO`, which exports define,
 so the tools' own build of the code, which leaves SDKs out, runs too.
 
@@ -34,5 +41,6 @@ HELLO_APP_ID=my-game slash-cli export linux --project examples/sdk-package --tes
 ```
 
 - `slash-cli sdk add <folder|git URL|https archive>` copies a package from outside the project
-  into `sdks/<name>`; `slash-cli sdk check` exits 1 on a problem, for CI.
+  into `sdks/<name>`; `slash-cli sdk check` exits 1 on a problem, for CI; `slash-cli sdk lock`
+  pins packages' Maven dependencies.
 - A preset's `sdks` limits which packages it links, such as an ad network only in store builds.

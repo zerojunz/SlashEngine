@@ -1,5 +1,6 @@
 add_executable(slash_tests
     test_main.cpp
+    test_android_library.cpp
     test_animation.cpp
     test_asset.cpp
     test_audio.cpp
