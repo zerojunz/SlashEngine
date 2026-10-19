@@ -243,6 +243,8 @@ A reference must name an entity that exists in the same scene.
 | | `linear_damp_space_override`, `angular_damp_space_override` | `std::string` | `"disabled"` | How it changes the damping of bodies in it, as `gravity_space_override` |
 | | `linear_damp` | `float` | `0.1` | Slows moving bodies in it, per second |
 | | `angular_damp` | `float` | `1` | Slows turning bodies in it, per second |
+| | `audio_bus_override` | `bool` | `false` | `AudioStreamPlayer2D` sounds in it play through `audio_bus_name` (see [buses by area](#buses-by-area)) |
+| | `audio_bus_name` | `std::string` | `"Master"` | The bus sounds in it play through |
 | `PinJoint2D` | `node_a`, `node_b` | Reference to another entity | `null` | The two bodies it joins, at the entity's `Transform2D`; a `null` `node_a` pins `node_b` to the world. Every joint has them |
 | | `disable_collision` | `bool` | `true` | The two bodies don't collide with each other. Every joint has it |
 | | `angular_limit_enabled` | `bool` | `false` | Limit how far `node_b` turns from `node_a` |
@@ -544,6 +546,7 @@ A reference must name an entity that exists in the same scene.
 | | `max_distance` | `float` | `2000` | Pixels from the listener beyond which it is silent, 1 or more |
 | | `attenuation` | `float` | `1` | How fast it fades with distance: volume is (1 - distance / `max_distance`) to this power |
 | | `panning_strength` | `float` | `1` | Times the project's `audio.panning_strength_2d`; 0 for no panning |
+| | `area_mask` | `int` | `1` | `Area2D` layers, as bits, whose `audio_bus_override` changes its bus while it is inside one; 0 ignores areas |
 | `AudioListener2D` | `current` | `bool` | `false` | Hear `AudioStreamPlayer2D` sounds from this entity's `Transform2D`, turned with it. The first current one by ID is used; with none, the middle of the viewport |
 
 `engine.describe` lists every registered component with its defaults, including ones a game adds.
@@ -2765,6 +2768,26 @@ from the current `AudioListener2D`. Each plays through a bus of the project's
   fields. Plays and stops a failed command or dry run asked for are dropped, as are its bus
   changes.
 
+### Buses by area
+
+As Godot's `AudioStreamPlayer2D::_get_actual_bus`, a 2D player inside an `Area2D` with
+`audio_bus_override` plays through the area's `audio_bus_name` instead of its own `bus`, when
+the area's `collision_layer` shares a bit with the player's `area_mask`. The audio system checks
+each tick, after physics, at the player's position, so a sound moves to the cave's reverb bus as
+it walks in and back as it walks out, fading out of the bus it left over one mix step. With several such areas, the
+first by ID wins (Godot takes the physics server's order). `audio.state` shows the bus each
+player plays through. Godot's reverb bus overrides belong to 3D areas.
+
+```json
+"cave": {
+  "components": {
+    "Area2D": {"audio_bus_name": "Cave", "audio_bus_override": true},
+    "CollisionShape2D": {"size": [200, 120]},
+    "Transform2D": {"position": [400, 180]}
+  }
+}
+```
+
 ### Bus layouts
 
 A `.bus_layout.json` file, named by `audio.bus_layout` in [project.json](project-format.md),
@@ -2824,9 +2847,29 @@ gives each one's range and meaning.
 | `hard_limiter` | AudioEffectHardLimiter: keeps the sound under a ceiling | `ceiling_db` -0.3, `pre_gain_db` 0, `release` 0.1 |
 | `panner` | AudioEffectPanner: moves the sound left or right | `pan` 0 |
 | `stereo_enhance` | AudioEffectStereoEnhance: widens or narrows the stereo image | `pan_pullout` 1, `time_pullout_ms` 0, `surround` 0 |
+| `pitch_shift` | AudioEffectPitchShift: changes the pitch and keeps the speed | `pitch_scale` 1 (0.01 to 16), `oversampling` 4 (4 to 32), `fft_size` 2048 (256, 512, 1024, 2048 or 4096) |
+| `spectrum_analyzer` | AudioEffectSpectrumAnalyzer: measures frequencies, for [`audio.spectrum`](commands.md#audiospectrum) | `buffer_length` 2, `fft_size` 1024 |
+| `capture` | AudioEffectCapture: holds what passes for game code to take | `buffer_length` 0.1 (seconds, 0.01 to 10) |
+| `record` | AudioEffectRecord: records what passes, for [`audio.record`](commands.md#audiorecord) | `format` `"16_bits"` (`8_bits` or `16_bits`) |
 
 A misspelled type is an error naming the closest one, and the type a slot names says which
 settings it takes.
+
+- `pitch_shift` is Stephan Bernsee's phase vocoder (`smbPitchShift`, under the Wide Open
+  License), as in Godot: each FFT window of `fft_size` frames is analyzed at `oversampling`
+  overlapping steps, so it adds `fft_size` frames of latency. At a `pitch_scale` of 1 it passes
+  the sound through.
+- `spectrum_analyzer`, `capture` and `record` pass the sound through unchanged. In C++,
+  `audio::spectrum_analyzer`, `audio::capture_effect` and `audio::record_effect` give a slot's
+  running effect (as Godot's `AudioServer::get_bus_effect_instance`), with Godot's
+  `magnitude_for_frequency_range`, `get_buffer`, `frames_available`, `set_recording_active` and
+  `recording` (a `Sound` to play). The spectrum analyzer answers from its newest window of
+  `fft_size` * 2 frames; Godot keeps `buffer_length` seconds of them but reads only the newest
+  too. Capture and record keep running while their bus is silent, so time has no gaps; the
+  spectrum analyzer pauses with its bus. A recording's IMA ADPCM and QOA formats aren't
+  offered: it stays in memory as samples.
+- `audio.state` shows a capture's `frames_available` (and `discarded_frames`, when its buffer
+  filled) and whether a record effect is `recording`, with the `seconds` it holds.
 
 ### Audio streams
 

@@ -441,11 +441,14 @@ struct Area2D {
     float linear_damp = 0.1F;
     std::string angular_damp_space_override = "disabled";
     float angular_damp = 1.0F;
+    bool audio_bus_override = false;       // AudioStreamPlayer2D sounds in it play through:
+    std::string audio_bus_name = "Master"; // this bus
 };
 SLASH_COMPONENT(Area2D, collision_layer, collision_mask, monitoring, monitorable, priority,
                 gravity_space_override, gravity_point, gravity_point_unit_distance,
                 gravity_point_center, gravity_direction, gravity, linear_damp_space_override,
-                linear_damp, angular_damp_space_override, angular_damp)
+                linear_damp, angular_damp_space_override, angular_damp, audio_bus_override,
+                audio_bus_name)
 
 // Pins two bodies together at the entity's Transform2D, letting them turn, as Godot's
 // PinJoint2D. A missing node_a pins node_b to the world. Every joint is made where its entity is
@@ -688,11 +691,13 @@ struct AudioStreamPlayer2D {
     int max_polyphony = 1;
     float panning_strength = 1.0F;
     std::string bus = "Master";
+    std::uint32_t area_mask = 1; // Area2D layers whose audio_bus_override applies; 0 for none
 
     friend bool operator==(const AudioStreamPlayer2D&, const AudioStreamPlayer2D&) = default;
 };
 SLASH_COMPONENT(AudioStreamPlayer2D, stream, volume_db, pitch_scale, playing, autoplay,
-                stream_paused, max_distance, attenuation, max_polyphony, panning_strength, bus)
+                stream_paused, max_distance, attenuation, max_polyphony, panning_strength, bus,
+                area_mask)
 
 // Where 2D sounds are heard from, as Godot's AudioListener2D, while current; with none, the
 // middle of the screen.

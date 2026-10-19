@@ -20,7 +20,7 @@ add_library(slash::audio ALIAS slash_audio)
 target_include_directories(slash_audio PUBLIC include)
 target_link_libraries(slash_audio
     PUBLIC slash::asset slash::core slash::world
-    PRIVATE slash::ui slash_miniaudio SDL3::SDL3-static)
+    PRIVATE slash::physics2d slash::ui slash_miniaudio SDL3::SDL3-static)
 slash_engine_target(slash_audio)
 # The same sound on every platform: no fused multiply-adds, which arm64 compilers would otherwise
 # emit and x86-64 ones not.

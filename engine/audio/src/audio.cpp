@@ -4,9 +4,11 @@
 
 #include "slash/audio/audio.hpp"
 
+#include "slash/audio/effects.hpp"
 #include "slash/core/log.hpp"
 #include "slash/core/math.hpp"
 #include "slash/core/text.hpp"
+#include "slash/physics2d/physics2d.hpp"
 #include "slash/ui/ui.hpp"
 #include "slash/world/camera2d.hpp"
 #include "slash/world/components.hpp"
@@ -86,6 +88,7 @@ struct State {
     std::map<std::string, PlayerState, std::less<>> players;
     std::map<std::string, LoadedStream, std::less<>> streams;
     std::vector<Request> requests;
+    std::vector<Snapshot::Recording> recordings;
     Sink sink;
     double carry = 0.0;
     std::vector<Frame> out;
@@ -295,6 +298,34 @@ Frame volume_of(const world::AudioStreamPlayer2D& player, const world::Tree2D& t
                      settings.panning_strength_2d);
 }
 
+const std::string& bus_of(world::World& /*world*/, const world::AudioStreamPlayer& player,
+                          const world::Tree2D& /*tree*/, entt::entity /*entity*/) {
+    return player.bus;
+}
+
+// Godot's AudioStreamPlayer2D::_get_actual_bus: the first area by ID under the player whose
+// layer is in its area_mask and which overrides the bus, else its own bus. Godot takes the
+// areas in the physics server's order; ID order is the same on every run.
+const std::string& bus_of(world::World& world, const world::AudioStreamPlayer2D& player,
+                          const world::Tree2D& tree, entt::entity entity) {
+    if (player.area_mask == 0) {
+        return player.bus;
+    }
+    constexpr std::size_t kMaxIntersectAreas = 32; // Godot's MAX_INTERSECT_AREAS
+    const physics2d::QueryFilter filter{.collision_mask = player.area_mask,
+                                        .collide_with_bodies = false,
+                                        .collide_with_areas = true,
+                                        .exclude = {}};
+    for (const entt::entity found : physics2d::overlap_point(world, tree.global(entity).position,
+                                                             filter, kMaxIntersectAreas)) {
+        const auto* area = world.ecs().try_get<world::Area2D>(found);
+        if (area != nullptr && area->audio_bus_override) {
+            return area->audio_bus_name;
+        }
+    }
+    return player.bus;
+}
+
 template <typename T>
 void start_voice(State& state, PlayerState& player, const T& component, std::string_view key,
                  double from_seconds) {
@@ -314,7 +345,7 @@ void start_voice(State& state, PlayerState& player, const T& component, std::str
     }
     auto playback = stream->instantiate(state.server->mix_rate(), seed_of(key, ++player.plays));
     const float pitch = component.pitch_scale > 0.0F ? component.pitch_scale : 1.0F;
-    player.voices.push_back(state.server->start(std::move(playback), component.bus, player.volume,
+    player.voices.push_back(state.server->start(std::move(playback), player.bus, player.volume,
                                                 std::max(from_seconds, 0.0), pitch,
                                                 component.stream_paused));
     // Godot's ensure_playback_limit.
@@ -338,7 +369,7 @@ void reconcile(State& state, world::World& world, const world::Tree2D& tree, std
         player.entity = entity;
         player.seen = true;
         player.volume = volume_of(component, tree, entity, listener, state.settings, screen);
-        player.bus = component.bus;
+        player.bus = bus_of(world, component, tree, entity);
         const float pitch = component.pitch_scale > 0.0F ? component.pitch_scale : 1.0F;
 
         bool play_now = false;
@@ -361,7 +392,7 @@ void reconcile(State& state, world::World& world, const world::Tree2D& tree, std
             }
         }
         for (const Server::PlaybackId id : player.voices) {
-            state.server->set_bus_exclusive(id, component.bus, player.volume);
+            state.server->set_bus_exclusive(id, player.bus, player.volume);
             state.server->set_pitch_scale(id, pitch);
         }
         if (component.stream_paused != player.paused) {
@@ -395,6 +426,12 @@ void run(State& state, world::World& world, double tick_seconds) {
         requests[request.player].push_back(std::move(request));
     }
     state.requests.clear();
+    for (const Snapshot::Recording& asked : state.recordings) {
+        if (RecordInstance* record = record_effect(*state.server, asked.bus, asked.effect)) {
+            record->set_recording_active(asked.active);
+        }
+    }
+    state.recordings.clear();
 
     for (auto& [key, player] : state.players) {
         player.seen = false;
@@ -581,6 +618,7 @@ void install(world::World& world, asset::Assets& assets, const Settings& setting
         state->server.reset();
         state->players.clear();
         state->requests.clear();
+        state->recordings.clear();
         state->apply_settings();
     });
     world.add_system(
@@ -642,9 +680,30 @@ void stop(world::World& world, entt::entity entity) {
     }
 }
 
+void set_recording(world::World& world, int bus, int effect, bool active) {
+    if (State* state = state_of(world)) {
+        state->recordings.push_back({bus, effect, active});
+    }
+}
+
+RecordingAsks recording_asks(const world::World& world, int bus, int effect) {
+    RecordingAsks asks;
+    if (const State* state = state_of(world)) {
+        for (const Snapshot::Recording& asked : state->recordings) {
+            if (asked.bus == bus && asked.effect == effect) {
+                asks.active = asked.active;
+                asks.restarts = asks.restarts || asked.active;
+            }
+        }
+    }
+    return asks;
+}
+
 Snapshot save(const world::World& world) {
     const State* state = state_of(world);
-    return state != nullptr ? Snapshot{state->requests, state->server->layout().buses} : Snapshot{};
+    return state != nullptr
+               ? Snapshot{state->requests, state->recordings, state->server->layout().buses}
+               : Snapshot{};
 }
 
 void restore(world::World& world, const Snapshot& snapshot) {
@@ -653,6 +712,7 @@ void restore(world::World& world, const Snapshot& snapshot) {
         return;
     }
     state->requests = snapshot.requests;
+    state->recordings = snapshot.recordings;
     Server& server = *state->server;
     const std::vector<BusSettings>& now = server.layout().buses;
     if (now.size() != snapshot.buses.size()) {

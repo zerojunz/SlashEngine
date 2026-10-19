@@ -210,7 +210,12 @@ void register_physics_components(ComponentRegistry& registry) {
         .describe("linear_damp_space_override", override_mode)
         .describe("linear_damp", {.doc = "Slows movement in it, per second.", .min = 0})
         .describe("angular_damp_space_override", override_mode)
-        .describe("angular_damp", {.doc = "Slows turning in it, per second.", .min = 0});
+        .describe("angular_damp", {.doc = "Slows turning in it, per second.", .min = 0})
+        .describe("audio_bus_override",
+                  {.doc = "AudioStreamPlayer2D sounds in it play through audio_bus_name, when "
+                          "its collision_layer is in their area_mask."})
+        .describe("audio_bus_name", {.doc = "The bus sounds in it play through, from the "
+                                            "project's bus layout."});
 
     registry.add<PinJoint2D>()
         .set_doc("Pins two bodies together at the entity's Transform2D, letting them turn.")
@@ -1208,7 +1213,10 @@ void register_audio_components(ComponentRegistry& registry) {
         .describe(
             "panning_strength",
             {.doc = "Times the project's audio.panning_strength_2d; 0 for no panning.", .min = 0})
-        .describe("bus", bus);
+        .describe("bus", bus)
+        .describe("area_mask", {.doc = "Area2D layers, as bits, whose audio_bus_override "
+                                       "changes its bus while it is inside; the first such area "
+                                       "by ID wins. 0 ignores areas."});
     registry.add<AudioListener2D>()
         .set_doc("Where AudioStreamPlayer2D sounds are heard from, as Godot's AudioListener2D, "
                  "at its Transform2D and turned with it. The first current one by ID is used; "
