@@ -22,6 +22,8 @@ add_custom_command(OUTPUT ${api_hash_header}
     COMMENT "Hashing the engine headers"
     VERBATIM)
 target_sources(slash_core PRIVATE ${api_hash_header})
+# CI's clang-tidy job configures without building, so it builds the header alone.
+add_custom_target(slash_api_hash DEPENDS ${api_hash_header})
 
 target_include_directories(slash_core PUBLIC include ${CMAKE_CURRENT_BINARY_DIR}/generated)
 target_compile_features(slash_core PUBLIC cxx_std_20)
