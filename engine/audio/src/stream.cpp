@@ -432,6 +432,13 @@ public:
         return std::make_unique<DecoderPlayback>(sound_, settings_, mix_rate);
     }
     [[nodiscard]] double length() const override { return sound_->length(); }
+    [[nodiscard]] double bpm() const override { return settings_.bpm; }
+    [[nodiscard]] int beat_count() const override { return settings_.beat_count; }
+    [[nodiscard]] int bar_beats() const override { return settings_.bar_beats; }
+    [[nodiscard]] bool has_loop() const override {
+        return sound_->format == Sound::Format::Wav ? settings_.loop_mode != LoopMode::Disabled
+                                                    : settings_.loop;
+    }
 
 private:
     std::shared_ptr<const Sound> sound_;
@@ -571,13 +578,38 @@ Result<std::shared_ptr<const Stream>> load_stream_at(asset::Assets& assets, std:
         }
         return sound_stream(std::move(sound).value(), *settings);
     }
-    std::vector<std::pair<std::shared_ptr<const Stream>, float>> pool;
-    for (const StreamFile::Entry& entry : settings->streams) {
-        auto stream = load_stream_at(assets, entry.stream, depth + 1, loaded);
+    std::vector<std::string_view> paths;
+    if (settings->kind == StreamFile::Kind::Interactive) {
+        for (const StreamFile::Clip& clip : settings->clips) {
+            paths.emplace_back(clip.stream);
+        }
+    } else {
+        for (const StreamFile::Entry& entry : settings->streams) {
+            paths.emplace_back(entry.stream);
+        }
+    }
+    std::vector<std::shared_ptr<const Stream>> streams;
+    for (const std::string_view each : paths) {
+        auto stream = load_stream_at(assets, each, depth + 1, loaded);
         if (!stream) {
             return stream.error();
         }
-        pool.emplace_back(std::move(stream).value(), entry.weight);
+        streams.push_back(std::move(stream).value());
+    }
+    switch (settings->kind) {
+    case StreamFile::Kind::Playlist:
+        return playlist_stream(std::move(streams), *settings);
+    case StreamFile::Kind::Synchronized:
+        return synchronized_stream(std::move(streams), *settings);
+    case StreamFile::Kind::Interactive:
+        return interactive_stream(std::move(streams), *settings);
+    case StreamFile::Kind::Sound:
+    case StreamFile::Kind::Randomizer:
+        break;
+    }
+    std::vector<std::pair<std::shared_ptr<const Stream>, float>> pool;
+    for (std::size_t i = 0; i < streams.size(); ++i) {
+        pool.emplace_back(std::move(streams[i]), settings->streams[i].weight);
     }
     return randomizer_stream(std::move(pool), *settings);
 }

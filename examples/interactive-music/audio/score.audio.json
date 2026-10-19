@@ -1,0 +1,38 @@
+{
+  "clips": [
+    {
+      "name": "explore",
+      "stream": "audio/explore.audio.json"
+    },
+    {
+      "name": "combat",
+      "stream": "audio/combat.audio.json"
+    },
+    {
+      "auto_advance": "enabled",
+      "name": "victory",
+      "next_clip": "explore",
+      "stream": "audio/victory.wav"
+    }
+  ],
+  "format": 1,
+  "transitions": [
+    {
+      "fade_mode": "cross",
+      "from": "explore",
+      "from_time": "next_bar",
+      "to": "combat"
+    },
+    {
+      "fade_mode": "out",
+      "from": "combat",
+      "to": "victory"
+    },
+    {
+      "fade_beats": 0.5,
+      "fade_mode": "in",
+      "from_time": "end",
+      "to": "explore"
+    }
+  ]
+}

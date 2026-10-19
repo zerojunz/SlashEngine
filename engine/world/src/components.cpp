@@ -1183,6 +1183,11 @@ void register_audio_components(ComponentRegistry& registry) {
         .max = 64};
     const FieldMeta bus{.doc = "The bus it plays through, from the project's bus layout; Master "
                                "if there is no such bus."};
+    const FieldMeta parameters{
+        .doc = "The stream's parameters, as Godot's parameters/*. Interactive music: "
+               "switch_to_clip, a clip's name, which the music moves to as its transition says "
+               "and which then follows the clip it goes to. Synchronized streams: "
+               "stream_<index>_volume_db, a layer's volume."};
     registry.add<AudioStreamPlayer>()
         .set_doc("Plays a sound through a bus, as Godot's AudioStreamPlayer, the same wherever "
                  "the entity is. Emits finished when a sound ends.")
@@ -1193,7 +1198,8 @@ void register_audio_components(ComponentRegistry& registry) {
         .describe("autoplay", autoplay)
         .describe("stream_paused", paused)
         .describe("max_polyphony", polyphony)
-        .describe("bus", bus);
+        .describe("bus", bus)
+        .describe("parameters", parameters);
     registry.add<AudioStreamPlayer2D>()
         .set_doc("Plays a sound at the entity's Transform2D, as Godot's AudioStreamPlayer2D: "
                  "fading with distance from the AudioListener2D (or the middle of the screen) "
@@ -1216,7 +1222,8 @@ void register_audio_components(ComponentRegistry& registry) {
         .describe("bus", bus)
         .describe("area_mask", {.doc = "Area2D layers, as bits, whose audio_bus_override "
                                        "changes its bus while it is inside; the first such area "
-                                       "by ID wins. 0 ignores areas."});
+                                       "by ID wins. 0 ignores areas."})
+        .describe("parameters", parameters);
     registry.add<AudioListener2D>()
         .set_doc("Where AudioStreamPlayer2D sounds are heard from, as Godot's AudioListener2D, "
                  "at its Transform2D and turned with it. The first current one by ID is used; "

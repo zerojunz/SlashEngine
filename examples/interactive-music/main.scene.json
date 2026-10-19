@@ -1,0 +1,33 @@
+{
+  "entities": {
+    "layers": {
+      "components": {
+        "AudioStreamPlayer": {
+          "parameters": {
+            "stream_1_volume_db": -80.0
+          },
+          "stream": "audio/layers.audio.json"
+        }
+      }
+    },
+    "radio": {
+      "components": {
+        "AudioStreamPlayer": {
+          "stream": "audio/radio.audio.json"
+        }
+      }
+    },
+    "score": {
+      "components": {
+        "AudioStreamPlayer": {
+          "autoplay": true,
+          "parameters": {
+            "switch_to_clip": "explore"
+          },
+          "stream": "audio/score.audio.json"
+        }
+      }
+    }
+  },
+  "format": 1
+}

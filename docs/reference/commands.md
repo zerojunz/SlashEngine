@@ -1359,7 +1359,10 @@ Needs: `read`. With the footsteps playing:
   effects, or `null` when the bus was silent.
 - `voices` is how many playbacks of the player are mixing (up to its `max_polyphony`);
   `position` (of the newest one) and `length` are in seconds. A randomizer's `length` is that
-  of the sound playing, and a player that hasn't played one has none.
+  of the sound playing, and a player that hasn't played one has none. A playlist's `position`
+  is in the stream playing and its `length` the whole list's.
+- `clip` names the clip [interactive music](scene-format.md#interactive-music) is playing; its
+  `position` is in that clip, and it has no `length`.
 - `volume` is the `[left, right]` gain mixed in: the player's `volume_db`, then for an
   `AudioStreamPlayer2D` its fade with distance and its pan from the listener.
 - `paused` is listed when `stream_paused` holds the player, and `error` when its stream did not
