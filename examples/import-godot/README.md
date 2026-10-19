@@ -4,15 +4,17 @@
 small platformer as Godot saves it: [project.godot](godot/project.godot), a level
 ([main.tscn](godot/main.tscn)) that instances the player ([player.tscn](godot/player.tscn)), a
 `SpriteFrames` resource, an `AnimationPlayer` that bobs the coin, a tile set
-([tiles.tres](godot/tiles.tres)), a theme, a bus layout and three GDScript files. [main.cpp](main.cpp) draws the textures, then
+([tiles.tres](godot/tiles.tres)), a theme, a bus layout, interactive music
+([music.tres](godot/music.tres)) and three GDScript files. [main.cpp](main.cpp) makes the
+textures and sounds, then
 makes the calls an agent would make over MCP or JSON-RPC; [expected.txt](expected.txt) holds the
 replies and the files the import wrote. From a shell, `slash-cli import godot` does the same.
 
 ```text
 project.import {"source":"godot"}
-{"converted": {"animation_libraries": 1, "assets": 6, "bus_layouts": 1, "input_actions": 3,
-               "scenes": 2, "sprite_frames": 2, "themes": 1, "tile_sets": 1},
- "files": 11, "main_scene": "godot/main.scene.json", "report": "import/godot.json",
+{"converted": {"animation_libraries": 1, "assets": 8, "audio_streams": 2, "bus_layouts": 1,
+               "input_actions": 3, "scenes": 2, "sprite_frames": 2, "themes": 1, "tile_sets": 1},
+ "files": 13, "main_scene": "godot/main.scene.json", "report": "import/godot.json",
  "scripts": [{"entities": 2, "script": "godot/player.gd", "task": "task/port-player"}, ...],
  "unsupported": [{"count": 1, "what": "node type Timer", "where": "main.tscn: Timer",
                   "why": "timers are gameplay code: count the ticks in a C++ system"}, ...]}
@@ -37,6 +39,10 @@ project.import {"source":"godot"}
   must touch included, and the `TileMapLayer`'s cells become the layer's legend and rows.
 - The theme becomes a `.theme.json` file and the bus layout a `.bus_layout.json` file, each
   effect in SlashEngine's form.
+- The `AudioStreamInteractive` becomes a `.audio.json` file of clips and transitions, named as
+  Godot names them, so gameplay code still switches with `switch_to_clip`. `calm.wav`'s import
+  settings loop it, so it gets a `.audio.json` file of its own that loops it, and the music's
+  clip plays that.
 - `project.godot`'s name, main scene, window size, physics, clear color, texture filter, theme,
   buses and input map become `project.json`.
 - SlashEngine games are plain C++, so scripts don't convert. Each becomes a storyboard task with

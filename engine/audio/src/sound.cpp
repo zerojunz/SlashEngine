@@ -409,7 +409,7 @@ json::Value stream_file_schema() {
     properties["initial_clip"]["description"] = "The clip it starts with. Default: the first.";
     json::Value& transitions = properties["transitions"];
     transitions["type"] = "array";
-    transitions["maxItems"] = 63;
+    transitions["maxItems"] = 64 * 64; // each pair of clips, or any clip
     transitions["description"] =
         "How interactive music goes from one clip to another. The first that fits wins, in this "
         "order: from and to both named, from named, to named, neither; with none, it changes on "

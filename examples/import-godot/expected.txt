@@ -2,7 +2,8 @@ project.import {"dry_run":true,"source":"godot"}
 {
   "converted": {
     "animation_libraries": 1,
-    "assets": 6,
+    "assets": 8,
+    "audio_streams": 2,
     "bus_layouts": 1,
     "input_actions": 3,
     "process_materials": 0,
@@ -13,7 +14,7 @@ project.import {"dry_run":true,"source":"godot"}
   },
   "dry_run": true,
   "engine": "godot",
-  "files": ["godot/ui_theme.theme.json", "godot/default_bus_layout.bus_layout.json", "project.json", "godot/player_frames.frames.json", "godot/player.scene.json", "godot/tiles.tileset.json", "godot/main_sprite_frames_coin.frames.json", "godot/main_animation_library_coin.anim.json", "godot/main.scene.json", "storyboard/work.json", "import/godot.json"],
+  "files": ["godot/ui_theme.theme.json", "godot/default_bus_layout.bus_layout.json", "project.json", "godot/player_frames.frames.json", "godot/player.scene.json", "godot/tiles.tileset.json", "godot/main_sprite_frames_coin.frames.json", "godot/audio/calm.wav.audio.json", "godot/music.audio.json", "godot/main_animation_library_coin.anim.json", "godot/main.scene.json", "storyboard/work.json", "import/godot.json"],
   "main_scene": "godot/main.scene.json",
   "project": "Coin Run",
   "report": "import/godot.json",
@@ -59,7 +60,8 @@ project.import {"source":"godot"}
 {
   "converted": {
     "animation_libraries": 1,
-    "assets": 6,
+    "assets": 8,
+    "audio_streams": 2,
     "bus_layouts": 1,
     "input_actions": 3,
     "process_materials": 0,
@@ -69,7 +71,7 @@ project.import {"source":"godot"}
     "tile_sets": 1
   },
   "engine": "godot",
-  "files": 11,
+  "files": 13,
   "main_scene": "godot/main.scene.json",
   "project": "Coin Run",
   "report": "import/godot.json",
@@ -182,6 +184,14 @@ project.import {"source":"godot"}
       "components": {
         "Transform2D": {
           "children": ["ground", "platforms", "player", "coin"]
+        }
+      }
+    },
+    "music": {
+      "components": {
+        "AudioStreamPlayer": {
+          "autoplay": true,
+          "stream": "godot/music.audio.json"
         }
       }
     },
@@ -375,6 +385,36 @@ project.import {"source":"godot"}
   ],
   "format": 1
 }
+--- godot/music.audio.json
+{
+  "clips": [
+    {
+      "name": "calm",
+      "stream": "godot/audio/calm.wav.audio.json"
+    },
+    {
+      "auto_advance": "enabled",
+      "name": "chase",
+      "next_clip": "calm",
+      "stream": "godot/audio/chase.wav"
+    }
+  ],
+  "format": 1,
+  "transitions": [
+    {
+      "fade_beats": 0.5,
+      "fade_mode": "cross",
+      "from_time": "immediate"
+    }
+  ]
+}
+--- godot/audio/calm.wav.audio.json
+{
+  "format": 1,
+  "loop_end": 44099,
+  "loop_mode": "forward",
+  "source": "godot/audio/calm.wav"
+}
 --- project.json
 {
   "audio": {
@@ -443,7 +483,7 @@ project.import {"source":"godot"}
 }
 scene.open {"path":"godot/main.scene.json"}
 {
-  "entities": 16,
+  "entities": 17,
   "path": "godot/main.scene.json"
 }
 events.subscribe {"kinds":["glint"]}

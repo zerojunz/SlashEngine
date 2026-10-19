@@ -1,0 +1,22 @@
+[gd_resource type="AudioStreamInteractive" load_steps=3 format=3 uid="uid://bmusic0score"]
+
+[ext_resource type="AudioStream" uid="uid://bcalm0sound" path="res://audio/calm.wav" id="1_calm"]
+[ext_resource type="AudioStream" path="res://audio/chase.wav" id="2_chase"]
+
+[resource]
+clip_count = 2
+clip_0/name = &"calm"
+clip_0/stream = ExtResource("1_calm")
+clip_0/auto_advance = 0
+clip_1/name = &"chase"
+clip_1/stream = ExtResource("2_chase")
+clip_1/auto_advance = 1
+clip_1/next_clip = 0
+_transitions = {
+Vector2i(-1, -1): {
+"fade_beats": 0.5,
+"fade_mode": 3,
+"from_time": 0,
+"to_time": 1
+}
+}
