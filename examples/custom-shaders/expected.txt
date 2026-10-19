@@ -1,0 +1,18 @@
+wrote crate.png
+wrote flag.png
+scene.open {"path":"main.scene.json"}
+{"entities":2,"path":"main.scene.json"}
+material.eval {"id":"crate","uv":[[0.06,0.06],[0.44,0.06],[0.31,0.31],[0.56,0.06]]}
+{"colors":[[0.0,0.0,0.0,0.0],[0.987,0.496,0.007,1.0],[0.861,0.454,0.07,1.0],[0.471,0.282,0.157,1.0]]}
+material.eval {"id":"crate","params":{"amount":0},"uv":[[0.06,0.06],[0.44,0.06]]}
+{"colors":[[0.627,0.376,0.188,1.0],[0.627,0.376,0.188,1.0]]}
+frame.capture {"points":[[70,17],[84,17],[84,31]],"time":0}
+{"colors":[[0.502,1,0.502,1],[0.102,0.102,0.149,1],[0.102,0.102,0.149,1]],"drawn":{"sprites":2},"height":48,"width":96}
+frame.capture {"points":[[70,17],[84,17],[84,31]],"time":0.5}
+{"colors":[[0.102,0.102,0.149,1],[0.502,1,0.502,1],[0.102,0.102,0.149,1]],"drawn":{"sprites":2},"height":48,"width":96}
+material.eval {"id":"flag","uv":[[0.5,0.5]]}
+"/id: shaders/wave.hlsl:2: 'tnt' : unknown variable"
+material.eval {"id":"flag","uv":[[0.5,0.5]]}
+{"colors":[[0.25,0.5,0.25,1.0]]}
+frame.capture {"points":[[72,24]],"time":0.5}
+{"colors":[[0.251,0.502,0.251,1]],"drawn":{"sprites":2},"height":48,"width":96}

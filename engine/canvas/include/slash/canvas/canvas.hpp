@@ -240,8 +240,21 @@ private:
         }
     };
 
+    // A material, with its shader made on the device when it has one.
+    struct MaterialEntry {
+        asset::Handle<CanvasMaterial> material;
+        asset::Handle<std::string> source; // a shader material's .hlsl file, unless compiled
+        std::uint64_t material_version = 0;
+        std::uint64_t source_version = 0;
+        std::shared_ptr<const render::CompiledShader> compiled;
+        render::ShaderId shader = render::ShaderId::None;
+        std::string error; // why its shader can't draw, or ""
+    };
+
     // The GPU texture for a path and filter, made or updated from the loaded image.
     Result<const Texture*> texture(const std::string& path, render::Filter filter);
+    // The material at a path; its shader is compiled and made again when it or its file changes.
+    Result<const MaterialEntry*> material_entry(const std::string& path);
     // The material a sprite draws with, its params and the time filled in, and its light mode.
     Result<render::Material> material(const world::Sprite2D& sprite, render::Filter filter,
                                       double time, render::LightMode* light_mode);
@@ -272,7 +285,7 @@ private:
     render::RenderDevice* device_;
     asset::Assets* assets_;
     std::map<std::pair<std::string, render::Filter>, Texture> textures_;
-    std::map<std::string, asset::Handle<CanvasMaterial>, std::less<>> materials_;
+    std::map<std::string, MaterialEntry, std::less<>> materials_;
     std::map<std::string, asset::Handle<TileSet>, std::less<>> tile_sets_;
     std::unordered_map<entt::entity, LayerCells> layer_cells_;
     std::map<std::string, asset::Handle<render::Image>, std::less<>> light_images_;

@@ -1,4 +1,6 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
+#include "slash/shader_compiler/shader_compiler.hpp"
+
 #include <doctest/doctest.h>
 
 #include <chrono>
@@ -10,6 +12,12 @@
 #include <thread>
 
 namespace {
+
+// The tests compile a game's shaders, as the tools do.
+[[maybe_unused]] const bool kShaderCompilerInstalled = [] {
+    slash::shader_compiler::install();
+    return true;
+}();
 
 // A test case that runs this long is stuck. The watchdog names it and ends the run, so CI fails
 // with the culprit instead of waiting for the job's time limit.

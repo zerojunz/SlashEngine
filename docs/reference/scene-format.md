@@ -821,7 +821,7 @@ has none: each tick the `animated_sprite_2d` system moves the animation on and s
 ## Materials
 
 A `.material.json` file colors each pixel of a sprite, like a Godot `ShaderMaterial` with a
-`canvas_item` shader, written as a node graph instead of shader code. `Sprite2D`'s `material`
+`canvas_item` shader, written as a node graph, or as a game's own [shader](#shaders) in HLSL. `Sprite2D`'s `material`
 names the file and `material_params` sets its params, so one material serves many sprites.
 `slash-cli schema material` prints the schema, `slash-cli scene validate` and `scene format`
 accept `.material.json` files, and the [`material.eval`](commands.md#materialeval) command
@@ -856,6 +856,8 @@ returns the colors a material draws. [examples/materials](../../examples/materia
 | `params/<name>/doc` | No | What the param does, for whoever sets it |
 | `blend` | No | How the color combines with what is under it, as Godot's blend modes: `mix` (default), `add`, `sub`, `mul` or `premul_alpha` |
 | `light_mode` | No | How [2D lights](#2d-lights) shade it, as Godot's: `normal` (default), `unshaded` (lights and `CanvasModulate` leave it alone) or `light_only` (visible only where lights reach) |
+| `shader` | No | A game's own shader instead of `color` and `nodes`: an `.hlsl` file's project path (see [Shaders](#shaders)) |
+| `compiled` | No | The shader compiled for each backend. Exports write it; never written by hand |
 
 An arg is a number, an array of 2 to 4 numbers, a node written in place, or a name: a node in
 `nodes`, a param, or an input. A name can pick components after a dot, from `xyzw` or `rgba`:
@@ -909,6 +911,76 @@ unless the table says otherwise.
 - `material.eval` computes colors on the CPU the way the GPU does, so an agent checks a material
   without a screenshot.
 - Material files reload when they change, like every asset, and exports check and ship them.
+
+### Shaders
+
+For what a graph can't say, `shader` names a game's own shader: an `.hlsl` file with a
+`fragment()` function, a `vertex()` function or both, as Godot's `canvas_item` shaders, written
+in HLSL. The functions take nothing and return nothing; they read and write Godot's built-ins,
+which are globals, and the material's params, by name. Helper functions, loops and `discard` are
+plain HLSL. [examples/custom-shaders](../../examples/custom-shaders/) has a dissolve and a flag
+that sways.
+
+```hlsl
+// shaders/dissolve.hlsl, with params amount (float) and edge_color (color).
+void fragment() {
+    float n = texture(noise_map, UV).r;
+    if (n < amount) {
+        discard;
+    }
+    COLOR.rgb = lerp(edge_color.rgb, COLOR.rgb, smoothstep(amount, amount + 0.1, n));
+}
+```
+
+```json
+{
+  "format": 1,
+  "params": {
+    "amount": {"max": 1, "min": 0, "type": "float", "value": 0},
+    "edge_color": {"type": "color", "value": [1, 0.5, 0, 1]},
+    "noise_map": {"repeat": true, "type": "texture", "value": "noise.png"}
+  },
+  "shader": "shaders/dissolve.hlsl"
+}
+```
+
+| Built-in | Type | In | Value |
+| --- | --- | --- | --- |
+| `VERTEX` | float2 | both | The vertex position in the canvas, in pixels; `vertex()` can move it |
+| `UV` | float2 | both | The texture coordinate, from 0 to 1 across the sprite's frame |
+| `COLOR` | float4 | both | In `vertex()`, the vertex color (the sprite's `modulate`); in `fragment()`, the texture times it, and what the pixel draws |
+| `TIME` | float | both | Seconds of game time, wrapping every hour |
+| `TEXTURE` | texture | both | The sprite's texture |
+| `TEXTURE_PIXEL_SIZE` | float2 | both | One over the texture's width and height |
+| `FRAGCOORD` | float4 | `fragment()` | The pixel's center in the target, in pixels from the top left (`xy`); `z` is 0 and `w` 1 |
+| `NORMAL_MAP` | float3 | `fragment()` | The sprite's `normal_texture` texel (green up), or `(0.5, 0.5, 1)`, which lights shade with |
+| `SPECULAR_SHININESS` | float4 | `fragment()` | The specular color and shininess lights use: the sprite's `specular_texture` texel times its specular color |
+
+- `texture(t, uv)` samples `TEXTURE` or a texture param, as Godot's `texture()`, with the
+  texture's filter and repeat; `PI`, `TAU` and `E` are defined.
+- Params are globals of their type: a `float` param is a `float`, `vec2` a `float2`, `vec3` a
+  `float3`, `vec4` and `color` a `float4`, and `texture` a texture. A shader takes at most 31
+  number params (the time takes the last constant) and 3 textures. Names HLSL or the code
+  around the shader uses (keywords, types, intrinsic functions such as `length`, and the code's
+  own globals) are refused with the param's path.
+- A `vertex()` that moves `VERTEX`, `UV` or `COLOR` moves or recolors the corners, and
+  `fragment()` gets those, interpolated. Lights shade the color `fragment()` leaves, as the
+  material's `light_mode` says; writing `NORMAL_MAP` or `SPECULAR_SHININESS` makes lights use
+  them even when the sprite has no normal or specular texture, as in Godot.
+- `slash-cli` and `slash-mcp` compile shaders with glslang and SPIRV-Cross when they first draw,
+  for Vulkan, Metal, Direct3D 12, OpenGL ES and WebGL 2, and the CPU, which the software device
+  ([`frame.capture`](commands.md#framecapture)) and `material.eval` run. Games can't compile
+  shaders, so `slash-cli export` writes each material's shader, compiled for the platform, into
+  the staged material file as `compiled`, and leaves the `.hlsl` files out.
+- A mistake is reported with the shader file and line, as
+  `shaders/dissolve.hlsl:4: 'amout' : unknown variable`: by `slash-cli scene validate` on the
+  material (at `/shader`), by exports, by `material.eval`, and in the log for a sprite whose
+  shader doesn't compile, which is left out. Shader files reload when they change.
+- `material.eval` runs `fragment()` alone, with derivatives (`ddx`, `ddy`, `fwidth`) of 0, and a
+  discarded pixel comes back as `[0, 0, 0, 0]`. Functions such as `sin` and `pow` run with the C
+  library on the CPU, which can differ from a GPU's in the last bits.
+- Not yet: passing a texture to a function of your own (sample it in `fragment()` instead), and
+  Godot's shader language itself.
 
 ## Animations
 

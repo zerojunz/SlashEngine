@@ -144,8 +144,8 @@ slash_add_dependency(miniaudio DOWNLOAD_ONLY TRUE)
 
 # Reading exported Godot games back into projects (tools/importer): libwebp decodes the WebP images
 # Godot stores imported textures as, and zstd the compressed GDScript tokens and resources. Tools
-# only, decoders only: games never link them.
-if(SLASH_BUILD_TOOLS)
+# only, decoders only: games never link them. The tests link the tools' libraries too.
+if(SLASH_BUILD_TOOLS OR SLASH_BUILD_TESTS)
     slash_add_dependency(libwebp
         SYSTEM TRUE
         EXCLUDE_FROM_ALL TRUE
@@ -172,4 +172,35 @@ if(SLASH_BUILD_TOOLS)
         # The C decoder everywhere, without the x86-64 assembly one, and no multithreading.
         target_compile_definitions(slash_zstd PRIVATE ZSTD_DISABLE_ASM ZSTD_MULTITHREAD=0)
     endif()
+
+    # A game's own shaders, compiled by the tools (tools/shader_compiler): glslang turns HLSL into
+    # SPIR-V, and SPIRV-Cross turns that into MSL and GLSL ES. Games get the compiled code, never
+    # the compilers.
+    slash_add_dependency(glslang
+        SYSTEM TRUE
+        EXCLUDE_FROM_ALL TRUE
+        OPTIONS
+            "BUILD_EXTERNAL OFF"
+            "ENABLE_OPT OFF"
+            "ENABLE_HLSL ON"
+            "ENABLE_GLSLANG_BINARIES OFF"
+            "ENABLE_PCH OFF"
+            "GLSLANG_TESTS OFF"
+            "GLSLANG_ENABLE_INSTALL OFF")
+    slash_add_dependency(SPIRV-Cross
+        SYSTEM TRUE
+        EXCLUDE_FROM_ALL TRUE
+        OPTIONS
+            "SPIRV_CROSS_CLI OFF"
+            "SPIRV_CROSS_ENABLE_TESTS OFF"
+            "SPIRV_CROSS_ENABLE_GLSL ON"
+            "SPIRV_CROSS_ENABLE_MSL ON"
+            "SPIRV_CROSS_ENABLE_HLSL OFF"
+            "SPIRV_CROSS_ENABLE_CPP OFF"
+            "SPIRV_CROSS_ENABLE_REFLECT OFF"
+            "SPIRV_CROSS_ENABLE_C_API OFF"
+            "SPIRV_CROSS_ENABLE_UTIL OFF"
+            "SPIRV_CROSS_STATIC ON"
+            "SPIRV_CROSS_SHARED OFF"
+            "SPIRV_CROSS_SKIP_INSTALL ON")
 endif()

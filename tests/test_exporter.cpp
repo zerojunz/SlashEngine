@@ -708,6 +708,61 @@ TEST_CASE("exports ship textures, frames, material, animation and tile set files
     std::filesystem::remove_all(folder);
 }
 
+TEST_CASE("exports compile each material's shader into its file, and check the shaders first") {
+    const std::filesystem::path folder = "exporter_shaders_project";
+    std::filesystem::remove_all(folder);
+    std::filesystem::create_directories(folder / "shaders");
+    const auto write = [&](const std::string& path, std::string_view text) {
+        REQUIRE(slash::platform::write_file((folder / path).string(), text).ok());
+    };
+    write("project.json", R"({"format": 1, "name": "Shaders", "main_scene": "main.scene.json"})");
+    write("main.scene.json", R"({"format": 1, "entities": {}})");
+    write("shaders/tint.hlsl", "void fragment() {\n    COLOR *= tint;\n}\n");
+    write("shaders/bad.hlsl", "void fragment() {\n    COLOR *= tnt;\n}\n");
+    write("tint.material.json", R"({"format": 1, "params": {"tint": {"type": "color"}},
+        "shader": "shaders/tint.hlsl"})");
+    write("bad.material.json", R"({"format": 1, "params": {"tint": {"type": "color"}},
+        "shader": "shaders/bad.hlsl"})");
+
+#if defined(__APPLE__)
+    const std::string host = "macos";
+#elif defined(_WIN32)
+    const std::string host = "windows";
+#else
+    const std::string host = "linux";
+#endif
+    exporter::ExportOptions options;
+    options.target = host;
+    options.project = folder.string();
+    const exporter::ExportResult result = exporter::export_game(options);
+    CHECK_FALSE(result.ok);
+    const json::Value* error = result.json.find("error");
+    REQUIRE(error != nullptr);
+    CHECK(error->find("step")->as_string() == "validate");
+    REQUIRE(error->find("errors") != nullptr);
+    REQUIRE(error->find("errors")->size() == 1);
+    const json::Value& problem = error->find("errors")->as_array()[0];
+    CHECK(problem.find("file")->as_string() == "bad.material.json");
+    CHECK(problem.find("path")->as_string() == "/shader");
+    CHECK(problem.find("message")->as_string() == "shaders/bad.hlsl:2: 'tnt' : unknown variable");
+
+    // The good material was staged with its shader compiled for the platform; the shader files
+    // stay behind, since games can't compile them.
+    const std::filesystem::path data = folder / ".slash" / "export" / host / "data";
+    CHECK_FALSE(std::filesystem::exists(data / "shaders"));
+    auto staged = slash::platform::read_file((data / "tint.material.json").string());
+    REQUIRE(staged.ok());
+    const json::Value doc = json::parse(staged.value()).value();
+    CHECK(doc.find("shader")->as_string() == "shaders/tint.hlsl");
+    const json::Value* compiled = doc.find("compiled");
+    REQUIRE(compiled != nullptr);
+    CHECK(compiled->find("cpu_fragment") != nullptr);
+    CHECK((compiled->find("msl_fragment") != nullptr) == (host == "macos"));
+    CHECK((compiled->find("spirv_fragment") != nullptr) == (host != "macos"));
+    CHECK((compiled->find("hlsl") != nullptr) == (host == "windows"));
+    std::filesystem::remove_all(folder);
+}
+
 TEST_CASE("exports ship fonts and themes and check them, and the controls of scenes, first") {
     const std::filesystem::path folder = "exporter_fonts_project";
     std::filesystem::remove_all(folder);

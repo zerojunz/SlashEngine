@@ -26,6 +26,15 @@ struct ProgramUniforms {
 };
 static_assert(sizeof(ProgramUniforms) == 1680);
 
+// The VertexProgram cbuffer a game's shader reads in its vertex stage
+// (tools/shader_compiler): the material's constants and the texel size, as the fragment stage has
+// them in Program.
+struct VertexProgramUniforms {
+    std::array<std::array<float, 4>, kMaxConstants> constants{};
+    std::array<float, 4> texel{};
+};
+static_assert(sizeof(VertexProgramUniforms) == 528);
+
 // One light, laid out as the Light struct.
 struct LightUniform {
     std::array<float, 4> color{};
@@ -59,6 +68,9 @@ inline constexpr std::size_t kMaterialSamplers = kMaterialTextureSlots + 4;
 [[nodiscard]] ProgramUniforms program_uniforms(const Material& material,
                                                const std::array<float, 4>& texel);
 
+// A draw's VertexProgram cbuffer, for a material with a game's shader.
+[[nodiscard]] VertexProgramUniforms vertex_program_uniforms(const Material& material,
+                                                            const std::array<float, 4>& texel);
 // A frame's Lights cbuffer.
 [[nodiscard]] LightsUniforms lights_uniforms(const Lighting& lighting);
 

@@ -21,6 +21,8 @@ or license not allowed here, or whose license text changed without review.
 | [cpp-httplib](https://github.com/yhirose/cpp-httplib) | v0.58.0 | MIT | Localhost HTTP server for the REST mirror and MCP over HTTP | Fetched, header-only |
 | [libwebp](https://github.com/webmproject/libwebp) | v1.5.0 | BSD-3-Clause, with an additional patent grant (`PATENTS`) | Decoding WebP textures when unpacking an exported Godot game (tools only, not shipped in games) | Fetched, its decoder linked into slash-cli and slash-mcp |
 | [Zstandard](https://github.com/facebook/zstd) | v1.5.7 | BSD-3-Clause or GPL 2.0 at the user's choice; SlashEngine uses it under BSD-3-Clause | Decompressing the files of an exported Godot game (tools only, not shipped in games) | Fetched, its decompressor linked into slash-cli and slash-mcp |
+| [glslang](https://github.com/KhronosGroup/glslang) | 16.6.0 | BSD-3-Clause, with parts under BSD-2-Clause, MIT, Apache 2.0, NVIDIA's permissive notice (AML-glslang) and, in its generated parser, GPL 3.0 with the Bison exception, which lets it ship under any terms | Compiling a game's HLSL shaders to SPIR-V (tools only, not shipped in games) | Fetched, linked into slash-cli and slash-mcp |
+| [SPIRV-Cross](https://github.com/KhronosGroup/SPIRV-Cross) | vulkan-sdk-1.4.363.0 | Apache 2.0 or MIT, at the user's choice; its `spirv.hpp` is MIT | Turning a game's compiled shaders into MSL and GLSL ES (tools only, not shipped in games) | Fetched, linked into slash-cli and slash-mcp |
 | [doctest](https://github.com/doctest/doctest) | v2.5.2 | MIT | Unit tests (not shipped in games) | Fetched, tests only |
 | [CPM.cmake](https://github.com/cpm-cmake/CPM.cmake) | v0.40.2 | MIT | Dependency fetching | Vendored as `cmake/CPM.cmake` |
 
@@ -29,14 +31,15 @@ does. Games built with SlashEngine should include this line in their credits or 
 "Portions of this software are copyright © 2026 The FreeType Project (https://freetype.org). All
 rights reserved."
 
-The renderer's shaders are compiled ahead of time with two tools whose output is committed in
-`engine/render/src/*_shaders.hpp`. Nothing of theirs is linked into the engine or a game, and
-building needs neither:
+The renderer's own shaders are compiled ahead of time with two command-line tools whose output is
+committed in `engine/render/src/*_shaders.hpp`, so building the engine needs neither. (A game's
+own shaders are compiled by slash-cli, slash-mcp and exports with the same projects' libraries,
+listed above; games get the compiled code, never the compilers.)
 
 | Name | License | Used for |
 | --- | --- | --- |
 | [glslang](https://github.com/KhronosGroup/glslang) | BSD-3-Clause, with parts under BSD-2-Clause, MIT and Apache 2.0 | HLSL to SPIR-V for Vulkan |
-| [SPIRV-Cross](https://github.com/KhronosGroup/SPIRV-Cross) | Apache 2.0 | SPIR-V to MSL for Metal |
+| [SPIRV-Cross](https://github.com/KhronosGroup/SPIRV-Cross) | Apache 2.0 | SPIR-V to MSL for Metal and GLSL ES for OpenGL ES and WebGL 2 |
 
 On Windows, Direct3D 12 compiles the HLSL at startup with `d3dcompiler_47.dll`, which comes with
 Windows; the engine loads it at run time and ships no copy.

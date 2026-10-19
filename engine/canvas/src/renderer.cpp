@@ -258,6 +258,11 @@ CanvasRenderer::~CanvasRenderer() {
             device_->destroy_texture(texture);
         }
     }
+    for (const auto& [path, entry] : materials_) {
+        if (entry.shader != render::ShaderId::None) {
+            device_->destroy_shader(entry.shader);
+        }
+    }
 }
 
 void CanvasRenderer::before_tick(const world::World& world) {
@@ -506,19 +511,80 @@ Result<const CanvasRenderer::Texture*> CanvasRenderer::texture(const std::string
     return &entry;
 }
 
-Result<render::Material> CanvasRenderer::material(const world::Sprite2D& sprite,
-                                                  render::Filter filter, double time,
-                                                  render::LightMode* light_mode) {
-    auto it = materials_.find(sprite.material);
+Result<const CanvasRenderer::MaterialEntry*>
+CanvasRenderer::material_entry(const std::string& path) {
+    auto it = materials_.find(path);
     if (it == materials_.end()) {
-        auto loaded = assets_->load<CanvasMaterial>(sprite.material);
+        auto loaded = assets_->load<CanvasMaterial>(path);
         if (!loaded) {
             return loaded.error();
         }
-        it = materials_.emplace(sprite.material, std::move(loaded).value()).first;
+        MaterialEntry entry;
+        entry.material = std::move(loaded).value();
+        it = materials_.emplace(path, std::move(entry)).first;
+    }
+    MaterialEntry& entry = it->second;
+    const bool changed = entry.material_version != entry.material.version() ||
+                         (entry.source && entry.source_version != entry.source.version());
+    if (changed) {
+        entry.material_version = entry.material.version();
+        entry.error.clear();
+        const CanvasMaterial& material = *entry.material;
+        std::shared_ptr<const render::CompiledShader> compiled;
+        if (!material.shader.empty()) {
+            // The shader file is an asset, so poll() reloads it and the shader is made again.
+            auto made = compile_material_shader(
+                material, [&](std::string_view file) -> Result<std::string> {
+                    if (!entry.source || entry.source.path() != file) {
+                        auto source = assets_->load<std::string>(file);
+                        if (!source) {
+                            return source.error();
+                        }
+                        entry.source = std::move(source).value();
+                    }
+                    return *entry.source;
+                });
+            if (made) {
+                compiled = std::move(made).value();
+            } else {
+                entry.error = made.error().message;
+            }
+        }
+        if (material.shader.empty() || material.compiled) {
+            entry.source = {};
+        }
+        entry.source_version = entry.source ? entry.source.version() : 0;
+        if (compiled != entry.compiled) {
+            if (entry.shader != render::ShaderId::None) {
+                device_->destroy_shader(entry.shader);
+                entry.shader = render::ShaderId::None;
+            }
+            entry.compiled = compiled;
+            if (compiled) {
+                auto shader = device_->create_shader(*compiled);
+                if (shader) {
+                    entry.shader = shader.value();
+                } else {
+                    entry.error = material.shader + ": " + shader.error().message;
+                }
+            }
+        }
+    }
+    if (!entry.error.empty()) {
+        return make_error(ErrorCode::InvalidArgument, entry.error);
+    }
+    return &entry;
+}
+
+Result<render::Material> CanvasRenderer::material(const world::Sprite2D& sprite,
+                                                  render::Filter filter, double time,
+                                                  render::LightMode* light_mode) {
+    auto entry = material_entry(sprite.material);
+    if (!entry) {
+        return entry.error();
     }
     std::string failed;
-    auto instance = instantiate(*it->second, sprite.material_params, time, &failed);
+    auto instance = instantiate(*entry.value()->material, sprite.material_params, time, &failed);
     if (!instance) {
         return make_error(instance.error().code,
                           "material_params/" + failed + ": " + instance.error().message);
@@ -527,6 +593,7 @@ Result<render::Material> CanvasRenderer::material(const world::Sprite2D& sprite,
     out.blend = instance.value().blend;
     *light_mode = instance.value().light_mode;
     out.program = std::move(instance.value().program);
+    out.shader = entry.value()->shader;
     for (std::size_t slot = 0; slot < out.textures.size(); ++slot) {
         const MaterialTextureRef& ref = instance.value().textures.at(slot);
         if (ref.path.empty()) {
