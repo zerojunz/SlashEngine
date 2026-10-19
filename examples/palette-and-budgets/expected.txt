@@ -1,0 +1,61 @@
+storyboard.edit {"by":"art-director","edits":[{"id":"palette/pico","set":{"colors":{"black":"#000000","brown":"#ab5236","dark_blue":"#1d2b53","dark_green":"#008751","white":"#fff1e8","yellow":"#ffec27"},"links":["art/sprites"],"name":"PICO-8","summary":"The sprites use only these colors."},"version":null},{"id":"budget/textures","set":{"name":"Textures","summary":"No texture over 256 pixels a side.","texture_size":256},"version":null}],"why":"Record the art style"}
+{
+  "changes": {
+    "budget/textures": "a623bc33",
+    "palette/pico": "a51dae84"
+  },
+  "seq": 1
+}
+storyboard.brief {"files":["art/sprites/crate.png"]}
+{
+  "entries": [
+    {
+      "fields": {
+        "name": "Textures",
+        "summary": "No texture over 256 pixels a side.",
+        "texture_size": 256
+      },
+      "id": "budget/textures",
+      "version": "a623bc33"
+    },
+    {
+      "fields": {
+        "colors": {
+          "black": "#000000",
+          "brown": "#ab5236",
+          "dark_blue": "#1d2b53",
+          "dark_green": "#008751",
+          "white": "#fff1e8",
+          "yellow": "#ffec27"
+        },
+        "links": ["art/sprites"],
+        "name": "PICO-8",
+        "summary": "The sprites use only these colors."
+      },
+      "id": "palette/pico",
+      "version": "a51dae84"
+    }
+  ],
+  "related": [],
+  "seq": 1
+}
+storyboard.check {}
+{
+  "errors": [
+    {
+      "file": "art/sprites/crate.png",
+      "message": "has 64 pixels in 2 colors not in palette/pico: #2a1a10 at (0, 0), nearest \"black\" #000000; #b05530 at (2, 1), nearest \"brown\" #ab5236",
+      "path": ""
+    },
+    {
+      "file": "art/title.png",
+      "message": "is 320x64 pixels; budget/textures allows 256 on a side",
+      "path": ""
+    }
+  ],
+  "valid": false
+}
+storyboard.check {}
+{
+  "valid": true
+}

@@ -3430,7 +3430,11 @@ Reply storyboard_check(Session& session, const json::Value& /*params*/) {
     if (!files) {
         return Reply::failure(files.error());
     }
+    std::vector<std::string> textures;
     for (const std::string& path : files.value()) {
+        if (path.ends_with(".png") || path.ends_with(".bmp")) {
+            textures.push_back(path);
+        }
         if (path == open ||
             (!path.ends_with(world::kSceneSuffix) && !path.ends_with(world::kPrefabSuffix))) {
             continue;
@@ -3447,6 +3451,23 @@ Reply storyboard_check(Session& session, const json::Value& /*params*/) {
     }
     storyboard::check_story_refs(entries, open.empty() ? "(open scene)" : open,
                                  session.save().scene, errors);
+    // Textures against the palettes and budgets that cover them.
+    storyboard::check_textures(
+        entries, textures,
+        [&session](std::string_view path) -> std::optional<storyboard::Texture> {
+            auto bytes = session.read_project_file(path);
+            if (!bytes || !bytes.value()) {
+                return std::nullopt;
+            }
+            auto image = render::decode_image(*bytes.value());
+            if (!image) {
+                return std::nullopt;
+            }
+            return storyboard::Texture{.width = image.value().width,
+                                       .height = image.value().height,
+                                       .pixels = std::move(image.value().pixels)};
+        },
+        errors);
 
     json::Value result;
     result["valid"] = errors.empty();
@@ -5184,8 +5205,8 @@ void register_builtin_commands(Registry& registry) {
     registry.add({
         .name = "storyboard.check",
         .description = "Call after a task: checks storyboard files, references, glossary words "
-                       "to avoid and StoryRef IDs in scenes and prefabs; missing link targets are "
-                       "warnings.",
+                       "to avoid, StoryRef IDs in scenes and prefabs, and textures against "
+                       "palettes and budgets; missing link targets are warnings.",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema(),

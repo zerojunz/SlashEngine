@@ -126,7 +126,7 @@ rendering on top.
   - [x] A body's shapes in child entities, as Godot's `CollisionShape2D` nodes
   - [x] `top_level` and `z_as_relative` off
 - [x] Asset handles with reference counting and hot reload, and an `asset.list` command
-- [ ] Storyboard: the game's style, world, story, design rules, names, decisions and open work
+- [x] Storyboard: the game's style, world, story, design rules, names, decisions and open work
       as typed files in the project, so every agent works from the same facts
       ([design](design.md#storyboard))
   - [x] `storyboard/*.json` files with a schema (`slash-cli schema storyboard`), every entry
@@ -140,7 +140,8 @@ rendering on top.
   - [x] `storyboard.check`: references, glossary names and `StoryRef` IDs, checked by
         `scene validate`, `project validate` and CI
   - [x] Storyboard checks in the headless test command
-  - [ ] Palette and budget checks once sprites, textures and meshes exist
+  - [x] Palette and budget checks on textures; a budget's triangle count waits on meshes in
+        milestone 7
   - [x] A journal of who changed what and why, and open work that says which agent is on it
         and what it touches, so agents can see what others are doing
   - [x] `slash-cli init` writes a starter storyboard, and the MCP instructions tell agents to
@@ -648,7 +649,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Localization | CSV and `.po` translation tables, any source language, a runtime language setting, and commands to extract, draft and check translations | 8 | Planned |
 | Video playback | AV1 through dav1d | 8 | Planned |
 | Accessibility | AccessKit | 8 | Planned |
-| Storyboard | Style, world, story, design rules and decisions as typed project files that agents query and checks enforce | 5, 6 | In progress: files, commands and checks are done; palette and budget checks wait on sprites and meshes; model review and the project map in 6 |
+| Storyboard | Style, world, story, design rules and decisions as typed project files that agents query and checks enforce | 5, 6 | In progress: files, commands and checks, palette and texture budget checks included, are done; model review and the project map in 6; triangle budgets with meshes in 7 |
 | Analytics, ads and in-app purchases | One API for analytics, ads and purchases; StoreKit, Play Billing and a developer-chosen analytics endpoint in the repo, ad networks as outside adapters | 8 | Planned |
 | Closed vendor SDKs | SDK packages: an `sdk.json` per SDK that exports fetch, check and link on all six platforms, with JNI and Objective-C bridges and engine interfaces for the glue | 6 | Planned |
 | One-command export | `slash-cli export` to macOS, Windows, Linux, iOS, Android and web | 4 | In progress: every platform exports (4a, 4b); building them all from one Mac is next |

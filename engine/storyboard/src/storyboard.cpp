@@ -4,8 +4,10 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdlib>
 #include <map>
 #include <set>
+#include <unordered_map>
 #include <utility>
 
 namespace slash::storyboard {
@@ -21,17 +23,21 @@ std::vector<Kind> make_kinds() {
     return {
         {.name = "palette",
          .file = "style",
-         .doc = "Named colors the art uses.",
+         .doc = "Named colors the art uses; textures in its links may use only these.",
          .fields = {{.name = "colors",
                      .type = Colors,
-                     .doc = R"(Color names mapped to "#rrggbb", e.g. {"sky": "#87ceeb"}.)"}}},
+                     .doc = R"(Color names mapped to "#rrggbb", e.g. {"sky": "#87ceeb"}.)"},
+                    {.name = "tolerance",
+                     .type = Integer,
+                     .doc = "How far, 0 to 255 per channel, a pixel may be from a color; 0 if "
+                            "unset."}}},
         {.name = "tone", .file = "style", .doc = "The mood and voice of the game, or of a part."},
         {.name = "reference",
          .file = "style",
          .doc = "Art or writing to follow; put the file in links."},
         {.name = "budget",
          .file = "style",
-         .doc = "Limits for a class of assets.",
+         .doc = "Limits for the assets in its links, or for all.",
          .fields = {{.name = "triangles", .type = Integer, .doc = "Most triangles per model."},
                     {.name = "texture_size",
                      .type = Integer,
@@ -217,6 +223,11 @@ bool contains_text(const json::Value& value, std::string_view needle) {
     }
 }
 
+// Whether a link names the path, or a folder the path is in.
+bool covers(std::string_view link, std::string_view path) {
+    return path.starts_with(link) && (path.size() == link.size() || path[link.size()] == '/');
+}
+
 bool links_to(const Kind& kind, const json::Value& entry, std::string_view target) {
     bool found = false;
     for_each_field(kind, [&](const Field& field) {
@@ -225,7 +236,7 @@ bool links_to(const Kind& kind, const json::Value& entry, std::string_view targe
             return;
         }
         found = std::ranges::any_of(value->as_array(), [&](const json::Value& path) {
-            return path.is_string() && path.as_string() == target;
+            return path.is_string() && covers(path.as_string(), target);
         });
     });
     if (found) {
@@ -917,13 +928,203 @@ void check_story_refs(const json::Object& entries, std::string_view file,
     }
 }
 
+void check_textures(const json::Object& entries, const std::vector<std::string>& textures,
+                    const std::function<std::optional<Texture>(std::string_view path)>& load,
+                    std::vector<FileError>& errors) {
+    struct Color {
+        std::string name;
+        std::array<int, 3> rgb{};
+    };
+    struct Palette {
+        std::string id;
+        std::vector<Color> colors;
+        int tolerance = 0;
+    };
+    struct Style {
+        std::string id;
+        const json::Value* entry;
+        bool everywhere;
+    };
+    std::vector<Style> palettes;
+    std::vector<Style> budgets;
+    for (const auto& [id, entry] : entries) {
+        const Kind* kind = kind_of(id);
+        if (kind == nullptr || (kind->name != "palette" && kind->name != "budget")) {
+            continue;
+        }
+        // A palette checks only what it links: painted art, normal maps and light textures rarely
+        // keep to one.
+        const bool palette = kind->name == "palette";
+        const bool everywhere =
+            !palette && entry.find("links") == nullptr && entry.find("refs") == nullptr;
+        (palette ? palettes : budgets).push_back({id, &entry, everywhere});
+    }
+    const auto applies = [](const Style& style, const std::string& path) {
+        if (style.everywhere) {
+            return true;
+        }
+        const json::Value* links = style.entry->find("links");
+        return links != nullptr && links->is_array() &&
+               std::ranges::any_of(links->as_array(), [&](const json::Value& link) {
+                   return link.is_string() && covers(link.as_string(), path);
+               });
+    };
+    const auto hex = [](const std::string& text, std::size_t at) {
+        const auto digit = [](char c) { return c <= '9' ? c - '0' : (c | 0x20) - 'a' + 10; };
+        return (digit(text[at]) * 16) + digit(text[at + 1]);
+    };
+    const auto integer = [](const json::Value& entry, std::string_view field) {
+        const json::Value* value = entry.find(field);
+        return value != nullptr && value->is_int() ? value->as_int() : std::int64_t{0};
+    };
+
+    for (const std::string& path : textures) {
+        std::vector<const Style*> limits;
+        std::vector<Palette> covering;
+        for (const Style& budget : budgets) {
+            if (integer(*budget.entry, "texture_size") > 0 && applies(budget, path)) {
+                limits.push_back(&budget);
+            }
+        }
+        for (const Style& palette : palettes) {
+            const json::Value* colors = palette.entry->find("colors");
+            if (colors == nullptr || !colors->is_object() || !applies(palette, path)) {
+                continue;
+            }
+            Palette& used = covering.emplace_back();
+            used.id = palette.id;
+            used.tolerance = static_cast<int>(
+                std::clamp<std::int64_t>(integer(*palette.entry, "tolerance"), 0, 255));
+            for (const auto& [name, color] : colors->as_object()) {
+                if (color.is_string() && is_color(color.as_string())) {
+                    const std::string& text = color.as_string();
+                    used.colors.push_back({name, {hex(text, 1), hex(text, 3), hex(text, 5)}});
+                }
+            }
+        }
+        if (limits.empty() && covering.empty()) {
+            continue;
+        }
+        const std::optional<Texture> texture = load(path);
+        if (!texture) {
+            continue;
+        }
+        for (const Style* budget : limits) {
+            const std::int64_t most = integer(*budget->entry, "texture_size");
+            if (texture->width > most || texture->height > most) {
+                errors.push_back({path, "",
+                                  "is " + std::to_string(texture->width) + "x" +
+                                      std::to_string(texture->height) + " pixels; " + budget->id +
+                                      " allows " + std::to_string(most) + " on a side"});
+            }
+        }
+        if (covering.empty()) {
+            continue;
+        }
+        // Pixels off every covering palette, by color, with where each color is first seen.
+        struct Off {
+            std::uint32_t x = 0;
+            std::uint32_t y = 0;
+        };
+        std::unordered_map<std::uint32_t, Off> off;
+        std::size_t off_pixels = 0;
+        std::unordered_map<std::uint32_t, bool> seen; // whether each color seen is in a palette
+        const std::size_t count = std::size_t{texture->width} * texture->height;
+        for (std::size_t i = 0; i < count && (i * 4) + 3 < texture->pixels.size(); ++i) {
+            const std::uint8_t* pixel = &texture->pixels[i * 4];
+            if (pixel[3] == 0) {
+                continue;
+            }
+            const std::uint32_t key =
+                (std::uint32_t{pixel[0]} << 16U) | (std::uint32_t{pixel[1]} << 8U) | pixel[2];
+            auto known = seen.find(key);
+            if (known == seen.end()) {
+                const std::array<int, 3> rgb = {pixel[0], pixel[1], pixel[2]};
+                const bool matches = std::ranges::any_of(covering, [&](const Palette& palette) {
+                    return std::ranges::any_of(palette.colors, [&](const Color& color) {
+                        return std::abs(color.rgb[0] - rgb[0]) <= palette.tolerance &&
+                               std::abs(color.rgb[1] - rgb[1]) <= palette.tolerance &&
+                               std::abs(color.rgb[2] - rgb[2]) <= palette.tolerance;
+                    });
+                });
+                known = seen.emplace(key, matches).first;
+            }
+            if (known->second) {
+                continue;
+            }
+            ++off_pixels;
+            off.try_emplace(key, Off{static_cast<std::uint32_t>(i % texture->width),
+                                     static_cast<std::uint32_t>(i / texture->width)});
+        }
+        if (off.empty()) {
+            continue;
+        }
+        std::string names;
+        for (std::size_t i = 0; i < covering.size(); ++i) {
+            if (i > 0) {
+                names += i + 1 == covering.size() ? " or " : ", ";
+            }
+            names += covering[i].id;
+        }
+        // The first few colors in the order they appear, each with the nearest palette color.
+        std::vector<std::pair<std::uint32_t, Off>> first(off.begin(), off.end());
+        std::ranges::sort(first, [](const auto& a, const auto& b) {
+            return std::pair(a.second.y, a.second.x) < std::pair(b.second.y, b.second.x);
+        });
+        static constexpr std::string_view kHex = "0123456789abcdef";
+        const auto written = [](const std::array<int, 3>& rgb) {
+            std::string text = "#";
+            for (const int channel : rgb) {
+                text += kHex[static_cast<std::size_t>(channel) >> 4U];
+                text += kHex[static_cast<std::size_t>(channel) & 0xFU];
+            }
+            return text;
+        };
+        std::string message = "has " + std::to_string(off_pixels) +
+                              (off_pixels == 1 ? " pixel" : " pixels") + " in " +
+                              std::to_string(off.size()) +
+                              (off.size() == 1 ? " color" : " colors") + " not in " + names + ": ";
+        constexpr std::size_t kShown = 3;
+        for (std::size_t i = 0; i < first.size() && i < kShown; ++i) {
+            const auto [key, at] = first[i];
+            const std::array<int, 3> rgb = {static_cast<int>(key >> 16U),
+                                            static_cast<int>((key >> 8U) & 0xFFU),
+                                            static_cast<int>(key & 0xFFU)};
+            const Color* nearest = nullptr;
+            int best = 0;
+            for (const Palette& palette : covering) {
+                for (const Color& color : palette.colors) {
+                    int distance = 0;
+                    for (std::size_t c = 0; c < 3; ++c) {
+                        distance += (color.rgb[c] - rgb[c]) * (color.rgb[c] - rgb[c]);
+                    }
+                    if (nearest == nullptr || distance < best) {
+                        nearest = &color;
+                        best = distance;
+                    }
+                }
+            }
+            message += (i == 0 ? "" : "; ") + written(rgb) + " at (" + std::to_string(at.x) + ", " +
+                       std::to_string(at.y) + ")";
+            if (nearest != nullptr) {
+                message += ", nearest " + quoted(nearest->name) + " " + written(nearest->rgb);
+            }
+        }
+        if (first.size() > kShown) {
+            message += "; and " + std::to_string(first.size() - kShown) + " more";
+        }
+        errors.push_back({path, "", std::move(message)});
+    }
+}
+
 Brief brief(const json::Object& entries, const std::vector<std::string>& ids,
             const std::vector<std::string>& paths) {
-    const std::set<std::string, std::less<>> linked(paths.begin(), paths.end());
     const auto links_any = [&](const Kind& kind, const json::Value& entry) {
         bool found = false;
         for_each_link(kind, entry, [&](const std::string& link, const std::string& /*path*/) {
-            found = found || linked.contains(link);
+            found = found || std::ranges::any_of(paths, [&](const std::string& path) {
+                        return covers(link, path);
+                    });
         });
         return found;
     };
