@@ -3,6 +3,7 @@
 
 #include <doctest/doctest.h>
 
+#include <cstdint>
 #include <map>
 #include <optional>
 #include <string>
@@ -378,6 +379,104 @@ TEST_CASE("a brief holds the entries a task touches and names the rest") {
         storyboard::brief(entries, {"place/docks", "place/nowhere"}, {});
     CHECK(ids(by_id.entries) == std::vector<std::string>{"place/docks", "rule/one_hit"});
     CHECK(by_id.related.empty());
+}
+
+TEST_CASE("a link to a folder covers what is in it") {
+    json::Object entries = cast();
+    entries["palette/dock"] = parse(R"({"name": "Dock", "colors": {"tar": "#202020"},
+                                       "links": ["art/docks"]})");
+    const auto ids = [](const json::Array& items) {
+        std::vector<std::string> out;
+        for (const json::Value& item : items) {
+            out.push_back(item.find("id")->as_string());
+        }
+        return out;
+    };
+    CHECK(ids(storyboard::query(entries, {.linked = "art/docks/crate.png"})) ==
+          std::vector<std::string>{"palette/dock"});
+    CHECK(ids(storyboard::query(entries, {.linked = "art/docks"})) ==
+          std::vector<std::string>{"palette/dock"});
+    CHECK(ids(storyboard::query(entries, {.linked = "art/docks2/crate.png"})).empty());
+    CHECK(ids(storyboard::brief(entries, {}, {"art/docks/rope.png"}).entries) ==
+          std::vector<std::string>{"palette/dock"});
+}
+
+TEST_CASE("textures keep to the palettes and budgets that cover them") {
+    // Textures of 2x2 pixels: row by row, RGBA.
+    const auto texture = [](std::uint32_t width, std::uint32_t height,
+                            std::vector<std::uint8_t> pixels) {
+        return storyboard::Texture{.width = width, .height = height, .pixels = std::move(pixels)};
+    };
+    std::map<std::string, storyboard::Texture, std::less<>> textures = {
+        // On the palette, with a transparent pixel of any color.
+        {"art/sprites/hero.png",
+         texture(2, 2, {0, 0, 0, 255, 255, 0, 77, 255, 9, 9, 9, 0, 255, 241, 232, 128})},
+        // Two colors off it, one of them twice; one within the second palette's tolerance.
+        {"art/sprites/crate.png",
+         texture(2, 2, {255, 0, 0, 255, 0, 255, 0, 255, 255, 0, 0, 255, 36, 30, 44, 255})},
+        {"art/title.png", texture(512, 128, {})},
+        {"ui/icon.png", texture(64, 64, {})},
+    };
+    json::Object entries = cast();
+    entries["budget/textures"] = parse(R"({"name": "Textures", "texture_size": 256})");
+    entries["budget/ui"] =
+        parse(R"({"name": "UI", "texture_size": 32, "links": ["ui", "missing/folder"]})");
+    entries["budget/models"] = parse(R"({"name": "Models", "triangles": 500})");
+    entries["palette/pico"] = parse(R"({"name": "PICO-8", "links": ["art/sprites"],
+        "colors": {"black": "#000000", "red": "#FF004D", "white": "#fff1e8"}})");
+    entries["palette/stone"] = parse(R"({"name": "Stone", "links": ["art/sprites/crate.png"],
+        "colors": {"stone": "#202428"}, "tolerance": 8})");
+    // With no links, a palette guides the art but checks nothing.
+    entries["palette/mood"] = parse(R"({"name": "Mood", "colors": {"teal": "#008080"}})");
+
+    std::vector<std::string> loaded;
+    const auto load = [&](std::string_view path) -> std::optional<storyboard::Texture> {
+        loaded.emplace_back(path);
+        const auto found = textures.find(path);
+        if (found == textures.end()) {
+            return std::nullopt;
+        }
+        return found->second;
+    };
+    std::vector<storyboard::FileError> errors;
+    storyboard::check_textures(
+        entries, {"art/sprites/hero.png", "art/sprites/crate.png", "art/title.png", "ui/icon.png"},
+        load, errors);
+    std::vector<std::string> found;
+    for (const storyboard::FileError& error : errors) {
+        CHECK(error.path.empty());
+        found.push_back(error.file + " " + error.message);
+    }
+    CHECK(found ==
+          std::vector<std::string>{
+              "art/sprites/crate.png has 3 pixels in 2 colors not in palette/pico or "
+              "palette/stone: #ff0000 at (0, 0), nearest \"red\" #ff004d; #00ff00 at (1, 0), "
+              "nearest \"stone\" #202428",
+              "art/title.png is 512x128 pixels; budget/textures allows 256 on a side",
+              "ui/icon.png is 64x64 pixels; budget/ui allows 32 on a side",
+          });
+
+    // Only what something covers is read: with no budget for every texture, the title is left.
+    entries.erase("budget/textures");
+    loaded.clear();
+    errors.clear();
+    storyboard::check_textures(entries, {"art/sprites/hero.png", "art/title.png"}, load, errors);
+    CHECK(loaded == std::vector<std::string>{"art/sprites/hero.png"});
+    CHECK(errors.empty());
+
+    // A texture that can't be read is left to whatever reads it, and at most three colors are
+    // named.
+    std::vector<std::uint8_t> rainbow;
+    for (std::uint8_t i = 1; i <= 5; ++i) {
+        rainbow.insert(rainbow.end(), {static_cast<std::uint8_t>(i * 40), 0, 0, 255});
+    }
+    textures["art/sprites/sky.png"] = texture(5, 1, rainbow);
+    storyboard::check_textures(entries, {"art/sprites/gone.png", "art/sprites/sky.png"}, load,
+                               errors);
+    REQUIRE(errors.size() == 1);
+    CHECK(contains(errors[0].message, "has 5 pixels in 5 colors not in palette/pico: #280000 at "
+                                      "(0, 0), nearest \"black\" #000000; #500000 at (1, 0)"));
+    CHECK(errors[0].message.ends_with("; and 2 more"));
 }
 
 TEST_CASE("changes_since reads the journal lines after a seq") {
