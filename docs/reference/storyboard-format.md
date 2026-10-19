@@ -67,7 +67,7 @@ Every entry has `name` and may have the common fields:
 | `summary` | string | One line on what it is |
 | `text` | string | Anything longer, in full |
 | `refs` | list of IDs | Other entries it relates to |
-| `links` | list of paths | Scenes, assets and source files it is about, relative to the project folder |
+| `links` | list of paths | Scenes, assets, source files and folders it is about, relative to the project folder; a folder covers everything in it |
 | `tags` | list of strings | Labels for filtering |
 
 Each kind adds its own fields. A field that names another entry must name one that exists, and of
@@ -75,10 +75,10 @@ the kind shown.
 
 | Kind | File | Fields besides the common ones | For |
 | --- | --- | --- | --- |
-| `palette` | style | `colors`: names mapped to `"#rrggbb"` | Named colors the art uses |
+| `palette` | style | `colors`: names mapped to `"#rrggbb"`; `tolerance` (integer, 0 to 255) | Named colors the art uses; the textures in its `links` may use only these |
 | `tone` | style | | The mood and voice of the game, or of a part |
 | `reference` | style | | Art or writing to follow; put the file in `links` |
-| `budget` | style | `triangles`, `texture_size` (integers) | Limits for a class of assets |
+| `budget` | style | `triangles`, `texture_size` (integers) | Limits for the assets in its `links`, or for all |
 | `character` | world | `faction` (faction), `home` (place), `traits` (strings), `voice` | A person or creature |
 | `place` | world | `region` (place) | A location |
 | `faction` | world | `leader` (character) | A group, side or organization |
@@ -128,7 +128,11 @@ storyboard after a task. It reports as errors:
 - a reference to an entry that does not exist, or is of the wrong kind;
 - a word that a `term` lists in `avoid`, anywhere in another entry's text, matched as a whole
   word and ignoring case;
-- a `StoryRef` ID in a scene or prefab that names no entry, with the closest existing ID.
+- a `StoryRef` ID in a scene or prefab that names no entry, with the closest existing ID;
+- a texture (`.png` or `.bmp`) larger on a side than a `budget`'s `texture_size`;
+- a texture with pixels in a color no `palette` covering it has, naming the first few colors,
+  where each first appears and the nearest palette color. Fully transparent pixels don't count,
+  and `tolerance` lets each channel be that far off, for art that was filtered or compressed.
 
 A link to a file that does not exist is a warning, since open work can link files still to be
 made. `slash-cli project validate` runs the same check, so the workflow `slash-cli init` writes
@@ -139,8 +143,36 @@ fails a pull request that breaks the storyboard, and `slash-cli scene validate` 
 {"errors":[{"message":"unknown storyboard entry \"character/pilto\"; did you mean \"character/pilot\"?","path":"/entities/player/components/StoryRef/ids/0"}],"valid":false}
 ```
 
-Checking assets against `palette` colors and `budget` limits comes with sprites, textures and
-meshes ([roadmap](../roadmap.md)).
+A `palette` covers the textures in its `links`, files or folders; with no links it guides the art
+(`storyboard.brief` sends it with every task) but checks nothing, since painted art, normal maps
+and light textures rarely keep to a palette. A `budget` covers its links too, or, with neither
+`links` nor `refs`, every texture in the project. When several palettes cover a texture, a pixel
+may use any of their colors. A pixel-art game might keep its sprites to the PICO-8 colors and
+every texture to 256 pixels a side:
+
+```json
+{
+  "entries": {
+    "budget/textures": {
+      "name": "Textures",
+      "texture_size": 256
+    },
+    "palette/pico": {
+      "colors": {"black": "#000000", "dark_blue": "#1d2b53", "red": "#ff004d", "white": "#fff1e8"},
+      "links": ["art/sprites"],
+      "name": "PICO-8"
+    }
+  },
+  "format": 1
+}
+```
+
+```json
+{"errors":[{"file":"art/sprites/crate.png","message":"has 12 pixels in 1 color not in palette/pico: #ff0000 at (3, 4), nearest \"red\" #ff004d","path":""},{"file":"art/title.png","message":"is 512x128 pixels; budget/textures allows 256 on a side","path":""}],"valid":false}
+```
+
+A `budget`'s `triangles` waits on meshes, which come with the 3D work
+([roadmap](../roadmap.md)).
 
 ## Versions
 

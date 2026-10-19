@@ -180,6 +180,21 @@ struct StoryRefId {
 void check_story_refs(const json::Object& entries, std::string_view file,
                       const json::Value& document, std::vector<FileError>& errors);
 
+// A texture for check_textures: its size and straight-alpha RGBA pixels, row by row.
+struct Texture {
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+    std::vector<std::uint8_t> pixels;
+};
+// An error for each texture (by project path) that breaks the style: larger on a side than a
+// budget's texture_size, or with pixels whose color is not in a palette, give or take its
+// tolerance (fully transparent pixels aside). A palette covers the files and folders in its
+// links; a budget covers its links too, or, with neither links nor refs, every texture. Only
+// textures something covers are loaded; load returns nothing for one it can't read.
+void check_textures(const json::Object& entries, const std::vector<std::string>& textures,
+                    const std::function<std::optional<Texture>(std::string_view path)>& load,
+                    std::vector<FileError>& errors);
+
 // The facts a task needs, so an agent reads a few entries rather than the whole storyboard:
 // - entries: the given IDs, entries linked to the given paths, the rules and style that apply
 //   everywhere (those with no links or refs), and the open tasks and live decisions that link to

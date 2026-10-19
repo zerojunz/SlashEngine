@@ -1428,7 +1428,7 @@ with `"full": true`. `seq` is the journal's line count.
 | `ids` | array of IDs | all | Only these entries. An unknown ID fails with `-32001` and a "did you mean" hint |
 | `kind` | string | all | Only entries of this kind, e.g. `"character"` |
 | `text` | string | | Only entries with this text in a field, ignoring case |
-| `linked` | string | | Only entries whose `links` name this project path, or whose references name this ID |
+| `linked` | string | | Only entries whose `links` name this project path or a folder it is in, or whose references name this ID |
 | `full` | boolean | `false` | Return every field, not only `name` and `summary` |
 
 Needs: `read`.
@@ -1448,7 +1448,8 @@ Returns, each with every field:
 
 - the entries named, and the entries named by the `StoryRef` components in those scenes or on
   those entities;
-- entries whose `links` name those files, those scenes, or the prefabs their entities extend;
+- entries whose `links` name those files, those scenes, the prefabs their entities extend, or a
+  folder one of them is in;
 - rules, tones, palettes and budgets that apply everywhere (those with no `links` or `refs`);
 - open tasks and live decisions that link to those files or name those entries.
 
@@ -1490,10 +1491,13 @@ After another agent's edit:
 Checks the storyboard against itself and the project. Errors: a storyboard file that is invalid,
 a reference to an entry that does not exist or is of the wrong kind, a word a glossary `term`
 says to `avoid` (as a whole word, ignoring case), and a `StoryRef` ID in a scene or prefab that
-names no entry. Every `.scene.json` and `.prefab.json` file in the project is read, except those
-in `build/` and in folders whose names start with `.`; the open scene is checked as it is now.
-Warnings: a link to a file that does not exist, since open work can link files still to be made.
-`slash-cli project validate` runs the same check.
+names no entry, and a texture (`.png` or `.bmp`) that breaks the style: larger on a side than a
+`budget`'s `texture_size`, or with pixels in colors a `palette` doesn't have (see the
+[storyboard format](storyboard-format.md#checks)). Every `.scene.json`, `.prefab.json` and
+texture file in the project is read, except those in `build/` and in folders whose names start
+with `.`; the open scene is checked as it is now. Warnings: a link to a file that does not exist,
+since open work can link files still to be made. `slash-cli project validate` runs the same
+check.
 
 Takes no params. Needs: `read`.
 
@@ -1502,7 +1506,7 @@ Takes no params. Needs: `read`.
 ```
 
 ```json
-{"errors":[{"file":"storyboard/world.json","message":"uses \"driver\", which term/courier says to avoid; write \"courier\"","path":"/entries/character~1pilot/summary"},{"file":"scenes/main.scene.json","message":"unknown storyboard entry \"character/pilto\"; did you mean \"character/pilot\"?","path":"/entities/player/components/StoryRef/ids/0"}],"valid":false}
+{"errors":[{"file":"storyboard/world.json","message":"uses \"driver\", which term/courier says to avoid; write \"courier\"","path":"/entries/character~1pilot/summary"},{"file":"scenes/main.scene.json","message":"unknown storyboard entry \"character/pilto\"; did you mean \"character/pilot\"?","path":"/entities/player/components/StoryRef/ids/0"},{"file":"art/crate.png","message":"has 12 pixels in 1 color not in palette/pico: #ff0000 at (3, 4), nearest \"red\" #ff004d","path":""}],"valid":false}
 ```
 
 `errors` and `warnings` are left out when empty, so a clean project returns `{"valid":true}`.
