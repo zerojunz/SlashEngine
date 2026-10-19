@@ -397,6 +397,21 @@ TEST_CASE(".audio.json files play music: playlists, synchronized streams and cli
     CHECK(first(R"({"format": 1, "clips": [{"name": "a", "stream": "a.ogg"},
         {"name": "a", "stream": "b.ogg"}]})")
               .message == "clip 0 already has this name");
+    // A transition for every pair of clips fits, past the 63 clips' count.
+    json::Value many = json::parse(R"({"format": 1, "clips": [], "transitions": []})").value();
+    for (int i = 0; i < 9; ++i) {
+        json::Value clip;
+        clip["name"] = "c" + std::to_string(i);
+        clip["stream"] = "a.ogg";
+        many["clips"].as_array().push_back(std::move(clip));
+        for (int j = 0; j < 9; ++j) {
+            json::Value transition;
+            transition["from"] = "c" + std::to_string(i);
+            transition["to"] = "c" + std::to_string(j);
+            many["transitions"].as_array().push_back(std::move(transition));
+        }
+    }
+    CHECK(audio::validate_stream_file(many).empty());
     CHECK(first(R"({"format": 1, "clips": [{"name": "a", "stream": "a.ogg",
         "auto_advance": "enabled"}]})")
               .message == "auto_advance \"enabled\" needs next_clip");

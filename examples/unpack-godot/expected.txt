@@ -14,6 +14,7 @@ project.import {"dry_run":true,"source":"shipped/jumper.pck","unpack_to":"godot"
   "converted": {
     "animation_libraries": 0,
     "assets": 2,
+    "audio_streams": 0,
     "bus_layouts": 0,
     "input_actions": 1,
     "process_materials": 0,
@@ -60,6 +61,7 @@ project.import {"source":"shipped/jumper.pck","unpack_to":"godot"}
   "converted": {
     "animation_libraries": 0,
     "assets": 2,
+    "audio_streams": 0,
     "bus_layouts": 0,
     "input_actions": 1,
     "process_materials": 0,
