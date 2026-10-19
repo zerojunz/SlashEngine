@@ -119,8 +119,9 @@ refuses.
 
 `storyboard.brief` returns the entries a task touches: those its scenes' and entities' `StoryRef`
 components name, those linked to its files, global rules and live work. `storyboard.check` finds
-broken references, glossary words to avoid and unknown `StoryRef` IDs in every scene and prefab;
-`$cli scene validate` checks a scene's `StoryRef` IDs and `$cli project validate` runs the whole
+broken references, glossary words to avoid, unknown `StoryRef` IDs in every scene and prefab,
+and textures larger than a `budget` or with colors a `palette` covering them lacks
+(`storyboard::check_textures`); `$cli scene validate` checks a scene's `StoryRef` IDs and `$cli project validate` runs the whole
 check. Games made by `$cli init` start with a storyboard and are told to brief before a task and
 check after it.
 

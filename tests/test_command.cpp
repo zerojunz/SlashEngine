@@ -15,6 +15,7 @@
 
 #include <doctest/doctest.h>
 
+#include <array>
 #include <cstdint>
 #include <filesystem>
 #include <memory>
@@ -1082,6 +1083,45 @@ TEST_CASE("storyboard.brief gathers the facts a task needs and storyboard.check 
     CHECK(*checked.find("warnings") == parse(R"([{"file": "storyboard/world.json",
         "message": "links to \"art/crate.png\", which does not exist",
         "path": "/entries/item~1crate/links/1"}])"));
+    std::filesystem::remove_all(root);
+}
+
+TEST_CASE("storyboard.check holds textures to their palettes and budgets") {
+    const std::string root = "command_palette_project";
+    std::filesystem::remove_all(root);
+    REQUIRE(slash::platform::create_directories(root + "/art/sprites").ok());
+    REQUIRE(slash::platform::create_directories(root + "/build/export/art/sprites").ok());
+    // A sprite in one color, and a wide title; a copy in build/ is left to the project's own.
+    const auto png = [&](const std::string& path, std::uint32_t width, std::uint32_t height,
+                         std::array<std::uint8_t, 4> color) {
+        render::Image image{.width = width, .height = height, .pixels = {}};
+        for (std::uint32_t i = 0; i < width * height; ++i) {
+            image.pixels.insert(image.pixels.end(), color.begin(), color.end());
+        }
+        REQUIRE(
+            slash::platform::write_file(root + "/" + path, render::encode_png(image).value()).ok());
+    };
+    png("art/sprites/crate.png", 4, 4, {255, 0, 0, 255});
+    png("build/export/art/sprites/crate.png", 4, 4, {0, 0, 255, 255});
+    png("art/title.png", 300, 20, {255, 0, 77, 255});
+    command::SessionOptions options;
+    options.project_root = root;
+    Engine engine(options);
+    engine.ok("storyboard.edit", R"({"edits": [
+        {"id": "palette/pico", "version": null, "set": {"name": "PICO-8",
+         "colors": {"black": "#000000", "red": "#ff004d"}, "links": ["art/sprites"]}},
+        {"id": "budget/textures", "version": null, "set": {"name": "Textures",
+         "texture_size": 256}}]})");
+    CHECK(engine.ok("storyboard.check") == parse(R"({"errors": [
+        {"file": "art/sprites/crate.png", "path": "",
+         "message": "has 16 pixels in 1 color not in palette/pico: #ff0000 at (0, 0), nearest \"red\" #ff004d"},
+        {"file": "art/title.png", "path": "",
+         "message": "is 300x20 pixels; budget/textures allows 256 on a side"}],
+        "valid": false})"));
+
+    png("art/sprites/crate.png", 4, 4, {255, 0, 77, 255});
+    png("art/title.png", 256, 20, {255, 0, 77, 255});
+    CHECK(engine.ok("storyboard.check") == parse(R"({"valid": true})"));
     std::filesystem::remove_all(root);
 }
 
