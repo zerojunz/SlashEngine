@@ -181,6 +181,12 @@ Usage:
       --project <dir>                Game folder with project.json (default ".")
       --platform <name>              Check only this platform's builds
       --fetch                        Download files not fetched yet, so they are checked too
+  slash-cli sdk lock                 Resolve the packages' Maven dependencies (android
+                                     "maven" in sdk.json) and pin every file by SHA-256 in
+                                     each package's sdk.lock.json, which Android exports need
+      --project <dir>                Game folder with project.json (default ".")
+      --sdk <name>                   Lock only this package
+      --dry-run                      Resolve and print what would be written
   slash-cli toolchain list           List the cross toolchains and tools this machine can
                                      install
   slash-cli toolchain install [name] Download the toolchains exports use to build other
@@ -1415,9 +1421,36 @@ int cmd_build(const std::vector<std::string>& args) {
     return built.step == "options" ? kExitUsage : kExitFailure;
 }
 
+int cmd_sdk_lock(const std::vector<std::string>& args) {
+    slash::exporter::LockSdksOptions options;
+    options.project = ".";
+    for (std::size_t i = 1; i < args.size(); ++i) {
+        const std::string& arg = args[i];
+        const bool has_value = i + 1 < args.size();
+        if (arg == "--project" && has_value) {
+            options.project = args[++i];
+        } else if (arg == "--sdk" && has_value) {
+            options.name = args[++i];
+        } else if (arg == "--dry-run") {
+            options.dry_run = true;
+        } else {
+            return usage_error("unexpected argument for sdk lock: " + arg);
+        }
+    }
+    auto locked = slash::exporter::lock_sdks(options);
+    if (!locked) {
+        return failure("could not lock the SDK packages' Maven dependencies", locked.error());
+    }
+    print(locked.value());
+    return kExitOk;
+}
+
 int cmd_sdk(const std::vector<std::string>& args) {
+    if (!args.empty() && args[0] == "lock") {
+        return cmd_sdk_lock(args);
+    }
     if (args.empty() || (args[0] != "add" && args[0] != "check")) {
-        return usage_error("sdk takes a subcommand: add <source> or check");
+        return usage_error("sdk takes a subcommand: add <source>, check or lock");
     }
     const bool adding = args[0] == "add";
     slash::exporter::AddSdkOptions options;

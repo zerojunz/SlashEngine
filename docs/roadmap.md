@@ -450,7 +450,9 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
   - [x] Exports fetch, check and link each preset's SDKs on all six platforms, Apple frameworks
         without CocoaPods, and list the SDKs each build includes, shipping their license files
         with the game so they stay visible
-  - [ ] Android `.aar` files and Maven packages, their dependencies resolved without Gradle
+  - [x] Android `.aar` files and Maven packages, their dependencies resolved without Gradle
+        (`sdk lock` pins them in `sdk.lock.json`) and their manifests, resources and native
+        libraries merged into the APK
   - [ ] Engine interfaces that SDK glue code implements (ads, analytics, purchases and
         `render::Upscaler` first, achievements and sign-in later), bridges for calling Java and
         Objective-C from C++, and a test backend for each interface, so headless runs and CI
@@ -719,7 +721,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Accessibility | AccessKit | 8 | Planned |
 | Storyboard | Style, world, story, design rules and decisions as typed project files that agents query and checks enforce | 5, 6 | In progress: files, commands and checks, palette and texture budget checks included, are done; model review and the project map in 6; triangle budgets with meshes in 7 |
 | Analytics, ads and in-app purchases | One API for analytics, ads and purchases; StoreKit, Play Billing and a developer-chosen analytics endpoint in the repo, ad networks as outside adapters | 8 | Planned |
-| Closed vendor SDKs | SDK packages: an `sdk.json` per SDK that exports fetch, check and link on all six platforms, with JNI and Objective-C bridges and engine interfaces for the glue | 6 | In progress: packages, exports, `sdk.add` and `sdk.check` |
+| Closed vendor SDKs | SDK packages: an `sdk.json` per SDK that exports fetch, check and link on all six platforms, with JNI and Objective-C bridges and engine interfaces for the glue | 6 | In progress: packages, exports, `sdk.add`, `sdk.check`, Android libraries and Maven |
 | One-command export | `slash-cli export` to macOS, Windows, Linux, iOS, Android and web | 4 | In progress: every platform exports (4a, 4b); building them all from one Mac is next |
 | Large worlds | Double-precision transforms, world streaming | After launch | After launch |
 | Cinematics | Timeline tracks for cameras and events | After launch | After launch |

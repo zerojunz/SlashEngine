@@ -488,15 +488,20 @@ std::vector<std::string> android_configure_args(const AndroidTools& tools, const
 }
 
 bool package_apk(const AndroidTools& tools, const AndroidKey& key, const ApkInfo& info,
-                 const fs::path& tree, const fs::path& work, const fs::path& apk,
-                 const platform::ProcessOptions& process, Failure& failure) {
+                 const fs::path& tree, const AndroidResources& resources, const fs::path& work,
+                 const fs::path& apk, const platform::ProcessOptions& process, Failure& failure) {
     std::error_code error;
     const fs::path apk_work = fs::absolute(work / "apk", error);
     fs::remove_all(apk_work, error);
     const fs::path classes = apk_work / "classes";
     const fs::path dex = apk_work / "dex";
-    fs::create_directories(classes, error);
-    fs::create_directories(dex, error);
+    const fs::path compiled = apk_work / "res";
+    const fs::path gen = apk_work / "gen";
+    for (const fs::path& folder : {classes, dex, compiled, gen}) {
+        if (fs::create_directories(folder, error); error) {
+            break;
+        }
+    }
     if (error) {
         failure = {"package", "could not create " + display(apk_work) + ": " + error.message(), {}};
         return false;
@@ -518,10 +523,6 @@ bool package_apk(const AndroidTools& tools, const AndroidKey& key, const ApkInfo
     }
 
     const fs::path sources = apk_work / "sources.txt";
-    if (!platform::write_file(sources.string(), java_sources(tree / "java"))) {
-        failure = {"package", "could not write " + display(sources), {}};
-        return false;
-    }
     const std::string classes_jar = (apk_work / "classes.jar").string();
     const std::string unaligned = (apk_work / "unaligned.apk").string();
     const std::string aligned = (apk_work / "aligned.apk").string();
@@ -558,6 +559,36 @@ bool package_apk(const AndroidTools& tools, const AndroidKey& key, const ApkInfo
     if (info.debug) {
         link.emplace_back("--debug-mode");
     }
+    // Library resources, compiled one folder at a time and linked as overlays: aapt2 lets the
+    // last one win, so the highest priority goes last. Their packages get R classes, which the
+    // libraries' code reads its resource IDs from.
+    for (std::size_t i = resources.folders.size(); i-- > 0;) {
+        const std::string flat = (compiled / (std::to_string(i) + ".zip")).string();
+        if (!detail::step("package",
+                          {tool(tools, "aapt2", kExe), "compile", "--dir",
+                           fs::absolute(resources.folders[i], error).string(), "-o", flat},
+                          process, failure)) {
+            return false;
+        }
+        link.insert(link.end(), {"-R", flat});
+    }
+    if (!resources.folders.empty()) {
+        link.emplace_back("--auto-add-overlay");
+    }
+    if (!resources.packages.empty()) {
+        std::string packages;
+        for (const std::string& package : resources.packages) {
+            packages += (packages.empty() ? "" : ":") + package;
+        }
+        link.insert(link.end(), {"--java", gen.string(), "--extra-packages", packages});
+    }
+    if (!detail::step("package", link, process, failure)) {
+        return false;
+    }
+    if (!platform::write_file(sources.string(), java_sources(tree / "java") + java_sources(gen))) {
+        failure = {"package", "could not write " + display(sources), {}};
+        return false;
+    }
     if (!detail::step("package",
                       {java_tool(tools, "javac"), "-encoding", "UTF-8", "-source", "11", "-target",
                        "11", "-Xlint:-options", "-nowarn", "-classpath", classpath, "-d",
@@ -568,13 +599,12 @@ bool package_apk(const AndroidTools& tools, const AndroidKey& key, const ApkInfo
                        classes.string(), "."},
                       process, failure) ||
         !detail::step("package", d8, process, failure) ||
-        !detail::step("package", link, process, failure) ||
         // Code and libraries are stored uncompressed: Android maps the libraries straight
-        // from the APK.
+        // from the APK. Large libraries make d8 write several classes*.dex files.
         !detail::step("package",
                       {java_tool(tools, "jar"), "--update", "--no-compress", "--no-manifest",
                        "--file", unaligned, "-C", fs::absolute(tree, error).string(), "lib", "-C",
-                       dex.string(), "classes.dex"},
+                       dex.string(), "."},
                       process, failure) ||
         !detail::step("package",
                       {tool(tools, "zipalign", kExe), "-f", "-P", "16", "4", unaligned, aligned},

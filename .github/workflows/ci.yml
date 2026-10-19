@@ -148,6 +148,15 @@ jobs:
           # before main, so each export proves packages link, ship and load.
           $cli sdk add examples/sdk-package/sdks/hello --project build/empty-game
           cp .github/scripts/hello-sdk-check.cpp build/empty-game/src/
+          if [ "${{ matrix.platform }}" = android ]; then
+            # AndroidX from Google's Maven repository, resolved and pinned without Gradle.
+            mkdir -p build/empty-game/sdks/androidx
+            echo '{"format": 1, "name": "androidx", "version": "1.13.1", "license": "Apache-2.0", "platforms": {"android": {"maven": ["androidx.core:core:1.13.1"]}}}' \
+              > build/empty-game/sdks/androidx/sdk.json
+            $cli sdk add build/empty-game/sdks/androidx --project build/empty-game
+            $cli sdk lock --project build/empty-game
+            cat build/empty-game/sdks/androidx/sdk.lock.json
+          fi
           $cli export ${{ matrix.platform }} --project build/empty-game --test > build/export.json || { cat build/export.json; exit 1; }
           cat build/export.json
           jq -e '.sdks[0].name == "hello"' build/export.json
@@ -233,6 +242,16 @@ jobs:
           unzip -l "$apk" | grep -q "lib/arm64-v8a/libhello.so"
           unzip -l "$apk" | grep -q "lib/x86_64/libhello.so"
           grep -q "uses-permission: name='android.permission.INTERNET'" <<< "$badging"
+          # The example's library folder: its permission, and its string resource in the merged
+          # manifest's <meta-data>.
+          grep -q "uses-permission: name='android.permission.ACCESS_NETWORK_STATE'" <<< "$badging"
+          "$tools/aapt2" dump resources "$apk" | grep -q "string/hello_sdk_version"
+          # AndroidX: its classes dexed, its manifest merged with ${applicationId} filled in.
+          unzip -p "$apk" 'classes*.dex' | grep -aq "Landroidx/core/app/NotificationCompat;"
+          manifest=$("$tools/aapt2" dump xmltree --file AndroidManifest.xml "$apk")
+          grep -q "androidx.core.app.CoreComponentFactory" <<< "$manifest"
+          grep -Eq "\.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" <<< "$manifest"
+          ! grep -q 'applicationId' <<< "$manifest"
           "$tools/apksigner" verify --min-sdk-version 30 "$apk"
           # A throwaway release keystore, passed the way a developer would.
           keytool -genkeypair -noprompt -keystore "$RUNNER_TEMP/release.jks" -storepass ci-only \
