@@ -96,8 +96,9 @@ TEST_CASE("project files are checked field by field") {
           std::vector<std::string>{"/rendering/clear_color/2"});
     CHECK(error_paths("{" + base + R"(, "rendering": {"clear_color": [0, 0, 0]}})") ==
           std::vector<std::string>{"/rendering/clear_color"});
-    CHECK(error_paths("{" + base + R"(, "rendering": {"driver": "opengl"}})") ==
+    CHECK(error_paths("{" + base + R"(, "rendering": {"driver": "webgl"}})") ==
           std::vector<std::string>{"/rendering/driver"});
+    CHECK(error_paths("{" + base + R"(, "rendering": {"driver": "opengl"}})").empty());
     CHECK(error_paths("{" + base + R"(, "gui": {"theme": "../game.theme.json"}})") ==
           std::vector<std::string>{"/gui/theme"});
     CHECK(error_paths("{" + base + R"(, "gui": {"theme": "game.json"}})") ==

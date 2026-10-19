@@ -16,7 +16,8 @@
 struct SDL_Window;
 
 // The renderer's device layer: the few calls every drawing pass is built on, over SDL3's GPU API
-// (Vulkan, Metal or Direct3D 12) or, for headless runs, a null device that draws nothing.
+// (Vulkan, Metal or Direct3D 12), over OpenGL ES 3.0 (WebGL 2 on the web) or, for headless runs,
+// a null device that draws nothing.
 //
 //   auto device = render::create_device({.window = window});
 //   device->begin_frame({.clear = {0.3F, 0.3F, 0.3F, 1.0F}});
@@ -28,9 +29,9 @@ struct SDL_Window;
 // them.
 namespace slash::render {
 
-enum class Backend : std::uint8_t { Null, Vulkan, Metal, D3D12, Software };
+enum class Backend : std::uint8_t { Null, Vulkan, Metal, D3D12, Software, OpenGl };
 
-// "null", "vulkan", "metal", "d3d12" or "software".
+// "null", "vulkan", "metal", "d3d12", "software" or "opengl".
 [[nodiscard]] std::string_view backend_name(Backend backend);
 
 // Straight (not premultiplied) RGBA, each from 0 to 1.
@@ -248,8 +249,10 @@ public:
 struct DeviceOptions {
     // The window to draw to. Without one, only render-target textures can be drawn to.
     SDL_Window* window = nullptr;
-    // "auto" picks the GPU backend SDL finds best; "null", "vulkan", "metal" or "d3d12" asks
-    // for one.
+    // "auto" picks the GPU backend SDL finds best, or OpenGL ES on the web; "null", "vulkan",
+    // "metal", "d3d12" or "opengl" asks for one. "opengl" is OpenGL ES 3.0, as Godot's
+    // compatibility renderer: WebGL 2 on the web, and wherever else the system has OpenGL ES
+    // (Android, Linux), drawing to a window made with SDL_WINDOW_OPENGL.
     std::string driver = "auto";
     // Turns on the GPU API's validation, which is slow.
     bool debug = false;
@@ -263,7 +266,7 @@ struct DeviceOptions {
 [[nodiscard]] Result<void> draw_empty_frame(RenderDevice& device, const Color& clear);
 
 // create_device, or the null device with a logged warning if that fails, so a game still runs
-// where no GPU backend works (a server, or the web until it has a backend).
+// where no GPU backend works, such as a server.
 [[nodiscard]] std::unique_ptr<RenderDevice> create_device_or_null(const DeviceOptions& options);
 
 // The null device: it keeps textures and counts frames and triangles but draws nothing. Reading a

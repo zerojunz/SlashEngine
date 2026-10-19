@@ -149,6 +149,33 @@ vertex vs_main_out vs_main(vs_main_in in [[stage_in]], constant View& _32 [[buff
 
 )msl";
 
+inline constexpr char kMaterialVertexGlsl[] = R"glsl(#version 300 es
+
+layout(std140) uniform View
+{
+    layout(row_major) mat4 view_projection;
+} _32;
+
+layout(location = 0) in vec2 input_position;
+layout(location = 1) in vec2 input_uv;
+layout(location = 2) in vec4 input_color;
+out vec2 v_uv;
+out vec4 v_color;
+out vec2 v_world;
+
+highp mat4 spvWorkaroundRowMajor(highp mat4 wrap) { return wrap; }
+mediump mat4 spvWorkaroundRowMajorMP(mediump mat4 wrap) { return wrap; }
+
+void main()
+{
+    v_uv = input_uv;
+    v_color = input_color;
+    v_world = input_position;
+    gl_Position = vec4(input_position, 0.0, 1.0) * spvWorkaroundRowMajor(_32.view_projection);
+}
+
+)glsl";
+
 alignas(4) inline constexpr unsigned char kMaterialFragmentSpirv[] = {
     0x03, 0x02, 0x23, 0x07, 0x00, 0x00, 0x01, 0x00, 0x0b, 0x00, 0x08, 0x00,
     0xf8, 0x0d, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x11, 0x00, 0x02, 0x00,
@@ -2807,6 +2834,653 @@ R"msl(                }
 }
 
 )msl";
+
+inline constexpr char kMaterialFragmentGlsl[] = R"glsl(#version 300 es
+precision highp float;
+precision highp int;
+
+struct Light
+{
+    highp vec4 color;
+    highp vec4 position;
+    highp vec4 texture_u;
+    highp vec4 texture_v;
+    highp vec4 atlas;
+    highp vec4 shadow;
+    highp vec4 shadow_origin;
+    highp vec4 shadow_color;
+    uvec4 flags;
+    ivec4 range;
+};
+
+layout(std140) uniform Program
+{
+    uvec4 code[64];
+    highp vec4 constants[32];
+    highp vec4 texel;
+    uvec4 counts;
+    ivec4 shading;
+    highp vec4 specular;
+    highp vec4 field;
+    ivec4 layer;
+    highp vec4 ambient;
+    highp vec4 to_lights_x;
+    highp vec4 to_lights_y;
+} _110;
+
+layout(std140) uniform Lights
+{
+    uvec4 light_count;
+    Light lights[64];
+} _728;
+
+uniform highp sampler2D texture0;
+uniform highp sampler2D texture1;
+uniform highp sampler2D texture2;
+uniform highp sampler2D texture3;
+uniform highp sampler2D shadow_map;
+uniform highp sampler2D light_atlas;
+uniform highp sampler2D normal_map;
+uniform highp sampler2D specular_map;
+
+in highp vec2 v_uv;
+in highp vec4 v_color;
+in highp vec2 v_world;
+layout(location = 0) out highp vec4 _entryPointOutput;
+highp vec4 registers[32];
+
+void main()
+{
+    highp vec4 _3560;
+    do
+    {
+        highp vec3 _1768 = vec3(v_world, 1.0);
+        highp float _1773 = dot(_110.to_lights_x.xyz, _1768);
+        highp float _1778 = dot(_110.to_lights_y.xyz, _1768);
+        highp vec2 _1779 = vec2(_1773, _1778);
+        highp vec2 _1781 = dFdx(_1779);
+        highp vec2 _1783 = dFdy(_1779);
+        highp vec2 _1786 = dFdx(v_uv);
+        highp vec2 _1789 = dFdy(v_uv);
+        registers[0] = vec4(v_uv, 0.0, 0.0);
+        registers[1] = v_color;
+        registers[2] = vec4(gl_FragCoord.xy, 0.0, 0.0);
+        registers[3] = _110.texel;
+        uint _1811 = min(_110.counts.x, 64u);
+        highp vec4 _2277;
+        highp vec4 _2319;
+        highp vec4 _2361;
+        for (uint _3497 = 0u; _3497 < _1811; _3497++)
+        {
+            uint _1827 = (_110.code[_3497].x >> 16u) & 255u;
+            uint _2282 = _110.code[_3497].y & 255u;
+            if (_2282 < 32u)
+            {
+                _2277 = registers[_2282];
+            }
+            else
+            {
+                _2277 = _110.constants[(_2282 - 32u) & 31u];
+            }
+            uint _2297 = _110.code[_3497].y >> 8u;
+            uint _2299 = _2297 & 3u;
+            uint _2304 = (_2297 >> 2u) & 3u;
+            uint _2309 = (_2297 >> 4u) & 3u;
+            uint _2314 = (_2297 >> 6u) & 3u;
+            highp vec4 _2317 = vec4(_2277[_2299], _2277[_2304], _2277[_2309], _2277[_2314]);
+            uint _2324 = _110.code[_3497].z & 255u;
+            if (_2324 < 32u)
+            {
+                _2319 = registers[_2324];
+            }
+            else
+            {
+                _2319 = _110.constants[(_2324 - 32u) & 31u];
+            }
+            uint _2339 = _110.code[_3497].z >> 8u;
+            uint _2341 = _2339 & 3u;
+            uint _2346 = (_2339 >> 2u) & 3u;
+            uint _2351 = (_2339 >> 4u) & 3u;
+            uint _2356 = (_2339 >> 6u) & 3u;
+            highp vec4 _2359 = vec4(_2319[_2341], _2319[_2346], _2319[_2351], _2319[_2356]);
+            uint _2366 = _110.code[_3497].w & 255u;
+            if (_2366 < 32u)
+            {
+                _2361 = registers[_2366];
+            }
+            else
+            {
+                _2361 = _110.constants[(_2366 - 32u) & 31u];
+            }
+            uint _2381 = _110.code[_3497].w >> 8u;
+            highp vec4 _2401 = vec4(_2361[_2381 & 3u], _2361[(_2381 >> 2u) & 3u], _2361[(_2381 >> 4u) & 3u], _2361[(_2381 >> 6u) & 3u]);
+            highp vec4 _2416 = vec4(float(_1827 > 0u), float(_1827 > 1u), float(_1827 > 2u), float(_1827 > 3u));
+            highp vec4 _3562;
+            switch (_110.code[_3497].x & 255u)
+            {
+                case 1u:
+                {
+                    _3562 = _2317 + _2359;
+                    break;
+                }
+                case 2u:
+                {
+                    _3562 = _2317 - _2359;
+                    break;
+                }
+                case 3u:
+                {
+                    _3562 = _2317 * _2359;
+                    break;
+                }
+                case 4u:
+                {
+                    _3562 = _2317 / _2359;
+                    break;
+                }
+                case 5u:
+                {
+                    _3562 = _2317 - (_2359 * floor(_2317 / _2359));
+                    break;
+                }
+                case 6u:
+                {
+                    _3562 = pow(max(_2317, vec4(0.0)), _2359);
+                    break;
+                }
+                case 7u:
+                {
+                    _3562 = min(_2317, _2359);
+                    break;
+                }
+                case 8u:
+                {
+                    _3562 = max(_2317, _2359);
+                    break;
+                }
+                case 9u:
+                {
+                    _3562 = vec4(float(_2319[_2341] >= _2277[_2299]), float(_2319[_2346] >= _2277[_2304]), float(_2319[_2351] >= _2277[_2309]), float(_2319[_2356] >= _2277[_2314]));
+                    break;
+                }
+                case 10u:
+                {
+                    _3562 = atan(_2317, _2359);
+                    break;
+                }
+                case 11u:
+                {
+                    _3562 = abs(_2317);
+                    break;
+                }
+                case 12u:
+                {
+                    _3562 = sign(_2317);
+                    break;
+                }
+                case 13u:
+                {
+                    _3562 = floor(_2317);
+                    break;
+                }
+                case 14u:
+                {
+                    _3562 = ceil(_2317);
+                    break;
+                }
+                case 15u:
+                {
+                    _3562 = floor(_2317 + vec4(0.5));
+                    break;
+                }
+                case 16u:
+                {
+                    _3562 = _2317 - floor(_2317);
+                    break;
+                }
+                case 17u:
+                {
+                    _3562 = sqrt(_2317);
+                    break;
+                }
+                case 18u:
+                {
+                    _3562 = sin(_2317);
+                    break;
+                }
+                case 19u:
+                {
+                    _3562 = cos(_2317);
+                    break;
+                }
+                case 20u:
+                {
+                    _3562 = tan(_2317);
+                    break;
+                }
+                case 21u:
+                {
+                    _3562 = asin(_2317);
+                    break;
+                }
+                case 22u:
+                {
+                    _3562 = acos(_2317);
+                    break;
+                }
+                case 23u:
+                {
+                    _3562 = atan(_2317);
+                    break;
+                }
+                case 24u:
+                {
+                    _3562 = exp(_2317);
+                    break;
+                }
+                case 25u:
+                {
+                    _3562 = log(_2317);
+                    break;
+                }
+                case 26u:
+                {
+                    _3562 = clamp(_2317, vec4(0.0), vec4(1.0));
+                    break;
+                }
+                case 27u:
+                {
+                    _3562 = vec4(1.0) - _2317;
+                    break;
+                }
+                case 28u:
+                {
+                    _3562 = -_2317;
+                    break;
+                }
+                case 29u:
+                {
+                    _3562 = _2317 + ((_2359 - _2317) * _2401);
+                    break;
+                }
+                case 30u:
+                {
+                    _3562 = min(max(_2317, _2359), _2401);
+                    break;
+                }
+                case 31u:
+                {
+                    highp vec4 _1996 = clamp((_2401 - _2317) / (_2359 - _2317), vec4(0.0), vec4(1.0));
+                    _3562 = (_1996 * _1996) * (vec4(3.0) - (_1996 * 2.0));
+                    break;
+                }
+                case 32u:
+                {
+                    _3562 = vec4(dot(_2317 * _2416, _2359 * _2416));
+                    break;
+                }
+                case 33u:
+                {
+                    _3562 = vec4(sqrt(dot(_2317 * _2416, _2317 * _2416)));
+                    break;
+                }
+                case 34u:
+                {
+                    _3562 = vec4(sqrt(dot((_2317 - _2359) * _2416, (_2317 - _2359) * _2416)));
+                    break;
+                }
+                case 35u:
+                {
+                    highp float _2046 = sqrt(dot(_2317 * _2416, _2317 * _2416));
+                    highp vec4 _2054 = (_2317 * _2416) / vec4(_2046);
+                    bvec4 _2056 = bvec4(_2046 > 0.0);
+                    _3562 = vec4(_2056.x ? _2054.x : vec4(0.0).x, _2056.y ? _2054.y : vec4(0.0).y, _2056.z ? _2054.z : vec4(0.0).z, _2056.w ? _2054.w : vec4(0.0).w);
+                    break;
+                }
+                case 36u:
+                {
+                    _3562 = vec4(((_1827 & 1u) != 0u) ? _2319[_2341] : _2277[_2299], ((_1827 & 2u) != 0u) ? _2319[_2346] : _2277[_2304], ((_1827 & 4u) != 0u) ? _2319[_2351] : _2277[_2309], ((_1827 & 8u) != 0u) ? _2319[_2356] : _2277[_2314]);
+                    break;
+                }
+                case 37u:
+                {
+                    highp vec2 _2095 = _2317.xy;
+                    highp vec4 _3561;
+                    do
+                    {
+                        if (_1827 == 0u)
+                        {
+                            _3561 = textureLod(texture0, _2095, 0.0);
+                            break;
+                        }
+                        if (_1827 == 1u)
+                        {
+                            _3561 = textureLod(texture1, _2095, 0.0);
+                            break;
+                        }
+                        if (_1827 == 2u)
+                        {
+                            _3561 = textureLod(texture2, _2095, 0.0);
+                            break;
+                        }
+                        _3561 = textureLod(texture3, _2095, 0.0);
+                        break;
+                    } while(false);
+                    _3562 = _3561;
+                    break;
+                }
+                case 38u:
+                {
+                    highp vec4 _2500 = vec4(_2277[_2309], _2277[_2304], -1.0, 0.666666686534881591796875);
+                    highp vec4 _2509 = vec4(_2277[_2304], _2277[_2309], 0.0, -0.3333333432674407958984375);
+                    bvec4 _2510 = bvec4(_2277[_2304] < _2277[_2309]);
+                    highp vec4 _2511 = vec4(_2510.x ? _2500.x : _2509.x, _2510.y ? _2500.y : _2509.y, _2510.z ? _2500.z : _2509.z, _2510.w ? _2500.w : _2509.w);
+                    highp vec4 _2525 = vec4(_2511.xyw, _2277[_2299]);
+                    highp vec4 _2534 = vec4(_2277[_2299], _2511.yzx);
+                    bvec4 _2535 = bvec4(_2277[_2299] < _2511.x);
+                    highp vec4 _2536 = vec4(_2535.x ? _2525.x : _2534.x, _2535.y ? _2525.y : _2534.y, _2535.z ? _2525.z : _2534.z, _2535.w ? _2525.w : _2534.w);
+                    highp float _2544 = _2536.x - min(_2536.w, _2536.y);
+                    _3562 = vec4(abs(_2536.z + ((_2536.w - _2536.y) / ((6.0 * _2544) + 1.0000000133514319600180897396058e-10))), _2544 / (_2536.x + 1.0000000133514319600180897396058e-10), _2536.x, 0.0);
+                    break;
+                }
+                case 39u:
+                {
+                    _3562 = vec4((vec3(1.0) + ((clamp(abs((fract(vec3(_2277[_2299]) + vec3(1.0, 0.666666686534881591796875, 0.3333333432674407958984375)) * 6.0) - vec3(3.0)) - vec3(1.0), vec3(0.0), vec3(1.0)) - vec3(1.0)) * _2277[_2304])) * _2277[_2309], 0.0);
+)glsl"
+R"glsl(                    break;
+                }
+                default:
+                {
+                    _3562 = _2317;
+                    break;
+                }
+            }
+            registers[(_110.code[_3497].x >> 8u) & 31u] = _3562;
+        }
+        if (_110.counts.x == 0u)
+        {
+            highp vec4 _2121 = textureLod(texture0, v_uv, 0.0);
+            if (_110.field.x > 0.0)
+            {
+                highp float _3498;
+                do
+                {
+                    highp float _2628 = max(0.5 * dot(_110.texel.xy * _110.field.x, vec2(1.0) / max(abs(_1786) + abs(_1789), vec2(9.9999999392252902907785028219223e-09))), 1.0);
+                    highp float _2642 = max(min(_2121.x, _2121.y), min(max(_2121.x, _2121.y), _2121.z));
+                    if (_110.field.y > 0.0)
+                    {
+                        _3498 = clamp(((min(_2642, _2121.w) - 0.5) + (clamp(_110.field.y, 0.0, (_110.field.x * 0.5) - 1.0) / _110.field.x)) * _2628, 0.0, 1.0);
+                        break;
+                    }
+                    _3498 = clamp(((_2642 - 0.5) * _2628) + 0.5, 0.0, 1.0);
+                    break;
+                } while(false);
+                registers[0] = vec4(v_color.xyz, v_color.w * _3498);
+            }
+            else
+            {
+                registers[0] = _2121 * v_color;
+            }
+        }
+        if (_110.shading.x == 0)
+        {
+            _3560 = registers[0];
+            break;
+        }
+        bool _2159 = (_110.shading.w & 1) != 0;
+        bool _2163 = (_110.shading.w & 2) != 0;
+        highp vec3 _3504;
+        if (_2159)
+        {
+            highp float _2176 = (_1786.x * _1789.y) - (_1789.x * _1786.y);
+            highp vec2 _3499;
+            highp vec2 _3501;
+            if (abs(_2176) > 9.9999999600419720025001879548654e-13)
+            {
+                highp vec2 _2192 = ((_1781 * _1789.y) - (_1783 * _1786.y)) / vec2(_2176);
+                highp vec2 _2204 = ((_1783 * _1786.x) - (_1781 * _1789.x)) / vec2(_2176);
+                highp vec2 _3500;
+                highp vec2 _3502;
+                if ((dot(_2192, _2192) > 0.0) && (dot(_2204, _2204) > 0.0))
+                {
+                    _3502 = normalize(_2204);
+                    _3500 = normalize(_2192);
+                }
+                else
+                {
+                    _3502 = vec2(0.0, 1.0);
+                    _3500 = vec2(1.0, 0.0);
+                }
+                _3501 = _3502;
+                _3499 = _3500;
+            }
+            else
+            {
+                _3501 = vec2(0.0, 1.0);
+                _3499 = vec2(1.0, 0.0);
+            }
+            highp vec4 _2224 = textureLod(normal_map, v_uv, 0.0);
+            highp float _2228 = (_2224.x * 2.0) - 1.0;
+            highp float _2232 = 1.0 - (_2224.y * 2.0);
+            _3504 = normalize(vec3((_3499 * _2228) + (_3501 * _2232), sqrt(max(0.0, 1.0 - ((_2228 * _2228) + (_2232 * _2232))))));
+        }
+        else
+        {
+            _3504 = vec3(0.0, 0.0, 1.0);
+        }
+        highp vec4 _3505;
+        if (_2163)
+        {
+            _3505 = textureLod(specular_map, v_uv, 0.0) * _110.specular;
+        }
+        else
+        {
+            _3505 = vec4(0.0);
+        }
+        highp vec4 _3509;
+        if (_110.shading.x == 1)
+        {
+            _3509 = registers[0] * _110.ambient;
+        }
+        else
+        {
+            _3509 = registers[0];
+        }
+        uint _2711 = min(_728.light_count.x, 64u);
+        highp float _3507;
+        highp vec4 _3508;
+        _3508 = _3509;
+        _3507 = 0.0;
+        highp float _3568;
+        highp vec4 _3571;
+        for (uint _3506 = 0u; _3506 < _2711; _3508 = _3571, _3507 = _3568, _3506++)
+        {
+            highp vec4 _2735 = _728.lights[_3506].shadow_color;
+            if ((((((_728.lights[_3506].flags.z & uint(_110.shading.y)) == 0u) || (_110.shading.z < _728.lights[_3506].range.x)) || (_110.shading.z > _728.lights[_3506].range.y)) || (_110.layer.x < _728.lights[_3506].range.z)) || (_110.layer.x > _728.lights[_3506].range.w))
+            {
+                _3571 = _3508;
+                _3568 = _3507;
+                continue;
+            }
+            highp vec4 _3511;
+            highp vec3 _3512;
+            if (_728.lights[_3506].position.w < 0.5)
+            {
+                highp vec3 _2783 = vec3(_1773, _1778, 1.0);
+                highp float _2788 = dot(_728.lights[_3506].texture_u.xyz, _2783);
+                highp float _2793 = dot(_728.lights[_3506].texture_v.xyz, _2783);
+                if ((((_2788 < 0.0) || (_2793 < 0.0)) || (_2788 >= 1.0)) || (_2793 >= 1.0))
+                {
+                    _3571 = _3508;
+                    _3568 = _3507;
+                    continue;
+                }
+                _3512 = normalize(vec3(_728.lights[_3506].position.xy - _1779, _728.lights[_3506].position.z));
+                _3511 = _728.lights[_3506].color * textureLod(light_atlas, _728.lights[_3506].atlas.xy + (vec2(_2788, _2793) * _728.lights[_3506].atlas.zw), 0.0);
+            }
+            else
+            {
+                _3512 = normalize(vec3((-_728.lights[_3506].position.xy) * (1.0 - _728.lights[_3506].position.z), _728.lights[_3506].position.z));
+                _3511 = _728.lights[_3506].color;
+            }
+            highp vec4 _3519;
+            if (_2159)
+            {
+                highp vec3 _3513;
+                do
+                {
+                    highp float _2998 = max(0.0, dot(_3504, _3512));
+                    highp vec3 _3003 = (_3511.xyz * registers[0].xyz) * _2998;
+                    if (!_2163)
+                    {
+                        _3513 = _3003;
+                        break;
+                    }
+                    highp float _3026 = exp2((15.0 * _3505.w) + 1.0) * 0.25;
+                    _3513 = _3003 + ((_3505.xyz * _3511.xyz) * ((pow(max(dot(_3504, normalize(vec3(0.0, 0.0, 1.0) + _3512)), 0.0), _3026) * ((_3026 + 8.0) * 0.0397887341678142547607421875)) / max((4.0 * max(_3504.z, 0.0)) * _2998, 0.75)));
+                    break;
+                } while(false);
+                highp vec4 _3418 = _3511;
+                _3418.x = _3513.x;
+                _3418.y = _3513.y;
+                _3418.z = _3513.z;
+                _3519 = _3418;
+            }
+            else
+            {
+                highp vec3 _2874 = _3511.xyz * registers[0].xyz;
+                highp vec4 _3424 = _3511;
+                _3424.x = _2874.x;
+                _3424.y = _2874.y;
+                _3424.z = _2874.z;
+                _3519 = _3424;
+            }
+            highp vec4 _3520;
+            if (_728.lights[_3506].shadow.x >= 0.0)
+            {
+                bool _3071 = _728.lights[_3506].position.w < 0.5;
+                highp float _3534;
+                highp float _3540;
+                if (_3071)
+                {
+                    highp vec2 _3078 = _1779 - _728.lights[_3506].position.xy;
+                    _3540 = sqrt((_3078.x * _3078.x) + (_3078.y * _3078.y)) / _728.lights[_3506].shadow.y;
+                    _3534 = ((atan(_3078.y, _3078.x) * 0.15915493667125701904296875) + 0.5) * 2048.0;
+                }
+                else
+                {
+                    _3540 = (((_1773 * _728.lights[_3506].position.x) + (_1778 * _728.lights[_3506].position.y)) - _728.lights[_3506].shadow_origin.y) / _728.lights[_3506].shadow.y;
+                    _3534 = ((((_1773 * (-_728.lights[_3506].position.y)) + (_1778 * _728.lights[_3506].position.x)) - _728.lights[_3506].shadow_origin.x) / _728.lights[_3506].shadow_origin.z) * 2048.0;
+                }
+                int _3144 = int(_728.lights[_3506].flags.y);
+                int _3147 = int(_728.lights[_3506].shadow.x);
+                highp float _3150 = 0.5 / _728.lights[_3506].shadow.y;
+                int _3152 = -_3144;
+                highp float _3516;
+                _3516 = 0.0;
+                highp float _3574;
+                for (int _3515 = _3152; _3515 <= _3144; _3516 = _3574, _3515++)
+                {
+                    int _3167 = int(floor(_3534 + (float(_3515) * _728.lights[_3506].shadow.z)));
+                    int _3535;
+                    if (_3071)
+                    {
+                        _3535 = ((_3167 % 2048) + 2048) % 2048;
+                    }
+                    else
+                    {
+                        if ((_3167 < 0) || (_3167 >= 2048))
+                        {
+                            _3574 = _3516;
+                            continue;
+                        }
+                        _3535 = _3167;
+                    }
+                    highp float _3536;
+                    do
+                    {
+                        highp vec4 _3234 = texelFetch(shadow_map, ivec3(_3535, _3147, 0).xy, 0);
+                        if (_3234.w < 0.5)
+                        {
+                            _3536 = 2.0;
+                            break;
+                        }
+                        highp vec3 _3243 = roundEven(_3234.xyz * 255.0);
+                        _3536 = (((_3243.x * 65536.0) + (_3243.y * 256.0)) + _3243.z) * 5.9604644775390625e-08;
+                        break;
+                    } while(false);
+                    highp float _3575;
+                    if (((_3536 <= 1.0) && (_3540 > (_3536 + _3150))) && (_3071 || ((_3540 - _3536) < _728.lights[_3506].shadow.w)))
+                    {
+                        _3575 = _3516 + 1.0;
+                    }
+                    else
+                    {
+                        _3575 = _3516;
+                    }
+                    _3574 = _3575;
+                }
+                _2735.w = _2735.w * _3519.w;
+                _3520 = _3519 + ((_2735 - _3519) * (_3516 / float((2 * _3144) + 1)));
+            }
+            else
+            {
+                _3520 = _3519;
+            }
+            highp vec4 _3572;
+            if (_728.lights[_3506].flags.x == 2u)
+            {
+                highp vec3 _2920 = _3508.xyz - (_3520.xyz * _3520.w);
+                highp vec4 _3467 = _3508;
+                _3467.x = _2920.x;
+                _3467.y = _2920.y;
+                _3467.z = _2920.z;
+                _3572 = _3467;
+            }
+            else
+            {
+                highp vec4 _3573;
+                if (_728.lights[_3506].flags.x == 0u)
+                {
+                    highp vec3 _2942 = _3508.xyz + ((_3520.xyz - _3508.xyz) * _3520.w);
+                    highp vec4 _3475 = _3508;
+                    _3475.x = _2942.x;
+                    _3475.y = _2942.y;
+                    _3475.z = _2942.z;
+                    _3573 = _3475;
+                }
+                else
+                {
+                    highp vec3 _2957 = _3508.xyz + (_3520.xyz * _3520.w);
+                    highp vec4 _3482 = _3508;
+                    _3482.x = _2957.x;
+                    _3482.y = _2957.y;
+                    _3482.z = _2957.z;
+                    _3573 = _3482;
+                }
+                _3572 = _3573;
+            }
+            _3571 = _3572;
+            _3568 = _3507 + _3520.w;
+        }
+        highp vec4 _3510;
+        if (_110.shading.x == 2)
+        {
+            highp vec4 _3489 = _3508;
+            _3489.w = _3508.w * _3507;
+            _3510 = _3489;
+        }
+        else
+        {
+            _3510 = _3508;
+        }
+        _3560 = _3510;
+        break;
+    } while(false);
+    _entryPointOutput = _3560;
+}
+
+)glsl";
 
 inline constexpr char kMaterialHlsl[] = R"hlsl(// The material shader: runs a material program (engine/render/include/slash/render/material.hpp)
 // for each pixel, then shades it with the frame's 2D lights (light.hpp). Canvas materials compile

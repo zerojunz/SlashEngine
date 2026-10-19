@@ -19,6 +19,9 @@ struct Config {
     int height = 720;
     // Run with no window or GPU: how agents and CI run games, tests and replays on a server.
     bool headless = false;
+    // Make the window for OpenGL ES, for the opengl render driver. Always on the web, where
+    // games draw with WebGL 2.
+    bool opengl = false;
 };
 
 struct Events {

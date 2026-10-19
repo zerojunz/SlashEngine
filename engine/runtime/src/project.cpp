@@ -143,10 +143,10 @@ json::Value project_schema() {
     clear_color["description"] =
         "What the window shows behind everything, as [r, g, b, a] from 0 to 1.";
     json::Value driver;
-    driver["enum"] = json::Array{"auto", "vulkan", "metal", "d3d12", "null"};
+    driver["enum"] = json::Array{"auto", "vulkan", "metal", "d3d12", "opengl", "null"};
     driver["default"] = Project{}.rendering_driver;
-    driver["description"] = "The GPU backend. auto picks the best one on each machine; null draws "
-                            "nothing.";
+    driver["description"] = "The GPU backend. auto picks the best one on each machine (WebGL 2 on "
+                            "the web); opengl is OpenGL ES 3.0; null draws nothing.";
     json::Value rendering;
     rendering["type"] = "object";
     rendering["additionalProperties"] = false;
