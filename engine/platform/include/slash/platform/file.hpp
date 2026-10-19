@@ -38,6 +38,9 @@ namespace slash::platform {
 // True if a file or directory exists at path.
 [[nodiscard]] bool exists(std::string_view path);
 
+// Deletes a file or an empty directory. Succeeds if there is nothing at path.
+[[nodiscard]] Result<void> remove_file(std::string_view path);
+
 // When a file last changed, and its size. Hot reload compares stamps to notice edits.
 struct FileStamp {
     std::int64_t modified = 0; // nanoseconds since 1970

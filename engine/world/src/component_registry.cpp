@@ -1,6 +1,7 @@
 #include "slash/world/component_registry.hpp"
 
 #include <algorithm>
+#include <entt/core/hashed_string.hpp>
 
 namespace slash::world {
 namespace {
@@ -88,6 +89,21 @@ Result<void> ComponentType::assign(World& world, entt::entity entity, const json
 }
 
 json::Value ComponentType::schema(SchemaBuilder& builder) const {
+    if (ops_.schema == nullptr) {
+        // A stand-in (ComponentRegistry::add_stand_in): its fields, holding anything.
+        json::Value definition;
+        definition["type"] = "object";
+        definition["additionalProperties"] = false;
+        json::Object properties;
+        for (const std::string& field : fields_) {
+            properties[field] = json::Object{};
+        }
+        definition["properties"] = std::move(properties);
+        if (!doc_.empty()) {
+            definition["description"] = doc_;
+        }
+        return builder.define(name_, std::move(definition));
+    }
     json::Value reference = ops_.schema(builder);
     json::Value& definition = builder.definition(name_);
     if (!doc_.empty()) {
@@ -127,19 +143,66 @@ const ComponentType* ComponentRegistry::find(std::string_view name) const {
     return it == types_.end() ? nullptr : it->get();
 }
 
+ComponentType* ComponentRegistry::find_mutable(std::string_view name) {
+    const auto it = std::ranges::find_if(
+        types_, [&](const std::unique_ptr<ComponentType>& type) { return type->name() == name; });
+    return it == types_.end() ? nullptr : it->get();
+}
+
 ComponentType& ComponentRegistry::insert(std::unique_ptr<ComponentType> type) {
     for (const auto& existing : types_) {
         SLASH_ASSERT(existing->type_hash() != type->type_hash(), "component type registered twice");
         SLASH_ASSERT(existing->name() != type->name(), "two component types have the same name");
     }
     types_.push_back(std::move(type));
+    ++revision_;
     return *types_.back();
+}
+
+ComponentType& ComponentRegistry::add_stand_in(std::string name, std::vector<std::string> fields) {
+    const ComponentType::Ops ops{
+        .has = [](const entt::registry& /*registry*/, entt::entity /*entity*/) { return false; },
+        .remove = [](entt::registry& /*registry*/, entt::entity /*entity*/) {},
+        .save = [](const World& /*world*/, entt::entity /*entity*/) -> json::Value {
+            return json::Object{};
+        },
+        // Loading a scene to check it leaves the component out.
+        .assign = [](World& /*world*/, entt::entity /*entity*/, const json::Value& /*fields*/,
+                     std::string& /*path*/) -> Result<void> { return {}; },
+        .schema = nullptr,
+        .rename = [](json::Value& /*fields*/, const EntityRename& /*rename*/) {},
+    };
+    const entt::id_type hash = entt::hashed_string::value(name.data(), name.size());
+    return insert(std::make_unique<ComponentType>(std::move(name), hash, std::move(fields),
+                                                  json::Object{}, ops));
+}
+
+ComponentType& ComponentRegistry::adopt(std::unique_ptr<ComponentType> type) {
+    SLASH_ASSERT(type != nullptr, "adopt needs a component type");
+    return insert(std::move(type));
+}
+
+std::unique_ptr<ComponentType> ComponentRegistry::take(std::string_view name) {
+    const auto it = std::ranges::find_if(
+        types_, [&](const std::unique_ptr<ComponentType>& type) { return type->name() == name; });
+    if (it == types_.end()) {
+        return nullptr;
+    }
+    std::unique_ptr<ComponentType> type = std::move(*it);
+    types_.erase(it);
+    ++revision_;
+    return type;
 }
 
 json::Value& SchemaBuilder::definition(std::string_view name) {
     const auto it = definitions_.find(name);
     SLASH_ASSERT(it != definitions_.end(), "schema definition does not exist");
     return it->second;
+}
+
+json::Value SchemaBuilder::define(std::string_view name, json::Value schema) {
+    definitions_.insert_or_assign(std::string(name), std::move(schema));
+    return reference(name);
 }
 
 json::Value SchemaBuilder::reference(std::string_view name) {

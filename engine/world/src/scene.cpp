@@ -1,5 +1,6 @@
 #include "slash/world/scene.hpp"
 
+#include "slash/core/log.hpp"
 #include "slash/core/text.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/tree2d.hpp"
@@ -407,10 +408,30 @@ Result<void> assign_components(World& world, entt::entity entity, const json::Va
     return {};
 }
 
+// Assigns what still fits of a component saved with an older version of its type, as a game's
+// reloaded code may leave one: each field the assignment fails on is left at its default. False
+// if nothing could be assigned.
+bool assign_what_fits(World& world, entt::entity entity, const ComponentType& type,
+                      json::Value fields, const std::string& prefix, std::string& path) {
+    while (fields.is_object()) {
+        const std::string field =
+            json::pointer_first_key(std::string_view(path).substr(prefix.size()));
+        if (field.empty() || fields.as_object().erase(field) == 0) {
+            return false;
+        }
+        path = prefix;
+        if (type.assign(world, entity, fields, path)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 // Loads an already schema-valid scene. On failure path names the offending value and every
-// entity created so far is destroyed again.
+// entity created so far is destroyed again. A lenient load, for copies saved from a world whose
+// component types have changed since, leaves out components and fields the types no longer take.
 Result<std::size_t> load_valid(World& world, const json::Value& scene, const PrefabLinks& links,
-                               std::string& path) {
+                               std::string& path, bool lenient = false) {
     const json::Object& entries = scene.find("entities")->as_object();
     const Resolver resolver =
         [&](const std::string& id,
@@ -426,6 +447,7 @@ Result<std::size_t> load_valid(World& world, const json::Value& scene, const Pre
         return expanded.error();
     }
     const std::vector<Made>& made = expanded.value();
+    std::size_t dropped = 0; // components a lenient load left out in part or whole
     std::vector<entt::entity> created;
     created.reserve(made.size());
     const auto fail = [&](const Error& error) {
@@ -451,18 +473,33 @@ Result<std::size_t> load_valid(World& world, const json::Value& scene, const Pre
             world.ecs().emplace<PrefabLink>(created[i], entity.extends, entity.base);
         }
         for (const auto& [name, fields] : entity.components.as_object()) {
-            path = entity_path(entity.id) + "/components/" + json::pointer_escape(name);
+            const std::string prefix =
+                entity_path(entity.id) + "/components/" + json::pointer_escape(name);
+            path = prefix;
             const ComponentType* type = world.components().find(name);
             if (type == nullptr) {
+                if (lenient) {
+                    ++dropped;
+                    continue;
+                }
                 return fail(make_error(ErrorCode::NotFound, "unknown component \"" + name + "\""));
             }
             if (auto status = type->assign(world, created[i], fields, path); !status) {
-                return fail(status.error());
+                if (!lenient) {
+                    return fail(status.error());
+                }
+                ++dropped;
+                (void)assign_what_fits(world, created[i], *type, fields, prefix, path);
             }
         }
     }
     if (const json::Value* root = scene.find("root"); root != nullptr) {
         world.set_scene_root(root->as_string());
+    }
+    if (dropped > 0) {
+        log::warn("a saved copy of the world no longer fits the component types; what doesn't "
+                  "fit was left out",
+                  {{"components", static_cast<std::int64_t>(dropped)}});
     }
     path.clear();
     return created.size();
@@ -915,7 +952,7 @@ Result<std::size_t> load_scene(World& world, const json::Value& scene, const Pre
 Result<std::size_t> restore_scene(World& world, const json::Value& saved,
                                   const PrefabLinks& links) {
     std::string path;
-    auto loaded = load_valid(world, saved, links, path);
+    auto loaded = load_valid(world, saved, links, path, /*lenient=*/true);
     if (!loaded) {
         return located(path, loaded.error());
     }

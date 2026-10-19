@@ -10,6 +10,7 @@
 #include "slash/render/device.hpp"
 #include "slash/runtime/project.hpp"
 #include "slash/world/component_registry.hpp"
+#include "slash/world/game_module.hpp"
 #include "slash/world/world.hpp"
 
 #include <cstdint>
@@ -20,6 +21,10 @@
 
 union SDL_Event;
 
+namespace slash::gameplay {
+class Host;
+} // namespace slash::gameplay
+
 namespace slash::runtime {
 
 struct GameOptions {
@@ -29,6 +34,10 @@ struct GameOptions {
     bool headless = false;
     // Stop after this many ticks; 0 runs until the window closes. Headless runs must set it.
     std::uint64_t max_ticks = 0;
+    // The game's own code linked in, as exports link it: the function SLASH_GAME_MODULE defines.
+    // Without it, a project with gameplay sources loads the library slash-cli build makes, and
+    // loads it again when it is rebuilt.
+    world::GameModuleFunction gameplay = nullptr;
 };
 
 inline constexpr std::string_view kGameUsage =
@@ -85,6 +94,7 @@ private:
     asset::Assets assets_;
     world::ComponentRegistry components_;
     world::World world_;
+    std::unique_ptr<gameplay::Host> gameplay_;
     platform::Platform platform_;
     // Declared after the platform, so it closes the gamepads before SDL quits.
     input::SdlReader input_reader_;
