@@ -720,18 +720,24 @@ samples when they load (integer samples scaled as Godot's importer scales them),
 Godot's loop settings, or picks one of several at random each play, as Godot's
 `AudioStreamRandomizer` (`src/stream.cpp`, with Godot 4.4's cubic resampler). `audio::Server`
 (`src/server.cpp`) is the mixer: playbacks mix into buses in steps of 512 frames, with a 64-frame
-lookahead, volume ramps and stop fades; each bus runs its effects (`src/effects.cpp`: 20 of Godot's
-`servers/audio/effects`, each ported from the one of the same name) and sends to an earlier bus,
-down to Master. A `.bus_layout.json` file
+lookahead, volume ramps and stop fades; each bus runs its effects (`src/effects.cpp`: 24 of Godot's
+`servers/audio/effects`, each ported from the one of the same name, the pitch shift and spectrum
+analyzer with Bernsee's FFT code under its own notice) and sends to an earlier bus, down to
+Master. `Server::effect_instance` and `spectrum_analyzer`, `capture_effect` and `record_effect`
+reach a bus's analyzer, capture buffer and recorder from C++. A `.bus_layout.json` file
 (`$cli schema bus_layout`; project.json's `audio.bus_layout`) is Godot's `default_bus_layout.tres`.
 `AudioStreamPlayer`, `AudioStreamPlayer2D` and `AudioListener2D` are components, played by the
 `audio` system (priority 1200, last), which mixes each tick's share of frames, so the same ticks
 make the same sound, and hands them to a sink: `audio::SdlOutput` in a window, nowhere headless.
-Sessions keep ten seconds of each bus for `audio.capture`, which measures it (peak, RMS and
-slices in dB) or writes a `.wav` file; `audio.state`, `audio.play`, `audio.stop` and
-`audio.set_bus` do the rest, and sessions put the buses back with the world when a command fails
-or is a dry run. Example sounds are made in code without libm, so outputs match everywhere.
-`examples/audio` plays music and footsteps panned around a listener.
+An `Area2D` with `audio_bus_override` sends the 2D players inside it whose `area_mask` it
+matches to its `audio_bus_name`, as Godot's `_get_actual_bus`. Sessions keep ten seconds of each bus for `audio.capture`, which measures it (peak, RMS and
+slices in dB) or writes a `.wav` file; `audio.spectrum` reads a bus's `spectrum_analyzer` in
+frequency bands, `audio.record` starts and stops its `record` effect and writes the take, and
+`audio.state`, `audio.play`, `audio.stop` and `audio.set_bus` do the rest. Sessions put the
+buses back with the world when a command fails or is a dry run. Example sounds are made in code
+without libm, so outputs match everywhere. `examples/audio` plays music and footsteps panned
+around a listener, and `examples/audio-areas-and-analysis` a bat in a cave's reverb, measured
+by its spectrum and recorded.
 
 ## Add a component
 

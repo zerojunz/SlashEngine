@@ -214,8 +214,10 @@ Result<Sound> decode_sound(std::string_view data, std::string_view path) {
     return sound;
 }
 
-std::string encode_wav(std::span<const Frame> frames, int mix_rate) {
-    const auto data_size = static_cast<std::uint32_t>(frames.size() * 4);
+std::string encode_wav(std::span<const Frame> frames, int mix_rate, int bits) {
+    const bool eight = bits == 8;
+    const std::uint32_t frame_size = eight ? 2 : 4;
+    const auto data_size = static_cast<std::uint32_t>(frames.size() * frame_size);
     std::string out;
     out.reserve(44 + data_size);
     out += "RIFF";
@@ -225,19 +227,25 @@ std::string encode_wav(std::span<const Frame> frames, int mix_rate) {
     put_u16(out, 1); // PCM
     put_u16(out, 2); // stereo
     put_u32(out, static_cast<std::uint32_t>(mix_rate));
-    put_u32(out, static_cast<std::uint32_t>(mix_rate) * 4);
-    put_u16(out, 4);
-    put_u16(out, 16);
+    put_u32(out, static_cast<std::uint32_t>(mix_rate) * frame_size);
+    put_u16(out, static_cast<std::uint16_t>(frame_size));
+    put_u16(out, eight ? 8 : 16);
     out += "data";
     put_u32(out, data_size);
-    const auto sample = [](float value) {
+    const auto put = [&](float value) {
         const float clamped = std::clamp(value, -1.0F, 1.0F);
-        return static_cast<std::uint16_t>(
-            static_cast<std::int16_t>(std::lround(clamped * 32767.0F)));
+        if (eight) {
+            // 8-bit samples are unsigned, around 128.
+            out +=
+                static_cast<char>(static_cast<std::uint8_t>(std::lround(clamped * 127.0F) + 128));
+        } else {
+            put_u16(out, static_cast<std::uint16_t>(
+                             static_cast<std::int16_t>(std::lround(clamped * 32767.0F))));
+        }
     };
     for (const Frame& frame : frames) {
-        put_u16(out, sample(frame.left));
-        put_u16(out, sample(frame.right));
+        put(frame.left);
+        put(frame.right);
     }
     return out;
 }

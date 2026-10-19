@@ -2742,6 +2742,10 @@ private:
             {"AudioEffectHardLimiter", "hard_limiter"},
             {"AudioEffectPanner", "panner"},
             {"AudioEffectStereoEnhance", "stereo_enhance"},
+            {"AudioEffectPitchShift", "pitch_shift"},
+            {"AudioEffectSpectrumAnalyzer", "spectrum_analyzer"},
+            {"AudioEffectCapture", "capture"},
+            {"AudioEffectRecord", "record"},
         };
         const std::string type = resource_type(*section, *owner);
         const auto found = kTypes.find(type);
@@ -2763,6 +2767,19 @@ private:
             } else if (name == "mode" && type == "AudioEffectDistortion" &&
                        value.kind == Value::Kind::Int && value.integer >= 0 && value.integer < 5) {
                 effect["mode"] = kDistortion.at(static_cast<std::size_t>(value.integer));
+            } else if (name == "fft_size" && value.kind == Value::Kind::Int && value.integer >= 0 &&
+                       value.integer < 5) {
+                effect["fft_size"] = std::int64_t{256} << value.integer; // FFT_SIZE_256 is 0
+            } else if (name == "format" && type == "AudioEffectRecord" &&
+                       value.kind == Value::Kind::Int) {
+                if (value.integer == 0 || value.integer == 1) {
+                    effect["format"] = value.integer == 0 ? "8_bits" : "16_bits";
+                } else {
+                    problems_.add("AudioEffectRecord.format", resource_where(*section, *owner),
+                                  "compressed formats record at 16 bits");
+                }
+            } else if (name == "oversampling" && value.is_number()) {
+                effect["oversampling"] = static_cast<std::int64_t>(value.number());
             } else if (parts.size() == 2 && parts[0] == "band_db") {
                 effect["band_db"][std::string(parts[1])] = value.number();
             } else if (parts.size() == 3 && parts[0] == "voice") {

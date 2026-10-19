@@ -100,7 +100,7 @@ above the world.
 | `Sprite2D`, `Camera2D`, `CollisionShape2D`, `CollisionPolygon2D`, `PointLight2D`, `DirectionalLight2D`, `LightOccluder2D`, `CanvasModulate`, `CPUParticles2D`, `AudioStreamPlayer2D`, `AudioListener2D` | `Transform2D` and the component of the same name |
 | `AnimatedSprite2D` | `Transform2D`, `AnimatedSprite2D` and `Sprite2D` |
 | `GPUParticles2D` | `Transform2D` and `GPUParticles2D` (see [particles](#particles)) |
-| `StaticBody2D`, `AnimatableBody2D`, `RigidBody2D`, `CharacterBody2D`, `Area2D` | `Transform2D` and the body, with its constant velocities, an area's gravity and damping overrides and a character's floor, wall and platform options; its `CollisionShape2D` children are its shapes |
+| `StaticBody2D`, `AnimatableBody2D`, `RigidBody2D`, `CharacterBody2D`, `Area2D` | `Transform2D` and the body, with its constant velocities, an area's gravity, damping and audio bus overrides and a character's floor, wall and platform options; its `CollisionShape2D` children are its shapes |
 | `PinJoint2D`, `DampedSpringJoint2D`, `GrooveJoint2D` | `Transform2D` and the joint |
 | `AudioStreamPlayer` | `AudioStreamPlayer` |
 | `AnimationPlayer` | `AnimationPlayer` (see [animations](#animations)) |
@@ -229,7 +229,9 @@ An `AudioBusLayout` becomes a [`.bus_layout.json` file](scene-format.md#bus-layo
 name, volume, solo, mute, bypass and send, and its effects in order, each with its settings and
 whether it is enabled. Effects convert to the effect of the same name: `AudioEffectLowPassFilter`
 is `low_pass_filter`, a filter's `db` is 6, 12, 18 or 24 instead of Godot's 0 to 3, a distortion's
-`mode` is a name, and a chorus's `voice/1/...` settings are `voices`. Godot uses
+`mode` and a record effect's `format` are names, an `fft_size` is the size instead of Godot's 0
+to 4, and a chorus's `voice/1/...` settings are `voices`. A record effect's IMA ADPCM and QOA
+formats record at 16 bits, which is reported. Godot uses
 `res://default_bus_layout.tres` unless `audio/buses/default_bus_layout` names another, and the
 one it would use becomes `audio.bus_layout`.
 
@@ -348,7 +350,7 @@ The report lists each of these once per kind, with how many and where it was fir
 | Tiles' other properties, such as `z_index` and `y_sort_origin`, a base tile's flips and `modulate`, and scene collection sources | Tiles keep their texture origin, collision, occluders and custom data, and alternatives their flips and color too; place scenes as entities |
 | Y-sorting tile map layers | Layers draw in order, by `z_index` |
 | `gui/theme/custom_font` | Set `default_font` in the project's theme |
-| Audio effects with no SlashEngine equivalent, such as `AudioEffectRecord` | Left out of the bus, which keeps its other effects |
+| Audio effects with no SlashEngine equivalent, such as the deprecated `AudioEffectLimiter` | Left out of the bus, which keeps its other effects |
 | C++ skeletons for scripts | With gameplay code in game projects, milestone 6 |
 | Timers and other gameplay nodes | Gameplay code: their values are kept in the report |
 | `display/window/stretch/mode` | Stretching isn't supported yet |

@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -37,6 +38,8 @@ inline constexpr std::string_view kBusLayoutSuffix = ".bus_layout.json";
 struct Frame {
     float left = 0.0F;
     float right = 0.0F;
+
+    friend bool operator==(const Frame&, const Frame&) = default;
 };
 
 // Decibels to a linear gain and back, as Godot's Math::db_to_linear and linear_to_db.
@@ -148,6 +151,8 @@ struct BusLayout {
 // ---------------------------------------------------------------------------------------------
 // Playbacks and the server
 
+class EffectInstance; // effects.hpp
+
 // A stream playing, as Godot's AudioStreamPlayback.
 class Playback {
 public:
@@ -235,6 +240,10 @@ public:
     void set_bus_solo(int bus, bool solo);
     void set_bus_bypass_effects(int bus, bool bypass);
     void set_bus_effect_enabled(int bus, int effect, bool enabled);
+    // The running effect in a bus's slot, as Godot's get_bus_effect_instance, if it is of this
+    // type ("spectrum_analyzer", "capture", ...); otherwise nullptr. effects.hpp has typed
+    // versions.
+    [[nodiscard]] EffectInstance* effect_instance(int bus, int effect, std::string_view type);
     // The bus's loudest sample over the last 512-frame mix step, in dB for left and right; -200
     // when it is silent.
     [[nodiscard]] Frame bus_peak_db(int bus) const;
@@ -330,16 +339,32 @@ void play(world::World& world, entt::entity entity, double from_seconds = 0.0);
 void stop(world::World& world, entt::entity entity);
 // Where its newest voice is, in seconds, or 0.
 [[nodiscard]] double playback_position(const world::World& world, entt::entity entity);
+// Starts or stops a bus's record effect at the next tick, as play does, so sessions can take it
+// back. Starting drops the last recording.
+void set_recording(world::World& world, int bus, int effect, bool active);
+// What set_recording asked of a record effect for the next tick: the last state asked, and
+// whether a start, which drops the recording, is among the asks.
+struct RecordingAsks {
+    std::optional<bool> active;
+    bool restarts = false;
+};
+[[nodiscard]] RecordingAsks recording_asks(const world::World& world, int bus, int effect);
 
-// The plays and stops asked for the next tick and the buses' volumes and switches, which
-// sessions put back with the world when a command fails or is a dry run.
+// The plays, stops and recordings asked for the next tick and the buses' volumes and switches,
+// which sessions put back with the world when a command fails or is a dry run.
 struct Snapshot {
     struct Request {
         std::string player; // "<kind>/<entity ID>"
         bool play = true;
         double from_seconds = 0.0;
     };
+    struct Recording {
+        int bus = 0;
+        int effect = 0;
+        bool active = false;
+    };
     std::vector<Request> requests;
+    std::vector<Recording> recordings;
     std::vector<BusSettings> buses;
 };
 [[nodiscard]] Snapshot save(const world::World& world);
@@ -398,7 +423,7 @@ struct Capture {
 [[nodiscard]] Result<Capture> capture(const world::World& world, std::string_view bus,
                                       double seconds, int slices, bool frames = false);
 
-// A 16-bit PCM .wav file of frames.
-[[nodiscard]] std::string encode_wav(std::span<const Frame> frames, int mix_rate);
+// A PCM .wav file of frames, at 16 bits or 8.
+[[nodiscard]] std::string encode_wav(std::span<const Frame> frames, int mix_rate, int bits = 16);
 
 } // namespace slash::audio

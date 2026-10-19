@@ -329,6 +329,7 @@ effects' settings:
 | Compressor | `compressor`: threshold, attack, release and make-up gain, at a ratio of 2.5 |
 | Duck Volume | `compressor` with the bus that sends to it as its `sidechain`; with no send it does nothing and isn't converted |
 | SFX Reverb | `reverb`: the decay time as `room_size`, the high-frequency ratio as `damping`, the dry and room levels, and the reflection and reverb delays as `predelay_msec` |
+| Pitch Shifter | `pitch_shift`: the pitch, the FFT size (rounded up to a power of two from 256 to 4096) and the overlap as `oversampling`, at least 4 as Godot's (less is reported) |
 | Attenuation | The bus's `volume_db` |
 | Send to a Duck Volume | The Duck Volume's `sidechain` |
 | A bypassed effect | `enabled: false` |
@@ -336,7 +337,7 @@ effects' settings:
 Godot's compressor attacks within 2 ms, so a slower attack is reported. Each bus sends to one bus,
 so a Send to a Receive is reported, as are effects after a group's Attenuation (a bus runs its
 effects before its volume), effects' wet levels (they run fully wet), a group's pitch, Flange,
-Normalize, ParamEQ, Pitch Shifter and audio plugins' effects. Snapshots other than the start one
+Normalize, ParamEQ and audio plugins' effects. Snapshots other than the start one
 and exposed parameters are reported too: gameplay code (or `audio.set_bus`) sets buses instead.
 
 ## UI

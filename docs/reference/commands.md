@@ -67,7 +67,7 @@ as `entity.get`, reject it as an unknown param.
 | Lights | [`light.sample`](#lightsample) |
 | UI and text | [`ui.layout`](#uilayout), [`ui.theme`](#uitheme), [`ui.press`](#uipress), [`ui.popup`](#uipopup), [`ui.select`](#uiselect), [`ui.drag`](#uidrag), [`ui.tooltip`](#uitooltip), [`ui.focus`](#uifocus), [`ui.search`](#uisearch), [`ui.clipboard`](#uiclipboard), [`text.measure`](#textmeasure) |
 | Input | [`input.inject`](#inputinject), [`input.state`](#inputstate), [`input.actions`](#inputactions) |
-| Audio | [`audio.state`](#audiostate), [`audio.capture`](#audiocapture), [`audio.play`](#audioplay), [`audio.stop`](#audiostop), [`audio.set_bus`](#audioset_bus) |
+| Audio | [`audio.state`](#audiostate), [`audio.capture`](#audiocapture), [`audio.play`](#audioplay), [`audio.stop`](#audiostop), [`audio.set_bus`](#audioset_bus), [`audio.spectrum`](#audiospectrum), [`audio.record`](#audiorecord) |
 | Storyboard | [`storyboard.query`](#storyboardquery), [`storyboard.brief`](#storyboardbrief), [`storyboard.check`](#storyboardcheck), [`storyboard.edit`](#storyboardedit) |
 | Components | [`component.set`](#componentset), [`component.remove`](#componentremove) |
 | Query | [`world.query`](#worldquery) |
@@ -1364,6 +1364,12 @@ Needs: `read`. With the footsteps playing:
   `AudioStreamPlayer2D` its fade with distance and its pan from the listener.
 - `paused` is listed when `stream_paused` holds the player, and `error` when its stream did not
   load, such as a missing or corrupt file.
+- A player's `bus` is the one it plays on now: an `Area2D` with `audio_bus_override` that holds
+  an `AudioStreamPlayer2D` sends it to its own bus ([buses by area](scene-format.md#buses-by-area)).
+- A `capture` effect lists `frames_available`, the frames its buffer holds, and
+  `discarded_frames` once a full buffer has dropped some. A `record` effect lists
+  `"recording": true` while it records and `seconds` once it holds a recording; both show the
+  state at the next tick, after any [`audio.record`](#audiorecord) waiting for it.
 
 ### audio.capture
 
@@ -1461,6 +1467,83 @@ run puts the buses back.
 The reply is the bus, as `audio.state` lists it. Volume changes ramp over one mix step. A bus
 name or effect index that doesn't exist is an error, and so are `effect` without `enabled` and
 `enabled` without `effect`.
+
+### audio.spectrum
+
+Reads a bus's [`spectrum_analyzer`](scene-format.md#effects) effect, as Godot's
+`get_magnitude_for_frequency_range`: how loud each frequency range was in the newest window it
+analyzed, so an agent can tell a hum from a hiss, or check a filter, without listening. The
+examples here and under `audio.record` are from
+[examples/audio-areas-and-analysis](../../examples/audio-areas-and-analysis/).
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `bus` | string | `"Master"` | The bus |
+| `effect` | integer, 0 to 15 | the bus's first `spectrum_analyzer` | The effect's index on the bus |
+| `ranges` | array of `[from_hz, to_hz]`, 1 to 64 | ten octave bands from 22 Hz | The ranges to measure |
+| `mode` | `"max"` or `"average"` | `"max"` | Each range's strongest frequency, or their mean |
+
+Needs: `read`. A 220 Hz hum shifted up an octave, then with the shift turned off:
+
+```json
+{}
+```
+
+```json
+{"db":[-58.7,-63.1,-68,-34,-11.5,-21.1,-24.2,-28.3,-33.4,-39.4],"ranges":[[22,44],[44,88],[88,177],[177,355],[355,710],[710,1420],[1420,2840],[2840,5680],[5680,11360],[11360,22720]]}
+```
+
+```json
+{"ranges": [[200, 240], [420, 460]]}
+```
+
+```json
+{"db":[-10.2,-60.6]}
+```
+
+`db` has one level per range, in dB to a tenth: the louder channel's magnitude, where a
+full-scale sine measures about -6 dB, or `null` below -100 dB. `ranges` is listed only when the
+default bands were used. The analyzer keeps only its newest window of `fft_size` frames, so it
+reads 0 until that much sound has played through it. A bus with no `spectrum_analyzer`, or an
+`effect` index that is another type, is an error naming what is there.
+
+### audio.record
+
+Starts or stops a bus's [`record`](scene-format.md#effects) effect, as Godot's
+`set_recording_active`, and writes what it recorded to a `.wav` file in the effect's `format`.
+Unlike `audio.capture`, which keeps the last 10 seconds of every bus, a recording keeps
+everything from its start to its stop.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `bus` | string | `"Master"` | The bus |
+| `effect` | integer, 0 to 15 | the bus's first `record` | The effect's index on the bus |
+| `recording` | boolean | unchanged | `true` starts a new recording, `false` stops |
+| `path` | string | | A `.wav` file to write the recording to, relative to the project |
+
+Needs: `run`, and `filesystem` with `path`. Recording 30 ticks of a bat in a cave:
+
+```json
+{"recording": true}
+```
+
+```json
+{"recording":true,"seconds":0}
+```
+
+```json
+{"recording": false, "path": "build/take.wav"}
+```
+
+```json
+{"path":"build/take.wav","recording":false,"seconds":0.4992}
+```
+
+`seconds` is how much the recording holds. Starts and stops wait for the next tick, as
+`audio.play` does, so a failed `batch` or a dry run takes them back; starting drops the last
+recording. The mixer records whole steps of 512 frames, so `seconds` can run a step ahead of the
+ticks. A `path` with nothing recorded, with `"recording": true` or not ending in `.wav` is an
+error. In a dry run, `path` writes nothing.
 
 ## Storyboard
 

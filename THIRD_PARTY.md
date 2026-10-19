@@ -31,6 +31,13 @@ does. Games built with SlashEngine should include this line in their credits or 
 "Portions of this software are copyright © 2026 The FreeType Project (https://freetype.org). All
 rights reserved."
 
+Some code is adapted into the engine's own sources rather than fetched. Its notice stays in the
+file, as its license asks:
+
+| Name | License | Used for | Where |
+| --- | --- | --- | --- |
+| smbPitchShift and smbFft, by Stephan M. Bernsee (1999-2015), as Godot uses them | Wide Open License: use, copy and change it if the notice stays in the source | The `pitch_shift` and `spectrum_analyzer` audio effects | `engine/audio/src/effects.cpp` |
+
 The renderer's own shaders are compiled ahead of time with two command-line tools whose output is
 committed in `engine/render/src/*_shaders.hpp`, so building the engine needs neither. (A game's
 own shaders are compiled by slash-cli, slash-mcp and exports with the same projects' libraries,
