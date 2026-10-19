@@ -178,6 +178,15 @@ void add_asset_types(asset::Assets& assets) {
                                  [](std::string_view text, std::string_view /*path*/) {
                                      return Result<std::string>(std::string(text));
                                  });
+    assets.add_type<render::ParticleProcess>(
+        "process_material", {std::string(kProcessMaterialSuffix)},
+        [](std::string_view text, std::string_view /*path*/) -> Result<render::ParticleProcess> {
+            auto doc = json::parse(text);
+            if (!doc) {
+                return doc.error();
+            }
+            return parse_process_material(doc.value());
+        });
     assets.add_type<TileSet>(
         "tile_set", {std::string(kTileSetSuffix)},
         [](std::string_view text, std::string_view /*path*/) -> Result<TileSet> {
@@ -261,6 +270,7 @@ void add_systems(world::World& world, asset::Assets& assets) {
     world::add_parallax_system(world,
                                [](const world::World& w) { return ui::settings(w).viewport; });
     add_particles_system(world);
+    add_gpu_particles_system(world);
 }
 
 void install(world::World& world, asset::Assets& assets) {

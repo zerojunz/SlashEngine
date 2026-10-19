@@ -7,6 +7,7 @@
 
 #include "slash/animation/animation.hpp"
 #include "slash/audio/audio.hpp"
+#include "slash/canvas/gpu_particles.hpp"
 #include "slash/canvas/material.hpp"
 #include "slash/canvas/sprite_frames.hpp"
 #include "slash/canvas/tilemap.hpp"
@@ -128,13 +129,14 @@ bool skipped_folder(const fs::path& name) {
 }
 
 // The files a game reads at run time: scenes, prefabs, the assets sprites draw, animations, tile
-// sets, fonts and sounds.
+// sets, particle process materials, fonts and sounds.
 enum class DataFile : std::uint8_t {
     None,
     Scene,
     Prefab,
     SpriteFrames,
     Material,
+    ProcessMaterial,
     Animation,
     TileSet,
     Texture,
@@ -158,6 +160,9 @@ DataFile data_file(std::string_view name) {
     }
     if (name.ends_with(canvas::kMaterialSuffix)) {
         return DataFile::Material;
+    }
+    if (name.ends_with(canvas::kProcessMaterialSuffix)) {
+        return DataFile::ProcessMaterial;
     }
     if (name.ends_with(animation::kAnimationSuffix)) {
         return DataFile::Animation;
@@ -226,6 +231,8 @@ std::vector<json::ValidationError> check_data_file(DataFile kind, std::string_vi
             errors = canvas::check_material_shader(parsed.value(), reader);
         }
         return errors;
+    case DataFile::ProcessMaterial:
+        return canvas::validate_process_material(parsed.value());
     case DataFile::Animation:
         return animation::validate_animation_library(parsed.value(), &components);
     case DataFile::TileSet:

@@ -53,7 +53,7 @@ The code follows the same split, one CMake library per module under `engine/`:
 | `asset` | Asset handles, loaders and hot reload |
 | `world` | The EnTT world, components, the component registry, scenes and prefabs |
 | `input` | Input, as Godot's: key, mouse, touch and gamepad events from SDL, rebindable actions and the state gameplay code reads |
-| `canvas` | 2D drawing, as Godot's canvas: sprites, `.frames.json` animations, `.material.json` materials, `.tileset.json` tile sets and tile map layers, and the renderer that draws them |
+| `canvas` | 2D drawing, as Godot's canvas: sprites, `.frames.json` animations, `.material.json` materials, `.tileset.json` tile sets and tile map layers, CPU particles and GPU particles' `.process_material.json` files, and the renderer that draws them |
 | `animation` | Keyframe animation, as Godot's AnimationPlayer: `.anim.json` files and the system that plays them |
 | `physics2d` | 2D physics on Box2D, as Godot's: bodies, areas, shapes, joints and queries |
 | `text` | Fonts and text layout: FreeType, HarfBuzz, distance field fonts and glyph atlases |
@@ -106,7 +106,8 @@ the last tick, first, `gui` sends them to controls, `animation_player` runs `Ani
 components, `physics2d` moves bodies and reports contacts, `animated_sprite_2d` runs
 `AnimatedSprite2D` flipbooks, `camera_2d` moves the current `Camera2D`'s drag margins and
 smoothing on, `parallax_2d` scrolls each `Parallax2D` with it, `cpu_particles_2d` emits and moves
-`CPUParticles2D` particles, then `audio` mixes the tick's sound.
+`CPUParticles2D` particles, `gpu_particles_2d` works out the steps the renderer runs on each
+`GPUParticles2D`'s particles, then `audio` mixes the tick's sound.
 
 ## Scenes
 
@@ -140,7 +141,8 @@ instance holds only its overrides, per entity, and editing the scene changes eve
 An **asset** is a file a game loads by project path, like a Godot resource: a JSON table, a CSV
 file, a texture and, once audio arrives, sounds. Loading one returns a **handle**; every handle to
 the same path shares one copy, which stays loaded while any handle exists. `.json`, `.txt`,
-`.csv`, `.png`, `.bmp`, `.frames.json`, `.material.json`, `.anim.json`, `.tileset.json`, `.ttf`,
+`.csv`, `.png`, `.bmp`, `.frames.json`, `.material.json`, `.process_material.json`, `.anim.json`,
+`.tileset.json`, `.ttf`,
 `.otf` and `.font.json` files load out of the box, and a game can add its own types.
 
 **Hot reload** keeps an agent's edit-and-check loop short. Before every command, and between

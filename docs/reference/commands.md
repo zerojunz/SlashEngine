@@ -118,6 +118,7 @@ says whether the game is `playing`.
 
 Returns a JSON Schema: for scene, prefab, [`.frames.json`](scene-format.md#sprite-frames),
 [`.material.json`](scene-format.md#materials), [`.anim.json`](scene-format.md#animations),
+[`.process_material.json`](scene-format.md#process-materials),
 [`.tileset.json`](scene-format.md#tile-sets), [`.font.json`](scene-format.md#fonts),
 [`.theme.json`](scene-format.md#themes), [`.audio.json`](scene-format.md#audio-streams),
 [`.bus_layout.json`](scene-format.md#bus-layouts), [`.replay.json`](scene-format.md#replays),
@@ -125,7 +126,7 @@ Returns a JSON Schema: for scene, prefab, [`.frames.json`](scene-format.md#sprit
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `kind` | `"scene"`, `"prefab"`, `"frames"`, `"material"`, `"animation"`, `"tileset"`, `"font"`, `"theme"`, `"audio"`, `"bus_layout"`, `"replay"`, `"test"`, `"storyboard"`, `"component"` or `"command"` | required | Which schema |
+| `kind` | `"scene"`, `"prefab"`, `"frames"`, `"material"`, `"animation"`, `"process_material"`, `"tileset"`, `"font"`, `"theme"`, `"audio"`, `"bus_layout"`, `"replay"`, `"test"`, `"storyboard"`, `"component"` or `"command"` | required | Which schema |
 | `name` | string | | Component or command name, for `component` and `command` |
 
 Needs: `read`.
@@ -708,15 +709,18 @@ An unknown ID, or an entity with no body or with an `Area2D`, is an error at its
 
 ### particles.eval
 
-Returns a [`CPUParticles2D`](scene-format.md#particles)'s live particles: how many, the box
-they fill in the world and, with `list`, each one. Without `time`, the particles the world has
-after its last tick. With `time`, it runs the emitter's settings from the start for that many
+Returns a [`CPUParticles2D`](scene-format.md#particles)'s or
+[`GPUParticles2D`](scene-format.md#gpu-particles)'s live particles: how many, the box they fill
+in the world and, with `list`, each one. Without `time`, the particles the world has after its
+last tick; a `GPUParticles2D`'s are made by running the steps its emitter kept on the CPU, as
+every device runs them. With `time`, it runs the emitter's settings from the start for that many
 seconds, from where the entity is, apart from the world, which it leaves unchanged: what that
-many ticks would give, since the same seed, entity ID and ticks give the same particles.
+many ticks would give, since the same seed, entity ID and ticks give the same particles. A
+`GPUParticles2D` whose process material doesn't load fails with the file's errors.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `id` | string | required | An entity with a `CPUParticles2D` |
+| `id` | string | required | An entity with a `CPUParticles2D` or `GPUParticles2D` |
 | `time` | number | | Seconds to run the settings from the start, 0 to 3600; preprocess runs first |
 | `tick_seconds` | number | `1/60` | The tick length for `time`, above 0 and at most 1 |
 | `list` | boolean | `false` | Also return each particle |
@@ -2204,9 +2208,9 @@ the window is an error at its path, and so is a `path` that doesn't end in `.png
 ### frame.summary
 
 Says what the window shows now, as data instead of an image: what `frame.capture` would draw,
-read thing by thing. Each sprite, tile map layer, `CPUParticles2D` and control that shows is
-listed in drawing order, bottom first, with how much of it shows when not all of it does, and
-what doesn't show is listed by why. Costs far fewer tokens than an image and needs no vision.
+read thing by thing. Each sprite, tile map layer, `CPUParticles2D`, `GPUParticles2D` and
+control that shows is listed in drawing order, bottom first, with how much of it shows when not
+all of it does, and what doesn't show is listed by why. Costs far fewer tokens than an image and needs no vision.
 Nothing changes. [examples/frame-summary](../../examples/frame-summary/) calls it.
 
 | Param | Type | Default | Meaning |
@@ -2241,6 +2245,7 @@ With `"map": [40, 12]` over the whole frame, the reply adds:
 ```
 
 - `drawn` lists what shows: `id`, `kind` (`Sprite2D`, `TileMapLayer`, `CPUParticles2D`,
+  `GPUParticles2D`,
   `PopupMenu` for an open popup menu, named by the entity it belongs to, `Tooltip` for the
   tooltip shown, named by its control, or the control's type,
   such as `Label` or `Button`) and `rect`, its bounds in window pixels to a

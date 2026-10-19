@@ -1,4 +1,5 @@
 #include "slash/canvas/canvas.hpp"
+#include "slash/canvas/gpu_particles.hpp"
 #include "slash/canvas/particles.hpp"
 #include "slash/core/log.hpp"
 #include "slash/ui/ui.hpp"
@@ -11,6 +12,7 @@
 #include <memory>
 #include <numbers>
 #include <optional>
+#include <span>
 #include <string>
 #include <tuple>
 #include <unordered_map>
@@ -224,6 +226,8 @@ Inherited inherited(const world::World& world, const world::Tree2D& tree, entt::
         } else if (const auto* emitter = ecs.try_get<world::CPUParticles2D>(up);
                    emitter != nullptr) {
             take(emitter->z_index, emitter->z_as_relative, emitter->visible, nullptr);
+        } else if (const auto* gpu = ecs.try_get<world::GPUParticles2D>(up); gpu != nullptr) {
+            take(gpu->z_index, gpu->z_as_relative, gpu->visible, nullptr);
         }
         if (top_level(up)) {
             add_z = false;
@@ -263,6 +267,11 @@ CanvasRenderer::~CanvasRenderer() {
             device_->destroy_shader(entry.shader);
         }
     }
+    for (const auto& [entity, system] : gpu_systems_) {
+        if (system.id != render::ParticlesId::None) {
+            device_->destroy_particles(system.id);
+        }
+    }
 }
 
 void CanvasRenderer::before_tick(const world::World& world) {
@@ -281,6 +290,7 @@ void CanvasRenderer::before_tick(const world::World& world) {
     keep(ecs.view<const world::Transform2D, const world::DirectionalLight2D>());
     keep(ecs.view<const world::Transform2D, const world::LightOccluder2D>());
     keep(ecs.view<const world::Transform2D, const world::CPUParticles2D>());
+    keep(ecs.view<const world::Transform2D, const world::GPUParticles2D>());
     keep(ecs.view<const world::Transform2D, const world::CollisionShape2D>());
     keep(ecs.view<const world::Transform2D, const world::CollisionPolygon2D>());
     previous_parallax_.clear();
@@ -306,6 +316,18 @@ Result<const TileSet*> CanvasRenderer::tile_set(const std::string& path) {
             return loaded.error();
         }
         it = tile_sets_.emplace(path, std::move(loaded).value()).first;
+    }
+    return it->second.get();
+}
+
+Result<const render::ParticleProcess*> CanvasRenderer::process_material(const std::string& path) {
+    auto it = processes_.find(path);
+    if (it == processes_.end()) {
+        auto loaded = assets_->load<render::ParticleProcess>(path);
+        if (!loaded) {
+            return loaded.error();
+        }
+        it = processes_.emplace(path, std::move(loaded).value()).first;
     }
     return it->second.get();
 }
@@ -657,7 +679,19 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         FrameItem::Kind kind = FrameItem::Kind::Sprite;
         const render::Image* image = nullptr; // white when null
         std::size_t drawn = 0;                // tiles or particles
+        // A GPUParticles2D's particles, which the device draws instead of the vertices.
+        render::ParticlesId particles = render::ParticlesId::None;
+        render::ParticleDraw look;
     };
+    // Steps to run on a GPUParticles2D's system before it draws: the first one, made to clear
+    // the system for a system made anew, then the rest.
+    struct ParticleJob {
+        render::ParticlesId particles = render::ParticlesId::None;
+        const render::ParticleProcess* process = nullptr;
+        std::optional<render::ParticleStep> first;
+        std::span<const render::ParticleStep> rest;
+    };
+    std::vector<ParticleJob> particle_jobs;
     std::vector<Item> items;
     std::vector<render::Vertex2D> vertices;
     std::size_t sprites = 0;
@@ -883,7 +917,9 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
                          .entity = entity,
                          .kind = FrameItem::Kind::Sprite,
                          .image = &*texture.value()->image,
-                         .drawn = 1});
+                         .drawn = 1,
+                         .particles = render::ParticlesId::None,
+                         .look = {}});
         ++sprites;
     }
 
@@ -993,9 +1029,222 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
                          .entity = entity,
                          .kind = FrameItem::Kind::Particles,
                          .image = image,
-                         .drawn = live.size()});
+                         .drawn = live.size(),
+                         .particles = render::ParticlesId::None,
+                         .look = {}});
         particles += live.size();
     }
+
+    // GPUParticles2D: each system runs the steps it hasn't on the device once the frame begins,
+    // then draws there.
+    for (auto& [entity, cached] : gpu_systems_) {
+        cached.seen = false;
+    }
+    static const render::ParticleProcess kStill{};
+    const double tick_seconds = settings(world).tick_seconds;
+    for (const auto [entity, emitter] : ecs.view<const world::GPUParticles2D>().each()) {
+        const std::optional<ParticleSteps> kept = particle_steps(world, entity);
+        if (!kept) {
+            continue;
+        }
+        // Kept while hidden, to run the steps it missed once shown.
+        GpuSystem& cached = gpu_systems_[entity];
+        cached.seen = true;
+        const Inherited from_parents = inherited(world, tree, entity);
+        const std::size_t canvas = canvases.of(entity);
+        if (kept->steps.empty() || !emitter.visible || !from_parents.visible ||
+            !canvas_list[canvas].visible) {
+            continue;
+        }
+        const int z = z_index(emitter.z_index, emitter.z_as_relative, from_parents);
+        constexpr std::string_view kEvent = "particles can't draw";
+        const render::ParticleProcess* process = &kStill;
+        if (!emitter.process_material.empty()) {
+            auto loaded = this->process_material(emitter.process_material);
+            if (!loaded) {
+                warn_once(emitter.process_material, loaded.error().message, "process_material",
+                          kEvent);
+                problem(entity, "/components/GPUParticles2D/process_material",
+                        loaded.error().message);
+                continue;
+            }
+            process = loaded.value();
+        }
+        const render::Filter filter =
+            resolve_filter(emitter.texture_filter, options.texture_filter);
+        // A particle is its texture's frame, or a white pixel.
+        render::ParticleDraw look;
+        look.hframes = static_cast<std::uint32_t>(std::max(emitter.hframes, 1));
+        look.vframes = static_cast<std::uint32_t>(std::max(emitter.vframes, 1));
+        render::TextureId texture_id = render::TextureId::None;
+        const render::Image* image = nullptr;
+        if (!emitter.texture.empty()) {
+            auto texture = this->texture(emitter.texture, filter);
+            if (!texture) {
+                warn_once(emitter.texture, texture.error().message, "texture", kEvent);
+                problem(entity, "/components/GPUParticles2D/texture", texture.error().message);
+                continue;
+            }
+            texture_id = texture.value()->id;
+            image = &*texture.value()->image;
+            look.size = {
+                static_cast<float>(texture.value()->width) / static_cast<float>(look.hframes),
+                static_cast<float>(texture.value()->height) / static_cast<float>(look.vframes)};
+        }
+        render::Material material;
+        render::LightMode light_mode = render::LightMode::Normal;
+        if (!emitter.material.empty()) {
+            world::Sprite2D sprite;
+            sprite.material = emitter.material;
+            sprite.material_params = emitter.material_params;
+            auto made = this->material(sprite, filter, options.time, &light_mode);
+            if (!made) {
+                warn_once(emitter.material, made.error().message, "material", kEvent);
+                problem(entity, "/components/GPUParticles2D/material", made.error().message);
+                continue;
+            }
+            material = std::move(made).value();
+        }
+        material.shading = shading_for(light_mode, emitter.light_mask, z, canvas);
+        // The system is made again when the emitter started over, or when this renderer missed
+        // steps that are no longer kept; then it runs every step kept, the first clearing it.
+        const std::uint64_t end = kept->first + kept->steps.size();
+        if (cached.id == render::ParticlesId::None || cached.serial != kept->serial ||
+            cached.amount != kept->amount || cached.next < kept->first) {
+            if (cached.id != render::ParticlesId::None) {
+                device_->destroy_particles(cached.id);
+                cached.id = render::ParticlesId::None;
+            }
+            auto made = device_->create_particles(kept->amount);
+            if (!made) {
+                warn_once(name_of(entity), made.error().message, "id", kEvent);
+                problem(entity, "/components/GPUParticles2D/amount", made.error().message);
+                continue;
+            }
+            cached.id = made.value();
+            cached.serial = kept->serial;
+            cached.amount = kept->amount;
+            ParticleJob job{.particles = cached.id,
+                            .process = process,
+                            .first = kept->steps.front(),
+                            .rest = kept->steps.subspan(1)};
+            job.first->clear = true;
+            particle_jobs.push_back(job);
+        } else if (cached.next < end) {
+            particle_jobs.push_back(
+                {.particles = cached.id,
+                 .process = process,
+                 .first = std::nullopt,
+                 .rest = kept->steps.subspan(static_cast<std::size_t>(cached.next - kept->first))});
+        }
+        cached.next = end;
+        look.order = particle_order(emitter.draw_order);
+        if (look.order != render::ParticleOrder::Index) {
+            look.lifetime_split =
+                render::particle_lifetime_split(kept->amount, kept->steps.back().system_phase);
+        }
+        look.anim_loop = emitter.anim_loop;
+        look.modulate = from_parents.modulate;
+        if (emitter.interpolate) {
+            // Drawn between ticks, as the rest of the world is: where they were that much
+            // before the tick ended.
+            const double behind = (1.0 - std::clamp(options.interpolation, 0.0, 1.0)) *
+                                  tick_seconds * std::max(emitter.speed_scale, 0.0F);
+            look.remainder = kept->remainder - static_cast<float>(behind);
+        }
+        // Particles in the emitter's coordinates move with it.
+        world::Affine2D placed;
+        if (emitter.local_coords && ecs.all_of<world::Transform2D>(entity)) {
+            placed = world::affine(transform_of(entity, world::Transform2D{}));
+        }
+        // FrameContents gets the particles run on the CPU, as the device runs them.
+        std::size_t live = 0;
+        if (contents != nullptr) {
+            if (cached.cpu.size() != kept->amount || cached.cpu_serial != kept->serial ||
+                cached.cpu_next < kept->first) {
+                cached.cpu = run_steps(kept->amount, *process, kept->steps);
+            } else if (cached.cpu_next < end) {
+                render::process_particles(
+                    cached.cpu, *process,
+                    kept->steps.subspan(static_cast<std::size_t>(cached.cpu_next - kept->first)));
+            }
+            cached.cpu_serial = kept->serial;
+            cached.cpu_next = end;
+            live = static_cast<std::size_t>(std::ranges::count_if(
+                cached.cpu, [](const render::Particle& p) { return p.active(); }));
+        }
+        // Again at each repeat of the Parallax2D it is under.
+        const entt::entity source = repeat_source(entity);
+        const std::vector<Vec2> unmoved{Vec2{}};
+        const std::vector<Vec2>& offsets = source != entt::null ? offsets_of(source) : unmoved;
+        for (std::size_t r = 0; r < offsets.size(); ++r) {
+            render::ParticleDraw at = look;
+            at.transform = {placed.x.x,
+                            placed.x.y,
+                            placed.y.x,
+                            placed.y.y,
+                            placed.origin.x + offsets[r].x,
+                            placed.origin.y + offsets[r].y};
+            const std::size_t first = vertices.size();
+            if (contents != nullptr) {
+                // Live particles only: one not live has no area.
+                std::vector<render::Vertex2D> quads;
+                render::particle_vertices(cached.cpu, at, quads);
+                for (std::size_t q = 0; q + 6 <= quads.size(); q += 6) {
+                    const auto quad = std::span(quads).subspan(q, 6);
+                    if (std::ranges::any_of(quad, [](const render::Vertex2D& v) {
+                            return v.rgba != std::array<std::uint8_t, 4>{};
+                        })) {
+                        vertices.insert(vertices.end(), quad.begin(), quad.end());
+                    }
+                }
+            }
+            items.push_back({.canvas = canvas,
+                             .z_index = z,
+                             .order = tree.draw_key(entity),
+                             .part = static_cast<std::uint32_t>(r),
+                             .texture = texture_id,
+                             .first = first,
+                             .count = vertices.size() - first,
+                             .material = material,
+                             .entity = entity,
+                             .kind = FrameItem::Kind::GpuParticles,
+                             .image = image,
+                             .drawn = r == 0 ? live : 0,
+                             .particles = cached.id,
+                             .look = at});
+        }
+        particles += kept->amount;
+    }
+    std::erase_if(gpu_systems_, [&](const auto& entry) {
+        if (entry.second.seen) {
+            return false;
+        }
+        if (entry.second.id != render::ParticlesId::None) {
+            device_->destroy_particles(entry.second.id);
+        }
+        return true;
+    });
+    // Runs the steps, before the systems draw. If they can't run, the systems are made again
+    // next frame.
+    const auto run_particles = [&]() -> Result<void> {
+        for (const ParticleJob& job : particle_jobs) {
+            Result<void> ran;
+            if (job.first) {
+                ran = device_->process_particles(job.particles, *job.process, {&*job.first, 1});
+            }
+            if (ran && !job.rest.empty()) {
+                ran = device_->process_particles(job.particles, *job.process, job.rest);
+            }
+            if (!ran) {
+                for (auto& [entity, cached] : gpu_systems_) {
+                    cached.serial = 0;
+                }
+                return ran;
+            }
+        }
+        return {};
+    };
 
     for (auto& [entity, cached] : layer_cells_) {
         cached.seen = false;
@@ -1145,7 +1394,9 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
                                  .entity = entity,
                                  .kind = FrameItem::Kind::Tiles,
                                  .image = &*texture.value()->image,
-                                 .drawn = 0});
+                                 .drawn = 0,
+                                 .particles = render::ParticlesId::None,
+                                 .look = {}});
                 run = items.size() - 1;
             }
             // The tile's region on its cell, moved by its texture origin and turned as Godot's
@@ -1418,6 +1669,9 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
     const auto shadows = static_cast<std::size_t>(std::ranges::count_if(
         lights.lights, [](const render::Light& l) { return l.shadow_row >= 0; }));
     if (options.target == render::TextureId::None && device_->backend() == render::Backend::Null) {
+        if (auto ran = run_particles(); !ran) {
+            return ran.error();
+        }
         sprites_drawn_ = sprites;
         tiles_drawn_ = tiles;
         particles_drawn_ = particles;
@@ -1438,12 +1692,18 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
     }
     auto began = device_->begin_frame(frame);
     if (!began) {
+        for (auto& [entity, cached] : gpu_systems_) {
+            cached.serial = 0;
+        }
         return began.error();
     }
     const auto failed = [&](const Error& error) -> Result<void> {
         (void)device_->end_frame();
         return error;
     };
+    if (auto ran = run_particles(); !ran) {
+        return failed(ran.error());
+    }
     const auto draw_control = [&](const ui::DrawCall& call,
                                   const std::optional<render::TextureId>& made,
                                   const std::optional<render::Mat4>& transform) -> Result<void> {
@@ -1470,6 +1730,14 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
     for (std::size_t c = 0; c <= canvas_list.size(); ++c) {
         for (; next_item < items.size() && items[next_item].canvas == c; ++next_item) {
             const Item& item = items[next_item];
+            if (item.particles != render::ParticlesId::None) {
+                if (auto drawn = device_->draw_particles(item.particles, item.texture, item.look,
+                                                         item.material);
+                    !drawn) {
+                    return failed(drawn.error());
+                }
+                continue;
+            }
             const std::span<const render::Vertex2D> span(vertices.data() + item.first, item.count);
             if (auto drawn = device_->draw(item.texture, span, item.material); !drawn) {
                 return failed(drawn.error());

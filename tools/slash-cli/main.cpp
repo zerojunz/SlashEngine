@@ -6,6 +6,7 @@
 #include "slash/animation/animation.hpp"
 #include "slash/audio/audio.hpp"
 #include "slash/canvas/canvas.hpp"
+#include "slash/canvas/gpu_particles.hpp"
 #include "slash/canvas/material.hpp"
 #include "slash/canvas/sprite_frames.hpp"
 #include "slash/canvas/tilemap.hpp"
@@ -93,13 +94,15 @@ Usage:
       --token <token>                Bearer token for --serve (default: random)
       --project <dir>                Project folder for --serve and --record (default ".")
   slash-cli scene validate <file>    Check a scene, .prefab.json, .frames.json,
-                                     .material.json, .anim.json, .tileset.json, .font.json,
-                                     .theme.json, .audio.json, .bus_layout.json, .replay.json
-                                     or .test.json file; lists every error
+                                     .material.json, .process_material.json, .anim.json,
+                                     .tileset.json, .font.json, .theme.json, .audio.json,
+                                     .bus_layout.json, .replay.json or .test.json file; lists
+                                     every error
   slash-cli scene format <file>      Rewrite one of those files in canonical form
       --check                        Only report whether it is canonical; change nothing
   slash-cli schema <name>            Print a JSON Schema: scene, prefab, frames (.frames.json),
-                                     material (.material.json), animation (.anim.json),
+                                     material (.material.json), process_material
+                                     (.process_material.json), animation (.anim.json),
                                      tileset (.tileset.json), font (.font.json), theme
                                      (.theme.json), audio (.audio.json), bus_layout
                                      (.bus_layout.json), replay (.replay.json), test
@@ -699,6 +702,7 @@ int cmd_scene_validate(const std::string& path) {
     const bool prefab = path.ends_with(world::kPrefabSuffix);
     const bool frames = path.ends_with(slash::canvas::kSpriteFramesSuffix);
     const bool material = path.ends_with(slash::canvas::kMaterialSuffix);
+    const bool process = path.ends_with(slash::canvas::kProcessMaterialSuffix);
     const bool animation = path.ends_with(slash::animation::kAnimationSuffix);
     const bool tileset = path.ends_with(slash::canvas::kTileSetSuffix);
     const bool font = path.ends_with(slash::text::kFontSuffix);
@@ -719,6 +723,8 @@ int cmd_scene_validate(const std::string& path) {
         if (errors.empty()) {
             errors = slash::canvas::check_material_shader(parsed.value(), prefab_reader(path));
         }
+    } else if (process) {
+        errors = slash::canvas::validate_process_material(parsed.value());
     } else if (animation) {
         errors = slash::animation::validate_animation_library(parsed.value(), &registry);
     } else if (tileset) {
@@ -748,14 +754,14 @@ int cmd_scene_validate(const std::string& path) {
             errors = slash::ui::check_scene(registry, parsed.value(), prefab_reader(path));
         }
     }
-    if (parsed && !frames && !material && !animation && !tileset && !font && !theme && !stream &&
-        !buses && !replay && !test) {
+    if (parsed && !frames && !material && !process && !animation && !tileset && !font && !theme &&
+        !stream && !buses && !replay && !test) {
         check_story_refs(path, parsed.value(), errors);
     }
     result["valid"] = errors.empty();
     if (!errors.empty()) {
         result["errors"] = errors_to_json(errors);
-    } else if (font || stream) {
+    } else if (font || stream || process) {
         print(result);
         return kExitOk;
     } else if (replay) {
@@ -806,8 +812,9 @@ int cmd_scene_validate(const std::string& path) {
     return errors.empty() ? kExitOk : kExitFailure;
 }
 
-// A .frames.json, .material.json, .anim.json, .tileset.json, .font.json, .theme.json,
-// .audio.json, .bus_layout.json, .replay.json or .test.json file in canonical form: checked,
+// A .frames.json, .material.json, .process_material.json, .anim.json, .tileset.json, .font.json,
+// .theme.json, .audio.json, .bus_layout.json, .replay.json or .test.json file in canonical form:
+// checked,
 // then written with sorted keys.
 template <typename Parse>
 slash::Result<std::string> format_checked(std::string_view text, Parse parse) {
@@ -833,6 +840,9 @@ int cmd_scene_format(const std::string& path, bool check) {
         }
         if (path.ends_with(slash::canvas::kMaterialSuffix)) {
             return format_checked(text.value(), slash::canvas::parse_material);
+        }
+        if (path.ends_with(slash::canvas::kProcessMaterialSuffix)) {
+            return format_checked(text.value(), slash::canvas::parse_process_material);
         }
         if (path.ends_with(slash::animation::kAnimationSuffix)) {
             return format_checked(text.value(), slash::animation::parse_animation_library);
@@ -919,13 +929,14 @@ int cmd_scene(const std::vector<std::string>& args) {
 }
 
 int cmd_schema(const std::vector<std::string>& args) {
-    constexpr std::array<std::string_view, 15> kKinds = {
-        "scene", "prefab",     "frames", "material", "animation",  "tileset", "font",   "theme",
-        "audio", "bus_layout", "replay", "test",     "storyboard", "project", "presets"};
+    constexpr std::array<std::string_view, 16> kKinds = {
+        "scene",   "prefab",     "frames",  "material", "process_material", "animation",
+        "tileset", "font",       "theme",   "audio",    "bus_layout",       "replay",
+        "test",    "storyboard", "project", "presets"};
     if (args.size() != 1 || std::ranges::find(kKinds, args[0]) == kKinds.end()) {
         return usage_error("schema takes one argument: scene, prefab, frames, material, "
-                           "animation, tileset, font, theme, audio, bus_layout, replay, test, "
-                           "storyboard, project or presets");
+                           "process_material, animation, tileset, font, theme, audio, "
+                           "bus_layout, replay, test, storyboard, project or presets");
     }
     json::Value schema;
     if (args[0] == "scene") {
@@ -936,6 +947,8 @@ int cmd_schema(const std::vector<std::string>& args) {
         schema = slash::canvas::sprite_frames_schema();
     } else if (args[0] == "material") {
         schema = slash::canvas::material_schema();
+    } else if (args[0] == "process_material") {
+        schema = slash::canvas::process_material_schema();
     } else if (args[0] == "animation") {
         schema = slash::animation::animation_schema();
     } else if (args[0] == "tileset") {

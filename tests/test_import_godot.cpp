@@ -1,4 +1,5 @@
 #include "slash/animation/animation.hpp"
+#include "slash/canvas/gpu_particles.hpp"
 #include "slash/canvas/tilemap.hpp"
 #include "slash/command/builtin.hpp"
 #include "slash/command/command.hpp"
@@ -917,7 +918,8 @@ TEST_CASE("importing Godot tile maps, themes and bus layouts writes their SlashE
     const auto files = files_of(plan);
     CHECK(*plan.report.find("converted") ==
           parse(R"({"scenes": 2, "sprite_frames": 0, "tile_sets": 1, "themes": 1,
-                    "bus_layouts": 1, "animation_libraries": 0, "input_actions": 1,
+                    "bus_layouts": 1, "animation_libraries": 0, "process_materials": 0,
+                    "input_actions": 1,
                     "assets": 3})"));
     const std::string level = "godot/scenes/level.scene.json";
 
@@ -1695,6 +1697,118 @@ z_as_relative = false
         CHECK_MESSAGE(what.find("top_level") == std::string::npos, what);
         CHECK_MESSAGE(what.find("z_as_relative") == std::string::npos, what);
     }
+    fs::remove_all(project);
+}
+
+TEST_CASE("importing Godot's GPUParticles2D writes its process material") {
+    const fs::path project = "import_godot_gpu_particles";
+    fs::remove_all(project);
+    write(project / "godot/project.godot",
+          "config_version=5\n\n[application]\n\nconfig/name=\"Fire\"\n");
+    write_png(project / "godot/spark.png", 32, 16);
+    // A ParticleProcessMaterial in a file of its own, made for 3D: Godot gives it 2D's gravity.
+    write(project / "godot/smoke.tres", R"([gd_resource type="ParticleProcessMaterial" format=3]
+
+[resource]
+spread = 180.0
+initial_velocity_max = 10.0
+)");
+    write(project / "godot/level.tscn", R"([gd_scene load_steps=8 format=3]
+
+[ext_resource type="Texture2D" path="res://spark.png" id="1_spark"]
+[ext_resource type="ParticleProcessMaterial" path="res://smoke.tres" id="2_smoke"]
+
+[sub_resource type="Curve" id="Curve_1"]
+_data = [Vector2(0, 1), 0.0, 0.0, 0, 0, Vector2(1, 0), 0.0, 0.0, 0, 0]
+point_count = 2
+
+[sub_resource type="CurveTexture" id="CurveTexture_1"]
+curve = SubResource("Curve_1")
+
+[sub_resource type="Gradient" id="Gradient_1"]
+offsets = PackedFloat32Array(0, 1)
+colors = PackedColorArray(1, 0.8, 0.2, 1, 1, 0.2, 0, 0)
+
+[sub_resource type="GradientTexture1D" id="GradientTexture1D_1"]
+gradient = SubResource("Gradient_1")
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_1"]
+particle_flag_disable_z = true
+emission_shape = 1
+emission_sphere_radius = 6.0
+direction = Vector3(0, -1, 0)
+spread = 20.0
+initial_velocity_min = 60.0
+initial_velocity_max = 90.0
+gravity = Vector3(0, 98, 0)
+scale_curve = SubResource("CurveTexture_1")
+color_ramp = SubResource("GradientTexture1D_1")
+turbulence_enabled = true
+
+[sub_resource type="CanvasItemMaterial" id="CanvasItemMaterial_1"]
+particles_animation = true
+particles_anim_h_frames = 4
+particles_anim_v_frames = 2
+particles_anim_loop = true
+
+[node name="Level" type="Node2D"]
+
+[node name="Fire" type="GPUParticles2D" parent="."]
+material = SubResource("CanvasItemMaterial_1")
+amount = 32
+process_material = SubResource("ParticleProcessMaterial_1")
+texture = ExtResource("1_spark")
+lifetime = 0.8
+use_fixed_seed = true
+seed = 4000000000
+draw_order = 0
+visibility_rect = Rect2(-50, -50, 100, 100)
+
+[node name="Smoke" type="GPUParticles2D" parent="."]
+process_material = ExtResource("2_smoke")
+seed = 12
+trail_enabled = true
+)");
+    const importer::ImportPlan plan = plan_inside(project);
+    const auto files = files_of(plan);
+    CHECK(plan.report.find("converted")->find("process_materials")->as_int() == 2);
+
+    // The scene's own material: its 2D vectors, curve and gradient.
+    const std::string fire_material =
+        "godot/level_particle_process_material_1.process_material.json";
+    REQUIRE(files.contains(fire_material));
+    CHECK(slash::canvas::validate_process_material(parse(files.at(fire_material))).empty());
+    CHECK(parse(files.at(fire_material)) == parse(R"({
+        "format": 1,
+        "emission_shape": "sphere",
+        "emission_sphere_radius": 6.0,
+        "direction": [0.0, -1.0],
+        "spread": 20.0,
+        "initial_velocity_min": 60.0,
+        "initial_velocity_max": 90.0,
+        "gravity": [0.0, 98.0],
+        "scale_curve": [[0.0, 1.0], [1.0, 0.0]],
+        "color_ramp": [{"offset": 0.0, "color": [1.0, 0.8, 0.2, 1.0]},
+                       {"offset": 1.0, "color": [1.0, 0.2, 0.0, 0.0]}]})"));
+    CHECK(unsupported(plan.report, "ParticleProcessMaterial.turbulence_enabled")
+              .find("why")
+              ->as_string() == "turbulence, collisions and sub-emitters are on the roadmap");
+    CHECK(parse(files.at("godot/smoke.process_material.json")) ==
+          parse(R"({"format": 1, "spread": 180.0, "initial_velocity_max": 10.0,
+                    "gravity": [0.0, 98.0]})"));
+
+    // The emitters: the material's animation frames, and the seed only where it is fixed.
+    const std::string level = "godot/level.scene.json";
+    CHECK(*entity(files, level, "fire").find("GPUParticles2D") == parse(R"({
+        "amount": 32, "process_material": "godot/level_particle_process_material_1.process_material.json",
+        "texture": "godot/spark.png", "lifetime": 0.8, "use_fixed_seed": true,
+        "seed": -294967296, "draw_order": "index", "hframes": 4, "vframes": 2,
+        "anim_loop": true})"));
+    CHECK(*entity(files, level, "smoke").find("GPUParticles2D") ==
+          parse(R"({"process_material": "godot/smoke.process_material.json"})"));
+    CHECK(unsupported(plan.report, "GPUParticles2D.trail_enabled").find("why")->as_string() ==
+          "trails and sub-emitters are on the roadmap");
+    CHECK(unsupported(plan.report, "resource ParticleProcessMaterial").is_null());
     fs::remove_all(project);
 }
 
