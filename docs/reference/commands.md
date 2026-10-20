@@ -84,6 +84,7 @@ as `entity.get`, reject it as an unknown param.
 | Export | [`export.run`](#exportrun), [`sdk.check`](#sdkcheck), [`sdk.add`](#sdkadd), [`sdk.lock`](#sdklock) |
 | Gameplay code | [`gameplay.build`](#gameplaybuild), [`build.check`](#buildcheck), [`api.search`](#apisearch) |
 | AI | [`ai.providers`](#aiproviders), [`ai.complete`](#aicomplete) |
+| Asset library | [`asset.search`](#assetsearch), [`asset.generate`](#assetgenerate), [`asset.refine`](#assetrefine), [`asset.info`](#assetinfo), [`asset.use`](#assetuse), [`asset.add`](#assetadd) |
 
 
 ## Describe
@@ -3361,8 +3362,9 @@ through `ai::Provider`. Registered by `slash-cli` and `slash-mcp`, running games
 
 Lists the providers `providers.json` configures, by name, with each one's type, model and URL
 (the vendor's when the file sets none), and for a provider that needs a key, the variable it
-reads and whether it is set. Never returns a key. Then the roles, and the replay file with its
-mode (after `SLASH_AI_REPLAY`). A project without the file has none.
+reads and whether it is set. Never returns a key. Then the roles, the asset library's
+[generators](providers.md#generators) and the replay file with its mode (after
+`SLASH_AI_REPLAY`). A project without the file has none.
 
 No params. Needs: `read`.
 
@@ -3427,6 +3429,179 @@ unknown model and `-32004` for the rest).
 
 ```json
 {"code":-32001,"data":{"path":"/role"},"message":"no role or provider named \"dialog\"; did you mean \"dialogue\"?"}
+```
+
+## Asset library
+
+Images and sounds kept once on the machine, so agents reuse them instead of generating them
+again. The library is `~/.slash/library`, or `SLASH_LIBRARY_DIR`; every project on the machine
+searches the same one. Each asset is stored by the SHA-256 of its bytes, with how it was made (the
+request, generator, model and seed), its license, tags and a short description agents read
+instead of the file. IDs in replies are the hash's first 12 hex digits, and any unique start of 6
+or more finds an asset. Using an asset copies it into the project, so exports never depend on the
+library, and records where it came from in the project's `library.json`:
+
+```json
+{
+  "assets": {
+    "art/slime.png": {"generator": "test", "id": "0b2fd1b5cf5a2939ad6f5c40396f95aedf766757807aea0e129ccbcaf338edc7", "license": "CC0-1.0", "model": "test"}
+  }
+}
+```
+
+Generators come from the project's [`providers.json`](providers.md#generators); the built-in
+`test` generator makes placeholders with no model or key. Sessions that run tests write nothing
+to the library. Registered by `slash-cli` and `slash-mcp`, running games included.
+[examples/asset-library](../../examples/asset-library/) has two projects sharing one library.
+
+### asset.search
+
+Finds assets by words, tags and type. Words match descriptions, prompts and tags, a plural
+matching its singular; `score` is the share of the words an asset matches, and results come best
+first, then those whose tags matched more words, then by ID. With no `text`, every asset with the
+tags and type matches. Needs: `read`.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `text` | string | | Words to find |
+| `tags` | string[] | | Tags every result must have |
+| `type` | string | both | `image` or `sound` |
+| `limit` | integer | 10 | Most results, up to 50 |
+
+```json
+{"text": "heart", "tags": ["ui"]}
+```
+
+```json
+{"assets":[{"description":"Red heart icon, 8x8","height":8,"id":"19b7f428aefb","score":1.0,"tags":["ui","health"],"type":"image","width":8}]}
+```
+
+### asset.generate
+
+Makes an image or a sound with a generator and keeps it. An exact repeat of an earlier request
+(the same generator, model and params, apart from `description`, `tags`, `path` and `similar`)
+returns the stored asset with `"reused": true` and calls no model. Otherwise, when the library has
+assets of the type matching at least three quarters of the prompt's words, they come back as
+`candidates` and nothing is made; pass `"similar": false` to generate anyway. Needs: `read`,
+`filesystem`, `network`.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `prompt` | string | required | What to make |
+| `type` | string | `image` | `image` or `sound` |
+| `generator` | string | the one that makes the type | A generator in `providers.json`, or `test` |
+| `width`, `height` | integer | the generator's | An image's size, 1 to 4096 pixels; `height` defaults to `width` for `test` |
+| `seconds` | number | the generator's | A sound's length |
+| `seed` | integer | | For a repeatable result, where the generator takes one |
+| `description` | string | the prompt | A sentence for agents to read instead of the file |
+| `tags` | string[] | | Words to find it by |
+| `path` | string | | Also copy it into the project here, as [`asset.use`](#assetuse) does |
+| `similar` | boolean | true | `false` generates even when there are close matches |
+
+The reply has the `id`, the image's `width` and `height` or the sound's `seconds`, and `path`
+when it was copied:
+
+```json
+{"prompt": "green slime sprite", "generator": "test", "width": 32, "tags": ["enemy"], "path": "art/slime.png"}
+```
+
+```json
+{"height":32,"id":"0b2fd1b5cf5a","path":"art/slime.png","width":32}
+```
+
+A close request, from another project:
+
+```json
+{"prompt": "a slime sprite, green", "generator": "test"}
+```
+
+```json
+{"candidates":[{"description":"green slime sprite","height":32,"id":"0b2fd1b5cf5a","score":1.0,"tags":["enemy"],"type":"image","width":32}]}
+```
+
+The `test` generator draws a box, or a circle or triangle when the prompt names something round
+or pointed, in the colors the prompt names, on a transparent background for a sprite, icon or
+cutout; its sounds are tones whose pitch, wave and sweep follow the prompt's words. Its license is
+`CC0-1.0`.
+
+### asset.refine
+
+Makes a new version of an asset, changed as the prompt says, with `parent` naming the one it came
+from, which stays to compare and go back to. It takes `asset.generate`'s params apart from `type`
+and `similar`; tags default to the parent's, and the description to the parent's followed by the
+prompt. A repeat is reused as with `asset.generate`. The parent's generator is used when it was
+`test`, otherwise the one that makes the type. Needs: `read`, `filesystem`, `network`.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `id` | string | required | The asset to change |
+| `prompt` | string | required | What to change |
+
+```json
+{"id": "0b2fd1b5", "prompt": "make it red", "description": "Red slime sprite", "path": "art/slime_red.png"}
+```
+
+```json
+{"height":32,"id":"833c6cd1f6e5","parent":"0b2fd1b5cf5a","path":"art/slime_red.png","width":32}
+```
+
+The `test` generator recolors an image to a color the prompt names, mirrors, darkens or lightens
+it, and makes a sound higher, lower, shorter, longer, louder, quieter or reversed; a prompt it
+understands none of makes a variation.
+
+### asset.info
+
+Returns an asset's whole record: `type`, `format`, `bytes`, size or length (`seconds`,
+`channels` and `sample_rate`), `description`, `tags`, the `request` its generator was asked,
+`generator`, `model`, `seed`, `license`, `author` and `parent`; then `versions`, every version
+before it, oldest first, and `children`, the versions made from it. Needs: `read`.
+
+```json
+{"id": "833c6cd1"}
+```
+
+```json
+{"bytes":303,"description":"Red slime sprite","format":"png","generator":"test","height":32,"id":"833c6cd1f6e5","license":"CC0-1.0","model":"test","parent":"0b2fd1b5cf5a","request":{"parent":"0b2fd1b5cf5a","prompt":"make it red","type":"image"},"seed":0,"tags":["enemy"],"type":"image","versions":["0b2fd1b5cf5a"],"width":32}
+```
+
+### asset.use
+
+Copies an asset into the project and records it in `library.json`. The path keeps the asset's
+format: a `.png` stays a `.png`. Needs: `read`, `filesystem`.
+
+```json
+{"id": "19b7f428", "path": "ui/heart.png"}
+```
+
+```json
+{"path":"ui/heart.png"}
+```
+
+### asset.add
+
+Adds a project's `.png`, `.bmp`, `.wav`, `.ogg` or `.mp3` file to the library, with its
+`description` (required), `tags`, `license` and `author`, and records it in `library.json`. A
+file the library already holds keeps its record, with the new tags added. Needs: `read`,
+`filesystem`.
+
+```json
+{"path": "ui/heart.png", "description": "Red heart icon, 8x8", "tags": ["ui", "health"], "license": "CC-BY-4.0", "author": "Mira"}
+```
+
+```json
+{"height":8,"id":"19b7f428aefb","type":"image","width":8}
+```
+
+Errors, with `data.path` pointing at the param: an unknown generator with `-32001` and the
+closest name; no generator for the type, several and none named, or one that makes no such type,
+with `-32001` or `-32002`; a size for a sound, `seconds` for an image, or a `path` of the wrong
+type with `-32602`; an unknown or ambiguous ID with `-32001` or `-32002`; a path outside the
+project with `-32003`; and, in a session that runs tests, any write to the library with
+`-32003`. When `path` fails after the asset was made, the error's `data.id` names it, for
+`asset.use`.
+
+```json
+{"code":-32001,"data":{"path":"/generator"},"message":"/generator: no generator named \"tset\"; did you mean \"test\"?"}
 ```
 
 ## Adding a command

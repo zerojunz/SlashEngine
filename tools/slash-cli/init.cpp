@@ -137,6 +137,15 @@ hand: it runs many headless copies of the game at once, each with values from `v
 pressing input actions, and returns per value how the runs ended, the ticks they took, the events
 they emitted and the fields you `measure`.
 
+## Images and sounds
+
+Every project on this machine shares one asset library. Before making an image or a sound, call
+`asset_search` and `asset_use` a match: it copies the file into the project and records its
+source and license in `library.json`. `asset_generate` makes one with a generator from
+`providers.json` (`"generator": "test"` for placeholders) and keeps it in the library; an exact
+repeat costs no model call, and close matches come back as candidates instead. `asset_refine`
+makes a new version linked to the old, and `asset_add` puts the project's own files in.
+
 ## Run and export
 
 `slash-game --data .` runs the game the way its exports do, once `slash-cli build` has built its
