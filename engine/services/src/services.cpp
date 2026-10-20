@@ -10,6 +10,7 @@
 #include <cmath>
 #include <cstdio>
 #include <deque>
+#include <optional>
 #include <set>
 #include <utility>
 
@@ -23,11 +24,17 @@ constexpr std::size_t kMaxParams = 25;
 constexpr std::size_t kMaxParamText = 100;
 constexpr double kTestPrice = 0.99;
 constexpr double kMicros = 1'000'000.0;
+constexpr int kMaxScores = 25;
+constexpr std::string_view kTestPlayer = "test-player";
 
 constexpr std::array<std::string_view, 5> kStatuses{"unloaded", "loading", "loaded", "showing",
                                                     "failed"};
 constexpr std::array<std::string_view, 5> kStates{"purchased", "pending", "cancelled", "failed",
                                                   "restored"};
+constexpr std::array<std::string_view, 4> kSignIns{"signed_out", "signing_in", "signed_in",
+                                                   "failed"};
+constexpr std::array<std::string_view, 3> kSpans{"all_time", "week", "today"};
+constexpr std::array<std::string_view, 2> kCollections{"global", "friends"};
 
 enum class ProductsStatus : std::uint8_t { None, Fetching, Fetched, Failed };
 
@@ -49,22 +56,23 @@ struct Logged {
     bool sent = false;
 };
 
+struct LeaderboardState {
+    std::optional<std::int64_t> best;
+    bool unsent = false; // submitted while the player was signed out
+};
+
 // Everything snapshots copy: the game's view of the services and the test store.
 struct State {
     Settings settings;
-    bool test = false;
     TestSettings test_settings;
-    ConsentState consent;
     std::uint64_t tick = 0;
     std::map<std::string, AdState, std::less<>> ads;
     std::vector<Product> products;
-    ProductsStatus products_status = ProductsStatus::None;
     std::string products_error;
     std::set<std::string, std::less<>> owned;
     std::vector<Purchase> unfinished;
     std::vector<Purchase> pending;
     std::set<std::string, std::less<>> buying;
-    bool restoring = false;
     std::deque<Logged> logged;
     std::uint64_t logged_count = 0;
     std::map<std::string, std::string, std::less<>> user_properties;
@@ -74,6 +82,22 @@ struct State {
     // The test store's own records.
     std::set<std::string, std::less<>> store_owned;
     std::uint64_t next_transaction = 1;
+    // Games.
+    std::string sign_in_error;
+    services::Player player;
+    std::map<std::string, AchievementProgress, std::less<>> achievements;
+    std::map<std::string, LeaderboardState, std::less<>> leaderboards;
+    std::map<std::string, ScoreQuery, std::less<>> loading_scores;
+    // The test games service's own records.
+    std::map<std::string, AchievementProgress, std::less<>> store_achievements;
+    std::map<std::string, std::int64_t, std::less<>> store_scores;
+    // The small fields last, so they pack together.
+    ConsentState consent;
+    ProductsStatus products_status = ProductsStatus::None;
+    SignIn sign_in = SignIn::SignedOut;
+    bool test = false;
+    bool restoring = false;
+    bool games_ui = false;
 };
 
 using Handle = std::shared_ptr<State>;
@@ -151,6 +175,16 @@ const Product* find_product(const State& state, std::string_view id) {
     return it != state.products.end() ? &*it : nullptr;
 }
 
+const Achievement* find_achievement(const State& state, std::string_view name) {
+    const auto it = std::ranges::find(state.settings.achievements, name, &Achievement::name);
+    return it != state.settings.achievements.end() ? &*it : nullptr;
+}
+
+const Leaderboard* find_leaderboard(const State& state, std::string_view name) {
+    const auto it = std::ranges::find(state.settings.leaderboards, name, &Leaderboard::name);
+    return it != state.settings.leaderboards.end() ? &*it : nullptr;
+}
+
 bool is_owned_type(ProductType type) {
     return type == ProductType::NonConsumable || type == ProductType::Subscription;
 }
@@ -185,12 +219,81 @@ Error unknown_product(const State& state, std::string_view id) {
     return make_error(ErrorCode::NotFound, std::move(message));
 }
 
-AdUnit unit_of(const Placement& placement) {
-    AdUnit unit{.placement = placement.name, .format = placement.format, .id = {}};
-    if (const auto it = placement.ids.find(platform::os_name()); it != placement.ids.end()) {
-        unit.id = it->second;
+// No achievement or leaderboard by that name, with the closest one.
+template <typename Item>
+Error unknown_name(std::string_view what, std::string_view name, const std::vector<Item>& items,
+                   std::string_view where) {
+    std::string message = "no " + std::string(what) + " " + quoted(name);
+    std::vector<std::string_view> names;
+    names.reserve(items.size());
+    for (const Item& item : items) {
+        names.emplace_back(item.name);
     }
-    return unit;
+    if (const std::string_view hint = closest_match(name, names); !hint.empty()) {
+        message += "; did you mean " + quoted(hint) + "?";
+    } else if (names.empty()) {
+        message += "; project.json's " + std::string(where) + " has none";
+    }
+    return make_error(ErrorCode::NotFound, std::move(message));
+}
+
+Error unknown_achievement(const State& state, std::string_view name) {
+    return unknown_name("achievement", name, state.settings.achievements,
+                        "services.games.achievements");
+}
+
+Error unknown_leaderboard(const State& state, std::string_view name) {
+    return unknown_name("leaderboard", name, state.settings.leaderboards,
+                        "services.games.leaderboards");
+}
+
+Error not_signed_in(const State& state) {
+    switch (state.sign_in) {
+    case SignIn::SigningIn:
+        return make_error(ErrorCode::InvalidArgument,
+                          "the player is signing in; wait for signed_in");
+    case SignIn::Failed:
+        return make_error(ErrorCode::InvalidArgument, "the player isn't signed in (" +
+                                                          state.sign_in_error + "); sign_in first");
+    case SignIn::SignedOut:
+    case SignIn::SignedIn:
+        break;
+    }
+    return make_error(ErrorCode::InvalidArgument, "the player isn't signed in; sign_in first");
+}
+
+// This platform's ID in a placement's, achievement's or leaderboard's ids, or "".
+std::string platform_id(const std::map<std::string, std::string, std::less<>>& ids) {
+    const auto it = ids.find(platform::os_name());
+    return it != ids.end() ? it->second : std::string();
+}
+
+AchievementUnit unit_of(const Achievement& achievement) {
+    return {.achievement = achievement.name,
+            .id = platform_id(achievement.ids),
+            .steps = achievement.steps};
+}
+
+LeaderboardUnit unit_of(const Leaderboard& leaderboard) {
+    return {.leaderboard = leaderboard.name,
+            .id = platform_id(leaderboard.ids),
+            .sort_order = leaderboard.sort_order};
+}
+
+// Whether score ranks above than on a leaderboard sorted so.
+bool ranks_above(SortOrder order, std::int64_t score, std::int64_t than) {
+    return order == SortOrder::HighToLow ? score > than : score < than;
+}
+
+ServiceEvent event_for(std::string_view id) {
+    ServiceEvent event;
+    event.id = id;
+    return event;
+}
+
+AdUnit unit_of(const Placement& placement) {
+    return {
+        .placement = placement.name, .format = placement.format, .id = platform_id(placement.ids)};
 }
 
 // "$1.99" for 1.99.
@@ -250,8 +353,166 @@ void request_products(world::World& world, State& state) {
     }
 }
 
-// Starts the services over: forgets ads and the store's answers, then fetches products and
-// loads auto_load placements. What the player owns and hasn't finished stays.
+bool uses_games(const world::World& world, const State& state) {
+    return !state.settings.achievements.empty() || !state.settings.leaderboards.empty() ||
+           holder_of(world).backends.games != nullptr;
+}
+
+void request_sign_in(world::World& world, State& state, bool interactive) {
+    state.sign_in = SignIn::SigningIn;
+    state.sign_in_error.clear();
+    Report report;
+    report.kind = Report::Kind::SignInFailed;
+    if (state.test) {
+        const TestSettings& test = state.test_settings;
+        if (test.accept_sign_in) {
+            report.kind = Report::Kind::SignedIn;
+            report.player = {.id = std::string(kTestPlayer), .name = test.player};
+        } else {
+            report.error = "the player didn't sign in";
+        }
+        schedule(world, state, test.games_ticks, std::move(report));
+    } else if (GamesBackend* games = holder_of(world).backends.games.get(); games != nullptr) {
+        games->sign_in(interactive);
+    } else {
+        report.error = "no games backend";
+        schedule(world, state, 1, std::move(report));
+    }
+}
+
+// Asks for the player's progress on the platform, once they are signed in.
+void request_achievements(world::World& world, State& state) {
+    if (state.settings.achievements.empty()) {
+        return;
+    }
+    if (state.test) {
+        Report report;
+        report.kind = Report::Kind::AchievementsLoaded;
+        for (const auto& [name, progress] : state.store_achievements) {
+            report.achievements.push_back(progress);
+        }
+        schedule(world, state, state.test_settings.games_ticks, std::move(report));
+    } else if (GamesBackend* games = holder_of(world).backends.games.get(); games != nullptr) {
+        std::vector<AchievementUnit> units;
+        units.reserve(state.settings.achievements.size());
+        for (const Achievement& achievement : state.settings.achievements) {
+            units.push_back(unit_of(achievement));
+        }
+        games->load_achievements(units);
+    }
+}
+
+// Sends an achievement's progress to the platform.
+void send_progress(world::World& world, State& state, const Achievement& achievement) {
+    const AchievementProgress& progress = state.achievements[achievement.name];
+    if (state.test) {
+        AchievementProgress& stored = state.store_achievements[achievement.name];
+        stored.achievement = achievement.name;
+        stored.steps = std::max(stored.steps, progress.steps);
+        stored.unlocked = stored.unlocked || progress.unlocked;
+    } else if (GamesBackend* games = holder_of(world).backends.games.get(); games != nullptr) {
+        if (achievement.steps > 0) {
+            games->set_steps(unit_of(achievement), progress.steps);
+        } else if (progress.unlocked) {
+            games->unlock(unit_of(achievement));
+        }
+    }
+}
+
+void send_score(world::World& world, State& state, const Leaderboard& leaderboard,
+                std::int64_t score) {
+    if (state.test) {
+        const auto [stored, added] = state.store_scores.try_emplace(leaderboard.name, score);
+        if (!added && ranks_above(leaderboard.sort_order, score, stored->second)) {
+            stored->second = score;
+        }
+        Report report;
+        report.kind = Report::Kind::ScoreSubmitted;
+        report.name = leaderboard.name;
+        report.score = score;
+        schedule(world, state, state.test_settings.games_ticks, std::move(report));
+    } else if (GamesBackend* games = holder_of(world).backends.games.get(); games != nullptr) {
+        games->submit_score(unit_of(leaderboard), score);
+    }
+}
+
+// What the test games service's leaderboard holds: the other players' scores the test settings
+// give it, and the player's best.
+Scores test_scores(const State& state, const Leaderboard& leaderboard, const ScoreQuery& query) {
+    const TestSettings& test = state.test_settings;
+    std::vector<Score> all;
+    if (const auto others = test.scores.find(leaderboard.name);
+        others != test.scores.end() && query.collection == Collection::Global) {
+        for (const Score& other : others->second) {
+            Score score = other;
+            if (score.player.empty()) {
+                score.player = "rival-" + std::to_string(all.size() + 1);
+            }
+            all.push_back(std::move(score));
+        }
+    }
+    if (const auto own = state.store_scores.find(leaderboard.name);
+        own != state.store_scores.end()) {
+        all.push_back({.rank = 0,
+                       .player = std::string(kTestPlayer),
+                       .name = test.player,
+                       .value = own->second});
+    }
+    std::ranges::stable_sort(all, [&](const Score& a, const Score& b) {
+        return ranks_above(leaderboard.sort_order, a.value, b.value);
+    });
+    Scores out;
+    out.query = query;
+    out.total = static_cast<std::int64_t>(all.size());
+    for (std::size_t i = 0; i < all.size(); ++i) {
+        all[i].rank = static_cast<std::int64_t>(i) + 1;
+        if (all[i].player == kTestPlayer) {
+            out.player = all[i];
+        }
+    }
+    if (all.size() > static_cast<std::size_t>(query.count)) {
+        all.resize(static_cast<std::size_t>(query.count));
+    }
+    out.entries = std::move(all);
+    return out;
+}
+
+// Keeps the progress and best scores of the achievements and leaderboards the settings still
+// have, then signs the player in again.
+void start_games(world::World& world, State& state) {
+    std::map<std::string, AchievementProgress, std::less<>> achievements;
+    for (const Achievement& achievement : state.settings.achievements) {
+        AchievementProgress progress{
+            .achievement = achievement.name, .steps = 0, .unlocked = false};
+        if (const auto kept = state.achievements.find(achievement.name);
+            kept != state.achievements.end()) {
+            progress = kept->second;
+            progress.steps = std::min(progress.steps, achievement.steps);
+        }
+        achievements.emplace(achievement.name, std::move(progress));
+    }
+    state.achievements = std::move(achievements);
+    std::map<std::string, LeaderboardState, std::less<>> leaderboards;
+    for (const Leaderboard& leaderboard : state.settings.leaderboards) {
+        const auto kept = state.leaderboards.find(leaderboard.name);
+        leaderboards.emplace(leaderboard.name,
+                             kept != state.leaderboards.end() ? kept->second : LeaderboardState{});
+    }
+    state.leaderboards = std::move(leaderboards);
+    state.sign_in = SignIn::SignedOut;
+    state.sign_in_error.clear();
+    state.player = {};
+    state.loading_scores.clear();
+    state.games_ui = false;
+    if (state.settings.sign_in_at_start && uses_games(world, state)) {
+        request_sign_in(world, state, false);
+    }
+}
+
+// Starts the services over: forgets ads and the store's answers, then fetches products, loads
+// auto_load placements and signs the player in. What the player owns and hasn't finished, and
+// their progress, stays.
+
 void start(world::World& world, State& state) {
     state.ads.clear();
     for (const Placement& placement : state.settings.placements) {
@@ -269,6 +530,7 @@ void start(world::World& world, State& state) {
             request_load(world, state, placement);
         }
     }
+    start_games(world, state);
 }
 
 void tell_consent(world::World& world, const ConsentState& consent) {
@@ -281,6 +543,9 @@ void tell_consent(world::World& world, const ConsentState& consent) {
     }
     if (holder.backends.purchases) {
         holder.backends.purchases->set_consent(consent);
+    }
+    if (holder.backends.games) {
+        holder.backends.games->set_consent(consent);
     }
 }
 
@@ -316,12 +581,8 @@ void erase_purchases(std::vector<Purchase>& purchases, const Purchase& purchase)
 
 void apply_purchase(world::World& world, State& state, const Purchase& purchase) {
     const Product* product = find_product(state, purchase.product);
-    ServiceEvent event{.kind = {},
-                       .id = purchase.product,
-                       .reward = {},
-                       .purchase = purchase,
-                       .error = {},
-                       .available = {}};
+    ServiceEvent event = event_for(purchase.product);
+    event.purchase = purchase;
     json::Value data = json::Object{};
     switch (purchase.state) {
     case PurchaseState::Purchased:
@@ -375,14 +636,159 @@ void apply_purchase(world::World& world, State& state, const Purchase& purchase)
     emit(world, state, std::move(event), std::move(data));
 }
 
-void apply(world::World& world, State& state, Report& report) {
-    ServiceEvent event{.kind = {},
-                       .id = report.placement,
-                       .reward = {},
-                       .purchase = {},
-                       .error = {},
-                       .available = {}};
+json::Value score_json(const Score& score) {
+    json::Value out;
+    out["rank"] = score.rank;
+    out["player"] = score.player;
+    out["name"] = score.name;
+    out["score"] = score.value;
+    return out;
+}
+
+json::Value scores_json(const Scores& scores) {
+    json::Value out;
+    out["time"] = span_name(scores.query.time);
+    out["collection"] = collection_name(scores.query.collection);
+    json::Array entries;
+    for (const Score& score : scores.entries) {
+        entries.push_back(score_json(score));
+    }
+    out["entries"] = std::move(entries);
+    if (scores.player) {
+        out["player"] = score_json(*scores.player);
+    }
+    out["total"] = scores.total;
+    return out;
+}
+
+// Merges the platform's progress with the game's, and sends the platform what it lacks: progress
+// made before the player signed in.
+void merge_achievements(world::World& world, State& state, const Report& report,
+                        ServiceEvent& event) {
+    for (const Achievement& achievement : state.settings.achievements) {
+        AchievementProgress& progress = state.achievements[achievement.name];
+        const auto found = std::ranges::find(report.achievements, achievement.name,
+                                             &AchievementProgress::achievement);
+        const AchievementProgress platform =
+            found != report.achievements.end() ? *found : AchievementProgress{};
+        const bool ahead = (progress.unlocked && !platform.unlocked) ||
+                           (achievement.steps > 0 && progress.steps > platform.steps);
+        progress.unlocked = progress.unlocked || platform.unlocked;
+        progress.steps = std::min(std::max(progress.steps, platform.steps), achievement.steps);
+        if (achievement.steps > 0 && progress.steps >= achievement.steps) {
+            progress.unlocked = true;
+        }
+        if (progress.unlocked) {
+            event.unlocked.push_back(achievement.name);
+        }
+        if (ahead) {
+            send_progress(world, state, achievement);
+        }
+    }
+}
+
+void apply_games(world::World& world, State& state, Report& report) {
+    const bool leaderboard_report =
+        report.kind == Report::Kind::ScoreSubmitted || report.kind == Report::Kind::ScoreFailed ||
+        report.kind == Report::Kind::ScoresLoaded || report.kind == Report::Kind::ScoresFailed;
+    if (leaderboard_report && find_leaderboard(state, report.name) == nullptr) {
+        log::warn("a games backend reported an unknown leaderboard",
+                  {{"leaderboard", report.name}});
+        return;
+    }
+    if (report.kind == Report::Kind::AchievementFailed && !report.name.empty() &&
+        find_achievement(state, report.name) == nullptr) {
+        log::warn("a games backend reported an unknown achievement",
+                  {{"achievement", report.name}});
+        return;
+    }
+    ServiceEvent event = event_for(report.name);
     json::Value data;
+    switch (report.kind) {
+    case Report::Kind::SignedIn:
+        state.sign_in = SignIn::SignedIn;
+        state.sign_in_error.clear();
+        state.player = report.player;
+        event.kind = "signed_in";
+        event.id = report.player.id;
+        event.player = report.player;
+        data["name"] = report.player.name;
+        emit(world, state, std::move(event), std::move(data));
+        request_achievements(world, state);
+        // Best scores submitted while the player was signed out.
+        for (const Leaderboard& leaderboard : state.settings.leaderboards) {
+            LeaderboardState& board = state.leaderboards[leaderboard.name];
+            if (board.unsent && board.best) {
+                board.unsent = false;
+                send_score(world, state, leaderboard, *board.best);
+            }
+        }
+        return;
+    case Report::Kind::SignInFailed:
+        state.sign_in = SignIn::Failed;
+        state.sign_in_error = report.error;
+        state.player = {};
+        event.kind = "sign_in_failed";
+        break;
+    case Report::Kind::AchievementsLoaded: {
+        merge_achievements(world, state, report, event);
+        event.kind = "achievements_loaded";
+        json::Array unlocked;
+        for (const std::string& name : event.unlocked) {
+            unlocked.emplace_back(name);
+        }
+        data["unlocked"] = std::move(unlocked);
+        break;
+    }
+    case Report::Kind::AchievementUnlocked:
+        event.kind = "achievement_unlocked";
+        break;
+    case Report::Kind::AchievementFailed:
+        event.kind = "achievement_failed";
+        break;
+    case Report::Kind::ScoreSubmitted:
+        event.kind = "score_submitted";
+        event.score = report.score;
+        data["score"] = report.score;
+        break;
+    case Report::Kind::ScoreFailed:
+        event.kind = "score_failed";
+        break;
+    case Report::Kind::ScoresLoaded:
+        event.kind = "scores_loaded";
+        event.scores = std::move(report.scores);
+        if (const auto query = state.loading_scores.find(report.name);
+            query != state.loading_scores.end()) {
+            event.scores.query = query->second;
+            state.loading_scores.erase(query);
+        }
+        data = scores_json(event.scores);
+        break;
+    case Report::Kind::ScoresFailed:
+        if (const auto query = state.loading_scores.find(report.name);
+            query != state.loading_scores.end()) {
+            state.loading_scores.erase(query);
+        }
+        event.kind = "scores_failed";
+        break;
+    case Report::Kind::GamesUiClosed:
+        state.games_ui = false;
+        event.kind = "games_ui_closed";
+        break;
+    default:
+        return;
+    }
+    if (!report.error.empty()) {
+        event.error = report.error;
+        data["error"] = report.error;
+    }
+    emit(world, state, std::move(event), std::move(data));
+}
+
+void apply(world::World& world, State& state, Report& report) {
+    ServiceEvent event = event_for(report.placement);
+    json::Value data;
+
     switch (report.kind) {
     case Report::Kind::AdLoaded:
     case Report::Kind::AdFailed:
@@ -474,6 +880,18 @@ void apply(world::World& world, State& state, Report& report) {
         }
         emit(world, state, std::move(event), std::move(data));
         return;
+    case Report::Kind::SignedIn:
+    case Report::Kind::SignInFailed:
+    case Report::Kind::AchievementsLoaded:
+    case Report::Kind::AchievementFailed:
+    case Report::Kind::ScoreSubmitted:
+    case Report::Kind::ScoreFailed:
+    case Report::Kind::ScoresLoaded:
+    case Report::Kind::ScoresFailed:
+    case Report::Kind::GamesUiClosed:
+    case Report::Kind::AchievementUnlocked:
+        apply_games(world, state, report);
+        return;
     }
 }
 
@@ -494,6 +912,9 @@ void run(world::World& world) {
         }
         if (holder.backends.purchases) {
             holder.backends.purchases->poll();
+        }
+        if (holder.backends.games) {
+            holder.backends.games->poll();
         }
     }
     // Reports due by now, in the order they were made, then what the backends reported.
@@ -588,7 +1009,75 @@ void Reports::restore_finished(std::string_view error) {
     add(std::move(report));
 }
 
+void Reports::signed_in(Player player) {
+    Report report;
+    report.kind = Report::Kind::SignedIn;
+    report.player = std::move(player);
+    add(std::move(report));
+}
+
+void Reports::sign_in_failed(std::string_view error) {
+    Report report;
+    report.kind = Report::Kind::SignInFailed;
+    report.error = error;
+    add(std::move(report));
+}
+
+void Reports::achievements(std::vector<AchievementProgress> progress) {
+    Report report;
+    report.kind = Report::Kind::AchievementsLoaded;
+    report.achievements = std::move(progress);
+    add(std::move(report));
+}
+
+void Reports::achievement_failed(std::string_view achievement, std::string_view error) {
+    Report report;
+    report.kind = Report::Kind::AchievementFailed;
+    report.name = achievement;
+    report.error = error;
+    add(std::move(report));
+}
+
+void Reports::score_submitted(std::string_view leaderboard, std::int64_t score) {
+    Report report;
+    report.kind = Report::Kind::ScoreSubmitted;
+    report.name = leaderboard;
+    report.score = score;
+    add(std::move(report));
+}
+
+void Reports::score_failed(std::string_view leaderboard, std::string_view error) {
+    Report report;
+    report.kind = Report::Kind::ScoreFailed;
+    report.name = leaderboard;
+    report.error = error;
+    add(std::move(report));
+}
+
+void Reports::scores(std::string_view leaderboard, Scores scores) {
+    Report report;
+    report.kind = Report::Kind::ScoresLoaded;
+    report.name = leaderboard;
+    report.scores = std::move(scores);
+    add(std::move(report));
+}
+
+void Reports::scores_failed(std::string_view leaderboard, std::string_view error) {
+    Report report;
+    report.kind = Report::Kind::ScoresFailed;
+    report.name = leaderboard;
+    report.error = error;
+    add(std::move(report));
+}
+
+void Reports::games_ui_closed() {
+    Report report;
+    report.kind = Report::Kind::GamesUiClosed;
+    add(std::move(report));
+}
+
 std::vector<Report> Reports::take() {
+
     const std::scoped_lock lock(mutex_);
     std::vector<Report> out = std::move(queue_);
     queue_.clear();
@@ -604,6 +1093,18 @@ std::string_view state_name(PurchaseState state) {
 
 std::string_view status_name(AdStatus status) {
     return kStatuses.at(static_cast<std::size_t>(status));
+}
+
+std::string_view sign_in_name(SignIn status) {
+    return kSignIns.at(static_cast<std::size_t>(status));
+}
+
+std::string_view span_name(TimeSpan span) {
+    return kSpans.at(static_cast<std::size_t>(span));
+}
+
+std::string_view collection_name(Collection collection) {
+    return kCollections.at(static_cast<std::size_t>(collection));
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -646,8 +1147,8 @@ void install(world::World& world, Settings settings) {
     });
     world.add_system(
         "services", [](world::World& in_world, double /*tick_seconds*/) { run(in_world); },
-        {.doc = "Hands what the ads, analytics and purchases backends reported to the game as "
-                "events.",
+        {.doc = "Hands what the ads, analytics, purchases and games backends reported to the "
+                "game as events.",
          .priority = -800});
     start(world, current);
 }
@@ -669,6 +1170,7 @@ void merge_backends(Backends& into, Backends from, std::string_view source) {
     };
     keep(into.ads, from.ads, "ads");
     keep(into.purchases, from.purchases, "purchases");
+    keep(into.games, from.games, "games");
     for (auto& analytics : from.analytics) {
         if (analytics) {
             into.analytics.push_back(std::move(analytics));
@@ -682,12 +1184,14 @@ void set_backends(world::World& world, Backends backends) {
         return;
     }
     if (state->test) {
-        // What the test store sold is not the real store's.
+        // What the test store sold, and the test games service kept, is not the real one's.
         state->test = false;
         state->owned.clear();
         state->unfinished.clear();
         state->pending.clear();
         state->store_owned.clear();
+        state->store_achievements.clear();
+        state->store_scores.clear();
     }
     BackendHolder& holder = holder_of(world);
     holder.backends = std::move(backends);
@@ -705,6 +1209,9 @@ void set_backends(world::World& world, Backends backends) {
     }
     if (holder.backends.purchases) {
         begin(*holder.backends.purchases);
+    }
+    if (holder.backends.games) {
+        begin(*holder.backends.games);
     }
     if (sends_analytics(world, *state)) {
         send_user(world, *state);
@@ -737,6 +1244,8 @@ void use_test_backend(world::World& world, TestSettings settings) {
     state->pending.clear();
     state->store_owned.clear();
     state->next_transaction = 1;
+    state->store_achievements.clear();
+    state->store_scores.clear();
     start(world, *state);
 }
 
@@ -1137,6 +1646,217 @@ std::vector<Purchase> unfinished(const world::World& world) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Games
+
+Result<void> sign_in(world::World& world) {
+    State* state = state_of(world);
+    if (state == nullptr) {
+        return not_installed();
+    }
+    if (state->sign_in == SignIn::SignedOut || state->sign_in == SignIn::Failed) {
+        request_sign_in(world, *state, true);
+    }
+    return {};
+}
+
+SignIn sign_in_status(const world::World& world) {
+    const State* state = state_of(world);
+    return state != nullptr ? state->sign_in : SignIn::SignedOut;
+}
+
+const Player* player(const world::World& world) {
+    const State* state = state_of(world);
+    return state != nullptr && state->sign_in == SignIn::SignedIn ? &state->player : nullptr;
+}
+
+namespace {
+
+// The game hears of an unlock at the next tick, and the platform of the progress if the player
+// is signed in.
+void progressed(world::World& world, State& state, const Achievement& achievement) {
+    if (state.achievements[achievement.name].unlocked) {
+        Report report;
+        report.kind = Report::Kind::AchievementUnlocked;
+        report.name = achievement.name;
+        schedule(world, state, 1, std::move(report));
+    }
+    if (state.sign_in == SignIn::SignedIn) {
+        send_progress(world, state, achievement);
+    }
+}
+
+Result<void> show_games_ui(world::World& world, State& state, const Leaderboard* leaderboard,
+                           bool achievements) {
+    if (state.sign_in != SignIn::SignedIn) {
+        return not_signed_in(state);
+    }
+    if (state.games_ui) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "the achievements or leaderboards screen shows already");
+    }
+    state.games_ui = true;
+    if (state.test) {
+        Report report;
+        report.kind = Report::Kind::GamesUiClosed;
+        schedule(world, state, 1 + std::max(state.test_settings.show_ticks, 1), std::move(report));
+    } else if (GamesBackend* games = holder_of(world).backends.games.get(); games != nullptr) {
+        if (achievements) {
+            games->show_achievements();
+        } else if (leaderboard != nullptr) {
+            const LeaderboardUnit unit = unit_of(*leaderboard);
+            games->show_leaderboards(&unit);
+        } else {
+            games->show_leaderboards(nullptr);
+        }
+    }
+    return {};
+}
+
+} // namespace
+
+Result<void> unlock_achievement(world::World& world, std::string_view name) {
+    State* state = state_of(world);
+    if (state == nullptr) {
+        return not_installed();
+    }
+    const Achievement* found = find_achievement(*state, name);
+    if (found == nullptr) {
+        return unknown_achievement(*state, name);
+    }
+    AchievementProgress& progress = state->achievements[found->name];
+    if (progress.unlocked) {
+        return {};
+    }
+    progress.unlocked = true;
+    progress.steps = found->steps;
+    progressed(world, *state, *found);
+    return {};
+}
+
+Result<void> increment_achievement(world::World& world, std::string_view name, int steps) {
+    State* state = state_of(world);
+    if (state == nullptr) {
+        return not_installed();
+    }
+    const Achievement* found = find_achievement(*state, name);
+    if (found == nullptr) {
+        return unknown_achievement(*state, name);
+    }
+    if (found->steps == 0) {
+        return make_error(ErrorCode::InvalidArgument,
+                          quoted(name) + " unlocks at once, not in steps; unlock it instead");
+    }
+    if (steps < 1) {
+        return make_error(ErrorCode::InvalidArgument, "steps must be at least 1");
+    }
+    AchievementProgress& progress = state->achievements[found->name];
+    if (progress.unlocked) {
+        return {};
+    }
+    progress.steps = static_cast<int>(
+        std::min<std::int64_t>(found->steps, std::int64_t{progress.steps} + steps));
+    progress.unlocked = progress.steps >= found->steps;
+    progressed(world, *state, *found);
+    return {};
+}
+
+const AchievementProgress* achievement(const world::World& world, std::string_view name) {
+    const State* state = state_of(world);
+    if (state == nullptr) {
+        return nullptr;
+    }
+    const auto it = state->achievements.find(name);
+    return it != state->achievements.end() ? &it->second : nullptr;
+}
+
+Result<void> submit_score(world::World& world, std::string_view leaderboard, std::int64_t score) {
+    State* state = state_of(world);
+    if (state == nullptr) {
+        return not_installed();
+    }
+    const Leaderboard* found = find_leaderboard(*state, leaderboard);
+    if (found == nullptr) {
+        return unknown_leaderboard(*state, leaderboard);
+    }
+    LeaderboardState& board = state->leaderboards[found->name];
+    const bool best = !board.best || ranks_above(found->sort_order, score, *board.best);
+    if (best) {
+        board.best = score;
+    }
+    if (state->sign_in == SignIn::SignedIn) {
+        send_score(world, *state, *found, score);
+    } else if (best) {
+        board.unsent = true;
+    }
+    return {};
+}
+
+std::optional<std::int64_t> best_score(const world::World& world, std::string_view leaderboard) {
+    const State* state = state_of(world);
+    if (state == nullptr) {
+        return std::nullopt;
+    }
+    const auto it = state->leaderboards.find(leaderboard);
+    return it != state->leaderboards.end() ? it->second.best : std::nullopt;
+}
+
+Result<void> load_scores(world::World& world, std::string_view leaderboard, ScoreQuery query) {
+    State* state = state_of(world);
+    if (state == nullptr) {
+        return not_installed();
+    }
+    const Leaderboard* found = find_leaderboard(*state, leaderboard);
+    if (found == nullptr) {
+        return unknown_leaderboard(*state, leaderboard);
+    }
+    if (query.count < 1 || query.count > kMaxScores) {
+        return make_error(ErrorCode::InvalidArgument, "count must be 1 to 25");
+    }
+    if (state->sign_in != SignIn::SignedIn) {
+        return not_signed_in(*state);
+    }
+    if (state->loading_scores.contains(found->name)) {
+        return make_error(ErrorCode::InvalidArgument, "the scores of " + quoted(found->name) +
+                                                          " are loading already; wait for "
+                                                          "scores_loaded");
+    }
+    state->loading_scores.insert_or_assign(found->name, query);
+    if (state->test) {
+        Report report;
+        report.kind = Report::Kind::ScoresLoaded;
+        report.name = found->name;
+        report.scores = test_scores(*state, *found, query);
+        schedule(world, *state, state->test_settings.games_ticks, std::move(report));
+    } else if (GamesBackend* games = holder_of(world).backends.games.get(); games != nullptr) {
+        games->load_scores(unit_of(*found), query);
+    }
+    return {};
+}
+
+Result<void> show_achievements(world::World& world) {
+    State* state = state_of(world);
+    if (state == nullptr) {
+        return not_installed();
+    }
+    return show_games_ui(world, *state, nullptr, true);
+}
+
+Result<void> show_leaderboards(world::World& world, std::string_view leaderboard) {
+    State* state = state_of(world);
+    if (state == nullptr) {
+        return not_installed();
+    }
+    const Leaderboard* found = nullptr;
+    if (!leaderboard.empty()) {
+        found = find_leaderboard(*state, leaderboard);
+        if (found == nullptr) {
+            return unknown_leaderboard(*state, leaderboard);
+        }
+    }
+    return show_games_ui(world, *state, found, false);
+}
+
+// ---------------------------------------------------------------------------------------------
 // Consent
 
 void set_consent(world::World& world, ConsentState consent) {
@@ -1191,6 +1911,51 @@ std::string_view products_status_name(ProductsStatus status) {
     return "none";
 }
 
+json::Value games_json(const State& state) {
+    json::Value games;
+    games["sign_in"] = sign_in_name(state.sign_in);
+    if (state.sign_in == SignIn::SignedIn) {
+        games["player"]["id"] = state.player.id;
+        games["player"]["name"] = state.player.name;
+    } else if (state.sign_in == SignIn::Failed) {
+        games["sign_in_error"] = state.sign_in_error;
+    }
+    json::Value achievements = json::Object{};
+    for (const Achievement& each : state.settings.achievements) {
+        const auto found = state.achievements.find(each.name);
+        const AchievementProgress progress =
+            found != state.achievements.end() ? found->second : AchievementProgress{};
+        json::Value entry;
+        entry["unlocked"] = progress.unlocked;
+        if (each.steps > 0) {
+            entry["steps"] = progress.steps;
+            entry["of"] = each.steps;
+        }
+        achievements[each.name] = std::move(entry);
+    }
+    games["achievements"] = std::move(achievements);
+    json::Value leaderboards = json::Object{};
+    for (const Leaderboard& each : state.settings.leaderboards) {
+        json::Value entry = json::Object{};
+        if (const auto found = state.leaderboards.find(each.name);
+            found != state.leaderboards.end()) {
+            const LeaderboardState& board = found->second;
+            if (board.best.has_value()) {
+                entry["best"] = *board.best;
+                if (board.unsent) {
+                    entry["unsent"] = true;
+                }
+            }
+        }
+        leaderboards[each.name] = std::move(entry);
+    }
+    games["leaderboards"] = std::move(leaderboards);
+    if (state.games_ui) {
+        games["ui_showing"] = true;
+    }
+    return games;
+}
+
 } // namespace
 
 json::Value backends_json(const world::World& world) {
@@ -1200,6 +1965,7 @@ json::Value backends_json(const world::World& world) {
         backends["ads"] = "test";
         backends["analytics"] = json::Array{"test"};
         backends["purchases"] = "test";
+        backends["games"] = "test";
         return backends;
     }
     const BackendHolder* holder = state != nullptr ? &holder_of(world) : nullptr;
@@ -1215,6 +1981,7 @@ json::Value backends_json(const world::World& world) {
     backends["ads"] = holder != nullptr ? name(holder->backends.ads) : "none";
     backends["analytics"] = std::move(analytics);
     backends["purchases"] = holder != nullptr ? name(holder->backends.purchases) : "none";
+    backends["games"] = holder != nullptr ? name(holder->backends.games) : "none";
     return backends;
 }
 
@@ -1290,6 +2057,10 @@ json::Value state_json(const world::World& world, std::size_t analytics_events) 
     }
     analytics["events"] = std::move(logged);
     out["analytics"] = std::move(analytics);
+    if (!state->settings.achievements.empty() || !state->settings.leaderboards.empty() ||
+        state->sign_in != SignIn::SignedOut) {
+        out["games"] = games_json(*state);
+    }
     return out;
 }
 

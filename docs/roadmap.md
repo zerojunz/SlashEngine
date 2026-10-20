@@ -461,7 +461,9 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
         `backends`), with analytics flushed when the game goes to the background
   - [x] `render::Upscaler`, the interface glue code adds a vendor's upscaler through, with the
         render scale for the 2D world, bilinear and FSR 1 built in (`rendering.scaling`)
-  - [ ] Achievements and sign-in, behind interfaces of their own
+  - [x] Achievements, leaderboards and sign-in, behind an interface of their own
+        (`GamesBackend`, with Java and Objective-C bridges and sdk.json's `backends.games`),
+        on the test backend in sessions
   - [x] `sdk.add` (from a folder, a git repository or a URL) and `sdk.check` (missing files,
         keys and platforms), with an example SDK package built in CI from a stand-in library
 - [ ] Imported scripts as C++ skeletons: `project.import` writes a component for each script's

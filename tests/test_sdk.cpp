@@ -404,7 +404,8 @@ TEST_CASE("SDK glue code: sources, Java, backends by class name and a register f
           "android": {"sources": ["glue/hello.cpp"], "java": ["glue/android", "Extra.java"],
                       "backends": {"ads": "com.example.hello.HelloAds",
                                    "analytics": ["com.example.hello.Hello$Analytics"]}},
-          "ios": {"sources": ["glue/HelloAds.mm"], "backends": {"purchases": "HelloStore"}}}})";
+          "ios": {"sources": ["glue/HelloAds.mm"],
+                  "backends": {"purchases": "HelloStore", "games": "HelloGames"}}}})";
     CHECK(exporter::validate_sdk(parse(kGlue)).empty());
 
     constexpr std::string_view kWrong = R"({"format": 1, "name": "hello", "version": "1",
@@ -413,7 +414,8 @@ TEST_CASE("SDK glue code: sources, Java, backends by class name and a register f
           "linux": {"sources": ["glue/hello.mm", "glue/hello.py"], "java": ["A.java"],
                     "backends": {"ads": "HelloAds"}},
           "android": {"java": ["glue/hello.kt"],
-                      "backends": {"ads": "com.example.2d.Ads", "analytics": ["Hello Analytics"]}},
+                      "backends": {"ads": "com.example.2d.Ads", "analytics": ["Hello Analytics"],
+                                   "games": "com.example.Hello Games"}},
           "macos": {"backends": {"analytics": ["com.example.Hello"]}}}})";
     CHECK(error_at(kWrong, "/platforms/linux/sources/0") ==
           "only macOS and iOS compile Objective-C");
@@ -425,6 +427,8 @@ TEST_CASE("SDK glue code: sources, Java, backends by class name and a register f
     CHECK(contains(error_at(kWrong, "/platforms/android/backends/ads"), "Java class's full name"));
     CHECK(contains(error_at(kWrong, "/platforms/android/backends/analytics/0"),
                    "Java class's full name"));
+    CHECK(
+        contains(error_at(kWrong, "/platforms/android/backends/games"), "Java class's full name"));
     CHECK(contains(error_at(kWrong, "/platforms/macos/backends/analytics/0"),
                    "Objective-C class's name"));
     CHECK(contains(error_at(kWrong, "/register"), "expected a C++ function's name"));
@@ -503,9 +507,12 @@ TEST_CASE("SDK glue code: sources, Java, backends by class name and a register f
                    "java_analytics_backend(\"com.example.hello.Hello$Analytics\"));\n"));
     const exporter::ResolvedSdk ios =
         exporter::resolve_sdk(sdk.value(), "ios", "simulator", {}, true, problems);
+    const std::string ios_source = exporter::sdk_register_source({ios}, problems);
     CHECK(contains(
-        exporter::sdk_register_source({ios}, problems),
+        ios_source,
         "        added.purchases = slash::services::objc_purchases_backend(\"HelloStore\");\n"));
+    CHECK(contains(ios_source,
+                   "        added.games = slash::services::objc_games_backend(\"HelloGames\");\n"));
     CHECK(problems.empty());
     // Nothing to register, no file.
     CHECK(exporter::sdk_register_source({}, problems).empty());

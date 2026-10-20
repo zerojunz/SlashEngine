@@ -200,6 +200,62 @@ void report_products(Reports& reports, const std::string& text) {
     reports.products(std::move(products));
 }
 
+std::int64_t number(const json::Value& object, std::string_view key) {
+    const json::Value* found = object.find(key);
+    return found != nullptr && found->is_number() ? found->as_int() : 0;
+}
+
+void report_achievements(Reports& reports, const std::string& text) {
+    auto parsed = json::parse(text);
+    if (!parsed || !parsed.value().is_array()) {
+        reports.achievement_failed({}, "the backend's achievements are not a JSON array");
+        return;
+    }
+    std::vector<AchievementProgress> progress;
+    for (const json::Value& item : parsed.value().as_array()) {
+        if (!item.is_object()) {
+            continue;
+        }
+        const json::Value* unlocked = item.find("unlocked");
+        progress.push_back(
+            {.achievement = field(item, "achievement"),
+             .steps = static_cast<int>(number(item, "steps")),
+             .unlocked = unlocked != nullptr && unlocked->is_bool() && unlocked->as_bool()});
+    }
+    reports.achievements(std::move(progress));
+}
+
+Score score_of(const json::Value& item) {
+    return {.rank = number(item, "rank"),
+            .player = field(item, "player"),
+            .name = field(item, "name"),
+            .value = number(item, "score")};
+}
+
+void report_scores(Reports& reports, const std::string& leaderboard, const std::string& text) {
+    auto parsed = json::parse(text);
+    if (!parsed || !parsed.value().is_object()) {
+        reports.scores_failed(leaderboard, "the backend's scores are not a JSON object");
+        return;
+    }
+    const json::Value& object = parsed.value();
+    Scores scores;
+    if (const json::Value* entries = object.find("entries");
+        entries != nullptr && entries->is_array()) {
+        for (const json::Value& item : entries->as_array()) {
+            if (item.is_object()) {
+                scores.entries.push_back(score_of(item));
+            }
+        }
+    }
+    if (const json::Value* player = object.find("player");
+        player != nullptr && player->is_object()) {
+        scores.player = score_of(*player);
+    }
+    scores.total = number(object, "total");
+    reports.scores(leaderboard, std::move(scores));
+}
+
 void report_purchase(Reports& reports, const std::string& text) {
     auto parsed = json::parse(text);
     if (!parsed || !parsed.value().is_object()) {
@@ -211,6 +267,32 @@ void report_purchase(Reports& reports, const std::string& text) {
                       .state = parse_state(field(item, "state")),
                       .receipt = field(item, "receipt"),
                       .error = field(item, "error")});
+}
+
+// The games service's reports: the leaderboard, achievement or player's ID comes as placement.
+void report_games(Reports& reports, const std::string& kind, const std::string& name,
+                  std::string message) {
+    if (kind == "signed_in") {
+        reports.signed_in({.id = name, .name = std::move(message)});
+    } else if (kind == "sign_in_failed") {
+        reports.sign_in_failed(message);
+    } else if (kind == "achievements") {
+        report_achievements(reports, message);
+    } else if (kind == "achievement_failed") {
+        reports.achievement_failed(name, message);
+    } else if (kind == "score_submitted") {
+        const auto score = json::parse(message);
+        reports.score_submitted(name,
+                                score && score.value().is_number() ? score.value().as_int() : 0);
+    } else if (kind == "score_failed") {
+        reports.score_failed(name, message);
+    } else if (kind == "scores") {
+        report_scores(reports, name, message);
+    } else if (kind == "scores_failed") {
+        reports.scores_failed(name, message);
+    } else if (kind == "games_ui_closed") {
+        reports.games_ui_closed();
+    }
 }
 
 // Reports.report(long handle, String kind, String placement, String text, double amount).
@@ -241,6 +323,8 @@ void JNICALL native_report(JNIEnv* jni, jclass /*reports_class*/, jlong handle, 
         report_purchase(*reports, message);
     } else if (kind == "restore_finished") {
         reports->restore_finished(message);
+    } else {
+        report_games(*reports, kind, placement, message);
     }
 }
 
@@ -273,6 +357,53 @@ const ReportsClass& reports_class(JNIEnv* jni) {
 std::string consent_text(Consent consent) {
     return std::string(consent_name(consent));
 }
+
+// A Java method's arguments and the signature they make, the strings local references that
+// outlive the call.
+class JavaArgs {
+public:
+    explicit JavaArgs(JNIEnv* jni) : jni_(jni) {}
+
+    JavaArgs& text(std::string_view value) {
+        strings_.push_back(std::make_unique<JavaString>(jni_, value));
+        jvalue arg{};
+        arg.l = strings_.back()->get();
+        add("Ljava/lang/String;", arg);
+        return *this;
+    }
+    JavaArgs& integer(int value) {
+        jvalue arg{};
+        arg.i = static_cast<jint>(value);
+        add("I", arg);
+        return *this;
+    }
+    JavaArgs& wide(std::int64_t value) {
+        jvalue arg{};
+        arg.j = static_cast<jlong>(value);
+        add("J", arg);
+        return *this;
+    }
+    JavaArgs& flag(bool value) {
+        jvalue arg{};
+        arg.z = value ? JNI_TRUE : JNI_FALSE;
+        add("Z", arg);
+        return *this;
+    }
+
+    [[nodiscard]] const std::string& signature() const { return signature_; }
+    [[nodiscard]] const jvalue* values() const { return values_.data(); }
+
+private:
+    void add(const char* type, jvalue value) {
+        signature_ += type;
+        values_.push_back(value);
+    }
+
+    JNIEnv* jni_;
+    std::string signature_;
+    std::vector<jvalue> values_;
+    std::vector<std::unique_ptr<JavaString>> strings_;
+};
 
 // One Java object implementing one of the interfaces, and its methods.
 class JavaObject {
@@ -352,6 +483,21 @@ public:
     [[nodiscard]] std::string_view name() const { return name_; }
     // Where to report for a backend that couldn't start.
     [[nodiscard]] std::shared_ptr<Reports> reports() const { return reports_.lock(); }
+
+    // Calls a void method with any arguments.
+    void call(const char* method_name, const JavaArgs& args) {
+        JNIEnv* jni = env();
+        if (jni == nullptr || object_ == nullptr) {
+            return;
+        }
+        const std::string signature = "(" + args.signature() + ")V";
+        const jmethodID id = method(method_name, signature.c_str());
+        if (id == nullptr) {
+            return;
+        }
+        jni->CallVoidMethodA(object_, id, args.values());
+        (void)failed(jni, method_name);
+    }
 
     // Calls a void method whose parameters are all strings.
     template <typename... Texts>
@@ -529,6 +675,96 @@ private:
     bool started_ = false;
 };
 
+class JavaGames final : public GamesBackend {
+public:
+    explicit JavaGames(std::string_view class_name) : object_(std::string(class_name)) {}
+    [[nodiscard]] std::string_view name() const override { return object_.name(); }
+    void start(const std::shared_ptr<Reports>& reports) override {
+        started_ = object_.start(reports);
+    }
+    void set_consent(const ConsentState& consent) override {
+        if (started_) {
+            object_.call("setConsent", consent_text(consent.analytics),
+                         consent_text(consent.personalized_ads));
+        }
+    }
+    void sign_in(bool interactive) override {
+        if (started_) {
+            object_.call("signIn", JavaArgs(env()).flag(interactive));
+        } else if (const auto reports = object_.reports(); reports != nullptr) {
+            reports->sign_in_failed("the games Java backend could not start");
+        }
+    }
+    void load_achievements(std::span<const AchievementUnit> units) override {
+        if (!started_) {
+            return;
+        }
+        json::Array achievements;
+        for (const AchievementUnit& unit : units) {
+            json::Value item;
+            item["achievement"] = unit.achievement;
+            item["id"] = unit.id;
+            item["steps"] = unit.steps;
+            achievements.push_back(std::move(item));
+        }
+        object_.call("loadAchievements",
+                     json::write(json::Value(std::move(achievements)), json::Style::Compact));
+    }
+    void unlock(const AchievementUnit& unit) override {
+        if (started_) {
+            object_.call("unlock", unit.achievement, unit.id);
+        }
+    }
+    void set_steps(const AchievementUnit& unit, int steps) override {
+        if (started_) {
+            object_.call("setSteps", JavaArgs(env())
+                                         .text(unit.achievement)
+                                         .text(unit.id)
+                                         .integer(steps)
+                                         .integer(unit.steps));
+        }
+    }
+    void submit_score(const LeaderboardUnit& unit, std::int64_t score) override {
+        if (started_) {
+            object_.call("submitScore",
+                         JavaArgs(env()).text(unit.leaderboard).text(unit.id).wide(score));
+        }
+    }
+    void load_scores(const LeaderboardUnit& unit, const ScoreQuery& query) override {
+        if (!started_) {
+            if (const auto reports = object_.reports(); reports != nullptr) {
+                reports->scores_failed(unit.leaderboard, "the games Java backend could not start");
+            }
+            return;
+        }
+        object_.call("loadScores", JavaArgs(env())
+                                       .text(unit.leaderboard)
+                                       .text(unit.id)
+                                       .text(span_name(query.time))
+                                       .text(collection_name(query.collection))
+                                       .integer(query.count));
+    }
+    void show_achievements() override {
+        if (started_) {
+            object_.call("showAchievements");
+        } else if (const auto reports = object_.reports(); reports != nullptr) {
+            reports->games_ui_closed();
+        }
+    }
+    void show_leaderboards(const LeaderboardUnit* unit) override {
+        if (started_) {
+            object_.call("showLeaderboards", unit != nullptr ? unit->leaderboard : std::string(),
+                         unit != nullptr ? unit->id : std::string());
+        } else if (const auto reports = object_.reports(); reports != nullptr) {
+            reports->games_ui_closed();
+        }
+    }
+
+private:
+    JavaObject object_;
+    bool started_ = false;
+};
+
 } // namespace
 
 std::unique_ptr<AdsBackend> java_ads_backend(std::string_view class_name) {
@@ -541,6 +777,10 @@ std::unique_ptr<AnalyticsBackend> java_analytics_backend(std::string_view class_
 
 std::unique_ptr<PurchasesBackend> java_purchases_backend(std::string_view class_name) {
     return std::make_unique<JavaPurchases>(class_name);
+}
+
+std::unique_ptr<GamesBackend> java_games_backend(std::string_view class_name) {
+    return std::make_unique<JavaGames>(class_name);
 }
 
 } // namespace slash::services

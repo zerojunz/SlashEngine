@@ -18,7 +18,7 @@ real commands and real output, and no screenshots.
 | Record a game's characters, story, rules or decisions | [reference/storyboard-format.md](reference/storyboard-format.md) |
 | Set up a game's `project.json` | [reference/project-format.md](reference/project-format.md) |
 | Add a closed vendor SDK (ads, a store, Steamworks) to a game | [reference/sdk-format.md](reference/sdk-format.md) |
-| Show ads, log analytics events or sell in-app purchases | [reference/services.md](reference/services.md) |
+| Show ads, log analytics events, sell in-app purchases, or unlock achievements and submit scores | [reference/services.md](reference/services.md) |
 | Bring a game over from Godot | [reference/godot-import.md](reference/godot-import.md) |
 | Bring a game over from Unity | [reference/unity-import.md](reference/unity-import.md) |
 | Call the engine over HTTP, JSON-RPC or MCP | [reference/protocols.md](reference/protocols.md) |
