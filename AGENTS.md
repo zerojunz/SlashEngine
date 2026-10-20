@@ -141,6 +141,16 @@ the words in their docs, with their signatures, fields, the header to include an
 `examples/` (or of the game) that use them. It finds only what has a doc comment right above it
 by what it does, so give each public declaration one.
 
+`playtest.run` (`engine/command/src/playtest.cpp`) runs many headless copies of a game at once
+and sums them up per combination of the values it varies (an entity's field, every entity's with
+a component, or a prefab's): how runs ended by its named end conditions, ticks, event counts and
+measured fields. Each run is a session of its own, made from the session's world (`Session::save`
+and `restore`) with the game module attached, and played by a scripted bot through
+`input::action_press`; sessions are made and dropped on the calling thread and their worlds step
+on the job system's threads at once, each on a pool of no threads, so a run comes out the same as
+it would alone. Box2D's world list is shared, so `physics2d` creates and destroys its worlds under
+a lock.
+
 ## Commands, MCP and JSON-RPC
 
 Every change to a world goes through a command registered in `engine/command`. The same registry
