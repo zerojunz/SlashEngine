@@ -533,7 +533,7 @@ TEST_CASE("a synchronized stream plays its layers together, each at its volume")
 TEST_CASE("interactive music switches clips as its transitions say") {
     // Clips by index: a and b are steady sounds, a with a beat every tenth of a second; sting is
     // short and goes on to b; solo is short and goes on to back, which returns to the clip a
-    // hold_previous transition left.
+    // hold_previous transition left; ring is short and returns there itself.
     audio::StreamFile beats;
     beats.bpm = 600;
     beats.loop_mode = audio::LoopMode::Forward;
@@ -546,9 +546,12 @@ TEST_CASE("interactive music switches clips as its transitions say") {
         made.next_clip = next;
         return made;
     };
-    settings.clips = {clip("a"), clip("b"), clip("sting", audio::AutoAdvance::Enabled, 1),
+    settings.clips = {clip("a"),
+                      clip("b"),
+                      clip("sting", audio::AutoAdvance::Enabled, 1),
                       clip("back", audio::AutoAdvance::ReturnToHold),
-                      clip("solo", audio::AutoAdvance::Enabled, 3)};
+                      clip("solo", audio::AutoAdvance::Enabled, 3),
+                      clip("ring", audio::AutoAdvance::ReturnToHold)};
     settings.transitions = {
         {.from_clip = 0,
          .to_clip = 1,
@@ -559,11 +562,16 @@ TEST_CASE("interactive music switches clips as its transitions say") {
          .from_time = audio::TransitionFrom::Immediate,
          .fade_mode = audio::FadeMode::Disabled,
          .hold_previous = true},
+        {.from_clip = 1,
+         .to_clip = 5,
+         .from_time = audio::TransitionFrom::Immediate,
+         .fade_mode = audio::FadeMode::Disabled,
+         .hold_previous = true},
         {.from_time = audio::TransitionFrom::Immediate, .fade_mode = audio::FadeMode::Disabled}};
     const auto music = audio::interactive_stream(
         {steady_stream(kRate, {0.5F, 0.5F}, beats), steady_stream(kRate, {0.25F, 0.25F}),
          steady_stream(kRate / 10, {0.125F, 0.125F}), steady_stream(kRate / 10, {0.75F, 0.75F}),
-         steady_stream(kRate / 10, {0.375F, 0.375F})},
+         steady_stream(kRate / 10, {0.375F, 0.375F}), steady_stream(kRate / 10, {0.625F, 0.625F})},
         settings);
     CHECK(music->length() == 0.0);
     auto playback = music->instantiate(kRate, 0);
@@ -616,6 +624,15 @@ TEST_CASE("interactive music switches clips as its transitions say") {
     CHECK(playback->clip() == "b");
     check_frame(out[4000], 0.25F, 0.25F);
     CHECK(playback->position() > 0.0);
+
+    // A hold straight into a clip that returns to it: ring plays, then b again.
+    playback->set_parameter("switch_to_clip", json::Value("ring"));
+    mix_frames(2048);
+    CHECK(playback->clip() == "ring");
+    check_frame(out[1000], 0.625F, 0.625F);
+    mix_frames(4096);
+    CHECK(playback->clip() == "b");
+    check_frame(out[4000], 0.25F, 0.25F);
 }
 
 TEST_CASE("a player's parameters reach its playbacks, and switch_to_clip follows the music") {

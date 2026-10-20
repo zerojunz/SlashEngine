@@ -2964,7 +2964,7 @@ when a switch happens and how the clips fade, timed by the beats of the clip it 
 | `fade_mode` | `"automatic"` | `disabled`, `in` (the next fades in), `out` (the last fades out), `cross` (both), or `automatic`: `out` when the next starts at its start, else `cross` |
 | `fade_beats` | `1` | Beats a fade takes, or seconds if the clip it leaves has no `bpm` |
 | `filler_clip` | | A clip played once between the two, at full volume |
-| `hold_previous` | `false` | Remember the clip it left, for a `return_to_hold` clip |
+| `hold_previous` | `false` | Remember the clip it left, for a `return_to_hold` clip, the clip it goes to included |
 
 - A switch takes the first transition that fits, in Godot's order: from and to both named,
   then from named, then to named, then neither. With none, it waits for the next beat and fades
@@ -2975,6 +2975,9 @@ when a switch happens and how the clips fade, timed by the beats of the clip it 
   sound, under the next.
 - Two transitions from and to the same clips, a `next_clip` without `"auto_advance":
   "enabled"`, and a name that is no clip are errors; a misspelled name gets a suggestion.
+- A `hold_previous` transition straight into a `return_to_hold` clip goes back to the clip it
+  left. Godot records the hold after reading the clip, so there the clip goes back to an older
+  hold, or ends.
 
 ### Stream parameters
 
