@@ -21,6 +21,7 @@ engine. Copy from them.
 | [try-and-roll-back](try-and-roll-back/) | Dry runs, and `world.snapshot`, `world.diff` and `world.restore` |
 | [events](events/) | `events.subscribe` and `events.read` to hear what changed |
 | [run-until](run-until/) | `run.until`: run a game headless until something happens, in one call |
+| [playtest](playtest/) | `playtest.run`: many headless runs of a game at once to tune a value, here how high a jump must be to clear a pit: each jump speed played sixteen times by a bot that jumps at random, then once by a bot that jumps at the edge, with how the runs ended, the ticks they took, the events they emitted and the values they ended with |
 | [storyboard](storyboard/) | Briefing before a task, editing facts with versions, and checking after |
 | [storyboard-review](storyboard-review/) | A model reads a scene's text and a dialogue file against the storyboard and reports contradictions, each quoting the text and naming the entry; a finding that quotes words the dialogue never says is dropped |
 | [project-map](project-map/) | `project.map`: where a game's components, systems, events and input actions are declared and used in its C++ sources and scenes, found by name or by the file a change touches |

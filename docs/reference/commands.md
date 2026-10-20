@@ -75,7 +75,7 @@ as `entity.get`, reject it as an unknown param.
 | Snapshots | [`world.snapshot`](#worldsnapshot), [`world.diff`](#worlddiff), [`world.restore`](#worldrestore) |
 | Run | [`step`](#step), [`run.until`](#rununtil), [`play`](#play), [`pause`](#pause) |
 | Replays | [`replay.record`](#replayrecord), [`replay.stop`](#replaystop), [`replay.run`](#replayrun), [`replay.seek`](#replayseek) |
-| Tests | [`test.run`](#testrun) |
+| Tests | [`test.run`](#testrun), [`playtest.run`](#playtestrun) |
 | History | [`undo`](#undo), [`redo`](#redo), [`history.get`](#historyget) |
 | Several at once | [`batch`](#batch) |
 | Observe | [`events.subscribe`](#eventssubscribe), [`events.read`](#eventsread), [`events.unsubscribe`](#eventsunsubscribe), [`log.tail`](#logtail), [`frame.capture`](#framecapture), [`frame.summary`](#framesummary), [`canvas.convert`](#canvasconvert) |
@@ -2457,6 +2457,71 @@ With every check passing:
 
 ```json
 {"failed":[],"passed":3,"tests":3}
+```
+
+### playtest.run
+
+Runs many headless copies of the game at once and sums them up, for tuning values and
+playtesting: "how high must the jump be to clear the pit?", "how often does the bot die with
+enemy speed 120?". Each run is a session of its own started from the session's world as it is
+now (unsaved edits included), or from `scene`, with one combination of the `vary` values set.
+A scripted bot presses input actions before each tick, and the run stops at the first `end`
+condition it meets or after `ticks`. Runs step on the job system's threads at the same time, and
+the session's own world doesn't change. The game's systems come from its gameplay code (its
+`SLASH_GAME_MODULE`), which every run gets.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `vary` | object of value arrays | | Values to try by `"<entity>/<Component>/<field>"`, with a part as in `"player/Transform2D/position/y"`. `"*/<Component>/<field>"` sets every entity with the component; a `.prefab.json` path in place of the entity sets the prefab, and so its instances, those spawned while the game runs too. Every combination runs, at most 8 keys |
+| `runs` | integer, 1 to 64 | `1` | Runs of each combination. Combinations times runs is at most 256 |
+| `seed` | integer | `0` | Run *n* of a combination presses by `chance` with seed + *n*, so runs differ and every call repeats |
+| `bot` | array of presses | none | The input actions the bot presses, below |
+| `end` | object of conditions | none | Conditions that end a run, by name, checked before each tick in name order: `with`, `without` and `where` as in [`world.query`](#worldquery), and `until` (`"any"` or `"none"`) as in [`run.until`](#rununtil). `"timeout"` is taken |
+| `ticks` | integer, 1 to 100000 | `600` | Most ticks a run lasts |
+| `tick_seconds` | number, above 0 and at most 1 | `1/60` | Seconds per tick |
+| `count` | string array | every event gameplay code emits | Event kinds to count, such as `"entity.destroyed"` |
+| `measure` | string array | none | Values to read when each run ends, as `vary`'s keys; `"*/<Component>"` counts the entities with it |
+| `scene` | string | the open world | The scene file each run opens instead |
+
+Each press in `bot` is an object with an `action` (an input action of the project's, with
+"did you mean" when misspelled) and when to press it. With no trigger it is held from `from`
+to `to`; otherwise it presses when every trigger it gives holds and lasts `for` ticks:
+
+| Field | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `action` | string | | The input action |
+| `from`, `to` | integer | `0`, the end | The ticks it may press in, counted from the run's start |
+| `every` | integer | | Presses every this many ticks from `from` |
+| `chance` | number, above 0 and at most 1 | | Presses at random with this chance each tick |
+| `when` | condition | | Presses while entities match it, a condition as `end`'s |
+| `for` | integer | `1`, or until `to` with no trigger | Ticks each press lasts |
+| `strength` | number, above 0 and at most 1 | `1` | How far the action is pressed |
+
+Needs: `run`. Runs can't write files, export or call models (they answer from the replay file).
+
+The result has `runs`, the number made, and `results`, one per combination in order (the first
+`vary` key's values change slowest), each with:
+
+| Field | Meaning |
+| --- | --- |
+| `values` | The combination's values, by `vary` key |
+| `ends` | With `end`: how many runs met each condition, and `timeout` for those that met none |
+| `ticks` | `min`, `mean` and `max` of the ticks the runs lasted |
+| `events` | Each event kind counted, per run on average |
+| `measure` | Each `measure` key's value at the end: `min`, `mean` and `max` for numbers, otherwise how many runs ended with each value (as JSON text); `missing` counts runs whose entity or component was gone |
+
+Means are rounded to three decimals. A bad key, value, action or condition fails before anything
+runs, with its JSON Pointer, such as `/vary/runner~1Runner~1jump_speed/1`.
+
+From [examples/playtest](../../examples/playtest/), a runner and a 120-pixel pit, with a bot that
+holds `move_right` and jumps at random:
+
+```json
+{"bot":[{"action":"move_right"},{"action":"jump","chance":0.04}],"end":{"cleared":{"where":[{"component":"Transform2D","field":"position.x","op":">=","value":600}],"with":["Runner"]},"fell":{"where":[{"component":"Transform2D","field":"position.y","op":">","value":64}],"with":["Runner"]}},"measure":["runner/Runner/coins"],"runs":16,"tick_seconds":0.015625,"ticks":400,"vary":{"runner/Runner/jump_speed":[400,500,600]}}
+```
+
+```json
+{"results":[{"ends":{"cleared":0,"fell":16,"timeout":0},"events":{"coin_collected":0.75,"jumped":1.75},"measure":{"runner/Runner/coins":{"max":6,"mean":1.5,"min":0}},"ticks":{"max":143,"mean":123.313,"min":110},"values":{"runner/Runner/jump_speed":400}},{"ends":{"cleared":2,"fell":14,"timeout":0},"events":{"coin_collected":0.375,"jumped":1.688},"measure":{"runner/Runner/coins":{"max":5,"mean":1.125,"min":0}},"ticks":{"max":200,"mean":135.5,"min":109},"values":{"runner/Runner/jump_speed":500}},{"ends":{"cleared":6,"fell":10,"timeout":0},"events":{"coin_collected":0.5,"jumped":1.813},"measure":{"runner/Runner/coins":{"max":6,"mean":1,"min":0}},"ticks":{"max":200,"mean":153.25,"min":118},"values":{"runner/Runner/jump_speed":600}}],"runs":48}
 ```
 
 ## History
