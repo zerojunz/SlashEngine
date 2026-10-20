@@ -16,6 +16,7 @@ add_executable(slash_tests
     test_fixed_step.cpp
     test_frame_summary.cpp
     test_gameplay.cpp
+    test_generators.cpp
     test_godot_pack.cpp
     test_gpu_particles.cpp
     test_gpu_particles_2d.cpp

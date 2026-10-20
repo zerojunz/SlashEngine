@@ -2,20 +2,24 @@
 
 #include "slash/ai/config.hpp"
 #include "slash/ai/provider.hpp"
+#include "slash/ai/transport.hpp"
 #include "slash/core/json.hpp"
 #include "slash/core/result.hpp"
 #include "slash/library/library.hpp"
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
 
 // Image and sound generators behind one interface, as ai::Provider is for language models, so no
-// engine code names a vendor. providers.json's "generators" says which a project can call; the
-// built-in "test" generator makes placeholders on the machine, so agents and CI use the library
-// with no model or key.
+// engine code outside the adapters names a vendor. providers.json's "generators" says which a
+// project can call: "openai-image", "gemini-image" and "automatic1111" (a Stable Diffusion web UI)
+// make and refine images, "openai-speech" speaks lines and "elevenlabs-sound" makes sound effects.
+// The built-in "test" generator makes placeholders on the machine, so agents and CI use the
+// library with no model or key.
 namespace slash::library {
 
 struct GenerateRequest {
@@ -61,6 +65,15 @@ public:
 // and raises, lowers, lengthens or shortens a sound, as the prompt says.
 [[nodiscard]] std::shared_ptr<Generator> test_generator();
 
+// How generators reach their services.
+struct GeneratorOptions {
+    // null for ai::http_transport().
+    std::shared_ptr<ai::Transport> transport{}; // NOLINT(readability-redundant-member-init)
+    // Reads environment variables; null for the process's own.
+    std::function<std::string(const std::string& name)>
+        environment{}; // NOLINT(readability-redundant-member-init)
+};
+
 struct OpenedGenerator {
     std::shared_ptr<Generator> generator;
     std::string name;
@@ -70,8 +83,10 @@ struct OpenedGenerator {
 };
 
 // The generator providers.json names, or the built-in "test" one. An empty name picks the only
-// configured generator that makes the type; with none, or several, it is an error.
+// configured generator that makes the type; with none, or several, it is an error. Images a
+// service makes at another size are fitted to the size asked for (a refine's parent's when none).
 [[nodiscard]] Result<OpenedGenerator> open_generator(const ai::Config& config,
-                                                     std::string_view name, std::string_view type);
+                                                     std::string_view name, std::string_view type,
+                                                     const GeneratorOptions& options = {});
 
 } // namespace slash::library

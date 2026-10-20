@@ -3449,8 +3449,9 @@ library, and records where it came from in the project's `library.json`:
 }
 ```
 
-Generators come from the project's [`providers.json`](providers.md#generators); the built-in
-`test` generator makes placeholders with no model or key. Sessions that run tests write nothing
+Generators come from the project's [`providers.json`](providers.md#generators): OpenAI and
+Gemini image models, a Stable Diffusion web UI on the machine, OpenAI's text to speech and
+ElevenLabs' sound effects. The built-in `test` generator makes placeholders with no model or key. Sessions that run tests write nothing
 to the library. Registered by `slash-cli` and `slash-mcp`, running games included.
 [examples/asset-library](../../examples/asset-library/) has two projects sharing one library.
 
@@ -3490,7 +3491,7 @@ assets of the type matching at least three quarters of the prompt's words, they 
 | `prompt` | string | required | What to make |
 | `type` | string | `image` | `image` or `sound` |
 | `generator` | string | the one that makes the type | A generator in `providers.json`, or `test` |
-| `width`, `height` | integer | the generator's | An image's size, 1 to 4096 pixels; `height` defaults to `width` for `test` |
+| `width`, `height` | integer | the generator's | An image's size, 1 to 4096 pixels; one alone makes a square. What a service makes at another size is fitted to it |
 | `seconds` | number | the generator's | A sound's length |
 | `seed` | integer | | For a repeatable result, where the generator takes one |
 | `description` | string | the prompt | A sentence for agents to read instead of the file |
