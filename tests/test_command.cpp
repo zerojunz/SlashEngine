@@ -1273,7 +1273,7 @@ TEST_CASE("engine.describe lists systems in the order they run") {
         {"name": "gui", "doc": "Sends input events to controls: hover, focus, buttons, sliders and text fields.",
          "priority": -900},
         {"name": "services",
-         "doc": "Hands what the ads, analytics and purchases backends reported to the game as events.",
+         "doc": "Hands what the ads, analytics, purchases and games backends reported to the game as events.",
          "priority": -800},
         {"name": "controls", "priority": -1},
         {"name": "movement", "doc": "Moves things by their velocity.", "priority": 0},

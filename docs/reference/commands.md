@@ -1619,20 +1619,24 @@ the input.
 
 ## Services
 
-Ads, analytics and in-app purchases, as Unity's services: `project.json`'s
-[`services`](project-format.md#services) names the ad placements and products, gameplay code
-shows, logs and buys by those names, and what happens arrives as events at a later tick (see
-[services.md](services.md)). Sessions run the services on the test backend, so ads load and
-purchases go through with no store account. The examples here are from
-[examples/services](../../examples/services/), a shop that sells coins for watched ads and
-purchases.
+Ads, analytics, in-app purchases, achievements and leaderboards, as Unity's services and Social
+API: `project.json`'s [`services`](project-format.md#services) names the ad placements,
+products, achievements and leaderboards, gameplay code shows, logs, buys, unlocks and submits
+by those names, and what happens arrives as events at a later tick (see
+[services.md](services.md)). Sessions run the services on the test backend, so ads load,
+purchases go through and the player signs in with no store or platform account. The examples
+here are from [examples/services](../../examples/services/), a shop that sells coins for
+watched ads and purchases, and
+[examples/achievements-and-leaderboards](../../examples/achievements-and-leaderboards/), a
+race with lap achievements and a best-lap leaderboard.
 
 ### services.state
 
 Returns the backends, the player's consent, each ad placement's format and status (`unloaded`,
 `loading`, `loaded`, `showing` or `failed` with its `error`), the products with their prices
 once fetched, what the player owns, purchases unfinished (completed but not yet granted and
-finished) and pending, and the latest analytics events.
+finished) and pending, the latest analytics events and, in a game with achievements or
+leaderboards, sign-in, each achievement's progress and each leaderboard's best score.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -1645,7 +1649,7 @@ Needs: `read`. After the shop's system logged an event for a watched ad:
 ```
 
 ```json
-{"ads":{"bonus":{"format":"rewarded","status":"loading"},"footer":{"format":"banner","status":"showing"}},"analytics":{"enabled":true,"events":[{"name":"coins_earned","params":{"coins":25,"source":"ad"},"sent":false,"tick":4}],"logged":1},"backends":{"ads":"test","analytics":["test"],"purchases":"test"},"consent":{"analytics":"unknown","personalized_ads":"unknown"},"owned":[],"pending":[],"products":{"coins_100":{"available":true,"price":"$0.99","type":"consumable"},"remove_ads":{"available":true,"price":"$0.99","type":"non_consumable"}},"products_status":"fetched","tick":4,"unfinished":[]}
+{"ads":{"bonus":{"format":"rewarded","status":"loading"},"footer":{"format":"banner","status":"showing"}},"analytics":{"enabled":true,"events":[{"name":"coins_earned","params":{"coins":25,"source":"ad"},"sent":false,"tick":4}],"logged":1},"backends":{"ads":"test","analytics":["test"],"games":"test","purchases":"test"},"consent":{"analytics":"unknown","personalized_ads":"unknown"},"owned":[],"pending":[],"products":{"coins_100":{"available":true,"price":"$0.99","type":"consumable"},"remove_ads":{"available":true,"price":"$0.99","type":"non_consumable"}},"products_status":"fetched","tick":4,"unfinished":[]}
 ```
 
 `tick` is the tick the `services` system last ran. The rewarded ad is `loading` again because it
@@ -1654,10 +1658,21 @@ analytics consent; `logged` counts every event so far. `products_status` is `non
 products), `fetching`, `fetched` or `failed` with `products_error`, e.g. `no store` in a game
 with no store backend. `unfinished` and `pending` list `{"product", "transaction", "state"}`.
 
+In the race, after the player finished a lap and the ten-lap achievement unlocked:
+
+```json
+{"games":{"achievements":{"first_finish":{"unlocked":true},"ten_laps":{"of":10,"steps":10,"unlocked":true}},"leaderboards":{"best_lap":{"best":62500}},"player":{"id":"test-player","name":"Player"},"sign_in":"signed_in"}}
+```
+
+(the rest left out). `sign_in` is `signed_out`, `signing_in`, `signed_in` or `failed` with
+`sign_in_error`. Incremental achievements give `steps` of `of`. A leaderboard's `best` is the
+player's best score, kept while signed out, and `unsent` is set until the platform has it.
+`ui_showing` is set while the achievements or leaderboards screen is open.
+
 ### services.test
 
-Sets how the test backend behaves, and loads, shows, hides, buys, finishes and restores as the
-game's code would. What happens arrives as events at the next tick or later, as from a real
+Sets how the test backend behaves, and loads, shows, hides, buys, finishes, restores, signs in,
+unlocks, submits and loads scores as the game's code would. What happens arrives as events at the next tick or later, as from a real
 backend.
 
 | Param | Type | Default | Meaning |
@@ -1676,9 +1691,21 @@ backend.
 | `buy` | string | | A product to buy |
 | `finish` | string | | A purchase's transaction to finish once granted |
 | `restore` | boolean | | Restores purchases |
+| `accept_sign_in` | boolean | `true` | The player signs in; `false` fails sign-in with `the player didn't sign in` |
+| `player` | string | `Player` | The test player's name; their ID is `test-player` |
+| `games_ticks` | integer, 1 to 3600 | `1` | Ticks signing in, submitting a score and loading scores take |
+| `scores` | object of arrays of `{"name", "score"}` | | Other players' best scores by leaderboard, up to 100 each, ranked with the player's |
+| `sign_in` | boolean | | Signs the player in, as the game's `sign_in` does when the player asks |
+| `unlock` | string | | An achievement to unlock |
+| `increment` | `{"achievement", "steps"}` | | Adds `steps` (default 1) to an incremental achievement |
+| `submit` | `{"leaderboard", "score"}` | | Submits an integer score |
+| `load_scores` | `{"leaderboard", "time", "collection", "count"}` | | Loads a leaderboard's best scores: `time` `all_time`, `week` or `today`; `collection` `global` or `friends`; `count` 1 to 25 (default 10) |
+| `show_achievements` | boolean | | Shows the achievements screen |
+| `show_leaderboards` | string | | Shows a leaderboard's screen, or every leaderboard's for `""` |
 
 Settings apply first, then `consent`, `complete_pending`, `load`, `show`, `hide`, `buy`,
-`finish` and `restore`, in that order. Needs: `run`. Changes no entities, so there is nothing to
+`finish`, `restore`, `sign_in`, `unlock`, `increment`, `submit`, `load_scores`,
+`show_achievements` and `show_leaderboards`, in that order. Needs: `run`. Changes no entities, so there is nothing to
 undo; a call that fails partway changes nothing.
 
 ```json
@@ -1686,7 +1713,7 @@ undo; a call that fails partway changes nothing.
 ```
 
 ```json
-{"test":{"error":"the payment was declined","fill":true,"load_ticks":1,"outcome":"pending","prices":{},"purchase_ticks":1,"show_ticks":1,"watch_to_end":true},"tick":7}
+{"test":{"accept_sign_in":true,"error":"the payment was declined","fill":true,"games_ticks":1,"load_ticks":1,"outcome":"pending","player":"Player","prices":{},"purchase_ticks":1,"scores":{},"show_ticks":1,"watch_to_end":true},"tick":7}
 ```
 
 `tick` is the next tick, when the first events can arrive; `test` lists every setting, and only
@@ -1700,6 +1727,23 @@ the game would get, with its JSON Pointer:
 
 ```
 /buy: the player owns "remove_ads" already
+```
+
+In the race, two rivals' lap times put the player's in context, and eight laps' worth of
+steps bring the ten-lap achievement near:
+
+```json
+{"scores": {"best_lap": [{"name": "Ana", "score": 61000}, {"name": "Bo", "score": 66500}]}, "increment": {"achievement": "ten_laps", "steps": 8}}
+```
+
+A misspelled name gets the closest one:
+
+```json
+{"unlock": "first_finsh"}
+```
+
+```
+/unlock: no achievement "first_finsh"; did you mean "first_finish"?
 ```
 
 Outside a session, as in an exported game, there is no test backend, and `services.test` fails.

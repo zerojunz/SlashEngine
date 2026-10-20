@@ -172,6 +172,10 @@ json::Value target_schema() {
     backends["analytics"] = string_list("The classes of analytics backends.");
     backends["purchases"] = property("string", "The class of the purchases backend.");
     backends["purchases"]["minLength"] = 1;
+    backends["games"] =
+        property("string", "The class of the games backend: sign-in, achievements and "
+                           "leaderboards.");
+    backends["games"]["minLength"] = 1;
     properties["backends"] = object_schema(
         std::move(backends),
         "Services backends written in the platform's language, by class name, made when the game "
@@ -505,7 +509,7 @@ void check_target(const std::string& platform, const json::Value& target,
                                           : "expected an Objective-C class's name, e.g. HelloAds"});
                 }
             };
-            for (const std::string_view service : {"ads", "purchases"}) {
+            for (const std::string_view service : {"ads", "purchases", "games"}) {
                 if (const json::Value* name = backends->find(service); name != nullptr) {
                     check_class(base + "/backends/" + std::string(service), name->as_string());
                 }
@@ -625,6 +629,9 @@ SdkTarget parse_target(const json::Value& value) {
         target.backends.analytics = strings(backends->find("analytics"));
         if (const json::Value* purchases = backends->find("purchases"); purchases != nullptr) {
             target.backends.purchases = purchases->as_string();
+        }
+        if (const json::Value* games = backends->find("games"); games != nullptr) {
+            target.backends.games = games->as_string();
         }
     }
     return target;
@@ -1602,6 +1609,7 @@ std::string sdk_register_source(const std::vector<ResolvedSdk>& sdks,
     for (const ResolvedSdk& sdk : sdks) {
         claim(sdk, "ads", sdk.backends.ads);
         claim(sdk, "purchases", sdk.backends.purchases);
+        claim(sdk, "games", sdk.backends.games);
     }
     std::string declarations;
     std::string body;
@@ -1649,6 +1657,9 @@ std::string sdk_register_source(const std::vector<ResolvedSdk>& sdks,
             if (!sdk.backends.purchases.empty()) {
                 body += "        added.purchases = " + make("purchases", sdk.backends.purchases) +
                         ";\n";
+            }
+            if (!sdk.backends.games.empty()) {
+                body += "        added.games = " + make("games", sdk.backends.games) + ";\n";
             }
             body += "        slash::services::merge_backends(backends, std::move(added), \"" +
                     source + "\");\n    }\n";

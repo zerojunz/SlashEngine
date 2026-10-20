@@ -60,6 +60,22 @@ services::Settings test_settings() {
     return services::parse_settings(doc);
 }
 
+constexpr std::string_view kGames = R"({"games": {
+    "achievements": {
+        "first_win": {"ids": {"android": "CgkI1", "ios": "first_win"}},
+        "collector": {"steps": 10, "ids": {"android": "CgkI2", "ios": "collector"}}},
+    "leaderboards": {
+        "high_score": {"ids": {"android": "CgkI3", "ios": "high_score"}},
+        "fastest_lap": {"sort_order": "low_to_high"}}
+}})";
+
+services::Settings games_settings() {
+    const json::Value doc = parse(kGames);
+    const auto errors = services::validate_settings(doc, "/services");
+    REQUIRE_MESSAGE(errors.empty(), (errors.empty() ? std::string() : errors[0].message));
+    return services::parse_settings(doc);
+}
+
 std::vector<std::string> kinds(const world::World& world) {
     std::vector<std::string> out;
     for (const services::ServiceEvent& event : services::events(world)) {
@@ -182,6 +198,66 @@ public:
 private:
     std::shared_ptr<Calls> calls_;
     std::shared_ptr<services::Reports> reports_;
+};
+
+// A games service that signs in only when the player asks, and whose platform has first_win
+// unlocked and two of collector's steps from another device.
+class FakeGames : public services::GamesBackend {
+public:
+    explicit FakeGames(std::shared_ptr<Calls> calls) : calls_(std::move(calls)) {}
+    [[nodiscard]] std::string_view name() const override { return "fake_games"; }
+    void start(const std::shared_ptr<services::Reports>& started) override { reports = started; }
+    void sign_in(bool interactive) override {
+        calls_->add(std::string("games.sign_in ") + (interactive ? "interactive" : "silent"));
+        if (interactive) {
+            reports->signed_in({.id = "g-7", .name = "Mira"});
+        } else {
+            reports->sign_in_failed("not signed in yet");
+        }
+    }
+    void load_achievements(std::span<const services::AchievementUnit> units) override {
+        calls_->add("games.load_achievements " + std::to_string(units.size()));
+        reports->achievements({{.achievement = "collector", .steps = 2, .unlocked = false},
+                               {.achievement = "first_win", .steps = 0, .unlocked = true}});
+    }
+    void unlock(const services::AchievementUnit& unit) override {
+        calls_->add("games.unlock " + unit.achievement);
+    }
+    void set_steps(const services::AchievementUnit& unit, int steps) override {
+        calls_->add("games.set_steps " + unit.achievement + " " + std::to_string(steps) + "/" +
+                    std::to_string(unit.steps));
+    }
+    void submit_score(const services::LeaderboardUnit& unit, std::int64_t score) override {
+        calls_->add("games.submit " + unit.leaderboard + " " + std::to_string(score));
+        // As an SDK calls back on its own thread.
+        std::thread([reports = reports, leaderboard = unit.leaderboard, score] {
+            reports->score_submitted(leaderboard, score);
+        }).join();
+    }
+    void load_scores(const services::LeaderboardUnit& unit,
+                     const services::ScoreQuery& query) override {
+        calls_->add("games.load_scores " + unit.leaderboard + " " +
+                    std::string(services::span_name(query.time)) + " " +
+                    std::to_string(query.count));
+        services::Scores scores;
+        scores.entries = {{.rank = 1, .player = "g-1", .name = "Ana", .value = 900},
+                          {.rank = 2, .player = "g-7", .name = "Mira", .value = 800}};
+        scores.player = scores.entries[1];
+        scores.total = 2;
+        reports->scores(unit.leaderboard, std::move(scores));
+    }
+    void show_achievements() override {
+        calls_->add("games.show_achievements");
+        reports->games_ui_closed();
+    }
+    void show_leaderboards(const services::LeaderboardUnit* unit) override {
+        calls_->add("games.show_leaderboards " + (unit != nullptr ? unit->leaderboard : "all"));
+    }
+
+    std::shared_ptr<services::Reports> reports;
+
+private:
+    std::shared_ptr<Calls> calls_;
 };
 
 } // namespace
@@ -578,7 +654,10 @@ TEST_CASE("backends get requests and report from any thread, at the next tick") 
                                                   "analytics.flush"});
     const json::Value state = services::state_json(world, 0);
     CHECK(compact(*state.find("backends")) ==
-          R"({"ads":"fake_ads","analytics":["fake_analytics"],"purchases":"fake_store"})");
+          R"({"ads":"fake_ads","analytics":["fake_analytics"],"games":"none",)"
+          R"("purchases":"fake_store"})");
+    // A game with no achievements or leaderboards never signs in, and its state leaves them out.
+    CHECK(state.find("games") == nullptr);
     CHECK_FALSE(services::set_test_settings(world, {}).ok());
 
     // Reports about placements the game doesn't have are dropped.
@@ -659,26 +738,343 @@ TEST_CASE("packages' backends merge, and stopping flushes analytics and lets go 
     second.ads = std::make_unique<FakeAds>(calls);
     second.analytics.push_back(std::make_unique<FakeAnalytics>(calls));
     second.purchases = std::make_unique<FakeStore>(calls);
+    second.games = std::make_unique<FakeGames>(calls);
     services::merge_backends(backends, std::move(second), "second");
+    services::Backends third;
+    third.games = std::make_unique<FakeGames>(calls);
+    services::merge_backends(backends, std::move(third), "third");
     CHECK(backends.ads != nullptr);
     CHECK(backends.analytics.size() == 2);
     CHECK(backends.purchases != nullptr);
+    CHECK(backends.games != nullptr);
 
     world::ComponentRegistry components;
     world::World world(components);
-    constexpr std::string_view kNone = R"({"ads":"none","analytics":[],"purchases":"none"})";
+    constexpr std::string_view kNone =
+        R"({"ads":"none","analytics":[],"games":"none","purchases":"none"})";
     CHECK(compact(services::backends_json(world)) == kNone);
     services::stop(world); // does nothing before install
     services::install(world, test_settings());
     services::set_backends(world, std::move(backends));
     CHECK(compact(services::backends_json(world)) ==
           R"({"ads":"fake_ads","analytics":["fake_analytics","fake_analytics"],)"
-          R"("purchases":"fake_store"})");
+          R"("games":"fake_games","purchases":"fake_store"})");
     calls->list.clear();
     services::stop(world);
     CHECK(calls->list == std::vector<std::string>{"analytics.flush", "analytics.flush"});
     CHECK(compact(services::backends_json(world)) == kNone);
     services::use_test_backend(world);
     CHECK(compact(services::backends_json(world)) ==
-          R"({"ads":"test","analytics":["test"],"purchases":"test"})");
+          R"({"ads":"test","analytics":["test"],"games":"test","purchases":"test"})");
+}
+
+TEST_CASE("games settings validate and parse achievements and leaderboards") {
+    const services::Settings settings = games_settings();
+    REQUIRE(settings.achievements.size() == 2);
+    CHECK(settings.achievements[0] ==
+          services::Achievement{.name = "collector",
+                                .ids = {{"android", "CgkI2"}, {"ios", "collector"}},
+                                .steps = 10});
+    CHECK(settings.achievements[1].steps == 0);
+    REQUIRE(settings.leaderboards.size() == 2);
+    CHECK(settings.leaderboards[0].name == "fastest_lap");
+    CHECK(settings.leaderboards[0].sort_order == services::SortOrder::LowToHigh);
+    CHECK(settings.leaderboards[1].sort_order == services::SortOrder::HighToLow);
+    CHECK(settings.sign_in_at_start);
+    CHECK_FALSE(services::parse_settings(parse(R"({"games": {"sign_in_at_start": false}})"))
+                    .sign_in_at_start);
+
+    const auto errors = services::validate_settings(parse(R"({"games": {
+        "achievements": {"first win": {}, "collector": {"steps": 1, "ids": {"andriod": "x"}}},
+        "leaderboards": {"best": {"sort_order": "descending"}}}})"),
+                                                    "/services");
+    REQUIRE(errors.size() == 2);
+    CHECK(errors[0].path == "/services/games/achievements/collector/steps");
+    CHECK(errors[1].path == "/services/games/leaderboards/best/sort_order");
+    const auto names = services::validate_settings(
+        parse(
+            R"({"games": {"achievements": {"first win": {}, "collector": {"ids": {"andriod": "x"}}}}})"),
+        "/services");
+    REQUIRE(names.size() == 2);
+    CHECK(names[0].path == "/services/games/achievements/collector/ids/andriod");
+    CHECK(names[0].message == "no platform \"andriod\"; did you mean \"android\"?");
+    CHECK(names[1].path == "/services/games/achievements/first win");
+}
+
+TEST_CASE("the test backend signs the player in, keeps achievements and ranks scores") {
+    world::ComponentRegistry components;
+    world::World world(components);
+    services::install(world, games_settings());
+    services::use_test_backend(world);
+    CHECK(services::sign_in_status(world) == services::SignIn::SigningIn);
+    CHECK(services::player(world) == nullptr);
+    CHECK(step(world) == std::vector<std::string>{"signed_in:test-player"});
+    REQUIRE(services::player(world) != nullptr);
+    CHECK(services::player(world)->name == "Player");
+    CHECK(step(world) == std::vector<std::string>{"achievements_loaded"});
+    CHECK(services::events(world)[0].unlocked.empty());
+
+    // Unlocking is heard of once, and collector unlocks when all its steps are done.
+    REQUIRE(services::unlock_achievement(world, "first_win").ok());
+    REQUIRE(services::unlock_achievement(world, "first_win").ok());
+    REQUIRE(services::increment_achievement(world, "collector", 4).ok());
+    CHECK(services::achievement(world, "collector")->steps == 4);
+    CHECK(step(world) == std::vector<std::string>{"achievement_unlocked:first_win"});
+    REQUIRE(services::increment_achievement(world, "collector", 20).ok());
+    CHECK(*services::achievement(world, "collector") ==
+          services::AchievementProgress{.achievement = "collector", .steps = 10, .unlocked = true});
+    CHECK(step(world) == std::vector<std::string>{"achievement_unlocked:collector"});
+    CHECK(services::achievement(world, "nowhere") == nullptr);
+
+    // Leaderboards rank by their sort order, among the other players the test settings give.
+    services::TestSettings test = *services::test_settings(world);
+    test.scores["high_score"] = {{.rank = 0, .player = {}, .name = "Ana", .value = 900},
+                                 {.rank = 0, .player = {}, .name = "Bo", .value = 500}};
+    test.scores["fastest_lap"] = {{.rank = 0, .player = {}, .name = "Ana", .value = 61'000}};
+    REQUIRE(services::set_test_settings(world, test).ok());
+    REQUIRE(services::submit_score(world, "high_score", 700).ok());
+    REQUIRE(services::submit_score(world, "high_score", 600).ok());
+    REQUIRE(services::submit_score(world, "fastest_lap", 59'500).ok());
+    CHECK(services::best_score(world, "high_score") == 700);
+    CHECK(services::best_score(world, "fastest_lap") == 59'500);
+    CHECK_FALSE(services::best_score(world, "nowhere").has_value());
+    CHECK(step(world) == std::vector<std::string>{"score_submitted:high_score",
+                                                  "score_submitted:high_score",
+                                                  "score_submitted:fastest_lap"});
+    CHECK(services::events(world)[1].score == 600);
+    REQUIRE(services::load_scores(world, "high_score",
+                                  {.time = services::TimeSpan::Week,
+                                   .collection = services::Collection::Global,
+                                   .count = 2})
+                .ok());
+    REQUIRE(services::load_scores(world, "fastest_lap").ok());
+    auto again = services::load_scores(world, "high_score");
+    REQUIRE_FALSE(again.ok());
+    CHECK(again.error().message ==
+          "the scores of \"high_score\" are loading already; wait for scores_loaded");
+    CHECK(step(world) ==
+          std::vector<std::string>{"scores_loaded:high_score", "scores_loaded:fastest_lap"});
+    const services::Scores& high = services::events(world)[0].scores;
+    CHECK(high.query.time == services::TimeSpan::Week);
+    REQUIRE(high.entries.size() == 2);
+    CHECK(high.entries[0] ==
+          services::Score{.rank = 1, .player = "rival-1", .name = "Ana", .value = 900});
+    CHECK(high.entries[1] ==
+          services::Score{.rank = 2, .player = "test-player", .name = "Player", .value = 700});
+    CHECK(high.total == 3);
+    // On fastest_lap lower is better, so the player's time beats Ana's.
+    REQUIRE(services::events(world)[1].scores.player.has_value());
+    CHECK(services::events(world)[1].scores.player->rank == 1);
+
+    // The screens show over the game until show_ticks have passed.
+    REQUIRE(services::show_leaderboards(world, "high_score").ok());
+    auto twice = services::show_achievements(world);
+    REQUIRE_FALSE(twice.ok());
+    CHECK(twice.error().message == "the achievements or leaderboards screen shows already");
+    CHECK(step(world).empty());
+    CHECK(step(world) == std::vector<std::string>{"games_ui_closed"});
+
+    CHECK(compact(*services::state_json(world, 0).find("games")) ==
+          R"({"achievements":{"collector":{"of":10,"steps":10,"unlocked":true},)"
+          R"("first_win":{"unlocked":true}},"leaderboards":{"fastest_lap":{"best":59500},)"
+          R"("high_score":{"best":700}},"player":{"id":"test-player","name":"Player"},)"
+          R"("sign_in":"signed_in"})");
+
+    // Mistakes are refused with the reason and the closest name.
+    auto unknown = services::unlock_achievement(world, "first_wn");
+    REQUIRE_FALSE(unknown.ok());
+    CHECK(unknown.error().message == "no achievement \"first_wn\"; did you mean \"first_win\"?");
+    auto at_once = services::increment_achievement(world, "first_win");
+    REQUIRE_FALSE(at_once.ok());
+    CHECK(at_once.error().message ==
+          "\"first_win\" unlocks at once, not in steps; unlock it instead");
+    auto no_steps = services::increment_achievement(world, "collector", 0);
+    REQUIRE_FALSE(no_steps.ok());
+    CHECK(no_steps.error().message == "steps must be at least 1");
+    auto board = services::submit_score(world, "high_scores", 1);
+    REQUIRE_FALSE(board.ok());
+    CHECK(board.error().message == "no leaderboard \"high_scores\"; did you mean \"high_score\"?");
+    auto count = services::load_scores(world, "high_score",
+                                       {.time = services::TimeSpan::AllTime,
+                                        .collection = services::Collection::Global,
+                                        .count = 30});
+    REQUIRE_FALSE(count.ok());
+    CHECK(count.error().message == "count must be 1 to 25");
+
+    // Resetting the world, as replays do, starts a fresh test games service.
+    world.reset_state();
+    CHECK_FALSE(services::achievement(world, "first_win")->unlocked);
+    CHECK_FALSE(services::best_score(world, "high_score").has_value());
+}
+
+TEST_CASE("sign-in can wait for the player, fail, or have no backend") {
+    world::ComponentRegistry components;
+    SUBCASE("sign_in_at_start off: the player signs in when the game asks") {
+        world::World world(components);
+        services::Settings settings = games_settings();
+        settings.sign_in_at_start = false;
+        services::install(world, settings);
+        services::use_test_backend(world);
+        CHECK(step(world).empty());
+        CHECK(services::sign_in_status(world) == services::SignIn::SignedOut);
+        auto signed_out = services::show_achievements(world);
+        REQUIRE_FALSE(signed_out.ok());
+        CHECK(signed_out.error().message == "the player isn't signed in; sign_in first");
+        REQUIRE(services::sign_in(world).ok());
+        auto signing_in = services::load_scores(world, "high_score");
+        REQUIRE_FALSE(signing_in.ok());
+        CHECK(signing_in.error().message == "the player is signing in; wait for signed_in");
+        CHECK(step(world) == std::vector<std::string>{"signed_in:test-player"});
+    }
+    SUBCASE("a test player who declines") {
+        world::World world(components);
+        services::install(world, games_settings());
+        services::TestSettings declines;
+        declines.accept_sign_in = false;
+        services::use_test_backend(world, declines);
+        CHECK(step(world) == std::vector<std::string>{"sign_in_failed"});
+        CHECK(services::events(world)[0].error == "the player didn't sign in");
+        CHECK(services::sign_in_status(world) == services::SignIn::Failed);
+        auto scores = services::load_scores(world, "high_score");
+        REQUIRE_FALSE(scores.ok());
+        CHECK(scores.error().message ==
+              "the player isn't signed in (the player didn't sign in); sign_in first");
+        CHECK(compact(*services::state_json(world, 0).find("games"))
+                  .find(R"("sign_in":"failed","sign_in_error":"the player didn't sign in")") !=
+              std::string::npos);
+    }
+    SUBCASE("no games backend") {
+        world::World world(components);
+        services::install(world, games_settings());
+        CHECK(step(world) == std::vector<std::string>{"sign_in_failed"});
+        CHECK(services::events(world)[0].error == "no games backend");
+        // Progress is still kept for the game.
+        REQUIRE(services::unlock_achievement(world, "first_win").ok());
+        CHECK(step(world) == std::vector<std::string>{"achievement_unlocked:first_win"});
+    }
+}
+
+TEST_CASE("progress and scores made before the player signs in reach the platform when they do") {
+    world::ComponentRegistry components;
+    world::World world(components);
+    services::install(world, games_settings());
+    auto calls = std::make_shared<Calls>();
+    services::Backends backends;
+    auto games = std::make_unique<FakeGames>(calls);
+    FakeGames* games_view = games.get();
+    backends.games = std::move(games);
+    services::set_backends(world, std::move(backends));
+    CHECK(calls->list == std::vector<std::string>{"games.sign_in silent"});
+    CHECK(step(world) == std::vector<std::string>{"sign_in_failed"});
+    CHECK(services::events(world)[0].error == "not signed in yet");
+
+    // Signed out, progress and the best score are kept for later.
+    REQUIRE(services::increment_achievement(world, "collector", 5).ok());
+    REQUIRE(services::submit_score(world, "high_score", 300).ok());
+    REQUIRE(services::submit_score(world, "high_score", 800).ok());
+    CHECK(compact(*services::state_json(world, 0).find("games")->find("leaderboards")) ==
+          R"({"fastest_lap":{},"high_score":{"best":800,"unsent":true}})");
+    calls->list.clear();
+    REQUIRE(services::sign_in(world).ok());
+    REQUIRE(services::sign_in(world).ok()); // signed in already: nothing more is asked
+    CHECK(step(world) == std::vector<std::string>{"signed_in:g-7"});
+    CHECK(services::events(world)[0].player == services::Player{.id = "g-7", .name = "Mira"});
+    // first_win was unlocked on another device: loaded, not unlocked now. The platform had two
+    // of collector's steps, and gets the five made while signed out.
+    CHECK(step(world) ==
+          std::vector<std::string>{"achievements_loaded", "score_submitted:high_score"});
+    CHECK(services::events(world)[0].unlocked == std::vector<std::string>{"first_win"});
+    CHECK(services::achievement(world, "first_win")->unlocked);
+    CHECK(calls->list == std::vector<std::string>{
+                             "games.sign_in interactive", "games.load_achievements 2",
+                             "games.submit high_score 800", "games.set_steps collector 5/10"});
+
+    // Signed in, progress goes to the platform at once.
+    calls->list.clear();
+    REQUIRE(services::increment_achievement(world, "collector", 5).ok());
+    REQUIRE(services::load_scores(world, "high_score",
+                                  {.time = services::TimeSpan::Today,
+                                   .collection = services::Collection::Friends,
+                                   .count = 5})
+                .ok());
+    REQUIRE(services::show_achievements(world).ok());
+    CHECK(step(world) == std::vector<std::string>{"achievement_unlocked:collector",
+                                                  "scores_loaded:high_score", "games_ui_closed"});
+    const services::Scores& loaded = services::events(world)[1].scores;
+    // The services fill in what was asked for.
+    CHECK(loaded.query.collection == services::Collection::Friends);
+    CHECK(loaded.player->name == "Mira");
+    REQUIRE(services::show_leaderboards(world).ok());
+    CHECK(calls->list == std::vector<std::string>{"games.set_steps collector 10/10",
+                                                  "games.load_scores high_score today 5",
+                                                  "games.show_achievements",
+                                                  "games.show_leaderboards all"});
+
+    // Reports about leaderboards the game doesn't have are dropped.
+    games_view->reports->score_submitted("nowhere", 1);
+    games_view->reports->achievement_failed("first_win", "quota exceeded");
+    CHECK(step(world) == std::vector<std::string>{"achievement_failed:first_win"});
+    CHECK(services::events(world)[0].error == "quota exceeded");
+    CHECK(compact(services::backends_json(world)) ==
+          R"({"ads":"none","analytics":[],"games":"fake_games","purchases":"none"})");
+}
+
+TEST_CASE("services.test signs in, unlocks, submits and loads scores in a session") {
+    const std::filesystem::path root = "services_games_project";
+    std::filesystem::remove_all(root);
+    std::filesystem::create_directories(root);
+    REQUIRE(slash::platform::write_file(
+                (root / "project.json").string(),
+                R"({"format": 1, "name": "Racer", "main_scene": "main.scene.json", "services": )" +
+                    std::string(kGames) + "}")
+                .ok());
+    world::ComponentRegistry components;
+    world::register_builtin_components(components);
+    command::Registry commands;
+    command::register_builtin_commands(commands);
+    command::Session session(components, commands, {.project_root = root.string()});
+    auto call = [&](std::string_view name, std::string_view params) {
+        return session.call(name, parse(params));
+    };
+    REQUIRE(call("scene.new", "{}").ok);
+    REQUIRE(call("events.subscribe", R"({"kinds": ["scores_loaded"]})").ok);
+    REQUIRE(call("step", R"({"ticks": 2})").ok);
+
+    command::Reply reply = call("services.test", R"({
+        "scores": {"high_score": [{"name": "Ana", "score": 900}]},
+        "unlock": "first_win", "increment": {"achievement": "collector", "steps": 3},
+        "submit": {"leaderboard": "high_score", "score": 1200}})");
+    REQUIRE_MESSAGE(reply.ok, reply.message);
+    CHECK(compact(*reply.value.find("test")->find("scores")) ==
+          R"({"high_score":[{"name":"Ana","score":900}]})");
+    REQUIRE(call("step", "{}").ok);
+    reply = call("services.test", R"({"load_scores": {"leaderboard": "high_score", "count": 1}})");
+    REQUIRE_MESSAGE(reply.ok, reply.message);
+    REQUIRE(call("step", "{}").ok);
+    reply = call("events.read", R"({"subscription": "events_1"})");
+    REQUIRE(reply.ok);
+    CHECK(compact(*reply.value.find("events")->as_array()[0].find("data")) ==
+          R"({"collection":"global","entries":[{"name":"Player","player":"test-player",)"
+          R"("rank":1,"score":1200}],"player":{"name":"Player","player":"test-player",)"
+          R"("rank":1,"score":1200},"time":"all_time","total":2})");
+    reply = call("services.state", R"({"events": 0})");
+    CHECK(compact(*reply.value.find("games")->find("achievements")) ==
+          R"({"collector":{"of":10,"steps":3,"unlocked":false},"first_win":{"unlocked":true}})");
+
+    // Mistakes point at the bad value, and a failed call changes nothing.
+    reply = call("services.test",
+                 R"({"unlock": "collector", "submit": {"leaderboard": "high_scor", "score": 1}})");
+    REQUIRE_FALSE(reply.ok);
+    CHECK(reply.message == "/submit: no leaderboard \"high_scor\"; did you mean \"high_score\"?");
+    CHECK_FALSE(services::achievement(session.world(), "collector")->unlocked);
+    reply = call("services.test", R"({"scores": {"fastest_lp": []}})");
+    REQUIRE_FALSE(reply.ok);
+    CHECK(reply.message == "/scores/fastest_lp: no leaderboard \"fastest_lp\"; did you mean "
+                           "\"fastest_lap\"?");
+    reply = call("services.test", R"({"accept_sign_in": false, "show_leaderboards": "every"})");
+    REQUIRE_FALSE(reply.ok);
+    CHECK(reply.data.find("path")->as_string() == "/show_leaderboards");
+    CHECK(services::test_settings(session.world())->accept_sign_in);
+
+    std::filesystem::remove_all(root);
 }

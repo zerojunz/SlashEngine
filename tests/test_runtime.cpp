@@ -280,7 +280,7 @@ TEST_CASE("a game registers its SDK packages' backends and flushes analytics whe
         const json::Value summary = game.value()->summary();
         REQUIRE(summary.find("services") != nullptr);
         CHECK(json::write(*summary.find("services"), json::Style::Compact) ==
-              R"({"ads":"none","analytics":["counting"],"purchases":"none"})");
+              R"({"ads":"none","analytics":["counting"],"games":"none","purchases":"none"})");
         SDL_Event background{};
         background.type = SDL_EVENT_WILL_ENTER_BACKGROUND;
         game.value()->handle_event(background);

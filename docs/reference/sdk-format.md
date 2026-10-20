@@ -118,7 +118,7 @@ instead.
 | `maven_repositories` | Android | `https://` or `file://` Maven repositories searched in order. Default: Google's (`https://dl.google.com/dl/android/maven2`), then Maven Central |
 | `sources` | All | [Glue code](#glue-code) compiled into the game with the SDK's headers and the engine's: `.c`, `.cpp`, `.cc` and `.cxx` files, `.m` and `.mm` on macOS and iOS (with ARC), or folders, whose files for the platform are compiled in |
 | `java` | Android | `.java` files or folders compiled with the game's Java, such as the classes `backends` names |
-| `backends` | Android, macOS, iOS | Services backends written in Java or Objective-C, by class name: `{"ads": "<class>", "analytics": ["<class>"], "purchases": "<class>"}` |
+| `backends` | Android, macOS, iOS | Services backends written in Java or Objective-C, by class name: `{"ads": "<class>", "analytics": ["<class>"], "purchases": "<class>", "games": "<class>"}` |
 
 `sdk.json` files are checked as a whole before anything is built: unknown fields and platforms,
 placeholders and keys that don't exist (with "did you mean"), Apple and Android fields on other
@@ -187,7 +187,7 @@ until `sdk lock` runs again.
 ## Glue code
 
 Glue code connects a vendor's SDK to the engine: usually a [services backend](services.md) that
-turns the game's ads, analytics and purchase calls into the SDK's. A package's `sources` are
+turns the game's ads, analytics, purchase and achievement calls into the SDK's. A package's `sources` are
 compiled into the game, so they can include both the SDK's headers and the engine's, and its
 `register` function adds the backends when the game starts:
 
@@ -224,13 +224,14 @@ language instead. `backends` names classes that the game makes when it starts, t
 bridges in [`slash/services/bridges.hpp`](../../engine/services/include/slash/services/bridges.hpp):
 
 - **Android**: a Java class, listed in `java`, that implements `org.slashengine.services`'
-  `AdsBackend`, `AnalyticsBackend` or `PurchasesBackend`
+  `AdsBackend`, `AnalyticsBackend`, `PurchasesBackend` or `GamesBackend`
   ([engine/services/android](../../engine/services/android/org/slashengine/services/)) and has a
   public constructor with no parameters. `start` hands it the game's `Activity` and a `Reports`
-  object to call from any thread when the SDK calls back. Products, purchases and event
-  parameters cross as JSON strings.
+  object to call from any thread when the SDK calls back. Products, purchases, achievements,
+  scores and event parameters cross as JSON strings.
 - **macOS and iOS**: an Objective-C class, in a `.m` or `.mm` file listed in `sources`, that
-  conforms to `SlashAdsBackend`, `SlashAnalyticsBackend` or `SlashPurchasesBackend`
+  conforms to `SlashAdsBackend`, `SlashAnalyticsBackend`, `SlashPurchasesBackend` or
+  `SlashGamesBackend`
   ([slash/services/apple.h](../../engine/services/include/slash/services/apple.h)). It is made
   with `[[Class alloc] init]` and gets a `SlashServiceReports` object.
 
@@ -242,8 +243,8 @@ bridges in [`slash/services/bridges.hpp`](../../engine/services/include/slash/se
 
 Exports write `<build>/sdk_register.cpp`, whose `slash_sdk_register` calls each package's
 `register` function and makes its `backends`, and the game's `main` calls it before the first
-tick. Every package's analytics backends run; a game's ads and purchases each run on one, so
-two packages that both give one are an export error. A class that isn't in the game, or doesn't
+tick. Every package's analytics backends run; a game's ads, purchases and games each run on one,
+so two packages that both give one are an export error. A class that isn't in the game, or doesn't
 implement its interface, is logged when the game starts and leaves that service without a
 backend. The exported game's test run reports the backends it started with as
 `test.services`. [examples/sdk-package](../../examples/sdk-package/) glues one analytics

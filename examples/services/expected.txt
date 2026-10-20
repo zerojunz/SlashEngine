@@ -3,7 +3,7 @@ scene.open {"path":"main.scene.json"}
 step {"ticks":2}
 {"tick":2,"ticks":2}
 services.state {"events":0}
-{"ads":{"bonus":{"format":"rewarded","status":"loaded"},"footer":{"format":"banner","status":"showing"}},"analytics":{"enabled":true,"events":[],"logged":0},"backends":{"ads":"test","analytics":["test"],"purchases":"test"},"consent":{"analytics":"unknown","personalized_ads":"unknown"},"owned":[],"pending":[],"products":{"coins_100":{"available":true,"price":"$0.99","type":"consumable"},"remove_ads":{"available":true,"price":"$0.99","type":"non_consumable"}},"products_status":"fetched","tick":1,"unfinished":[]}
+{"ads":{"bonus":{"format":"rewarded","status":"loaded"},"footer":{"format":"banner","status":"showing"}},"analytics":{"enabled":true,"events":[],"logged":0},"backends":{"ads":"test","analytics":["test"],"games":"test","purchases":"test"},"consent":{"analytics":"unknown","personalized_ads":"unknown"},"owned":[],"pending":[],"products":{"coins_100":{"available":true,"price":"$0.99","type":"consumable"},"remove_ads":{"available":true,"price":"$0.99","type":"non_consumable"}},"products_status":"fetched","tick":1,"unfinished":[]}
 ui.press {"id":"watch_ad"}
 {"tick":2}
 step {"ticks":3}
@@ -11,7 +11,7 @@ step {"ticks":3}
 entity.get {"components":["Wallet","Label"],"id":"coins","omit_defaults":true}
 {"components":{"Label":{"text":"25 coins"},"Wallet":{"coins":25}},"id":"coins"}
 services.state {"events":1}
-{"ads":{"bonus":{"format":"rewarded","status":"loading"},"footer":{"format":"banner","status":"showing"}},"analytics":{"enabled":true,"events":[{"name":"coins_earned","params":{"coins":25,"source":"ad"},"sent":false,"tick":4}],"logged":1},"backends":{"ads":"test","analytics":["test"],"purchases":"test"},"consent":{"analytics":"unknown","personalized_ads":"unknown"},"owned":[],"pending":[],"products":{"coins_100":{"available":true,"price":"$0.99","type":"consumable"},"remove_ads":{"available":true,"price":"$0.99","type":"non_consumable"}},"products_status":"fetched","tick":4,"unfinished":[]}
+{"ads":{"bonus":{"format":"rewarded","status":"loading"},"footer":{"format":"banner","status":"showing"}},"analytics":{"enabled":true,"events":[{"name":"coins_earned","params":{"coins":25,"source":"ad"},"sent":false,"tick":4}],"logged":1},"backends":{"ads":"test","analytics":["test"],"games":"test","purchases":"test"},"consent":{"analytics":"unknown","personalized_ads":"unknown"},"owned":[],"pending":[],"products":{"coins_100":{"available":true,"price":"$0.99","type":"consumable"},"remove_ads":{"available":true,"price":"$0.99","type":"non_consumable"}},"products_status":"fetched","tick":4,"unfinished":[]}
 services.test {"consent":{"analytics":"granted"}}
 {"tick":5}
 ui.press {"id":"buy_coins"}
@@ -21,13 +21,13 @@ step {"ticks":2}
 entity.get {"components":["Wallet"],"id":"coins"}
 {"components":{"Wallet":{"ads_removed":false,"coins":125}},"id":"coins"}
 services.state {"events":1}
-{"ads":{"bonus":{"format":"rewarded","status":"loaded"},"footer":{"format":"banner","status":"showing"}},"analytics":{"enabled":true,"events":[{"name":"coins_earned","params":{"coins":100,"source":"purchase"},"sent":true,"tick":6}],"logged":2},"backends":{"ads":"test","analytics":["test"],"purchases":"test"},"consent":{"analytics":"granted","personalized_ads":"unknown"},"owned":[],"pending":[],"products":{"coins_100":{"available":true,"price":"$0.99","type":"consumable"},"remove_ads":{"available":true,"price":"$0.99","type":"non_consumable"}},"products_status":"fetched","tick":6,"unfinished":[]}
+{"ads":{"bonus":{"format":"rewarded","status":"loaded"},"footer":{"format":"banner","status":"showing"}},"analytics":{"enabled":true,"events":[{"name":"coins_earned","params":{"coins":100,"source":"purchase"},"sent":true,"tick":6}],"logged":2},"backends":{"ads":"test","analytics":["test"],"games":"test","purchases":"test"},"consent":{"analytics":"granted","personalized_ads":"unknown"},"owned":[],"pending":[],"products":{"coins_100":{"available":true,"price":"$0.99","type":"consumable"},"remove_ads":{"available":true,"price":"$0.99","type":"non_consumable"}},"products_status":"fetched","tick":6,"unfinished":[]}
 services.test {"buy":"remove_ads","outcome":"pending"}
-{"test":{"error":"the payment was declined","fill":true,"load_ticks":1,"outcome":"pending","prices":{},"purchase_ticks":1,"show_ticks":1,"watch_to_end":true},"tick":7}
+{"test":{"accept_sign_in":true,"error":"the payment was declined","fill":true,"games_ticks":1,"load_ticks":1,"outcome":"pending","player":"Player","prices":{},"purchase_ticks":1,"scores":{},"show_ticks":1,"watch_to_end":true},"tick":7}
 step {}
 {"tick":8,"ticks":1}
 services.state {"events":0}
-{"ads":{"bonus":{"format":"rewarded","status":"loaded"},"footer":{"format":"banner","status":"showing"}},"analytics":{"enabled":true,"events":[],"logged":2},"backends":{"ads":"test","analytics":["test"],"purchases":"test"},"consent":{"analytics":"granted","personalized_ads":"unknown"},"owned":[],"pending":[{"product":"remove_ads","state":"pending","transaction":"test-2"}],"products":{"coins_100":{"available":true,"price":"$0.99","type":"consumable"},"remove_ads":{"available":true,"price":"$0.99","type":"non_consumable"}},"products_status":"fetched","tick":7,"unfinished":[]}
+{"ads":{"bonus":{"format":"rewarded","status":"loaded"},"footer":{"format":"banner","status":"showing"}},"analytics":{"enabled":true,"events":[],"logged":2},"backends":{"ads":"test","analytics":["test"],"games":"test","purchases":"test"},"consent":{"analytics":"granted","personalized_ads":"unknown"},"owned":[],"pending":[{"product":"remove_ads","state":"pending","transaction":"test-2"}],"products":{"coins_100":{"available":true,"price":"$0.99","type":"consumable"},"remove_ads":{"available":true,"price":"$0.99","type":"non_consumable"}},"products_status":"fetched","tick":7,"unfinished":[]}
 services.test {"complete_pending":"purchased"}
 {"tick":8}
 step {}
@@ -35,9 +35,9 @@ step {}
 entity.get {"components":["Wallet"],"id":"coins"}
 {"components":{"Wallet":{"ads_removed":true,"coins":125}},"id":"coins"}
 services.state {"events":0}
-{"ads":{"bonus":{"format":"rewarded","status":"loaded"},"footer":{"format":"banner","status":"loaded"}},"analytics":{"enabled":true,"events":[],"logged":2},"backends":{"ads":"test","analytics":["test"],"purchases":"test"},"consent":{"analytics":"granted","personalized_ads":"unknown"},"owned":["remove_ads"],"pending":[],"products":{"coins_100":{"available":true,"price":"$0.99","type":"consumable"},"remove_ads":{"available":true,"price":"$0.99","type":"non_consumable"}},"products_status":"fetched","tick":8,"unfinished":[]}
+{"ads":{"bonus":{"format":"rewarded","status":"loaded"},"footer":{"format":"banner","status":"loaded"}},"analytics":{"enabled":true,"events":[],"logged":2},"backends":{"ads":"test","analytics":["test"],"games":"test","purchases":"test"},"consent":{"analytics":"granted","personalized_ads":"unknown"},"owned":["remove_ads"],"pending":[],"products":{"coins_100":{"available":true,"price":"$0.99","type":"consumable"},"remove_ads":{"available":true,"price":"$0.99","type":"non_consumable"}},"products_status":"fetched","tick":8,"unfinished":[]}
 services.test {"error":"card declined","outcome":"failed"}
-{"test":{"error":"card declined","fill":true,"load_ticks":1,"outcome":"failed","prices":{},"purchase_ticks":1,"show_ticks":1,"watch_to_end":true},"tick":9}
+{"test":{"accept_sign_in":true,"error":"card declined","fill":true,"games_ticks":1,"load_ticks":1,"outcome":"failed","player":"Player","prices":{},"purchase_ticks":1,"scores":{},"show_ticks":1,"watch_to_end":true},"tick":9}
 ui.press {"id":"buy_coins"}
 {"tick":9}
 step {"ticks":2}
