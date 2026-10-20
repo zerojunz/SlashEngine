@@ -484,8 +484,9 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
         as a model's tools, and `ai.providers` and `ai.complete` with the `network` capability
   - [x] TLS for hosted providers' `https://` APIs, checked against the system's certificates on
         every platform, and proxies as curl reads them
-  - [ ] Games calling models: exports that ship `providers.json`, and web exports calling
-        models through the browser's `fetch`
+  - [x] Games calling models: `ai::ask` from gameplay code with replies as world events, the
+        same replies at the same ticks in headless runs, and exports that ship `providers.json`
+  - [ ] Web exports calling models through the browser's `fetch`
 - [x] `ReplayProvider` so tests that use a model run offline
 - [ ] A benchmark of standard agent tasks that counts calls and tokens
 - [ ] Storyboard review: a model through `ai::Provider` reads new text and assets against the

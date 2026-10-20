@@ -385,23 +385,23 @@ Result<Response> response_from_json(const json::Value& value) {
     return response;
 }
 
-Call::Call(std::shared_ptr<Provider> provider, Request request, bool stream)
-    : provider_(std::move(provider)) {
-    auto run = [this, request = std::move(request), stream] {
+Call::Call(std::shared_ptr<Provider> provider, Request request, bool stream) {
+    auto run = [shared = shared_, provider = std::move(provider), request = std::move(request),
+                stream] {
         StreamSink sink;
         if (stream) {
-            sink = [this](std::string_view text) {
-                const std::scoped_lock lock(mutex_);
-                text_.append(text);
+            sink = [shared](std::string_view text) {
+                const std::scoped_lock lock(shared->mutex);
+                shared->text.append(text);
             };
         }
-        Result<Response> result = provider_->complete(request, sink, &cancel_);
-        const std::scoped_lock lock(mutex_);
+        Result<Response> result = provider->complete(request, sink, &shared->cancel);
+        const std::scoped_lock lock(shared->mutex);
         if (result) {
-            text_ = result.value().message.text;
+            shared->text = result.value().message.text;
         }
-        result_.emplace(std::move(result));
-        done_.store(true, std::memory_order_release);
+        shared->result.emplace(std::move(result));
+        shared->done.store(true, std::memory_order_release);
     };
 #if defined(__EMSCRIPTEN__) && !defined(__EMSCRIPTEN_PTHREADS__)
     run();
@@ -411,24 +411,38 @@ Call::Call(std::shared_ptr<Provider> provider, Request request, bool stream)
 }
 
 Call::~Call() {
-    cancel_.store(true);
+    shared_->cancel.store(true);
     if (thread_.joinable()) {
-        thread_.join();
+        if (done()) {
+            thread_.join();
+        } else {
+            thread_.detach();
+        }
     }
 }
 
 bool Call::done() const noexcept {
-    return done_.load(std::memory_order_acquire);
+    return shared_->done.load(std::memory_order_acquire);
 }
 
 std::string Call::text() const {
-    const std::scoped_lock lock(mutex_);
-    return text_;
+    const std::scoped_lock lock(shared_->mutex);
+    return shared_->text;
 }
 
 const Result<Response>* Call::result() const noexcept {
-    // result_ is set before done_ and never changes after.
-    return done() && result_.has_value() ? &*result_ : nullptr;
+    // The result is set before done and never changes after.
+    if (!done()) {
+        return nullptr;
+    }
+    const std::optional<Result<Response>>& result = shared_->result;
+    return result.has_value() ? &*result : nullptr;
+}
+
+void Call::wait() {
+    if (thread_.joinable()) {
+        thread_.join();
+    }
 }
 
 } // namespace slash::ai

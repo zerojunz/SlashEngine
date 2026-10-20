@@ -880,6 +880,56 @@ TEST_CASE("exports ship sounds, .audio.json and .bus_layout.json files and check
     std::filesystem::remove_all(folder);
 }
 
+TEST_CASE("exports ship providers.json without its replay settings, and check it first") {
+    const std::filesystem::path folder = "exporter_ai_project";
+    std::filesystem::remove_all(folder);
+    std::filesystem::create_directories(folder);
+    const auto write = [&](const std::string& path, std::string_view text) {
+        REQUIRE(slash::platform::write_file((folder / path).string(), text).ok());
+    };
+    // No main scene, so the export stops after staging.
+    write("project.json", R"({"format": 1, "name": "Talk", "main_scene": "main.scene.json"})");
+    write("providers.json", R"({
+        "providers": {"local": {"type": "openai", "model": "llama3.2", "url": "http://localhost:11434/v1"}},
+        "roles": {"dialogue": "local"},
+        "replay": {"file": "tests/ai.replay.jsonl", "mode": "replay"}})");
+#if defined(__APPLE__)
+    const std::string host = "macos";
+#elif defined(_WIN32)
+    const std::string host = "windows";
+#else
+    const std::string host = "linux";
+#endif
+    exporter::ExportOptions options;
+    options.target = host;
+    options.project = folder.string();
+    const auto problems = [&options] {
+        const exporter::ExportResult result = exporter::export_game(options);
+        CHECK_FALSE(result.ok);
+        std::vector<std::string> found;
+        const json::Value* error = result.json.find("error");
+        REQUIRE(error != nullptr);
+        REQUIRE(error->find("errors") != nullptr);
+        for (const json::Value& problem : error->find("errors")->as_array()) {
+            found.push_back(problem.find("file")->as_string() + " " +
+                            problem.find("path")->as_string());
+        }
+        return found;
+    };
+    CHECK(problems() == std::vector<std::string>{"project.json /main_scene"});
+    const std::filesystem::path staged =
+        folder / ".slash" / "export" / host / "data" / "providers.json";
+    const json::Value shipped = parse(slash::platform::read_file(staged.string()).value());
+    CHECK(shipped.find("replay") == nullptr);
+    CHECK(shipped.find("roles")->find("dialogue")->as_string() == "local");
+
+    write("providers.json", R"({"providers": {}, "roles": {"dialogue": "hosted"}})");
+    CHECK(problems() ==
+          std::vector<std::string>{"providers.json /roles/dialogue", "project.json /main_scene"});
+    CHECK_FALSE(std::filesystem::exists(staged));
+    std::filesystem::remove_all(folder);
+}
+
 TEST_CASE("export.run checks its request before building") {
     command::SessionOptions options;
     options.project_root = SLASH_TEST_DATA_DIR "/game";

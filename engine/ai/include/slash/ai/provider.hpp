@@ -160,7 +160,8 @@ public:
 [[nodiscard]] Result<Response> response_from_json(const json::Value& value);
 
 // A request running on its own thread, so a game keeps ticking while a model answers: start it,
-// then check done() each tick. Destroying a Call cancels the request and waits for its thread.
+// then check done() each tick. Destroying a Call cancels the request without waiting: its thread
+// stops when the request notices, on its own.
 class Call {
 public:
     // With stream, text() grows as the reply arrives.
@@ -169,20 +170,28 @@ public:
 
     Call(const Call&) = delete;
     Call& operator=(const Call&) = delete;
+    Call(Call&&) = delete;
+    Call& operator=(Call&&) = delete;
 
     [[nodiscard]] bool done() const noexcept;
     // The reply's text so far.
     [[nodiscard]] std::string text() const;
     // The outcome once done(), otherwise nullptr.
     [[nodiscard]] const Result<Response>* result() const noexcept;
+    // Blocks until the reply ends, for headless runs that must repeat exactly.
+    void wait();
 
 private:
-    std::shared_ptr<Provider> provider_;
-    mutable std::mutex mutex_;
-    std::string text_;
-    std::optional<Result<Response>> result_;
-    std::atomic<bool> done_ = false;
-    CancelFlag cancel_ = false;
+    // What the thread fills in, kept alive by the thread too, so a Call can go first.
+    struct Shared {
+        mutable std::mutex mutex;
+        std::string text;
+        std::optional<Result<Response>> result;
+        std::atomic<bool> done = false;
+        CancelFlag cancel = false;
+    };
+
+    std::shared_ptr<Shared> shared_ = std::make_shared<Shared>();
     std::thread thread_;
 };
 
