@@ -46,6 +46,8 @@ public:
     [[nodiscard]] Result<Response> complete(const Request& request,
                                             const StreamSink& sink = nullptr,
                                             const CancelFlag* cancel = nullptr) override;
+    void start(const Request& request, StreamSink sink, ReplyCallback done,
+               const CancelFlag* cancel = nullptr) override;
 
     // A request's key: 16 hex digits hashing the model and the request's canonical JSON.
     [[nodiscard]] static std::string key(std::string_view model, const Request& request);
@@ -59,6 +61,13 @@ private:
 
     Result<void> load();
     Result<void> save() const;
+    // The recorded reply, streamed to the sink, or an error; nullopt if the model must answer.
+    [[nodiscard]] std::optional<Result<Response>> answer(const std::string& request_key,
+                                                         const StreamSink& sink);
+    // Records a reply the model gave in the pieces it streamed in, and returns it.
+    [[nodiscard]] Result<Response> record(const std::string& request_key, const Request& request,
+                                          Result<Response> response,
+                                          std::vector<std::string> chunks);
 
     Options options_;
     Capabilities capabilities_;

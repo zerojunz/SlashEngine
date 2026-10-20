@@ -156,57 +156,49 @@ Result<void> ReplayProvider::save() const {
     return platform::write_file(options_.path, text);
 }
 
-Result<Response> ReplayProvider::complete(const Request& request, const StreamSink& sink,
-                                          const CancelFlag* cancel) {
-    const std::string request_key = key(options_.model, request);
-    {
-        const std::scoped_lock lock(mutex_);
-        if (auto loaded = load(); !loaded) {
-            return loaded.error();
+std::optional<Result<Response>> ReplayProvider::answer(const std::string& request_key,
+                                                       const StreamSink& sink) {
+    const std::scoped_lock lock(mutex_);
+    if (auto loaded = load(); !loaded) {
+        return Result<Response>(loaded.error());
+    }
+    if (options_.mode != ReplayMode::Record) {
+        if (const auto found = recordings_.find(request_key); found != recordings_.end()) {
+            auto response = response_from_json(found->second.response);
+            if (!response) {
+                return Result<Response>(make_error(ErrorCode::InvalidArgument,
+                                                   options_.path + ", recording " + request_key +
+                                                       ": " + response.error().message));
+            }
+            if (sink) {
+                if (found->second.chunks.empty()) {
+                    sink(response.value().message.text);
+                }
+                for (const std::string& chunk : found->second.chunks) {
+                    sink(chunk);
+                }
+            }
+            response.value().replayed = true;
+            return response;
         }
-        if (options_.mode != ReplayMode::Record) {
-            if (const auto found = recordings_.find(request_key); found != recordings_.end()) {
-                auto response = response_from_json(found->second.response);
-                if (!response) {
-                    return make_error(ErrorCode::InvalidArgument, options_.path + ", recording " +
-                                                                      request_key + ": " +
-                                                                      response.error().message);
-                }
-                if (sink) {
-                    if (found->second.chunks.empty()) {
-                        sink(response.value().message.text);
-                    }
-                    for (const std::string& chunk : found->second.chunks) {
-                        sink(chunk);
-                    }
-                }
-                response.value().replayed = true;
-                return response;
-            }
-            if (options_.mode == ReplayMode::Replay || options_.inner == nullptr) {
-                return make_error(ErrorCode::NotFound,
-                                  options_.path + " has no recording of this request (key " +
-                                      request_key +
-                                      "); record it by calling the model with the replay mode "
-                                      "\"record\" or \"auto\"");
-            }
+        if (options_.mode == ReplayMode::Replay || options_.inner == nullptr) {
+            return Result<Response>(
+                make_error(ErrorCode::NotFound,
+                           options_.path + " has no recording of this request (key " + request_key +
+                               "); record it by calling the model with the replay mode "
+                               "\"record\" or \"auto\""));
         }
     }
     if (options_.inner == nullptr) {
-        return make_error(ErrorCode::NotFound,
-                          "there is no provider to record " + options_.path + " from");
+        return Result<Response>(make_error(ErrorCode::NotFound, "there is no provider to record " +
+                                                                    options_.path + " from"));
     }
+    return std::nullopt;
+}
 
-    // The model is called outside the lock, so recordings of other requests can run alongside.
-    std::vector<std::string> chunks;
-    StreamSink recorder;
-    if (sink) {
-        recorder = [&](std::string_view text) {
-            chunks.emplace_back(text);
-            sink(text);
-        };
-    }
-    auto response = options_.inner->complete(request, recorder, cancel);
+Result<Response> ReplayProvider::record(const std::string& request_key, const Request& request,
+                                        Result<Response> response,
+                                        std::vector<std::string> chunks) {
     if (!response || !options_.write) {
         return response;
     }
@@ -219,6 +211,54 @@ Result<Response> ReplayProvider::complete(const Request& request, const StreamSi
         return saved.error();
     }
     return response;
+}
+
+Result<Response> ReplayProvider::complete(const Request& request, const StreamSink& sink,
+                                          const CancelFlag* cancel) {
+    const std::string request_key = key(options_.model, request);
+    if (auto answered = answer(request_key, sink)) {
+        return std::move(*answered);
+    }
+    // The model is called outside the lock, so recordings of other requests can run alongside.
+    std::vector<std::string> chunks;
+    StreamSink recorder;
+    if (sink) {
+        recorder = [&](std::string_view text) {
+            chunks.emplace_back(text);
+            sink(text);
+        };
+    }
+    auto response = options_.inner->complete(request, recorder, cancel);
+    return record(request_key, request, std::move(response), std::move(chunks));
+}
+
+void ReplayProvider::start(const Request& request, StreamSink sink, ReplyCallback done,
+                           const CancelFlag* cancel) {
+    auto self = std::static_pointer_cast<ReplayProvider>(weak_from_this().lock());
+    if (self == nullptr) {
+        Provider::start(request, std::move(sink), std::move(done), cancel);
+        return;
+    }
+    std::string request_key = key(options_.model, request);
+    if (auto answered = answer(request_key, sink)) {
+        done(std::move(*answered));
+        return;
+    }
+    auto chunks = std::make_shared<std::vector<std::string>>();
+    StreamSink recorder;
+    if (sink) {
+        recorder = [chunks, sink = std::move(sink)](std::string_view text) {
+            chunks->emplace_back(text);
+            sink(text);
+        };
+    }
+    options_.inner->start(
+        request, std::move(recorder),
+        [self, request_key = std::move(request_key), request, chunks,
+         done = std::move(done)](Result<Response> response) {
+            done(self->record(request_key, request, std::move(response), std::move(*chunks)));
+        },
+        cancel);
 }
 
 } // namespace slash::ai

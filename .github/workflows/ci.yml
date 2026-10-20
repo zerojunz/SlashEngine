@@ -198,6 +198,18 @@ jobs:
             '.test.skipped or (.test.services.analytics | index("hello") and index($backend))' \
             build/export.json
 
+      - name: Ask a model from the web game through fetch()
+        if: matrix.platform == 'web'
+        run: |
+          python3 .github/scripts/model-server.py 18765 &
+          cp .github/scripts/ai-game.cpp build/empty-game/src/game.cpp
+          echo '{"providers": {"local": {"type": "openai", "model": "stand-in", "url": "http://127.0.0.1:18765/v1"}}, "roles": {"npc": {"provider": "local"}}}' \
+            > build/empty-game/providers.json
+          ./build/release/tools/slash-cli/slash-cli export web --project build/empty-game --test \
+            > build/export-ai.json || { cat build/export-ai.json; exit 1; }
+          jq -e '.test.passed' build/export-ai.json
+          grep '"msg":"heard","text":"Honey cakes, still warm."' build/empty-game/.slash/export/web/export.log
+
       - name: Check the signature and minimum macOS
         if: matrix.platform == 'macos'
         run: |

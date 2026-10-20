@@ -23,6 +23,7 @@
 #include <chrono>
 #include <cstddef>
 #include <filesystem>
+#include <functional>
 #include <httplib.h>
 #include <map>
 #include <mbedtls/ctr_drbg.h>
@@ -32,6 +33,7 @@
 #include <mbedtls/x509_crt.h>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <psa/crypto.h>
 #include <string>
 #include <string_view>
@@ -125,13 +127,75 @@ private:
     std::mutex mutex_;
 };
 
+// A transport that answers each post_async from a script only when the test runs it, as a
+// browser's event loop runs fetch() callbacks, and holds later() calls the same way.
+class DeferredTransport final : public ai::Transport {
+public:
+    explicit DeferredTransport(std::vector<FakeTransport::Reply> replies)
+        : replies_(std::move(replies)) {}
+
+    Result<ai::HttpResponse> post(const ai::HttpRequest& /*request*/, const ai::BodySink& /*sink*/,
+                                  const ai::CancelFlag* /*cancel*/) override {
+        return make_error(ErrorCode::PlatformFailure, "only post_async here");
+    }
+
+    void post_async(const ai::HttpRequest& request, ai::BodySink sink, ai::ResponseCallback done,
+                    const ai::CancelFlag* cancel) override {
+        requests.push_back(request);
+        const FakeTransport::Reply reply = replies_[std::min(requests.size(), replies_.size()) - 1];
+        queue_.emplace_back([reply, sink = std::move(sink), done = std::move(done), cancel] {
+            if (cancel != nullptr && cancel->load()) {
+                done(make_error(ErrorCode::PlatformFailure, "the request was cancelled"));
+                return;
+            }
+            ai::HttpResponse out;
+            out.status = reply.status;
+            out.retry_after = reply.retry_after;
+            if (reply.status != 200 || !sink) {
+                out.body = reply.body;
+            } else {
+                for (const std::string& piece : pieces(reply.body)) {
+                    if (!sink(piece)) {
+                        done(make_error(ErrorCode::PlatformFailure, "the reply was stopped"));
+                        return;
+                    }
+                }
+            }
+            done(std::move(out));
+        });
+    }
+
+    void later(std::chrono::milliseconds delay, std::function<void()> then) override {
+        delays.push_back(delay);
+        queue_.push_back(std::move(then));
+    }
+
+    // Runs the next thing waiting, as an event loop's next turn does; false if nothing was.
+    bool run_one() {
+        if (queue_.empty()) {
+            return false;
+        }
+        const std::function<void()> next = std::move(queue_.front());
+        queue_.erase(queue_.begin());
+        next();
+        return true;
+    }
+
+    std::vector<ai::HttpRequest> requests;
+    std::vector<std::chrono::milliseconds> delays;
+
+private:
+    std::vector<FakeTransport::Reply> replies_;
+    std::vector<std::function<void()>> queue_;
+};
+
 std::shared_ptr<ai::Provider> adapter(std::string_view type,
-                                      const std::shared_ptr<FakeTransport>& transport,
+                                      std::shared_ptr<ai::Transport> transport,
                                       ai::AdapterOptions options = {}) {
     if (options.model.empty()) {
         options.model = "test-model";
     }
-    options.transport = transport;
+    options.transport = std::move(transport);
     return ai::make_adapter(type, std::move(options)).value();
 }
 
@@ -1169,6 +1233,105 @@ TEST_CASE("a call runs on its own thread and stops when destroyed") {
     const auto stubborn_start = std::chrono::steady_clock::now();
     { const ai::Call stubborn(std::make_shared<Slow>(false, true), ask("Hello"), true); }
     CHECK(std::chrono::steady_clock::now() - stubborn_start < std::chrono::seconds(1));
+}
+
+TEST_CASE("start runs a request on the transport's event loop, as the web's fetch() does") {
+    const std::string stream = sse({
+        {"",
+         R"({"model":"m","choices":[{"index":0,"delta":{"role":"assistant","content":"Hel"}}]})"},
+        {"", R"({"choices":[{"index":0,"delta":{"content":"lo."},"finish_reason":"stop"}]})"},
+        {"", "[DONE]"},
+    });
+    const std::string busy = R"({"error":{"message":"Slow down."}})";
+    std::optional<Result<ai::Response>> outcome;
+    const ai::ReplyCallback keep = [&outcome](Result<ai::Response> response) {
+        outcome.emplace(std::move(response));
+    };
+
+    // It returns at once; a busy server is asked again when the transport's timer fires.
+    auto transport = std::make_shared<DeferredTransport>(
+        std::vector<FakeTransport::Reply>{{429, busy, "3"}, {200, stream}});
+    std::string streamed;
+    adapter("openai", transport)
+        ->start(ask("Hi"), [&streamed](std::string_view text) { streamed += text; }, keep);
+    CHECK_FALSE(outcome.has_value());
+    REQUIRE(transport->run_one());
+    CHECK(transport->delays == std::vector<std::chrono::milliseconds>{std::chrono::seconds(3)});
+    CHECK_FALSE(outcome.has_value());
+    REQUIRE(transport->run_one());
+    REQUIRE(transport->run_one());
+    REQUIRE(outcome.has_value());
+    CHECK(text_of(*outcome) == "Hello.");
+    CHECK(streamed == "Hello.");
+    REQUIRE(transport->requests.size() == 2);
+    CHECK(transport->requests[1].body == transport->requests[0].body);
+    CHECK_FALSE(transport->run_one());
+
+    // Cancelled while it waits to try again, it ends there.
+    outcome.reset();
+    auto cancelled = std::make_shared<DeferredTransport>(
+        std::vector<FakeTransport::Reply>{{429, busy, "0"}, {200, stream}});
+    ai::CancelFlag cancel = false;
+    adapter("openai", cancelled)->start(ask("Hi"), nullptr, keep, &cancel);
+    REQUIRE(cancelled->run_one());
+    cancel = true;
+    REQUIRE(cancelled->run_one());
+    REQUIRE(outcome.has_value());
+    CHECK(outcome->error().message == "the request was cancelled");
+    CHECK(cancelled->requests.size() == 1);
+
+    // A role adds its instructions, and a replay file records the reply, then answers the same
+    // request again before start returns.
+    const std::string root = "ai_start_project";
+    std::filesystem::remove_all(root);
+    const ai::Config config = ai::parse_config(parse(R"({
+        "providers": {"local": {"type": "openai", "model": "small", "url": "http://localhost:1/v1"}},
+        "roles": {"npc": {"provider": "local", "system": "You are a guard."}},
+        "replay": {"file": "tests/ai.replay.jsonl"}})"))
+                                  .value();
+    auto replies = std::make_shared<DeferredTransport>(std::vector<FakeTransport::Reply>{
+        {200, json::write(chat_reply("Halt!"), json::Style::Compact)}});
+    ai::OpenOptions options;
+    options.project_root = root;
+    options.transport = replies;
+    const std::shared_ptr<ai::Provider> npc = ai::open(config, "npc", options).value().provider;
+    outcome.reset();
+    npc->start(ask("Who goes there?"), nullptr, keep);
+    CHECK_FALSE(outcome.has_value());
+    REQUIRE(replies->run_one());
+    REQUIRE(outcome.has_value());
+    CHECK(text_of(*outcome) == "Halt!");
+    CHECK_FALSE(outcome->value().replayed);
+    CHECK(parse(replies->requests[0].body).find("messages")->as_array()[0] ==
+          parse(R"({"role": "system", "content": "You are a guard."})"));
+    outcome.reset();
+    npc->start(ask("Who goes there?"), nullptr, keep);
+    REQUIRE(outcome.has_value());
+    CHECK(text_of(*outcome) == "Halt!");
+    CHECK(outcome->value().replayed);
+    CHECK(replies->requests.size() == 1);
+    std::filesystem::remove_all(root);
+
+    // A provider no shared_ptr holds answers before start returns, as every provider can.
+    class Plain final : public ai::Provider {
+    public:
+        const ai::Capabilities& capabilities() const override { return capabilities_; }
+        Result<ai::Response> complete(const ai::Request& /*request*/,
+                                      const ai::StreamSink& /*sink*/,
+                                      const ai::CancelFlag* /*cancel*/) override {
+            ai::Response response;
+            response.message.text = "Plain.";
+            return response;
+        }
+
+    private:
+        ai::Capabilities capabilities_;
+    };
+    Plain plain;
+    outcome.reset();
+    plain.start(ask("Hi"), nullptr, keep);
+    REQUIRE(outcome.has_value());
+    CHECK(text_of(*outcome) == "Plain.");
 }
 
 TEST_CASE("gameplay asks a role's model and hears back through world events") {

@@ -31,7 +31,7 @@ namespace {
 // How many log lines a session keeps for log.tail.
 constexpr std::size_t kMaxLogLines = 1000;
 
-std::string quoted(std::string_view text) {
+std::string in_quotes(std::string_view text) {
     return "\"" + std::string(text) + "\"";
 }
 
@@ -658,7 +658,7 @@ Result<void> Session::commit_files() {
         }
         if (now.value() != file.seen) {
             return make_error(ErrorCode::Conflict,
-                              quoted(path) +
+                              in_quotes(path) +
                                   " changed on disk while the command ran; nothing was written, "
                                   "so read it again and retry");
         }
@@ -726,7 +726,7 @@ Reply Session::replay(const Snapshot& step, bool undo) {
     if (!reply.ok) {
         return Reply::failure(reply.code,
                               std::string(undo ? "could not undo " : "could not redo ") +
-                                  quoted(step.label) + ": " + reply.message,
+                                  in_quotes(step.label) + ": " + reply.message,
                               std::move(reply.data));
     }
     return reply;
