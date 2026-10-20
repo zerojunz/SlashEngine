@@ -17,9 +17,9 @@
 #include <vector>
 
 // providers.json, beside project.json: the providers a project can call, the role each feature
-// uses, such as "dialogue" or "assistant", and the asset library's generators. Keys come from
-// environment variables the file names, never from the file. $cli schema providers prints its
-// JSON Schema.
+// uses, such as "dialogue" or "assistant", and the asset library's generators and team store. Keys
+// come from environment variables the file names, never from the file. $cli schema providers prints
+// its JSON Schema.
 namespace slash::ai {
 
 inline constexpr std::string_view kConfigFile = "providers.json";
@@ -62,6 +62,13 @@ struct GeneratorConfig {
     int max_retries = 2;
 };
 
+// The asset library's team store (slash/library/team.hpp).
+struct LibraryConfig {
+    std::string team; // a folder every teammate reaches, or a library server's URL
+    std::string token_env = "SLASH_LIBRARY_TOKEN"; // the variable holding the server's token
+    int timeout_seconds = 60;
+};
+
 struct ReplayConfig {
     std::string file; // a project path
     ReplayMode mode = ReplayMode::Auto;
@@ -72,6 +79,7 @@ struct Config {
     std::map<std::string, RoleConfig, std::less<>> roles;
     std::map<std::string, GeneratorConfig, std::less<>> generators;
     std::optional<ReplayConfig> replay;
+    std::optional<LibraryConfig> library;
 };
 
 [[nodiscard]] const json::Value& config_schema();

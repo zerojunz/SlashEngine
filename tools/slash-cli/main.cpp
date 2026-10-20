@@ -35,8 +35,10 @@
 #include "slash/importer/import.hpp"
 #include "slash/input/sdl.hpp"
 #include "slash/library/commands.hpp"
+#include "slash/library/team.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/platform/platform.hpp"
+#include "slash/platform/process.hpp"
 #include "slash/platform/run.hpp"
 #include "slash/render/device.hpp"
 #include "slash/runtime/gameplay.hpp"
@@ -68,6 +70,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -220,6 +223,16 @@ Usage:
                                      (windows, linux), linux-arm64 or assetripper (imports
                                      Unity builds); folder: SLASH_TOOLCHAINS_DIR, else
                                      ~/.slash/toolchains
+  slash-cli library serve            Serve a folder's asset library to the team over HTTP
+                                     until stopped; teammates put its URL in providers.json's
+                                     "library": {"team": ...} and its token in
+                                     SLASH_LIBRARY_TOKEN, and share what they make through it
+      --dir <folder>                 The team's library (made if missing)
+      --host <address>               Where to listen (default 127.0.0.1, this machine only;
+                                     0.0.0.0 for every network interface)
+      --port <n>                     Port (default: any free port)
+      --token <token>                Bearer token teammates send (default:
+                                     SLASH_LIBRARY_TOKEN, else random)
   slash-cli help                     Show this message
 
 call, rpc and serve also take:
@@ -1875,6 +1888,61 @@ int cmd_toolchain(const std::vector<std::string>& args) {
     return cmd_toolchain_install(rest);
 }
 
+int cmd_library(const std::vector<std::string>& args) {
+    if (args.empty() || args[0] != "serve") {
+        return usage_error("library needs an action: serve");
+    }
+    std::string dir;
+    slash::library::TeamServerOptions options;
+    options.token = slash::platform::environment_variable("SLASH_LIBRARY_TOKEN");
+    for (std::size_t i = 1; i < args.size(); ++i) {
+        const std::string& arg = args[i];
+        if (arg != "--dir" && arg != "--host" && arg != "--port" && arg != "--token") {
+            return usage_error("unexpected argument for library serve: " + arg);
+        }
+        if (i + 1 >= args.size()) {
+            return usage_error(arg + " needs a value");
+        }
+        const std::string& value = args[++i];
+        if (arg == "--dir") {
+            dir = value;
+        } else if (arg == "--host") {
+            options.host = value;
+        } else if (arg == "--token") {
+            options.token = value;
+        } else {
+            std::uint64_t port = 0;
+            constexpr std::uint64_t kMaxPort = 65535;
+            if (!parse_u64(value, port) || port > kMaxPort) {
+                return usage_error("--port needs a number from 0 to 65535");
+            }
+            options.port = static_cast<int>(port);
+        }
+    }
+    if (dir.empty()) {
+        return usage_error("library serve needs --dir: the folder that holds the team's library");
+    }
+    auto server = slash::library::TeamServer::start(dir, options);
+    if (!server) {
+        return failure("could not start the library server", server.error());
+    }
+    json::Value started;
+    started["url"] = server.value()->url();
+    started["token"] = server.value()->token();
+    started["dir"] = dir;
+    print(started);
+    std::fflush(stdout);
+
+    std::signal(SIGINT, request_stop);
+    std::signal(SIGTERM, request_stop);
+    while (g_stop_requested == 0) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+    server.value()->stop();
+    slash::log::info("library server stopped");
+    return kExitOk;
+}
+
 int cmd_init(const std::vector<std::string>& args) {
     slash::cli::InitOptions options;
     bool have_directory = false;
@@ -1961,6 +2029,9 @@ int main(int argc, char** argv) {
     }
     if (name == "toolchain") {
         return cmd_toolchain(args);
+    }
+    if (name == "library") {
+        return cmd_library(args);
     }
     return usage_error("unknown command: " + name);
 }

@@ -1,0 +1,25 @@
+alice: asset.generate {"generator":"test","path":"art/wall.png","prompt":"grey stone wall tile","tags":["tile"],"width":16}
+{"height":16,"id":"2e07ed48f6f4","path":"art/wall.png","width":16}
+alice: asset.generate {"generator":"test","prompt":"torch flicker loop","seconds":0.25,"tags":["fire"],"type":"sound"}
+{"id":"563e8fd323fe","seconds":0.25}
+bob: asset.generate {"generator":"test","path":"art/wall.png","prompt":"grey stone wall tile","tags":["tile"],"width":16}
+{"height":16,"id":"2e07ed48f6f4","path":"art/wall.png","reused":true,"team":true,"width":16}
+bob: asset.search {"text":"torch"}
+{"assets":[{"description":"torch flicker loop","id":"563e8fd323fe","score":1.0,"seconds":0.25,"tags":["fire"],"type":"sound"}]}
+bob: asset.use {"id":"563e8fd323fe","path":"sfx/torch.wav"}
+{"path":"sfx/torch.wav"}
+bob: asset.feedback {"id":"2e07ed48f6f4","reason":"too dark beside the floor tiles","verdict":"rejected"}
+{"id":"2e07ed48f6f4","rejected":1}
+alice: asset.search {"text":"stone wall"}
+{"assets":[{"description":"grey stone wall tile","height":16,"id":"2e07ed48f6f4","rejected":1,"score":0.95,"tags":["tile"],"type":"image","width":16}]}
+alice: asset.refine {"id":"2e07ed48f6f4","path":"art/wall.png","prompt":"make it lighter"}
+{"height":16,"id":"9aeed161317c","parent":"2e07ed48f6f4","path":"art/wall.png","width":16}
+alice: asset.info {"id":"2e07ed48f6f4"}
+{"bytes":183,"children":["9aeed161317c"],"description":"grey stone wall tile","feedback":[{"reason":"too dark beside the floor tiles","source":"agent","verdict":"rejected"}],"format":"png","generator":"test","height":16,"id":"2e07ed48f6f4","license":"CC0-1.0","model":"test","request":{"prompt":"grey stone wall tile","type":"image","width":16},"seed":0,"shared":true,"tags":["tile"],"type":"image","width":16}
+carol: asset.generate {"generator":"test","path":"art/key.png","prompt":"golden key pickup","width":8}
+{"height":8,"id":"9d1bc8586210","path":"art/key.png","width":8}
+carol: asset.sync {}
+{"shared":["9d1bc8586210"],"team":"team"}
+bob: asset.search {"text":"key"}
+{"assets":[{"description":"golden key pickup","height":8,"id":"9d1bc8586210","score":1.0,"type":"image","width":8}]}
+team library: 4 assets

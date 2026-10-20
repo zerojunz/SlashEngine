@@ -679,6 +679,34 @@ download is checked against its pinned hash and deleted if it differs. They are 
 `install` returns the `installed` toolchains and those `already_installed`, each with its `path`.
 Windows machines have no toolchains to install, except `assetripper`.
 
+### library serve
+
+```bash
+slash-cli library serve --dir <folder> [--host <address>] [--port <n>] [--token <token>]
+```
+
+Serves a folder's asset library to a team over HTTP until stopped (Ctrl+C), so each teammate's
+[asset library](commands.md#team-sharing) searches it and adds what they make. Teammates put its
+URL in [`providers.json`'s `library`](providers.md#team-library) and its token in
+`SLASH_LIBRARY_TOKEN` (or the variable `token_env` names).
+
+| Flag | Meaning |
+| --- | --- |
+| `--dir <folder>` | The team's library, made if missing (required) |
+| `--host <address>` | Where to listen: `127.0.0.1` (the default) for this machine only, `0.0.0.0` or `::` for every network interface |
+| `--port <n>` | Port (default: any free port) |
+| `--token <token>` | Bearer token teammates send (default: `SLASH_LIBRARY_TOKEN`, else random) |
+
+It prints where it listens and the token:
+
+```json
+{"dir":"/srv/slash-library","token":"9f2c...","url":"http://0.0.0.0:7700"}
+```
+
+Requests from web pages (with an `Origin` header) and without the token get 403 and 401. The
+server speaks plain HTTP; over the internet, put it behind HTTPS (a reverse proxy), which
+teammates' tools reach through their system's certificates and `https_proxy`.
+
 ## slash-mcp
 
 Serves SlashEngine to MCP clients over stdio. MCP clients start it themselves; you rarely run it
@@ -767,6 +795,8 @@ drawn, but the sprites are still checked and counted, so a test can see that the
 | `EMSDK` | The Emscripten SDK, needed for web exports |
 | `SLASH_TOOLCHAINS_DIR` | Where `slash-cli toolchain` installs cross toolchains (default `~/.slash/toolchains`) |
 | `SLASH_LIBRARY_DIR` | The [asset library](commands.md#asset-library) every project on the machine shares (default `~/.slash/library`) |
+| `SLASH_LIBRARY_TEAM` | The [team's library](providers.md#team-library), a folder or a library server's URL, in place of `providers.json`'s |
+| `SLASH_LIBRARY_TOKEN` | The token a library server wants, for teammates and for [`library serve`](#library-serve) |
 | `SLASH_SDKS_DIR` | Where exports keep [SDK packages'](sdk-format.md#downloads) downloads (default `~/.slash/sdks`) |
 | `SLASH_APPLE_API_KEY_PATH`, `SLASH_APPLE_API_KEY_ID`, `SLASH_APPLE_API_ISSUER` | An App Store Connect API key (the `.p8` file, its ID and issuer) for notarizing macOS exports |
 | `SLASH_WINDOWS_CERTIFICATE_PATH`, `SLASH_WINDOWS_CERTIFICATE_PASSWORD` | A `.pfx` code-signing certificate and its password for signing Windows exports |
