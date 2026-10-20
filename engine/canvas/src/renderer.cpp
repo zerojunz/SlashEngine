@@ -15,6 +15,7 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <string_view>
 #include <tuple>
 #include <unordered_map>
 #include <utility>
@@ -108,6 +109,7 @@ struct Item {
     entt::entity entity = entt::null;
     FrameItem::Kind kind = FrameItem::Kind::Sprite;
     const render::Image* image = nullptr; // white when null
+    std::string_view path;                // the image's project path
     std::size_t drawn = 0;                // tiles or particles
     // A GPUParticles2D's particles, which the device draws instead of the vertices.
     render::ParticlesId particles = render::ParticlesId::None;
@@ -1039,6 +1041,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
                          .entity = entity,
                          .kind = FrameItem::Kind::Sprite,
                          .image = &*texture.value()->image,
+                         .path = texture.value()->image.path(),
                          .drawn = 1,
                          .particles = render::ParticlesId::None,
                          .look = {}});
@@ -1062,6 +1065,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         // A particle is its texture's frame, or a white pixel.
         render::TextureId texture_id = render::TextureId::None;
         const render::Image* image = nullptr;
+        std::string_view path;
         float frame_w = 1.0F;
         float frame_h = 1.0F;
         float sheet_w = 1.0F;
@@ -1077,6 +1081,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             }
             texture_id = texture.value()->id;
             image = &*texture.value()->image;
+            path = texture.value()->image.path();
             sheet_w = static_cast<float>(texture.value()->width);
             sheet_h = static_cast<float>(texture.value()->height);
             frame_w = sheet_w / static_cast<float>(hframes);
@@ -1151,6 +1156,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
                          .entity = entity,
                          .kind = FrameItem::Kind::Particles,
                          .image = image,
+                         .path = path,
                          .drawn = live.size(),
                          .particles = render::ParticlesId::None,
                          .look = {}});
@@ -1200,6 +1206,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         look.vframes = static_cast<std::uint32_t>(std::max(emitter.vframes, 1));
         render::TextureId texture_id = render::TextureId::None;
         const render::Image* image = nullptr;
+        std::string_view path;
         if (!emitter.texture.empty()) {
             auto texture = this->texture(emitter.texture, filter);
             if (!texture) {
@@ -1209,6 +1216,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             }
             texture_id = texture.value()->id;
             image = &*texture.value()->image;
+            path = texture.value()->image.path();
             look.size = {
                 static_cast<float>(texture.value()->width) / static_cast<float>(look.hframes),
                 static_cast<float>(texture.value()->height) / static_cast<float>(look.vframes)};
@@ -1285,6 +1293,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
                              .entity = entity,
                              .kind = FrameItem::Kind::GpuParticles,
                              .image = image,
+                             .path = path,
                              .drawn = r == 0 ? live : 0,
                              .particles = cached.id,
                              .look = at});
@@ -1441,6 +1450,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
                                  .entity = entity,
                                  .kind = FrameItem::Kind::Tiles,
                                  .image = &*texture.value()->image,
+                                 .path = texture.value()->image.path(),
                                  .drawn = 0,
                                  .particles = render::ParticlesId::None,
                                  .look = {}});
@@ -1635,7 +1645,8 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
                              .height = 0,
                              .field = call.field,
                              .vertices = {first, last},
-                             .order = order};
+                             .order = order,
+                             .texture = {}};
             if (call.source == ui::DrawCall::Source::Atlas) {
                 const text::AtlasPage& page = fonts->pages().at(call.page);
                 piece.pixels = page.rgba.data();
@@ -1651,6 +1662,9 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
                 piece.pixels = image.pixels.data();
                 piece.width = image.width;
                 piece.height = image.height;
+                if (made.value()->builtin == nullptr) {
+                    piece.texture = made.value()->image.path();
+                }
             }
             return piece;
         };
@@ -1670,7 +1684,8 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
                     .height = item.image != nullptr ? item.image->height : 0,
                     .field = {},
                     .vertices = {from, from + static_cast<std::ptrdiff_t>(item.count)},
-                    .order = order++});
+                    .order = order++,
+                    .texture = item.path});
                 // In viewport pixels, as the camera or the canvas layer shows them.
                 if (matrices[c]) {
                     for (render::Vertex2D& vertex : piece.vertices) {

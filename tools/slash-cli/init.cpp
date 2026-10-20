@@ -147,7 +147,9 @@ repeat costs no model call, and close matches come back as candidates instead. `
 makes a new version linked to the old, and `asset_add` puts the project's own files in. Prompts
 carry the storyboard's tone and palette, and images put in the project are checked against it.
 After using an asset, `asset_feedback` records whether it worked and why: rejected assets stop
-coming back as candidates, and the reasons go into later prompts.
+coming back as candidates, and the reasons go into later prompts. `asset_check` (and every
+whole-project `test_run`) records what the game's scenes show of them: too dark or light to
+see, or drawn far smaller than their size.
 
 ## Run and export
 

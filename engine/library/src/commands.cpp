@@ -1,18 +1,23 @@
 #include "slash/library/commands.hpp"
 
 #include "slash/ai/config.hpp"
+#include "slash/canvas/canvas.hpp"
 #include "slash/command/session.hpp"
 #include "slash/library/generator.hpp"
 #include "slash/library/library.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/render/image.hpp"
 #include "slash/storyboard/storyboard.hpp"
+#include "slash/world/scene.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <map>
 #include <optional>
 #include <ranges>
+#include <set>
 #include <span>
 #include <string>
 #include <string_view>
@@ -38,6 +43,13 @@ constexpr std::size_t kMaxCandidates = 5;
 constexpr double kRelated = 0.5;
 constexpr std::size_t kMaxNotes = 3;
 constexpr std::string_view kStyleCheck = "storyboard.check";
+// asset.check: how the game shows the project's library assets.
+constexpr std::string_view kFrameCheck = "asset.check";
+// An image drawn at this share of its size or less would look the same as a smaller file.
+constexpr float kOversized = 0.25F;
+constexpr std::int64_t kMaxCheckTicks = 600;
+// How many files deep asset.check follows what a scene names to find the images it draws.
+constexpr int kNamedDepth = 4;
 
 json::Value property(std::string_view type, std::string_view description) {
     json::Value schema;
@@ -249,18 +261,14 @@ Result<std::string> copy_into_project(Session& session, const Library& library,
     return data;
 }
 
-// Checks an image put in the project against the storyboard's palettes and budgets that cover
-// its path, and records the result as the asset's feedback: what an agent would otherwise find
-// out later from storyboard.check. Returns the problems found.
-json::Array check_style(Session& session, const Library& library, const Record& record,
-                        const std::string& path, std::string_view data) {
-    json::Array problems;
-    if (record.type != "image") {
-        return problems;
-    }
+// The problems the storyboard's palettes and budgets that cover a project path find in an image
+// there, or nullopt when none covers it: what an agent would otherwise find out later from
+// storyboard.check.
+std::optional<std::vector<std::string>> style_problems(Session& session, const std::string& path,
+                                                       std::string_view data) {
     const json::Object entries = storyboard_entries(session);
     if (entries.empty()) {
-        return problems;
+        return std::nullopt;
     }
     bool covered = false;
     std::vector<storyboard::FileError> errors;
@@ -278,24 +286,52 @@ json::Array check_style(Session& session, const Library& library, const Record& 
         },
         errors);
     if (!covered) {
+        return std::nullopt;
+    }
+    std::vector<std::string> problems;
+    problems.reserve(errors.size());
+    for (storyboard::FileError& error : errors) {
+        problems.push_back(std::move(error.message));
+    }
+    return problems;
+}
+
+// Records what a check found as an asset's feedback, unless its last feedback from the same check
+// said the same; sessions that run tests write none.
+void record_check(const Session& session, const Library& library, Record record,
+                  Feedback feedback) {
+    if (!session.options().write_files) {
+        return;
+    }
+    const auto last = std::ranges::find(std::ranges::reverse_view(record.feedback), feedback.source,
+                                        &Feedback::source);
+    if (last != std::ranges::reverse_view(record.feedback).end() &&
+        last->verdict == feedback.verdict && last->reason == feedback.reason) {
+        return;
+    }
+    add_feedback(record, std::move(feedback));
+    (void)library.update(record);
+}
+
+// Checks an image put in the project against the storyboard's style, as style_problems, and
+// records the result as the asset's feedback. Returns the problems found.
+json::Array check_style(Session& session, const Library& library, const Record& record,
+                        const std::string& path, std::string_view data) {
+    json::Array problems;
+    if (record.type != "image") {
         return problems;
     }
-    Feedback feedback{.verdict = errors.empty() ? "accepted" : "rejected",
-                      .reason = errors.empty() ? "fits the storyboard's palette and budget"
-                                               : errors.front().message,
-                      .source = std::string(kStyleCheck)};
-    for (const storyboard::FileError& error : errors) {
-        problems.emplace_back(error.message);
+    const std::optional<std::vector<std::string>> found = style_problems(session, path, data);
+    if (!found) {
+        return problems;
     }
-    // The same result as last time adds nothing; sessions that run tests write no feedback.
-    const bool repeat = !record.feedback.empty() &&
-                        record.feedback.back().verdict == feedback.verdict &&
-                        record.feedback.back().reason == feedback.reason &&
-                        record.feedback.back().source == feedback.source;
-    if (!repeat && session.options().write_files) {
-        Record updated = record;
-        add_feedback(updated, std::move(feedback));
-        (void)library.update(updated);
+    record_check(
+        session, library, record,
+        {.verdict = found->empty() ? "accepted" : "rejected",
+         .reason = found->empty() ? "fits the storyboard's palette and budget" : found->front(),
+         .source = std::string(kStyleCheck)});
+    for (const std::string& problem : *found) {
+        problems.emplace_back(problem);
     }
     return problems;
 }
@@ -435,7 +471,8 @@ std::string prompt_context(Session& session, std::span<const Record> records, co
             }
             // A check passing says nothing a prompt can use.
             const bool accepted = item.verdict == "accepted";
-            if (reason.empty() || (accepted && item.source == kStyleCheck)) {
+            if (reason.empty() ||
+                (accepted && (item.source == kStyleCheck || item.source == kFrameCheck))) {
                 continue;
             }
             std::vector<std::string>& list = accepted ? worked : wrong;
@@ -797,6 +834,307 @@ Reply asset_feedback(Session& session, const json::Value& params) {
     return Reply::success(std::move(out));
 }
 
+// The files the project took from the library, by project path: library.json's assets and their
+// IDs.
+Result<std::map<std::string, std::string>> project_assets(Session& session) {
+    std::map<std::string, std::string> assets;
+    auto read = session.read_project_file(kProjectFile);
+    if (!read) {
+        return read.error();
+    }
+    const std::optional<std::string>& text = read.value();
+    if (!text) {
+        return assets;
+    }
+    auto list = json::parse(*text);
+    if (!list || !list.value().is_object()) {
+        return make_error(ErrorCode::InvalidArgument,
+                          std::string(kProjectFile) + " is not a JSON object");
+    }
+    if (const json::Value* entries = list.value().find("assets");
+        entries != nullptr && entries->is_object()) {
+        for (const auto& [path, entry] : entries->as_object()) {
+            if (const json::Value* id = entry.find("id"); id != nullptr && id->is_string()) {
+                assets.emplace(path, id->as_string());
+            }
+        }
+    }
+    return assets;
+}
+
+// Each string in a JSON value that is one of the files.
+void named_files(const json::Value& value, const std::set<std::string>& files,
+                 std::set<std::string>& out) {
+    if (value.is_string()) {
+        if (files.contains(value.as_string())) {
+            out.insert(value.as_string());
+        }
+    } else if (value.is_array()) {
+        for (const json::Value& item : value.as_array()) {
+            named_files(item, files, out);
+        }
+    } else if (value.is_object()) {
+        for (const auto& [key, item] : value.as_object()) {
+            named_files(item, files, out);
+        }
+    }
+}
+
+// The project's scenes that name one of the paths, themselves or through the files they name
+// (prefabs, sprite frames, tile sets, themes), sorted.
+std::vector<std::string> scenes_naming(Session& session,
+                                       const std::map<std::string, std::string>& paths) {
+    const auto outside_build = [](std::string_view folder) { return folder != "build/"; };
+    auto listed = platform::list_files(session.options().project_root, outside_build);
+    if (!listed) {
+        return {};
+    }
+    const std::set<std::string> files(listed.value().begin(), listed.value().end());
+    std::map<std::string, std::set<std::string>> named; // by file, the files it names
+    const auto names = [&](const std::string& file) -> const std::set<std::string>& {
+        const auto [found, made] = named.try_emplace(file);
+        if (made && file.ends_with(".json")) {
+            if (auto text = session.read_project_file(file); text && text.value()) {
+                if (auto doc = json::parse(*text.value()); doc) {
+                    named_files(doc.value(), files, found->second);
+                }
+            }
+        }
+        return found->second;
+    };
+    std::vector<std::string> scenes;
+    for (const std::string& file : files) {
+        if (!file.ends_with(world::kSceneSuffix)) {
+            continue;
+        }
+        std::set<std::string> reached{file};
+        std::vector<std::string> next{file};
+        bool draws = false;
+        for (int depth = 0; depth < kNamedDepth && !next.empty() && !draws; ++depth) {
+            std::vector<std::string> found;
+            for (const std::string& from : next) {
+                for (const std::string& to : names(from)) {
+                    draws = draws || paths.contains(to);
+                    if (reached.insert(to).second) {
+                        found.push_back(to);
+                    }
+                }
+            }
+            next = std::move(found);
+        }
+        if (draws) {
+            scenes.push_back(file);
+        }
+    }
+    return scenes;
+}
+
+// Window pixels per texel where an item draws a texture: the most over its triangles that sample
+// it, or 0 if none does.
+float drawn_scale(const canvas::FrameItem& item, std::string_view texture) {
+    float most = 0.0F;
+    for (const canvas::FramePiece& piece : item.pieces) {
+        if (piece.texture != texture || piece.width == 0 || piece.height == 0) {
+            continue;
+        }
+        for (std::size_t first = 0; first + 3 <= piece.vertices.size(); first += 3) {
+            const render::Vertex2D& a = piece.vertices[first];
+            const render::Vertex2D& b = piece.vertices[first + 1];
+            const render::Vertex2D& c = piece.vertices[first + 2];
+            const float pixels = ((b.x - a.x) * (c.y - a.y)) - ((c.x - a.x) * (b.y - a.y));
+            const float texels = (((b.u - a.u) * (c.v - a.v)) - ((c.u - a.u) * (b.v - a.v))) *
+                                 static_cast<float>(piece.width) * static_cast<float>(piece.height);
+            if (texels != 0.0F) {
+                most = std::max(most, std::sqrt(std::abs(pixels / texels)));
+            }
+        }
+    }
+    return most;
+}
+
+// A problem asset.check found: where, if in a scene, and what.
+struct Found {
+    std::string scene;
+    std::string entity;
+    std::string message;
+};
+
+// What asset.check found for one asset.
+struct Checked {
+    std::vector<Found> problems;
+    std::vector<std::string> clear; // scenes where it shows clearly
+};
+
+json::Value problem_value(std::string_view id, std::string_view path, const Found& found) {
+    json::Value item;
+    if (!id.empty()) {
+        item["id"] = short_id(id);
+        item["path"] = path;
+    }
+    if (!found.scene.empty()) {
+        item["scene"] = found.scene;
+    }
+    if (!found.entity.empty()) {
+        item["entity"] = found.entity;
+    }
+    item["message"] = found.message;
+    return item;
+}
+
+std::string percent(float share) {
+    return std::to_string(std::max(1, static_cast<int>(std::lround(share * 100.0F)))) + "%";
+}
+
+Reply asset_check(Session& session, const json::Value& params) {
+    auto assets = project_assets(session);
+    if (!assets) {
+        return Reply::failure(assets.error());
+    }
+    std::vector<std::string> scenes = strings(params, "scenes");
+    for (std::size_t i = 0; i < scenes.size(); ++i) {
+        if (auto full = session.resolve_path(scenes[i]); !full) {
+            return failure_at(full.error(), "/scenes/" + std::to_string(i));
+        }
+    }
+    if (params.find("scenes") == nullptr && !assets.value().empty()) {
+        scenes = scenes_naming(session, assets.value());
+    }
+    const std::int64_t ticks = params.find("ticks") != nullptr ? params.find("ticks")->as_int() : 0;
+
+    std::map<std::string, Checked> found; // by project path
+    json::Array failures;
+    if (!assets.value().empty()) {
+        // Each scene in a session of its own that writes nothing, as tests run.
+        command::SessionOptions options = session.options();
+        options.capture_logs = false;
+        options.write_files = false;
+        std::erase(options.capabilities, Capability::Build);
+        canvas::SummaryOptions look;
+        look.contrast = true;
+        for (const std::string& scene : scenes) {
+            Session shown(session.components(), session.commands(), options);
+            json::Value open;
+            open["path"] = scene;
+            Reply opened = shown.call("scene.open", open);
+            if (opened.ok && ticks > 0) {
+                json::Value step;
+                step["ticks"] = ticks;
+                opened = shown.call("step", step);
+            }
+            if (!opened.ok) {
+                failures.push_back(problem_value("", "", {scene, "", opened.message}));
+                continue;
+            }
+            auto summary = canvas::summarize(shown.world(), shown.assets(), look);
+            if (!summary) {
+                failures.push_back(problem_value("", "", {scene, "", summary.error().message}));
+                continue;
+            }
+            const std::vector<canvas::FrameItem>& items = summary.value().contents.items;
+            for (const canvas::Shown& each : summary.value().shown) {
+                const canvas::FrameItem& item = items[each.item];
+                std::set<std::string_view> textures;
+                for (const canvas::FramePiece& piece : item.pieces) {
+                    if (!piece.texture.empty() &&
+                        assets.value().contains(std::string(piece.texture))) {
+                        textures.insert(piece.texture);
+                    }
+                }
+                const std::string entity(shown.world().id_of(item.entity));
+                for (const std::string_view texture : textures) {
+                    Checked& checked = found[std::string(texture)];
+                    const auto add = [&](std::string message) {
+                        checked.problems.push_back({scene, entity, std::move(message)});
+                    };
+                    const std::size_t before = checked.problems.size();
+                    if (each.contrast > 0.0F && each.contrast < canvas::kHardToSee) {
+                        const long tenths = std::lround(each.contrast * 10.0F);
+                        const std::string ratio =
+                            std::to_string(tenths / 10) + "." + std::to_string(tenths % 10);
+                        add("hard to see: its edge has " + ratio + ":1 contrast with the " +
+                            (each.darker ? "lighter" : "darker") + " colors around it");
+                    }
+                    if (const float scale = drawn_scale(item, texture);
+                        scale > 0.0F && scale <= kOversized) {
+                        add("drawn at " + percent(scale) + " of its size, so an image 1/" +
+                            std::to_string(static_cast<int>(std::floor((1.0F / scale) + 0.01F))) +
+                            " as wide and high would look the same");
+                    }
+                    if (checked.problems.size() == before &&
+                        std::ranges::find(checked.clear, scene) == checked.clear.end()) {
+                        checked.clear.push_back(scene);
+                    }
+                }
+            }
+        }
+    }
+
+    auto library = open_library(session);
+    json::Array problems;
+    for (const auto& [path, id] : assets.value()) {
+        std::optional<Record> record;
+        if (library) {
+            if (auto got = library.value().get(id); got) {
+                record = std::move(got).value();
+            }
+        }
+        if (path.ends_with(".png") || path.ends_with(".bmp")) {
+            if (auto data = session.read_project_file(path); data && data.value()) {
+                if (const auto style = style_problems(session, path, *data.value()); style) {
+                    for (const std::string& message : *style) {
+                        problems.push_back(problem_value(id, path, {"", "", message}));
+                    }
+                    if (record) {
+                        record_check(session, library.value(), *record,
+                                     {.verdict = style->empty() ? "accepted" : "rejected",
+                                      .reason = style->empty()
+                                                    ? "fits the storyboard's palette and budget"
+                                                    : style->front(),
+                                      .source = std::string(kStyleCheck)});
+                        if (auto again = library.value().get(id); again) {
+                            record = std::move(again).value();
+                        }
+                    }
+                }
+            }
+        }
+        const auto checked = found.find(path);
+        if (checked == found.end()) {
+            continue;
+        }
+        for (const Found& problem : checked->second.problems) {
+            problems.push_back(problem_value(id, path, problem));
+        }
+        if (!record) {
+            continue;
+        }
+        if (!checked->second.problems.empty()) {
+            const Found& first = checked->second.problems.front();
+            record_check(session, library.value(), *record,
+                         {.verdict = "rejected",
+                          .reason = first.message + " (" + first.scene + ")",
+                          .source = std::string(kFrameCheck)});
+        } else if (!checked->second.clear.empty()) {
+            const std::vector<std::string>& clear = checked->second.clear;
+            record_check(
+                session, library.value(), *record,
+                {.verdict = "accepted",
+                 .reason = clear.size() == 1
+                               ? "shows clearly in " + clear.front()
+                               : "shows clearly in " + std::to_string(clear.size()) + " scenes",
+                 .source = std::string(kFrameCheck)});
+        }
+    }
+    for (json::Value& failure : failures) {
+        problems.push_back(std::move(failure));
+    }
+    json::Value out;
+    out["checked"] = static_cast<std::int64_t>(assets.value().size());
+    out["scenes"] = static_cast<std::int64_t>(assets.value().empty() ? 0 : scenes.size());
+    out["problems"] = std::move(problems);
+    return Reply::success(std::move(out));
+}
+
 json::Value type_property(std::string_view description) {
     json::Value type = property("string", description);
     type["enum"] = json::Array{"image", "sound"};
@@ -915,6 +1253,22 @@ void register_commands(command::Registry& registry) {
             },
             {"id", "verdict"}),
         .handler = asset_feedback,
+    });
+
+    json::Value scenes = string_array("Scenes to look at. Default: every scene that draws one.");
+    scenes["minItems"] = 1;
+    json::Value ticks =
+        integer("Ticks each scene runs before it is looked at; default 0.", 0, kMaxCheckTicks);
+    registry.add({
+        .name = "asset.check",
+        .description = "Checks the files the project took from the library as its scenes show "
+                       "them (too dark or light to see, drawn far smaller than their size) and "
+                       "against the storyboard's style, and records the results as their "
+                       "feedback. Returns the problems.",
+        .capabilities = {Capability::Read, Capability::Filesystem},
+        .effect = command::Effect::Read,
+        .params = params_schema({{"scenes", std::move(scenes)}, {"ticks", std::move(ticks)}}),
+        .handler = asset_check,
     });
 
     registry.add({

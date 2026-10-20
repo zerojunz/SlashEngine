@@ -3555,6 +3555,9 @@ Reply frame_summary(Session& session, const json::Value& params) {
         options.columns = static_cast<int>(map->as_array()[0].as_int());
         options.rows = static_cast<int>(map->as_array()[1].as_int());
     }
+    if (const json::Value* contrast = params.find("contrast"); contrast != nullptr) {
+        options.contrast = contrast->as_bool();
+    }
     std::set<entt::entity> wanted;
     if (const json::Value* ids = params.find("ids"); ids != nullptr) {
         const json::Array& list = ids->as_array();
@@ -3625,6 +3628,7 @@ Reply frame_summary(Session& session, const json::Value& params) {
     }
     const entt::entity focused = ui::focus_owner(world);
     json::Array drawn;
+    json::Array hard_to_see;
     for (const canvas::Shown& shown : summary.shown) {
         const canvas::FrameItem& item = items[shown.item];
         if (!included(item.entity)) {
@@ -3646,6 +3650,13 @@ Reply frame_summary(Session& session, const json::Value& params) {
         if (const std::vector<world::Canvas>& canvases = summary.contents.canvases;
             item.canvas < canvases.size() && canvases[item.canvas].layer != entt::null) {
             each["layer"] = name_of(canvases[item.canvas].layer);
+        }
+        if (shown.contrast > 0.0F) {
+            each["contrast"] =
+                short_number(std::round(static_cast<double>(shown.contrast) * 10.0) / 10.0);
+            if (shown.contrast < canvas::kHardToSee) {
+                hard_to_see.emplace_back(name_of(item.entity));
+            }
         }
         const auto& ecs = world.ecs();
         switch (item.kind) {
@@ -3724,6 +3735,9 @@ Reply frame_summary(Session& session, const json::Value& params) {
         drawn.push_back(std::move(each));
     }
     result["drawn"] = std::move(drawn);
+    if (!hard_to_see.empty()) {
+        result["hard_to_see"] = std::move(hard_to_see);
+    }
     for (const auto& [name, list] :
          {std::pair{"covered", &summary.covered}, std::pair{"offscreen", &summary.offscreen},
           std::pair{"clear", &summary.clear}, std::pair{"clipped", &summary.clipped}}) {
@@ -5219,10 +5233,15 @@ void register_builtin_commands(Registry& registry) {
                        "shows, in drawing order, with its rect in window pixels, its text, and "
                        "how much of it shows "
                        "when not all; what is covered, offscreen, transparent or clipped away; "
-                       "what can't draw; and the camera with the world rect it shows.",
+                       "what can't draw; and the camera with the world rect it shows. contrast "
+                       "adds how much each stands out from what is around it.",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema({
+            {"contrast",
+             property("boolean", "Add each one's contrast with what is around its edge, 1 to "
+                                 "21, and list those under 1.5 as hard_to_see. Draws the frame, "
+                                 "so costs more.")},
             {"ids", names_property("Only these entities. Default: all.")},
             {"limit", integer_property("At most this many entries in each list. Default: 100.", 1,
                                        1000, kDefaultSummaryLimit)},

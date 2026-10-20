@@ -18,5 +18,6 @@ add_library(slash::library_commands ALIAS slash_library_commands)
 target_include_directories(slash_library_commands PUBLIC include)
 target_link_libraries(slash_library_commands
     PUBLIC slash::command
-    PRIVATE slash::library slash::platform slash::render slash::storyboard)
+    PRIVATE slash::canvas slash::library slash::platform slash::render slash::storyboard
+            slash::world)
 slash_engine_target(slash_library_commands)

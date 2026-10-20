@@ -97,8 +97,20 @@ int main() {
                     json::Style::Compact)
             .c_str());
 
-    // Another project. The exact same request returns the stored sprite with no model call; a
-    // close one gets the match back as a candidate instead of generating.
+    // Another project, with a night level. The exact same request returns the stored sprite with
+    // no model call; a close one gets the match back as a candidate instead of generating.
+    (void)slash::platform::create_directories("sequel/levels");
+    (void)slash::platform::write_file("sequel/project.json", R"({"format": 1, "name": "Sequel",
+        "window": {"width": 160, "height": 90},
+        "rendering": {"clear_color": [0.03, 0.03, 0.06, 1], "texture_filter": "nearest"}})");
+    (void)slash::platform::write_file("sequel/levels/night.scene.json", R"({"format": 1,
+        "entities": {
+            "red_slime": {"components": {"Sprite2D": {"texture": "art/slime_red.png"},
+                                         "Transform2D": {"position": [40, 45]}}},
+            "slime": {"components": {"Sprite2D": {"texture": "art/slime.png"},
+                                     "Transform2D": {"position": [85, 45]}}},
+            "heart": {"components": {"Sprite2D": {"texture": "ui/heart.png"},
+                                     "Transform2D": {"position": [130, 45], "scale": [2, 2]}}}}})");
     options.project_root = "sequel";
     command::Session sequel(components, commands, options);
     call(sequel, "asset.generate", R"({"prompt": "green slime sprite", "generator": "test",
@@ -114,6 +126,12 @@ int main() {
     call(sequel, "asset.feedback", R"({"id": "0b2fd1b5", "verdict": "accepted",
         "reason": "reads well at 32 pixels"})");
     call(sequel, "asset.search", R"({"text": "slime"})");
+
+    // The night level draws both slimes and the heart. asset.check looks at every scene that
+    // draws library files and records what it sees as their feedback: the red slime's dark
+    // outline is lost against the night, as the playtest said.
+    call(sequel, "asset.use", R"({"id": "833c6cd1", "path": "art/slime_red.png"})");
+    call(sequel, "asset.check", "{}");
     call(sequel, "asset.info", R"({"id": "833c6cd1"})");
     return 0;
 }
