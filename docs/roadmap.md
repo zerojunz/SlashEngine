@@ -439,7 +439,7 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
       code still has and reporting what it dropped. Libraries built against other engine headers
       or with another compiler are refused, and scenes are checked by the components the sources
       declare when the code isn't built
-- [ ] SDK packages, so a game adds a closed vendor SDK (an ad network, DLSS, Steamworks, a store
+- [x] SDK packages, so a game adds a closed vendor SDK (an ad network, DLSS, Steamworks, a store
       or analytics service) without touching the engine, as Godot's Android and iOS plugins and
       Unity's External Dependency Manager do. Nothing from the SDKs enters this repository
   - [x] An `sdk.json` file per SDK (`$cli schema sdk`): for each platform the static or dynamic
