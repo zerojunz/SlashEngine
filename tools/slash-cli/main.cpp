@@ -8,6 +8,7 @@
 #include "slash/ai/world.hpp"
 #include "slash/animation/animation.hpp"
 #include "slash/audio/audio.hpp"
+#include "slash/bench/bench.hpp"
 #include "slash/canvas/canvas.hpp"
 #include "slash/canvas/gpu_particles.hpp"
 #include "slash/canvas/material.hpp"
@@ -59,6 +60,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <iostream>
 #include <iterator>
 #include <memory>
@@ -114,8 +116,9 @@ Usage:
                                      (.theme.json), audio (.audio.json), bus_layout
                                      (.bus_layout.json), replay (.replay.json), test
                                      (.test.json), storyboard, project (project.json),
-                                     presets (export_presets.json), sdk (sdk.json) or
-                                     providers (providers.json)
+                                     presets (export_presets.json), sdk (sdk.json),
+                                     providers (providers.json) or bench (a benchmark
+                                     task's task.json)
   slash-cli project validate [dir]   Check project.json, export_presets.json, providers.json,
                                      the project's theme, bus layout, storyboard and SDK
                                      packages; lists
@@ -125,6 +128,15 @@ Usage:
                                      that failed; exits 1 if any did
       --project <dir>                Project folder (default ".")
       --test <name>                  Run only the test with this name (repeatable)
+  slash-cli bench                    Play the benchmark's standard agent tasks through MCP
+                                     and print the calls and estimated tokens each costs;
+                                     exits 1 if a task fails or costs more than the baseline
+      --tasks <dir>                  Folder of tasks (default "bench/tasks")
+      --task <name>                  Run only this task (repeatable)
+      --work <dir>                   Where tasks' projects are copied (default "build/bench")
+      --baseline <file>              Compare with this baseline file
+      --tolerance <fraction>         Tokens allowed above the baseline (default 0.05)
+      --update                       Write the numbers to the baseline file instead
   slash-cli call <command> [params]  Run one engine command and print its result
                                      params is a JSON object, or - to read it from stdin
       --scene <file>                 Open this scene first (or start a new one saved there)
@@ -1020,15 +1032,16 @@ int cmd_scene(const std::vector<std::string>& args) {
 }
 
 int cmd_schema(const std::vector<std::string>& args) {
-    constexpr std::array<std::string_view, 18> kKinds = {
-        "scene",   "prefab",  "frames", "material",   "process_material", "animation", "tileset",
-        "font",    "theme",   "audio",  "bus_layout", "replay",           "test",      "storyboard",
-        "project", "presets", "sdk",    "providers"};
+    constexpr std::array<std::string_view, 19> kKinds = {
+        "scene",      "prefab",  "frames",    "material",   "process_material",
+        "animation",  "tileset", "font",      "theme",      "audio",
+        "bus_layout", "replay",  "test",      "storyboard", "project",
+        "presets",    "sdk",     "providers", "bench"};
     if (args.size() != 1 || std::ranges::find(kKinds, args[0]) == kKinds.end()) {
         return usage_error("schema takes one argument: scene, prefab, frames, material, "
                            "process_material, animation, tileset, font, theme, audio, "
-                           "bus_layout, replay, test, storyboard, project, presets, sdk or "
-                           "providers");
+                           "bus_layout, replay, test, storyboard, project, presets, sdk, "
+                           "providers or bench");
     }
     json::Value schema;
     if (args[0] == "scene") {
@@ -1065,6 +1078,8 @@ int cmd_schema(const std::vector<std::string>& args) {
         schema = slash::exporter::sdk_schema();
     } else if (args[0] == "providers") {
         schema = slash::ai::config_schema();
+    } else if (args[0] == "bench") {
+        schema = slash::bench::task_schema();
     } else {
         schema = slash::exporter::presets_schema();
     }
@@ -1214,6 +1229,112 @@ int cmd_test(const std::vector<std::string>& args) {
     }
     print(reply.value);
     return reply.value.find("failed")->size() == 0 ? kExitOk : kExitFailure;
+}
+
+int cmd_bench(const std::vector<std::string>& args) {
+    std::string folder = "bench/tasks";
+    std::string work = "build/bench";
+    std::string baseline_path;
+    std::vector<std::string> names;
+    bool update = false;
+    double tolerance = 0.05;
+    for (std::size_t i = 0; i < args.size(); ++i) {
+        const std::string& arg = args[i];
+        const bool has_value = i + 1 < args.size();
+        if (arg == "--tasks" && has_value) {
+            folder = args[++i];
+        } else if (arg == "--task" && has_value) {
+            names.push_back(args[++i]);
+        } else if (arg == "--work" && has_value) {
+            work = args[++i];
+        } else if (arg == "--baseline" && has_value) {
+            baseline_path = args[++i];
+        } else if (arg == "--tolerance" && has_value) {
+            if (!parse_double(args[++i], tolerance) || tolerance < 0.0) {
+                return usage_error("--tolerance takes a fraction, such as 0.05");
+            }
+        } else if (arg == "--update") {
+            update = true;
+        } else {
+            return usage_error("unexpected argument for bench: " + arg);
+        }
+    }
+    if (update && baseline_path.empty()) {
+        return usage_error("--update needs --baseline, the file to write");
+    }
+    auto tasks = slash::bench::load_tasks(folder, names);
+    if (!tasks) {
+        return failure("could not load the benchmark's tasks", tasks.error());
+    }
+    slash::bench::Options options;
+    options.tasks = std::move(tasks.value());
+    options.work = work;
+    options.with_session = [](const std::string& root,
+                              const std::function<void(command::Session&)>& use) {
+        command::SessionOptions session_options;
+        session_options.project_root = root;
+        Engine engine(session_options);
+        use(*engine.session);
+    };
+    auto report = slash::bench::run(options);
+    if (!report) {
+        return failure("could not run the benchmark", report.error());
+    }
+    json::Value result = std::move(report.value());
+    const bool passed = result.find("failed")->size() == 0;
+    if (update) {
+        if (!passed) {
+            print(result);
+            slash::log::error("a task failed, so the baseline was not written",
+                              {{"path", baseline_path}});
+            return kExitFailure;
+        }
+        // Tasks run on their own (--task) keep the others' numbers.
+        json::Value baseline = slash::bench::baseline_of(result);
+        if (!names.empty() && slash::platform::exists(baseline_path)) {
+            auto text = slash::platform::read_file(baseline_path);
+            auto old = text ? json::parse(text.value()) : slash::Result<json::Value>(text.error());
+            if (!old) {
+                return failure("could not read the baseline", old.error());
+            }
+            json::Value merged = std::move(old.value());
+            for (const auto& [name, measured] : baseline["tasks"].as_object()) {
+                merged["tasks"][name] = measured;
+            }
+            merged["setup"] = baseline["setup"];
+            std::int64_t calls = 0;
+            std::int64_t tokens = 0;
+            for (const auto& [name, measured] : merged["tasks"].as_object()) {
+                calls += measured.find("calls")->as_int();
+                tokens += measured.find("tokens")->as_int();
+            }
+            merged["total"]["calls"] = calls;
+            merged["total"]["tokens"] = tokens;
+            baseline = std::move(merged);
+        }
+        if (auto written = slash::platform::write_file(baseline_path, json::write(baseline) + "\n");
+            !written) {
+            return failure("could not write the baseline", written.error());
+        }
+        print(result);
+        return kExitOk;
+    }
+    bool regressed = false;
+    if (!baseline_path.empty()) {
+        auto text = slash::platform::read_file(baseline_path);
+        if (!text) {
+            return failure("could not read the baseline", text.error());
+        }
+        auto baseline = json::parse(text.value());
+        if (!baseline) {
+            return failure("could not read the baseline", baseline.error());
+        }
+        json::Array found = slash::bench::regressions(result, baseline.value(), tolerance);
+        regressed = !found.empty();
+        result["regressions"] = std::move(found);
+    }
+    print(result);
+    return passed && !regressed ? kExitOk : kExitFailure;
 }
 
 int cmd_call(const std::vector<std::string>& args) {
@@ -1747,6 +1868,9 @@ int main(int argc, char** argv) {
     }
     if (name == "test") {
         return cmd_test(args);
+    }
+    if (name == "bench") {
+        return cmd_bench(args);
     }
     if (name == "call") {
         return cmd_call(args);

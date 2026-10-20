@@ -1,0 +1,42 @@
+{
+  "checks": [
+    {
+      "command": "scene.open",
+      "params": {
+        "path": "scenes/island.scene.json"
+      }
+    },
+    {
+      "command": "tilemap.get",
+      "expect": {
+        "origin": [2, 1],
+        "rows": ["dGGGGe", "bggggc", "bggfgc", "haaaai"]
+      },
+      "params": {
+        "id": "ground"
+      }
+    }
+  ],
+  "format": 1,
+  "prompt": "On the ground layer in scenes/island.scene.json, paint grass over a rectangle 6 cells wide and 4 high whose top left cell is column 2, row 1, and save the scene.",
+  "solution": [
+    {
+      "arguments": {
+        "path": "scenes/island.scene.json"
+      },
+      "tool": "scene_open"
+    },
+    {
+      "arguments": {
+        "id": "ground",
+        "rect": [2, 1, 6, 4],
+        "terrain": "grass"
+      },
+      "tool": "tilemap_paint"
+    },
+    {
+      "arguments": {},
+      "tool": "scene_save"
+    }
+  ]
+}

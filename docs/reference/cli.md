@@ -231,7 +231,8 @@ for [`.theme.json` files](scene-format.md#themes), for
 [`.replay.json` files](scene-format.md#replays), for [`.test.json` files](scene-format.md#tests),
 for [storyboard files](storyboard-format.md),
 for [`project.json`](project-format.md), for [`export_presets.json`](project-format.md#export-presets),
-for [`sdk.json`](sdk-format.md) or for [`providers.json`](providers.md).
+for [`sdk.json`](sdk-format.md), for [`providers.json`](providers.md) or for a
+[benchmark task's `task.json`](benchmark.md#tasks).
 
 ```bash
 slash-cli schema scene
@@ -252,6 +253,7 @@ slash-cli schema project
 slash-cli schema presets
 slash-cli schema sdk
 slash-cli schema providers
+slash-cli schema bench
 ```
 
 ### project validate
@@ -302,6 +304,35 @@ slash-cli test [path...] [--project <dir>] [--test <name>]...
 
 ```json
 {"failed":[{"file":"tests/main.test.json","message":"expected 1 item, got 0 items: []","path":"/tests/crate_lands/steps/0/expect/entities","test":"crate_lands","tick":600}],"passed":0,"tests":1}
+```
+
+### bench
+
+Runs the [agent benchmark](benchmark.md): plays each task's tool calls through the MCP server
+in a fresh copy of its project, runs its checks, and prints the calls and estimated tokens each
+task cost. Exit code 1 if a call or check failed or, with `--baseline`, if a number grew past
+the baseline.
+
+```bash
+slash-cli bench [--tasks <dir>] [--task <name>]... [--work <dir>] [--baseline <file>]
+                [--tolerance <fraction>] [--update]
+```
+
+| Flag | Meaning |
+| --- | --- |
+| `--tasks <dir>` | The folder of tasks (default `bench/tasks`) |
+| `--task <name>` | Run only this task; repeat it for more |
+| `--work <dir>` | Where each task's project is copied before it runs (default `build/bench`) |
+| `--baseline <file>` | Compare with this baseline and list what grew under `regressions` |
+| `--tolerance <fraction>` | How far tokens may grow past the baseline (default `0.05`) |
+| `--update` | Write the numbers to the `--baseline` file instead of comparing |
+
+```json
+{"failed":[],"regressions":[],"setup":{"instructions":2897,"tool_definitions":19145,"tools":85},"tasks":{"add-enemy":{"calls":3,"read":35,"tokens":117,"written":82}},"total":{"calls":3,"tokens":117}}
+```
+
+```json
+{"failed":[{"message":"expected 168, got 200.0","path":"/checks/1/expect/entities/0/components/Transform2D/position/1","task":"raise-crates"}],"regressions":[],"setup":{"instructions":2897,"tool_definitions":19145,"tools":85},"tasks":{"raise-crates":{"calls":4,"read":362,"tokens":555,"written":193}},"total":{"calls":4,"tokens":555}}
 ```
 
 ### call

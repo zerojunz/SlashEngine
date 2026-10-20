@@ -159,6 +159,13 @@ Commands are built for agents, so keep them cheap to call:
   closest valid one ("did you mean").
 - Keep descriptions short; they are sent to the model as tool definitions.
 
+The benchmark in `bench/` holds commands to that. `slash-cli bench` plays standard agent tasks
+through MCP and counts each one's calls and estimated tokens, and `ctest` fails when a task
+stops passing its checks or costs more than `bench/baseline.json` (setup included, so a new
+command's definition counts). When a change costs more or less on purpose, run
+`slash-cli bench --baseline bench/baseline.json --update` and commit the file; see
+[docs/reference/benchmark.md](docs/reference/benchmark.md).
+
 To add a command, register it in `engine/command/src/builtin.cpp` (or your own registry) with a
 name, description, capabilities, an `Effect` and a params schema with
 `"additionalProperties": false`, then add a test to `tests/test_command.cpp`.
