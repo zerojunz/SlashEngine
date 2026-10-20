@@ -142,6 +142,12 @@ using EntityRename = std::function<std::string(const std::string& id)>;
 template <typename T>
 void rename_entities(json::Value& json, const EntityRename& rename);
 
+// The bytes a value of a supported type holds on the heap beyond its own size: long strings,
+// vectors, maps and JSON with what they hold, and the same within reflected structs. Memory
+// reports count with it (ComponentType::memory).
+template <typename T>
+std::size_t heap_bytes(const T& value);
+
 template <typename T>
 json::Value to_json(const World& world, const T& value) {
     if constexpr (std::is_same_v<T, bool> || std::is_same_v<T, std::string> ||
@@ -379,6 +385,33 @@ void rename_entities(json::Value& json, const EntityRename& rename) {
                 }
             });
         }
+    }
+}
+
+template <typename T>
+std::size_t heap_bytes([[maybe_unused]] const T& value) {
+    if constexpr (std::is_same_v<T, std::string> || std::is_same_v<T, json::Value>) {
+        return json::heap_bytes(value);
+    } else if constexpr (detail::IsVector<T>::value) {
+        std::size_t bytes = value.capacity() * sizeof(typename T::value_type);
+        for (const auto& item : value) {
+            bytes += heap_bytes(item);
+        }
+        return bytes;
+    } else if constexpr (detail::IsStringMap<T>::value) {
+        std::size_t bytes = 0;
+        for (const auto& [key, item] : value) {
+            bytes += kMapNodeBytes<T> + json::heap_bytes(key) + heap_bytes(item);
+        }
+        return bytes;
+    } else if constexpr (reflect::Reflected<T> && !detail::FloatArrayType<T> &&
+                         !detail::IntArrayType<T>) {
+        std::size_t bytes = 0;
+        reflect::for_each_field<T>(
+            [&](const auto& field) { bytes += heap_bytes(field.get(value)); });
+        return bytes;
+    } else {
+        return 0;
     }
 }
 

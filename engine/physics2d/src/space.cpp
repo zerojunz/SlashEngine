@@ -1538,6 +1538,27 @@ void Space::emit_events(world::World& world) {
     removed_.clear();
 }
 
+world::MemoryPart Space::memory() const {
+    world::MemoryPart part{"physics2d", 0, {}, {}};
+    // Bodies and joints are the entities'; Box2D's own counts add the ground joints hold on to.
+    part.counts = {{"bodies", bodies_.size() + tiles_.size()},
+                   {"contacts", 0},
+                   {"joints", joints_.size()},
+                   {"shapes", 0}};
+    if (B2_IS_NON_NULL(world_)) {
+        // byteCount counts what Box2D allocated for every world in the process; a session or
+        // game has one.
+        const b2Counters counters = b2World_GetCounters(world_);
+        const auto count = [](int n) { return static_cast<std::uint64_t>(std::max(n, 0)); };
+        part.bytes = count(counters.byteCount);
+        part.counts["contacts"] = count(counters.contactCount);
+        part.counts["shapes"] = count(counters.shapeCount);
+    }
+    part.bytes += ((bodies_.size() + tiles_.size()) * (sizeof(Body) + sizeof(void*))) +
+                  (joints_.size() * sizeof(EntityMap<Joint>::Entry));
+    return part;
+}
+
 Contacts Space::contacts(const world::World& world, entt::entity entity) const {
     Contacts out;
     const Body* target = body(entity);

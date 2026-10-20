@@ -181,6 +181,15 @@ void install(world::World& world, asset::Assets& assets, const Settings& setting
     state->fonts = std::make_unique<text::Fonts>(assets);
     state->fonts->set_system_fallback(settings.allow_system_fallback);
     state->settings = settings;
+    // The glyph atlas pages text draws from; the fonts themselves are assets.
+    world.add_memory_source("text", [state](const world::World& /*world*/) {
+        world::MemoryPart part{"text", 0, {}, {}};
+        for (const text::AtlasPage& page : state->fonts->pages()) {
+            part.bytes += page.rgba.capacity();
+        }
+        part.counts = {{"pages", state->fonts->pages().size()}};
+        return part;
+    });
     world.ecs().ctx().emplace<std::shared_ptr<State>>(std::move(state));
     install_gui(world);
 }

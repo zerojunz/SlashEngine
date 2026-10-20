@@ -47,6 +47,8 @@ public:
         json::Value (*schema)(SchemaBuilder& builder);
         void (*rename)(json::Value& fields, const EntityRename& rename);
         void (*assure)(entt::registry& registry, entt::id_type type);
+        // The bytes the type's components take in their storage's pages and hold on the heap.
+        std::size_t (*bytes)(const entt::registry& registry, entt::id_type type);
     };
 
     ComponentType(std::string type_name, entt::id_type hash, std::vector<std::string> field_names,
@@ -73,6 +75,10 @@ public:
     // it while the world's set of storages stays as it is (slash/world/world.hpp's threaded
     // systems).
     void assure(World& world) const;
+
+    // The components of this type and the bytes they take: the storage's pages and entity
+    // lists, and what their fields hold on the heap (heap_bytes).
+    [[nodiscard]] MemoryItem memory(const World& world) const;
 
     // Every field of the entity's component as a JSON object.
     [[nodiscard]] json::Value get(const World& world, entt::entity entity) const;
@@ -189,6 +195,22 @@ ComponentType& ComponentRegistry::add() {
                      const EntityRename& rename) { world::rename_entities<T>(fields, rename); },
         .assure = [](entt::registry& registry,
                      entt::id_type /*type*/) { static_cast<void>(registry.storage<T>()); },
+        .bytes = [](const entt::registry& registry [[maybe_unused]],
+                    entt::id_type /*type*/) -> std::size_t {
+            if constexpr (std::is_empty_v<T>) {
+                return 0;
+            } else {
+                const auto* storage = registry.storage<T>();
+                if (storage == nullptr) {
+                    return 0;
+                }
+                std::size_t bytes = storage->capacity() * sizeof(T);
+                for (const T& value : *storage) {
+                    bytes += heap_bytes(value);
+                }
+                return bytes;
+            }
+        },
     };
 
     std::vector<std::string> fields;
