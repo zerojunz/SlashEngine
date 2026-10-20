@@ -1,10 +1,64 @@
 #include "slash/world/world.hpp"
 
+#include "slash/core/jobs.hpp"
+#include "slash/world/component_registry.hpp"
+
 #include <algorithm>
 #include <functional>
 #include <utility>
 
 namespace slash::world {
+
+namespace detail {
+
+// What a system did that waits for the thread stepping the world: a threaded system's events,
+// and any system's deferred calls, in the order it made them.
+struct SystemRun {
+    struct Action {
+        Event event;
+        std::function<void(World&)> call; // a deferred call, or null for the event
+    };
+    std::vector<Action> actions;
+};
+
+} // namespace detail
+
+namespace {
+
+// The system the current thread runs, if any.
+struct Running {
+    const World* world = nullptr;
+    detail::SystemRun* run = nullptr;
+    bool threaded = false;
+};
+thread_local Running t_running;
+
+// Sets the thread's running system for as long as it lives.
+class RunningScope {
+public:
+    explicit RunningScope(Running running) : saved_(t_running) { t_running = running; }
+    ~RunningScope() { t_running = saved_; }
+    RunningScope(const RunningScope&) = delete;
+    RunningScope& operator=(const RunningScope&) = delete;
+    RunningScope(RunningScope&&) = delete;
+    RunningScope& operator=(RunningScope&&) = delete;
+
+private:
+    Running saved_;
+};
+
+bool names_meet(const std::vector<std::string>& a, const std::vector<std::string>& b) {
+    return std::ranges::any_of(
+        a, [&](const std::string& name) { return std::ranges::find(b, name) != b.end(); });
+}
+
+// Whether one system writes something the other reads or writes.
+bool clash(const SystemOptions& a, const SystemOptions& b) {
+    return names_meet(a.writes, b.reads) || names_meet(a.writes, b.writes) ||
+           names_meet(b.writes, a.reads);
+}
+
+} // namespace
 
 World::World(const ComponentRegistry& registry) : components_(&registry) {
     registry_.on_destroy<EntityId>().connect<&World::on_id_destroyed>(*this);
@@ -34,6 +88,7 @@ Result<entt::entity> World::create_part(std::string_view id) {
 }
 
 Result<entt::entity> World::add(std::string_view id) {
+    check_structural();
     if (by_id_.contains(id)) {
         return make_error(ErrorCode::InvalidArgument,
                           "entity id \"" + std::string(id) + "\" is already in use");
@@ -54,6 +109,7 @@ entt::entity World::create() {
 }
 
 void World::destroy(entt::entity entity) {
+    check_structural();
     if (!registry_.valid(entity)) {
         return;
     }
@@ -75,6 +131,7 @@ void World::destroy(entt::entity entity) {
 }
 
 void World::clear() {
+    check_structural();
     registry_.clear();
     by_id_.clear();
     scene_root_.clear();
@@ -117,19 +174,52 @@ void World::add_system(std::string name, System system, SystemOptions options) {
         std::ranges::upper_bound(systems_, options.priority, std::less<>(),
                                  [](const NamedSystem& added) { return added.options.priority; });
     systems_.insert(position, {std::move(name), std::move(system), std::move(options)});
+    plan_stages();
 }
 
 bool World::remove_system(std::string_view name) {
     SLASH_ASSERT(!stepping_, "systems cannot be removed while the world is stepping");
-    return std::erase_if(systems_, [&](const NamedSystem& added) { return added.name == name; }) >
-           0;
+    const bool removed =
+        std::erase_if(systems_, [&](const NamedSystem& added) { return added.name == name; }) > 0;
+    plan_stages();
+    return removed;
+}
+
+void World::plan_stages() {
+    stages_.clear();
+    for (std::size_t i = 0; i < systems_.size(); ++i) {
+        const SystemOptions& options = systems_[i].options;
+        if (options.threaded && !stages_.empty()) {
+            Stage& last = stages_.back();
+            const bool joins =
+                systems_[last.begin].options.threaded &&
+                std::none_of(
+                    systems_.begin() + static_cast<std::ptrdiff_t>(last.begin),
+                    systems_.begin() + static_cast<std::ptrdiff_t>(last.end),
+                    [&](const NamedSystem& other) { return clash(other.options, options); });
+            if (joins) {
+                last.end = i + 1;
+                continue;
+            }
+        }
+        stages_.push_back({.begin = i, .end = i + 1});
+    }
 }
 
 std::vector<SystemInfo> World::systems() const {
     std::vector<SystemInfo> out;
     out.reserve(systems_.size());
-    for (const NamedSystem& system : systems_) {
-        out.push_back({system.name, system.options.doc, system.options.priority});
+    for (std::size_t stage = 0; stage < stages_.size(); ++stage) {
+        for (std::size_t i = stages_[stage].begin; i < stages_[stage].end; ++i) {
+            const SystemOptions& options = systems_[i].options;
+            out.push_back({.name = systems_[i].name,
+                           .doc = options.doc,
+                           .priority = options.priority,
+                           .threaded = options.threaded,
+                           .reads = options.reads,
+                           .writes = options.writes,
+                           .stage = stage});
+        }
     }
     return out;
 }
@@ -150,11 +240,89 @@ void World::step(double tick_seconds) {
         step_listener_(*this, tick_seconds);
     }
     stepping_ = true;
-    for (const NamedSystem& system : systems_) {
-        system.run(*this, tick_seconds);
+    stepping_thread_ = std::this_thread::get_id();
+    for (const Stage& stage : stages_) {
+        if (systems_[stage.begin].options.threaded) {
+            run_stage(stage, tick_seconds);
+        } else {
+            run_system(systems_[stage.begin], tick_seconds);
+        }
     }
     stepping_ = false;
     ++tick_;
+}
+
+void World::run_system(const NamedSystem& system, double tick_seconds) {
+    detail::SystemRun run;
+    const RunningScope scope({.world = this, .run = &run, .threaded = false});
+    system.run(*this, tick_seconds);
+    flush(run);
+}
+
+void World::run_stage(const Stage& stage, double tick_seconds) {
+    // Every storage the systems name exists before they start, so none is made while threads
+    // read the registry.
+    for (std::size_t i = stage.begin; i < stage.end; ++i) {
+        for (const auto* names : {&systems_[i].options.reads, &systems_[i].options.writes}) {
+            for (const std::string& name : *names) {
+                if (const ComponentType* type = components_->find(name); type != nullptr) {
+                    type->assure(*this);
+                }
+            }
+        }
+    }
+    // The same whatever the thread count: each system keeps what it does for this thread, one
+    // system runs alone just as a stage of several does, and the stage's events and deferred
+    // calls are delivered in system order once it is done.
+    std::vector<detail::SystemRun> runs(stage.end - stage.begin);
+    const auto run_one = [&](std::size_t k) {
+        const RunningScope scope({.world = this, .run = &runs[k], .threaded = true});
+        systems_[stage.begin + k].run(*this, tick_seconds);
+    };
+    staging_ = true;
+    if (runs.size() == 1) {
+        run_one(0);
+    } else {
+        pool().parallel_for(runs.size(), run_one);
+    }
+    staging_ = false;
+    for (detail::SystemRun& run : runs) {
+        const RunningScope scope({.world = this, .run = &run, .threaded = false});
+        flush(run);
+    }
+}
+
+void World::flush(detail::SystemRun& run) {
+    // By index: deferred calls may defer more.
+    for (std::size_t i = 0; i < run.actions.size(); ++i) { // NOLINT(modernize-loop-convert)
+        detail::SystemRun::Action action = std::move(run.actions[i]);
+        if (action.call) {
+            action.call(*this);
+        } else {
+            deliver(std::move(action.event));
+        }
+    }
+    run.actions.clear();
+}
+
+void World::defer(std::function<void(World&)> call) {
+    SLASH_ASSERT(call != nullptr, "defer needs a callable");
+    if (t_running.world == this) {
+        t_running.run->actions.push_back({.event = {}, .call = std::move(call)});
+        return;
+    }
+    SLASH_ASSERT(!stepping_, "World::defer is called on the thread running the system");
+    call(*this);
+}
+
+jobs::Pool& World::pool() const {
+    return pool_ != nullptr ? *pool_ : jobs::shared();
+}
+
+void World::check_structural() const {
+    SLASH_ASSERT(!staging_, "threaded systems create and destroy entities through World::defer");
+    SLASH_ASSERT(!stepping_ || std::this_thread::get_id() == stepping_thread_,
+                 "entities are created and destroyed on the thread stepping the world");
 }
 
 void World::add_reset(std::function<void(World&)> reset) {
@@ -245,6 +413,16 @@ void World::emit(std::string kind, std::string_view id, json::Value data) {
 
 void World::notify(std::string kind, std::string_view id, json::Value data) {
     Event event{std::move(kind), std::string(id), std::move(data), tick_};
+    if (t_running.world == this && t_running.threaded) {
+        t_running.run->actions.push_back({.event = std::move(event), .call = nullptr});
+        return;
+    }
+    SLASH_ASSERT(!staging_ && (!stepping_ || std::this_thread::get_id() == stepping_thread_),
+                 "events are emitted on the thread running the system");
+    deliver(std::move(event));
+}
+
+void World::deliver(Event event) {
     if (listener_) {
         listener_(event);
     }

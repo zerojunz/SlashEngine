@@ -74,6 +74,33 @@ bool pre_solve(b2ShapeId a, b2ShapeId b, b2Manifold* manifold, void* /*context*/
            one_way_allows(b, *second, b2Neg(manifold->normal), *manifold);
 }
 
+// Splits a Box2D task's items into ranges, one per thread of the pool at most, as Box2D's samples
+// do with enkiTS. Even a task of one item goes to a worker: the solver's are, and they wait for
+// each other. A thread's number in the pool is the worker index Box2D keeps its scratch space by.
+void* enqueue_task(b2TaskCallback* task, int item_count, int min_range, void* task_context,
+                   void* user_context) {
+    auto& tasks = *static_cast<Tasks*>(user_context);
+    jobs::Pool& pool = *tasks.pool;
+    const auto items = static_cast<std::int64_t>(item_count);
+    const auto ranges = static_cast<std::int64_t>(
+        std::clamp(item_count / std::max(min_range, 1), 1, pool.thread_count() + 1));
+    const jobs::GroupId id = pool.add_group_task(
+        [task, task_context, items, ranges, &pool](std::size_t range) {
+            const auto first = static_cast<std::int64_t>(range);
+            task(static_cast<int>(items * first / ranges),
+                 static_cast<int>(items * (first + 1) / ranges),
+                 static_cast<std::uint32_t>(pool.thread_index()), task_context);
+        },
+        static_cast<std::size_t>(ranges));
+    tasks.groups.push_back(id);
+    return &tasks.groups.back();
+}
+
+void finish_task(void* user_task, void* user_context) {
+    auto& tasks = *static_cast<Tasks*>(user_context);
+    tasks.pool->wait_for_group_task_completion(*static_cast<const jobs::GroupId*>(user_task));
+}
+
 // Godot's rules for two bodies' materials: the smaller friction, the sum of bounces up to 1.
 float combine_friction(float a, int /*material_a*/, float b, int /*material_b*/) {
     return std::min(a, b);
@@ -356,11 +383,20 @@ const Body* Space::body(entt::entity entity) const {
     return found != nullptr ? found->get() : nullptr;
 }
 
-void Space::create_world() {
+void Space::create_world(jobs::Pool& pool) {
     b2WorldDef def = b2DefaultWorldDef();
     def.gravity = to_b2(settings_.gravity_vector * settings_.gravity);
     def.frictionCallback = combine_friction;
     def.restitutionCallback = combine_bounce;
+    // On the job system's threads and the one stepping the world, which Box2D steps the same
+    // with any number of them.
+    if (pool.thread_count() > 0) {
+        tasks_.pool = &pool;
+        def.workerCount = pool.thread_count() + 1;
+        def.enqueueTask = enqueue_task;
+        def.finishTask = finish_task;
+        def.userTaskContext = &tasks_;
+    }
     world_ = b2CreateWorld(&def);
     b2World_SetCustomFilterCallback(world_, should_collide, nullptr);
     b2World_SetPreSolveCallback(world_, pre_solve, nullptr);
@@ -996,7 +1032,7 @@ void Space::sync(world::World& world, const world::Tree2D& tree) {
                 registry)) {
             return;
         }
-        create_world();
+        create_world(world.pool());
     }
     remove_stale(world);
     // New bodies are made in the same order on every machine: by kind, then in each
@@ -1432,6 +1468,7 @@ void Space::step(world::World& world, float seconds) {
     impulses_.clear();
 
     b2World_Step(world_, seconds, kSubSteps);
+    tasks_.groups.clear();
     for (const Body* body : carriers) {
         b2Body_SetTransform(body->id, to_b2(body->position), b2MakeRot(body->rotation));
     }

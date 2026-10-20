@@ -1,9 +1,12 @@
+#include "slash/core/jobs.hpp"
 #include "slash/core/json.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/world.hpp"
 
 #include <doctest/doctest.h>
 
+#include <algorithm>
+#include <cstddef>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -11,6 +14,20 @@
 
 using slash::world::ComponentRegistry;
 using slash::world::World;
+
+namespace stage_test {
+
+struct Heat {
+    float value = 0.0F;
+};
+SLASH_COMPONENT(Heat, value)
+
+struct Charge {
+    float value = 0.0F;
+};
+SLASH_COMPONENT(Charge, value)
+
+} // namespace stage_test
 
 TEST_CASE("entities are created and found by stable ID") {
     const ComponentRegistry registry;
@@ -189,4 +206,126 @@ TEST_CASE("reset_state forgets what systems keep, and the step listener hears ea
     world.set_step_listener({});
     world.step(0.5);
     CHECK(heard.size() == 2);
+}
+
+TEST_CASE("deferred calls run after the system that made them, and at once outside systems") {
+    const ComponentRegistry registry;
+    World world(registry);
+    std::vector<std::string> calls;
+    world.add_system("first", [&](World& w, double /*dt*/) {
+        w.defer([&](World& later) {
+            calls.push_back("deferred " + std::to_string(later.size()));
+            later.defer([&](World& /*again*/) { calls.emplace_back("deferred again"); });
+            REQUIRE(later.create("made").ok());
+        });
+        calls.emplace_back("first");
+    });
+    world.add_system("second", [&](World& w, double /*dt*/) {
+        calls.push_back("second " + std::to_string(w.size()));
+    });
+    world.step(0.5);
+    CHECK(calls == std::vector<std::string>{"first", "deferred 0", "deferred again", "second 1"});
+    world.defer([&](World& /*w*/) { calls.emplace_back("now"); });
+    CHECK(calls.back() == "now");
+}
+
+TEST_CASE("threaded systems next to each other share a stage unless they clash") {
+    const ComponentRegistry registry;
+    World world(registry);
+    const auto none = [](World& /*w*/, double /*dt*/) {};
+    world.add_system("a", none,
+                     {.priority = 1, .threaded = true, .reads = {"Heat"}, .writes = {"Charge"}});
+    // Reading what another reads is no clash.
+    world.add_system("b", none, {.priority = 2, .threaded = true, .reads = {"Heat"}});
+    // a writes what c reads.
+    world.add_system("c", none, {.priority = 3, .threaded = true, .reads = {"Charge"}});
+    world.add_system("d", none, {.priority = 4});
+    // A system that isn't threaded runs alone, so e starts a stage; f writes other state.
+    world.add_system("e", none, {.priority = 5, .threaded = true, .writes = {"Heat"}});
+    world.add_system("f", none, {.priority = 6, .threaded = true, .writes = {"assets"}});
+    std::vector<std::string> stages;
+    for (const slash::world::SystemInfo& system : world.systems()) {
+        stages.push_back(std::string(system.name) + " " + std::to_string(system.stage) +
+                         (system.threaded ? " threaded" : ""));
+    }
+    CHECK(stages == std::vector<std::string>{"a 0 threaded", "b 0 threaded", "c 1 threaded", "d 2",
+                                             "e 3 threaded", "f 3 threaded"});
+    REQUIRE(world.remove_system("c"));
+    CHECK(world.systems()[2].name == "d");
+    CHECK(world.systems()[2].stage == 1);
+}
+
+namespace {
+
+// Ticks of threaded work that writes components, emits events and makes an entity, as one
+// line per event and the components after.
+std::vector<std::string> run_threaded(int threads) {
+    ComponentRegistry registry;
+    registry.add<stage_test::Heat>();
+    registry.add<stage_test::Charge>();
+    slash::jobs::Pool pool(threads);
+    World world(registry);
+    world.set_pool(pool);
+    std::vector<std::string> lines;
+    world.set_event_listener([&](const slash::world::Event& event) {
+        lines.push_back(std::to_string(event.tick) + " " + event.kind +
+                        (event.id.empty() ? "" : " " + event.id));
+    });
+    for (int i = 0; i < 20; ++i) {
+        const entt::entity entity = world.create("e" + std::to_string(i)).value();
+        world.ecs().emplace<stage_test::Heat>(entity, static_cast<float>(i));
+        world.ecs().emplace<stage_test::Charge>(entity);
+    }
+    world.add_system("warm",
+                     [](World& w, double /*dt*/) {
+                         for (auto [entity, heat] : w.ecs().view<stage_test::Heat>().each()) {
+                             heat.value += 1.5F;
+                             if (heat.value > 25.0F && heat.value <= 26.5F) {
+                                 w.emit("hot", w.id_of(entity));
+                             }
+                         }
+                         if (w.tick() == 4) {
+                             w.defer([](World& later) { REQUIRE(later.create("spark").ok()); });
+                         }
+                     },
+                     {.threaded = true, .writes = {"Heat"}});
+    world.add_system("charge",
+                     [](World& w, double /*dt*/) {
+                         auto view = w.ecs().view<stage_test::Charge>();
+                         const std::vector<entt::entity> entities(view.begin(), view.end());
+                         w.pool().parallel_for(entities.size(), [&](std::size_t i) {
+                             w.ecs().get<stage_test::Charge>(entities[i]).value +=
+                                 static_cast<float>(i);
+                         });
+                         w.emit("charged");
+                     },
+                     {.threaded = true, .writes = {"Charge"}});
+    world.add_system("count", [&lines](World& w, double /*dt*/) {
+        lines.push_back(std::to_string(w.tick()) + " count " + std::to_string(w.size()));
+    });
+    for (int i = 0; i < 5; ++i) {
+        world.step(0.5);
+    }
+    for (auto [entity, heat, charge] :
+         world.ecs().view<stage_test::Heat, stage_test::Charge>().each()) {
+        lines.push_back(std::string(world.id_of(entity)) + " " + std::to_string(heat.value) + " " +
+                        std::to_string(charge.value));
+    }
+    return lines;
+}
+
+} // namespace
+
+TEST_CASE("threaded systems run the same ticks with any number of threads") {
+    const std::vector<std::string> alone = run_threaded(0);
+    CHECK(run_threaded(1) == alone);
+    CHECK(run_threaded(3) == alone);
+    // A stage's events and deferred calls go out in system order once it is done: warm's, then
+    // the entity it made, then charge's.
+    const auto spark = std::ranges::find(alone, "4 entity.created spark");
+    REQUIRE(spark - alone.begin() >= 2);
+    REQUIRE(alone.end() - spark >= 3);
+    const std::vector<std::string> tick_four(spark - 2, spark + 3);
+    CHECK(tick_four == std::vector<std::string>{"4 hot e19", "4 hot e18", "4 entity.created spark",
+                                                "4 charged", "4 count 21"});
 }
