@@ -249,6 +249,14 @@ backend. The exported game's test run reports the backends it started with as
 `test.services`. [examples/sdk-package](../../examples/sdk-package/) glues one analytics
 backend in each language.
 
+The `register` function can add other things a vendor's SDK gives the engine too. An upscaler
+(a vendor's library such as DLSS or XeSS) is a `render::Upscaler` added with
+`render::add_upscaler` ([slash/render/upscaler.hpp](../../engine/render/include/slash/render/upscaler.hpp)),
+with a `supports` function that says which GPUs it runs on, and the game names it in
+[`rendering.scaling.upscaler`](project-format.md#render-scale). The renderer picks it up from the
+next frame and uses the scaling `mode` wherever it doesn't run. Temporal upscalers need the 3D
+renderer's depth and motion vectors, so `add_upscaler` refuses them until it exists.
+
 ## In project.json and presets
 
 ```json

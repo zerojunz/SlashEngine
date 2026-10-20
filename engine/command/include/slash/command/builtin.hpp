@@ -13,6 +13,10 @@ namespace slash::render {
 class RenderDevice;
 } // namespace slash::render
 
+namespace slash::canvas {
+class CanvasRenderer;
+} // namespace slash::canvas
+
 namespace slash::command {
 
 class Session;
@@ -37,16 +41,18 @@ void register_builtin_commands(Registry& registry);
 // Session::playing() is true, such as slash-cli run --serve.
 void register_run_commands(Registry& registry);
 
-// The parts of a running game that the display and perf commands reach. All three must outlive
-// the registry's use.
+// The parts of a running game that the display and perf commands reach. They must outlive the
+// registry's use; the first three are required.
 struct LiveGame {
     platform::Platform* platform = nullptr;
     platform::Loop* loop = nullptr;
     render::RenderDevice* renderer = nullptr;
+    // What draws the game's frames, for the upscaler and render size in effect.
+    const canvas::CanvasRenderer* canvas = nullptr;
 };
 
-// Adds display.list (displays and refresh rates), display.set (V-Sync and the frame cap) and
-// perf.stats (frame pacing) for a running game.
+// Adds display.list (displays and refresh rates), display.set (V-Sync, the frame cap and the
+// render scale) and perf.stats (frame pacing) for a running game.
 void register_live_commands(Registry& registry, const LiveGame& game);
 
 // Opens a scene file if it exists, or else starts an empty scene that scene.save will write

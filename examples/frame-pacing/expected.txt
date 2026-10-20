@@ -1,7 +1,7 @@
 display.list {}
-  -> {"displays":[],"max_fps":60,"vsync_mode":"enabled"}
+  -> {"displays":[],"max_fps":60,"scaling":{"fsr_sharpness":0.2,"mode":"bilinear","scale":1.0},"vsync_mode":"enabled"}
 display.set {"vsync_mode": "mailbox", "max_fps": 120}
-  -> {"max_fps":120,"vsync_mode":"mailbox"}
+  -> {"max_fps":120,"scaling":{"fsr_sharpness":0.2,"mode":"bilinear","scale":1.0},"vsync_mode":"mailbox"}
 display.set {"max_fps": 5000}
   -> error: /max_fps: must be at most 1000, got 5000
 perf.stats {}

@@ -1351,14 +1351,18 @@ TEST_CASE("a running game lists displays, changes V-Sync and the frame cap, and 
         {.platform = &platform.value(), .loop = &loop.value(), .renderer = renderer.get()});
 
     // Headless runs have no displays.
+    // The render scale is project.json's rendering.scaling; see tests/test_render_scale.cpp.
+    const std::string_view scaling =
+        R"("scaling": {"fsr_sharpness": 0.2, "mode": "bilinear", "scale": 1.0})";
     CHECK(engine.ok("display.list") ==
-          parse(R"({"displays": [], "max_fps": 0, "vsync_mode": "enabled"})"));
+          parse(R"({"displays": [], "max_fps": 0, "vsync_mode": "enabled", )" +
+                std::string(scaling) + "}"));
     CHECK(engine.ok("display.set", R"({"vsync_mode": "mailbox", "max_fps": 120})") ==
-          parse(R"({"max_fps": 120, "vsync_mode": "mailbox"})"));
+          parse(R"({"max_fps": 120, "vsync_mode": "mailbox", )" + std::string(scaling) + "}"));
     CHECK(loop.value().max_fps() == 120);
     CHECK(renderer->vsync() == slash::render::VsyncMode::Mailbox);
     CHECK(engine.ok("display.set", R"({"max_fps": 0})") ==
-          parse(R"({"max_fps": 0, "vsync_mode": "mailbox"})"));
+          parse(R"({"max_fps": 0, "vsync_mode": "mailbox", )" + std::string(scaling) + "}"));
     command::Reply bad =
         engine.fails("display.set", R"({"max_fps": 1001})", command::code::kInvalidParams);
     CHECK(contains(bad.message, "/max_fps"));

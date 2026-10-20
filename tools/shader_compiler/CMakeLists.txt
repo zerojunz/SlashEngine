@@ -22,3 +22,18 @@ target_link_libraries(slash_shader_compiler
     PRIVATE glslang::glslang glslang::glslang-default-resource-limits glslang::SPIRV
             spirv-cross-core spirv-cross-glsl spirv-cross-msl)
 slash_target_warnings(slash_shader_compiler)
+
+# Compiles the canvas shaders the engine builds in, written as a game's are, into a header
+# engine/render commits (src/shader_header.cpp). The shaders target runs it, beside the HLSL
+# shaders' own compiles, and tests/test_render.cpp checks the header against the shaders.
+add_executable(slash-shader-header src/shader_header.cpp)
+target_link_libraries(slash-shader-header PRIVATE slash::platform slash::shader_compiler)
+slash_target_warnings(slash-shader-header)
+add_custom_target(fsr_shaders
+    COMMAND slash-shader-header ${PROJECT_SOURCE_DIR}
+        ${PROJECT_SOURCE_DIR}/engine/render/src/fsr_shaders.hpp slash::render::shaders
+        fsr_easu=engine/render/shaders/fsr_easu.hlsl
+        fsr_rcas=engine/render/shaders/fsr_rcas.hlsl:sharpness/1/0
+    COMMENT "Compiling the FSR shaders"
+    VERBATIM)
+add_dependencies(shaders fsr_shaders)

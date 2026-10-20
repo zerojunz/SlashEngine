@@ -149,7 +149,8 @@ Game::Game(Project project, platform::Platform platform, const std::string& data
                                   .texture_filter = project_.texture_filter == "nearest"
                                                         ? render::Filter::Nearest
                                                         : render::Filter::Linear,
-                                  .tick_seconds = 1.0 / project_.tick_hz});
+                                  .tick_seconds = 1.0 / project_.tick_hz,
+                                  .scaling = project_.scaling});
     ui::set_settings(world_, {.viewport = {static_cast<float>(project_.window_width),
                                            static_cast<float>(project_.window_height)},
                               .theme = project_.gui_theme,
@@ -227,6 +228,9 @@ void Game::draw() {
     // World pixels are the window's screen coordinates, on high-density displays too.
     options.width = static_cast<float>(window.width);
     options.height = static_cast<float>(window.height);
+    // The render scale scales the window's pixels.
+    options.pixel_width = static_cast<std::uint32_t>(window.pixel_width);
+    options.pixel_height = static_cast<std::uint32_t>(window.pixel_height);
     // Headless frames run one tick each, so there is nothing between ticks to draw.
     options.interpolation =
         project_.interpolation && !platform_.headless() ? loop_->interpolation() : 1.0;
