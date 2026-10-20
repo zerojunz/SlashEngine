@@ -1,6 +1,7 @@
 #include "slash/core/jobs.hpp"
 #include "slash/core/json.hpp"
 #include "slash/world/component_registry.hpp"
+#include "slash/world/serialize.hpp"
 #include "slash/world/world.hpp"
 
 #include <doctest/doctest.h>
@@ -8,6 +9,8 @@
 #include <algorithm>
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
+#include <map>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -29,6 +32,17 @@ struct Charge {
 SLASH_COMPONENT(Charge, value)
 
 } // namespace stage_test
+
+namespace memory_test {
+
+struct Bag {
+    std::vector<std::string> items;
+    std::map<std::string, int> counts;
+    std::string label;
+};
+SLASH_COMPONENT(Bag, items, counts, label)
+
+} // namespace memory_test
 
 TEST_CASE("entities are created and found by stable ID") {
     const ComponentRegistry registry;
@@ -395,4 +409,105 @@ TEST_CASE("the world times each tick and system over the last 120 ticks") {
     const slash::world::Timing tick = world.tick_timing();
     CHECK(tick.avg_ms >= busy.avg_ms + 0.4);
     CHECK(tick.max_ms >= tick.avg_ms);
+}
+
+namespace {
+
+const slash::world::MemoryPart* part_named(const std::vector<slash::world::MemoryPart>& parts,
+                                           std::string_view name) {
+    const auto found = std::ranges::find(parts, name, &slash::world::MemoryPart::name);
+    return found != parts.end() ? &*found : nullptr;
+}
+
+} // namespace
+
+TEST_CASE("heap_bytes counts what values hold beyond their own size") {
+    using slash::world::heap_bytes;
+    const std::string long_text(100, 'x');
+    CHECK(heap_bytes(std::string("hi")) == 0);
+    CHECK(heap_bytes(long_text) > long_text.size());
+    std::vector<int> numbers;
+    numbers.reserve(50);
+    CHECK(heap_bytes(numbers) == numbers.capacity() * sizeof(int));
+    // Each long string's buffer, on top of the vector's.
+    const std::vector<std::string> strings(3, long_text);
+    CHECK(heap_bytes(strings) >= (strings.capacity() * sizeof(std::string)) + (3 * 100));
+    const memory_test::Bag bag{.items = strings, .counts = {{"apples", 2}}, .label = long_text};
+    CHECK(heap_bytes(bag) > heap_bytes(strings) + heap_bytes(long_text));
+    CHECK(slash::json::heap_bytes(slash::json::parse(R"({"a": [1, 2, 3]})").value()) > 0);
+    CHECK(slash::json::heap_bytes(slash::json::Value(3)) == 0);
+}
+
+TEST_CASE("the world reports what it holds in memory, the largest part first") {
+    ComponentRegistry registry;
+    registry.add<memory_test::Bag>();
+    registry.add<stage_test::Heat>();
+    registry.add_stand_in("Ghost", {"note"});
+    World world(registry);
+
+    std::vector<slash::world::MemoryPart> parts = world.memory();
+    REQUIRE(part_named(parts, "world") != nullptr);
+    REQUIRE(part_named(parts, "components") != nullptr);
+    CHECK(part_named(parts, "components")->items.empty());
+
+    const std::string long_text(200, 'y');
+    for (int i = 0; i < 100; ++i) {
+        const entt::entity entity = world.create("bag" + std::to_string(i)).value();
+        world.ecs().emplace<memory_test::Bag>(entity).items.assign(4, long_text);
+        if (i < 10) {
+            world.ecs().emplace<stage_test::Heat>(entity);
+        }
+    }
+    std::string path;
+    REQUIRE(
+        registry.find("Ghost")
+            ->assign(world, world.find("bag0"), slash::json::parse(R"({"note": 1})").value(), path)
+            .ok());
+    parts = world.memory();
+    const slash::world::MemoryPart* own = part_named(parts, "world");
+    CHECK(own->counts.at("entities") == 100);
+    CHECK(own->bytes > 0);
+    const slash::world::MemoryPart* components = part_named(parts, "components");
+    CHECK(components->counts.at("types") == 3);
+    CHECK(components->counts.at("components") == 111);
+    REQUIRE(components->items.size() == 3);
+    // The largest first: each bag holds four strings of 200 characters.
+    const slash::world::MemoryItem& bags = components->items.front();
+    CHECK(bags.name == "Bag");
+    CHECK(bags.count == 100);
+    CHECK(bags.bytes >= 100 * ((4 * 200) + sizeof(memory_test::Bag)));
+    CHECK(components->items[1].bytes >= components->items[2].bytes);
+    std::uint64_t sum = 0;
+    for (const slash::world::MemoryItem& item : components->items) {
+        sum += item.bytes;
+    }
+    CHECK(components->bytes == sum);
+
+    // A bag that grows shows in its type's bytes.
+    const std::uint64_t before = bags.bytes;
+    world.ecs().get<memory_test::Bag>(world.find("bag1")).items.assign(1000, long_text);
+    parts = world.memory();
+    CHECK(part_named(parts, "components")->items.front().bytes >= before + (996 * 200));
+
+    // A source adds a part under its name, replaced by a source of the same name.
+    world.add_memory_source("cache", [](const World& /*world*/) {
+        return slash::world::MemoryPart{"ignored", std::uint64_t{1} << 40, {{"entries", 3}}, {}};
+    });
+    world.add_memory_source("small", [](const World& /*world*/) {
+        return slash::world::MemoryPart{"small", 1, {}, {{"a", 1, 1}, {"b", 9, 1}}};
+    });
+    parts = world.memory();
+    CHECK(parts.front().name == "cache");
+    CHECK(parts.front().counts.at("entries") == 3);
+    for (std::size_t i = 1; i < parts.size(); ++i) {
+        CHECK(parts[i].bytes <= parts[i - 1].bytes);
+    }
+    // Items come largest first too.
+    CHECK(part_named(parts, "small")->items.front().name == "b");
+    world.add_memory_source("cache", [](const World& /*world*/) {
+        return slash::world::MemoryPart{"cache", 2, {}, {}};
+    });
+    parts = world.memory();
+    CHECK(std::ranges::count(parts, std::string("cache"), &slash::world::MemoryPart::name) == 1);
+    CHECK(part_named(parts, "cache")->bytes == 2);
 }

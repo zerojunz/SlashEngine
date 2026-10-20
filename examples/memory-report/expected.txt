@@ -1,0 +1,5 @@
+perf.stats {"memory": true} reports 8 parts: assets, audio, components, cpu_particles_2d, gpu_particles_2d, physics2d, text, world
+  and the process's, whose peak is at least what it uses now: yes
+over 600 ticks, the part that grew the most: components
+  and its item that grew the most: Trail
+with trails capped at 32 points, components stay the same size: yes

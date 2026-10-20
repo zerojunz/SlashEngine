@@ -75,6 +75,20 @@ void ComponentType::assure(World& world) const {
     ops_.assure(world.ecs(), type_hash_);
 }
 
+MemoryItem ComponentType::memory(const World& world) const {
+    MemoryItem item{name_, 0, 0};
+    const entt::registry& registry = world.ecs();
+    const entt::sparse_set* set = registry.storage(type_hash_);
+    if (set == nullptr) {
+        return item;
+    }
+    // The entity list and its index; a storage's capacity() is that of its pages.
+    item.count = set->size();
+    item.bytes = ((set->entt::sparse_set::capacity() + set->extent()) * sizeof(entt::entity)) +
+                 ops_.bytes(registry, type_hash_);
+    return item;
+}
+
 json::Value ComponentType::get(const World& world, entt::entity entity) const {
     SLASH_ASSERT(has(world, entity), "get() called for an entity without this component");
     return ops_.save(world, type_hash_, entity);
@@ -202,6 +216,17 @@ ComponentType& ComponentRegistry::add_stand_in(std::string name, std::vector<std
             [](entt::registry& registry, entt::id_type type) {
                 static_cast<void>(registry.storage<StandInValue>(type));
             },
+        .bytes = [](const entt::registry& registry, entt::id_type type) -> std::size_t {
+            const auto* storage = registry.storage<StandInValue>(type);
+            if (storage == nullptr) {
+                return 0;
+            }
+            std::size_t bytes = storage->capacity() * sizeof(StandInValue);
+            for (const StandInValue& value : *storage) {
+                bytes += json::heap_bytes(value.fields);
+            }
+            return bytes;
+        },
     };
     const entt::id_type hash = entt::hashed_string::value(name.data(), name.size());
     // A named value rather than a temporary: GCC 13 warns that the temporary's variant may be

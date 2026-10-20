@@ -27,6 +27,25 @@ struct SystemRun {
 
 namespace {
 
+// What a storage's entity list and its index take; a storage's capacity() is that of its pages.
+std::size_t set_bytes(const entt::sparse_set& set) {
+    return (set.entt::sparse_set::capacity() + set.extent()) * sizeof(entt::entity);
+}
+
+std::size_t event_bytes(const std::vector<Event>& events) {
+    std::size_t bytes = events.capacity() * sizeof(Event);
+    for (const Event& event : events) {
+        bytes += json::heap_bytes(event.kind) + json::heap_bytes(event.id) +
+                 json::heap_bytes(event.data);
+    }
+    return bytes;
+}
+
+void sort_largest_first(std::vector<MemoryItem>& items) {
+    std::ranges::stable_sort(
+        items, [](const MemoryItem& a, const MemoryItem& b) { return a.bytes > b.bytes; });
+}
+
 // The system the current thread runs, if any.
 struct Running {
     const World* world = nullptr;
@@ -379,6 +398,68 @@ void World::reset_state() {
     }
     events_.clear();
     next_events_.clear();
+}
+
+std::vector<MemoryPart> World::memory() const {
+    MemoryPart own{"world", 0, {}, {}};
+    if (const auto* entities = registry_.storage<entt::entity>(); entities != nullptr) {
+        own.bytes += set_bytes(*entities);
+    }
+    if (const auto* ids = registry_.storage<EntityId>(); ids != nullptr) {
+        own.bytes += set_bytes(*ids) + (ids->capacity() * sizeof(EntityId));
+        for (const EntityId& id : *ids) {
+            own.bytes += json::heap_bytes(id.value);
+        }
+    }
+    for (const auto& [id, entity] : by_id_) {
+        own.bytes += kMapNodeBytes<decltype(by_id_)> + json::heap_bytes(id);
+    }
+    if (const auto* links = registry_.storage<PrefabLink>(); links != nullptr) {
+        own.bytes += set_bytes(*links) + (links->capacity() * sizeof(PrefabLink));
+        for (const PrefabLink& link : *links) {
+            own.bytes += json::heap_bytes(link.path);
+        }
+    }
+    for (const auto& [path, prefab] : prefabs_) {
+        own.bytes += kMapNodeBytes<decltype(prefabs_)> + json::heap_bytes(path) +
+                     sizeof(json::Value) + json::heap_bytes(*prefab);
+    }
+    own.bytes += event_bytes(events_) + event_bytes(next_events_);
+    own.counts = {{"entities", by_id_.size()},
+                  {"events", events_.size() + next_events_.size()},
+                  {"prefabs", prefabs_.size()}};
+
+    MemoryPart components{"components", 0, {}, {}};
+    for (const auto& type : components_->types()) {
+        MemoryItem item = type->memory(*this);
+        if (item.count == 0 && item.bytes == 0) {
+            continue;
+        }
+        components.bytes += item.bytes;
+        components.counts["components"] += item.count;
+        components.items.push_back(std::move(item));
+    }
+    components.counts["types"] = components.items.size();
+    sort_largest_first(components.items);
+
+    std::vector<MemoryPart> parts;
+    parts.reserve(memory_sources_.size() + 2);
+    parts.push_back(std::move(own));
+    parts.push_back(std::move(components));
+    for (const auto& [name, source] : memory_sources_) {
+        MemoryPart part = source(*this);
+        part.name = name;
+        sort_largest_first(part.items);
+        parts.push_back(std::move(part));
+    }
+    std::ranges::stable_sort(
+        parts, [](const MemoryPart& a, const MemoryPart& b) { return a.bytes > b.bytes; });
+    return parts;
+}
+
+void World::add_memory_source(std::string name, MemorySource source) {
+    SLASH_ASSERT(name != "world" && name != "components", "memory source names must be new");
+    memory_sources_.insert_or_assign(std::move(name), std::move(source));
 }
 
 void World::set_event_queues(EventQueues queues) {

@@ -803,6 +803,9 @@ Reply asset_list(Session& session, const json::Value& params) {
             refs = it != instances.end() ? it->second : 0;
         }
         item["refs"] = refs;
+        if (info.bytes > 0) {
+            item["bytes"] = static_cast<std::int64_t>(info.bytes);
+        }
         assets.push_back(std::move(item));
     }
     json::Value result;
@@ -4941,7 +4944,8 @@ void register_builtin_commands(Registry& registry) {
     registry.add({
         .name = "asset.list",
         .description = "Lists loaded assets and the prefab files entities extend, with each one's "
-                       "type, version (one more per reload) and refs (handles, or instances).",
+                       "type, version (one more per reload), refs (handles, or instances) and "
+                       "bytes held in memory.",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema({{"type", property("string", "Only assets of this type, e.g. "

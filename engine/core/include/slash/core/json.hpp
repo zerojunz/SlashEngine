@@ -130,4 +130,11 @@ enum class Style : std::uint8_t {
 // The key a JSON Pointer's first segment names, unescaped: "armor" for "/armor/0". "" for "".
 [[nodiscard]] std::string pointer_first_key(std::string_view pointer);
 
+// The bytes a value holds on the heap beyond its own size: strings too long to keep inline,
+// arrays and objects with their items. Memory reports count with it; an estimate, as an
+// object's nodes are counted at their usual size.
+[[nodiscard]] std::size_t heap_bytes(const Value& value);
+// The same for a string: its buffer, if it is too long to keep inline.
+[[nodiscard]] std::size_t heap_bytes(const std::string& text);
+
 } // namespace slash::json

@@ -41,7 +41,12 @@ struct FileSource {
 namespace detail {
 
 using Value = std::shared_ptr<const void>;
-using Loader = std::function<Result<Value>(std::string_view text, std::string_view path)>;
+
+struct Loaded {
+    Value value;
+    std::size_t bytes = 0; // what it holds in memory
+};
+using Loader = std::function<Result<Loaded>(std::string_view text, std::string_view path)>;
 
 struct Record {
     std::string path;
@@ -49,6 +54,7 @@ struct Record {
     Value value;
     std::uint64_t version = 1;
     std::optional<FileStamp> stamp;
+    std::size_t bytes = 0;
 };
 
 } // namespace detail
@@ -88,18 +94,23 @@ public:
 
     // Registers an asset type: files ending in one of the suffixes load with load. The longest
     // matching suffix wins, so ".scene.json" can have its own type beside ".json". Registering a
-    // name again replaces that type, so modules that share one can each register it.
+    // name again replaces that type, so modules that share one can each register it. bytes says
+    // what a loaded asset holds in memory, for list() and perf.stats; without it, its file's size
+    // stands in.
     template <typename T>
     void add_type(std::string name, std::vector<std::string> suffixes,
-                  std::function<Result<T>(std::string_view text, std::string_view path)> load) {
-        detail::Loader loader =
-            [load = std::move(load)](std::string_view text,
-                                     std::string_view path) -> Result<detail::Value> {
+                  std::function<Result<T>(std::string_view text, std::string_view path)> load,
+                  std::function<std::size_t(const T& asset)> bytes = {}) {
+        detail::Loader loader = [load = std::move(load), bytes = std::move(bytes)](
+                                    std::string_view text,
+                                    std::string_view path) -> Result<detail::Loaded> {
             auto loaded = load(text, path);
             if (!loaded) {
                 return loaded.error();
             }
-            return detail::Value(std::make_shared<const T>(std::move(loaded).value()));
+            auto value = std::make_shared<const T>(std::move(loaded).value());
+            const std::size_t size = bytes ? bytes(*value) : text.size();
+            return detail::Loaded{std::move(value), size};
         };
         const entt::id_type id = entt::type_hash<T>::value();
         add_loader(std::move(name), id, std::move(suffixes), std::move(loader));
@@ -135,6 +146,8 @@ public:
         std::string type;
         std::size_t refs = 0; // live handles; 0 for watched files
         std::uint64_t version = 0;
+        // What it holds in memory, as its type counts it (add_type); 0 for watched files.
+        std::size_t bytes = 0;
     };
     // Every loaded asset and watched file, by path.
     [[nodiscard]] std::vector<Info> list() const;
