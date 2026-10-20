@@ -328,6 +328,21 @@ struct GpuParticleSystem {
         }
         std::erase_if(emitters, [&](const auto& entry) { return !seen.contains(entry.first); });
     }
+
+    // The steps kept to replay; the particles themselves are on the GPU.
+    [[nodiscard]] world::MemoryPart memory() const {
+        world::MemoryPart part{"gpu_particles_2d", 0, {}, {}};
+        std::uint64_t amount = 0;
+        std::uint64_t steps = 0;
+        for (const auto& [key, emitter] : emitters) {
+            part.bytes += world::kMapNodeBytes<decltype(emitters)> + json::heap_bytes(key) +
+                          (emitter.steps.capacity() * sizeof(render::ParticleStep));
+            amount += emitter.amount;
+            steps += emitter.kept().size();
+        }
+        part.counts = {{"emitters", emitters.size()}, {"particles", amount}, {"steps", steps}};
+        return part;
+    }
 };
 
 } // namespace
@@ -355,6 +370,8 @@ void add_gpu_particles_system(world::World& world) {
     auto system = std::make_shared<GpuParticleSystem>();
     world.ecs().ctx().emplace<std::shared_ptr<GpuParticleSystem>>(system);
     world.add_reset([system](world::World& /*world*/) { system->emitters.clear(); });
+    world.add_memory_source("gpu_particles_2d",
+                            [system](const world::World& /*world*/) { return system->memory(); });
     world.add_system(
         "gpu_particles_2d",
         [system](world::World& w, double tick_seconds) { system->run_all(w, tick_seconds); },

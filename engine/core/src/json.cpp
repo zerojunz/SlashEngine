@@ -412,4 +412,30 @@ std::string pointer_first_key(std::string_view pointer) {
     return out;
 }
 
+std::size_t heap_bytes(const std::string& text) {
+    static const std::size_t kInline = std::string().capacity();
+    return text.capacity() > kInline ? text.capacity() + 1 : 0;
+}
+
+std::size_t heap_bytes(const Value& value) {
+    if (value.is_string()) {
+        return heap_bytes(value.as_string());
+    }
+    std::size_t bytes = 0;
+    if (value.is_array()) {
+        const Array& items = value.as_array();
+        bytes += items.capacity() * sizeof(Value);
+        for (const Value& item : items) {
+            bytes += heap_bytes(item);
+        }
+    } else if (value.is_object()) {
+        // A tree node: its color and three links, then the key and value.
+        constexpr std::size_t kNode = (4 * sizeof(void*)) + sizeof(Object::value_type);
+        for (const auto& [key, member] : value.as_object()) {
+            bytes += kNode + heap_bytes(key) + heap_bytes(member);
+        }
+    }
+    return bytes;
+}
+
 } // namespace slash::json

@@ -168,6 +168,7 @@ void check_refusals(RenderDevice& device) {
     device.destroy_texture(plain.value());
     CHECK(error_of(device.update_texture(plain.value(), {})) == "no texture 1");
     CHECK(device.stats().textures == 1);
+    CHECK(device.stats().texture_bytes == slash::render::texture_bytes(target_desc(4)));
 }
 
 // A program that runs one op on the pixel's texture coordinate (u, v, u, v), a constant and the
@@ -495,6 +496,7 @@ TEST_CASE("the null device keeps textures, counts batched draws and reads back i
     CHECK(stats.draws == 2); // the two untextured draws share one
     CHECK(stats.triangles == 6);
     CHECK(stats.textures == 2);
+    CHECK(stats.texture_bytes == 4 + 16); // 1x1 and 2x2, RGBA
 }
 
 TEST_CASE("the null device refuses mistakes") {

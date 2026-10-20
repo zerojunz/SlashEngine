@@ -113,6 +113,29 @@ struct SystemInfo {
     Timing timing;
 };
 
+// Part of what a part of the engine holds in memory, such as one component type's storage.
+struct MemoryItem {
+    std::string name;
+    std::uint64_t bytes = 0;
+    std::uint64_t count = 0; // the things it holds, such as components
+};
+
+// What a part of the engine holds in memory for a world, as perf.stats' memory report lists it.
+// Bytes are what the part allocated on the CPU, counted from its containers' capacities, so
+// they are close to what the allocator handed out but not exactly it.
+struct MemoryPart {
+    std::string name;
+    std::uint64_t bytes = 0;
+    std::map<std::string, std::uint64_t, std::less<>> counts; // what it holds: {"bodies", 12}
+    std::vector<MemoryItem> items; // what the bytes are made of, largest first, where it says
+};
+using MemorySource = std::function<MemoryPart(const World& world)>;
+
+// What a std::map holds for each entry, for memory sources to count with: its tree node's color
+// and three links, then the entry itself.
+template <typename Map>
+inline constexpr std::size_t kMapNodeBytes = (4 * sizeof(void*)) + sizeof(typename Map::value_type);
+
 // The simulation state: an EnTT registry plus stable entity IDs and an ordered list of systems.
 // Game code reads and writes components through ecs(); entities should be created through
 // create() so they get an ID and are saved with the scene.
@@ -199,6 +222,14 @@ public:
     // when they install.
     void add_reset(std::function<void(World&)> reset);
     void reset_state();
+
+    // What the world holds in memory, the largest part first: "world" (entity IDs, event queues
+    // and cached prefabs), "components" (each type's storage with what its fields hold on the
+    // heap, as items) and a part from each memory source. Modules that keep state outside
+    // components add a source when they install, as Godot's Performance.add_custom_monitor.
+    [[nodiscard]] std::vector<MemoryPart> memory() const;
+    // Adds a part to memory(), named name, or replaces the source of that name.
+    void add_memory_source(std::string name, MemorySource source);
 
     // The counters a saved scene leaves out. Sessions put them back when they roll back a failed
     // command or a dry run, so the next generated ID and tick are the same as if it never ran.
@@ -301,6 +332,7 @@ private:
     std::vector<Stage> stages_;
     Samples tick_samples_;
     std::vector<std::function<void(World&)>> resets_;
+    std::map<std::string, MemorySource, std::less<>> memory_sources_;
     StepListener step_listener_;
     EventListener listener_;
     FileReader reader_;

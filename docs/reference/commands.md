@@ -369,9 +369,11 @@ Saving an entity to the prefab it extends fails, since the prefab would extend i
 
 Lists loaded assets and the prefab files entities extend. `version` is 1 when a file is first
 loaded and one more each time it reloads; `refs` counts the handles to an asset, or the entities
-that extend a prefab. Files reload on their own when they change (see
-[hot reload](../concepts.md#assets)), so this command is for checking what is loaded and whether
-an edit was picked up.
+that extend a prefab; `bytes` is what a loaded asset holds in memory: a texture's decoded
+pixels, a `.wav` file's samples, a JSON file's parsed values, and the file's size for types that
+don't count their own. Prefab files, which entities keep parsed, have none. Files reload on their
+own when they change (see [hot reload](../concepts.md#assets)), so this command is for checking
+what is loaded and whether an edit was picked up.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -384,7 +386,7 @@ Needs: `read`.
 ```
 
 ```json
-{"assets":[{"path":"data/tuning.json","refs":1,"type":"json","version":2},{"path":"prefabs/enemy.prefab.json","refs":3,"type":"prefab","version":1}]}
+{"assets":[{"bytes":120,"path":"data/tuning.json","refs":1,"type":"json","version":2},{"path":"prefabs/enemy.prefab.json","refs":3,"type":"prefab","version":1}]}
 ```
 
 ## Materials
@@ -2731,12 +2733,14 @@ runs.
 ### perf.stats
 
 How long the world's ticks and systems took over the last 120 ticks, in milliseconds, the slowest
-systems first. In a running game it also reports frame pacing over the last 120 frames, with the
-settings that shape it. Needs: `read`.
+systems first, and with `memory`, what each part of the engine holds in memory. In a running game
+it also reports frame pacing over the last 120 frames, with the settings that shape it, and the
+renderer's GPU textures. Needs: `read`.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `top` | integer | `10` | How many of the slowest systems to list, by average time; `0` for none |
+| `top` | integer | `10` | How many of the slowest systems to list, by average time, and of each memory part's items, by bytes; `0` for none |
+| `memory` | boolean | `false` | Also report memory in bytes: the process's and each part of the engine's |
 
 ```json
 {"top": 3}
@@ -2760,6 +2764,40 @@ times can add up to more than the tick's. Times are real time, so they vary from
 machine to machine, and a system that hasn't run yet reports zeros. For a timeline of every
 thread, build with the `tracy` preset and connect the Tracy profiler
 ([AGENTS.md](../../AGENTS.md#profiling)).
+
+With `memory`:
+
+```json
+{"memory": true, "top": 2}
+```
+
+```json
+{"memory":{"parts":[{"bytes":3528000,"counts":{"buses":1,"players":2,"streams":2},"items":[{"bytes":3528000,"count":441000,"name":"history Master"}],"name":"audio"},{"bytes":1210552,"counts":{"assets":3},"items":[{"bytes":1048624,"count":1,"name":"texture"},{"bytes":161880,"count":2,"name":"sound"}],"name":"assets"},{"bytes":95232,"counts":{"components":1242,"types":9},"items":[{"bytes":41984,"count":600,"name":"Transform2D"},{"bytes":24576,"count":600,"name":"Sprite2D"}],"name":"components"},{"bytes":30912,"counts":{"bodies":12,"contacts":4,"joints":0,"shapes":14},"name":"physics2d"},{"bytes":8448,"counts":{"entities":601,"events":2,"prefabs":0},"name":"world"},{"bytes":0,"counts":{"emitters":0,"particles":0,"slots":0},"name":"cpu_particles_2d"}],"process":{"peak":96468992,"resident":94371840}},"systems":[{"avg":0.412,"max":0.951,"name":"physics2d","stage":4},{"avg":0.031,"max":0.07,"name":"gui","stage":1}],"tick_ms":{"avg":0.598,"max":1.302}}
+```
+
+`process` is the operating system's count of the process's memory in RAM (`resident`) and the
+most it has been (`peak`): the resident set on macOS, Linux and Android, the working set on
+Windows and the WebAssembly heap on the web. `parts` are the engine's own, the largest first,
+each with its `bytes`, what it holds (`counts`) and, where it says, what the bytes are made of
+(`items`, the largest first). Bytes are counted from the containers' capacities, so they are close
+to what the allocator handed out but not exactly it, and they vary by platform.
+
+| Part | Holds |
+| --- | --- |
+| `world` | Entity IDs, the event queues and the prefabs instances share |
+| `components` | Each component type's storage and what its fields hold on the heap, one item per type |
+| `assets` | Loaded assets (see `asset.list`'s `bytes`), one item per type |
+| `physics2d` | What Box2D allocated, and its bodies, shapes, contacts and joints |
+| `audio` | Each bus's last ten seconds for `audio.capture` (an item per bus) and the mixing buffers |
+| `cpu_particles_2d`, `gpu_particles_2d` | Each emitter's particles, or the steps GPU particles replay |
+| `text` | The glyph atlas pages text draws from |
+
+A part that grows from one report to the next while the game keeps doing the same thing is the
+place to look for a leak, and its items name what grew
+([examples/memory-report](../../examples/memory-report/)). Parts keep memory they have grown
+into, as EnTT keeps a storage's pages and a vector its capacity, so bytes don't fall back when
+things go. Modules and games add parts with `World::add_memory_source`. In a running game,
+`memory.gpu` adds the renderer's textures (`textures`, and the `bytes` their texels take).
 
 `frame_ms` is the time from one frame's start to the next: a `max` far above `avg` is a hitch.
 `catch_up_frames` counts, since the game started, frames that ran more than one fixed tick

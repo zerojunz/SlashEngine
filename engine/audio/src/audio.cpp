@@ -131,6 +131,25 @@ struct State {
         device_started = false;
     }
 
+    // The buses' recent sound kept for capture, as items, and the buffers mixing uses. Sounds
+    // are assets, counted with them.
+    [[nodiscard]] world::MemoryPart memory() const {
+        world::MemoryPart part{"audio", 0, {}, {}};
+        for (std::size_t i = 0; i < history.size(); ++i) {
+            const std::uint64_t bytes = history[i].frames.capacity() * sizeof(Frame);
+            const std::string name = server != nullptr && i < server->layout().buses.size()
+                                         ? server->layout().buses[i].name
+                                         : std::to_string(i);
+            part.items.push_back({"history " + name, bytes, history[i].frames.size()});
+            part.bytes += bytes;
+        }
+        part.bytes += (out.capacity() + input_frames.capacity()) * sizeof(Frame);
+        part.counts = {{"buses", history.size()},
+                       {"players", players.size()},
+                       {"streams", streams.size() + played.size()}};
+        return part;
+    }
+
     void reset_history() {
         history.assign(server->layout().buses.size(), History{});
         const auto frames = static_cast<std::size_t>(settings.history_seconds * server->mix_rate());
@@ -797,7 +816,11 @@ Settings parse_settings(const json::Value& settings) {
 void add_asset_types(asset::Assets& assets) {
     assets.add_type<Sound>(
         "sound", {".wav", ".ogg", ".mp3"},
-        [](std::string_view text, std::string_view path) { return decode_sound(text, path); });
+        [](std::string_view text, std::string_view path) { return decode_sound(text, path); },
+        [](const Sound& sound) {
+            return sizeof(Sound) + (sound.samples.capacity() * sizeof(float)) +
+                   sound.data.capacity();
+        });
     assets.add_type<StreamFile>("audio_stream", {std::string(kStreamSuffix)},
                                 [](std::string_view text, std::string_view /*path*/) {
                                     return parse_json_file<StreamFile>(text, parse_stream_file);
@@ -833,6 +856,8 @@ void install(world::World& world, asset::Assets& assets, const Settings& setting
         state->input_loaded = {};
         state->apply_settings();
     });
+    world.add_memory_source("audio",
+                            [state](const world::World& /*world*/) { return state->memory(); });
     world.add_system(
         "audio", [state](world::World& w, double tick_seconds) { run(*state, w, tick_seconds); },
         {.doc = "Plays each AudioStreamPlayer and AudioStreamPlayer2D and mixes the tick's sound "
