@@ -159,8 +159,10 @@ the SHA-256 of their bytes (`slash/core/sha256.hpp`) with a record of how each w
 generator, model, seed, license, tags, a short description and the parent it was refined from.
 Files are written whole and moved into place (`platform::rename_file`), so agents can share a
 library. Generators are `library::Generator` adapters named in `providers.json`'s `generators`,
-as models are `ai::Provider`s; the built-in `test` generator draws placeholders with integer math
-only, so they are the same bytes everywhere. `asset.search`, `asset.generate` (an exact repeat
+as models are `ai::Provider`s: `openai-image`, `gemini-image`, `automatic1111`, `openai-speech`
+and `elevenlabs-sound` (`src/adapters.cpp`, through `ai::post_with_retries`, with images fitted
+to the size asked for by `fit_image`), and the built-in `test` generator, which draws
+placeholders with integer math only, so they are the same bytes everywhere. `asset.search`, `asset.generate` (an exact repeat
 calls no generator, close matches come back as candidates), `asset.refine`, `asset.info`,
 `asset.use` and `asset.add` are in `slash_library_commands`, registered by slash-cli and
 slash-mcp; using an asset copies it into the project and records its source and license in the

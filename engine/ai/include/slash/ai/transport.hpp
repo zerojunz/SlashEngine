@@ -19,8 +19,10 @@ namespace slash::ai {
 struct HttpRequest {
     std::string url; // scheme, host, optional port and path
     std::vector<std::pair<std::string, std::string>> headers;
-    std::string body; // JSON
+    std::string body; // JSON, unless content_type says otherwise
     int timeout_seconds = 600;
+    // Text only on the web, where the body goes to fetch() as a string.
+    std::string content_type = "application/json";
 };
 
 struct HttpResponse {
@@ -86,6 +88,27 @@ struct HttpOptions {
 // A transport that reaches nothing and fails each request with the message, for sessions that
 // may not use the network: replay files still answer what they recorded.
 [[nodiscard]] std::shared_ptr<Transport> refusing_transport(std::string message);
+
+// Statuses worth trying again: timeouts, conflicts, rate limits and overloaded servers.
+[[nodiscard]] bool retryable(int status) noexcept;
+
+// How long to wait before attempt + 1: what Retry-After says, at most a minute, or 1, 2, 4...
+// seconds.
+[[nodiscard]] std::chrono::milliseconds retry_delay(const HttpResponse& reply, int attempt);
+
+// Waits, a slice at a time so a cancel stops it. False if cancelled.
+[[nodiscard]] bool wait_for(std::chrono::milliseconds delay, const CancelFlag* cancel);
+
+// An error reply as an engine error, "<who> answered HTTP <status>: <the server's message>", its
+// code following the status.
+[[nodiscard]] Error http_error(std::string_view who, const HttpResponse& reply);
+
+// POSTs the request and returns the whole reply, trying again after a retryable status up to
+// max_retries times. A status other than 200 after that is an error naming who answered.
+[[nodiscard]] Result<HttpResponse> post_with_retries(Transport& transport,
+                                                     const HttpRequest& request,
+                                                     std::string_view who, int max_retries,
+                                                     const CancelFlag* cancel = nullptr);
 
 // A URL split up for a client: "http", "localhost", 11434, "/v1".
 struct Url {
