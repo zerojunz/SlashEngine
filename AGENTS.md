@@ -807,6 +807,22 @@ without libm, so outputs match everywhere. `examples/audio` plays music and foot
 around a listener, `examples/audio-areas-and-analysis` a bat in a cave's reverb, measured
 by its spectrum and recorded, and `examples/interactive-music` a score that follows a fight.
 
+## Ads, analytics and purchases
+
+`engine/services` is ads, analytics and in-app purchases behind one API, as Unity's services
+([docs/reference/services.md](docs/reference/services.md)). `project.json`'s `services` names
+ad placements (banner, interstitial or rewarded, with each platform's ad unit ID) and products
+(consumable, non-consumable or subscription); games call `show_ad`, `log_event`, `buy` and
+`finish` by those names and read what happened from `services::events(world)` (also world
+events), which the `services` system (priority -800) makes from what backends reported since
+the last tick. Backends implement `AdsBackend`, `AnalyticsBackend` and `PurchasesBackend` and
+report through a thread-safe `Reports`; `set_backends` installs them. Sessions run on the test
+backend (`use_test_backend`), whose ads and purchases end as `services.test` says, and put its
+state back with the world when a command fails or is a dry run; games with no backend fail ads
+and purchases and only keep events. Analytics events are checked against the strictest common
+rules and sent only with the player's consent (`set_consent`). `services.state` shows it all.
+`examples/services` is a shop selling coins for watched ads and purchases.
+
 ## Add a component
 
 Components are plain structs reflected with one macro, at namespace scope in the struct's own
@@ -871,7 +887,8 @@ CI rejects unformatted code and any clang-tidy finding.
   the software and null devices, HLSL shaders, material programs, 2D light shading and particles), `asset` (asset handles, loaders, hot reload),
   `world` (EnTT world, components, scenes and prefabs), `input` (input events, action maps,
   the input state and reading SDL's events), `audio` (sound files and streams, the mixer, buses
-  and effects, players and SDL's audio output), `canvas` (sprites, `.frames.json`
+  and effects, players and SDL's audio output), `services` (ads, analytics and in-app
+  purchases, their backends and the test backend), `canvas` (sprites, `.frames.json`
   animations, `.material.json` materials, `.tileset.json` tile maps, 2D lights and shadows, CPU
   particles, GPU particles' steps and drawing them), `text` (fonts, shaping, line breaking, carets and selections, and glyph atlases), `ui`
   (controls, containers and themes: layout, draw calls, buttons, focus and text fields), `animation` (`.anim.json` keyframe

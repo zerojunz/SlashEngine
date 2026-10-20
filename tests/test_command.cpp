@@ -1260,17 +1260,21 @@ TEST_CASE("engine.describe lists systems in the order they run") {
     world.add_system("movement", [](world::World& /*w*/, double /*dt*/) {},
                      {.doc = "Moves things by their velocity."});
     world.add_system("controls", [](world::World& /*w*/, double /*dt*/) {}, {.priority = -1});
-    // Every session applies input first and plays animations, steps 2D physics, moves the
-    // camera and parallax, runs particles and plays sound with built-in systems that run late.
+    // Every session applies input and service events first and plays animations, steps 2D
+    // physics, moves the camera and parallax, runs particles and plays sound with built-in
+    // systems that run late.
     CHECK(*engine.ok("engine.describe").find("systems") ==
-          parse(R"(["input", "gui", "controls", "movement", "animation_player", "physics2d",
-                    "animated_sprite_2d", "camera_2d", "parallax_2d", "cpu_particles_2d",
-                    "gpu_particles_2d", "audio"])"));
+          parse(R"(["input", "gui", "services", "controls", "movement", "animation_player",
+                    "physics2d", "animated_sprite_2d", "camera_2d", "parallax_2d",
+                    "cpu_particles_2d", "gpu_particles_2d", "audio"])"));
     CHECK(*engine.ok("engine.describe", R"({"full": true})").find("systems") == parse(R"([
         {"name": "input", "doc": "Applies the input events queued since the last tick.",
          "priority": -1000},
         {"name": "gui", "doc": "Sends input events to controls: hover, focus, buttons, sliders and text fields.",
          "priority": -900},
+        {"name": "services",
+         "doc": "Hands what the ads, analytics and purchases backends reported to the game as events.",
+         "priority": -800},
         {"name": "controls", "priority": -1},
         {"name": "movement", "doc": "Moves things by their velocity.", "priority": 0},
         {"name": "animation_player",

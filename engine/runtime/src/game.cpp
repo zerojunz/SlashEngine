@@ -151,6 +151,8 @@ Game::Game(Project project, platform::Platform platform, const std::string& data
     physics2d::install(world_, project_.physics_2d);
     input::install(world_, project_.input, project_.input_devices);
     audio::install(world_, assets_, project_.audio);
+    // With no backends until an SDK package's glue code gives some.
+    services::install(world_, project_.services);
     platform_.set_event_handler([this](const SDL_Event& event) { handle_event(event); });
     if (!platform_.headless()) {
         // Each tick's sound goes to the speakers; with no output device the game stays silent.

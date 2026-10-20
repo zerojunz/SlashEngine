@@ -1,0 +1,28 @@
+{
+  "format": 1,
+  "main_scene": "main.scene.json",
+  "name": "Services",
+  "services": {
+    "ads": {
+      "placements": {
+        "bonus": {
+          "format": "rewarded",
+          "ids": {"android": "android-bonus-unit", "ios": "ios-bonus-unit"},
+          "reward": {"amount": 25, "type": "coins"}
+        },
+        "footer": {
+          "format": "banner",
+          "ids": {"android": "android-footer-unit", "ios": "ios-footer-unit"}
+        }
+      }
+    },
+    "purchases": {
+      "products": {
+        "coins_100": {"type": "consumable"},
+        "remove_ads": {"type": "non_consumable"}
+      }
+    }
+  },
+  "version": "0.1.0",
+  "window": {"height": 240, "width": 320}
+}

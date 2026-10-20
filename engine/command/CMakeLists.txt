@@ -5,6 +5,7 @@ add_library(slash_command
     src/mcp.cpp
     src/replay.cpp
     src/rpc.cpp
+    src/services.cpp
     src/session.cpp
     src/test.cpp)
 add_library(slash::command ALIAS slash_command)
@@ -12,5 +13,5 @@ add_library(slash::command ALIAS slash_command)
 target_include_directories(slash_command PUBLIC include)
 target_link_libraries(slash_command PUBLIC slash::asset slash::core slash::world
     PRIVATE slash::animation slash::audio slash::canvas slash::gameplay slash::input slash::physics2d slash::platform slash::render
-            slash::storyboard slash::ui)
+            slash::services slash::storyboard slash::ui)
 slash_engine_target(slash_command)

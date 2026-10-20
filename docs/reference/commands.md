@@ -68,6 +68,7 @@ as `entity.get`, reject it as an unknown param.
 | UI and text | [`ui.layout`](#uilayout), [`ui.theme`](#uitheme), [`ui.press`](#uipress), [`ui.popup`](#uipopup), [`ui.select`](#uiselect), [`ui.drag`](#uidrag), [`ui.tooltip`](#uitooltip), [`ui.focus`](#uifocus), [`ui.search`](#uisearch), [`ui.clipboard`](#uiclipboard), [`text.measure`](#textmeasure) |
 | Input | [`input.inject`](#inputinject), [`input.state`](#inputstate), [`input.actions`](#inputactions) |
 | Audio | [`audio.state`](#audiostate), [`audio.capture`](#audiocapture), [`audio.play`](#audioplay), [`audio.stop`](#audiostop), [`audio.set_bus`](#audioset_bus), [`audio.spectrum`](#audiospectrum), [`audio.record`](#audiorecord), [`audio.input`](#audioinput) |
+| Services | [`services.state`](#servicesstate), [`services.test`](#servicestest) |
 | Storyboard | [`storyboard.query`](#storyboardquery), [`storyboard.brief`](#storyboardbrief), [`storyboard.check`](#storyboardcheck), [`storyboard.edit`](#storyboardedit) |
 | Components | [`component.set`](#componentset), [`component.remove`](#componentremove) |
 | Query | [`world.query`](#worldquery) |
@@ -1615,6 +1616,93 @@ Like `audio.play`, it waits for the next tick, so a failed `batch` or a dry run 
 It is an error when the project's `audio.enable_input` is off, and at `/stream` when the stream
 doesn't load or is itself a microphone. [`audio.state`](#audiostate)'s `input` shows what feeds
 the input.
+
+## Services
+
+Ads, analytics and in-app purchases, as Unity's services: `project.json`'s
+[`services`](project-format.md#services) names the ad placements and products, gameplay code
+shows, logs and buys by those names, and what happens arrives as events at a later tick (see
+[services.md](services.md)). Sessions run the services on the test backend, so ads load and
+purchases go through with no store account. The examples here are from
+[examples/services](../../examples/services/), a shop that sells coins for watched ads and
+purchases.
+
+### services.state
+
+Returns the backends, the player's consent, each ad placement's format and status (`unloaded`,
+`loading`, `loaded`, `showing` or `failed` with its `error`), the products with their prices
+once fetched, what the player owns, purchases unfinished (completed but not yet granted and
+finished) and pending, and the latest analytics events.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `events` | integer, 0 to 256 | `10` | How many of the latest analytics events |
+
+Needs: `read`. After the shop's system logged an event for a watched ad:
+
+```json
+{"events": 1}
+```
+
+```json
+{"ads":{"bonus":{"format":"rewarded","status":"loading"},"footer":{"format":"banner","status":"showing"}},"analytics":{"enabled":true,"events":[{"name":"coins_earned","params":{"coins":25,"source":"ad"},"sent":false,"tick":4}],"logged":1},"backends":{"ads":"test","analytics":["test"],"purchases":"test"},"consent":{"analytics":"unknown","personalized_ads":"unknown"},"owned":[],"pending":[],"products":{"coins_100":{"available":true,"price":"$0.99","type":"consumable"},"remove_ads":{"available":true,"price":"$0.99","type":"non_consumable"}},"products_status":"fetched","tick":4,"unfinished":[]}
+```
+
+`tick` is the tick the `services` system last ran. The rewarded ad is `loading` again because it
+auto-loads after it closes. The event was not `sent` because the player hasn't granted
+analytics consent; `logged` counts every event so far. `products_status` is `none` (no
+products), `fetching`, `fetched` or `failed` with `products_error`, e.g. `no store` in a game
+with no store backend. `unfinished` and `pending` list `{"product", "transaction", "state"}`.
+
+### services.test
+
+Sets how the test backend behaves, and loads, shows, hides, buys, finishes and restores as the
+game's code would. What happens arrives as events at the next tick or later, as from a real
+backend.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `fill` | boolean | `true` | Ads load; `false` fails them with `no fill` |
+| `load_ticks` | integer, 1 to 3600 | `1` | Ticks an ad takes to load |
+| `show_ticks` | integer, 1 to 3600 | `1` | Ticks an interstitial or rewarded ad shows before it closes |
+| `watch_to_end` | boolean | `true` | The player watches rewarded ads to the end and earns the reward; `false` skips them |
+| `purchase_ticks` | integer, 1 to 3600 | `1` | Ticks a purchase or restore takes |
+| `outcome` | `purchased`, `pending`, `cancelled` or `failed` | `purchased` | How purchases end. `pending` waits for `complete_pending`, as Ask to Buy does |
+| `error` | string | `the payment was declined` | A failed purchase's error |
+| `prices` | object of numbers | 0.99 each | Prices in US dollars by product ID; products are fetched again |
+| `consent` | `{"analytics", "personalized_ads"}`, each `unknown`, `granted` or `denied` | | Sets the player's consent, as the game's `set_consent` would |
+| `complete_pending` | `purchased`, `cancelled` or `failed` | | Ends each pending purchase so |
+| `load`, `show`, `hide` | string | | An ad placement to load, show or hide (banners only) |
+| `buy` | string | | A product to buy |
+| `finish` | string | | A purchase's transaction to finish once granted |
+| `restore` | boolean | | Restores purchases |
+
+Settings apply first, then `consent`, `complete_pending`, `load`, `show`, `hide`, `buy`,
+`finish` and `restore`, in that order. Needs: `run`. Changes no entities, so there is nothing to
+undo; a call that fails partway changes nothing.
+
+```json
+{"outcome": "pending", "buy": "remove_ads"}
+```
+
+```json
+{"test":{"error":"the payment was declined","fill":true,"load_ticks":1,"outcome":"pending","prices":{},"purchase_ticks":1,"show_ticks":1,"watch_to_end":true},"tick":7}
+```
+
+`tick` is the next tick, when the first events can arrive; `test` lists every setting, and only
+when the call changed one. The purchase is then pending until
+`{"complete_pending": "purchased"}`. A call the game couldn't make fails with the same reason
+the game would get, with its JSON Pointer:
+
+```json
+{"buy": "remove_ads"}
+```
+
+```
+/buy: the player owns "remove_ads" already
+```
+
+Outside a session, as in an exported game, there is no test backend, and `services.test` fails.
 
 ## Storyboard
 

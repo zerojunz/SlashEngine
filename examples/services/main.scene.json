@@ -1,0 +1,40 @@
+{
+  "entities": {
+    "buy_coins": {
+      "components": {
+        "Button": {
+          "text": "100 coins"
+        },
+        "Control": {}
+      }
+    },
+    "coins": {
+      "components": {
+        "Control": {},
+        "Label": {
+          "text": "0 coins"
+        }
+      }
+    },
+    "column": {
+      "components": {
+        "BoxContainer": {
+          "vertical": true
+        },
+        "Control": {
+          "children": ["coins", "watch_ad", "buy_coins"],
+          "custom_minimum_size": [160.0, 0.0]
+        }
+      }
+    },
+    "watch_ad": {
+      "components": {
+        "Button": {
+          "text": "Watch an ad for 25 coins"
+        },
+        "Control": {}
+      }
+    }
+  },
+  "format": 1
+}
