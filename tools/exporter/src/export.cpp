@@ -494,10 +494,7 @@ json::Value run_test(const std::string& platform, const std::string& arch, const
                         summary->find("ticks")->as_int() == static_cast<std::int64_t>(kTestTicks);
     test["passed"] = passed;
     if (summary.has_value()) {
-        test["ticks"] = *summary->find("ticks");
-        if (const json::Value* entities = summary->find("entities"); entities != nullptr) {
-            test["entities"] = *entities;
-        }
+        detail::add_summary(test, *summary);
     }
     if (!passed) {
         test["exit_code"] = result.value().exit_code;
@@ -1219,6 +1216,8 @@ ExportResult export_game(const ExportOptions& options) {
         }
         const json::Value plist = merge_sdk_entries(resolved, "plist", problems);
         const json::Value entitlements = merge_sdk_entries(resolved, "entitlements", problems);
+        // The packages' services backends, registered when the game starts.
+        const std::string register_source = sdk_register_source(resolved, problems);
         if (platform == "macos" || platform == "ios") {
             std::set<std::string, std::less<>> reserved =
                 template_plist_keys(engine_dir / "export" / platform / "Info.plist.in");
@@ -1263,7 +1262,16 @@ ExportResult export_game(const ExportOptions& options) {
         sdk_entitlements = entitlements;
         const fs::path file = fs::absolute(build / "sdks.cmake", error);
         fs::create_directories(build, error);
-        if (!platform::write_file(file.string(), sdk_cmake(resolved, plist))) {
+        std::string register_file;
+        if (!register_source.empty()) {
+            const fs::path source = fs::absolute(build / "sdk_register.cpp", error);
+            if (!platform::write_file(source.string(), register_source)) {
+                failure = {"sdks", "could not write " + display(source), {}};
+                return std::nullopt;
+            }
+            register_file = source.generic_string();
+        }
+        if (!platform::write_file(file.string(), sdk_cmake(resolved, plist, register_file))) {
             failure = {"sdks", "could not write " + display(file), {}};
             return std::nullopt;
         }

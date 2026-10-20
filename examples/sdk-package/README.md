@@ -23,6 +23,23 @@ package whose `sdk.json` says what each platform's build links:
   and Maven coordinates such as `"maven": ["androidx.core:core:1.13.1"]`, which
   `slash-cli sdk lock` resolves and pins in `sdk.lock.json` beside `sdk.json`.
 
+Its glue code gives the game an analytics backend (`engine/services`) in each language a vendor
+SDK might have:
+
+- [glue/hello_analytics.cpp](sdks/hello/glue/hello_analytics.cpp), listed in every platform's
+  `sources`, is compiled into the game with the SDK's header. It starts the SDK in `start` and
+  hands it the game's events, and `"register": "hello::register_backends"` adds it when the game
+  starts.
+- On Android, `java` compiles
+  [HelloAnalytics.java](sdks/hello/glue/android/com/example/hello/HelloAnalytics.java), which
+  implements `org.slashengine.services.AnalyticsBackend`, and `backends` names its class.
+- On macOS and iOS, [HelloAnalytics.mm](sdks/hello/glue/apple/HelloAnalytics.mm) conforms to
+  `SlashAnalyticsBackend`, and `backends` names it.
+
+The exported game's test run lists the backends it started with: `"services": {"analytics":
+["hello", "hello_java"]}` on Android, `["hello", "hello_objc"]` on macOS and iOS, and
+`["hello"]` elsewhere.
+
 [src/game.cpp](src/game.cpp) calls the SDK under `#ifdef SLASH_SDK_HELLO`, which exports define,
 so the tools' own build of the code, which leaves SDKs out, runs too.
 

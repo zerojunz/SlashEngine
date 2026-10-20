@@ -109,6 +109,14 @@ std::optional<json::Value> find_summary(const std::string& output) {
     return std::nullopt;
 }
 
+void add_summary(json::Value& test, const json::Value& summary) {
+    for (const std::string_view key : {"ticks", "entities", "services"}) {
+        if (const json::Value* value = summary.find(key); value != nullptr) {
+            test[std::string(key)] = *value;
+        }
+    }
+}
+
 std::uint64_t folder_bytes(const fs::path& folder) {
     std::uint64_t total = 0;
     std::error_code error;

@@ -2,7 +2,7 @@
   "build": {
     "cmake": "stand-in"
   },
-  "description": "A stand-in for a vendor SDK: two C functions in a library built from source.",
+  "description": "A stand-in for a vendor SDK: two C functions in a library built from source, with glue code that gives the game an analytics backend in C++, Java and Objective-C.",
   "format": 1,
   "keys": {
     "HELLO_APP_ID": {
@@ -20,20 +20,36 @@
       "application": [
         "<meta-data android:name=\"com.example.hello.APP_ID\" android:value=\"${HELLO_APP_ID}\" />"
       ],
+      "backends": {
+        "analytics": [
+          "com.example.hello.HelloAnalytics"
+        ]
+      },
       "defines": [
         "HELLO_APP_ID=\"${HELLO_APP_ID}\""
       ],
       "include": [
         "{build}/include"
       ],
+      "java": [
+        "glue/android"
+      ],
       "libraries": [
         "{build}/lib/libhello.so"
       ],
       "permissions": [
         "android.permission.INTERNET"
+      ],
+      "sources": [
+        "glue/hello_analytics.cpp"
       ]
     },
     "ios": {
+      "backends": {
+        "analytics": [
+          "HelloAnalytics"
+        ]
+      },
       "defines": [
         "HELLO_APP_ID=\"${HELLO_APP_ID}\""
       ],
@@ -45,7 +61,11 @@
       ],
       "plist": {
         "HelloAppID": "${HELLO_APP_ID}"
-      }
+      },
+      "sources": [
+        "glue/hello_analytics.cpp",
+        "glue/apple"
+      ]
     },
     "linux": {
       "defines": [
@@ -56,9 +76,17 @@
       ],
       "libraries": [
         "{build}/lib/libhello.so"
+      ],
+      "sources": [
+        "glue/hello_analytics.cpp"
       ]
     },
     "macos": {
+      "backends": {
+        "analytics": [
+          "HelloAnalytics"
+        ]
+      },
       "defines": [
         "HELLO_APP_ID=\"${HELLO_APP_ID}\""
       ],
@@ -70,7 +98,11 @@
       ],
       "plist": {
         "HelloAppID": "${HELLO_APP_ID}"
-      }
+      },
+      "sources": [
+        "glue/hello_analytics.cpp",
+        "glue/apple"
+      ]
     },
     "web": {
       "defines": [
@@ -81,6 +113,9 @@
       ],
       "libraries": [
         "{build}/lib/libhello.a"
+      ],
+      "sources": [
+        "glue/hello_analytics.cpp"
       ]
     },
     "windows": {
@@ -95,9 +130,13 @@
       ],
       "libraries": [
         "{build}/lib/hello.lib"
+      ],
+      "sources": [
+        "glue/hello_analytics.cpp"
       ]
     }
   },
+  "register": "hello::register_backends",
   "vendor": "SlashEngine examples",
   "version": "1.0.0"
 }

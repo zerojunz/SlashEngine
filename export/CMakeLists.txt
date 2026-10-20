@@ -13,7 +13,9 @@
 #   SLASH_GAME_SOURCES  the game's own C++ code (project.json's gameplay.sources): absolute
 #                       paths of folders, whose .cpp files are compiled in, and files
 #   SLASH_GAME_SDKS     a CMake file of slash_game_sdk() calls for the SDK packages the game
-#                       links, written per build by slash-cli export (tools/exporter/src/sdk.cpp)
+#                       links, and slash_game_sdk_register() for the C++ file that registers
+#                       their services backends, written per build by slash-cli export
+#                       (tools/exporter/src/sdk.cpp)
 #
 # `cmake --install <build> --component game --prefix <out>` lays the game out for its platform:
 # <out>/<binary>.app on macOS, <out>/<binary>[.exe] with <out>/data on Windows and Linux, and
@@ -24,6 +26,11 @@
 cmake_minimum_required(VERSION 3.25)
 
 project(SlashGame LANGUAGES C CXX)
+# SDK packages' glue code can be Objective-C on macOS and iOS (.m and .mm files).
+if(APPLE)
+    enable_language(OBJC)
+    enable_language(OBJCXX)
+endif()
 
 foreach(variable SLASH_GAME_NAME SLASH_GAME_BINARY SLASH_GAME_ID SLASH_GAME_VERSION
         SLASH_GAME_DATA)
@@ -128,15 +135,30 @@ endif()
 # folder on macOS and iOS, in lib/<abi> on Android. Files ship beside the executable on Windows
 # and Linux, in Resources on macOS, in the app on iOS, in assets on Android and beside index.html
 # on the web. Java libraries go in jars/, which slash-cli export compiles against and puts in the
-# APK.
+# APK. Glue code is compiled into the game: C and C++ files everywhere, Objective-C ones (with
+# ARC) on macOS and iOS, and Java files into the APK, through java/sdks/<name>.
 set(SLASH_SDK_PLIST "")
 set(SLASH_SDK_ANDROID_MANIFEST "")
 set(SLASH_SDK_ANDROID_APPLICATION "")
 function(slash_game_sdk name)
     cmake_parse_arguments(PARSE_ARGV 1 sdk "" ""
-        "DEFINES;INCLUDE;LIBRARIES;SHARED;FRAMEWORKS;EMBED;SYSTEM_LIBRARIES;SYSTEM_FRAMEWORKS;LINK_OPTIONS;FILES;JARS")
+        "DEFINES;INCLUDE;LIBRARIES;SHARED;FRAMEWORKS;EMBED;SYSTEM_LIBRARIES;SYSTEM_FRAMEWORKS;LINK_OPTIONS;FILES;JARS;SOURCES;JAVA")
     target_compile_definitions(game PRIVATE ${sdk_DEFINES})
     target_include_directories(game SYSTEM PRIVATE ${sdk_INCLUDE})
+    target_sources(game PRIVATE ${sdk_SOURCES})
+    foreach(source IN LISTS sdk_SOURCES)
+        if(source MATCHES "\\.mm?$")
+            set_source_files_properties("${source}" PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+        endif()
+    endforeach()
+    foreach(java IN LISTS sdk_JAVA)
+        if(IS_DIRECTORY "${java}")
+            install(DIRECTORY "${java}/" DESTINATION java/sdks/${name} COMPONENT game
+                FILES_MATCHING PATTERN "*.java")
+        else()
+            install(FILES "${java}" DESTINATION java/sdks/${name} COMPONENT game)
+        endif()
+    endforeach()
     if(APPLE)
         if(IOS)
             set(frameworks_dir ${SLASH_GAME_BINARY}.app/Frameworks)
@@ -213,6 +235,12 @@ function(slash_game_sdk name)
         set_property(TARGET game APPEND PROPERTY INSTALL_RPATH "${rpath}")
     endif()
 endfunction()
+# The C++ file defining slash_sdk_register(), which main() calls to add the SDK packages'
+# services backends (slash/services/services.hpp).
+function(slash_game_sdk_register file)
+    target_sources(game PRIVATE "${file}")
+    target_compile_definitions(game PRIVATE SLASH_SDK_REGISTER)
+endfunction()
 if(SLASH_GAME_SDKS)
     include("${SLASH_GAME_SDKS}")
 endif()
@@ -255,6 +283,9 @@ elseif(ANDROID)
     install(DIRECTORY ${sdl_source_dir}/android-project/app/src/main/java/
         DESTINATION java COMPONENT game)
     install(FILES android/GameActivity.java DESTINATION java/org/slashengine COMPONENT game)
+    # The interfaces Java services backends implement (slash/services/bridges.hpp).
+    install(DIRECTORY ${CMAKE_CURRENT_LIST_DIR}/../engine/services/android/
+        DESTINATION java COMPONENT game)
 elseif(IOS)
     # What Xcode records about the build in Info.plist, which App Store Connect checks.
     if(CMAKE_OSX_SYSROOT MATCHES "[Ss]imulator")

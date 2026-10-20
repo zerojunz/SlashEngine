@@ -9,6 +9,7 @@
 #include "slash/platform/run.hpp"
 #include "slash/render/device.hpp"
 #include "slash/runtime/project.hpp"
+#include "slash/services/services.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/game_module.hpp"
 #include "slash/world/world.hpp"
@@ -38,6 +39,9 @@ struct GameOptions {
     // Without it, a project with gameplay sources loads the library slash-cli build makes, and
     // loads it again when it is rebuilt.
     world::GameModuleFunction gameplay = nullptr;
+    // Fills in the backends the services run on, at start: the slash_sdk_register function an
+    // export writes for its SDK packages' glue code. Without it the services have no backends.
+    void (*register_backends)(services::Backends& backends) = nullptr;
 };
 
 inline constexpr std::string_view kGameUsage =
@@ -67,11 +71,13 @@ public:
     bool frame();
     void request_quit() noexcept;
     // Reads input from an OS event SDL hands to the app; the platform hands the rest over itself.
+    // Going to the background sends the analytics backends' batched events.
     void handle_event(const SDL_Event& event);
 
     // What ran: {"entities", "headless", "name", "quit_requested", "renderer", "scene",
-    // "sprites", "ticks"}. "sprites" counts the sprites the last frame drew, or would have
-    // drawn on the null device, so a headless run shows whether every sprite can draw.
+    // "sprites", "ticks"}, and "services" (services::backends_json) when the services run on
+    // backends. "sprites" counts the sprites the last frame drew, or would have drawn on the
+    // null device, so a headless run shows whether every sprite can draw.
     [[nodiscard]] json::Value summary() const;
 
     [[nodiscard]] const Project& project() const noexcept { return project_; }

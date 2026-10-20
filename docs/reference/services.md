@@ -130,7 +130,9 @@ Exported games never use the test backend: it would hand out purchases for free.
 
 ## Writing a backend
 
-A backend is a class an SDK package's glue code adds, over the vendor's SDK:
+A backend is a class an SDK package's [glue code](sdk-format.md#glue-code) adds, over the
+vendor's SDK. Exports call the package's `register` function when the game starts, and C++ code
+can set backends itself:
 
 ```cpp
 class MyAnalytics : public services::AnalyticsBackend {
@@ -159,4 +161,13 @@ game's thread, for SDKs that must be polled.
 | `AnalyticsBackend` | `log_event`, `set_user_property`, `set_user_id`, `flush` | Nothing |
 | `PurchasesBackend` | `fetch_products` with the catalog, `purchase`, `finish` (acknowledge, or consume a consumable), `restore` | `products` or `products_failed`, then any unfinished purchases; each purchase's outcome; restored purchases, then `restore_finished` |
 
-Every backend also gets `set_consent` after `start` and whenever consent changes.
+Every backend also gets `set_consent` after `start` and whenever consent changes. Analytics
+backends get `flush` when the game goes to the background (a phone may stop it there) and when
+it quits, before the game lets go of its backends.
+
+SDKs with only a Java or Objective-C API get backends in that language: a Java class
+implementing `org.slashengine.services.AdsBackend`, `AnalyticsBackend` or `PurchasesBackend`, or
+an Objective-C class conforming to `SlashAdsBackend`, `SlashAnalyticsBackend` or
+`SlashPurchasesBackend` (`slash/services/apple.h`), which an SDK package names in its
+`backends`. The same calls reach them, through JNI or the Objective-C runtime, and they report
+to a `Reports` (Java) or `SlashServiceReports` (Objective-C) object from any thread.
