@@ -7,6 +7,8 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstddef>
+#include <span>
 #include <string>
 #include <utility>
 
@@ -468,18 +470,10 @@ struct Interactive {
     std::vector<StreamFile::Transition> transitions;
     int initial_clip = 0;
 
-    // Godot's transition_map lookup: from and to, from and any, any and to, then any and any.
     [[nodiscard]] StreamFile::Transition transition(int from, int to) const {
-        for (const auto& [want_from, want_to] :
-             std::array<std::pair<int, int>, 4>{{{from, to}, {from, -1}, {-1, to}, {-1, -1}}}) {
-            for (const StreamFile::Transition& each : transitions) {
-                if (each.from_clip == want_from && each.to_clip == want_to) {
-                    return each;
-                }
-            }
-        }
-        // Godot's empty transition, with its defaults.
-        return StreamFile::Transition{};
+        const int index = transition_index(transitions, from, to);
+        // With none, Godot's empty transition, with its defaults.
+        return index >= 0 ? transitions[static_cast<std::size_t>(index)] : StreamFile::Transition{};
     }
 };
 
@@ -936,6 +930,18 @@ private:
 };
 
 } // namespace
+
+int transition_index(std::span<const StreamFile::Transition> transitions, int from, int to) {
+    for (const auto& [want_from, want_to] :
+         std::array<std::pair<int, int>, 4>{{{from, to}, {from, -1}, {-1, to}, {-1, -1}}}) {
+        for (std::size_t i = 0; i < transitions.size(); ++i) {
+            if (transitions[i].from_clip == want_from && transitions[i].to_clip == want_to) {
+                return static_cast<int>(i);
+            }
+        }
+    }
+    return -1;
+}
 
 std::shared_ptr<const Stream> playlist_stream(std::vector<std::shared_ptr<const Stream>> streams,
                                               const StreamFile& settings) {

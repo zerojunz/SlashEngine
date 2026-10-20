@@ -68,7 +68,7 @@ as `entity.get`, reject it as an unknown param.
 | UI and text | [`ui.layout`](#uilayout), [`ui.theme`](#uitheme), [`ui.press`](#uipress), [`ui.popup`](#uipopup), [`ui.select`](#uiselect), [`ui.drag`](#uidrag), [`ui.tooltip`](#uitooltip), [`ui.focus`](#uifocus), [`ui.search`](#uisearch), [`ui.clipboard`](#uiclipboard), [`text.measure`](#textmeasure) |
 | Input | [`input.inject`](#inputinject), [`input.state`](#inputstate), [`input.actions`](#inputactions) |
 | Audio | [`audio.state`](#audiostate), [`audio.capture`](#audiocapture), [`audio.analyze`](#audioanalyze), [`audio.play`](#audioplay), [`audio.stop`](#audiostop), [`audio.set_bus`](#audioset_bus), [`audio.spectrum`](#audiospectrum), [`audio.record`](#audiorecord), [`audio.input`](#audioinput) |
-| Soundtrack | [`score.import`](#scoreimport), [`score.export`](#scoreexport), [`soundtrack.render`](#soundtrackrender), [`soundtrack.plan`](#soundtrackplan), [`soundtrack.arrange`](#soundtrackarrange) |
+| Soundtrack | [`score.import`](#scoreimport), [`score.export`](#scoreexport), [`soundtrack.render`](#soundtrackrender), [`soundtrack.plan`](#soundtrackplan), [`soundtrack.arrange`](#soundtrackarrange), [`soundtrack.check`](#soundtrackcheck) |
 | Services | [`services.state`](#servicesstate), [`services.test`](#servicestest) |
 | Storyboard | [`storyboard.query`](#storyboardquery), [`storyboard.brief`](#storyboardbrief), [`storyboard.check`](#storyboardcheck), [`storyboard.review`](#storyboardreview), [`storyboard.edit`](#storyboardedit) |
 | Components | [`component.set`](#componentset), [`component.remove`](#componentremove) |
@@ -1750,10 +1750,12 @@ the input.
 Music planned in the [storyboard](storyboard-format.md#music), written as
 [`.score.json` scores](scene-format.md#scores), moved to and from Standard MIDI Files so any
 music program can play or edit them, played into stems a game plays, and arranged into
-interactive music. From [examples/soundtrack-plan](../../examples/soundtrack-plan/),
+interactive music, then checked without listening. From
+[examples/soundtrack-plan](../../examples/soundtrack-plan/),
 [examples/music-scores](../../examples/music-scores/),
-[examples/soundtrack-render](../../examples/soundtrack-render/) and
-[examples/soundtrack-arrange](../../examples/soundtrack-arrange/).
+[examples/soundtrack-render](../../examples/soundtrack-render/),
+[examples/soundtrack-arrange](../../examples/soundtrack-arrange/) and
+[examples/soundtrack-check](../../examples/soundtrack-check/).
 
 ### score.export
 
@@ -1939,6 +1941,60 @@ Fails when no cue has music. Needs: `read`, `filesystem`.
 
 ```json
 {"clips":[{"cue":"cue/bell","name":"bell","stream":"music/bell.audio.json"},{"cue":"cue/harbor","layer":"calm","name":"harbor_calm","stream":"music/harbor/strings.audio.json"},{"cue":"cue/harbor","layer":"tense","name":"harbor_tense","stream":"music/soundtrack/harbor_tense.audio.json"},{"cue":"cue/storm","name":"storm","stream":"music/storm.audio.json"},{"cue":"cue/win","name":"win","stream":"music/win.audio.json"}],"layers":["music/soundtrack/harbor_tense.audio.json"],"path":"music/soundtrack.audio.json"}
+```
+
+### soundtrack.check
+
+Finds what keeps a game's music from playing as planned, by reading its files and measuring how
+they play. The music is every interactive, playlist and synchronized `.audio.json` file, every
+sound `.audio.json` file with a `bpm`, the streams cues play, and what those play; `build/` and
+`.slash/` are skipped.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `paths` | string array | all the music | Music files and folders to check, with what they play, and the cues that name them |
+
+Errors, which [`test.run`](#testrun) fails on:
+
+- A cue's music that can't play: a file that doesn't exist, a score not rendered yet (with the
+  file [`soundtrack.render`](#soundtrackrender) writes), a file that isn't music, or a cue with
+  more layers than files. A file a music file names that doesn't exist.
+- A sound whose `beat_count` beats at its `bpm` last longer than it does, so interactive music
+  and playlists wait for beats that never come.
+- A loop that clicks where its end joins its start, as
+  [`audio.analyze`](#audioanalyze) finds it.
+- An interactive clip whose stream has no `bpm` while switches from it wait for the beat or
+  bar: they would happen at once.
+- A piece that misses a [`loudness`](storyboard-format.md#music) target that covers it (its
+  `links`, or all music with none): integrated loudness further from `lufs` than `tolerance`
+  (2 LU if unset), or a true peak above `true_peak`. A piece is a clip of interactive music, a
+  playlist's stream or music nothing else plays, measured as it plays for its beats or its
+  length.
+
+Warnings:
+
+- A cue with no music yet, or a sting whose `after` names a cue with none.
+- A compressed loop whose beats end before its sound does, so the loop leaves out the rest; a
+  loop that isn't a whole number of bars; a sound that measures a tempo other than its `bpm`
+  (or half or double it), when the measure is sure.
+- Switches between clips with beats that come at once or on the next beat and start the next
+  clip from its start: off the bar. A clip that goes on by itself (a sting) may come in on any
+  beat, and `same_position` keeps the bar.
+- `same_position` between clips whose `bpm` differ.
+- Clips the music cuts between, directly or through a filler, whose keys are three or more steps
+  apart round the circle of fifths (relative keys are none apart). A clip's key is its score's,
+  the score it is a stem of, its layers', or else the key it measures in, when the measure is
+  sure.
+
+`checked` counts the `.audio.json` files read. Fails only when the storyboard doesn't load.
+Needs: `read`.
+
+```json
+{}
+```
+
+```json
+{"checked":13,"errors":[{"file":"music/chime.audio.json","message":"16 beats at 96 bpm last 10 s, longer than the sound's 3.34 s, so the music's beats run past its end; the sound holds 5 beats","path":"/beat_count"},{"file":"music/reef.audio.json","message":"measures -25.9 LUFS; loudness/music asks for -20 ± 3, so raise it 5.9 dB","path":""}],"warnings":[{"file":"music/soundtrack.audio.json","message":"harbor (E minor) and reef (Bb major) are 3 steps apart round the circle of fifths, and the music goes straight from one to the other; a filler clip, or a nearer key, joins them","path":"/clips/1"},{"file":"music/soundtrack.audio.json","message":"reef (Bb major) and storm (E minor) are 3 steps apart round the circle of fifths, and the music goes straight from one to the other; a filler clip, or a nearer key, joins them","path":"/clips/2"}]}
 ```
 
 ## Services
@@ -2691,7 +2747,9 @@ can't write files. Tests start from scene files, so save a scene before testing 
 | `tests` | string array | all | Run only the tests with these names |
 
 Needs: `run`, `filesystem`. With neither `paths` nor `tests`, it also runs
-[`storyboard.check`](#storyboardcheck) and adds its errors, and, where the session may, runs
+[`storyboard.check`](#storyboardcheck) and adds its errors, runs
+[`soundtrack.check`](#soundtrackcheck) where the soundtrack's commands are registered (as in
+`slash-cli` and `slash-mcp`) and adds its errors, and, where the session may, runs
 [`asset.check`](#assetcheck) on the files the project took from the asset library, which
 records what it sees as their feedback: its problems come back as `assets` without failing a
 test. A name in `tests` that no test has fails with `-32001` and the closest name.
@@ -2700,7 +2758,7 @@ The result counts the tests run and those that passed, and lists each failed che
 
 | Field | Meaning |
 | --- | --- |
-| `file` | The test file, or for a storyboard error the file it is in |
+| `file` | The test file, or for a storyboard or music error the file it is in |
 | `test` | The test's name |
 | `path` | JSON Pointer into the file: the expected value that didn't match, the bad param of a command that failed (`/tests/<name>/steps/<i>/params/...`), the step during which something was logged, or the scene that didn't open |
 | `message` | What was wrong, quoting long values cut short |

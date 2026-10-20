@@ -382,6 +382,19 @@ Reply test_run(Session& session, const json::Value& params) {
         }
     }
 
+    // And the music, where the soundtrack's commands are registered.
+    if (paths == nullptr && wanted.empty() &&
+        session.commands().find("soundtrack.check") != nullptr) {
+        Reply checked = session.call("soundtrack.check", json::Object{});
+        if (!checked.ok) {
+            failed.push_back(file_failure("soundtrack", "", checked.message));
+        } else if (json::Value* errors = checked.value.find("errors"); errors != nullptr) {
+            for (json::Value& error : errors->as_array()) {
+                failed.push_back(std::move(error));
+            }
+        }
+    }
+
     // And, where the asset library's commands are registered and allowed, the files the project
     // took from the library, recording what it finds as their feedback.
     json::Value assets;
@@ -506,7 +519,7 @@ void register_test_commands(Registry& registry) {
         .description = "Runs the project's .test.json tests headless, each from its scene file, "
                        "and returns only the checks that failed: a step's command failing, its "
                        "reply not holding what it expects, or a warning or error logged. With no "
-                       "paths, runs every test file and storyboard.check.",
+                       "paths, runs every test file, storyboard.check and soundtrack.check.",
         .capabilities = {Capability::Run, Capability::Filesystem},
         .effect = Effect::Read,
         .params =

@@ -98,6 +98,11 @@ struct Analysis {
 [[nodiscard]] Analysis analyze(std::span<const Frame> frames, int mix_rate,
                                std::optional<LoopPoints> loop = std::nullopt);
 
+// Where a sound loops as its .audio.json file plays it (from the end, or after beat_count beats,
+// back to loop_offset; a .wav file's forward loop), its whole length with no settings, or
+// nullopt when the settings don't loop it.
+[[nodiscard]] std::optional<LoopPoints> loop_points(const Sound& sound, const StreamFile* settings);
+
 // A sound's every frame, decoded, at its own mix rate; mono is the same on both sides.
 [[nodiscard]] Result<std::vector<Frame>> decode_frames(const Sound& sound);
 

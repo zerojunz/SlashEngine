@@ -1,0 +1,24 @@
+{
+  "entries": {
+    "cue/harbor": {
+      "music": ["music/harbor.score.json"],
+      "name": "Harbor"
+    },
+    "cue/reef": {
+      "music": ["music/reef.score.json"],
+      "name": "Reef"
+    },
+    "cue/storm": {
+      "music": ["music/storm.score.json"],
+      "name": "Storm"
+    },
+    "loudness/music": {
+      "links": ["music/harbor.audio.json", "music/reef.audio.json", "music/storm.audio.json"],
+      "lufs": -20,
+      "name": "Music",
+      "tolerance": 3,
+      "true_peak": -1
+    }
+  },
+  "format": 1
+}

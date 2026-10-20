@@ -23,6 +23,7 @@ if(TARGET slash_vorbis)
     endif()
 
     add_library(slash_soundtrack_commands
+        src/check.cpp
         src/commands.cpp
         src/render.cpp
         src/sound_bank.cpp)
@@ -31,7 +32,7 @@ if(TARGET slash_vorbis)
     target_include_directories(slash_soundtrack_commands PUBLIC include)
     target_link_libraries(slash_soundtrack_commands
         PUBLIC slash::command slash::soundtrack
-        PRIVATE slash::platform slash::storyboard slash_tsf slash_vorbis)
+        PRIVATE slash::asset slash::audio slash::platform slash::storyboard slash_tsf slash_vorbis)
     slash_engine_target(slash_soundtrack_commands)
     # The same sound bank and the same notes on every platform: no fused multiply-adds.
     target_compile_options(slash_soundtrack_commands PRIVATE

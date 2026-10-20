@@ -1,0 +1,8 @@
+{"jsonrpc":"2.0","id":1,"method":"soundtrack.render","params":{"path":"music/harbor.score.json","loop":true}}
+{"jsonrpc":"2.0","id":2,"method":"soundtrack.render","params":{"path":"music/storm.score.json","loop":true}}
+{"jsonrpc":"2.0","id":3,"method":"soundtrack.render","params":{"path":"music/reef.score.json","loop":true}}
+{"jsonrpc":"2.0","id":4,"method":"soundtrack.render","params":{"path":"music/bell.score.json"}}
+{"jsonrpc":"2.0","id":5,"method":"soundtrack.arrange","params":{}}
+{"jsonrpc":"2.0","id":6,"method":"soundtrack.check","params":{}}
+{"jsonrpc":"2.0","id":7,"method":"soundtrack.check","params":{"paths":["music/chime.audio.json"]}}
+{"jsonrpc":"2.0","id":8,"method":"test.run","params":{}}
