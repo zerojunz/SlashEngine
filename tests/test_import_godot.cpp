@@ -6,11 +6,14 @@
 #include "slash/command/command.hpp"
 #include "slash/command/session.hpp"
 #include "slash/core/json.hpp"
+#include "slash/gameplay/host.hpp"
 #include "slash/importer/commands.hpp"
 #include "slash/importer/godot_text.hpp"
 #include "slash/importer/import.hpp"
+#include "slash/importer/scripts.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/render/image.hpp"
+#include "slash/runtime/gameplay.hpp"
 #include "slash/runtime/project.hpp"
 #include "slash/storyboard/storyboard.hpp"
 #include "slash/world/component_registry.hpp"
@@ -85,13 +88,30 @@ slash::world::FileReader reader_of(const std::map<std::string, std::string>& fil
     };
 }
 
+// The engine's components, and stand-ins for those of the C++ skeletons a plan writes, as the
+// tools have them before the game's code is built.
+void add_types(slash::world::ComponentRegistry& components,
+               const std::map<std::string, std::string>& files) {
+    slash::world::register_builtin_components(components);
+    for (const auto& [path, contents] : files) {
+        if (!path.ends_with(".cpp")) {
+            continue;
+        }
+        for (slash::runtime::DeclaredComponent& declared : slash::runtime::declared_in(contents)) {
+            if (components.find(declared.name) == nullptr) {
+                components.add_stand_in(std::move(declared.name), std::move(declared.fields));
+            }
+        }
+    }
+}
+
 // The components one entity of a planned scene ends up with, with what it extends and its
 // overrides applied.
 json::Value entity(const std::map<std::string, std::string>& files, const std::string& scene,
                    std::string_view id) {
     REQUIRE(files.contains(scene));
     slash::world::ComponentRegistry components;
-    slash::world::register_builtin_components(components);
+    add_types(components, files);
     slash::world::World world(components);
     world.set_file_reader(reader_of(files));
     REQUIRE(slash::world::load_scene(world, parse(files.at(scene))));
@@ -778,7 +798,7 @@ TEST_CASE("importing a Godot scene maps its nodes to entities and components") {
 
     // Every scene it writes validates and is in canonical form.
     slash::world::ComponentRegistry components;
-    slash::world::register_builtin_components(components);
+    add_types(components, files);
     for (const auto& [path, contents] : files) {
         if (path.ends_with(slash::world::kSceneSuffix)) {
             CHECK_MESSAGE(
@@ -816,7 +836,8 @@ TEST_CASE("importing a Godot scene maps its nodes to entities and components") {
     // An instanced scene's root extends the scene's file, and the nodes it brings have IDs under
     // the instance's; the level holds only its overrides.
     CHECK(entry(files, level, "enemy") == parse(R"({"extends": "godot/scenes/enemy.scene.json",
-                    "components": {"Transform2D": {"position": [100.0, 50.0]}}})"));
+                    "components": {"Enemy": {"health": 5},
+                                   "Transform2D": {"position": [100.0, 50.0]}}})"));
     CHECK(entry(files, level, "enemy/sprite") ==
           parse(R"({"components": {"Sprite2D": {"flip_h": true}}})"));
     const json::Value level_file = parse(files.at(level));
@@ -1321,7 +1342,7 @@ text = "0"
     const std::string level = "godot/level.scene.json";
     REQUIRE(files.contains(level));
     slash::world::ComponentRegistry components;
-    slash::world::register_builtin_components(components);
+    add_types(components, files);
     CHECK(
         slash::world::validate_scene(components, parse(files.at(level)), reader_of(files)).empty());
 
@@ -2200,9 +2221,12 @@ TEST_CASE("importing a Godot project turns each script into a storyboard task") 
     const json::Value& enemy = *tasks.find("task/port-enemy");
     CHECK(enemy.find("status")->as_string() == "open");
     CHECK(*enemy.find("links") == parse(R"(["godot/enemy.gd", "godot/scenes/enemy.scene.json",
-                                             "godot/scenes/level.scene.json"])"));
+                                             "godot/scenes/level.scene.json",
+                                             "src/imported/enemy.cpp"])"));
     const std::string& text = enemy.find("text")->as_string();
     CHECK(text.find("Extends RigidBody2D.") != std::string::npos);
+    CHECK(text.find("Its C++ skeleton is src/imported/enemy.cpp: the Enemy component and the "
+                    "enemy system.") != std::string::npos);
     CHECK(text.find("Exported: health := 3; loot: Array[String] = [].") != std::string::npos);
     CHECK(text.find("Functions: hit(amount: int).") != std::string::npos);
     CHECK(
@@ -2221,6 +2245,35 @@ TEST_CASE("importing a Godot project turns each script into a storyboard task") 
                      "method": "_on_play_pressed", "scene": "godot/scenes/level.scene.json"}])"));
     CHECK(*report.find("autoloads") == parse(R"({"Music": "godot/autoload/music.gd"})"));
 
+    // Each GDScript file is a C++ skeleton in the gameplay sources, registered by scripts.cpp,
+    // which a game module calls; scenes give its entities the component, with their values.
+    CHECK(*parse(files.at("project.json")).find("gameplay") == parse(R"({"sources": ["src"]})"));
+    const std::string& skeleton = files.at("src/imported/enemy.cpp");
+    CHECK(skeleton.find("SLASH_COMPONENT(Enemy, health, loot)") != std::string::npos);
+    CHECK(skeleton.find("void hit(World& /*world*/, entt::entity /*entity*/, Enemy& /*self*/, "
+                        "int /*amount*/) {\n    // health -= amount\n}") != std::string::npos);
+    const std::string& music = files.at("src/imported/music.cpp");
+    CHECK(music.find("autoload") != std::string::npos);
+    CHECK(music.find("Music") != std::string::npos);
+    const std::string& scripts = files.at("src/imported/scripts.cpp");
+    CHECK(scripts.find("    register_music(game);\n    register_enemy(game);\n    "
+                       "register_level(game);\n") != std::string::npos);
+    CHECK(files.at("src/game.cpp") == importer::module_source());
+    CHECK(
+        *entry(files, "godot/scenes/enemy.scene.json", "enemy").find("components")->find("Enemy") ==
+        parse(R"({"health": 3, "loot": ["coin", "gem"]})"));
+    // An instance's component holds what its scene's file doesn't: what the level set.
+    CHECK(
+        *entry(files, "godot/scenes/level.scene.json", "enemy").find("components")->find("Enemy") ==
+        parse(R"({"health": 5})"));
+    CHECK(
+        entry(files, "godot/scenes/level.scene.json", "enemy2").find("components")->find("Enemy") ==
+        nullptr);
+    CHECK(plan.report.find("module")->as_string() == "src/game.cpp");
+    CHECK(plan.report.find("scripts")->as_array().at(1).find("code")->as_string() ==
+          "src/imported/enemy.cpp");
+    CHECK(report.find("scripts")->find("godot/level.gd")->find("system")->as_string() == "level");
+
     // Importing again keeps each task's status, other tasks and the project's other settings.
     REQUIRE(importer::import_project(
                 {.source = (project / "godot").string(), .destination = project.string()})
@@ -2235,6 +2288,13 @@ TEST_CASE("importing a Godot project turns each script into a storyboard task") 
     settings["version"] = "2.0.0";
     write(project / "project.json", json::write(settings));
 
+    // The agent's work on a skeleton stays, its component taking the fields it still has, and
+    // the game module it now has is left alone.
+    write(project / "src/imported/enemy.cpp",
+          "struct Enemy { int health = 3; };\nSLASH_COMPONENT(Enemy, health)\n"
+          "void register_enemy(slash::world::GameModule& game) {}\n");
+    write(project / "src/game.cpp", "SLASH_GAME_MODULE(game) {}\n");
+
     plan = plan_inside(project);
     files = files_of(plan);
     const json::Value again = parse(files.at("storyboard/work.json"));
@@ -2242,6 +2302,165 @@ TEST_CASE("importing a Godot project turns each script into a storyboard task") 
     CHECK(again.find("entries")->find("task/write-intro") != nullptr);
     CHECK(again.find("entries")->find("task/port-enemy-2") == nullptr);
     CHECK(parse(files.at("project.json")).find("version")->as_string() == "2.0.0");
+    CHECK_FALSE(files.contains("src/imported/enemy.cpp"));
+    CHECK_FALSE(files.contains("src/game.cpp"));
+    CHECK_FALSE(files.contains("src/imported/level.cpp"));
+    CHECK(files.contains("src/imported/scripts.cpp")); // always rewritten
+    CHECK(
+        *entry(files, "godot/scenes/enemy.scene.json", "enemy").find("components")->find("Enemy") ==
+        parse(R"({"health": 3})"));
+    CHECK(plan.report.find("scripts")->as_array().at(1).find("kept")->as_bool());
+    CHECK(unsupported(plan.report, "game module").find("where")->as_string() == "src/game.cpp");
+}
+
+TEST_CASE("a GDScript file reads into a C++ skeleton that calls its functions as Godot does") {
+    const std::string text = R"(extends CharacterBody2D
+class_name Player
+## The hero.
+
+signal hit(damage: int)
+signal died
+
+enum State { IDLE, RUN, JUMP = 5 }
+
+const MAX_HEALTH := 100
+const BULLET = preload("res://bullet.tscn")
+
+## Pixels a second.
+@export var speed: float = 200.0
+@export var health: int = MAX_HEALTH
+@export var tint: Color = Color(1, 0.5, 0.25)
+@export var target: Node2D
+@export var allies: Array[Node2D] = []
+@export var bullet_scene: PackedScene
+@export_range(0, 10) var lives = 3
+@export var tags: Array[String] = ["hero", 'player']
+@export
+var points: PackedVector2Array
+var state: State = State.IDLE
+var _coins := 0
+var history = [1, 2]
+@onready var sprite: Sprite2D = $Sprite2D
+
+func _ready() -> void:
+	health = MAX_HEALTH
+
+func _physics_process(delta: float) -> void:
+	move_and_slide()
+
+func score() -> int: return _coins * 10
+
+func _on_coin_body_entered(body: Node2D) -> void:
+	_coins += 1
+
+static func clamp_speed(value: float, limit := 300.0) -> float:
+	return min(value, limit)
+
+func _unhandled_input(event: InputEvent) -> void:
+	pass
+
+class Bullet:
+	var speed = 1
+)";
+    importer::GdscriptOptions options;
+    options.resource_path = [](std::string_view path) {
+        return "godot/" + std::string(path.substr(6));
+    };
+    importer::Script script = importer::read_gdscript("godot/player.gd", text, options);
+    CHECK(script.extends == "CharacterBody2D");
+    CHECK(script.component == "Player");
+    CHECK(script.ns == "player");
+    CHECK(script.doc == "The hero.");
+    CHECK(script.node);
+    REQUIRE(script.fields.size() == 12);
+    const auto field = [&](std::string_view name) -> const importer::ScriptField& {
+        const auto found = std::ranges::find(script.fields, name, &importer::ScriptField::name);
+        REQUIRE_MESSAGE(found != script.fields.end(), name);
+        return *found;
+    };
+    CHECK(field("speed").init == " = 200.0F");
+    CHECK(field("speed").doc == "Pixels a second.");
+    CHECK(field("health").init == " = kMaxHealth");
+    CHECK(field("tint").type == "slash::Vec4");
+    CHECK(field("tint").init == "{1.0F, 0.5F, 0.25F, 1.0F}");
+    CHECK(field("target").kind == importer::FieldKind::Entity);
+    CHECK(field("allies").type == "std::vector<entt::entity>");
+    CHECK(field("allies").kind == importer::FieldKind::Entities);
+    CHECK(field("bullet_scene").type == "std::string");
+    CHECK(field("lives").min == 0.0);
+    CHECK(field("lives").max == 10.0);
+    CHECK(field("tags").init == R"({"hero", "player"})");
+    CHECK(field("points").exported); // its @export is on the line before
+    CHECK(field("state").init == " = State::kIdle");
+    CHECK_FALSE(field("state").exported);
+    CHECK(field("coins").source_name == "_coins");
+    CHECK(field("history").comment == "= [1, 2] in Godot");
+    REQUIRE(script.constants.size() == 2);
+    CHECK(script.constants[1].value == R"("godot/bullet.tscn")");
+    REQUIRE(script.enums.size() == 1);
+    CHECK(script.enums[0].values == std::vector<std::string>{"kIdle", "kRun", "kJump = 5"});
+    REQUIRE(script.signals.size() == 2);
+    CHECK(script.signals[0].params.at(0).type == "int");
+    REQUIRE(script.functions.size() == 6);
+    CHECK(script.functions[2].body == std::vector<std::string>{"return _coins * 10"});
+    CHECK(script.functions[4].is_static);
+    CHECK(script.functions[4].params.at(1).type == "float");
+    CHECK(script.notes.size() == 2); // @onready and the inner class
+
+    script.connections.push_back({.scene = "godot/main.scene.json",
+                                  .signal = "body_entered",
+                                  .from = "coin",
+                                  .to = "player",
+                                  .method = "_on_coin_body_entered"});
+    const std::string code = importer::skeleton(script);
+    for (const std::string_view part : {
+             std::string_view("SLASH_COMPONENT(Player, speed, health, tint, target, allies, "
+                              "bullet_scene, lives, tags, points, state, coins, history)"),
+             std::string_view("void emit_hit(World& world, entt::entity entity, int damage) {"),
+             std::string_view("void physics_process(World& /*world*/, entt::entity /*entity*/, "
+                              "Player& /*self*/,\n                     double /*delta*/) {\n"
+                              "    // move_and_slide()\n}"),
+             std::string_view("float clamp_speed(float /*value*/, float /*limit*/) {"),
+             std::string_view("const slash::input::Event& /*event*/"),
+             std::string_view("        if (event.kind == \"body_entered\" && event.id == \"coin\") "
+                              "{\n            const entt::entity entity = world.find(\"player\");"),
+             std::string_view("on_coin_body_entered(world, entity, *self, event);"),
+             std::string_view("physics_process(world, entity, self, tick_seconds);"),
+             std::string_view(".describe(\"lives\", {.min = 0.0, .max = 10.0})"),
+             std::string_view("#include \"slash/input/input.hpp\""),
+         }) {
+        CHECK_MESSAGE(code.find(part) != std::string::npos, part);
+    }
+    // A script with no variables still marks its entities, with a tag component.
+    const importer::Script empty =
+        importer::read_gdscript("main.gd", "extends Node\n\nfunc _process(_delta):\n\tpass\n");
+    const std::string tag = importer::skeleton(empty);
+    CHECK(tag.find("ecs.view<Main>().each([&](entt::entity entity) {") != std::string::npos);
+    CHECK(tag.find("process(world, entity, tick_seconds);") != std::string::npos);
+    // One that extends no node is a reflected struct, with no system.
+    const importer::Script data =
+        importer::read_gdscript("stats.gd", "extends Resource\n\n@export var power := 2\n");
+    CHECK_FALSE(data.node);
+    CHECK(importer::skeleton(data).find("SLASH_REFLECT(Stats, power)") != std::string::npos);
+    CHECK(importer::skeleton(data).find("add_system") == std::string::npos);
+    CHECK(importer::registration({"player"}).find("register_player(game);") != std::string::npos);
+}
+
+TEST_CASE("skeleton systems never take the name of a system the engine adds") {
+    slash::world::ComponentRegistry components;
+    slash::world::register_builtin_components(components);
+    command::Registry commands;
+    command::register_builtin_commands(commands);
+    command::SessionOptions options;
+    options.capture_logs = false;
+    const command::Session session(components, commands, options);
+    const std::vector<std::string_view> systems = session.world().system_names();
+    CHECK(systems.size() > 5);
+    for (const std::string_view name : systems) {
+        CHECK_MESSAGE(importer::is_engine_system(name), name);
+    }
+    CHECK(importer::cpp_identifier("delete") == "delete_");
+    CHECK(importer::pascal_case("enemy_ai") == "EnemyAi");
 }
 
 TEST_CASE("a Godot project outside the destination is copied in") {
@@ -2286,9 +2505,12 @@ TEST_CASE("project.import converts a Godot project in the session's project") {
     command::Registry commands;
     command::register_builtin_commands(commands);
     importer::register_import_commands(commands);
+    // The game's code, which the import writes: until it is built, its components are stand-ins.
+    slash::gameplay::Host code(components, slash::gameplay::library_path(project.string()));
     command::SessionOptions options;
     options.project_root = project.string();
     options.capture_logs = false;
+    options.gameplay = &code;
     command::Session session(components, commands, options);
 
     const command::Reply dry =
@@ -2304,6 +2526,11 @@ TEST_CASE("project.import converts a Godot project in the session's project") {
           static_cast<std::int64_t>(dry.value.find("files")->size()));
     CHECK(fs::exists(project / "project.json"));
     CHECK(session.call("scene.open", parse(R"({"path": "godot/scenes/level.scene.json"})")).ok);
+    // The enemy's script values, which its instance and its scene's file give it.
+    const slash::world::World& opened = session.world();
+    REQUIRE(components.find("Enemy") != nullptr);
+    CHECK(components.find("Enemy")->get(opened, opened.find("enemy")) ==
+          parse(R"({"health": 5, "loot": ["coin", "gem"]})"));
     CHECK(session.call("storyboard.check", parse("{}")).value.find("valid")->as_bool());
 
     const command::Reply outside =

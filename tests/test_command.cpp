@@ -409,12 +409,22 @@ TEST_CASE("dry runs report what would change and change nothing") {
               ->find("tick")
               ->as_int() == 5);
     CHECK(engine.ok("step").find("tick")->as_int() == 1);
+    // The tick's gameplay code saw the entities made for real, and nothing the dry runs did.
+    std::vector<std::string> events;
+    for (const slash::world::Event& event : engine.session->world().events()) {
+        events.push_back(event.kind + " " + event.id);
+    }
+    CHECK(events == std::vector<std::string>{"entity.created player", "entity.created enemy",
+                                             "entity.created entity_1"});
+    engine.ok("entity.destroy", R"({"id": "entity_1", "dry_run": true})");
+    engine.ok("step");
+    CHECK(engine.session->world().events().empty());
 
     // Replacing the scene: everything would go, and the undo history stays.
     CHECK(*engine.ok("scene.new", R"({"dry_run": true})").find("changes") ==
           parse(R"({"removed": ["enemy", "entity_1", "player"]})"));
     CHECK(engine.scene().size() == 3);
-    CHECK(engine.session->undo_labels().size() == history.size() + 2);
+    CHECK(engine.session->undo_labels().size() == history.size() + 3);
 
     // Errors are reported as usual, and dry_run false is an ordinary call.
     engine.fails("entity.destroy", R"({"id": "nobody", "dry_run": true})",

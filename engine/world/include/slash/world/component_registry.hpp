@@ -37,12 +37,13 @@ struct FieldMeta {
 // (and later the command API) can handle components they only know by name.
 class ComponentType {
 public:
+    // Each takes the type's hash, which names the storage of a type known only by name.
     struct Ops {
-        bool (*has)(const entt::registry& registry, entt::entity entity);
-        void (*remove)(entt::registry& registry, entt::entity entity);
-        json::Value (*save)(const World& world, entt::entity entity);
-        Result<void> (*assign)(World& world, entt::entity entity, const json::Value& fields,
-                               std::string& path);
+        bool (*has)(const entt::registry& registry, entt::id_type type, entt::entity entity);
+        void (*remove)(entt::registry& registry, entt::id_type type, entt::entity entity);
+        json::Value (*save)(const World& world, entt::id_type type, entt::entity entity);
+        Result<void> (*assign)(World& world, entt::id_type type, entt::entity entity,
+                               const json::Value& fields, std::string& path);
         json::Value (*schema)(SchemaBuilder& builder);
         void (*rename)(json::Value& fields, const EntityRename& rename);
     };
@@ -117,8 +118,9 @@ public:
     }
 
     // A stand-in for a component of a game's own code when the code isn't loaded, so files that
-    // use it can still be checked: scene checks take any value for its fields, and loading a
-    // scene into a world leaves it out. Its name must be new.
+    // use it can still be checked and loaded: scene checks take any value for its fields, and
+    // entities keep the values they are given, as JSON, until the code's own type replaces it
+    // (slash/gameplay/host.hpp). Its name must be new.
     ComponentType& add_stand_in(std::string name, std::vector<std::string> fields);
 
     // Moves types between registries, as the engine does with a game's own types when it loads
@@ -144,10 +146,11 @@ ComponentType& ComponentRegistry::add() {
                   "components must be default-constructible and copyable");
 
     const ComponentType::Ops ops{
-        .has = [](const entt::registry& registry,
+        .has = [](const entt::registry& registry, entt::id_type /*type*/,
                   entt::entity entity) { return registry.all_of<T>(entity); },
-        .remove = [](entt::registry& registry, entt::entity entity) { registry.remove<T>(entity); },
-        .save = [](const World& world [[maybe_unused]],
+        .remove = [](entt::registry& registry, entt::id_type /*type*/,
+                     entt::entity entity) { registry.remove<T>(entity); },
+        .save = [](const World& world [[maybe_unused]], entt::id_type /*type*/,
                    entt::entity entity [[maybe_unused]]) -> json::Value {
             if constexpr (std::is_empty_v<T>) {
                 return json::Object{};
@@ -155,8 +158,8 @@ ComponentType& ComponentRegistry::add() {
                 return to_json(world, world.ecs().get<T>(entity));
             }
         },
-        .assign = [](World& world, entt::entity entity, const json::Value& fields,
-                     std::string& path) -> Result<void> {
+        .assign = [](World& world, entt::id_type /*type*/, entt::entity entity,
+                     const json::Value& fields, std::string& path) -> Result<void> {
             entt::registry& registry = world.ecs();
             T value{};
             if constexpr (!std::is_empty_v<T>) {

@@ -1,0 +1,8 @@
+; Engine configuration file.
+
+config_version=5
+
+[application]
+
+config/name="Coin Counter"
+run/main_scene="res://main.tscn"

@@ -327,6 +327,8 @@ struct Engine {
         session_options.capture_logs = false;
         session_options.gameplay = &gameplay;
         session = std::make_unique<command::Session>(components, commands, session_options);
+        // Until the code is built, its components are stand-ins, so its scenes still open.
+        slash::runtime::add_stand_ins(gameplay, options.project_root);
     }
 };
 

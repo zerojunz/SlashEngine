@@ -1,3 +1,4 @@
+#include "slash/core/json.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/world.hpp"
 
@@ -5,6 +6,7 @@
 
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 using slash::world::ComponentRegistry;
@@ -114,6 +116,51 @@ TEST_CASE("systems run in order of priority, then in the order they were added")
     CHECK(systems.back().doc == "Draws.");
     CHECK(systems.back().priority == 100);
     CHECK(systems.front().priority == -10);
+}
+
+TEST_CASE("systems see each event once, at the tick after it came, whatever their order") {
+    const ComponentRegistry registry;
+    World world(registry);
+    std::vector<std::string> early;
+    std::vector<std::string> late;
+    const auto record = [](std::vector<std::string>& seen) {
+        return [&seen](World& w, double /*dt*/) {
+            for (const slash::world::Event& event : w.events()) {
+                seen.push_back(std::to_string(w.tick()) + " " + event.kind + " " + event.id + " " +
+                               std::to_string(event.tick));
+            }
+        };
+    };
+    world.add_system("early", record(early), {.priority = -10});
+    world.add_system("emitter", [](World& w, double /*dt*/) {
+        if (w.tick() == 1) {
+            w.emit("hit", "coin", slash::json::Value(slash::json::Object{{"damage", 2}}));
+        }
+    });
+    world.add_system("late", record(late), {.priority = 10});
+    // Events between ticks, such as a loaded scene's entities, come at the next tick.
+    REQUIRE(world.create("coin").ok());
+    world.step(0.5);
+    world.step(0.5);
+    CHECK(world.events().empty());
+    world.step(0.5);
+    REQUIRE(world.events().size() == 1);
+    CHECK(world.events().front().data == slash::json::Value(slash::json::Object{{"damage", 2}}));
+    world.step(0.5);
+    const std::vector<std::string> expected{"0 entity.created coin 0", "2 hit coin 1"};
+    CHECK(early == expected);
+    CHECK(late == expected);
+
+    // A rolled back command's events don't come; reset_state forgets them all.
+    World::EventQueues before = world.event_queues();
+    world.destroy(world.find("coin"));
+    world.set_event_queues(std::move(before));
+    world.step(0.5);
+    CHECK(world.events().empty());
+    world.emit("hit", "coin");
+    world.reset_state();
+    world.step(0.5);
+    CHECK(world.events().empty());
 }
 
 TEST_CASE("reset_state forgets what systems keep, and the step listener hears each tick first") {

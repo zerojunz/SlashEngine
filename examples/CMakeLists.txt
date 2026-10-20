@@ -6,7 +6,8 @@
 #   calls.jsonl     JSON-RPC requests sent to "slash-cli rpc --project ."; the responses must
 #                   equal results.jsonl, line for line
 #   project.json    the folder is a game project and must pass "slash-cli project validate"
-#   src/            the project's gameplay sources; the example runs on macOS and Linux only
+#   src/            the project's gameplay sources; the example runs on macOS and Linux only, as
+#                   does one whose main.cpp calls gameplay.build
 #
 # Each runs in a copy of its folder, with AssetRipper's stand-in from tests/ as SLASH_ASSETRIPPER.
 # SLASH_UPDATE_EXAMPLES=1 in the environment writes the output to expected.txt or results.jsonl
@@ -20,10 +21,17 @@ foreach(name IN LISTS examples)
     if(NOT IS_DIRECTORY ${dir})
         continue()
     endif()
-    # An example with gameplay sources builds them while it runs, which the tools do on macOS and
-    # Linux only.
+    # An example with gameplay sources, or one that calls gameplay.build on code it writes, builds
+    # them while it runs, which the tools do on macOS and Linux only.
     set(gameplay OFF)
-    if(EXISTS ${dir}/src)
+    if(EXISTS ${dir}/main.cpp)
+        file(READ ${dir}/main.cpp main_text)
+        string(FIND "${main_text}" "gameplay.build" builds)
+        if(NOT builds EQUAL -1)
+            set(gameplay ON)
+        endif()
+    endif()
+    if(EXISTS ${dir}/src OR gameplay)
         set(gameplay ON)
         if(NOT (APPLE OR CMAKE_SYSTEM_NAME STREQUAL "Linux") OR IOS OR ANDROID)
             continue()
@@ -33,15 +41,15 @@ foreach(name IN LISTS examples)
     if(EXISTS ${dir}/main.cpp)
         add_executable(example-${name} ${name}/main.cpp)
         target_link_libraries(example-${name} PRIVATE
-            slash::animation slash::audio slash::canvas slash::command slash::core slash::debug slash::importer slash::input slash::physics2d
-            slash::platform slash::render slash::services slash::shader_compiler slash::text slash::ui slash::world)
+            slash::animation slash::audio slash::canvas slash::command slash::core slash::debug slash::gameplay slash::importer slash::input
+            slash::physics2d slash::platform slash::render slash::services slash::shader_compiler slash::text slash::ui slash::world)
         # The same output on every platform: no fused multiply-adds, which arm64 compilers
         # would otherwise emit and x86-64 ones not.
         target_compile_options(example-${name} PRIVATE
             $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>)
         slash_target_warnings(example-${name})
         if(gameplay)
-            target_link_libraries(example-${name} PRIVATE slash::exporter slash::gameplay)
+            target_link_libraries(example-${name} PRIVATE slash::exporter)
             slash_gameplay_host(example-${name})
         endif()
         set(program -DPROGRAM=$<TARGET_FILE:example-${name}>)

@@ -564,6 +564,19 @@ changed the world, and events the game emits itself. Gameplay code emits one wit
 `world.emit("coin_collected", "coin", data)`, much as a Godot node emits a signal. Polling
 `events.read` is cheaper than re-querying the world, and it works the same over every front end.
 
+Gameplay code reacts to events as Godot code does to signals, through `world.events()`: the events
+of the tick before, from the start of the last tick to the start of this one, so a loaded scene's
+entities too. Each system sees each event once, at the tick after it came, whatever order the
+systems run in:
+
+```cpp
+for (const slash::world::Event& event : world.events()) {
+    if (event.kind == "pressed" && event.id == "start_button") {
+        start_game(world);
+    }
+}
+```
+
 ## Front ends
 
 | Front end | Speaks | Use it for |

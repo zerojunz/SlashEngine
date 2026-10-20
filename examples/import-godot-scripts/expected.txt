@@ -1,0 +1,212 @@
+project.import {"source":"godot"}
+{
+  "converted": {
+    "animation_libraries": 0,
+    "assets": 0,
+    "audio_streams": 0,
+    "bus_layouts": 0,
+    "input_actions": 0,
+    "process_materials": 0,
+    "scenes": 1,
+    "sprite_frames": 0,
+    "themes": 0,
+    "tile_sets": 0
+  },
+  "engine": "godot",
+  "files": 7,
+  "main_scene": "godot/main.scene.json",
+  "module": "src/game.cpp",
+  "project": "Coin Counter",
+  "report": "import/godot.json",
+  "scripts": [
+    {
+      "code": "src/imported/player.cpp",
+      "component": "Player",
+      "entities": 1,
+      "script": "godot/player.gd",
+      "task": "task/port-player"
+    }
+  ],
+  "unsupported": [
+    {
+      "count": 1,
+      "what": "Control under a Node2D",
+      "where": "main.tscn: Coin",
+      "why": "drawn on the screen over its canvas instead of in it"
+    }
+  ]
+}
+--- src/imported/player.cpp
+// Player, from the Godot script godot/player.gd (extends Node2D), for you to port to C++. Its
+// variables are the Player component, its signals world events, and the player system calls its
+// functions as Godot calls them. Each function keeps the GDScript to port in its comments.
+// task/port-player in the storyboard tracks the work. Importing again leaves this file as it is.
+
+#include "slash/core/json.hpp"
+#include "slash/world/game_module.hpp"
+#include "slash/world/serialize.hpp"
+#include "slash/world/world.hpp"
+
+#include <utility>
+
+namespace imported::player {
+
+using slash::world::World;
+
+inline constexpr float kStepLimit = 4.0F; // const STEP_LIMIT := 4.0
+
+// What player.gd keeps for each entity. Scenes set its exported variables; the rest is its state.
+struct Player {
+    // Pixels a second.
+    float speed = 60.0F;
+    entt::entity goal = entt::null; // Node2D
+    int coins = 0;
+};
+SLASH_COMPONENT(Player, speed, goal, coins)
+
+// signal coin_collected(total: int)
+void emit_coin_collected(World& world, entt::entity entity, int total) {
+    slash::json::Value data = slash::json::Object{};
+    data["total"] = slash::world::to_json(world, total);
+    world.emit("coin_collected", world.id_of(entity), std::move(data));
+}
+
+// Line 14: func _ready() -> void:
+// run() calls it for each entity made since the last tick, as Godot calls _ready.
+void ready(World& /*world*/, entt::entity /*entity*/, Player& /*self*/) {
+    // print("ready with ", coins, " coins")
+}
+
+// Line 18: func _physics_process(delta: float) -> void:
+// run() calls it once a tick, as Godot calls _physics_process each frame.
+void physics_process(World& /*world*/, entt::entity /*entity*/, Player& /*self*/,
+                     double /*delta*/) {
+    // position.x = move_toward(position.x, goal.position.x, min(speed * delta, STEP_LIMIT))
+}
+
+// Line 22: func _on_coin_pressed() -> void:
+// run() calls it when coin emits pressed.
+void on_coin_pressed(World& /*world*/, entt::entity /*entity*/, Player& /*self*/,
+                     const slash::world::Event& /*event*/) {
+    // coins += 1
+    // coin_collected.emit(coins)
+}
+
+// The player system: calls the functions as Godot calls player.gd's, for each entity with a Player.
+void run(World& world, double tick_seconds) {
+    entt::registry& ecs = world.ecs();
+    for (const slash::world::Event& event : world.events()) {
+        // _ready, on the entities made since the last tick.
+        if (event.kind == slash::world::kEntityCreated) {
+            const entt::entity entity = world.find(event.id);
+            if (Player* self = ecs.try_get<Player>(entity); self != nullptr) {
+                ready(world, entity, *self);
+            }
+        }
+        // pressed from coin in godot/main.scene.json, connected to _on_coin_pressed.
+        if (event.kind == "pressed" && event.id == "coin") {
+            const entt::entity entity = world.find("player");
+            if (Player* self = ecs.try_get<Player>(entity); self != nullptr) {
+                on_coin_pressed(world, entity, *self, event);
+            }
+        }
+    }
+    ecs.view<Player>().each([&](entt::entity entity, Player& self) {
+        physics_process(world, entity, self, tick_seconds);
+    });
+}
+
+} // namespace imported::player
+
+namespace imported {
+
+// Registers player.gd's component and system; register_scripts calls it.
+void register_player(slash::world::GameModule& game) {
+    game.add_component<player::Player>()
+        .set_doc("Walks to its goal and counts the coins it is given.")
+        .describe("speed", {.doc = "Pixels a second."});
+    game.add_system("player", player::run,
+                    {.doc = "Calls the functions of godot/player.gd, ported to C++, as Godot calls "
+                            "them."});
+}
+
+} // namespace imported
+gameplay.build {}
+{
+  "library": ".slash/gameplay/game.so",
+  "log": ".slash/gameplay/build.log",
+  "reload": {
+    "added": ["Player"]
+  }
+}
+scene.open {"path":"godot/main.scene.json"}
+{
+  "entities": 4,
+  "path": "godot/main.scene.json"
+}
+events.subscribe {"kinds":["ready","coin_collected"]}
+{
+  "subscription": "events_1"
+}
+step {"ticks":6}
+{
+  "tick": 6,
+  "ticks": 6
+}
+ui.press {"id":"coin"}
+{
+  "tick": 6
+}
+step {"ticks":2}
+{
+  "tick": 8,
+  "ticks": 2
+}
+world.query {"include":["Player","Transform2D"],"with":["Player"]}
+{
+  "count": 1,
+  "entities": [
+    {
+      "components": {
+        "Player": {
+          "coins": 1,
+          "goal": "goal",
+          "speed": 120.0
+        },
+        "Transform2D": {
+          "children": [],
+          "position": [26.0, 20.0],
+          "rotation": 0.0,
+          "scale": [1.0, 1.0],
+          "skew": 0.0,
+          "top_level": false
+        }
+      },
+      "id": "player"
+    }
+  ],
+  "truncated": false
+}
+events.read {"subscription":"events_1"}
+{
+  "dropped": 0,
+  "events": [
+    {
+      "data": 0,
+      "id": "player",
+      "kind": "ready",
+      "seq": 1,
+      "tick": 0
+    },
+    {
+      "data": {
+        "total": 1
+      },
+      "id": "player",
+      "kind": "coin_collected",
+      "seq": 2,
+      "tick": 7
+    }
+  ],
+  "more": false
+}

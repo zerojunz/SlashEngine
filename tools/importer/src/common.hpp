@@ -54,6 +54,21 @@ template <typename Range, typename T>
 // Removes the value at a JSON Pointer; false if there is none to remove.
 bool remove_pointer(json::Value& root, std::string_view pointer);
 
+// --- The destination ---
+
+// What the destination project already has that an import builds on.
+struct Existing {
+    std::optional<std::string> project; // project.json
+    std::optional<std::string> work;    // storyboard/work.json
+    // The C++ files of its gameplay code, and of the folder C++ skeletons go to, by path relative
+    // to it, with their text.
+    std::map<std::string, std::string> code;
+};
+
+// The folder an import writes C++ skeletons for scripts under: the first folder of project.json's
+// gameplay sources, or "src".
+[[nodiscard]] std::string gameplay_folder(const std::optional<std::string>& project);
+
 // --- Reports ---
 
 // What couldn't come along, counted by what it is, with the first place it was seen.
