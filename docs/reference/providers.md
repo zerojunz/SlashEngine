@@ -55,10 +55,26 @@ Keys come only from the environment, never from the file, and no command returns
 whose key is not set fails only when a request has to call its model, with `-32003`, so replaying
 recorded answers needs no key.
 
-This build speaks plain `http://`, which reaches models on the machine or the local network
-(Ollama, llama.cpp, LM Studio and vLLM) and proxies in front of hosted ones. Requests to
-`https://` URLs fail with a message saying so until the engine gains TLS, which is next on the
-[roadmap](../roadmap.md).
+## Connections
+
+URLs are `http://`, for models on the machine or the local network (Ollama, llama.cpp, LM Studio
+and vLLM), or `https://`, for hosted APIs. An `https://` server's certificate is checked against
+the certificates the system trusts: the platform decides on macOS and iOS (as Safari would), and
+the system's store or CA bundle is read on Windows, Linux and Android. Requests from web exports
+fail until the engine calls the browser's `fetch`, which is next on the [roadmap](../roadmap.md).
+
+Connections read the same environment variables curl reads:
+
+| Variable | Does |
+| --- | --- |
+| `SSL_CERT_FILE` | A PEM file of the certificates to trust instead of the system's, for a proxy or server that a private authority signs |
+| `https_proxy`, `HTTPS_PROXY` | The proxy for `https://` URLs, as `http://[user:password@]host:port` |
+| `http_proxy` | The proxy for `http://` URLs (never `HTTP_PROXY`, which a web server's scripts get from a request's header) |
+| `no_proxy`, `NO_PROXY` | Comma-separated hosts reached directly: `*`, a host, a domain and everything in it (`example.com`, `.example.com` or `*.example.com`) or a network (`10.0.0.0/8`) |
+
+This machine's own addresses (`localhost`, `127.x.x.x`, `::1`) never go through a proxy. A
+connection that fails says why: a certificate the system doesn't trust or that names another
+host, a proxy that refused it, or a server that could not be reached.
 
 ## Roles
 
@@ -131,4 +147,6 @@ slash::ai::Call call(dialogue.provider, request, /*stream=*/true);
 ```
 
 `ai::make_adapter(type, options)` makes an adapter with no file, and `ai::ReplayProvider` wraps
-any provider, a game's own included.
+any provider, a game's own included. `ai::make_http_transport` takes `HttpOptions` (a
+certificate file, a proxy and where to read the environment) for an adapter's `transport`, and
+`ai::proxy_for` says which proxy a URL would go through.
