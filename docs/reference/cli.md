@@ -482,11 +482,12 @@ JSON-RPC and REST, and swaps it into that session at once. macOS and Linux only;
 every platform link the code in.
 
 ```bash
-slash-cli build [--project <dir>] [--engine <dir>]
+slash-cli build [--check] [--project <dir>] [--engine <dir>]
 ```
 
 | Flag | Meaning |
 | --- | --- |
+| `--check` | Only compile the files changed since the last check or build, with nothing linked, and print their errors and warnings as [`build.check`](commands.md#buildcheck) returns them; exit 1 if there are errors |
 | `--project <dir>` | Game folder with `project.json` (default `.`) |
 | `--engine <dir>` | Engine sources (default: `SLASH_ENGINE_DIR`, else the checkout this program was built from) |
 

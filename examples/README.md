@@ -8,6 +8,7 @@ engine. Copy from them.
 | --- | --- |
 | [components-and-systems](components-and-systems/) | A game's own component and a system that moves it, in C++ |
 | [gameplay-code](gameplay-code/) | A game's own C++ code in `src/`, built with `gameplay.build` and changed while the game runs: the world keeps its entities and fields, and compiler errors come back with file and line |
+| [build-check](build-check/) | `build.check` compiling only the gameplay files that changed (and those including a changed header) with nothing linked, and returning errors and warnings as data with the compiler's fix, which the agent applies |
 | [sdk-package](sdk-package/) | A closed vendor SDK in an `sdk.json` package: per-platform libraries, defines, Info.plist and Android manifest entries, an Android library folder, keys from the environment and glue code that adds an analytics backend in C++, Java and Objective-C; `sdk.check` lists its problems, `sdk.add` adds another, and exports build and link it |
 | [custom-commands](custom-commands/) | A game's own command with a params schema and undo, served like the built-in ones |
 | [edit-a-scene](edit-a-scene/) | Creating, changing, finding and saving entities, `batch` and `undo` |

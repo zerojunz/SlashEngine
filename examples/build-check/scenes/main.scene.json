@@ -1,0 +1,12 @@
+{
+  "entities": {
+    "player": {
+      "components": {
+        "Wallet": {
+          "coins": 200
+        }
+      }
+    }
+  },
+  "format": 1
+}
