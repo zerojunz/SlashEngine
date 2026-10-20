@@ -132,6 +132,11 @@ code still has. `engine_describe` then lists the new components and
 systems. Keep gameplay state in registered components, so it is saved, undone and kept when the
 code is rebuilt. Exports link the code into the game.
 
+To tune a value such as jump height or enemy speed, call `playtest_run` instead of playing by
+hand: it runs many headless copies of the game at once, each with values from `vary` and a bot
+pressing input actions, and returns per value how the runs ended, the ticks they took, the events
+they emitted and the fields you `measure`.
+
 ## Run and export
 
 `slash-game --data .` runs the game the way its exports do, once `slash-cli build` has built its

@@ -9,6 +9,7 @@
 #include <cmath>
 #include <functional>
 #include <limits>
+#include <mutex>
 #include <numbers>
 #include <span>
 #include <string>
@@ -327,6 +328,18 @@ void wake_near(b2WorldId world, b2BodyId self, b2AABB box) {
                         wake_dynamic, &self);
 }
 
+// Box2D keeps its worlds in one array that creating and destroying a world searches and
+// changes, so worlds stepped on different threads, as playtest.run's are, take turns at it.
+std::mutex& worlds_mutex() {
+    static std::mutex mutex;
+    return mutex;
+}
+
+void destroy_world(b2WorldId world) {
+    const std::scoped_lock lock(worlds_mutex());
+    b2DestroyWorld(world);
+}
+
 } // namespace
 
 Space* find_space(world::World& world) {
@@ -338,13 +351,13 @@ Space::Space(const Settings& settings) : settings_(settings) {}
 
 Space::~Space() {
     if (b2World_IsValid(world_)) {
-        b2DestroyWorld(world_);
+        destroy_world(world_);
     }
 }
 
 void Space::reset() {
     if (b2World_IsValid(world_)) {
-        b2DestroyWorld(world_);
+        destroy_world(world_);
     }
     bodies_.clear();
     tiles_.clear();
@@ -398,7 +411,10 @@ void Space::create_world(jobs::Pool& pool) {
         def.finishTask = finish_task;
         def.userTaskContext = &tasks_;
     }
-    world_ = b2CreateWorld(&def);
+    {
+        const std::scoped_lock lock(worlds_mutex());
+        world_ = b2CreateWorld(&def);
+    }
     b2World_SetCustomFilterCallback(world_, should_collide, nullptr);
     b2World_SetPreSolveCallback(world_, pre_solve, nullptr);
     const b2BodyDef ground = b2DefaultBodyDef();

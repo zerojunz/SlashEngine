@@ -5,6 +5,7 @@ add_library(slash_command
     src/live.cpp
     src/mcp.cpp
     src/perf.cpp
+    src/playtest.cpp
     src/project_map.cpp
     src/replay.cpp
     src/rpc.cpp
