@@ -89,8 +89,26 @@ if(SLASH_PROFILER STREQUAL "tracy")
             "TRACY_STATIC ON")
 endif()
 
-# HTTP server and client for the localhost REST mirror and MCP over HTTP. Header-only, used
-# without TLS, compression or exceptions, and only inside slash_server.
+# TLS for httplib's client, so engine/ai reaches hosted models' https:// APIs. Its library
+# only, built here rather than with its own CMake, which needs the test framework submodule.
+# Not on the web, where browsers make requests. Mbed TLS is Apache-2.0 OR GPL-2.0-or-later;
+# SlashEngine uses it under Apache-2.0.
+if(NOT EMSCRIPTEN)
+    slash_add_dependency(mbedtls DOWNLOAD_ONLY TRUE GIT_SUBMODULES "")
+    if(mbedtls_ADDED)
+        file(GLOB _slash_mbedtls_sources ${mbedtls_SOURCE_DIR}/library/*.c)
+        add_library(slash_mbedtls STATIC ${_slash_mbedtls_sources})
+        target_include_directories(slash_mbedtls SYSTEM PUBLIC ${mbedtls_SOURCE_DIR}/include)
+        target_include_directories(slash_mbedtls PRIVATE ${mbedtls_SOURCE_DIR}/library)
+        # Windows' random numbers come from BCryptGenRandom.
+        target_link_libraries(slash_mbedtls PRIVATE $<$<PLATFORM_ID:Windows>:bcrypt>)
+    endif()
+endif()
+
+# HTTP server and client: the localhost REST mirror and MCP over HTTP, engine/ai's requests to
+# models and the importer's to AssetRipper. Header-only, without compression or exceptions.
+# Every target gets it with the same TLS setting, since httplib's classes differ with and
+# without it.
 slash_add_dependency(httplib DOWNLOAD_ONLY TRUE)
 if(httplib_ADDED)
     find_package(Threads REQUIRED)
@@ -99,6 +117,16 @@ if(httplib_ADDED)
     target_compile_definitions(slash_httplib INTERFACE CPPHTTPLIB_NO_EXCEPTIONS)
     target_link_libraries(slash_httplib INTERFACE
         Threads::Threads $<$<PLATFORM_ID:Windows>:ws2_32>)
+    if(TARGET slash_mbedtls)
+        target_compile_definitions(slash_httplib INTERFACE CPPHTTPLIB_MBEDTLS_SUPPORT)
+        # On Windows, httplib reads the system's root certificates with crypt32.
+        target_link_libraries(slash_httplib INTERFACE slash_mbedtls
+            $<$<PLATFORM_ID:Windows>:crypt32>)
+        # On macOS and iOS, engine/ai asks the platform whether it trusts a server's chain
+        # (Security's SecTrust) instead of httplib copying the keychain's roots for each client.
+        target_compile_definitions(slash_httplib INTERFACE
+            CPPHTTPLIB_DISABLE_MACOSX_AUTOMATIC_ROOT_CERTIFICATES)
+    endif()
 endif()
 
 # Fonts and text, as Godot's: FreeType rasterizes glyphs with its auto-hinter, HarfBuzz shapes

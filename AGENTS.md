@@ -932,8 +932,12 @@ once and replayed after, so tests run offline (`SLASH_AI_REPLAY=replay` in CI). 
 a request on its own thread so games never wait on a model. `slash_ai_commands` adds
 `command_tools` and `run_tool_calls` (engine commands as a model's tools) and the `ai.providers`
 and `ai.complete` commands, which need the `network` capability. Tests talk to a fake
-`ai::Transport` or a local server, never a real model. The HTTP client speaks `http://` only
-for now. `examples/ai-provider` is a shopkeeper who talks through a model.
+`ai::Transport` or a local server, never a real model. `src/transport.cpp` is the HTTP client:
+httplib with Mbed TLS, which checks `https://` servers against the system's certificates
+(SecTrust on Apple platforms, which `apple_trusts` asks), or `SSL_CERT_FILE`'s, and reaches them
+through the proxies curl's variables name (`ai::proxy_for`). Its tests make their certificates
+when they run, so no key is committed. `examples/ai-provider` is a shopkeeper who talks through a
+model.
 
 ## Add a component
 
