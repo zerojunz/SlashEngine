@@ -34,6 +34,9 @@ public:
     [[nodiscard]] const Capabilities& capabilities() const final { return options_.capabilities; }
     [[nodiscard]] Result<Response> complete(const Request& original, const StreamSink& sink,
                                             const CancelFlag* cancel) final;
+    // Sends through the transport's post_async, and tries again after its later().
+    void start(const Request& original, StreamSink sink, ReplyCallback done,
+               const CancelFlag* cancel) final;
 
     // Reads a whole reply's body.
     [[nodiscard]] virtual Result<Response> parse(const json::Value& body) const = 0;
@@ -50,6 +53,13 @@ protected:
     [[nodiscard]] std::optional<std::int64_t> max_tokens(const Request& request) const;
 
 private:
+    // One request through its attempts, as complete() and start() send it.
+    struct Exchange;
+    [[nodiscard]] Result<Exchange> prepare(const Request& original, StreamSink sink) const;
+    // Makes the exchange's next attempt with post_async, and calls done with how it ends.
+    static void send(const std::shared_ptr<Exchange>& exchange, ReplyCallback done,
+                     const CancelFlag* cancel);
+
     std::string type_;
     AdapterOptions options_;
 };

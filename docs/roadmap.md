@@ -478,7 +478,7 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
   - [x] A per-system memory report: `perf.stats`'s `memory` gives the process's memory and what
         the world, components, assets, physics, audio, particles and glyph atlases hold, and a
         running game's GPU textures
-- [ ] `ai::Provider` with OpenAI-compatible, Anthropic and Gemini adapters
+- [x] `ai::Provider` with OpenAI-compatible, Anthropic and Gemini adapters
   - [x] The interface and the three adapters (tools, structured output, images, streaming and
         the providers' reasoning kept between turns), roles in `providers.json`, engine commands
         as a model's tools, and `ai.providers` and `ai.complete` with the `network` capability
@@ -486,7 +486,8 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
         every platform, and proxies as curl reads them
   - [x] Games calling models: `ai::ask` from gameplay code with replies as world events, the
         same replies at the same ticks in headless runs, and exports that ship `providers.json`
-  - [ ] Web exports calling models through the browser's `fetch`
+  - [x] Web exports calling models through the browser's `fetch`, streaming, with retries on
+        the browser's timers
 - [x] `ReplayProvider` so tests that use a model run offline
 - [ ] A benchmark of standard agent tasks that counts calls and tokens
 - [ ] Storyboard review: a model through `ai::Provider` reads new text and assets against the

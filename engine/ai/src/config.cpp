@@ -114,6 +114,16 @@ public:
 
     Result<Response> complete(const Request& request, const StreamSink& sink,
                               const CancelFlag* cancel) override {
+        return inner_->complete(with_role(request), sink, cancel);
+    }
+
+    void start(const Request& request, StreamSink sink, ReplyCallback done,
+               const CancelFlag* cancel) override {
+        inner_->start(with_role(request), std::move(sink), std::move(done), cancel);
+    }
+
+private:
+    [[nodiscard]] Request with_role(const Request& request) const {
         Request full = request;
         if (!role_.system.empty()) {
             full.messages.insert(full.messages.begin(),
@@ -131,10 +141,9 @@ public:
         if (!full.params.seed) {
             full.params.seed = role_.params.seed;
         }
-        return inner_->complete(full, sink, cancel);
+        return full;
     }
 
-private:
     std::shared_ptr<Provider> inner_;
     RoleConfig role_;
 };
