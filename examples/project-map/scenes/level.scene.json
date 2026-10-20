@@ -1,0 +1,33 @@
+{
+  "entities": {
+    "coin_1": {
+      "components": {
+        "Transform2D": {
+          "position": [96.0, 64.0]
+        }
+      },
+      "extends": "prefabs/coin.prefab.json"
+    },
+    "coin_2": {
+      "components": {
+        "Transform2D": {
+          "position": [160.0, 64.0]
+        }
+      },
+      "extends": "prefabs/coin.prefab.json"
+    },
+    "runner": {
+      "components": {
+        "CharacterBody2D": {},
+        "StoryRef": {
+          "ids": ["character/runner"]
+        },
+        "Transform2D": {
+          "position": [32.0, 64.0]
+        },
+        "Wallet": {}
+      }
+    }
+  },
+  "format": 1
+}

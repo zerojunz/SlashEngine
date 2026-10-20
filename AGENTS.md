@@ -130,6 +130,13 @@ are advisory, and one that quotes nothing in the material or names no real entry
 Games made by `$cli init` start with a storyboard and are told to brief before a task and check
 after it.
 
+`project.map` (`engine/command/src/project_map.cpp`) says where things are, made from the files
+on each call: scenes' and prefabs' components, prefabs, used files and storyboard entries, and the
+game's C++ sources read as text by `outline_cpp` (`slash/command/cpp_outline.hpp`: types and
+functions by line, macros, string literals with the call they are passed to, includes), so each
+component, system, event and input action says where it is declared and used. `find` and
+`paths` narrow it.
+
 ## Commands, MCP and JSON-RPC
 
 Every change to a world goes through a command registered in `engine/command`. The same registry

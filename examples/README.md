@@ -22,6 +22,7 @@ engine. Copy from them.
 | [run-until](run-until/) | `run.until`: run a game headless until something happens, in one call |
 | [storyboard](storyboard/) | Briefing before a task, editing facts with versions, and checking after |
 | [storyboard-review](storyboard-review/) | A model reads a scene's text and a dialogue file against the storyboard and reports contradictions, each quoting the text and naming the entry; a finding that quotes words the dialogue never says is dropped |
+| [project-map](project-map/) | `project.map`: where a game's components, systems, events and input actions are declared and used in its C++ sources and scenes, found by name or by the file a change touches |
 | [palette-and-budgets](palette-and-budgets/) | `storyboard.check` holding textures to a `palette`'s colors and a `budget`'s `texture_size`: an off-palette sprite and a title over budget found, fixed and checked again |
 | [import-godot](import-godot/) | `project.import` (`slash-cli import`): a Godot 4 platformer's scenes, sprite frames, animations, tile set, theme, buses, input map and settings converted in one call, its scripts turned into C++ skeletons and storyboard tasks to port them, and the report of what didn't convert |
 | [import-godot-scripts](import-godot-scripts/) | A Godot script imported as a C++ skeleton (its variables a component with the scene's values, its signal a world event, its functions stubs a system calls when Godot would), filled in, built with `gameplay.build` and run |

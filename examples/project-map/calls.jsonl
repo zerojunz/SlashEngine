@@ -1,0 +1,5 @@
+{"jsonrpc":"2.0","id":1,"method":"project.map"}
+{"jsonrpc":"2.0","id":2,"method":"project.map","params":{"find":"coin_collected"}}
+{"jsonrpc":"2.0","id":3,"method":"project.map","params":{"paths":["src/runner.hpp"],"sections":["sources","systems"]}}
+{"jsonrpc":"2.0","id":4,"method":"project.map","params":{"paths":["prefabs/coin.prefab.json"],"sections":["scenes","prefabs","sources"]}}
+{"jsonrpc":"2.0","id":5,"method":"project.map","params":{"paths":["src/runer.cpp"]}}
