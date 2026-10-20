@@ -11,28 +11,37 @@ project.import {"dry_run":true,"source":"unity"}
   },
   "dry_run": true,
   "engine": "unity",
-  "files": ["unity/Assets/Audio/Pond.bus_layout.json", "unity/Assets/Prefabs/Coin.scene.json", "unity/Assets/Animations/Frog.anim.json", "unity/Assets/Prefabs/Frog.scene.json", "unity/Assets/Prefabs/Gold Coin.scene.json", "unity/Assets/Audio/pond.loop.audio.json", "unity/Assets/tiles.tileset.json", "unity/Assets/lights/spot_17_50.png", "unity/Assets/Scenes/Pond.scene.json", "project.json", "storyboard/work.json", "import/unity.json"],
+  "files": ["unity/Assets/Audio/Pond.bus_layout.json", "unity/Assets/Prefabs/Coin.scene.json", "unity/Assets/Animations/Frog.anim.json", "unity/Assets/Prefabs/Frog.scene.json", "unity/Assets/Prefabs/Gold Coin.scene.json", "unity/Assets/Audio/pond.loop.audio.json", "unity/Assets/tiles.tileset.json", "unity/Assets/lights/spot_17_50.png", "unity/Assets/Scenes/Pond.scene.json", "project.json", "storyboard/work.json", "src/imported/camera_follow.cpp", "src/imported/coin.cpp", "src/imported/frog.cpp", "src/imported/hud.cpp", "src/imported/scripts.cpp", "src/game.cpp", "import/unity.json"],
   "main_scene": "unity/Assets/Scenes/Pond.scene.json",
+  "module": "src/game.cpp",
   "pixels_per_unit": 32.0,
   "project": "Pond Hop",
   "report": "import/unity.json",
   "scripts": [
     {
+      "code": "src/imported/camera_follow.cpp",
+      "component": "CameraFollow",
       "entities": 1,
       "script": "unity/Assets/Scripts/CameraFollow.cs",
       "task": "task/port-camera-follow"
     },
     {
+      "code": "src/imported/coin.cpp",
+      "component": "Coin",
       "entities": 6,
       "script": "unity/Assets/Scripts/Coin.cs",
       "task": "task/port-coin"
     },
     {
+      "code": "src/imported/frog.cpp",
+      "component": "Frog",
       "entities": 2,
       "script": "unity/Assets/Scripts/Frog.cs",
       "task": "task/port-frog"
     },
     {
+      "code": "src/imported/hud.cpp",
+      "component": "Hud",
       "entities": 1,
       "script": "unity/Assets/Scripts/Hud.cs",
       "task": "task/port-hud"
@@ -96,28 +105,37 @@ project.import {"source":"unity"}
     "tile_sets": 1
   },
   "engine": "unity",
-  "files": 12,
+  "files": 18,
   "main_scene": "unity/Assets/Scenes/Pond.scene.json",
+  "module": "src/game.cpp",
   "pixels_per_unit": 32.0,
   "project": "Pond Hop",
   "report": "import/unity.json",
   "scripts": [
     {
+      "code": "src/imported/camera_follow.cpp",
+      "component": "CameraFollow",
       "entities": 1,
       "script": "unity/Assets/Scripts/CameraFollow.cs",
       "task": "task/port-camera-follow"
     },
     {
+      "code": "src/imported/coin.cpp",
+      "component": "Coin",
       "entities": 6,
       "script": "unity/Assets/Scripts/Coin.cs",
       "task": "task/port-coin"
     },
     {
+      "code": "src/imported/frog.cpp",
+      "component": "Frog",
       "entities": 2,
       "script": "unity/Assets/Scripts/Frog.cs",
       "task": "task/port-frog"
     },
     {
+      "code": "src/imported/hud.cpp",
+      "component": "Hud",
       "entities": 1,
       "script": "unity/Assets/Scripts/Hud.cs",
       "task": "task/port-hud"
@@ -264,6 +282,10 @@ project.import {"source":"unity"}
     },
     "frog": {
       "components": {
+        "Frog": {
+          "feet": "frog/feet",
+          "jump_speed": 8.0
+        },
         "Transform2D": {
           "children": ["frog/frog_sprite", "frog/feet", "hat"],
           "position": [-96.0, 112.0]
@@ -380,6 +402,9 @@ project.import {"source":"unity"}
           "anchor_right": 1.0,
           "children": ["coins", "pause", "hint"],
           "z_index": 10
+        },
+        "Hud": {
+          "frog": "frog"
         }
       }
     },
@@ -475,6 +500,10 @@ project.import {"source":"unity"}
           "current": true
         },
         "Camera2D": {},
+        "CameraFollow": {
+          "smoothing": 0.2,
+          "target": "frog"
+        },
         "Transform2D": {}
       }
     },
@@ -609,6 +638,12 @@ project.import {"source":"unity"}
           "radius": 12.0,
           "shape": "capsule"
         },
+        "Frog": {
+          "croak": "frog",
+          "feet": "feet",
+          "jump_speed": 7.5,
+          "move_speed": 4.0
+        },
         "RigidBody2D": {
           "angular_damp": 0.05,
           "collision_layer": 64,
@@ -641,6 +676,9 @@ project.import {"source":"unity"}
   "entities": {
     "gold_coin": {
       "components": {
+        "Coin": {
+          "value": 5
+        },
         "Sprite2D": {
           "modulate": [1.0, 1.0, 0.5, 1.0],
           "region": [16.0, 16.0, 16.0, 16.0]
@@ -889,6 +927,9 @@ project.import {"source":"unity"}
     "bus_layout": "unity/Assets/Audio/Pond.bus_layout.json"
   },
   "format": 1,
+  "gameplay": {
+    "sources": ["src"]
+  },
   "input": {
     "Cancel": {
       "events": [
@@ -1257,7 +1298,7 @@ storyboard.query {"kind":"task"}
         "summary": "C# from Unity: write what it does as C++ components and systems."
       },
       "id": "task/port-camera-follow",
-      "version": "8c906fef"
+      "version": "ea410770"
     },
     {
       "fields": {
@@ -1265,7 +1306,7 @@ storyboard.query {"kind":"task"}
         "summary": "C# from Unity: write what it does as C++ components and systems."
       },
       "id": "task/port-coin",
-      "version": "e14dacdd"
+      "version": "0c5d5540"
     },
     {
       "fields": {
@@ -1273,7 +1314,7 @@ storyboard.query {"kind":"task"}
         "summary": "C# from Unity: write what it does as C++ components and systems."
       },
       "id": "task/port-frog",
-      "version": "b5a05b24"
+      "version": "132daec4"
     },
     {
       "fields": {
@@ -1289,7 +1330,7 @@ storyboard.query {"kind":"task"}
         "summary": "C# from Unity: write what it does as C++ components and systems."
       },
       "id": "task/port-hud",
-      "version": "79bc668f"
+      "version": "2227bceb"
     }
   ],
   "seq": 0

@@ -16,6 +16,7 @@
 #include "slash/command/command.hpp"
 #include "slash/command/session.hpp"
 #include "slash/core/json.hpp"
+#include "slash/gameplay/host.hpp"
 #include "slash/importer/commands.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/render/image.hpp"
@@ -97,6 +98,9 @@ void print_file(const std::string& path) {
 struct Agent {
     world::ComponentRegistry components;
     command::Registry commands;
+    // The game's own C++ code. Until it is built, the components of the skeletons the import
+    // writes are stand-ins that keep the values scenes give them.
+    slash::gameplay::Host code{components, slash::gameplay::library_path(".")};
     std::unique_ptr<command::Session> session;
 
     explicit Agent(std::vector<command::Capability> capabilities) {
@@ -105,6 +109,7 @@ struct Agent {
         slash::importer::register_import_commands(commands);
         command::SessionOptions options;
         options.capture_logs = false;
+        options.gameplay = &code;
         options.capabilities = std::move(capabilities);
         session = std::make_unique<command::Session>(components, commands, options);
     }

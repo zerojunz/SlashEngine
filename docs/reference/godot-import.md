@@ -350,12 +350,12 @@ Each `.gd` or `.cs` file becomes a task in `storyboard/work.json`, such as
 extends, its class name, exported variables, signals and functions. Autoloads get tasks too.
 The original scripts stay in the project for the agent to read while it writes the C++.
 
-Each `.gd` file also becomes a C++ skeleton for the agent to fill in, in the folder of
+Each `.gd` and `.cs` file also becomes a C++ skeleton for the agent to fill in, in the folder of
 `project.json`'s gameplay sources (`src`, added to the sources when the project has none):
 
 | File | What it holds |
 | --- | --- |
-| `src/imported/<name>.cpp` | The script's constants and enums; its variables as a component named after its `class_name` (or file); an `emit_<signal>` helper per signal, which emits a world event with the signal's arguments as its data; a stub per function, with the GDScript in comments; the system calling them; and `imported::register_<name>` |
+| `src/imported/<name>.cpp` | The script's constants and enums; its variables as a component named after its `class_name` (or file; a C# script's class); an `emit_<signal>` helper per signal, which emits a world event with the signal's arguments as its data; a stub per function, with the GDScript or C# in comments; the system calling them; and `imported::register_<name>` |
 | `src/imported/scripts.cpp` | `imported::register_scripts`, which registers every skeleton's component and system |
 | `src/game.cpp` | The game module calling it, written only when the project's code has none (`src/imported/module.cpp` when `src/game.cpp` is taken) |
 
@@ -385,9 +385,17 @@ signal's event comes from the connected entity. `_exit_tree`, `_draw` and Godot'
 are stubs nothing calls yet. `@onready` variables, setters and getters, static variables and
 inner classes are listed at the top of the skeleton instead.
 
+A C# script reads the same way: its class's `[Export]` fields and properties are the exported
+variables (scenes set them by their C# names), `[Export(PropertyHint.Range, "0,10")]` sets a
+range, `///` comments are docs, `[Signal]` delegates are signals (`HitEventHandler` is `Hit`, as
+Godot names it), `_Ready` and Godot's other overrides are called as their GDScript names are,
+and other fields and properties are its state. C# types map as GDScript's do, with `long`,
+`double`, `List<T>` and arrays too. Static fields, nested types, operators, indexers and `async`
+methods are listed at the top.
+
 Importing again leaves a skeleton that exists as it is, its component taking scene values for
 the fields it still has, and rewrites `scripts.cpp`. When the project's own game module doesn't
-call `imported::register_scripts`, the report says so. C# scripts get tasks only, for now.
+call `imported::register_scripts`, the report says so.
 `examples/import-godot-scripts` imports a script, fills in its skeleton and runs it.
 
 `import/godot.json` holds what the port needs that the scenes don't: for each script, the
@@ -428,7 +436,6 @@ The report lists each of these once per kind, with how many and where it was fir
 | Y-sorting tile map layers | Layers draw in order, by `z_index` |
 | `gui/theme/custom_font` | Set `default_font` in the project's theme |
 | Audio effects with no SlashEngine equivalent, such as the deprecated `AudioEffectLimiter` | Left out of the bus, which keeps its other effects |
-| C++ skeletons for C# scripts | Next; their tasks list what they declare |
 | Timers and other gameplay nodes | Gameplay code: their values are kept in the report |
 | `display/window/stretch/mode` | Stretching isn't supported yet |
 | Shaders (`.gdshader`) and `ShaderMaterial` | A game's own shaders are on the roadmap; canvas materials are `.material.json` graphs |

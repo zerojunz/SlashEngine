@@ -10,16 +10,18 @@
 // lights and shadow casters, animation, sounds and UI become SlashEngine's components, measured
 // in pixels, the tile map's sprites a tile set, the controller an animation library and the mixer
 // a bus layout; its player, physics, time, sorting and input settings become project.json; and
-// each script, and the controller's state machine, a storyboard task to port it to C++, since
-// SlashEngine games are plain C++. The report lists what didn't convert, and why. Games ship PNG
-// and WAV files made in other tools; this example makes its textures and sounds in code (without
-// libm, so they are the same everywhere), so the repository holds no images or sounds.
+// each script a C++ skeleton and, with the controller's state machine, a storyboard task to
+// port it to C++, since SlashEngine games are plain C++. The report lists what didn't convert,
+// and why. Games ship PNG and WAV files made in other tools; this example makes its textures and
+// sounds in code (without libm, so they are the same everywhere), so the repository holds no
+// images or sounds.
 
 #include "slash/audio/audio.hpp"
 #include "slash/command/builtin.hpp"
 #include "slash/command/command.hpp"
 #include "slash/command/session.hpp"
 #include "slash/core/json.hpp"
+#include "slash/gameplay/host.hpp"
 #include "slash/importer/commands.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/render/image.hpp"
@@ -87,6 +89,9 @@ void print_file(const std::string& path) {
 struct Agent {
     world::ComponentRegistry components;
     command::Registry commands;
+    // The game's own C++ code. Until it is built, the components of the skeletons the import
+    // writes are stand-ins that keep the values scenes give them.
+    slash::gameplay::Host code{components, slash::gameplay::library_path(".")};
     std::unique_ptr<command::Session> session;
 
     Agent() {
@@ -95,6 +100,7 @@ struct Agent {
         slash::importer::register_import_commands(commands);
         command::SessionOptions options;
         options.capture_logs = false;
+        options.gameplay = &code;
         session = std::make_unique<command::Session>(components, commands, options);
     }
 
