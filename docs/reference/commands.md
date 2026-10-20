@@ -2500,8 +2500,8 @@ Needs: `edit`. Takes `dry_run`.
 
 ### step
 
-Advances the simulation by running every system once per tick. Undo reverts the entities to how
-they were before.
+Advances the simulation by running every system once per tick, and lists the music clips that
+started. Undo reverts the entities to how they were before.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -2519,6 +2519,18 @@ Needs: `run`. Takes `dry_run`.
 ```
 
 `tick` is the world's tick counter after the step. Undo restores entities but not the counter.
+
+When music started a clip during the ticks, `music` lists each, oldest first, as a
+[`clip_changed`](scene-format.md#clip-changes) event: the `tick` it started in, the player's
+`id`, the `clip`, the clip `from` before it, the `transition` it followed, `filler` and
+`automatic` when they hold, and the seconds it `waited` for its beat or bar. A `clip` of `""`
+means the music stopped. At most 100 are listed, then `music_truncated` is true. From
+[examples/music-timeline](../../examples/music-timeline/), as the victory sting goes back to
+explore at its end by itself:
+
+```json
+{"music":[{"automatic":true,"clip":"explore","from":"victory","id":"music","tick":389,"transition":2,"waited":1.003}],"tick":420,"ticks":90}
+```
 
 ### run.until
 
@@ -2540,7 +2552,9 @@ Needs: `run`. Takes `dry_run`.
 The condition is checked before each tick, so one that already holds runs no ticks. The result is
 `world.query`'s for the entities that match when it stops, plus `matched` (whether the condition
 held), `ticks` (how many ran) and `tick` (the world's tick counter). With `"until": "none"` a
-match means nothing is left, so `entities` is empty.
+match means nothing is left, so `entities` is empty. `music` lists the clips music started, as
+[`step`](#step)'s does, so one call says whether the music followed the game: "does the boss
+music start within a bar of the boss arriving?".
 
 From [examples/run-until](../../examples/run-until/), where a `gravity` system makes `ball` fall
 and a `despawn` system removes bodies below y = 1000:
@@ -2835,6 +2849,7 @@ The result has `runs`, the number made, and `results`, one per combination in or
 | `ticks` | `min`, `mean` and `max` of the ticks the runs lasted |
 | `events` | Each event kind counted, per run on average |
 | `measure` | Each `measure` key's value at the end: `min`, `mean` and `max` for numbers, otherwise how many runs ended with each value (as JSON text); `missing` counts runs whose entity or component was gone |
+| `music` | When music started clips: by player ID, each clip's `runs` (how many runs it started in) and `first_tick` (`min`, `mean` and `max` of when it first did, in ticks from the run's start), and `transitions`, each `"<from> -> <to>"` per run on average |
 
 Means are rounded to three decimals. A bad key, value, action or condition fails before anything
 runs, with its JSON Pointer, such as `/vary/runner~1Runner~1jump_speed/1`.

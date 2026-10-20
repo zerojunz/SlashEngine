@@ -1,0 +1,7 @@
+{
+  "beat_count": 8,
+  "bpm": 120,
+  "format": 1,
+  "loop_mode": "forward",
+  "source": "audio/boss.wav"
+}

@@ -1,0 +1,17 @@
+wrote the sounds in audio/
+scene.open {"path":"arena.scene.json"}
+{"entities":1,"path":"arena.scene.json"}
+entity.create {"components":{"Arena":{}},"id":"arena"}
+{"id":"arena"}
+world.snapshot {"name":"start"}
+{"entities":2,"name":"start"}
+run.until {"with":["Boss"]}
+{"count":1,"entities":["boss"],"matched":true,"music":[{"clip":"explore","id":"music","tick":0}],"tick":90,"ticks":90,"truncated":false}
+run.until {"ticks":600,"until":"none","with":["Boss"]}
+{"count":0,"entities":[],"matched":true,"music":[{"clip":"boss","from":"explore","id":"music","tick":119,"transition":0,"waited":0.511},{"clip":"victory","from":"boss","id":"music","tick":329,"transition":1,"waited":0.005}],"tick":330,"ticks":240,"truncated":false}
+step {"ticks":90}
+{"music":[{"automatic":true,"clip":"explore","from":"victory","id":"music","tick":389,"transition":2,"waited":1.003}],"tick":420,"ticks":90}
+world.restore {"name":"start"}
+{"entities":2,"restored":"start"}
+playtest.run {"end":{"won":{"where":[{"component":"Arena","field":"phase","value":"won"}],"with":["Arena"]}},"ticks":480,"vary":{"arena/Arena/damage":[0,1,2,4]}}
+{"results":[{"ends":{"timeout":1,"won":0},"events":{"boss_defeated":0,"clip_changed":2},"music":{"music":{"clips":{"boss":{"first_tick":{"max":119,"mean":119,"min":119},"runs":1},"explore":{"first_tick":{"max":0,"mean":0,"min":0},"runs":1}},"transitions":{"explore -> boss":1}}},"ticks":{"max":480,"mean":480,"min":480},"values":{"arena/Arena/damage":0}},{"ends":{"timeout":0,"won":1},"events":{"boss_defeated":1,"clip_changed":3},"music":{"music":{"clips":{"boss":{"first_tick":{"max":119,"mean":119,"min":119},"runs":1},"explore":{"first_tick":{"max":0,"mean":0,"min":0},"runs":1},"victory":{"first_tick":{"max":329,"mean":329,"min":329},"runs":1}},"transitions":{"boss -> victory":1,"explore -> boss":1}}},"ticks":{"max":330,"mean":330,"min":330},"values":{"arena/Arena/damage":1}},{"ends":{"timeout":0,"won":1},"events":{"boss_defeated":1,"clip_changed":3},"music":{"music":{"clips":{"boss":{"first_tick":{"max":119,"mean":119,"min":119},"runs":1},"explore":{"first_tick":{"max":0,"mean":0,"min":0},"runs":1},"victory":{"first_tick":{"max":209,"mean":209,"min":209},"runs":1}},"transitions":{"boss -> victory":1,"explore -> boss":1}}},"ticks":{"max":210,"mean":210,"min":210},"values":{"arena/Arena/damage":2}},{"ends":{"timeout":0,"won":1},"events":{"boss_defeated":1,"clip_changed":3},"music":{"music":{"clips":{"boss":{"first_tick":{"max":119,"mean":119,"min":119},"runs":1},"explore":{"first_tick":{"max":0,"mean":0,"min":0},"runs":1},"victory":{"first_tick":{"max":149,"mean":149,"min":149},"runs":1}},"transitions":{"boss -> victory":1,"explore -> boss":1}}},"ticks":{"max":150,"mean":150,"min":150},"values":{"arena/Arena/damage":4}}],"runs":4}

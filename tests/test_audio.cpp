@@ -459,6 +459,7 @@ TEST_CASE("a playlist plays its streams in turn, each for its beats or its lengt
     audio::StreamFile settings;
     settings.loop = false;
     settings.fade_time = 0.01F;
+    settings.streams = {{.stream = "one.wav"}, {.stream = "two.wav"}};
     const auto list = audio::playlist_stream(
         {steady_stream(kRate, {0.5F, 0.5F}, beats), steady_stream(kRate / 10, {0.25F, 0.25F})},
         settings);
@@ -478,6 +479,19 @@ TEST_CASE("a playlist plays its streams in turn, each for its beats or its lengt
     // time down a frame at a time.
     CHECK(mixed == 8821);
     CHECK_FALSE(playback->is_playing());
+    // Each stream starting is a clip change, named by its path.
+    std::vector<audio::ClipChange> changes;
+    playback->take_clip_changes(changes);
+    REQUIRE(changes.size() == 2);
+    CHECK(changes[0].clip == "one.wav");
+    CHECK(changes[0].from.empty());
+    CHECK_FALSE(changes[0].automatic);
+    CHECK(changes[1].clip == "two.wav");
+    CHECK(changes[1].from == "one.wav");
+    CHECK(changes[1].automatic);
+    changes.clear();
+    playback->take_clip_changes(changes);
+    CHECK(changes.empty());
 
     // Looping, it starts over and counts the loop.
     settings.loop = true;
@@ -581,8 +595,23 @@ TEST_CASE("interactive music switches clips as its transitions say") {
         out.resize(static_cast<std::size_t>(frames));
         REQUIRE(playback->mix(out.data(), 1.0F, frames) == frames);
     };
+    // The clips started since the last look, as "from>clip", the transitions entry, whether it
+    // came by itself and the frames it waited.
+    const auto changes = [&] {
+        std::vector<audio::ClipChange> taken;
+        playback->take_clip_changes(taken);
+        std::vector<std::string> lines;
+        for (const audio::ClipChange& change : taken) {
+            lines.push_back(change.from + ">" + change.clip + " #" +
+                            std::to_string(change.transition) + (change.automatic ? " auto" : "") +
+                            (change.filler ? " filler" : "") + " " +
+                            std::to_string(std::lround(change.waited * kRate)));
+        }
+        return lines;
+    };
     mix_frames(2048);
     CHECK(playback->clip() == "a");
+    CHECK(changes() == std::vector<std::string>{">a #-1 0"});
     CHECK(playback->parameter("switch_to_clip") == json::Value("a"));
     check_frame(out[1000], 0.5F, 0.5F);
 
@@ -596,6 +625,9 @@ TEST_CASE("interactive music switches clips as its transitions say") {
     mix_frames(2048);
     CHECK(playback->clip() == "b");
     check_frame(out[1000], 0.25F, 0.25F); // frame 5144
+    // Asked at frame 2048, it started on the beat: at 4282, since a sound's position counts the
+    // 128 frames it has read ahead, as Godot's.
+    CHECK(changes() == std::vector<std::string>{"a>b #0 2234"});
     // Asking for the clip it plays changes nothing.
     playback->set_parameter("switch_to_clip", json::Value("b"));
     playback->set_parameter("switch_to_clip", json::Value("nothing"));
@@ -611,6 +643,7 @@ TEST_CASE("interactive music switches clips as its transitions say") {
     CHECK(playback->clip() == "b");
     CHECK(playback->parameter("switch_to_clip") == json::Value("b"));
     check_frame(out[4000], 0.25F, 0.25F);
+    CHECK(changes() == std::vector<std::string>{"b>sting #3 0", "sting>b #3 auto 4281"});
 
     // From b to solo holds b; solo goes on to back, and at back's end the music returns to b.
     playback->set_parameter("switch_to_clip", json::Value("solo"));
@@ -624,6 +657,8 @@ TEST_CASE("interactive music switches clips as its transitions say") {
     CHECK(playback->clip() == "b");
     check_frame(out[4000], 0.25F, 0.25F);
     CHECK(playback->position() > 0.0);
+    CHECK(changes() ==
+          std::vector<std::string>{"b>solo #1 0", "solo>back #3 auto 4281", "back>b #3 auto 4538"});
 
     // A hold straight into a clip that returns to it: ring plays, then b again.
     playback->set_parameter("switch_to_clip", json::Value("ring"));
@@ -633,6 +668,53 @@ TEST_CASE("interactive music switches clips as its transitions say") {
     mix_frames(4096);
     CHECK(playback->clip() == "b");
     check_frame(out[4000], 0.25F, 0.25F);
+    CHECK(changes() == std::vector<std::string>{"b>ring #2 0", "ring>b #3 auto 4281"});
+}
+
+TEST_CASE("interactive music says which clips started, a transition's filler among them") {
+    // a beats every tenth of a second; going to b plays fill, a twentieth of a second, between.
+    audio::StreamFile beats;
+    beats.bpm = 600;
+    beats.loop_mode = audio::LoopMode::Forward;
+    audio::StreamFile settings;
+    settings.clips.resize(3);
+    settings.clips[0].name = "a";
+    settings.clips[1].name = "b";
+    settings.clips[2].name = "fill";
+    settings.transitions = {{.from_clip = 0,
+                             .to_clip = 1,
+                             .from_time = audio::TransitionFrom::NextBeat,
+                             .fade_mode = audio::FadeMode::Disabled,
+                             .filler_clip = 2}};
+    const auto music = audio::interactive_stream({steady_stream(kRate, {0.5F, 0.5F}, beats),
+                                                  steady_stream(kRate, {0.25F, 0.25F}),
+                                                  steady_stream(kRate / 20, {0.125F, 0.125F})},
+                                                 settings);
+    auto playback = music->instantiate(kRate, 0);
+    playback->start(0.0);
+    std::vector<Frame> out(1024);
+    REQUIRE(playback->mix(out.data(), 1.0F, 1024) == 1024);
+    playback->set_parameter("switch_to_clip", json::Value("b"));
+    for (int i = 0; i < 8; ++i) {
+        REQUIRE(playback->mix(out.data(), 1.0F, 1024) == 1024);
+    }
+    CHECK(playback->clip() == "b");
+    std::vector<audio::ClipChange> changes;
+    playback->take_clip_changes(changes);
+    REQUIRE(changes.size() == 3);
+    CHECK(changes[0].clip == "a");
+    // Asked at frame 1024: fill on a's beat at 4410, b once fill's 2205 frames have played, each
+    // less the frames read ahead.
+    CHECK(changes[1].clip == "fill");
+    CHECK(changes[1].from == "a");
+    CHECK(changes[1].filler);
+    CHECK(changes[1].transition == 0);
+    CHECK(std::lround(changes[1].waited * kRate) == 4410 - 1024 - 129);
+    CHECK(changes[2].clip == "b");
+    CHECK(changes[2].from == "fill");
+    CHECK_FALSE(changes[2].filler);
+    CHECK(changes[2].transition == 0);
+    CHECK(std::lround(changes[2].waited * kRate) == 4410 + 2205 - 1024 - 128);
 }
 
 TEST_CASE("a player's parameters reach its playbacks, and switch_to_clip follows the music") {
@@ -650,6 +732,19 @@ TEST_CASE("a player's parameters reach its playbacks, and switch_to_clip follows
     sounds.step();
     CHECK(sounds.player("music")->clip == "calm");
     check_frame(sounds.last(), 0.5F, 0.5F);
+    // Each clip the music starts is a clip_changed event from the player.
+    const auto clip_changes = [&] {
+        std::vector<std::string> out;
+        for (const world::Event& event : sounds.events) {
+            if (event.kind == audio::kClipChanged) {
+                out.push_back(event.id + " " + json::write(event.data, json::Style::Compact));
+            }
+        }
+        sounds.events.clear();
+        return out;
+    };
+    CHECK(clip_changes() ==
+          std::vector<std::string>{R"(music {"clip":"calm","component":"AudioStreamPlayer"})"});
 
     auto& player = sounds.world.ecs().get<world::AudioStreamPlayer>(music);
     player.parameters["switch_to_clip"] = json::Value("fight");
@@ -667,6 +762,21 @@ TEST_CASE("a player's parameters reach its playbacks, and switch_to_clip follows
         json::Value("fight");
     sounds.step();
     CHECK(sounds.player("music")->clip == "fight");
+    CHECK(clip_changes() ==
+          std::vector<std::string>{
+              R"(music {"clip":"fight","component":"AudioStreamPlayer","from":"calm",)"
+              R"("transition":0})",
+              R"(music {"automatic":true,"clip":"calm","component":"AudioStreamPlayer",)"
+              R"("from":"fight","transition":0,"waited":0.097})",
+              R"(music {"clip":"fight","component":"AudioStreamPlayer","from":"calm",)"
+              R"("transition":0})",
+          });
+    // Music that stops says so: no clip, and the one it played.
+    sounds.world.ecs().get<world::AudioStreamPlayer>(music).playing = false;
+    sounds.step();
+    CHECK(clip_changes() ==
+          std::vector<std::string>{
+              R"(music {"clip":"","component":"AudioStreamPlayer","from":"fight"})"});
 
     // A voice that starts later gets the parameters it was given before it plays.
     sounds.files.write("music/layers.audio.json", R"({"format": 1, "synchronized": [
