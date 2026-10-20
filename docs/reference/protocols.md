@@ -24,7 +24,8 @@ and `2024-11-05`. It answers `initialize` with the newest version the client als
 `entity.create`), because some clients only accept letters, digits, `_` and `-`. The tool's
 `inputSchema` is the command's params schema, and its annotations say whether it is read-only and,
 if not, whether it is destructive (opening a scene, writing files or building with `export.run`
-cannot be undone; other edits can).
+cannot be undone; other edits can), and whether it reaches outside the machine (`openWorldHint`,
+for commands that need the `network` capability, such as `ai.complete`).
 
 **Results.** A successful call returns the command's result as text content and, for objects, as
 `structuredContent`. A failed command is a tool result with `isError: true`, not a protocol

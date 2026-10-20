@@ -1,0 +1,20 @@
+role shopkeeper: provider local, openai model llama3.2
+
+> What do you sell?
+Mira: Fresh bread, honey cakes and, on Fridays, plum tarts.
+stop end, 64 tokens in, 9 out
+
+> How are you today, and what does a loaf cost?
+output {"mood":"cheerful","price":3}
+
+> Put a loaf on the counter, please.
+tool call entity_create {"components":{"Transform2D":{"position":[40,12]}},"id":"bread_loaf"}
+result {"id":"bread_loaf"}
+Mira: There you are, a fresh loaf on the counter. Three coins, please.
+world {"count":1,"entities":["bread_loaf"],"truncated":false}
+model requests: 4
+
+replaying 4 recordings with no model
+Mira: Fresh bread, honey cakes and, on Fridays, plum tarts. (replayed)
+output {"mood":"cheerful","price":3} (replayed)
+new question: tests/ai.replay.jsonl has no recording of this request

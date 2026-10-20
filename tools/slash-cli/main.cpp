@@ -3,6 +3,8 @@
 
 #include "init.hpp"
 
+#include "slash/ai/commands.hpp"
+#include "slash/ai/config.hpp"
 #include "slash/animation/animation.hpp"
 #include "slash/audio/audio.hpp"
 #include "slash/canvas/canvas.hpp"
@@ -111,9 +113,11 @@ Usage:
                                      (.theme.json), audio (.audio.json), bus_layout
                                      (.bus_layout.json), replay (.replay.json), test
                                      (.test.json), storyboard, project (project.json),
-                                     presets (export_presets.json) or sdk (sdk.json)
-  slash-cli project validate [dir]   Check project.json, export_presets.json, the project's
-                                     theme, bus layout, storyboard and SDK packages; lists
+                                     presets (export_presets.json), sdk (sdk.json) or
+                                     providers (providers.json)
+  slash-cli project validate [dir]   Check project.json, export_presets.json, providers.json,
+                                     the project's theme, bus layout, storyboard and SDK
+                                     packages; lists
                                      every error
   slash-cli test [path...]           Run the project's .test.json tests headless, or those in
                                      the files and folders given, and print only the checks
@@ -201,8 +205,8 @@ Usage:
 
 call, rpc and serve also take:
       --project <dir>                Folder that scene paths are relative to (default ".")
-      --allow <list>                 Capabilities: read, edit, run, filesystem, build or all
-                                     (default all)
+      --allow <list>                 Capabilities: read, edit, run, filesystem, build,
+                                     network or all (default all)
 
 slash-cli call engine.describe lists every command. Agents with MCP should use slash-mcp.
 A server writes its URL and token to .slash/server.json in the project for other tools.
@@ -321,6 +325,7 @@ struct Engine {
         : gameplay(components, slash::gameplay::library_path(options.project_root)) {
         command::register_builtin_commands(commands);
         slash::importer::register_import_commands(commands, {.unpack_builds = !running});
+        slash::ai::register_commands(commands);
         if (running) {
             command::register_run_commands(commands);
         } else {
@@ -1012,14 +1017,15 @@ int cmd_scene(const std::vector<std::string>& args) {
 }
 
 int cmd_schema(const std::vector<std::string>& args) {
-    constexpr std::array<std::string_view, 17> kKinds = {
+    constexpr std::array<std::string_view, 18> kKinds = {
         "scene",   "prefab",  "frames", "material",   "process_material", "animation", "tileset",
         "font",    "theme",   "audio",  "bus_layout", "replay",           "test",      "storyboard",
-        "project", "presets", "sdk"};
+        "project", "presets", "sdk",    "providers"};
     if (args.size() != 1 || std::ranges::find(kKinds, args[0]) == kKinds.end()) {
         return usage_error("schema takes one argument: scene, prefab, frames, material, "
                            "process_material, animation, tileset, font, theme, audio, "
-                           "bus_layout, replay, test, storyboard, project, presets or sdk");
+                           "bus_layout, replay, test, storyboard, project, presets, sdk or "
+                           "providers");
     }
     json::Value schema;
     if (args[0] == "scene") {
@@ -1054,6 +1060,8 @@ int cmd_schema(const std::vector<std::string>& args) {
         schema = slash::runtime::project_schema();
     } else if (args[0] == "sdk") {
         schema = slash::exporter::sdk_schema();
+    } else if (args[0] == "providers") {
+        schema = slash::ai::config_schema();
     } else {
         schema = slash::exporter::presets_schema();
     }
@@ -1101,6 +1109,7 @@ int cmd_project(const std::vector<std::string>& args) {
     json::Array errors;
     validate_file(folder, slash::runtime::kProjectFile, slash::runtime::validate_project, errors);
     validate_file(folder, slash::exporter::kPresetsFile, slash::exporter::validate_presets, errors);
+    validate_file(folder, slash::ai::kConfigFile, slash::ai::check_config, errors);
     // The project's theme and bus layout.
     if (auto project = slash::runtime::load_project(folder); project) {
         const auto check = [&](const std::string& file, std::string_view at, auto validate) {

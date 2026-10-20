@@ -142,7 +142,7 @@ $cli call batch '{"commands": [{"command": "entity.create", "params": {"id": "a"
 $cli init path/to/game                                   # MCP configs for Claude Code, Codex, Cursor
 ```
 
-A session checks each command's capabilities (`--allow read,edit,run,filesystem,build`),
+A session checks each command's capabilities (`--allow read,edit,run,filesystem,build,network`),
 validates its params against the command's JSON Schema, runs it, and records an undo step if it
 changed the world. A failed command changes nothing. Paths are relative to `--project` and cannot
 leave it. Commands that change the world take `"dry_run": true`, which returns what would change
@@ -914,6 +914,27 @@ strictest common rules and sent only with the player's consent (`set_consent`).
 purchases, and `examples/achievements-and-leaderboards` a race with lap achievements and a
 best-lap leaderboard.
 
+## AI providers
+
+`engine/ai` calls language models through `ai::Provider`, one interface over any vendor
+([docs/reference/providers.md](docs/reference/providers.md)). Adapters translate a `Request`
+(messages with text, images, tool calls and tool results; tools; an `output_schema`; params) and
+the reply for OpenAI's chat completions (also Ollama, llama.cpp, vLLM, LM Studio and OpenRouter),
+Anthropic's Messages API and Gemini (`src/openai.cpp`, `src/anthropic.cpp`, `src/gemini.cpp` on
+`src/http_provider.cpp`, which retries and streams server-sent events). A reply keeps what its
+provider needs back in later turns (thinking blocks, thought signatures) in `Message::native`.
+`fit_request` puts an output schema in the prompt for models that can't take one, and
+`parse_output` checks every reply against it. `providers.json` (`ai::load_config`,
+`$cli schema providers`) names providers and roles; keys come from the environment variables it
+names, never from the file. `ai::open` gives a role's provider, wrapped in a `ReplayProvider`
+when the file names a replay file: answers keyed by the model and the whole request, recorded
+once and replayed after, so tests run offline (`SLASH_AI_REPLAY=replay` in CI). `ai::Call` runs
+a request on its own thread so games never wait on a model. `slash_ai_commands` adds
+`command_tools` and `run_tool_calls` (engine commands as a model's tools) and the `ai.providers`
+and `ai.complete` commands, which need the `network` capability. Tests talk to a fake
+`ai::Transport` or a local server, never a real model. The HTTP client speaks `http://` only
+for now. `examples/ai-provider` is a shopkeeper who talks through a model.
+
 ## Add a component
 
 Components are plain structs reflected with one macro, at namespace scope in the struct's own
@@ -987,6 +1008,8 @@ CI rejects unformatted code and any clang-tidy finding.
   `physics2d` (2D bodies, areas, joints and queries on Box2D), `storyboard` (storyboard kinds, files, versions,
   queries, edits, briefs and checks), `command` (commands, sessions with undo, JSON-RPC and MCP),
   `debug` (the debug overlay over a running game), `server` (localhost HTTP over a session),
+  `ai` (language model providers, their adapters, `providers.json`, replay and the `ai.*`
+  commands),
   `gameplay` (loading and reloading a game's own code) and `runtime` (project files and the game
   executable).
   Tool-only libraries such as `tools/exporter`, `tools/importer` and `tools/shader_compiler` use

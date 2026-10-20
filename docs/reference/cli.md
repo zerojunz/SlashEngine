@@ -230,8 +230,8 @@ for [`.theme.json` files](scene-format.md#themes), for
 [`.bus_layout.json` files](scene-format.md#bus-layouts), for
 [`.replay.json` files](scene-format.md#replays), for [`.test.json` files](scene-format.md#tests),
 for [storyboard files](storyboard-format.md),
-for [`project.json`](project-format.md), for [`export_presets.json`](project-format.md#export-presets)
-or for [`sdk.json`](sdk-format.md).
+for [`project.json`](project-format.md), for [`export_presets.json`](project-format.md#export-presets),
+for [`sdk.json`](sdk-format.md) or for [`providers.json`](providers.md).
 
 ```bash
 slash-cli schema scene
@@ -251,6 +251,7 @@ slash-cli schema storyboard
 slash-cli schema project
 slash-cli schema presets
 slash-cli schema sdk
+slash-cli schema providers
 ```
 
 ### project validate
@@ -258,7 +259,8 @@ slash-cli schema sdk
 Checks a folder's `project.json`, its `export_presets.json` if there is one, the theme its
 `gui.theme` names, the bus layout its `audio.bus_layout` names, its storyboard with [`storyboard.check`](commands.md#storyboardcheck), and
 its [SDK packages](sdk-format.md#sdk-check) (their `sdk.json` files, the presets' `sdks` and the
-files in the packages, not keys or downloads), and lists every error with its file and JSON
+files in the packages, not keys or downloads) and its [`providers.json`](providers.md) if
+there is one, and lists every error with its file and JSON
 Pointer path. Exit code 1 if any is invalid. Storyboard warnings, such as a link to a file
 that does not exist yet, are listed under `warnings` and do not fail. The folder defaults to `.`.
 
@@ -317,7 +319,7 @@ slash-cli call <command> [params] [options]
 | `--scene <file>` | Open this scene first, or start a new one that will be saved there |
 | `--save` | Save the scene after the command succeeds |
 | `--project <dir>` | Folder that scene paths are relative to (default `.`) |
-| `--allow <list>` | Capabilities: `read`, `edit`, `run`, `filesystem`, `build` or `all` (default `all`) |
+| `--allow <list>` | Capabilities: `read`, `edit`, `run`, `filesystem`, `build`, `network` or `all` (default `all`) |
 
 ```bash
 slash-cli call world.query '{"with": ["Transform2D"]}' --scene tests/data/basic.scene.json
@@ -652,7 +654,7 @@ slash-mcp [options]
 | --- | --- |
 | `--project <dir>` | Project folder; scene paths are relative to it (default `.`) |
 | `--scene <file>` | Open this scene at startup, or start a new one saved there |
-| `--allow <list>` | Capabilities to grant: `read`, `edit`, `run`, `filesystem`, `build` or `all` (default `all`), e.g. `--allow read,run` |
+| `--allow <list>` | Capabilities to grant: `read`, `edit`, `run`, `filesystem`, `build`, `network` or `all` (default `all`), e.g. `--allow read,run` |
 | `--live` | Drive the game already running in the project (`slash-cli run --serve` or `slash-cli serve`) instead of an engine of its own |
 | `--version` | Print the engine version |
 | `--help` | Show the usage text |
