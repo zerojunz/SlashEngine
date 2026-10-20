@@ -12,6 +12,7 @@
 #include "slash/gameplay/host.hpp"
 #include "slash/importer/commands.hpp"
 #include "slash/platform/file.hpp"
+#include "slash/runtime/gameplay.hpp"
 #include "slash/server/client.hpp"
 #include "slash/server/server.hpp"
 #include "slash/shader_compiler/shader_compiler.hpp"
@@ -138,6 +139,8 @@ int main(int argc, char** argv) {
     slash::gameplay::Host gameplay(components, slash::gameplay::library_path(options.project_root));
     options.gameplay = &gameplay;
     command::Session session(components, commands, options);
+    // Until the code is built, its components are stand-ins, so its scenes still open.
+    slash::runtime::add_stand_ins(gameplay, options.project_root);
 
     if (!scene.empty()) {
         // Keep serving even if the scene is broken, so the agent can see the error in the log

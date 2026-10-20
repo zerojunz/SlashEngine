@@ -1,5 +1,7 @@
 #pragma once
 
+#include "common.hpp"
+
 #include "slash/importer/import.hpp"
 
 #include <map>
@@ -16,10 +18,10 @@ using GodotFiles = std::map<std::string, std::string>;
 // of an unpacked game when unpacked isn't null (source then only names it). Its res:// paths land
 // under prefix in the destination ("" or a folder ending in '/'); copy_assets copies textures,
 // sounds, fonts and scripts there, else they are used where they are. The destination's
-// project.json and storyboard/work.json, when it has them, are merged with what the import writes.
+// project.json and storyboard/work.json, when it has them, are merged with what the import writes,
+// and C++ skeletons for its GDScript files go beside its gameplay code, keeping those it has.
 [[nodiscard]] Result<ImportPlan> plan_godot(const std::string& source, const GodotFiles* unpacked,
                                             const std::string& prefix, bool copy_assets,
-                                            const std::optional<std::string>& existing_project,
-                                            const std::optional<std::string>& existing_work);
+                                            const Existing& existing);
 
 } // namespace slash::importer

@@ -226,6 +226,34 @@ TEST_CASE("a project with no gameplay library built loads nothing until there is
     CHECK(game.host.loaded());
 }
 
+TEST_CASE("until the code is built its components are stand-ins, which it replaces") {
+    const Project project("stand_ins");
+    Game game(project);
+    REQUIRE(game.host.attach(game.world).error.empty());
+    game.host.add_stand_ins({{.name = "Health", .fields = {"current", "armor", "old"}},
+                             {.name = "Mana", .fields = {"value"}},
+                             {.name = "Transform2D", .fields = {"x"}}}); // the engine's: skipped
+    CHECK(game.components.find("Transform2D")->fields().size() > 1);
+    REQUIRE(world::load_scene(game.world, parse(R"({"entities": {
+        "hero": {"components": {"Health": {"current": 5, "old": true}, "Mana": {"value": 2}}}},
+        "format": 1})")));
+    CHECK(fields(game.world, "hero", "Health") == parse(R"({"current": 5, "old": true})"));
+
+    // The code's Health replaces its stand-in and takes the values its fields still have; Mana,
+    // which the code doesn't register, stays a stand-in.
+    project.build("v1");
+    const auto load = game.host.poll();
+    REQUIRE(load.has_value());
+    CHECK_MESSAGE(load->error.empty(), load->error);
+    CHECK(load->added == Names{"Health"});
+    CHECK(load->changed.empty());
+    REQUIRE(load->dropped.size() == 1);
+    CHECK(load->dropped[0] == "Health.old: no longer in the code (1 entity)");
+    CHECK(fields(game.world, "hero", "Health") == parse(R"({"armor": 2, "current": 5})"));
+    CHECK(fields(game.world, "hero", "Mana") == parse(R"({"value": 2})"));
+    CHECK(names(*game.host.status().find("components")) == Names{"Health"});
+}
+
 TEST_CASE("rebuilt code is swapped in, and each entity keeps the fields the code still has") {
     const Project project("swap");
     project.build("v1");
@@ -474,12 +502,19 @@ MY_SLASH_COMPONENT(Hidden, value)
         world::validate_scene(
             registry, parse(R"({"entities": {"a": {"components": {"Mana": {}}}}, "format": 1})"))
             .empty());
-    // Loading such a scene leaves the stand-ins out.
+    // Loading such a scene keeps the stand-ins' values as written, and saving writes them back.
     world::World w(registry);
-    REQUIRE(world::load_scene(
-        w,
-        parse(R"({"entities": {"a": {"components": {"Health": {"current": 3}}}}, "format": 1})")));
+    const json::Value scene =
+        parse(R"({"entities": {"a": {"components": {"Health": {"current": 3}}}}, "format": 1})");
+    REQUIRE(world::load_scene(w, scene));
     CHECK(w.size() == 1);
+    CHECK(fields(w, "a", "Health") == parse(R"({"current": 3})"));
+    CHECK(*world::save_scene(w).find("entities") == *scene.find("entities"));
+    std::string path;
+    REQUIRE(registry.find("Health")->assign(w, w.find("a"), parse(R"({"armor": [1, 2]})"), path));
+    CHECK(fields(w, "a", "Health") == parse(R"({"armor": [1, 2], "current": 3})"));
+    registry.find("Health")->remove(w, w.find("a"));
+    CHECK_FALSE(registry.find("Health")->has(w, w.find("a")));
 
     // A project with no gameplay code adds nothing.
     world::ComponentRegistry plain;

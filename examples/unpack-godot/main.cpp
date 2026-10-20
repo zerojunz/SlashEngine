@@ -16,6 +16,7 @@
 #include "slash/command/command.hpp"
 #include "slash/command/session.hpp"
 #include "slash/core/json.hpp"
+#include "slash/gameplay/host.hpp"
 #include "slash/importer/commands.hpp"
 #include "slash/importer/godot_pack.hpp"
 #include "slash/platform/file.hpp"
@@ -103,6 +104,9 @@ void print_file(const std::string& path) {
 struct Agent {
     world::ComponentRegistry components;
     command::Registry commands;
+    // The game's own C++ code. Until it is built, the component of the skeleton the import writes
+    // for the script is a stand-in that keeps the values the scene gives it.
+    slash::gameplay::Host code{components, slash::gameplay::library_path(".")};
     std::unique_ptr<command::Session> session;
 
     Agent() {
@@ -111,6 +115,7 @@ struct Agent {
         slash::importer::register_import_commands(commands);
         command::SessionOptions options;
         options.capture_logs = false;
+        options.gameplay = &code;
         session = std::make_unique<command::Session>(components, commands, options);
     }
 

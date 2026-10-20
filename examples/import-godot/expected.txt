@@ -14,22 +14,29 @@ project.import {"dry_run":true,"source":"godot"}
   },
   "dry_run": true,
   "engine": "godot",
-  "files": ["godot/ui_theme.theme.json", "godot/default_bus_layout.bus_layout.json", "project.json", "godot/player_frames.frames.json", "godot/player.scene.json", "godot/tiles.tileset.json", "godot/main_sprite_frames_coin.frames.json", "godot/audio/calm.wav.audio.json", "godot/music.audio.json", "godot/main_animation_library_coin.anim.json", "godot/main.scene.json", "storyboard/work.json", "import/godot.json"],
+  "files": ["godot/ui_theme.theme.json", "godot/default_bus_layout.bus_layout.json", "project.json", "godot/player_frames.frames.json", "godot/player.scene.json", "godot/tiles.tileset.json", "godot/main_sprite_frames_coin.frames.json", "godot/audio/calm.wav.audio.json", "godot/music.audio.json", "godot/main_animation_library_coin.anim.json", "godot/main.scene.json", "storyboard/work.json", "src/imported/game_state.cpp", "src/imported/main.cpp", "src/imported/player.cpp", "src/imported/scripts.cpp", "src/game.cpp", "import/godot.json"],
   "main_scene": "godot/main.scene.json",
+  "module": "src/game.cpp",
   "project": "Coin Run",
   "report": "import/godot.json",
   "scripts": [
     {
+      "code": "src/imported/game_state.cpp",
+      "component": "GameState",
       "entities": 0,
       "script": "godot/game_state.gd",
       "task": "task/port-game-state"
     },
     {
+      "code": "src/imported/main.cpp",
+      "component": "Main",
       "entities": 1,
       "script": "godot/main.gd",
       "task": "task/port-main"
     },
     {
+      "code": "src/imported/player.cpp",
+      "component": "Player",
       "entities": 2,
       "script": "godot/player.gd",
       "task": "task/port-player"
@@ -71,22 +78,29 @@ project.import {"source":"godot"}
     "tile_sets": 1
   },
   "engine": "godot",
-  "files": 13,
+  "files": 18,
   "main_scene": "godot/main.scene.json",
+  "module": "src/game.cpp",
   "project": "Coin Run",
   "report": "import/godot.json",
   "scripts": [
     {
+      "code": "src/imported/game_state.cpp",
+      "component": "GameState",
       "entities": 0,
       "script": "godot/game_state.gd",
       "task": "task/port-game-state"
     },
     {
+      "code": "src/imported/main.cpp",
+      "component": "Main",
       "entities": 1,
       "script": "godot/main.gd",
       "task": "task/port-main"
     },
     {
+      "code": "src/imported/player.cpp",
+      "component": "Player",
       "entities": 2,
       "script": "godot/player.gd",
       "task": "task/port-player"
@@ -182,6 +196,9 @@ project.import {"source":"godot"}
     },
     "main": {
       "components": {
+        "Main": {
+          "coins_to_win": 3
+        },
         "Transform2D": {
           "children": ["ground", "platforms", "player", "coin"]
         }
@@ -212,6 +229,9 @@ project.import {"source":"godot"}
     },
     "player": {
       "components": {
+        "Player": {
+          "speed": 150.0
+        },
         "Transform2D": {
           "position": [40.0, 152.0]
         }
@@ -422,6 +442,9 @@ project.import {"source":"godot"}
     "panning_strength_2d": 0.5
   },
   "format": 1,
+  "gameplay": {
+    "sources": ["src"]
+  },
   "gui": {
     "theme": "godot/ui_theme.theme.json"
   },
@@ -566,7 +589,7 @@ storyboard.query {"kind":"task"}
         "summary": "GDScript from Godot: write what it does as C++ components and systems."
       },
       "id": "task/port-game-state",
-      "version": "fe0d52be"
+      "version": "99899973"
     },
     {
       "fields": {
@@ -574,7 +597,7 @@ storyboard.query {"kind":"task"}
         "summary": "GDScript from Godot: write what it does as C++ components and systems."
       },
       "id": "task/port-main",
-      "version": "c00a9a81"
+      "version": "2a068859"
     },
     {
       "fields": {
@@ -582,7 +605,7 @@ storyboard.query {"kind":"task"}
         "summary": "GDScript from Godot: write what it does as C++ components and systems."
       },
       "id": "task/port-player",
-      "version": "6f18f34d"
+      "version": "07f202c7"
     }
   ],
   "seq": 0

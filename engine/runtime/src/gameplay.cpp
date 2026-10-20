@@ -80,6 +80,17 @@ void scan(std::string_view text,
 
 } // namespace
 
+std::vector<DeclaredComponent> declared_in(std::string_view text) {
+    std::map<std::string, std::vector<std::string>, std::less<>> found;
+    scan(text, found);
+    std::vector<DeclaredComponent> out;
+    out.reserve(found.size());
+    for (auto& [name, fields] : found) {
+        out.push_back({name, std::move(fields)});
+    }
+    return out;
+}
+
 std::vector<DeclaredComponent> declared_components(std::string_view folder,
                                                    const Project& project) {
     std::map<std::string, std::vector<std::string>, std::less<>> found;
@@ -128,6 +139,18 @@ GameplayTypes add_gameplay_types(world::ComponentRegistry& registry, std::string
         }
     }
     return GameplayTypes::Declared;
+}
+
+void add_stand_ins(gameplay::Host& host, std::string_view folder) {
+    auto project = load_project(folder);
+    if (!project || project.value().gameplay_sources.empty()) {
+        return;
+    }
+    std::vector<gameplay::StandIn> stand_ins;
+    for (DeclaredComponent& component : declared_components(folder, project.value())) {
+        stand_ins.push_back({std::move(component.name), std::move(component.fields)});
+    }
+    host.add_stand_ins(std::move(stand_ins));
 }
 
 } // namespace slash::runtime

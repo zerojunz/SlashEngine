@@ -2777,7 +2777,10 @@ TextMesh Pro UI controls, the sprites its tile maps show a `.tileset.json` file,
 controller a `.anim.json` file, its audio mixers a `.bus_layout.json` file,
 and its player, time, physics and input settings `project.json`. Textures, sounds and fonts are used
 where they are. Each script, and each Animator controller's state machine, becomes a storyboard task to port
-it to C++. A game exported with Godot 4, its `.pck` file or its executable with the pack inside,
+it to C++, and each GDScript file a C++ skeleton in the gameplay sources
+([Scripts](godot-import.md#scripts)) whose component the scenes fill in; in a session with a
+gameplay host, as slash-cli's and slash-mcp's have, those components are stand-ins that keep
+their values until the code is built. A game exported with Godot 4, its `.pck` file or its executable with the pack inside,
 is first unpacked back into the Godot project it was made from, then converted the same way, and
 so is a game built with Unity, whose project AssetRipper rebuilds
 ([Unity builds](unity-import.md#unity-builds)).
@@ -2793,8 +2796,10 @@ so is a game built with Unity, whose project AssetRipper rebuilds
 
 Needs: `read`, `filesystem`, and `build` for a Unity build, since AssetRipper runs as a program
 of its own; a game served with `slash-cli run --serve` refuses Unity builds. It writes files and changes no scene, so there is nothing to undo;
-importing again rewrites the converted files and keeps each task's status. The result counts
-what converted, lists each script's task, and lists what didn't convert, once per kind with how
+importing again rewrites the converted files, keeps each task's status and leaves skeletons
+that exist as they are. The result counts what converted, lists each script's task (and, for a
+skeleton, its `code` file and `component`; `module` is the game module it wrote, if any), and
+lists what didn't convert, once per kind with how
 many, the first place it was seen and why. The full report, with the values scripts need, is
 written to `import/godot.json` or `import/unity.json`. The settings it writes to `project.json`
 (the window, physics, input and audio) apply to the session at the next command.
@@ -2806,7 +2811,7 @@ From [examples/import-godot](../../examples/import-godot/):
 ```
 
 ```json
-{"converted":{"animation_libraries":1,"assets":8,"audio_streams":2,"bus_layouts":1,"input_actions":3,"process_materials":0,"scenes":2,"sprite_frames":2,"themes":1,"tile_sets":1},"engine":"godot","files":13,"main_scene":"godot/main.scene.json","project":"Coin Run","report":"import/godot.json","scripts":[{"entities":0,"script":"godot/game_state.gd","task":"task/port-game-state"},{"entities":1,"script":"godot/main.gd","task":"task/port-main"},{"entities":2,"script":"godot/player.gd","task":"task/port-player"}],"unsupported":[{"count":1,"what":"autoload","where":"project.godot: GameState","why":"autoloads are gameplay code; see the storyboard task"},{"count":1,"what":"file type .svg","where":"icon.svg","why":"textures are PNG or BMP files; save it as PNG"},{"count":1,"what":"node type Timer","where":"main.tscn: Timer","why":"timers are gameplay code: count the ticks in a C++ system"}]}
+{"converted":{"animation_libraries":1,"assets":8,"audio_streams":2,"bus_layouts":1,"input_actions":3,"process_materials":0,"scenes":2,"sprite_frames":2,"themes":1,"tile_sets":1},"engine":"godot","files":18,"main_scene":"godot/main.scene.json","module":"src/game.cpp","project":"Coin Run","report":"import/godot.json","scripts":[{"code":"src/imported/game_state.cpp","component":"GameState","entities":0,"script":"godot/game_state.gd","task":"task/port-game-state"},{"code":"src/imported/main.cpp","component":"Main","entities":1,"script":"godot/main.gd","task":"task/port-main"},{"code":"src/imported/player.cpp","component":"Player","entities":2,"script":"godot/player.gd","task":"task/port-player"}],"unsupported":[{"count":1,"what":"autoload","where":"project.godot: GameState","why":"autoloads are gameplay code; see the storyboard task"},{"count":1,"what":"file type .svg","where":"icon.svg","why":"textures are PNG or BMP files; save it as PNG"},{"count":1,"what":"node type Timer","where":"main.tscn: Timer","why":"timers are gameplay code: count the ticks in a C++ system"}]}
 ```
 
 From [examples/import-unity](../../examples/import-unity/), where `pixels_per_unit` is the
@@ -2831,7 +2836,7 @@ own `unsupported`. From [examples/unpack-godot](../../examples/unpack-godot/):
 ```
 
 ```json
-{"converted":{"animation_libraries":0,"assets":2,"bus_layouts":0,"input_actions":1,"scenes":1,"sprite_frames":0,"themes":0,"tile_sets":0},"engine":"godot","files":12,"main_scene":"godot/main.scene.json","project":"Jumper","report":"import/godot.json","scripts":[{"entities":1,"script":"godot/player.gd","task":"task/port-player"}],"unpacked":{"files":8,"folder":"godot","fonts":0,"pack":{"embedded":false,"files":10,"format":3,"godot":"4.5.0"},"resources":0,"scenes":1,"scripts":1,"scripts_from_tokens":1,"sounds":1,"textures":1,"unsupported":[]},"unsupported":[]}
+{"converted":{"animation_libraries":0,"assets":2,"audio_streams":0,"bus_layouts":0,"input_actions":1,"process_materials":0,"scenes":1,"sprite_frames":0,"themes":0,"tile_sets":0},"engine":"godot","files":15,"main_scene":"godot/main.scene.json","module":"src/game.cpp","project":"Jumper","report":"import/godot.json","scripts":[{"code":"src/imported/player.cpp","component":"Player","entities":1,"script":"godot/player.gd","task":"task/port-player"}],"unpacked":{"files":8,"folder":"godot","fonts":0,"pack":{"embedded":false,"files":10,"format":3,"godot":"4.5.0"},"resources":0,"scenes":1,"scripts":1,"scripts_from_tokens":1,"sounds":1,"textures":1,"unsupported":[]},"unsupported":[]}
 ```
 
 For a Unity build, `unpacked` names the build's `platform`, scripting `backend` and `unity`

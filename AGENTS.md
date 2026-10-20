@@ -147,7 +147,9 @@ changed the world. A failed command changes nothing. Paths are relative to `--pr
 leave it. Commands that change the world take `"dry_run": true`, which returns what would change
 and changes nothing; `world.snapshot`, `world.diff` and `world.restore` save, compare against and
 go back to a copy of the entities. `events.subscribe` and `events.read` report entities created and
-destroyed, each change to the world and events gameplay code emits with `World::emit`.
+destroyed, each change to the world and events gameplay code emits with `World::emit`. Systems
+react to them through `World::events()`, the events of the tick before, which each system sees
+once whatever its priority; sessions put them back when a command fails or is a dry run.
 
 Commands are built for agents, so keep them cheap to call:
 
@@ -337,7 +339,11 @@ field, reporting what it had to drop. Libraries are never unloaded. Hosts link t
 libraries whole and export their symbols (`slash_gameplay_host` in CMake). Sessions poll it
 before each command (`gameplay.reloaded` events), `slash-game` before each tick, and
 `scene validate` and exports check the game's components by what its sources declare when the
-library isn't there (`runtime::add_gameplay_types`, `ComponentRegistry::add_stand_in`). Because
+library isn't there (`runtime::add_gameplay_types`, `ComponentRegistry::add_stand_in`). Sessions
+in slash-cli and slash-mcp, and `project.import` after it writes skeletons, give the host
+stand-ins for those components (`runtime::add_stand_ins`, `Host::add_stand_ins`), which keep
+entities' values as JSON, so scenes using them open and save before the code is built; loading
+the code swaps its types in for them and keeps the values, as a reload does. Because
 the swap goes through JSON, gameplay state belongs in registered components. Restoring a world
 saved under older code (`undo`, `world.restore`) leaves out what no longer fits.
 `examples/gameplay-code` builds, changes and breaks a game's code while it runs.
@@ -353,11 +359,18 @@ beside each `.tscn`, a `.frames.json` per `SpriteFrames`, a `.tileset.json` per 
 `.theme.json` per `Theme`, a `.bus_layout.json` per `AudioBusLayout`, a `.anim.json` per
 `AnimationPlayer` (tracks keep their node paths as targets), `project.godot`'s settings
 and input map merged into `project.json`, and a storyboard task per script (`task/port-<name>`)
-to port it to C++. Properties convert by the target field's reflected type, Godot's enum numbers
+to port it to C++. Each GDScript file also becomes a C++ skeleton (`src/scripts.cpp`, public
+header `slash/importer/scripts.hpp`): `<gameplay folder>/imported/<name>.cpp` with its variables
+as a component the scenes fill in, its signals as `emit_<signal>` helpers, and a stub per
+function, keeping the GDScript in comments, that a system calls when Godot would (`_ready` on
+`entity.created` events, `_process` once a tick, `_input` per input event, connected methods on
+their signal's events). Skeletons that exist are kept; `imported/scripts.cpp` registers them and
+a game module is written when the project's code has none. Properties convert by the target field's reflected type, Godot's enum numbers
 through its `choices`, and a value that fails its file's schema (scene, tile set, theme, bus
 layout or animation) is left out and reported, so one bad value can't stop a file. Everything that didn't
 convert goes in `import/godot.json`, once per kind. `docs/reference/godot-import.md` maps each
-node and setting; `examples/import-godot` imports a small platformer.
+node and setting; `examples/import-godot` imports a small platformer and
+`examples/import-godot-scripts` ports a script from its skeleton.
 
 Games exported with Godot 4 import too: `src/godot_unpack.cpp` finds the pack in a `.pck` file or
 an executable and turns it back into the project (`godot::unpack_game`, in
