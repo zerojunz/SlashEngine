@@ -1,11 +1,13 @@
 #include "unity_import.hpp"
 
 #include "common.hpp"
+#include "skeletons.hpp"
 
 #include "slash/animation/animation.hpp"
 #include "slash/audio/audio.hpp"
 #include "slash/canvas/debug_draw.hpp"
 #include "slash/canvas/tilemap.hpp"
+#include "slash/core/assert.hpp"
 #include "slash/core/json.hpp"
 #include "slash/core/math.hpp"
 #include "slash/importer/unity_build.hpp"
@@ -816,8 +818,7 @@ public:
         world::register_builtin_components(components_);
     }
 
-    Result<ImportPlan> run(const std::optional<std::string>& existing_project,
-                           const std::optional<std::string>& existing_work) {
+    Result<ImportPlan> run(const Existing& existing) {
         auto version = platform::read_file(source_ + "ProjectSettings/ProjectVersion.txt");
         if (!version) {
             return Error{.code = ErrorCode::NotFound,
@@ -846,6 +847,7 @@ public:
         }
         read_metas();
         read_settings();
+        skeletons_.emplace(existing);
         for (const std::string& file : files_) {
             take_file(file);
         }
@@ -860,10 +862,11 @@ public:
             write_tile_set(set); // with the physics a later tile map gave it
         }
         convert_unused_animation();
-        json::Value project = convert_project(existing_project);
+        json::Value project = convert_project(existing.project);
         convert_input(project);
         write_project(std::move(project));
-        write_tasks(existing_work);
+        write_tasks(existing.work);
+        write_skeletons();
         write_report();
         return std::move(plan_);
     }
@@ -2476,6 +2479,7 @@ private:
         const Component* animator = nullptr;
         std::string children_to; // the added entity that holds the object's children, if one
         Vec2 child_shift;        // moves the object's children by minus this
+        bool collisions = false; // a script takes collision messages, so its body reports them
     };
 
     struct Context {
@@ -2578,7 +2582,7 @@ private:
                     shadow_caster(component, ctx, out);
                 } else if (name != "CompositeShadowCaster2D") {
                     // A composite caster groups the casters under it, which cast on their own.
-                    mono_behaviour(component, ctx);
+                    mono_behaviour(component, ctx, out);
                 }
                 break;
             }
@@ -2609,6 +2613,11 @@ private:
         }
         physics(ctx, rigidbody, colliders, effector, out);
         joints(ctx, found_joints, rigidbody, out);
+        // A body only reports what it touches when asked to, as Godot's RigidBody2D does.
+        if (const auto body = out.components.find("RigidBody2D");
+            out.collisions && body != out.components.end()) {
+            body->second["contact_monitor"] = true;
+        }
         return out;
     }
 
@@ -2641,7 +2650,7 @@ private:
                 }
                 const KnownScript* known = known_script(component);
                 if (known == nullptr || !known->ui) {
-                    mono_behaviour(component, ctx);
+                    mono_behaviour(component, ctx, out);
                 } else if (!known->why.empty()) {
                     problems_.add("component " + std::string(known->name), ctx.where,
                                   std::string(known->why));
@@ -2949,7 +2958,155 @@ private:
         return loop;
     }
 
-    void mono_behaviour(const Component& component, const Context& ctx) {
+    // The scripts' skeletons, made once the project's files are listed.
+    Skeletons& skeletons() {
+        SLASH_ASSERT(skeletons_.has_value(), "the skeletons are made before they are used");
+        return *skeletons_;
+    }
+
+    // The skeleton of a project script, read the first time an object uses it, or nullptr when
+    // it can't be read.
+    Skeleton* skeleton_of(const std::string& path) {
+        if (Skeleton* found = skeletons().find(path); found != nullptr) {
+            return found;
+        }
+        if (unreadable_scripts_.contains(path)) {
+            return nullptr;
+        }
+        auto text = platform::read_file(source_ + path);
+        if (!text) {
+            unreadable_scripts_.insert(path);
+            return nullptr;
+        }
+        return &skeletons().add(
+            path, read_csharp(destination(path), text.value(), ScriptSource::UnityCsharp),
+            components_);
+    }
+
+    // A script's component on an object's entity: the values its serialized fields have, as the
+    // skeleton's fields take them.
+    static json::Value script_component(Script& script, const json::Value& values) {
+        json::Value component = json::Object{};
+        for (ScriptField& field : script.fields) {
+            const json::Value* value = values.find(field.source_name);
+            if (!field.exported || value == nullptr) {
+                continue;
+            }
+            retype(field, *value);
+            json::Value converted = field_value(field.type, field.comment, *value);
+            if (!converted.is_null()) {
+                component[field.name] = std::move(converted);
+            }
+        }
+        return component;
+    }
+
+    // A field the skeleton took for an object's entity, as what scenes say it holds: the path
+    // of an asset or a prefab, a value of its own (a [Serializable] class) or a number (an enum).
+    static void retype(ScriptField& field, const json::Value& value) {
+        if (field.kind == FieldKind::Value) {
+            return;
+        }
+        const bool list = field.kind == FieldKind::Entities;
+        const json::Value* sample = &value;
+        if (list) {
+            const auto& items = value.is_array() ? value.as_array() : json::Array{};
+            const auto set = std::ranges::find_if(
+                items, [](const json::Value& item) { return !item.is_null(); });
+            if (set == items.end()) {
+                return;
+            }
+            sample = &*set;
+        }
+        std::string type;
+        std::string comment = field.comment;
+        if (sample->is_string() && (sample->as_string().find('.') != std::string::npos ||
+                                    sample->as_string().starts_with("unity:"))) {
+            type = "std::string";
+            comment += list ? ": their paths" : ": its path";
+        } else if (sample->is_object() || sample->is_array()) {
+            type = "slash::json::Value";
+        } else if (sample->is_int()) {
+            type = "int";
+        } else {
+            return;
+        }
+        field.type = list && type != "slash::json::Value" ? "std::vector<" + type + ">" : type;
+        field.comment = std::move(comment);
+        field.kind = FieldKind::Value;
+        field.init.clear();
+    }
+
+    // A value from a Unity scene as the JSON of a skeleton's field of a C++ type: vectors and
+    // colors as lists, flags as booleans, objects as their entities' IDs.
+    static json::Value field_value(const std::string& type, const std::string& comment,
+                                   const json::Value& value) {
+        if (type.starts_with("std::vector<")) {
+            const std::string item = type.substr(12, type.size() - 13);
+            json::Array items;
+            if (value.is_array()) {
+                for (const json::Value& entry : value.as_array()) {
+                    json::Value converted = field_value(item, comment, entry);
+                    if (!converted.is_null() || item == "entt::entity") {
+                        items.push_back(std::move(converted));
+                    }
+                }
+            }
+            return items;
+        }
+        if (type == "bool" && value.is_number()) {
+            return value.as_double() != 0.0;
+        }
+        if ((type == "float" || type == "double") && value.is_number()) {
+            return value.as_double(); // YAML writes 4 for 4.0
+        }
+        if (type == "entt::entity") {
+            if (!value.is_string()) {
+                return nullptr;
+            }
+            std::string id = value.as_string();
+            if (const std::size_t hash = id.find('#'); hash != std::string::npos) {
+                id.resize(hash); // the object a component is on
+            }
+            return id;
+        }
+        if (type == "std::string" && (value.is_number() || value.is_bool())) {
+            return json::write(value); // YAML wrote the text without quotes
+        }
+        if (type == "int" && value.is_object()) {
+            const json::Value* bits = value.find("m_Bits"); // a LayerMask
+            return bits != nullptr ? *bits : json::Value(nullptr);
+        }
+        static const std::map<std::string, std::size_t, std::less<>> kSizes{{"slash::Vec2", 2},
+                                                                            {"slash::Vec2i", 2},
+                                                                            {"slash::Vec3", 3},
+                                                                            {"slash::Vec4", 4},
+                                                                            {"slash::Quat", 4}};
+        if (const auto size = kSizes.find(type); size != kSizes.end() && value.is_object()) {
+            static constexpr std::array<std::array<std::string_view, 4>, 3> kKeys{
+                {{"x", "y", "z", "w"}, {"r", "g", "b", "a"}, {"x", "y", "width", "height"}}};
+            const double scale = comment == "Color32" ? 255.0 : 1.0;
+            for (const auto& keys : kKeys) {
+                json::Array out;
+                for (std::size_t i = 0; i < size->second; ++i) {
+                    const json::Value* part = value.find(keys.at(i));
+                    if (part == nullptr || !part->is_number()) {
+                        break;
+                    }
+                    out.emplace_back(type == "slash::Vec2i"
+                                         ? json::Value(part->as_int())
+                                         : json::Value(part->as_double() / scale));
+                }
+                if (out.size() == size->second) {
+                    return out;
+                }
+            }
+            return nullptr;
+        }
+        return value;
+    }
+
+    void mono_behaviour(const Component& component, const Context& ctx, Converted& out) {
         const Node& body = component.body;
         const auto script = ref_at(body, "m_Script");
         const Asset* asset = script ? asset_of(script->guid) : nullptr;
@@ -2959,6 +3116,22 @@ private:
                 if (!standard_key(key)) {
                     values[key] = convert_value(value, *ctx.file);
                 }
+            }
+            if (Skeleton* skeleton = skeleton_of(asset->path);
+                skeleton != nullptr && skeleton->script.node) {
+                Script& code = skeleton->script;
+                if (out.components.contains(code.component)) {
+                    problems_.add("two of one script on an object", ctx.where,
+                                  "the entity has one " + code.component +
+                                      ", with the first one's values");
+                } else {
+                    out.components[code.component] = script_component(code, values);
+                }
+                out.collisions = out.collisions ||
+                                 std::ranges::any_of(code.functions, [](const ScriptFunction& f) {
+                                     return f.source_name == "OnCollisionEnter2D" ||
+                                            f.source_name == "OnCollisionExit2D";
+                                 });
             }
             ScriptRecord& record = scripts_[asset->path];
             record.uses.push_back(
@@ -4832,7 +5005,17 @@ private:
                 .append(") on ")
                 .append(event);
             if (script != nullptr && extension_of(script->path) == ".cs") {
-                scripts_[script->path].calls.push_back(text);
+                ScriptRecord& record = scripts_[script->path];
+                record.calls.push_back(text);
+                if (const int to = object_at(*ctx.file, call, "m_Target"); to >= 0) {
+                    record.connections.push_back(
+                        {.scene = ctx.file->scene,
+                         .signal = std::string(event),
+                         .from = go.entity,
+                         .to = ctx.file->objects[static_cast<std::size_t>(to)].entity,
+                         .method = method,
+                         .argument = argument});
+                }
             } else {
                 std::string why(event);
                 why.append(" calls ")
@@ -8199,7 +8382,8 @@ private:
 
     struct ScriptRecord {
         std::vector<ScriptUse> uses;
-        std::vector<std::string> calls; // UI events that call it
+        std::vector<std::string> calls;            // UI events that call it
+        std::vector<ScriptConnection> connections; // the same, for its skeleton
     };
 
     // The entity made for an object: the prefab's own for an object an instance brought, when the
@@ -8585,6 +8769,17 @@ private:
     }
 
     void write_project(json::Value project) {
+        // The scripts' C++ skeletons are the game's code.
+        if (!skeletons().empty()) {
+            json::Value& gameplay = project["gameplay"];
+            json::Value* sources = gameplay.is_object() ? gameplay.find("sources") : nullptr;
+            if (sources == nullptr || !sources->is_array()) {
+                gameplay = json::Object{};
+                gameplay["sources"] = json::Array{skeletons().folder()};
+            } else if (!contains(sources->as_array(), json::Value(skeletons().folder()))) {
+                sources->as_array().emplace_back(skeletons().folder());
+            }
+        }
         // Keep only what validates, so a bad setting can't stop the rest.
         for (int pass = 0; pass < 32; ++pass) {
             const auto errors = runtime::validate_project(project);
@@ -8878,6 +9073,14 @@ private:
             if (!record.calls.empty()) {
                 text += " UI events call it: " + join(record.calls, "; ") + ".";
             }
+            if (const Skeleton* skeleton = skeletons().find(script); skeleton != nullptr) {
+                const Script& code = skeleton->script;
+                text += " Its C++ skeleton is " + skeleton->code;
+                text += code.node ? ": the " + code.component + " component and the " +
+                                        code.system + " system."
+                                  : ": the " + code.component + " struct.";
+                task.links.push_back(skeleton->code);
+            }
             text += " The values each entity's component set and the entity ID of every object "
                     "are in " +
                     std::string(kReportFile) + ".";
@@ -8917,6 +9120,20 @@ private:
         }
     }
 
+    // Writes each script's skeleton but those the destination has, the file registering them
+    // all and, when the game's code has none, a game module calling it.
+    void write_skeletons() {
+        for (auto& [script, entry] : skeletons().all()) {
+            entry.script.task = task_of_[script];
+            entry.script.connections = scripts_[script].connections;
+        }
+        module_ = skeletons().write(
+            [this](std::string path, std::string text) {
+                add_file(std::move(path), std::move(text));
+            },
+            problems_);
+    }
+
     void write_report() {
         json::Value report;
         report["format"] = 1;
@@ -8953,11 +9170,23 @@ private:
                 }
                 item["ui_events"] = std::move(calls);
             }
-            scripts[destination(script)] = item;
             json::Value brief;
             brief["script"] = destination(script);
             brief["task"] = task_of_[script];
             brief["entities"] = static_cast<std::int64_t>(record.uses.size());
+            if (const Skeleton* skeleton = skeletons().find(script); skeleton != nullptr) {
+                for (json::Value* entry : {&item, &brief}) {
+                    (*entry)["code"] = skeleton->code;
+                    (*entry)["component"] = skeleton->script.component;
+                    if (skeleton->kept) {
+                        (*entry)["kept"] = true;
+                    }
+                }
+                if (skeleton->script.node) {
+                    item["system"] = skeleton->script.system;
+                }
+            }
+            scripts[destination(script)] = item;
             summary.push_back(std::move(brief));
         }
         report["scripts"] = std::move(scripts);
@@ -9044,6 +9273,9 @@ private:
         out["converted"]["input_actions"] = input_actions_;
         out["converted"]["assets"] = assets_;
         out["scripts"] = std::move(summary);
+        if (!module_.empty()) {
+            out["module"] = module_;
+        }
         out["unsupported"] = std::move(unsupported);
         out["report"] = kReportFile;
     }
@@ -9086,7 +9318,10 @@ private:
     std::set<std::string> cookie_names_;
     std::map<std::string, json::Value> clear_colors_; // by scene
     std::set<std::string> loops_written_;
-    std::map<std::string, ScriptRecord> scripts_;  // by source path
+    std::map<std::string, ScriptRecord> scripts_; // by source path
+    std::optional<Skeletons> skeletons_;          // by source path
+    std::set<std::string> unreadable_scripts_;
+    std::string module_;                           // the game module written, or ""
     std::map<std::string, std::string> tmp_fonts_; // TextMesh Pro font assets' fonts, by path
     std::map<std::string, std::string> task_of_;
     std::map<std::string, std::vector<std::string>> tags_;
@@ -9115,10 +9350,9 @@ private:
 } // namespace
 
 Result<ImportPlan> plan_unity(const std::string& source, const std::string& prefix,
-                              bool copy_assets, const std::optional<std::string>& existing_project,
-                              const std::optional<std::string>& existing_work) {
+                              bool copy_assets, const Existing& existing) {
     UnityImporter importer(source, prefix, copy_assets);
-    return importer.run(existing_project, existing_work);
+    return importer.run(existing);
 }
 
 std::string_view unity::package_script_guid(std::string_view space, std::string_view name) {

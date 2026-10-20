@@ -466,9 +466,9 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
         on the test backend in sessions
   - [x] `sdk.add` (from a folder, a git repository or a URL) and `sdk.check` (missing files,
         keys and platforms), with an example SDK package built in CI from a stand-in library
-- [ ] Imported scripts as C++ skeletons: `project.import` writes a component for each script's
+- [x] Imported scripts as C++ skeletons: `project.import` writes a component for each script's
       exported variables, events for its signals and a system with its functions for the agent
-      to fill in, beside the storyboard task
+      to fill in, beside the storyboard task (GDScript, Godot's C# and Unity's C#)
 - [ ] `build.check`: compiles only the changed gameplay files and returns errors as data (file,
       line, message and the compiler's suggested fix), with no build log to read
 - [ ] Job system, so systems run in parallel before the 3D work in milestone 7 needs it

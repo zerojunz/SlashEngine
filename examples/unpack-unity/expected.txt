@@ -12,13 +12,16 @@ project.import {"source":"shipped/Hopper","unpack_to":"unity"}
     "tile_sets": 0
   },
   "engine": "unity",
-  "files": 17,
+  "files": 20,
   "main_scene": "unity/Assets/Scenes/Main.scene.json",
+  "module": "src/game.cpp",
   "pixels_per_unit": 16.0,
   "project": "Hopper",
   "report": "import/unity.json",
   "scripts": [
     {
+      "code": "src/imported/hopper.cpp",
+      "component": "Hopper",
       "entities": 1,
       "script": "unity/Assets/Scripts/Assembly-CSharp/Hopper.cs",
       "task": "task/port-hopper"
@@ -105,6 +108,7 @@ public class Hopper : MonoBehaviour
     },
     "hopper": {
       "components": {
+        "Hopper": {},
         "Sprite2D": {
           "offset": [0.0, -8.0],
           "region": [0.0, 0.0, 16.0, 16.0],
@@ -147,6 +151,9 @@ public class Hopper : MonoBehaviour
 --- project.json
 {
   "format": 1,
+  "gameplay": {
+    "sources": ["src"]
+  },
   "main_scene": "unity/Assets/Scenes/Main.scene.json",
   "name": "Hopper",
   "physics_2d": {
@@ -210,7 +217,7 @@ storyboard.query {"kind":"task"}
         "summary": "C# from Unity: write what it does as C++ components and systems."
       },
       "id": "task/port-hopper",
-      "version": "229a3eae"
+      "version": "2746be51"
     }
   ],
   "seq": 0

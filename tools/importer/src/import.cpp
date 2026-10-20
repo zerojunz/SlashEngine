@@ -142,9 +142,7 @@ Result<ImportPlan> plan_unity_build(const unity::Build& build, const fs::path& d
         return unpacked.error();
     }
     const std::string project = unpacked.value().project.generic_string() + "/";
-    auto plan = plan_unity(project, prefix, options.unpack_to.empty(),
-                           read_optional(destination / runtime::kProjectFile),
-                           read_optional(destination / storyboard::file_path("work")));
+    auto plan = plan_unity(project, prefix, options.unpack_to.empty(), existing_of(destination));
     if (!plan) {
         return plan;
     }
@@ -215,8 +213,7 @@ Result<ImportPlan> plan_import(const ImportOptions& options) {
     }
     const Existing existing = existing_of(destination);
     if (unity) {
-        return plan_unity(source.generic_string() + "/", prefix, !contained, existing.project,
-                          existing.work);
+        return plan_unity(source.generic_string() + "/", prefix, !contained, existing);
     }
     return plan_godot(source.generic_string() + "/", nullptr, prefix, !contained, existing);
 }
