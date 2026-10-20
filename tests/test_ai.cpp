@@ -1629,3 +1629,99 @@ TEST_CASE("ai.complete asks the project's model and ai.providers lists them") {
     CHECK(refused.data == parse(R"({"capability":"network"})"));
     std::filesystem::remove_all(root);
 }
+
+TEST_CASE("storyboard.review asks a model for contradictions and keeps only those it can check") {
+    const std::string root = "ai_review_project";
+    std::filesystem::remove_all(root);
+    const std::string findings = json::write(parse(R"({"findings": [
+        {"item": 1, "quote": "my sister Oren", "entry": "character/oren",
+         "problem": "Oren is Mira's brother.", "confidence": "high"},
+        {"item": 2, "quote": "the ferry to Hightown", "entry": "character/mira",
+         "problem": "Mira has never left Lowtown.", "confidence": "medium"},
+        {"item": 1, "quote": "Oren the pirate", "entry": "character/oren",
+         "problem": "Not in the text.", "confidence": "low"},
+        {"item": 2, "quote": "ferry", "entry": "place/hightown",
+         "problem": "No such entry.", "confidence": "low"},
+        {"item": 7, "quote": "Mira", "entry": "character/mira",
+         "problem": "No such item.", "confidence": "low"}]})"),
+                                             json::Style::Compact);
+    FakeModelServer server({chat_reply(findings), chat_reply(R"({"findings": []})")});
+    write(root + "/providers.json", R"({"providers": {"local": {"type": "openai",
+        "model": "local-model", "url": ")" +
+                                        server.url() + R"("}}})");
+    write(root + "/storyboard/world.json", R"({"entries": {
+        "character/mira": {"name": "Mira", "refs": ["place/lowtown"],
+                           "summary": "A courier who has never left Lowtown."},
+        "character/oren": {"name": "Oren", "summary": "Mira's older brother, a baker."},
+        "character/zed": {"name": "Zed", "summary": "A smuggler."},
+        "place/lowtown": {"name": "Lowtown", "summary": "The docks district."}}, "format": 1})");
+    write(root + "/storyboard/style.json", R"({"entries": {
+        "tone/main": {"name": "Wry", "summary": "Wry and warm, never grim."}}, "format": 1})");
+    write(root + "/scenes/hud.scene.json", R"({"entities": {"npc": {"components": {
+        "Label": {"text": "Mira: my sister Oren bakes the best bread."}}}}, "format": 1})");
+    write(root + "/dialogue.txt", "MIRA: I took the ferry to Hightown\nyesterday.\n");
+    Engine engine(root);
+
+    const json::Value reviewed =
+        engine.ok("storyboard.review", parse(R"({"paths": ["scenes/hud.scene.json",
+                                                            "dialogue.txt"]})"));
+    CHECK(reviewed == parse(R"({
+        "advisory": true,
+        "findings": [
+          {"source": "scenes/hud.scene.json", "path": "/entities/npc/components/Label/text",
+           "quote": "my sister Oren", "entry": "character/oren",
+           "problem": "Oren is Mira's brother.", "confidence": "high"},
+          {"source": "dialogue.txt", "quote": "the ferry to Hightown",
+           "entry": "character/mira", "problem": "Mira has never left Lowtown.",
+           "confidence": "medium"}],
+        "unverified": 3, "facts": 4, "items": 2, "model": "local-model",
+        "usage": {"input_tokens": 12, "output_tokens": 3}})"));
+
+    // The model read the instructions, the facts the material touches (the names it mentions,
+    // the tone that applies everywhere and what those name) and each numbered item.
+    const json::Value sent = server.bodies()[0];
+    const json::Array& messages = sent.find("messages")->as_array();
+    CHECK(messages[0].find("content")->as_string().find("storyboard") != std::string::npos);
+    const std::string& prompt = messages[1].find("content")->as_string();
+    for (const char* id : {"character/mira", "character/oren", "tone/main", "place/lowtown"}) {
+        CHECK_MESSAGE(prompt.find(id) != std::string::npos, id);
+    }
+    CHECK(prompt.find("character/zed") == std::string::npos);
+    CHECK(prompt.find("[1] scenes/hud.scene.json /entities/npc/components/Label/text\n"
+                      "Mira: my sister Oren bakes the best bread.") != std::string::npos);
+    CHECK(prompt.find("[2] dialogue.txt\n") != std::string::npos);
+    CHECK(sent.find("response_format") != nullptr);
+
+    // An entry is reviewed against the others, and is not among the facts.
+    const json::Value entry =
+        engine.ok("storyboard.review", parse(R"({"entries": ["character/oren"]})"));
+    CHECK(entry.find("findings")->size() == 0);
+    CHECK(entry.find("items")->as_int() == 2);
+    const std::string entry_prompt =
+        server.bodies()[1].find("messages")->as_array()[1].find("content")->as_string();
+    CHECK(entry_prompt.find("[1] storyboard/world.json /entries/character~1oren/name\nOren") !=
+          std::string::npos);
+    CHECK(entry_prompt.find(R"({"fields":{"name":"Oren")") == std::string::npos);
+    CHECK(entry_prompt.find("character/mira") != std::string::npos);
+
+    // Material nothing in the storyboard touches asks no model.
+    std::filesystem::remove(root + "/storyboard/style.json");
+    const json::Value untouched =
+        engine.ok("storyboard.review", parse(R"({"text": "The wind picked up."})"));
+    CHECK(untouched.find("facts")->as_int() == 0);
+    CHECK(untouched.find("note") != nullptr);
+    CHECK(server.bodies().size() == 2);
+
+    CHECK(engine.call("storyboard.review", json::Object{}).code == command::code::kInvalidParams);
+    const command::Reply unknown =
+        engine.call("storyboard.review", parse(R"({"entries": ["character/orne"]})"));
+    CHECK(unknown.message.find("did you mean \"character/oren\"") != std::string::npos);
+    CHECK(unknown.data == parse(R"({"path":"/entries/0"})"));
+    const command::Reply outside =
+        engine.call("storyboard.review", parse(R"({"paths": ["../secret.txt"]})"));
+    CHECK(outside.data == parse(R"({"path":"/paths/0"})"));
+    const command::Reply missing =
+        engine.call("storyboard.review", parse(R"({"paths": ["nope.txt"]})"));
+    CHECK(missing.message == "no file \"nope.txt\"");
+    std::filesystem::remove_all(root);
+}
