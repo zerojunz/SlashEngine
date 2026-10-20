@@ -1,0 +1,17 @@
+{
+  "entities": {
+    "slime": {
+      "components": {
+        "CharacterBody2D": {},
+        "CollisionShape2D": {
+          "radius": 9.0,
+          "shape": "circle"
+        },
+        "Transform2D": {
+          "position": [140.0, 100.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

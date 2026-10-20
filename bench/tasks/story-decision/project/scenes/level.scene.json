@@ -1,0 +1,16 @@
+{
+  "entities": {
+    "slime": {
+      "components": {
+        "CharacterBody2D": {},
+        "StoryRef": {
+          "ids": ["character/slime"]
+        },
+        "Transform2D": {
+          "position": [140.0, 100.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

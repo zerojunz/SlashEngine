@@ -4,6 +4,8 @@
 #include "slash/core/json.hpp"
 #include "slash/core/json_schema.hpp"
 
+#include <optional>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -28,6 +30,16 @@
 namespace slash::command {
 
 inline constexpr std::string_view kTestSuffix = ".test.json";
+
+// Where a reply doesn't hold what a step expects, with path (which starts as the given one)
+// pointing at the expected value: objects need only the expected members, arrays the same number
+// of items, and other values must be equal, numbers by value.
+struct Mismatch {
+    std::string path;
+    std::string message;
+};
+[[nodiscard]] std::optional<Mismatch>
+mismatch(const json::Value& expected, const json::Value& actual, const std::string& path = "");
 
 // The JSON Schema for .test.json files.
 [[nodiscard]] json::Value test_schema();

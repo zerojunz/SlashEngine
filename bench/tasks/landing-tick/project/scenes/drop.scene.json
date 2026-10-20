@@ -1,0 +1,28 @@
+{
+  "entities": {
+    "ball": {
+      "components": {
+        "CollisionShape2D": {
+          "radius": 8.0,
+          "shape": "circle"
+        },
+        "RigidBody2D": {},
+        "Transform2D": {
+          "position": [160.0, 40.0]
+        }
+      }
+    },
+    "floor": {
+      "components": {
+        "CollisionShape2D": {
+          "size": [640.0, 32.0]
+        },
+        "StaticBody2D": {},
+        "Transform2D": {
+          "position": [320.0, 344.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

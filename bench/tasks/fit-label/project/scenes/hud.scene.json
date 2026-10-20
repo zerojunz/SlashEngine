@@ -1,0 +1,28 @@
+{
+  "entities": {
+    "panel": {
+      "components": {
+        "Control": {
+          "children": ["score"],
+          "offset_bottom": 96.0,
+          "offset_left": 16.0,
+          "offset_right": 176.0,
+          "offset_top": 16.0
+        },
+        "Panel": {}
+      }
+    },
+    "score": {
+      "components": {
+        "Control": {
+          "anchor_bottom": 1.0,
+          "anchor_right": 1.0
+        },
+        "Label": {
+          "text": "Score: 12,480 points, best 15,200 points"
+        }
+      }
+    }
+  },
+  "format": 1
+}

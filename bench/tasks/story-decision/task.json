@@ -1,0 +1,49 @@
+{
+  "checks": [
+    {
+      "command": "storyboard.query",
+      "expect": {
+        "entries": [
+          {
+            "fields": {
+              "links": ["scenes/level.scene.json"],
+              "refs": ["character/slime"]
+            }
+          }
+        ]
+      },
+      "params": {
+        "full": true,
+        "ids": ["decision/no-respawn"]
+      }
+    }
+  ],
+  "format": 1,
+  "prompt": "Record in the storyboard, as decision/no-respawn, that enemies never come back once defeated. Link it to scenes/level.scene.json and to the slime's entry.",
+  "solution": [
+    {
+      "arguments": {
+        "scenes": ["scenes/level.scene.json"]
+      },
+      "tool": "storyboard_brief"
+    },
+    {
+      "arguments": {
+        "edits": [
+          {
+            "id": "decision/no-respawn",
+            "set": {
+              "links": ["scenes/level.scene.json"],
+              "name": "Enemies never respawn",
+              "refs": ["character/slime"],
+              "status": "accepted",
+              "summary": "An enemy stays gone once defeated."
+            },
+            "version": null
+          }
+        ]
+      },
+      "tool": "storyboard_edit"
+    }
+  ]
+}
