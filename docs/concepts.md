@@ -544,8 +544,9 @@ A **capability** is a permission level a session grants. Each command lists the 
 | `run` | Advancing the simulation |
 | `filesystem` | Reading and writing files in the project folder |
 | `build` | Compiling and packaging the game (`export.run`), which runs compilers and other tools |
+| `network` | Calling services on the internet or the local network, such as language models (`ai.complete`) |
 
-Sessions grant all five by default. `--allow read,run` (on `slash-cli` and `slash-mcp`) narrows
+Sessions grant all six by default. `--allow read,run` (on `slash-cli` and `slash-mcp`) narrows
 that, for example to let an agent observe a game without changing it.
 
 ### The project folder

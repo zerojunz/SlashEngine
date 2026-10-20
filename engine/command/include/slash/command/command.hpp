@@ -26,6 +26,7 @@ enum class Capability : std::uint8_t {
     Run,        // advance the simulation
     Filesystem, // read and write files in the project folder
     Build,      // compile and package the game, which runs compilers and other tools
+    Network,    // call services over the network, such as language models
 };
 
 [[nodiscard]] std::string_view to_string(Capability capability) noexcept;
