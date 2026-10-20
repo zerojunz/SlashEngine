@@ -951,7 +951,11 @@ matches to its `audio_bus_name`, as Godot's `_get_actual_bus`. Sessions keep ten
 slices in dB) or writes a `.wav` file; `audio.spectrum` reads a bus's `spectrum_analyzer` in
 frequency bands, `audio.record` starts and stops its `record` effect and writes the take, and
 `audio.state`, `audio.play`, `audio.stop` and `audio.set_bus` do the rest. Sessions put the
-buses back with the world when a command fails or is a dry run. Example sounds are made in code
+buses back with the world when a command fails or is a dry run. `audio.analyze`
+(`src/analysis.cpp`) judges music without listening: loudness and true peak as EBU R 128 measures
+them (libebur128), clipping, silence, tempo and first beat, key, octave bands and whether a loop
+clicks where it joins, for a sound, a `.audio.json` sound as it loops or what a bus played;
+`examples/music-analysis` measures a groove. Example sounds are made in code
 without libm, so outputs match everywhere. `examples/audio` plays music and footsteps panned
 around a listener, `examples/audio-areas-and-analysis` a bat in a cave's reverb, measured
 by its spectrum and recorded, and `examples/interactive-music` a score that follows a fight.

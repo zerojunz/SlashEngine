@@ -1,0 +1,13 @@
+wrote music/groove.wav, music/groove_loud.wav and two .audio.json files
+audio.analyze {"path":"music/groove.audio.json"}
+{"bands_db":[-7.5,-6.8,-6.4,-5,-12.2,-60.4,-56.1,-47.3,-38.4,-31.5],"beat_offset":0.006,"beats":16,"bpm":100,"clips":0,"key":"D minor","key_confidence":0.86,"loop":{"beats":16,"clicks":false,"level_change_db":0.1,"seconds":9.6,"step_db":null},"loudness_range":0.2,"lufs":-15.2,"max_short_term_lufs":-15,"peak_db":-1.7,"rms_db":-16,"seconds":9.6,"silence":{"end":0,"start":0},"tempo_confidence":0.91,"true_peak_db":-1.7}
+audio.analyze {"path":"music/groove_cut.audio.json"}
+{"bands_db":[-7.5,-6.8,-6.4,-5,-12.2,-60.4,-56.1,-47.3,-38.4,-31.5],"beat_offset":0.006,"beats":16,"bpm":100,"clips":0,"key":"D minor","key_confidence":0.86,"loop":{"beats":15.9,"clicks":true,"level_change_db":0,"seconds":9.54,"step_db":-25.3},"loudness_range":0.2,"lufs":-15.2,"max_short_term_lufs":-15,"peak_db":-1.7,"problems":["the loop clicks where its end joins its start"],"rms_db":-16,"seconds":9.6,"silence":{"end":0,"start":0},"tempo_confidence":0.91,"true_peak_db":-1.7}
+audio.analyze {"path":"music/groove_loud.wav"}
+{"bands_db":[-8.8,-8.1,-6.9,-3.8,-10.7,-30.1,-40.2,-44.3,-36.7,-29.9],"beat_offset":0.005,"beats":16,"bpm":100,"clips":626,"first_clip":0.003,"key":"D minor","key_confidence":0.88,"loudness_range":0.3,"lufs":-4.5,"max_short_term_lufs":-4.3,"peak_db":0,"problems":["clips 626 times, first at 0.003 s","true peak 1.2 dBTP is above -1, so it may clip once encoded or resampled"],"rms_db":-5.7,"seconds":9.6,"silence":{"end":0,"start":0},"tempo_confidence":0.79,"true_peak_db":1.2}
+entity.create {"components":{"AudioStreamPlayer":{"autoplay":true,"stream":"music/groove.audio.json"}},"id":"music"}
+{"id":"music"}
+step {"ticks":600}
+{"tick":600,"ticks":600}
+audio.analyze {"bus":"Master","seconds":9.6}
+{"bands_db":[-7.5,-6.8,-6.4,-5,-12.3,-60.1,-55.6,-46.8,-38.3,-31.3],"beat_offset":0.201,"beats":16,"bpm":100,"clips":0,"key":"D minor","key_confidence":0.85,"loudness_range":0.2,"lufs":-15.1,"max_short_term_lufs":-15,"peak_db":-1.7,"rms_db":-16,"seconds":9.6,"silence":{"end":0,"start":0},"tempo_confidence":0.91,"true_peak_db":-1.7}
