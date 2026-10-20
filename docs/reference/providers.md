@@ -61,8 +61,13 @@ recorded answers needs no key.
 URLs are `http://`, for models on the machine or the local network (Ollama, llama.cpp, LM Studio
 and vLLM), or `https://`, for hosted APIs. An `https://` server's certificate is checked against
 the certificates the system trusts: the platform decides on macOS and iOS (as Safari would), and
-the system's store or CA bundle is read on Windows, Linux and Android. Requests from web exports
-fail until the engine calls the browser's `fetch`, which is next on the [roadmap](../roadmap.md).
+the system's store or CA bundle is read on Windows, Linux and Android.
+
+Web exports send requests with the browser's `fetch`, so the browser's certificates and proxies
+apply and the variables below don't. The browser also applies its CORS rules: a page may call
+another site only if that server allows it (`Access-Control-Allow-Origin`), which hosted APIs
+mostly don't and local servers need turning on for (`OLLAMA_ORIGINS` for Ollama). A web game's
+`url` should name the developer's own server, which adds the key and allows the game's site.
 
 Connections read the same environment variables curl reads:
 
@@ -170,7 +175,8 @@ come and `ai::cancel` stops it. Agents read the events with
   exports.
 - **Same ticks, same replies.** Headless games and sessions wait at each tick for the replies to
   the requests asked before it, so a reply arrives at the same tick on every run. Windowed games
-  never wait; a reply comes at whichever tick it finishes by.
+  never wait; a reply comes at whichever tick it finishes by. Neither do web games, headless ones
+  included: the browser answers between frames, so a game can't wait for it in one.
 - **Sessions.** A session calls models only with the `network` capability. Without it, requests
   are answered from the replay file and others fail with `permission_denied`, so an agent can
   play a game that talks to a model with no model at all. A failed command or a dry run cancels
@@ -197,3 +203,10 @@ slash::ai::Call call(dialogue.provider, request, /*stream=*/true);
 any provider, a game's own included. `ai::make_http_transport` takes `HttpOptions` (a
 certificate file, a proxy and where to read the environment) for an adapter's `transport`, and
 `ai::proxy_for` says which proxy a URL would go through.
+
+`Call` runs `Provider::complete` on a thread of its own, except on the web, which has none: there
+it calls `Provider::start`, which returns at once and hands over the reply later from the
+browser's event loop. The adapters, roles and replay files start requests with
+`Transport::post_async` and wait to retry with `Transport::later`, which the web's transport
+does with `fetch` and timers. A provider or transport of a game's own can override them too;
+by default they call `complete` and `post`, then hand over the outcome before returning.

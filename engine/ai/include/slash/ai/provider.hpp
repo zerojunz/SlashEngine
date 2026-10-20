@@ -127,7 +127,10 @@ using StreamSink = std::function<void(std::string_view text)>;
 // Set from another thread to stop a request; complete() then fails soon after.
 using CancelFlag = std::atomic<bool>;
 
-class Provider {
+// Receives a request's outcome, for Provider::start.
+using ReplyCallback = std::function<void(Result<Response> response)>;
+
+class Provider : public std::enable_shared_from_this<Provider> {
 public:
     virtual ~Provider() = default;
 
@@ -139,6 +142,19 @@ public:
     [[nodiscard]] virtual Result<Response> complete(const Request& request,
                                                     const StreamSink& sink = nullptr,
                                                     const CancelFlag* cancel = nullptr) = 0;
+
+    // Starts the request and returns, for platforms with no threads to wait on (the web): done
+    // gets the outcome later, from the platform's event loop, and the sink each piece of text as
+    // it comes. The cancel flag must last until done is called. By default it calls complete(),
+    // then done, before returning; the adapters, roles and replay files override it when the
+    // provider is held by a shared_ptr, as make_adapter and open return them.
+    // (Defined here, as every virtual call of this class and Transport is, so that code built
+    // with RTTI can derive from them. Overrides keep the sink and callback, so they are values.)
+    // NOLINTNEXTLINE(performance-unnecessary-value-param)
+    virtual void start(const Request& request, StreamSink sink, ReplyCallback done,
+                       const CancelFlag* cancel = nullptr) {
+        done(complete(request, sink, cancel));
+    }
 };
 
 // What a request's output_schema asks of the reply: an error if the request needs something the
@@ -161,7 +177,8 @@ public:
 
 // A request running on its own thread, so a game keeps ticking while a model answers: start it,
 // then check done() each tick. Destroying a Call cancels the request without waiting: its thread
-// stops when the request notices, on its own.
+// stops when the request notices, on its own. On the web, which has no threads, the request runs
+// on the browser's event loop instead (Provider::start), and wait() returns at once.
 class Call {
 public:
     // With stream, text() grows as the reply arrives.
@@ -182,13 +199,16 @@ public:
     void wait();
 
 private:
-    // What the thread fills in, kept alive by the thread too, so a Call can go first.
+    // What the request fills in, kept alive by it too, so a Call can go first.
     struct Shared {
         mutable std::mutex mutex;
         std::string text;
         std::optional<Result<Response>> result;
         std::atomic<bool> done = false;
         CancelFlag cancel = false;
+
+        void append(std::string_view piece);
+        void finish(Result<Response> outcome);
     };
 
     std::shared_ptr<Shared> shared_ = std::make_shared<Shared>();

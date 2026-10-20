@@ -940,7 +940,11 @@ and `ai.complete` commands, which need the `network` capability. Tests talk to a
 httplib with Mbed TLS, which checks `https://` servers against the system's certificates
 (SecTrust on Apple platforms, which `apple_trusts` asks), or `SSL_CERT_FILE`'s, and reaches them
 through the proxies curl's variables name (`ai::proxy_for`). Its tests make their certificates
-when they run, so no key is committed. `examples/ai-provider` is a shopkeeper who talks through a
+when they run, so no key is committed. The web has no threads, so there `Call` uses
+`Provider::start`, which the adapters, roles and replay files run on `Transport::post_async` and
+`Transport::later`: the web's transport calls the browser's `fetch` through `EM_JS` and reads
+the body as it streams, and retries wait on browser timers (`DeferredTransport` in
+`tests/test_ai.cpp` tests the same path natively). `examples/ai-provider` is a shopkeeper who talks through a
 model, and `examples/ai-dialogue` a baker who talks from gameplay code.
 
 ## Add a component

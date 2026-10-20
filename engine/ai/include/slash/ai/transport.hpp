@@ -3,10 +3,12 @@
 #include "slash/ai/provider.hpp"
 #include "slash/core/result.hpp"
 
+#include <chrono>
 #include <functional>
 #include <memory>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -29,6 +31,8 @@ struct HttpResponse {
 
 // Receives a 200 response's body as it arrives; returning false stops the request.
 using BodySink = std::function<bool(std::string_view data)>;
+// Receives what Transport::post would have returned, for Transport::post_async.
+using ResponseCallback = std::function<void(Result<HttpResponse> response)>;
 
 class Transport {
 public:
@@ -39,6 +43,22 @@ public:
     // could not be reached, the request was cancelled or the sink stopped it.
     [[nodiscard]] virtual Result<HttpResponse>
     post(const HttpRequest& request, const BodySink& sink, const CancelFlag* cancel) = 0;
+
+    // Starts the POST and returns, for Provider::start: done gets what post() would return, and
+    // the sink the body, later, from the platform's event loop. The web's transport does this
+    // with the browser's fetch(); by default it calls post(), then done, before returning.
+    // NOLINTNEXTLINE(performance-unnecessary-value-param): overrides keep them
+    virtual void post_async(const HttpRequest& request, BodySink sink, ResponseCallback done,
+                            const CancelFlag* cancel) {
+        done(post(request, sink, cancel));
+    }
+    // Calls then once delay has passed, from the event loop post_async answers on, to try a
+    // request again. By default it sleeps, then calls then, before returning.
+    // NOLINTNEXTLINE(performance-unnecessary-value-param): overrides keep it
+    virtual void later(std::chrono::milliseconds delay, std::function<void()> then) {
+        std::this_thread::sleep_for(delay);
+        then();
+    }
 };
 
 // How an HTTP transport reaches servers.
@@ -56,7 +76,8 @@ struct HttpOptions {
 
 // HTTP and HTTPS over the network. https:// checks the server's certificate against the
 // system's: the platform's trust settings on macOS and iOS, the system store on Windows, and
-// the CA bundle on Linux and Android. On the web, requests fail until a fetch transport lands.
+// the CA bundle on Linux and Android. On the web the browser's fetch() makes requests, through
+// post_async only, and the browser's certificates, proxies and CORS rules apply.
 [[nodiscard]] std::shared_ptr<Transport> make_http_transport(HttpOptions options);
 
 // The transport every adapter given none shares, with the default options.
