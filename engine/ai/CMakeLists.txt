@@ -18,6 +18,10 @@ target_link_libraries(slash_ai
 if(NOT EMSCRIPTEN)
     target_link_libraries(slash_ai PRIVATE slash_httplib)
 endif()
+if(APPLE)
+    # SecTrust decides whether a server's certificate chain is trusted.
+    target_link_libraries(slash_ai PRIVATE "-framework CoreFoundation" "-framework Security")
+endif()
 slash_engine_target(slash_ai)
 
 # The engine's commands as tools for a model, and the ai.* commands.

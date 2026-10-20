@@ -16,14 +16,21 @@
 #include <doctest/doctest.h>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cstddef>
 #include <filesystem>
 #include <httplib.h>
 #include <map>
+#include <mbedtls/ctr_drbg.h>
+#include <mbedtls/ecp.h>
+#include <mbedtls/entropy.h>
+#include <mbedtls/pk.h>
+#include <mbedtls/x509_crt.h>
 #include <memory>
 #include <mutex>
+#include <psa/crypto.h>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -165,13 +172,70 @@ std::string text_of(const Result<ai::Response>& response) {
     return response.value().message.text;
 }
 
+// A certificate for localhost that is its own issuer, and its key, as PEM files. Made when a test
+// runs, so no key is committed.
+struct Certificate {
+    std::string cert_file;
+    std::string key_file;
+};
+
+Certificate make_certificate(const std::string& folder) {
+    REQUIRE(psa_crypto_init() == PSA_SUCCESS);
+    mbedtls_entropy_context entropy;
+    mbedtls_entropy_init(&entropy);
+    mbedtls_ctr_drbg_context random;
+    mbedtls_ctr_drbg_init(&random);
+    mbedtls_pk_context key;
+    mbedtls_pk_init(&key);
+    mbedtls_x509write_cert writer;
+    mbedtls_x509write_crt_init(&writer);
+    std::array<unsigned char, 4096> cert_pem{};
+    std::array<unsigned char, 4096> key_pem{};
+    std::array<unsigned char, 1> serial = {1};
+    const bool made =
+        mbedtls_ctr_drbg_seed(&random, mbedtls_entropy_func, &entropy, nullptr, 0) == 0 &&
+        mbedtls_pk_setup(&key, mbedtls_pk_info_from_type(MBEDTLS_PK_ECKEY)) == 0 &&
+        mbedtls_ecp_gen_key(MBEDTLS_ECP_DP_SECP256R1, mbedtls_pk_ec(key), mbedtls_ctr_drbg_random,
+                            &random) == 0 &&
+        mbedtls_x509write_crt_set_subject_name(&writer, "CN=localhost") == 0 &&
+        mbedtls_x509write_crt_set_issuer_name(&writer, "CN=localhost") == 0 &&
+        mbedtls_x509write_crt_set_serial_raw(&writer, serial.data(), serial.size()) == 0 &&
+        mbedtls_x509write_crt_set_validity(&writer, "20250101000000", "20450101000000") == 0 &&
+        mbedtls_x509write_crt_set_basic_constraints(&writer, 1, -1) == 0;
+    mbedtls_x509write_crt_set_version(&writer, MBEDTLS_X509_CRT_VERSION_3);
+    mbedtls_x509write_crt_set_md_alg(&writer, MBEDTLS_MD_SHA256);
+    mbedtls_x509write_crt_set_subject_key(&writer, &key);
+    mbedtls_x509write_crt_set_issuer_key(&writer, &key);
+    const bool written = made &&
+                         mbedtls_x509write_crt_pem(&writer, cert_pem.data(), cert_pem.size(),
+                                                   mbedtls_ctr_drbg_random, &random) == 0 &&
+                         mbedtls_pk_write_key_pem(&key, key_pem.data(), key_pem.size()) == 0;
+    mbedtls_x509write_crt_free(&writer);
+    mbedtls_pk_free(&key);
+    mbedtls_ctr_drbg_free(&random);
+    mbedtls_entropy_free(&entropy);
+    REQUIRE(written);
+    Certificate out{folder + "/localhost.crt", folder + "/localhost.key"};
+    std::filesystem::create_directories(folder);
+    REQUIRE(platform::write_file(out.cert_file, reinterpret_cast<const char*>(cert_pem.data())));
+    REQUIRE(platform::write_file(out.key_file, reinterpret_cast<const char*>(key_pem.data())));
+    return out;
+}
+
 // An OpenAI-compatible server on the loopback interface that answers each chat completion with
-// the next scripted reply (the last repeats), streaming it when asked. It keeps every body.
+// the next scripted reply (the last repeats), streaming it when asked, over https if given a
+// certificate. It keeps every body.
 class FakeModelServer {
 public:
-    explicit FakeModelServer(std::vector<json::Value> replies) : replies_(std::move(replies)) {
-        server_.Post("/v1/chat/completions", [this](const httplib::Request& request,
-                                                    httplib::Response& response) {
+    explicit FakeModelServer(std::vector<json::Value> replies,
+                             const Certificate* certificate = nullptr)
+        : server_(certificate == nullptr
+                      ? std::make_unique<httplib::Server>()
+                      : std::make_unique<httplib::SSLServer>(certificate->cert_file.c_str(),
+                                                             certificate->key_file.c_str())),
+          replies_(std::move(replies)), scheme_(certificate == nullptr ? "http" : "https") {
+        server_->Post("/v1/chat/completions", [this](const httplib::Request& request,
+                                                     httplib::Response& response) {
             json::Value reply;
             {
                 const std::scoped_lock lock(mutex_);
@@ -221,21 +285,22 @@ public:
                     return true;
                 });
         });
-        port_ = server_.bind_to_any_port("127.0.0.1");
-        thread_ = std::thread([this] { server_.listen_after_bind(); });
-        server_.wait_until_ready();
+        port_ = server_->bind_to_any_port("127.0.0.1");
+        thread_ = std::thread([this] { server_->listen_after_bind(); });
+        server_->wait_until_ready();
     }
 
     ~FakeModelServer() {
-        server_.stop();
+        server_->stop();
         thread_.join();
     }
 
     FakeModelServer(const FakeModelServer&) = delete;
     FakeModelServer& operator=(const FakeModelServer&) = delete;
 
-    [[nodiscard]] std::string url() const {
-        return "http://127.0.0.1:" + std::to_string(port_) + "/v1";
+    // The API's URL at a name for this machine: 127.0.0.1 or localhost.
+    [[nodiscard]] std::string url(std::string_view host = "127.0.0.1") const {
+        return scheme_ + "://" + std::string(host) + ":" + std::to_string(port_) + "/v1";
     }
 
     [[nodiscard]] std::vector<json::Value> bodies() {
@@ -244,8 +309,9 @@ public:
     }
 
 private:
-    httplib::Server server_;
+    std::unique_ptr<httplib::Server> server_;
     std::vector<json::Value> replies_;
+    std::string scheme_;
     std::vector<json::Value> bodies_;
     std::mutex mutex_;
     int port_ = 0;
@@ -736,7 +802,7 @@ TEST_CASE("a model without schema output gets the schema in its prompt") {
           "/mood");
 }
 
-TEST_CASE("the HTTP transport talks to a local server and refuses https") {
+TEST_CASE("the HTTP transport talks to a local server") {
     FakeModelServer server(
         {chat_reply("Welcome, traveler."),
          parse(R"({"status":500,"body":{"error":{"message":"model crashed"}}})")});
@@ -756,11 +822,148 @@ TEST_CASE("the HTTP transport talks to a local server and refuses https") {
     auto crashed = provider->complete(ask("Hello"));
     REQUIRE_FALSE(crashed.ok());
     CHECK(crashed.error().message == "the openai provider answered HTTP 500: model crashed");
+}
 
-    options.url = "https://api.example.com/v1";
-    auto secure = ai::make_adapter("openai", options).value()->complete(ask("Hello"));
-    REQUIRE_FALSE(secure.ok());
-    CHECK(contains(secure.error().message, "has no TLS"));
+TEST_CASE("https trusts the system's certificates, or the ones given") {
+    const std::string folder = "ai_tls_test";
+    std::filesystem::remove_all(folder);
+    const Certificate certificate = make_certificate(folder);
+    FakeModelServer server({chat_reply("Welcome, traveler.")}, &certificate);
+    const auto none = [](const std::string& /*name*/) { return std::string(); };
+    const auto complete = [](const std::string& url, ai::HttpOptions http, bool stream = false) {
+        ai::AdapterOptions options;
+        options.url = url;
+        options.model = "local-model";
+        options.max_retries = 0;
+        options.transport = ai::make_http_transport(std::move(http));
+        std::string streamed;
+        ai::StreamSink sink;
+        if (stream) {
+            sink = [&streamed](std::string_view text) { streamed += text; };
+        }
+        auto reply = ai::make_adapter("openai", options).value()->complete(ask("Hello"), sink);
+        if (stream && reply.ok()) {
+            CHECK(streamed == reply.value().message.text);
+        }
+        return reply;
+    };
+
+    const std::string url = server.url("localhost");
+    CHECK(text_of(complete(url, {.ca_file = certificate.cert_file, .environment = none})) ==
+          "Welcome, traveler.");
+    const auto cert_file = [&certificate](const std::string& name) {
+        return name == "SSL_CERT_FILE" ? certificate.cert_file : std::string();
+    };
+    CHECK(text_of(complete(url, {.environment = cert_file}, true)) == "Welcome, traveler.");
+
+    // The system trusts no certificate a test made.
+    auto untrusted = complete(url, {.environment = none});
+    REQUIRE_FALSE(untrusted.ok());
+    CHECK(untrusted.error().message ==
+          "can't reach " + url +
+              "/chat/completions: its certificate is not trusted; if a proxy or private server "
+              "signs it, set SSL_CERT_FILE to a PEM file of the certificates to trust");
+    // Issued to localhost, reached as 127.0.0.1.
+    auto other_host =
+        complete(server.url(), {.ca_file = certificate.cert_file, .environment = none});
+    REQUIRE_FALSE(other_host.ok());
+    CHECK(other_host.error().message ==
+          "can't reach " + server.url() + "/chat/completions: its certificate is for another host");
+    auto missing = complete(url, {.ca_file = folder + "/missing.crt", .environment = none});
+    REQUIRE_FALSE(missing.ok());
+    CHECK(missing.error().message == "can't reach " + url +
+                                         "/chat/completions: the certificates to trust could not "
+                                         "be loaded");
+    CHECK(server.bodies().size() == 2);
+}
+
+TEST_CASE("requests go through the proxy the options or the environment name") {
+    const auto url = [](std::string_view text) { return ai::parse_url(text).value(); };
+    using Variables = std::map<std::string, std::string, std::less<>>;
+    const auto environment = [](Variables variables) {
+        return [variables = std::move(variables)](const std::string& name) {
+            const auto found = variables.find(name);
+            return found == variables.end() ? std::string() : found->second;
+        };
+    };
+    ai::HttpOptions options;
+    options.environment = environment({{"https_proxy", "http://proxy.corp:3128"},
+                                       {"http_proxy", "http://plain.corp:8080"},
+                                       {"no_proxy", "internal.example, .lan,10.0.0.5:8000"}});
+    CHECK(ai::proxy_for(url("https://api.example.com/v1"), options) == "http://proxy.corp:3128");
+    CHECK(ai::proxy_for(url("http://models.example.com/v1"), options) == "http://plain.corp:8080");
+    CHECK(ai::proxy_for(url("https://internal.example/v1"), options).empty());
+    CHECK(ai::proxy_for(url("https://api.Internal.example/v1"), options).empty());
+    CHECK(ai::proxy_for(url("http://box.lan:11434/v1"), options).empty());
+    CHECK(ai::proxy_for(url("http://10.0.0.5:9000/v1"), options).empty());
+    CHECK(ai::proxy_for(url("http://notinternal.example/v1"), options) == "http://plain.corp:8080");
+    // This machine is never reached through a proxy.
+    CHECK(ai::proxy_for(url("http://localhost:11434/v1"), options).empty());
+    CHECK(ai::proxy_for(url("http://127.0.0.1:11434/v1"), options).empty());
+    CHECK(ai::proxy_for(url("http://[::1]:11434/v1"), options).empty());
+
+    // As curl reads them: HTTPS_PROXY and NO_PROXY too, but never HTTP_PROXY, which a web
+    // server's CGI scripts get from a request's Proxy header.
+    options.environment =
+        environment({{"HTTPS_PROXY", "http://upper:3128"}, {"HTTP_PROXY", "http://header:80"}});
+    CHECK(ai::proxy_for(url("https://api.example.com/v1"), options) == "http://upper:3128");
+    CHECK(ai::proxy_for(url("http://api.example.com/v1"), options).empty());
+    options.environment = environment({{"https_proxy", "http://proxy:3128"}, {"NO_PROXY", "*"}});
+    CHECK(ai::proxy_for(url("https://api.example.com/v1"), options).empty());
+    // Networks, and domains written as wildcards.
+    options.environment =
+        environment({{"http_proxy", "http://proxy:3128"},
+                     {"no_proxy", "10.0.0.0/8,192.168.1.0/24,*.svc.cluster.local,0.0.0.0/0x,::"}});
+    CHECK(ai::proxy_for(url("http://10.200.3.4:11434/v1"), options).empty());
+    CHECK(ai::proxy_for(url("http://192.168.1.20:11434/v1"), options).empty());
+    CHECK(ai::proxy_for(url("http://192.168.2.20:11434/v1"), options) == "http://proxy:3128");
+    CHECK(ai::proxy_for(url("http://ollama.models.svc.cluster.local/v1"), options).empty());
+    CHECK(ai::proxy_for(url("http://11.0.0.1/v1"), options) == "http://proxy:3128");
+    // A proxy in the options is used for every other host.
+    options.proxy = "http://set:8080";
+    CHECK(ai::proxy_for(url("https://api.example.com/v1"), options) == "http://set:8080");
+    CHECK(ai::proxy_for(url("http://localhost/v1"), options).empty());
+
+    // A stand-in proxy that answers every request itself, as if from the model.
+    httplib::Server proxy;
+    std::vector<std::pair<std::string, std::string>> seen;
+    std::mutex mutex;
+    proxy.Post(".*", [&](const httplib::Request& request, httplib::Response& response) {
+        const std::scoped_lock lock(mutex);
+        seen.emplace_back(request.target, request.get_header_value("Proxy-Authorization"));
+        response.set_content(json::write(chat_reply("Through the proxy."), json::Style::Compact),
+                             "application/json");
+    });
+    const int port = proxy.bind_to_any_port("127.0.0.1");
+    std::thread thread([&proxy] { proxy.listen_after_bind(); });
+    proxy.wait_until_ready();
+
+    ai::AdapterOptions adapter_options;
+    adapter_options.url = "http://models.example:11434/v1";
+    adapter_options.model = "local-model";
+    adapter_options.max_retries = 0;
+    adapter_options.transport =
+        ai::make_http_transport({.proxy = "http://agent:s3cret@127.0.0.1:" + std::to_string(port),
+                                 .environment = environment({})});
+    auto reply = ai::make_adapter("openai", adapter_options).value()->complete(ask("Hello"));
+    // https:// goes through a tunnel, which the stand-in doesn't open.
+    adapter_options.url = "https://models.example/v1";
+    auto tunnel = ai::make_adapter("openai", adapter_options).value()->complete(ask("Hello"));
+    adapter_options.transport = ai::make_http_transport({.proxy = "socks5://127.0.0.1:1080"});
+    auto refused = ai::make_adapter("openai", adapter_options).value()->complete(ask("Hello"));
+    proxy.stop();
+    thread.join();
+
+    CHECK(text_of(reply) == "Through the proxy.");
+    REQUIRE(seen.size() == 1);
+    CHECK(seen[0].first == "http://models.example:11434/v1/chat/completions");
+    CHECK(seen[0].second == "Basic YWdlbnQ6czNjcmV0");
+    REQUIRE_FALSE(tunnel.ok());
+    CHECK(tunnel.error().message ==
+          "can't reach https://models.example/v1/chat/completions: the proxy answered HTTP 400");
+    REQUIRE_FALSE(refused.ok());
+    CHECK(refused.error().message ==
+          "the proxy \"socks5://127.0.0.1:1080\" is not an http://host:port URL");
 }
 
 TEST_CASE("replay records each reply once and answers offline after that") {
