@@ -1,0 +1,28 @@
+{
+  "format": 1,
+  "gameplay": {
+    "sources": [
+      "src"
+    ]
+  },
+  "input": {
+    "dash": {
+      "events": [
+        {
+          "physical_key": "Shift",
+          "type": "key"
+        }
+      ]
+    },
+    "jump": {
+      "events": [
+        {
+          "physical_key": "Space",
+          "type": "key"
+        }
+      ]
+    }
+  },
+  "main_scene": "scenes/level.scene.json",
+  "name": "Coin Run"
+}
