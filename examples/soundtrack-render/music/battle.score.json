@@ -1,0 +1,37 @@
+{
+  "bpm": 140,
+  "format": 1,
+  "key": "D minor",
+  "sections": [
+    {
+      "bar": 0,
+      "name": "loop"
+    }
+  ],
+  "tracks": [
+    {
+      "bars": ["D2:0.5 D2 D3 D2 C3 D2 A2 D2", "Bb1:0.5 Bb1 Bb2 Bb1 A2 Bb1 F2 Bb1", "C2:0.5 C2 C3 C2 Bb2 C2 G2 C2", "A1:0.5 A1 A2 A1 G2 A1 C#2 E2"],
+      "instrument": "electric_bass_finger",
+      "name": "bass"
+    },
+    {
+      "bars": ["D4+F4+A4:4", "D4+F4+Bb4:4", "C4+E4+G4:4", "C#4+E4+A4:4"],
+      "instrument": "string_ensemble_1",
+      "name": "strings",
+      "velocity": 80,
+      "volume_db": -3
+    },
+    {
+      "bars": ["r:1.5 D5+F5+A5:0.5 r:2", "r:1.5 D5+F5+Bb5:0.5 r:2", "r:1.5 C5+E5+G5:0.5 r:2", "r:1.5 C#5+E5+A5:0.5 r:1 E5:0.5 F5"],
+      "instrument": "brass_section",
+      "name": "brass",
+      "pan": 0.3
+    },
+    {
+      "bars": ["kick+crash:0.5 closed_hat snare+closed_hat closed_hat kick+closed_hat kick snare+closed_hat closed_hat", "kick+closed_hat:0.5 closed_hat snare+closed_hat closed_hat kick+closed_hat kick snare+closed_hat closed_hat", "kick+closed_hat:0.5 closed_hat snare+closed_hat closed_hat kick+closed_hat kick snare+closed_hat closed_hat", "kick+closed_hat:0.5 closed_hat snare+closed_hat closed_hat kick+closed_hat snare snare snare@110"],
+      "instrument": "drums",
+      "name": "drums",
+      "velocity": 90
+    }
+  ]
+}

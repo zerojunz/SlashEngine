@@ -2,17 +2,23 @@
 
 #include "slash/command/session.hpp"
 #include "slash/core/json.hpp"
+#include "slash/core/text.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/soundtrack/midi.hpp"
+#include "slash/soundtrack/render.hpp"
 #include "slash/soundtrack/score.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <set>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 namespace slash::soundtrack {
 namespace {
@@ -226,6 +232,281 @@ Reply score_export(Session& session, const json::Value& params) {
     return Reply::success(std::move(result));
 }
 
+// A number as JSON, whole numbers without a fraction.
+json::Value number(double value) {
+    if (value == std::floor(value) && std::abs(value) < 1e15) {
+        return static_cast<std::int64_t>(value);
+    }
+    return value;
+}
+
+json::Value decibels(double db) {
+    if (!std::isfinite(db)) {
+        return nullptr;
+    }
+    return number(std::round(db * 10.0) / 10.0);
+}
+
+// A track's name as a file name: letters, digits, '-' and '_', the rest as '_'.
+std::string file_name(std::string_view name) {
+    std::string out;
+    for (const char c : name) {
+        const bool plain = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                           (c >= '0' && c <= '9') || c == '-' || c == '_';
+        out.push_back(plain ? c : '_');
+    }
+    return out.empty() ? "track" : out;
+}
+
+// The stems' file names, one per track in order, made unique.
+std::vector<std::string> stem_names(const Score& score) {
+    std::vector<std::string> names;
+    std::set<std::string> taken;
+    for (const Track& track : score.tracks) {
+        const std::string base = file_name(track.name);
+        std::string name = base;
+        for (int n = 2; !taken.insert(name).second; ++n) {
+            name = base + "_" + std::to_string(n);
+        }
+        names.push_back(std::move(name));
+    }
+    return names;
+}
+
+// A stem's .audio.json file: its sound, timed by the score's beats, looping if it loops.
+json::Value stem_audio(const std::string& source, const Score& score, bool loop, bool ogg) {
+    json::Value doc;
+    doc["format"] = 1;
+    doc["source"] = source;
+    doc["bpm"] = number(score.bpm);
+    doc["beat_count"] = score.bars * score.bar_beats;
+    if (score.bar_beats != 4) {
+        doc["bar_beats"] = score.bar_beats;
+    }
+    if (loop) {
+        if (ogg) {
+            doc["loop"] = true;
+        } else {
+            doc["loop_mode"] = "forward";
+        }
+    }
+    return doc;
+}
+
+// A stem's file in the out folder.
+std::string stem_file(const std::string& out, const std::string& name, std::string_view extension) {
+    std::string file = out;
+    file += '/';
+    file += name;
+    file += extension;
+    return file;
+}
+
+std::uint32_t serial_of(std::string_view name) {
+    std::uint32_t hash = 2166136261U;
+    for (const char c : name) {
+        hash = (hash ^ static_cast<std::uint8_t>(c)) * 16777619U;
+    }
+    return hash;
+}
+
+Reply soundtrack_render(Session& session, const json::Value& params) {
+    const std::string path = text(params, "path");
+    if (!path.ends_with(kScoreSuffix)) {
+        return failure_at(command::code::kInvalidArgument, "/path", "expected a .score.json file");
+    }
+    std::string out = text(params, "out");
+    while (out.ends_with('/')) {
+        out.pop_back();
+    }
+    if (out.empty()) {
+        out = path.substr(0, path.size() - kScoreSuffix.size());
+    }
+    const std::string format = params.find("format") != nullptr ? text(params, "format") : "ogg";
+    const bool ogg = format == "ogg";
+    const json::Value* loop_param = params.find("loop");
+    const bool loop = loop_param != nullptr && loop_param->as_bool();
+    const json::Value* quality_param = params.find("quality");
+    const double quality = quality_param != nullptr ? quality_param->as_double() : 0.5;
+
+    auto read = session.read_project_file(path);
+    if (!read) {
+        return failure_at(read.error(), "/path");
+    }
+    const std::optional<std::string> contents = std::move(read).value();
+    if (!contents) {
+        return failure_at(command::code::kNotFound, "/path", "no file " + path);
+    }
+    auto doc = json::parse(*contents);
+    if (!doc) {
+        return failure_at(command::code::kInvalidArgument, "/path",
+                          path + ": " + doc.error().message);
+    }
+    if (const auto errors = validate_score(doc.value()); !errors.empty()) {
+        return failure_at(command::code::kInvalidArgument, "/path",
+                          path + " " + errors.front().path + ": " + errors.front().message);
+    }
+    const Score score = parse_score(doc.value()).value();
+
+    std::vector<std::string> tracks;
+    if (const json::Value* named = params.find("tracks"); named != nullptr) {
+        const json::Array& list = named->as_array();
+        for (std::size_t i = 0; i < list.size(); ++i) {
+            const std::string& name = list[i].as_string();
+            if (std::ranges::none_of(score.tracks,
+                                     [&](const Track& track) { return track.name == name; })) {
+                std::vector<std::string_view> names;
+                names.reserve(score.tracks.size());
+                for (const Track& track : score.tracks) {
+                    names.emplace_back(track.name);
+                }
+                std::string message = path;
+                message += " has no track called ";
+                message += name;
+                if (const std::string_view near = closest_match(name, names); !near.empty()) {
+                    message += "; did you mean " + std::string(near) + "?";
+                }
+                return failure_at(command::code::kInvalidArgument, "/tracks/" + std::to_string(i),
+                                  message);
+            }
+            tracks.push_back(name);
+        }
+    }
+
+    std::string sound_font_storage;
+    std::string_view sound_font = builtin_sound_bank();
+    const std::string sound_font_path = text(params, "soundfont");
+    if (!sound_font_path.empty()) {
+        auto font = session.read_project_file(sound_font_path);
+        if (!font) {
+            return failure_at(font.error(), "/soundfont");
+        }
+        std::optional<std::string> bytes = std::move(font).value();
+        if (!bytes) {
+            return failure_at(command::code::kNotFound, "/soundfont", "no file " + sound_font_path);
+        }
+        sound_font_storage = std::move(*bytes);
+        sound_font = sound_font_storage;
+    }
+
+    RenderOptions options;
+    options.loop = loop;
+    auto stems = render_score(score, sound_font, options, tracks);
+    if (!stems) {
+        const std::string what =
+            sound_font_path.empty() ? "the built-in sound bank" : sound_font_path;
+        return failure_at(command::code::kInvalidArgument,
+                          sound_font_path.empty() ? "/path" : "/soundfont",
+                          what + " " + stems.error().message);
+    }
+
+    const std::vector<std::string> names = stem_names(score);
+    const std::string extension = ogg ? ".ogg" : ".wav";
+    json::Array stem_results;
+    json::Array problems;
+    std::vector<float> mix;
+    std::size_t stem_index = 0;
+    for (std::size_t t = 0; t < score.tracks.size(); ++t) {
+        const Track& track = score.tracks[t];
+        if (stem_index >= stems.value().size() || stems.value()[stem_index].track != track.name) {
+            continue;
+        }
+        const Stem& stem = stems.value()[stem_index++];
+        const std::string sound = stem_file(out, names[t], extension);
+        const std::string audio = stem_file(out, names[t], ".audio.json");
+        auto sound_full = session.resolve_path(sound);
+        auto audio_full = session.resolve_path(audio);
+        if (!sound_full || !audio_full) {
+            return failure_at(sound_full ? audio_full.error() : sound_full.error(), "/out");
+        }
+        std::string bytes;
+        if (ogg) {
+            auto encoded = encode_ogg(stem.samples, options.rate, quality, serial_of(track.name));
+            if (!encoded) {
+                return Reply::failure(encoded.error());
+            }
+            bytes = std::move(encoded).value();
+        } else {
+            bytes = encode_wav(stem.samples, options.rate);
+        }
+        if (!session.dry_running()) {
+            if (auto written = session.write_file(sound_full.value(), bytes); !written) {
+                return Reply::failure(written.error());
+            }
+            const json::Value settings = stem_audio(sound, score, loop, ogg);
+            if (auto written = session.write_file(audio_full.value(), json::write(settings) + "\n");
+                !written) {
+                return Reply::failure(written.error());
+            }
+        }
+        const double peak = peak_db(stem.samples);
+        json::Value result;
+        result["track"] = track.name;
+        result["path"] = sound;
+        result["peak_db"] = decibels(peak);
+        stem_results.push_back(std::move(result));
+        if (track.notes.empty()) {
+            problems.emplace_back(track.name + " has no notes");
+        } else if (peak > 0.0) {
+            problems.emplace_back(track.name + " clips: it peaks at +" +
+                                  json::write(decibels(peak)) + " dBFS; lower its volume_db");
+        }
+        if (mix.size() < stem.samples.size()) {
+            mix.resize(stem.samples.size());
+        }
+        for (std::size_t i = 0; i < stem.samples.size(); ++i) {
+            mix[i] += stem.samples[i];
+        }
+    }
+
+    // The music: every stem rendered so far, played together.
+    const std::string music = out + ".audio.json";
+    json::Array layers;
+    for (std::size_t t = 0; t < score.tracks.size(); ++t) {
+        const std::string audio = stem_file(out, names[t], ".audio.json");
+        const bool rendered =
+            tracks.empty() || std::ranges::find(tracks, score.tracks[t].name) != tracks.end();
+        auto full = session.resolve_path(audio);
+        if (rendered || (full && platform::exists(full.value()))) {
+            json::Value layer;
+            layer["stream"] = audio;
+            layers.push_back(std::move(layer));
+        }
+    }
+    auto music_full = session.resolve_path(music);
+    if (!music_full) {
+        return failure_at(music_full.error(), "/out");
+    }
+    if (!session.dry_running()) {
+        json::Value synchronized;
+        synchronized["format"] = 1;
+        synchronized["synchronized"] = std::move(layers);
+        if (auto written = session.write_file(music_full.value(), json::write(synchronized) + "\n");
+            !written) {
+            return Reply::failure(written.error());
+        }
+    }
+
+    json::Value result;
+    result["path"] = music;
+    result["bpm"] = hundredths(score.bpm);
+    result["beat_count"] = score.bars * score.bar_beats;
+    result["seconds"] = hundredths(score.seconds());
+    result["stems"] = std::move(stem_results);
+    if (tracks.empty() && score.tracks.size() > 1) {
+        const double peak = peak_db(mix);
+        result["peak_db"] = decibels(peak);
+        if (peak > 0.0) {
+            problems.emplace_back("the tracks together peak at +" + json::write(decibels(peak)) +
+                                  " dBFS; lower their volume_db");
+        }
+    }
+    if (!problems.empty()) {
+        result["problems"] = std::move(problems);
+    }
+    return Reply::success(std::move(result));
+}
+
 } // namespace
 
 void register_commands(command::Registry& registry) {
@@ -264,6 +545,44 @@ void register_commands(command::Registry& registry) {
             },
             {"path"}),
         .handler = score_export,
+    });
+
+    json::Value format = property("string", "ogg (default) or wav.");
+    format["enum"] = json::Array{"ogg", "wav"};
+    json::Value quality = property("number", "Ogg Vorbis quality, 0 (about 64 kbit/s) to 1 (about "
+                                             "500 kbit/s). Default 0.5.");
+    quality["minimum"] = 0;
+    quality["maximum"] = 1;
+    json::Value tracks = property("array", "Only these tracks, by name. Default: every track.");
+    tracks["items"]["type"] = "string";
+    tracks["uniqueItems"] = true;
+    tracks["minItems"] = 1;
+    registry.add({
+        .name = "soundtrack.render",
+        .description = "Plays a .score.json score through a SoundFont into one stem per track "
+                       "(.ogg or .wav, each with a .audio.json file giving bpm and beat_count) "
+                       "and a .audio.json file that plays them together. Returns each stem's "
+                       "peak and what clips.",
+        .capabilities = {Capability::Read, Capability::Filesystem},
+        .effect = command::Effect::Read,
+        .params = params_schema(
+            {
+                {"path", property("string", "The .score.json file, relative to the project.")},
+                {"out", property("string", "The folder for the stems. Default: beside path, "
+                                           "with its name; the music is that folder's name "
+                                           "with .audio.json.")},
+                {"tracks", std::move(tracks)},
+                {"loop", property("boolean", "Stems exactly the score's length that loop, what "
+                                             "rings past the end added onto the start. Default "
+                                             "false: they ring on after the end.")},
+                {"format", std::move(format)},
+                {"quality", std::move(quality)},
+                {"soundfont", property("string", "A SoundFont 2 (.sf2) file to play the "
+                                                 "instruments with. Default: the engine's "
+                                                 "built-in General MIDI sounds.")},
+            },
+            {"path"}),
+        .handler = soundtrack_render,
     });
 }
 

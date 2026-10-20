@@ -14,11 +14,18 @@ macro(slash_add_dependency name)
     string(JSON _slash_repository GET "${SLASH_DEPENDENCY_MANIFEST}" dependencies ${name}
         repository)
     string(JSON _slash_tag GET "${SLASH_DEPENDENCY_MANIFEST}" dependencies ${name} tag)
+    # A project that tags no releases is pinned to a commit, which a shallow clone can't reach.
+    string(LENGTH "${_slash_tag}" _slash_tag_length)
+    if(_slash_tag_length EQUAL 40 AND _slash_tag MATCHES "^[0-9a-f]+$")
+        set(_slash_shallow FALSE)
+    else()
+        set(_slash_shallow TRUE)
+    endif()
     CPMAddPackage(
         NAME ${name}
         GIT_REPOSITORY ${_slash_repository}
         GIT_TAG ${_slash_tag}
-        GIT_SHALLOW TRUE
+        GIT_SHALLOW ${_slash_shallow}
         ${ARGN})
     list(APPEND SLASH_DEPENDENCIES ${name})
 endmacro()
@@ -261,4 +268,59 @@ if(SLASH_BUILD_TOOLS OR SLASH_BUILD_TESTS)
             "SPIRV_CROSS_STATIC ON"
             "SPIRV_CROSS_SHARED OFF"
             "SPIRV_CROSS_SKIP_INSTALL ON")
+
+    # Playing scores into stems (soundtrack.render): TinySoundFont plays SoundFont 2 instruments
+    # (engine/soundtrack builds it), and libvorbis, on libogg, encodes the stems as Ogg Vorbis,
+    # built here from their sources without their own CMake, which looks for an installed libogg.
+    # Tools only: games play the stems, never the scores.
+    slash_add_dependency(TinySoundFont DOWNLOAD_ONLY TRUE)
+    slash_add_dependency(libogg DOWNLOAD_ONLY TRUE)
+    slash_add_dependency(libvorbis DOWNLOAD_ONLY TRUE)
+    if(libogg_ADDED AND libvorbis_ADDED)
+        # ogg/config_types.h is otherwise written by libogg's configure step.
+        set(_slash_ogg_config ${CMAKE_BINARY_DIR}/_deps/ogg-config)
+        file(WRITE ${_slash_ogg_config}/ogg/config_types.h.new
+            "#ifndef __CONFIG_TYPES_H__\n#define __CONFIG_TYPES_H__\n#include <stdint.h>\n"
+            "typedef int16_t ogg_int16_t;\ntypedef uint16_t ogg_uint16_t;\n"
+            "typedef int32_t ogg_int32_t;\ntypedef uint32_t ogg_uint32_t;\n"
+            "typedef int64_t ogg_int64_t;\ntypedef uint64_t ogg_uint64_t;\n#endif\n")
+        file(COPY_FILE ${_slash_ogg_config}/ogg/config_types.h.new
+            ${_slash_ogg_config}/ogg/config_types.h ONLY_IF_DIFFERENT)
+        set(_slash_vorbis ${libvorbis_SOURCE_DIR}/lib)
+        add_library(slash_vorbis STATIC
+            ${libogg_SOURCE_DIR}/src/bitwise.c
+            ${libogg_SOURCE_DIR}/src/framing.c
+            ${_slash_vorbis}/analysis.c
+            ${_slash_vorbis}/bitrate.c
+            ${_slash_vorbis}/block.c
+            ${_slash_vorbis}/codebook.c
+            ${_slash_vorbis}/envelope.c
+            ${_slash_vorbis}/floor0.c
+            ${_slash_vorbis}/floor1.c
+            ${_slash_vorbis}/info.c
+            ${_slash_vorbis}/lookup.c
+            ${_slash_vorbis}/lpc.c
+            ${_slash_vorbis}/lsp.c
+            ${_slash_vorbis}/mapping0.c
+            ${_slash_vorbis}/mdct.c
+            ${_slash_vorbis}/psy.c
+            ${_slash_vorbis}/registry.c
+            ${_slash_vorbis}/res0.c
+            ${_slash_vorbis}/sharedbook.c
+            ${_slash_vorbis}/smallft.c
+            ${_slash_vorbis}/synthesis.c
+            ${_slash_vorbis}/vorbisenc.c
+            ${_slash_vorbis}/window.c)
+        target_include_directories(slash_vorbis SYSTEM PUBLIC
+            ${libogg_SOURCE_DIR}/include ${libvorbis_SOURCE_DIR}/include ${_slash_ogg_config})
+        target_include_directories(slash_vorbis PRIVATE ${_slash_vorbis})
+        target_compile_definitions(slash_vorbis PRIVATE
+            $<$<NOT:$<PLATFORM_ID:Windows>>:HAVE_ALLOCA_H>
+            $<$<C_COMPILER_ID:MSVC>:_CRT_SECURE_NO_WARNINGS;_USE_MATH_DEFINES>)
+        target_compile_options(slash_vorbis PRIVATE
+            "$<$<NOT:$<C_COMPILER_ID:MSVC>>:-w>" "$<$<C_COMPILER_ID:MSVC>:/W0>")
+        if(UNIX AND NOT APPLE)
+            target_link_libraries(slash_vorbis PRIVATE m)
+        endif()
+    endif()
 endif()

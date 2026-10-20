@@ -1,0 +1,4 @@
+{"jsonrpc":"2.0","id":1,"method":"soundtrack.render","params":{"path":"music/battle.score.json","loop":true}}
+{"jsonrpc":"2.0","id":2,"method":"audio.analyze","params":{"path":"music/battle/drums.audio.json"}}
+{"jsonrpc":"2.0","id":3,"method":"audio.analyze","params":{"path":"music/battle/strings.audio.json"}}
+{"jsonrpc":"2.0","id":4,"method":"soundtrack.render","params":{"path":"music/battle.score.json","tracks":["brass"],"format":"wav","out":"build/brass"}}

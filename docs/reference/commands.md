@@ -68,7 +68,7 @@ as `entity.get`, reject it as an unknown param.
 | UI and text | [`ui.layout`](#uilayout), [`ui.theme`](#uitheme), [`ui.press`](#uipress), [`ui.popup`](#uipopup), [`ui.select`](#uiselect), [`ui.drag`](#uidrag), [`ui.tooltip`](#uitooltip), [`ui.focus`](#uifocus), [`ui.search`](#uisearch), [`ui.clipboard`](#uiclipboard), [`text.measure`](#textmeasure) |
 | Input | [`input.inject`](#inputinject), [`input.state`](#inputstate), [`input.actions`](#inputactions) |
 | Audio | [`audio.state`](#audiostate), [`audio.capture`](#audiocapture), [`audio.analyze`](#audioanalyze), [`audio.play`](#audioplay), [`audio.stop`](#audiostop), [`audio.set_bus`](#audioset_bus), [`audio.spectrum`](#audiospectrum), [`audio.record`](#audiorecord), [`audio.input`](#audioinput) |
-| Soundtrack | [`score.import`](#scoreimport), [`score.export`](#scoreexport) |
+| Soundtrack | [`score.import`](#scoreimport), [`score.export`](#scoreexport), [`soundtrack.render`](#soundtrackrender) |
 | Services | [`services.state`](#servicesstate), [`services.test`](#servicestest) |
 | Storyboard | [`storyboard.query`](#storyboardquery), [`storyboard.brief`](#storyboardbrief), [`storyboard.check`](#storyboardcheck), [`storyboard.review`](#storyboardreview), [`storyboard.edit`](#storyboardedit) |
 | Components | [`component.set`](#componentset), [`component.remove`](#componentremove) |
@@ -1748,8 +1748,9 @@ the input.
 ## Soundtrack
 
 Music written as [`.score.json` scores](scene-format.md#scores), moved to and from Standard
-MIDI Files so any music program can play or edit them. From
-[examples/music-scores](../../examples/music-scores/).
+MIDI Files so any music program can play or edit them, and played into stems a game plays. From
+[examples/music-scores](../../examples/music-scores/) and
+[examples/soundtrack-render](../../examples/soundtrack-render/).
 
 ### score.export
 
@@ -1809,6 +1810,63 @@ hold and what moved to fit it: tempo, meter and key changes after the first (the
 the first), pitch bends, the sustain pedal, drum kits other than the standard one, notes moved
 to the grid and markers that aren't on a bar line. A file with no notes, a format 2 or SMPTE
 timed file, or one cut short is an error at `/path`.
+
+### soundtrack.render
+
+Plays a score through a SoundFont into one stem per track, each with a `.audio.json` file that
+gives it the score's `bpm` and `beat_count` (and `bar_beats` when not 4), and writes a
+`.audio.json` file that plays the stems together as a [synchronized
+stream](scene-format.md#audio-streams), so a player's `stream_<index>_volume_db` fades one layer
+at a time. Each track plays its General MIDI program from bank 0, drums from bank 128, at its
+`volume_db`, `pan` and velocities, with [TinySoundFont](https://github.com/schellingb/TinySoundFont).
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `path` | string | | The `.score.json` file |
+| `out` | string | `path` without `.score.json` | The folder for the stems; the music is this name with `.audio.json` |
+| `tracks` | array of strings | every track | Only these tracks; the music still lists the other stems already rendered |
+| `loop` | boolean | `false` | Stems exactly the score's length that loop (see below) |
+| `format` | `"ogg"` or `"wav"` | `"ogg"` | Ogg Vorbis, or 16-bit PCM WAV |
+| `quality` | number, 0 to 1 | `0.5` | Ogg Vorbis quality, about 64 kbit/s at 0 to 500 at 1 |
+| `soundfont` | string | the built-in sounds | A SoundFont 2 (`.sf2`) file to play the instruments with |
+
+Needs: `read`, `filesystem`. A four-bar loop:
+
+```json
+{"path": "music/battle.score.json", "loop": true}
+```
+
+```json
+{"beat_count":16,"bpm":140,"path":"music/battle.audio.json","peak_db":-5.6,"seconds":6.86,"stems":[{"path":"music/battle/bass.ogg","peak_db":-14.4,"track":"bass"},{"path":"music/battle/strings.ogg","peak_db":-11.5,"track":"strings"},{"path":"music/battle/brass.ogg","peak_db":-8.6,"track":"brass"},{"path":"music/battle/drums.ogg","peak_db":-9.8,"track":"drums"}]}
+```
+
+It writes `music/battle/bass.ogg` and `music/battle/bass.audio.json`, and so on for each track
+(a track's name with characters other than letters, digits, `-` and `_` as `_`), and
+`music/battle.audio.json`:
+
+```json
+{"format": 1, "loop": true, "source": "music/battle/bass.ogg", "bpm": 140, "beat_count": 16}
+{"format": 1, "synchronized": [{"stream": "music/battle/bass.audio.json"}, {"stream": "music/battle/strings.audio.json"}, ...]}
+```
+
+- Without `loop`, each stem rings on after the score's end until its notes have died away, for
+  up to four seconds. With it, each stem is exactly `beat_count` beats long, as the engine loops
+  it, and what rings past the end is added onto the start, so the loop joins without a click
+  (an `.ogg` stem gets `"loop": true`, a `.wav` one `"loop_mode": "forward"`).
+- `peak_db` is each stem's loudest sample in dBFS, and the stems' together when every track
+  renders; `null` is silence. `problems` lists a stem or a mix above full scale, with what to
+  lower, and a track with no notes.
+- The built-in sounds are the engine's own: a synthesized voice for each of General MIDI's 128
+  instruments, by family (pianos pluck, strings swell, organs hold), and a standard drum kit
+  with every drum the scores name, all made in code, so a score plays with no SoundFont file and
+  the same everywhere. A SoundFont file sounds better; FluidR3_GM (MIT) and MuseScore_General
+  (MIT) are free ones.
+- Check the result with [`audio.analyze`](#audioanalyze): a stem's `.audio.json` file measures
+  as it loops.
+
+A track whose instrument the SoundFont lacks, a file that isn't a SoundFont 2 file (at
+`/soundfont`), a score that doesn't validate (at `/path`) and an unknown name in `tracks` (at
+its index, with the closest name) are errors.
 
 ## Services
 
