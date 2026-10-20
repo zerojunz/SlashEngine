@@ -46,6 +46,7 @@ public:
                                const json::Value& fields, std::string& path);
         json::Value (*schema)(SchemaBuilder& builder);
         void (*rename)(json::Value& fields, const EntityRename& rename);
+        void (*assure)(entt::registry& registry, entt::id_type type);
     };
 
     ComponentType(std::string type_name, entt::id_type hash, std::vector<std::string> field_names,
@@ -68,6 +69,10 @@ public:
 
     [[nodiscard]] bool has(const World& world, entt::entity entity) const;
     void remove(World& world, entt::entity entity) const;
+    // Makes the world's storage for this component if it has none, so threads can read and write
+    // it while the world's set of storages stays as it is (slash/world/world.hpp's threaded
+    // systems).
+    void assure(World& world) const;
 
     // Every field of the entity's component as a JSON object.
     [[nodiscard]] json::Value get(const World& world, entt::entity entity) const;
@@ -182,6 +187,8 @@ ComponentType& ComponentRegistry::add() {
         .schema = [](SchemaBuilder& builder) { return builder.ref<T>(); },
         .rename = [](json::Value& fields,
                      const EntityRename& rename) { world::rename_entities<T>(fields, rename); },
+        .assure = [](entt::registry& registry,
+                     entt::id_type /*type*/) { static_cast<void>(registry.storage<T>()); },
     };
 
     std::vector<std::string> fields;

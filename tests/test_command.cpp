@@ -1272,7 +1272,7 @@ TEST_CASE("engine.describe lists systems in the order they run") {
     world.add_system("controls", [](world::World& /*w*/, double /*dt*/) {}, {.priority = -1});
     // Every session applies input and service events first and plays animations, steps 2D
     // physics, moves the camera and parallax, runs particles and plays sound with built-in
-    // systems that run late.
+    // systems that run late. The two particle systems are threaded and run at the same time.
     CHECK(*engine.ok("engine.describe").find("systems") ==
           parse(R"(["input", "gui", "services", "controls", "movement", "animation_player",
                     "physics2d", "animated_sprite_2d", "camera_2d", "parallax_2d",
@@ -1302,9 +1302,11 @@ TEST_CASE("engine.describe lists systems in the order they run") {
          "doc": "Scrolls each Parallax2D with the current camera and its autoscroll.",
          "priority": 1060},
         {"name": "cpu_particles_2d",
-         "doc": "Emits, moves and ages each CPUParticles2D's particles.", "priority": 1100},
+         "doc": "Emits, moves and ages each CPUParticles2D's particles.", "priority": 1100,
+         "threaded": true, "stage": 10, "reads": ["Transform2D"], "writes": ["CPUParticles2D"]},
         {"name": "gpu_particles_2d",
-         "doc": "Steps each GPUParticles2D's emission for renderers to run.", "priority": 1110},
+         "doc": "Steps each GPUParticles2D's emission for renderers to run.", "priority": 1110,
+         "threaded": true, "stage": 10, "reads": ["Transform2D"], "writes": ["GPUParticles2D"]},
         {"name": "audio",
          "doc": "Plays each AudioStreamPlayer and AudioStreamPlayer2D and mixes the tick's sound through the bus layout.",
          "priority": 1200}

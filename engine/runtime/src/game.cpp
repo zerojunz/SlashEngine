@@ -1,6 +1,7 @@
 #include "slash/runtime/game.hpp"
 
 #include "slash/animation/animation.hpp"
+#include "slash/core/jobs.hpp"
 #include "slash/core/log.hpp"
 #include "slash/core/text.hpp"
 #include "slash/gameplay/host.hpp"
@@ -139,6 +140,11 @@ Result<std::unique_ptr<Game>> Game::start(const GameOptions& options) {
 Game::Game(Project project, platform::Platform platform, const std::string& data_dir)
     : project_(std::move(project)), assets_(asset::folder_source(data_dir)), world_(components_),
       platform_(std::move(platform)) {
+    // Before anything uses the job system's threads: physics makes its Box2D world on them.
+    if (!jobs::configure(project_.max_threads)) {
+        log::warn("threading.max_threads is ignored: the job system has already started",
+                  {{"max_threads", project_.max_threads}});
+    }
     // The world only keeps a pointer to the registry, so filling it afterwards is fine.
     world::register_builtin_components(components_);
     world_.set_file_reader(

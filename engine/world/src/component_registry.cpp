@@ -71,6 +71,10 @@ void ComponentType::remove(World& world, entt::entity entity) const {
     }
 }
 
+void ComponentType::assure(World& world) const {
+    ops_.assure(world.ecs(), type_hash_);
+}
+
 json::Value ComponentType::get(const World& world, entt::entity entity) const {
     SLASH_ASSERT(has(world, entity), "get() called for an entity without this component");
     return ops_.save(world, type_hash_, entity);
@@ -194,6 +198,10 @@ ComponentType& ComponentRegistry::add_stand_in(std::string name, std::vector<std
         },
         .schema = nullptr,
         .rename = [](json::Value& /*fields*/, const EntityRename& /*rename*/) {},
+        .assure =
+            [](entt::registry& registry, entt::id_type type) {
+                static_cast<void>(registry.storage<StandInValue>(type));
+            },
     };
     const entt::id_type hash = entt::hashed_string::value(name.data(), name.size());
     // A named value rather than a temporary: GCC 13 warns that the temporary's variant may be

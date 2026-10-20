@@ -1,0 +1,7 @@
+stage 0: grow, threaded, reads Transform2D, writes Plant
+stage 0: hunger, threaded, writes Grazer
+stage 1: wander, threaded, reads Grazer, writes Transform2D
+stage 2: graze
+no worker threads: 114 plants, 4 grazers, 10 times hungry, 9 meals
+4 worker threads: 114 plants, 4 grazers, 10 times hungry, 9 meals
+the same world: yes

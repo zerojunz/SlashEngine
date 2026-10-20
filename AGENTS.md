@@ -654,6 +654,21 @@ which the software and OpenGL ES devices run; a test holds them to the same part
 change to the particle math goes in both. `particles.eval` runs the steps kept on the CPU
 (`canvas::gpu_particles`); `examples/gpu-particles` has a fire, sparks and snow.
 
+## Job system
+
+`engine/core`'s `jobs::Pool` (`slash/core/jobs.hpp`) is Godot's `WorkerThreadPool`: tasks, group
+tasks and `parallel_for`, on `threading.max_threads` worker threads (project.json; -1 is one per
+core, and the web has none). A system added with `.threaded = true` declares the component names
+(or other shared state) it `reads` and `writes`; neighbouring threaded systems that don't clash
+form a stage and run at once on the world's pool (`World::pool`, `set_pool`). A threaded system
+emits events as usual (delivered after its stage, in system order) and creates or destroys
+entities, or adds and removes components, through `World::defer`; anything else it touches must
+be its own, or declared under a name (physics queries bring Box2D up to date first, so a system
+making them writes `"physics2d"`). Results must not depend on the thread count: tests run with
+`jobs::Pool(0)` and a pool with threads and compare. `cpu_particles_2d` shares its emitters out
+with `parallel_for`, and Box2D steps on the pool through its task callbacks (`enqueue_task` in
+`engine/physics2d/src/space.cpp`). `examples/job-system` is a meadow of threaded systems.
+
 ## UI and text
 
 `engine/text` is fonts and text layout, as Godot's text server: `.ttf` and `.otf` files, or
@@ -930,7 +945,7 @@ CI rejects unformatted code and any clang-tidy finding.
 - Names: `PascalCase` types, `snake_case` functions and variables, `trailing_` private members,
   `kPascalCase` constants.
 - Headers live in `engine/<module>/include/slash/<module>/`, sources in `engine/<module>/src/`.
-  Modules: `core` (Result, logging, JSON, reflection, math), `platform` (SDL3 window, run loop,
+  Modules: `core` (Result, logging, JSON, reflection, math, the job system), `platform` (SDL3 window, run loop,
   files and folder listings, child processes), `render` (the render device over SDL3's GPU API and OpenGL ES 3.0 / WebGL 2,
   the software and null devices, HLSL shaders, material programs, 2D light shading and particles), `asset` (asset handles, loaders, hot reload),
   `world` (EnTT world, components, scenes and prefabs), `input` (input events, action maps,

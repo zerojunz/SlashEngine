@@ -358,7 +358,11 @@ void add_gpu_particles_system(world::World& world) {
     world.add_system(
         "gpu_particles_2d",
         [system](world::World& w, double tick_seconds) { system->run_all(w, tick_seconds); },
-        {.doc = "Steps each GPUParticles2D's emission for renderers to run.", .priority = 1110});
+        {.doc = "Steps each GPUParticles2D's emission for renderers to run.",
+         .priority = 1110,
+         .threaded = true,
+         .reads = {"Transform2D"},
+         .writes = {"GPUParticles2D"}});
 }
 
 std::optional<ParticleSteps> particle_steps(const world::World& world, entt::entity entity) {

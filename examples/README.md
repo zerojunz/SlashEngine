@@ -7,6 +7,7 @@ engine. Copy from them.
 | Example | Shows |
 | --- | --- |
 | [components-and-systems](components-and-systems/) | A game's own component and a system that moves it, in C++ |
+| [job-system](job-system/) | Threaded systems on the job system: systems whose reads and writes don't clash share a stage and run at once, one shares its work out with `parallel_for` and makes entities through `World::defer`, and the same ticks on no worker threads and on four give the same world |
 | [gameplay-code](gameplay-code/) | A game's own C++ code in `src/`, built with `gameplay.build` and changed while the game runs: the world keeps its entities and fields, and compiler errors come back with file and line |
 | [build-check](build-check/) | `build.check` compiling only the gameplay files that changed (and those including a changed header) with nothing linked, and returning errors and warnings as data with the compiler's fix, which the agent applies |
 | [sdk-package](sdk-package/) | A closed vendor SDK in an `sdk.json` package: per-platform libraries, defines, Info.plist and Android manifest entries, an Android library folder, keys from the environment and glue code that adds an analytics backend in C++, Java and Objective-C; `sdk.check` lists its problems, `sdk.add` adds another, and exports build and link it |

@@ -471,7 +471,7 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
       to fill in, beside the storyboard task (GDScript, Godot's C# and Unity's C#)
 - [x] `build.check`: compiles only the changed gameplay files and returns errors as data (file,
       line, message and the compiler's suggested fix), with no build log to read
-- [ ] Job system, so systems run in parallel before the 3D work in milestone 7 needs it
+- [x] Job system, so systems run in parallel before the 3D work in milestone 7 needs it
 - [ ] Profiling: Tracy, per-system timings in `perf.stats` (which reports frame pacing since
       milestone 5) and a per-system memory report
 - [ ] `ai::Provider` with OpenAI-compatible, Anthropic and Gemini adapters
