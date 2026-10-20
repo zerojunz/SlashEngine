@@ -63,57 +63,6 @@ std::string items(std::size_t count) {
     return std::to_string(count) + (count == 1 ? " item" : " items");
 }
 
-struct Mismatch {
-    std::string path; // into the test file
-    std::string message;
-};
-
-// Where a reply doesn't hold what a step expects, with path pointing at the expected value:
-// objects need only the expected members, arrays the same number of items, and other values
-// must be equal, numbers by value.
-std::optional<Mismatch> mismatch(const json::Value& expected, const json::Value& actual,
-                                 const std::string& path) {
-    const auto differs = [&] {
-        return Mismatch{path, "expected " + quote(expected) + ", got " + quote(actual)};
-    };
-    if (expected.is_object()) {
-        if (!actual.is_object()) {
-            return differs();
-        }
-        for (const auto& [key, value] : expected.as_object()) {
-            const std::string at = path + "/" + json::pointer_escape(key);
-            const json::Value* found = actual.find(key);
-            if (found == nullptr) {
-                return Mismatch{at, "missing; expected " + quote(value)};
-            }
-            if (auto inner = mismatch(value, *found, at)) {
-                return inner;
-            }
-        }
-        return std::nullopt;
-    }
-    if (expected.is_array()) {
-        if (!actual.is_array()) {
-            return differs();
-        }
-        if (expected.size() != actual.size()) {
-            return Mismatch{path, "expected " + items(expected.size()) + ", got " +
-                                      items(actual.size()) + ": " + quote(actual)};
-        }
-        for (std::size_t i = 0; i < expected.size(); ++i) {
-            if (auto inner = mismatch(expected.as_array()[i], actual.as_array()[i],
-                                      path + "/" + std::to_string(i))) {
-                return inner;
-            }
-        }
-        return std::nullopt;
-    }
-    if (expected == actual) {
-        return std::nullopt;
-    }
-    return differs();
-}
-
 // Watches the log while tests run: keeps the first warning or error since it was last asked,
 // and passes every line on to the sink it replaced.
 class LogWatch {
@@ -441,6 +390,49 @@ Reply test_run(Session& session, const json::Value& params) {
 }
 
 } // namespace
+
+std::optional<Mismatch> mismatch(const json::Value& expected, const json::Value& actual,
+                                 const std::string& path) {
+    const auto differs = [&] {
+        return Mismatch{path, "expected " + quote(expected) + ", got " + quote(actual)};
+    };
+    if (expected.is_object()) {
+        if (!actual.is_object()) {
+            return differs();
+        }
+        for (const auto& [key, value] : expected.as_object()) {
+            const std::string at = path + "/" + json::pointer_escape(key);
+            const json::Value* found = actual.find(key);
+            if (found == nullptr) {
+                return Mismatch{at, "missing; expected " + quote(value)};
+            }
+            if (auto inner = mismatch(value, *found, at)) {
+                return inner;
+            }
+        }
+        return std::nullopt;
+    }
+    if (expected.is_array()) {
+        if (!actual.is_array()) {
+            return differs();
+        }
+        if (expected.size() != actual.size()) {
+            return Mismatch{path, "expected " + items(expected.size()) + ", got " +
+                                      items(actual.size()) + ": " + quote(actual)};
+        }
+        for (std::size_t i = 0; i < expected.size(); ++i) {
+            if (auto inner = mismatch(expected.as_array()[i], actual.as_array()[i],
+                                      path + "/" + std::to_string(i))) {
+                return inner;
+            }
+        }
+        return std::nullopt;
+    }
+    if (expected == actual) {
+        return std::nullopt;
+    }
+    return differs();
+}
 
 json::Value test_schema() {
     json::Value step = typed("object", "A command call, and what its reply must hold.");

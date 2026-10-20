@@ -489,7 +489,11 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
   - [x] Web exports calling models through the browser's `fetch`, streaming, with retries on
         the browser's timers
 - [x] `ReplayProvider` so tests that use a model run offline
-- [ ] A benchmark of standard agent tasks that counts calls and tokens
+- [x] A benchmark of standard agent tasks that counts calls and tokens
+  - [x] Scripted tasks played through MCP with checks, an estimate of tokens written and read,
+        and a baseline `ctest` holds every pull request to (`slash-cli bench`)
+  - [x] Live runs on a schedule: a model through `ai::Provider` does each task from its prompt
+        (`slash-cli bench --live`, weekly in `.github/workflows/bench.yml` once a model is set)
 - [ ] Storyboard review: a model through `ai::Provider` reads new text and assets against the
       storyboard and reports likely contradictions as advisory findings
 - [ ] `project.map`: a generated map of the project's systems, components, scenes and source
@@ -782,7 +786,7 @@ calls and tokens ([design section 6](design.md#6-cheap-for-agents-to-use)).
 | `playtest.run`: many headless bot runs and tuning sweeps in one call | 6 | Planned |
 | `audio.analyze`: tempo, key, loudness and loop seams as data instead of listening | 6 | Planned |
 | `project.map`: where things are in a large project, without reading the source | 6 | Planned |
-| A scheduled benchmark of standard agent tasks counting calls and tokens | 6 | Planned |
+| A scheduled benchmark of standard agent tasks counting calls and tokens | 6 | Done |
 | The asset library: search before generating, and read a text description instead of the file | 6 | Planned |
 
 ## Platforms

@@ -1,0 +1,29 @@
+{
+  "entities": {
+    "floor": {
+      "components": {
+        "CollisionShape2D": {
+          "size": [640.0, 32.0]
+        },
+        "StaticBody2D": {},
+        "Transform2D": {
+          "position": [320.0, 344.0]
+        }
+      }
+    },
+    "player": {
+      "components": {
+        "CharacterBody2D": {},
+        "CollisionShape2D": {
+          "height": 28.0,
+          "radius": 8.0,
+          "shape": "capsule"
+        },
+        "Transform2D": {
+          "position": [64.0, 300.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

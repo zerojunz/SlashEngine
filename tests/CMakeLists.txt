@@ -5,6 +5,7 @@ add_executable(slash_tests
     test_animation.cpp
     test_asset.cpp
     test_audio.cpp
+    test_bench.cpp
     test_camera2d.cpp
     test_canvas_layer.cpp
     test_canvas.cpp
@@ -61,7 +62,7 @@ add_executable(slash_tests
     test_upscaler.cpp
     test_world.cpp)
 target_link_libraries(slash_tests PRIVATE
-    slash::ai slash::ai_commands slash::animation slash::asset slash::audio slash::canvas slash::command slash::core slash::debug slash::exporter slash::importer slash::input slash::physics2d
+    slash::ai slash::ai_commands slash::animation slash::asset slash::audio slash::bench slash::canvas slash::command slash::core slash::debug slash::exporter slash::importer slash::input slash::physics2d
     slash::platform slash::render slash::runtime slash::server slash::services slash::shader_compiler slash::storyboard slash::text slash::ui slash::world doctest::doctest SDL3::SDL3-static
     slash_httplib # a stand-in model server for the AI provider tests
     webp) # WebP textures for the Godot unpacking tests
@@ -611,4 +612,14 @@ if(SLASH_BUILD_TOOLS)
     set_tests_properties(cli_init_tests_pass PROPERTIES
         FIXTURES_REQUIRED init_project
         PASS_REGULAR_EXPRESSION "^{\"failed\":\\[\\],\"passed\":1,\"tests\":1}")
+    # The benchmark's tasks still do what they say, and cost no more than bench/baseline.json.
+    # After a change that makes them cheaper or dearer on purpose, run
+    # slash-cli bench --baseline bench/baseline.json --update and commit the file.
+    add_test(NAME cli_bench
+        COMMAND slash-cli bench --tasks ${PROJECT_SOURCE_DIR}/bench/tasks
+            --work ${CMAKE_CURRENT_BINARY_DIR}/bench
+            --baseline ${PROJECT_SOURCE_DIR}/bench/baseline.json)
+    add_test(NAME cli_schema_bench COMMAND slash-cli schema bench)
+    set_tests_properties(cli_schema_bench PROPERTIES
+        PASS_REGULAR_EXPRESSION "\"title\": \"SlashEngine benchmark task\"")
 endif()

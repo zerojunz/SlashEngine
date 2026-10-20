@@ -1,0 +1,12 @@
+{
+  "entities": {
+    "ground": {
+      "components": {
+        "TileMapLayer": {
+          "tile_set": "ground.tileset.json"
+        }
+      }
+    }
+  },
+  "format": 1
+}

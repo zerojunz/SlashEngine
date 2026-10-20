@@ -1,0 +1,141 @@
+{
+  "checks": [
+    {
+      "command": "scene.open",
+      "params": {
+        "path": "scenes/level.scene.json"
+      }
+    },
+    {
+      "command": "world.query",
+      "expect": {
+        "entities": [
+          {
+            "components": {
+              "Transform2D": {
+                "position": [100, 168]
+              }
+            },
+            "id": "crate_1"
+          },
+          {
+            "components": {
+              "Transform2D": {
+                "position": [140, 168]
+              }
+            },
+            "id": "crate_2"
+          },
+          {
+            "components": {
+              "Transform2D": {
+                "position": [180, 148]
+              }
+            },
+            "id": "crate_3"
+          },
+          {
+            "components": {
+              "Transform2D": {
+                "position": [220, 128]
+              }
+            },
+            "id": "crate_4"
+          },
+          {
+            "components": {
+              "Transform2D": {
+                "position": [320, 344]
+              }
+            },
+            "id": "floor"
+          },
+          {
+            "components": {
+              "Transform2D": {
+                "position": [300, 300]
+              }
+            },
+            "id": "sign"
+          }
+        ]
+      },
+      "params": {
+        "include": ["Transform2D"],
+        "with": ["Transform2D"]
+      }
+    }
+  ],
+  "format": 1,
+  "prompt": "Move every rigid body in scenes/level.scene.json 32 pixels up, and save the scene.",
+  "solution": [
+    {
+      "arguments": {
+        "path": "scenes/level.scene.json"
+      },
+      "tool": "scene_open"
+    },
+    {
+      "arguments": {
+        "include": ["Transform2D"],
+        "with": ["RigidBody2D"]
+      },
+      "tool": "world_query"
+    },
+    {
+      "arguments": {
+        "commands": [
+          {
+            "command": "component.set",
+            "params": {
+              "components": {
+                "Transform2D": {
+                  "position": [100, 168]
+                }
+              },
+              "id": "crate_1"
+            }
+          },
+          {
+            "command": "component.set",
+            "params": {
+              "components": {
+                "Transform2D": {
+                  "position": [140, 168]
+                }
+              },
+              "id": "crate_2"
+            }
+          },
+          {
+            "command": "component.set",
+            "params": {
+              "components": {
+                "Transform2D": {
+                  "position": [180, 148]
+                }
+              },
+              "id": "crate_3"
+            }
+          },
+          {
+            "command": "component.set",
+            "params": {
+              "components": {
+                "Transform2D": {
+                  "position": [220, 128]
+                }
+              },
+              "id": "crate_4"
+            }
+          }
+        ]
+      },
+      "tool": "batch"
+    },
+    {
+      "arguments": {},
+      "tool": "scene_save"
+    }
+  ]
+}

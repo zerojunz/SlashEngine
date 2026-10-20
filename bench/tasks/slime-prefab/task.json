@@ -1,0 +1,103 @@
+{
+  "checks": [
+    {
+      "command": "scene.open",
+      "params": {
+        "path": "scenes/level.scene.json"
+      }
+    },
+    {
+      "command": "world.query",
+      "expect": {
+        "entities": [
+          {
+            "components": {
+              "CollisionShape2D": {
+                "radius": 9
+              }
+            },
+            "id": "slime"
+          },
+          {
+            "components": {
+              "CollisionShape2D": {
+                "radius": 9
+              },
+              "Transform2D": {
+                "position": [200, 100]
+              }
+            },
+            "id": "slime_2"
+          },
+          {
+            "components": {
+              "CollisionShape2D": {
+                "radius": 9
+              },
+              "Transform2D": {
+                "position": [260, 100]
+              }
+            },
+            "id": "slime_3"
+          }
+        ]
+      },
+      "params": {
+        "include": ["Transform2D", "CollisionShape2D"],
+        "with": ["CharacterBody2D"]
+      }
+    }
+  ],
+  "format": 1,
+  "prompt": "Save the \"slime\" entity in scenes/level.scene.json as prefabs/slime.prefab.json, then add two slimes made from that prefab at (200, 100) and (260, 100), and save the scene.",
+  "solution": [
+    {
+      "arguments": {
+        "path": "scenes/level.scene.json"
+      },
+      "tool": "scene_open"
+    },
+    {
+      "arguments": {
+        "id": "slime",
+        "path": "prefabs/slime.prefab.json"
+      },
+      "tool": "prefab_save"
+    },
+    {
+      "arguments": {
+        "commands": [
+          {
+            "command": "entity.create",
+            "params": {
+              "components": {
+                "Transform2D": {
+                  "position": [200, 100]
+                }
+              },
+              "extends": "prefabs/slime.prefab.json",
+              "id": "slime_2"
+            }
+          },
+          {
+            "command": "entity.create",
+            "params": {
+              "components": {
+                "Transform2D": {
+                  "position": [260, 100]
+                }
+              },
+              "extends": "prefabs/slime.prefab.json",
+              "id": "slime_3"
+            }
+          }
+        ]
+      },
+      "tool": "batch"
+    },
+    {
+      "arguments": {},
+      "tool": "scene_save"
+    }
+  ]
+}

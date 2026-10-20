@@ -1,0 +1,9 @@
+{
+  "entries": {
+    "rule/fair-fights": {
+      "name": "Fair fights",
+      "summary": "Every enemy telegraphs its attack for at least half a second."
+    }
+  },
+  "format": 1
+}

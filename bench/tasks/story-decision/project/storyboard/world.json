@@ -1,0 +1,9 @@
+{
+  "entries": {
+    "character/slime": {
+      "name": "Slime",
+      "summary": "A small green enemy that hops toward the player."
+    }
+  },
+  "format": 1
+}
