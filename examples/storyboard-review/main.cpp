@@ -85,7 +85,7 @@ private:
 } // namespace
 
 int main() {
-    ModelServer server;
+    const ModelServer server;
     // The URL holds the server's port, so the file is written here; a game commits its own.
     (void)platform::write_file("providers.json", R"({"providers": {"local": {"type": "openai", )"
                                                  R"("model": "llama3.2", "url": ")" +
