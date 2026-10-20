@@ -23,6 +23,7 @@ real commands and real output, and no screenshots.
 | Bring a game over from Godot | [reference/godot-import.md](reference/godot-import.md) |
 | Bring a game over from Unity | [reference/unity-import.md](reference/unity-import.md) |
 | Call the engine over HTTP, JSON-RPC or MCP | [reference/protocols.md](reference/protocols.md) |
+| Measure what agent tasks cost in calls and tokens | [reference/benchmark.md](reference/benchmark.md) |
 | Read the full design and the reasons behind it | [design.md](design.md) |
 | Work on the engine's own code | [../AGENTS.md](../AGENTS.md) |
 

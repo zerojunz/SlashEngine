@@ -1,0 +1,55 @@
+{
+  "setup": {
+    "instructions": 2897,
+    "tool_definitions": 19145,
+    "tools": 85
+  },
+  "tasks": {
+    "add-enemy": {
+      "calls": 3,
+      "read": 35,
+      "tokens": 117,
+      "written": 82
+    },
+    "fit-label": {
+      "calls": 5,
+      "read": 167,
+      "tokens": 264,
+      "written": 97
+    },
+    "landing-tick": {
+      "calls": 2,
+      "read": 42,
+      "tokens": 107,
+      "written": 65
+    },
+    "paint-island": {
+      "calls": 3,
+      "read": 39,
+      "tokens": 99,
+      "written": 60
+    },
+    "raise-crates": {
+      "calls": 4,
+      "read": 378,
+      "tokens": 571,
+      "written": 193
+    },
+    "slime-prefab": {
+      "calls": 4,
+      "read": 77,
+      "tokens": 227,
+      "written": 150
+    },
+    "story-decision": {
+      "calls": 2,
+      "read": 105,
+      "tokens": 196,
+      "written": 91
+    }
+  },
+  "total": {
+    "calls": 23,
+    "tokens": 1581
+  }
+}

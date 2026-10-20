@@ -1,0 +1,58 @@
+{
+  "checks": [
+    {
+      "command": "scene.open",
+      "params": {
+        "path": "scenes/level.scene.json"
+      }
+    },
+    {
+      "command": "entity.get",
+      "expect": {
+        "components": {
+          "CollisionShape2D": {
+            "radius": 12,
+            "shape": "circle"
+          },
+          "Transform2D": {
+            "position": [320, 120]
+          }
+        }
+      },
+      "params": {
+        "components": ["Transform2D", "CollisionShape2D"],
+        "id": "bat"
+      }
+    }
+  ],
+  "format": 1,
+  "prompt": "In scenes/level.scene.json, add an enemy with the ID \"bat\" at (320, 120): a character body with a circle collision shape 12 pixels in radius. Save the scene.",
+  "solution": [
+    {
+      "arguments": {
+        "path": "scenes/level.scene.json"
+      },
+      "tool": "scene_open"
+    },
+    {
+      "arguments": {
+        "components": {
+          "CharacterBody2D": {},
+          "CollisionShape2D": {
+            "radius": 12,
+            "shape": "circle"
+          },
+          "Transform2D": {
+            "position": [320, 120]
+          }
+        },
+        "id": "bat"
+      },
+      "tool": "entity_create"
+    },
+    {
+      "arguments": {},
+      "tool": "scene_save"
+    }
+  ]
+}

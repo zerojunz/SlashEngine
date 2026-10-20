@@ -1,0 +1,36 @@
+{
+  "answer": "46",
+  "checks": [
+    {
+      "expect": {
+        "matched": true,
+        "tick": 46
+      },
+      "step": 2
+    }
+  ],
+  "format": 1,
+  "prompt": "In scenes/drop.scene.json, at which tick does the ball first touch the floor?",
+  "solution": [
+    {
+      "arguments": {
+        "path": "scenes/drop.scene.json"
+      },
+      "tool": "scene_open"
+    },
+    {
+      "arguments": {
+        "where": [
+          {
+            "component": "Transform2D",
+            "field": "position.y",
+            "op": ">=",
+            "value": 319.5
+          }
+        ],
+        "with": ["RigidBody2D"]
+      },
+      "tool": "run_until"
+    }
+  ]
+}

@@ -1,0 +1,79 @@
+{
+  "checks": [
+    {
+      "command": "scene.open",
+      "params": {
+        "path": "scenes/hud.scene.json"
+      }
+    },
+    {
+      "command": "ui.layout",
+      "expect": {
+        "controls": [
+          {
+            "id": "panel",
+            "rect": [16, 16, 160, 80]
+          },
+          {
+            "id": "score",
+            "rect": [16, 16, 160, 80]
+          }
+        ]
+      },
+      "params": {
+        "ids": ["panel", "score"]
+      }
+    },
+    {
+      "command": "entity.get",
+      "expect": {
+        "components": {
+          "Label": {
+            "text": "Score: 12,480 points, best 15,200 points"
+          }
+        }
+      },
+      "params": {
+        "components": ["Label"],
+        "id": "score"
+      }
+    }
+  ],
+  "format": 1,
+  "prompt": "The score label in scenes/hud.scene.json is wider than the panel it sits in. Make its text fit inside the panel without changing the panel or the text, and save the scene.",
+  "solution": [
+    {
+      "arguments": {
+        "path": "scenes/hud.scene.json"
+      },
+      "tool": "scene_open"
+    },
+    {
+      "arguments": {
+        "ids": ["panel", "score"]
+      },
+      "tool": "ui_layout"
+    },
+    {
+      "arguments": {
+        "components": {
+          "Label": {
+            "autowrap_mode": "word_smart"
+          }
+        },
+        "id": "score"
+      },
+      "tool": "component_set"
+    },
+    {
+      "arguments": {
+        "ids": ["panel", "score"]
+      },
+      "tool": "ui_layout"
+    },
+    {
+      "arguments": {},
+      "tool": "scene_save"
+    }
+  ]
+}
