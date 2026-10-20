@@ -5,6 +5,7 @@
 
 #include "slash/ai/commands.hpp"
 #include "slash/ai/config.hpp"
+#include "slash/ai/world.hpp"
 #include "slash/animation/animation.hpp"
 #include "slash/audio/audio.hpp"
 #include "slash/canvas/canvas.hpp"
@@ -546,6 +547,8 @@ int cmd_run(const std::vector<std::string>& args) {
     platform.value().set_event_handler(
         [&](const SDL_Event& event) { input_reader.read(event, game); });
     if (!config.headless) {
+        // A window never waits on a model: replies arrive at the first tick after they end.
+        slash::ai::set_wait(game, false);
         // LineEdits cut, copy and paste with the system's clipboard.
         slash::ui::set_clipboard_backend(
             game,

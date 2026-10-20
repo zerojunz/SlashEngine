@@ -81,6 +81,8 @@ public:
     [[nodiscard]] json::Value summary() const;
 
     [[nodiscard]] const Project& project() const noexcept { return project_; }
+    // The folder with project.json, as the game was started with or the export's.
+    [[nodiscard]] const std::string& data_dir() const noexcept { return data_dir_; }
     [[nodiscard]] world::World& world() noexcept { return world_; }
     // Assets from the data folder, for gameplay code; prefab files are read through it too.
     [[nodiscard]] asset::Assets& assets() noexcept { return assets_; }
@@ -97,6 +99,7 @@ private:
     void draw();
 
     Project project_;
+    std::string data_dir_;
     asset::Assets assets_;
     world::ComponentRegistry components_;
     world::World world_;

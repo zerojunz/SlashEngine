@@ -302,11 +302,12 @@ Result<Config> load_config(std::string_view project_root) {
         path += '/';
     }
     path += kConfigFile;
-    if (!platform::exists(path)) {
-        return Config{};
-    }
+    // Read first: inside an Android package, files can be read but not looked up.
     auto text = platform::read_file(path);
     if (!text) {
+        if (!platform::exists(path)) {
+            return Config{};
+        }
         return text.error();
     }
     auto document = json::parse(text.value());

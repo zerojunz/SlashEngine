@@ -1280,12 +1280,13 @@ TEST_CASE("engine.describe lists systems in the order they run") {
                      {.doc = "Moves things by their velocity."});
     world.add_system("controls", [](world::World& /*w*/, double /*dt*/) {}, {.priority = -1});
     // Every session applies input and service events first and plays animations, steps 2D
-    // physics, moves the camera and parallax, runs particles and plays sound with built-in
-    // systems that run late. The two particle systems are threaded and run at the same time.
+    // physics, moves the camera and parallax, runs particles, hands over models' replies and
+    // plays sound with built-in systems that run late. The two particle systems are threaded and
+    // run at the same time.
     CHECK(*engine.ok("engine.describe").find("systems") ==
           parse(R"(["input", "gui", "services", "controls", "movement", "animation_player",
                     "physics2d", "animated_sprite_2d", "camera_2d", "parallax_2d",
-                    "cpu_particles_2d", "gpu_particles_2d", "audio"])"));
+                    "cpu_particles_2d", "gpu_particles_2d", "ai", "audio"])"));
     CHECK(*engine.ok("engine.describe", R"({"full": true})").find("systems") == parse(R"([
         {"name": "input", "doc": "Applies the input events queued since the last tick.",
          "priority": -1000},
@@ -1316,6 +1317,9 @@ TEST_CASE("engine.describe lists systems in the order they run") {
         {"name": "gpu_particles_2d",
          "doc": "Steps each GPUParticles2D's emission for renderers to run.", "priority": 1110,
          "threaded": true, "stage": 10, "reads": ["Transform2D"], "writes": ["GPUParticles2D"]},
+        {"name": "ai",
+         "doc": "Hands each finished reply from a language model to the game as an ai_reply or ai_failed event.",
+         "priority": 1150},
         {"name": "audio",
          "doc": "Plays each AudioStreamPlayer and AudioStreamPlayer2D and mixes the tick's sound through the bus layout.",
          "priority": 1200}

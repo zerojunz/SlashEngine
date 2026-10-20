@@ -10,6 +10,7 @@
 #   SLASH_IOS_BUILD     CFBundleVersion, if not the version (iOS only)
 #   SLASH_GAME_MICROPHONE        ON if the game records (project.json's audio.enable_input)
 #   SLASH_GAME_MICROPHONE_USAGE  why, shown when macOS and iOS ask for the microphone
+#   SLASH_GAME_AI       ON if the game calls language models (it has a providers.json)
 #   SLASH_GAME_SOURCES  the game's own C++ code (project.json's gameplay.sources): absolute
 #                       paths of folders, whose .cpp files are compiled in, and files
 #   SLASH_GAME_SDKS     a CMake file of slash_game_sdk() calls for the SDK packages the game
@@ -102,6 +103,12 @@ else()
     set_target_properties(game PROPERTIES OUTPUT_NAME ${SLASH_GAME_BINARY})
 endif()
 target_link_libraries(game PRIVATE slash::game_main)
+# Language models (engine/ai), for the game's own code and, with a providers.json, main(). Only
+# what the game calls is linked in.
+target_link_libraries(game PRIVATE slash::ai)
+if(SLASH_GAME_AI)
+    target_compile_definitions(game PRIVATE SLASH_GAME_AI)
+endif()
 # Built as the engine is, with no exceptions or RTTI, as the tools build the game's code.
 slash_engine_target(game)
 
@@ -275,6 +282,12 @@ elseif(ANDROID)
     # Google Play requires native code to support 16 KB memory pages.
     target_link_options(game PRIVATE "-Wl,-z,max-page-size=16384")
     set(SLASH_ANDROID_LABEL "${SLASH_GAME_NAME_XML}")
+    # A game that calls language models reaches them over the network, which Android allows only
+    # apps with the INTERNET permission. Once, if an SDK package asks for it too.
+    if(SLASH_GAME_AI AND NOT SLASH_SDK_ANDROID_MANIFEST MATCHES "\"android\\.permission\\.INTERNET\"")
+        string(APPEND SLASH_ANDROID_PERMISSIONS
+            "\n    <uses-permission android:name=\"android.permission.INTERNET\" />")
+    endif()
     configure_file(android/AndroidManifest.xml.in AndroidManifest.xml @ONLY)
     get_target_property(sdl_source_dir SDL3-static SOURCE_DIR)
     install(TARGETS game LIBRARY DESTINATION lib/${ANDROID_ABI} COMPONENT game)

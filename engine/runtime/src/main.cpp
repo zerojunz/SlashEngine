@@ -6,6 +6,10 @@
 #include "slash/core/log.hpp"
 #include "slash/runtime/game.hpp"
 #include "slash/world/game_module.hpp"
+// Games with a providers.json, and slash-game, ask language models.
+#ifdef SLASH_GAME_AI
+#include "slash/ai/world.hpp"
+#endif
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
@@ -71,6 +75,12 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
         slash::log::error("could not start the game", {{"detail", game.error().message}});
         return SDL_APP_FAILURE;
     }
+#ifdef SLASH_GAME_AI
+    // Headless runs wait for each reply, so they repeat; a window never waits on a model.
+    slash::ai::install(game.value()->world(),
+                       {.open = {.project_root = game.value()->data_dir(), .write_replays = false},
+                        .wait = game.value()->headless()});
+#endif
     if (!game.value()->headless()) {
         // Without a renderer to pace frames with vsync, iterate at the tick rate instead of
         // spinning. Browsers ignore this and use animation frames.
