@@ -114,7 +114,10 @@ if(httplib_ADDED)
     find_package(Threads REQUIRED)
     add_library(slash_httplib INTERFACE)
     target_include_directories(slash_httplib SYSTEM INTERFACE ${httplib_SOURCE_DIR})
-    target_compile_definitions(slash_httplib INTERFACE CPPHTTPLIB_NO_EXCEPTIONS)
+    # httplib calls Windows 10's API (CreateFile2 and others), as old as games support, which
+    # llvm-mingw's headers hide unless asked for.
+    target_compile_definitions(slash_httplib INTERFACE CPPHTTPLIB_NO_EXCEPTIONS
+        $<$<PLATFORM_ID:Windows>:_WIN32_WINNT=0x0A00>)
     target_link_libraries(slash_httplib INTERFACE
         Threads::Threads $<$<PLATFORM_ID:Windows>:ws2_32>)
     if(TARGET slash_mbedtls)
