@@ -24,5 +24,9 @@ frame.summary {"ids":["player","coin","ghost","pause"]}
   `legend`, and `.` is the sky. `region` maps part of the window more closely.
 - `ids` keeps only the entities asked about, the cheapest way to ask "can the player see it?".
   When the player walks behind the bush it moves to `covered`, and off the edge to `offscreen`.
+- `"contrast": true` adds each thing's `contrast` with what is around its edge, as WCAG's
+  contrast ratio from 1 to 21, and lists those under 1.5 as `hard_to_see`. The score's white
+  text is 2.1:1 on the sky, readable but weak, and the health bar's pale fill nearly vanishes.
+  It draws the frame, lights and materials included, so it costs more than a summary alone.
 - A thing shows where at least a quarter of a pixel's color comes from it, so a translucent
-  panel and what is under it both show. Materials and lights aren't run.
+  panel and what is under it both show. Materials and lights aren't run, except for contrast.

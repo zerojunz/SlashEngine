@@ -382,10 +382,28 @@ Reply test_run(Session& session, const json::Value& params) {
         }
     }
 
+    // And, where the asset library's commands are registered and allowed, the files the project
+    // took from the library, recording what it finds as their feedback.
+    json::Value assets;
+    if (paths == nullptr && wanted.empty() && session.commands().find("asset.check") != nullptr) {
+        Reply checked = session.call("asset.check", json::Object{});
+        if (checked.ok) {
+            if (json::Value* problems = checked.value.find("problems");
+                problems != nullptr && problems->size() > 0) {
+                assets = std::move(*problems);
+            }
+        } else if (checked.code != code::kPermissionDenied) {
+            failed.push_back(file_failure("library.json", "", checked.message));
+        }
+    }
+
     json::Value result;
     result["tests"] = ran;
     result["passed"] = passed;
     result["failed"] = std::move(failed);
+    if (!assets.is_null()) {
+        result["assets"] = std::move(assets);
+    }
     return Reply::success(std::move(result));
 }
 

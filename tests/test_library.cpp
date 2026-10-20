@@ -602,3 +602,112 @@ TEST_CASE("asset.generate sends the storyboard's style and checks images against
           R"([{"reason":"fits the storyboard's palette and budget","source":"storyboard.check",)"
           R"("verdict":"accepted"}])");
 }
+
+namespace {
+
+// A square image of one color, opaque inside a clear border a pixel wide.
+std::string square(int size, std::array<std::uint8_t, 3> color) {
+    slash::render::Image image;
+    image.width = static_cast<std::uint32_t>(size);
+    image.height = static_cast<std::uint32_t>(size);
+    for (int y = 0; y < size; ++y) {
+        for (int x = 0; x < size; ++x) {
+            const bool inside = x > 0 && y > 0 && x < size - 1 && y < size - 1;
+            image.pixels.insert(image.pixels.end(), {color[0], color[1], color[2],
+                                                     inside ? std::uint8_t{255} : std::uint8_t{0}});
+        }
+    }
+    return slash::render::encode_png(image).value();
+}
+
+} // namespace
+
+TEST_CASE("asset.check finds library images hard to see or drawn too small, and test.run records "
+          "it as feedback") {
+    const fs::path root = fresh("library_check");
+    const fs::path project = root / "project";
+    write(project / "project.json", R"({"format": 1, "name": "Library check",
+        "window": {"width": 160, "height": 90},
+        "rendering": {"clear_color": [0.05, 0.05, 0.08, 1], "texture_filter": "nearest"}})");
+    write(project / "art" / "slime.png", square(10, {30, 45, 30}));
+    write(project / "art" / "heart.png", square(10, {230, 40, 60}));
+    write(project / "art" / "sign.png", square(64, {200, 180, 120}));
+    const Engine engine(root);
+    std::array<std::string, 3> ids;
+    for (std::size_t i = 0; i < ids.size(); ++i) {
+        const std::array<std::string_view, 3> names{"slime", "heart", "sign"};
+        ids.at(i) = engine
+                        .call("asset.add", R"({"path": "art/)" + std::string(names.at(i)) +
+                                               R"(.png", "description": "A test image"})")
+                        .find("id")
+                        ->as_string();
+    }
+
+    // The night level draws the slime dark on dark, the sign a fifth of its size and the heart,
+    // through a prefab, where it stands out. The title screen draws none of them.
+    write(project / "prefabs" / "heart.prefab.json", R"({"format": 1, "components": {
+        "Sprite2D": {"texture": "art/heart.png"}, "Transform2D": {}}})");
+    write(project / "levels" / "night.scene.json", R"({"format": 1, "entities": {
+        "slime": {"components": {"Sprite2D": {"texture": "art/slime.png"},
+                                 "Transform2D": {"position": [30, 45], "scale": [2, 2]}}},
+        "sign": {"components": {"Sprite2D": {"texture": "art/sign.png"},
+                                "Transform2D": {"position": [80, 45], "scale": [0.2, 0.2]}}},
+        "heart": {"extends": "prefabs/heart.prefab.json",
+                  "components": {"Transform2D": {"position": [130, 45]}}}}})");
+    write(project / "title.scene.json", R"({"format": 1, "entities": {}})");
+
+    const json::Value checked = engine.call("asset.check", "{}");
+    CHECK(json::write(checked, json::Style::Compact) ==
+          R"({"checked":3,"problems":[{"entity":"sign","id":")" + ids[2] +
+              R"(","message":"drawn at 20% of its size, so an image 1/5 as wide and high would )"
+              R"(look the same","path":"art/sign.png","scene":"levels/night.scene.json"},)"
+              R"({"entity":"slime","id":")" +
+              ids[0] +
+              R"(","message":"hard to see: its edge has 1.3:1 contrast with the darker colors )"
+              R"(around it","path":"art/slime.png","scene":"levels/night.scene.json"}],)"
+              R"("scenes":1})");
+
+    // What it found is each asset's feedback, recorded once however often it is checked.
+    const json::Value tested = engine.call("test.run", "{}");
+    CHECK(tested.find("assets")->as_array().size() == 2);
+    const auto feedback = [&](const std::string& id) {
+        return json::write(
+            *engine.call("asset.info", R"({"id": ")" + id + R"("})").find("feedback"),
+            json::Style::Compact);
+    };
+    CHECK(feedback(ids[0]) ==
+          R"([{"reason":"hard to see: its edge has 1.3:1 contrast with the darker colors around )"
+          R"x(it (levels/night.scene.json)","source":"asset.check","verdict":"rejected"}])x");
+    CHECK(feedback(ids[1]) == R"([{"reason":"shows clearly in levels/night.scene.json",)"
+                              R"("source":"asset.check","verdict":"accepted"}])");
+    CHECK(engine.call("asset.search", R"({"text": "test image"})")
+              .find("assets")
+              ->as_array()[0]
+              .find("id")
+              ->as_string() == ids[1]);
+
+    // A brighter slime passes; asked for one scene that doesn't draw the assets, nothing is seen.
+    write(project / "art" / "slime.png", square(10, {120, 220, 120}));
+    CHECK(engine.call("asset.check", "{}").find("problems")->as_array().size() == 1);
+    CHECK(feedback(ids[0]).ends_with(R"({"reason":"shows clearly in levels/night.scene.json",)"
+                                     R"("source":"asset.check","verdict":"accepted"}])"));
+    CHECK(json::write(engine.call("asset.check", R"({"scenes": ["title.scene.json"], "ticks": 2})"),
+                      json::Style::Compact) == R"({"checked":3,"problems":[],"scenes":1})");
+
+    // Sessions that write nothing record nothing, and test.run skips the check where it isn't
+    // allowed: here, with no read capability.
+    const Engine reader(root, false);
+    CHECK(reader.call("asset.check", "{}").find("problems")->as_array().size() == 1);
+    CHECK(feedback(ids[2]).find("},{") == std::string::npos);
+    command::SessionOptions options{
+        .project_root = project.string(),
+        .capabilities = {command::Capability::Run, command::Capability::Filesystem},
+        .capture_logs = false,
+        .library_dir = (root / "library").string()};
+    command::Session limited(engine.components, engine.commands, options);
+    const command::Reply run = limited.call("test.run", json::Object{});
+    REQUIRE_MESSAGE(run.ok, run.message);
+    CHECK(run.value.find("assets") == nullptr);
+    CHECK(engine.fail("asset.check", R"({"scenes": ["../outside.scene.json"]})")
+              .message.starts_with("/scenes/0: "));
+}

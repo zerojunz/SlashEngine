@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <ranges>
 #include <span>
 #include <utility>
@@ -179,6 +180,12 @@ private:
 constexpr std::size_t kNothing = std::numeric_limits<std::size_t>::max();
 // The share a thing too thin for its samples gets when the map finds it.
 constexpr float kLeastShare = 0.01F;
+// For contrast: a thing makes a pixel's color when its share is at least kCoreShare, and adds
+// nothing to it at kClearShare or less; between them is its smoothed edge, which a sample may
+// look this many steps past.
+constexpr float kCoreShare = 0.75F;
+constexpr float kClearShare = 0.02F;
+constexpr std::ptrdiff_t kEdgeReach = 3;
 
 // Samples a rect at pixel centers, at most kMaxSamples across and down, calling visit(x, y) for
 // each. Returns the pixels each sample stands for.
@@ -239,6 +246,145 @@ std::size_t top_at(const Bins& bins, float x, float y) {
         return through >= kShownShare;
     });
     return top;
+}
+
+// The linear light of each 8-bit sRGB channel value, as WCAG's relative luminance reads it. The
+// power is taken by Newton's method rather than libm's pow, so the table is the same everywhere.
+const std::array<double, 256>& linear_channels() {
+    static const std::array<double, 256> table = [] {
+        std::array<double, 256> out{};
+        for (std::size_t i = 0; i < out.size(); ++i) {
+            const double value = static_cast<double>(i) / 255.0;
+            if (value <= 0.04045) {
+                out.at(i) = value / 12.92;
+                continue;
+            }
+            // ((value + 0.055) / 1.055)^2.4: the square times the square's fifth root.
+            const double base = (value + 0.055) / 1.055;
+            const double square = base * base;
+            double root = 1.0;
+            for (int step = 0; step < 64; ++step) {
+                const double fourth = root * root * root * root;
+                root = ((4.0 * root) + (square / fourth)) / 5.0;
+            }
+            out.at(i) = square * root;
+        }
+        return out;
+    }();
+    return table;
+}
+
+// WCAG's relative luminance of a pixel, 0 for black to 1 for white.
+double luminance(const std::uint8_t* pixel) {
+    const std::array<double, 256>& linear = linear_channels();
+    return (0.2126 * linear.at(pixel[0])) + (0.7152 * linear.at(pixel[1])) +
+           (0.0722 * linear.at(pixel[2]));
+}
+
+// The contrast across an item's edge in the captured frame, as Shown::contrast. On a grid over
+// the part of its bounds in the area, reaching a few steps out on each side, each sample where
+// the item makes most of the color is compared with the nearest sample across, down, left and
+// right that it adds nothing to, over the samples it only tints, as its smoothed edge: so the
+// contrast is between its own colors and what is around it rather than their blend.
+void measure_contrast(const Bins& bins, std::size_t item, const Bounds& bounds, const Bounds& area,
+                      const render::Image& image, Shown& shown) {
+    const Bounds inner{.x0 = std::max(bounds.x0, area.x0),
+                       .y0 = std::max(bounds.y0, area.y0),
+                       .x1 = std::min(bounds.x1, area.x1),
+                       .y1 = std::min(bounds.y1, area.y1)};
+    const float across = std::max(1.0F, std::ceil((inner.x1 - inner.x0) / kMaxSamples));
+    const float down = std::max(1.0F, std::ceil((inner.y1 - inner.y0) / kMaxSamples));
+    const auto reach = static_cast<float>(kEdgeReach);
+    const float left = std::floor(inner.x0) + 0.5F - (across * reach);
+    const float top = std::floor(inner.y0) + 0.5F - (down * reach);
+    const auto columns = static_cast<std::size_t>(std::ceil((inner.x1 - left) / across)) +
+                         static_cast<std::size_t>(kEdgeReach);
+    const auto rows = static_cast<std::size_t>(std::ceil((inner.y1 - top) / down)) +
+                      static_cast<std::size_t>(kEdgeReach);
+    const auto wide = static_cast<float>(image.width);
+    const auto high = static_cast<float>(image.height);
+
+    // What each sample sees of the item: it makes most of the color, it adds nothing, it only
+    // tints the color, it is under something else, or there is no pixel of the frame.
+    enum class Seen : std::uint8_t { Core, Clear, Tint, Under, Away };
+    std::vector<Seen> grid(columns * rows, Seen::Away);
+    for (std::size_t r = 0; r < rows; ++r) {
+        const float y = top + (static_cast<float>(r) * down);
+        for (std::size_t c = 0; c < columns; ++c) {
+            const float x = left + (static_cast<float>(c) * across);
+            if (!area.contains(x, y) || x < 0.0F || y < 0.0F || x >= wide || y >= high) {
+                continue;
+            }
+            float own = 0.0F;
+            float through = 1.0F;
+            layers_at(bins, x, y, [&](std::size_t other, float alpha) {
+                if (other == item) {
+                    own = alpha;
+                    return false;
+                }
+                through *= 1.0F - alpha;
+                return true;
+            });
+            Seen seen = Seen::Tint;
+            if (own <= kClearShare) {
+                seen = Seen::Clear;
+            } else if (own * through >= kCoreShare) {
+                seen = Seen::Core;
+            } else if (own >= kShownShare && own * through < kShownShare) {
+                seen = Seen::Under;
+            }
+            grid[(r * columns) + c] = seen;
+        }
+    }
+    const auto pixel = [&](std::size_t r, std::size_t c) {
+        const auto x = static_cast<std::size_t>(left + (static_cast<float>(c) * across));
+        const auto y = static_cast<std::size_t>(top + (static_cast<float>(r) * down));
+        return luminance(&image.pixels[((y * image.width) + x) * 4]);
+    };
+    std::vector<float> ratios;
+    std::size_t darker = 0;
+    const std::array<std::array<std::ptrdiff_t, 2>, 4> directions{
+        {{-1, 0}, {1, 0}, {0, -1}, {0, 1}}};
+    for (std::size_t r = 0; r < rows; ++r) {
+        for (std::size_t c = 0; c < columns; ++c) {
+            if (grid[(r * columns) + c] != Seen::Core) {
+                continue;
+            }
+            const double inside = pixel(r, c);
+            for (const auto& [dr, dc] : directions) {
+                for (std::ptrdiff_t step = 1; step <= kEdgeReach; ++step) {
+                    const std::ptrdiff_t nr = static_cast<std::ptrdiff_t>(r) + (dr * step);
+                    const std::ptrdiff_t nc = static_cast<std::ptrdiff_t>(c) + (dc * step);
+                    if (nr < 0 || nc < 0 || nr >= static_cast<std::ptrdiff_t>(rows) ||
+                        nc >= static_cast<std::ptrdiff_t>(columns)) {
+                        break;
+                    }
+                    const auto at_r = static_cast<std::size_t>(nr);
+                    const auto at_c = static_cast<std::size_t>(nc);
+                    const Seen seen = grid[(at_r * columns) + at_c];
+                    if (seen == Seen::Tint) {
+                        continue; // its smoothed edge
+                    }
+                    if (seen == Seen::Clear) {
+                        const double outside = pixel(at_r, at_c);
+                        ratios.push_back(static_cast<float>((std::max(inside, outside) + 0.05) /
+                                                            (std::min(inside, outside) + 0.05)));
+                        if (inside < outside) {
+                            ++darker;
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+    }
+    if (ratios.empty()) {
+        return;
+    }
+    const auto middle = ratios.begin() + static_cast<std::ptrdiff_t>(ratios.size() / 2);
+    std::ranges::nth_element(ratios, middle);
+    shown.contrast = *middle;
+    shown.darker = darker * 2 > ratios.size();
 }
 
 // A control's rect on screen, turned and scaled as it draws, as ui.layout reports it.
@@ -449,6 +595,17 @@ Result<FrameSummary> summarize(world::World& world, asset::Assets& assets,
         }
     }
 
+    // The frame as it draws, lights and materials included, for contrast.
+    std::optional<Capture> captured;
+    if (options.contrast) {
+        auto made = capture(world, assets);
+        if (!made) {
+            return made.error();
+        }
+        captured = std::move(made).value();
+    }
+    const render::Image* frame_image = captured ? &captured->image : nullptr;
+
     std::vector<std::ptrdiff_t> place(items.size(), -1);
     for (std::size_t i = 0; i < items.size(); ++i) {
         switch (fates[i]) {
@@ -486,10 +643,15 @@ Result<FrameSummary> summarize(world::World& world, asset::Assets& assets,
                 }
             }
             place[i] = static_cast<std::ptrdiff_t>(summary.shown.size());
-            summary.shown.push_back(
-                {.item = i,
-                 .rect = {rect.x0, rect.y0, rect.x1 - rect.x0, rect.y1 - rect.y0},
-                 .shown = shares[i]});
+            Shown& shown = summary.shown.emplace_back(
+                Shown{.item = i,
+                      .rect = {rect.x0, rect.y0, rect.x1 - rect.x0, rect.y1 - rect.y0},
+                      .shown = shares[i],
+                      .contrast = 0.0F,
+                      .darker = false});
+            if (frame_image != nullptr) {
+                measure_contrast(bins, i, drawn[i], area, *frame_image, shown);
+            }
             break;
         }
         case Fate::Offscreen:

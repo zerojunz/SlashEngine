@@ -119,6 +119,10 @@ int main() {
     std::puts("-- a closer map of the player and the bush, by region");
     agent.map(R"({"region": [64, 120, 96, 60], "map": [24, 15]})");
 
+    std::puts("-- how much the HUD stands out from the sky: the white score and the pale "
+              "health bar are hard to read on it");
+    (void)agent.call("frame.summary", R"({"ids": ["score", "health", "pause"], "contrast": true})");
+
     std::puts("-- the pause button takes focus");
     (void)agent.call("ui.focus", R"({"id": "pause"})");
     (void)agent.call("frame.summary", R"({"ids": ["player", "coin", "ghost", "pause"]})");

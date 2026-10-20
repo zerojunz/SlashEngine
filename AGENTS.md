@@ -164,12 +164,16 @@ and `elevenlabs-sound` (`src/adapters.cpp`, through `ai::post_with_retries`, wit
 to the size asked for by `fit_image`), and the built-in `test` generator, which draws
 placeholders with integer math only, so they are the same bytes everywhere. `asset.search`, `asset.generate` (an exact repeat
 calls no generator, close matches come back as candidates), `asset.refine`, `asset.info`,
-`asset.use`, `asset.add` and `asset.feedback` are in `slash_library_commands`, registered by
+`asset.use`, `asset.add`, `asset.feedback` and `asset.check` are in `slash_library_commands`, registered by
 slash-cli and slash-mcp; using an asset copies it into the project, records its source and
 license in the project's `library.json` and checks an image against the storyboard's palettes and
 budgets. Feedback (accepted or rejected, and why) ranks search results, keeps rejected assets out
 of candidates and, with the storyboard's tone and palette, goes into later prompts
-(`prompt_context` in `src/commands.cpp`).
+(`prompt_context` in `src/commands.cpp`). `asset.check`, which `test.run` runs on a whole
+project, records feedback by itself: it opens each scene that draws a library file and checks
+what `canvas::summarize` sees with `SummaryOptions::contrast` (the edge contrast of each thing
+in the frame `canvas::capture` draws, `Shown::contrast`) and how small each file is drawn, from
+the texture paths on `FramePiece`s.
 
 ## Commands, MCP and JSON-RPC
 
