@@ -3,6 +3,7 @@
 #include "slash/core/json.hpp"
 #include "slash/core/result.hpp"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <entt/entity/registry.hpp>
@@ -87,6 +88,16 @@ using EventListener = std::function<void(const Event& event)>;
 inline constexpr std::string_view kEntityCreated = "entity.created";
 inline constexpr std::string_view kEntityDestroyed = "entity.destroyed";
 
+// How long something took each tick over the last kWindow ticks it ran, in milliseconds of real
+// time, as perf.stats reports it. Zero before it first runs.
+struct Timing {
+    static constexpr std::size_t kWindow = 120;
+
+    double last_ms = 0.0;
+    double avg_ms = 0.0;
+    double max_ms = 0.0;
+};
+
 // A system as engine.describe lists it.
 struct SystemInfo {
     std::string_view name;
@@ -97,6 +108,9 @@ struct SystemInfo {
     std::span<const std::string> writes;
     // Systems in the same stage run at the same time; stages run one after another.
     std::size_t stage = 0;
+    // Its own time each tick, with the events and deferred calls it left, on whichever thread
+    // ran it.
+    Timing timing;
 };
 
 // The simulation state: an EnTT registry plus stable entity IDs and an ordered list of systems.
@@ -159,6 +173,8 @@ public:
 
     // Runs every system once and advances the tick counter.
     void step(double tick_seconds);
+    // How long step took, systems and all.
+    [[nodiscard]] Timing tick_timing() const noexcept { return tick_samples_.timing(); }
     // Queues a change for the thread stepping the world: threaded systems create and destroy
     // entities, and add and remove components, this way. Calls run in the order they were made,
     // after the system returns, or for a threaded system once its whole stage is done, in system
@@ -244,10 +260,18 @@ public:
     [[nodiscard]] static bool is_valid_part_id(std::string_view id);
 
 private:
+    // The last Timing::kWindow times something took.
+    struct Samples {
+        std::array<float, Timing::kWindow> ms{};
+        std::size_t count = 0; // samples taken, of which the last kWindow are kept
+        void add(double milliseconds) noexcept;
+        [[nodiscard]] Timing timing() const noexcept;
+    };
     struct NamedSystem {
         std::string name;
         System run;
         SystemOptions options;
+        Samples samples;
     };
     // Systems systems_[begin, end) run at the same time: one system, or threaded systems that
     // don't clash.
@@ -263,7 +287,7 @@ private:
     // Entities come and go only on the thread stepping the world, and never during a stage.
     void check_structural() const;
     void plan_stages();
-    void run_system(const NamedSystem& system, double tick_seconds);
+    void run_system(NamedSystem& system, double tick_seconds);
     void run_stage(const Stage& stage, double tick_seconds);
     void flush(detail::SystemRun& run);
 
@@ -275,6 +299,7 @@ private:
     entt::registry registry_;
     std::vector<NamedSystem> systems_;
     std::vector<Stage> stages_;
+    Samples tick_samples_;
     std::vector<std::function<void(World&)>> resets_;
     StepListener step_listener_;
     EventListener listener_;

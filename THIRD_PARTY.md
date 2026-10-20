@@ -24,6 +24,7 @@ or license not allowed here, or whose license text changed without review.
 | [Brotli](https://github.com/google/brotli) | v1.1.0 | MIT | Decompressing a Unity web build before it is unpacked (tools only, not shipped in games) | Fetched, its decoder linked into slash-cli and slash-mcp |
 | [glslang](https://github.com/KhronosGroup/glslang) | 16.6.0 | BSD-3-Clause, with parts under BSD-2-Clause, MIT, Apache 2.0, NVIDIA's permissive notice (AML-glslang) and, in its generated parser, GPL 3.0 with the Bison exception, which lets it ship under any terms | Compiling a game's HLSL shaders to SPIR-V (tools only, not shipped in games) | Fetched, linked into slash-cli and slash-mcp |
 | [SPIRV-Cross](https://github.com/KhronosGroup/SPIRV-Cross) | vulkan-sdk-1.4.363.0 | Apache 2.0 or MIT, at the user's choice; its `spirv.hpp` is MIT | Turning a game's compiled shaders into MSL and GLSL ES (tools only, not shipped in games) | Fetched, linked into slash-cli and slash-mcp |
+| [Tracy](https://github.com/wolfpld/tracy) | v0.14.1 | BSD-3-Clause; its bundled libbacktrace is BSD-3-Clause and its other bundled code permissive | The client of the Tracy profiler, in builds configured with `SLASH_PROFILER=tracy` (not shipped in games) | Fetched only for those builds, linked statically |
 | [doctest](https://github.com/doctest/doctest) | v2.5.2 | MIT | Unit tests (not shipped in games) | Fetched, tests only |
 | [CPM.cmake](https://github.com/cpm-cmake/CPM.cmake) | v0.40.2 | MIT | Dependency fetching | Vendored as `cmake/CPM.cmake` |
 

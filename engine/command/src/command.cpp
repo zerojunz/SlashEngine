@@ -6,6 +6,7 @@
 #include <array>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace slash::command {
 
@@ -136,6 +137,11 @@ void Registry::add(Command command) {
         std::ranges::upper_bound(commands_, command.name, std::less<>(),
                                  [](const Command& c) -> const std::string& { return c.name; });
     commands_.insert(position, std::move(command));
+}
+
+void Registry::replace(Command command) {
+    std::erase_if(commands_, [&](const Command& c) { return c.name == command.name; });
+    add(std::move(command));
 }
 
 const Command* Registry::find(std::string_view name) const {

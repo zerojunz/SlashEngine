@@ -105,6 +105,13 @@
       "repository": "https://github.com/googlefonts/roboto.git",
       "tag": "v2.138"
     },
+    "tracy": {
+      "license": "BSD-3-Clause",
+      "license_file": "LICENSE",
+      "license_sha256": "27ab6b51e57f7e263a6e953d9c8984cd26e69d2f7606bde81e4b3048acf30732",
+      "repository": "https://github.com/wolfpld/tracy.git",
+      "tag": "v0.14.1"
+    },
     "yyjson": {
       "license": "MIT",
       "license_file": "LICENSE",
