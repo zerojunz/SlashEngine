@@ -1,4 +1,5 @@
 #include "slash/canvas/particles.hpp"
+#include "slash/core/jobs.hpp"
 #include "slash/core/json.hpp"
 #include "slash/core/math.hpp"
 #include "slash/world/component_registry.hpp"
@@ -7,6 +8,7 @@
 
 #include <doctest/doctest.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <limits>
@@ -240,6 +242,37 @@ TEST_CASE("particles repeat for the same entity and seed, and differ for others"
     CHECK(run("a", 1) != a);
     CHECK(canvas::particle_seed("a", 0) != canvas::particle_seed("b", 0));
     CHECK(canvas::particle_seed("a", 0) != canvas::particle_seed("a", 1));
+}
+
+TEST_CASE("emitters step on the job system's threads the same as on one") {
+    const auto run = [](int threads) {
+        slash::jobs::Pool pool(threads);
+        Particles scene;
+        scene.world.set_pool(pool);
+        std::vector<entt::entity> entities;
+        for (int i = 0; i < 12; ++i) {
+            entities.push_back(
+                scene.add("burst" + std::to_string(i), {static_cast<float>(i) * 40.0F, 0.0F},
+                          R"({"amount": 30, "lifetime": 0.6, "one_shot": true, "explosiveness": 0.5,
+                    "spread": 180, "initial_velocity_min": 20, "initial_velocity_max": 90,
+                    "randomness": 1})"));
+        }
+        scene.step(30);
+        std::vector<std::string> out;
+        for (const entt::entity entity : entities) {
+            for (const canvas::Particle& p : scene.live(entity)) {
+                out.push_back(std::to_string(p.position.x) + " " + std::to_string(p.position.y));
+            }
+        }
+        scene.step(30);
+        for (const world::Event& event : scene.events) {
+            out.push_back(event.kind + " " + event.id);
+        }
+        return out;
+    };
+    const std::vector<std::string> alone = run(0);
+    CHECK(run(3) == alone);
+    CHECK(std::ranges::count(alone, std::string("finished burst0")) == 1);
 }
 
 TEST_CASE("gravity, damping and the emitter's transform move particles as Godot's") {

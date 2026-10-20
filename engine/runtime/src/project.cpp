@@ -1,5 +1,6 @@
 #include "slash/runtime/project.hpp"
 
+#include "slash/core/jobs.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/platform/run.hpp"
 
@@ -296,6 +297,7 @@ json::Value project_schema() {
     sdks["description"] =
         "Folders of SDK packages, relative to the project: closed vendor SDKs, each with an "
         "sdk.json (\"slash-cli schema sdk\"), that exports link into the game.";
+    properties["threading"] = jobs::settings_schema();
     return schema;
 }
 
@@ -490,6 +492,9 @@ Result<Project> parse_project(const json::Value& project) {
         for (const json::Value& folder : sdks->as_array()) {
             out.sdks.push_back(folder.as_string());
         }
+    }
+    if (const json::Value* threading = project.find("threading"); threading != nullptr) {
+        out.max_threads = jobs::parse_max_threads(*threading);
     }
     return out;
 }

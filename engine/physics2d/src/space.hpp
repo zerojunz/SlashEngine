@@ -1,6 +1,7 @@
 #pragma once
 
 #include "slash/core/assert.hpp"
+#include "slash/core/jobs.hpp"
 #include "slash/physics2d/physics2d.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/tree2d.hpp"
@@ -10,6 +11,7 @@
 #include <box2d/box2d.h>
 #include <cmath>
 #include <cstdint>
+#include <deque>
 #include <map>
 #include <memory>
 #include <optional>
@@ -267,6 +269,14 @@ struct Impulse {
     float torque = 0.0F;
 };
 
+// Box2D's tasks, run on a world's job system (slash/core/jobs.hpp): Box2D hands each task's
+// items to enqueue_task and waits for them with finish_task.
+struct Tasks {
+    jobs::Pool* pool = nullptr;
+    // The groups of a step in flight. Box2D keeps pointers to them, which a deque leaves valid.
+    std::deque<jobs::GroupId> groups;
+};
+
 class Space {
 public:
     explicit Space(const Settings& settings);
@@ -303,7 +313,7 @@ public:
                                     entt::entity entity) const;
 
 private:
-    void create_world();
+    void create_world(jobs::Pool& pool);
     void remove_stale(world::World& world);
     void sync(world::World& world, const world::Tree2D& tree);
     void sync_body(world::World& world, const world::Tree2D& tree, entt::entity entity, Kind kind);
@@ -326,6 +336,7 @@ private:
     void destroy(Body& body);
 
     Settings settings_;
+    Tasks tasks_;
     b2WorldId world_ = b2_nullWorldId;
     b2BodyId ground_ = b2_nullBodyId; // what joints with no node_a hold on to
     EntityMap<std::unique_ptr<Body>> bodies_;

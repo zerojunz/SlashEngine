@@ -20,6 +20,7 @@ add_executable(slash_tests
     test_import_unity.cpp
     test_gui.cpp
     test_input.cpp
+    test_jobs.cpp
     test_json.cpp
     test_json_schema.cpp
     test_light.cpp
