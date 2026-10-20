@@ -385,28 +385,35 @@ Result<Response> response_from_json(const json::Value& value) {
     return response;
 }
 
+void Call::Shared::append(std::string_view piece) {
+    const std::scoped_lock lock(mutex);
+    text.append(piece);
+}
+
+void Call::Shared::finish(Result<Response> outcome) {
+    const std::scoped_lock lock(mutex);
+    if (outcome) {
+        text = outcome.value().message.text;
+    }
+    result.emplace(std::move(outcome));
+    done.store(true, std::memory_order_release);
+}
+
 Call::Call(std::shared_ptr<Provider> provider, Request request, bool stream) {
-    auto run = [shared = shared_, provider = std::move(provider), request = std::move(request),
-                stream] {
-        StreamSink sink;
-        if (stream) {
-            sink = [shared](std::string_view text) {
-                const std::scoped_lock lock(shared->mutex);
-                shared->text.append(text);
-            };
-        }
-        Result<Response> result = provider->complete(request, sink, &shared->cancel);
-        const std::scoped_lock lock(shared->mutex);
-        if (result) {
-            shared->text = result.value().message.text;
-        }
-        shared->result.emplace(std::move(result));
-        shared->done.store(true, std::memory_order_release);
-    };
+    StreamSink sink;
+    if (stream) {
+        sink = [shared = shared_](std::string_view text) { shared->append(text); };
+    }
 #if defined(__EMSCRIPTEN__) && !defined(__EMSCRIPTEN_PTHREADS__)
-    run();
+    provider->start(
+        request, std::move(sink),
+        [shared = shared_](Result<Response> outcome) { shared->finish(std::move(outcome)); },
+        &shared_->cancel);
 #else
-    thread_ = std::thread(std::move(run));
+    thread_ = std::thread([shared = shared_, provider = std::move(provider),
+                           request = std::move(request), sink = std::move(sink)] {
+        shared->finish(provider->complete(request, sink, &shared->cancel));
+    });
 #endif
 }
 

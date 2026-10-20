@@ -14,7 +14,13 @@
 #include <utility>
 #include <vector>
 
-#if !defined(__EMSCRIPTEN__)
+#if defined(__EMSCRIPTEN__)
+#include "slash/core/json.hpp"
+
+#include <emscripten/emscripten.h>
+#include <emscripten/eventloop.h>
+#include <map>
+#else
 #include "slash/platform/file.hpp"
 
 #include <httplib.h>
@@ -24,6 +30,69 @@
 #if defined(__APPLE__)
 #include <CoreFoundation/CoreFoundation.h>
 #include <Security/Security.h>
+#endif
+
+#if defined(__EMSCRIPTEN__)
+// POSTs with the browser's fetch(), handing the status, the body as it streams and the end back
+// to the slash_ai_fetch_* functions below, which say whether to go on reading. Bytes go through
+// a buffer the engine owns (slash_ai_fetch_buffer), so the game needs no malloc exported.
+// clang-format off
+EM_JS_DEPS(slash_ai_fetch, "$UTF8ToString");
+EM_JS(void, slash_ai_fetch,
+      (int id, const char* url, const char* headers, const char* body, int timeout_ms), {
+          const controller = new AbortController();
+          let timedOut = false;
+          const timer = setTimeout(() => {
+              timedOut = true;
+              controller.abort();
+          }, timeout_ms);
+          const put = (bytes) => {
+              const at = _slash_ai_fetch_buffer(id, bytes.length);
+              if (at) {
+                  HEAPU8.set(bytes, at);
+              }
+              return bytes.length;
+          };
+          const text = (value) => put(new TextEncoder().encode(value));
+          const end = (message) => {
+              clearTimeout(timer);
+              _slash_ai_fetch_end(id, message === null ? 0 : 1, message === null ? 0 : text(message));
+          };
+          fetch(UTF8ToString(url), {
+              method : "POST",
+              headers : JSON.parse(UTF8ToString(headers)),
+              body : UTF8ToString(body),
+              signal : controller.signal,
+          })
+              .then(async (response) => {
+                  const after = text(response.headers.get("Retry-After") || "");
+                  if (!_slash_ai_fetch_status(id, response.status, after)) {
+                      controller.abort();
+                      end(null);
+                      return;
+                  }
+                  if (response.body && response.body.getReader) {
+                      const reader = response.body.getReader();
+                      for (;;) {
+                          const part = await reader.read();
+                          if (part.done) {
+                              break;
+                          }
+                          if (!_slash_ai_fetch_data(id, put(part.value))) {
+                              controller.abort();
+                              break;
+                          }
+                      }
+                  } else {
+                      _slash_ai_fetch_data(id, put(new Uint8Array(await response.arrayBuffer())));
+                  }
+                  end(null);
+              })
+              .catch((error) => {
+                  end(timedOut ? "timed out" : String((error && error.message) || error));
+              });
+      });
+// clang-format on
 #endif
 
 namespace slash::ai {
@@ -255,6 +324,26 @@ bool bypasses_proxy(const std::string& host, std::string_view no_proxy) {
 
 #if defined(__EMSCRIPTEN__)
 
+// A fetch() under way, by the ID its JavaScript calls back with.
+struct Fetch {
+    std::string url;
+    BodySink sink;
+    ResponseCallback done;
+    const CancelFlag* cancel = nullptr;
+    HttpResponse response;
+    bool stopped = false; // the sink stopped it
+    std::string buffer;   // the bytes JavaScript last handed over
+};
+
+std::map<int, Fetch>& fetches() {
+    static std::map<int, Fetch> all;
+    return all;
+}
+
+bool cancelled(const Fetch& fetch) {
+    return fetch.cancel != nullptr && fetch.cancel->load();
+}
+
 class HttpTransport final : public Transport {
 public:
     explicit HttpTransport(HttpOptions /*options*/) {}
@@ -262,7 +351,39 @@ public:
     Result<HttpResponse> post(const HttpRequest& request, const BodySink& /*sink*/,
                               const CancelFlag* /*cancel*/) override {
         return make_error(ErrorCode::PlatformFailure,
-                          "can't reach " + request.url + ": web builds have no HTTP client yet");
+                          "can't reach " + request.url +
+                              ": the web has no threads to wait on a request; use post_async");
+    }
+
+    void post_async(const HttpRequest& request, BodySink sink, ResponseCallback done,
+                    const CancelFlag* cancel) override {
+        static int next = 1;
+        const int id = next++;
+        json::Value headers = json::Object{};
+        for (const auto& [name, value] : request.headers) {
+            headers[name] = value;
+        }
+        headers["Content-Type"] = "application/json";
+        fetches()[id] = Fetch{.url = request.url,
+                              .sink = std::move(sink),
+                              .done = std::move(done),
+                              .cancel = cancel,
+                              .response = {},
+                              .stopped = false,
+                              .buffer = {}};
+        slash_ai_fetch(id, request.url.c_str(), json::write(headers, json::Style::Compact).c_str(),
+                       request.body.c_str(), request.timeout_seconds * 1000);
+    }
+
+    void later(std::chrono::milliseconds delay, std::function<void()> then) override {
+        auto* call = new std::function<void()>(std::move(then));
+        emscripten_set_timeout(
+            [](void* data) {
+                const std::unique_ptr<std::function<void()>> owned(
+                    static_cast<std::function<void()>*>(data));
+                (*owned)();
+            },
+            static_cast<double>(delay.count()), call);
     }
 };
 
@@ -526,3 +647,76 @@ std::shared_ptr<Transport> refusing_transport(std::string message) {
 }
 
 } // namespace slash::ai
+
+#if defined(__EMSCRIPTEN__)
+extern "C" {
+
+// Room for size bytes that JavaScript is about to hand over, or null once the request is gone.
+EMSCRIPTEN_KEEPALIVE char* slash_ai_fetch_buffer(int id, int size) {
+    const auto found = slash::ai::fetches().find(id);
+    if (found == slash::ai::fetches().end()) {
+        return nullptr;
+    }
+    found->second.buffer.resize(static_cast<std::size_t>(size) + 1);
+    return found->second.buffer.data();
+}
+
+// fetch() has the response's status, and its Retry-After header in the buffer: 1 to read its
+// body, 0 to stop.
+EMSCRIPTEN_KEEPALIVE int slash_ai_fetch_status(int id, int status, int after_size) {
+    const auto found = slash::ai::fetches().find(id);
+    if (found == slash::ai::fetches().end()) {
+        return 0;
+    }
+    slash::ai::Fetch& fetch = found->second;
+    fetch.response.status = status;
+    fetch.response.retry_after = fetch.buffer.substr(0, static_cast<std::size_t>(after_size));
+    return slash::ai::cancelled(fetch) ? 0 : 1;
+}
+
+// A piece of the body, in the buffer: 1 to go on, 0 to stop.
+EMSCRIPTEN_KEEPALIVE int slash_ai_fetch_data(int id, int size) {
+    const auto found = slash::ai::fetches().find(id);
+    if (found == slash::ai::fetches().end()) {
+        return 0;
+    }
+    slash::ai::Fetch& fetch = found->second;
+    if (slash::ai::cancelled(fetch)) {
+        return 0;
+    }
+    const std::string_view piece(fetch.buffer.data(), static_cast<std::size_t>(size));
+    if (fetch.response.status == 200 && fetch.sink) {
+        if (!fetch.sink(piece)) {
+            fetch.stopped = true;
+            return 0;
+        }
+        return 1;
+    }
+    fetch.response.body.append(piece);
+    return 1;
+}
+
+// The request is over; if it failed, the buffer says why.
+EMSCRIPTEN_KEEPALIVE void slash_ai_fetch_end(int id, int failed, int message_size) {
+    auto node = slash::ai::fetches().extract(id);
+    if (node.empty()) {
+        return;
+    }
+    slash::ai::Fetch fetch = std::move(node.mapped());
+    using slash::ErrorCode;
+    if (slash::ai::cancelled(fetch)) {
+        fetch.done(slash::make_error(ErrorCode::PlatformFailure, "the request was cancelled"));
+    } else if (fetch.stopped) {
+        fetch.done(slash::make_error(ErrorCode::PlatformFailure, "the reply was stopped"));
+    } else if (failed != 0) {
+        fetch.done(
+            slash::make_error(ErrorCode::PlatformFailure,
+                              "can't reach " + fetch.url + ": " +
+                                  fetch.buffer.substr(0, static_cast<std::size_t>(message_size))));
+    } else {
+        fetch.done(std::move(fetch.response));
+    }
+}
+
+} // extern "C"
+#endif
