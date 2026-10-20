@@ -479,7 +479,12 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
         the world, components, assets, physics, audio, particles and glyph atlases hold, and a
         running game's GPU textures
 - [ ] `ai::Provider` with OpenAI-compatible, Anthropic and Gemini adapters
-- [ ] `ReplayProvider` so tests that use a model run offline
+  - [x] The interface and the three adapters (tools, structured output, images, streaming and
+        the providers' reasoning kept between turns), roles in `providers.json`, engine commands
+        as a model's tools, and `ai.providers` and `ai.complete` with the `network` capability
+  - [ ] TLS for hosted providers' `https://` APIs on every platform, and web exports calling
+        models through the browser's `fetch`
+- [x] `ReplayProvider` so tests that use a model run offline
 - [ ] A benchmark of standard agent tasks that counts calls and tokens
 - [ ] Storyboard review: a model through `ai::Provider` reads new text and assets against the
       storyboard and reports likely contradictions as advisory findings

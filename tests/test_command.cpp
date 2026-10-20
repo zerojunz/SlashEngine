@@ -108,11 +108,13 @@ TEST_CASE("the registry keeps commands sorted by name") {
 }
 
 TEST_CASE("capabilities parse from a comma-separated list") {
-    CHECK(command::parse_capabilities("all").value().size() == 5);
+    CHECK(command::parse_capabilities("all").value().size() == 6);
     CHECK(command::parse_capabilities("read,run").value() ==
           std::vector<Capability>{Capability::Read, Capability::Run});
     CHECK(command::parse_capabilities("read,build").value() ==
           std::vector<Capability>{Capability::Read, Capability::Build});
+    CHECK(command::parse_capabilities("network").value() ==
+          std::vector<Capability>{Capability::Network});
     CHECK_FALSE(command::parse_capabilities("read,write").ok());
 }
 

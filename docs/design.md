@@ -236,7 +236,7 @@ The HTTP server runs inside the game, so an agent can inspect and change a world
 
 ### 4. Observability and safety
 
-Agents get structured JSON logs, a subscribable event stream, frame captures as PNG and per-system timings. The server binds to localhost only, requires a random bearer token, rejects requests whose `Host` or `Origin` header names another site (which blocks DNS rebinding from web pages), and grants capabilities in levels (read, edit, run, filesystem, build), so a player-facing build ships with the server compiled out. Its address and token go in `.slash/server.json`, which is owner-only on macOS and Linux, gitignored, and removed on exit.
+Agents get structured JSON logs, a subscribable event stream, frame captures as PNG and per-system timings. The server binds to localhost only, requires a random bearer token, rejects requests whose `Host` or `Origin` header names another site (which blocks DNS rebinding from web pages), and grants capabilities in levels (read, edit, run, filesystem, build, network), so a player-facing build ships with the server compiled out. Its address and token go in `.slash/server.json`, which is owner-only on macOS and Linux, gitignored, and removed on exit.
 
 ### 5. Connecting Claude Code, Codex and Cursor
 
@@ -310,22 +310,27 @@ namespace slash::ai {
 
 struct Capabilities {
     bool tools, json_schema_output, vision, streaming;
-    int  context_tokens;
+    std::int64_t context_tokens;
 };
 
 struct Request {
-    std::vector<Message>    messages;      // system, user, assistant, tool results
-    std::vector<ToolSpec>   tools;         // JSON Schema, generated from the command registry
-    std::optional<Json>     output_schema; // ask for structured JSON back
-    Params                  params;        // max_tokens, temperature, stop, seed
+    std::vector<Message>  messages;      // system, user (text and images), assistant, tool results
+    std::vector<ToolSpec> tools;         // JSON Schema, generated from the command registry
+    json::Value           output_schema; // ask for structured JSON back
+    Params                params;        // max_tokens, temperature, stop, seed
 };
 
 class Provider {
 public:
     virtual ~Provider() = default;
     virtual Capabilities capabilities() const = 0;
-    virtual Task<Response> complete(const Request&, StreamSink* sink = nullptr) = 0;
+    // Blocks until the reply is in; the sink gets its text as it arrives.
+    virtual Result<Response> complete(const Request&, const StreamSink& sink = nullptr,
+                                      const CancelFlag* cancel = nullptr) = 0;
 };
+
+// Runs a request on its own thread, so the game loop never waits on a model.
+class Call;
 
 } // namespace slash::ai
 ```
@@ -335,7 +340,7 @@ public:
 - **Configuration in a file.** A `providers.json` maps roles (`dialogue`, `assistant`, `codegen`) to a provider, model and endpoint. API keys come from environment variables, never from files in the repo.
 - **Same tools everywhere.** Tool specs for in-engine models come from the same command registry that MCP exposes, so an in-game assistant and an external agent have identical powers.
 - **Testable offline.** A `ReplayProvider` records real responses once and replays them in CI, so tests never need a network or a key.
-- **Optional module.** `slash_ai` is a separate CMake target. A game that uses no model links none of it and carries no HTTP client.
+- **Optional module.** `slash_ai` is a separate CMake target. A game that uses no model links none of it and carries no HTTP client. `slash_ai_commands` adds `ai.complete`, `ai.providers` and commands as tools; calling out needs the `network` capability.
 
 ## Asset library and generation
 

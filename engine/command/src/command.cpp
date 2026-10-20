@@ -22,13 +22,16 @@ std::string_view to_string(Capability capability) noexcept {
         return "filesystem";
     case Capability::Build:
         return "build";
+    case Capability::Network:
+        return "network";
     }
     return "read";
 }
 
 std::optional<Capability> capability_from_string(std::string_view name) noexcept {
-    for (const Capability capability : {Capability::Read, Capability::Edit, Capability::Run,
-                                        Capability::Filesystem, Capability::Build}) {
+    for (const Capability capability :
+         {Capability::Read, Capability::Edit, Capability::Run, Capability::Filesystem,
+          Capability::Build, Capability::Network}) {
         if (to_string(capability) == name) {
             return capability;
         }
@@ -37,8 +40,8 @@ std::optional<Capability> capability_from_string(std::string_view name) noexcept
 }
 
 Result<std::vector<Capability>> parse_capabilities(std::string_view list) {
-    constexpr std::array kAll{Capability::Read, Capability::Edit, Capability::Run,
-                              Capability::Filesystem, Capability::Build};
+    constexpr std::array kAll{Capability::Read,       Capability::Edit,  Capability::Run,
+                              Capability::Filesystem, Capability::Build, Capability::Network};
     if (list == "all") {
         return std::vector<Capability>(kAll.begin(), kAll.end());
     }
@@ -51,7 +54,7 @@ Result<std::vector<Capability>> parse_capabilities(std::string_view list) {
         if (!capability) {
             return make_error(ErrorCode::InvalidArgument,
                               "unknown capability \"" + std::string(name) +
-                                  "\"; use read, edit, run, filesystem, build or all");
+                                  "\"; use read, edit, run, filesystem, build, network or all");
         }
         if (std::ranges::find(capabilities, *capability) == capabilities.end()) {
             capabilities.push_back(*capability);

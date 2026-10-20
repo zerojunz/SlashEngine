@@ -31,8 +31,9 @@ struct SessionOptions {
     // Folder that scene paths are relative to. Commands cannot reach files outside it.
     std::string project_root = ".";
     // What callers of this session may do.
-    std::vector<Capability> capabilities = {Capability::Read, Capability::Edit, Capability::Run,
-                                            Capability::Filesystem, Capability::Build};
+    std::vector<Capability> capabilities = {Capability::Read,  Capability::Edit,
+                                            Capability::Run,   Capability::Filesystem,
+                                            Capability::Build, Capability::Network};
     // How many edits undo remembers.
     std::size_t history_limit = 100;
     // Keep recent log lines for log.tail. The session installs a log sink that also forwards
