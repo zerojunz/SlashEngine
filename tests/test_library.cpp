@@ -1,0 +1,496 @@
+#include "slash/ai/commands.hpp"
+#include "slash/ai/config.hpp"
+#include "slash/command/builtin.hpp"
+#include "slash/command/command.hpp"
+#include "slash/command/session.hpp"
+#include "slash/core/json.hpp"
+#include "slash/core/sha256.hpp"
+#include "slash/library/commands.hpp"
+#include "slash/library/generator.hpp"
+#include "slash/library/library.hpp"
+#include "slash/platform/file.hpp"
+#include "slash/render/image.hpp"
+#include "slash/world/component_registry.hpp"
+#include "slash/world/components.hpp"
+
+#include <doctest/doctest.h>
+
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <filesystem>
+#include <memory>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
+
+namespace json = slash::json;
+namespace command = slash::command;
+namespace library = slash::library;
+namespace fs = std::filesystem;
+
+namespace {
+
+json::Value parse(std::string_view text) {
+    auto value = json::parse(text);
+    REQUIRE_MESSAGE(value.ok(), std::string(text));
+    return std::move(value).value();
+}
+
+void write(const fs::path& path, std::string_view text) {
+    fs::create_directories(path.parent_path());
+    REQUIRE(slash::platform::write_file(path.string(), text).ok());
+}
+
+std::string read(const fs::path& path) {
+    auto text = slash::platform::read_file(path.string());
+    REQUIRE_MESSAGE(text.ok(), path.string());
+    return std::move(text).value();
+}
+
+// A fresh folder for a test: name/project and name/library.
+fs::path fresh(std::string_view name) {
+    const fs::path root = fs::absolute(name);
+    fs::remove_all(root);
+    write(root / "project" / "project.json", R"({"format": 1, "name": "Library test"})");
+    fs::create_directories(root / "library");
+    return root;
+}
+
+library::GenerateRequest image(std::string prompt, int width = 16, int height = 0) {
+    library::GenerateRequest request;
+    request.type = "image";
+    request.prompt = std::move(prompt);
+    request.width = width;
+    request.height = height;
+    return request;
+}
+
+slash::render::Image decode(const std::string& png) {
+    auto decoded = slash::render::decode_image(png);
+    REQUIRE(decoded.ok());
+    return std::move(decoded).value();
+}
+
+std::array<int, 4> pixel(const slash::render::Image& image, std::uint32_t x, std::uint32_t y) {
+    const std::size_t at = (static_cast<std::size_t>(y) * image.width + x) * 4;
+    return {image.pixels[at], image.pixels[at + 1], image.pixels[at + 2], image.pixels[at + 3]};
+}
+
+struct Engine {
+    slash::world::ComponentRegistry components;
+    command::Registry commands;
+    std::unique_ptr<command::Session> session;
+
+    explicit Engine(const fs::path& root, bool write_files = true) {
+        slash::world::register_builtin_components(components);
+        command::register_builtin_commands(commands);
+        slash::ai::register_commands(commands);
+        library::register_commands(commands);
+        session = std::make_unique<command::Session>(
+            components, commands,
+            command::SessionOptions{.project_root = (root / "project").string(),
+                                    .capture_logs = false,
+                                    .write_files = write_files,
+                                    .library_dir = (root / "library").string()});
+    }
+
+    json::Value call(std::string_view name, std::string_view params) const {
+        command::Reply reply = session->call(name, parse(params));
+        REQUIRE_MESSAGE(reply.ok, reply.message);
+        return reply.value;
+    }
+
+    command::Reply fail(std::string_view name, std::string_view params) const {
+        command::Reply reply = session->call(name, parse(params));
+        REQUIRE_FALSE(reply.ok);
+        return reply;
+    }
+};
+
+} // namespace
+
+TEST_CASE("SHA-256 in pieces matches SHA-256 at once") {
+    CHECK(slash::sha256_hex("abc") ==
+          "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+    std::string text;
+    for (int i = 0; i < 300; ++i) {
+        text += static_cast<char>('a' + i % 26);
+    }
+    slash::Sha256 pieces;
+    pieces.update(text.substr(0, 1));
+    pieces.update(text.substr(1, 63));
+    pieces.update(text.substr(64, 100));
+    pieces.update(text.substr(164));
+    CHECK(pieces.hex() == slash::sha256_hex(text));
+}
+
+TEST_CASE("library stores each asset once by the hash of its bytes") {
+    const fs::path root = fresh("library_store");
+    const library::Library store((root / "library").string());
+    auto png = library::test_generator()->generate(image("red ball"));
+    REQUIRE(png.ok());
+
+    library::Record record;
+    REQUIRE(library::describe_file(png.value().data, "ball.png", record).ok());
+    CHECK(record.type == "image");
+    CHECK(record.format == "png");
+    CHECK(record.width == 16);
+    CHECK(record.height == 16);
+    record.description = "A red ball.";
+    record.tags = {"ball"};
+    auto stored = store.put(png.value().data, record);
+    REQUIRE(stored.ok());
+    const std::string id = stored.value().id;
+    CHECK(id == slash::sha256_hex(png.value().data));
+    CHECK(fs::exists(root / "library" / "files" / id.substr(0, 2) / (id + ".png")));
+    CHECK(fs::exists(root / "library" / "assets" / id.substr(0, 2) / (id + ".json")));
+
+    // The same bytes again keep the first record, with the new tags added.
+    record.description = "Something else.";
+    record.tags = {"toy", "ball"};
+    auto again = store.put(png.value().data, record);
+    REQUIRE(again.ok());
+    CHECK(again.value().description == "A red ball.");
+    CHECK(again.value().tags == std::vector<std::string>{"ball", "toy"});
+
+    // A prefix finds it; a bad, unknown or short one doesn't.
+    auto found = store.get(id.substr(0, 8));
+    REQUIRE(found.ok());
+    CHECK(found.value().id == id);
+    CHECK(json::write(library::to_json(found.value())) ==
+          json::write(library::to_json(again.value())));
+    CHECK(store.read(found.value()).value() == png.value().data);
+    CHECK(store.get("abc").error().message == "\"abc\" is not an asset ID: 6 to 64 hex digits");
+    CHECK(store.get("zzzzzzzz").error().message ==
+          "\"zzzzzzzz\" is not an asset ID: 6 to 64 hex digits");
+    const std::string other = id[0] == '0' ? "1234567" : "0123456";
+    CHECK(store.get(other).error().message == "no asset with ID \"" + other + "\" in the library");
+
+    auto wav = library::test_generator()->generate({.type = "sound", .prompt = "beep"});
+    REQUIRE(wav.ok());
+    library::Record sound;
+    REQUIRE(library::describe_file(wav.value().data, "beep.WAV", sound).ok());
+    CHECK(sound.type == "sound");
+    CHECK(sound.format == "wav");
+    CHECK(sound.seconds == 0.5);
+    CHECK(sound.channels == 1);
+    CHECK(sound.sample_rate == 22050);
+    REQUIRE(store.put(wav.value().data, sound).ok());
+    auto all = store.all();
+    REQUIRE(all.ok());
+    CHECK(all.value().size() == 2);
+
+    library::Record unknown;
+    CHECK(library::describe_file("text", "notes.txt", unknown).error().message ==
+          "\"notes.txt\" is not a file the library keeps: .png, .bmp, .wav, .ogg or .mp3");
+    CHECK_FALSE(library::describe_file("not a png", "broken.png", unknown).ok());
+
+    // Requests remember what they made.
+    json::Value request = parse(R"({"prompt": "red ball", "type": "image"})");
+    const std::string key = library::request_key("test", "test", request);
+    CHECK(key.size() == 64);
+    CHECK(key != library::request_key("test", "other", request));
+    CHECK_FALSE(store.find_request(key));
+    REQUIRE(store.remember_request(key, id).ok());
+    CHECK(store.find_request(key) == id);
+}
+
+TEST_CASE("library search ranks by the share of words found") {
+    std::vector<library::Record> records(4);
+    records[0].id = std::string(64, 'a');
+    records[0].type = "image";
+    records[0].description = "A green slime that bounces.";
+    records[0].tags = {"enemy", "slime"};
+    records[1].id = std::string(64, 'b');
+    records[1].type = "image";
+    records[1].description = "A red slime.";
+    records[2].id = std::string(64, 'c');
+    records[2].type = "sound";
+    records[2].request = parse(R"({"prompt": "slime squish"})");
+    records[3].id = std::string(64, 'd');
+    records[3].type = "image";
+    records[3].description = "Gold coins in a pile.";
+    records[3].tags = {"pickup"};
+
+    const auto ids = [](const std::vector<library::Match>& matches) {
+        std::string out;
+        for (const library::Match& match : matches) {
+            out += match.record->id.substr(0, 1);
+            out += ':';
+            out += std::to_string(static_cast<int>(match.score * 100));
+            out += ' ';
+        }
+        return out;
+    };
+    CHECK(ids(library::search(records, {.text = "green slimes"})) == "a:100 b:50 c:50 ");
+    CHECK(ids(library::search(records, {.text = "Slime", .type = "image"})) == "a:100 b:100 ");
+    CHECK(ids(library::search(records, {.text = "a coin"})) == "d:100 ");
+    CHECK(ids(library::search(records, {.tags = {"enemy"}})) == "a:100 ");
+    CHECK(ids(library::search(records, {.type = "image", .limit = 2})) == "a:100 b:100 ");
+    CHECK(library::search(records, {.text = "dragon"}).empty());
+}
+
+TEST_CASE("test generator makes placeholders the same on every machine") {
+    const std::shared_ptr<library::Generator> generator = library::test_generator();
+    auto first = generator->generate(image("red ball sprite", 32));
+    auto second = generator->generate(image("red ball sprite", 32));
+    REQUIRE(first.ok());
+    REQUIRE(second.ok());
+    CHECK(first.value().data == second.value().data);
+    CHECK(first.value().format == "png");
+    CHECK(first.value().model == "test");
+    CHECK(first.value().seed == 0);
+
+    // A red circle on a transparent background.
+    const slash::render::Image ball = decode(first.value().data);
+    CHECK(ball.width == 32);
+    CHECK(ball.height == 32);
+    CHECK(pixel(ball, 0, 0)[3] == 0);
+    const std::array<int, 4> middle = pixel(ball, 18, 14);
+    CHECK(middle[3] == 255);
+    CHECK(middle[0] > middle[1] + 100);
+
+    // A box fills its corner area; a seed or a new prompt changes the image.
+    const slash::render::Image crate =
+        decode(generator->generate(image("crate", 32, 16)).value().data);
+    CHECK(crate.width == 32);
+    CHECK(crate.height == 16);
+    CHECK(pixel(crate, 5, 3)[3] == 255);
+    library::GenerateRequest seeded = image("red ball sprite", 32);
+    seeded.seed = 7;
+    CHECK(generator->generate(seeded).value().data != first.value().data);
+    CHECK(generator->generate(seeded).value().seed == 7);
+
+    // Refining: recolored, mirrored, or varied when it understands none of the prompt.
+    library::Record parent;
+    library::GenerateRequest blue = image("make it blue");
+    blue.parent = &parent;
+    blue.parent_data = first.value().data;
+    const slash::render::Image recolored = decode(generator->generate(blue).value().data);
+    CHECK(pixel(recolored, 0, 0)[3] == 0);
+    const std::array<int, 4> now = pixel(recolored, 18, 14);
+    CHECK(now[2] > now[0] + 50);
+    library::GenerateRequest mirror = blue;
+    mirror.prompt = "mirror it";
+    const slash::render::Image mirrored = decode(generator->generate(mirror).value().data);
+    CHECK(pixel(mirrored, 31 - 18, 14) == middle);
+    library::GenerateRequest vague = blue;
+    vague.prompt = "more menacing";
+    CHECK(generator->generate(vague).value().data != first.value().data);
+
+    // Sounds: a tone as long as asked, then refined higher and shorter.
+    auto tone = generator->generate({.type = "sound", .prompt = "coin", .seconds = 0.25});
+    REQUIRE(tone.ok());
+    CHECK(tone.value().format == "wav");
+    CHECK(tone.value().data.size() == 44 + 2 * 5513);
+    library::GenerateRequest higher{.type = "sound", .prompt = "higher and shorter"};
+    higher.parent = &parent;
+    higher.parent_data = tone.value().data;
+    auto refined = generator->generate(higher);
+    REQUIRE(refined.ok());
+    CHECK(refined.value().data.size() == 44 + 2 * (5513 * 2 / 3 / 2));
+    library::GenerateRequest not_wav = higher;
+    not_wav.parent_data = "OggS";
+    CHECK(generator->generate(not_wav).error().message ==
+          "the test generator refines only the .wav sounds it makes");
+}
+
+TEST_CASE("providers.json names generators and open_generator picks one") {
+    auto config = slash::ai::parse_config(parse(R"({"generators": {
+        "placeholders": {"type": "test", "license": "Ours"}}})"));
+    REQUIRE(config.ok());
+    REQUIRE(config.value().generators.size() == 1);
+    CHECK(config.value().generators.at("placeholders").license == "Ours");
+
+    auto only = library::open_generator(config.value(), "", "image");
+    REQUIRE(only.ok());
+    CHECK(only.value().name == "placeholders");
+    CHECK(only.value().type == "test");
+    CHECK(only.value().model == "test");
+    CHECK(only.value().license == "Ours");
+    auto builtin = library::open_generator({}, "test", "sound");
+    REQUIRE(builtin.ok());
+    CHECK(builtin.value().license == "CC0-1.0");
+    CHECK(library::open_generator({}, "", "image").error().message ==
+          "providers.json names no generator that makes images; add one under \"generators\", or "
+          "pass generator \"test\" for placeholders");
+    CHECK(library::open_generator(config.value(), "placeholder", "image").error().message ==
+          "no generator named \"placeholder\"; did you mean \"placeholders\"?");
+
+    CHECK(slash::ai::parse_config(parse(R"({"generators": {"x": {"type": "dalle"}}})"))
+              .error()
+              .message.starts_with("providers.json /generators/x/type: "));
+}
+
+TEST_CASE("asset.generate keeps assets, reuses exact repeats and offers close matches") {
+    const fs::path root = fresh("library_generate");
+    const Engine engine(root);
+
+    json::Value made = engine.call(
+        "asset.generate", R"({"prompt": "green slime sprite", "generator": "test", "width": 24,
+                              "tags": ["enemy"]})");
+    const std::string id = made["id"].as_string();
+    CHECK(id.size() == 12);
+    CHECK(json::write(made, json::Style::Compact) ==
+          R"({"height":24,"id":")" + id + R"(","width":24})");
+
+    // The same request again calls no generator.
+    CHECK(json::write(engine.call("asset.generate", R"({"prompt": "green slime sprite",
+                                  "generator": "test", "width": 24, "tags": ["enemy"]})"),
+                      json::Style::Compact) ==
+          R"({"height":24,"id":")" + id + R"(","reused":true,"width":24})");
+
+    // A close request gets the match back as a candidate, and makes nothing until asked.
+    json::Value close =
+        engine.call("asset.generate", R"({"prompt": "slime sprite, green", "generator": "test"})");
+    CHECK(json::write(close, json::Style::Compact) ==
+          R"({"candidates":[{"description":"green slime sprite","height":24,"id":")" + id +
+              R"(","score":1.0,"tags":["enemy"],"type":"image","width":24}]})");
+    json::Value forced =
+        engine.call("asset.generate", R"({"prompt": "slime sprite, green", "generator": "test",
+                                           "similar": false, "path": "art/slime.png"})");
+    CHECK(forced["id"].as_string() != id);
+    CHECK(forced["path"] == "art/slime.png");
+    const std::string png = read(root / "project" / "art" / "slime.png");
+    CHECK(slash::sha256_hex(png).starts_with(forced["id"].as_string()));
+    json::Value sources = parse(read(root / "project" / "library.json"));
+    CHECK(sources["assets"]["art/slime.png"]["id"] == slash::sha256_hex(png));
+    CHECK(sources["assets"]["art/slime.png"]["generator"] == "test");
+    CHECK(sources["assets"]["art/slime.png"]["license"] == "CC0-1.0");
+
+    // A sound, written straight into the project.
+    json::Value sound = engine.call("asset.generate",
+                                    R"({"prompt": "laser zap", "type": "sound", "generator": "test",
+                              "seconds": 0.2, "path": "sfx/zap.wav"})");
+    CHECK(sound["seconds"] == 0.2);
+    CHECK(fs::exists(root / "project" / "sfx" / "zap.wav"));
+
+    json::Value found = engine.call("asset.search", R"({"text": "slime"})");
+    REQUIRE(found["assets"].size() == 2);
+    // Both match every word, so they come by ID.
+    const std::string forced_id = forced["id"].as_string();
+    CHECK(found["assets"].as_array()[0]["id"] == (id < forced_id ? id : forced_id));
+    json::Value sounds = engine.call("asset.search", R"({"type": "sound"})");
+    REQUIRE(sounds["assets"].size() == 1);
+    CHECK(json::write(sounds["assets"].as_array()[0], json::Style::Compact) ==
+          R"({"description":"laser zap","id":")" + sound["id"].as_string() +
+              R"(","seconds":0.2,"type":"sound"})");
+}
+
+TEST_CASE("asset.refine makes versions that asset.info lists") {
+    const fs::path root = fresh("library_refine");
+    const Engine engine(root);
+    const std::string first =
+        engine
+            .call("asset.generate",
+                  R"({"prompt": "wooden crate", "generator": "test", "tags": ["prop"]})")["id"]
+            .as_string();
+    json::Value second =
+        engine.call("asset.refine", R"({"id": ")" + first + R"(", "prompt": "darker"})");
+    CHECK(second["parent"] == first);
+    const std::string second_id = second["id"].as_string();
+    json::Value third =
+        engine.call("asset.refine", R"({"id": ")" + second_id.substr(0, 8) +
+                                        R"(", "prompt": "red", "path": "props/crate.png"})");
+    CHECK(third["parent"] == second_id);
+    CHECK(fs::exists(root / "project" / "props" / "crate.png"));
+
+    json::Value info = engine.call("asset.info", R"({"id": ")" + third["id"].as_string() + R"("})");
+    CHECK(info["description"] == "wooden crate; darker; red");
+    CHECK(info["tags"] == parse(R"(["prop"])"));
+    CHECK(info["generator"] == "test");
+    CHECK(info["license"] == "CC0-1.0");
+    CHECK(info["request"]["prompt"] == "red");
+    CHECK(info["versions"] == parse(R"([")" + first + R"(", ")" + second_id + R"("])"));
+    json::Value root_info = engine.call("asset.info", R"({"id": ")" + first + R"("})");
+    CHECK(root_info["children"] == parse(R"([")" + second_id + R"("])"));
+    CHECK(root_info.find("versions") == nullptr);
+
+    // Refining the same way again reuses the version already made.
+    CHECK(engine.call("asset.refine",
+                      R"({"id": ")" + first + R"(", "prompt": "darker"})")["reused"] == true);
+}
+
+TEST_CASE("asset.use and asset.add move files between the project and the library") {
+    const fs::path root = fresh("library_use");
+    const Engine engine(root);
+    auto png = library::test_generator()->generate(image("blue gem icon", 8));
+    REQUIRE(png.ok());
+    write(root / "project" / "art" / "gem.png", png.value().data);
+
+    json::Value added =
+        engine.call("asset.add", R"({"path": "art/gem.png", "description": "A blue gem.",
+                                     "tags": ["pickup"], "license": "CC-BY-4.0",
+                                     "author": "Mira"})");
+    CHECK(json::write(added, json::Style::Compact) ==
+          R"({"height":8,"id":")" + slash::sha256_hex(png.value().data).substr(0, 12) +
+              R"(","type":"image","width":8})");
+    json::Value info = engine.call("asset.info", R"({"id": ")" + added["id"].as_string() + R"("})");
+    CHECK(info["author"] == "Mira");
+    CHECK(info["license"] == "CC-BY-4.0");
+    CHECK(info.find("generator") == nullptr);
+
+    // Another project uses it.
+    write(root / "other" / "project.json", R"({"format": 1, "name": "Other"})");
+    const Engine other(root);
+    command::SessionOptions options = other.session->options();
+    options.project_root = (root / "other").string();
+    command::Session session(other.components, other.commands, options);
+    const command::Reply used = session.call(
+        "asset.use", parse(R"({"id": ")" + added["id"].as_string() + R"(", "path": "gem.png"})"));
+    REQUIRE_MESSAGE(used.ok, used.message);
+    CHECK(read(root / "other" / "gem.png") == png.value().data);
+    json::Value sources = parse(read(root / "other" / "library.json"));
+    CHECK(sources["assets"]["gem.png"]["author"] == "Mira");
+    CHECK(sources["assets"]["gem.png"]["license"] == "CC-BY-4.0");
+
+    CHECK(
+        engine
+            .fail("asset.use", R"({"id": ")" + added["id"].as_string() + R"(", "path": "gem.bmp"})")
+            .message == "/path: the asset is a .png file; name the path so");
+    CHECK(engine
+              .fail("asset.use",
+                    R"({"id": ")" + added["id"].as_string() + R"(", "path": "../gem.png"})")
+              .data["path"] == "/path");
+}
+
+TEST_CASE("asset commands report bad params with their paths") {
+    const fs::path root = fresh("library_errors");
+    const Engine engine(root);
+    CHECK(engine.fail("asset.generate", R"({"prompt": "x"})").message ==
+          "providers.json names no generator that makes images; add one under \"generators\", or "
+          "pass generator \"test\" for placeholders");
+    CHECK(engine.fail("asset.generate", R"({"prompt": "x", "generator": "tset"})").message ==
+          "/generator: no generator named \"tset\"; did you mean \"test\"?");
+    CHECK(engine
+              .fail("asset.generate", R"({"prompt": "x", "generator": "test",
+                                             "seconds": 1})")
+              .message == "/seconds: images have a width and height, not seconds");
+    CHECK(engine
+              .fail("asset.generate", R"({"prompt": "x", "type": "sound", "generator": "test",
+                                             "width": 4})")
+              .message == "/width: sounds have seconds, not a width and height");
+    CHECK(engine
+              .fail("asset.generate", R"({"prompt": "x", "generator": "test",
+                                             "path": "x.wav"})")
+              .message == "/path: \"x.wav\" is not an image (.png)");
+    CHECK(engine.fail("asset.info", R"({"id": "0123456789"})").message ==
+          "/id: no asset with ID \"0123456789\" in the library");
+    CHECK(engine.fail("asset.add", R"({"path": "missing.png", "description": "x"})").data["path"] ==
+          "/path");
+
+    // Sessions that run tests leave the library alone.
+    const Engine tests(root, false);
+    CHECK(tests.fail("asset.generate", R"({"prompt": "x", "generator": "test"})").message ==
+          "tests don't write files, so the library stays as it was");
+
+    // ai.providers lists the generators, never their keys.
+    write(root / "project" / "providers.json",
+          R"({"generators": {"art": {"type": "test", "api_key_env": "SLASH_TEST_UNSET_KEY"}}})");
+    json::Value providers = engine.call("ai.providers", "{}");
+    CHECK(json::write(providers["generators"], json::Style::Compact) ==
+          R"({"art":{"api_key_env":"SLASH_TEST_UNSET_KEY","key_set":false,"type":"test"}})");
+    CHECK(engine.call("asset.generate", R"({"prompt": "x"})")["id"].as_string().size() == 12);
+}

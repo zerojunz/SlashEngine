@@ -151,6 +151,21 @@ on the job system's threads at once, each on a pool of no threads, so a run come
 it would alone. Box2D's world list is shared, so `physics2d` creates and destroys its worlds under
 a lock.
 
+## Asset library
+
+`engine/library` keeps generated and added images and sounds once per machine
+(`~/.slash/library`, or `SLASH_LIBRARY_DIR`; `SessionOptions::library_dir` in tests), stored by
+the SHA-256 of their bytes (`slash/core/sha256.hpp`) with a record of how each was made: request,
+generator, model, seed, license, tags, a short description and the parent it was refined from.
+Files are written whole and moved into place (`platform::rename_file`), so agents can share a
+library. Generators are `library::Generator` adapters named in `providers.json`'s `generators`,
+as models are `ai::Provider`s; the built-in `test` generator draws placeholders with integer math
+only, so they are the same bytes everywhere. `asset.search`, `asset.generate` (an exact repeat
+calls no generator, close matches come back as candidates), `asset.refine`, `asset.info`,
+`asset.use` and `asset.add` are in `slash_library_commands`, registered by slash-cli and
+slash-mcp; using an asset copies it into the project and records its source and license in the
+project's `library.json`.
+
 ## Commands, MCP and JSON-RPC
 
 Every change to a world goes through a command registered in `engine/command`. The same registry
@@ -1049,7 +1064,8 @@ CI rejects unformatted code and any clang-tidy finding.
   particles, GPU particles' steps and drawing them), `text` (fonts, shaping, line breaking, carets and selections, and glyph atlases), `ui`
   (controls, containers and themes: layout, draw calls, buttons, focus and text fields), `animation` (`.anim.json` keyframe
   animations and the system that plays them),
-  `physics2d` (2D bodies, areas, joints and queries on Box2D), `storyboard` (storyboard kinds, files, versions,
+  `physics2d` (2D bodies, areas, joints and queries on Box2D), `library` (the asset library, its
+  generators and commands), `storyboard` (storyboard kinds, files, versions,
   queries, edits, briefs and checks), `command` (commands, sessions with undo, JSON-RPC and MCP),
   `debug` (the debug overlay over a running game), `server` (localhost HTTP over a session),
   `ai` (language model providers, their adapters, `providers.json`, replay and the `ai.*`

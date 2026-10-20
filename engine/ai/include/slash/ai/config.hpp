@@ -16,9 +16,10 @@
 #include <string_view>
 #include <vector>
 
-// providers.json, beside project.json: the providers a project can call and the role each feature
-// uses, such as "dialogue" or "assistant". Keys come from environment variables the file names,
-// never from the file. $cli schema providers prints its JSON Schema.
+// providers.json, beside project.json: the providers a project can call, the role each feature
+// uses, such as "dialogue" or "assistant", and the asset library's generators. Keys come from
+// environment variables the file names, never from the file. $cli schema providers prints its
+// JSON Schema.
 namespace slash::ai {
 
 inline constexpr std::string_view kConfigFile = "providers.json";
@@ -48,6 +49,19 @@ struct RoleConfig {
     Params params;      // used where a request sets none
 };
 
+// An image or sound generator for the asset library (slash/library/generator.hpp).
+struct GeneratorConfig {
+    std::string type;        // "test"
+    std::string model;       // "" for the generator's default
+    std::string url;         // "" for the vendor's own
+    std::string api_key_env; // the variable holding the key; "" for none
+    std::map<std::string, std::string> headers;
+    std::string license; // the terms its outputs come under
+    json::Value options; // sent with every request
+    int timeout_seconds = 600;
+    int max_retries = 2;
+};
+
 struct ReplayConfig {
     std::string file; // a project path
     ReplayMode mode = ReplayMode::Auto;
@@ -56,6 +70,7 @@ struct ReplayConfig {
 struct Config {
     std::map<std::string, ProviderConfig, std::less<>> providers;
     std::map<std::string, RoleConfig, std::less<>> roles;
+    std::map<std::string, GeneratorConfig, std::less<>> generators;
     std::optional<ReplayConfig> replay;
 };
 

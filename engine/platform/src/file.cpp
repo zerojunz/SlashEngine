@@ -134,6 +134,16 @@ Result<void> remove_file(std::string_view path) {
     return {};
 }
 
+Result<void> rename_file(std::string_view from, std::string_view to) {
+    const std::string source(from);
+    const std::string target(to);
+    if (!SDL_RenamePath(source.c_str(), target.c_str())) {
+        return make_error(ErrorCode::PlatformFailure, "could not move \"" + source + "\" to \"" +
+                                                          target + "\": " + SDL_GetError());
+    }
+    return {};
+}
+
 std::optional<FileStamp> file_stamp(std::string_view path) {
     const std::string name(path);
     SDL_PathInfo info;

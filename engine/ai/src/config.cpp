@@ -81,6 +81,29 @@ constexpr std::string_view kSchema = R"({
         ]
       }
     },
+    "generators": {
+      "description": "Image and sound generators the asset library calls, by name. \"test\" is built in.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["type"],
+        "properties": {
+          "type": {
+            "description": "test: placeholder images and tones made on the machine, for tests and CI.",
+            "enum": ["test"]
+          },
+          "model": {"description": "The model's ID, as the service names it. Default: the generator's.", "type": "string", "minLength": 1},
+          "url": {"description": "The API's base URL. Default: the vendor's.", "type": "string"},
+          "api_key_env": {"description": "The environment variable holding the API key.", "type": "string", "minLength": 1},
+          "headers": {"description": "Headers sent with every request. Never put a key here.", "type": "object", "additionalProperties": {"type": "string"}},
+          "license": {"description": "The terms its outputs come under, recorded with each asset, such as the service's terms of use.", "type": "string"},
+          "options": {"description": "Settings sent with every request, as the generator takes them.", "type": "object"},
+          "timeout_seconds": {"description": "How long to wait for a result. Default: 600.", "type": "integer", "minimum": 1},
+          "max_retries": {"description": "Retries after a rate limit or server error. Default: 2.", "type": "integer", "minimum": 0, "maximum": 10}
+        }
+      }
+    },
     "replay": {
       "description": "Recorded replies, so tests run offline. SLASH_AI_REPLAY (replay, record, auto or off) overrides the mode.",
       "type": "object",
@@ -292,6 +315,36 @@ Result<Config> parse_config(const json::Value& document) {
                 }
             }
             config.roles.emplace(name, std::move(role));
+        }
+    }
+    if (const json::Value* generators = document.find("generators"); generators != nullptr) {
+        for (const auto& [name, value] : generators->as_object()) {
+            GeneratorConfig generator;
+            generator.type = value.find("type")->as_string();
+            const auto text = [&value](std::string_view key, std::string& out) {
+                if (const json::Value* member = value.find(key); member != nullptr) {
+                    out = member->as_string();
+                }
+            };
+            text("model", generator.model);
+            text("url", generator.url);
+            text("api_key_env", generator.api_key_env);
+            text("license", generator.license);
+            if (const json::Value* headers = value.find("headers"); headers != nullptr) {
+                for (const auto& [header, header_text] : headers->as_object()) {
+                    generator.headers[header] = header_text.as_string();
+                }
+            }
+            if (const json::Value* options = value.find("options"); options != nullptr) {
+                generator.options = *options;
+            }
+            if (const json::Value* timeout = value.find("timeout_seconds"); timeout != nullptr) {
+                generator.timeout_seconds = static_cast<int>(timeout->as_int());
+            }
+            if (const json::Value* retries = value.find("max_retries"); retries != nullptr) {
+                generator.max_retries = static_cast<int>(retries->as_int());
+            }
+            config.generators.emplace(name, std::move(generator));
         }
     }
     if (const json::Value* replay = document.find("replay"); replay != nullptr) {

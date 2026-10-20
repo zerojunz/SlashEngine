@@ -766,6 +766,7 @@ drawn, but the sprites are still checked and counted, so a test can see that the
 | `SLASH_ENGINE_DIR` | Engine sources `slash-cli export` and `slash-cli build` build against |
 | `EMSDK` | The Emscripten SDK, needed for web exports |
 | `SLASH_TOOLCHAINS_DIR` | Where `slash-cli toolchain` installs cross toolchains (default `~/.slash/toolchains`) |
+| `SLASH_LIBRARY_DIR` | The [asset library](commands.md#asset-library) every project on the machine shares (default `~/.slash/library`) |
 | `SLASH_SDKS_DIR` | Where exports keep [SDK packages'](sdk-format.md#downloads) downloads (default `~/.slash/sdks`) |
 | `SLASH_APPLE_API_KEY_PATH`, `SLASH_APPLE_API_KEY_ID`, `SLASH_APPLE_API_ISSUER` | An App Store Connect API key (the `.p8` file, its ID and issuer) for notarizing macOS exports |
 | `SLASH_WINDOWS_CERTIFICATE_PATH`, `SLASH_WINDOWS_CERTIFICATE_PASSWORD` | A `.pfx` code-signing certificate and its password for signing Windows exports |
