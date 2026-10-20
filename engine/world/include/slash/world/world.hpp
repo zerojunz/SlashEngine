@@ -3,11 +3,13 @@
 #include "slash/core/json.hpp"
 #include "slash/core/result.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <entt/entity/registry.hpp>
 #include <functional>
 #include <map>
 #include <memory>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -166,6 +168,22 @@ public:
     // with IDs come and go, and emitted events. Sessions set it to serve events.subscribe.
     void set_event_listener(EventListener listener) { listener_ = std::move(listener); }
 
+    // The events of the tick before this one, in the order they came: entity.created and
+    // entity.destroyed and emitted events, from the start of the last tick to the start of this
+    // one, so those between ticks (a loaded scene's entities) too. Gameplay code reacts to them as
+    // Godot code does to signals: each system sees each event once, at the tick after it came,
+    // whatever order the systems run in. At most kMaxEvents a tick are kept.
+    [[nodiscard]] std::span<const Event> events() const noexcept { return events_; }
+    static constexpr std::size_t kMaxEvents = 65'536;
+    // What events() holds and what the next tick's will. Sessions put them back when they roll
+    // back a failed command or a dry run; reset_state empties them.
+    struct EventQueues {
+        std::vector<Event> last;
+        std::vector<Event> next;
+    };
+    [[nodiscard]] EventQueues event_queues() const { return {events_, next_events_}; }
+    void set_event_queues(EventQueues queues);
+
     // Where prefab files come from. Without a reader, entities cannot extend prefabs.
     void set_file_reader(FileReader reader) { reader_ = std::move(reader); }
     [[nodiscard]] const FileReader& file_reader() const noexcept { return reader_; }
@@ -202,8 +220,10 @@ private:
     void notify(std::string kind, std::string_view id, json::Value data);
 
     const ComponentRegistry* components_;
-    // Declared before registry_ so it outlives the registry's destruction signals.
+    // Declared before registry_ so they outlive the registry's destruction signals.
     std::map<std::string, entt::entity, std::less<>> by_id_;
+    std::vector<Event> events_;      // the last tick's, for events()
+    std::vector<Event> next_events_; // this tick's so far
     entt::registry registry_;
     std::vector<NamedSystem> systems_;
     std::vector<std::function<void(World&)>> resets_;

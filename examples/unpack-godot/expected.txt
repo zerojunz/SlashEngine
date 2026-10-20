@@ -25,12 +25,15 @@ project.import {"dry_run":true,"source":"shipped/jumper.pck","unpack_to":"godot"
   },
   "dry_run": true,
   "engine": "godot",
-  "files": ["godot/art/hero.png", "godot/art/hero.png.import", "godot/main.tscn", "godot/player.gd", "godot/player.gd.uid", "godot/project.godot", "godot/sfx/jump.wav", "godot/sfx/jump.wav.import", "project.json", "godot/main.scene.json", "storyboard/work.json", "import/godot.json"],
+  "files": ["godot/art/hero.png", "godot/art/hero.png.import", "godot/main.tscn", "godot/player.gd", "godot/player.gd.uid", "godot/project.godot", "godot/sfx/jump.wav", "godot/sfx/jump.wav.import", "project.json", "godot/main.scene.json", "storyboard/work.json", "src/imported/player.cpp", "src/imported/scripts.cpp", "src/game.cpp", "import/godot.json"],
   "main_scene": "godot/main.scene.json",
+  "module": "src/game.cpp",
   "project": "Jumper",
   "report": "import/godot.json",
   "scripts": [
     {
+      "code": "src/imported/player.cpp",
+      "component": "Player",
       "entities": 1,
       "script": "godot/player.gd",
       "task": "task/port-player"
@@ -71,12 +74,15 @@ project.import {"source":"shipped/jumper.pck","unpack_to":"godot"}
     "tile_sets": 0
   },
   "engine": "godot",
-  "files": 12,
+  "files": 15,
   "main_scene": "godot/main.scene.json",
+  "module": "src/game.cpp",
   "project": "Jumper",
   "report": "import/godot.json",
   "scripts": [
     {
+      "code": "src/imported/player.cpp",
+      "component": "Player",
       "entities": 1,
       "script": "godot/player.gd",
       "task": "task/port-player"
@@ -233,6 +239,9 @@ godot/sfx/jump.wav is the game's sound: yes
     "player": {
       "components": {
         "CharacterBody2D": {},
+        "Player": {
+          "jump_velocity": -300.0
+        },
         "Transform2D": {
           "children": ["sprite2d", "player_collision_shape2d"],
           "position": [40.0, 156.0]
@@ -262,6 +271,9 @@ godot/sfx/jump.wav is the game's sound: yes
 --- project.json
 {
   "format": 1,
+  "gameplay": {
+    "sources": ["src"]
+  },
   "input": {
     "jump": {
       "deadzone": 0.5,
@@ -313,7 +325,7 @@ storyboard.query {"kind":"task"}
         "summary": "GDScript from Godot: write what it does as C++ components and systems."
       },
       "id": "task/port-player",
-      "version": "7fc566cf"
+      "version": "2f2871fc"
     }
   ],
   "seq": 0

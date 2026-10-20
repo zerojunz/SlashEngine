@@ -350,6 +350,46 @@ Each `.gd` or `.cs` file becomes a task in `storyboard/work.json`, such as
 extends, its class name, exported variables, signals and functions. Autoloads get tasks too.
 The original scripts stay in the project for the agent to read while it writes the C++.
 
+Each `.gd` file also becomes a C++ skeleton for the agent to fill in, in the folder of
+`project.json`'s gameplay sources (`src`, added to the sources when the project has none):
+
+| File | What it holds |
+| --- | --- |
+| `src/imported/<name>.cpp` | The script's constants and enums; its variables as a component named after its `class_name` (or file); an `emit_<signal>` helper per signal, which emits a world event with the signal's arguments as its data; a stub per function, with the GDScript in comments; the system calling them; and `imported::register_<name>` |
+| `src/imported/scripts.cpp` | `imported::register_scripts`, which registers every skeleton's component and system |
+| `src/game.cpp` | The game module calling it, written only when the project's code has none (`src/imported/module.cpp` when `src/game.cpp` is taken) |
+
+Scenes give each entity whose node has the script that component, with the values the node gave
+its exported variables: node paths become the IDs of the entities they name, and an instance's
+component holds only what its scene's file doesn't. Until the code is built, the component is a
+stand-in that keeps those values, so the scenes open, change and save as they are.
+
+| GDScript | C++ |
+| --- | --- |
+| `int`, `float`, `bool`, `String`, `StringName` | `int`, `float`, `bool`, `std::string` |
+| `Vector2`, `Vector2i`, `Vector3`, `Vector4`, `Color`, `Rect2`, `Quaternion` | `slash::Vec2`, `Vec2i`, `Vec3`, `Vec4` (`Color` and `Rect2` too), `Quat` |
+| Node types (`Node2D`, a `class_name` of the game's) and `NodePath` | `entt::entity`, the entity the scene's path names |
+| Resource types (`Texture2D`, `PackedScene`, `AudioStream`...) | `std::string`, the converted file's path |
+| `Array[T]`, packed arrays, `Dictionary[String, T]` | `std::vector`, `std::map<std::string, T>` |
+| `Array`, `Dictionary`, enums, anything else | `slash::json::Value`; enums `int` |
+
+Untyped variables take their value's type. Values translate when they are literals, constants,
+enum values, `Vector2(...)`, `Color(...)`, `Color("#rrggbb")`, named colors or `preload()`;
+others stay a comment. `@export_range` sets the field's range and `##` comments its doc.
+
+The system calls the stubs when Godot would call the functions: `_init`, `_enter_tree` and
+`_ready` for each entity made since the last tick (`entity.created` in `World::events()`),
+`_physics_process` and `_process` once a tick with the tick's seconds, `_input` and the other
+input functions for each input event, and a method a scene connects a signal to when that
+signal's event comes from the connected entity. `_exit_tree`, `_draw` and Godot's other calls
+are stubs nothing calls yet. `@onready` variables, setters and getters, static variables and
+inner classes are listed at the top of the skeleton instead.
+
+Importing again leaves a skeleton that exists as it is, its component taking scene values for
+the fields it still has, and rewrites `scripts.cpp`. When the project's own game module doesn't
+call `imported::register_scripts`, the report says so. C# scripts get tasks only, for now.
+`examples/import-godot-scripts` imports a script, fills in its skeleton and runs it.
+
 `import/godot.json` holds what the port needs that the scenes don't: for each script, the
 entities that use it and the values their nodes gave its exported variables; the signal
 connections to its methods, by entity; and the project's autoloads and groups.
@@ -388,7 +428,7 @@ The report lists each of these once per kind, with how many and where it was fir
 | Y-sorting tile map layers | Layers draw in order, by `z_index` |
 | `gui/theme/custom_font` | Set `default_font` in the project's theme |
 | Audio effects with no SlashEngine equivalent, such as the deprecated `AudioEffectLimiter` | Left out of the bus, which keeps its other effects |
-| C++ skeletons for scripts | With gameplay code in game projects, milestone 6 |
+| C++ skeletons for C# scripts | Next; their tasks list what they declare |
 | Timers and other gameplay nodes | Gameplay code: their values are kept in the report |
 | `display/window/stretch/mode` | Stretching isn't supported yet |
 | Shaders (`.gdshader`) and `ShaderMaterial` | A game's own shaders are on the roadmap; canvas materials are `.material.json` graphs |

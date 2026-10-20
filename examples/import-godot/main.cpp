@@ -7,15 +7,17 @@
 // files, its animation library a .anim.json file, its tile set a .tileset.json file, its theme a
 // .theme.json file, its buses a .bus_layout.json file, its music and a sound's loop .audio.json
 // files, its window, physics, rendering, GUI, audio and input settings project.json, and each
-// script a storyboard task to port it to C++, since SlashEngine games are plain C++. The report
-// lists what didn't convert, and why. Games ship PNG and sound files made in other tools; this
-// example makes its textures and sounds in code, so the repository holds no images or sounds.
+// script a C++ skeleton and a storyboard task to port it, since SlashEngine games are plain C++
+// (examples/import-godot-scripts ports one). The report lists what didn't convert, and why. Games
+// ship PNG and sound files made in other tools; this example makes its textures and sounds in code,
+// so the repository holds no images or sounds.
 
 #include "slash/audio/audio.hpp"
 #include "slash/command/builtin.hpp"
 #include "slash/command/command.hpp"
 #include "slash/command/session.hpp"
 #include "slash/core/json.hpp"
+#include "slash/gameplay/host.hpp"
 #include "slash/importer/commands.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/render/image.hpp"
@@ -77,6 +79,9 @@ void print_file(const std::string& path) {
 struct Agent {
     world::ComponentRegistry components;
     command::Registry commands;
+    // The game's own C++ code. Until it is built, the components of the skeletons the import
+    // writes are stand-ins that keep the values scenes give them.
+    slash::gameplay::Host code{components, slash::gameplay::library_path(".")};
     std::unique_ptr<command::Session> session;
 
     Agent() {
@@ -85,6 +90,7 @@ struct Agent {
         slash::importer::register_import_commands(commands);
         command::SessionOptions options;
         options.capture_logs = false;
+        options.gameplay = &code;
         session = std::make_unique<command::Session>(components, commands, options);
     }
 

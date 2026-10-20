@@ -1,5 +1,6 @@
 #include "slash/importer/import.hpp"
 
+#include "common.hpp"
 #include "godot_import.hpp"
 #include "unity_import.hpp"
 
@@ -27,6 +28,45 @@ namespace fs = std::filesystem;
 std::optional<std::string> read_optional(const fs::path& path) {
     auto text = platform::read_file(path.string());
     return text ? std::optional<std::string>(std::move(text.value())) : std::nullopt;
+}
+
+bool is_code_file(std::string_view path) {
+    return path.ends_with(".cpp") || path.ends_with(".hpp") || path.ends_with(".h");
+}
+
+// What the destination has that an import builds on: its project.json, storyboard/work.json and
+// the C++ files of its gameplay sources and of the folder skeletons go to.
+Existing existing_of(const fs::path& destination) {
+    Existing existing;
+    existing.project = read_optional(destination / runtime::kProjectFile);
+    existing.work = read_optional(destination / storyboard::file_path("work"));
+    std::vector<std::string> sources{gameplay_folder(existing.project)};
+    if (auto parsed = json::parse(existing.project.value_or("")); parsed) {
+        if (auto project = runtime::parse_project(parsed.value()); project) {
+            std::ranges::copy(project.value().gameplay_sources, std::back_inserter(sources));
+        }
+    }
+    for (const std::string& source : sources) {
+        const fs::path path = destination / source;
+        std::error_code error;
+        if (fs::is_regular_file(path, error)) {
+            if (auto text = read_optional(path); text && is_code_file(source)) {
+                existing.code[fs::path(source).lexically_normal().generic_string()] = *text;
+            }
+            continue;
+        }
+        auto files = platform::list_files(path.string());
+        if (!files) {
+            continue;
+        }
+        for (const std::string& file : files.value()) {
+            const fs::path relative = (fs::path(source) / file).lexically_normal();
+            if (auto text = read_optional(path / file); text && is_code_file(file)) {
+                existing.code[relative.generic_string()] = std::move(*text);
+            }
+        }
+    }
+    return existing;
 }
 
 // Where unpack_to puts an unpacked project's files: "" or a folder in the destination ending in
@@ -62,10 +102,8 @@ Result<ImportPlan> plan_unpacked(const fs::path& source, const fs::path& destina
         return unpack.error();
     }
     const std::string& prefix = unpack.value();
-    auto plan =
-        plan_godot(source.generic_string(), &game.value().files, prefix, options.unpack_to.empty(),
-                   read_optional(destination / runtime::kProjectFile),
-                   read_optional(destination / storyboard::file_path("work")));
+    auto plan = plan_godot(source.generic_string(), &game.value().files, prefix,
+                           options.unpack_to.empty(), existing_of(destination));
     if (!plan) {
         return plan;
     }
@@ -175,14 +213,12 @@ Result<ImportPlan> plan_import(const ImportOptions& options) {
     if (contained && inside != ".") {
         prefix = inside + "/";
     }
-    auto existing_project = read_optional(destination / runtime::kProjectFile);
-    auto existing_work = read_optional(destination / storyboard::file_path("work"));
+    const Existing existing = existing_of(destination);
     if (unity) {
-        return plan_unity(source.generic_string() + "/", prefix, !contained, existing_project,
-                          existing_work);
+        return plan_unity(source.generic_string() + "/", prefix, !contained, existing.project,
+                          existing.work);
     }
-    return plan_godot(source.generic_string() + "/", nullptr, prefix, !contained, existing_project,
-                      existing_work);
+    return plan_godot(source.generic_string() + "/", nullptr, prefix, !contained, existing);
 }
 
 Result<ImportPlan> import_project(const ImportOptions& options) {

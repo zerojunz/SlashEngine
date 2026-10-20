@@ -36,6 +36,12 @@ struct Load {
     [[nodiscard]] json::Value to_json() const;
 };
 
+// A component of the game's code as its sources declare it, before the code is built.
+struct StandIn {
+    std::string name;
+    std::vector<std::string> fields;
+};
+
 class Host {
 public:
     // Code built into a library, read when the host is attached and again whenever the file
@@ -67,6 +73,12 @@ public:
     // Whether poll would read the library again: the file is there and changed since.
     [[nodiscard]] bool changed() const;
 
+    // Stand-ins (ComponentRegistry::add_stand_in) for components the code declares but no loaded
+    // code registers, so scenes that use them load and save with their values. Code that loads
+    // with a component of the same name replaces its stand-in and keeps those values. Names
+    // already registered are skipped.
+    void add_stand_ins(std::vector<StandIn> components);
+
     // {"library", "loaded", "components", "systems"} and "error" if the last load failed.
     [[nodiscard]] json::Value status() const;
     [[nodiscard]] bool loaded() const noexcept { return loaded_; }
@@ -84,6 +96,7 @@ private:
     std::string library_;
     world::GameModuleFunction linked_ = nullptr;
     std::vector<std::string> types_;                      // the code's component types
+    std::vector<std::string> stand_ins_;                  // its components still stand-ins
     std::vector<world::GameModule::SystemEntry> systems_; // the code's systems
     std::optional<platform::FileStamp> stamp_;            // the library's when last read
     std::vector<platform::SharedLibrary> libraries_;

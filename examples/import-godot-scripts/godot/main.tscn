@@ -1,0 +1,21 @@
+[gd_scene load_steps=2 format=3 uid="uid://coincounter0"]
+
+[ext_resource type="Script" path="res://player.gd" id="1_player"]
+
+[node name="Main" type="Node2D"]
+
+[node name="Player" type="Node2D" parent="."]
+position = Vector2(10, 20)
+script = ExtResource("1_player")
+speed = 120.0
+goal = NodePath("../Goal")
+
+[node name="Goal" type="Node2D" parent="."]
+position = Vector2(30, 20)
+
+[node name="Coin" type="Button" parent="."]
+offset_right = 60.0
+offset_bottom = 24.0
+text = "Coin"
+
+[connection signal="pressed" from="Coin" to="Player" method="_on_coin_pressed"]

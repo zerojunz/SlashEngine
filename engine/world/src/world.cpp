@@ -144,6 +144,8 @@ std::vector<std::string_view> World::system_names() const {
 }
 
 void World::step(double tick_seconds) {
+    events_ = std::move(next_events_);
+    next_events_.clear();
     if (step_listener_) {
         step_listener_(*this, tick_seconds);
     }
@@ -164,6 +166,13 @@ void World::reset_state() {
     for (const auto& reset : resets_) {
         reset(*this);
     }
+    events_.clear();
+    next_events_.clear();
+}
+
+void World::set_event_queues(EventQueues queues) {
+    events_ = std::move(queues.last);
+    next_events_ = std::move(queues.next);
 }
 
 bool World::is_valid_id(std::string_view id) {
@@ -235,8 +244,12 @@ void World::emit(std::string kind, std::string_view id, json::Value data) {
 }
 
 void World::notify(std::string kind, std::string_view id, json::Value data) {
+    Event event{std::move(kind), std::string(id), std::move(data), tick_};
     if (listener_) {
-        listener_(Event{std::move(kind), std::string(id), std::move(data), tick_});
+        listener_(event);
+    }
+    if (next_events_.size() < kMaxEvents) {
+        next_events_.push_back(std::move(event));
     }
 }
 

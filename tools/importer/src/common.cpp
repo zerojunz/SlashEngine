@@ -226,6 +226,32 @@ bool remove_pointer(json::Value& root, std::string_view pointer) {
     return false;
 }
 
+// --- The destination ---
+
+std::string gameplay_folder(const std::optional<std::string>& project) {
+    if (project) {
+        if (auto parsed = json::parse(*project); parsed) {
+            const json::Value* sources = parsed.value().find("gameplay");
+            sources = sources != nullptr ? sources->find("sources") : nullptr;
+            if (sources != nullptr && sources->is_array()) {
+                for (const json::Value& source : sources->as_array()) {
+                    if (!source.is_string() || !extension_of(source.as_string()).empty()) {
+                        continue;
+                    }
+                    std::string folder = source.as_string();
+                    while (folder.size() > 1 && folder.back() == '/') {
+                        folder.pop_back();
+                    }
+                    if (!folder.empty() && folder != "." && !folder.starts_with("..")) {
+                        return folder;
+                    }
+                }
+            }
+        }
+    }
+    return "src";
+}
+
 // --- Reports ---
 
 void Problems::add(const std::string& what, const std::string& where, const std::string& why) {
