@@ -7,6 +7,7 @@
 #include "slash/core/text.hpp"
 #include "slash/input/input.hpp"
 #include "slash/physics2d/physics2d.hpp"
+#include "slash/render/upscaler.hpp"
 #include "slash/services/services.hpp"
 #include "slash/world/scene.hpp"
 
@@ -26,7 +27,8 @@
 //
 // Optional fields: "id" (reverse-DNS identifier for bundles and stores), "version"
 // ("major.minor.patch"), "window" ({"width", "height", "vsync_mode"}), "tick_hz", "max_fps",
-// "rendering" ({"clear_color", "driver", "texture_filter", "interpolation"}), "physics_2d",
+// "rendering" ({"clear_color", "driver", "texture_filter", "interpolation", "scaling"}),
+// "physics_2d",
 // "gui" ({"theme"}), "input" (actions by name), "input_devices" ({"pointing"}), "audio"
 // ({"bus_layout", "mix_rate", "output_latency", "panning_strength_2d"}), "services" (ad
 // placements, products, analytics and consent), "gameplay" ({"sources"}, the game's own C++
@@ -56,6 +58,8 @@ struct Project {
     bool interpolation = true;
     // The GPU backend: "auto", "vulkan", "metal", "d3d12" or "null" (draws nothing).
     std::string rendering_driver = "auto";
+    // The render scale and how the world scales to the screen, as Godot's scaling_3d.
+    render::Scaling scaling;
     // Gravity and default damping for 2D physics.
     physics2d::Settings physics_2d;
     // A .theme.json file every control uses after its own themes, as Godot's gui/theme/custom;

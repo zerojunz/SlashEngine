@@ -8,6 +8,7 @@
 #include "slash/canvas/tilemap.hpp"
 #include "slash/core/result.hpp"
 #include "slash/render/device.hpp"
+#include "slash/render/upscaler.hpp"
 #include "slash/text/text.hpp"
 #include "slash/ui/ui.hpp"
 #include "slash/world/camera2d.hpp"
@@ -146,6 +147,10 @@ struct CanvasOptions {
     // the window's size.
     float width = 0.0F;
     float height = 0.0F;
+    // The target's own pixels, which the settings' render scale scales and the upscaler fills;
+    // 0 takes width and height. The world draws at full size when neither is known.
+    std::uint32_t pixel_width = 0;
+    std::uint32_t pixel_height = 0;
     // How far from the transforms before the last tick to the current ones; see
     // CanvasRenderer::before_tick. 1 draws the current ones.
     double interpolation = 1.0;
@@ -236,6 +241,13 @@ public:
     [[nodiscard]] std::size_t boxes_drawn() const noexcept { return boxes_drawn_; }
     // Collision shapes the last frame drew.
     [[nodiscard]] std::size_t shapes_drawn() const noexcept { return shapes_drawn_; }
+    // The upscaler the last frame scaled the world with (render/upscaler.hpp), and its sizes;
+    // an empty name when the world drew at full size.
+    struct Scaled {
+        std::string upscaler;
+        render::UpscaleSize size;
+    };
+    [[nodiscard]] const Scaled& scaled() const noexcept { return scaled_; }
 
 private:
     struct Texture {
@@ -306,6 +318,10 @@ private:
     // Runs the steps, before the systems draw. If they can't run, the systems are made again
     // next frame.
     Result<void> run_particle_jobs(std::span<const ParticleJob> jobs);
+    // What draw gathered for a frame (src/renderer.cpp), and drawing it on the device: the
+    // world, scaled by the settings' render scale if they ask, then the controls and overlay.
+    struct Submission;
+    Result<void> submit(const Submission& submission);
     // Destroys the systems of emitters this frame didn't see.
     void drop_unseen_gpu_systems();
     // A layer's cells, decoded again only when the layer or its tile set changes.
@@ -365,6 +381,11 @@ private:
     std::size_t glyphs_drawn_ = 0;
     std::size_t boxes_drawn_ = 0;
     std::size_t shapes_drawn_ = 0;
+    // The upscaler the settings choose, made for the device when they first ask for it, and
+    // what it is called.
+    std::unique_ptr<render::Upscaler> upscaler_;
+    std::string upscaler_name_;
+    Scaled scaled_;
     // Fonts for worlds ui wasn't installed in.
     std::unique_ptr<text::Fonts> fonts_;
     // The glyph atlas pages on the GPU, the fonts they came from and the versions uploaded.
@@ -380,6 +401,8 @@ struct Settings {
     render::Filter texture_filter = render::Filter::Linear;
     // Seconds per tick (1 / tick_hz), for the time materials read.
     double tick_seconds = 1.0 / 60.0;
+    // rendering.scaling: the size the world draws at and how it scales to the screen.
+    render::Scaling scaling;
 };
 void set_settings(world::World& world, const Settings& settings);
 // The settings given to the world, or the defaults.
@@ -404,6 +427,8 @@ struct Capture {
     std::size_t lights = 0;
     std::size_t controls = 0;
     std::size_t shapes = 0;
+    // How the settings' render scale scaled the world, if they did.
+    CanvasRenderer::Scaled scaled;
 };
 
 // Draws the world as a window of ui::settings' viewport size would show it, with Settings'

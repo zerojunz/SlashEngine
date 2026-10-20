@@ -1,0 +1,28 @@
+{
+  "entities": {
+    "bar": {
+      "components": {
+        "ColorRect": {
+          "color": [0.2, 0.8, 0.3, 1.0]
+        },
+        "Control": {
+          "offset_bottom": 10.0,
+          "offset_left": 64.0,
+          "offset_right": 92.0,
+          "offset_top": 4.0
+        }
+      }
+    },
+    "planet": {
+      "components": {
+        "Sprite2D": {
+          "texture": "planet.png"
+        },
+        "Transform2D": {
+          "position": [32.0, 32.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

@@ -79,6 +79,8 @@ Result<Capture> capture(world::World& world, asset::Assets& assets, const Captur
     draw.clear = frame.clear_color;
     draw.width = viewport.x;
     draw.height = viewport.y;
+    draw.pixel_width = width;
+    draw.pixel_height = height;
     draw.interpolation = 1.0;
     draw.texture_filter = frame.texture_filter;
     draw.time =
@@ -98,7 +100,8 @@ Result<Capture> capture(world::World& world, asset::Assets& assets, const Captur
                    .particles = renderer.particles_drawn(),
                    .lights = renderer.lights_drawn(),
                    .controls = renderer.controls_drawn(),
-                   .shapes = renderer.shapes_drawn()};
+                   .shapes = renderer.shapes_drawn(),
+                   .scaled = renderer.scaled()};
 }
 
 } // namespace slash::canvas

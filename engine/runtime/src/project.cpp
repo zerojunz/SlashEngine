@@ -3,6 +3,7 @@
 #include "slash/platform/file.hpp"
 #include "slash/platform/run.hpp"
 
+#include <algorithm>
 #include <cctype>
 #include <cstddef>
 #include <iterator>
@@ -77,6 +78,46 @@ bool valid_version(std::string_view version) {
         }
     }
     return digits > 0 && parts == 2;
+}
+
+// rendering.scaling, as Godot's rendering/scaling_3d settings.
+json::Value scaling_schema() {
+    const render::Scaling defaults;
+    json::Value mode;
+    mode["type"] = "string";
+    mode["default"] = defaults.mode;
+    mode["description"] =
+        "How the world scales to the screen: bilinear stretches it, fsr is AMD's FidelityFX Super "
+        "Resolution 1, which finds edges and sharpens.";
+    json::Value scale;
+    scale["type"] = "number";
+    scale["minimum"] = render::kMinRenderScale;
+    scale["maximum"] = render::kMaxRenderScale;
+    scale["default"] = defaults.scale;
+    scale["description"] = "The world's size over the screen's: below 1 draws fewer pixels and "
+                           "scales up, above 1 draws more and scales down.";
+    json::Value sharpness;
+    sharpness["type"] = "number";
+    sharpness["minimum"] = 0;
+    sharpness["maximum"] = render::kMaxFsrSharpness;
+    sharpness["default"] = defaults.fsr_sharpness;
+    sharpness["description"] = "FSR's sharpening in stops: 0 is the sharpest, 2 the softest.";
+    json::Value upscaler;
+    upscaler["type"] = "string";
+    upscaler["pattern"] = "^[a-z0-9_]*$";
+    upscaler["description"] =
+        "An upscaler the game adds from an SDK package (render::add_upscaler), used instead of "
+        "mode where it runs.";
+    json::Value scaling;
+    scaling["type"] = "object";
+    scaling["additionalProperties"] = false;
+    scaling["description"] = "Draw the world at another size and scale it to the screen under the "
+                             "UI, as Godot's scaling_3d settings.";
+    scaling["properties"]["mode"] = std::move(mode);
+    scaling["properties"]["scale"] = std::move(scale);
+    scaling["properties"]["fsr_sharpness"] = std::move(sharpness);
+    scaling["properties"]["upscaler"] = std::move(upscaler);
+    return scaling;
 }
 
 } // namespace
@@ -167,6 +208,7 @@ json::Value project_schema() {
         "Draw sprites part of the way between fixed ticks, so motion looks smooth when the "
         "display refreshes faster than the game ticks.";
     rendering["properties"]["interpolation"] = std::move(interpolation);
+    rendering["properties"]["scaling"] = scaling_schema();
 
     json::Value name = string_property("The game's name, shown in its title bar. Exported files "
                                        "use it with only letters and digits kept.");
@@ -289,6 +331,25 @@ std::vector<json::ValidationError> validate_project(const json::Value& project) 
             }
         }
     }
+    if (const json::Value* rendering = project.find("rendering"); rendering != nullptr) {
+        if (const json::Value* scaling = rendering->find("scaling"); scaling != nullptr) {
+            if (const json::Value* mode = scaling->find("mode"); mode != nullptr) {
+                if (std::string problem = render::scaling_mode_problem(mode->as_string());
+                    !problem.empty()) {
+                    errors.push_back({"/rendering/scaling/mode", std::move(problem)});
+                }
+            }
+            // The validator skips "pattern", so the upscaler's name is checked here.
+            if (const json::Value* upscaler = scaling->find("upscaler");
+                upscaler != nullptr && !std::ranges::all_of(upscaler->as_string(), [](char c) {
+                    return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_';
+                })) {
+                errors.push_back({"/rendering/scaling/upscaler",
+                                  "expected lowercase letters, digits and underscores, as "
+                                  "render::add_upscaler names upscalers"});
+            }
+        }
+    }
     if (const json::Value* gameplay = project.find("gameplay"); gameplay != nullptr) {
         const json::Array& sources = gameplay->find("sources")->as_array();
         for (std::size_t i = 0; i < sources.size(); ++i) {
@@ -377,6 +438,9 @@ Result<Project> parse_project(const json::Value& project) {
         if (const json::Value* interpolation = rendering->find("interpolation");
             interpolation != nullptr) {
             out.interpolation = interpolation->as_bool();
+        }
+        if (const json::Value* scaling = rendering->find("scaling"); scaling != nullptr) {
+            out.scaling = render::scaling_from_json(*scaling);
         }
     }
     if (const json::Value* physics = project.find("physics_2d"); physics != nullptr) {

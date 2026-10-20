@@ -53,6 +53,9 @@ struct Display {
 struct WindowSize {
     int width = 0;
     int height = 0;
+    // Its pixels, which the renderer draws.
+    int pixel_width = 0;
+    int pixel_height = 0;
 };
 
 // Owns the SDL3 platform layer and, unless headless, the main window. Only one Platform may

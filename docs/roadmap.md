@@ -459,7 +459,9 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
   - [x] Glue code in SDK packages that registers backends when the game starts (`sources`,
         `register`), and bridges for backends written in Java or Objective-C (`java`,
         `backends`), with analytics flushed when the game goes to the background
-  - [ ] `render::Upscaler`, then achievements and sign-in, behind interfaces of their own
+  - [x] `render::Upscaler`, the interface glue code adds a vendor's upscaler through, with the
+        render scale for the 2D world, bilinear and FSR 1 built in (`rendering.scaling`)
+  - [ ] Achievements and sign-in, behind interfaces of their own
   - [x] `sdk.add` (from a folder, a git repository or a URL) and `sdk.check` (missing files,
         keys and platforms), with an example SDK package built in CI from a stand-in library
 - [ ] Imported scripts as C++ skeletons: `project.import` writes a component for each script's
@@ -538,6 +540,10 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
       (AMD's FidelityFX code, MIT) on every backend and MetalFX on Apple, set in `project.json`
       and changeable while a game runs; a `render::Upscaler` interface lets a game add DLSS, XeSS
       or FSR 4 with its vendor's SDK, outside the repo, since those ship only as closed binaries
+  - [x] Bilinear and FSR 1 on every backend and the software device, the `render::Upscaler`
+        interface and `display.set`'s `scaling`, scaling the 2D world under the UI
+  - [ ] FSR 2/3 and MetalFX, and temporal upscalers through `render::Upscaler`, once the 3D
+        renderer makes depth, motion vectors and a jittered camera
   - [ ] FSR 3 frame generation, once the render device controls presenting frames
 - [ ] Hardware ray tracing: acceleration structures and ray queries in `render::RenderDevice`,
       native on Vulkan, Direct3D 12 and Metal beside SDL3's GPU API (which has none), with a CPU

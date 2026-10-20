@@ -34,6 +34,7 @@ checks it.
 | `rendering.clear_color` | No | `[0.3, 0.3, 0.3, 1]` | What the window shows behind everything, as `[r, g, b, a]` from 0 to 1. The default is Godot's gray |
 | `rendering.driver` | No | `auto` | The GPU backend. `auto` takes the first that works: Metal on Apple platforms, Direct3D 12 then Vulkan on Windows, Vulkan on Linux and Android, and WebGL 2 on the web. `vulkan`, `metal` or `d3d12` asks for one; `opengl` is OpenGL ES 3.0, as Godot's compatibility renderer, which is WebGL 2 on the web and works where the system has OpenGL ES (Android, Linux; not macOS or Windows); `null` draws nothing. If none starts, the game logs a warning and runs with the null device |
 | `rendering.texture_filter` | No | `linear` | How sprites whose `texture_filter` is `inherit` are sampled when scaled: `linear` is smooth, `nearest` keeps pixel art sharp |
+| `rendering.scaling` | No | no scaling | Draw the world at another size and scale it to the window, under controls drawn at full size: see [Render scale](#render-scale) |
 | `rendering.interpolation` | No | `true` | Draw sprites part of the way between fixed ticks, from where they were before the last tick to where they are, so motion looks smooth when the display refreshes faster than the game ticks. Drawing lags the simulation by up to one tick; set `false` to draw exactly where things are |
 | `physics_2d.gravity` | No | `980` | Gravity's strength in pixels per second squared, as Godot's `physics/2d/default_gravity` |
 | `physics_2d.gravity_vector` | No | `[0, 1]` | Gravity's direction, as `[x, y]`; y points down |
@@ -67,6 +68,41 @@ display's refresh rate. Exports ask phones for their fastest refresh rate: iOS a
 `CADisableMinimumFrameDurationOnPhone`, so iPhones with ProMotion run at 120 Hz, and Android apps
 pick the display's fastest mode at its current resolution. On the web the browser calls each
 frame at the display's rate, and a frame cap sets how often it calls instead.
+
+## Render scale
+
+`rendering.scaling` draws the world at a lower (or higher) resolution than the window and scales
+it to the window's size, as Godot's `rendering/scaling_3d` settings. Godot scales only its 3D
+world, and draws 2D at full size; until the 3D renderer exists, this scales the 2D world, so
+the Godot importer leaves a project's `scaling_3d` settings out. Controls, and canvas layers
+above the world, draw at the window's own size on top, so the UI stays sharp while the world
+costs fewer pixels; canvas layers below the world are scaled with it.
+
+```json
+"rendering": {"scaling": {"mode": "fsr", "scale": 0.5, "fsr_sharpness": 0.2}}
+```
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `mode` | `bilinear` | `bilinear` stretches the world with filtering. `fsr` is AMD's FidelityFX Super Resolution 1: EASU scales up along the edges it finds, then RCAS sharpens. Godot's `fsr2`, `metalfx_spatial` and `metalfx_temporal` need the 3D renderer's depth and motion vectors, so `project validate` refuses them for now |
+| `scale` | `1` | The world's size over the window's, 0.25 to 2, as Godot's `scaling_3d/scale`. At `1` with `bilinear` nothing is scaled. Above `1` the world draws larger and is averaged down, always with `bilinear`, as FSR only scales up |
+| `fsr_sharpness` | `0.2` | RCAS's sharpening in stops, 0 to 2: `0` is the sharpest, `2` the softest |
+| `upscaler` | | An upscaler the game adds with `render::add_upscaler` (from its own C++ or an [SDK package's](sdk-format.md) glue code), used instead of `mode` on the GPUs it supports. Lowercase letters, digits and underscores. Where it isn't added or doesn't run, the game logs a warning once and uses `mode` |
+
+The world draws at the window's size in pixels times `scale`, rounded down: a 2560x1440 window at
+`0.5` draws a 1280x720 world. Both upscalers are drawn with the render device's own calls, so
+they work on every backend and on the software device behind `frame.capture`, which returns the
+`upscaler` that ran and the `render_size`. A running game changes the settings with
+[`display.set`](commands.md#displayset)'s `scaling`, and
+[examples/render-scale](../../examples/render-scale/) does.
+
+Upscalers a game adds are `render::Upscaler` classes (`slash/render/upscaler.hpp`): `input`
+gives the render target the world draws into, `upscale` runs the upscaler's passes and returns
+the texture and material the window's frame draws over the screen, and `release` frees what it
+made on the device. `render::UpscalerInfo::supports` says which devices one runs on, such as a
+vendor's on its own GPUs. One that is `temporal` (DLSS, XeSS, FSR 2 and later) needs depth,
+motion vectors and a jittered camera, so `add_upscaler` refuses it until the 3D renderer makes
+them.
 
 ## Gameplay code
 

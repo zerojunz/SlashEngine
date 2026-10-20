@@ -572,10 +572,15 @@ int cmd_run(const std::vector<std::string>& args) {
     if (!loop) {
         return failure("run failed", loop.error());
     }
-    // Displays, V-Sync, the frame cap and frame pacing, for agents driving the game with --serve.
-    command::register_live_commands(
-        engine.commands,
-        {.platform = &platform.value(), .loop = &loop.value(), .renderer = renderer.get()});
+    // Sprites from the project folder, drawn between ticks. The null device draws nothing, so
+    // it gets no frame callback and the loop yields instead.
+    slash::canvas::CanvasRenderer canvas(*renderer, engine.session->assets());
+    // Displays, V-Sync, the frame cap, the render scale and frame pacing, for agents driving the
+    // game with --serve.
+    command::register_live_commands(engine.commands, {.platform = &platform.value(),
+                                                      .loop = &loop.value(),
+                                                      .renderer = renderer.get(),
+                                                      .canvas = &canvas});
 
     // With --serve, requests run on this thread between ticks, so they never race the game, and
     // pause stops the world while the loop keeps serving.
@@ -591,9 +596,6 @@ int cmd_run(const std::vector<std::string>& args) {
         endpoint_file.emplace(session_options.project_root, server->endpoint());
     }
 
-    // Sprites from the project folder, drawn between ticks. The null device draws nothing, so
-    // it gets no frame callback and the loop yields instead.
-    slash::canvas::CanvasRenderer canvas(*renderer, engine.session->assets());
     slash::platform::FrameFn draw_frame;
     if (renderer->backend() != slash::render::Backend::Null) {
         draw_frame = [&] {
@@ -601,6 +603,8 @@ int cmd_run(const std::vector<std::string>& args) {
             slash::canvas::CanvasOptions canvas_options;
             canvas_options.width = static_cast<float>(window.width);
             canvas_options.height = static_cast<float>(window.height);
+            canvas_options.pixel_width = static_cast<std::uint32_t>(window.pixel_width);
+            canvas_options.pixel_height = static_cast<std::uint32_t>(window.pixel_height);
             canvas_options.interpolation = loop.value().interpolation();
             canvas_options.time = slash::canvas::material_time(
                 game.tick(), 1.0 / loop.value().tick_hz(), canvas_options.interpolation);

@@ -92,6 +92,27 @@ void append_live_quads(std::span<const render::Particle> particles, const render
         }
     }
 }
+
+// A sprite, or a run of a layer's tiles with one texture: vertices from first, in order.
+struct Item {
+    std::size_t canvas = 0; // in canvases.all()
+    int z_index = 0;
+    std::uint64_t order = 0; // Tree2D::draw_key
+    std::uint32_t part = 0;
+    render::TextureId texture = render::TextureId::None;
+    std::size_t first = 0;
+    std::size_t count = 0;
+    render::Material material;
+    // For FrameContents.
+    entt::entity entity = entt::null;
+    FrameItem::Kind kind = FrameItem::Kind::Sprite;
+    const render::Image* image = nullptr; // white when null
+    std::size_t drawn = 0;                // tiles or particles
+    // A GPUParticles2D's particles, which the device draws instead of the vertices.
+    render::ParticlesId particles = render::ParticlesId::None;
+    render::ParticleDraw look;
+};
+
 } // namespace
 
 Vec2 to_world(const world::World& world, Vec2 point, entt::entity in) {
@@ -286,6 +307,9 @@ CanvasRenderer::~CanvasRenderer() {
         if (system.id != render::ParticlesId::None) {
             device_->destroy_particles(system.id);
         }
+    }
+    if (upscaler_ != nullptr) {
+        upscaler_->release(*device_);
     }
 }
 
@@ -761,26 +785,32 @@ Result<render::TextureId> CanvasRenderer::atlas_page(const text::Fonts& fonts, s
     return texture;
 }
 
+// What draw gathered for a frame, for submit to draw.
+struct CanvasRenderer::Submission {
+    const CanvasOptions& options;
+    const render::Lighting& lighting;
+    render::Scaling scaling;
+    const std::vector<Item>& items;
+    const std::vector<render::Vertex2D>& vertices;
+    const CollisionShapes& shapes;
+    std::optional<render::Mat4> camera; // the world canvas's
+    std::size_t world_canvas = 0;
+    std::size_t canvases = 0; // canvases.all().size()
+    const ui::DrawList& controls;
+    const ui::DrawList& overlay;
+    const std::vector<std::optional<render::TextureId>>& control_textures;
+    const std::vector<std::optional<render::TextureId>>& overlay_textures;
+    const std::vector<std::optional<render::Mat4>>& control_matrices;
+    std::span<const ParticleJob> particle_jobs;
+    text::Fonts& fonts;
+    // What the frame draws, counted when it draws.
+    std::size_t sprites = 0;
+    std::size_t tiles = 0;
+    std::size_t particles = 0;
+    std::size_t shadows = 0;
+};
+
 Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions& options) {
-    // A sprite, or a run of a layer's tiles with one texture: vertices from first, in order.
-    struct Item {
-        std::size_t canvas = 0; // in canvases.all()
-        int z_index = 0;
-        std::uint64_t order = 0; // Tree2D::draw_key
-        std::uint32_t part = 0;
-        render::TextureId texture = render::TextureId::None;
-        std::size_t first = 0;
-        std::size_t count = 0;
-        render::Material material;
-        // For FrameContents.
-        entt::entity entity = entt::null;
-        FrameItem::Kind kind = FrameItem::Kind::Sprite;
-        const render::Image* image = nullptr; // white when null
-        std::size_t drawn = 0;                // tiles or particles
-        // A GPUParticles2D's particles, which the device draws instead of the vertices.
-        render::ParticlesId particles = render::ParticlesId::None;
-        render::ParticleDraw look;
-    };
     std::vector<ParticleJob> particle_jobs;
     std::vector<Item> items;
     std::vector<render::Vertex2D> vertices;
@@ -1698,26 +1728,80 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         shapes_drawn_ = shapes.shapes;
         return {};
     }
+    return submit({.options = options,
+                   .lighting = lights,
+                   .scaling = settings(world).scaling,
+                   .items = items,
+                   .vertices = vertices,
+                   .shapes = shapes,
+                   .camera = camera,
+                   .world_canvas = world_canvas,
+                   .canvases = canvas_list.size(),
+                   .controls = controls,
+                   .overlay = overlay,
+                   .control_textures = control_textures,
+                   .overlay_textures = overlay_textures,
+                   .control_matrices = control_matrices,
+                   .particle_jobs = particle_jobs,
+                   .fonts = *fonts,
+                   .sprites = sprites,
+                   .tiles = tiles,
+                   .particles = particles,
+                   .shadows = shadows});
+}
+
+Result<void> CanvasRenderer::submit(const Submission& submission) {
+    const CanvasOptions& options = submission.options;
+    const render::Lighting& lights = submission.lighting;
+    const render::Scaling& scaling = submission.scaling;
+    const std::vector<Item>& items = submission.items;
+    const std::vector<render::Vertex2D>& vertices = submission.vertices;
+    const CollisionShapes& shapes = submission.shapes;
+    const std::optional<render::Mat4>& camera = submission.camera;
+    const std::size_t world_canvas = submission.world_canvas;
+    const ui::DrawList& controls = submission.controls;
+    const ui::DrawList& overlay = submission.overlay;
+    const std::span<const ParticleJob> particle_jobs = submission.particle_jobs;
+    // The render scale (render/upscaler.hpp): the world, with the canvases below it, draws into
+    // the upscaler's input at the render size, which is scaled over the screen before the
+    // world's controls and the canvases above draw at full size.
+    const std::uint32_t output_width =
+        options.pixel_width > 0 ? options.pixel_width : static_cast<std::uint32_t>(options.width);
+    const std::uint32_t output_height = options.pixel_height > 0
+                                            ? options.pixel_height
+                                            : static_cast<std::uint32_t>(options.height);
+    std::string chosen;
+    if (output_width > 0 && output_height > 0) {
+        chosen = render::choose_upscaler(scaling, *device_);
+    }
+    if (!scaling.upscaler.empty() && chosen != scaling.upscaler &&
+        warned_.insert("upscaler " + scaling.upscaler).second) {
+        log::warn(
+            "the upscaler isn't available here, so the scaling mode is used",
+            {{"upscaler", scaling.upscaler}, {"mode", chosen.empty() ? "none" : chosen.c_str()}});
+    }
+    if (chosen != upscaler_name_) {
+        if (upscaler_ != nullptr) {
+            upscaler_->release(*device_);
+            upscaler_.reset();
+        }
+        upscaler_name_ = chosen;
+        if (const std::optional<render::UpscalerInfo> info = render::find_upscaler(chosen); info) {
+            upscaler_ = info->make();
+        }
+    }
+    scaled_ = {};
+    const float view_width =
+        options.width > 0.0F ? options.width : static_cast<float>(output_width);
+    const float view_height =
+        options.height > 0.0F ? options.height : static_cast<float>(output_height);
+
     render::Frame frame;
     frame.target = options.target;
     frame.clear = options.clear;
     frame.lighting = lights;
     if (options.width > 0.0F && options.height > 0.0F) {
         frame.view = render::pixel_projection(options.width, options.height);
-    }
-    auto began = device_->begin_frame(frame);
-    if (!began) {
-        for (auto& [entity, cached] : gpu_systems_) {
-            cached.serial = 0;
-        }
-        return began.error();
-    }
-    const auto failed = [&](const Error& error) -> Result<void> {
-        (void)device_->end_frame();
-        return error;
-    };
-    if (auto ran = run_particle_jobs(particle_jobs); !ran) {
-        return failed(ran.error());
     }
     const auto draw_control = [&](const ui::DrawCall& call,
                                   const std::optional<render::TextureId>& made,
@@ -1727,7 +1811,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         }
         render::TextureId texture = *made;
         if (call.source == ui::DrawCall::Source::Atlas) {
-            auto page = atlas_page(*fonts, call.page);
+            auto page = atlas_page(submission.fonts, call.page);
             if (!page) {
                 return page.error();
             }
@@ -1742,53 +1826,142 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
     // world's, then its controls; then what draws over every canvas, then the overlay.
     std::size_t next_item = 0;
     std::size_t next_call = 0;
-    for (std::size_t c = 0; c <= canvas_list.size(); ++c) {
+    const auto draw_items = [&](std::size_t c) -> Result<void> {
         for (; next_item < items.size() && items[next_item].canvas == c; ++next_item) {
             const Item& item = items[next_item];
             if (item.particles != render::ParticlesId::None) {
                 if (auto drawn = device_->draw_particles(item.particles, item.texture, item.look,
                                                          item.material);
                     !drawn) {
-                    return failed(drawn.error());
+                    return drawn.error();
                 }
                 continue;
             }
             const std::span<const render::Vertex2D> span(vertices.data() + item.first, item.count);
             if (auto drawn = device_->draw(item.texture, span, item.material); !drawn) {
-                return failed(drawn.error());
+                return drawn.error();
             }
         }
         if (c == world_canvas && !shapes.vertices.empty()) {
             render::Material material;
             material.transform = camera;
-            if (auto drawn = device_->draw(render::TextureId::None, shapes.vertices, material);
-                !drawn) {
-                return failed(drawn.error());
-            }
+            return device_->draw(render::TextureId::None, shapes.vertices, material);
         }
+        return {};
+    };
+    const auto draw_controls = [&](std::size_t c) -> Result<void> {
         for (; next_call < controls.calls.size() && controls.calls[next_call].canvas <= c;
              ++next_call) {
-            if (auto drawn = draw_control(controls.calls[next_call], control_textures[next_call],
-                                          control_matrices[c]);
+            if (auto drawn =
+                    draw_control(controls.calls[next_call], submission.control_textures[next_call],
+                                 submission.control_matrices[c]);
                 !drawn) {
-                return failed(drawn.error());
+                return drawn;
             }
+        }
+        return {};
+    };
+    const auto end_after = [&](const Error& error) -> Result<void> {
+        (void)device_->end_frame();
+        return error;
+    };
+    // A frame that didn't begin before the particle jobs ran: they run again next frame.
+    const auto not_begun = [&](const Error& error) -> Result<void> {
+        for (auto& [entity, cached] : gpu_systems_) {
+            cached.serial = 0;
+        }
+        return error;
+    };
+
+    std::size_t first_canvas = 0;
+    std::optional<render::UpscaleDraw> upscaled;
+    if (upscaler_ != nullptr) {
+        const render::UpscaleSize size{
+            .render_width = render::render_size(output_width, scaling.scale),
+            .render_height = render::render_size(output_height, scaling.scale),
+            .output_width = output_width,
+            .output_height = output_height};
+        auto input = upscaler_->input(*device_, size);
+        if (!input) {
+            return not_begun(input.error());
+        }
+        render::Frame world_frame = frame;
+        world_frame.target = input.value();
+        world_frame.view = render::pixel_projection(view_width, view_height);
+        if (auto began = device_->begin_frame(world_frame); !began) {
+            return not_begun(began.error());
+        }
+        if (auto ran = run_particle_jobs(particle_jobs); !ran) {
+            return end_after(ran.error());
+        }
+        for (std::size_t c = 0; c <= world_canvas; ++c) {
+            if (auto drawn = draw_items(c); !drawn) {
+                return end_after(drawn.error());
+            }
+            if (c == world_canvas) {
+                break;
+            }
+            if (auto drawn = draw_controls(c); !drawn) {
+                return end_after(drawn.error());
+            }
+        }
+        if (auto ended = device_->end_frame(); !ended) {
+            return ended;
+        }
+        auto made = upscaler_->upscale(*device_, size, scaling);
+        if (!made) {
+            return made.error();
+        }
+        upscaled = std::move(made).value();
+        frame.view = render::pixel_projection(view_width, view_height);
+        first_canvas = world_canvas;
+        scaled_ = {.upscaler = upscaler_name_, .size = size};
+    }
+    auto began = device_->begin_frame(frame);
+    if (!began) {
+        return upscaled ? Result<void>(began.error()) : not_begun(began.error());
+    }
+    if (upscaled) {
+        const std::array<render::Vertex2D, 6> screen{
+            render::Vertex2D{.x = 0.0F, .y = 0.0F, .u = 0.0F, .v = 0.0F},
+            render::Vertex2D{.x = view_width, .y = 0.0F, .u = 1.0F, .v = 0.0F},
+            render::Vertex2D{.x = view_width, .y = view_height, .u = 1.0F, .v = 1.0F},
+            render::Vertex2D{.x = 0.0F, .y = 0.0F, .u = 0.0F, .v = 0.0F},
+            render::Vertex2D{.x = view_width, .y = view_height, .u = 1.0F, .v = 1.0F},
+            render::Vertex2D{.x = 0.0F, .y = view_height, .u = 0.0F, .v = 1.0F}};
+        if (auto drawn = device_->draw(upscaled->texture, screen, upscaled->material); !drawn) {
+            return end_after(drawn.error());
+        }
+        if (auto drawn = draw_controls(world_canvas); !drawn) {
+            return end_after(drawn.error());
+        }
+        first_canvas = world_canvas + 1;
+    } else if (auto ran = run_particle_jobs(particle_jobs); !ran) {
+        return end_after(ran.error());
+    }
+    for (std::size_t c = first_canvas; c <= submission.canvases; ++c) {
+        if (auto drawn = draw_items(c); !drawn) {
+            return end_after(drawn.error());
+        }
+        if (auto drawn = draw_controls(c); !drawn) {
+            return end_after(drawn.error());
         }
     }
     for (std::size_t i = 0; i < overlay.calls.size(); ++i) {
-        if (auto drawn = draw_control(overlay.calls[i], overlay_textures[i], std::nullopt);
+        if (auto drawn =
+                draw_control(overlay.calls[i], submission.overlay_textures[i], std::nullopt);
             !drawn) {
-            return failed(drawn.error());
+            return end_after(drawn.error());
         }
     }
     controls_drawn_ = began.value() ? controls.controls : 0;
     glyphs_drawn_ = began.value() ? controls.glyphs : 0;
     boxes_drawn_ = began.value() ? controls.boxes : 0;
-    sprites_drawn_ = began.value() ? sprites : 0;
-    tiles_drawn_ = began.value() ? tiles : 0;
-    particles_drawn_ = began.value() ? particles : 0;
+    sprites_drawn_ = began.value() ? submission.sprites : 0;
+    tiles_drawn_ = began.value() ? submission.tiles : 0;
+    particles_drawn_ = began.value() ? submission.particles : 0;
     lights_drawn_ = began.value() ? lights.lights.size() : 0;
-    shadows_drawn_ = began.value() ? shadows : 0;
+    shadows_drawn_ = began.value() ? submission.shadows : 0;
     shapes_drawn_ = began.value() ? shapes.shapes : 0;
     return device_->end_frame();
 }
