@@ -135,7 +135,11 @@ on each call: scenes' and prefabs' components, prefabs, used files and storyboar
 game's C++ sources read as text by `outline_cpp` (`slash/command/cpp_outline.hpp`: types and
 functions by line, macros, string literals with the call they are passed to, includes), so each
 component, system, event and input action says where it is declared and used. `find` and
-`paths` narrow it.
+`paths` narrow it. `api.search` (`tools/exporter/src/api_search.cpp`) reads the engine's public
+headers and the game's sources the same way and finds functions, types and macros by name or by
+the words in their docs, with their signatures, fields, the header to include and the lines of
+`examples/` (or of the game) that use them. It finds only what has a doc comment right above it
+by what it does, so give each public declaration one.
 
 ## Commands, MCP and JSON-RPC
 

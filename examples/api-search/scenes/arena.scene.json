@@ -1,0 +1,10 @@
+{
+  "entities": {
+    "bat": {
+      "components": {
+        "Transform2D": {}
+      }
+    }
+  },
+  "format": 1
+}

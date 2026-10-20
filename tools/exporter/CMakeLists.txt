@@ -1,7 +1,9 @@
 # Exports games: presets, building with export/CMakeLists.txt, signing, and the export.run
-# command. Used by slash-cli and slash-mcp; games never link it.
+# command; builds and checks gameplay code, and searches the engine's API. Used by slash-cli and
+# slash-mcp; games never link it.
 add_library(slash_exporter
     src/android.cpp
+    src/api_search.cpp
     src/android_library.cpp
     src/commands.cpp
     src/cross.cpp

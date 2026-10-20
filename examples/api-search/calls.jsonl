@@ -1,0 +1,4 @@
+{"jsonrpc":"2.0","id":1,"method":"api.search","params":{"query":"chase","in":["project"]}}
+{"jsonrpc":"2.0","id":2,"method":"api.search","params":{"query":"Enemy","in":["project"],"kind":"type"}}
+{"jsonrpc":"2.0","id":3,"method":"api.search","params":{"query":"what an enemy does next","in":["project"],"limit":2}}
+{"jsonrpc":"2.0","id":4,"method":"api.search","params":{"query":"chace","in":["project"]}}
