@@ -28,6 +28,7 @@ engine. Copy from them.
 | [draw-offscreen](draw-offscreen/) | The renderer's device: drawing into a texture and reading the pixels back |
 | [web-rendering](web-rendering/) | How web exports draw: the OpenGL ES 3.0 device (WebGL 2 in browsers, the `opengl` driver elsewhere) drawing a scene with a material into a texture, the same pixels as the software device |
 | [frame-pacing](frame-pacing/) | V-Sync, the frame cap and frame pacing: `display.list`, `display.set` and `perf.stats` |
+| [profiling](profiling/) | Finding the slowest system with `perf.stats`' tick and system times, and checking that a faster version of it is faster; Tracy builds |
 | [render-scale](render-scale/) | The world drawn at half size and scaled up with bilinear filtering or AMD's FSR 1 while the UI stays sharp, as Godot's `scaling_3d` settings: `rendering.scaling`, `display.set` and `frame.capture`, and a game's own upscaler added with `render::add_upscaler` |
 | [parent-transforms](parent-transforms/) | Entities in another's `Transform2D` `children`: placed in its space, drawn after it with its `z_index`, visibility and tint, bodies moved with it, `entity.get`'s `parent` and `global`, a `top_level` child left where it was, `z_as_relative` off, refused loops and `entity.destroy` taking children along |
 | [camera-2d](camera-2d/) | `Camera2D`: a view that follows the player with drag margins and smoothing, stays inside the level's limits and zooms in, with the coin counter staying put and `frame.summary`'s `camera` |

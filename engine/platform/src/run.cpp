@@ -1,6 +1,7 @@
 #include "slash/platform/run.hpp"
 
 #include "slash/core/log.hpp"
+#include "slash/core/profile.hpp"
 
 #include <SDL3/SDL.h>
 
@@ -86,6 +87,7 @@ double Loop::pace() {
 }
 
 void Loop::record_frame(double start, int ticks) {
+    SLASH_PROFILE_FRAME();
     if (frame_start_ >= 0.0) {
         frame_ms_.at(frames_ % frame_ms_.size()) = static_cast<float>((start - frame_start_) * 1e3);
         ++frames_;

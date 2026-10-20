@@ -12,6 +12,7 @@
 #include "slash/canvas/particles.hpp"
 #include "slash/canvas/sprite_frames.hpp"
 #include "slash/canvas/tilemap.hpp"
+#include "slash/command/perf.hpp"
 #include "slash/command/replay.hpp"
 #include "slash/command/services.hpp"
 #include "slash/command/session.hpp"
@@ -6056,6 +6057,7 @@ void register_builtin_commands(Registry& registry) {
         .handler = log_tail,
     });
 
+    register_perf_commands(registry);
     register_replay_commands(registry);
     register_test_commands(registry);
     register_services_commands(registry);

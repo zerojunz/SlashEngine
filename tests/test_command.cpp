@@ -15,7 +15,10 @@
 
 #include <doctest/doctest.h>
 
+#include <algorithm>
 #include <array>
+#include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <memory>
@@ -1397,6 +1400,11 @@ TEST_CASE("a running game lists displays, changes V-Sync and the frame cap, and 
     CHECK(stats.find("vsync_mode")->as_string() == "mailbox");
     CHECK(stats.find("frame_ms")->find("avg") != nullptr);
     CHECK(stats.find("fps") != nullptr);
+    // With the world's tick and system times, and their params.
+    CHECK(stats.find("tick_ms")->find("max") != nullptr);
+    CHECK(stats.find("systems")->is_array());
+    CHECK(engine.ok("perf.stats", R"({"top": 0})").find("systems")->as_array().empty());
+    CHECK(engine.commands.find("perf.stats")->description.starts_with("Frame pacing"));
 
     command::SessionOptions read_only;
     read_only.capture_logs = false;
@@ -1405,6 +1413,40 @@ TEST_CASE("a running game lists displays, changes V-Sync and the frame cap, and 
     CHECK(observer.call("display.list", json::Value()).ok);
     CHECK(observer.call("display.set", parse(R"({"max_fps": 60})")).code ==
           command::code::kPermissionDenied);
+}
+
+TEST_CASE("perf.stats lists tick and system times in any session, the slowest systems first") {
+    Engine engine;
+    engine.session->world().add_system("slow", [](world::World& /*w*/, double /*seconds*/) {
+        const auto until = std::chrono::steady_clock::now() + std::chrono::microseconds(500);
+        while (std::chrono::steady_clock::now() < until) {
+        }
+    });
+    // Before any tick, every time is zero.
+    json::Value stats = engine.ok("perf.stats");
+    CHECK(stats.find("tick_ms")->find("avg")->as_double() == 0.0);
+
+    engine.ok("step", R"({"ticks": 5})");
+    stats = engine.ok("perf.stats");
+    const json::Array& systems = stats.find("systems")->as_array();
+    CHECK(systems.size() == std::min<std::size_t>(10, engine.session->world().systems().size()));
+    const json::Value& slowest = systems.front();
+    CHECK(slowest.find("name")->as_string() == "slow");
+    CHECK(slowest.find("avg")->as_double() >= 0.5);
+    CHECK(slowest.find("max")->as_double() >= slowest.find("avg")->as_double());
+    CHECK(slowest.find("stage") != nullptr);
+    for (std::size_t i = 1; i < systems.size(); ++i) {
+        CHECK(systems[i].find("avg")->as_double() <= systems[i - 1].find("avg")->as_double());
+    }
+    CHECK(stats.find("tick_ms")->find("avg")->as_double() >= slowest.find("avg")->as_double());
+    // No frame pacing outside a running game.
+    CHECK(stats.find("fps") == nullptr);
+
+    CHECK(engine.ok("perf.stats", R"({"top": 1})").find("systems")->as_array().size() == 1);
+    CHECK(engine.ok("perf.stats", R"({"top": 0})").find("systems")->as_array().empty());
+    const command::Reply bad =
+        engine.fails("perf.stats", R"({"top": -1})", command::code::kInvalidParams);
+    CHECK(contains(bad.message, "/top"));
 }
 
 TEST_CASE("schema.get returns scene, component and command schemas") {

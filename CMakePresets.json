@@ -24,6 +24,12 @@
       "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
     },
     {
+      "name": "tracy",
+      "inherits": "base",
+      "displayName": "Optimized build that reports to the Tracy profiler",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "RelWithDebInfo", "SLASH_PROFILER": "tracy" }
+    },
+    {
       "name": "ci",
       "inherits": "base",
       "displayName": "CI build with warnings as errors",
@@ -36,6 +42,7 @@
   "buildPresets": [
     { "name": "dev", "configurePreset": "dev" },
     { "name": "release", "configurePreset": "release" },
+    { "name": "tracy", "configurePreset": "tracy" },
     { "name": "ci", "configurePreset": "ci" }
   ],
   "testPresets": [

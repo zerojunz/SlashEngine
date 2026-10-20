@@ -37,6 +37,11 @@ if(NOT EMSCRIPTEN)
     find_package(Threads REQUIRED)
     target_link_libraries(slash_core PRIVATE Threads::Threads)
 endif()
+# Tracy's zones and frame marks (slash/core/profile.hpp).
+if(SLASH_PROFILER STREQUAL "tracy")
+    target_link_libraries(slash_core PUBLIC Tracy::TracyClient)
+    target_compile_definitions(slash_core PUBLIC SLASH_TRACY)
+endif()
 # The reflection macros use __VA_OPT__, which MSVC only supports with its conforming preprocessor.
 target_compile_options(slash_core PUBLIC $<$<CXX_COMPILER_ID:MSVC>:/Zc:preprocessor>)
 set_source_files_properties(src/version.cpp PROPERTIES

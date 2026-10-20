@@ -71,6 +71,34 @@ jobs:
       - name: Test
         run: ctest --preset ci
 
+  # A build that reports to the Tracy profiler (the tracy preset) must build and run too. With no
+  # profiler connected it collects nothing, so the examples print what they always do.
+  tracy:
+    name: Build with Tracy
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache fetched dependencies
+        uses: actions/cache@v4
+        with:
+          path: .cpm-cache
+          key: cpm-tracy-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/dependencies.json') }}
+
+      - name: Install tools
+        run: sudo apt-get update && sudo apt-get install -y $LINUX_SDL_DEPS
+
+      - name: Configure
+        run: cmake --preset tracy -DSLASH_WARNINGS_AS_ERRORS=ON
+
+      - name: Build two examples
+        run: cmake --build --preset tracy --target example-job-system example-profiling
+
+      - name: Run them
+        run: |
+          build/tracy/examples/example-job-system | diff examples/job-system/expected.txt -
+          build/tracy/examples/example-profiling | diff examples/profiling/expected.txt -
+
   # Every platform's export of an empty game must build and run headless.
   export:
     name: Export (${{ matrix.platform }})
