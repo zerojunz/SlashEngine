@@ -161,6 +161,22 @@ json::Value target_schema() {
     properties["maven_repositories"] =
         string_list("https:// or file:// Maven repositories searched in order; default Google's "
                     "and Maven Central (Android).");
+    properties["sources"] = string_list(
+        "Glue code compiled into the game with the engine's headers, such as a services backend "
+        "over the SDK: .c and .cpp files, .m and .mm on macOS and iOS, or folders of them.");
+    properties["java"] = string_list("Java files or folders compiled with the game's Java, such "
+                                     "as backends' classes (Android).");
+    json::Object backends;
+    backends["ads"] = property("string", "The class of the ads backend.");
+    backends["ads"]["minLength"] = 1;
+    backends["analytics"] = string_list("The classes of analytics backends.");
+    backends["purchases"] = property("string", "The class of the purchases backend.");
+    backends["purchases"]["minLength"] = 1;
+    properties["backends"] = object_schema(
+        std::move(backends),
+        "Services backends written in the platform's language, by class name, made when the game "
+        "starts: Java classes implementing org.slashengine.services' interfaces (Android), "
+        "Objective-C classes conforming to slash/services/apple.h's protocols (macOS and iOS).");
     return object_schema(std::move(properties),
                          "What the package adds to this platform's builds. Paths are relative to "
                          "the package and may start with {sdk}, {build} or a download's {name}, "
@@ -305,10 +321,60 @@ const json::Value& object_or_empty(const json::Value* value) {
 // Which fields only some platforms have.
 constexpr std::array<std::string_view, 4> kAppleFields{"frameworks", "system_frameworks", "plist",
                                                        "entitlements"};
-constexpr std::array<std::string_view, 7> kAndroidFields{
-    "permissions", "manifest", "application", "jars", "aars", "maven", "maven_repositories"};
-constexpr std::array<std::string_view, 6> kPathFields{"include", "libraries", "frameworks",
-                                                      "files",   "jars",      "aars"};
+constexpr std::array<std::string_view, 8> kAndroidFields{
+    "permissions", "manifest", "application",        "jars",
+    "aars",        "maven",    "maven_repositories", "java"};
+constexpr std::array<std::string_view, 8> kPathFields{"include", "libraries", "frameworks", "files",
+                                                      "jars",    "aars",      "sources",    "java"};
+
+// The extension of a path's last part, such as ".mm"; "" for none, as for a folder.
+std::string_view extension_of(std::string_view path) {
+    const std::size_t slash = path.find_last_of('/');
+    const std::string_view name = slash == std::string_view::npos ? path : path.substr(slash + 1);
+    const std::size_t dot = name.find_last_of('.');
+    return dot == std::string_view::npos || dot == 0 ? std::string_view() : name.substr(dot);
+}
+
+bool source_extension(std::string_view extension, bool apple) {
+    return extension == ".c" || extension == ".cpp" || extension == ".cc" || extension == ".cxx" ||
+           (apple && (extension == ".m" || extension == ".mm"));
+}
+
+// A Java class's name: identifiers separated by '.', as "com.example.hello.HelloAds".
+bool valid_java_class(std::string_view name) {
+    std::size_t start = 0;
+    while (true) {
+        const std::size_t dot = name.find('.', start);
+        const std::string_view part = name.substr(
+            start, dot == std::string_view::npos ? std::string_view::npos : dot - start);
+        if (part.empty() || digit(part[0]) || !std::ranges::all_of(part, [](char c) {
+                return upper_letter(c) || lower_letter(c) || digit(c) || c == '_' || c == '$';
+            })) {
+            return false;
+        }
+        if (dot == std::string_view::npos) {
+            return true;
+        }
+        start = dot + 1;
+    }
+}
+
+// A C++ function's name, maybe in namespaces: "hello::register_backends".
+bool valid_function_name(std::string_view name) {
+    std::size_t start = 0;
+    while (true) {
+        const std::size_t colons = name.find("::", start);
+        if (!valid_identifier(name.substr(start, colons == std::string_view::npos
+                                                     ? std::string_view::npos
+                                                     : colons - start))) {
+            return false;
+        }
+        if (colons == std::string_view::npos) {
+            return true;
+        }
+        start = colons + 2;
+    }
+}
 
 void check_target(const std::string& platform, const json::Value& target,
                   const std::set<std::string, std::less<>>& placeholders,
@@ -402,6 +468,52 @@ void check_target(const std::string& platform, const json::Value& target,
         if (!repositories[i].starts_with("https://") && !repositories[i].starts_with("file://")) {
             errors.push_back({base + "/maven_repositories/" + std::to_string(i),
                               "expected an https:// or file:// address"});
+        }
+    }
+    const std::vector<std::string> sources = strings(target.find("sources"));
+    for (std::size_t i = 0; i < sources.size(); ++i) {
+        const std::string_view extension = extension_of(sources[i]);
+        if (extension.empty() || source_extension(extension, is_apple(platform))) {
+            continue;
+        }
+        errors.push_back({base + "/sources/" + std::to_string(i),
+                          source_extension(extension, true)
+                              ? "only macOS and iOS compile Objective-C"
+                              : "expected a C or C++ file (.c, .cpp, .cc, .cxx), Objective-C on "
+                                "macOS and iOS (.m, .mm), or a folder"});
+    }
+    const std::vector<std::string> java = strings(target.find("java"));
+    for (std::size_t i = 0; i < java.size(); ++i) {
+        if (const std::string_view extension = extension_of(java[i]);
+            !extension.empty() && extension != ".java") {
+            errors.push_back(
+                {base + "/java/" + std::to_string(i), "expected a .java file or a folder"});
+        }
+    }
+    if (const json::Value* backends = target.find("backends"); backends != nullptr) {
+        if (platform != "android" && !is_apple(platform)) {
+            errors.push_back({base + "/backends",
+                              "only Android, macOS and iOS have backends by class name; "
+                              "elsewhere a C++ \"register\" function adds them"});
+        } else {
+            const bool java_names = platform == "android";
+            const auto check_class = [&](const std::string& path, const std::string& name) {
+                if (java_names ? !valid_java_class(name) : !valid_identifier(name)) {
+                    errors.push_back(
+                        {path, java_names ? "expected a Java class's full name, e.g. "
+                                            "com.example.hello.HelloAds"
+                                          : "expected an Objective-C class's name, e.g. HelloAds"});
+                }
+            };
+            for (const std::string_view service : {"ads", "purchases"}) {
+                if (const json::Value* name = backends->find(service); name != nullptr) {
+                    check_class(base + "/backends/" + std::string(service), name->as_string());
+                }
+            }
+            const std::vector<std::string> analytics = strings(backends->find("analytics"));
+            for (std::size_t i = 0; i < analytics.size(); ++i) {
+                check_class(base + "/backends/analytics/" + std::to_string(i), analytics[i]);
+            }
         }
     }
     const std::vector<std::string> permissions = strings(target.find("permissions"));
@@ -504,6 +616,17 @@ SdkTarget parse_target(const json::Value& value) {
     target.aars = strings(value.find("aars"));
     target.maven = strings(value.find("maven"));
     target.maven_repositories = strings(value.find("maven_repositories"));
+    target.sources = strings(value.find("sources"));
+    target.java = strings(value.find("java"));
+    if (const json::Value* backends = value.find("backends"); backends != nullptr) {
+        if (const json::Value* ads = backends->find("ads"); ads != nullptr) {
+            target.backends.ads = ads->as_string();
+        }
+        target.backends.analytics = strings(backends->find("analytics"));
+        if (const json::Value* purchases = backends->find("purchases"); purchases != nullptr) {
+            target.backends.purchases = purchases->as_string();
+        }
+    }
     return target;
 }
 
@@ -520,6 +643,7 @@ Sdk parse_sdk(const json::Value& value, const fs::path& folder) {
     sdk.vendor = text("vendor");
     sdk.description = text("description");
     sdk.license_file = text("license_file");
+    sdk.register_function = text("register");
     if (const json::Value* downloads = value.find("downloads"); downloads != nullptr) {
         for (const auto& [id, item] : downloads->as_object()) {
             SdkDownload download;
@@ -800,6 +924,11 @@ json::Value sdk_schema() {
     properties["license"]["minLength"] = 1;
     properties["license_file"] =
         property("string", "The license text, shipped in the game's data under licenses/.");
+    properties["register"] = property(
+        "string", "A C++ function in the package's sources, void(slash::services::Backends&), that "
+                  "adds its services backends when the game starts, e.g. "
+                  "\"hello::register_backends\". Called on platforms whose sections have "
+                  "\"sources\".");
 
     json::Object download;
     download["url"] = property("string", "Where to download it: an https:// (or file://) URL.");
@@ -930,6 +1059,21 @@ std::vector<json::ValidationError> validate_sdk(const json::Value& sdk) {
     if (const json::Value* platforms = sdk.find("platforms"); platforms != nullptr) {
         for (const auto& [platform, target] : platforms->as_object()) {
             check_target(platform, target, placeholders, keys, errors);
+        }
+    }
+    if (const json::Value* registers = sdk.find("register"); registers != nullptr) {
+        const json::Value* platforms = sdk.find("platforms");
+        const bool has_sources =
+            platforms != nullptr &&
+            std::ranges::any_of(platforms->as_object(), [](const auto& member) {
+                const json::Value* sources = member.second.find("sources");
+                return sources != nullptr && !sources->as_array().empty();
+            });
+        if (!valid_function_name(registers->as_string())) {
+            errors.push_back({"/register", "expected a C++ function's name, maybe in namespaces, "
+                                           "e.g. hello::register_backends"});
+        } else if (!has_sources) {
+            errors.push_back({"/register", "no platform has \"sources\" to define it in"});
         }
     }
     return errors;
@@ -1302,6 +1446,35 @@ ResolvedSdk resolve_sdk(const Sdk& sdk, std::string_view platform, std::string_v
     for (const fs::path& path : paths(base + "/aars", in.aars)) {
         out.aars.push_back(path.generic_string());
     }
+    const bool apple = is_apple(platform);
+    for (const fs::path& source : paths(base + "/sources", in.sources)) {
+        if (!fs::is_directory(source, error)) {
+            out.sources.push_back(source.generic_string());
+            continue;
+        }
+        // A folder's source files, in a stable order.
+        std::vector<std::string> found;
+        for (auto it = fs::recursive_directory_iterator(source, error);
+             !error && it != fs::recursive_directory_iterator(); it.increment(error)) {
+            if (it->is_regular_file(error) &&
+                source_extension(it->path().extension().string(), apple)) {
+                found.push_back(it->path().generic_string());
+            }
+        }
+        if (found.empty() && check_paths) {
+            add_problem(problems, sdk, base + "/sources",
+                        display(source) + " has no source files for " + out.platform);
+        }
+        std::ranges::sort(found);
+        out.sources.insert(out.sources.end(), found.begin(), found.end());
+    }
+    for (const fs::path& path : paths(base + "/java", in.java)) {
+        out.java.push_back(path.generic_string());
+    }
+    out.backends = in.backends;
+    if (!in.sources.empty()) {
+        out.register_function = sdk.register_function;
+    }
     return out;
 }
 
@@ -1332,7 +1505,8 @@ json::Value merge_sdk_entries(const std::vector<ResolvedSdk>& sdks, std::string_
     return merged;
 }
 
-std::string sdk_cmake(const std::vector<ResolvedSdk>& sdks, const json::Value& plist) {
+std::string sdk_cmake(const std::vector<ResolvedSdk>& sdks, const json::Value& plist,
+                      const std::string& register_file) {
     std::string out = "# Written by slash-cli export (tools/exporter/src/sdk.cpp): the SDK "
                       "packages linked\n# into the game, for export/CMakeLists.txt.\n";
     std::string manifest;
@@ -1375,6 +1549,8 @@ std::string sdk_cmake(const std::vector<ResolvedSdk>& sdks, const json::Value& p
         list("LINK_OPTIONS", sdk.link_options);
         list("FILES", sdk.files);
         list("JARS", sdk.jars);
+        list("SOURCES", sdk.sources);
+        list("JAVA", sdk.java);
         out += ")\n";
         for (const std::string& permission : sdk.permissions) {
             if (permissions.insert(permission).second) {
@@ -1399,6 +1575,99 @@ std::string sdk_cmake(const std::vector<ResolvedSdk>& sdks, const json::Value& p
     if (!application.empty()) {
         out += "string(APPEND SLASH_SDK_ANDROID_APPLICATION " + bracket(application) + ")\n";
     }
+    if (!register_file.empty()) {
+        out += "slash_game_sdk_register(" + bracket(register_file) + ")\n";
+    }
+    return out;
+}
+
+std::string sdk_register_source(const std::vector<ResolvedSdk>& sdks,
+                                std::vector<SdkProblem>& problems) {
+    // A service runs on one backend, so two packages can't both name one.
+    std::map<std::string, const ResolvedSdk*, std::less<>> owners;
+    const auto claim = [&](const ResolvedSdk& sdk, std::string_view service,
+                           const std::string& name) {
+        if (name.empty()) {
+            return;
+        }
+        const auto [owner, added] = owners.emplace(std::string(service), &sdk);
+        if (!added) {
+            add_problem(problems, *sdk.sdk,
+                        "/platforms/" + sdk.platform + "/backends/" + std::string(service),
+                        "the SDK " + owner->second->sdk->name + " gives the " +
+                            std::string(service) + " backend too, and a game's " +
+                            std::string(service) + " run on one");
+        }
+    };
+    for (const ResolvedSdk& sdk : sdks) {
+        claim(sdk, "ads", sdk.backends.ads);
+        claim(sdk, "purchases", sdk.backends.purchases);
+    }
+    std::string declarations;
+    std::string body;
+    bool bridges = false;
+    for (const ResolvedSdk& sdk : sdks) {
+        const std::string source = sdk.sdk->name;
+        if (!sdk.register_function.empty()) {
+            // Declared in its namespaces: "hello::register_backends".
+            const std::string& name = sdk.register_function;
+            const std::size_t last = name.rfind("::");
+            const std::string function =
+                "void " + (last == std::string::npos ? name : name.substr(last + 2)) +
+                "(slash::services::Backends& backends);\n";
+            if (last == std::string::npos) {
+                declarations += function;
+            } else {
+                declarations +=
+                    "namespace " + name.substr(0, last) + " {\n" + function + "} // namespace\n";
+            }
+            body += "    {\n        slash::services::Backends added;\n        ::";
+            body += name;
+            body += "(added);\n        slash::services::merge_backends(backends, std::move(added), "
+                    "\"";
+            body += source;
+            body += "\");\n    }\n";
+        }
+        if (!sdk.backends.empty()) {
+            bridges = true;
+            const std::string prefix = sdk.platform == "android" ? "java_" : "objc_";
+            const auto make = [&](std::string_view service, const std::string& name) {
+                std::string call = "slash::services::" + prefix;
+                call += service;
+                call += "_backend(\"";
+                call += name;
+                call += "\")";
+                return call;
+            };
+            body += "    {\n        slash::services::Backends added;\n";
+            if (!sdk.backends.ads.empty()) {
+                body += "        added.ads = " + make("ads", sdk.backends.ads) + ";\n";
+            }
+            for (const std::string& name : sdk.backends.analytics) {
+                body += "        added.analytics.push_back(" + make("analytics", name) + ");\n";
+            }
+            if (!sdk.backends.purchases.empty()) {
+                body += "        added.purchases = " + make("purchases", sdk.backends.purchases) +
+                        ";\n";
+            }
+            body += "        slash::services::merge_backends(backends, std::move(added), \"" +
+                    source + "\");\n    }\n";
+        }
+    }
+    if (body.empty()) {
+        return {};
+    }
+    std::string out = "// Written by slash-cli export (tools/exporter/src/sdk.cpp): the SDK "
+                      "packages'\n// services backends, which the game registers at start.\n\n"
+                      "#include \"slash/services/services.hpp\"\n";
+    if (bridges) {
+        out += "#include \"slash/services/bridges.hpp\"\n";
+    }
+    out += "\n#include <utility>\n\n" + declarations;
+    if (!declarations.empty()) {
+        out += "\n";
+    }
+    out += "void slash_sdk_register(slash::services::Backends& backends) {\n" + body + "}\n";
     return out;
 }
 

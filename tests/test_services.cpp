@@ -646,3 +646,39 @@ TEST_CASE("services.state and services.test drive the test backend in a session"
 
     std::filesystem::remove_all(root);
 }
+
+TEST_CASE("packages' backends merge, and stopping flushes analytics and lets go of them") {
+    auto calls = std::make_shared<Calls>();
+    services::Backends backends;
+    services::Backends first;
+    first.ads = std::make_unique<FakeAds>(calls);
+    first.analytics.push_back(std::make_unique<FakeAnalytics>(calls));
+    services::merge_backends(backends, std::move(first), "first");
+    // Analytics backends all run; a second ads backend is dropped.
+    services::Backends second;
+    second.ads = std::make_unique<FakeAds>(calls);
+    second.analytics.push_back(std::make_unique<FakeAnalytics>(calls));
+    second.purchases = std::make_unique<FakeStore>(calls);
+    services::merge_backends(backends, std::move(second), "second");
+    CHECK(backends.ads != nullptr);
+    CHECK(backends.analytics.size() == 2);
+    CHECK(backends.purchases != nullptr);
+
+    world::ComponentRegistry components;
+    world::World world(components);
+    constexpr std::string_view kNone = R"({"ads":"none","analytics":[],"purchases":"none"})";
+    CHECK(compact(services::backends_json(world)) == kNone);
+    services::stop(world); // does nothing before install
+    services::install(world, test_settings());
+    services::set_backends(world, std::move(backends));
+    CHECK(compact(services::backends_json(world)) ==
+          R"({"ads":"fake_ads","analytics":["fake_analytics","fake_analytics"],)"
+          R"("purchases":"fake_store"})");
+    calls->list.clear();
+    services::stop(world);
+    CHECK(calls->list == std::vector<std::string>{"analytics.flush", "analytics.flush"});
+    CHECK(compact(services::backends_json(world)) == kNone);
+    services::use_test_backend(world);
+    CHECK(compact(services::backends_json(world)) ==
+          R"({"ads":"test","analytics":["test"],"purchases":"test"})");
+}

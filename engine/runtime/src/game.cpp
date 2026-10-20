@@ -10,6 +10,8 @@
 #include "slash/world/components.hpp"
 #include "slash/world/scene.hpp"
 
+#include <SDL3/SDL_events.h>
+
 #include <array>
 #include <charconv>
 #include <system_error>
@@ -119,6 +121,14 @@ Result<std::unique_ptr<Game>> Game::start(const GameOptions& options) {
     game->renderer_->set_vsync(
         render::parse_vsync_mode(game->project_.vsync_mode).value_or(render::VsyncMode::Enabled));
     game->canvas_ = std::make_unique<canvas::CanvasRenderer>(*game->renderer_, game->assets_);
+    if (options.register_backends != nullptr) {
+        // The SDK packages' backends, from the code an export generates for them.
+        services::Backends backends;
+        options.register_backends(backends);
+        if (backends.ads || !backends.analytics.empty() || backends.purchases) {
+            services::set_backends(game->world_, std::move(backends));
+        }
+    }
     log::info("game started", {{"name", game->project_.name},
                                {"scene", game->project_.main_scene},
                                {"entities", game->world_.size()},
@@ -178,6 +188,8 @@ Game::Game(Project project, platform::Platform platform, const std::string& data
 }
 
 Game::~Game() {
+    // Before SDL quits, as backends written in Java or Objective-C still call through it.
+    services::stop(world_);
     audio::set_sink(world_, nullptr);
     audio::set_input_device(world_, nullptr);
 }
@@ -231,6 +243,10 @@ void Game::draw() {
 }
 
 void Game::handle_event(const SDL_Event& event) {
+    // A phone may stop the game once it is in the background, so analytics events go now.
+    if (event.type == SDL_EVENT_WILL_ENTER_BACKGROUND || event.type == SDL_EVENT_TERMINATING) {
+        services::flush_analytics(world_);
+    }
     input_reader_.read(event, world_);
 }
 
@@ -248,6 +264,12 @@ json::Value Game::summary() const {
     summary["headless"] = platform_.headless();
     summary["renderer"] = render::backend_name(renderer_->backend());
     summary["sprites"] = canvas_->sprites_drawn();
+    json::Value backends = services::backends_json(world_);
+    if (backends.find("ads")->as_string() != "none" ||
+        !backends.find("analytics")->as_array().empty() ||
+        backends.find("purchases")->as_string() != "none") {
+        summary["services"] = std::move(backends);
+    }
     return summary;
 }
 

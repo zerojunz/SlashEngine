@@ -8,6 +8,7 @@
 #include "slash/render/image.hpp"
 #include "slash/runtime/game.hpp"
 #include "slash/runtime/project.hpp"
+#include "slash/services/services.hpp"
 #include "slash/world/components.hpp"
 
 #include <SDL3/SDL_events.h>
@@ -17,6 +18,7 @@
 #include <array>
 #include <chrono>
 #include <cstdio>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -32,6 +34,20 @@ json::Value parse(std::string_view text) {
     auto parsed = json::parse(text);
     REQUIRE(parsed.ok());
     return std::move(parsed).value();
+}
+
+// An analytics backend an SDK package's glue code could register, counting flushes.
+int analytics_flushes = 0;
+
+class CountingAnalytics final : public slash::services::AnalyticsBackend {
+public:
+    [[nodiscard]] std::string_view name() const override { return "counting"; }
+    void log_event(std::string_view /*name*/, const json::Value& /*params*/) override {}
+    void flush() override { ++analytics_flushes; }
+};
+
+void register_counting(slash::services::Backends& backends) {
+    backends.analytics.push_back(std::make_unique<CountingAnalytics>());
 }
 
 std::vector<std::string> error_paths(std::string_view project) {
@@ -251,6 +267,32 @@ TEST_CASE("a game reads SDL's events as the project's input actions") {
     REQUIRE(SDL_PushEvent(&key));
     CHECK(game.value()->frame());
     CHECK(slash::input::is_action_just_released(world, "jump"));
+}
+
+TEST_CASE("a game registers its SDK packages' backends and flushes analytics when it may stop") {
+    analytics_flushes = 0;
+    {
+        auto game = runtime::Game::start({.data_dir = SLASH_TEST_DATA_DIR "/game",
+                                          .headless = true,
+                                          .max_ticks = 2,
+                                          .register_backends = register_counting});
+        REQUIRE_MESSAGE(game.ok(), (game.ok() ? std::string() : game.error().message));
+        const json::Value summary = game.value()->summary();
+        REQUIRE(summary.find("services") != nullptr);
+        CHECK(json::write(*summary.find("services"), json::Style::Compact) ==
+              R"({"ads":"none","analytics":["counting"],"purchases":"none"})");
+        SDL_Event background{};
+        background.type = SDL_EVENT_WILL_ENTER_BACKGROUND;
+        game.value()->handle_event(background);
+        CHECK(analytics_flushes == 1);
+    }
+    // And when it quits.
+    CHECK(analytics_flushes == 2);
+    // A game with no backends leaves the services out of its summary.
+    auto plain = runtime::Game::start(
+        {.data_dir = SLASH_TEST_DATA_DIR "/game", .headless = true, .max_ticks = 2});
+    REQUIRE(plain.ok());
+    CHECK(plain.value()->summary().find("services") == nullptr);
 }
 
 TEST_CASE("a game explains what is missing") {

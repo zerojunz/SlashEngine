@@ -67,6 +67,18 @@ struct SdkKey {
     bool optional = false; // missing means "" instead of a failed export
 };
 
+// Backends written in the platform's language that a package gives the services
+// (slash/services/bridges.hpp), by class name: Java on Android, Objective-C on macOS and iOS.
+struct SdkBackends {
+    std::string ads;
+    std::vector<std::string> analytics;
+    std::string purchases;
+
+    [[nodiscard]] bool empty() const {
+        return ads.empty() && analytics.empty() && purchases.empty();
+    }
+};
+
 // What a package adds to one platform's build. Paths are relative to the package's folder and
 // may start with {sdk} (the folder), {build} (where its CMake project installed), a download's
 // {id}, and contain {arch} (see sdk_arch).
@@ -93,6 +105,11 @@ struct SdkTarget {
     std::vector<std::string> aars;
     std::vector<std::string> maven;              // coordinates, e.g. "androidx.core:core:1.13.1"
     std::vector<std::string> maven_repositories; // "" means kDefaultMavenRepositories
+    // Glue code compiled into the game with the engine's headers: C and C++ files, Objective-C
+    // (.m) and Objective-C++ (.mm) on macOS and iOS, or folders of them.
+    std::vector<std::string> sources;
+    std::vector<std::string> java; // Java files or folders, compiled with the game's (Android)
+    SdkBackends backends;          // Android, macOS and iOS
 };
 
 struct Sdk {
@@ -109,6 +126,10 @@ struct Sdk {
     std::map<std::string, std::string> build_options; // -D options for it
     std::vector<SdkKey> keys;
     std::map<std::string, SdkTarget, std::less<>> platforms;
+    // A C++ function in the package's sources, void(slash::services::Backends&), that adds its
+    // backends when the game starts, such as "hello::register_backends"; "" for none. It is
+    // called on the platforms whose sections have sources.
+    std::string register_function;
 
     // SLASH_SDK_ and the name in capitals with '_' for anything else: SLASH_SDK_HELLO.
     [[nodiscard]] std::string define() const;
@@ -185,7 +206,11 @@ struct ResolvedSdk {
     std::vector<std::string> application;
     std::vector<std::string> jars;
     std::vector<std::string> aars;
-    std::string license_file; // absolute; "" for none
+    std::vector<std::string> sources; // files, with folders' files listed
+    std::vector<std::string> java;    // files and folders
+    SdkBackends backends;
+    std::string register_function; // the package's, when this platform has sources
+    std::string license_file;      // absolute; "" for none
 };
 
 // Where a package's pieces are on this machine, for resolve_sdk.
@@ -212,9 +237,17 @@ struct SdkPlaces {
                                             std::vector<SdkProblem>& problems);
 
 // The CMake that export/CMakeLists.txt includes to link packages into the game: one
-// slash_game_sdk() call per package, then the Info.plist entries (plist, merged) and the
-// Android manifest elements.
-[[nodiscard]] std::string sdk_cmake(const std::vector<ResolvedSdk>& sdks, const json::Value& plist);
+// slash_game_sdk() call per package, then the Info.plist entries (plist, merged), the Android
+// manifest elements and, if register_file isn't "", the sdk_register_source file to compile.
+[[nodiscard]] std::string sdk_cmake(const std::vector<ResolvedSdk>& sdks, const json::Value& plist,
+                                    const std::string& register_file = {});
+
+// The C++ of slash_sdk_register(slash::services::Backends&), which a game calls at start: each
+// package's register function, then its backends by class name, joined with
+// services::merge_backends. "" when no package gives backends. Two packages naming an ads or a
+// purchases backend are a problem, since each service runs on one.
+[[nodiscard]] std::string sdk_register_source(const std::vector<ResolvedSdk>& sdks,
+                                              std::vector<SdkProblem>& problems);
 
 // Info.plist entries as the XML between <dict> and </dict>, keys in order.
 [[nodiscard]] std::string plist_entries(const json::Value& entries);

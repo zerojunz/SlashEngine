@@ -269,9 +269,17 @@ struct TestSettings {
 // fetched and auto_load placements loaded. Installing again with other settings replaces them,
 // keeps the backends and starts again.
 void install(world::World& world, Settings settings = {});
+// Adds from's backends to into's, as the backends SDK packages register are joined: analytics
+// backends all run, but a service runs on one backend, so an ads or purchases backend into
+// already has is kept and from's is dropped with an error logged naming source.
+void merge_backends(Backends& into, Backends from, std::string_view source);
+
 // Runs the services on these backends instead, starting them now. Services left without one
 // work as with none.
 void set_backends(world::World& world, Backends backends);
+// Sends what analytics backends batched and lets go of the backends, as when the game quits; the
+// services then work as with none.
+void stop(world::World& world);
 // Runs all three services on the test backend instead, as sessions do, with a fresh test store.
 void use_test_backend(world::World& world, TestSettings settings = {});
 // Whether the test backend runs the services, and its settings.
@@ -350,6 +358,10 @@ struct ServiceEvent {
 };
 // The events of the tick the "services" system last ran (inside a system: this tick).
 [[nodiscard]] std::span<const ServiceEvent> events(const world::World& world);
+
+// The backends the services run on, by name: {"ads", "analytics": [...], "purchases"}, with
+// "none" for a service with no backend and "test" for the test backend's.
+[[nodiscard]] json::Value backends_json(const world::World& world);
 
 // What services.state returns: the backends, consent, each placement's status, the products,
 // what the player owns, purchases unfinished and pending, and the last analytics_events events
