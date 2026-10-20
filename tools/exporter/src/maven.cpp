@@ -11,6 +11,7 @@
 #include <chrono>
 #include <cstddef>
 #include <deque>
+#include <initializer_list>
 #include <map>
 #include <optional>
 #include <set>
@@ -102,8 +103,15 @@ int word_rank(std::string_view part) {
     }
     constexpr std::array<std::string_view, 6> kQualifiers{"rc", "snapshot", "final",
                                                           "ga", "release",  "sp"};
-    const auto found = std::ranges::find(kQualifiers, word);
+    const auto* const found = std::ranges::find(kQualifiers, word);
     return found == kQualifiers.end() ? 1 : 2 + static_cast<int>(found - kQualifiers.begin());
+}
+
+int sign(int value) {
+    if (value == 0) {
+        return 0;
+    }
+    return value < 0 ? -1 : 1;
 }
 
 int compare_parts(std::string_view a, std::string_view b) {
@@ -115,7 +123,7 @@ int compare_parts(std::string_view a, std::string_view b) {
         if (a.size() != b.size()) {
             return a.size() < b.size() ? -1 : 1;
         }
-        return a.compare(b) < 0 ? -1 : (a == b ? 0 : 1);
+        return sign(a.compare(b));
     }
     if (a_number != b_number) {
         return a_number ? 1 : -1;
@@ -125,8 +133,7 @@ int compare_parts(std::string_view a, std::string_view b) {
     if (a_rank != b_rank) {
         return a_rank < b_rank ? -1 : 1;
     }
-    const int order = lowered(a).compare(lowered(b));
-    return order < 0 ? -1 : (order == 0 ? 0 : 1);
+    return sign(lowered(a).compare(lowered(b)));
 }
 
 struct Bound {
@@ -199,6 +206,14 @@ bool in_interval(std::string_view version, const Interval& interval) {
     return true;
 }
 
+std::string concat(std::initializer_list<std::string_view> parts) {
+    std::string out;
+    for (const std::string_view part : parts) {
+        out += part;
+    }
+    return out;
+}
+
 // "com.example:lib:1.0" lives at com/example/lib/1.0/.
 std::string maven_folder(std::string_view group, std::string_view artifact,
                          std::string_view version) {
@@ -229,7 +244,7 @@ std::string tail_of(const Result<platform::ProcessResult>& result) {
     if (!result) {
         return result.error().message;
     }
-    std::string tail = trimmed(result.value().tail);
+    const std::string tail = trimmed(result.value().tail);
     return tail.empty() ? "curl exited with " + std::to_string(result.value().exit_code) : tail;
 }
 
@@ -334,8 +349,9 @@ PomDependency read_dependency(const XmlElement& element,
             if (exclusion.name != "exclusion") {
                 continue;
             }
-            std::string group = interpolate(exclusion.child_text("groupId"), properties);
-            std::string artifact = interpolate(exclusion.child_text("artifactId"), properties);
+            const std::string group = interpolate(exclusion.child_text("groupId"), properties);
+            const std::string artifact =
+                interpolate(exclusion.child_text("artifactId"), properties);
             out.exclusions.push_back((group.empty() ? "*" : group) + ":" +
                                      (artifact.empty() ? "*" : artifact));
         }
@@ -382,7 +398,9 @@ private:
         }
         std::string last;
         for (const std::string& repository : repositories_) {
-            const std::string url = repository + "/" + relative;
+            std::string url = repository;
+            url += '/';
+            url += relative;
             if (auto fetched = download(url, file, log_path_); !fetched) {
                 last = fetched.error().message;
                 continue;
@@ -579,22 +597,22 @@ Result<std::string> Resolver::concrete_version(const std::string& group,
         }
         listed = listed_.emplace(module, std::move(versions)).first;
     }
-    std::optional<std::string> best;
+    std::string best;
     for (const std::string& candidate : listed->second) {
         if (lowered(candidate).find("snapshot") != std::string::npos || !valid_version(candidate)) {
             continue;
         }
         const bool inside = std::ranges::any_of(
             *intervals, [&](const Interval& interval) { return in_interval(candidate, interval); });
-        if (inside && (!best || compare_maven_versions(candidate, *best) > 0)) {
+        if (inside && (best.empty() || compare_maven_versions(candidate, best) > 0)) {
             best = candidate;
         }
     }
-    if (!best) {
+    if (best.empty()) {
         return make_error(ErrorCode::NotFound,
                           "no version of " + module + " in " + version + " is in the repositories");
     }
-    return *best;
+    return best;
 }
 
 Result<MavenLock> Resolver::resolve(const std::vector<std::string>& dependencies) {
@@ -637,7 +655,7 @@ Result<MavenLock> Resolver::resolve(const std::vector<std::string>& dependencies
             queue.push_back({root.group, root.artifact, {}});
         }
         while (!queue.empty()) {
-            Node node = std::move(queue.front());
+            const Node node = std::move(queue.front());
             queue.pop_front();
             const std::string module = node.group + ":" + node.artifact;
             std::string key = module;
@@ -673,12 +691,12 @@ Result<MavenLock> Resolver::resolve(const std::vector<std::string>& dependencies
                     concrete_version(dependency.group, dependency.artifact, dependency.version);
                 if (!wanted) {
                     return make_error(wanted.error().code,
-                                      module + ":" + version + ": " + wanted.error().message);
+                                      concat({module, ":", version, ": ", wanted.error().message}));
                 }
                 if (wanted.value().empty() || wanted.value().find("${") != std::string::npos) {
                     return make_error(ErrorCode::InvalidArgument,
-                                      module + ":" + version + " gives " + dependency.module() +
-                                          " no version");
+                                      concat({module, ":", version, " gives ", dependency.module(),
+                                              " no version"}));
                 }
                 requested[dependency.module()].push_back(std::move(wanted).value());
                 if (dependency.type == "aar" || dependency.type == "pom") {
@@ -741,7 +759,7 @@ Result<MavenLock> Resolver::resolve(const std::vector<std::string>& dependencies
         }
         if (!file) {
             return make_error(file.error().code,
-                              module + ":" + version + ": " + file.error().message);
+                              concat({module, ":", version, ": ", file.error().message}));
         }
         auto sha256 = sha256_file(file.value());
         if (!sha256) {
@@ -752,7 +770,11 @@ Result<MavenLock> Resolver::resolve(const std::vector<std::string>& dependencies
             return url.error();
         }
         MavenArtifact item;
-        item.id = module + ":" + version + (classifier.empty() ? "" : ":" + classifier);
+        item.id = concat({module, ":", version});
+        if (!classifier.empty()) {
+            item.id += ':';
+            item.id += classifier;
+        }
         item.type = type;
         item.url = trimmed(url.value());
         item.sha256 = std::move(sha256).value();
