@@ -515,9 +515,10 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
   - [x] Iteration: `asset.refine` makes a new version linked to its parent, so every asset keeps
         its history and can be rolled back
   - [ ] Ready-to-use forms: imported and compressed for each platform once, then cached
-  - [ ] Feedback: agents record results with `asset.feedback`, by hand or automatically from
-        checks such as validation, the headless test command and frame summaries; feedback
-        ranks search results, picks between candidates and is passed back into later prompts
+  - [x] Feedback: agents record results with `asset.feedback`, by hand or automatically from
+        the storyboard's palette and budget checks; feedback ranks search results, picks between
+        candidates and is passed back into later prompts, with the storyboard's style
+  - [ ] Automatic feedback from the headless test command and frame summaries
   - [ ] Team sharing: the library syncs with a store the team hosts, such as a shared folder or
         a library server that `slash-cli` runs, so a teammate's request finds assets someone
         else already made

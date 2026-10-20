@@ -49,6 +49,12 @@ std::string prompt_of(const Record& record) {
     return prompt != nullptr && prompt->is_string() ? prompt->as_string() : std::string();
 }
 
+// The score, moved by the asset's feedback and rounded to two places.
+double with_feedback(double share, const Record& record) {
+    const double moved = share + kFeedbackStep * std::clamp(net_feedback(record), -4, 4);
+    return std::round(std::clamp(moved, 0.0, 1.0) * 100.0) / 100.0;
+}
+
 } // namespace
 
 std::vector<Match> search(std::span<const Record> records, const Query& query) {
@@ -65,7 +71,7 @@ std::vector<Match> search(std::span<const Record> records, const Query& query) {
             continue;
         }
         if (wanted.empty()) {
-            matches.push_back({&record, 1.0});
+            matches.push_back({&record, with_feedback(1.0, record)});
             tag_hits.push_back(0);
             continue;
         }
@@ -88,17 +94,23 @@ std::vector<Match> search(std::span<const Record> records, const Query& query) {
             continue;
         }
         const double share = static_cast<double>(found) / static_cast<double>(wanted.size());
-        matches.push_back({&record, std::round(share * 100.0) / 100.0});
+        matches.push_back({&record, with_feedback(share, record)});
         tag_hits.push_back(in_tags);
     }
     std::vector<std::size_t> order(matches.size());
     for (std::size_t i = 0; i < order.size(); ++i) {
         order[i] = i;
     }
-    // Best first; among equals, those whose tags matched more of the words, then by ID.
+    // Best first; among equals, the better received, those whose tags matched more of the
+    // words, then by ID.
     std::ranges::sort(order, [&matches, &tag_hits](std::size_t a, std::size_t b) {
         if (matches[a].score != matches[b].score) {
             return matches[a].score > matches[b].score;
+        }
+        const int net_a = net_feedback(*matches[a].record);
+        const int net_b = net_feedback(*matches[b].record);
+        if (net_a != net_b) {
+            return net_a > net_b;
         }
         if (tag_hits[a] != tag_hits[b]) {
             return tag_hits[a] > tag_hits[b];

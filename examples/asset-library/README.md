@@ -24,5 +24,8 @@ library and calls the commands as an agent does over MCP (tools `asset_search`,
 - `asset.add` puts a project's own file in, with its author and license, and `asset.use` copies an
   asset into another project.
 - Each project's `library.json` records where its files came from and under what license.
+- `asset.feedback` records whether an asset worked and why. Search ranks by it, assets rejected
+  more than accepted stop coming back as candidates, and the reasons go into later prompts for
+  assets like them, along with the storyboard's tone and palette.
 - The library is `~/.slash/library`, or `SLASH_LIBRARY_DIR`; this example keeps its own in
   `library/`.

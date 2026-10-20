@@ -106,6 +106,14 @@ int main() {
     call(sequel, "asset.generate", R"({"prompt": "a slime sprite, green", "generator": "test"})");
     call(sequel, "asset.search", R"({"text": "heart", "tags": ["ui"]})");
     call(sequel, "asset.use", R"({"id": "19b7f428", "path": "ui/heart.png"})");
+
+    // After a playtest, feedback: it ranks later searches, keeps rejected assets out of
+    // candidates and goes into the prompts of assets like them.
+    call(sequel, "asset.feedback", R"({"id": "833c6cd1", "verdict": "rejected",
+        "reason": "too dark on the night level", "source": "playtest"})");
+    call(sequel, "asset.feedback", R"({"id": "0b2fd1b5", "verdict": "accepted",
+        "reason": "reads well at 32 pixels"})");
+    call(sequel, "asset.search", R"({"text": "slime"})");
     call(sequel, "asset.info", R"({"id": "833c6cd1"})");
     return 0;
 }

@@ -5,11 +5,15 @@
 #include "slash/library/generator.hpp"
 #include "slash/library/library.hpp"
 #include "slash/platform/file.hpp"
+#include "slash/render/image.hpp"
+#include "slash/storyboard/storyboard.hpp"
 
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <ranges>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -29,6 +33,11 @@ constexpr std::string_view kProjectFile = "library.json";
 constexpr double kSimilar = 0.75;
 constexpr std::size_t kMaxDescription = 300;
 constexpr std::size_t kMaxCandidates = 5;
+// How much of a request's words an asset must match for its feedback to go into the prompt, and
+// how many reasons of each verdict go in.
+constexpr double kRelated = 0.5;
+constexpr std::size_t kMaxNotes = 3;
+constexpr std::string_view kStyleCheck = "storyboard.check";
 
 json::Value property(std::string_view type, std::string_view description) {
     json::Value schema;
@@ -143,7 +152,30 @@ json::Value summary(const Record& record) {
     if (record.sample_rate > 0) {
         out["seconds"] = record.seconds;
     }
+    int accepted = 0;
+    int rejected = 0;
+    for (const Feedback& item : record.feedback) {
+        accepted += item.verdict == "accepted" ? 1 : 0;
+        rejected += item.verdict == "rejected" ? 1 : 0;
+    }
+    if (accepted > 0) {
+        out["accepted"] = accepted;
+    }
+    if (rejected > 0) {
+        out["rejected"] = rejected;
+    }
     return out;
+}
+
+// The project's storyboard entries, or none if it has no storyboard or it doesn't load; storyboard
+// .check reports those problems.
+json::Object storyboard_entries(Session& session) {
+    auto loaded = storyboard::load(
+        [&session](std::string_view path) { return session.read_project_file(path); });
+    if (!loaded || !loaded.value().errors.empty()) {
+        return {};
+    }
+    return std::move(loaded.value().entries);
 }
 
 // The file's extension must be the asset's format: a .png stays a .png.
@@ -161,9 +193,10 @@ Result<void> check_path(std::string_view path, std::string_view format) {
     return {};
 }
 
-// Writes the asset into the project and records where it came from in library.json.
-Result<void> copy_into_project(Session& session, const Library& library, const Record& record,
-                               const std::string& path) {
+// Writes the asset into the project and records where it came from in library.json. Returns the
+// bytes written.
+Result<std::string> copy_into_project(Session& session, const Library& library,
+                                      const Record& record, const std::string& path) {
     auto full = session.resolve_path(path);
     if (!full) {
         return full.error();
@@ -210,7 +243,61 @@ Result<void> copy_into_project(Session& session, const Library& library, const R
     if (auto written = session.write_file(full.value(), data.value()); !written) {
         return written.error();
     }
-    return session.write_file(list_path.value(), json::write(list));
+    if (auto written = session.write_file(list_path.value(), json::write(list)); !written) {
+        return written.error();
+    }
+    return data;
+}
+
+// Checks an image put in the project against the storyboard's palettes and budgets that cover
+// its path, and records the result as the asset's feedback: what an agent would otherwise find
+// out later from storyboard.check. Returns the problems found.
+json::Array check_style(Session& session, const Library& library, const Record& record,
+                        const std::string& path, std::string_view data) {
+    json::Array problems;
+    if (record.type != "image") {
+        return problems;
+    }
+    const json::Object entries = storyboard_entries(session);
+    if (entries.empty()) {
+        return problems;
+    }
+    bool covered = false;
+    std::vector<storyboard::FileError> errors;
+    storyboard::check_textures(
+        entries, {path},
+        [&](std::string_view /*path*/) -> std::optional<storyboard::Texture> {
+            covered = true;
+            auto image = render::decode_image(data);
+            if (!image) {
+                return std::nullopt;
+            }
+            return storyboard::Texture{.width = image.value().width,
+                                       .height = image.value().height,
+                                       .pixels = std::move(image.value().pixels)};
+        },
+        errors);
+    if (!covered) {
+        return problems;
+    }
+    Feedback feedback{.verdict = errors.empty() ? "accepted" : "rejected",
+                      .reason = errors.empty() ? "fits the storyboard's palette and budget"
+                                               : errors.front().message,
+                      .source = std::string(kStyleCheck)};
+    for (const storyboard::FileError& error : errors) {
+        problems.emplace_back(error.message);
+    }
+    // The same result as last time adds nothing; sessions that run tests write no feedback.
+    const bool repeat = !record.feedback.empty() &&
+                        record.feedback.back().verdict == feedback.verdict &&
+                        record.feedback.back().reason == feedback.reason &&
+                        record.feedback.back().source == feedback.source;
+    if (!repeat && session.options().write_files) {
+        Record updated = record;
+        add_feedback(updated, std::move(feedback));
+        (void)library.update(updated);
+    }
+    return problems;
 }
 
 Reply asset_search(Session& session, const json::Value& params) {
@@ -262,15 +349,119 @@ Reply finish(Session& session, const Library& library, const Record& record, con
         out["reused"] = true;
     }
     if (!asked.path.empty()) {
-        if (auto copied = copy_into_project(session, library, record, asked.path); !copied) {
+        auto copied = copy_into_project(session, library, record, asked.path);
+        if (!copied) {
             Reply reply = failure_at(copied.error(), "/path");
             // The asset is in the library all the same; asset.use puts it somewhere else.
             reply.data["id"] = short_id(record.id);
             return reply;
         }
         out["path"] = asked.path;
+        if (json::Array problems =
+                check_style(session, library, record, asked.path, copied.value());
+            !problems.empty()) {
+            out["problems"] = std::move(problems);
+        }
     }
     return Reply::success(std::move(out));
+}
+
+std::string field_text(const json::Value& value, std::string_view key) {
+    const json::Value* member = value.find(key);
+    return member != nullptr && member->is_string() ? member->as_string() : std::string();
+}
+
+std::string joined(const std::vector<std::string>& parts, std::string_view separator) {
+    std::string out;
+    for (const std::string& part : parts) {
+        out += (out.empty() ? "" : std::string(separator)) + part;
+    }
+    return out;
+}
+
+// What goes along with a prompt so results fit the game: the storyboard's tone, palette and
+// references that cover the asset's path or every asset, and the reasons agents and checks gave
+// for accepting or rejecting the asset being refined and assets like the one asked for.
+std::string prompt_context(Session& session, std::span<const Record> records, const Asked& asked,
+                           const Record* parent) {
+    std::vector<std::string> lines;
+    if (const json::Object entries = storyboard_entries(session); !entries.empty()) {
+        std::vector<std::string> paths;
+        if (!asked.path.empty()) {
+            paths.push_back(asked.path);
+        }
+        std::vector<std::string> tones;
+        std::vector<std::string> colors;
+        std::vector<std::string> references;
+        for (const json::Value& item : storyboard::brief(entries, {}, paths).entries) {
+            const storyboard::Kind* kind = storyboard::kind_of(field_text(item, "id"));
+            const json::Value* fields = item.find("fields");
+            if (kind == nullptr || fields == nullptr) {
+                continue;
+            }
+            std::string summary = field_text(*fields, "summary");
+            if (summary.empty()) {
+                summary = field_text(*fields, "name");
+            }
+            if (kind->name == "tone" && !summary.empty()) {
+                tones.push_back(std::move(summary));
+            } else if (kind->name == "reference" && !summary.empty()) {
+                references.push_back(std::move(summary));
+            } else if (const json::Value* named = fields->find("colors");
+                       kind->name == "palette" && named != nullptr && named->is_object()) {
+                for (const auto& [name, color] : named->as_object()) {
+                    colors.push_back(name + " " + (color.is_string() ? color.as_string() : ""));
+                }
+            }
+        }
+        if (!tones.empty()) {
+            lines.push_back("Style: " + joined(tones, "; ") + ".");
+        }
+        if (asked.request.type == "image" && !colors.empty()) {
+            lines.push_back("Use only these colors: " + joined(colors, ", ") + ".");
+        }
+        if (!references.empty()) {
+            lines.push_back("Follow: " + joined(references, "; ") + ".");
+        }
+    }
+
+    std::vector<std::string> worked;
+    std::vector<std::string> wrong;
+    const auto take = [&worked, &wrong](const Record& record) {
+        for (const Feedback& item : std::ranges::reverse_view(record.feedback)) {
+            std::string reason = item.reason;
+            while (!reason.empty() && (reason.back() == '.' || reason.back() == ' ')) {
+                reason.pop_back();
+            }
+            // A check passing says nothing a prompt can use.
+            const bool accepted = item.verdict == "accepted";
+            if (reason.empty() || (accepted && item.source == kStyleCheck)) {
+                continue;
+            }
+            std::vector<std::string>& list = accepted ? worked : wrong;
+            if (list.size() < kMaxNotes && std::ranges::find(list, reason) == list.end()) {
+                list.push_back(std::move(reason));
+            }
+        }
+    };
+    if (parent != nullptr) {
+        take(*parent);
+    }
+    for (const Match& match : search(records, {.text = asked.request.prompt,
+                                               .tags = {},
+                                               .type = asked.request.type,
+                                               .limit = kMaxCandidates})) {
+        if (match.score >= kRelated && (parent == nullptr || match.record->id != parent->id)) {
+            take(*match.record);
+        }
+    }
+    if (!worked.empty()) {
+        lines.push_back("What worked before: " + joined(worked, "; ") + ".");
+    }
+    if (!wrong.empty()) {
+        lines.push_back("Avoid what was wrong before: " + joined(wrong, "; ") + ".");
+    }
+    return joined(lines, "\n");
 }
 
 Reply run_generator(Session& session, const json::Value& params, Asked asked,
@@ -311,18 +502,19 @@ Reply run_generator(Session& session, const json::Value& params, Asked asked,
             return finish(session, library.value(), record.value(), asked, true);
         }
     }
+    auto records = library.value().all();
+    if (!records) {
+        return Reply::failure(records.error());
+    }
     const json::Value* similar = params.find("similar");
     if (parent == nullptr && (similar == nullptr || similar->as_bool())) {
-        auto records = library.value().all();
-        if (!records) {
-            return Reply::failure(records.error());
-        }
         json::Array candidates;
         for (const Match& match : search(records.value(), {.text = asked.request.prompt,
                                                            .tags = {},
                                                            .type = asked.request.type,
                                                            .limit = kMaxCandidates})) {
-            if (match.score >= kSimilar) {
+            // One agents rejected more than accepted is what they didn't want.
+            if (match.score >= kSimilar && net_feedback(*match.record) >= 0) {
                 json::Value item = summary(*match.record);
                 item["score"] = match.score;
                 candidates.push_back(std::move(item));
@@ -335,6 +527,13 @@ Reply run_generator(Session& session, const json::Value& params, Asked asked,
         }
     }
 
+    std::string context;
+    if (const json::Value* with = params.find("context"); with == nullptr || with->as_bool()) {
+        context = prompt_context(session, records.value(), asked, parent);
+    }
+    if (!context.empty()) {
+        asked.request.prompt += "\n\n" + context;
+    }
     auto generated = generator.generator->generate(asked.request);
     if (!generated) {
         return Reply::failure(generated.error());
@@ -343,6 +542,9 @@ Reply run_generator(Session& session, const json::Value& params, Asked asked,
     record.description = trimmed(std::move(asked.description));
     record.tags = asked.tags;
     record.request = asked.keyed;
+    if (!context.empty()) {
+        record.request["context"] = context;
+    }
     record.generator = generator.type;
     record.model = generated.value().model.empty() ? generator.model : generated.value().model;
     record.seed = generated.value().seed;
@@ -520,11 +722,17 @@ Reply asset_use(Session& session, const json::Value& params) {
         return failure_at(record.error(), "/id");
     }
     const std::string path = text(params, "path");
-    if (auto copied = copy_into_project(session, library.value(), record.value(), path); !copied) {
+    auto copied = copy_into_project(session, library.value(), record.value(), path);
+    if (!copied) {
         return failure_at(copied.error(), "/path");
     }
     json::Value out;
     out["path"] = path;
+    if (json::Array problems =
+            check_style(session, library.value(), record.value(), path, copied.value());
+        !problems.empty()) {
+        out["problems"] = std::move(problems);
+    }
     return Reply::success(std::move(out));
 }
 
@@ -562,6 +770,33 @@ Reply asset_add(Session& session, const json::Value& params) {
     return Reply::success(std::move(out));
 }
 
+Reply asset_feedback(Session& session, const json::Value& params) {
+    auto library = open_library(session);
+    if (!library) {
+        return Reply::failure(library.error());
+    }
+    if (auto writes = check_writes(session); !writes) {
+        return Reply::failure(writes.error());
+    }
+    auto record = library.value().get(text(params, "id"));
+    if (!record) {
+        return failure_at(record.error(), "/id");
+    }
+    std::string source = text(params, "source");
+    add_feedback(record.value(), {.verdict = text(params, "verdict"),
+                                  .reason = trimmed(text(params, "reason")),
+                                  .source = source.empty() ? "agent" : std::move(source)});
+    if (auto updated = library.value().update(record.value()); !updated) {
+        return Reply::failure(updated.error());
+    }
+    json::Value out = summary(record.value());
+    for (const std::string_view key :
+         {"description", "tags", "type", "width", "height", "seconds"}) {
+        out.as_object().erase(std::string(key));
+    }
+    return Reply::success(std::move(out));
+}
+
 json::Value type_property(std::string_view description) {
     json::Value type = property("string", description);
     type["enum"] = json::Array{"image", "sound"};
@@ -583,7 +818,10 @@ json::Object shared_properties() {
         {"description", property("string", "A sentence for agents to read instead of the "
                                            "file.")},
         {"tags", string_array("Words to find it by.")},
-        {"path", property("string", "Also copy it into the project here.")},
+        {"path", property("string", "Also copy it into the project here; images are checked "
+                                    "against the storyboard's palette and budget.")},
+        {"context", property("boolean", "false: send the prompt alone, without the "
+                                        "storyboard's style and notes from earlier feedback.")},
     };
 }
 
@@ -657,6 +895,26 @@ void register_commands(command::Registry& registry) {
                                  {"path", property("string", "Where in the project.")}},
                                 {"id", "path"}),
         .handler = asset_use,
+    });
+
+    json::Value verdict = property("string", "Whether the asset did the job.");
+    verdict["enum"] = json::Array{"accepted", "rejected"};
+    registry.add({
+        .name = "asset.feedback",
+        .description = "Records whether a library asset worked and why. Feedback ranks search "
+                       "results, keeps rejected assets out of candidates and goes into later "
+                       "prompts.",
+        .capabilities = {Capability::Read, Capability::Filesystem},
+        .effect = command::Effect::Read,
+        .params = params_schema(
+            {
+                {"id", property("string", "Its ID, or the start of it.")},
+                {"verdict", std::move(verdict)},
+                {"reason", property("string", "What worked or what was wrong, in a few words.")},
+                {"source", property("string", "Who judged it; default \"agent\".")},
+            },
+            {"id", "verdict"}),
+        .handler = asset_feedback,
     });
 
     registry.add({

@@ -152,6 +152,19 @@ json::Value to_json(const Record& record) {
     if (!record.parent.empty()) {
         out["parent"] = record.parent;
     }
+    if (!record.feedback.empty()) {
+        json::Array feedback;
+        for (const Feedback& item : record.feedback) {
+            json::Value entry;
+            entry["verdict"] = item.verdict;
+            if (!item.reason.empty()) {
+                entry["reason"] = item.reason;
+            }
+            entry["source"] = item.source;
+            feedback.push_back(std::move(entry));
+        }
+        out["feedback"] = std::move(feedback);
+    }
     return out;
 }
 
@@ -200,7 +213,37 @@ Result<Record> record_from_json(const json::Value& value) {
     record.license = text_of(value, "license");
     record.author = text_of(value, "author");
     record.parent = text_of(value, "parent");
+    if (const json::Value* feedback = value.find("feedback");
+        feedback != nullptr && feedback->is_array()) {
+        for (const json::Value& item : feedback->as_array()) {
+            if (item.is_object()) {
+                record.feedback.push_back({.verdict = text_of(item, "verdict"),
+                                           .reason = text_of(item, "reason"),
+                                           .source = text_of(item, "source")});
+            }
+        }
+    }
     return record;
+}
+
+void add_feedback(Record& record, Feedback feedback) {
+    record.feedback.push_back(std::move(feedback));
+    if (record.feedback.size() > kMaxFeedback) {
+        record.feedback.erase(record.feedback.begin(),
+                              record.feedback.end() - static_cast<std::ptrdiff_t>(kMaxFeedback));
+    }
+}
+
+int net_feedback(const Record& record) noexcept {
+    int net = 0;
+    for (const Feedback& item : record.feedback) {
+        if (item.verdict == "accepted") {
+            ++net;
+        } else if (item.verdict == "rejected") {
+            --net;
+        }
+    }
+    return net;
 }
 
 std::string_view type_of(std::string_view extension) {

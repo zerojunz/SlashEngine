@@ -84,7 +84,7 @@ as `entity.get`, reject it as an unknown param.
 | Export | [`export.run`](#exportrun), [`sdk.check`](#sdkcheck), [`sdk.add`](#sdkadd), [`sdk.lock`](#sdklock) |
 | Gameplay code | [`gameplay.build`](#gameplaybuild), [`build.check`](#buildcheck), [`api.search`](#apisearch) |
 | AI | [`ai.providers`](#aiproviders), [`ai.complete`](#aicomplete) |
-| Asset library | [`asset.search`](#assetsearch), [`asset.generate`](#assetgenerate), [`asset.refine`](#assetrefine), [`asset.info`](#assetinfo), [`asset.use`](#assetuse), [`asset.add`](#assetadd) |
+| Asset library | [`asset.search`](#assetsearch), [`asset.generate`](#assetgenerate), [`asset.refine`](#assetrefine), [`asset.info`](#assetinfo), [`asset.use`](#assetuse), [`asset.add`](#assetadd), [`asset.feedback`](#assetfeedback) |
 
 
 ## Describe
@@ -3458,9 +3458,11 @@ to the library. Registered by `slash-cli` and `slash-mcp`, running games include
 ### asset.search
 
 Finds assets by words, tags and type. Words match descriptions, prompts and tags, a plural
-matching its singular; `score` is the share of the words an asset matches, and results come best
-first, then those whose tags matched more words, then by ID. With no `text`, every asset with the
-tags and type matches. Needs: `read`.
+matching its singular; `score` is the share of the words an asset matches, moved up or down 0.05
+for each time it was [accepted](#assetfeedback) more than rejected (at most 0.2, and kept from 0
+to 1). Results come best first, then the better received, then those whose tags matched more
+words, then by ID; each shows how many times it was `accepted` and `rejected`, when it was. With
+no `text`, every asset with the tags and type matches. Needs: `read`.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -3480,11 +3482,20 @@ tags and type matches. Needs: `read`.
 ### asset.generate
 
 Makes an image or a sound with a generator and keeps it. An exact repeat of an earlier request
-(the same generator, model and params, apart from `description`, `tags`, `path` and `similar`)
-returns the stored asset with `"reused": true` and calls no model. Otherwise, when the library has
-assets of the type matching at least three quarters of the prompt's words, they come back as
-`candidates` and nothing is made; pass `"similar": false` to generate anyway. Needs: `read`,
-`filesystem`, `network`.
+(the same generator, model and params, apart from `description`, `tags`, `path`, `similar` and
+`context`) returns the stored asset with `"reused": true` and calls no model. Otherwise, when the
+library has assets of the type that score at least 0.75 for the prompt and were not rejected
+more than accepted, they come back as `candidates` and nothing is made; pass `"similar": false`
+to generate anyway. Needs: `read`, `filesystem`, `network`.
+
+The generator gets more than the prompt, so results fit the game: the
+[storyboard](storyboard-format.md)'s `tone` entries, `palette` colors (for images) and `reference`
+entries that cover `path` or every asset, and the reasons [feedback](#assetfeedback) gave for
+assets like this one (scoring at least 0.5) and for a refine's parent: "What worked before:
+..." and "Avoid what was wrong before: ...". The record keeps what was added as
+`request.context`. An image copied into the project with `path` is checked against the palettes
+and budgets that cover it, as `storyboard.check` would; the reply lists any `problems`, and the
+result is recorded as the asset's feedback (source `storyboard.check`).
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -3498,6 +3509,7 @@ assets of the type matching at least three quarters of the prompt's words, they 
 | `tags` | string[] | | Words to find it by |
 | `path` | string | | Also copy it into the project here, as [`asset.use`](#assetuse) does |
 | `similar` | boolean | true | `false` generates even when there are close matches |
+| `context` | boolean | true | `false` sends the prompt alone, without the storyboard's style and notes from feedback |
 
 The reply has the `id`, the image's `width` and `height` or the sound's `seconds`, and `path`
 when it was copied:
@@ -3568,7 +3580,9 @@ before it, oldest first, and `children`, the versions made from it. Needs: `read
 ### asset.use
 
 Copies an asset into the project and records it in `library.json`. The path keeps the asset's
-format: a `.png` stays a `.png`. Needs: `read`, `filesystem`.
+format: a `.png` stays a `.png`. An image is checked against the storyboard's palettes and
+budgets that cover the path, as with `asset.generate`'s `path`, and the reply lists any
+`problems`. Needs: `read`, `filesystem`.
 
 ```json
 {"id": "19b7f428", "path": "ui/heart.png"}
@@ -3591,6 +3605,28 @@ file the library already holds keeps its record, with the new tags added. Needs:
 
 ```json
 {"height":8,"id":"19b7f428aefb","type":"image","width":8}
+```
+
+### asset.feedback
+
+Records whether an asset did the job and why, from an agent, a playtest or a check. The library
+keeps an asset's last 20. Feedback moves the asset in [`asset.search`](#assetsearch), keeps
+assets rejected more than accepted out of `asset.generate`'s candidates, and its reasons go into
+later prompts for assets like it. Needs: `read`, `filesystem`.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `id` | string | required | The asset, or the start of its ID |
+| `verdict` | string | required | `accepted` or `rejected` |
+| `reason` | string | | What worked or what was wrong, in a few words; up to 300 characters |
+| `source` | string | `agent` | Who judged it, such as `playtest` |
+
+```json
+{"id": "19b7f428", "verdict": "rejected", "reason": "too small to read on a phone"}
+```
+
+```json
+{"id":"19b7f428aefb","rejected":1}
 ```
 
 Errors, with `data.path` pointing at the param: an unknown generator with `-32001` and the
