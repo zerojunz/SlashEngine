@@ -91,6 +91,9 @@ struct FramePiece {
     render::DistanceField field; // glyphs drawn from a distance field
     std::vector<render::Vertex2D> vertices;
     std::size_t order = 0; // where it drew among the frame's pieces
+    // The project path of the texture it samples; empty for glyphs, style boxes, flat colors and
+    // built-in icons.
+    std::string_view texture;
 };
 
 // Something a frame drew: a sprite, a tile map layer, a CPUParticles2D's or GPUParticles2D's
@@ -444,6 +447,9 @@ struct Capture {
 // A thing shows at a pixel when at least this share of the pixel's color comes from it: its
 // alpha there times what the things drawn over it let through.
 inline constexpr float kShownShare = 0.25F;
+// A thing whose edge has less contrast than this with what is around it is hard to see: as
+// WCAG's contrast ratio, from 1 for the same lightness to 21 for black on white.
+inline constexpr float kHardToSee = 1.5F;
 
 struct SummaryOptions {
     // The part of the window to summarize, [x, y, width, height] in its pixels; none for all
@@ -452,6 +458,9 @@ struct SummaryOptions {
     // The map's columns and rows; 0 for no map.
     int columns = 0;
     int rows = 0;
+    // Measure how much each thing that shows stands out from what is around it
+    // (Shown::contrast), in the frame capture draws, lights and materials included.
+    bool contrast = false;
 };
 
 // Something a frame shows.
@@ -463,6 +472,12 @@ struct Shown {
     // The share of its pixels that show: inside the window (or region) and not under anything
     // drawn after it.
     float shown = 1.0F;
+    // With SummaryOptions::contrast, the contrast across its edge: WCAG's contrast ratio of the
+    // frame's colors just inside and just outside it, the median along the edge in the window;
+    // 0 when nothing around it shows in the window. darker says whether it is darker than what
+    // is around it along most of the edge.
+    float contrast = 0.0F;
+    bool darker = false;
 };
 
 // What a frame shows, as data instead of an image.
@@ -486,8 +501,9 @@ struct FrameSummary {
 // part in the window (or region) at every pixel up to 64 pixels across and down and at evenly
 // spaced pixels beyond, and all of it the same way for the share outside. The map
 // shows the last thing drawn that shows at each cell's center. With a region, things that show
-// nothing in it are left out, and offscreen stays empty. Like capture, it keeps what it needs in
-// the world for the next summary.
+// nothing in it are left out, and offscreen stays empty. Contrast is measured on the same grid,
+// between neighboring samples where one shows the thing on top and the other is outside it.
+// Like capture, it keeps what it needs in the world for the next summary.
 [[nodiscard]] Result<FrameSummary> summarize(world::World& world, asset::Assets& assets,
                                              const SummaryOptions& options = {});
 

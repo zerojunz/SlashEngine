@@ -1,8 +1,8 @@
 {
   "setup": {
-    "instructions": 3194,
-    "tool_definitions": 22424,
-    "tools": 96
+    "instructions": 3234,
+    "tool_definitions": 22654,
+    "tools": 97
   },
   "tasks": {
     "add-enemy": {

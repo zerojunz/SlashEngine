@@ -27,5 +27,10 @@ library and calls the commands as an agent does over MCP (tools `asset_search`,
 - `asset.feedback` records whether an asset worked and why. Search ranks by it, assets rejected
   more than accepted stop coming back as candidates, and the reasons go into later prompts for
   assets like them, along with the storyboard's tone and palette.
+- `asset.check` records feedback with no one asking. It opens each scene that draws a library
+  file, here the sequel's night level, and looks at it as `frame.summary` does with
+  `contrast`: the red slime's dark outline is lost against the night sky, so it is rejected
+  with the reason, and the green slime and the heart are accepted. Every whole-project
+  `test.run` runs it.
 - The library is `~/.slash/library`, or `SLASH_LIBRARY_DIR`; this example keeps its own in
   `library/`.
