@@ -12,4 +12,9 @@ namespace slash::exporter {
 // the gameplay library when another program rebuilds it.
 void register_export_commands(command::Registry& registry);
 
+// Adds api.search, which finds C++ functions, types and macros in the engine's public headers
+// (from the engine folder exports use) and the project's gameplay sources, with the examples
+// that use them. It only reads, so tools register it in every session, running games included.
+void register_api_commands(command::Registry& registry);
+
 } // namespace slash::exporter

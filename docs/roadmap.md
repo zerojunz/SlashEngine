@@ -498,7 +498,7 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
       storyboard and reports likely contradictions as advisory findings (`storyboard.review`)
 - [x] `project.map`: a generated map of the project's systems, components, scenes and source
       files, linked to the storyboard, so agents in a large codebase find code without guessing
-- [ ] `api.search`: finds engine and project C++ functions and types by name or purpose and
+- [x] `api.search`: finds engine and project C++ functions and types by name or purpose and
       returns their signatures, docs and the verified examples that use them
 - [ ] Playtests and tuning sweeps: `playtest.run` runs many headless copies of a game at once,
       driven by simple scripted bots and each with different values (jump height, enemy speed),
@@ -782,7 +782,7 @@ calls and tokens ([design section 6](design.md#6-cheap-for-agents-to-use)).
 | `run.until`: run headless until a condition holds instead of polling | 5 | Done |
 | `replay.seek`: query any earlier tick of a recorded run | 5 | Done |
 | `build.check`: C++ compile errors as data from an incremental build | 6 | Done |
-| `api.search`: real signatures and examples instead of guessed function names | 6 | Planned |
+| `api.search`: real signatures and examples instead of guessed function names | 6 | Done |
 | `playtest.run`: many headless bot runs and tuning sweeps in one call | 6 | Planned |
 | `audio.analyze`: tempo, key, loudness and loop seams as data instead of listening | 6 | Planned |
 | `project.map`: where things are in a large project, without reading the source | 6 | Done |

@@ -82,7 +82,7 @@ as `entity.get`, reject it as an unknown param.
 | Display | [`display.list`](#displaylist), [`display.set`](#displayset), [`perf.stats`](#perfstats), [`debug.overlay`](#debugoverlay) |
 | Import | [`project.import`](#projectimport) |
 | Export | [`export.run`](#exportrun), [`sdk.check`](#sdkcheck), [`sdk.add`](#sdkadd), [`sdk.lock`](#sdklock) |
-| Gameplay code | [`gameplay.build`](#gameplaybuild), [`build.check`](#buildcheck) |
+| Gameplay code | [`gameplay.build`](#gameplaybuild), [`build.check`](#buildcheck), [`api.search`](#apisearch) |
 | AI | [`ai.providers`](#aiproviders), [`ai.complete`](#aicomplete) |
 
 
@@ -3233,6 +3233,59 @@ includes a header is listed once. Checks fail as `gameplay.build` does when they
 project with no `gameplay.sources` with `-32002` and `data.step` `"options"`, a build that fails
 without compiler errors with `-32004`, the end of the log in `data.tail` and the log in
 `data.log` (`.slash/gameplay/check.log`).
+
+### api.search
+
+Finds C++ functions, types and macros by name or by what they do, in the engine's public headers
+(`engine/<module>/include/`) and the project's gameplay sources, and returns each one's
+signature, its doc comment, where it is declared and lines that use it: from the engine's
+[examples](../../examples/), which its tests build and run, or from the project's other files.
+Use it before writing a call instead of guessing a name. The sources are read as text, as
+[`project.map`](#projectmap) reads them; the engine's are those exports build from
+(`SLASH_ENGINE_DIR`, an installed copy, or the checkout the tools were built from). Registered by
+`slash-cli` and `slash-mcp`, running games included.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `query` | string | required | A name (`World::find`, `is_action_pressed`) or words for what it does (`play a sound`) |
+| `in` | array | both | Only `engine` or `project` |
+| `kind` | string | all | Only `function`, `type` or `macro` |
+| `limit` | integer | 8 | Most results, 1 to 50 |
+| `examples` | integer | 2 | Most example lines per result, 0 to 10 |
+
+Needs: `read`.
+
+```json
+{"query": "emit an event", "limit": 1}
+```
+
+```json
+{"results":[{"at":"engine/world/include/slash/world/world.hpp:248","doc":"Emits a gameplay event, such as emit(\"player_died\", \"player\", {{\"cause\", \"lava\"}}). Kinds starting with \"entity.\" and the kind \"command\" are the engine's own.","examples":[{"at":"examples/physics-2d/main.cpp:64","code":"world.emit(\"coin_taken\", world.id_of(coin), {});"},{"at":"examples/project-map/src/coins.cpp:37","code":"world.emit(\"coin_collected\", event.id);"}],"include":"slash/world/world.hpp","kind":"function","name":"slash::world::World::emit","signature":"void emit(std::string kind, std::string_view id = {}, json::Value data = {})"}]}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `name` | Qualified with its namespaces and classes; a macro's is its own |
+| `kind` | `function`, `struct`, `class`, `union`, `enum`, `alias` or `macro` |
+| `signature` | Its declaration on one line: a function's without its body, a type's head, a macro's parameters; `overloads` has a function's others |
+| `doc` | The comment above it, left out when there is none |
+| `at` | Where it is declared, `path:line`; `defined` is where a project function declared there is defined |
+| `include` | How code includes an engine header: `#include "slash/world/world.hpp"` |
+| `fields` | A struct's or class's public data members as declared, each with the first sentence of its comment, or an enum's values |
+| `members` | A type's public member functions, by name |
+| `examples` | The first line of each file that uses it, `at` and `code`: a file of the engine's examples that includes its header, or another file of the project |
+
+A name finds itself first (`World::find` before other `find`s); words find the names, then the
+classes, namespaces and headers, then the docs they appear in, so `play a sound` finds
+`audio::play_stream` and the `AudioStreamPlayer` component. Words match across forms ("plays",
+"playing"). A line counts as using a member function only when it calls it through its class or
+on something named like it (`game_world.find` for `World::find`), so another class's `find` is
+not an example. Private and protected members and `detail` namespaces are not the engine's API
+and are left out. When nothing matches, `did_you_mean` names the closest name.
+
+```json
+{"did_you_mean":"chase","results":[]}
+```
 
 ## AI
 

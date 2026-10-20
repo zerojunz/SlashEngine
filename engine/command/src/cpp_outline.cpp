@@ -36,10 +36,19 @@ struct Comment {
     std::string text;
 };
 
+// A #define, which the parser gives its doc.
+struct Define {
+    std::string name;
+    std::string params;
+    int line = 0;
+};
+
 struct Lexed {
     std::vector<Token> tokens;
     std::map<int, Comment> comments;
+    std::map<int, std::string> trailing; // "// text" after code, by line
     std::vector<std::string> includes;
+    std::vector<Define> defines;
     int lines = 0;
 };
 
@@ -203,8 +212,11 @@ private:
         if (end == std::string_view::npos) {
             end = text_.size();
         }
+        std::string text = comment_text(text_.substr(i_ + 2, end - i_ - 2), false);
         if (!line_has_token_) {
-            add_comment(line_, line_, comment_text(text_.substr(i_ + 2, end - i_ - 2), false));
+            add_comment(line_, line_, std::move(text));
+        } else if (!text.empty()) {
+            out_.trailing[line_] = std::move(text);
         }
         i_ = end;
         space_ = true;
@@ -233,7 +245,8 @@ private:
         out_.comments[last] = {first, std::move(text)};
     }
 
-    // A preprocessor line, with its continuations. Only #include "file" is kept.
+    // A preprocessor line, with its continuations. Only #include "file" and the names #define
+    // defines are kept.
     void directive() {
         std::size_t end = i_;
         for (;;) {
@@ -254,7 +267,9 @@ private:
         }
         std::string_view line = text_.substr(i_ + 1, end - i_ - 1);
         line.remove_prefix(std::min(line.find_first_not_of(" \t"), line.size()));
-        if (line.starts_with("include")) {
+        if (line.starts_with("define")) {
+            define(line.substr(6));
+        } else if (line.starts_with("include")) {
             line.remove_prefix(7);
             line.remove_prefix(std::min(line.find_first_not_of(" \t"), line.size()));
             if (line.starts_with('"')) {
@@ -266,6 +281,25 @@ private:
         lines_in(i_, end);
         i_ = end;
         space_ = true;
+    }
+
+    // What follows "#define": a name, then a function-like macro's parameters.
+    void define(std::string_view rest) {
+        const std::size_t begin = rest.find_first_not_of(" \t");
+        if (begin == std::string_view::npos || begin == 0 || !identifier_start(rest[begin])) {
+            return;
+        }
+        std::size_t end = begin;
+        while (end < rest.size() && identifier_char(rest[end])) {
+            ++end;
+        }
+        Define define{std::string(rest.substr(begin, end - begin)), {}, line_};
+        if (end < rest.size() && rest[end] == '(') {
+            if (const std::size_t close = rest.find(')', end); close != std::string_view::npos) {
+                define.params = std::string(rest.substr(end, close - end + 1));
+            }
+        }
+        out_.defines.push_back(std::move(define));
     }
 
     // A string or character literal whose quote is at text_[quote], its prefix from begin.
@@ -455,6 +489,8 @@ struct Scope {
     std::string function;                           // a function's name, for the strings in it
     std::set<std::string, std::less<>> identifiers; // a function body's
     std::vector<std::size_t> statement;             // a namespace's or class's statement so far
+    std::string access;                             // a class's, where the statement is
+    std::size_t open = kNone;                       // the token of its "{"
     int parens = 0;                                 // open in that statement
     std::size_t calls = 0;                          // calls open when it began
 };
@@ -483,6 +519,11 @@ public:
             close_scope();
         }
         out_.includes = std::move(lexed_.includes);
+        for (Define& define : lexed_.defines) {
+            std::string doc = doc_above(define.line);
+            out_.defines.push_back(
+                {std::move(define.name), std::move(define.params), std::move(doc), define.line});
+        }
         out_.identifiers.assign(identifiers_.begin(), identifiers_.end());
         out_.lines = lexed_.lines;
         return std::move(out_);
@@ -512,6 +553,7 @@ private:
             if (function != nullptr) {
                 function->identifiers.emplace(token.text);
             }
+            enumerator(t);
         }
         if (token.kind == TokenKind::String) {
             string_literal(t, function);
@@ -576,6 +618,7 @@ private:
                 if (statement.size() == 1 &&
                     (is(tokens_[statement[0]], "public") || is(tokens_[statement[0]], "private") ||
                      is(tokens_[statement[0]], "protected"))) {
+                    scopes_.back().access = std::string(tokens_[statement[0]].text);
                     statement.clear();
                     return;
                 }
@@ -583,6 +626,31 @@ private:
         }
         add_to_calls(token);
         add_to_statement(t);
+    }
+
+    // An enum's value: a name after the enum's "{" or a "," between its values.
+    void enumerator(std::size_t t) {
+        const Scope& scope = scopes_.back();
+        if (scope.kind != ScopeKind::Enum || scope.symbol == kNone || t == 0 ||
+            calls_.size() != scope.calls || (!is(tokens_[t - 1], ",") && t - 1 != scope.open)) {
+            return;
+        }
+        const Token& token = tokens_[t];
+        // Only a value on a line of its own has a comment of its own.
+        bool alone = tokens_[t - 1].line < token.line;
+        for (std::size_t k = t + 1;
+             alone && k + 1 < tokens_.size() && tokens_[k].line == token.line; ++k) {
+            alone = !is(tokens_[k], ",") || tokens_[k + 1].line > token.line;
+        }
+        std::string doc;
+        if (alone) {
+            doc = doc_above(token.line);
+            if (doc.empty()) {
+                doc = trailing(token.line);
+            }
+        }
+        out_.symbols[scope.symbol].fields.push_back(
+            {std::string(token.text), std::move(doc), "public", token.line});
     }
 
     void add_to_calls(const Token& token) {
@@ -887,6 +955,10 @@ private:
         return scopes_.back().kind == ScopeKind::Class ? scopes_.back().name : std::string();
     }
 
+    [[nodiscard]] std::string access() const {
+        return scopes_.back().kind == ScopeKind::Class ? scopes_.back().access : std::string();
+    }
+
     [[nodiscard]] std::string doc_above(int line) const {
         std::vector<const std::string*> parts;
         for (int at = line - 1;;) {
@@ -934,6 +1006,7 @@ private:
         symbol.name = std::move(name);
         symbol.scope = scope_path();
         symbol.member_of = member_of();
+        symbol.access = access();
         symbol.signature = signature(tokens, paren);
         symbol.doc = doc_above(first.line);
         symbol.line = tokens_[tokens[paren > 0 ? paren - 1 : 0]].line;
@@ -942,16 +1015,28 @@ private:
         return out_.symbols.size() - 1;
     }
 
-    void add_type(std::string kind, std::string name, int line, int first_line) {
+    std::size_t add_type(std::string kind, std::string name, int line,
+                         const std::vector<std::size_t>& tokens) {
         CppSymbol symbol;
         symbol.kind = std::move(kind);
         symbol.name = std::move(name);
         symbol.scope = scope_path();
         symbol.member_of = member_of();
-        symbol.doc = doc_above(first_line);
+        symbol.access = access();
+        symbol.signature = text_of(tokens);
+        symbol.doc = doc_above(tokens_[tokens.front()].line);
         symbol.line = line;
         symbol.definition = true;
         out_.symbols.push_back(std::move(symbol));
+        return out_.symbols.size() - 1;
+    }
+
+    [[nodiscard]] std::string text_of(const std::vector<std::size_t>& tokens) const {
+        TextBuilder text;
+        for (const std::size_t k : tokens) {
+            text.add(tokens_[k]);
+        }
+        return text.text();
     }
 
     // A class's or enum's name: the last identifier from begin outside template arguments and
@@ -1006,6 +1091,7 @@ private:
     void open_scope(std::size_t t) {
         Scope next;
         next.calls = calls_.size();
+        next.open = t;
         if (!statement_scope()) {
             next.kind = ScopeKind::Block;
             scopes_.push_back(std::move(next));
@@ -1046,15 +1132,16 @@ private:
                 next.kind = ScopeKind::Enum;
                 const auto [type, line] = type_name(tokens, enum_at + 1);
                 if (!type.empty()) {
-                    add_type("enum", type, line, tokens_[tokens.front()].line);
+                    next.symbol = add_type("enum", type, line, tokens);
                 }
             } else if (class_at != kNone && name.empty()) {
                 next.kind = ScopeKind::Class;
                 const auto [type, line] = type_name(tokens, class_at + 1);
                 next.name = type;
+                next.access = is(tokens_[tokens[class_at]], "class") ? "private" : "public";
                 if (!type.empty()) {
-                    add_type(std::string(tokens_[tokens[class_at]].text), type, line,
-                             tokens_[tokens.front()].line);
+                    next.symbol =
+                        add_type(std::string(tokens_[tokens[class_at]].text), type, line, tokens);
                 }
             } else if (!name.empty() && (name.starts_with("operator") ||
                                          name.find("::operator") != std::string::npos ||
@@ -1112,7 +1199,7 @@ private:
             if (tokens.size() > 3 && tokens_[tokens[1]].kind == TokenKind::Identifier &&
                 !is(tokens_[tokens[1]], "namespace") && is(tokens_[tokens[2]], "=")) {
                 add_type("alias", std::string(tokens_[tokens[1]].text), tokens_[tokens[1]].line,
-                         first.line);
+                         tokens);
             }
             return;
         }
@@ -1128,26 +1215,105 @@ private:
                 }
             }
             if (name != nullptr) {
-                add_type("alias", std::string(name->text), name->line, first.line);
+                add_type("alias", std::string(name->text), name->line, tokens);
             }
             return;
         }
+        // An explicit instantiation ("template class Box<int>;") declares nothing new.
         if (is(first, "friend") || is(first, "static_assert") || is(first, "extern") ||
-            is(first, "template")) {
+            (is(first, "template") && (tokens.size() < 2 || !is(tokens_[tokens[1]], "<")))) {
             return;
         }
         const std::size_t begin = past_templates(tokens);
         const std::size_t paren = parameters(tokens, begin);
-        if (paren == kNone) {
-            return; // a variable, or a class declared ahead
-        }
-        std::string name = function_name(tokens, begin, paren);
+        std::string name = paren == kNone ? std::string() : function_name(tokens, begin, paren);
         if (name.empty() ||
             (!name.starts_with("operator") && name.find("::operator") == std::string::npos &&
              assigns_before(tokens, begin, paren))) {
+            add_field(tokens, begin); // a variable, or a class declared ahead
             return;
         }
         add_function(tokens, paren, std::move(name), false);
+    }
+
+    // A class's data member: a declaration in it that isn't a function, a type or a friend.
+    void add_field(const std::vector<std::size_t>& tokens, std::size_t begin) {
+        const Scope& scope = scopes_.back();
+        if (scope.kind != ScopeKind::Class || scope.symbol == kNone || begin >= tokens.size() ||
+            keyword_at(tokens, begin, {"struct", "class", "union", "enum"}) != kNone ||
+            is(tokens_[tokens[begin]], "template")) {
+            return;
+        }
+        const Token& first = tokens_[tokens[begin]];
+        const Token& last = tokens_[tokens.back()];
+        std::string doc = doc_above(tokens_[tokens.front()].line);
+        if (doc.empty()) {
+            doc = trailing(last.line);
+        }
+        out_.symbols[scope.symbol].fields.push_back(
+            {source_text(first, last), std::move(doc), scope.access, first.line});
+    }
+
+    // The comment after the code on a line, or "". One that only tells clang-tidy to pass the
+    // line says nothing about it.
+    [[nodiscard]] std::string trailing(int line) const {
+        const auto found = lexed_.trailing.find(line);
+        return found == lexed_.trailing.end() || found->second.starts_with("NOLINT")
+                   ? std::string()
+                   : found->second;
+    }
+
+    // The source from one token to another, on one line: an initializer in braces is kept,
+    // though its tokens are not in the statement.
+    [[nodiscard]] static std::string source_text(const Token& first, const Token& last) {
+        const char* begin = first.text.data();
+        const char* end = last.text.data() + last.text.size();
+        std::string text;
+        bool space = false;
+        for (const char* c = begin; c < end && text.size() < kMaxText; ++c) {
+            if (*c == '"' || *c == '\'') {
+                if (space && !text.empty()) {
+                    text += ' ';
+                }
+                space = false;
+                const char quote = *c;
+                text += *c;
+                for (++c; c < end && *c != quote; ++c) {
+                    text += *c;
+                    if (*c == '\\' && c + 1 < end) {
+                        text += *++c;
+                    }
+                }
+                if (c < end) {
+                    text += *c;
+                }
+                continue;
+            }
+            if (*c == '/' && c + 1 < end && (c[1] == '/' || c[1] == '*')) {
+                const bool line = c[1] == '/';
+                c += 2;
+                while (c < end &&
+                       !(line ? *c == '\n' : (*c == '*' && c + 1 < end && c[1] == '/'))) {
+                    ++c;
+                }
+                c += line ? 0 : 1;
+                space = true;
+                continue;
+            }
+            if (std::isspace(static_cast<unsigned char>(*c)) != 0) {
+                space = true;
+                continue;
+            }
+            if (space && !text.empty()) {
+                text += ' ';
+            }
+            space = false;
+            text += *c;
+        }
+        if (text.size() >= kMaxText) {
+            text += "...";
+        }
+        return text;
     }
 
     Lexed lexed_;
