@@ -1,0 +1,15 @@
+{
+  "entities": {
+    "ada": {
+      "components": {
+        "StoryRef": {
+          "ids": ["character/ada"]
+        },
+        "Transform2D": {
+          "position": [64.0, 96.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

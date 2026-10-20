@@ -1,0 +1,5 @@
+{"jsonrpc":"2.0","id":1,"method":"storyboard.check"}
+{"jsonrpc":"2.0","id":2,"method":"soundtrack.plan","params":{"states":["combat"]}}
+{"jsonrpc":"2.0","id":3,"method":"storyboard.edit","params":{"why":"Plan the music","by":"example","edits":[{"id":"cue/harbor","set":{"name":"Harbor","scenes":["scenes/harbor.scene.json"],"summary":"Plays in scenes/harbor.scene.json.","theme":"theme/sea","layers":["calm","busy"]},"version":null},{"id":"cue/lighthouse","set":{"beats":["beat/storm"],"name":"Lighthouse","scenes":["scenes/lighthouse.scene.json"],"summary":"Plays in scenes/lighthouse.scene.json.","theme":"theme/keeper"},"version":null},{"id":"cue/wreck","set":{"beats":["beat/wreck"],"name":"The wreck","summary":"Plays during beat/wreck.","plays":"once"},"version":null},{"id":"cue/combat","set":{"name":"Combat","states":["combat"],"summary":"Plays in the combat state.","theme":"theme/sea"},"version":null}]}}
+{"jsonrpc":"2.0","id":4,"method":"storyboard.check"}
+{"jsonrpc":"2.0","id":5,"method":"storyboard.brief","params":{"scenes":["scenes/lighthouse.scene.json"]}}

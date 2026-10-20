@@ -381,6 +381,64 @@ TEST_CASE("a brief holds the entries a task touches and names the rest") {
     CHECK(by_id.related.empty());
 }
 
+TEST_CASE("the music file holds themes, cues and loudness targets") {
+    const json::Value music = parse(R"({"format": 1, "entries": {
+        "theme/lowtown": {"name": "Lowtown", "subjects": ["place/docks"], "key": "D minor",
+                          "tempo": 96, "bar_beats": 4, "instruments": ["cello", "harp"],
+                          "mood": ["damp", "watchful"]},
+        "cue/docks": {"name": "Docks", "theme": "theme/lowtown",
+                      "scenes": ["scenes/docks.scene.json"], "beats": ["beat/arrival"],
+                      "states": ["explore"], "layers": ["calm", "chase"], "plays": "loop",
+                      "music": ["music/docks.audio.json"]},
+        "loudness/music": {"name": "Music", "lufs": -16, "true_peak": -1, "tolerance": 1.5}
+    }})");
+    CHECK(storyboard::validate_file("music", music).empty());
+    CHECK(storyboard::files()[4] == "music");
+
+    const json::Value bad = parse(R"({"format": 1, "entries": {
+        "cue/fanfare": {"name": "Fanfare", "plays": "twice", "theme": "lowtown",
+                        "scenes": ["../menu.scene.json"]},
+        "theme/hero": {"name": "Hero", "bar_beats": 3.5},
+        "beat/win": {"name": "Win"}
+    }})");
+    CHECK(describe(storyboard::validate_file("music", bad)) ==
+          std::vector<std::string>{
+              "/entries/beat~1win: beat entries belong in storyboard/story.json",
+              "/entries/cue~1fanfare/plays: expected one of \"loop\", \"once\", got \"twice\"",
+              "/entries/cue~1fanfare/theme: storyboard IDs are a kind and a lowercase name, such "
+              "as \"character/mira\"; got \"lowtown\"",
+              "/entries/cue~1fanfare/scenes/0: links are paths relative to the project folder, "
+              "separated by '/', with no \".\" or \"..\" parts; got \"../menu.scene.json\"",
+              "/entries/theme~1hero/bar_beats: expected integer, got number",
+          });
+}
+
+TEST_CASE("once there are cues, scenes and beats with no music are warnings") {
+    json::Object entries = cast();
+    entries["beat/arrival"] = parse(R"({"name": "Arrival", "place": "place/docks"})");
+    entries["beat/escape"] = parse(R"({"name": "Escape", "place": "place/docks"})");
+    const std::vector<std::string> scenes = {
+        "scenes/docks.scene.json", "scenes/levels/one.scene.json", "scenes/levels/two.scene.json",
+        "scenes/menu.scene.json"};
+    std::vector<storyboard::FileError> warnings;
+    storyboard::check_music(entries, scenes, warnings);
+    CHECK(warnings.empty()); // no music planned yet
+
+    entries["cue/docks"] = parse(R"({"name": "Docks", "beats": ["beat/arrival"],
+                                    "scenes": ["scenes/docks.scene.json", "scenes/levels"]})");
+    storyboard::check_music(entries, scenes, warnings);
+    std::vector<std::string> found;
+    for (const storyboard::FileError& warning : warnings) {
+        found.push_back(warning.file + " " + warning.path + ": " + warning.message);
+    }
+    CHECK(found ==
+          std::vector<std::string>{
+              "scenes/menu.scene.json : no cue plays in this scene; soundtrack.plan drafts one",
+              "storyboard/story.json /entries/beat~1escape: no cue plays during beat/escape; "
+              "soundtrack.plan drafts one",
+          });
+}
+
 TEST_CASE("a link to a folder covers what is in it") {
     json::Object entries = cast();
     entries["palette/dock"] = parse(R"({"name": "Dock", "colors": {"tar": "#202020"},

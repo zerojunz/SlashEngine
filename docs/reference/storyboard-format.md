@@ -9,7 +9,7 @@ prints the JSON Schema.
 
 ## Files
 
-A project's storyboard is up to seven files in its `storyboard/` folder. Each kind of entry lives
+A project's storyboard is up to eight files in its `storyboard/` folder. Each kind of entry lives
 in one file, so `storyboard.edit` always knows where an entry goes. A missing file has no entries.
 `slash-cli init` starts a new game with two: `glossary.json`, holding the game's title as a
 `term`, and `work.json`, holding an open task to fill in the rest.
@@ -20,6 +20,7 @@ storyboard/
   world.json       # character, place, faction, item, lore
   story.json       # act, beat, quest
   design.json      # mechanic, rule, tuning, control
+  music.json       # theme, cue, loudness
   glossary.json    # term
   decisions.json   # decision
   work.json        # task
@@ -91,6 +92,9 @@ the kind shown.
 | `rule` | design | | A design rule every change must keep |
 | `tuning` | design | `value`, `min`, `max` (numbers), `unit` | A gameplay number and its limits |
 | `control` | design | `action`, `keys` (strings), `gamepad` (strings) | An input action and its bindings |
+| `theme` | music | `subjects` (any), `key`, `tempo` (number), `bar_beats` (integer), `instruments`, `mood` (strings) | A musical theme for characters, places or factions |
+| `cue` | music | `theme` (theme), `scenes` (paths), `beats` (beats), `states`, `layers` (strings), `plays` (`loop`, `once`), `music` (paths) | A piece of music and when it plays: one line of the cue sheet |
+| `loudness` | music | `lufs`, `true_peak`, `tolerance` (numbers) | A loudness target for the sounds in its `links`, or for all music |
 | `term` | glossary | `aliases`, `avoid` (strings) | A canonical name; `name` is the spelling to use |
 | `decision` | decisions | `status` (`proposed`, `accepted`, `superseded`), `by`, `date`, `why`, `supersedes` (decision) | Something decided, by whom and why |
 | `task` | work | `status` (`open`, `in_progress`, `blocked`, `done`), `owner`, `questions` (strings) | Open work; `refs` and `links` say what it touches |
@@ -119,6 +123,50 @@ storyboard stay tied together:
 `StoryRef` too, and every entity that extends it inherits it. An entry can point the other way
 with `links`, naming the scenes, prefabs and assets it is about.
 
+## Music
+
+The music file plans a game's soundtrack before any is written. A `theme` is a musical idea for
+the characters, places or factions in its `subjects`: a `key` such as `"D minor"`, a `tempo` in
+beats per minute, `bar_beats` (4 if unset), `instruments` named as
+[scores](scene-format.md#scores) name General MIDI instruments, and a `mood`. A `cue` is one line
+of the cue sheet: the `theme` it plays, and when it plays, in `scenes` (files or folders), during
+story `beats` and in game `states` such as `"combat"`. Its `layers` are intensity levels, lowest
+first, `plays` is `loop` (if unset) or `once`, and `music` names the `.score.json` and
+`.audio.json` files that play it once they exist. A `loudness` entry sets a target, in LUFS, and
+the highest true peak, in dBTP, for the sounds in its `links`, or with no `links` for all music.
+
+```json
+{
+  "entries": {
+    "cue/lighthouse": {
+      "beats": ["beat/storm"],
+      "name": "Lighthouse",
+      "scenes": ["scenes/lighthouse.scene.json"],
+      "theme": "theme/keeper"
+    },
+    "loudness/music": {
+      "lufs": -16,
+      "name": "Music",
+      "true_peak": -1
+    },
+    "theme/keeper": {
+      "instruments": ["accordion"],
+      "key": "A minor",
+      "mood": ["patient"],
+      "name": "The Keeper",
+      "subjects": ["character/keeper"],
+      "tempo": 72
+    }
+  },
+  "format": 1
+}
+```
+
+[`soundtrack.plan`](commands.md#soundtrackplan) drafts the cues a game is missing from its scenes
+and story, and `storyboard.brief` with a scene returns its cue with the cue's theme in full, so
+whoever writes the music starts from the plan. [examples/soundtrack-plan](../../examples/soundtrack-plan/)
+plans a small game's music.
+
 ## Checks
 
 `storyboard.check` (see the [command reference](commands.md#storyboardcheck)) checks the whole
@@ -135,7 +183,8 @@ storyboard after a task. It reports as errors:
   and `tolerance` lets each channel be that far off, for art that was filtered or compressed.
 
 A link to a file that does not exist is a warning, since open work can link files still to be
-made. `slash-cli project validate` runs the same check, so the workflow `slash-cli init` writes
+made. So, once the storyboard has a `cue`, is each scene no cue plays in and each story beat no
+cue plays during. `slash-cli project validate` runs the same check, so the workflow `slash-cli init` writes
 fails a pull request that breaks the storyboard, and `slash-cli scene validate` checks a scene's
 `StoryRef` IDs:
 
