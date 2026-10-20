@@ -5,6 +5,6 @@ add_library(slash::bench ALIAS slash_bench)
 
 target_include_directories(slash_bench PUBLIC include)
 target_link_libraries(slash_bench
-    PUBLIC slash::command slash::core
+    PUBLIC slash::ai slash::command slash::core
     PRIVATE slash::platform)
 slash_target_warnings(slash_bench)

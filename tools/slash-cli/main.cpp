@@ -137,6 +137,11 @@ Usage:
       --baseline <file>              Compare with this baseline file
       --tolerance <fraction>         Tokens allowed above the baseline (default 0.05)
       --update                       Write the numbers to the baseline file instead
+      --live <providers.json>        Have a model do each task from its prompt instead, and
+                                     report the calls and tokens it took
+      --role <name>                  The role or provider in that file (default: its
+                                     "default" role, or its only provider)
+      --max-turns <n>                Replies the model may take per task (default 20)
   slash-cli call <command> [params]  Run one engine command and print its result
                                      params is a JSON object, or - to read it from stdin
       --scene <file>                 Open this scene first (or start a new one saved there)
@@ -1231,6 +1236,41 @@ int cmd_test(const std::vector<std::string>& args) {
     return reply.value.find("failed")->size() == 0 ? kExitOk : kExitFailure;
 }
 
+// slash-cli bench --live: a model does each task, as providers.json's role picks it.
+int run_bench_live(const slash::bench::Options& options, const std::string& providers,
+                   const std::string& role, int max_turns) {
+    auto text = slash::platform::read_file(providers);
+    if (!text) {
+        return failure("could not read the providers file", text.error());
+    }
+    auto document = json::parse(text.value());
+    if (!document) {
+        return failure("could not read the providers file", document.error());
+    }
+    auto config = slash::ai::parse_config(document.value());
+    if (!config) {
+        return failure("could not read the providers file", config.error());
+    }
+    slash::ai::OpenOptions open_options;
+    open_options.project_root = std::filesystem::path(providers).parent_path().generic_string();
+    if (open_options.project_root.empty()) {
+        open_options.project_root = ".";
+    }
+    auto opened = slash::ai::open(config.value(), role, open_options);
+    if (!opened) {
+        return failure("could not open the provider", opened.error());
+    }
+    slash::bench::Live live;
+    live.provider = opened.value().provider;
+    live.max_turns = max_turns;
+    auto report = slash::bench::run_live(options, live);
+    if (!report) {
+        return failure("could not run the benchmark", report.error());
+    }
+    print(report.value());
+    return report.value().find("failed")->size() == 0 ? kExitOk : kExitFailure;
+}
+
 int cmd_bench(const std::vector<std::string>& args) {
     std::string folder = "bench/tasks";
     std::string work = "build/bench";
@@ -1238,6 +1278,9 @@ int cmd_bench(const std::vector<std::string>& args) {
     std::vector<std::string> names;
     bool update = false;
     double tolerance = 0.05;
+    std::string providers;
+    std::string role;
+    std::uint64_t max_turns = 20;
     for (std::size_t i = 0; i < args.size(); ++i) {
         const std::string& arg = args[i];
         const bool has_value = i + 1 < args.size();
@@ -1255,12 +1298,26 @@ int cmd_bench(const std::vector<std::string>& args) {
             }
         } else if (arg == "--update") {
             update = true;
+        } else if (arg == "--live" && has_value) {
+            providers = args[++i];
+        } else if (arg == "--role" && has_value) {
+            role = args[++i];
+        } else if (arg == "--max-turns" && has_value) {
+            if (!parse_u64(args[++i], max_turns) || max_turns == 0 || max_turns > 1000) {
+                return usage_error("--max-turns takes a number from 1 to 1000");
+            }
         } else {
             return usage_error("unexpected argument for bench: " + arg);
         }
     }
     if (update && baseline_path.empty()) {
         return usage_error("--update needs --baseline, the file to write");
+    }
+    if (!providers.empty() && !baseline_path.empty()) {
+        return usage_error("live runs are not compared with a baseline; leave out --baseline");
+    }
+    if (providers.empty() && !role.empty()) {
+        return usage_error("--role picks a model for --live");
     }
     auto tasks = slash::bench::load_tasks(folder, names);
     if (!tasks) {
@@ -1276,6 +1333,9 @@ int cmd_bench(const std::vector<std::string>& args) {
         Engine engine(session_options);
         use(*engine.session);
     };
+    if (!providers.empty()) {
+        return run_bench_live(options, providers, role, static_cast<int>(max_turns));
+    }
     auto report = slash::bench::run(options);
     if (!report) {
         return failure("could not run the benchmark", report.error());

@@ -316,6 +316,7 @@ the baseline.
 ```bash
 slash-cli bench [--tasks <dir>] [--task <name>]... [--work <dir>] [--baseline <file>]
                 [--tolerance <fraction>] [--update]
+slash-cli bench --live <providers.json> [--role <name>] [--max-turns <n>] [--task <name>]...
 ```
 
 | Flag | Meaning |
@@ -326,6 +327,9 @@ slash-cli bench [--tasks <dir>] [--task <name>]... [--work <dir>] [--baseline <f
 | `--baseline <file>` | Compare with this baseline and list what grew under `regressions` |
 | `--tolerance <fraction>` | How far tokens may grow past the baseline (default `0.05`) |
 | `--update` | Write the numbers to the `--baseline` file instead of comparing |
+| `--live <providers.json>` | Have a model do each task from its prompt instead, and report the calls and tokens it took ([live runs](benchmark.md#live-runs)) |
+| `--role <name>` | The role or provider in that file (default: its `default` role, or its only provider) |
+| `--max-turns <n>` | Replies the model may take per task (default 20) |
 
 ```json
 {"failed":[],"regressions":[],"setup":{"instructions":2897,"tool_definitions":19145,"tools":85},"tasks":{"add-enemy":{"calls":3,"read":35,"tokens":117,"written":82}},"total":{"calls":3,"tokens":117}}

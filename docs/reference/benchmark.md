@@ -43,6 +43,7 @@ own files.
 | `prompt` | The task as a person would ask an agent for it |
 | `solution` | The MCP tool calls an agent that knows the engine well makes for it, in order: each a `tool` name (dots become `_`) and its `arguments` |
 | `checks` | What must hold afterwards, so a task that stops doing what it says fails |
+| `answer` | Text a [live run](#live-runs)'s final reply must contain, for a task that asks a question (optional) |
 
 Each check is either a `command` with `params`, run in the same session once the solution has
 run, or a `step` (from 1) whose reply to check. `expect` works as in a
@@ -102,10 +103,39 @@ now reads, or cheaper, which the baseline should keep, rewrites the baseline wit
 the same pull request. `--update` refuses to write numbers from a run with a failed task; with
 `--task`, it keeps the other tasks' numbers.
 
+## Live runs
+
+With `--live`, a model does each task from its prompt alone instead of playing the solution. It
+gets what an agent connected to slash-mcp gets: the server's instructions as its system
+message, every tool definition, then the reply to each tool call it makes, until it answers
+without calling one. The role or provider comes from a [`providers.json`](providers.md) file
+(`--role`, else its `default` role or its only provider), so any vendor's model, or one on your
+own machine, can do the run.
+
+```bash
+slash-cli bench --live providers.json --role bench
+```
+
+```json
+{"failed":[],"model":"stand-in","tasks":{"add-enemy":{"calls":3,"input_tokens":63300,"output_tokens":120,"tokens":63420,"turns":3}},"total":{"calls":3,"tokens":63420}}
+```
+
+Tokens here are the provider's own count of what the model read and wrote, setup included in
+every reply's input. A task fails when a request fails, the model is still calling tools after
+`--max-turns` replies (default 20), a check fails, or its final reply lacks the task's `answer`.
+Checks on solution steps are skipped, since the model's steps are its own. Live runs vary with
+the model, so they are not compared with the baseline.
+
+`.github/workflows/bench.yml` runs them every week where the repository names a model: the
+`BENCH_PROVIDER_TYPE`, `BENCH_MODEL` and, for a server of your own, `BENCH_URL` Actions
+variables, and the `BENCH_API_KEY` secret. The job summary has a table of each task's calls and
+tokens, and the report is kept as an artifact.
+
 ## Adding a task
 
 1. Make the folder, with `project/` holding the scenes and files the task starts from.
 2. Write the prompt, then the calls you would make, as few and as small as the engine allows;
    if a task needs more calls than it should, that is a command to add, not a longer solution.
 3. Add checks that fail if the solution no longer does what the prompt asks.
-4. Run `slash-cli bench --task <name>` until nothing fails, then `--update` the baseline.
+4. For a task that asks a question, give the `answer` a live run's reply must contain.
+5. Run `slash-cli bench --task <name>` until nothing fails, then `--update` the baseline.

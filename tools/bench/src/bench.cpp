@@ -124,6 +124,55 @@ json::Value regression(std::string what, const json::Value* baseline, std::int64
     return out;
 }
 
+// Runs a task's checks once it has been done. Without the solution's replies (a live run), checks
+// on its steps are skipped.
+void run_checks(const Task& task, command::Session& session,
+                const std::vector<json::Value>* replies, json::Array& failed) {
+    const json::Value* checks = task.spec.find("checks");
+    if (checks == nullptr) {
+        return;
+    }
+    for (std::size_t i = 0; i < checks->size(); ++i) {
+        const json::Value& check = checks->as_array()[i];
+        const std::string at = "/checks/" + std::to_string(i);
+        json::Value actual;
+        if (const json::Value* step = check.find("step"); step != nullptr) {
+            if (replies == nullptr) {
+                continue;
+            }
+            actual = (*replies)[static_cast<std::size_t>(step->as_int()) - 1];
+        } else {
+            const json::Value* params = check.find("params");
+            const command::Reply reply = session.call(check.find("command")->as_string(),
+                                                      params != nullptr ? *params : json::Object{});
+            if (!reply.ok) {
+                failed.push_back(failure(task.name, at, reply.message));
+                continue;
+            }
+            actual = reply.value;
+        }
+        if (const json::Value* expect = check.find("expect"); expect != nullptr) {
+            if (auto differs = command::mismatch(*expect, actual, at + "/expect")) {
+                failed.push_back(failure(task.name, differs->path, differs->message));
+            }
+        }
+    }
+}
+
+// The server's instructions and tools, as an agent reads them when it connects.
+struct Setup {
+    std::string instructions;
+    json::Value tools;
+};
+
+Setup setup_of(command::mcp::Server& server) {
+    json::Value initialize;
+    initialize["protocolVersion"] = std::string(command::mcp::kProtocolVersions[0]);
+    const command::Reply hello = server.dispatch("initialize", initialize);
+    const command::Reply tools = server.dispatch("tools/list", json::Object{});
+    return {hello.value.find("instructions")->as_string(), *tools.value.find("tools")};
+}
+
 } // namespace
 
 std::int64_t estimate_tokens(std::string_view text) {
@@ -173,6 +222,10 @@ json::Value task_schema() {
     properties["format"]["description"] = "The task.json format version: 1.";
     properties["prompt"] = property("string", "The task as a person would ask an agent for it.");
     properties["prompt"]["minLength"] = 1;
+    properties["answer"] =
+        property("string", "What a live run's final reply must contain, such as a number the "
+                           "prompt asks for.");
+    properties["answer"]["minLength"] = 1;
 
     json::Value call = property("object", "An MCP tool call.");
     call["additionalProperties"] = false;
@@ -306,16 +359,12 @@ Result<json::Value> run(const Options& options) {
         options.with_session(root.value(), [&](command::Session& session) {
             command::mcp::Server server(session);
             if (!measured_setup) {
-                json::Value initialize;
-                initialize["protocolVersion"] = std::string(command::mcp::kProtocolVersions[0]);
-                const command::Reply hello = server.dispatch("initialize", initialize);
-                const command::Reply tools = server.dispatch("tools/list", json::Object{});
+                const Setup read = setup_of(server);
                 json::Value& setup = report["setup"];
-                setup["instructions"] =
-                    estimate_tokens(hello.value.find("instructions")->as_string());
-                setup["tools"] = static_cast<std::int64_t>(tools.value.find("tools")->size());
+                setup["instructions"] = estimate_tokens(read.instructions);
+                setup["tools"] = static_cast<std::int64_t>(read.tools.size());
                 setup["tool_definitions"] =
-                    estimate_tokens(json::write(*tools.value.find("tools"), json::Style::Compact));
+                    estimate_tokens(json::write(read.tools, json::Style::Compact));
                 measured_setup = true;
             }
 
@@ -344,35 +393,111 @@ Result<json::Value> run(const Options& options) {
                 replies.push_back(std::move(answer.value));
             }
 
-            if (const json::Value* checks = task.spec.find("checks"); checks != nullptr) {
-                for (std::size_t i = 0; i < checks->size(); ++i) {
-                    const json::Value& check = checks->as_array()[i];
-                    const std::string at = "/checks/" + std::to_string(i);
-                    json::Value actual;
-                    if (const json::Value* step = check.find("step"); step != nullptr) {
-                        actual = replies[static_cast<std::size_t>(step->as_int()) - 1];
-                    } else {
-                        const json::Value* params = check.find("params");
-                        const command::Reply reply =
-                            session.call(check.find("command")->as_string(),
-                                         params != nullptr ? *params : json::Object{});
-                        if (!reply.ok) {
-                            failed.push_back(failure(task.name, at, reply.message));
-                            continue;
-                        }
-                        actual = reply.value;
-                    }
-                    if (const json::Value* expect = check.find("expect"); expect != nullptr) {
-                        if (auto differs = command::mismatch(*expect, actual, at + "/expect")) {
-                            failed.push_back(failure(task.name, differs->path, differs->message));
-                        }
-                    }
-                }
-            }
+            run_checks(task, session, &replies, failed);
             measured["calls"] = static_cast<std::int64_t>(solution.size());
             measured["written"] = written;
             measured["read"] = read;
             measured["tokens"] = written + read;
+        });
+        total_calls += number(measured, "calls");
+        total_tokens += number(measured, "tokens");
+        report["tasks"][task.name] = std::move(measured);
+    }
+    report["total"]["calls"] = total_calls;
+    report["total"]["tokens"] = total_tokens;
+    report["failed"] = std::move(failed);
+    return report;
+}
+
+Result<json::Value> run_live(const Options& options, const Live& live) {
+    json::Value report;
+    report["tasks"] = json::Object{};
+    json::Array failed;
+    std::int64_t total_calls = 0;
+    std::int64_t total_tokens = 0;
+    for (const Task& task : options.tasks) {
+        auto root = copy_project(task, options.work);
+        if (!root) {
+            return root.error();
+        }
+        json::Value measured;
+        options.with_session(root.value(), [&](command::Session& session) {
+            command::mcp::Server server(session);
+            const Setup setup = setup_of(server);
+            ai::Request request;
+            request.messages.push_back({.role = ai::Role::System, .text = setup.instructions});
+            request.messages.push_back(
+                {.role = ai::Role::User, .text = task.spec.find("prompt")->as_string()});
+            for (const json::Value& tool : setup.tools.as_array()) {
+                const json::Value* description = tool.find("description");
+                request.tools.push_back(
+                    {.name = tool.find("name")->as_string(),
+                     .description = description != nullptr ? description->as_string() : "",
+                     .parameters = *tool.find("inputSchema")});
+            }
+            request.params.max_tokens = live.max_tokens;
+
+            std::int64_t calls = 0;
+            std::int64_t turns = 0;
+            ai::Usage usage;
+            std::string answer;
+            bool finished = false;
+            while (turns < live.max_turns) {
+                ++turns;
+                auto response = live.provider->complete(request);
+                if (!response) {
+                    failed.push_back(failure(task.name, "/prompt", response.error().message));
+                    break;
+                }
+                usage.input_tokens += response.value().usage.input_tokens;
+                usage.output_tokens += response.value().usage.output_tokens;
+                if (!response.value().model.empty()) {
+                    report["model"] = response.value().model;
+                }
+                const ai::Message& reply = response.value().message;
+                request.messages.push_back(reply);
+                if (reply.tool_calls.empty()) {
+                    answer = reply.text;
+                    finished = true;
+                    break;
+                }
+                for (const ai::ToolCall& tool_call : reply.tool_calls) {
+                    ++calls;
+                    json::Value call;
+                    call["name"] = tool_call.name;
+                    call["arguments"] = tool_call.arguments;
+                    const command::Reply result = server.dispatch("tools/call", call);
+                    ai::Message message{.role = ai::Role::Tool, .tool_call_id = tool_call.id};
+                    if (result.ok) {
+                        Answer out = answer_of(result.value);
+                        message.text = std::move(out.text);
+                        message.is_error = out.error;
+                    } else {
+                        message.text = result.message;
+                        message.is_error = true;
+                    }
+                    request.messages.push_back(std::move(message));
+                }
+            }
+            if (finished) {
+                run_checks(task, session, nullptr, failed);
+                if (const json::Value* expected = task.spec.find("answer");
+                    expected != nullptr &&
+                    answer.find(expected->as_string()) == std::string::npos) {
+                    failed.push_back(failure(task.name, "/answer",
+                                             "the final reply lacks \"" + expected->as_string() +
+                                                 "\": " + answer));
+                }
+            } else if (turns >= live.max_turns) {
+                failed.push_back(
+                    failure(task.name, "/prompt",
+                            "not done after " + std::to_string(live.max_turns) + " replies"));
+            }
+            measured["calls"] = calls;
+            measured["turns"] = turns;
+            measured["input_tokens"] = usage.input_tokens;
+            measured["output_tokens"] = usage.output_tokens;
+            measured["tokens"] = usage.input_tokens + usage.output_tokens;
         });
         total_calls += number(measured, "calls");
         total_tokens += number(measured, "tokens");

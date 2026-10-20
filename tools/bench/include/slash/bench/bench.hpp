@@ -1,5 +1,6 @@
 #pragma once
 
+#include "slash/ai/provider.hpp"
 #include "slash/command/session.hpp"
 #include "slash/core/json.hpp"
 #include "slash/core/json_schema.hpp"
@@ -7,6 +8,8 @@
 
 #include <cstdint>
 #include <functional>
+#include <memory>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -70,6 +73,24 @@ struct Options {
 // definitions, in estimated tokens. For each task, "written" is the tool calls (names and
 // arguments) and "read" what came back; "failed" lists a task's failed solution calls and checks.
 [[nodiscard]] Result<json::Value> run(const Options& options);
+
+// A live run: a model does each task from its prompt alone, with the MCP server's instructions as
+// its system message and its tools, as an agent connected to slash-mcp would.
+struct Live {
+    std::shared_ptr<ai::Provider> provider;
+    int max_turns = 20;                     // replies the model may take per task
+    std::optional<std::int64_t> max_tokens; // per reply, where the provider's config sets none
+};
+
+// Runs every task live and reports what each cost as the provider counted it:
+//
+//   {"model": "...", "tasks": {"raise-crates": {"calls": 4, "turns": 3, "input_tokens": 61234,
+//    "output_tokens": 412, "tokens": 61646}}, "total": {"calls": 4, "tokens": 61646},
+//    "failed": []}
+//
+// A task fails when the model gives up, runs out of turns, a check fails or its final reply
+// lacks the task's "answer". Checks on solution steps are skipped: the model's steps are its own.
+[[nodiscard]] Result<json::Value> run_live(const Options& options, const Live& live);
 
 // Where a report costs more than the baseline: setup or a task's tokens more than tolerance
 // (a fraction) above it, a task taking more calls, or a task the baseline lacks. Each item is
