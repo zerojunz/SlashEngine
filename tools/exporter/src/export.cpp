@@ -5,6 +5,7 @@
 #include "ios.hpp"
 #include "steps.hpp"
 
+#include "slash/ai/config.hpp"
 #include "slash/animation/animation.hpp"
 #include "slash/audio/audio.hpp"
 #include "slash/canvas/gpu_particles.hpp"
@@ -321,9 +322,10 @@ std::optional<std::string> with_compiled_shader(std::string_view text,
     return json::write(doc.value());
 }
 
-// Copies project.json and every scene, prefab, texture, .frames.json, .material.json, .anim.json,
-// .tileset.json, font, .theme.json, sound, .audio.json and .bus_layout.json file into data,
-// checking each on the way. Materials take their shaders compiled for the platform.
+// Copies project.json, providers.json and every scene, prefab, texture, .frames.json,
+// .material.json, .anim.json, .tileset.json, font, .theme.json, sound, .audio.json and
+// .bus_layout.json file into data, checking each on the way. Materials take their shaders compiled
+// for the platform.
 bool stage_data(const fs::path& project_dir, const runtime::Project& project, const fs::path& data,
                 std::string_view target, Failure& failure) {
     std::error_code error;
@@ -395,6 +397,32 @@ bool stage_data(const fs::path& project_dir, const runtime::Project& project, co
     if (error) {
         failure = {"stage", "could not list the project folder: " + error.message(), {}};
         return false;
+    }
+    // providers.json, for a game that calls language models, without its replay settings: a
+    // game calls the models it names, as the project asked when it was made.
+    if (const fs::path providers = project_dir / ai::kConfigFile; fs::exists(providers, error)) {
+        auto text = platform::read_file(providers.string());
+        auto document = text ? json::parse(text.value()) : Result<json::Value>(text.error());
+        const std::vector<json::ValidationError> errors =
+            document ? ai::check_config(document.value())
+                     : std::vector<json::ValidationError>{{"", document.error().message}};
+        for (const json::ValidationError& problem : errors) {
+            json::Value item;
+            item["file"] = std::string(ai::kConfigFile);
+            item["path"] = problem.path;
+            item["message"] = problem.message;
+            problems.push_back(std::move(item));
+        }
+        if (errors.empty()) {
+            document.value().as_object().erase("replay");
+            if (auto written = platform::write_file((data / ai::kConfigFile).string(),
+                                                    json::write(document.value()));
+                !written) {
+                failure = {
+                    "stage", "could not write providers.json: " + written.error().message, {}};
+                return false;
+            }
+        }
     }
     if (!found_main) {
         json::Value item;
@@ -1121,6 +1149,13 @@ ExportResult export_game(const ExportOptions& options) {
     configure.push_back("-DSLASH_GAME_SOURCES=" + sources);
     // Arguments that pick the compilers and targets, shared with SDK packages' CMake projects.
     std::vector<std::string> toolchain_args;
+    // Games with a providers.json call language models: main() installs engine/ai, and Android
+    // games get the INTERNET permission.
+    if (fs::exists(project_dir / ai::kConfigFile, error)) {
+        configure.emplace_back("-DSLASH_GAME_AI=ON");
+    } else {
+        configure.emplace_back("-DSLASH_GAME_AI=OFF");
+    }
     if (const audio::Settings& sound = project.value().audio; sound.enable_input) {
         // Games that record ask for the microphone: Info.plist's reason on macOS and iOS, the
         // RECORD_AUDIO permission on Android.

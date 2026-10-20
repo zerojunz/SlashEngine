@@ -5,7 +5,8 @@ interface over any vendor's API. `providers.json`, beside `project.json`, names 
 project can call and the role each feature uses, such as `dialogue` or `assistant`, so code asks
 for a role and the project decides which model answers. Nothing in the engine depends on one
 vendor. [examples/ai-provider](../../examples/ai-provider/) has a shopkeeper who talks through
-one.
+one, and [examples/ai-dialogue](../../examples/ai-dialogue/) a baker who talks from gameplay
+code.
 
 ```json
 {
@@ -112,7 +113,7 @@ tokens it used and whether it came from the replay file.
   an adapter of the same type reads, so a conversation can move to another provider.
 - **Streaming.** A request given a sink receives the reply's text as it arrives. `ai::Call` runs a
   request on its own thread, so a game keeps ticking while the model answers, and cancels it when
-  destroyed.
+  destroyed, without waiting for its thread.
 
 ## Replay
 
@@ -130,10 +131,56 @@ The `SLASH_AI_REPLAY` environment variable overrides the mode (`replay`, `record
 again with `auto`. The file is rewritten sorted by key, one line per recording, so it diffs well.
 Sessions that run tests (`test.run`) record nothing.
 
+## Gameplay
+
+Gameplay code asks a role's model and hears back through world events, as it hears input and
+physics, so a game never waits on a model:
+
+```cpp
+#include "slash/ai/world.hpp"
+
+const auto asked = slash::ai::ask(world, "dialogue", "The player asks Mira for bread.");
+// At a later tick:
+for (const slash::world::Event& event : world.events()) {
+    if (event.kind == "ai_reply" && event.id == asked.value()) {
+        show(event.data.find("text")->as_string());
+    }
+}
+```
+
+`ai::ask(world, role, request)` takes a `Request` or one user message, starts it streaming on
+its own thread and returns its ID: `ai_1`, `ai_2` and so on. An unknown role or a missing
+`providers.json` fails right away. The `ai` system (priority 1150, after particles) then emits
+one event for it:
+
+| Event | Data |
+| --- | --- |
+| `ai_reply` | `role`, `text`, `message` (the reply, to put back in the next request of the conversation with `ai::message_from_json`), `output` (with an `output_schema`), `stop`, `usage` |
+| `ai_failed` | `role`, `code` (such as `permission_denied` or `invalid_argument`) and `message` |
+
+`ai::reply_text` shows a reply as it streams, `ai::pending` says whether its event is still to
+come and `ai::cancel` stops it. Agents read the events with
+[`events.subscribe`](commands.md#eventssubscribe) and `events.read`.
+
+- **Games.** A game whose project has a `providers.json` installs this when it starts, reading
+  the file from its data; [exports](cli.md#export) stage it without its `replay` settings, and
+  Android exports get the `INTERNET` permission. A shipped game holds no key, so a hosted
+  provider's `url` should name the developer's own server, which adds the key, or players set the
+  variable themselves on a computer. A project without the file leaves the AI code out of its
+  exports.
+- **Same ticks, same replies.** Headless games and sessions wait at each tick for the replies to
+  the requests asked before it, so a reply arrives at the same tick on every run. Windowed games
+  never wait; a reply comes at whichever tick it finishes by.
+- **Sessions.** A session calls models only with the `network` capability. Without it, requests
+  are answered from the replay file and others fail with `permission_denied`, so an agent can
+  play a game that talks to a model with no model at all. A failed command or a dry run cancels
+  the requests it asked and gives their IDs out again; `providers.json` is read again when it
+  changes.
+
 ## In C++
 
-Link `slash::ai`. Games call providers directly; `slash::ai_commands` adds the commands and the
-command tools.
+Link `slash::ai`; games link it already. Gameplay code uses `ai::ask` above; tools call providers
+directly, and `slash::ai_commands` adds the commands and the command tools.
 
 ```cpp
 #include "slash/ai/config.hpp"

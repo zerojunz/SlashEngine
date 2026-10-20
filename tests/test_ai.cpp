@@ -4,6 +4,7 @@
 #include "slash/ai/provider.hpp"
 #include "slash/ai/replay.hpp"
 #include "slash/ai/transport.hpp"
+#include "slash/ai/world.hpp"
 #include "slash/command/builtin.hpp"
 #include "slash/command/command.hpp"
 #include "slash/command/mcp.hpp"
@@ -12,6 +13,7 @@
 #include "slash/platform/file.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
+#include "slash/world/world.hpp"
 
 #include <doctest/doctest.h>
 
@@ -1113,16 +1115,20 @@ TEST_CASE("roles open their provider with their instructions, keys and replay fi
 }
 
 TEST_CASE("a call runs on its own thread and stops when destroyed") {
-    // Streams "Hi" and "!" one piece at a time, then waits to be cancelled if asked to hang.
+    // Streams "Hi" and "!" one piece at a time, then waits to be cancelled if asked to hang, or
+    // for two seconds, cancelled or not, if stubborn.
     class Slow final : public ai::Provider {
     public:
-        explicit Slow(bool hang) : hang_(hang) {}
+        explicit Slow(bool hang, bool stubborn = false) : hang_(hang), stubborn_(stubborn) {}
         const ai::Capabilities& capabilities() const override { return capabilities_; }
         Result<ai::Response> complete(const ai::Request& /*request*/, const ai::StreamSink& sink,
                                       const ai::CancelFlag* cancel) override {
             if (sink) {
                 sink("Hi");
                 sink("!");
+            }
+            if (stubborn_) {
+                std::this_thread::sleep_for(std::chrono::seconds(2));
             }
             while (hang_ && !cancel->load()) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -1138,12 +1144,12 @@ TEST_CASE("a call runs on its own thread and stops when destroyed") {
     private:
         ai::Capabilities capabilities_;
         bool hang_;
+        bool stubborn_;
     };
 
     ai::Call call(std::make_shared<Slow>(false), ask("Hello"), true);
-    while (!call.done()) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    }
+    call.wait();
+    REQUIRE(call.done());
     REQUIRE(call.result() != nullptr);
     CHECK(call.result()->ok());
     CHECK(call.text() == "Hi!");
@@ -1158,6 +1164,173 @@ TEST_CASE("a call runs on its own thread and stops when destroyed") {
         CHECK(hung.result() == nullptr);
     }
     CHECK(std::chrono::steady_clock::now() - start < std::chrono::seconds(5));
+
+    // A request that doesn't notice it was cancelled ends on its own, after its Call has gone.
+    const auto stubborn_start = std::chrono::steady_clock::now();
+    { const ai::Call stubborn(std::make_shared<Slow>(false, true), ask("Hello"), true); }
+    CHECK(std::chrono::steady_clock::now() - stubborn_start < std::chrono::seconds(1));
+}
+
+TEST_CASE("gameplay asks a role's model and hears back through world events") {
+    const std::string root = "ai_world_project";
+    std::filesystem::remove_all(root);
+    json::Value refused;
+    refused["status"] = 400;
+    refused["body"] = parse(R"({"error":{"message":"The prompt is too long."}})");
+    FakeModelServer server({chat_reply("Fresh bread, two coins."), chat_reply("Cake on Sundays."),
+                            refused, chat_reply("Once upon a time.")});
+    const std::string provider = R"("local": {"type": "openai", "model": "local-model", "url": ")" +
+                                 server.url() + R"(", "max_retries": 0})";
+    write(root + "/providers.json", R"({"providers": {)" + provider + R"(},
+        "roles": {"dialogue": {"provider": "local", "system": "You are Mira, a baker."}}})");
+
+    world::ComponentRegistry components;
+    world::World world(components);
+    std::vector<world::Event> heard;
+    world.set_event_listener([&heard](const world::Event& event) {
+        if (event.kind.starts_with("ai_")) {
+            heard.push_back(event);
+        }
+    });
+    constexpr double kTick = 1.0 / 60.0;
+    CHECK(ai::ask(world, "dialogue", "Hello?").error().message ==
+          "this game calls no language models: it has no providers.json");
+
+    ai::install(world, {.open = {.project_root = root, .write_replays = false}, .wait = true});
+    REQUIRE(ai::installed(world));
+    const std::string asked = ai::ask(world, "dialogue", "Do you sell bread?").value();
+    CHECK(asked == "ai_1");
+    CHECK(ai::pending(world, asked));
+    // Waiting, the reply comes at the next tick on every run, and gameplay sees it the tick after.
+    world.step(kTick);
+    REQUIRE(heard.size() == 1);
+    CHECK(heard[0].kind == "ai_reply");
+    CHECK(heard[0].id == "ai_1");
+    CHECK(heard[0].data.find("role")->as_string() == "dialogue");
+    CHECK(heard[0].data.find("text")->as_string() == "Fresh bread, two coins.");
+    CHECK(heard[0].data.find("stop")->as_string() == "end");
+    CHECK(heard[0].data.find("usage")->find("output_tokens")->as_int() == 3);
+    CHECK_FALSE(ai::pending(world, asked));
+    CHECK(server.bodies()[0].find("stream")->as_bool());
+    CHECK(server.bodies()[0].find("messages")->as_array()[0] ==
+          parse(R"({"role": "system", "content": "You are Mira, a baker."})"));
+    world.step(kTick);
+    const auto seen = std::ranges::find(world.events(), "ai_reply", &world::Event::kind);
+    REQUIRE(seen != world.events().end());
+    CHECK(seen->id == "ai_1");
+
+    // A reply's message goes back into the next request of the conversation.
+    ai::Request more;
+    more.messages.push_back(message(ai::Role::User, "Do you sell bread?"));
+    more.messages.push_back(ai::message_from_json(*heard[0].data.find("message")).value());
+    more.messages.push_back(message(ai::Role::User, "And cake?"));
+    CHECK(ai::ask(world, "dialogue", std::move(more)).value() == "ai_2");
+    world.step(kTick);
+    REQUIRE(heard.size() == 2);
+    CHECK(heard[1].data.find("text")->as_string() == "Cake on Sundays.");
+    CHECK(server.bodies()[1].find("messages")->as_array()[2] ==
+          parse(R"({"role": "assistant", "content": "Fresh bread, two coins."})"));
+
+    // A failed request says why; an unknown role fails right away.
+    CHECK(ai::ask(world, "dialogue", "Tell me everything.").value() == "ai_3");
+    world.step(kTick);
+    REQUIRE(heard.size() == 3);
+    CHECK(heard[2].kind == "ai_failed");
+    CHECK(heard[2].data == parse(R"({"role": "dialogue", "code": "invalid_argument",
+        "message": "the openai provider answered HTTP 400: The prompt is too long."})"));
+    CHECK(ai::ask(world, "dialog", "Hi").error().message ==
+          "no role or provider named \"dialog\"; did you mean \"dialogue\"?");
+
+    // providers.json is read again when it changes.
+    write(root + "/providers.json", R"({"providers": {)" + provider + R"(},
+        "roles": {"narrator": {"provider": "local"}}})");
+    CHECK(ai::ask(world, "narrator", "Begin.").value() == "ai_4");
+    world.step(kTick);
+    REQUIRE(heard.size() == 4);
+    CHECK(heard[3].data.find("text")->as_string() == "Once upon a time.");
+    CHECK(heard[3].data.find("role")->as_string() == "narrator");
+
+    // A cancelled request sends nothing; a rolled back one gives its ID out again.
+    CHECK(ai::ask(world, "narrator", "Again.").value() == "ai_5");
+    ai::cancel(world, "ai_5");
+    CHECK_FALSE(ai::pending(world, "ai_5"));
+    const ai::Snapshot before = ai::save(world);
+    CHECK(ai::ask(world, "narrator", "Again.").value() == "ai_6");
+    ai::restore(world, before);
+    CHECK_FALSE(ai::pending(world, "ai_6"));
+    world.step(kTick);
+    CHECK(heard.size() == 4);
+    CHECK(ai::ask(world, "narrator", "Again.").value() == "ai_6");
+
+    // Not waiting, replies come at whichever tick they finish by, and stream until then.
+    ai::set_wait(world, false);
+    const auto start = std::chrono::steady_clock::now();
+    while (heard.size() == 4 &&
+           std::chrono::steady_clock::now() - start < std::chrono::seconds(10)) {
+        world.step(kTick);
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    REQUIRE(heard.size() == 5);
+    CHECK(heard[4].id == "ai_6");
+    CHECK(ai::reply_text(world, "ai_6").empty());
+
+    // A world played again from the start asks from the first ID again.
+    world.reset_state();
+    CHECK(ai::ask(world, "narrator", "Begin.").value() == "ai_1");
+    ai::cancel(world, "ai_1");
+    std::filesystem::remove_all(root);
+}
+
+TEST_CASE("sessions without the network capability answer only from the replay file") {
+    const std::string root = "ai_session_project";
+    std::filesystem::remove_all(root);
+    FakeModelServer server({chat_reply("Halt!")});
+    write(root + "/providers.json", R"({
+        "providers": {"local": {"type": "openai", "model": "local-model", "url": ")" +
+                                        server.url() + R"("}},
+        "roles": {"default": "local"},
+        "replay": {"file": "tests/ai.replay.jsonl"}})");
+    world::ComponentRegistry components;
+    world::register_builtin_components(components);
+    command::Registry commands;
+    command::register_builtin_commands(commands);
+    const auto heard = [](command::Session& session, std::string prompt) {
+        std::vector<world::Event> events;
+        session.world().set_event_listener([&events](const world::Event& event) {
+            if (event.kind.starts_with("ai_")) {
+                events.push_back(event);
+            }
+        });
+        REQUIRE(ai::ask(session.world(), "", std::move(prompt)).ok());
+        session.world().step(1.0 / 60.0);
+        session.world().set_event_listener({});
+        REQUIRE(events.size() == 1);
+        return events[0];
+    };
+
+    // A session that may reach the network calls the model and records its reply.
+    command::SessionOptions online;
+    online.project_root = root;
+    online.capture_logs = false;
+    command::Session recorder(components, commands, std::move(online));
+    REQUIRE(ai::installed(recorder.world()));
+    CHECK(heard(recorder, "Who goes there?").data.find("text")->as_string() == "Halt!");
+    CHECK(server.bodies().size() == 1);
+
+    // One that may not answers the same request from the recording, and refuses others.
+    command::SessionOptions offline;
+    offline.project_root = root;
+    offline.capture_logs = false;
+    offline.capabilities = {command::Capability::Read, command::Capability::Edit,
+                            command::Capability::Run};
+    command::Session reader(components, commands, std::move(offline));
+    CHECK(heard(reader, "Who goes there?").data.find("text")->as_string() == "Halt!");
+    const world::Event refused = heard(reader, "Open the gate.");
+    CHECK(refused.kind == "ai_failed");
+    CHECK(refused.data.find("code")->as_string() == "permission_denied");
+    CHECK(contains(refused.data.find("message")->as_string(), "lacks the network capability"));
+    CHECK(server.bodies().size() == 1);
+    std::filesystem::remove_all(root);
 }
 
 TEST_CASE("commands become tools, and tool calls run as commands") {

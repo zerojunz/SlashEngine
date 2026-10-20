@@ -62,6 +62,10 @@ struct HttpOptions {
 // The transport every adapter given none shares, with the default options.
 [[nodiscard]] std::shared_ptr<Transport> http_transport();
 
+// A transport that reaches nothing and fails each request with the message, for sessions that
+// may not use the network: replay files still answer what they recorded.
+[[nodiscard]] std::shared_ptr<Transport> refusing_transport(std::string message);
+
 // A URL split up for a client: "http", "localhost", 11434, "/v1".
 struct Url {
     std::string scheme;

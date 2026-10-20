@@ -1,5 +1,7 @@
 #include "slash/command/session.hpp"
 
+#include "slash/ai/transport.hpp"
+#include "slash/ai/world.hpp"
 #include "slash/animation/animation.hpp"
 #include "slash/audio/audio.hpp"
 #include "slash/canvas/canvas.hpp"
@@ -205,6 +207,16 @@ Session::Session(const world::ComponentRegistry& component_registry,
     // Ads load and purchases complete as services.test says, with no store account.
     services::install(world_, services_settings(project));
     services::use_test_backend(world_);
+    // Gameplay code asks the models providers.json names. Ticks wait for replies, so runs
+    // repeat; a session without the network capability answers only from the replay file.
+    ai::OpenOptions open;
+    open.project_root = options_.project_root;
+    open.write_replays = options_.write_files;
+    if (!allowed(Capability::Network)) {
+        open.transport = ai::refusing_transport(
+            "this session may not call models: it lacks the network capability");
+    }
+    ai::install(world_, {.open = std::move(open), .wait = true});
     if (options_.capture_logs) {
         log::set_sink([this](log::Level /*level*/, std::string_view line) {
             std::fwrite(line.data(), 1, line.size(), stderr);
@@ -319,10 +331,12 @@ Reply Session::call_command(std::string_view name, const json::Value& params) {
     Snapshot before{command->name, save(), {}, true};
     // Input events a failed command or dry run stepped through wait for the next tick again,
     // focus, hover and buttons being pressed are as they were, and so are the world's events.
+    // Requests to models asked meanwhile are cancelled.
     const input::Snapshot input_before = input::save(world_);
     const ui::Snapshot ui_before = ui::save(world_);
     const audio::Snapshot audio_before = audio::save(world_);
     const services::Snapshot services_before = services::save(world_);
+    const ai::Snapshot ai_before = ai::save(world_);
     const std::string path_before = scene_path_;
     const world::World::Counters counters_before = world_.counters();
     world::World::EventQueues events_before = world_.event_queues();
@@ -361,6 +375,7 @@ Reply Session::call_command(std::string_view name, const json::Value& params) {
         ui::restore(world_, ui_before);
         audio::restore(world_, audio_before);
         services::restore(world_, services_before);
+        ai::restore(world_, ai_before);
         scene_path_ = path_before;
         world_.set_counters(counters_before);
         world_.set_event_queues(std::move(events_before));

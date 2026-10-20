@@ -19,7 +19,7 @@ add_library(slash::exporter ALIAS slash_exporter)
 target_include_directories(slash_exporter PUBLIC include)
 target_link_libraries(slash_exporter
     PUBLIC slash::command slash::core
-    PRIVATE slash::animation slash::audio slash::canvas slash::platform slash::render slash::runtime slash::shader_compiler slash::text
+    PRIVATE slash::ai slash::animation slash::audio slash::canvas slash::platform slash::render slash::runtime slash::shader_compiler slash::text
             slash::ui slash::world)
 # Where exports find the engine sources when SLASH_ENGINE_DIR and an installed copy are absent.
 target_compile_definitions(slash_exporter PRIVATE SLASH_ENGINE_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
@@ -36,7 +36,7 @@ foreach(variable IN ITEMS CMAKE_CXX_COMPILER CMAKE_MAKE_PROGRAM CMAKE_BUILD_TYPE
         "set(${variable} [==[${${variable}}]==] CACHE STRING \"\" FORCE)\n")
 endforeach()
 string(APPEND sdk_content
-    "set(SLASH_SDK_INCLUDE_DIRECTORIES [==[$<REMOVE_DUPLICATES:$<TARGET_PROPERTY:slash_runtime,INCLUDE_DIRECTORIES>>]==] CACHE INTERNAL \"\")\n"
+    "set(SLASH_SDK_INCLUDE_DIRECTORIES [==[$<REMOVE_DUPLICATES:$<TARGET_PROPERTY:slash_runtime,INCLUDE_DIRECTORIES>;$<TARGET_PROPERTY:slash_ai,INCLUDE_DIRECTORIES>>]==] CACHE INTERNAL \"\")\n"
     "set(SLASH_SDK_COMPILE_DEFINITIONS [==[$<REMOVE_DUPLICATES:$<TARGET_PROPERTY:slash_runtime,COMPILE_DEFINITIONS>>]==] CACHE INTERNAL \"\")\n")
 file(GENERATE OUTPUT ${gameplay_sdk} CONTENT "${sdk_content}" TARGET slash_runtime)
 target_compile_definitions(slash_exporter PRIVATE SLASH_GAMEPLAY_SDK="${gameplay_sdk}"

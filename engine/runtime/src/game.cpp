@@ -138,8 +138,8 @@ Result<std::unique_ptr<Game>> Game::start(const GameOptions& options) {
 }
 
 Game::Game(Project project, platform::Platform platform, const std::string& data_dir)
-    : project_(std::move(project)), assets_(asset::folder_source(data_dir)), world_(components_),
-      platform_(std::move(platform)) {
+    : project_(std::move(project)), data_dir_(data_dir), assets_(asset::folder_source(data_dir)),
+      world_(components_), platform_(std::move(platform)) {
     // Before anything uses the job system's threads: physics makes its Box2D world on them.
     if (!jobs::configure(project_.max_threads)) {
         log::warn("threading.max_threads is ignored: the job system has already started",
