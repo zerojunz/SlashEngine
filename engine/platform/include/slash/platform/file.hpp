@@ -41,6 +41,10 @@ namespace slash::platform {
 // Deletes a file or an empty directory. Succeeds if there is nothing at path.
 [[nodiscard]] Result<void> remove_file(std::string_view path);
 
+// Moves a file, replacing any file at to, in one step where the system can, so readers see the
+// old file or the new one and never half of one.
+[[nodiscard]] Result<void> rename_file(std::string_view from, std::string_view to);
+
 // When a file last changed, and its size. Hot reload compares stamps to notice edits.
 struct FileStamp {
     std::int64_t modified = 0; // nanoseconds since 1970

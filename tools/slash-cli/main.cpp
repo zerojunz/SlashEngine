@@ -34,6 +34,7 @@
 #include "slash/importer/commands.hpp"
 #include "slash/importer/import.hpp"
 #include "slash/input/sdl.hpp"
+#include "slash/library/commands.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/platform/platform.hpp"
 #include "slash/platform/run.hpp"
@@ -344,6 +345,7 @@ struct Engine {
         command::register_builtin_commands(commands);
         slash::importer::register_import_commands(commands, {.unpack_builds = !running});
         slash::ai::register_commands(commands);
+        slash::library::register_commands(commands);
         slash::exporter::register_api_commands(commands);
         if (running) {
             command::register_run_commands(commands);
