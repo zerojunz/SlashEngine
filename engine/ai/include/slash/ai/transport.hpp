@@ -41,8 +41,25 @@ public:
     post(const HttpRequest& request, const BodySink& sink, const CancelFlag* cancel) = 0;
 };
 
-// HTTP over the network, shared by every adapter that is given no transport. It speaks plain
-// http://, which local model servers use; an https:// URL fails with an error saying so.
+// How an HTTP transport reaches servers.
+struct HttpOptions {
+    // A PEM file of the certificates to trust instead of the system's; "" for the system's.
+    std::string ca_file{}; // NOLINT(readability-redundant-member-init)
+    // A proxy, as http://[user:password@]host:port; "" for none.
+    std::string proxy{}; // NOLINT(readability-redundant-member-init)
+    // What is left empty comes from the environment, as curl takes it: SSL_CERT_FILE, then
+    // https_proxy (or HTTPS_PROXY) for https:// URLs and http_proxy for http:// ones, except for
+    // hosts no_proxy (or NO_PROXY) names. Reads a variable; null for the process's own.
+    std::function<std::string(const std::string& name)>
+        environment{}; // NOLINT(readability-redundant-member-init)
+};
+
+// HTTP and HTTPS over the network. https:// checks the server's certificate against the
+// system's: the platform's trust settings on macOS and iOS, the system store on Windows, and
+// the CA bundle on Linux and Android. On the web, requests fail until a fetch transport lands.
+[[nodiscard]] std::shared_ptr<Transport> make_http_transport(HttpOptions options);
+
+// The transport every adapter given none shares, with the default options.
 [[nodiscard]] std::shared_ptr<Transport> http_transport();
 
 // A URL split up for a client: "http", "localhost", 11434, "/v1".
@@ -54,6 +71,10 @@ struct Url {
 };
 
 [[nodiscard]] Result<Url> parse_url(std::string_view url);
+
+// The proxy a request to the URL goes through with these options, or "" for none. This
+// machine's own addresses (localhost, 127.x.x.x, ::1) never use one.
+[[nodiscard]] std::string proxy_for(const Url& url, const HttpOptions& options);
 
 // A server-sent event: its event name ("" when it has none) and its data lines joined.
 struct SseEvent {

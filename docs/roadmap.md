@@ -482,7 +482,9 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
   - [x] The interface and the three adapters (tools, structured output, images, streaming and
         the providers' reasoning kept between turns), roles in `providers.json`, engine commands
         as a model's tools, and `ai.providers` and `ai.complete` with the `network` capability
-  - [ ] TLS for hosted providers' `https://` APIs on every platform, and web exports calling
+  - [x] TLS for hosted providers' `https://` APIs, checked against the system's certificates on
+        every platform, and proxies as curl reads them
+  - [ ] Games calling models: exports that ship `providers.json`, and web exports calling
         models through the browser's `fetch`
 - [x] `ReplayProvider` so tests that use a model run offline
 - [ ] A benchmark of standard agent tasks that counts calls and tokens
