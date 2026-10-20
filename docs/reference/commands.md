@@ -54,7 +54,7 @@ as `entity.get`, reject it as an unknown param.
 
 | Group | Commands |
 | --- | --- |
-| Describe | [`engine.describe`](#enginedescribe), [`schema.get`](#schemaget) |
+| Describe | [`engine.describe`](#enginedescribe), [`schema.get`](#schemaget), [`project.map`](#projectmap) |
 | Scene | [`scene.get`](#sceneget), [`scene.new`](#scenenew), [`scene.open`](#sceneopen), [`scene.save`](#scenesave) |
 | Entities | [`entity.create`](#entitycreate), [`entity.destroy`](#entitydestroy), [`entity.get`](#entityget) |
 | Prefabs | [`prefab.save`](#prefabsave) |
@@ -157,6 +157,57 @@ Needs: `read`.
 ```json
 {"additionalProperties":false,"properties":{"tick_seconds":{"default":0.016666666666666666,"description":"Seconds per tick.","exclusiveMinimum":0,"maximum":1,"type":"number"},"ticks":{"default":1,"description":"Ticks to run.","maximum":100000,"minimum":1,"type":"integer"}},"type":"object"}
 ```
+
+### project.map
+
+Where things are in the project, so an agent finds code and content without reading every file.
+It is made from the files on every call, so it can't go stale. Scenes and prefabs list their
+entities' components (with those their prefabs give), the prefabs they extend, other project
+files they name and the storyboard entries they stand for (their `StoryRef` IDs and entries
+whose `links` name them). The game's C++ sources (project.json's `gameplay.sources`) are read as
+text, not compiled: each lists its types and functions by line, the components it names, the
+systems it adds with `add_system`, the events it emits with `emit` or compares an event's `kind`
+with, the input actions it reads, the project files it names and includes, and the entries
+linked to it. Across them, `components`, `systems`, `events` and `actions` say where each is
+declared and used. Files in `build/` and in folders starting with `.` are left out; the open
+scene is read as it is now.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `find` | string | | Only names containing this, ignoring case, and the files that name them or whose paths contain it; a file kept by a name lists only the names that match |
+| `paths` | array of paths | | Only files in these files or folders, or that extend, use or include something in them, and what those name |
+| `sections` | array | all | Only these parts: `scenes`, `prefabs`, `sources`, `components`, `systems`, `events`, `actions` |
+
+Needs: `read`. A path that is not in the project fails with `-32001` and the closest one.
+
+```json
+{"find": "coin_collected"}
+```
+
+```json
+{"events":{"coin_collected":{"emitted":["src/coins.cpp:37"],"read":["src/runner.cpp:13"]}},"project":{"main_scene":"scenes/level.scene.json","name":"Coin Run","sources":["src"]},"sources":{"src/coins.cpp":{"events":["coin_collected"],"lines":52},"src/runner.cpp":{"events":["coin_collected"],"lines":19}}}
+```
+
+What a change to a header touches, and the systems in those files; with no params, the whole
+map ([examples/project-map](../../examples/project-map/) has one):
+
+```json
+{"paths": ["src/runner.hpp"], "sections": ["sources", "systems"]}
+```
+
+```json
+{"project":{"main_scene":"scenes/level.scene.json","name":"Coin Run","sources":["src"]},"sources":{"src/coins.cpp":{"components":["Coin","Wallet"],"events":["area_entered","coin_collected"],"functions":{"collect":26},"includes":["src/runner.hpp"],"lines":52,"systems":["collect","move_runner"],"types":{"Coin":12,"Wallet":18},"uses":["prefabs/coin.prefab.json"]},"src/runner.cpp":{"actions":["jump"],"events":["cheered","coin_collected","jumped"],"functions":{"move_runner":8},"includes":["src/runner.hpp"],"lines":19,"story":["character/runner"]},"src/runner.hpp":{"functions":{"move_runner":8},"lines":10}},"systems":[{"components":["Coin","Wallet"],"loaded":false,"name":"collect","priority":960,"source":"src/coins.cpp:26"},{"loaded":false,"name":"move_runner","source":"src/runner.cpp:8"}]}
+```
+
+Without a filter, `systems` lists every system in the order it runs, with its priority; the
+game's own add where their function is defined, the components its body names, and their `doc`.
+`"loaded": false` marks one the sources add that isn't running, because the code isn't built or
+failed to load. `actions` lists those project.json defines even when no code reads them. A
+component's `declared` is its `SLASH_COMPONENT` line. Lists that would be empty are left out.
+
+Because the sources are read as text, a macro that declares something is read as it looks, and
+code in a branch the preprocessor drops is read too. Names that are built at run time, such as
+an event kind put together from parts, don't appear.
 
 ## Scene
 

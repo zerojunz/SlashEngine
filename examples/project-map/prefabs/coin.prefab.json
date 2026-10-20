@@ -1,0 +1,10 @@
+{
+  "components": {
+    "Area2D": {},
+    "Coin": {
+      "value": 1
+    },
+    "Transform2D": {}
+  },
+  "format": 1
+}

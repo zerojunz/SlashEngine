@@ -46,6 +46,10 @@ slash-cli call world.query '{"with": ["Transform2D"]}' --scene scenes/main.scene
 slash-cli call batch '{"commands": [...]}' --scene scenes/main.scene.json --save
 ```
 
+To find code or content, call `project_map` before reading files: `find` names a component,
+system, event, action or function and returns where it is declared and used, and `paths` returns
+what a change to those files touches.
+
 ## Use the storyboard
 
 `storyboard/` holds the game's facts that are not code: its style, characters, places, story,
