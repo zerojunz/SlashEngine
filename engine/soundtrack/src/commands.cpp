@@ -1,5 +1,7 @@
 #include "slash/soundtrack/commands.hpp"
 
+#include "internal.hpp"
+
 #include "slash/command/session.hpp"
 #include "slash/core/json.hpp"
 #include "slash/core/text.hpp"
@@ -512,28 +514,6 @@ Reply soundtrack_render(Session& session, const json::Value& params) {
 }
 
 // The storyboard's entries, or the reply saying why they don't load.
-std::optional<Reply> load_storyboard(Session& session, json::Object& entries) {
-    auto loaded = storyboard::load(
-        [&session](std::string_view path) { return session.read_project_file(path); });
-    if (!loaded) {
-        return Reply::failure(loaded.error());
-    }
-    if (const auto& errors = loaded.value().errors; !errors.empty()) {
-        const storyboard::FileError& first = errors.front();
-        std::string message = first.file;
-        if (!first.path.empty()) {
-            message += " at ";
-            message += first.path;
-        }
-        message += ": ";
-        message += first.message;
-        message += "; storyboard.check lists every problem";
-        return Reply::failure(command::code::kInvalidArgument, message);
-    }
-    entries = std::move(loaded.value().entries);
-    return std::nullopt;
-}
-
 // Why id names no cue, or "" if it does.
 std::string cue_error(const json::Object& entries, const std::string& id) {
     if (!id.starts_with("cue/")) {
@@ -580,8 +560,8 @@ Reply soundtrack_arrange(Session& session, const json::Value& params) {
         return full && platform::exists(full.value());
     });
     json::Array problems;
-    for (std::string& problem : arranged.problems) {
-        problems.emplace_back(std::move(problem));
+    for (ArrangeProblem& problem : arranged.problems) {
+        problems.emplace_back(std::move(problem.message));
     }
     if (arranged.clips.empty()) {
         json::Value data;
@@ -677,6 +657,28 @@ Reply soundtrack_plan(Session& session, const json::Value& params) {
 }
 
 } // namespace
+
+std::optional<command::Reply> load_storyboard(command::Session& session, json::Object& entries) {
+    auto loaded = storyboard::load(
+        [&session](std::string_view path) { return session.read_project_file(path); });
+    if (!loaded) {
+        return command::Reply::failure(loaded.error());
+    }
+    if (const auto& errors = loaded.value().errors; !errors.empty()) {
+        const storyboard::FileError& first = errors.front();
+        std::string message = first.file;
+        if (!first.path.empty()) {
+            message += " at ";
+            message += first.path;
+        }
+        message += ": ";
+        message += first.message;
+        message += "; storyboard.check lists every problem";
+        return command::Reply::failure(command::code::kInvalidArgument, message);
+    }
+    entries = std::move(loaded.value().entries);
+    return std::nullopt;
+}
 
 void register_commands(command::Registry& registry) {
     json::Value grid = property("integer", "Divisions of a beat notes snap to. Default 24: "
@@ -791,6 +793,24 @@ void register_commands(command::Registry& registry) {
             },
             {}),
         .handler = soundtrack_arrange,
+    });
+
+    json::Value paths = property("array", "Music files and folders to check, with what they "
+                                          "play. Default: all the project's music.");
+    paths["items"]["type"] = "string";
+    paths["items"]["minLength"] = 1;
+    paths["minItems"] = 1;
+    registry.add({
+        .name = "soundtrack.check",
+        .description = "Finds what keeps the music from playing as planned: cue music that "
+                       "can't play, beats that don't fit a sound, loops that click, clips with "
+                       "no beats to switch on (errors); switches off the bar, keys that clash "
+                       "and tempos that differ from bpm (warnings); loudness off the "
+                       "storyboard's targets (errors).",
+        .capabilities = {Capability::Read},
+        .effect = command::Effect::Read,
+        .params = params_schema({{"paths", std::move(paths)}}, {}),
+        .handler = soundtrack_check,
     });
 }
 

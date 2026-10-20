@@ -2787,36 +2787,6 @@ Reply audio_capture(Session& session, const json::Value& params) {
     return Reply::success(std::move(result));
 }
 
-// Where a sound loops as its .audio.json file plays it (from the end, or after beat_count beats,
-// back to loop_offset; a .wav file's forward loop), or its whole length when it has no settings.
-std::optional<audio::LoopPoints> loop_points(const audio::Sound& sound,
-                                             const audio::StreamFile* settings) {
-    audio::LoopPoints loop{.start = 0, .end = sound.frames};
-    if (settings == nullptr) {
-        return loop;
-    }
-    if (sound.format == audio::Sound::Format::Wav) {
-        if (settings->loop_mode != audio::LoopMode::Forward) {
-            return std::nullopt;
-        }
-        loop.start = std::clamp<std::int64_t>(settings->loop_begin, 0, sound.frames);
-        loop.end =
-            settings->loop_end < 0 ? sound.frames : std::min(settings->loop_end, sound.frames);
-        return loop;
-    }
-    if (!settings->loop) {
-        return std::nullopt;
-    }
-    loop.start = static_cast<std::int64_t>(settings->loop_offset * sound.mix_rate);
-    if (settings->bpm > 0 && settings->beat_count > 0) {
-        loop.end = std::min<std::int64_t>(
-            sound.frames,
-            static_cast<std::int64_t>(settings->beat_count * sound.mix_rate * 60 / settings->bpm));
-        loop.crossfade = audio::kLoopCrossfade;
-    }
-    return loop;
-}
-
 json::Value optional_decibels(const std::optional<double>& db) {
     return db ? decibels(*db) : json::Value(nullptr);
 }
@@ -2953,7 +2923,7 @@ Reply audio_analyze(Session& session, const json::Value& params) {
         mix_rate = sound.value()->mix_rate;
         const bool looped = loop_value != nullptr ? loop_value->as_bool() : settings.has_value();
         if (looped) {
-            loop = loop_points(*sound.value(), settings ? settings->get() : nullptr);
+            loop = audio::loop_points(*sound.value(), settings ? settings->get() : nullptr);
             if (!loop && loop_value != nullptr) {
                 loop = audio::LoopPoints{.start = 0, .end = sound.value()->frames};
             }

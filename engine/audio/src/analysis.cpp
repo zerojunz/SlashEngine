@@ -837,6 +837,33 @@ Analysis analyze(std::span<const Frame> frames, int mix_rate, std::optional<Loop
     return out;
 }
 
+std::optional<LoopPoints> loop_points(const Sound& sound, const StreamFile* settings) {
+    LoopPoints loop{.start = 0, .end = sound.frames};
+    if (settings == nullptr) {
+        return loop;
+    }
+    if (sound.format == Sound::Format::Wav) {
+        if (settings->loop_mode != LoopMode::Forward) {
+            return std::nullopt;
+        }
+        loop.start = std::clamp<std::int64_t>(settings->loop_begin, 0, sound.frames);
+        loop.end =
+            settings->loop_end < 0 ? sound.frames : std::min(settings->loop_end, sound.frames);
+        return loop;
+    }
+    if (!settings->loop) {
+        return std::nullopt;
+    }
+    loop.start = static_cast<std::int64_t>(settings->loop_offset * sound.mix_rate);
+    if (settings->bpm > 0 && settings->beat_count > 0) {
+        loop.end = std::min<std::int64_t>(
+            sound.frames,
+            static_cast<std::int64_t>(settings->beat_count * sound.mix_rate * 60 / settings->bpm));
+        loop.crossfade = kLoopCrossfade;
+    }
+    return loop;
+}
+
 Result<std::vector<Frame>> decode_frames(const Sound& sound) {
     std::vector<Frame> frames;
     const bool stereo = sound.channels == 2;

@@ -117,13 +117,14 @@ public:
     }
 
 private:
-    // Records a problem, its parts run together.
-    void problem(std::initializer_list<std::string_view> parts) {
+    // Records a problem with a cue, its parts run together.
+    void problem(const std::string& cue, bool missing,
+                 std::initializer_list<std::string_view> parts) {
         std::string message;
         for (const std::string_view part : parts) {
             message += part;
         }
-        out_.problems.push_back(std::move(message));
+        out_.problems.push_back({.cue = cue, .message = std::move(message), .missing = missing});
     }
 
     // The streams a cue's music files play as, after reporting those that can't play.
@@ -131,13 +132,15 @@ private:
         std::vector<std::string> streams;
         for (const std::string& file : strings(entry, "music")) {
             if (!can_play(file)) {
-                problem({id, "'s music ", file,
+                problem(id, true,
+                        {id, "'s music ", file,
                          " can't play: name .audio.json, .ogg, .wav, .mp3 or .score.json files"});
                 continue;
             }
             std::string stream = playable(file);
             if (!exists_(stream)) {
-                out_.problems.push_back(missing(id, file, stream));
+                out_.problems.push_back(
+                    {.cue = id, .message = missing(id, file, stream), .missing = true});
             }
             streams.push_back(std::move(stream));
         }
@@ -209,7 +212,8 @@ private:
     void cue(const std::string& id, const json::Value& entry) {
         const std::vector<std::string> streams = music_of(id, entry);
         if (streams.empty()) {
-            out_.problems.push_back(id + " has no music yet; name its files in music");
+            out_.problems.push_back(
+                {.cue = id, .message = id + " has no music yet; name its files in music"});
             return;
         }
         const std::string name = slug(name_of(id));
@@ -225,9 +229,12 @@ private:
             return;
         }
         if (streams.size() != layers.size()) {
-            out_.problems.push_back(id + " has " + std::to_string(layers.size()) + " layers and " +
-                                    std::to_string(streams.size()) +
-                                    " music files; give one file per layer, lowest first");
+            out_.problems.push_back(
+                {.cue = id,
+                 .message = id + " has " + std::to_string(layers.size()) + " layers and " +
+                            std::to_string(streams.size()) +
+                            " music files; give one file per layer, lowest first",
+                 .missing = true});
             add_clip(name, id, {}, stream_for(name, streams));
             return;
         }
@@ -273,12 +280,13 @@ private:
             for (const std::string& cue : after) {
                 const auto found = cue_clips_.find(cue);
                 if (found == cue_clips_.end()) {
-                    problem({id, " plays after ", cue, ", which isn't arranged here"});
+                    problem(id, false, {id, " plays after ", cue, ", which isn't arranged here"});
                     continue;
                 }
                 for (const std::string& from : found->second) {
                     if (!filled.insert(from).second) {
-                        problem({id, " and another sting both play after ", cue,
+                        problem(id, false,
+                                {id, " and another sting both play after ", cue,
                                  "; only the first does"});
                         break;
                     }

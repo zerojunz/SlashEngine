@@ -32,6 +32,15 @@ std::string compact(const json::Value& value) {
     return json::write(value, json::Style::Compact);
 }
 
+// Each problem's message, with a '!' before those that keep a cue's music from playing.
+std::vector<std::string> messages(const std::vector<soundtrack::ArrangeProblem>& problems) {
+    std::vector<std::string> out;
+    for (const soundtrack::ArrangeProblem& problem : problems) {
+        out.push_back((problem.missing ? "!" : "") + problem.message);
+    }
+    return out;
+}
+
 // Stereo silence but for a quiet square wave, seconds long.
 std::string tone(double seconds) {
     const auto frames = static_cast<std::size_t>(seconds * soundtrack::kRenderRate);
@@ -85,12 +94,12 @@ TEST_CASE("arrange turns cues into clips, layers and stings of interactive music
     CHECK(compact(arranged.clips[2]) == R"({"cue":"cue/explore","layer":"calm",)"
                                         R"("name":"explore_calm",)"
                                         R"("stream":"music/explore/base.audio.json"})");
-    CHECK(arranged.problems ==
+    CHECK(messages(arranged.problems) ==
           std::vector<std::string>{
-              "cue/combat's score music/combat.score.json isn't rendered yet; soundtrack.render "
+              "!cue/combat's score music/combat.score.json isn't rendered yet; soundtrack.render "
               "writes music/combat.audio.json",
-              "cue/credits has 2 layers and 1 music files; give one file per layer, lowest first",
-              "cue/menu's music music/menu.mid can't play: name .audio.json, .ogg, .wav, .mp3 or "
+              "!cue/credits has 2 layers and 1 music files; give one file per layer, lowest first",
+              "!cue/menu's music music/menu.mid can't play: name .audio.json, .ogg, .wav, .mp3 or "
               ".score.json files",
               "cue/menu has no music yet; name its files in music",
               "cue/silence has no music yet; name its files in music",
@@ -111,11 +120,12 @@ TEST_CASE("arrange turns cues into clips, layers and stings of interactive music
         parse(R"({"cue/a": {"music": ["music/a/lead.audio.json", "music/b/lead.audio.json"]}})")
             .as_object(),
         {}, [](std::string_view path) { return path == "music/a.score.json"; });
-    CHECK(stems.problems == std::vector<std::string>{
-                                "cue/a's music music/a/lead.audio.json isn't rendered yet; "
-                                "soundtrack.render writes it from music/a.score.json",
-                                "cue/a's music music/b/lead.audio.json doesn't exist yet",
-                            });
+    CHECK(messages(stems.problems) ==
+          std::vector<std::string>{
+              "!cue/a's music music/a/lead.audio.json isn't rendered yet; "
+              "soundtrack.render writes it from music/a.score.json",
+              "!cue/a's music music/b/lead.audio.json doesn't exist yet",
+          });
 }
 
 TEST_CASE("soundtrack.arrange writes music a player switches through on the bar") {

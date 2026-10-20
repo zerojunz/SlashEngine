@@ -546,7 +546,7 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
   - [x] `audio.analyze`: tempo and beat grid, key, loudness (LUFS) and true peak, clipping,
         silence, frequency balance and how cleanly a loop joins, so agents judge music without
         listening
-  - [ ] `soundtrack.check`: missing cues, beat counts that don't match a file's length, loops
+  - [x] `soundtrack.check`: missing cues, beat counts that don't match a file's length, loops
         that click, transitions off the bar, keys that clash across a transition and
         loudness off target; run by the headless test command and CI
   - [ ] A music timeline: `run.until` and `playtest.run` report which clip played when and
@@ -727,7 +727,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Skeletal animation | Skinned meshes, blending, root motion | 7 | Planned |
 | Animation blending | Blend trees and state machines in text, two-bone and FABRIK IK | 7 | Planned |
 | Particles | CPU and GPU particles, particle graphs in text | 5 | In part: CPU particles and GPU particles with process materials are done; sub-emitters, trails, collision, turbulence, attractors and particle graphs in 5 |
-| Soundtracks | Music planned in the storyboard, written as scores or generated, arranged into interactive music and checked by analysis, all through commands | 6 | In part: storyboard music and `soundtrack.plan`, scores, MIDI import and export, `soundtrack.render`, `soundtrack.arrange` and `audio.analyze` are done |
+| Soundtracks | Music planned in the storyboard, written as scores or generated, arranged into interactive music and checked by analysis, all through commands | 6 | In part: storyboard music and `soundtrack.plan`, scores, MIDI import and export, `soundtrack.render`, `soundtrack.arrange`, `soundtrack.check` and `audio.analyze` are done |
 | Audio | miniaudio: buses, effects, 3D spatial audio | 5, 7 | In part: 2D players, buses, effects, area bus overrides, interactive music, generated and polyphonic streams and microphone input are done; 3D audio in 7 |
 | Input | Rebindable action maps over SDL3, injectable by agents | 5 | Done |
 | Refresh rates and frame pacing | V-Sync modes, frame cap, display refresh rates, variable refresh rate, rendering interpolated between fixed ticks | 5 | Done |

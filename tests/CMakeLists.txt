@@ -50,6 +50,7 @@ add_executable(slash_tests
     test_scene.cpp
     test_score.cpp
     test_soundtrack_arrange.cpp
+    test_soundtrack_check.cpp
     test_soundtrack_plan.cpp
     test_soundtrack_render.cpp
     test_sdk.cpp
