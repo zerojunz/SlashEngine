@@ -1,7 +1,10 @@
 #include "slash/ai/transport.hpp"
 
+#include "slash/core/json.hpp"
+#include "slash/core/log.hpp"
 #include "slash/platform/process.hpp"
 
+#include <algorithm>
 #include <charconv>
 #include <chrono>
 #include <cstddef>
@@ -11,12 +14,11 @@
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <thread>
 #include <utility>
 #include <vector>
 
 #if defined(__EMSCRIPTEN__)
-#include "slash/core/json.hpp"
-
 #include <emscripten/emscripten.h>
 #include <emscripten/eventloop.h>
 #include <map>
@@ -363,7 +365,7 @@ public:
         for (const auto& [name, value] : request.headers) {
             headers[name] = value;
         }
-        headers["Content-Type"] = "application/json";
+        headers["Content-Type"] = request.content_type;
         fetches()[id] = Fetch{.url = request.url,
                               .sink = std::move(sink),
                               .done = std::move(done),
@@ -548,7 +550,7 @@ public:
         for (const auto& [name, value] : request.headers) {
             http.set_header(name, value);
         }
-        http.set_header("Content-Type", "application/json");
+        http.set_header("Content-Type", request.content_type);
         http.body = request.body;
 
         const auto cancelled = [cancel] { return cancel != nullptr && cancel->load(); };
@@ -606,6 +608,98 @@ private:
 #endif
 
 } // namespace
+
+bool retryable(int status) noexcept {
+    return status == 408 || status == 409 || status == 429 || status >= 500;
+}
+
+std::chrono::milliseconds retry_delay(const HttpResponse& reply, int attempt) {
+    int seconds = 0;
+    const std::string& after = reply.retry_after;
+    const auto [end, error] = std::from_chars(after.data(), after.data() + after.size(), seconds);
+    if (!after.empty() && error == std::errc() && end == after.data() + after.size()) {
+        return std::chrono::seconds(std::clamp(seconds, 0, 60));
+    }
+    return std::chrono::seconds(1LL << std::min(attempt, 5));
+}
+
+bool wait_for(std::chrono::milliseconds delay, const CancelFlag* cancel) {
+    const auto until = std::chrono::steady_clock::now() + delay;
+    while (std::chrono::steady_clock::now() < until) {
+        if (cancel != nullptr && cancel->load()) {
+            return false;
+        }
+        std::this_thread::sleep_for(std::min<std::chrono::steady_clock::duration>(
+            std::chrono::milliseconds(50), until - std::chrono::steady_clock::now()));
+    }
+    return cancel == nullptr || !cancel->load();
+}
+
+Error http_error(std::string_view who, const HttpResponse& reply) {
+    // {"error": "..."}, {"error": {"message": "..."}} or {"detail": ...} in the same shapes.
+    const auto message_in = [](const json::Value& value) -> std::string {
+        if (value.is_string()) {
+            return value.as_string();
+        }
+        if (value.is_object()) {
+            if (const json::Value* message = value.find("message");
+                message != nullptr && message->is_string()) {
+                return message->as_string();
+            }
+        }
+        return {};
+    };
+    std::string detail;
+    if (auto body = json::parse(reply.body); body && body.value().is_object()) {
+        for (const std::string_view key : {"error", "detail"}) {
+            if (const json::Value* member = body.value().find(key);
+                member != nullptr && detail.empty()) {
+                detail = message_in(*member);
+            }
+        }
+    }
+    if (detail.empty() && reply.body.find('\0') == std::string::npos) {
+        detail = reply.body.substr(0, 300);
+    }
+    ErrorCode code = ErrorCode::PlatformFailure;
+    if (reply.status == 400 || reply.status == 413 || reply.status == 422) {
+        code = ErrorCode::InvalidArgument;
+    } else if (reply.status == 401 || reply.status == 403) {
+        code = ErrorCode::PermissionDenied;
+    } else if (reply.status == 404) {
+        code = ErrorCode::NotFound;
+    }
+    std::string message = std::string(who) + " answered HTTP " + std::to_string(reply.status);
+    if (!detail.empty()) {
+        message += ": " + detail;
+    }
+    return make_error(code, std::move(message));
+}
+
+Result<HttpResponse> post_with_retries(Transport& transport, const HttpRequest& request,
+                                       std::string_view who, int max_retries,
+                                       const CancelFlag* cancel) {
+    for (int attempt = 0;; ++attempt) {
+        auto sent = transport.post(request, nullptr, cancel);
+        if (!sent) {
+            return sent.error();
+        }
+        HttpResponse& reply = sent.value();
+        if (reply.status == 200) {
+            return std::move(reply);
+        }
+        if (!retryable(reply.status) || attempt >= max_retries) {
+            return http_error(who, reply);
+        }
+        const std::chrono::milliseconds delay = retry_delay(reply, attempt);
+        log::info("retrying a request", {{"to", who},
+                                         {"status", reply.status},
+                                         {"wait_ms", static_cast<std::int64_t>(delay.count())}});
+        if (!wait_for(delay, cancel)) {
+            return make_error(ErrorCode::PlatformFailure, "the request was cancelled");
+        }
+    }
+}
 
 std::string proxy_for(const Url& url, const HttpOptions& options) {
     if (is_loopback(url.host)) {
