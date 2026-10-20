@@ -1,0 +1,31 @@
+{
+  "entities": {
+    "coin_1": {
+      "components": {
+        "Transform2D": {
+          "position": [150.0, 0.0]
+        }
+      }
+    },
+    "coin_2": {
+      "components": {
+        "Transform2D": {
+          "position": [360.0, -60.0]
+        }
+      }
+    },
+    "coin_3": {
+      "components": {
+        "Transform2D": {
+          "position": [510.0, 0.0]
+        }
+      }
+    },
+    "runner": {
+      "components": {
+        "Transform2D": {}
+      }
+    }
+  },
+  "format": 1
+}

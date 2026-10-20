@@ -500,7 +500,7 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
       files, linked to the storyboard, so agents in a large codebase find code without guessing
 - [x] `api.search`: finds engine and project C++ functions and types by name or purpose and
       returns their signatures, docs and the verified examples that use them
-- [ ] Playtests and tuning sweeps: `playtest.run` runs many headless copies of a game at once,
+- [x] Playtests and tuning sweeps: `playtest.run` runs many headless copies of a game at once,
       driven by simple scripted bots and each with different values (jump height, enemy speed),
       and returns a summary of the results per value
 - [ ] Asset library and generator, so agents reuse generated assets instead of making them again
@@ -783,7 +783,7 @@ calls and tokens ([design section 6](design.md#6-cheap-for-agents-to-use)).
 | `replay.seek`: query any earlier tick of a recorded run | 5 | Done |
 | `build.check`: C++ compile errors as data from an incremental build | 6 | Done |
 | `api.search`: real signatures and examples instead of guessed function names | 6 | Done |
-| `playtest.run`: many headless bot runs and tuning sweeps in one call | 6 | Planned |
+| `playtest.run`: many headless bot runs and tuning sweeps in one call | 6 | Done |
 | `audio.analyze`: tempo, key, loudness and loop seams as data instead of listening | 6 | Planned |
 | `project.map`: where things are in a large project, without reading the source | 6 | Done |
 | A scheduled benchmark of standard agent tasks counting calls and tokens | 6 | Done |

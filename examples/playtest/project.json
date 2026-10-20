@@ -1,0 +1,18 @@
+{
+  "format": 1,
+  "input": {
+    "jump": {
+      "events": [
+        {"physical_key": "Space", "type": "key"}
+      ]
+    },
+    "move_right": {
+      "events": [
+        {"physical_key": "D", "type": "key"}
+      ]
+    }
+  },
+  "main_scene": "level.scene.json",
+  "name": "Pit runner",
+  "version": "0.1.0"
+}

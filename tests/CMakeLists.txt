@@ -33,6 +33,7 @@ add_executable(slash_tests
     test_mcp.cpp
     test_particles.cpp
     test_physics.cpp
+    test_playtest.cpp
     test_platform.cpp
     test_project_map.cpp
     test_reflect.cpp
