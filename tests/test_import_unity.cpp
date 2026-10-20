@@ -3,11 +3,14 @@
 #include "slash/command/command.hpp"
 #include "slash/command/session.hpp"
 #include "slash/core/json.hpp"
+#include "slash/gameplay/host.hpp"
 #include "slash/importer/commands.hpp"
 #include "slash/importer/import.hpp"
+#include "slash/importer/scripts.hpp"
 #include "slash/importer/unity_yaml.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/render/image.hpp"
+#include "slash/runtime/gameplay.hpp"
 #include "slash/runtime/project.hpp"
 #include "slash/storyboard/storyboard.hpp"
 #include "slash/text/text.hpp"
@@ -71,13 +74,30 @@ std::map<std::string, std::string> files_of(const importer::ImportPlan& plan) {
     return files;
 }
 
+// The engine's components, and stand-ins for those of the C++ skeletons a plan writes, as the
+// tools have them before the game's code is built.
+void add_types(slash::world::ComponentRegistry& components,
+               const std::map<std::string, std::string>& files) {
+    slash::world::register_builtin_components(components);
+    for (const auto& [path, contents] : files) {
+        if (!path.ends_with(".cpp")) {
+            continue;
+        }
+        for (slash::runtime::DeclaredComponent& declared : slash::runtime::declared_in(contents)) {
+            if (components.find(declared.name) == nullptr) {
+                components.add_stand_in(std::move(declared.name), std::move(declared.fields));
+            }
+        }
+    }
+}
+
 // The components one entity of a planned scene ends up with, with what it extends and its
 // overrides applied; null if the scene has no such entity.
 json::Value entity(const std::map<std::string, std::string>& files, const std::string& scene,
                    std::string_view id) {
     REQUIRE_MESSAGE(files.contains(scene), scene);
     slash::world::ComponentRegistry components;
-    slash::world::register_builtin_components(components);
+    add_types(components, files);
     slash::world::World world(components);
     world.set_file_reader([&files](std::string_view path) -> slash::Result<std::string> {
         const auto it = files.find(std::string(path));
@@ -2199,11 +2219,14 @@ TEST_CASE("Unity prefab instances, nested prefabs and variants stay instances") 
     CHECK(*entity(files, crate, "crate_sprite").find("Sprite2D") ==
           parse(R"({"texture": "unity/Assets/Art/hero.png", "texture_filter": "nearest"})"));
 
-    // The stack holds an instance of the crate, moved up: only the override is written.
+    // The stack holds an instance of the crate, moved up: only the overrides are written. Until
+    // the game's code is built, its script's component holds the label's ID as written, so the
+    // instance names its own label.
     const json::Value stack_file = parse(files.at(stack));
     CHECK(*stack_file.find("entities")->find("crate") ==
           parse(R"({"extends": "unity/Assets/Prefabs/Crate.scene.json",
-                    "components": {"Transform2D": {"position": [0.0, -24.0]}}})"));
+                    "components": {"Transform2D": {"position": [0.0, -24.0]},
+                                   "Crate": {"label": "crate/label"}}})"));
     CHECK(entity(files, stack, "crate/label") != nullptr);
 
     // A variant extends the prefab it varies.
@@ -2211,7 +2234,8 @@ TEST_CASE("Unity prefab instances, nested prefabs and variants stay instances") 
     CHECK(big_file.find("root")->as_string() == "big_crate");
     CHECK(*big_file.find("entities")->find("big_crate") ==
           parse(R"({"extends": "unity/Assets/Prefabs/Crate.scene.json",
-                    "components": {"Transform2D": {"scale": [2.0, 2.0]}}})"));
+                    "components": {"Transform2D": {"scale": [2.0, 2.0]},
+                                   "Crate": {"health": 10, "label": "big_crate/label"}}})"));
 
     // The yard moves the stack, tints its crate and takes away the crate's collider and label;
     // with no children left, the crate draws its own sprite. The flag added under the stack is
@@ -2283,9 +2307,183 @@ TEST_CASE("importing a Unity project turns each script into a storyboard task") 
     CHECK(text.find("Fields: int health = 3; Transform label.") != std::string::npos);
     CHECK(text.find("Methods: Hit.") != std::string::npos);
     CHECK(text.find("flag in unity/Assets/Scenes/Yard.scene.json") != std::string::npos);
+    CHECK(text.find("Its C++ skeleton is src/imported/crate.cpp: the Crate component and the "
+                    "crate system.") != std::string::npos);
     CHECK(*plan.report.find("scripts") ==
           parse(R"([{"script": "unity/Assets/Scripts/Crate.cs", "task": "task/port-crate",
-                     "entities": 6}])"));
+                     "entities": 6, "code": "src/imported/crate.cpp", "component": "Crate"}])"));
+
+    // The script is a C++ skeleton in the gameplay sources, registered by scripts.cpp, which a
+    // game module calls; its serialized fields are on the entities that had it, references as
+    // entity IDs and fields it doesn't have left out.
+    CHECK(*parse(files.at("project.json")).find("gameplay") == parse(R"({"sources": ["src"]})"));
+    const std::string& skeleton = files.at("src/imported/crate.cpp");
+    CHECK(skeleton.find("struct Crate {\n    int health = 3;\n    entt::entity label = entt::null; "
+                        "// Transform\n    int hits{};\n};\nSLASH_COMPONENT(Crate, health, label, "
+                        "hits)") != std::string::npos);
+    CHECK(skeleton.find("void hit(World& /*world*/, entt::entity /*entity*/, Crate& /*self*/, int "
+                        "/*amount*/) {\n    // health -= amount;\n}") != std::string::npos);
+    CHECK(files.at("src/imported/scripts.cpp").find("    register_crate(game);\n") !=
+          std::string::npos);
+    CHECK(files.at("src/game.cpp") == importer::module_source());
+    CHECK(plan.report.find("module")->as_string() == "src/game.cpp");
+    CHECK(*entity(files, "unity/Assets/Prefabs/Crate.scene.json", "crate").find("Crate") ==
+          parse(R"({"health": 3, "label": "label"})"));
+    CHECK(*entity(files, "unity/Assets/Scenes/Yard.scene.json", "flag").find("Crate") ==
+          parse(R"({"health": 1, "label": "stack"})"));
+}
+
+TEST_CASE("a Unity C# script reads into a C++ skeleton that calls its messages as Unity does") {
+    const std::string text = R"(using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.Events;
+
+namespace Pond {
+
+/// <summary>A frog that hops between lily pads.</summary>
+[RequireComponent(typeof(Rigidbody2D))]
+public class Frog : MonoBehaviour
+{
+    public enum Mood { Calm, Hungry = 4 }
+    public const int MaxLives = 3;
+    static int count;
+
+    [Tooltip("Pixels a second.")]
+    [Range(0f, 10f)] public float speed = 2.5f;
+    [SerializeField] private int lives = MaxLives;
+    public Color tint = Color.yellow;
+    public Vector2 home = new Vector2(1, -2);
+    public List<GameObject> pads = new List<GameObject>();
+    [SerializeField] Transform tongue;
+    public AudioClip croak;
+    public UnityEvent<int> onHop;
+    public string title = "Frog", other = "x";
+    private float timer;
+    [field: SerializeField] public int Score { get; private set; }
+    public float Half => speed / 2;
+    [System.NonSerialized] public int hidden;
+
+    void Awake()
+    {
+        count++;
+    }
+
+    void Update()
+    {
+        timer += Time.deltaTime;
+        if (timer > 1f) Hop(1);
+    }
+
+    public void Hop(int times)
+    {
+        onHop.Invoke(times);
+    }
+
+    void OnTriggerEnter2D(Collider2D other)
+    {
+        lives--;
+    }
+
+    void OnCollisionEnter2D(Collision2D collision) { }
+
+    IEnumerator Blink()
+    {
+        yield return new WaitForSeconds(0.5f);
+    }
+}
+
+}
+)";
+    importer::Script script =
+        importer::read_csharp("unity/Assets/Frog.cs", text, importer::ScriptSource::UnityCsharp);
+    CHECK(script.source == importer::ScriptSource::UnityCsharp);
+    CHECK(script.extends == "MonoBehaviour");
+    CHECK(script.class_name == "Frog");
+    CHECK(script.component == "Frog");
+    CHECK(script.ns == "frog");
+    CHECK(script.doc == "A frog that hops between lily pads.");
+    CHECK(script.node);
+    const auto field = [&](std::string_view name) -> const importer::ScriptField& {
+        const auto found = std::ranges::find(script.fields, name, &importer::ScriptField::name);
+        REQUIRE_MESSAGE(found != script.fields.end(), name);
+        return *found;
+    };
+    const auto has = [&](std::string_view name) {
+        return std::ranges::find(script.fields, name, &importer::ScriptField::name) !=
+               script.fields.end();
+    };
+    CHECK(field("speed").init == " = 2.5F");
+    CHECK(field("speed").doc == "Pixels a second.");
+    CHECK(field("speed").min == 0.0);
+    CHECK(field("speed").max == 10.0);
+    CHECK(field("speed").exported);
+    CHECK(field("lives").exported);
+    CHECK(field("lives").init == " = kMaxLives");
+    CHECK(field("tint").type == "slash::Vec4");
+    CHECK(field("tint").init == "{1.0F, 0.921569F, 0.0156863F, 1.0F}");
+    CHECK(field("home").type == "slash::Vec2");
+    CHECK(field("home").init == "{1.0F, -2.0F}");
+    CHECK(field("pads").type == "std::vector<entt::entity>");
+    CHECK(field("pads").kind == importer::FieldKind::Entities);
+    CHECK(field("tongue").kind == importer::FieldKind::Entity);
+    CHECK(field("croak").type == "std::string");
+    CHECK(field("title").init == R"( = "Frog")");
+    CHECK(field("other").init == R"( = "x")");
+    CHECK_FALSE(field("timer").exported);
+    CHECK(field("score").exported);
+    CHECK(field("score").source_name == "<Score>k__BackingField");
+    CHECK_FALSE(has("half"));              // computed, so nothing to keep
+    CHECK_FALSE(has("count"));             // static
+    CHECK_FALSE(field("hidden").exported); // [NonSerialized]: state, not saved
+    CHECK_FALSE(has("on_hop"));            // an event
+    REQUIRE(script.signals.size() == 1);
+    CHECK(script.signals[0].name == "on_hop");
+    REQUIRE(script.constants.size() == 1);
+    CHECK(script.constants[0].name == "kMaxLives");
+    REQUIRE(script.enums.size() == 1);
+    CHECK(script.enums[0].values == std::vector<std::string>{"kCalm", "kHungry = 4"});
+    const auto function = [&](std::string_view name) -> const importer::ScriptFunction& {
+        const auto found =
+            std::ranges::find(script.functions, name, &importer::ScriptFunction::source_name);
+        REQUIRE_MESSAGE(found != script.functions.end(), name);
+        return *found;
+    };
+    CHECK(function("Update").params.at(0).name == "delta");
+    CHECK(function("Update").body.front() == "timer += Time.deltaTime;");
+    CHECK(function("Hop").name == "hop");
+    CHECK(function("Hop").params.at(0).type == "int");
+
+    script.connections.push_back({.scene = "unity/Assets/Pond.scene.json",
+                                  .signal = "pressed",
+                                  .from = "button",
+                                  .to = "frog",
+                                  .method = "Hop",
+                                  .argument = "2"});
+    const std::string code = importer::skeleton(script);
+    MESSAGE(code);
+    for (const std::string_view part : {
+             std::string_view("SLASH_COMPONENT(Frog, "),
+             std::string_view("void emit_on_hop(World& world, entt::entity entity, int "),
+             std::string_view("on_trigger_enter2d(world, entity, *self, other);"),
+             std::string_view("on_collision_enter2d(world, entity, *self, other);"),
+             std::string_view("ecs.all_of<slash::world::Area2D>(first)"),
+             std::string_view("update(world, entity, self, tick_seconds);"),
+             std::string_view("hop(world, entity, *self, 2);"),
+             std::string_view("void hop(World& /*world*/, entt::entity /*entity*/, Frog& /*self*/, "
+                              "int /*times*/) {"),
+             std::string_view("// timer += Time.deltaTime;"),
+             std::string_view(".describe(\"speed\", {.doc = \"Pixels a second.\", .min = 0.0, "
+                              ".max = 10.0})"),
+         }) {
+        CHECK_MESSAGE(code.find(part) != std::string::npos, part);
+    }
+    // A ScriptableObject is a reflected struct with no system.
+    const importer::Script data = importer::read_csharp(
+        "Stats.cs", "public class Stats : ScriptableObject { public int power = 2; }",
+        importer::ScriptSource::UnityCsharp);
+    CHECK_FALSE(data.node);
+    CHECK(importer::skeleton(data).find("SLASH_REFLECT(Stats, power)") != std::string::npos);
 }
 
 TEST_CASE("a Unity project outside the destination is copied in, and runs") {
@@ -2307,9 +2505,13 @@ TEST_CASE("a Unity project outside the destination is copied in, and runs") {
     slash::world::register_builtin_components(components);
     command::Registry commands;
     command::register_builtin_commands(commands);
+    // The scripts' components are stand-ins until the game's code is built.
+    slash::gameplay::Host code(components, slash::gameplay::library_path(destination.string()));
+    slash::runtime::add_stand_ins(code, destination.string());
     command::SessionOptions options;
     options.project_root = destination.string();
     options.capture_logs = false;
+    options.gameplay = &code;
     command::Session session(components, commands, options);
     for (const std::string_view scene :
          {"Assets/Scenes/Cave.scene.json", "Assets/Scenes/Yard.scene.json"}) {
@@ -2347,9 +2549,12 @@ TEST_CASE("project.import converts a Unity project in the session's project") {
     command::Registry commands;
     command::register_builtin_commands(commands);
     importer::register_import_commands(commands);
+    // The game's code, which the import writes: until it is built, its components are stand-ins.
+    slash::gameplay::Host code(components, slash::gameplay::library_path(project.string()));
     command::SessionOptions options;
     options.project_root = project.string();
     options.capture_logs = false;
+    options.gameplay = &code;
     command::Session session(components, commands, options);
 
     const command::Reply done = session.call("project.import", parse(R"({"source": "unity"})"));
@@ -3086,6 +3291,16 @@ TEST_CASE("Unity UI becomes controls: canvases, text, images, widgets and layout
           std::string::npos);
     CHECK(task.find("name in unity/Assets/Scenes/Menu.scene.json calls SetName() on "
                     "text_submitted") != std::string::npos);
+    // The menu's skeleton calls the script's methods on those events: the play button's with
+    // nothing, as Unity does, and the others with the event that carries the value.
+    const std::string& skeleton = files.at("src/imported/menu.cpp");
+    CHECK(skeleton.find("        if (event.kind == \"pressed\" && event.id == \"play\") {\n"
+                        "            const entt::entity entity = world.find(\"canvas\");\n"
+                        "            if (ecs.all_of<Menu>(entity)) {\n"
+                        "                start_game(world, entity);\n") != std::string::npos);
+    CHECK(skeleton.find("set_volume(world, entity, event);") != std::string::npos);
+    CHECK(skeleton.find("// run() calls it when volume emits value_changed. Unity passed float "
+                        "volume: read it from\n// event.data.") != std::string::npos);
     for (const auto& [what, where] :
          std::initializer_list<std::pair<std::string_view, std::string_view>>{
              {"CanvasScaler", "Assets/Scenes/Menu.unity: Canvas"},
@@ -3099,7 +3314,7 @@ TEST_CASE("Unity UI becomes controls: canvases, text, images, widgets and layout
 
     // It lays out as Unity places it, at twice the size.
     slash::world::ComponentRegistry components;
-    slash::world::register_builtin_components(components);
+    add_types(components, files);
     command::Registry commands;
     command::register_builtin_commands(commands);
     command::SessionOptions options_;
@@ -3176,7 +3391,7 @@ TEST_CASE("Unity dropdowns become option buttons, their captions, arrows and lis
 
     // It opens its list as an OptionButton does.
     slash::world::ComponentRegistry components;
-    slash::world::register_builtin_components(components);
+    add_types(components, files);
     command::Registry commands;
     command::register_builtin_commands(commands);
     command::SessionOptions options;
@@ -3609,8 +3824,10 @@ TEST_CASE("a Unity build imports through AssetRipper, its package scripts and sp
     CHECK(entity(files, main_scene, "clip").find("Control")->find("clip_contents")->as_bool());
     CHECK(unsupported(full, "component InputSystemUIInputModule").find("why")->as_string() ==
           "a script from a Unity package");
-    CHECK(*report.find("scripts") == parse(R"([{"entities": 1, "script":
-        "Assets/Scripts/Assembly-CSharp/Hop.cs", "task": "task/port-hop"}])"));
+    CHECK(*report.find("scripts") ==
+          parse(R"([{"entities": 1, "script": "Assets/Scripts/Assembly-CSharp/Hop.cs",
+                     "task": "task/port-hop", "code": "src/imported/hop.cpp",
+                     "component": "Hop"}])"));
 
     // With unpack_to, the whole Unity project comes along, and the import uses it there.
     auto unpacked = importer::plan_import({.source = (project / "Hopper").string(),
@@ -3639,6 +3856,7 @@ TEST_CASE("project.import unpacks a Unity build only where it may run AssetRippe
     const ScopedVariable program("SLASH_ASSETRIPPER", SLASH_FAKE_ASSETRIPPER);
     slash::world::ComponentRegistry components;
     slash::world::register_builtin_components(components);
+    slash::gameplay::Host code(components, slash::gameplay::library_path(project.string()));
     const json::Value params = parse(R"({"source": "builds/Hopper"})");
 
     // A session without the build capability.
@@ -3662,6 +3880,7 @@ TEST_CASE("project.import unpacks a Unity build only where it may run AssetRippe
     command::register_builtin_commands(running);
     importer::register_import_commands(running, {.unpack_builds = false});
     options.capabilities = command::SessionOptions{}.capabilities;
+    options.gameplay = &code;
     command::Session game(components, running, options);
     const command::Reply stalled = game.call("project.import", params);
     CHECK_FALSE(stalled.ok);

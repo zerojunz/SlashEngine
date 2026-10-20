@@ -9,10 +9,21 @@
 
 // C++ skeletons for an imported game's scripts, for the agent porting them to fill in. A script's
 // variables become a component, its signals world events, and its functions the calls of a
-// system that runs them when Godot would: on the entities made since the last tick, once a tick,
-// for each input event and for each signal a scene connects to them. Each function keeps the
-// script's code to port in its comments.
+// system that runs them when its engine would: on the entities made since the last tick, once a
+// tick, for each input event, for each signal a scene connects to them and, for Unity, as bodies
+// touch. Each function keeps the script's code to port in its comments.
 namespace slash::importer {
+
+// The engine and language a script comes from, which say what its skeleton calls things and when
+// its system calls its functions.
+enum class ScriptSource : std::uint8_t {
+    Gdscript,    // Godot's GDScript
+    GodotCsharp, // C# for Godot
+    UnityCsharp, // C# for Unity: a MonoBehaviour's serialized fields and messages
+};
+
+// "Godot" or "Unity".
+[[nodiscard]] std::string_view engine_name(ScriptSource source);
 
 // How a scene's value for a script's variable converts to its field.
 enum class FieldKind : std::uint8_t {
@@ -77,16 +88,19 @@ struct ScriptConnection {
     std::string signal;
     std::string from; // entity IDs
     std::string to;
-    std::string method; // as the script names it
+    std::string method;   // as the script names it
+    std::string argument; // the value a Unity UI event passes, as JSON, or ""
 };
 
 struct Script {
+    ScriptSource source = ScriptSource::Gdscript;
     std::string path; // the script's file, in the project the import writes
     std::string extends;
     std::string class_name;
-    std::string doc; // its ## comments before the first declaration
-    // It extends a node, so its component goes on entities and a system calls its functions;
-    // otherwise (a Resource, a RefCounted) it is a reflected struct with functions.
+    std::string doc; // its ## (or ///) comments before the first declaration
+    // It extends a node (or a MonoBehaviour), so its component goes on entities and a system calls
+    // its functions; otherwise (a Resource, a RefCounted, a ScriptableObject) it is a reflected
+    // struct with functions.
     bool node = true;
     std::string component; // in C++
     std::string system;
@@ -112,6 +126,12 @@ struct GdscriptOptions {
 // PascalCase, and its namespace and system after the file in snake_case.
 [[nodiscard]] Script read_gdscript(std::string_view path, std::string_view text,
                                    const GdscriptOptions& options = {});
+
+// Reads a C# file's main class, the one named after the file or else the first: what it extends,
+// its fields (serialized ones for Unity, [Export] ones for Godot, as scenes set them), events and
+// Godot's [Signal] delegates, constants, enums and methods. Unity's Update, FixedUpdate and
+// LateUpdate take the tick's seconds as delta.
+[[nodiscard]] Script read_csharp(std::string_view path, std::string_view text, ScriptSource source);
 
 // The C++ file of a script: its component (or struct), a helper that emits each signal, a stub
 // per function with the script's code in comments, the system and imported::register_<ns>.

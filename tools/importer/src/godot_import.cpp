@@ -1,11 +1,13 @@
 #include "godot_import.hpp"
 
 #include "common.hpp"
+#include "skeletons.hpp"
 
 #include "slash/animation/animation.hpp"
 #include "slash/audio/audio.hpp"
 #include "slash/canvas/gpu_particles.hpp"
 #include "slash/canvas/tilemap.hpp"
+#include "slash/core/assert.hpp"
 #include "slash/core/json.hpp"
 #include "slash/core/text.hpp"
 #include "slash/importer/godot_text.hpp"
@@ -897,13 +899,6 @@ struct ScriptRecord {
     json::Array connections; // signal connections whose method is in the script
 };
 
-// The C++ skeleton a GDScript file becomes.
-struct Skeleton {
-    Script script;
-    std::string code;  // its file
-    bool kept = false; // the destination has it already, so it stays as it is
-};
-
 // --- Sounds ------------------------------------------------------------------------------------
 
 constexpr std::array<std::string_view, 3> kWavLoopModes{"forward", "pingpong", "backward"};
@@ -1024,7 +1019,7 @@ public:
             }
         }
         write_tasks(existing.work);
-        write_skeletons(existing);
+        write_skeletons();
         write_report();
         return std::move(plan_);
     }
@@ -1391,14 +1386,14 @@ private:
         }
 
         // The scripts' C++ skeletons are the game's code.
-        if (!skeletons_.empty()) {
+        if (skeletons_ && !skeletons_->empty()) {
             json::Value& gameplay = project["gameplay"];
             json::Value* sources = gameplay.is_object() ? gameplay.find("sources") : nullptr;
             if (sources == nullptr || !sources->is_array()) {
                 gameplay = json::Object{};
-                gameplay["sources"] = json::Array{gameplay_folder_};
-            } else if (!contains(sources->as_array(), json::Value(gameplay_folder_))) {
-                sources->as_array().emplace_back(gameplay_folder_);
+                gameplay["sources"] = json::Array{skeletons_->folder()};
+            } else if (!contains(sources->as_array(), json::Value(skeletons_->folder()))) {
+                sources->as_array().emplace_back(skeletons_->folder());
             }
         }
 
@@ -5061,10 +5056,10 @@ private:
                 }
             }
             // Formatting leaves out of an instance what the scene it instances gives it.
-            if (const auto skeleton = skeletons_.find(script);
-                skeleton != skeletons_.end() && skeleton->second.script.node) {
-                components[skeleton->second.script.component] =
-                    script_component(skeleton->second.script, values, nodes, node);
+            if (const Skeleton* skeleton = skeletons().find(script);
+                skeleton != nullptr && skeleton->script.node) {
+                components[skeleton->script.component] =
+                    script_component(skeleton->script, values, nodes, node);
             }
             if (!script.empty()) {
                 ScriptUse use{.scene = scene_path, .entity = node.id, .values = std::move(values)};
@@ -5226,83 +5221,33 @@ private:
         return destination(path);
     }
 
-    // Reads each GDScript file into the C++ skeleton the import writes for it, naming its
-    // component, system and namespace apart from the engine's, the game's code and each other's,
-    // so scenes can give entities its component.
+    // The scripts' skeletons, made once the project's files are listed.
+    Skeletons& skeletons() {
+        SLASH_ASSERT(skeletons_.has_value(), "the skeletons are made before they are used");
+        return *skeletons_;
+    }
+
+    // Reads each script into the C++ skeleton the import writes for it, so scenes can give
+    // entities its component.
     void read_scripts(const Existing& existing) {
-        gameplay_folder_ = gameplay_folder(existing.project);
-        const std::string folder = gameplay_folder_ + "/imported/";
-        std::set<std::string> components_taken;
-        for (const auto& [path, text] : existing.code) {
-            if (!path.starts_with(folder)) {
-                for (const runtime::DeclaredComponent& component : runtime::declared_in(text)) {
-                    components_taken.insert(component.name);
-                }
-            }
-        }
-        std::set<std::string> systems_taken;
-        std::set<std::string> namespaces_taken{"scripts", "module"};
+        skeletons_.emplace(existing);
         GdscriptOptions options;
         options.resource_path = [this](std::string_view path) { return script_resource(path); };
         for (const auto& [script, record] : scripts_) {
-            if (extension_of(script) != ".gd") {
+            const std::string extension = extension_of(script);
+            if (extension != ".gd" && extension != ".cs") {
                 continue;
             }
             auto text = read(script);
             if (!text) {
                 continue;
             }
-            Skeleton skeleton{.script = read_gdscript(destination(script), text.value(), options),
-                              .code = {},
-                              .kept = false};
-            Script& code = skeleton.script;
-            // A file name of a folder and the script's, then a number, when that is taken.
-            if (namespaces_taken.contains(code.ns)) {
-                const std::size_t slash = script.rfind('/');
-                const std::string parent =
-                    slash == std::string::npos ? "root" : file_stem(script.substr(0, slash));
-                std::string base = cpp_identifier(snake_case(parent) + "_" + code.ns);
-                std::ranges::replace(base, '-', '_');
-                code.ns = base;
-                for (int n = 2; namespaces_taken.contains(code.ns); ++n) {
-                    code.ns = base + "_" + std::to_string(n);
-                }
-            }
-            namespaces_taken.insert(code.ns);
-            skeleton.code = folder + code.ns + ".cpp";
-            code.system = code.ns;
-            while (is_engine_system(code.system) || systems_taken.contains(code.system)) {
-                code.system += "_script";
-            }
-            systems_taken.insert(code.system);
-            while (components_.find(code.component) != nullptr ||
-                   components_taken.contains(code.component)) {
-                code.component += "Script";
-            }
-            // A skeleton the destination has keeps its component, and its fields take values.
-            if (const auto kept = existing.code.find(skeleton.code); kept != existing.code.end()) {
-                skeleton.kept = true;
-                const auto declared = runtime::declared_in(kept->second);
-                if (!declared.empty() && components_.find(declared.front().name) == nullptr) {
-                    code.component = declared.front().name;
-                    std::erase_if(code.fields, [&](const ScriptField& field) {
-                        return !contains(declared.front().fields, field.name);
-                    });
-                } else {
-                    code.node = false; // its component is unknown: scenes leave it out
-                }
-            }
-            components_taken.insert(code.component);
-            if (code.node) {
-                std::vector<std::string> fields;
-                fields.reserve(code.fields.size());
-                for (const ScriptField& field : code.fields) {
-                    fields.push_back(field.name);
-                }
-                components_.add_stand_in(code.component, std::move(fields))
-                    .set_doc("What the Godot script " + destination(script) + " keeps.");
-            }
-            skeletons_.emplace(script, std::move(skeleton));
+            skeletons().add(
+                script,
+                extension == ".gd"
+                    ? read_gdscript(destination(script), text.value(), options)
+                    : read_csharp(destination(script), text.value(), ScriptSource::GodotCsharp),
+                components_);
         }
     }
 
@@ -5347,12 +5292,8 @@ private:
 
     // Writes each script's skeleton but those the destination has, the file registering them
     // all and, when the game's code has none, a game module calling it.
-    void write_skeletons(const Existing& existing) {
-        if (skeletons_.empty()) {
-            return;
-        }
-        std::vector<std::string> registered;
-        for (auto& [script, entry] : skeletons_) {
+    void write_skeletons() {
+        for (auto& [script, entry] : skeletons().all()) {
             Script& code = entry.script;
             code.task = task_of_[script];
             for (const auto& [name, path] : autoloads_) {
@@ -5370,41 +5311,15 @@ private:
                                             .signal = text("signal"),
                                             .from = text("from"),
                                             .to = text("to"),
-                                            .method = text("method")});
-            }
-            if (!entry.kept) {
-                add_file(entry.code, skeleton(code));
-            }
-            // A skeleton kept as the agent left it registers what it has, if anything.
-            const bool registers =
-                entry.kept ? existing.code.at(entry.code).find("void register_" + code.ns + "(") !=
-                                 std::string::npos
-                           : code.node;
-            if (registers) {
-                registered.push_back(code.ns);
+                                            .method = text("method"),
+                                            .argument = {}});
             }
         }
-        const std::string scripts_file = gameplay_folder_ + "/imported/scripts.cpp";
-        add_file(scripts_file, registration(registered));
-        std::string module;
-        for (const auto& [path, text] : existing.code) {
-            if (path != scripts_file && text.find("SLASH_GAME_MODULE(") != std::string::npos) {
-                module = path;
-                if (text.find("register_scripts") == std::string::npos) {
-                    problems_.add("game module", path,
-                                  "call imported::register_scripts(game) from its "
-                                  "SLASH_GAME_MODULE to register the scripts' components and "
-                                  "systems");
-                }
-                break;
-            }
-        }
-        if (module.empty()) {
-            module_ = existing.code.contains(gameplay_folder_ + "/game.cpp")
-                          ? gameplay_folder_ + "/imported/module.cpp"
-                          : gameplay_folder_ + "/game.cpp";
-            add_file(module_, module_source());
-        }
+        module_ = skeletons().write(
+            [this](std::string path, std::string text) {
+                add_file(std::move(path), std::move(text));
+            },
+            problems_);
     }
 
     // --- Tasks and the report ---
@@ -5451,13 +5366,13 @@ private:
                     text += " An autoload named " + name + ".";
                 }
             }
-            if (const auto skeleton = skeletons_.find(script); skeleton != skeletons_.end()) {
-                const Script& code = skeleton->second.script;
-                text += " Its C++ skeleton is " + skeleton->second.code;
+            if (const Skeleton* skeleton = skeletons().find(script); skeleton != nullptr) {
+                const Script& code = skeleton->script;
+                text += " Its C++ skeleton is " + skeleton->code;
                 text += code.node ? ": the " + code.component + " component and the " +
                                         code.system + " system."
                                   : ": the " + code.component + " struct.";
-                task.links.push_back(skeleton->second.code);
+                task.links.push_back(skeleton->code);
             }
             text += " The values each entity's node set, its signal connections and node paths "
                     "are in " +
@@ -5506,16 +5421,16 @@ private:
             brief["script"] = destination(script);
             brief["task"] = task_of_[script];
             brief["entities"] = static_cast<std::int64_t>(record.uses.size());
-            if (const auto skeleton = skeletons_.find(script); skeleton != skeletons_.end()) {
+            if (const Skeleton* skeleton = skeletons().find(script); skeleton != nullptr) {
                 for (json::Value* entry : {&item, &brief}) {
-                    (*entry)["code"] = skeleton->second.code;
-                    (*entry)["component"] = skeleton->second.script.component;
-                    if (skeleton->second.kept) {
+                    (*entry)["code"] = skeleton->code;
+                    (*entry)["component"] = skeleton->script.component;
+                    if (skeleton->kept) {
                         (*entry)["kept"] = true;
                     }
                 }
-                if (skeleton->second.script.node) {
-                    item["system"] = skeleton->second.script.system;
+                if (skeleton->script.node) {
+                    item["system"] = skeleton->script.system;
                 }
             }
             scripts[destination(script)] = item;
@@ -5587,8 +5502,7 @@ private:
     std::set<std::string> bus_layouts_written_;
     std::map<std::string, LibraryFile> libraries_written_; // by file name, without its suffix
     std::map<std::string, ScriptRecord> scripts_;          // by res path
-    std::map<std::string, Skeleton> skeletons_;            // by res path, for GDScript files
-    std::string gameplay_folder_;                          // where skeletons go
+    std::optional<Skeletons> skeletons_;                   // by res path
     std::string module_;                                   // the game module written, or ""
     std::map<std::string, std::string> task_of_;
     std::map<std::string, std::string> autoloads_;

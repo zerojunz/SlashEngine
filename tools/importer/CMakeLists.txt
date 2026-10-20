@@ -12,6 +12,7 @@ add_library(slash_importer
     src/godot_unpack.cpp
     src/import.cpp
     src/scripts.cpp
+    src/skeletons.cpp
     src/unity_build.cpp
     src/unity_import.cpp
     src/unity_yaml.cpp)

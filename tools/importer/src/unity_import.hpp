@@ -1,5 +1,7 @@
 #pragma once
 
+#include "common.hpp"
+
 #include "slash/importer/import.hpp"
 
 #include <optional>
@@ -11,10 +13,9 @@ namespace slash::importer {
 // and ProjectSettings/). Its paths, such as "Assets/Sprites/hero.png", land under prefix in the
 // destination ("" or a folder ending in '/'); copy_assets copies textures, sounds, fonts and
 // scripts there, else they are used where they are. The destination's project.json and
-// storyboard/work.json, when it has them, are merged with what the import writes.
+// storyboard/work.json, when it has them, are merged with what the import writes, and the C++
+// skeletons its gameplay code has stay as they are.
 [[nodiscard]] Result<ImportPlan> plan_unity(const std::string& source, const std::string& prefix,
-                                            bool copy_assets,
-                                            const std::optional<std::string>& existing_project,
-                                            const std::optional<std::string>& existing_work);
+                                            bool copy_assets, const Existing& existing);
 
 } // namespace slash::importer

@@ -17,9 +17,11 @@ From a shell, `slash-cli import unity` does the same.
 project.import {"source":"unity"}
 {"converted": {"animation_libraries": 1, "assets": 9, "bus_layouts": 1, "input_actions": 12,
                "prefabs": 3, "scenes": 1, "tile_sets": 1},
- "files": 11, "main_scene": "unity/Assets/Scenes/Pond.scene.json", "pixels_per_unit": 32.0,
+ "files": 18, "main_scene": "unity/Assets/Scenes/Pond.scene.json", "pixels_per_unit": 32.0,
  "report": "import/unity.json",
- "scripts": [{"entities": 1, "script": "unity/Assets/Scripts/CameraFollow.cs",
+ "module": "src/game.cpp",
+ "scripts": [{"code": "src/imported/camera_follow.cpp", "component": "CameraFollow",
+              "entities": 1, "script": "unity/Assets/Scripts/CameraFollow.cs",
               "task": "task/port-camera-follow"}, ...],
  "unsupported": [{"count": 1, "what": "component EventSystem",
                   "where": "Assets/Scenes/Pond.unity: EventSystem",
@@ -92,10 +94,13 @@ project.import {"source":"unity"}
 - The player, time, physics and input settings become `project.json`: the name, version, window,
   tick rate, gravity, clear color, texture filter, and both the Input Manager's axes (`Jump`,
   `Horizontal/negative`) and the Input System's actions (`Player/Move/up`).
-- SlashEngine games are plain C++, so scripts don't convert. Each becomes a storyboard task with
-  what the script declares; `import/unity.json` holds the values each object gave its scripts
-  (references to objects as entity IDs, to assets as paths), tags, layers, sorting layers and the
-  entity ID of every object. The original scripts stay where they are, linked from the tasks.
+- SlashEngine games are plain C++, so each script becomes a C++ skeleton in `src/imported/` and a
+  storyboard task with what the script declares. The skeleton's component holds the script's
+  fields, and the objects that had the script hold it with the values they gave it: the frog's
+  `jumpSpeed` and its `feet`, as an entity ID. Its methods are stubs keeping the C#, called when
+  Unity would call them ([import-unity-scripts](../import-unity-scripts/) ports one).
+  `import/unity.json` holds those values too, with tags, layers, sorting layers and the entity ID
+  of every object. The original scripts stay where they are, linked from the tasks.
 - The assets stay where they are, since `unity/` is inside the project; importing a folder
   outside the project copies them in. Importing again updates the files and keeps each task's
   status.

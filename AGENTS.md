@@ -359,13 +359,16 @@ beside each `.tscn`, a `.frames.json` per `SpriteFrames`, a `.tileset.json` per 
 `.theme.json` per `Theme`, a `.bus_layout.json` per `AudioBusLayout`, a `.anim.json` per
 `AnimationPlayer` (tracks keep their node paths as targets), `project.godot`'s settings
 and input map merged into `project.json`, and a storyboard task per script (`task/port-<name>`)
-to port it to C++. Each GDScript file also becomes a C++ skeleton (`src/scripts.cpp`, public
-header `slash/importer/scripts.hpp`): `<gameplay folder>/imported/<name>.cpp` with its variables
-as a component the scenes fill in, its signals as `emit_<signal>` helpers, and a stub per
-function, keeping the GDScript in comments, that a system calls when Godot would (`_ready` on
-`entity.created` events, `_process` once a tick, `_input` per input event, connected methods on
-their signal's events). Skeletons that exist are kept; `imported/scripts.cpp` registers them and
-a game module is written when the project's code has none. Properties convert by the target field's reflected type, Godot's enum numbers
+to port it to C++. Each GDScript and C# file also becomes a C++ skeleton (`src/scripts.cpp`,
+public header `slash/importer/scripts.hpp`; `read_gdscript` and `read_csharp`, which reads
+Godot's and Unity's C#): `<gameplay folder>/imported/<name>.cpp` with its variables as a component
+the scenes fill in, its signals as `emit_<signal>` helpers, and a stub per function, keeping the
+script in comments, that a system calls when its engine would (`_ready` and `Start` on
+`entity.created` events, `_process` and `Update` once a tick, `_input` per input event, Unity's
+trigger and collision messages on physics events, connected methods on their signal's events).
+`src/skeletons.cpp` names and writes them for both importers: skeletons that exist are kept,
+`imported/scripts.cpp` registers them and a game module is written when the project's code has
+none. Properties convert by the target field's reflected type, Godot's enum numbers
 through its `choices`, and a value that fails its file's schema (scene, tile set, theme, bus
 layout or animation) is left out and reported, so one bad value can't stop a file. Everything that didn't
 convert goes in `import/godot.json`, once per kind. `docs/reference/godot-import.md` maps each
@@ -409,7 +412,9 @@ URP's 2D lights as `CanvasModulate` and `PointLight2D`s through generated fallof
 shadow casters as `LightOccluder2D`s, objects under a `Canvas` as controls (rects as anchors and
 offsets, uGUI and TextMesh Pro widgets as Godot's, their parts folded into the control's theme
 and fields), settings and both input systems merged into `project.json`, and a task per C#
-script and per state machine.
+script and per state machine. Each script's skeleton takes its serialized fields, which scenes
+fill in; its trigger and collision messages make the importer set `contact_monitor` on the
+object's `RigidBody2D`, and UI events' persistent calls connect to its methods.
 Objects a prefab brings are written whole, so `format_scene` keeps only what differs.
 `src/common.cpp` holds what both importers share: paths, the report and the tasks.
 `docs/reference/unity-import.md` maps each component and setting; `examples/import-unity`
