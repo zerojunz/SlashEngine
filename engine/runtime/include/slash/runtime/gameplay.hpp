@@ -1,5 +1,6 @@
 #pragma once
 
+#include "slash/gameplay/host.hpp"
 #include "slash/runtime/project.hpp"
 #include "slash/world/component_registry.hpp"
 
@@ -23,6 +24,9 @@ struct DeclaredComponent {
 [[nodiscard]] std::vector<DeclaredComponent> declared_components(std::string_view folder,
                                                                  const Project& project);
 
+// The components one C++ file's text declares, sorted by name.
+[[nodiscard]] std::vector<DeclaredComponent> declared_in(std::string_view text);
+
 // How add_gameplay_types found the project's own component types.
 enum class GameplayTypes : std::uint8_t {
     None,     // the project has no gameplay code
@@ -36,5 +40,11 @@ enum class GameplayTypes : std::uint8_t {
 // library stays loaded until the program exits.
 GameplayTypes add_gameplay_types(world::ComponentRegistry& registry, std::string_view folder,
                                  const Project& project, bool load_library);
+
+// Gives a session's gameplay host stand-ins for the components the project's sources declare
+// that no loaded code registers (gameplay::Host::add_stand_ins), so the session can open, edit
+// and save scenes that use them before the code is built. Does nothing for a folder with no
+// project or a project with no gameplay code.
+void add_stand_ins(gameplay::Host& host, std::string_view folder);
 
 } // namespace slash::runtime

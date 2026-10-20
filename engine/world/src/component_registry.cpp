@@ -6,6 +6,11 @@
 namespace slash::world {
 namespace {
 
+// A stand-in component's values (ComponentRegistry::add_stand_in).
+struct StandInValue {
+    json::Value fields;
+};
+
 // Applies a field's range to its number schema, or to the items of an array or values of a map
 // of numbers.
 void apply_range(json::Value& schema, const FieldMeta& meta) {
@@ -57,18 +62,18 @@ ComponentType& ComponentType::describe(std::string_view field, FieldMeta meta) {
 }
 
 bool ComponentType::has(const World& world, entt::entity entity) const {
-    return world.valid(entity) && ops_.has(world.ecs(), entity);
+    return world.valid(entity) && ops_.has(world.ecs(), type_hash_, entity);
 }
 
 void ComponentType::remove(World& world, entt::entity entity) const {
     if (world.valid(entity)) {
-        ops_.remove(world.ecs(), entity);
+        ops_.remove(world.ecs(), type_hash_, entity);
     }
 }
 
 json::Value ComponentType::get(const World& world, entt::entity entity) const {
     SLASH_ASSERT(has(world, entity), "get() called for an entity without this component");
-    return ops_.save(world, entity);
+    return ops_.save(world, type_hash_, entity);
 }
 
 json::Value ComponentType::save(const World& world, entt::entity entity) const {
@@ -85,7 +90,7 @@ Result<void> ComponentType::assign(World& world, entt::entity entity, const json
     if (!world.valid(entity)) {
         return make_error(ErrorCode::NotFound, "the entity does not exist");
     }
-    return ops_.assign(world, entity, values, path);
+    return ops_.assign(world, type_hash_, entity, values, path);
 }
 
 json::Value ComponentType::schema(SchemaBuilder& builder) const {
@@ -160,15 +165,33 @@ ComponentType& ComponentRegistry::insert(std::unique_ptr<ComponentType> type) {
 }
 
 ComponentType& ComponentRegistry::add_stand_in(std::string name, std::vector<std::string> fields) {
+    // Each stand-in's values are in a storage of their own, named by the type's hash.
     const ComponentType::Ops ops{
-        .has = [](const entt::registry& /*registry*/, entt::entity /*entity*/) { return false; },
-        .remove = [](entt::registry& /*registry*/, entt::entity /*entity*/) {},
-        .save = [](const World& /*world*/, entt::entity /*entity*/) -> json::Value {
-            return json::Object{};
+        .has =
+            [](const entt::registry& registry, entt::id_type type, entt::entity entity) {
+                const auto* storage = registry.storage<StandInValue>(type);
+                return storage != nullptr && storage->contains(entity);
+            },
+        .remove = [](entt::registry& registry, entt::id_type type,
+                     entt::entity entity) { registry.storage<StandInValue>(type).remove(entity); },
+        .save = [](const World& world, entt::id_type type, entt::entity entity) -> json::Value {
+            return world.ecs().storage<StandInValue>(type)->get(entity).fields;
         },
-        // Loading a scene to check it leaves the component out.
-        .assign = [](World& /*world*/, entt::entity /*entity*/, const json::Value& /*fields*/,
-                     std::string& /*path*/) -> Result<void> { return {}; },
+        .assign = [](World& world, entt::id_type type, entt::entity entity,
+                     const json::Value& values, std::string& /*path*/) -> Result<void> {
+            if (!values.is_object()) {
+                return make_error(ErrorCode::InvalidArgument, "must be an object");
+            }
+            auto& storage = world.ecs().storage<StandInValue>(type);
+            if (!storage.contains(entity)) {
+                storage.emplace(entity, StandInValue{.fields = json::Object{}});
+            }
+            json::Value& kept = storage.get(entity).fields;
+            for (const auto& [field, value] : values.as_object()) {
+                kept[field] = value;
+            }
+            return {};
+        },
         .schema = nullptr,
         .rename = [](json::Value& /*fields*/, const EntityRename& /*rename*/) {},
     };

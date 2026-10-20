@@ -14,8 +14,10 @@ replies and the files the import wrote. From a shell, `slash-cli import godot` d
 project.import {"source":"godot"}
 {"converted": {"animation_libraries": 1, "assets": 8, "audio_streams": 2, "bus_layouts": 1,
                "input_actions": 3, "scenes": 2, "sprite_frames": 2, "themes": 1, "tile_sets": 1},
- "files": 13, "main_scene": "godot/main.scene.json", "report": "import/godot.json",
- "scripts": [{"entities": 2, "script": "godot/player.gd", "task": "task/port-player"}, ...],
+ "files": 18, "main_scene": "godot/main.scene.json", "module": "src/game.cpp",
+ "report": "import/godot.json",
+ "scripts": [{"code": "src/imported/player.cpp", "component": "Player", "entities": 2,
+              "script": "godot/player.gd", "task": "task/port-player"}, ...],
  "unsupported": [{"count": 1, "what": "node type Timer", "where": "main.tscn: Timer",
                   "why": "timers are gameplay code: count the ticks in a C++ system"}, ...]}
 ```
@@ -45,10 +47,13 @@ project.import {"source":"godot"}
   clip plays that.
 - `project.godot`'s name, main scene, window size, physics, clear color, texture filter, theme,
   buses and input map become `project.json`.
-- SlashEngine games are plain C++, so scripts don't convert. Each becomes a storyboard task with
-  what the script declares; `import/godot.json` holds the values each node gave its exported
-  variables, its signal connections, groups, autoloads and the entity ID of every node path.
-  The original scripts stay where they are, linked from the tasks.
+- SlashEngine games are plain C++, so each script becomes a C++ skeleton in `src/imported/` for
+  the agent to port ([import-godot-scripts](../import-godot-scripts/) ports one) and a storyboard
+  task with what the script declares. Its variables are a component on each entity whose node
+  had the script, with the values the scenes gave them; until the code is built it is a stand-in
+  that keeps them, so the scenes open as they are. `import/godot.json` holds the values, signal
+  connections, groups, autoloads and the entity ID of every node path. The original scripts stay
+  where they are, linked from the tasks.
 - The assets stay where they are, since `godot/` is inside the project; importing a folder
   outside the project copies them in. Importing again updates the files and keeps each task's
   status.

@@ -147,6 +147,15 @@ std::optional<Load> Host::poll() {
     return load_library();
 }
 
+void Host::add_stand_ins(std::vector<StandIn> components) {
+    for (StandIn& component : components) {
+        if (components_->find(component.name) == nullptr) {
+            stand_ins_.push_back(component.name);
+            components_->add_stand_in(std::move(component.name), std::move(component.fields));
+        }
+    }
+}
+
 bool Host::changed() const {
     if (worlds_.empty() || library_.empty()) {
         return false;
@@ -271,7 +280,7 @@ Load Host::install(world::GameModule& module, const void* image) {
     }
     for (const auto& type : staged.types()) {
         for (const auto& existing : components_->types()) {
-            if (!contains(types_, existing->name()) &&
+            if (!contains(types_, existing->name()) && !contains(stand_ins_, existing->name()) &&
                 (existing->name() == type->name() || existing->type_hash() == type->type_hash())) {
                 load.error = "the component " + type->name() + " is already the engine's";
                 return load;
@@ -306,13 +315,23 @@ Load Host::install(world::GameModule& module, const void* image) {
     for (const std::string& name : types_) {
         const world::ComponentType* type = components_->find(name);
         old_types[name] = {{type->fields().begin(), type->fields().end()}, type->defaults()};
-        type_pools.push_back(type->type_hash());
+    }
+    // The old code's types go, and the stand-ins the new code's types replace.
+    std::vector<std::string> replaced = types_;
+    for (const std::string& name : stand_ins_) {
+        if (staged.find(name) != nullptr) {
+            replaced.push_back(name);
+        }
+    }
+    type_pools.reserve(replaced.size());
+    for (const std::string& name : replaced) {
+        type_pools.push_back(components_->find(name)->type_hash());
     }
     std::map<std::string, std::size_t, std::less<>> drops;
     std::vector<std::pair<world::World*, std::vector<entt::id_type>>> pools;
     for (world::World* world : worlds_) {
         entt::registry& ecs = world->ecs();
-        for (const std::string& name : types_) {
+        for (const std::string& name : replaced) {
             const world::ComponentType* type = components_->find(name);
             if (const auto* pool = std::as_const(ecs).storage(type->type_hash()); pool != nullptr) {
                 for (const entt::entity entity : *pool) {
@@ -347,9 +366,10 @@ Load Host::install(world::GameModule& module, const void* image) {
             world->ecs().reset(id);
         }
     }
-    for (const std::string& name : types_) {
+    for (const std::string& name : replaced) {
         (void)components_->take(name);
     }
+    std::erase_if(stand_ins_, [&](const std::string& name) { return contains(replaced, name); });
     types_.clear();
     for (const auto& type : staged.types()) {
         types_.push_back(type->name());

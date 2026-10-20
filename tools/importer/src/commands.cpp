@@ -3,6 +3,7 @@
 #include "slash/command/session.hpp"
 #include "slash/importer/import.hpp"
 #include "slash/importer/unity_build.hpp"
+#include "slash/runtime/gameplay.hpp"
 
 #include <string>
 #include <string_view>
@@ -88,6 +89,11 @@ Reply project_import(command::Session& session, const json::Value& params,
         }
     }
     result["files"] = plan.value().files.size();
+    // Stand-ins for the skeletons' components, so the scenes using them open before the code is
+    // built.
+    if (gameplay::Host* host = session.options().gameplay; host != nullptr) {
+        runtime::add_stand_ins(*host, session.options().project_root);
+    }
     return Reply::success(std::move(result));
 }
 
