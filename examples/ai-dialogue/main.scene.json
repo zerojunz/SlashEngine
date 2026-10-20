@@ -1,0 +1,40 @@
+{
+  "entities": {
+    "column": {
+      "components": {
+        "BoxContainer": {
+          "vertical": true
+        },
+        "Control": {
+          "children": ["speech", "talk"],
+          "custom_minimum_size": [320.0, 0.0]
+        }
+      }
+    },
+    "mira": {
+      "components": {
+        "Dialogue": {
+          "questions": ["What's good today?", "How much for two?", "Do you deliver?"]
+        }
+      }
+    },
+    "speech": {
+      "components": {
+        "Control": {},
+        "Label": {
+          "autowrap_mode": "word_smart",
+          "text": "Mira looks up from the counter."
+        }
+      }
+    },
+    "talk": {
+      "components": {
+        "Button": {
+          "text": "Talk"
+        },
+        "Control": {}
+      }
+    }
+  },
+  "format": 1
+}

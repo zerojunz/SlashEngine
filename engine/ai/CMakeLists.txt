@@ -1,5 +1,6 @@
-# Calling language models. Optional: only what links slash_ai carries the adapters and an HTTP
-# client, so a game that calls no model has none of it.
+# Calling language models. Exported games link it, but only the parts a game calls end up in it:
+# main() installs it for a game with a providers.json (SLASH_GAME_AI), so one without has no
+# adapters and no HTTP client.
 add_library(slash_ai
     src/anthropic.cpp
     src/config.cpp
@@ -8,13 +9,14 @@ add_library(slash_ai
     src/openai.cpp
     src/provider.cpp
     src/replay.cpp
-    src/transport.cpp)
+    src/transport.cpp
+    src/world.cpp)
 add_library(slash::ai ALIAS slash_ai)
 
 target_include_directories(slash_ai PUBLIC include)
 target_link_libraries(slash_ai
     PUBLIC slash::core
-    PRIVATE slash::platform)
+    PRIVATE slash::platform slash::world)
 if(NOT EMSCRIPTEN)
     target_link_libraries(slash_ai PRIVATE slash_httplib)
 endif()

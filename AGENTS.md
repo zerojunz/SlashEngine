@@ -929,7 +929,11 @@ provider needs back in later turns (thinking blocks, thought signatures) in `Mes
 names, never from the file. `ai::open` gives a role's provider, wrapped in a `ReplayProvider`
 when the file names a replay file: answers keyed by the model and the whole request, recorded
 once and replayed after, so tests run offline (`SLASH_AI_REPLAY=replay` in CI). `ai::Call` runs
-a request on its own thread so games never wait on a model. `slash_ai_commands` adds
+a request on its own thread so games never wait on a model. Gameplay code calls `ai::ask`
+(`src/world.cpp`), and the `ai` system (priority 1150) emits `ai_reply` or `ai_failed` world
+events; sessions and games with a `providers.json` install it (`SLASH_GAME_AI` in exports, which
+stage the file without its replay settings), headless runs wait for each reply so they repeat,
+and a session without the `network` capability answers only from the replay file. `slash_ai_commands` adds
 `command_tools` and `run_tool_calls` (engine commands as a model's tools) and the `ai.providers`
 and `ai.complete` commands, which need the `network` capability. Tests talk to a fake
 `ai::Transport` or a local server, never a real model. `src/transport.cpp` is the HTTP client:
@@ -937,7 +941,7 @@ httplib with Mbed TLS, which checks `https://` servers against the system's cert
 (SecTrust on Apple platforms, which `apple_trusts` asks), or `SSL_CERT_FILE`'s, and reaches them
 through the proxies curl's variables name (`ai::proxy_for`). Its tests make their certificates
 when they run, so no key is committed. `examples/ai-provider` is a shopkeeper who talks through a
-model.
+model, and `examples/ai-dialogue` a baker who talks from gameplay code.
 
 ## Add a component
 

@@ -535,7 +535,10 @@ scene and prefab, copies `project.json` and
 the `.scene.json` and `.prefab.json` files into a staging folder (nothing else, so stray files such as `.env` never
 ship), builds the game with CMake, signs it and installs it into the output folder. Each
 material's [shader](scene-format.md#shaders) is compiled for the platform into its staged file,
-since games can't compile shaders, and the `.hlsl` files stay behind. A Mac builds every
+since games can't compile shaders, and the `.hlsl` files stay behind. A project's
+[`providers.json`](providers.md#gameplay) is checked and staged without its `replay` settings,
+and the game then installs [`ai::ask`](providers.md#gameplay); Android exports of it get the
+`INTERNET` permission. A Mac builds every
 platform: macOS and iOS with Xcode's command-line tools and SDKs, and Windows and Linux with the
 toolchains in [toolchain](#toolchain), which the first such export downloads. A Linux machine
 builds Linux and Windows the same way, and a Windows machine builds Windows with MSVC. Web

@@ -14,7 +14,7 @@ function(slash_gameplay_host target)
     if(NOT (APPLE OR CMAKE_SYSTEM_NAME STREQUAL "Linux") OR IOS OR ANDROID)
         return()
     endif()
-    set(libraries slash_animation slash_asset slash_audio slash_canvas slash_core slash_gameplay
+    set(libraries slash_ai slash_animation slash_asset slash_audio slash_canvas slash_core slash_gameplay
         slash_input slash_physics2d slash_platform slash_render slash_runtime slash_services slash_text
         slash_ui slash_world)
     set_property(TARGET ${target} PROPERTY ENABLE_EXPORTS ON)

@@ -509,4 +509,20 @@ std::shared_ptr<Transport> http_transport() {
     return transport;
 }
 
+std::shared_ptr<Transport> refusing_transport(std::string message) {
+    class Refusing final : public Transport {
+    public:
+        explicit Refusing(std::string message) : message_(std::move(message)) {}
+
+        Result<HttpResponse> post(const HttpRequest& /*request*/, const BodySink& /*sink*/,
+                                  const CancelFlag* /*cancel*/) override {
+            return make_error(ErrorCode::PermissionDenied, message_);
+        }
+
+    private:
+        std::string message_;
+    };
+    return std::make_shared<Refusing>(std::move(message));
+}
+
 } // namespace slash::ai
