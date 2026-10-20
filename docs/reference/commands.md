@@ -2730,11 +2730,36 @@ runs.
 
 ### perf.stats
 
-Frame pacing over the last 120 frames, with the settings that shape it. No params. Needs: `read`.
+How long the world's ticks and systems took over the last 120 ticks, in milliseconds, the slowest
+systems first. In a running game it also reports frame pacing over the last 120 frames, with the
+settings that shape it. Needs: `read`.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `top` | integer | `10` | How many of the slowest systems to list, by average time; `0` for none |
 
 ```json
-{"catch_up_frames":0,"fps":120.0,"frame_ms":{"avg":8.33,"max":8.67,"min":7.99},"frames":932,"max_fps":120,"renderer":"vulkan","scaling":{"fsr_sharpness":0.2,"in_effect":"none","mode":"bilinear","scale":1.0},"tick_hz":60.0,"ticks":465,"vsync_mode":"mailbox"}
+{"top": 3}
 ```
+
+In any session:
+
+```json
+{"systems":[{"avg":0.412,"max":0.951,"name":"physics2d","stage":4},{"avg":0.088,"max":0.204,"name":"cpu_particles_2d","stage":8},{"avg":0.031,"max":0.07,"name":"gui","stage":1}],"tick_ms":{"avg":0.598,"max":1.302}}
+```
+
+In a running game (`slash-cli run --serve`):
+
+```json
+{"catch_up_frames":0,"fps":120.0,"frame_ms":{"avg":8.33,"max":8.67,"min":7.99},"frames":932,"max_fps":120,"renderer":"vulkan","scaling":{"fsr_sharpness":0.2,"in_effect":"none","mode":"bilinear","scale":1.0},"systems":[{"avg":0.412,"max":0.951,"name":"physics2d","stage":4}],"tick_hz":60.0,"tick_ms":{"avg":0.598,"max":1.302},"ticks":465,"vsync_mode":"mailbox"}
+```
+
+`tick_ms` is how long `World::step` took, systems and all. A system's times are its own run with
+the events and deferred calls it left; threaded systems in the same `stage` run at once, so their
+times can add up to more than the tick's. Times are real time, so they vary from run to run and
+machine to machine, and a system that hasn't run yet reports zeros. For a timeline of every
+thread, build with the `tracy` preset and connect the Tracy profiler
+([AGENTS.md](../../AGENTS.md#profiling)).
 
 `frame_ms` is the time from one frame's start to the next: a `max` far above `avg` is a hitch.
 `catch_up_frames` counts, since the game started, frames that ran more than one fixed tick

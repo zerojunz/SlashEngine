@@ -7,6 +7,7 @@
 #include "slash/core/jobs.hpp"
 #include "slash/core/json_schema.hpp"
 #include "slash/core/log.hpp"
+#include "slash/core/profile.hpp"
 #include "slash/core/text.hpp"
 #include "slash/gameplay/host.hpp"
 #include "slash/input/input.hpp"
@@ -233,6 +234,7 @@ Session::~Session() {
 }
 
 Reply Session::call(std::string_view name, const json::Value& params) {
+    SLASH_PROFILE_ZONE_NAMED(name);
     const bool outermost = depth_ == 0;
     const std::uint64_t tick = world_.tick();
     Reply reply = call_command(name, params);
@@ -788,6 +790,7 @@ std::optional<gameplay::Load> Session::poll_gameplay() {
 }
 
 void Session::poll_assets() {
+    SLASH_PROFILE_ZONE("Session::poll_assets");
     poll_project();
     (void)poll_gameplay();
     std::vector<asset::Assets::Change> changes = assets_.poll();

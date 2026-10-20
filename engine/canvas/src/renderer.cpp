@@ -2,6 +2,7 @@
 #include "slash/canvas/gpu_particles.hpp"
 #include "slash/canvas/particles.hpp"
 #include "slash/core/log.hpp"
+#include "slash/core/profile.hpp"
 #include "slash/ui/ui.hpp"
 
 #include <algorithm>
@@ -811,6 +812,7 @@ struct CanvasRenderer::Submission {
 };
 
 Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions& options) {
+    SLASH_PROFILE_ZONE("CanvasRenderer::draw");
     std::vector<ParticleJob> particle_jobs;
     std::vector<Item> items;
     std::vector<render::Vertex2D> vertices;

@@ -1,0 +1,5 @@
+perf.stats {"top": 3} lists 3 systems, the slowest first
+  slowest: flock, in stage 3
+  its max is at least its average: yes
+  a tick takes at least as long as it: yes
+by grid, flock takes less than a third of the time: yes
