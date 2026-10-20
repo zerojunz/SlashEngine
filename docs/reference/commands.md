@@ -2487,7 +2487,10 @@ Needs: `read`, and `filesystem` with `path`. A HUD with a health bar at 75%:
 ```
 
 `width` and `height` are the image's, after `region` and `scale`. `drawn` counts what was drawn
-(`sprites`, `tiles`, `particles`, `lights`, `controls` and `shapes`), leaving out zeros. `colors` are
+(`sprites`, `tiles`, `particles`, `lights`, `controls` and `shapes`), leaving out zeros. When the
+project's `rendering.scaling` ([project-format.md](project-format.md#render-scale)) draws the
+world at another size, `upscaler` names what scaled it and `render_size` is the world's size in
+pixels, `[width, height]`. `colors` are
 `[r, g, b, a]` from 0 to 1, one per point, read from the whole window whatever `region` says.
 Over MCP, `png` is sent as an image content block rather than as text. A point or region outside
 the window is an error at its path, and so is a `path` that doesn't end in `.png`. In a dry-run
@@ -2619,8 +2622,8 @@ Other sessions have no window or loop, so they leave them out.
 
 ### display.list
 
-Lists the displays, primary first, with the game's V-Sync mode and frame cap. A headless game
-has no displays.
+Lists the displays, primary first, with the game's V-Sync mode, frame cap and render scale. A
+headless game has no displays.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -2630,7 +2633,9 @@ Each display has its `id`, `name`, whether it is `primary` and whether the game'
 it, its `bounds` (`[x, y, width, height]` in screen coordinates), its UI `scale`, the current
 mode's `refresh_rate` and `pixel_density`, and `refresh_rates`: every rate its fullscreen modes
 offer, fastest first, for an options menu. A refresh rate of `0` means the system doesn't say.
-Needs: `read`. On SDL's offscreen video driver, which has one display and reports no refresh
+`scaling` is the render scale's settings, as `rendering.scaling` in
+[project-format.md](project-format.md#render-scale), with `in_effect`, the upscaler the game's last
+frame used (`none` when the world drew at full size), and its `render_size`. Needs: `read`. On SDL's offscreen video driver, which has one display and reports no refresh
 rate:
 
 ```json
@@ -2638,18 +2643,19 @@ rate:
 ```
 
 ```json
-{"displays":[{"bounds":[0,0,1024,768],"id":1,"name":"1","pixel_density":1.0,"primary":true,"refresh_rate":0.0,"refresh_rates":[],"scale":1.0,"window":true}],"max_fps":120,"vsync_mode":"mailbox"}
+{"displays":[{"bounds":[0,0,1024,768],"id":1,"name":"1","pixel_density":1.0,"primary":true,"refresh_rate":0.0,"refresh_rates":[],"scale":1.0,"window":true}],"max_fps":120,"scaling":{"fsr_sharpness":0.2,"in_effect":"fsr","mode":"fsr","render_size":[512,384],"scale":0.5},"vsync_mode":"mailbox"}
 ```
 
 ### display.set
 
-Changes the V-Sync mode or the frame cap from the next frame, as a game's options menu would,
-and returns the settings in effect.
+Changes the V-Sync mode, the frame cap or the render scale from the next frame, as a game's
+options menu would, and returns the settings in effect.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `vsync_mode` | `"disabled"`, `"enabled"`, `"adaptive"` or `"mailbox"` | unchanged | How frames wait for the display; see [project-format.md](project-format.md) |
 | `max_fps` | integer, 0 to 1000 | unchanged | Frames per second at most; `0` means no cap |
+| `scaling` | object | unchanged | The render scale: any of `mode`, `scale`, `fsr_sharpness` and `upscaler`, as `rendering.scaling` in [project-format.md](project-format.md#render-scale); fields left out stay as they are |
 
 A mode the GPU or window lacks falls back to `enabled`, which every GPU has, and the result
 shows the mode in effect. SDL's GPU API has no adaptive mode yet, so `adaptive` always falls back
@@ -2661,15 +2667,21 @@ Mesa's software Vulkan on an offscreen window has no mode that skips V-Sync:
 ```
 
 ```json
-{"max_fps":0,"vsync_mode":"enabled"}
+{"max_fps":0,"scaling":{"fsr_sharpness":0.2,"mode":"bilinear","scale":1.0},"vsync_mode":"enabled"}
 ```
+
+A scaling `mode` that isn't `bilinear` or `fsr` is an error at `/scaling/mode` (Godot's `fsr2`
+and MetalFX modes need the 3D renderer), and an `upscaler` the game hasn't added is a `-32001`
+error at `/scaling/upscaler` that lists the ones it has. Either way nothing changes.
+[examples/render-scale](../../examples/render-scale/) changes the render scale while the game
+runs.
 
 ### perf.stats
 
 Frame pacing over the last 120 frames, with the settings that shape it. No params. Needs: `read`.
 
 ```json
-{"catch_up_frames":0,"fps":120.0,"frame_ms":{"avg":8.33,"max":8.67,"min":7.99},"frames":932,"max_fps":120,"renderer":"vulkan","tick_hz":60.0,"ticks":465,"vsync_mode":"mailbox"}
+{"catch_up_frames":0,"fps":120.0,"frame_ms":{"avg":8.33,"max":8.67,"min":7.99},"frames":932,"max_fps":120,"renderer":"vulkan","scaling":{"fsr_sharpness":0.2,"in_effect":"none","mode":"bilinear","scale":1.0},"tick_hz":60.0,"ticks":465,"vsync_mode":"mailbox"}
 ```
 
 `frame_ms` is the time from one frame's start to the next: a `max` far above `avg` is a hitch.

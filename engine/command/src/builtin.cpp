@@ -3353,6 +3353,12 @@ Reply frame_capture(Session& session, const json::Value& params) {
         }
     }
     result["drawn"] = std::move(drawn);
+    // The world drawn smaller or larger and scaled, by project.json's rendering.scaling.
+    if (!capture.scaled.upscaler.empty()) {
+        result["upscaler"] = capture.scaled.upscaler;
+        result["render_size"] =
+            json::Array{capture.scaled.size.render_width, capture.scaled.size.render_height};
+    }
     if (!points.empty()) {
         json::Array colors;
         for (const auto& point : points) {

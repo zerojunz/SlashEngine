@@ -181,7 +181,9 @@ std::vector<Display> Platform::displays() const {
 
 WindowSize Platform::window_size() const {
     WindowSize size;
-    if (window_ != nullptr && !SDL_GetWindowSize(window_, &size.width, &size.height)) {
+    if (window_ != nullptr &&
+        (!SDL_GetWindowSize(window_, &size.width, &size.height) ||
+         !SDL_GetWindowSizeInPixels(window_, &size.pixel_width, &size.pixel_height))) {
         size = {};
     }
     return size;
