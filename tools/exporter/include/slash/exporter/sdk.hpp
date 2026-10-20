@@ -73,9 +73,10 @@ struct SdkBackends {
     std::string ads;
     std::vector<std::string> analytics;
     std::string purchases;
+    std::string games;
 
     [[nodiscard]] bool empty() const {
-        return ads.empty() && analytics.empty() && purchases.empty();
+        return ads.empty() && analytics.empty() && purchases.empty() && games.empty();
     }
 };
 

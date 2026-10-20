@@ -1,0 +1,18 @@
+{
+  "format": 1,
+  "main_scene": "main.scene.json",
+  "name": "Achievements and leaderboards",
+  "services": {
+    "games": {
+      "achievements": {
+        "first_finish": {"ids": {"android": "CgkIexample01", "ios": "first_finish"}},
+        "ten_laps": {"ids": {"android": "CgkIexample02", "ios": "ten_laps"}, "steps": 10}
+      },
+      "leaderboards": {
+        "best_lap": {"ids": {"android": "CgkIexample03", "ios": "best_lap"}, "sort_order": "low_to_high"}
+      }
+    }
+  },
+  "version": "0.1.0",
+  "window": {"height": 240, "width": 320}
+}

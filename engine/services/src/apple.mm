@@ -7,6 +7,7 @@
 #include "slash/core/log.hpp"
 #include "slash/services/bridges.hpp"
 
+#include <cstdint>
 #include <memory>
 #include <span>
 #include <string>
@@ -40,6 +41,23 @@ std::string text_field(NSDictionary* dictionary, NSString* key) {
     }
     NSString* string = value;
     return to_std(string);
+}
+
+// A number in a dictionary, or 0.
+int64_t number_field(NSDictionary* dictionary, NSString* key) {
+    id value = dictionary[key];
+    if (![value isKindOfClass:[NSNumber class]]) {
+        return 0;
+    }
+    NSNumber* number = value;
+    return [number longLongValue];
+}
+
+services::Score score_of(NSDictionary* dictionary) {
+    return {.rank = number_field(dictionary, @"rank"),
+            .player = text_field(dictionary, @"player"),
+            .name = text_field(dictionary, @"name"),
+            .value = number_field(dictionary, @"score")};
 }
 
 // A parameter object as Foundation values: strings, numbers and booleans by name.
@@ -191,6 +209,87 @@ NSString* consent_text(services::Consent consent) {
 - (void)restoreFinished:(NSString*)error {
     if (const auto reports = _reports.lock()) {
         reports->restore_finished(to_std(error));
+    }
+}
+
+- (void)signedIn:(NSString*)playerID name:(NSString*)name {
+    if (const auto reports = _reports.lock()) {
+        reports->signed_in({.id = to_std(playerID), .name = to_std(name)});
+    }
+}
+
+- (void)signInFailed:(NSString*)error {
+    if (const auto reports = _reports.lock()) {
+        reports->sign_in_failed(to_std(error));
+    }
+}
+
+- (void)achievements:(NSArray<NSDictionary<NSString*, id>*>*)progress {
+    const auto reports = _reports.lock();
+    if (reports == nullptr) {
+        return;
+    }
+    std::vector<services::AchievementProgress> out;
+    for (id item in progress) {
+        if (![item isKindOfClass:[NSDictionary class]]) {
+            continue;
+        }
+        NSDictionary* dictionary = item;
+        out.push_back({.achievement = text_field(dictionary, @"achievement"),
+                       .steps = static_cast<int>(number_field(dictionary, @"steps")),
+                       .unlocked = number_field(dictionary, @"unlocked") != 0});
+    }
+    reports->achievements(std::move(out));
+}
+
+- (void)achievementFailed:(NSString*)achievement error:(NSString*)error {
+    if (const auto reports = _reports.lock()) {
+        reports->achievement_failed(to_std(achievement), to_std(error));
+    }
+}
+
+- (void)scoreSubmitted:(NSString*)leaderboard score:(int64_t)score {
+    if (const auto reports = _reports.lock()) {
+        reports->score_submitted(to_std(leaderboard), score);
+    }
+}
+
+- (void)scoreFailed:(NSString*)leaderboard error:(NSString*)error {
+    if (const auto reports = _reports.lock()) {
+        reports->score_failed(to_std(leaderboard), to_std(error));
+    }
+}
+
+- (void)scores:(NSString*)leaderboard
+       entries:(NSArray<NSDictionary<NSString*, id>*>*)entries
+        player:(NSDictionary<NSString*, id>*)player
+         total:(int64_t)total {
+    const auto reports = _reports.lock();
+    if (reports == nullptr) {
+        return;
+    }
+    services::Scores scores;
+    for (id item in entries) {
+        if ([item isKindOfClass:[NSDictionary class]]) {
+            scores.entries.push_back(score_of(item));
+        }
+    }
+    if (player != nil) {
+        scores.player = score_of(player);
+    }
+    scores.total = total;
+    reports->scores(to_std(leaderboard), std::move(scores));
+}
+
+- (void)scoresFailed:(NSString*)leaderboard error:(NSString*)error {
+    if (const auto reports = _reports.lock()) {
+        reports->scores_failed(to_std(leaderboard), to_std(error));
+    }
+}
+
+- (void)gamesUIClosed {
+    if (const auto reports = _reports.lock()) {
+        reports->games_ui_closed();
     }
 }
 
@@ -426,6 +525,108 @@ private:
     std::weak_ptr<services::Reports> reports_;
 };
 
+class ObjcGames final : public services::GamesBackend {
+public:
+    explicit ObjcGames(std::string_view class_name)
+        : object_(class_name, @protocol(SlashGamesBackend)) {}
+    [[nodiscard]] std::string_view name() const override { return object_.name(); }
+    void start(const std::shared_ptr<services::Reports>& reports) override {
+        reports_ = reports;
+        if (object_.make()) {
+            [object_.get() startWithReports:reports_object(reports)];
+        }
+    }
+    void set_consent(const services::ConsentState& consent) override {
+        if (object_.get() != nil) {
+            object_.set_consent(consent);
+        }
+    }
+    void poll() override {
+        if (object_.get() != nil) {
+            object_.poll();
+        }
+    }
+    void sign_in(bool interactive) override {
+        if (object_.get() != nil) {
+            [object_.get() signIn:static_cast<BOOL>(interactive)];
+        } else if (const auto reports = reports_.lock()) {
+            reports->sign_in_failed("the games Objective-C backend could not start");
+        }
+    }
+    void load_achievements(std::span<const services::AchievementUnit> units) override {
+        if (object_.get() == nil) {
+            return;
+        }
+        NSMutableArray<NSDictionary<NSString*, id>*>* achievements = [NSMutableArray array];
+        for (const services::AchievementUnit& unit : units) {
+            [achievements addObject:@{
+                @"achievement" : to_ns(unit.achievement),
+                @"id" : to_ns(unit.id),
+                @"steps" : [NSNumber numberWithLongLong:unit.steps]
+            }];
+        }
+        [object_.get() loadAchievements:achievements];
+    }
+    void unlock(const services::AchievementUnit& unit) override {
+        if (object_.get() != nil) {
+            [object_.get() unlock:to_ns(unit.achievement) achievementID:to_ns(unit.id)];
+        }
+    }
+    void set_steps(const services::AchievementUnit& unit, int steps) override {
+        if (object_.get() != nil) {
+            [object_.get() setSteps:steps
+                                 of:unit.steps
+                        achievement:to_ns(unit.achievement)
+                      achievementID:to_ns(unit.id)];
+        }
+    }
+    void submit_score(const services::LeaderboardUnit& unit, std::int64_t score) override {
+        if (object_.get() != nil) {
+            [object_.get() submitScore:score
+                           leaderboard:to_ns(unit.leaderboard)
+                         leaderboardID:to_ns(unit.id)];
+        }
+    }
+    void load_scores(const services::LeaderboardUnit& unit,
+                     const services::ScoreQuery& query) override {
+        if (object_.get() == nil) {
+            if (const auto reports = reports_.lock()) {
+                reports->scores_failed(unit.leaderboard,
+                                       "the games Objective-C backend could not start");
+            }
+            return;
+        }
+        [object_.get() loadScores:to_ns(unit.leaderboard)
+                    leaderboardID:to_ns(unit.id)
+                             time:to_ns(services::span_name(query.time))
+                       collection:to_ns(services::collection_name(query.collection))
+                            count:query.count];
+    }
+    void show_achievements() override {
+        if (object_.get() != nil) {
+            [object_.get() showAchievements];
+        } else if (const auto reports = reports_.lock()) {
+            reports->games_ui_closed();
+        }
+    }
+    void show_leaderboards(const services::LeaderboardUnit* unit) override {
+        if (object_.get() == nil) {
+            if (const auto reports = reports_.lock()) {
+                reports->games_ui_closed();
+            }
+        } else if (unit != nullptr) {
+            [object_.get() showLeaderboard:to_ns(unit->leaderboard)
+                             leaderboardID:to_ns(unit->id)];
+        } else {
+            [object_.get() showLeaderboard:nil leaderboardID:nil];
+        }
+    }
+
+private:
+    ObjcObject<id<SlashGamesBackend>> object_;
+    std::weak_ptr<services::Reports> reports_;
+};
+
 } // namespace
 
 namespace slash::services {
@@ -440,6 +641,10 @@ std::unique_ptr<AnalyticsBackend> objc_analytics_backend(std::string_view class_
 
 std::unique_ptr<PurchasesBackend> objc_purchases_backend(std::string_view class_name) {
     return std::make_unique<ObjcPurchases>(class_name);
+}
+
+std::unique_ptr<GamesBackend> objc_games_backend(std::string_view class_name) {
+    return std::make_unique<ObjcGames>(class_name);
 }
 
 } // namespace slash::services
