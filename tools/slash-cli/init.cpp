@@ -144,7 +144,10 @@ Every project on this machine shares one asset library. Before making an image o
 source and license in `library.json`. `asset_generate` makes one with a generator from
 `providers.json` (`"generator": "test"` for placeholders) and keeps it in the library; an exact
 repeat costs no model call, and close matches come back as candidates instead. `asset_refine`
-makes a new version linked to the old, and `asset_add` puts the project's own files in.
+makes a new version linked to the old, and `asset_add` puts the project's own files in. Prompts
+carry the storyboard's tone and palette, and images put in the project are checked against it.
+After using an asset, `asset_feedback` records whether it worked and why: rejected assets stop
+coming back as candidates, and the reasons go into later prompts.
 
 ## Run and export
 

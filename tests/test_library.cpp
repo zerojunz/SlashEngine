@@ -494,3 +494,111 @@ TEST_CASE("asset commands report bad params with their paths") {
           R"({"art":{"api_key_env":"SLASH_TEST_UNSET_KEY","key_set":false,"type":"test"}})");
     CHECK(engine.call("asset.generate", R"({"prompt": "x"})")["id"].as_string().size() == 12);
 }
+
+TEST_CASE("asset.feedback ranks results, keeps rejected ones out of candidates and goes into "
+          "prompts") {
+    const fs::path root = fresh("library_feedback");
+    const Engine engine(root);
+    (void)engine.call("asset.generate", R"({"prompt": "slime sprite", "generator": "test",
+                                            "width": 8, "seed": 1})");
+    (void)engine.call("asset.generate", R"({"prompt": "slime sprite", "generator": "test",
+                                            "width": 8, "seed": 2, "similar": false})");
+    const auto ids = [&engine](std::string_view params) {
+        std::vector<std::string> out;
+        json::Value found = engine.call("asset.search", params);
+        for (const json::Value& item : found["assets"].as_array()) {
+            out.push_back(item.find("id")->as_string());
+        }
+        return out;
+    };
+    const std::vector<std::string> first_order = ids(R"({"text": "slime"})");
+    const std::string first = first_order.front();
+    const std::string second = first_order.back();
+
+    // Rejecting the first moves it below the second.
+    CHECK(json::write(engine.call("asset.feedback", R"({"id": ")" + first +
+                                                        R"(", "verdict": "rejected",
+                                                        "reason": "too dark to read."})"),
+                      json::Style::Compact) == R"({"id":")" + first + R"(","rejected":1})");
+    CHECK(ids(R"({"text": "slime"})") == std::vector<std::string>{second, first});
+    json::Value found = engine.call("asset.search", R"({"text": "slime"})");
+    CHECK(found["assets"].as_array()[1].find("score")->as_double() == doctest::Approx(0.95));
+    CHECK(found["assets"].as_array()[1].find("rejected")->as_int() == 1);
+    (void)engine.call("asset.feedback", R"({"id": ")" + second +
+                                            R"(", "verdict": "accepted",
+                                            "reason": "bright and readable", "source": "playtest"})");
+    const json::Value info = engine.call("asset.info", R"({"id": ")" + second + R"("})");
+    CHECK(json::write(*info.find("feedback"), json::Style::Compact) ==
+          R"([{"reason":"bright and readable","source":"playtest","verdict":"accepted"}])");
+
+    // A close request offers only the asset agents haven't rejected.
+    json::Value close = engine.call("asset.generate", R"({"prompt": "a slime sprite",
+        "generator": "test", "width": 8})");
+    REQUIRE(close.find("candidates") != nullptr);
+    REQUIRE(close["candidates"].as_array().size() == 1);
+    CHECK(close["candidates"].as_array()[0].find("id")->as_string() == second);
+
+    // What earlier feedback said goes along with the prompt of the next one like it.
+    json::Value next = engine.call("asset.generate", R"({"prompt": "slime sprite, blue",
+        "generator": "test", "width": 8, "similar": false})");
+    const json::Value next_info =
+        engine.call("asset.info", R"({"id": ")" + next["id"].as_string() + R"("})");
+    CHECK(next_info.find("request")->find("context")->as_string() ==
+          "What worked before: bright and readable.\nAvoid what was wrong before: too dark to "
+          "read.");
+    CHECK(next_info.find("request")->find("prompt")->as_string() == "slime sprite, blue");
+    // context false sends the prompt alone.
+    json::Value alone = engine.call("asset.generate", R"({"prompt": "slime sprite, red",
+        "generator": "test", "width": 8, "similar": false, "context": false})");
+    CHECK(engine.call("asset.info", R"({"id": ")" + alone["id"].as_string() + R"("})")
+              .find("request")
+              ->find("context") == nullptr);
+
+    CHECK(engine.fail("asset.feedback", R"({"id": ")" + first + R"(", "verdict": "fine"})")
+              .data["path"] == "/verdict");
+}
+
+TEST_CASE("asset.generate sends the storyboard's style and checks images against its palette") {
+    const fs::path root = fresh("library_style");
+    write(root / "project" / "storyboard" / "style.json", R"({"format": 1, "entries": {
+        "tone/main": {"name": "Main", "summary": "Cozy pixel art with soft outlines"},
+        "palette/art": {"name": "Art", "colors": {"sky": "#87ceeb"}, "links": ["art"]}
+    }})");
+    const Engine engine(root);
+
+    // Under art/, the palette applies: the prompt names it, and the red sprite breaks it.
+    json::Value made = engine.call("asset.generate", R"({"prompt": "red slime sprite",
+        "generator": "test", "width": 8, "path": "art/slime.png"})");
+    REQUIRE(made.find("problems") != nullptr);
+    CHECK(made["problems"].as_array()[0].as_string().find("palette/art") != std::string::npos);
+    json::Value info = engine.call("asset.info", R"({"id": ")" + made["id"].as_string() + R"("})");
+    CHECK(info.find("request")->find("context")->as_string() ==
+          "Style: Cozy pixel art with soft outlines.\nUse only these colors: sky #87ceeb.");
+    const json::Value& feedback = info.find("feedback")->as_array()[0];
+    CHECK(feedback.find("verdict")->as_string() == "rejected");
+    CHECK(feedback.find("source")->as_string() == "storyboard.check");
+
+    // Outside art/ only the tone applies, and nothing is checked.
+    json::Value elsewhere = engine.call("asset.generate", R"({"prompt": "blue gem icon",
+        "generator": "test", "width": 8, "path": "ui/gem.png"})");
+    CHECK(elsewhere.find("problems") == nullptr);
+    info = engine.call("asset.info", R"({"id": ")" + elsewhere["id"].as_string() + R"("})");
+    CHECK(info.find("request")->find("context")->as_string() ==
+          "Style: Cozy pixel art with soft outlines.");
+    CHECK(info.find("feedback") == nullptr);
+
+    // A palette the image fits records that it passed, once.
+    write(root / "project" / "storyboard" / "style.json", R"({"format": 1, "entries": {
+        "palette/art": {"name": "Art", "colors": {"sky": "#87ceeb"}, "tolerance": 255,
+                        "links": ["art"]}
+    }})");
+    for (int i = 0; i < 2; ++i) {
+        json::Value used = engine.call("asset.use", R"({"id": ")" + elsewhere["id"].as_string() +
+                                                        R"(", "path": "art/gem.png"})");
+        CHECK(used.find("problems") == nullptr);
+    }
+    info = engine.call("asset.info", R"({"id": ")" + elsewhere["id"].as_string() + R"("})");
+    CHECK(json::write(*info.find("feedback"), json::Style::Compact) ==
+          R"([{"reason":"fits the storyboard's palette and budget","source":"storyboard.check",)"
+          R"("verdict":"accepted"}])");
+}

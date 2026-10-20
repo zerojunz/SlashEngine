@@ -35,6 +35,13 @@ inline constexpr std::string_view kDirVariable = "SLASH_LIBRARY_DIR";
 inline constexpr std::size_t kShortId = 12;
 inline constexpr std::size_t kMinIdPrefix = 6;
 
+// What an agent or a check said about an asset once it was used.
+struct Feedback {
+    std::string verdict; // "accepted" or "rejected"
+    std::string reason;  // why, in a few words: what worked or what was wrong
+    std::string source;  // who said so: "agent", or a check such as "storyboard.check"
+};
+
 struct Record {
     std::string id;     // the SHA-256 of the bytes, 64 hex digits
     std::string type;   // "image" or "sound"
@@ -52,9 +59,17 @@ struct Record {
     std::string model;
     std::optional<std::int64_t> seed;
     std::string license;
-    std::string author; // who made an added file
-    std::string parent; // the asset this one was refined from
+    std::string author;             // who made an added file
+    std::string parent;             // the asset this one was refined from
+    std::vector<Feedback> feedback; // oldest first; the last kMaxFeedback are kept
 };
+
+inline constexpr std::size_t kMaxFeedback = 20;
+
+// Adds feedback to the record, dropping the oldest past kMaxFeedback.
+void add_feedback(Record& record, Feedback feedback);
+// How many times the asset was accepted, less how many times it was rejected.
+[[nodiscard]] int net_feedback(const Record& record) noexcept;
 
 [[nodiscard]] json::Value to_json(const Record& record);
 [[nodiscard]] Result<Record> record_from_json(const json::Value& value);
@@ -110,11 +125,16 @@ struct Query {
 
 struct Match {
     const Record* record = nullptr;
-    double score = 0.0; // the share of the query's words found, tags counting double, 0 to 1
+    // The share of the query's words found, moved up or down kFeedbackStep for each time the
+    // asset was accepted more than rejected (at most 4 times), 0 to 1.
+    double score = 0.0;
 };
 
-// The records matching the query, best first, then by ID. With no text every record that has
-// the tags and type matches, with score 1.
+inline constexpr double kFeedbackStep = 0.05;
+
+// The records matching the query, best first; among equals, the better received, those whose
+// tags matched more of the words, then by ID. With no text every record that has the tags and
+// type matches, with score 1 before feedback.
 [[nodiscard]] std::vector<Match> search(std::span<const Record> records, const Query& query);
 
 } // namespace slash::library
