@@ -8,9 +8,13 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
+#include <iterator>
+#include <optional>
 #include <span>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace slash::audio {
 
@@ -62,10 +66,11 @@ instantiate_all(const std::vector<std::shared_ptr<const Stream>>& streams, int m
 // out over the start of the next.
 class PlaylistPlayback final : public Playback {
 public:
-    PlaylistPlayback(std::vector<std::shared_ptr<const Stream>> streams, bool shuffle, bool loop,
-                     float fade_time, int mix_rate, std::uint32_t random)
-        : streams_(std::move(streams)), shuffle_(shuffle), loop_(loop), fade_time_(fade_time),
-          mix_rate_(mix_rate), random_(random == 0 ? 0x9E3779B9U : random),
+    PlaylistPlayback(std::vector<std::shared_ptr<const Stream>> streams,
+                     std::vector<std::string> names, bool shuffle, bool loop, float fade_time,
+                     int mix_rate, std::uint32_t random)
+        : streams_(std::move(streams)), names_(std::move(names)), shuffle_(shuffle), loop_(loop),
+          fade_time_(fade_time), mix_rate_(mix_rate), random_(random == 0 ? 0x9E3779B9U : random),
           playbacks_(instantiate_all(streams_, mix_rate, random_)), play_order_(streams_.size()) {}
 
     void start(double from_seconds) override {
@@ -103,6 +108,7 @@ public:
         loops_ = 0;
         offset_ = from_seconds;
         active_ = true;
+        record(play_order_[static_cast<std::size_t>(play_index_)], -1);
     }
 
     void stop() override {
@@ -115,6 +121,11 @@ public:
     [[nodiscard]] bool is_playing() const override { return active_; }
     [[nodiscard]] double position() const override { return offset_; }
     [[nodiscard]] int loop_count() const override { return loops_; }
+
+    void take_clip_changes(std::vector<ClipChange>& changes) override {
+        std::ranges::move(changes_, std::back_inserter(changes));
+        changes_.clear();
+    }
 
     int mix(Frame* buffer, float /*rate_scale*/, int frames) override {
         if (!active_) {
@@ -158,6 +169,20 @@ public:
 
 private:
     static constexpr int kMixBufferSize = 128; // Godot's MIX_BUFFER_SIZE
+    static constexpr std::size_t kMaxChanges = 64;
+
+    // Stream index starting, after stream index from (-1 as the playlist starts).
+    void record(int index, int from) {
+        if (changes_.size() >= kMaxChanges) {
+            changes_.erase(changes_.begin());
+        }
+        const auto name = [&](int i) {
+            return i >= 0 && static_cast<std::size_t>(i) < names_.size()
+                       ? names_[static_cast<std::size_t>(i)]
+                       : std::string();
+        };
+        changes_.push_back({.clip = name(index), .from = name(from), .automatic = from >= 0});
+    }
 
     Playback& current() {
         return *playbacks_[static_cast<std::size_t>(
@@ -210,11 +235,15 @@ private:
             next.start(0);
             static_cast<void>(next.mix(mix_buffer_.data() + i, 1.0F, to_mix - i));
         }
+        if (prev != idx) {
+            record(idx, prev);
+        }
         stream_todo_ = beat_length(*streams_[static_cast<std::size_t>(idx)]);
         return true;
     }
 
     std::vector<std::shared_ptr<const Stream>> streams_;
+    std::vector<std::string> names_; // each stream's path
     bool shuffle_;
     bool loop_;
     float fade_time_;
@@ -231,18 +260,23 @@ private:
     double offset_ = 0.0;
     int loops_ = 0;
     bool active_ = false;
+    std::vector<ClipChange> changes_;
 };
 
 class PlaylistStream final : public Stream {
 public:
     PlaylistStream(std::vector<std::shared_ptr<const Stream>> streams, const StreamFile& settings)
         : streams_(std::move(streams)), shuffle_(settings.shuffle), loop_(settings.loop),
-          fade_time_(settings.fade_time) {}
+          fade_time_(settings.fade_time) {
+        for (const StreamFile::Entry& entry : settings.streams) {
+            names_.push_back(entry.stream);
+        }
+    }
 
     [[nodiscard]] std::unique_ptr<Playback> instantiate(int mix_rate,
                                                         std::uint32_t random) const override {
-        return std::make_unique<PlaylistPlayback>(streams_, shuffle_, loop_, fade_time_, mix_rate,
-                                                  random);
+        return std::make_unique<PlaylistPlayback>(streams_, names_, shuffle_, loop_, fade_time_,
+                                                  mix_rate, random);
     }
     [[nodiscard]] double length() const override {
         double total = 0.0;
@@ -265,6 +299,7 @@ public:
 
 private:
     std::vector<std::shared_ptr<const Stream>> streams_;
+    std::vector<std::string> names_;
     bool shuffle_;
     bool loop_;
     float fade_time_;
@@ -514,6 +549,7 @@ public:
             state.active = false;
             state.auto_advance = -1;
             state.first_mix = true;
+            state.pending.reset();
         }
         playback_current_ = -1;
         queued_ = -1;
@@ -584,8 +620,24 @@ public:
                    : std::string_view{};
     }
 
+    void take_clip_changes(std::vector<ClipChange>& changes) override {
+        std::ranges::move(changes_, std::back_inserter(changes));
+        changes_.clear();
+    }
+
 private:
     static constexpr int kBufferSize = 1024; // Godot's BUFFER_SIZE
+    // Clip changes kept for take_clip_changes; older ones go once there are more.
+    static constexpr std::size_t kMaxChanges = 64;
+
+    // How a clip waiting to start came to be queued, for the ClipChange it makes.
+    struct Pending {
+        int from = -1;
+        int transition = -1;
+        bool filler = false;
+        bool automatic = false;
+        std::int64_t asked = 0; // mixed_frames_ when it was queued
+    };
 
     struct State {
         const Stream* stream = nullptr;
@@ -597,6 +649,7 @@ private:
         int auto_advance = -1;
         bool first_mix = true;
         double previous_position = 0;
+        std::optional<Pending> pending;
 
         void reset_fade() {
             fade_wait = 0;
@@ -629,6 +682,7 @@ private:
             start_state.fade_volume = 1.0;
             start_state.fade_speed = 0;
             start_state.first_mix = true;
+            start_state.pending = Pending{.asked = mixed_frames_};
             start_state.playback->start(0);
             playback_current_ = to_clip;
             const StreamFile::Clip& clip = clip_at(to_clip);
@@ -649,12 +703,18 @@ private:
                 waiting.playback->stop();
                 waiting.reset_fade();
                 waiting.active = false;
+                waiting.pending.reset();
             }
         }
 
         State& from_state = state(playback_current_);
         State& to_state = state(to_clip);
+        const int rule = transition_index(stream_->transitions, playback_current_, to_clip);
         StreamFile::Transition transition = stream_->transition(playback_current_, to_clip);
+        const Pending pending{.from = playback_current_,
+                              .transition = rule,
+                              .automatic = is_auto_advance,
+                              .asked = mixed_frames_};
 
         if (transition.fade_mode == FadeMode::Automatic) {
             // Adjust automatic mode based on context.
@@ -789,6 +849,10 @@ private:
             filler_state.fade_speed = 0.0;
             filler_state.fade_wait = src_fade_wait;
             filler_state.first_mix = true;
+            filler_state.pending = pending;
+            filler_state.pending->filler = true;
+            to_state.pending = pending;
+            to_state.pending->from = transition.filler_clip;
             const auto filler_end = static_cast<float>(beat_length(*filler_state.stream));
             if (fade_in) {
                 to_state.fade_volume = 0.0;
@@ -800,6 +864,7 @@ private:
             }
             to_state.fade_wait = src_fade_wait + filler_end;
         } else {
+            to_state.pending = pending;
             to_state.fade_wait = src_fade_wait;
             if (fade_in) {
                 to_state.fade_volume = 0.0;
@@ -810,6 +875,20 @@ private:
             }
             to_state.auto_advance = auto_advance_to;
         }
+    }
+
+    void record(int clip, const Pending& pending, std::int64_t frame) {
+        if (changes_.size() >= kMaxChanges) {
+            changes_.erase(changes_.begin());
+        }
+        changes_.push_back({
+            .clip = clip_at(clip).name,
+            .from = pending.from >= 0 ? clip_at(pending.from).name : std::string(),
+            .transition = pending.transition,
+            .filler = pending.filler,
+            .automatic = pending.automatic,
+            .waited = static_cast<double>(frame - pending.asked) / mix_rate_,
+        });
     }
 
     void mix_internal(int frames) {
@@ -827,6 +906,7 @@ private:
             playback_current_ = -1;
             queued_ = -1;
         }
+        mixed_frames_ += frames;
     }
 
     void mix_internal_state(int index, int frames) {
@@ -850,6 +930,10 @@ private:
                     queued_ = -1;
                 }
                 each.first_mix = false;
+                if (each.pending) {
+                    record(index, *each.pending, mixed_frames_ + from_frame);
+                    each.pending.reset();
+                }
             } else {
                 // The new stream waits to fade in.
                 each.fade_wait -= mix_time;
@@ -911,6 +995,8 @@ private:
     bool active_ = false;
     int return_memory_ = -1;
     int switch_request_ = -1;
+    std::int64_t mixed_frames_ = 0; // since the playback was made, for ClipChange::waited
+    std::vector<ClipChange> changes_;
 };
 
 class InteractiveStream final : public Stream {

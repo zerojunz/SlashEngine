@@ -515,6 +515,13 @@ events.subscribe {"kinds":["glint"]}
 }
 step {"ticks":25}
 {
+  "music": [
+    {
+      "clip": "calm",
+      "id": "music",
+      "tick": 0
+    }
+  ],
   "tick": 25,
   "ticks": 25
 }

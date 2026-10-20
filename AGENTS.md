@@ -989,10 +989,15 @@ interrupted). `soundtrack.check` (`src/check.cpp`) reads every music file and pl
 to measure it: cue music that can't play, beats longer than a sound, loops that click, clips
 with no beats to switch on and loudness off the storyboard's targets are errors, which
 `test.run` fails on; switches off the bar, keys that clash and tempos other than `bpm` are
-warnings. `examples/soundtrack-plan` plans a game's cues, `examples/music-scores` sends a piece
-through MIDI and back, `examples/soundtrack-render` renders a loop and measures it,
-`examples/soundtrack-arrange` arranges cues and steers them, and `examples/soundtrack-check`
-checks a game's music.
+warnings. As a game runs, each clip its music starts is a `clip_changed` world event
+(`audio::ClipChange`, from `Playback::take_clip_changes`), with the clip before, the transition
+followed and the seconds it waited for its beat or bar; `step` and `run.until` return them as a
+`music` timeline and `playtest.run` sums them up per combination, so agents check the music
+follows the game without listening. `examples/soundtrack-plan` plans a game's cues,
+`examples/music-scores` sends a piece through MIDI and back, `examples/soundtrack-render`
+renders a loop and measures it, `examples/soundtrack-arrange` arranges cues and steers them,
+`examples/soundtrack-check` checks a game's music, and `examples/music-timeline` follows a boss
+fight's music.
 
 ## Ads, analytics, purchases and achievements
 
