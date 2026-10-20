@@ -1,3 +1,4 @@
+#include "slash/core/jobs.hpp"
 #include "slash/core/json.hpp"
 #include "slash/core/math.hpp"
 #include "slash/physics2d/physics2d.hpp"
@@ -8,7 +9,9 @@
 
 #include <doctest/doctest.h>
 
+#include <bit>
 #include <cmath>
+#include <cstdint>
 #include <functional>
 #include <numbers>
 #include <string>
@@ -143,6 +146,37 @@ TEST_CASE("a rigid body falls and comes to rest on a static floor") {
     CHECK(std::abs(physics.position("crate").x) < 0.05F);
     CHECK(std::abs(rigid.linear_velocity.y) < 1.0F);
     CHECK(physics.get<world::RigidBody2D>("crate").sleeping);
+}
+
+TEST_CASE("Box2D steps on the job system's threads to the same bits as on one") {
+    const auto run = [](int threads) {
+        slash::jobs::Pool pool(threads);
+        Physics physics;
+        physics.world.set_pool(pool);
+        physics.box("floor", {-600.0F, 400.0F}, {600.0F, 420.0F});
+        std::vector<std::string> ids;
+        for (int row = 0; row < 15; ++row) {
+            for (int column = 0; column < 20; ++column) {
+                ids.push_back("crate" + std::to_string(row) + "_" + std::to_string(column));
+                // Each row a little offset, so the pile tumbles.
+                physics.crate(ids.back(), {(static_cast<float>(column) * 22.0F) - 220.0F +
+                                               static_cast<float>(row % 3),
+                                           380.0F - (static_cast<float>(row) * 22.0F)});
+            }
+        }
+        physics.step(120);
+        std::vector<std::uint32_t> bits;
+        for (const std::string& id : ids) {
+            const auto& transform = physics.get<world::Transform2D>(id);
+            bits.push_back(std::bit_cast<std::uint32_t>(transform.position.x));
+            bits.push_back(std::bit_cast<std::uint32_t>(transform.position.y));
+            bits.push_back(std::bit_cast<std::uint32_t>(transform.rotation));
+        }
+        return bits;
+    };
+    const std::vector<std::uint32_t> alone = run(0);
+    CHECK(run(1) == alone);
+    CHECK(run(3) == alone);
 }
 
 TEST_CASE("physics settings set gravity and damping") {

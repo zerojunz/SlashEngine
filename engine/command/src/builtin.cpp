@@ -352,6 +352,17 @@ Reply engine_describe(Session& session, const json::Value& params) {
             item["doc"] = system.doc;
         }
         item["priority"] = system.priority;
+        // Threaded systems with the same stage run at the same time.
+        if (system.threaded) {
+            item["threaded"] = true;
+            item["stage"] = static_cast<std::int64_t>(system.stage);
+            if (!system.reads.empty()) {
+                item["reads"] = json::Array(system.reads.begin(), system.reads.end());
+            }
+            if (!system.writes.empty()) {
+                item["writes"] = json::Array(system.writes.begin(), system.writes.end());
+            }
+        }
         systems.push_back(std::move(item));
     }
     result["systems"] = std::move(systems);

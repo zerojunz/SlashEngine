@@ -32,7 +32,7 @@
 // "gui" ({"theme"}), "input" (actions by name), "input_devices" ({"pointing"}), "audio"
 // ({"bus_layout", "mix_rate", "output_latency", "panning_strength_2d"}), "services" (ad
 // placements, products, analytics and consent), "gameplay" ({"sources"}, the game's own C++
-// code) and "sdks" (folders of SDK packages).
+// code), "sdks" (folders of SDK packages) and "threading" ({"max_threads"}).
 namespace slash::runtime {
 
 inline constexpr std::string_view kProjectFile = "project.json";
@@ -86,6 +86,9 @@ struct Project {
     std::vector<std::string> gameplay_sources;
     // Folders of SDK packages (tools/exporter's slash/exporter/sdk.hpp), which exports link.
     std::vector<std::string> sdks;
+    // The job system's worker threads (slash/core/jobs.hpp), as Godot's
+    // threading/worker_pool/max_threads: -1 for one per CPU core.
+    int max_threads = -1;
 
     // The identifier to use: id, or the default derived from the name.
     [[nodiscard]] std::string bundle_id() const;

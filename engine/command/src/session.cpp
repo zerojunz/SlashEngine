@@ -4,6 +4,7 @@
 #include "slash/audio/audio.hpp"
 #include "slash/canvas/canvas.hpp"
 #include "slash/core/assert.hpp"
+#include "slash/core/jobs.hpp"
 #include "slash/core/json_schema.hpp"
 #include "slash/core/log.hpp"
 #include "slash/core/text.hpp"
@@ -56,6 +57,15 @@ physics2d::Settings physics_settings(const json::Value& project) {
         return {};
     }
     return physics2d::parse_settings(*settings);
+}
+
+// The project's threading.max_threads, or -1 (one thread per core) if it doesn't validate.
+int max_threads(const json::Value& project) {
+    const json::Value* threading = project.is_object() ? project.find("threading") : nullptr;
+    if (threading == nullptr || !json::validate(*threading, jobs::settings_schema()).empty()) {
+        return -1;
+    }
+    return jobs::parse_max_threads(*threading);
 }
 
 // The project's input actions over Godot's ui_* ones, or only those if its "input" doesn't
@@ -182,6 +192,8 @@ Session::Session(const world::ComponentRegistry& component_registry,
         project_stamp_ = platform::file_stamp(file.value());
     }
     const json::Value project = read_project(options_.project_root);
+    // The job system's threads, if nothing has started it yet.
+    jobs::configure(max_threads(project));
     canvas::install(world_, assets_);
     canvas::set_settings(world_, canvas_settings(project));
     ui::set_settings(world_, ui_settings(project));

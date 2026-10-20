@@ -47,7 +47,7 @@ The code follows the same split, one CMake library per module under `engine/`:
 
 | Module | Holds |
 | --- | --- |
-| `core` | `Result<T>`, JSON logging, JSON parsing and schemas, reflection, math, the fixed-step clock |
+| `core` | `Result<T>`, JSON logging, JSON parsing and schemas, reflection, math, the fixed-step clock and the job system |
 | `platform` | The SDL3 window, the run loop and file access |
 | `render` | The render device: SDL3's GPU API (Vulkan, Metal, Direct3D 12), OpenGL ES 3.0 (WebGL 2 on the web), the software device that draws on the CPU, or the null device for headless runs |
 | `asset` | Asset handles, loaders and hot reload |
@@ -109,6 +109,20 @@ components, `physics2d` moves bodies and reports contacts, `animated_sprite_2d` 
 smoothing on, `parallax_2d` scrolls each `Parallax2D` with it, `cpu_particles_2d` emits and moves
 `CPUParticles2D` particles, `gpu_particles_2d` works out the steps the renderer runs on each
 `GPUParticles2D`'s particles, then `audio` mixes the tick's sound.
+
+**Threaded systems** run on the job system, as Godot's `WorkerThreadPool` and its sub-thread
+process groups. A system added with `.threaded = true` names what it `reads` and `writes`:
+component names, or names for other shared state. Threaded systems next to each other in the
+order run at the same time, each on a thread of the world's pool, as long as none writes what
+another reads or writes; `engine.describe` with `"full": true` gives each system's `stage`, and
+systems in the same stage run together. A threaded system's events are delivered after its stage,
+in system order, and it creates and destroys entities (and adds and removes components) through
+`World::defer`, so a tick comes out the same on any number of threads. Other state it shares goes
+under a name too: physics queries bring Box2D up to date first, so a threaded system that makes
+them writes `"physics2d"`. Any system can also share its own work out with
+`world.pool().parallel_for`, as `cpu_particles_2d` does with its emitters; `cpu_particles_2d` and
+`gpu_particles_2d` are threaded and share a stage, and Box2D steps physics on the same threads.
+`project.json`'s `threading.max_threads` sets how many there are.
 
 ## Scenes
 

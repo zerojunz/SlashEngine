@@ -12,12 +12,21 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <vector>
+
+namespace slash::jobs {
+class Pool;
+} // namespace slash::jobs
 
 namespace slash::world {
 
 class ComponentRegistry;
 class World;
+
+namespace detail {
+struct SystemRun;
+} // namespace detail
 
 // The stable string ID of an entity, e.g. "player" or "enemy_03". Scenes key entities by it, and
 // entity references in components are saved as it. Every entity created through World has one.
@@ -50,6 +59,18 @@ struct SystemOptions {
     std::string doc{}; // NOLINT(readability-redundant-member-init)
     // Lower priorities run first, as with Godot's process_priority.
     int priority = 0;
+    // Runs the system at the same time as the threaded systems next to it in the order whose
+    // reads and writes don't clash with its own, each on a thread of the world's pool, as Godot
+    // runs a sub-thread process group. Its events are kept and delivered after the stage in
+    // system order, and it creates and destroys entities, and adds and removes components,
+    // through World::defer, so ticks come out the same with any number of threads.
+    bool threaded = false;
+    // What a threaded system reads and writes: component names, whose storages the world makes
+    // before it runs, or names for other state systems share (such as "assets"). Two systems
+    // clash when one writes a name the other reads or writes. Beyond these, a threaded system
+    // reads only entity IDs, events() and its own state.
+    std::vector<std::string> reads{};  // NOLINT(readability-redundant-member-init)
+    std::vector<std::string> writes{}; // NOLINT(readability-redundant-member-init)
 };
 
 // Something that happened in the world, for events.subscribe: an entity created or destroyed, or
@@ -71,6 +92,11 @@ struct SystemInfo {
     std::string_view name;
     std::string_view doc;
     int priority = 0;
+    bool threaded = false;
+    std::span<const std::string> reads;
+    std::span<const std::string> writes;
+    // Systems in the same stage run at the same time; stages run one after another.
+    std::size_t stage = 0;
 };
 
 // The simulation state: an EnTT registry plus stable entity IDs and an ordered list of systems.
@@ -133,6 +159,15 @@ public:
 
     // Runs every system once and advances the tick counter.
     void step(double tick_seconds);
+    // Queues a change for the thread stepping the world: threaded systems create and destroy
+    // entities, and add and remove components, this way. Calls run in the order they were made,
+    // after the system returns, or for a threaded system once its whole stage is done, in system
+    // order. Outside systems the call runs at once.
+    void defer(std::function<void(World&)> call);
+    // The pool threaded systems run on and systems split their work over (slash/core/jobs.hpp):
+    // jobs::shared() unless set. Set it before the world first steps; it must outlive the world.
+    [[nodiscard]] jobs::Pool& pool() const;
+    void set_pool(jobs::Pool& pool) noexcept { pool_ = &pool; }
     [[nodiscard]] std::uint64_t tick() const noexcept { return tick_; }
     // True while step runs the systems, so code can tell their work from the platform's and
     // commands'.
@@ -214,10 +249,23 @@ private:
         System run;
         SystemOptions options;
     };
+    // Systems systems_[begin, end) run at the same time: one system, or threaded systems that
+    // don't clash.
+    struct Stage {
+        std::size_t begin = 0;
+        std::size_t end = 0;
+    };
 
     Result<entt::entity> add(std::string_view id);
     void on_id_destroyed(entt::registry& registry, entt::entity entity);
     void notify(std::string kind, std::string_view id, json::Value data);
+    void deliver(Event event);
+    // Entities come and go only on the thread stepping the world, and never during a stage.
+    void check_structural() const;
+    void plan_stages();
+    void run_system(const NamedSystem& system, double tick_seconds);
+    void run_stage(const Stage& stage, double tick_seconds);
+    void flush(detail::SystemRun& run);
 
     const ComponentRegistry* components_;
     // Declared before registry_ so they outlive the registry's destruction signals.
@@ -226,15 +274,19 @@ private:
     std::vector<Event> next_events_; // this tick's so far
     entt::registry registry_;
     std::vector<NamedSystem> systems_;
+    std::vector<Stage> stages_;
     std::vector<std::function<void(World&)>> resets_;
     StepListener step_listener_;
     EventListener listener_;
     FileReader reader_;
     std::map<std::string, std::shared_ptr<const json::Value>, std::less<>> prefabs_;
     std::string scene_root_;
+    jobs::Pool* pool_ = nullptr;
+    std::thread::id stepping_thread_;
     std::uint64_t tick_ = 0;
     std::uint64_t next_generated_id_ = 1;
     bool stepping_ = false;
+    bool staging_ = false; // threaded systems are running
 };
 
 } // namespace slash::world

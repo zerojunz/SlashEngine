@@ -1,5 +1,6 @@
 #include "slash/canvas/particles.hpp"
 
+#include "slash/core/jobs.hpp"
 #include "slash/core/json.hpp"
 #include "slash/world/tree2d.hpp"
 
@@ -547,23 +548,43 @@ struct ParticleSystem {
         auto& ecs = world.ecs();
         std::set<std::string, std::less<>> seen;
         const world::Tree2D tree(world);
+        struct Run {
+            entt::entity entity;
+            CPUParticles2D* component;
+            Emitter* emitter;
+            world::Transform2D transform;
+            std::uint32_t seed;
+            bool ended = false;
+        };
+        std::vector<Run> runs;
         for (const entt::entity entity : ecs.view<CPUParticles2D>()) {
             auto& component = ecs.get<CPUParticles2D>(entity);
-            // Emitted from where it is after its parents.
-            const world::Transform2D transform = tree.global(entity);
-            const std::string_view id = world.id_of(entity);
             const std::string key = key_of(world, entity);
             seen.insert(key);
-            Emitter& emitter = emitters[key];
-            if (tick_seconds > 0.0 && run(emitter, component, transform,
-                                          particle_seed(id, component.seed), tick_seconds, 1)) {
+            // Emitted from where it is after its parents.
+            runs.push_back({.entity = entity,
+                            .component = &component,
+                            .emitter = &emitters[key],
+                            .transform = tree.global(entity),
+                            .seed = particle_seed(world.id_of(entity), component.seed)});
+        }
+        // Each emitter steps alone, so they share out over the job system's threads.
+        if (tick_seconds > 0.0) {
+            world.pool().parallel_for(runs.size(), [&](std::size_t i) {
+                Run& each = runs[i];
+                each.ended =
+                    run(*each.emitter, *each.component, each.transform, each.seed, tick_seconds, 1);
+            });
+        }
+        for (const Run& each : runs) {
+            if (each.ended) {
                 // As Godot, a one_shot stops emitting when its cycle ends.
-                component.emitting = false;
-                emitter.was_emitting = false;
+                each.component->emitting = false;
+                each.emitter->was_emitting = false;
             }
-            if (emitter.running && !component.emitting && !alive(emitter)) {
-                emitter.running = false;
-                world.emit("finished", id, {});
+            if (each.emitter->running && !each.component->emitting && !alive(*each.emitter)) {
+                each.emitter->running = false;
+                world.emit("finished", world.id_of(each.entity), {});
             }
         }
         std::erase_if(emitters, [&](const auto& entry) { return !seen.contains(entry.first); });
@@ -596,7 +617,11 @@ void add_particles_system(world::World& world) {
     world.add_system(
         "cpu_particles_2d",
         [system](world::World& w, double tick_seconds) { system->run_all(w, tick_seconds); },
-        {.doc = "Emits, moves and ages each CPUParticles2D's particles.", .priority = 1100});
+        {.doc = "Emits, moves and ages each CPUParticles2D's particles.",
+         .priority = 1100,
+         .threaded = true,
+         .reads = {"Transform2D"},
+         .writes = {"CPUParticles2D"}});
 }
 
 std::vector<Particle> particles(const world::World& world, entt::entity entity) {

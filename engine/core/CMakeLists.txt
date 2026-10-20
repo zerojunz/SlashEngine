@@ -1,6 +1,7 @@
 add_library(slash_core
     src/assert.cpp
     src/fixed_step.cpp
+    src/jobs.cpp
     src/json.cpp
     src/json_schema.cpp
     src/log.cpp
@@ -30,6 +31,11 @@ target_compile_features(slash_core PUBLIC cxx_std_20)
 target_link_libraries(slash_core PRIVATE yyjson)
 if(ANDROID)
     target_link_libraries(slash_core PRIVATE log)
+endif()
+# The job system's worker threads. The web has none without SharedArrayBuffer (see jobs.cpp).
+if(NOT EMSCRIPTEN)
+    find_package(Threads REQUIRED)
+    target_link_libraries(slash_core PRIVATE Threads::Threads)
 endif()
 # The reflection macros use __VA_OPT__, which MSVC only supports with its conforming preprocessor.
 target_compile_options(slash_core PUBLIC $<$<CXX_COMPILER_ID:MSVC>:/Zc:preprocessor>)

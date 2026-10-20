@@ -54,6 +54,7 @@ checks it.
 | `gameplay.sources` | No | | The game's own [C++ code](#gameplay-code): folders and files relative to the project, at least one |
 | `sdks` | No | | [SDK packages](sdk-format.md) exports link: folders relative to the project, each with an `sdk.json`. `slash-cli sdk add` adds one |
 | `services` | No | | [Ad placements, products, analytics, consent, achievements and leaderboards](#services) |
+| `threading.max_threads` | No | `-1` | Worker threads the [job system](../concepts.md#world-entities-and-components) runs threaded systems, particles and physics on beside the main thread, 0 to 63, as Godot's `threading/worker_pool/max_threads`. `-1` is one per CPU core; `0` runs everything on the main thread, as the web does. Every count gives the same results |
 | `input` | No | Godot's `ui_*` actions | [Input actions](#input-actions) by name, each with the events that press it |
 | `input_devices.pointing.emulate_mouse_from_touch` | No | `true` | A touch also clicks the left mouse button and dragging it moves the mouse, so mouse code works on phones, as Godot's setting of the same name |
 | `input_devices.pointing.emulate_touch_from_mouse` | No | `false` | A left click also touches the screen and dragging with it drags a finger, so touch code can be tried with a mouse |

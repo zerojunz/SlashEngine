@@ -124,6 +124,14 @@ is loaded or failed to load: the `library` it came from, whether it is `loaded`,
 {"name":"movement","doc":"Moves things by their velocity.","priority":0}
 ```
 
+A [threaded system](../concepts.md#world-entities-and-components) also has `"threaded": true`,
+its `stage` and the `reads` and `writes` it declared. Systems with the same stage run at the same
+time:
+
+```json
+{"name":"cpu_particles_2d","doc":"Emits, moves and ages each CPUParticles2D's particles.","priority":1100,"reads":["Transform2D"],"stage":8,"threaded":true,"writes":["CPUParticles2D"]}
+```
+
 ### schema.get
 
 Returns a JSON Schema: for scene, prefab, [`.frames.json`](scene-format.md#sprite-frames),
