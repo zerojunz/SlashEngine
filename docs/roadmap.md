@@ -509,7 +509,7 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
         hash, with the request that made it, its generator, model, seed, license, tags and a short
         text description agents can read instead of the file
   - [x] `asset.search` by text, tags and type; agents search before they generate
-  - [ ] `asset.generate` through generator adapters for hosted and local image and audio
+  - [x] `asset.generate` through generator adapters for hosted and local image and audio
         models, behind the same interface style as `ai::Provider`; an exact repeat of an earlier
         request returns the stored asset with no model call
   - [x] Iteration: `asset.refine` makes a new version linked to its parent, so every asset keeps

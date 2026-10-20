@@ -18,66 +18,6 @@
 
 namespace slash::ai {
 namespace detail {
-namespace {
-
-// Statuses worth trying again: timeouts, conflicts, rate limits and overloaded servers.
-bool retryable(int status) {
-    return status == 408 || status == 409 || status == 429 || status >= 500;
-}
-
-// How long to wait before attempt + 1: what Retry-After says, at most a minute, or 1, 2, 4...
-// seconds.
-std::chrono::milliseconds retry_delay(const HttpResponse& reply, int attempt) {
-    int seconds = 0;
-    const std::string& after = reply.retry_after;
-    const auto [end, error] = std::from_chars(after.data(), after.data() + after.size(), seconds);
-    if (!after.empty() && error == std::errc() && end == after.data() + after.size()) {
-        return std::chrono::seconds(std::clamp(seconds, 0, 60));
-    }
-    return std::chrono::seconds(1LL << std::min(attempt, 5));
-}
-
-// Waits, a slice at a time so a cancel stops it. False if cancelled.
-bool wait(std::chrono::milliseconds delay, const CancelFlag* cancel) {
-    const auto until = std::chrono::steady_clock::now() + delay;
-    while (std::chrono::steady_clock::now() < until) {
-        if (cancel != nullptr && cancel->load()) {
-            return false;
-        }
-        std::this_thread::sleep_for(std::min<std::chrono::steady_clock::duration>(
-            std::chrono::milliseconds(50), until - std::chrono::steady_clock::now()));
-    }
-    return cancel == nullptr || !cancel->load();
-}
-
-// An error reply as an engine error, with the message the provider gave.
-Error http_error(std::string_view type, const HttpResponse& reply) {
-    std::string detail;
-    if (auto body = json::parse(reply.body); body) {
-        if (const json::Value* error = body.value().find("error"); error != nullptr) {
-            detail = error->is_string() ? error->as_string() : string_or_empty(*error, "message");
-        }
-    }
-    if (detail.empty()) {
-        detail = reply.body.substr(0, 300);
-    }
-    ErrorCode code = ErrorCode::PlatformFailure;
-    if (reply.status == 400 || reply.status == 413 || reply.status == 422) {
-        code = ErrorCode::InvalidArgument;
-    } else if (reply.status == 401 || reply.status == 403) {
-        code = ErrorCode::PermissionDenied;
-    } else if (reply.status == 404) {
-        code = ErrorCode::NotFound;
-    }
-    std::string message =
-        "the " + std::string(type) + " provider answered HTTP " + std::to_string(reply.status);
-    if (!detail.empty()) {
-        message += ": " + detail;
-    }
-    return make_error(code, std::move(message));
-}
-
-} // namespace
 
 HttpProvider::HttpProvider(std::string_view type, AdapterOptions options)
     : type_(type), options_(std::move(options)) {
@@ -179,7 +119,7 @@ struct HttpProvider::Exchange {
                 ++attempt;
                 return {std::nullopt, delay};
             }
-            return {http_error(provider->type_, reply)};
+            return {http_error("the " + provider->type_ + " provider", reply)};
         }
 
         Result<Response> response = make_error(ErrorCode::Unknown, "");
@@ -251,7 +191,7 @@ Result<Response> HttpProvider::complete(const Request& original, const StreamSin
         if (outcome.result) {
             return std::move(*outcome.result);
         }
-        if (!wait(outcome.retry_after, cancel)) {
+        if (!wait_for(outcome.retry_after, cancel)) {
             return make_error(ErrorCode::PlatformFailure, "the request was cancelled");
         }
     }

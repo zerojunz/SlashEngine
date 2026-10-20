@@ -1,5 +1,7 @@
 #include "slash/library/generator.hpp"
 
+#include "adapters.hpp"
+
 #include "slash/core/text.hpp"
 #include "slash/render/image.hpp"
 
@@ -152,7 +154,11 @@ bool inside(Shape shape, int x, int y, int width, int height) {
 Result<std::string> make_image(const GenerateRequest& request, std::int64_t seed) {
     const std::vector<std::string> found = words(request.prompt);
     Hash hash(request.prompt, seed);
-    const int width = request.width > 0 ? request.width : kDefaultImageSide;
+    // One side alone makes a square, as with every generator.
+    int width = request.width > 0 ? request.width : request.height;
+    if (width <= 0) {
+        width = kDefaultImageSide;
+    }
     const int height = request.height > 0 ? request.height : width;
     std::vector<Rgb> colors = colors_in(found);
     while (colors.size() < 2) {
@@ -456,12 +462,21 @@ bool makes(const Generator& generator, std::string_view type) {
     return type == "image" ? generator.capabilities().images : generator.capabilities().sounds;
 }
 
-Result<std::shared_ptr<Generator>> make_generator(const ai::GeneratorConfig& config) {
+Result<std::shared_ptr<Generator>> make_generator(const ai::GeneratorConfig& config,
+                                                  const GeneratorOptions& options) {
     if (config.type == kTest) {
         return test_generator();
     }
-    return make_error(ErrorCode::InvalidArgument,
-                      "no generator of type \"" + config.type + "\"; this build has: test");
+    if (std::ranges::find(detail::kHttpTypes, config.type) != detail::kHttpTypes.end()) {
+        return detail::make_http_generator(config, options);
+    }
+    std::string message = "no generator of type \"" + config.type + "\"";
+    std::vector<std::string_view> types{kTest};
+    types.insert(types.end(), detail::kHttpTypes.begin(), detail::kHttpTypes.end());
+    if (const std::string_view hint = closest_match(config.type, types); !hint.empty()) {
+        message += "; did you mean \"" + std::string(hint) + "\"?";
+    }
+    return make_error(ErrorCode::InvalidArgument, std::move(message));
 }
 
 } // namespace
@@ -471,12 +486,12 @@ std::shared_ptr<Generator> test_generator() {
 }
 
 Result<OpenedGenerator> open_generator(const ai::Config& config, std::string_view name,
-                                       std::string_view type) {
+                                       std::string_view type, const GeneratorOptions& options) {
     std::string chosen(name);
     if (chosen.empty()) {
         std::vector<std::string> candidates;
         for (const auto& [generator_name, settings] : config.generators) {
-            auto made = make_generator(settings);
+            auto made = make_generator(settings, options);
             if (made && makes(*made.value(), type)) {
                 candidates.push_back(generator_name);
             }
@@ -516,7 +531,7 @@ Result<OpenedGenerator> open_generator(const ai::Config& config, std::string_vie
         }
         return make_error(ErrorCode::NotFound, std::move(message));
     }
-    auto made = make_generator(settings);
+    auto made = make_generator(settings, options);
     if (!made) {
         return made.error();
     }
@@ -528,8 +543,11 @@ Result<OpenedGenerator> open_generator(const ai::Config& config, std::string_vie
     opened.generator = std::move(made).value();
     opened.name = chosen;
     opened.type = settings.type;
-    opened.model =
-        settings.model.empty() && settings.type == kTest ? std::string(kTest) : settings.model;
+    opened.model = settings.model;
+    if (opened.model.empty()) {
+        opened.model = settings.type == kTest ? std::string(kTest)
+                                              : std::string(detail::default_model(settings.type));
+    }
     opened.license = settings.license;
     if (opened.license.empty() && settings.type == kTest) {
         opened.license = "CC0-1.0";

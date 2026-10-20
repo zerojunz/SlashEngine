@@ -143,24 +143,51 @@ Sessions that run tests (`test.run`) record nothing.
 `generators` names the image and sound generators the [asset library](commands.md#asset-library)
 calls, as `providers` names language models: by name, each with a `type`, and a `model`, `url`,
 `api_key_env` and `headers` where the type takes them. `license` is the terms its outputs come
-under, recorded with every asset it makes; `options` are settings sent with every request; and
-`timeout_seconds` and `max_retries` work as a provider's do.
+under, recorded with every asset it makes; `options` are merged into every request's body, as the
+service names them; and `timeout_seconds` and `max_retries` work as a provider's do (a 408, 409,
+429 or 5xx reply is tried again).
 
 ```json
 {
   "generators": {
-    "placeholders": {"type": "test", "license": "CC0-1.0"}
+    "art": {"type": "openai-image", "api_key_env": "OPENAI_API_KEY", "license": "OpenAI terms of use",
+            "options": {"quality": "medium", "background": "transparent"}},
+    "local": {"type": "automatic1111", "license": "CreativeML Open RAIL-M",
+              "options": {"steps": 25, "negative_prompt": "blurry, text"}},
+    "voices": {"type": "openai-speech", "api_key_env": "OPENAI_API_KEY",
+               "options": {"voice": "marin", "instructions": "A tired old innkeeper."}},
+    "sfx": {"type": "elevenlabs-sound", "api_key_env": "ELEVENLABS_API_KEY"}
   }
 }
 ```
 
-| Type | Makes |
-| --- | --- |
-| `test` | Placeholder images and tones made on the machine, the same on every platform, for tests and CI. Always there as `test`, even with no `generators` |
+| Type | Makes | Refines | Default model and URL |
+| --- | --- | --- | --- |
+| `openai-image` | Images, through OpenAI's Images API (`/images/generations`), or a server that copies it | Yes, through `/images/edits` | `gpt-image-1`, `https://api.openai.com/v1` |
+| `gemini-image` | Images, through Gemini's `generateContent` with image output | Yes, with the image in the request | `gemini-2.5-flash-image`, `https://generativelanguage.googleapis.com/v1beta` |
+| `automatic1111` | Images, through a Stable Diffusion web UI's API (`/sdapi/v1/txt2img`): AUTOMATIC1111 or a fork that keeps it, started with `--api` | Yes, through `/sdapi/v1/img2img` | The checkpoint it has loaded (`model` names another), `http://127.0.0.1:7860` |
+| `openai-speech` | Spoken lines, through OpenAI's text to speech; the prompt is the line spoken | No | `gpt-4o-mini-tts`, `https://api.openai.com/v1` |
+| `elevenlabs-sound` | Sound effects, through ElevenLabs' sound generation | No | `eleven_text_to_sound_v2`, `https://api.elevenlabs.io` |
+| `test` | Placeholder images and tones made on the machine, the same on every platform, for tests and CI. Always there as `test`, even with no `generators` | Yes | |
+
+Services make images at their own sizes, so the library fits each one to the `width` and `height`
+asked for (a refine's parent's when it asks for none): the middle of the image at that shape,
+scaled with each pixel the average of those it covers, weighted by alpha so transparent edges
+stay clean. It asks for the size the model makes closest to that shape: 1024x1024, 1536x1024 or
+1024x1536 for GPT Image models, the nearest aspect ratio for Gemini, and for Stable Diffusion the
+shape doubled until its short side is at least 512. Images are always kept as PNG files, so an
+`output_format` option for images is replaced.
+
+`openai-speech` asks for raw 24 kHz samples and keeps them as a `.wav` file; `voice` defaults to
+`alloy`. `elevenlabs-sound` sends `seconds` as `duration_seconds` (0.5 to 30) and its
+`output_format` option in the URL: `mp3_44100_128` by default, or an `mp3_`, `wav_` or `pcm_`
+format (raw samples become a `.wav` file). `automatic1111` sends `api_key_env`'s value, as
+`user:password`, as basic authentication, for a web UI started with `--api-auth`, and records the
+seed it drew with.
 
 `asset.generate` uses the one generator that makes the type asked for, or the one its `generator`
 param names. [`ai.providers`](commands.md#aiproviders) lists them, with whether each one's key is
-set.
+set. A key that isn't set fails only when a request would be sent.
 
 ## Gameplay
 
