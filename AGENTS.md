@@ -268,9 +268,13 @@ manifest entries and `.jar` files, with the vendor's binaries downloaded by URL 
 `project.json`'s `sdks` lists them and a preset's `sdks` picks which it links. Exports build each
 package's own CMake project with the game's compilers, write `slash_game_sdk()` calls into
 `<build>/sdks.cmake` for `export/CMakeLists.txt`, ship shared libraries where each platform's
-loader looks and define `SLASH_SDK_<NAME>` for the game's code. `$cli sdk add` and `sdk check`
-(and the `sdk.add` and `sdk.check` commands) add and check packages; `examples/sdk-package` has
-a stand-in SDK built from source, which CI links into every platform's export.
+loader looks and define `SLASH_SDK_<NAME>` for the game's code. Android packages also list
+`.aar` files and library folders, and Maven coordinates that `$cli sdk lock` resolves without
+Gradle (`src/maven.cpp`, POMs read with `src/xml.cpp`) and pins by SHA-256 in `sdk.lock.json`;
+Android exports merge the libraries' manifests, resources, code and native libraries into the
+APK (`src/android_library.cpp`). `$cli sdk add`, `sdk check` and `sdk lock` (and the `sdk.add`,
+`sdk.check` and `sdk.lock` commands) add, check and lock packages; `examples/sdk-package` has a
+stand-in SDK built from source, which CI links into every platform's export.
 
 The export code is the `tools/exporter` library, shared by slash-cli and slash-mcp. It also
 registers `export.run`, the one command that needs the `build` capability; a running game leaves

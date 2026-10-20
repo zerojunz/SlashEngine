@@ -7,6 +7,7 @@
 
 #include "slash/core/json.hpp"
 #include "slash/exporter/android.hpp"
+#include "slash/exporter/android_library.hpp"
 #include "slash/platform/process.hpp"
 
 #include <cstdint>
@@ -48,12 +49,13 @@ struct ApkInfo {
     bool debug = false;
 };
 
-// Compiles the Java sources in tree/java, then links, aligns and signs tree's manifest, assets,
-// libraries and code into apk. Scratch files go in work.
+// Links tree's manifest, assets and the libraries' resources, compiles the Java sources in
+// tree/java with the libraries' R classes, then aligns and signs them with tree's libraries and
+// code into apk. Scratch files go in work.
 bool package_apk(const AndroidTools& tools, const AndroidKey& key, const ApkInfo& info,
-                 const std::filesystem::path& tree, const std::filesystem::path& work,
-                 const std::filesystem::path& apk, const platform::ProcessOptions& process,
-                 Failure& failure);
+                 const std::filesystem::path& tree, const AndroidResources& resources,
+                 const std::filesystem::path& work, const std::filesystem::path& apk,
+                 const platform::ProcessOptions& process, Failure& failure);
 
 // Installs the APK on the connected device or emulator (ANDROID_SERIAL picks one), runs it with
 // --headless --ticks 60 and reads its summary from logcat. Skipped when no device is connected

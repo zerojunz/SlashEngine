@@ -4,6 +4,7 @@
 
 #include "slash/core/text.hpp"
 #include "slash/exporter/toolchains.hpp"
+#include "slash/exporter/xml.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/platform/process.hpp"
 #include "slash/runtime/project.hpp"
@@ -151,6 +152,15 @@ json::Value target_schema() {
                     "<meta-data>; may use ${KEY}.");
     properties["jars"] = string_list("Java libraries the game's Java is compiled against and "
                                      "packaged with (Android).");
+    properties["aars"] = string_list(
+        "Android libraries: .aar files, or folders laid out like an unpacked one, added to the "
+        "APK with their manifests, resources, assets and native libraries (Android).");
+    properties["maven"] = string_list(
+        "Maven coordinates of Android libraries, group:artifact:version, resolved with what they "
+        "need into sdk.lock.json by slash-cli sdk lock (Android).");
+    properties["maven_repositories"] =
+        string_list("https:// or file:// Maven repositories searched in order; default Google's "
+                    "and Maven Central (Android).");
     return object_schema(std::move(properties),
                          "What the package adds to this platform's builds. Paths are relative to "
                          "the package and may start with {sdk}, {build} or a download's {name}, "
@@ -196,32 +206,6 @@ std::string replace_all(std::string text, std::string_view from, std::string_vie
         at += to.size();
     }
     return text;
-}
-
-std::string xml_escaped(std::string_view text) {
-    std::string out;
-    for (const char c : text) {
-        switch (c) {
-        case '&':
-            out += "&amp;";
-            break;
-        case '<':
-            out += "&lt;";
-            break;
-        case '>':
-            out += "&gt;";
-            break;
-        case '"':
-            out += "&quot;";
-            break;
-        case '\'':
-            out += "&apos;";
-            break;
-        default:
-            out += c;
-        }
-    }
-    return out;
 }
 
 // text with each ${KEY} replaced by its value, XML-escaped if escape.
@@ -321,10 +305,10 @@ const json::Value& object_or_empty(const json::Value* value) {
 // Which fields only some platforms have.
 constexpr std::array<std::string_view, 4> kAppleFields{"frameworks", "system_frameworks", "plist",
                                                        "entitlements"};
-constexpr std::array<std::string_view, 4> kAndroidFields{"permissions", "manifest", "application",
-                                                         "jars"};
-constexpr std::array<std::string_view, 5> kPathFields{"include", "libraries", "frameworks", "files",
-                                                      "jars"};
+constexpr std::array<std::string_view, 7> kAndroidFields{
+    "permissions", "manifest", "application", "jars", "aars", "maven", "maven_repositories"};
+constexpr std::array<std::string_view, 6> kPathFields{"include", "libraries", "frameworks",
+                                                      "files",   "jars",      "aars"};
 
 void check_target(const std::string& platform, const json::Value& target,
                   const std::set<std::string, std::less<>>& placeholders,
@@ -396,6 +380,28 @@ void check_target(const std::string& platform, const json::Value& target,
                 errors.push_back({path, "expected an XML element, e.g. <meta-data ... />"});
             }
             check_keys(path, elements[i]);
+        }
+    }
+    const std::vector<std::string> aars = strings(target.find("aars"));
+    for (std::size_t i = 0; i < aars.size(); ++i) {
+        if (aars[i].find("{arch}") != std::string::npos ||
+            aars[i].find("{build}") != std::string::npos) {
+            errors.push_back({base + "/aars/" + std::to_string(i),
+                              "Android libraries serve every ABI; their paths can't use {arch} "
+                              "or {build}"});
+        }
+    }
+    const std::vector<std::string> coordinates = strings(target.find("maven"));
+    for (std::size_t i = 0; i < coordinates.size(); ++i) {
+        if (auto parsed = parse_maven_coordinate(coordinates[i]); !parsed) {
+            errors.push_back({base + "/maven/" + std::to_string(i), parsed.error().message});
+        }
+    }
+    const std::vector<std::string> repositories = strings(target.find("maven_repositories"));
+    for (std::size_t i = 0; i < repositories.size(); ++i) {
+        if (!repositories[i].starts_with("https://") && !repositories[i].starts_with("file://")) {
+            errors.push_back({base + "/maven_repositories/" + std::to_string(i),
+                              "expected an https:// or file:// address"});
         }
     }
     const std::vector<std::string> permissions = strings(target.find("permissions"));
@@ -495,6 +501,9 @@ SdkTarget parse_target(const json::Value& value) {
     target.manifest = strings(value.find("manifest"));
     target.application = strings(value.find("application"));
     target.jars = strings(value.find("jars"));
+    target.aars = strings(value.find("aars"));
+    target.maven = strings(value.find("maven"));
+    target.maven_repositories = strings(value.find("maven_repositories"));
     return target;
 }
 
@@ -1290,6 +1299,9 @@ ResolvedSdk resolve_sdk(const Sdk& sdk, std::string_view platform, std::string_v
     for (const fs::path& path : paths(base + "/jars", in.jars)) {
         out.jars.push_back(path.generic_string());
     }
+    for (const fs::path& path : paths(base + "/aars", in.aars)) {
+        out.aars.push_back(path.generic_string());
+    }
     return out;
 }
 
@@ -1566,6 +1578,32 @@ json::Value check_sdks(const fs::path& project, std::string_view platform, bool 
             }
             places.downloads[download.id] = location.value();
         }
+        if (const auto android = sdk.platforms.find("android");
+            android != sdk.platforms.end() && !android->second.maven.empty() &&
+            (platform.empty() || platform == "android")) {
+            auto lock = load_maven_lock(sdk);
+            if (!lock) {
+                add_problem(problems, sdk, "/platforms/android/maven", lock.error().message);
+            } else {
+                item["maven"] = lock.value().artifacts.size();
+                bool missing = false;
+                for (const MavenArtifact& artifact : lock.value().artifacts) {
+                    if (fetch) {
+                        if (auto fetched = fetch_maven_artifact(artifact, maven_cache(), log_path);
+                            !fetched) {
+                            add_problem(problems, sdk, "/platforms/android/maven",
+                                        fetched.error().message);
+                        }
+                    } else if (!fs::is_regular_file(maven_artifact_path(artifact, maven_cache()),
+                                                    error)) {
+                        missing = true;
+                    }
+                }
+                if (missing) {
+                    unchecked.emplace_back("maven");
+                }
+            }
+        }
         if (!unchecked.empty()) {
             item["unchecked"] = std::move(unchecked);
         }
@@ -1744,6 +1782,119 @@ Result<json::Value> add_sdk(const AddSdkOptions& options) {
         keys.emplace_back(key.name);
     }
     out["keys"] = std::move(keys);
+    if (const auto android = sdk.value().platforms.find("android");
+        android != sdk.value().platforms.end() && !android->second.maven.empty() &&
+        !load_maven_lock(sdk.value())) {
+        out["needs_lock"] = true;
+    }
+    if (options.dry_run) {
+        out["dry_run"] = true;
+    }
+    return out;
+}
+
+fs::path maven_cache() {
+    return sdks_dir() / "maven";
+}
+
+Result<MavenLock> load_maven_lock(const Sdk& sdk) {
+    const auto android = sdk.platforms.find("android");
+    if (android == sdk.platforms.end() || android->second.maven.empty()) {
+        return MavenLock{};
+    }
+    const SdkTarget& target = android->second;
+    const fs::path file = sdk.folder / kSdkLockFile;
+    const std::string run = "; run slash-cli sdk lock";
+    auto text = platform::read_file(file.string());
+    if (!text) {
+        return make_error(ErrorCode::NotFound, sdk.location + " has no " +
+                                                   std::string(kSdkLockFile) +
+                                                   " pinning its Maven dependencies" + run);
+    }
+    auto parsed = json::parse(text.value());
+    const json::Value* maven =
+        parsed && parsed.value().is_object() ? parsed.value().find("maven") : nullptr;
+    if (maven == nullptr) {
+        return make_error(ErrorCode::InvalidArgument, std::string(kSdkLockFile) + " of " +
+                                                          sdk.location + " is not a lock file" +
+                                                          run);
+    }
+    auto lock = parse_maven_lock(*maven);
+    if (!lock) {
+        return make_error(ErrorCode::InvalidArgument, std::string(kSdkLockFile) + " of " +
+                                                          sdk.location + ": " +
+                                                          lock.error().message + run);
+    }
+    if (lock.value().dependencies != target.maven ||
+        lock.value().repositories != maven_repositories(target.maven_repositories)) {
+        return make_error(ErrorCode::Conflict,
+                          std::string(kSdkLockFile) + " of " + sdk.location +
+                              " was made for other Maven dependencies or repositories" + run);
+    }
+    return lock;
+}
+
+Result<json::Value> lock_sdks(const LockSdksOptions& options) {
+    std::error_code error;
+    const fs::path project = fs::absolute(options.project, error).lexically_normal();
+    auto loaded = runtime::load_project(project.string());
+    if (!loaded) {
+        return loaded.error();
+    }
+    std::vector<SdkProblem> problems;
+    const std::vector<Sdk> sdks = load_project_sdks(project, loaded.value().sdks, problems);
+    if (!problems.empty()) {
+        return make_error(ErrorCode::InvalidArgument,
+                          problems.front().sdk + ": " + problems.front().message);
+    }
+    if (!options.name.empty() && std::ranges::find(sdks, options.name, &Sdk::name) == sdks.end()) {
+        std::vector<std::string_view> names;
+        names.reserve(sdks.size());
+        for (const Sdk& sdk : sdks) {
+            names.emplace_back(sdk.name);
+        }
+        std::string message =
+            R"(no package in project.json's "sdks" is called ")" + options.name + "\"";
+        if (const std::string_view hint = closest_match(options.name, names); !hint.empty()) {
+            message += "; did you mean \"" + std::string(hint) + "\"?";
+        }
+        return make_error(ErrorCode::NotFound, message);
+    }
+    json::Value out;
+    out["sdks"] = json::Array{};
+    for (const Sdk& sdk : sdks) {
+        const auto android = sdk.platforms.find("android");
+        if ((!options.name.empty() && sdk.name != options.name) || android == sdk.platforms.end() ||
+            android->second.maven.empty()) {
+            continue;
+        }
+        MavenOptions maven;
+        maven.repositories = android->second.maven_repositories;
+        maven.cache = maven_cache();
+        maven.log_path = options.log_path;
+        auto lock = resolve_maven(android->second.maven, maven);
+        if (!lock) {
+            return make_error(lock.error().code, sdk.location + ": " + lock.error().message);
+        }
+        json::Value document;
+        document["format"] = 1;
+        document["maven"] = maven_lock_json(lock.value());
+        const std::string text = json::write(document) + "\n";
+        const fs::path file = sdk.folder / kSdkLockFile;
+        auto existing = platform::read_file(file.string());
+        const bool changed = !existing || existing.value() != text;
+        if (changed && !options.dry_run) {
+            if (auto written = platform::write_file(file.string(), text); !written) {
+                return written.error();
+            }
+        }
+        json::Value item;
+        item["name"] = sdk.name;
+        item["lock"] = (fs::path(sdk.location) / kSdkLockFile).generic_string();
+        item["artifacts"] = lock.value().artifacts.size();
+        item["changed"] = changed;
+        out["sdks"].push_back(std::move(item));
+    }
     if (options.dry_run) {
         out["dry_run"] = true;
     }
