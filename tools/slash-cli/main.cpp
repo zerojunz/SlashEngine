@@ -154,6 +154,9 @@ Usage:
   slash-cli build                    Compile the project's gameplay C++ (project.json
                                      "gameplay") into the library the tools load; running
                                      tools swap it in, keeping the world
+      --check                        Only compile the files changed since the last check
+                                     or build and print their errors and warnings with
+                                     the compiler's fixes; exit 1 if there are errors
       --project <dir>                Game folder with project.json (default ".")
       --engine <dir>                 Engine sources (default: SLASH_ENGINE_DIR or built in)
   slash-cli export <preset>          Build and sign the game with a preset from
@@ -1390,6 +1393,7 @@ int cmd_import(const std::vector<std::string>& args) {
 int cmd_build(const std::vector<std::string>& args) {
     std::string project = ".";
     std::string engine;
+    bool check = false;
     for (std::size_t i = 0; i < args.size(); ++i) {
         const std::string& arg = args[i];
         const bool has_value = i + 1 < args.size();
@@ -1397,9 +1401,25 @@ int cmd_build(const std::vector<std::string>& args) {
             project = args[++i];
         } else if (arg == "--engine" && has_value) {
             engine = args[++i];
+        } else if (arg == "--check") {
+            check = true;
         } else {
             return usage_error("unexpected argument for build: " + arg);
         }
+    }
+    if (check) {
+        const slash::exporter::GameplayCheck checked =
+            slash::exporter::check_gameplay(project, engine);
+        json::Value result = checked.to_json();
+        if (checked.ran) {
+            print(result);
+            return checked.diagnostics.errors.empty() ? kExitOk : kExitFailure;
+        }
+        result["message"] = checked.message;
+        json::Value out;
+        out["error"] = std::move(result);
+        print(out);
+        return checked.step == "options" ? kExitUsage : kExitFailure;
     }
     const slash::exporter::GameplayBuild built = slash::exporter::build_gameplay(project, engine);
     json::Value result = built.to_json();

@@ -115,10 +115,12 @@ asset files reload while it runs: prefab instances update and keep their overrid
 
 The game's own components and systems are plain C++ in `src/` (`project.json`'s
 `gameplay.sources`), as Godot's scripts are; there is no scripting language. `src/game.cpp`
-registers them in its `SLASH_GAME_MODULE` function; copy its pattern. After changing the code,
-call `gameplay_build` (or run `slash-cli build`): it compiles the code, returns each compiler
-error with its file and line, and swaps the new code into the open world, which keeps its
-entities and every field the code still has. `engine_describe` then lists the new components and
+registers them in its `SLASH_GAME_MODULE` function; copy its pattern. After each edit, call
+`build_check` (or run `slash-cli build --check`): it compiles only the files that changed and
+returns each error and warning with its file, line and column, and the compiler's fix as edits
+when it has one. When the code is right, call `gameplay_build` (or run `slash-cli build`): it
+links the code and swaps it into the open world, which keeps its entities and every field the
+code still has. `engine_describe` then lists the new components and
 systems. Keep gameplay state in registered components, so it is saved, undone and kept when the
 code is rebuilt. Exports link the code into the game.
 
