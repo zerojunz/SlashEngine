@@ -38,6 +38,9 @@ frame.summary {"map":[24,15],"region":[64,120,96,60]}
   | gggggggggggggggggggggggg
   | gggggggggggggggggggggggg
   | gggggggggggggggggggggggg
+-- how much the HUD stands out from the sky: the white score and the pale health bar are hard to read on it
+frame.summary {"contrast":true,"ids":["score","health","pause"]}
+{"drawn":[{"contrast":1.1,"id":"health","kind":"ProgressBar","rect":[220,8,92,26],"text":"60%"},{"contrast":3.4,"id":"pause","kind":"Button","rect":[130,4,60,30],"text":"Pause"},{"contrast":2.1,"id":"score","kind":"Label","rect":[8,6,100,22],"text":"Score 120"}],"hard_to_see":["health"],"viewport":[320,180]}
 -- the pause button takes focus
 ui.focus {"id":"pause"}
 {"focused":"pause"}

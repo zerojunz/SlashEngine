@@ -84,7 +84,7 @@ as `entity.get`, reject it as an unknown param.
 | Export | [`export.run`](#exportrun), [`sdk.check`](#sdkcheck), [`sdk.add`](#sdkadd), [`sdk.lock`](#sdklock) |
 | Gameplay code | [`gameplay.build`](#gameplaybuild), [`build.check`](#buildcheck), [`api.search`](#apisearch) |
 | AI | [`ai.providers`](#aiproviders), [`ai.complete`](#aicomplete) |
-| Asset library | [`asset.search`](#assetsearch), [`asset.generate`](#assetgenerate), [`asset.refine`](#assetrefine), [`asset.info`](#assetinfo), [`asset.use`](#assetuse), [`asset.add`](#assetadd), [`asset.feedback`](#assetfeedback) |
+| Asset library | [`asset.search`](#assetsearch), [`asset.generate`](#assetgenerate), [`asset.refine`](#assetrefine), [`asset.info`](#assetinfo), [`asset.use`](#assetuse), [`asset.add`](#assetadd), [`asset.feedback`](#assetfeedback), [`asset.check`](#assetcheck) |
 
 
 ## Describe
@@ -2426,8 +2426,10 @@ can't write files. Tests start from scene files, so save a scene before testing 
 | `tests` | string array | all | Run only the tests with these names |
 
 Needs: `run`, `filesystem`. With neither `paths` nor `tests`, it also runs
-[`storyboard.check`](#storyboardcheck) and adds its errors. A name in `tests` that no test has
-fails with `-32001` and the closest name.
+[`storyboard.check`](#storyboardcheck) and adds its errors, and, where the session may, runs
+[`asset.check`](#assetcheck) on the files the project took from the asset library, which
+records what it sees as their feedback: its problems come back as `assets` without failing a
+test. A name in `tests` that no test has fails with `-32001` and the closest name.
 
 The result counts the tests run and those that passed, and lists each failed check:
 
@@ -2729,6 +2731,7 @@ Nothing changes. [examples/frame-summary](../../examples/frame-summary/) calls i
 | `ids` | array of entity IDs | all | Only these entities in the lists |
 | `region` | `[x, y, width, height]` | the whole window | Only this part of the window, in window pixels |
 | `map` | `[columns, rows]`, each 1 to 160 | | Add a text picture of the window (or region) |
+| `contrast` | boolean | `false` | Add how much each thing stands out from what is around it, and list those hard to see |
 | `limit` | integer, 1 to 1000 | `100` | At most this many entries in each list |
 
 Needs: `read`. A player half behind a bush, a coin past the right edge, a ghost faded out and a
@@ -2786,6 +2789,16 @@ With `"map": [40, 12]` over the whole frame, the reply adds:
   `columns` keys, each key what shows at the cell's center, `.` for nothing (the clear color).
   Keys are the start of each ID where that is free, one character while there are few enough
   things on the map, else two.
+- With `contrast`, each entry in `drawn` has `contrast`: how much its edge stands out from what
+  is around it, as [WCAG's contrast ratio](https://www.w3.org/TR/WCAG21/#dfn-contrast-ratio)
+  of the two colors' lightness, from 1 (the same) to 21 (black on white), to a tenth. It is
+  left out when nothing around the thing shows in the window, as for a background that fills
+  it. `hard_to_see` lists those under 1.5: a dark sprite on a night sky, pale text on a pale
+  panel. The frame is drawn for it as [`frame.capture`](#framecapture) draws it, lights and
+  materials included, so it costs more. Along the thing's edge, each pixel where it makes at
+  least three quarters of the color is compared with the nearest pixel across, down, left or
+  right that it adds nothing to, past its smoothed edge, on the same grid as `shown`; the
+  median of those is its contrast.
 - `truncated` is `true` when `limit` left entries out.
 - `camera`, when a [`Camera2D`](scene-format.md#2d-camera) is current, is `{"id": ..., "rect":
   [x, y, width, height]}`: the camera and the world rect the window shows through it, to a
@@ -3610,7 +3623,9 @@ file the library already holds keeps its record, with the new tags added. Needs:
 ### asset.feedback
 
 Records whether an asset did the job and why, from an agent, a playtest or a check. The library
-keeps an asset's last 20. Feedback moves the asset in [`asset.search`](#assetsearch), keeps
+keeps an asset's last 20. Checks record their own: `storyboard.check` when an image is put in a
+project or [`asset.check`](#assetcheck) runs, and `asset.check` for how scenes show it, each
+only when its result changes. Feedback moves the asset in [`asset.search`](#assetsearch), keeps
 assets rejected more than accepted out of `asset.generate`'s candidates, and its reasons go into
 later prompts for assets like it. Needs: `read`, `filesystem`.
 
@@ -3639,6 +3654,49 @@ project with `-32003`; and, in a session that runs tests, any write to the libra
 
 ```json
 {"code":-32001,"data":{"path":"/generator"},"message":"/generator: no generator named \"tset\"; did you mean \"test\"?"}
+```
+
+### asset.check
+
+Checks the files the project took from the library (those `library.json` lists) as its scenes
+show them, and records what it finds as each asset's [feedback](#assetfeedback), so search,
+candidates and later prompts learn from it with no agent asking. [`test.run`](#testrun) runs it
+on every whole-project run. Needs: `read`, `filesystem`.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `scenes` | string array | every scene that draws one | The scenes to look at |
+| `ticks` | integer, 0 to 600 | `0` | Ticks each scene runs before it is looked at |
+
+Each scene opens in a session of its own that writes nothing, and its frame is summarized as
+[`frame.summary`](#framesummary) does with `contrast`. A scene draws a library file when it
+names it, or names a file that does (a prefab, sprite frames, a tile set, a theme), up to four
+files deep. Where a sprite, tile map layer, particle emitter or control draws one, it is
+checked:
+
+- hard to see: its edge has less than 1.5:1 contrast with the colors around it;
+- drawn at a quarter of its size or less, where a smaller image would look the same and cost
+  less memory and download.
+
+Images are also checked against the storyboard's palettes and budgets that cover their path.
+An asset with a problem is recorded `rejected`, the reason its first problem and the scene, and
+one that shows clearly everywhere it shows is recorded `accepted`; an asset that doesn't show
+gets nothing. A result the same as the last from that check isn't recorded again, and a session
+that runs tests records nothing. Without a library on the machine, or for files from another
+machine's library, it still reports.
+
+The result counts the assets `checked` and `scenes` opened, and lists `problems`, each with the
+asset's `id` and `path`, the `scene` and `entity` where it was seen (none for a storyboard
+problem), and the `message`; a scene that doesn't open is a problem with its `scene` and
+`message`. From [examples/asset-library](../../examples/asset-library/), a red slime with a dark
+outline on a night level:
+
+```json
+{}
+```
+
+```json
+{"checked":3,"problems":[{"entity":"red_slime","id":"833c6cd1f6e5","message":"hard to see: its edge has 1.2:1 contrast with the darker colors around it","path":"art/slime_red.png","scene":"levels/night.scene.json"}],"scenes":1}
 ```
 
 ## Adding a command

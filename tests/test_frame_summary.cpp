@@ -209,3 +209,31 @@ TEST_CASE("frame.summary reads controls and maps the frame, by region, IDs and a
     project.fails("frame.summary", R"({"map": [0, 4]})", command::code::kInvalidParams);
     project.fails("frame.summary", R"({"map": [8]})", command::code::kInvalidParams);
 }
+
+TEST_CASE("frame.summary's contrast says what is hard to see against what is around it") {
+    const Project project("frame_summary_contrast_project");
+    project.ok("batch", R"({"commands": [)" +
+                            sprite("night", "white.png", 80, 45, 200,
+                                   R"(, "modulate": [0.1, 0.1, 0.2, 1])") +
+                            ", " +
+                            sprite("slime", "white.png", 40, 45, 16,
+                                   R"(, "modulate": [0.15, 0.18, 0.15, 1], "z_index": 1)") +
+                            ", " + sprite("moon", "white.png", 120, 30, 16, R"(, "z_index": 1)") +
+                            ", " +
+                            sprite("bat", "half.png", 80, 60, 16,
+                                   R"(, "modulate": [0.08, 0.08, 0.15, 1], "z_index": 1)") +
+                            "]}");
+
+    // The night fills the window, so nothing around it shows. The slime and the bat are close
+    // to it in lightness (1.21:1 and 1.07:1 by WCAG's formula), and the moon, white, stands out
+    // at 17:1; the bat's clear half is outside it. Without contrast, none of it is measured.
+    CHECK(compact(project.ok("frame.summary", R"({"contrast": true})")) == compact(parse(R"({
+        "viewport": [160, 90],
+        "drawn": [
+            {"id": "night", "kind": "Sprite2D", "rect": [-20, -55, 200, 200], "shown": 0.35},
+            {"contrast": 1.2, "id": "slime", "kind": "Sprite2D", "rect": [32, 37, 16, 16]},
+            {"contrast": 16.9, "id": "moon", "kind": "Sprite2D", "rect": [112, 22, 16, 16]},
+            {"contrast": 1.1, "id": "bat", "kind": "Sprite2D", "rect": [72, 52, 16, 16]}],
+        "hard_to_see": ["slime", "bat"]})")));
+    CHECK(project.ok("frame.summary").find("hard_to_see") == nullptr);
+}

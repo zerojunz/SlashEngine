@@ -23,5 +23,9 @@ asset.feedback {"id":"0b2fd1b5","reason":"reads well at 32 pixels","verdict":"ac
 {"accepted":1,"id":"0b2fd1b5cf5a"}
 asset.search {"text":"slime"}
 {"assets":[{"accepted":1,"description":"green slime sprite","height":32,"id":"0b2fd1b5cf5a","score":1.0,"tags":["enemy"],"type":"image","width":32},{"description":"Red slime sprite","height":32,"id":"833c6cd1f6e5","rejected":1,"score":0.95,"tags":["enemy"],"type":"image","width":32}]}
+asset.use {"id":"833c6cd1","path":"art/slime_red.png"}
+{"path":"art/slime_red.png"}
+asset.check {}
+{"checked":3,"problems":[{"entity":"red_slime","id":"833c6cd1f6e5","message":"hard to see: its edge has 1.2:1 contrast with the darker colors around it","path":"art/slime_red.png","scene":"levels/night.scene.json"}],"scenes":1}
 asset.info {"id":"833c6cd1"}
-{"bytes":303,"description":"Red slime sprite","feedback":[{"reason":"too dark on the night level","source":"playtest","verdict":"rejected"}],"format":"png","generator":"test","height":32,"id":"833c6cd1f6e5","license":"CC0-1.0","model":"test","parent":"0b2fd1b5cf5a","request":{"parent":"0b2fd1b5cf5a","prompt":"make it red","type":"image"},"seed":0,"tags":["enemy"],"type":"image","versions":["0b2fd1b5cf5a"],"width":32}
+{"bytes":303,"description":"Red slime sprite","feedback":[{"reason":"too dark on the night level","source":"playtest","verdict":"rejected"},{"reason":"hard to see: its edge has 1.2:1 contrast with the darker colors around it (levels/night.scene.json)","source":"asset.check","verdict":"rejected"}],"format":"png","generator":"test","height":32,"id":"833c6cd1f6e5","license":"CC0-1.0","model":"test","parent":"0b2fd1b5cf5a","request":{"parent":"0b2fd1b5cf5a","prompt":"make it red","type":"image"},"seed":0,"tags":["enemy"],"type":"image","versions":["0b2fd1b5cf5a"],"width":32}

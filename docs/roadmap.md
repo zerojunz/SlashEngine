@@ -518,7 +518,9 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
   - [x] Feedback: agents record results with `asset.feedback`, by hand or automatically from
         the storyboard's palette and budget checks; feedback ranks search results, picks between
         candidates and is passed back into later prompts, with the storyboard's style
-  - [ ] Automatic feedback from the headless test command and frame summaries
+  - [x] Automatic feedback from the headless test command and frame summaries: `asset.check`
+        (run by `test.run`) looks at every scene that draws a library file and records what it
+        finds, with `frame.summary`'s `contrast` for what is hard to see
   - [ ] Team sharing: the library syncs with a store the team hosts, such as a shared folder or
         a library server that `slash-cli` runs, so a teammate's request finds assets someone
         else already made
