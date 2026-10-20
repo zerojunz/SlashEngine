@@ -1,0 +1,232 @@
+project.import {"source":"unity"}
+{
+  "converted": {
+    "animation_libraries": 0,
+    "assets": 0,
+    "bus_layouts": 0,
+    "input_actions": 0,
+    "prefabs": 0,
+    "scenes": 1,
+    "tile_sets": 0
+  },
+  "engine": "unity",
+  "files": 7,
+  "main_scene": "unity/Assets/Scenes/Pond.scene.json",
+  "module": "src/game.cpp",
+  "pixels_per_unit": 100.0,
+  "project": "Lily Drop",
+  "report": "import/unity.json",
+  "scripts": [
+    {
+      "code": "src/imported/frog.cpp",
+      "component": "Frog",
+      "entities": 1,
+      "script": "unity/Assets/Scripts/Frog.cs",
+      "task": "task/port-frog"
+    }
+  ],
+  "unity_version": "2022.3.20f1",
+  "unsupported": []
+}
+--- src/imported/frog.cpp
+// Frog, from the Unity script unity/Assets/Scripts/Frog.cs (extends MonoBehaviour), for you to port
+// to C++. Its fields are the Frog component, its events world events, and the frog system calls its
+// methods as Unity calls them. Each method keeps the C# to port in its comments. task/port-frog in
+// the storyboard tracks the work. Importing again leaves this file as it is.
+
+#include "slash/core/json.hpp"
+#include "slash/world/components.hpp"
+#include "slash/world/game_module.hpp"
+#include "slash/world/serialize.hpp"
+#include "slash/world/world.hpp"
+
+#include <utility>
+
+namespace imported::frog {
+
+using slash::world::World;
+
+// What Frog.cs keeps for each entity. Scenes set its serialized fields; the rest is its state.
+struct Frog {
+    // Units a second, across.
+    float speed = 1.0F;
+    entt::entity pad = entt::null; // Transform
+    int coins{};
+    int landings{};
+};
+SLASH_COMPONENT(Frog, speed, pad, coins, landings)
+
+// public UnityEvent<int> onLanded
+void emit_on_landed(World& world, entt::entity entity, int value) {
+    slash::json::Value data = slash::json::Object{};
+    data["value"] = slash::world::to_json(world, value);
+    world.emit("on_landed", world.id_of(entity), std::move(data));
+}
+
+// Line 16: void Start()
+// run() calls it for each entity made since the last tick, as Unity calls Start.
+void start(World& /*world*/, entt::entity /*entity*/, Frog& /*self*/) {
+    // Debug.Log($"Frog ready with {coins} coins");
+}
+
+// Line 21: void Update()
+// run() calls it once a tick, as Unity calls Update each frame. delta is Unity's Time.deltaTime.
+void update(World& /*world*/, entt::entity /*entity*/, Frog& /*self*/, double /*delta*/) {
+    // Vector3 position = transform.position;
+    // position.x = Mathf.MoveTowards(position.x, pad.position.x, speed * Time.deltaTime);
+    // transform.position = position;
+}
+
+// Line 28: void OnTriggerEnter2D(Collider2D other)
+// run() calls it on both entities when a body or area enters an Area2D, as Unity calls
+// OnTriggerEnter2D, with the other entity as other.
+void on_trigger_enter2d(World& /*world*/, entt::entity /*entity*/, Frog& /*self*/,
+                        entt::entity /*other*/) {
+    // coins++;
+    // Destroy(other.gameObject);
+}
+
+// Line 34: void OnCollisionEnter2D(Collision2D collision)
+// run() calls it on both entities when a RigidBody2D with contact_monitor touches another body, as
+// Unity calls OnCollisionEnter2D, with the other entity as collision.
+void on_collision_enter2d(World& /*world*/, entt::entity /*entity*/, Frog& /*self*/,
+                          entt::entity /*collision*/) {
+    // landings++;
+    // onLanded.Invoke(coins);
+}
+
+// The entities a physics event names: the area or body emitting it, and the one entering
+// or leaving it.
+std::pair<entt::entity, entt::entity> touching(World& world,
+                                               const slash::world::Event& event) {
+    const slash::json::Value* other =
+        event.data.find(event.kind.starts_with("area") ? "area" : "body");
+    return {world.find(event.id),
+            other != nullptr && other->is_string() ? world.find(other->as_string()) : entt::null};
+}
+
+// The frog system: calls the methods as Unity calls Frog.cs's, for each entity with a Frog.
+void run(World& world, double tick_seconds) {
+    entt::registry& ecs = world.ecs();
+    for (const slash::world::Event& event : world.events()) {
+        // Start, on the entities made since the last tick.
+        if (event.kind == slash::world::kEntityCreated) {
+            const entt::entity entity = world.find(event.id);
+            if (Frog* self = ecs.try_get<Frog>(entity); self != nullptr) {
+                start(world, entity, *self);
+            }
+        }
+        // OnTriggerEnter2D and OnCollisionEnter2D, on both entities, as Unity calls them.
+        if (event.kind == "body_entered" || event.kind == "area_entered") {
+            const auto [first, second] = touching(world, event);
+            const bool trigger =
+                event.kind == "area_entered" || ecs.all_of<slash::world::Area2D>(first);
+            for (const auto& [entity, other] :
+                 {std::pair{first, second}, std::pair{second, first}}) {
+                if (Frog* self = ecs.try_get<Frog>(entity); self != nullptr) {
+                    if (trigger) {
+                        on_trigger_enter2d(world, entity, *self, other);
+                    } else {
+                        on_collision_enter2d(world, entity, *self, other);
+                    }
+                }
+            }
+        }
+    }
+    ecs.view<Frog>().each([&](entt::entity entity, Frog& self) {
+        update(world, entity, self, tick_seconds);
+    });
+}
+
+} // namespace imported::frog
+
+namespace imported {
+
+// Registers Frog.cs's component and system; register_scripts calls it.
+void register_frog(slash::world::GameModule& game) {
+    game.add_component<frog::Frog>()
+        .set_doc("Drifts to its lily pad as it falls, picking up the coins on the way.")
+        .describe("speed", {.doc = "Units a second, across.", .min = 0.0, .max = 5.0});
+    game.add_system("frog", frog::run,
+                    {.doc = "Calls the methods of unity/Assets/Scripts/Frog.cs, ported to C++, as "
+                            "Unity calls them."});
+}
+
+} // namespace imported
+gameplay.build {}
+{
+  "library": ".slash/gameplay/game.so",
+  "log": ".slash/gameplay/build.log",
+  "reload": {
+    "added": ["Frog"]
+  }
+}
+scene.open {"path":"unity/Assets/Scenes/Pond.scene.json"}
+{
+  "entities": 3,
+  "path": "unity/Assets/Scenes/Pond.scene.json"
+}
+events.subscribe {"kinds":["ready","entity.destroyed","on_landed"]}
+{
+  "subscription": "events_1"
+}
+step {"ticks":60}
+{
+  "tick": 60,
+  "ticks": 60
+}
+world.query {"include":["Frog","Transform2D"],"with":["Frog"]}
+{
+  "count": 1,
+  "entities": [
+    {
+      "components": {
+        "Frog": {
+          "coins": 1,
+          "landings": 1,
+          "pad": "pad",
+          "speed": 1.5
+        },
+        "Transform2D": {
+          "children": [],
+          "position": [0.0, 50.030586],
+          "rotation": 0.0,
+          "scale": [1.0, 1.0],
+          "skew": 0.0,
+          "top_level": false
+        }
+      },
+      "id": "frog"
+    }
+  ],
+  "truncated": false
+}
+events.read {"subscription":"events_1"}
+{
+  "dropped": 0,
+  "events": [
+    {
+      "data": 0,
+      "id": "frog",
+      "kind": "ready",
+      "seq": 1,
+      "tick": 0
+    },
+    {
+      "id": "coin",
+      "kind": "entity.destroyed",
+      "seq": 2,
+      "tick": 24
+    },
+    {
+      "data": {
+        "value": 1
+      },
+      "id": "frog",
+      "kind": "on_landed",
+      "seq": 3,
+      "tick": 44
+    }
+  ],
+  "more": false
+}

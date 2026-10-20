@@ -26,6 +26,8 @@ serialization). A game built with Unity imports too: see [Unity builds](#unity-b
 | `<mixer>.bus_layout.json` beside the main `.mixer` | Every audio mixer's groups, as one bus layout |
 | `project.json` | The player, time, physics, quality and input settings, merged into the project's own if it has one |
 | `storyboard/work.json` | A task per C# script and per state machine, merged into the project's own tasks |
+| `src/imported/<name>.cpp` | A C++ skeleton per C# script, in the gameplay sources (see [Scripts](#scripts)) |
+| `src/imported/scripts.cpp`, `src/game.cpp` | The file registering every skeleton, and a game module calling it when the project's code has none |
 | `import/unity.json` | The full report: every object's entity, what each script needs, tags, layers and everything that didn't convert |
 
 Textures (`.png`, `.bmp`), sounds (`.wav`, `.ogg`, `.mp3`), fonts (`.ttf`, `.otf`) and data files
@@ -444,11 +446,50 @@ touch and gamepads are reported.
 ## Scripts
 
 Each C# script that a scene or prefab uses becomes a storyboard task, `task/port-<name>`, linked
-to the script and to the scenes that use it, with what it declares: its classes, public and
-`[SerializeField]` fields and methods. The report's `scripts` holds, for each object using a
-script, the values its fields were given: numbers and strings as they are, references to objects
-as entity IDs (`"frog"`, or `"frog#AudioSource"` for a component other than its Transform) and
-references to assets as their paths. The scripts stay where they are, linked from the tasks.
+to the script, the scenes that use it and its skeleton, with what it declares: its classes,
+public and `[SerializeField]` fields and methods. The report's `scripts` holds, for each object
+using a script, the values its fields were given: numbers and strings as they are, references to
+objects as entity IDs (`"frog"`, or `"frog#AudioSource"` for a component other than its
+Transform) and references to assets as their paths. The scripts stay where they are, linked from
+the tasks.
+
+Each script also becomes a C++ skeleton for the agent to fill in, `src/imported/<name>.cpp` in
+`project.json`'s gameplay sources, laid out as a Godot script's is ([the Godot
+importer](godot-import.md#scripts) has the files): its constants and enums, its fields as a
+component named after its class, an `emit_<event>` helper per `UnityEvent` field, a stub per
+method with the C# in comments, the system calling them and `imported::register_<name>`. A
+`ScriptableObject` is a reflected struct with no system.
+
+The fields Unity serializes (public ones, and `[SerializeField]` ones, `[field: SerializeField]`
+properties too) are the ones scenes set: each entity whose object has the script gets the
+component with those values, references to objects as entity IDs and to assets as paths, and an
+instance only what differs from its prefab. Other fields are the component's state, and static
+ones are listed at the top. `[Tooltip]` is a field's doc, `[Range]` and `[Min]` its range.
+Until the code is built the component is a stand-in that keeps the values, so the scenes open.
+
+| C# | C++ |
+| --- | --- |
+| `int`, `long`, `float`, `double`, `bool`, `string` | `int`, `std::int64_t`, `float`, `double`, `bool`, `std::string` |
+| `Vector2`, `Vector2Int`, `Vector3`, `Vector4`, `Color`, `Color32`, `Quaternion`, `Rect` | `slash::Vec2`, `Vec2i`, `Vec3`, `Vec4` (`Color`, `Color32` and `Rect` too), `Quat` |
+| `GameObject`, `Transform` and other components, the game's own scripts | `entt::entity`, the entity the reference names |
+| Assets (`Sprite`, `AudioClip`, `Material`, prefabs...) | `std::string`, the asset's path |
+| `List<T>`, `T[]`, `Dictionary<string, T>` | `std::vector`, `std::map<std::string, T>` |
+| `LayerMask`, Unity's enums | `int`; the script's own enums stay enums |
+
+The system calls the stubs when Unity would call the messages:
+
+| Message | When the system calls it |
+| --- | --- |
+| A constructor, `Awake`, `OnEnable`, `Start` | For each entity made since the last tick, in that order |
+| `FixedUpdate`, `Update`, `LateUpdate` | Once a tick, in that order, with the tick's seconds as `delta` |
+| `OnTriggerEnter2D`, `OnTriggerExit2D` | On both entities when a body or area enters or leaves an `Area2D` (a trigger collider), with the other entity |
+| `OnCollisionEnter2D`, `OnCollisionExit2D` | On both entities when a `RigidBody2D` touches or leaves another body, with the other entity; the import sets `contact_monitor` on bodies whose objects have such scripts |
+| A method a UI event's persistent call names | When the control emits the event it converts to (`OnClick` is `pressed`): with the call's own argument when it passes one, with nothing when it passes nothing, and otherwise with the event, whose data holds the value |
+| `OnDisable`, `OnDestroy` and Unity's other messages | Not yet; their stubs say so |
+
+Coroutines and `async` methods are stubs, listed at the top with how to port them. Importing again leaves a skeleton that exists as it is and rewrites `scripts.cpp`.
+[examples/import-unity-scripts](../../examples/import-unity-scripts/) imports a script, fills in
+its skeleton and runs it.
 
 Components from Unity's packages convert where SlashEngine has them and are reported where it
 doesn't: uGUI and TextMesh Pro components convert under a canvas (see [UI](#ui)) and are

@@ -2313,6 +2313,61 @@ TEST_CASE("importing a Godot project turns each script into a storyboard task") 
     CHECK(unsupported(plan.report, "game module").find("where")->as_string() == "src/game.cpp");
 }
 
+TEST_CASE("a Godot project's C# scripts become C++ skeletons too") {
+    const fs::path project = "import_godot_csharp";
+    fs::remove_all(project);
+    write(project / "godot/project.godot",
+          "config_version=5\n\n[application]\n\nconfig/name=\"Hopper\"\n"
+          "run/main_scene=\"res://main.tscn\"\n\n[dotnet]\n\nproject/assembly_name=\"Hopper\"\n");
+    write(project / "godot/Player.cs",
+          "using Godot;\n\npublic partial class Player : CharacterBody2D\n{\n"
+          "    [Signal] public delegate void JumpedEventHandler(float height);\n\n"
+          "    [Export] public float Speed { get; set; } = 120.0f;\n"
+          "    [Export] public int Lives = 3;\n\n"
+          "    public override void _PhysicsProcess(double delta)\n    {\n"
+          "        MoveAndSlide();\n    }\n\n"
+          "    private void OnPlayPressed()\n    {\n"
+          "        EmitSignal(SignalName.Jumped, 2.0f);\n    }\n}\n");
+    write(project / "godot/main.tscn", R"([gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://Player.cs" id="1_player"]
+
+[node name="Main" type="Node2D"]
+
+[node name="Player" type="CharacterBody2D" parent="."]
+script = ExtResource("1_player")
+Speed = 300.0
+
+[node name="Play" type="Button" parent="."]
+
+[connection signal="pressed" from="Play" to="Player" method="OnPlayPressed"]
+)");
+    const importer::ImportPlan plan = plan_inside(project);
+    const auto files = files_of(plan);
+    const std::string& skeleton = files.at("src/imported/player.cpp");
+    for (const std::string_view part : {
+             std::string_view("from the Godot script godot/Player.cs (extends CharacterBody2D)"),
+             std::string_view("SLASH_COMPONENT(Player, speed, lives)"),
+             std::string_view(
+                 "void emit_jumped(World& world, entt::entity entity, float height) {"),
+             std::string_view("world.emit(\"Jumped\", world.id_of(entity), std::move(data));"),
+             std::string_view("physics_process(world, entity, self, tick_seconds);"),
+             std::string_view("if (event.kind == \"pressed\" && event.id == \"play\") {"),
+             std::string_view("on_play_pressed(world, entity, *self, event);"),
+             std::string_view("    // EmitSignal(SignalName.Jumped, 2.0f);"),
+         }) {
+        CHECK_MESSAGE(skeleton.find(part) != std::string::npos, part);
+    }
+    // The node's exported property is its entity's field.
+    CHECK(*entry(files, "godot/main.scene.json", "player").find("components")->find("Player") ==
+          parse(R"({"speed": 300.0})"));
+    CHECK(files.at("src/imported/scripts.cpp").find("register_player(game);") != std::string::npos);
+    const json::Value work = parse(files.at("storyboard/work.json"));
+    const std::string& text =
+        work.find("entries")->find("task/port-player")->find("text")->as_string();
+    CHECK(text.find("Its C++ skeleton is src/imported/player.cpp") != std::string::npos);
+}
+
 TEST_CASE("a GDScript file reads into a C++ skeleton that calls its functions as Godot does") {
     const std::string text = R"(extends CharacterBody2D
 class_name Player
@@ -2411,7 +2466,8 @@ class Bullet:
                                   .signal = "body_entered",
                                   .from = "coin",
                                   .to = "player",
-                                  .method = "_on_coin_body_entered"});
+                                  .method = "_on_coin_body_entered",
+                                  .argument = {}});
     const std::string code = importer::skeleton(script);
     for (const std::string_view part : {
              std::string_view("SLASH_COMPONENT(Player, speed, health, tint, target, allies, "
@@ -2444,6 +2500,83 @@ class Bullet:
     CHECK(importer::skeleton(data).find("SLASH_REFLECT(Stats, power)") != std::string::npos);
     CHECK(importer::skeleton(data).find("add_system") == std::string::npos);
     CHECK(importer::registration({"player"}).find("register_player(game);") != std::string::npos);
+}
+
+TEST_CASE("a Godot C# script reads as its GDScript would") {
+    const std::string text = R"(using Godot;
+using System;
+
+public partial class Player : CharacterBody2D
+{
+    [Signal]
+    public delegate void HitEventHandler(int damage);
+
+    [Export] public float Speed { get; set; } = 200.0f;
+    [Export(PropertyHint.Range, "0,10")] public int Lives = 3;
+    [Export] public Node2D Target;
+    [Export] public Color Tint = Colors.Red;
+    [Export] public Vector2 Home = Vector2.Zero;
+    private int _coins;
+
+    public override void _Ready()
+    {
+        _coins = 0;
+    }
+
+    public override void _PhysicsProcess(double delta)
+    {
+        MoveAndSlide();
+    }
+
+    private void OnCoinBodyEntered(Node2D body)
+    {
+        _coins += 1;
+        EmitSignal(SignalName.Hit, 1);
+    }
+}
+)";
+    importer::Script script =
+        importer::read_csharp("godot/Player.cs", text, importer::ScriptSource::GodotCsharp);
+    CHECK(script.extends == "CharacterBody2D");
+    CHECK(script.component == "Player");
+    CHECK(script.ns == "player");
+    const auto field = [&](std::string_view name) -> const importer::ScriptField& {
+        const auto found = std::ranges::find(script.fields, name, &importer::ScriptField::name);
+        REQUIRE_MESSAGE(found != script.fields.end(), name);
+        return *found;
+    };
+    CHECK(field("speed").exported);
+    CHECK(field("speed").source_name == "Speed");
+    CHECK(field("speed").init == " = 200.0F");
+    CHECK(field("lives").min == 0.0);
+    CHECK(field("lives").max == 10.0);
+    CHECK(field("target").kind == importer::FieldKind::Entity);
+    CHECK(field("tint").init == "{1.0F, 0.0F, 0.0F, 1.0F}");
+    CHECK(field("home").init == "{0.0F, 0.0F}");
+    CHECK_FALSE(field("coins").exported);
+    CHECK(field("coins").source_name == "_coins");
+    REQUIRE(script.signals.size() == 1);
+    CHECK(script.signals[0].name == "Hit"); // as Godot names it: SignalName.Hit
+    CHECK(script.signals[0].params.at(0).type == "int");
+    REQUIRE(script.functions.size() == 3);
+
+    script.connections.push_back({.scene = "godot/main.scene.json",
+                                  .signal = "body_entered",
+                                  .from = "coin",
+                                  .to = "player",
+                                  .method = "OnCoinBodyEntered",
+                                  .argument = {}});
+    const std::string code = importer::skeleton(script);
+    MESSAGE(code);
+    for (const std::string_view part : {
+             std::string_view("SLASH_COMPONENT(Player, speed, lives, target, tint, home, coins)"),
+             std::string_view("void emit_hit(World& world, entt::entity entity, int damage) {"),
+             std::string_view("physics_process(world, entity, self, tick_seconds);"),
+             std::string_view("on_coin_body_entered(world, entity, *self, event);"),
+             std::string_view("    // MoveAndSlide();"),
+         }) {
+        CHECK_MESSAGE(code.find(part) != std::string::npos, part);
+    }
 }
 
 TEST_CASE("skeleton systems never take the name of a system the engine adds") {

@@ -38,7 +38,7 @@ project.import {"source":"shipped/Hopper","unpack_to":"unity"}
   project's pixels per unit comes from them: AssetRipper gives the atlas texture Unity's default
   of 100. A sprite turned in its atlas, or packed to its outline, is reported.
 - An IL2CPP build keeps its code compiled, so `Hopper.cs` comes back without it; the objects
-  using it keep their values and a storyboard task to port it to C++. A Mono build's scripts come
+  using it keep their values, a C++ skeleton and a storyboard task to port it to C++. A Mono build's scripts come
   back as decompiled C#. A UI component whose values AssetRipper couldn't read is reported, not
   converted with Unity's defaults.
 - `unpack_to` keeps the whole rebuilt project in `unity/`, and the import uses its assets there.
