@@ -1,5 +1,7 @@
-# The soundtrack: scores as text (.score.json), Standard MIDI Files and drafting cue sheets.
+# The soundtrack: scores as text (.score.json), Standard MIDI Files, and drafting and arranging
+# cue sheets.
 add_library(slash_soundtrack
+    src/arrange.cpp
     src/midi.cpp
     src/plan.cpp
     src/score.cpp)
@@ -9,7 +11,7 @@ target_include_directories(slash_soundtrack PUBLIC include)
 target_link_libraries(slash_soundtrack PUBLIC slash::core PRIVATE slash::storyboard)
 slash_engine_target(slash_soundtrack)
 
-# score.import, score.export, soundtrack.render and soundtrack.plan, for the tools and tests: playing scores needs
+# score.import, score.export and the soundtrack.* commands, for the tools and tests: playing scores needs
 # TinySoundFont and libvorbis, which only their builds fetch (cmake/Dependencies.cmake).
 if(TARGET slash_vorbis)
     add_library(slash_tsf STATIC src/tsf.c)

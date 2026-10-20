@@ -68,7 +68,7 @@ as `entity.get`, reject it as an unknown param.
 | UI and text | [`ui.layout`](#uilayout), [`ui.theme`](#uitheme), [`ui.press`](#uipress), [`ui.popup`](#uipopup), [`ui.select`](#uiselect), [`ui.drag`](#uidrag), [`ui.tooltip`](#uitooltip), [`ui.focus`](#uifocus), [`ui.search`](#uisearch), [`ui.clipboard`](#uiclipboard), [`text.measure`](#textmeasure) |
 | Input | [`input.inject`](#inputinject), [`input.state`](#inputstate), [`input.actions`](#inputactions) |
 | Audio | [`audio.state`](#audiostate), [`audio.capture`](#audiocapture), [`audio.analyze`](#audioanalyze), [`audio.play`](#audioplay), [`audio.stop`](#audiostop), [`audio.set_bus`](#audioset_bus), [`audio.spectrum`](#audiospectrum), [`audio.record`](#audiorecord), [`audio.input`](#audioinput) |
-| Soundtrack | [`score.import`](#scoreimport), [`score.export`](#scoreexport), [`soundtrack.render`](#soundtrackrender), [`soundtrack.plan`](#soundtrackplan) |
+| Soundtrack | [`score.import`](#scoreimport), [`score.export`](#scoreexport), [`soundtrack.render`](#soundtrackrender), [`soundtrack.plan`](#soundtrackplan), [`soundtrack.arrange`](#soundtrackarrange) |
 | Services | [`services.state`](#servicesstate), [`services.test`](#servicestest) |
 | Storyboard | [`storyboard.query`](#storyboardquery), [`storyboard.brief`](#storyboardbrief), [`storyboard.check`](#storyboardcheck), [`storyboard.review`](#storyboardreview), [`storyboard.edit`](#storyboardedit) |
 | Components | [`component.set`](#componentset), [`component.remove`](#componentremove) |
@@ -1749,10 +1749,11 @@ the input.
 
 Music planned in the [storyboard](storyboard-format.md#music), written as
 [`.score.json` scores](scene-format.md#scores), moved to and from Standard MIDI Files so any
-music program can play or edit them, and played into stems a game plays. From
-[examples/soundtrack-plan](../../examples/soundtrack-plan/),
-[examples/music-scores](../../examples/music-scores/) and
-[examples/soundtrack-render](../../examples/soundtrack-render/).
+music program can play or edit them, played into stems a game plays, and arranged into
+interactive music. From [examples/soundtrack-plan](../../examples/soundtrack-plan/),
+[examples/music-scores](../../examples/music-scores/),
+[examples/soundtrack-render](../../examples/soundtrack-render/) and
+[examples/soundtrack-arrange](../../examples/soundtrack-arrange/).
 
 ### score.export
 
@@ -1901,6 +1902,43 @@ is now. A storyboard that doesn't load fails with its first problem. Needs: `rea
 
 ```json
 {"edits":[{"id":"cue/harbor","set":{"name":"Harbor","scenes":["scenes/harbor.scene.json"],"summary":"Plays in scenes/harbor.scene.json.","theme":"theme/sea"},"version":null},{"id":"cue/lighthouse","set":{"beats":["beat/storm"],"name":"Lighthouse","scenes":["scenes/lighthouse.scene.json"],"summary":"Plays in scenes/lighthouse.scene.json.","theme":"theme/sea"},"version":null},{"id":"cue/wreck","set":{"beats":["beat/wreck"],"name":"The wreck","summary":"Plays during beat/wreck."},"version":null},{"id":"cue/combat","set":{"name":"Combat","states":["combat"],"summary":"Plays in the combat state."},"version":null}],"unthemed":["place/reef"]}
+```
+
+### soundtrack.arrange
+
+Writes the storyboard's [cues](storyboard-format.md#music) as one
+[interactive stream](scene-format.md#interactive-music) that an `AudioStreamPlayer` plays and
+gameplay code steers by setting its `parameters.switch_to_clip` to a clip's name. Each cue plays
+its `music`: `.audio.json`, `.ogg`, `.wav` or `.mp3` files, or the music
+[`soundtrack.render`](#soundtrackrender) makes of a `.score.json` file.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `out` | string | `"music/soundtrack.audio.json"` | The `.audio.json` file to write; layer files go in the folder of the same name |
+| `cues` | array of cue IDs | every cue | Only these cues, in this order |
+| `initial` | cue ID | the first | The cue the music starts with |
+
+- A cue becomes a clip named after its ID (`cue/harbor` is `harbor`). With several files and
+  no layers, the clip plays them together as a synchronized stream.
+- A cue with `layers` and a file per layer, lowest first, becomes a clip per layer
+  (`harbor_calm`, `harbor_tense`), each a synchronized stream of its file and those below it.
+  Switching between them waits for the next beat and keeps the music's place.
+- A cue that `plays` `once` is a sting. With `after`, it plays as the music leaves those cues,
+  as a filler clip, before the next. Without, it plays when asked for, on the next beat, then the
+  music goes back to the clip it interrupted, where that clip was.
+- Every other switch waits for the next bar.
+- `clips` says which cue and layer each clip plays and its stream; `layers` lists the layer
+  files written. `problems` lists cues with no music (they are left out), files that don't exist
+  yet, with the score that renders them, and layers without a file each.
+
+Fails when no cue has music. Needs: `read`, `filesystem`.
+
+```json
+{"initial": "cue/harbor"}
+```
+
+```json
+{"clips":[{"cue":"cue/bell","name":"bell","stream":"music/bell.audio.json"},{"cue":"cue/harbor","layer":"calm","name":"harbor_calm","stream":"music/harbor/strings.audio.json"},{"cue":"cue/harbor","layer":"tense","name":"harbor_tense","stream":"music/soundtrack/harbor_tense.audio.json"},{"cue":"cue/storm","name":"storm","stream":"music/storm.audio.json"},{"cue":"cue/win","name":"win","stream":"music/win.audio.json"}],"layers":["music/soundtrack/harbor_tense.audio.json"],"path":"music/soundtrack.audio.json"}
 ```
 
 ## Services

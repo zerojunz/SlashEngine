@@ -980,9 +980,14 @@ synchronized `.audio.json` file that plays them together; looping stems are the 
 length, with what rings past the end added onto the start. Its instruments are a SoundFont 2
 file or the engine's own (`src/sound_bank.cpp`: a voice per General MIDI family and a drum kit,
 synthesized without libm). TinySoundFont and libvorbis are fetched for the tools only. Scores
-are a game's source, not its data, so exports leave them out. `examples/soundtrack-plan` plans
-a game's cues, `examples/music-scores` sends a piece through MIDI and back, and
-`examples/soundtrack-render` renders a loop and measures it.
+are a game's source, not its data, so exports leave them out. `soundtrack.arrange`
+(`src/arrange.cpp`) writes the cues as one interactive `.audio.json` stream: a clip per cue, or
+per layer as synchronized streams of that layer's file and those below it, switching on the
+bar, between layers on the beat at the same place, and cues that play once as stings (a filler
+clip on the way out of the cues in their `after`, else a clip that returns to the one it
+interrupted). `examples/soundtrack-plan` plans a game's cues, `examples/music-scores` sends a
+piece through MIDI and back, `examples/soundtrack-render` renders a loop and measures it, and
+`examples/soundtrack-arrange` arranges cues and steers them.
 
 ## Ads, analytics, purchases and achievements
 
@@ -1112,7 +1117,7 @@ CI rejects unformatted code and any clang-tidy finding.
   animations and the system that plays them),
   `physics2d` (2D bodies, areas, joints and queries on Box2D), `library` (the asset library, its
   generators and commands), `storyboard` (storyboard kinds, files, versions,
-  queries, edits, briefs and checks), `soundtrack` (`.score.json` scores, MIDI files, rendering stems and drafting cue sheets),
+  queries, edits, briefs and checks), `soundtrack` (`.score.json` scores, MIDI files, rendering stems, drafting cue sheets and arranging them),
   `command` (commands, sessions with undo, JSON-RPC and MCP),
   `debug` (the debug overlay over a running game), `server` (localhost HTTP over a session),
   `ai` (language model providers, their adapters, `providers.json`, replay and the `ai.*`

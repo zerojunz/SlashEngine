@@ -4,6 +4,7 @@
 #include "slash/core/json.hpp"
 #include "slash/core/text.hpp"
 #include "slash/platform/file.hpp"
+#include "slash/soundtrack/arrange.hpp"
 #include "slash/soundtrack/midi.hpp"
 #include "slash/soundtrack/plan.hpp"
 #include "slash/soundtrack/render.hpp"
@@ -510,7 +511,8 @@ Reply soundtrack_render(Session& session, const json::Value& params) {
     return Reply::success(std::move(result));
 }
 
-Reply soundtrack_plan(Session& session, const json::Value& params) {
+// The storyboard's entries, or the reply saying why they don't load.
+std::optional<Reply> load_storyboard(Session& session, json::Object& entries) {
     auto loaded = storyboard::load(
         [&session](std::string_view path) { return session.read_project_file(path); });
     if (!loaded) {
@@ -527,6 +529,98 @@ Reply soundtrack_plan(Session& session, const json::Value& params) {
         message += first.message;
         message += "; storyboard.check lists every problem";
         return Reply::failure(command::code::kInvalidArgument, message);
+    }
+    entries = std::move(loaded.value().entries);
+    return std::nullopt;
+}
+
+// Why id names no cue, or "" if it does.
+std::string cue_error(const json::Object& entries, const std::string& id) {
+    if (!id.starts_with("cue/")) {
+        return R"(expected a cue's ID, such as "cue/harbor"; got ")" + id + "\"";
+    }
+    return entries.contains(id) ? std::string() : storyboard::unknown_entry(entries, id);
+}
+
+Reply soundtrack_arrange(Session& session, const json::Value& params) {
+    json::Object entries;
+    if (auto failed = load_storyboard(session, entries)) {
+        return std::move(*failed);
+    }
+    ArrangeOptions options;
+    if (const std::string out = text(params, "out"); !out.empty()) {
+        options.out = out;
+    }
+    if (!options.out.ends_with(".audio.json")) {
+        return failure_at(command::code::kInvalidArgument, "/out", "expected a .audio.json file");
+    }
+    if (const json::Value* cues = params.find("cues"); cues != nullptr) {
+        for (std::size_t i = 0; i < cues->size(); ++i) {
+            const std::string& id = cues->as_array()[i].as_string();
+            if (const std::string message = cue_error(entries, id); !message.empty()) {
+                return failure_at(command::code::kNotFound, "/cues/" + std::to_string(i), message);
+            }
+            options.cues.push_back(id);
+        }
+    }
+    options.initial = text(params, "initial");
+    if (!options.initial.empty()) {
+        std::string message = cue_error(entries, options.initial);
+        if (message.empty() && !options.cues.empty() &&
+            std::ranges::find(options.cues, options.initial) == options.cues.end()) {
+            message = options.initial + " isn't one of cues";
+        }
+        if (!message.empty()) {
+            return failure_at(command::code::kInvalidArgument, "/initial", message);
+        }
+    }
+
+    Arranged arranged = arrange(entries, options, [&session](std::string_view path) {
+        auto full = session.resolve_path(path);
+        return full && platform::exists(full.value());
+    });
+    json::Array problems;
+    for (std::string& problem : arranged.problems) {
+        problems.emplace_back(std::move(problem));
+    }
+    if (arranged.clips.empty()) {
+        json::Value data;
+        data["problems"] = std::move(problems);
+        return Reply::failure(command::code::kInvalidArgument,
+                              "no cue has music yet; name each cue's files in its music field",
+                              std::move(data));
+    }
+    // The layers first, then the music that plays them.
+    arranged.files.emplace_back(options.out, std::move(arranged.music));
+    json::Array files;
+    for (const auto& [path, document] : arranged.files) {
+        auto full = session.resolve_path(path);
+        if (!full) {
+            return failure_at(full.error(), "/out");
+        }
+        if (auto written = session.write_file(full.value(), json::write(document) + "\n");
+            !written) {
+            return Reply::failure(written.error());
+        }
+        files.emplace_back(path);
+    }
+    json::Value result;
+    result["path"] = options.out;
+    result["clips"] = std::move(arranged.clips);
+    if (files.size() > 1) {
+        files.pop_back();
+        result["layers"] = std::move(files);
+    }
+    if (!problems.empty()) {
+        result["problems"] = std::move(problems);
+    }
+    return Reply::success(std::move(result));
+}
+
+Reply soundtrack_plan(Session& session, const json::Value& params) {
+    json::Object entries;
+    if (auto failed = load_storyboard(session, entries)) {
+        return std::move(*failed);
     }
 
     // Every scene in the project except exports in build/, the open one as it is now.
@@ -569,7 +663,7 @@ Reply soundtrack_plan(Session& session, const json::Value& params) {
             states.push_back(state.as_string());
         }
     }
-    Plan plan = plan_cues(loaded.value().entries, scenes, states);
+    Plan plan = plan_cues(entries, scenes, states);
     json::Value result;
     result["edits"] = std::move(plan.edits);
     if (!plan.unthemed.empty()) {
@@ -674,6 +768,29 @@ void register_commands(command::Registry& registry) {
         .effect = command::Effect::Read,
         .params = params_schema({{"states", std::move(states)}}, {}),
         .handler = soundtrack_plan,
+    });
+
+    json::Value cues = property("array", "Only these cues, by ID, in this order. Default: every "
+                                         "cue.");
+    cues["items"]["type"] = "string";
+    cues["uniqueItems"] = true;
+    cues["minItems"] = 1;
+    registry.add({
+        .name = "soundtrack.arrange",
+        .description = "Writes the storyboard's cues as interactive music a player's "
+                       "switch_to_clip steers: a clip per cue, or per layer, switching on the "
+                       "bar; layers keep their place; cues that play once are stings.",
+        .capabilities = {Capability::Read, Capability::Filesystem},
+        .effect = command::Effect::Read,
+        .params = params_schema(
+            {
+                {"out", property("string", "The .audio.json file to write. Default: "
+                                           "music/soundtrack.audio.json.")},
+                {"cues", std::move(cues)},
+                {"initial", property("string", "The cue it starts with. Default: the first.")},
+            },
+            {}),
+        .handler = soundtrack_arrange,
     });
 }
 
