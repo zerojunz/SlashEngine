@@ -1,0 +1,16 @@
+{
+  "entities": {
+    "greeting": {
+      "components": {
+        "Control": {
+          "anchor_right": 1.0,
+          "offset_bottom": 40.0
+        },
+        "Label": {
+          "text": "Mira: Welcome back! My sister Oren saved you a loaf."
+        }
+      }
+    }
+  },
+  "format": 1
+}

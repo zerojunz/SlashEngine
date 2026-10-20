@@ -59,7 +59,8 @@ up instead of inventing them, and record new ones so other agents see them:
   and why in `why`; `storyboard/journal.jsonl` keeps the record.
 - Put `{"StoryRef": {"ids": ["character/mira"]}}` on the entity that plays an entry.
 - After a task, call `storyboard_check`. It finds references to missing entries and words the
-  glossary says to avoid.
+  glossary says to avoid. If the project has a `providers.json`, `storyboard_review` asks a model
+  whether new dialogue, interface text or art contradicts the storyboard; its findings are advice.
 - Before starting work, add a `task/...` entry with your name as `owner`, so others see it.
 
 ## Test the game

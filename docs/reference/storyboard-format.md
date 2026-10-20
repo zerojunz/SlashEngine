@@ -174,6 +174,24 @@ every texture to 256 pixels a side:
 A `budget`'s `triangles` waits on meshes, which come with the 3D work
 ([roadmap](../roadmap.md)).
 
+## Model review
+
+Rules catch broken references and words to avoid, but not dialogue that calls Oren Mira's sister
+when the storyboard says brother. `storyboard.review` (see the
+[command reference](commands.md#storyboardreview)) sends new material (text, a scene's interface
+text, other files, images, or entries just written) with the entries it touches to a model from
+[`providers.json`](providers.md), and returns what likely contradicts them:
+
+```json
+{"advisory":true,"facts":4,"findings":[{"confidence":"high","entry":"character/oren","path":"/entities/greeting/components/Label/text","problem":"Oren is Mira's brother, not her sister.","quote":"My sister Oren","source":"scenes/tavern.scene.json"}],"items":1,"model":"llama3.2","usage":{"input_tokens":310,"output_tokens":48}}
+```
+
+The entries sent are those `storyboard.brief` returns for the material, and every entry whose
+`name` or `aliases` it mentions. Findings are advice, not checks: a model can miss a
+contradiction or see one that isn't there, so the review never fails a pull request as
+`storyboard.check` does. A finding must quote the material and name an existing entry, or it is
+dropped and counted in `unverified`.
+
 ## Versions
 
 Every entry has a version: eight hex digits that change whenever its fields do. `storyboard.query`

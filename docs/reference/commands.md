@@ -69,7 +69,7 @@ as `entity.get`, reject it as an unknown param.
 | Input | [`input.inject`](#inputinject), [`input.state`](#inputstate), [`input.actions`](#inputactions) |
 | Audio | [`audio.state`](#audiostate), [`audio.capture`](#audiocapture), [`audio.play`](#audioplay), [`audio.stop`](#audiostop), [`audio.set_bus`](#audioset_bus), [`audio.spectrum`](#audiospectrum), [`audio.record`](#audiorecord), [`audio.input`](#audioinput) |
 | Services | [`services.state`](#servicesstate), [`services.test`](#servicestest) |
-| Storyboard | [`storyboard.query`](#storyboardquery), [`storyboard.brief`](#storyboardbrief), [`storyboard.check`](#storyboardcheck), [`storyboard.edit`](#storyboardedit) |
+| Storyboard | [`storyboard.query`](#storyboardquery), [`storyboard.brief`](#storyboardbrief), [`storyboard.check`](#storyboardcheck), [`storyboard.review`](#storyboardreview), [`storyboard.edit`](#storyboardedit) |
 | Components | [`component.set`](#componentset), [`component.remove`](#componentremove) |
 | Query | [`world.query`](#worldquery) |
 | Snapshots | [`world.snapshot`](#worldsnapshot), [`world.diff`](#worlddiff), [`world.restore`](#worldrestore) |
@@ -1861,6 +1861,54 @@ Takes no params. Needs: `read`.
 ```
 
 `errors` and `warnings` are left out when empty, so a clean project returns `{"valid":true}`.
+
+### storyboard.review
+
+Asks a model whether new material contradicts the storyboard: a line of dialogue, a scene's
+interface text, a description, an image or entries just written. `storyboard.check` catches what
+rules can (broken references, words to avoid, colors off the palette); this catches what only
+reading can, such as a character called by the wrong relationship or a place she has never been.
+The model comes from the project's [`providers.json`](providers.md), as for `ai.complete`.
+
+The model reads the facts `storyboard.brief` would return for the material (the entries its
+scenes' `StoryRef` components name, entries linked to its files, global rules and live work),
+plus every entry whose name or alias the text mentions as a whole word, and the entries those
+name. Findings are advisory: each quotes the material and names the entry it contradicts, and
+one whose quote is not in the material, whose entry does not exist or whose item is out of
+range is dropped and counted in `unverified`, so a finding never invents a fact. When no entry
+applies to the material, no model is asked.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `text` | string | | New text, such as a line of dialogue |
+| `paths` | array of paths | | Project files: scenes and prefabs (each control's `text`, `placeholder_text` and `tooltip_text`), other `.json` files (their strings with a space in them), text files (whole, up to 64 KiB) and images (`.png`, `.jpg`, `.gif`, `.webp`) for a model that sees them. The open scene is read as it is now |
+| `entries` | array of IDs | | Storyboard entries to review against the rest, such as ones just written |
+| `role` | string | the `default` role, or the only provider | A role or provider from `providers.json` |
+| `max_tokens` | integer | the role's, then the provider's | The most tokens to reply with |
+
+At least one of `text`, `paths` and `entries` is needed. Needs: `read`, `network`. It changes
+nothing.
+
+```json
+{"paths": ["scenes/tavern.scene.json", "dialogue/act1.txt"]}
+```
+
+```json
+{"advisory":true,"facts":4,"findings":[{"confidence":"high","entry":"character/oren","path":"/entities/greeting/components/Label/text","problem":"Oren is Mira's brother, not her sister.","quote":"My sister Oren","source":"scenes/tavern.scene.json"},{"confidence":"high","entry":"character/mira","problem":"Mira has never left Lowtown.","quote":"I took the ferry up to Hightown","source":"dialogue/act1.txt"}],"items":2,"model":"llama3.2","unverified":1,"usage":{"input_tokens":420,"output_tokens":96}}
+```
+
+Each finding has the `source` (`text`, a project path, or an entry's storyboard file), the JSON
+Pointer `path` inside it where there is one, the `quote`, the `entry`, the `problem` in one
+sentence and the model's `confidence` (`high`, `medium` or `low`). `facts` counts the entries
+the model read and `items` the pieces of material; `"replayed": true` marks a reply from the
+replay file. With no entry to check against, the reply has no `model` or `usage` and says why
+in `note`.
+
+Errors: no material, or a storyboard file that is invalid (run `storyboard.check`), with
+`-32602`; a missing file or unknown entry with `-32001` and, for an entry, the closest ID; a path
+outside the project, a file that is not text or an image, a text file over 64 KiB or invalid
+JSON with `-32002`, each with `data.path` at the param; and the provider's errors as for
+[`ai.complete`](#aicomplete).
 
 ### storyboard.edit
 
