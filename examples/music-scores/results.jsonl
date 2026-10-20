@@ -1,0 +1,3 @@
+{"id":1,"jsonrpc":"2.0","result":{"notes":119,"path":"music/night_market.mid","seconds":20.87,"tracks":4}}
+{"id":2,"jsonrpc":"2.0","result":{"bars":8,"bpm":92,"key":"A minor","path":"music/night_market_again.score.json","sections":["intro","loop"],"tracks":[{"instrument":"flute","name":"melody","notes":15},{"instrument":"string_ensemble_1","name":"strings","notes":24},{"instrument":"acoustic_bass","name":"bass","notes":32},{"instrument":"drums","name":"drums","notes":48}]}}
+{"error":{"code":-32002,"data":{"path":"/path"},"message":"/path: music/sketch.score.json /tracks/0/bars/0: \"B5:0.5\": starts at beat 4, after the bar's 4 beats"},"id":3,"jsonrpc":"2.0"}

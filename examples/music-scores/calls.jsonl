@@ -1,0 +1,3 @@
+{"jsonrpc":"2.0","id":1,"method":"score.export","params":{"path":"music/night_market.score.json"}}
+{"jsonrpc":"2.0","id":2,"method":"score.import","params":{"path":"music/night_market.mid","out":"music/night_market_again.score.json"}}
+{"jsonrpc":"2.0","id":3,"method":"score.export","params":{"path":"music/sketch.score.json"}}

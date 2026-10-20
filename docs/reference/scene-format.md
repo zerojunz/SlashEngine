@@ -3065,6 +3065,84 @@ hear the player without the speakers playing them back.
   for the answer. Exports of a project with `enable_input` ask for the microphone on every
   platform that needs it: see [`audio.input_usage_description`](project-format.md).
 
+### Scores
+
+A `.score.json` file is a piece of music written as text, so an agent can change one bar or one
+instrument exactly instead of making the whole piece again (`slash-cli schema score`). Games
+don't play scores: a score is the source that music is made from, and exports leave it out.
+[`score.export`](commands.md#scoreexport) writes it as a Standard MIDI File to play or edit in
+any music program, and [`score.import`](commands.md#scoreimport) reads one back.
+[examples/music-scores](../../examples/music-scores/) has an eight-bar piece.
+
+```json
+{
+  "bpm": 92,
+  "format": 1,
+  "key": "A minor",
+  "sections": [{"bar": 0, "name": "intro"}, {"bar": 4, "name": "loop"}],
+  "tracks": [
+    {
+      "bars": ["A1:1.5 A2:0.5 E2:1 A2", "F1:1.5 F2:0.5 C2:1 F2"],
+      "instrument": "acoustic_bass",
+      "name": "bass"
+    },
+    {
+      "bars": ["", "kick+closed_hat:0.5 closed_hat snare+closed_hat closed_hat"],
+      "instrument": "drums",
+      "name": "drums",
+      "velocity": 90
+    }
+  ]
+}
+```
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `format` | | Must be `1` |
+| `bpm` | `120` | Beats per minute, 1 to 400 |
+| `bar_beats` | `4` | Beats in a bar, 2 to 32 |
+| `beat_unit` | `4` | The note a beat is, as a time signature's lower number: 2, 4, 8 or 16 |
+| `key` | | Such as `"D minor"` or `"F# major"`: a tonic A to G with `#` or `b`, then `major` or `minor` |
+| `bars` | the longest track's | Its length in bars, up to 1024 |
+| `sections` | | Named parts in order, each `{"name", "bar"}` from its bar to the next one's |
+| `tracks` | | Up to 64 parts, each with a unique `name` |
+| `tracks[].instrument` | `"acoustic_grand_piano"` | One of General MIDI's 128 instruments in snake case, such as `"string_ensemble_1"`, `"electric_bass_finger"` or `"lead_square"`, or `"drums"` |
+| `tracks[].volume_db` | `0` | Its volume, -80 to 0 |
+| `tracks[].pan` | `0` | From -1 (left) to 1 (right) |
+| `tracks[].velocity` | `100` | What its notes play at unless they say, 1 to 127 |
+| `tracks[].bars` | | A line of notes per bar, `""` for a silent one |
+
+Bars and sections count from 0, as the `bars` arrays do: section `{"bar": 4}` starts at
+`/tracks/0/bars/4`. A bar's line is tokens separated by spaces, played one after another from
+the start of the bar:
+
+- A note is a letter A to G, then `#` or `b` (at most two), then an octave from -1 to 9: `C4` is
+  middle C (MIDI note 60) and `A4` 440 Hz. A MIDI note number from 0 to 127 works too, and on a
+  `"drums"` track so do General MIDI's drums by name: `acoustic_kick`, `kick`, `side_stick`,
+  `snare`, `clap`, `electric_snare`, the toms (`low_floor_tom`, `high_floor_tom`, `low_tom`,
+  `low_mid_tom`, `high_mid_tom`, `high_tom`), `closed_hat`, `pedal_hat`, `open_hat`, `crash`,
+  `crash_2`, `ride`, `ride_2`, `ride_bell`, `china`, `splash`, `tambourine`, `cowbell`,
+  `vibraslap`, the bongos, congas, timbales and agogos (`high_bongo`, `mute_high_conga`,
+  `open_high_conga`, `low_conga`, `high_timbale`, `high_agogo` and their low ones), `cabasa`,
+  `maracas`, `short_whistle`, `long_whistle`, `short_guiro`, `long_guiro`, `claves`,
+  `high_wood_block`, `low_wood_block`, `mute_cuica`, `open_cuica`, `mute_triangle` and
+  `open_triangle`.
+- `+` joins notes into a chord: `C4+E4+G4`. `r` is a rest.
+- `:` and a length in beats follow a note, chord or rest: `1`, `0.5` or `1/3` for triplets. A
+  length carries on to the tokens after it in the voice, and a voice starts at one beat.
+- `@` and a velocity from 1 to 127 come last, for that token only: `D4:1@110`.
+- `;` starts another voice from the start of the bar, for notes that overlap: `"D2:4 ; D3 F3 A3
+  D4"` holds the bass under four quarter notes.
+- A voice's tokens must fit in the bar, but its last note may ring past the bar line.
+
+`slash-cli scene validate` checks a score and counts its bars, tracks and notes; every error
+names the bar's JSON Pointer and the token at fault, with the closest instrument or drum for a
+misspelled one:
+
+```json
+{"errors":[{"message":"\"B5:0.5\": starts at beat 4, after the bar's 4 beats","path":"/tracks/0/bars/0"}],"valid":false}
+```
+
 ## Replays
 
 A `.replay.json` file is a run recorded with [`replay.record`](commands.md#replayrecord) or

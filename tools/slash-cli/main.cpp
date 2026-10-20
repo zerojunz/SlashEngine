@@ -45,6 +45,8 @@
 #include "slash/runtime/project.hpp"
 #include "slash/server/server.hpp"
 #include "slash/shader_compiler/shader_compiler.hpp"
+#include "slash/soundtrack/commands.hpp"
+#include "slash/soundtrack/score.hpp"
 #include "slash/storyboard/storyboard.hpp"
 #include "slash/text/text.hpp"
 #include "slash/ui/ui.hpp"
@@ -109,8 +111,8 @@ Usage:
   slash-cli scene validate <file>    Check a scene, .prefab.json, .frames.json,
                                      .material.json, .process_material.json, .anim.json,
                                      .tileset.json, .font.json, .theme.json, .audio.json,
-                                     .bus_layout.json, .replay.json or .test.json file; lists
-                                     every error
+                                     .bus_layout.json, .replay.json, .test.json or .score.json
+                                     file; lists every error
   slash-cli scene format <file>      Rewrite one of those files in canonical form
       --check                        Only report whether it is canonical; change nothing
   slash-cli schema <name>            Print a JSON Schema: scene, prefab, frames (.frames.json),
@@ -119,10 +121,10 @@ Usage:
                                      tileset (.tileset.json), font (.font.json), theme
                                      (.theme.json), audio (.audio.json), bus_layout
                                      (.bus_layout.json), replay (.replay.json), test
-                                     (.test.json), storyboard, project (project.json),
-                                     presets (export_presets.json), sdk (sdk.json),
-                                     providers (providers.json) or bench (a benchmark
-                                     task's task.json)
+                                     (.test.json), score (.score.json), storyboard, project
+                                     (project.json), presets (export_presets.json), sdk
+                                     (sdk.json), providers (providers.json) or bench (a
+                                     benchmark task's task.json)
   slash-cli project validate [dir]   Check project.json, export_presets.json, providers.json,
                                      the project's theme, bus layout, storyboard and SDK
                                      packages; lists
@@ -359,6 +361,7 @@ struct Engine {
         slash::importer::register_import_commands(commands, {.unpack_builds = !running});
         slash::ai::register_commands(commands);
         slash::library::register_commands(commands);
+        slash::soundtrack::register_commands(commands);
         slash::exporter::register_api_commands(commands);
         if (running) {
             command::register_run_commands(commands);
@@ -823,6 +826,7 @@ int cmd_scene_validate(const std::string& path) {
     const bool buses = path.ends_with(slash::audio::kBusLayoutSuffix);
     const bool replay = path.ends_with(command::kReplaySuffix);
     const bool test = path.ends_with(command::kTestSuffix);
+    const bool score = path.ends_with(slash::soundtrack::kScoreSuffix);
     json::Value result;
     auto parsed = json::parse(text.value());
     std::vector<json::ValidationError> errors;
@@ -853,6 +857,8 @@ int cmd_scene_validate(const std::string& path) {
         errors = command::validate_replay(parsed.value());
     } else if (test) {
         errors = command::validate_test(parsed.value());
+    } else if (score) {
+        errors = slash::soundtrack::validate_score(parsed.value());
     } else {
         errors = prefab ? world::validate_prefab(registry, parsed.value(), prefab_reader(path))
                         : world::validate_scene(registry, parsed.value(), prefab_reader(path));
@@ -867,7 +873,7 @@ int cmd_scene_validate(const std::string& path) {
         }
     }
     if (parsed && !frames && !material && !process && !animation && !tileset && !font && !theme &&
-        !stream && !buses && !replay && !test) {
+        !stream && !buses && !replay && !test && !score) {
         check_story_refs(path, parsed.value(), errors);
     }
     result["valid"] = errors.empty();
@@ -876,6 +882,16 @@ int cmd_scene_validate(const std::string& path) {
     } else if (font || stream || process) {
         print(result);
         return kExitOk;
+    } else if (score) {
+        // Its length, tracks and notes.
+        const auto parsed_score = slash::soundtrack::parse_score(parsed.value());
+        std::size_t notes = 0;
+        for (const auto& track : parsed_score.value().tracks) {
+            notes += track.notes.size();
+        }
+        result["bars"] = parsed_score.value().bars;
+        result["tracks"] = parsed_score.value().tracks.size();
+        result["notes"] = notes;
     } else if (replay) {
         // How many ticks it covers.
         const auto tick = [&](std::string_view part) {
@@ -997,6 +1013,9 @@ int cmd_scene_format(const std::string& path, bool check) {
         if (path.ends_with(command::kTestSuffix)) {
             return format_checked(text.value(), checked_by(command::validate_test));
         }
+        if (path.ends_with(slash::soundtrack::kScoreSuffix)) {
+            return format_checked(text.value(), slash::soundtrack::parse_score);
+        }
         if (path.ends_with(world::kPrefabSuffix)) {
             return world::format_prefab(registry, text.value(), prefab_reader(path));
         }
@@ -1053,15 +1072,15 @@ int cmd_scene(const std::vector<std::string>& args) {
 }
 
 int cmd_schema(const std::vector<std::string>& args) {
-    constexpr std::array<std::string_view, 19> kKinds = {
-        "scene",      "prefab",  "frames",    "material",   "process_material",
-        "animation",  "tileset", "font",      "theme",      "audio",
-        "bus_layout", "replay",  "test",      "storyboard", "project",
-        "presets",    "sdk",     "providers", "bench"};
+    constexpr std::array<std::string_view, 20> kKinds = {
+        "scene",      "prefab",  "frames", "material",  "process_material",
+        "animation",  "tileset", "font",   "theme",     "audio",
+        "bus_layout", "replay",  "test",   "score",     "storyboard",
+        "project",    "presets", "sdk",    "providers", "bench"};
     if (args.size() != 1 || std::ranges::find(kKinds, args[0]) == kKinds.end()) {
         return usage_error("schema takes one argument: scene, prefab, frames, material, "
                            "process_material, animation, tileset, font, theme, audio, "
-                           "bus_layout, replay, test, storyboard, project, presets, sdk, "
+                           "bus_layout, replay, test, score, storyboard, project, presets, sdk, "
                            "providers or bench");
     }
     json::Value schema;
@@ -1091,6 +1110,8 @@ int cmd_schema(const std::vector<std::string>& args) {
         schema = command::replay_schema();
     } else if (args[0] == "test") {
         schema = command::test_schema();
+    } else if (args[0] == "score") {
+        schema = slash::soundtrack::score_schema();
     } else if (args[0] == "storyboard") {
         schema = slash::storyboard::file_schema();
     } else if (args[0] == "project") {

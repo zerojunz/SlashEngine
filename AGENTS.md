@@ -79,7 +79,7 @@ body of their own (`shape_key_of` in `engine/physics2d/src/space.cpp`), as Godot
 `CollisionShape2D` nodes. `examples/parent-transforms` sails a boat.
 
 ```bash
-$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, process_material, tileset, font, theme, audio, bus_layout, replay, test, sdk)
+$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, process_material, tileset, font, theme, audio, bus_layout, replay, test, score, sdk)
 $cli scene validate tests/data/basic.scene.json     # every error, with its JSON Pointer path
 $cli scene format level.scene.json                  # rewrite in canonical form
 $cli scene format --check level.scene.json          # exit 1 if not canonical
@@ -88,7 +88,8 @@ $cli scene format --check level.scene.json          # exit 1 if not canonical
 Validate after editing a scene or prefab by hand, and format before committing one. Both
 commands take `.prefab.json`, `.frames.json`, `.material.json`, `.anim.json`,
 `.process_material.json`, `.tileset.json`,
-`.font.json`, `.theme.json`, `.audio.json`, `.bus_layout.json`, `.replay.json` and `.test.json` files too; validating a scene also checks each tile map layer against its tile
+`.font.json`, `.theme.json`, `.audio.json`, `.bus_layout.json`, `.replay.json`, `.test.json` and
+`.score.json` files too; validating a scene also checks each tile map layer against its tile
 set, each `AnimationPlayer` against its library and that its controls lay out as written.
 
 ## Assets and hot reload
@@ -960,6 +961,16 @@ without libm, so outputs match everywhere. `examples/audio` plays music and foot
 around a listener, `examples/audio-areas-and-analysis` a bat in a cave's reverb, measured
 by its spectrum and recorded, and `examples/interactive-music` a score that follows a fight.
 
+## Soundtracks
+
+`engine/soundtrack` turns music into text agents read and write. A `.score.json` file
+(`$cli schema score`; `src/score.cpp`) holds a tempo, meter, key, named sections and tracks of
+General MIDI instruments or drums, each bar a line of notes such as `"D2:4 ; D3 F3 A3 D4@110"`;
+`decode_bar` reads a line and `encode_bars` writes notes back as the shortest line that plays
+them. `score.export` and `score.import` (`src/midi.cpp`) write and read Standard MIDI Files.
+Scores are a game's source, not its data, so exports leave them out. `examples/music-scores`
+sends a piece through MIDI and back.
+
 ## Ads, analytics, purchases and achievements
 
 `engine/services` is ads, analytics, in-app purchases, achievements and leaderboards behind one
@@ -1088,7 +1099,8 @@ CI rejects unformatted code and any clang-tidy finding.
   animations and the system that plays them),
   `physics2d` (2D bodies, areas, joints and queries on Box2D), `library` (the asset library, its
   generators and commands), `storyboard` (storyboard kinds, files, versions,
-  queries, edits, briefs and checks), `command` (commands, sessions with undo, JSON-RPC and MCP),
+  queries, edits, briefs and checks), `soundtrack` (`.score.json` scores and MIDI files),
+  `command` (commands, sessions with undo, JSON-RPC and MCP),
   `debug` (the debug overlay over a running game), `server` (localhost HTTP over a session),
   `ai` (language model providers, their adapters, `providers.json`, replay and the `ai.*`
   commands),

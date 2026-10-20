@@ -1,0 +1,42 @@
+{
+  "bpm": 92,
+  "format": 1,
+  "key": "A minor",
+  "sections": [
+    {
+      "bar": 0,
+      "name": "intro"
+    },
+    {
+      "bar": 4,
+      "name": "loop"
+    }
+  ],
+  "tracks": [
+    {
+      "bars": ["", "", "", "", "E5 A5:0.5 B5 C6:1 B5:0.5 A5", "A5:2 r:1 G5:0.5 F5", "F5 E5:0.5 D5 E5:1 F5", "E5:3"],
+      "instrument": "flute",
+      "name": "melody",
+      "pan": 0.25
+    },
+    {
+      "bars": ["A3+C4+E4:4", "F3+A3+C4:4", "C4+E4+G4:4", "G3+B3+D4:4", "A3+C4+E4:4", "F3+A3+C4:4", "D3+F3+A3:4", "E3+G#3+B3:4"],
+      "instrument": "string_ensemble_1",
+      "name": "strings",
+      "pan": -0.25,
+      "velocity": 70,
+      "volume_db": -6
+    },
+    {
+      "bars": ["A1:1.5 A2:0.5 E2:1 A2", "F1:1.5 F2:0.5 C2:1 F2", "C2:1.5 C3:0.5 G2:1 C3", "G1:1.5 G2:0.5 D2:1 G2", "A1:1.5 A2:0.5 E2:1 A2", "F1:1.5 F2:0.5 C2:1 F2", "D2:1.5 D3:0.5 A2:1 D3", "E2:1.5 E3:0.5 B1:1 E2"],
+      "instrument": "acoustic_bass",
+      "name": "bass"
+    },
+    {
+      "bars": ["", "", "", "", "kick+closed_hat:0.5 closed_hat snare+closed_hat closed_hat kick+closed_hat closed_hat snare+closed_hat closed_hat", "kick+closed_hat:0.5 closed_hat snare+closed_hat closed_hat kick+closed_hat closed_hat snare+closed_hat closed_hat", "kick+closed_hat:0.5 closed_hat snare+closed_hat closed_hat kick+closed_hat closed_hat snare+closed_hat closed_hat", "kick+crash:0.5 closed_hat snare+closed_hat closed_hat kick+closed_hat closed_hat snare+closed_hat@110 open_hat"],
+      "instrument": "drums",
+      "name": "drums",
+      "velocity": 90
+    }
+  ]
+}
