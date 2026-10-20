@@ -338,13 +338,15 @@ bool is_absolute(std::string_view path) {
            (path.size() > 1 && path[1] == ':'); // C:/ on Windows
 }
 
-TeamAnswer answer(int status, json::Value body) {
-    return {status, std::move(body)};
+TeamAnswer answer(int status, json::Object body) {
+    return {status, json::Value(std::move(body))};
 }
 
 TeamAnswer refuse(int status, const std::string& message) {
-    json::Value body;
-    body["error"]["message"] = message;
+    json::Object error;
+    error["message"] = message;
+    json::Object body;
+    body["error"] = std::move(error);
     return answer(status, std::move(body));
 }
 
@@ -364,7 +366,7 @@ TeamAnswer record_answer(Result<std::optional<Record>> found) {
         return refuse(found.error());
     }
     const std::optional<Record> record = std::move(found).value();
-    json::Value body;
+    json::Object body;
     body["record"] = record ? to_json(*record) : json::Value();
     return answer(200, std::move(body));
 }
@@ -467,7 +469,7 @@ TeamAnswer answer_team_request(const Library& library, std::string_view op,
         for (const Record& record : found.value()) {
             records.push_back(to_json(record));
         }
-        json::Value out;
+        json::Object out;
         out["records"] = std::move(records);
         return answer(200, std::move(out));
     }
@@ -488,7 +490,7 @@ TeamAnswer answer_team_request(const Library& library, std::string_view op,
         if (!data) {
             return refuse(data.error());
         }
-        json::Value out;
+        json::Object out;
         out["data"] = base64_encode(data.value());
         return answer(200, std::move(out));
     }
@@ -523,7 +525,7 @@ TeamAnswer answer_team_request(const Library& library, std::string_view op,
         if (!stored) {
             return refuse(stored.error());
         }
-        json::Value out;
+        json::Object out;
         out["record"] = to_json(stored.value());
         return answer(200, std::move(out));
     }
@@ -561,7 +563,7 @@ TeamAnswer answer_team_request(const Library& library, std::string_view op,
         for (const std::string& id : missing.value()) {
             out_ids.emplace_back(id);
         }
-        json::Value out;
+        json::Object out;
         out["missing"] = std::move(out_ids);
         return answer(200, std::move(out));
     }
