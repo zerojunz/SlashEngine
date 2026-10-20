@@ -1,0 +1,56 @@
+{
+  "entities": {
+    "best_laps": {
+      "components": {
+        "Button": {
+          "text": "Best laps"
+        },
+        "Control": {}
+      }
+    },
+    "column": {
+      "components": {
+        "BoxContainer": {
+          "vertical": true
+        },
+        "Control": {
+          "children": ["laps", "status", "finish_lap", "best_laps", "trophies"],
+          "custom_minimum_size": [200.0, 0.0]
+        }
+      }
+    },
+    "finish_lap": {
+      "components": {
+        "Button": {
+          "text": "Finish a lap"
+        },
+        "Control": {}
+      }
+    },
+    "laps": {
+      "components": {
+        "Control": {},
+        "Label": {
+          "text": "0 laps"
+        }
+      }
+    },
+    "status": {
+      "components": {
+        "Control": {},
+        "Label": {
+          "text": "Signing in"
+        }
+      }
+    },
+    "trophies": {
+      "components": {
+        "Button": {
+          "text": "Achievements"
+        },
+        "Control": {}
+      }
+    }
+  },
+  "format": 1
+}

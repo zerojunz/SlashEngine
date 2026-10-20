@@ -88,6 +88,58 @@ public final class Reports {
         report(handle, "restore_finished", null, error, 0.0);
     }
 
+    /** The player signed in: their ID on the games service and the name they show. */
+    public void signedIn(String player, String name) {
+        report(handle, "signed_in", player, name, 0.0);
+    }
+
+    /** The player isn't signed in. */
+    public void signInFailed(String error) {
+        report(handle, "sign_in_failed", null, error, 0.0);
+    }
+
+    /**
+     * The player's progress after loadAchievements: a JSON array of objects with "achievement"
+     * (the game's name for it), "steps" and "unlocked". Those left out have none.
+     */
+    public void achievements(String progressJson) {
+        report(handle, "achievements", null, progressJson, 0.0);
+    }
+
+    /** The platform refused an achievement's progress, or loading it with a null achievement. */
+    public void achievementFailed(String achievement, String error) {
+        report(handle, "achievement_failed", achievement, error, 0.0);
+    }
+
+    /** The score is on the leaderboard. */
+    public void scoreSubmitted(String leaderboard, long score) {
+        report(handle, "score_submitted", leaderboard, Long.toString(score), 0.0);
+    }
+
+    /** The leaderboard refused the score. */
+    public void scoreFailed(String leaderboard, String error) {
+        report(handle, "score_failed", leaderboard, error, 0.0);
+    }
+
+    /**
+     * The scores loadScores asked for: a JSON object with "entries", an array of objects with
+     * "rank" (1 for the best), "player" (their ID), "name" and "score", best first; "player",
+     * one such object for the signed-in player or null; and "total", the players with a score.
+     */
+    public void scores(String leaderboard, String scoresJson) {
+        report(handle, "scores", leaderboard, scoresJson, 0.0);
+    }
+
+    /** Loading the scores failed. */
+    public void scoresFailed(String leaderboard, String error) {
+        report(handle, "scores_failed", leaderboard, error, 0.0);
+    }
+
+    /** The player closed the achievements or leaderboards screen. */
+    public void gamesUiClosed() {
+        report(handle, "games_ui_closed", null, null, 0.0);
+    }
+
     private static String quoted(String text) {
         if (text == null) {
             return "\"\"";

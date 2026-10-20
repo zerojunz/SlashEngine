@@ -14,22 +14,24 @@
 namespace slash::services {
 
 #ifdef __ANDROID__
-// A class implementing org.slashengine.services.AdsBackend, AnalyticsBackend or
-// PurchasesBackend, by its Java name: "com.example.hello.HelloAds". It needs a public
+// A class implementing org.slashengine.services.AdsBackend, AnalyticsBackend, PurchasesBackend
+// or GamesBackend, by its Java name: "com.example.hello.HelloAds". It needs a public
 // constructor with no parameters; a class that can't be made logs an error and makes the
 // backend do nothing.
 [[nodiscard]] std::unique_ptr<AdsBackend> java_ads_backend(std::string_view class_name);
 [[nodiscard]] std::unique_ptr<AnalyticsBackend> java_analytics_backend(std::string_view class_name);
 [[nodiscard]] std::unique_ptr<PurchasesBackend> java_purchases_backend(std::string_view class_name);
+[[nodiscard]] std::unique_ptr<GamesBackend> java_games_backend(std::string_view class_name);
 #endif
 
 #ifdef __APPLE__
-// A class conforming to SlashAdsBackend, SlashAnalyticsBackend or SlashPurchasesBackend, by its
-// Objective-C name: "HelloAds". It is made with [[Class alloc] init]; a class that isn't linked
-// logs an error and makes the backend do nothing.
+// A class conforming to SlashAdsBackend, SlashAnalyticsBackend, SlashPurchasesBackend or
+// SlashGamesBackend, by its Objective-C name: "HelloAds". It is made with [[Class alloc] init];
+// a class that isn't linked logs an error and makes the backend do nothing.
 [[nodiscard]] std::unique_ptr<AdsBackend> objc_ads_backend(std::string_view class_name);
 [[nodiscard]] std::unique_ptr<AnalyticsBackend> objc_analytics_backend(std::string_view class_name);
 [[nodiscard]] std::unique_ptr<PurchasesBackend> objc_purchases_backend(std::string_view class_name);
+[[nodiscard]] std::unique_ptr<GamesBackend> objc_games_backend(std::string_view class_name);
 #endif
 
 } // namespace slash::services

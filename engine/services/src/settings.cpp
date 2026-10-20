@@ -3,8 +3,11 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdint>
+#include <map>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace slash::services {
 namespace {
@@ -14,9 +17,12 @@ constexpr std::array<std::string_view, 6> kPlatforms{"android", "ios",   "macos"
 constexpr std::array<std::string_view, 3> kFormats{"banner", "interstitial", "rewarded"};
 constexpr std::array<std::string_view, 3> kTypes{"consumable", "non_consumable", "subscription"};
 constexpr std::array<std::string_view, 3> kConsents{"unknown", "granted", "denied"};
+constexpr std::array<std::string_view, 2> kSortOrders{"high_to_low", "low_to_high"};
 
 constexpr std::size_t kMaxPlacementName = 64;
 constexpr std::size_t kMaxProductId = 100;
+// Play Games' most steps for an incremental achievement.
+constexpr std::int64_t kMaxSteps = 10'000;
 
 json::Value enum_property(std::span<const std::string_view> values, std::string_view description) {
     json::Value schema;
@@ -41,7 +47,7 @@ bool is_letter_or_digit(char c) {
     return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
 }
 
-// Placement names as entity IDs: letters, digits, '_' and '-'.
+// Placement, achievement and leaderboard names as entity IDs: letters, digits, '_' and '-'.
 bool valid_placement_name(std::string_view name) {
     return !name.empty() && name.size() <= kMaxPlacementName &&
            std::ranges::all_of(
@@ -90,6 +96,40 @@ AdFormat parse_format(std::string_view name) {
     return AdFormat::Interstitial;
 }
 
+json::Value platform_ids(std::string_view description) {
+    json::Value ids = object_schema(description);
+    json::Value id;
+    id["type"] = "string";
+    id["minLength"] = 1;
+    ids["additionalProperties"] = std::move(id);
+    return ids;
+}
+
+// Errors for platforms in an object of IDs by platform that no export has.
+void check_platforms(const json::Value& ids, const std::string& path,
+                     std::vector<json::ValidationError>& errors) {
+    for (const auto& [platform, id] : ids.as_object()) {
+        if (std::ranges::find(kPlatforms, platform) != kPlatforms.end()) {
+            continue;
+        }
+        std::string message = "no platform \"" + platform + "\"";
+        if (const std::string_view hint = closest_match(platform, kPlatforms); !hint.empty()) {
+            message += "; did you mean \"" + std::string(hint) + "\"?";
+        }
+        errors.push_back({path + "/ids/" + escape_pointer(platform), message});
+    }
+}
+
+std::map<std::string, std::string, std::less<>> parse_ids(const json::Value& item) {
+    std::map<std::string, std::string, std::less<>> out;
+    if (const json::Value* ids = item.find("ids"); ids != nullptr) {
+        for (const auto& [platform, id] : ids->as_object()) {
+            out.emplace(platform, id.as_string());
+        }
+    }
+    return out;
+}
+
 ProductType parse_type(std::string_view name) {
     if (name == "non_consumable") {
         return ProductType::NonConsumable;
@@ -114,6 +154,10 @@ std::string_view consent_name(Consent consent) {
     return kConsents.at(static_cast<std::size_t>(consent));
 }
 
+std::string_view sort_order_name(SortOrder order) {
+    return kSortOrders.at(static_cast<std::size_t>(order));
+}
+
 json::Value settings_schema() {
     json::Value reward = object_schema("What a watched rewarded ad gives when the ad network "
                                        "doesn't say, e.g. {\"type\": \"coins\", \"amount\": 50}.");
@@ -123,12 +167,8 @@ json::Value settings_schema() {
     reward["properties"]["amount"]["type"] = "number";
     reward["properties"]["amount"]["minimum"] = 0;
 
-    json::Value ids = object_schema("The ad network's ad unit ID on each platform: \"android\", "
-                                    "\"ios\", \"macos\", \"windows\", \"linux\" or \"web\".");
-    json::Value id;
-    id["type"] = "string";
-    id["minLength"] = 1;
-    ids["additionalProperties"] = std::move(id);
+    json::Value ids = platform_ids("The ad network's ad unit ID on each platform: \"android\", "
+                                   "\"ios\", \"macos\", \"windows\", \"linux\" or \"web\".");
 
     json::Value placement = object_schema("An ad placement.");
     placement["required"] = json::Array{"format"};
@@ -178,12 +218,52 @@ json::Value settings_schema() {
     consent["properties"]["analytics"] = std::move(analytics_consent);
     consent["properties"]["personalized_ads"] = std::move(ads_consent);
 
-    json::Value schema =
-        object_schema("Ads, analytics and in-app purchases, run by SDK packages' backends.");
+    json::Value achievement = object_schema("An achievement.");
+    achievement["properties"]["ids"] =
+        platform_ids("Its ID in Google Play Games (\"android\") and Game Center (\"ios\", "
+                     "\"macos\").");
+    achievement["properties"]["steps"]["type"] = "integer";
+    achievement["properties"]["steps"]["minimum"] = 2;
+    achievement["properties"]["steps"]["maximum"] = kMaxSteps;
+    achievement["properties"]["steps"]["description"] =
+        "Steps that unlock an incremental achievement; leave it out for one unlocked at once.";
+
+    json::Value achievements;
+    achievements["type"] = "object";
+    achievements["description"] =
+        "Achievements by the name the game unlocks them by: letters, digits, '_' and '-'.";
+    achievements["additionalProperties"] = std::move(achievement);
+
+    json::Value leaderboard = object_schema("A leaderboard.");
+    leaderboard["properties"]["ids"] =
+        platform_ids("Its ID in Google Play Games (\"android\") and Game Center (\"ios\", "
+                     "\"macos\").");
+    leaderboard["properties"]["sort_order"] =
+        enum_property(kSortOrders, "Which scores rank first, as set up in Play Console and App "
+                                   "Store Connect. Default: high_to_low.");
+
+    json::Value leaderboards;
+    leaderboards["type"] = "object";
+    leaderboards["description"] =
+        "Leaderboards by the name the game submits scores by: letters, digits, '_' and '-'.";
+    leaderboards["additionalProperties"] = std::move(leaderboard);
+
+    json::Value games = object_schema("Achievements, leaderboards and sign-in, as Unity's Social "
+                                      "API over Google Play Games and Game Center.");
+    games["properties"]["achievements"] = std::move(achievements);
+    games["properties"]["leaderboards"] = std::move(leaderboards);
+    games["properties"]["sign_in_at_start"]["type"] = "boolean";
+    games["properties"]["sign_in_at_start"]["default"] = true;
+    games["properties"]["sign_in_at_start"]["description"] =
+        "Sign the player in when the game starts, as the platforms do.";
+
+    json::Value schema = object_schema("Ads, analytics, in-app purchases, achievements and "
+                                       "leaderboards, run by SDK packages' backends.");
     schema["properties"]["ads"] = std::move(ads);
     schema["properties"]["purchases"] = std::move(purchases);
     schema["properties"]["analytics"] = std::move(analytics);
     schema["properties"]["consent"] = std::move(consent);
+    schema["properties"]["games"] = std::move(games);
     return schema;
 }
 
@@ -206,17 +286,7 @@ std::vector<json::ValidationError> validate_settings(const json::Value& settings
                                         "'-', at most 64 of them"});
             }
             if (const json::Value* ids = placement.find("ids"); ids != nullptr) {
-                for (const auto& [platform, id] : ids->as_object()) {
-                    if (std::ranges::find(kPlatforms, platform) != kPlatforms.end()) {
-                        continue;
-                    }
-                    std::string message = "no platform \"" + platform + "\"";
-                    if (const std::string_view hint = closest_match(platform, kPlatforms);
-                        !hint.empty()) {
-                        message += "; did you mean \"" + std::string(hint) + "\"?";
-                    }
-                    errors.push_back({path + "/ids/" + escape_pointer(platform), message});
-                }
+                check_platforms(*ids, path, errors);
             }
             if (placement.find("reward") != nullptr &&
                 placement.find("format")->as_string() != "rewarded") {
@@ -236,6 +306,26 @@ std::vector<json::ValidationError> validate_settings(const json::Value& settings
             }
         }
     }
+    if (const json::Value* games = settings.find("games"); games != nullptr) {
+        for (const std::string_view kind : {"achievements", "leaderboards"}) {
+            const json::Value* named = games->find(kind);
+            if (named == nullptr) {
+                continue;
+            }
+            for (const auto& [name, item] : named->as_object()) {
+                const std::string path =
+                    std::string(at) + "/games/" + std::string(kind) + "/" + escape_pointer(name);
+                if (!valid_placement_name(name)) {
+                    errors.push_back(
+                        {path, "expected a name of letters, digits, '_' and '-', at most 64 of "
+                               "them"});
+                }
+                if (const json::Value* ids = item.find("ids"); ids != nullptr) {
+                    check_platforms(*ids, path, errors);
+                }
+            }
+        }
+    }
     return errors;
 }
 
@@ -252,11 +342,7 @@ Settings parse_settings(const json::Value& settings) {
             placement.name = name;
             const std::string& format = item.find("format")->as_string();
             placement.format = parse_format(format);
-            if (const json::Value* ids = item.find("ids"); ids != nullptr) {
-                for (const auto& [platform, id] : ids->as_object()) {
-                    placement.ids.emplace(platform, id.as_string());
-                }
-            }
+            placement.ids = parse_ids(item);
             if (const json::Value* reward = item.find("reward"); reward != nullptr) {
                 placement.reward = {.type = reward->find("type")->as_string(),
                                     .amount = reward->find("amount")->as_double()};
@@ -290,6 +376,36 @@ Settings parse_settings(const json::Value& settings) {
         if (const json::Value* ads_consent = consent->find("personalized_ads");
             ads_consent != nullptr) {
             out.consent.personalized_ads = parse_consent(ads_consent->as_string());
+        }
+    }
+    if (const json::Value* games = settings.find("games"); games != nullptr) {
+        if (const json::Value* achievements = games->find("achievements");
+            achievements != nullptr) {
+            for (const auto& [name, item] : achievements->as_object()) {
+                Achievement achievement;
+                achievement.name = name;
+                achievement.ids = parse_ids(item);
+                if (const json::Value* steps = item.find("steps"); steps != nullptr) {
+                    achievement.steps = static_cast<int>(steps->as_int());
+                }
+                out.achievements.push_back(std::move(achievement));
+            }
+        }
+        if (const json::Value* leaderboards = games->find("leaderboards");
+            leaderboards != nullptr) {
+            for (const auto& [name, item] : leaderboards->as_object()) {
+                Leaderboard leaderboard;
+                leaderboard.name = name;
+                leaderboard.ids = parse_ids(item);
+                if (const json::Value* order = item.find("sort_order");
+                    order != nullptr && order->as_string() == "low_to_high") {
+                    leaderboard.sort_order = SortOrder::LowToHigh;
+                }
+                out.leaderboards.push_back(std::move(leaderboard));
+            }
+        }
+        if (const json::Value* at_start = games->find("sign_in_at_start"); at_start != nullptr) {
+            out.sign_in_at_start = at_start->as_bool();
         }
     }
     return out;

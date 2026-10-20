@@ -53,7 +53,7 @@ checks it.
 | `audio.input_usage_description` | No | "*name* listens to the microphone." | Why the game records, which macOS and iOS show when they ask the player for the microphone. App Store review expects it to say what the game does with it |
 | `gameplay.sources` | No | | The game's own [C++ code](#gameplay-code): folders and files relative to the project, at least one |
 | `sdks` | No | | [SDK packages](sdk-format.md) exports link: folders relative to the project, each with an `sdk.json`. `slash-cli sdk add` adds one |
-| `services` | No | | [Ad placements, products, analytics and consent](#services) |
+| `services` | No | | [Ad placements, products, analytics, consent, achievements and leaderboards](#services) |
 | `input` | No | Godot's `ui_*` actions | [Input actions](#input-actions) by name, each with the events that press it |
 | `input_devices.pointing.emulate_mouse_from_touch` | No | `true` | A touch also clicks the left mouse button and dragging it moves the mouse, so mouse code works on phones, as Godot's setting of the same name |
 | `input_devices.pointing.emulate_touch_from_mouse` | No | `false` | A left click also touches the screen and dragging with it drags a finger, so touch code can be tried with a mouse |
@@ -243,8 +243,8 @@ they are plugged in, numbered from 0. A window losing focus releases everything 
 
 ## Services
 
-`services` names the ad placements and products a game's code shows and sells by name, through
-[the services API](services.md):
+`services` names the ad placements, products, achievements and leaderboards a game's code shows,
+sells, unlocks and submits to by name, through [the services API](services.md):
 
 ```json
 "services": {
@@ -260,6 +260,15 @@ they are plugged in, numbered from 0. A window losing focus releases everything 
   },
   "analytics": {"enabled": true},
   "consent": {"analytics": "unknown", "personalized_ads": "unknown"},
+  "games": {
+    "achievements": {
+      "first_win": {"ids": {"android": "CgkIexample", "ios": "first_win"}},
+      "ten_wins": {"steps": 10}
+    },
+    "leaderboards": {
+      "best_time": {"ids": {"ios": "best_time"}, "sort_order": "low_to_high"}
+    }
+  },
   "purchases": {
     "products": {
       "coins_100": {"type": "consumable"},
@@ -281,9 +290,16 @@ they are plugged in, numbered from 0. A window losing focus releases everything 
 | `analytics.enabled` | `true` | Send analytics events to the backends while the player consents. Off, events are only kept |
 | `consent.analytics` | `unknown` | The player's analytics consent until the game sets it: events are sent only when `granted` |
 | `consent.personalized_ads` | `unknown` | Ads are personalized only when `granted` |
+| `games.achievements` | | Achievements by name (letters, digits, `_` and `-`) |
+| `games.achievements.*.ids` | | Its ID in Google Play Games (`android`) and Game Center (`ios`, `macos`). The games backend gets the one for the platform the game runs on |
+| `games.achievements.*.steps` | | Steps that unlock an incremental achievement, 2 to 10000. Leave it out for one unlocked at once |
+| `games.leaderboards` | | Leaderboards by name (letters, digits, `_` and `-`) |
+| `games.leaderboards.*.ids` | | Its ID on each platform, as for achievements |
+| `games.leaderboards.*.sort_order` | `high_to_low` | Which scores rank first: `high_to_low` or `low_to_high` (times), as set up in Play Console and App Store Connect |
+| `games.sign_in_at_start` | `true` | Sign the player in without asking when the game starts, as the platforms do |
 
-`project validate` names a misspelled platform with the closest one. Ad unit IDs, product IDs
-and placement names are not secrets; API keys an SDK needs are [environment
+`project validate` names a misspelled platform with the closest one. Ad unit IDs, product IDs,
+achievement and leaderboard IDs and placement names are not secrets; API keys an SDK needs are [environment
 variables](sdk-format.md).
 
 ## Export presets

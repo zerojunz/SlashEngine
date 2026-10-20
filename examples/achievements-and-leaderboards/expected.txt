@@ -1,0 +1,44 @@
+scene.open {"path":"main.scene.json"}
+{"entities":6,"path":"main.scene.json"}
+events.subscribe {"kinds":["achievement_unlocked","scores_loaded"]}
+{"subscription":"events_1"}
+step {"ticks":2}
+{"tick":2,"ticks":2}
+services.state {"events":0}
+{"ads":{},"analytics":{"enabled":true,"events":[],"logged":0},"backends":{"ads":"test","analytics":["test"],"games":"test","purchases":"test"},"consent":{"analytics":"unknown","personalized_ads":"unknown"},"games":{"achievements":{"first_finish":{"unlocked":false},"ten_laps":{"of":10,"steps":0,"unlocked":false}},"leaderboards":{"best_lap":{}},"player":{"id":"test-player","name":"Player"},"sign_in":"signed_in"},"owned":[],"pending":[],"products":{},"products_status":"none","tick":1,"unfinished":[]}
+ui.press {"id":"finish_lap"}
+{"tick":2}
+step {"ticks":2}
+{"tick":4,"ticks":2}
+entity.get {"components":["Label"],"id":"status"}
+{"components":{"Label":{"autowrap_mode":"off","clip_text":false,"ellipsis_char":"…","horizontal_alignment":"left","language":"","lines_skipped":0,"max_lines_visible":-1,"text":"Unlocked first_finish","text_direction":"auto","text_overrun_behavior":"no_trimming","uppercase":false,"vertical_alignment":"top","visible_characters":-1,"visible_characters_behavior":"chars_before_shaping"}},"id":"status"}
+services.test {"increment":{"achievement":"ten_laps","steps":8},"scores":{"best_lap":[{"name":"Ana","score":61000},{"name":"Bo","score":66500}]}}
+{"test":{"accept_sign_in":true,"error":"the payment was declined","fill":true,"games_ticks":1,"load_ticks":1,"outcome":"purchased","player":"Player","prices":{},"purchase_ticks":1,"scores":{"best_lap":[{"name":"Ana","score":61000},{"name":"Bo","score":66500}]},"show_ticks":1,"watch_to_end":true},"tick":4}
+ui.press {"id":"finish_lap"}
+{"tick":4}
+step {"ticks":2}
+{"tick":6,"ticks":2}
+entity.get {"components":["Label"],"id":"status"}
+{"components":{"Label":{"autowrap_mode":"off","clip_text":false,"ellipsis_char":"…","horizontal_alignment":"left","language":"","lines_skipped":0,"max_lines_visible":-1,"text":"Unlocked ten_laps","text_direction":"auto","text_overrun_behavior":"no_trimming","uppercase":false,"vertical_alignment":"top","visible_characters":-1,"visible_characters_behavior":"chars_before_shaping"}},"id":"status"}
+ui.press {"id":"best_laps"}
+{"tick":6}
+step {"ticks":2}
+{"tick":8,"ticks":2}
+entity.get {"components":["Label"],"id":"status"}
+{"components":{"Label":{"autowrap_mode":"off","clip_text":false,"ellipsis_char":"…","horizontal_alignment":"left","language":"","lines_skipped":0,"max_lines_visible":-1,"text":"1. Ana 61.0 s, 2. Player 62.5 s, 3. Bo 66.5 s","text_direction":"auto","text_overrun_behavior":"no_trimming","uppercase":false,"vertical_alignment":"top","visible_characters":-1,"visible_characters_behavior":"chars_before_shaping"}},"id":"status"}
+events.read {"subscription":"events_1"}
+{"dropped":0,"events":[{"id":"first_finish","kind":"achievement_unlocked","seq":1,"tick":3},{"id":"ten_laps","kind":"achievement_unlocked","seq":2,"tick":5},{"data":{"collection":"global","entries":[{"name":"Ana","player":"rival-1","rank":1,"score":61000},{"name":"Player","player":"test-player","rank":2,"score":62500},{"name":"Bo","player":"rival-2","rank":3,"score":66500}],"player":{"name":"Player","player":"test-player","rank":2,"score":62500},"time":"all_time","total":3},"id":"best_lap","kind":"scores_loaded","seq":3,"tick":7}],"more":false}
+ui.press {"id":"trophies"}
+{"tick":8}
+step {}
+{"tick":9,"ticks":1}
+services.state {"events":0}
+{"ads":{},"analytics":{"enabled":true,"events":[],"logged":0},"backends":{"ads":"test","analytics":["test"],"games":"test","purchases":"test"},"consent":{"analytics":"unknown","personalized_ads":"unknown"},"games":{"achievements":{"first_finish":{"unlocked":true},"ten_laps":{"of":10,"steps":10,"unlocked":true}},"leaderboards":{"best_lap":{"best":62500}},"player":{"id":"test-player","name":"Player"},"sign_in":"signed_in","ui_showing":true},"owned":[],"pending":[],"products":{},"products_status":"none","tick":8,"unfinished":[]}
+step {"ticks":2}
+{"tick":11,"ticks":2}
+services.state {"events":0}
+{"ads":{},"analytics":{"enabled":true,"events":[],"logged":0},"backends":{"ads":"test","analytics":["test"],"games":"test","purchases":"test"},"consent":{"analytics":"unknown","personalized_ads":"unknown"},"games":{"achievements":{"first_finish":{"unlocked":true},"ten_laps":{"of":10,"steps":10,"unlocked":true}},"leaderboards":{"best_lap":{"best":62500}},"player":{"id":"test-player","name":"Player"},"sign_in":"signed_in"},"owned":[],"pending":[],"products":{},"products_status":"none","tick":10,"unfinished":[]}
+services.test {"unlock":"first_finsh"}
+"/unlock: no achievement \"first_finsh\"; did you mean \"first_finish\"?"
+services.test {"increment":{"achievement":"first_finish"}}
+"/increment: \"first_finish\" unlocks at once, not in steps; unlock it instead"
