@@ -104,4 +104,8 @@ private:
     bool active_ = false;
 };
 
+// The platform the game was built for, as export presets name it: "macos", "ios", "android",
+// "windows", "linux" or "web".
+[[nodiscard]] std::string_view os_name();
+
 } // namespace slash::platform

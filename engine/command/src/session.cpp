@@ -11,6 +11,7 @@
 #include "slash/input/input.hpp"
 #include "slash/physics2d/physics2d.hpp"
 #include "slash/platform/file.hpp"
+#include "slash/services/services.hpp"
 #include "slash/ui/ui.hpp"
 #include "slash/world/scene.hpp"
 #include "slash/world/tree2d.hpp"
@@ -88,6 +89,15 @@ audio::Settings audio_settings(const json::Value& project) {
     }
     out.history_seconds = kAudioHistorySeconds;
     return out;
+}
+
+// The project's ad placements, products and consent, or none if they don't validate.
+services::Settings services_settings(const json::Value& project) {
+    const json::Value* settings = project.is_object() ? project.find("services") : nullptr;
+    if (settings == nullptr || !services::validate_settings(*settings, "").empty()) {
+        return {};
+    }
+    return services::parse_settings(*settings);
 }
 
 // The viewport controls are laid out in: the project's window size, or the default.
@@ -176,6 +186,9 @@ Session::Session(const world::ComponentRegistry& component_registry,
     physics2d::install(world_, physics_settings(project));
     input::install(world_, input_map(project), input_settings(project));
     audio::install(world_, assets_, audio_settings(project));
+    // Ads load and purchases complete as services.test says, with no store account.
+    services::install(world_, services_settings(project));
+    services::use_test_backend(world_);
     if (options_.capture_logs) {
         log::set_sink([this](log::Level /*level*/, std::string_view line) {
             std::fwrite(line.data(), 1, line.size(), stderr);
@@ -292,6 +305,7 @@ Reply Session::call_command(std::string_view name, const json::Value& params) {
     const input::Snapshot input_before = input::save(world_);
     const ui::Snapshot ui_before = ui::save(world_);
     const audio::Snapshot audio_before = audio::save(world_);
+    const services::Snapshot services_before = services::save(world_);
     const std::string path_before = scene_path_;
     const world::World::Counters counters_before = world_.counters();
     edited_ = false;
@@ -328,6 +342,7 @@ Reply Session::call_command(std::string_view name, const json::Value& params) {
         input::restore(world_, input_before);
         ui::restore(world_, ui_before);
         audio::restore(world_, audio_before);
+        services::restore(world_, services_before);
         scene_path_ = path_before;
         world_.set_counters(counters_before);
         if (!reply.ok) {
@@ -732,6 +747,7 @@ void Session::poll_project() {
     physics2d::set_settings(world_, physics_settings(project));
     input::install(world_, input_map(project), input_settings(project));
     audio::set_settings(world_, audio_settings(project));
+    services::install(world_, services_settings(project));
 }
 
 std::optional<gameplay::Load> Session::poll_gameplay() {
