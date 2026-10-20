@@ -143,6 +143,9 @@ canvas::Settings canvas_settings(const json::Value& project) {
         if (filter != nullptr && filter->is_string() && filter->as_string() == "nearest") {
             settings.texture_filter = render::Filter::Nearest;
         }
+        if (const json::Value* scaling = rendering->find("scaling"); scaling != nullptr) {
+            settings.scaling = render::scaling_from_json(*scaling);
+        }
     }
     const json::Value* tick_hz = project.find("tick_hz");
     if (tick_hz != nullptr && tick_hz->is_number() && tick_hz->as_double() > 0.0) {

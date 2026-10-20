@@ -530,8 +530,10 @@ Shaders are HLSL in `engine/render/shaders/`. Their SPIR-V, MSL and GLSL ES are 
 `engine/render/src/*_shaders.hpp`, so only someone changing a shader needs glslang and
 SPIRV-Cross (`glslang-tools` and `spirv-cross` on Debian and Ubuntu, `glslang` and `spirv-cross`
 in Homebrew; games' own shaders compile with the copies built as libraries from
-`cmake/dependencies.json`). After editing one, regenerate and commit the header; the
-`shaders_up_to_date_*` tests fail if the two differ:
+`cmake/dependencies.json`). The FSR shaders are written as games' shaders are, and
+`slash-shader-header` (`tools/shader_compiler`) compiles them into `fsr_shaders.hpp`. After
+editing one, regenerate and commit the header; the `shaders_up_to_date_*` tests and the FSR
+header's test in `tests/test_upscaler.cpp` fail if the two differ:
 
 ```bash
 cmake --build --preset dev --target shaders
@@ -548,6 +550,18 @@ V-Sync and the frame cap follow Godot: `window.vsync_mode` and `max_fps` in `pro
 (`display.list` and `perf.stats` too; `engine/command/src/live.cpp`). `platform::Loop` paces
 windowed frames to the cap, never headless ones, and `Loop::interpolation()` gives the fraction
 of the next tick for drawing between ticks.
+
+The render scale follows Godot's `scaling_3d` settings, applied to the 2D world:
+`rendering.scaling` in `project.json` (`mode`, `scale`, `fsr_sharpness`, `upscaler`) and
+`display.set`'s `scaling`. `CanvasRenderer` draws the world, with the canvas layers below it,
+into an upscaler's input at the render size, scales it over the screen, then draws the world's
+controls and the layers above at full size (`scaled()`; `frame.capture` returns `upscaler` and
+`render_size`). `engine/render/include/slash/render/upscaler.hpp` is the interface:
+`render::Upscaler`, built-in `bilinear` and `fsr` (AMD's FSR 1, ported in
+`engine/render/shaders/fsr_easu.hlsl` and `fsr_rcas.hlsl` and checked against a C++ port of
+`ffx_fsr1.h` on every device), and `add_upscaler` for a game's or an SDK package's own, which
+refuses temporal ones until the 3D renderer exists. `examples/render-scale` changes it while a
+game runs.
 
 ## Keyframe animation
 

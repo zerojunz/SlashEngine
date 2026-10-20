@@ -11,7 +11,8 @@ add_library(slash_render
     src/shader.cpp
     src/shader_vm.cpp
     src/software_device.cpp
-    src/uniforms.cpp)
+    src/uniforms.cpp
+    src/upscaler.cpp)
 add_library(slash::render ALIAS slash_render)
 
 target_include_directories(slash_render PUBLIC include)
@@ -22,7 +23,7 @@ slash_engine_target(slash_render)
 # The software device draws the same pixels on every platform: no fused multiply-adds, which
 # arm64 compilers would otherwise emit and x86-64 ones not.
 set_source_files_properties(src/device.cpp src/particles.cpp src/shader_vm.cpp
-    src/software_device.cpp PROPERTIES
+    src/software_device.cpp src/upscaler.cpp PROPERTIES
     COMPILE_OPTIONS "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>")
 
 # Regenerates src/*_shaders.hpp from shaders/*.hlsl. The headers are committed, so only someone

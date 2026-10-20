@@ -38,11 +38,13 @@ file, as its license asks:
 | Name | License | Used for | Where |
 | --- | --- | --- | --- |
 | smbPitchShift and smbFft, by Stephan M. Bernsee (1999-2015), as Godot uses them | Wide Open License: use, copy and change it if the notice stays in the source | The `pitch_shift` and `spectrum_analyzer` audio effects | `engine/audio/src/effects.cpp` |
+| [FidelityFX Super Resolution 1](https://github.com/GPUOpen-Effects/FidelityFX-FSR) (`ffx_fsr1.h`), by Advanced Micro Devices (2021), as Godot uses it | MIT | The `fsr` render scale mode: EASU and RCAS | `engine/render/shaders/fsr_easu.hlsl` and `fsr_rcas.hlsl`, compiled into `engine/render/src/fsr_shaders.hpp` |
 
 The renderer's own shaders are compiled ahead of time with two command-line tools whose output is
-committed in `engine/render/src/*_shaders.hpp`, so building the engine needs neither. (A game's
-own shaders are compiled by slash-cli, slash-mcp and exports with the same projects' libraries,
-listed above; games get the compiled code, never the compilers.)
+committed in `engine/render/src/*_shaders.hpp`, so building the engine needs neither;
+`fsr_shaders.hpp` is written by `slash-shader-header`, built on the same projects' libraries. (A
+game's own shaders are compiled by slash-cli, slash-mcp and exports with those libraries, listed
+above; games get the compiled code, never the compilers.)
 
 | Name | License | Used for |
 | --- | --- | --- |

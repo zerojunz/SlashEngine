@@ -1,0 +1,19 @@
+{
+  "format": 1,
+  "main_scene": "main.scene.json",
+  "name": "Render Scale",
+  "rendering": {
+    "clear_color": [0.0, 0.0, 0.0, 1.0],
+    "scaling": {
+      "fsr_sharpness": 0.2,
+      "mode": "fsr",
+      "scale": 0.5
+    },
+    "texture_filter": "nearest"
+  },
+  "version": "1.0.0",
+  "window": {
+    "height": 64,
+    "width": 96
+  }
+}

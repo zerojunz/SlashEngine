@@ -32,6 +32,7 @@ add_executable(slash_tests
     test_platform.cpp
     test_reflect.cpp
     test_render.cpp
+    test_render_scale.cpp
     test_replay.cpp
     test_result.cpp
     test_rpc.cpp
@@ -55,6 +56,7 @@ add_executable(slash_tests
     test_ui_drag.cpp
     test_ui_scroll.cpp
     test_unity_build.cpp
+    test_upscaler.cpp
     test_world.cpp)
 target_link_libraries(slash_tests PRIVATE
     slash::animation slash::asset slash::audio slash::canvas slash::command slash::core slash::debug slash::exporter slash::importer slash::input slash::physics2d
