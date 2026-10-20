@@ -80,7 +80,7 @@ as `entity.get`, reject it as an unknown param.
 | Observe | [`events.subscribe`](#eventssubscribe), [`events.read`](#eventsread), [`events.unsubscribe`](#eventsunsubscribe), [`log.tail`](#logtail), [`frame.capture`](#framecapture), [`frame.summary`](#framesummary), [`canvas.convert`](#canvasconvert) |
 | Display | [`display.list`](#displaylist), [`display.set`](#displayset), [`perf.stats`](#perfstats), [`debug.overlay`](#debugoverlay) |
 | Import | [`project.import`](#projectimport) |
-| Export | [`export.run`](#exportrun), [`sdk.check`](#sdkcheck), [`sdk.add`](#sdkadd) |
+| Export | [`export.run`](#exportrun), [`sdk.check`](#sdkcheck), [`sdk.add`](#sdkadd), [`sdk.lock`](#sdklock) |
 | Gameplay code | [`gameplay.build`](#gameplaybuild) |
 
 
@@ -2769,7 +2769,10 @@ Needs: `read`, `filesystem`; `fetch` also needs `build` (`-32003` without it, wi
 
 Problems don't fail the command: `ok` says whether there were any. Each names the package's
 folder in `sdk` (or `export_presets.json` for a preset's `sdks`), the JSON Pointer into its file
-in `path` and the `message`. A package's downloads not fetched yet are listed in its `unchecked`.
+in `path` and the `message`. A package's downloads not fetched yet are listed in its `unchecked`,
+with `maven` when files its `sdk.lock.json` pins aren't fetched yet; its `maven` is the number
+of files the lock pins. A package with Maven dependencies and no up-to-date lock is a problem at
+`/platforms/android/maven`.
 
 ### sdk.add
 
@@ -2800,7 +2803,35 @@ undo; remove the folder from `sdks` to take a package out.
 fails with `-32003`, a missing folder with `-32001`, a folder with no `sdk.json` or an invalid
 one with `-32002`, a package whose
 folder under `sdks/` exists with `-32005`, and a failed clone or download with `-32004`;
-`data.path` is `/source`.
+`data.path` is `/source`. A package with Maven dependencies and no `sdk.lock.json` adds
+`"needs_lock": true`: run [`sdk.lock`](#sdklock) next.
+
+### sdk.lock
+
+Resolves the [Maven dependencies](sdk-format.md#maven-dependencies) of the project's SDK packages
+(`maven` in their `android` section) as Gradle resolves them, and pins every file of each graph
+by SHA-256 in the package's `sdk.lock.json`, which Android exports need. Downloads POMs and files
+into `maven/` in `SLASH_SDKS_DIR`, or `~/.slash/sdks`.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `sdk` | string | every package with Maven dependencies | Lock only this package |
+| `dry_run` | boolean | `false` | Resolve and return what would be written; change nothing |
+
+Needs: `read`, `filesystem`, `build`. It changes no scene, so there is nothing to undo.
+
+```json
+{"sdk": "ads"}
+```
+
+```json
+{"sdks":[{"artifacts":14,"changed":true,"lock":"sdks/ads/sdk.lock.json","name":"ads"}]}
+```
+
+`artifacts` is the number of files pinned and `changed` whether the lock differs from the one
+before. A package name that isn't in `project.json`'s `sdks` fails with `-32001` and a "did you
+mean"; a module no repository has, or a range none of its versions meets, fails with the module's
+name. `data.path` is `/sdk` when `sdk` was given.
 
 ## Gameplay code
 

@@ -2,15 +2,18 @@
 # command. Used by slash-cli and slash-mcp; games never link it.
 add_library(slash_exporter
     src/android.cpp
+    src/android_library.cpp
     src/commands.cpp
     src/cross.cpp
     src/export.cpp
     src/gameplay.cpp
     src/ios.cpp
+    src/maven.cpp
     src/presets.cpp
     src/sdk.cpp
     src/steps.cpp
-    src/toolchains.cpp)
+    src/toolchains.cpp
+    src/xml.cpp)
 add_library(slash::exporter ALIAS slash_exporter)
 
 target_include_directories(slash_exporter PUBLIC include)

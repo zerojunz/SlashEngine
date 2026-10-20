@@ -3,6 +3,7 @@
 #include "slash/core/json.hpp"
 #include "slash/core/json_schema.hpp"
 #include "slash/core/result.hpp"
+#include "slash/exporter/maven.hpp"
 #include "slash/exporter/presets.hpp"
 
 #include <filesystem>
@@ -42,6 +43,8 @@
 namespace slash::exporter {
 
 inline constexpr std::string_view kSdkFile = "sdk.json";
+// Beside sdk.json: the package's Maven dependencies, resolved and pinned (see lock_sdks).
+inline constexpr std::string_view kSdkLockFile = "sdk.lock.json";
 inline constexpr std::int64_t kSdkFormat = 1;
 // Where downloads are kept unless SLASH_SDKS_DIR says otherwise: ~/.slash/sdks.
 inline constexpr std::string_view kSdksDirVariable = "SLASH_SDKS_DIR";
@@ -85,6 +88,11 @@ struct SdkTarget {
     std::vector<std::string> manifest;    // XML elements added to <manifest>
     std::vector<std::string> application; // XML elements added to <application>
     std::vector<std::string> jars;        // Java libraries compiled against and packaged
+    // .aar files and Android library folders, added to the APK with their manifests, resources,
+    // assets and native libraries.
+    std::vector<std::string> aars;
+    std::vector<std::string> maven;              // coordinates, e.g. "androidx.core:core:1.13.1"
+    std::vector<std::string> maven_repositories; // "" means kDefaultMavenRepositories
 };
 
 struct Sdk {
@@ -176,6 +184,7 @@ struct ResolvedSdk {
     std::vector<std::string> manifest;
     std::vector<std::string> application;
     std::vector<std::string> jars;
+    std::vector<std::string> aars;
     std::string license_file; // absolute; "" for none
 };
 
@@ -240,6 +249,24 @@ struct AddSdkOptions {
 // else copied into sdks/<name>. Returns {"name", "version", "license", "folder", "copied",
 // "platforms", "keys"}.
 [[nodiscard]] Result<json::Value> add_sdk(const AddSdkOptions& options);
+
+// Where Maven files are kept: maven/ in sdks_dir().
+[[nodiscard]] std::filesystem::path maven_cache();
+
+// The package's sdk.lock.json, checked against the Maven dependencies its Android section lists
+// now. The error says to run slash-cli sdk lock when the file is missing or out of date.
+[[nodiscard]] Result<MavenLock> load_maven_lock(const Sdk& sdk);
+
+struct LockSdksOptions {
+    std::filesystem::path project;
+    std::string name; // one package by name; "" for every package with Maven dependencies
+    bool dry_run = false;
+    std::string log_path;
+};
+
+// Resolves each package's Maven dependencies and writes its sdk.lock.json, pinning every file of
+// the graph by SHA-256. Returns {"sdks": [{"name", "lock", "artifacts", "changed"}]}.
+[[nodiscard]] Result<json::Value> lock_sdks(const LockSdksOptions& options);
 
 // Whether a library file is shared (ELF shared object, Mach-O dylib, PE DLL) rather than a static
 // archive; for .framework folders, whether their binary is.

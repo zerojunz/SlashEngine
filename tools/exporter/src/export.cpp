@@ -14,6 +14,8 @@
 #include "slash/core/log.hpp"
 #include "slash/core/text.hpp"
 #include "slash/exporter/android.hpp"
+#include "slash/exporter/android_library.hpp"
+#include "slash/exporter/maven.hpp"
 #include "slash/exporter/presets.hpp"
 #include "slash/exporter/sdk.hpp"
 #include "slash/exporter/toolchains.hpp"
@@ -1054,6 +1056,50 @@ ExportResult export_game(const ExportOptions& options) {
             }
         }
     }
+    // Android libraries from the packages: their own .aar files and folders first, then their
+    // Maven dependencies as their sdk.lock.json files pin them, joined into one graph.
+    std::vector<AndroidLibrary> android_libraries;
+    if (android) {
+        std::vector<std::vector<MavenArtifact>> graphs;
+        for (const Sdk* sdk : linked) {
+            const auto target = sdk->platforms.find("android");
+            if (target == sdk->platforms.end() || target->second.maven.empty()) {
+                continue;
+            }
+            auto lock = load_maven_lock(*sdk);
+            if (!lock) {
+                json::Value details;
+                details["sdk"] = sdk->location;
+                details["path"] = "/platforms/android/maven";
+                return fail(
+                    {"sdks", sdk->location + ": " + lock.error().message, std::move(details)},
+                    log_path);
+            }
+            graphs.push_back(std::move(lock).value().artifacts);
+        }
+        std::vector<SdkProblem> problems;
+        for (const Sdk* sdk : linked) {
+            // No {arch} or {build} in aars, so any ABI resolves them.
+            const ResolvedSdk resolved = resolve_sdk(*sdk, "android", preset.android.abis.front(),
+                                                     sdk_places[sdk->name], true, problems);
+            for (const std::string& path : resolved.aars) {
+                android_libraries.push_back({sdk->name + ": " + path, path});
+            }
+        }
+        if (!problems.empty()) {
+            return fail(sdk_failure("sdks", problems), log_path);
+        }
+        for (const MavenArtifact& artifact : merge_maven_artifacts(graphs)) {
+            auto file = fetch_maven_artifact(artifact, maven_cache(), log_path.string());
+            if (!file) {
+                json::Value details;
+                details["artifact"] = artifact.id;
+                return fail({"sdks", artifact.id + ": " + file.error().message, std::move(details)},
+                            log_path);
+            }
+            android_libraries.push_back({artifact.id, file.value()});
+        }
+    }
 
     const std::string config = debug ? "Debug" : "Release";
     const fs::path engine_dir = engine.value();
@@ -1271,7 +1317,17 @@ ExportResult export_game(const ExportOptions& options) {
                 return fail(failure, log_path);
             }
         }
-        if (!detail::package_apk(*android, android_key, apk_info, tree, work,
+        AndroidResources resources;
+        if (!android_libraries.empty()) {
+            auto added =
+                add_android_libraries(android_libraries, tree, work / "aars", preset.android.abis,
+                                      apk_info.package, kAndroidMinSdk, log_path.string());
+            if (!added) {
+                return fail({"sdks", added.error().message, {}}, log_path);
+            }
+            resources = std::move(added).value();
+        }
+        if (!detail::package_apk(*android, android_key, apk_info, tree, resources, work,
                                  package / (binary + ".apk"),
                                  detail::android_process(*android, process), failure)) {
             return fail(failure, log_path);

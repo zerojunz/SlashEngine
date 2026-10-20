@@ -136,6 +136,25 @@ Reply sdk_add(command::Session& session, const json::Value& params) {
     return Reply::success(std::move(added).value());
 }
 
+Reply sdk_lock(command::Session& session, const json::Value& params) {
+    LockSdksOptions options;
+    options.project = session.options().project_root;
+    if (const json::Value* name = params.find("sdk"); name != nullptr) {
+        options.name = name->as_string();
+    }
+    const json::Value* dry_run = params.find("dry_run");
+    options.dry_run = (dry_run != nullptr && dry_run->as_bool()) || !session.options().write_files;
+    auto locked = lock_sdks(options);
+    if (!locked) {
+        Reply reply = Reply::failure(locked.error());
+        if (!options.name.empty()) {
+            reply.data["path"] = "/sdk";
+        }
+        return reply;
+    }
+    return Reply::success(std::move(locked).value());
+}
+
 } // namespace
 
 void register_export_commands(command::Registry& registry) {
@@ -220,6 +239,25 @@ void register_export_commands(command::Registry& registry) {
         .effect = command::Effect::Read,
         .params = std::move(add_params),
         .handler = sdk_add,
+    });
+
+    json::Value lock_params;
+    lock_params["type"] = "object";
+    lock_params["additionalProperties"] = false;
+    lock_params["properties"]["sdk"] =
+        property("string", "Lock only this package; default every package with Maven "
+                           "dependencies.");
+    lock_params["properties"]["dry_run"] =
+        property("boolean", "Resolve and return what would be written; change nothing.");
+    registry.add({
+        .name = "sdk.lock",
+        .description = "Resolves SDK packages' Maven dependencies (android maven in sdk.json) and "
+                       "pins every file by SHA-256 in each package's sdk.lock.json, which "
+                       "Android exports need. Downloads POMs and files.",
+        .capabilities = {Capability::Read, Capability::Filesystem, Capability::Build},
+        .effect = command::Effect::Read,
+        .params = std::move(lock_params),
+        .handler = sdk_lock,
     });
 }
 

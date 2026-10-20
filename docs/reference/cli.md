@@ -586,6 +586,7 @@ was wrong, and exits with 2:
 ```bash
 slash-cli sdk add <folder|git URL|https archive> [--project <dir>] [--name <folder>] [--ref <ref>] [--sha256 <hash>] [--dry-run]
 slash-cli sdk check [--project <dir>] [--platform <name>] [--fetch]
+slash-cli sdk lock [--project <dir>] [--sdk <name>] [--dry-run]
 ```
 
 `sdk add` adds an [SDK package](sdk-format.md#sdk-add) to `project.json`'s `sdks`: a folder in
@@ -594,7 +595,10 @@ the project where it is, or copied into `sdks/<name>` from a folder elsewhere, a
 and prints what it would add. `sdk check` checks the [packages](sdk-format.md#sdk-check), the
 presets' `sdks`, keys in the environment and every file a platform links (`--platform` for one),
 and exits 1 on a problem, for CI; `--fetch` downloads what isn't fetched yet so it is checked too.
-The [`sdk.add`](commands.md#sdkadd) and [`sdk.check`](commands.md#sdkcheck) commands do the same.
+`sdk lock` resolves the packages' [Maven dependencies](sdk-format.md#maven-dependencies) (or
+`--sdk`'s) and pins every file in each package's `sdk.lock.json`, which Android exports need;
+`--dry-run` resolves and writes nothing. The [`sdk.add`](commands.md#sdkadd),
+[`sdk.check`](commands.md#sdkcheck) and [`sdk.lock`](commands.md#sdklock) commands do the same.
 
 ```bash
 slash-cli sdk add ~/Downloads/hello-sdk --project my-game
