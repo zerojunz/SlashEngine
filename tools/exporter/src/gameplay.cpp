@@ -337,6 +337,9 @@ bool run_step(const std::string& step, const std::vector<std::string>& args,
     log::info("building gameplay code", {{"step", step}});
     platform::ProcessOptions process;
     process.log_path = log_path.string();
+    // The compiler's messages in English with ASCII quotes, whatever the user's locale, so they
+    // read the same everywhere and errors and warnings are found by their English labels.
+    process.environment = {{"LC_ALL", "C"}};
     auto result = platform::run_process(args, process);
     if (!result) {
         failure.step = step;
