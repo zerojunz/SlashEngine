@@ -1,3 +1,4 @@
+#include "slash/ai/provider.hpp"
 #include "slash/bench/bench.hpp"
 #include "slash/command/builtin.hpp"
 #include "slash/command/command.hpp"
@@ -9,8 +10,11 @@
 
 #include <doctest/doctest.h>
 
+#include <algorithm>
+#include <cstddef>
 #include <filesystem>
 #include <functional>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -18,6 +22,7 @@
 namespace json = slash::json;
 namespace bench = slash::bench;
 namespace command = slash::command;
+namespace ai = slash::ai;
 
 namespace {
 
@@ -81,6 +86,41 @@ constexpr std::string_view kSpawn = R"({
     {"step": 2, "expect": {"id": "bat"}}
   ]
 })";
+
+// A model that replies from a script, one reply per request, and keeps what it was asked.
+class ScriptedModel final : public ai::Provider {
+public:
+    explicit ScriptedModel(std::vector<ai::Message> replies) : replies_(std::move(replies)) {}
+
+    const ai::Capabilities& capabilities() const override { return capabilities_; }
+
+    slash::Result<ai::Response> complete(const ai::Request& request, const ai::StreamSink& /*sink*/,
+                                         const ai::CancelFlag* /*cancel*/) override {
+        requests.push_back(request);
+        if (next_ >= replies_.size()) {
+            return slash::make_error(slash::ErrorCode::PlatformFailure, "the script ran out");
+        }
+        ai::Response response;
+        response.message = replies_[next_++];
+        response.message.role = ai::Role::Assistant;
+        response.stop =
+            response.message.tool_calls.empty() ? ai::StopReason::End : ai::StopReason::ToolCalls;
+        response.usage = {.input_tokens = 1000, .output_tokens = 10};
+        response.model = "scripted";
+        return response;
+    }
+
+    std::vector<ai::Request> requests;
+
+private:
+    ai::Capabilities capabilities_;
+    std::vector<ai::Message> replies_;
+    std::size_t next_ = 0;
+};
+
+ai::ToolCall tool_call(std::string id, std::string name, std::string_view arguments) {
+    return {.id = std::move(id), .name = std::move(name), .arguments = parse(arguments)};
+}
 
 constexpr std::string_view kLevel = R"({"entities": {"floor": {}}, "format": 1})";
 
@@ -243,4 +283,103 @@ TEST_CASE("regressions finds what costs more than the baseline") {
     CHECK(found[3].find("baseline")->is_null());
 
     CHECK(bench::baseline_of(report).find("failed") == nullptr);
+}
+
+TEST_CASE("run_live has a model do each task from its prompt with the MCP tools") {
+    const TaskFolder folder("bench_live_tasks");
+    folder.add("spawn", kSpawn);
+    folder.add_file("spawn", "scenes/level.scene.json", kLevel);
+    auto tasks = bench::load_tasks(folder.path);
+    REQUIRE(tasks.ok());
+    bench::Options options;
+    options.tasks = tasks.value();
+    options.work = "bench_live_work";
+    options.with_session = builtin_session();
+
+    auto model = std::make_shared<ScriptedModel>(std::vector<ai::Message>{
+        {.tool_calls =
+             {tool_call("1", "scene_open", R"({"path": "scenes/level.scene.json"})"),
+              tool_call(
+                  "2", "entity_create",
+                  R"({"id": "bat", "components": {"Transform2D": {"position": [320, 120]}}})")}},
+        {.tool_calls = {tool_call("3", "scene_save", "{}")}},
+        {.text = "The bat is in the scene."}});
+    bench::Live live;
+    live.provider = model;
+    auto report = bench::run_live(options, live);
+    REQUIRE(report.ok());
+    const json::Value& value = report.value();
+    CHECK(value.find("failed")->size() == 0);
+    CHECK(value.find("model")->as_string() == "scripted");
+    const json::Value& spawn = *value.find("tasks")->find("spawn");
+    CHECK(spawn.find("calls")->as_int() == 3);
+    CHECK(spawn.find("turns")->as_int() == 3);
+    CHECK(spawn.find("input_tokens")->as_int() == 3000);
+    CHECK(spawn.find("output_tokens")->as_int() == 30);
+    CHECK(spawn.find("tokens")->as_int() == 3030);
+
+    // The model read what an agent over MCP reads: the instructions, the prompt and the tools,
+    // then each tool's reply.
+    REQUIRE(model->requests.size() == 3);
+    const ai::Request& first = model->requests[0];
+    REQUIRE(first.messages.size() == 2);
+    CHECK(first.messages[0].role == ai::Role::System);
+    CHECK_FALSE(first.messages[0].text.empty());
+    CHECK(first.messages[1].text.find("bat") != std::string::npos);
+    CHECK(std::ranges::any_of(first.tools, [](const ai::ToolSpec& tool) {
+        return tool.name == "entity_create" && tool.parameters.is_object();
+    }));
+    const ai::Request& second = model->requests[1];
+    REQUIRE(second.messages.size() == 5);
+    CHECK(second.messages[3].role == ai::Role::Tool);
+    CHECK(second.messages[3].tool_call_id == "1");
+    CHECK(second.messages[4].text.find("bat") != std::string::npos);
+    CHECK_FALSE(second.messages[4].is_error);
+}
+
+TEST_CASE("run_live fails a task the model leaves undone, wrong or unfinished") {
+    const TaskFolder folder("bench_live_failing_tasks");
+    folder.add("spawn", kSpawn);
+    folder.add_file("spawn", "scenes/level.scene.json", kLevel);
+    folder.add("count", R"({"format": 1, "prompt": "How many entities are there?",
+                            "answer": "1", "solution": [{"tool": "world_query"}]})");
+    folder.add_file("count", "scenes/level.scene.json", kLevel);
+    auto tasks = bench::load_tasks(folder.path);
+    REQUIRE(tasks.ok());
+    bench::Options options;
+    options.tasks = tasks.value();
+    options.work = "bench_live_failing_work";
+    options.with_session = builtin_session();
+
+    // "count" (first by name): answers wrongly. "spawn": stops without saving, after a call
+    // that fails.
+    auto model = std::make_shared<ScriptedModel>(std::vector<ai::Message>{
+        {.text = "There are 2."},
+        {.tool_calls = {tool_call("1", "entity_destroy", R"({"id": "rat"})")}},
+        {.text = "Done."}});
+    bench::Live live;
+    live.provider = model;
+    auto report = bench::run_live(options, live);
+    REQUIRE(report.ok());
+    const json::Array& failed = report.value().find("failed")->as_array();
+    REQUIRE(failed.size() == 2);
+    CHECK(failed[0].find("task")->as_string() == "count");
+    CHECK(failed[0].find("path")->as_string() == "/answer");
+    CHECK(failed[1].find("task")->as_string() == "spawn");
+    CHECK(failed[1].find("path")->as_string() == "/checks/1");
+    REQUIRE(model->requests.size() == 3);
+    CHECK(model->requests[2].messages.back().is_error);
+
+    // A model that keeps calling tools runs out of turns.
+    auto busy = std::make_shared<ScriptedModel>(
+        std::vector<ai::Message>{{.tool_calls = {tool_call("1", "world_query", "{}")}},
+                                 {.tool_calls = {tool_call("2", "world_query", "{}")}}});
+    live.provider = busy;
+    live.max_turns = 2;
+    options.tasks = {tasks.value()[1]};
+    report = bench::run_live(options, live);
+    REQUIRE(report.ok());
+    const json::Array& unfinished = report.value().find("failed")->as_array();
+    REQUIRE(unfinished.size() == 1);
+    CHECK(unfinished[0].find("message")->as_string() == "not done after 2 replies");
 }

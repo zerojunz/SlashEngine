@@ -1,0 +1,81 @@
+name: Agent benchmark
+
+# Each week a model does the benchmark's tasks (bench/tasks) from their prompts alone, through
+# the same MCP tools agents use, and the calls and tokens it took go in the job summary
+# (slash-cli bench --live; docs/reference/benchmark.md). It runs only where the repository names
+# a model, with these Actions variables and secret:
+#
+#   BENCH_PROVIDER_TYPE  openai, anthropic or gemini
+#   BENCH_MODEL          the model's ID
+#   BENCH_URL            a server's API URL, for openai-compatible servers of your own (optional)
+#   BENCH_API_KEY        the key (a secret; optional for a server that needs none)
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  LINUX_SDL_DEPS: >-
+    ninja-build libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev
+    libxss-dev libxtst-dev libxkbcommon-dev libwayland-dev libegl-dev libgl-dev libdrm-dev
+    libgbm-dev libasound2-dev libpulse-dev libudev-dev libdbus-1-dev
+
+jobs:
+  live:
+    name: Live agent benchmark
+    if: vars.BENCH_MODEL != ''
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache fetched dependencies
+        uses: actions/cache@v4
+        with:
+          path: .cpm-cache
+          key: cpm-ubuntu-24.04-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/dependencies.json') }}
+
+      - name: Install tools
+        run: sudo apt-get update && sudo apt-get install -y $LINUX_SDL_DEPS jq
+
+      - name: Build slash-cli
+        run: |
+          cmake --preset dev
+          cmake --build --preset dev --target slash-cli
+
+      # The key stays in the environment; providers.json only names the variable.
+      - name: Write providers.json
+        env:
+          TYPE: ${{ vars.BENCH_PROVIDER_TYPE }}
+          MODEL: ${{ vars.BENCH_MODEL }}
+          URL: ${{ vars.BENCH_URL }}
+        run: |
+          jq -n --arg type "$TYPE" --arg model "$MODEL" --arg url "$URL" '{providers: {bench:
+            ({type: $type, model: $model, api_key_env: "BENCH_API_KEY"}
+             + (if $url == "" then {} else {url: $url} end))}}' > build/bench-providers.json
+
+      - name: Run the tasks
+        env:
+          BENCH_API_KEY: ${{ secrets.BENCH_API_KEY }}
+        run: |
+          status=0
+          ./build/dev/tools/slash-cli/slash-cli bench --live build/bench-providers.json \
+            > build/bench-live.json || status=$?
+          jq -r '"Model: \(.model // "unknown"). Calls: \(.total.calls). Tokens: \(.total.tokens).",
+            "", "| Task | Calls | Replies | Input tokens | Output tokens |",
+            "| --- | --- | --- | --- | --- |",
+            (.tasks | to_entries[] | "| \(.key) | \(.value.calls) | \(.value.turns) | \(.value.input_tokens) | \(.value.output_tokens) |"),
+            "", (.failed[] | "- \(.task) at \(.path): \(.message)")' build/bench-live.json \
+            >> "$GITHUB_STEP_SUMMARY"
+          exit $status
+
+      - name: Keep the report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-live
+          path: build/bench-live.json
+          if-no-files-found: ignore

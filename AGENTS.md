@@ -163,7 +163,8 @@ The benchmark in `bench/` holds commands to that. `slash-cli bench` plays standa
 through MCP and counts each one's calls and estimated tokens, and `ctest` fails when a task
 stops passing its checks or costs more than `bench/baseline.json` (setup included, so a new
 command's definition counts). When a change costs more or less on purpose, run
-`slash-cli bench --baseline bench/baseline.json --update` and commit the file; see
+`slash-cli bench --baseline bench/baseline.json --update` and commit the file. With `--live`, a
+model does the tasks from their prompts instead; see
 [docs/reference/benchmark.md](docs/reference/benchmark.md).
 
 To add a command, register it in `engine/command/src/builtin.cpp` (or your own registry) with a
