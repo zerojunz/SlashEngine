@@ -1,0 +1,23 @@
+{
+  "entries": {
+    "character/mira": {
+      "links": ["scenes/tavern.scene.json"],
+      "name": "Mira",
+      "refs": ["place/lowtown"],
+      "summary": "A courier who has never left Lowtown."
+    },
+    "character/oren": {
+      "name": "Oren",
+      "summary": "Mira's older brother, who bakes for the tavern."
+    },
+    "character/vell": {
+      "name": "Vell",
+      "summary": "A smuggler who works the river."
+    },
+    "place/lowtown": {
+      "name": "Lowtown",
+      "summary": "The docks district, below the cliffs."
+    }
+  },
+  "format": 1
+}
