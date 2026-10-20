@@ -7,6 +7,7 @@
 #include "slash/core/text.hpp"
 #include "slash/input/input.hpp"
 #include "slash/physics2d/physics2d.hpp"
+#include "slash/services/services.hpp"
 #include "slash/world/scene.hpp"
 
 #include <array>
@@ -27,8 +28,9 @@
 // ("major.minor.patch"), "window" ({"width", "height", "vsync_mode"}), "tick_hz", "max_fps",
 // "rendering" ({"clear_color", "driver", "texture_filter", "interpolation"}), "physics_2d",
 // "gui" ({"theme"}), "input" (actions by name), "input_devices" ({"pointing"}), "audio"
-// ({"bus_layout", "mix_rate", "output_latency", "panning_strength_2d"}), "gameplay"
-// ({"sources"}, the game's own C++ code) and "sdks" (folders of SDK packages).
+// ({"bus_layout", "mix_rate", "output_latency", "panning_strength_2d"}), "services" (ad
+// placements, products, analytics and consent), "gameplay" ({"sources"}, the game's own C++
+// code) and "sdks" (folders of SDK packages).
 namespace slash::runtime {
 
 inline constexpr std::string_view kProjectFile = "project.json";
@@ -73,6 +75,8 @@ struct Project {
     input::Settings input_devices;
     // The bus layout, mix rate, output latency and 2D panning strength.
     audio::Settings audio;
+    // Ad placements, products, analytics and the player's consent until the game sets it.
+    services::Settings services;
     // Folders and .cpp files of the game's own C++ code (slash/world/game_module.hpp); empty if
     // it has none.
     std::vector<std::string> gameplay_sources;

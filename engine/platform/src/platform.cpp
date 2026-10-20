@@ -4,6 +4,10 @@
 
 #include <SDL3/SDL.h>
 
+#ifdef __APPLE__
+#include <TargetConditionals.h>
+#endif
+
 #include <algorithm>
 #include <utility>
 
@@ -205,6 +209,22 @@ void Platform::set_clipboard_text(const std::string& text) const {
     if (!headless_ && !SDL_SetClipboardText(text.c_str())) {
         log::warn("the clipboard was not set", {{"error", SDL_GetError()}});
     }
+}
+
+std::string_view os_name() {
+#if defined(__ANDROID__)
+    return "android";
+#elif defined(__APPLE__) && TARGET_OS_IPHONE
+    return "ios";
+#elif defined(__APPLE__)
+    return "macos";
+#elif defined(_WIN32)
+    return "windows";
+#elif defined(__EMSCRIPTEN__)
+    return "web";
+#else
+    return "linux";
+#endif
 }
 
 } // namespace slash::platform

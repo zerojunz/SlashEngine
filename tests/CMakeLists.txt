@@ -39,6 +39,7 @@ add_executable(slash_tests
     test_scene.cpp
     test_sdk.cpp
     test_server.cpp
+    test_services.cpp
     test_shader.cpp
     test_storyboard.cpp
     test_syntax_highlighter.cpp
@@ -57,7 +58,7 @@ add_executable(slash_tests
     test_world.cpp)
 target_link_libraries(slash_tests PRIVATE
     slash::animation slash::asset slash::audio slash::canvas slash::command slash::core slash::debug slash::exporter slash::importer slash::input slash::physics2d
-    slash::platform slash::render slash::runtime slash::server slash::shader_compiler slash::storyboard slash::text slash::ui slash::world doctest::doctest SDL3::SDL3-static
+    slash::platform slash::render slash::runtime slash::server slash::services slash::shader_compiler slash::storyboard slash::text slash::ui slash::world doctest::doctest SDL3::SDL3-static
     webp) # WebP textures for the Godot unpacking tests
 # doctest forward-declares std::ostream by default, which breaks string_view checks on recent
 # MSVC standard libraries; include the real headers instead.

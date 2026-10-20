@@ -13,6 +13,7 @@
 #include "slash/canvas/sprite_frames.hpp"
 #include "slash/canvas/tilemap.hpp"
 #include "slash/command/replay.hpp"
+#include "slash/command/services.hpp"
 #include "slash/command/session.hpp"
 #include "slash/command/test.hpp"
 #include "slash/core/assert.hpp"
@@ -6040,6 +6041,7 @@ void register_builtin_commands(Registry& registry) {
 
     register_replay_commands(registry);
     register_test_commands(registry);
+    register_services_commands(registry);
 }
 
 void register_run_commands(Registry& registry) {

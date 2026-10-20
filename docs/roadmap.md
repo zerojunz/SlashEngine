@@ -453,10 +453,12 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
   - [x] Android `.aar` files and Maven packages, their dependencies resolved without Gradle
         (`sdk lock` pins them in `sdk.lock.json`) and their manifests, resources and native
         libraries merged into the APK
-  - [ ] Engine interfaces that SDK glue code implements (ads, analytics, purchases and
-        `render::Upscaler` first, achievements and sign-in later), bridges for calling Java and
-        Objective-C from C++, and a test backend for each interface, so headless runs and CI
-        need no vendor binary
+  - [x] Engine interfaces that SDK glue code implements for ads, analytics and purchases
+        (`engine/services`: `AdsBackend`, `AnalyticsBackend` and `PurchasesBackend`), with a
+        test backend sessions run on, so headless runs and CI need no vendor binary
+  - [ ] Glue code in SDK packages that registers backends when the game starts, and bridges for
+        calling Java and Objective-C from C++
+  - [ ] `render::Upscaler`, then achievements and sign-in, behind interfaces of their own
   - [x] `sdk.add` (from a folder, a git repository or a URL) and `sdk.check` (missing files,
         keys and platforms), with an example SDK package built in CI from a stand-in library
 - [ ] Imported scripts as C++ skeletons: `project.import` writes a component for each script's
@@ -632,8 +634,9 @@ Exit: an agent builds a small 3D sample end to end.
         is an adapter (see the note below)
   - [ ] Consent and privacy: one consent state that gates analytics and ads, with Apple's App
         Tracking Transparency prompt on iOS
-  - [ ] A test backend for all three, so agents and CI can run purchases, ads and events
+  - [x] A test backend for all three, so agents and CI can run purchases, ads and events
         headless with no store account, plus commands to inspect and drive it
+        (`services.state`, `services.test`)
 
 Ad network SDKs (AdMob, Unity Ads, AppLovin and others) are proprietary, so, like console ports,
 their adapters live outside this repository. StoreKit is an OS framework, and Google Play Billing
@@ -720,7 +723,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Video playback | AV1 through dav1d | 8 | Planned |
 | Accessibility | AccessKit | 8 | Planned |
 | Storyboard | Style, world, story, design rules and decisions as typed project files that agents query and checks enforce | 5, 6 | In progress: files, commands and checks, palette and texture budget checks included, are done; model review and the project map in 6; triangle budgets with meshes in 7 |
-| Analytics, ads and in-app purchases | One API for analytics, ads and purchases; StoreKit, Play Billing and a developer-chosen analytics endpoint in the repo, ad networks as outside adapters | 8 | Planned |
+| Analytics, ads and in-app purchases | One API for analytics, ads and purchases; StoreKit, Play Billing and a developer-chosen analytics endpoint in the repo, ad networks as outside adapters | 8 | In progress: the API, its backend interfaces, consent and the test backend are done |
 | Closed vendor SDKs | SDK packages: an `sdk.json` per SDK that exports fetch, check and link on all six platforms, with JNI and Objective-C bridges and engine interfaces for the glue | 6 | In progress: packages, exports, `sdk.add`, `sdk.check`, Android libraries and Maven |
 | One-command export | `slash-cli export` to macOS, Windows, Linux, iOS, Android and web | 4 | In progress: every platform exports (4a, 4b); building them all from one Mac is next |
 | Large worlds | Double-precision transforms, world streaming | After launch | After launch |
