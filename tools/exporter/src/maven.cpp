@@ -103,8 +103,13 @@ int word_rank(std::string_view part) {
     }
     constexpr std::array<std::string_view, 6> kQualifiers{"rc", "snapshot", "final",
                                                           "ga", "release",  "sp"};
-    const auto* const found = std::ranges::find(kQualifiers, word);
-    return found == kQualifiers.end() ? 1 : 2 + static_cast<int>(found - kQualifiers.begin());
+    // An index, not an iterator: std::array's iterators are pointers only in some libraries.
+    for (std::size_t i = 0; i < kQualifiers.size(); ++i) {
+        if (kQualifiers[i] == word) {
+            return 2 + static_cast<int>(i);
+        }
+    }
+    return 1;
 }
 
 int sign(int value) {
