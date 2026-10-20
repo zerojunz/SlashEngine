@@ -21,9 +21,12 @@ bool name_char(char c) {
 }
 
 std::string trimmed(std::string_view text) {
-    const auto begin = std::ranges::find_if_not(text, space);
-    const auto end = std::find_if_not(text.rbegin(), text.rend(), space).base();
-    return begin < end ? std::string(begin, end) : std::string();
+    const std::size_t begin = text.find_first_not_of(" \t\r\n");
+    if (begin == std::string_view::npos) {
+        return {};
+    }
+    const std::size_t end = text.find_last_not_of(" \t\r\n");
+    return std::string(text.substr(begin, end - begin + 1));
 }
 
 void append_utf8(std::uint32_t code, std::string& out) {
@@ -47,7 +50,7 @@ void append_utf8(std::uint32_t code, std::string& out) {
 // A character reference's code point: "#65" or "#x41".
 std::optional<std::uint32_t> character_reference(std::string_view entity) {
     const bool hex = entity.starts_with("#x");
-    std::string_view digits = entity.substr(hex ? 2 : 1);
+    const std::string_view digits = entity.substr(hex ? 2 : 1);
     if (digits.empty() || digits.size() > 8) {
         return std::nullopt;
     }

@@ -1854,7 +1854,7 @@ Result<json::Value> lock_sdks(const LockSdksOptions& options) {
             names.emplace_back(sdk.name);
         }
         std::string message =
-            "no package in project.json's \"sdks\" is called \"" + options.name + "\"";
+            R"(no package in project.json's "sdks" is called ")" + options.name + "\"";
         if (const std::string_view hint = closest_match(options.name, names); !hint.empty()) {
             message += "; did you mean \"" + std::string(hint) + "\"?";
         }
