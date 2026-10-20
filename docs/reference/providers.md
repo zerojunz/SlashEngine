@@ -138,6 +138,30 @@ The `SLASH_AI_REPLAY` environment variable overrides the mode (`replay`, `record
 again with `auto`. The file is rewritten sorted by key, one line per recording, so it diffs well.
 Sessions that run tests (`test.run`) record nothing.
 
+## Generators
+
+`generators` names the image and sound generators the [asset library](commands.md#asset-library)
+calls, as `providers` names language models: by name, each with a `type`, and a `model`, `url`,
+`api_key_env` and `headers` where the type takes them. `license` is the terms its outputs come
+under, recorded with every asset it makes; `options` are settings sent with every request; and
+`timeout_seconds` and `max_retries` work as a provider's do.
+
+```json
+{
+  "generators": {
+    "placeholders": {"type": "test", "license": "CC0-1.0"}
+  }
+}
+```
+
+| Type | Makes |
+| --- | --- |
+| `test` | Placeholder images and tones made on the machine, the same on every platform, for tests and CI. Always there as `test`, even with no `generators` |
+
+`asset.generate` uses the one generator that makes the type asked for, or the one its `generator`
+param names. [`ai.providers`](commands.md#aiproviders) lists them, with whether each one's key is
+set.
+
 ## Gameplay
 
 Gameplay code asks a role's model and hears back through world events, as it hears input and

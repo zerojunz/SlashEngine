@@ -41,7 +41,7 @@ foreach(name IN LISTS examples)
     if(EXISTS ${dir}/main.cpp)
         add_executable(example-${name} ${name}/main.cpp)
         target_link_libraries(example-${name} PRIVATE
-            slash::ai slash::ai_commands slash::animation slash::audio slash::canvas slash::command slash::core slash::debug slash::gameplay slash::importer slash::input
+            slash::ai slash::ai_commands slash::animation slash::audio slash::canvas slash::command slash::core slash::debug slash::gameplay slash::importer slash::input slash::library_commands
             slash::physics2d slash::platform slash::render slash::services slash::shader_compiler slash::text slash::ui slash::world
             slash_httplib) # stand-in servers, such as ai-provider's model
         # The same output on every platform: no fused multiply-adds, which arm64 compilers

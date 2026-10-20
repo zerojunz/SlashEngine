@@ -26,6 +26,7 @@ add_executable(slash_tests
     test_jobs.cpp
     test_json.cpp
     test_json_schema.cpp
+    test_library.cpp
     test_light.cpp
     test_line_edit.cpp
     test_log.cpp
@@ -65,7 +66,7 @@ add_executable(slash_tests
     test_upscaler.cpp
     test_world.cpp)
 target_link_libraries(slash_tests PRIVATE
-    slash::ai slash::ai_commands slash::animation slash::asset slash::audio slash::bench slash::canvas slash::command slash::core slash::debug slash::exporter slash::importer slash::input slash::physics2d
+    slash::ai slash::ai_commands slash::animation slash::asset slash::audio slash::bench slash::canvas slash::command slash::core slash::debug slash::exporter slash::importer slash::input slash::library slash::library_commands slash::physics2d
     slash::platform slash::render slash::runtime slash::server slash::services slash::shader_compiler slash::storyboard slash::text slash::ui slash::world doctest::doctest SDL3::SDL3-static
     slash_httplib # a stand-in model server for the AI provider tests
     webp) # WebP textures for the Godot unpacking tests

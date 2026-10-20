@@ -140,6 +140,18 @@ Reply ai_providers(Session& session, const json::Value& /*params*/) {
         }
         out["roles"][name] = std::move(item);
     }
+    for (const auto& [name, generator] : config.value().generators) {
+        json::Value item;
+        item["type"] = generator.type;
+        if (!generator.model.empty()) {
+            item["model"] = generator.model;
+        }
+        if (!generator.api_key_env.empty()) {
+            item["api_key_env"] = generator.api_key_env;
+            item["key_set"] = !platform::environment_variable(generator.api_key_env).empty();
+        }
+        out["generators"][name] = std::move(item);
+    }
     const std::string override_mode = platform::environment_variable(std::string(kReplayVariable));
     if (config.value().replay) {
         out["replay"]["file"] = config.value().replay->file;
@@ -336,8 +348,8 @@ void register_commands(command::Registry& registry) {
     registry.add({
         .name = "ai.providers",
         .description = "Lists the language models providers.json configures: each provider's "
-                       "type, model, URL and whether its key is set, the roles and the replay "
-                       "file. Never returns keys.",
+                       "type, model, URL and whether its key is set, the roles, the asset "
+                       "library's generators and the replay file. Never returns keys.",
         .capabilities = {Capability::Read},
         .effect = command::Effect::Read,
         .params = params_schema({}),

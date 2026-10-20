@@ -47,6 +47,9 @@ struct SessionOptions {
     // a rebuilt gameplay library is swapped in between commands and ticks. It must outlive the
     // session.
     gameplay::Host* gameplay = nullptr;
+    // The asset library's folder (slash/library/library.hpp); "" for SLASH_LIBRARY_DIR or
+    // ~/.slash/library.
+    std::string library_dir{}; // NOLINT(readability-redundant-member-init)
 };
 
 // One editing session: a world, the commands that act on it, undo history and recent logs.

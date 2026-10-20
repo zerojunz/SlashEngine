@@ -12,6 +12,7 @@
 #include "slash/exporter/commands.hpp"
 #include "slash/gameplay/host.hpp"
 #include "slash/importer/commands.hpp"
+#include "slash/library/commands.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/runtime/gameplay.hpp"
 #include "slash/server/client.hpp"
@@ -138,6 +139,7 @@ int main(int argc, char** argv) {
     slash::exporter::register_api_commands(commands);
     slash::importer::register_import_commands(commands);
     slash::ai::register_commands(commands);
+    slash::library::register_commands(commands);
     // The project's own C++ code, loaded again whenever gameplay.build rebuilds it.
     slash::gameplay::Host gameplay(components, slash::gameplay::library_path(options.project_root));
     options.gameplay = &gameplay;
