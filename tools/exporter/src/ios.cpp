@@ -527,10 +527,7 @@ json::Value test_ios(const fs::path& app, const std::string& bundle_id, const fs
                         summary->find("ticks")->as_int() == static_cast<std::int64_t>(kTestTicks);
     test["passed"] = passed;
     if (summary) {
-        test["ticks"] = *summary->find("ticks");
-        if (const json::Value* entities = summary->find("entities"); entities != nullptr) {
-            test["entities"] = *entities;
-        }
+        add_summary(test, *summary);
     }
     if (!passed) {
         test["message"] = summary ? "the game stopped early"

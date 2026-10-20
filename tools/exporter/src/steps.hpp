@@ -53,6 +53,10 @@ bool sign_nested(const std::filesystem::path& frameworks, const std::vector<std:
 // The finished game's summary line in the output of `<game> --headless --ticks n`.
 [[nodiscard]] std::optional<json::Value> find_summary(const std::string& output);
 
+// Copies what an export's test reports from the game's summary into test: its ticks, entities
+// and the services' backends, if it ran on any.
+void add_summary(json::Value& test, const json::Value& summary);
+
 // The total size of the files in a folder.
 [[nodiscard]] std::uint64_t folder_bytes(const std::filesystem::path& folder);
 

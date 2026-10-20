@@ -68,6 +68,7 @@ the packages for its platform. [examples/sdk-package](../../examples/sdk-package
 | `build` | No | `{"cmake": "<folder>", "options": {"NAME": "value"}}`: a CMake project in the package that each export builds with the game's compilers and installs into `{build}`. For SDKs that ship source, and for glue code |
 | `keys` | No | Environment variables the package reads at export time, by name (capital letters, digits and `_`), each with a `description` and `optional` (`false` by default; an optional key that isn't set is `""`) |
 | `platforms` | No | What the package adds to each platform's builds: `macos`, `windows`, `linux`, `web`, `android` and `ios`. Exports for other platforms leave the package out |
+| `register` | No | A C++ function in the package's [glue code](#glue-code), `void(slash::services::Backends&)`, such as `"hello::register_backends"`, that adds the package's services backends when the game starts. Called on the platforms whose sections have `sources` |
 
 ## Downloads
 
@@ -115,6 +116,9 @@ instead.
 | `aars` | Android | [Android libraries](#android-libraries): `.aar` files, or folders laid out like an unpacked one (as Unity's `.androidlib` folders are). Their paths can't use `{arch}` or `{build}` |
 | `maven` | Android | [Maven dependencies](#maven-dependencies), `group:artifact:version` with an optional `:classifier` and `@aar` or `@jar`, as Gradle writes them; a version may be a range such as `[1.0,2.0)` |
 | `maven_repositories` | Android | `https://` or `file://` Maven repositories searched in order. Default: Google's (`https://dl.google.com/dl/android/maven2`), then Maven Central |
+| `sources` | All | [Glue code](#glue-code) compiled into the game with the SDK's headers and the engine's: `.c`, `.cpp`, `.cc` and `.cxx` files, `.m` and `.mm` on macOS and iOS (with ARC), or folders, whose files for the platform are compiled in |
+| `java` | Android | `.java` files or folders compiled with the game's Java, such as the classes `backends` names |
+| `backends` | Android, macOS, iOS | Services backends written in Java or Objective-C, by class name: `{"ads": "<class>", "analytics": ["<class>"], "purchases": "<class>"}` |
 
 `sdk.json` files are checked as a whole before anything is built: unknown fields and platforms,
 placeholders and keys that don't exist (with "did you mean"), Apple and Android fields on other
@@ -180,6 +184,71 @@ different versions of a module, the newest is linked. A package whose `maven` or
 `maven_repositories` changed since its lock, or that has none, fails the export and `sdk check`
 until `sdk lock` runs again.
 
+## Glue code
+
+Glue code connects a vendor's SDK to the engine: usually a [services backend](services.md) that
+turns the game's ads, analytics and purchase calls into the SDK's. A package's `sources` are
+compiled into the game, so they can include both the SDK's headers and the engine's, and its
+`register` function adds the backends when the game starts:
+
+```cpp
+// sdks/hello/glue/hello_analytics.cpp
+#include "hello.h"
+#include "slash/services/services.hpp"
+
+namespace hello {
+
+class Analytics final : public slash::services::AnalyticsBackend {
+public:
+    std::string_view name() const override { return "hello"; }
+    void log_event(std::string_view name, const slash::json::Value& params) override {
+        const std::string text = slash::json::write(params, slash::json::Style::Compact);
+        hello_track(std::string(name).c_str(), text.c_str());
+    }
+};
+
+void register_backends(slash::services::Backends& backends) {
+    backends.analytics.push_back(std::make_unique<Analytics>());
+}
+
+} // namespace hello
+```
+
+```json
+"register": "hello::register_backends",
+"platforms": {"linux": {"sources": ["glue/hello_analytics.cpp"]}}
+```
+
+An SDK whose API is Java or Objective-C (most ad networks and stores on phones) is glued in that
+language instead. `backends` names classes that the game makes when it starts, through the
+bridges in [`slash/services/bridges.hpp`](../../engine/services/include/slash/services/bridges.hpp):
+
+- **Android**: a Java class, listed in `java`, that implements `org.slashengine.services`'
+  `AdsBackend`, `AnalyticsBackend` or `PurchasesBackend`
+  ([engine/services/android](../../engine/services/android/org/slashengine/services/)) and has a
+  public constructor with no parameters. `start` hands it the game's `Activity` and a `Reports`
+  object to call from any thread when the SDK calls back. Products, purchases and event
+  parameters cross as JSON strings.
+- **macOS and iOS**: an Objective-C class, in a `.m` or `.mm` file listed in `sources`, that
+  conforms to `SlashAdsBackend`, `SlashAnalyticsBackend` or `SlashPurchasesBackend`
+  ([slash/services/apple.h](../../engine/services/include/slash/services/apple.h)). It is made
+  with `[[Class alloc] init]` and gets a `SlashServiceReports` object.
+
+```json
+"android": {"java": ["glue/android"],
+            "backends": {"analytics": ["com.example.hello.HelloAnalytics"]}},
+"ios": {"sources": ["glue/apple"], "backends": {"analytics": ["HelloAnalytics"]}}
+```
+
+Exports write `<build>/sdk_register.cpp`, whose `slash_sdk_register` calls each package's
+`register` function and makes its `backends`, and the game's `main` calls it before the first
+tick. Every package's analytics backends run; a game's ads and purchases each run on one, so
+two packages that both give one are an export error. A class that isn't in the game, or doesn't
+implement its interface, is logged when the game starts and leaves that service without a
+backend. The exported game's test run reports the backends it started with as
+`test.services`. [examples/sdk-package](../../examples/sdk-package/) glues one analytics
+backend in each language.
+
 ## In project.json and presets
 
 ```json
@@ -205,7 +274,8 @@ An export with packages adds an `sdks` step after staging the data: it fetches e
 fetched yet, then for each build (each Android ABI, each Linux architecture) builds the packages'
 CMake projects with the same compilers and options as the game, fills in the paths for its
 `{arch}`, checks every file exists, and writes the `slash_game_sdk()` calls that
-`export/CMakeLists.txt` includes into `<build>/sdks.cmake`. Android exports also fetch the
+`export/CMakeLists.txt` includes into `<build>/sdks.cmake`, with `<build>/sdk_register.cpp` for
+packages with [glue code](#glue-code). Android exports also fetch the
 locked Maven files and, once every ABI is built, add the Android libraries to the APK. A missing key, file or download fails
 the export before the game is built, with the package and the JSON Pointer of the bad value. The
 reply lists the packages linked as `"sdks": [{"name", "version", "license"}]`.

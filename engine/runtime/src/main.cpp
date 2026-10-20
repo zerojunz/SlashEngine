@@ -23,6 +23,10 @@
 #ifdef SLASH_GAMEPLAY_LINKED
 extern "C" void slash_game_module(slash::world::GameModule& game);
 #endif
+// An export whose SDK packages have glue code writes this, registering their backends.
+#ifdef SLASH_SDK_REGISTER
+void slash_sdk_register(slash::services::Backends& backends);
+#endif
 
 namespace {
 
@@ -58,6 +62,9 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
     }
 #ifdef SLASH_GAMEPLAY_LINKED
     options.value().gameplay = slash_game_module;
+#endif
+#ifdef SLASH_SDK_REGISTER
+    options.value().register_backends = slash_sdk_register;
 #endif
     auto game = slash::runtime::Game::start(options.value());
     if (!game) {
