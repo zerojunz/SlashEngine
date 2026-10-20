@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <functional>
 #include <utility>
 #include <vector>
@@ -194,6 +195,12 @@ Reply perf_stats(const LiveGame& game, const Session& session, const json::Value
     out["ticks"] = game.loop->stats().ticks;
     out["tick_hz"] = round2(game.loop->tick_hz());
     out["renderer"] = render::backend_name(game.renderer->backend());
+    if (json::Value* memory = out.find("memory"); memory != nullptr) {
+        // The renderer's textures: sprites', glyph atlases' and render targets'.
+        const render::Stats device = game.renderer->stats();
+        (*memory)["gpu"]["bytes"] = static_cast<std::int64_t>(device.texture_bytes);
+        (*memory)["gpu"]["textures"] = static_cast<std::int64_t>(device.textures);
+    }
     return Reply::success(std::move(out));
 }
 
@@ -260,7 +267,8 @@ void register_live_commands(Registry& registry, const LiveGame& game) {
     Command stats = *registry.find("perf.stats");
     stats.description = "Frame pacing over the last 120 frames (fps, frame times in ms and "
                         "catch-up frames), tick and system times over the last 120 ticks, the "
-                        "slowest systems first, and the V-Sync mode, frame cap and render scale.";
+                        "slowest systems first, the V-Sync mode, frame cap and render scale, and "
+                        "with memory, what each part of the engine holds, GPU textures too.";
     stats.handler = [game](Session& session, const json::Value& params) {
         return perf_stats(game, session, params);
     };

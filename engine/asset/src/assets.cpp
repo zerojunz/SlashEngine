@@ -32,14 +32,16 @@ FileSource folder_source(std::string folder) {
 }
 
 Assets::Assets(FileSource source) : source_(std::move(source)) {
-    add_type<json::Value>("json", {".json"}, [](std::string_view text, std::string_view /*path*/) {
-        return json::parse(text);
-    });
+    add_type<json::Value>(
+        "json", {".json"},
+        [](std::string_view text, std::string_view /*path*/) { return json::parse(text); },
+        [](const json::Value& value) { return sizeof(json::Value) + json::heap_bytes(value); });
     add_type<std::string>(
         "text", {".txt", ".csv"},
         [](std::string_view text, std::string_view /*path*/) -> Result<std::string> {
             return std::string(text);
-        });
+        },
+        [](const std::string& text) { return sizeof(std::string) + json::heap_bytes(text); });
 }
 
 void Assets::add_loader(std::string name, entt::id_type id, std::vector<std::string> suffixes,
@@ -103,17 +105,18 @@ Result<std::shared_ptr<detail::Record>> Assets::load_record(std::string_view pat
         return make_error(ErrorCode::NotFound,
                           "asset " + quoted(path) + " could not be read: " + text.error().message);
     }
-    auto value = type->load(text.value(), path);
-    if (!value) {
-        return make_error(value.error().code,
-                          "asset " + quoted(path) + " did not load: " + value.error().message);
+    auto loaded = type->load(text.value(), path);
+    if (!loaded) {
+        return make_error(loaded.error().code,
+                          "asset " + quoted(path) + " did not load: " + loaded.error().message);
     }
     auto record = std::make_shared<detail::Record>(detail::Record{
         .path = std::string(path),
         .type = type->name,
-        .value = std::move(value).value(),
+        .value = std::move(loaded.value().value),
         .version = 1,
         .stamp = stamp,
+        .bytes = loaded.value().bytes,
     });
     loaded_[std::string(path)] = record;
     return record;
@@ -157,10 +160,12 @@ std::vector<Assets::Change> Assets::poll() {
             change.error = "the file is missing";
         } else if (auto text = source_.read(record->path); !text) {
             change.error = text.error().message;
-        } else if (auto value = type_for(record->path)->load(text.value(), record->path); !value) {
-            change.error = value.error().message;
+        } else if (auto loaded = type_for(record->path)->load(text.value(), record->path);
+                   !loaded) {
+            change.error = loaded.error().message;
         } else {
-            record->value = std::move(value).value();
+            record->value = std::move(loaded.value().value);
+            record->bytes = loaded.value().bytes;
             change.version = ++record->version;
         }
         changes.push_back(std::move(change));
@@ -184,11 +189,11 @@ std::vector<Assets::Info> Assets::list() const {
         if (const std::shared_ptr<detail::Record> record = weak.lock(); record != nullptr) {
             // The lock above holds one reference of its own.
             infos.push_back({path, record->type, static_cast<std::size_t>(record.use_count() - 1),
-                             record->version});
+                             record->version, record->bytes});
         }
     }
     for (const auto& [path, watched] : watched_) {
-        infos.push_back({path, watched.type, 0, watched.version});
+        infos.push_back({path, watched.type, 0, watched.version, 0});
     }
     std::ranges::sort(infos, {}, &Info::path);
     return infos;

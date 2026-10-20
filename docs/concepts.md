@@ -128,7 +128,10 @@ The world times each tick and each system, and `perf.stats` reports the averages
 times over the last 120 ticks, the slowest systems first, in any session: the first place to look
 when a game runs slowly. Built with the `tracy` CMake preset, the engine also reports to the
 [Tracy](https://github.com/wolfpld/tracy) profiler, as Godot's `profiler=tracy` builds do, which
-draws every thread's systems, commands, physics steps and drawing on one timeline.
+draws every thread's systems, commands, physics steps and drawing on one timeline. With
+`"memory": true`, `perf.stats` also says what each part of the engine holds in memory (the
+world, each component type, assets, physics, audio, particles and glyph atlases) and what the
+process uses, so a part that keeps growing shows where memory leaks.
 
 ## Scenes
 

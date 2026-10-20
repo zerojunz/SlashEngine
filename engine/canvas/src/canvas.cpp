@@ -151,10 +151,13 @@ struct AnimationState {
 } // namespace
 
 void add_asset_types(asset::Assets& assets) {
-    assets.add_type<render::Image>("texture", {".png", ".bmp"},
-                                   [](std::string_view bytes, std::string_view /*path*/) {
-                                       return render::decode_image(bytes);
-                                   });
+    // A texture's decoded texels; renderers keep a copy on the GPU too (perf.stats' gpu).
+    assets.add_type<render::Image>(
+        "texture", {".png", ".bmp"},
+        [](std::string_view bytes, std::string_view /*path*/) {
+            return render::decode_image(bytes);
+        },
+        [](const render::Image& image) { return sizeof(render::Image) + image.pixels.capacity(); });
     assets.add_type<SpriteFrames>(
         "sprite_frames", {std::string(kSpriteFramesSuffix)},
         [](std::string_view text, std::string_view /*path*/) -> Result<SpriteFrames> {

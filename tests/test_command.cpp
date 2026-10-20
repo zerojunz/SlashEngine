@@ -851,7 +851,11 @@ TEST_CASE("changed files reload, and prefab instances update with their override
                                             "Transform2D": {"rotation": 2}}})")
                 .ok());
     REQUIRE(slash::platform::write_file(root + "/data/tuning.json", R"({"speed": 70})").ok());
-    CHECK(engine.ok("asset.list") == parse(R"({"assets": [
+    // A loaded asset says what it holds; the prefab, parsed by the entities, holds nothing.
+    json::Value listed = engine.ok("asset.list");
+    CHECK(listed.find("assets")->as_array().front().find("bytes")->as_int() > 0);
+    listed.find("assets")->as_array().front().as_object().erase("bytes");
+    CHECK(listed == parse(R"({"assets": [
         {"path": "data/tuning.json", "type": "json", "refs": 1, "version": 2},
         {"path": "prefabs/enemy.prefab.json", "type": "prefab", "refs": 1, "version": 2}]})"));
     CHECK(tuning.value()->find("speed")->as_int() == 70);
@@ -1405,6 +1409,12 @@ TEST_CASE("a running game lists displays, changes V-Sync and the frame cap, and 
     CHECK(stats.find("systems")->is_array());
     CHECK(engine.ok("perf.stats", R"({"top": 0})").find("systems")->as_array().empty());
     CHECK(engine.commands.find("perf.stats")->description.starts_with("Frame pacing"));
+    // The renderer's textures, with the memory report.
+    REQUIRE(renderer->create_texture({.width = 8, .height = 4, .filter = {}, .render_target = true})
+                .ok());
+    const json::Value memory = *engine.ok("perf.stats", R"({"memory": true})").find("memory");
+    CHECK(*memory.find("gpu") == parse(R"({"bytes": 128, "textures": 1})"));
+    CHECK(memory.find("parts")->is_array());
 
     command::SessionOptions read_only;
     read_only.capture_logs = false;
@@ -1447,6 +1457,101 @@ TEST_CASE("perf.stats lists tick and system times in any session, the slowest sy
     const command::Reply bad =
         engine.fails("perf.stats", R"({"top": -1})", command::code::kInvalidParams);
     CHECK(contains(bad.message, "/top"));
+}
+
+namespace {
+
+const json::Value* memory_part(const json::Value& stats, std::string_view name) {
+    for (const json::Value& part : stats.find("memory")->find("parts")->as_array()) {
+        if (part.find("name")->as_string() == name) {
+            return &part;
+        }
+    }
+    return nullptr;
+}
+
+} // namespace
+
+TEST_CASE("perf.stats reports what each part of the engine holds in memory") {
+    const std::string root = "command_memory_project";
+    std::filesystem::remove_all(root);
+    REQUIRE(slash::platform::create_directories(root + "/data").ok());
+    REQUIRE(slash::platform::write_file(root + "/data/tuning.json",
+                                        R"({"speed": 3, "names": ["a", "b"]})")
+                .ok());
+    command::SessionOptions options;
+    options.project_root = root;
+    Engine engine(options);
+    // Only when asked.
+    CHECK(engine.ok("perf.stats").find("memory") == nullptr);
+
+    auto tuning = engine.session->assets().load<json::Value>("data/tuning.json");
+    REQUIRE(tuning.ok());
+    engine.ok("entity.create", R"({"id": "box", "components": {
+        "Transform2D": {}, "RigidBody2D": {}, "CollisionShape2D": {}}})");
+    engine.ok("entity.create", R"({"id": "sparkler", "components": {
+        "Transform2D": {}, "CPUParticles2D": {"amount": 10}}})");
+    engine.ok("step", R"({"ticks": 10})");
+
+    const json::Value stats = engine.ok("perf.stats", R"({"memory": true})");
+    const json::Value& memory = *stats.find("memory");
+#if defined(__linux__) || defined(__APPLE__) || defined(_WIN32)
+    CHECK(memory.find("process")->find("resident")->as_int() > 0);
+#endif
+    CHECK(memory.find("process")->find("peak")->as_int() >=
+          memory.find("process")->find("resident")->as_int());
+    // Every part the session's modules add, the largest first.
+    const json::Array& parts = memory.find("parts")->as_array();
+    for (const std::string_view name : {"world", "components", "assets", "physics2d", "audio",
+                                        "cpu_particles_2d", "gpu_particles_2d", "text"}) {
+        CHECK_MESSAGE(memory_part(stats, name) != nullptr, name);
+    }
+    for (std::size_t i = 1; i < parts.size(); ++i) {
+        CHECK(parts[i].find("bytes")->as_int() <= parts[i - 1].find("bytes")->as_int());
+    }
+    CHECK(*memory_part(stats, "world")->find("counts")->find("entities") == json::Value(2));
+    const json::Value* components = memory_part(stats, "components");
+    CHECK(components->find("counts")->find("components")->as_int() >= 5);
+    std::int64_t items = 0;
+    for (const json::Value& item : components->find("items")->as_array()) {
+        CHECK(item.find("bytes")->as_int() > 0);
+        items += item.find("count")->as_int();
+    }
+    CHECK(items >= 5);
+    CHECK(*memory_part(stats, "physics2d")->find("counts") ==
+          parse(R"({"bodies": 1, "contacts": 0, "joints": 0, "shapes": 1})"));
+    CHECK(memory_part(stats, "physics2d")->find("bytes")->as_int() > 0);
+    const json::Value* particles = memory_part(stats, "cpu_particles_2d");
+    CHECK(*particles->find("counts")->find("emitters") == json::Value(1));
+    CHECK(particles->find("counts")->find("slots")->as_int() == 10);
+    // Sessions keep ten seconds of each bus for audio.capture.
+    const std::int64_t mix_rate = engine.ok("audio.state").find("mix_rate")->as_int();
+    const json::Value& history = memory_part(stats, "audio")->find("items")->as_array().front();
+    CHECK(history.find("name")->as_string() == "history Master");
+    CHECK(history.find("count")->as_int() == 10 * mix_rate);
+    CHECK(history.find("bytes")->as_int() == 10 * mix_rate * 8);
+    const json::Value* assets = memory_part(stats, "assets");
+    CHECK(*assets->find("counts") == parse(R"({"assets": 1})"));
+    CHECK(assets->find("items")->as_array().front().find("name")->as_string() == "json");
+    CHECK(assets->find("bytes")->as_int() > 0);
+    // No GPU outside a running game.
+    CHECK(memory.find("gpu") == nullptr);
+
+    // top limits each part's items, as it does the systems.
+    const json::Value one = engine.ok("perf.stats", R"({"memory": true, "top": 1})");
+    CHECK(memory_part(one, "components")->find("items")->as_array().size() == 1);
+    const json::Value none = engine.ok("perf.stats", R"({"memory": true, "top": 0})");
+    CHECK(memory_part(none, "components")->find("items") == nullptr);
+    CHECK(memory_part(none, "components")->find("bytes")->as_int() ==
+          components->find("bytes")->as_int());
+    const command::Reply bad =
+        engine.fails("perf.stats", R"({"memory": 1})", command::code::kInvalidParams);
+    CHECK(contains(bad.message, "/memory"));
+
+    // asset.list says what each loaded asset holds.
+    const json::Value listed = engine.ok("asset.list");
+    CHECK(listed.find("assets")->as_array().front().find("bytes")->as_int() ==
+          assets->find("bytes")->as_int());
 }
 
 TEST_CASE("schema.get returns scene, component and command schemas") {

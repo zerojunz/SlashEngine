@@ -88,6 +88,7 @@ public:
         index_.clear();
     }
 
+    [[nodiscard]] std::size_t size() const noexcept { return entries_.size(); }
     [[nodiscard]] auto begin() { return entries_.begin(); }
     [[nodiscard]] auto end() { return entries_.end(); }
     [[nodiscard]] auto begin() const { return entries_.begin(); }
@@ -307,6 +308,9 @@ public:
     void queue(const Impulse& impulse) { impulses_.push_back(impulse); }
 
     [[nodiscard]] Contacts contacts(const world::World& world, entt::entity entity) const;
+
+    // Box2D's allocations and what its world holds, for World::memory.
+    [[nodiscard]] world::MemoryPart memory() const;
     // The gravity and damping at a body from the override areas it is in and the project's
     // settings, as Godot's GodotBody2D::integrate_forces.
     [[nodiscard]] AreaForces forces(const world::World& world, const world::Tree2D& tree,

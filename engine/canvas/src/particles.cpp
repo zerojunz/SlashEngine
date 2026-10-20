@@ -589,6 +589,21 @@ struct ParticleSystem {
         }
         std::erase_if(emitters, [&](const auto& entry) { return !seen.contains(entry.first); });
     }
+
+    [[nodiscard]] world::MemoryPart memory() const {
+        world::MemoryPart part{"cpu_particles_2d", 0, {}, {}};
+        std::uint64_t slots = 0;
+        std::uint64_t live = 0;
+        for (const auto& [key, emitter] : emitters) {
+            part.bytes += world::kMapNodeBytes<decltype(emitters)> + json::heap_bytes(key) +
+                          (emitter.slots.capacity() * sizeof(Slot));
+            slots += emitter.slots.size();
+            live += static_cast<std::uint64_t>(
+                std::ranges::count_if(emitter.slots, [](const Slot& slot) { return slot.alive; }));
+        }
+        part.counts = {{"emitters", emitters.size()}, {"particles", live}, {"slots", slots}};
+        return part;
+    }
 };
 
 } // namespace
@@ -614,6 +629,8 @@ void add_particles_system(world::World& world) {
     auto system = std::make_shared<ParticleSystem>();
     world.ecs().ctx().emplace<std::shared_ptr<ParticleSystem>>(system);
     world.add_reset([system](world::World& /*world*/) { system->emitters.clear(); });
+    world.add_memory_source("cpu_particles_2d",
+                            [system](const world::World& /*world*/) { return system->memory(); });
     world.add_system(
         "cpu_particles_2d",
         [system](world::World& w, double tick_seconds) { system->run_all(w, tick_seconds); },

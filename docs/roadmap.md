@@ -472,10 +472,12 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
 - [x] `build.check`: compiles only the changed gameplay files and returns errors as data (file,
       line, message and the compiler's suggested fix), with no build log to read
 - [x] Job system, so systems run in parallel before the 3D work in milestone 7 needs it
-- [ ] Profiling
+- [x] Profiling
   - [x] Tracy (the `tracy` build preset) and per-system timings in `perf.stats`, which reports
         frame pacing since milestone 5, in every session
-  - [ ] A per-system memory report
+  - [x] A per-system memory report: `perf.stats`'s `memory` gives the process's memory and what
+        the world, components, assets, physics, audio, particles and glyph atlases hold, and a
+        running game's GPU textures
 - [ ] `ai::Provider` with OpenAI-compatible, Anthropic and Gemini adapters
 - [ ] `ReplayProvider` so tests that use a model run offline
 - [ ] A benchmark of standard agent tasks that counts calls and tokens
@@ -717,7 +719,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Text and fonts | FreeType, HarfBuzz, MSDF fonts, BiDi, IME input, fallback fonts | 5 | Done |
 | Navigation | Recast and Detour, 2D and 3D, avoidance | 7 | Planned |
 | Asset import | glTF 2.0, FBX, OBJ, PNG, JPG, KTX2, WAV, OGG, MP3, and `.blend` through the artist's own Blender | 7 | Planned |
-| Profiling | Tracy, plus `perf.stats` over the command API | 5, 6 | In part: Tracy, and `perf.stats` reports frame pacing and tick and system times; the memory report is planned for 6 |
+| Profiling | Tracy, plus `perf.stats` over the command API | 5, 6 | Done: Tracy, and `perf.stats` reports frame pacing, tick and system times and memory by part of the engine |
 | Asset generation and library | Generated assets saved once and shared by every project and teammate, searched before generating, ranked by agent feedback; 3D models as parametric recipes, cleaned-up generated meshes or imported files, combined into complex assets with variants, reviewed automatically | 6, 7 | Planned: images and audio in 6, 3D in 7 |
 | Global illumination | Baked lightmaps and probe-based GI | 7 | Planned |
 | Ray tracing | Acceleration structures and ray queries in the render device on Vulkan, Direct3D 12 and Metal: ray-traced shadows, reflections, AO and GI, with raster and probe fallbacks | 7 | Planned |

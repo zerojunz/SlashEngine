@@ -102,7 +102,8 @@ adds sounds (`.wav`, `.ogg`, `.mp3`), `.audio.json` and `.bus_layout.json` files
 with `add_type`. Sessions and games own an `asset::Assets`, and prefab files are read through it.
 `Session::poll_assets()` reloads changed files, updates prefab instances (keeping overrides) and
 applies a changed `project.json`'s settings again; every command polls first, and `slash-cli run`
-and `serve` poll between ticks. `asset.list` shows what is loaded, and subscribers get
+and `serve` poll between ticks. `asset.list` shows what is loaded and the bytes each holds
+(`add_type`'s optional `bytes` function, else the file's size), and subscribers get
 `asset.reloaded` events.
 
 ## Storyboard
@@ -685,6 +686,16 @@ release that matches `cmake/dependencies.json`, to `127.0.0.1`. The macros in
 other build: the world steps, each system and command, Box2D's step, drawing and asset polling
 are zones, frames start in `platform::Loop`, and the job system's threads are named. Add zones to
 code worth seeing; they change no layout, so gameplay modules built without Tracy still load.
+
+`perf.stats` with `"memory": true` adds what the process uses (`platform::process_memory`) and
+`World::memory`: the world's own part, one for components (each type's storage plus
+`heap_bytes` of its fields, through `ComponentType::memory`), and a part from each memory source.
+A module that keeps state outside components adds a source when it installs
+(`World::add_memory_source`, as Godot's `Performance.add_custom_monitor`): physics2d, audio,
+both particle systems and ui's glyph atlases do. Asset types say what a loaded asset holds with
+`add_type`'s `bytes` function, else the file's size counts; a running game adds the render
+device's texture bytes (`render::Stats::texture_bytes`). Count from capacities, and keep a
+source cheap: agents call it between ticks. `examples/memory-report` finds a growing trail.
 
 ## UI and text
 

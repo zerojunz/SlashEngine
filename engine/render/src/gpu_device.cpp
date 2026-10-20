@@ -777,6 +777,9 @@ public:
     [[nodiscard]] Stats stats() const override {
         Stats stats = stats_;
         stats.textures = static_cast<std::uint32_t>(textures_.size());
+        for (const auto& [id, texture] : textures_) {
+            stats.texture_bytes += texture_bytes(texture.desc);
+        }
         return stats;
     }
 

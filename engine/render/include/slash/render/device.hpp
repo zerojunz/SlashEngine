@@ -81,6 +81,11 @@ struct TextureDesc {
     bool render_target = false;
 };
 
+// The bytes a texture's texels take: textures are RGBA8, with no mipmaps.
+[[nodiscard]] constexpr std::uint64_t texture_bytes(const TextureDesc& desc) noexcept {
+    return std::uint64_t{desc.width} * desc.height * 4;
+}
+
 // A texture a material samples in slot 1, 2 or 3.
 struct MaterialTexture {
     TextureId texture = TextureId::None; // None samples white
@@ -198,10 +203,11 @@ struct Image {
 };
 
 struct Stats {
-    std::uint64_t frames = 0;    // frames drawn, not counting skipped ones
-    std::uint64_t draws = 0;     // draw calls sent to the GPU, after batching
-    std::uint64_t triangles = 0; // triangles drawn
-    std::uint32_t textures = 0;  // textures alive
+    std::uint64_t frames = 0;        // frames drawn, not counting skipped ones
+    std::uint64_t draws = 0;         // draw calls sent to the GPU, after batching
+    std::uint64_t triangles = 0;     // triangles drawn
+    std::uint32_t textures = 0;      // textures alive
+    std::uint64_t texture_bytes = 0; // what they take on the GPU (texture_bytes)
 };
 
 class RenderDevice {
