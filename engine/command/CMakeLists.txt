@@ -1,9 +1,11 @@
 add_library(slash_command
     src/builtin.cpp
     src/command.cpp
+    src/cpp_outline.cpp
     src/live.cpp
     src/mcp.cpp
     src/perf.cpp
+    src/project_map.cpp
     src/replay.cpp
     src/rpc.cpp
     src/services.cpp

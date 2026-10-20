@@ -1,5 +1,6 @@
 #include "slash/command/builtin.hpp"
 
+#include "project_map.hpp"
 #include "selection.hpp"
 
 #include "slash/animation/animation.hpp"
@@ -6064,6 +6065,7 @@ void register_builtin_commands(Registry& registry) {
     register_perf_commands(registry);
     register_replay_commands(registry);
     register_test_commands(registry);
+    register_project_map(registry);
     register_services_commands(registry);
 }
 

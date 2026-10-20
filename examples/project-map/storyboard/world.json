@@ -1,0 +1,15 @@
+{
+  "entries": {
+    "character/runner": {
+      "links": ["src/runner.cpp"],
+      "name": "Runner",
+      "summary": "The player: quick, and can't swim."
+    },
+    "place/rooftops": {
+      "links": ["scenes"],
+      "name": "Rooftops",
+      "summary": "Where every level is set."
+    }
+  },
+  "format": 1
+}
