@@ -743,10 +743,7 @@ json::Value test_apk(const AndroidTools& tools, const fs::path& apk, const std::
         summary->find("ticks")->as_int() == static_cast<std::int64_t>(detail::kTestTicks);
     test["passed"] = passed;
     if (summary) {
-        test["ticks"] = *summary->find("ticks");
-        if (const json::Value* entities = summary->find("entities"); entities != nullptr) {
-            test["entities"] = *entities;
-        }
+        detail::add_summary(test, *summary);
     }
     if (!passed) {
         test["message"] = summary ? "the game stopped early"

@@ -652,6 +652,30 @@ void install(world::World& world, Settings settings) {
     start(world, current);
 }
 
+void merge_backends(Backends& into, Backends from, std::string_view source) {
+    const auto keep = [&](auto& kept, auto& added, std::string_view service) {
+        if (!added) {
+            return;
+        }
+        if (kept) {
+            log::error("two backends for one service; the first is kept",
+                       {{"service", std::string(service)},
+                        {"kept", std::string(kept->name())},
+                        {"dropped", std::string(added->name())},
+                        {"from", std::string(source)}});
+            return;
+        }
+        kept = std::move(added);
+    };
+    keep(into.ads, from.ads, "ads");
+    keep(into.purchases, from.purchases, "purchases");
+    for (auto& analytics : from.analytics) {
+        if (analytics) {
+            into.analytics.push_back(std::move(analytics));
+        }
+    }
+}
+
 void set_backends(world::World& world, Backends backends) {
     State* state = state_of(world);
     if (state == nullptr) {
@@ -686,6 +710,16 @@ void set_backends(world::World& world, Backends backends) {
         send_user(world, *state);
     }
     start(world, *state);
+}
+
+void stop(world::World& world) {
+    if (state_of(world) == nullptr) {
+        return;
+    }
+    flush_analytics(world);
+    BackendHolder& holder = holder_of(world);
+    holder.backends = {};
+    holder.reports = std::make_shared<Reports>();
 }
 
 void use_test_backend(world::World& world, TestSettings settings) {
@@ -1159,30 +1193,39 @@ std::string_view products_status_name(ProductsStatus status) {
 
 } // namespace
 
+json::Value backends_json(const world::World& world) {
+    const State* state = state_of(world);
+    json::Value backends;
+    if (state != nullptr && state->test) {
+        backends["ads"] = "test";
+        backends["analytics"] = json::Array{"test"};
+        backends["purchases"] = "test";
+        return backends;
+    }
+    const BackendHolder* holder = state != nullptr ? &holder_of(world) : nullptr;
+    const auto name = [](const auto& backend) {
+        return backend ? std::string(backend->name()) : std::string("none");
+    };
+    json::Array analytics;
+    if (holder != nullptr) {
+        for (const auto& backend : holder->backends.analytics) {
+            analytics.emplace_back(std::string(backend->name()));
+        }
+    }
+    backends["ads"] = holder != nullptr ? name(holder->backends.ads) : "none";
+    backends["analytics"] = std::move(analytics);
+    backends["purchases"] = holder != nullptr ? name(holder->backends.purchases) : "none";
+    return backends;
+}
+
 json::Value state_json(const world::World& world, std::size_t analytics_events) {
     const State* state = state_of(world);
     if (state == nullptr) {
         return {};
     }
-    const BackendHolder& holder = holder_of(world);
     json::Value out;
     out["tick"] = state->tick;
-    json::Value backends;
-    if (state->test) {
-        backends["ads"] = "test";
-        backends["analytics"] = json::Array{"test"};
-        backends["purchases"] = "test";
-    } else {
-        backends["ads"] = holder.backends.ads ? std::string(holder.backends.ads->name()) : "none";
-        json::Array analytics;
-        for (const auto& backend : holder.backends.analytics) {
-            analytics.emplace_back(std::string(backend->name()));
-        }
-        backends["analytics"] = std::move(analytics);
-        backends["purchases"] =
-            holder.backends.purchases ? std::string(holder.backends.purchases->name()) : "none";
-    }
-    out["backends"] = std::move(backends);
+    out["backends"] = backends_json(world);
     out["consent"]["analytics"] = consent_name(state->consent.analytics);
     out["consent"]["personalized_ads"] = consent_name(state->consent.personalized_ads);
     json::Value ads = json::Object{};

@@ -160,6 +160,15 @@ jobs:
           $cli export ${{ matrix.platform }} --project build/empty-game --test > build/export.json || { cat build/export.json; exit 1; }
           cat build/export.json
           jq -e '.sdks[0].name == "hello"' build/export.json
+          # The package's glue code registered its analytics backends: C++ everywhere, and
+          # Objective-C on macOS and iOS (Android's Java one is checked on the emulator below).
+          case "${{ matrix.platform }}" in
+            macos|ios) backend=hello_objc ;;
+            *) backend=hello ;;
+          esac
+          jq -e --arg backend "$backend" \
+            '.test.skipped or (.test.services.analytics | index("hello") and index($backend))' \
+            build/export.json
 
       - name: Check the signature and minimum macOS
         if: matrix.platform == 'macos'
@@ -282,6 +291,7 @@ jobs:
             ./build/release/tools/slash-cli/slash-cli export android --project build/empty-game --test > build/android-test.json
             cat build/android-test.json
             jq -e '.test.passed == true' build/android-test.json
+            jq -e '.test.services.analytics == ["hello", "hello_java"]' build/android-test.json
 
       - name: Upload the export log
         if: failure()

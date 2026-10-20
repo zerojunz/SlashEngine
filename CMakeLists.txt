@@ -5,6 +5,12 @@ project(SlashEngine
     DESCRIPTION "A lightweight, AI-first, model-agnostic game engine"
     LANGUAGES C CXX)
 
+# Objective-C++ for the Apple side of engine/services' backend bridges.
+if(APPLE)
+    enable_language(OBJC)
+    enable_language(OBJCXX)
+endif()
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)

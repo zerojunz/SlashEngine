@@ -274,7 +274,11 @@ Gradle (`src/maven.cpp`, POMs read with `src/xml.cpp`) and pins by SHA-256 in `s
 Android exports merge the libraries' manifests, resources, code and native libraries into the
 APK (`src/android_library.cpp`). `$cli sdk add`, `sdk check` and `sdk lock` (and the `sdk.add`,
 `sdk.check` and `sdk.lock` commands) add, check and lock packages; `examples/sdk-package` has a
-stand-in SDK built from source, which CI links into every platform's export.
+stand-in SDK built from source, which CI links into every platform's export. A package's glue
+code (`sources`, compiled into the game; `java` on Android) implements `engine/services`'
+backends, and its `register` function and `backends` (Java or Objective-C classes, made through
+`slash/services/bridges.hpp`: `src/android.cpp` over JNI, `src/apple.mm` over the Objective-C
+runtime) go into the `<build>/sdk_register.cpp` exports write, which the game calls at start.
 
 The export code is the `tools/exporter` library, shared by slash-cli and slash-mcp. It also
 registers `export.run`, the one command that needs the `build` capability; a running game leaves

@@ -396,6 +396,135 @@ TEST_CASE("the CMake that links SDK packages names each library, framework and f
     fs::remove_all(folder);
 }
 
+TEST_CASE("SDK glue code: sources, Java, backends by class name and a register function") {
+    constexpr std::string_view kGlue = R"({"format": 1, "name": "hello", "version": "1",
+        "license": "MIT", "register": "hello::register_backends",
+        "platforms": {
+          "linux": {"sources": ["glue/hello.cpp", "glue"]},
+          "android": {"sources": ["glue/hello.cpp"], "java": ["glue/android", "Extra.java"],
+                      "backends": {"ads": "com.example.hello.HelloAds",
+                                   "analytics": ["com.example.hello.Hello$Analytics"]}},
+          "ios": {"sources": ["glue/HelloAds.mm"], "backends": {"purchases": "HelloStore"}}}})";
+    CHECK(exporter::validate_sdk(parse(kGlue)).empty());
+
+    constexpr std::string_view kWrong = R"({"format": 1, "name": "hello", "version": "1",
+        "license": "MIT", "register": "hello:register",
+        "platforms": {
+          "linux": {"sources": ["glue/hello.mm", "glue/hello.py"], "java": ["A.java"],
+                    "backends": {"ads": "HelloAds"}},
+          "android": {"java": ["glue/hello.kt"],
+                      "backends": {"ads": "com.example.2d.Ads", "analytics": ["Hello Analytics"]}},
+          "macos": {"backends": {"analytics": ["com.example.Hello"]}}}})";
+    CHECK(error_at(kWrong, "/platforms/linux/sources/0") ==
+          "only macOS and iOS compile Objective-C");
+    CHECK(contains(error_at(kWrong, "/platforms/linux/sources/1"), "expected a C or C++ file"));
+    CHECK(error_at(kWrong, "/platforms/linux/java") == "only Android has java");
+    CHECK(contains(error_at(kWrong, "/platforms/linux/backends"),
+                   "only Android, macOS and iOS have backends by class name"));
+    CHECK(error_at(kWrong, "/platforms/android/java/0") == "expected a .java file or a folder");
+    CHECK(contains(error_at(kWrong, "/platforms/android/backends/ads"), "Java class's full name"));
+    CHECK(contains(error_at(kWrong, "/platforms/android/backends/analytics/0"),
+                   "Java class's full name"));
+    CHECK(contains(error_at(kWrong, "/platforms/macos/backends/analytics/0"),
+                   "Objective-C class's name"));
+    CHECK(contains(error_at(kWrong, "/register"), "expected a C++ function's name"));
+    // The function must be defined somewhere.
+    CHECK(error_at(R"({"format": 1, "name": "hello", "version": "1", "license": "MIT",
+                       "register": "register_hello", "platforms": {"linux": {}}})",
+                   "/register") == "no platform has \"sources\" to define it in");
+
+    // Folders of sources resolve to their files for the platform, in order.
+    const fs::path folder = fs::absolute("sdk_glue");
+    fs::remove_all(folder);
+    write(folder / "sdk.json", kGlue);
+    write(folder / "glue" / "hello.cpp", "");
+    write(folder / "glue" / "more" / "store.c", "");
+    write(folder / "glue" / "HelloAds.mm", "");
+    write(folder / "glue" / "README.md", "");
+    write(folder / "glue" / "android" / "com" / "example" / "hello" / "HelloAds.java", "");
+    write(folder / "Extra.java", "");
+    auto sdk = exporter::load_sdk(folder);
+    REQUIRE_MESSAGE(sdk.ok(), (sdk.ok() ? std::string() : sdk.error().message));
+    CHECK(sdk.value().register_function == "hello::register_backends");
+    std::vector<exporter::SdkProblem> problems;
+    const exporter::ResolvedSdk linux_sdk =
+        exporter::resolve_sdk(sdk.value(), "linux", "x86_64", {}, true, problems);
+    CHECK(problems.empty());
+    const std::string glue = (folder / "glue").generic_string();
+    CHECK(linux_sdk.sources == std::vector<std::string>{glue + "/hello.cpp", glue + "/hello.cpp",
+                                                        glue + "/more/store.c"});
+    CHECK(linux_sdk.register_function == "hello::register_backends");
+    const exporter::ResolvedSdk android =
+        exporter::resolve_sdk(sdk.value(), "android", "x86_64", {}, true, problems);
+    CHECK(problems.empty());
+    CHECK(android.java ==
+          std::vector<std::string>{glue + "/android", (folder / "Extra.java").generic_string()});
+    CHECK(android.backends.ads == "com.example.hello.HelloAds");
+    // Exports only call the function where the package's code is compiled in.
+    exporter::Sdk no_sources = sdk.value();
+    no_sources.platforms["linux"].sources.clear();
+    CHECK(exporter::resolve_sdk(no_sources, "linux", "x86_64", {}, true, problems)
+              .register_function.empty());
+    // A folder with no sources for the platform is a mistake.
+    fs::create_directories(folder / "empty");
+    no_sources.platforms["linux"].sources = {"empty"};
+    (void)exporter::resolve_sdk(no_sources, "linux", "x86_64", {}, true, problems);
+    REQUIRE(problems.size() == 1);
+    CHECK(problems[0].path == "/platforms/linux/sources");
+    CHECK(contains(problems[0].message, "has no source files for linux"));
+    problems.clear();
+
+    const std::string cmake =
+        exporter::sdk_cmake({android}, json::Object{}, "/build/sdk_register.cpp");
+    INFO(cmake);
+    CHECK(contains(cmake, "    SOURCES\n        [[" + glue + "/hello.cpp]]\n"));
+    CHECK(contains(cmake, "    JAVA\n        [[" + glue + "/android]]\n"));
+    CHECK(contains(cmake, "slash_game_sdk_register([[/build/sdk_register.cpp]])\n"));
+    CHECK_FALSE(contains(exporter::sdk_cmake({android}, json::Object{}), "register"));
+
+    // The register code calls each package's function and makes its classes' backends.
+    const std::string source = exporter::sdk_register_source({linux_sdk}, problems);
+    INFO(source);
+    CHECK(contains(source, "namespace hello {\n"
+                           "void register_backends(slash::services::Backends& backends);\n"
+                           "} // namespace\n"));
+    CHECK(contains(source, "        ::hello::register_backends(added);\n"
+                           "        slash::services::merge_backends(backends, std::move(added), "
+                           "\"hello\");\n"));
+    CHECK_FALSE(contains(source, "bridges.hpp"));
+    const std::string android_source = exporter::sdk_register_source({android}, problems);
+    INFO(android_source);
+    CHECK(contains(android_source, "#include \"slash/services/bridges.hpp\""));
+    CHECK(contains(android_source,
+                   "        added.ads = "
+                   "slash::services::java_ads_backend(\"com.example.hello.HelloAds\");\n"));
+    CHECK(contains(android_source,
+                   "        added.analytics.push_back(slash::services::"
+                   "java_analytics_backend(\"com.example.hello.Hello$Analytics\"));\n"));
+    const exporter::ResolvedSdk ios =
+        exporter::resolve_sdk(sdk.value(), "ios", "simulator", {}, true, problems);
+    CHECK(contains(
+        exporter::sdk_register_source({ios}, problems),
+        "        added.purchases = slash::services::objc_purchases_backend(\"HelloStore\");\n"));
+    CHECK(problems.empty());
+    // Nothing to register, no file.
+    CHECK(exporter::sdk_register_source({}, problems).empty());
+
+    // Two packages can't both give the game's ads.
+    exporter::Sdk other_sdk = sdk.value();
+    other_sdk.name = "other";
+    other_sdk.location = "sdks/other";
+    exporter::ResolvedSdk other = android;
+    other.sdk = &other_sdk;
+    (void)exporter::sdk_register_source({android, other}, problems);
+    REQUIRE(problems.size() == 1);
+    CHECK(problems[0].sdk == "sdks/other");
+    CHECK(problems[0].path == "/platforms/android/backends/ads");
+    CHECK(problems[0].message ==
+          "the SDK hello gives the ads backend too, and a game's ads run on one");
+    fs::remove_all(folder);
+}
+
 TEST_CASE("sdk.check reports every problem with the project's packages") {
     const fs::path folder = fs::absolute("sdk_check_project");
     fs::remove_all(folder);
