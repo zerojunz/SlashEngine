@@ -75,6 +75,17 @@ Reply gameplay_build(command::Session& session, const json::Value& /*params*/) {
     return Reply::success(std::move(result));
 }
 
+Reply build_check(command::Session& session, const json::Value& /*params*/) {
+    const GameplayCheck checked = check_gameplay(session.options().project_root);
+    json::Value result = checked.to_json();
+    if (!checked.ran) {
+        const int code = checked.step == "options" ? command::code::kInvalidArgument
+                                                   : command::code::kPlatformFailure;
+        return Reply::failure(code, checked.message, std::move(result));
+    }
+    return Reply::success(std::move(result));
+}
+
 Reply needs_build(std::string_view what, std::string_view pointer) {
     Reply reply = Reply::failure(command::code::kPermissionDenied,
                                  std::string(what) + " needs the \"build\" capability, which "
@@ -190,8 +201,18 @@ void register_export_commands(command::Registry& registry) {
                        "code. Returns compiler errors with file and line.",
         .capabilities = {Capability::Filesystem, Capability::Build},
         .effect = command::Effect::Read,
-        .params = std::move(no_params),
+        .params = no_params,
         .handler = gameplay_build,
+    });
+    registry.add({
+        .name = "build.check",
+        .description = "Compiles the gameplay C++ files changed since the last check or build, "
+                       "without linking or loading. Returns the files checked and each error "
+                       "and warning: file, line, column, message, notes and the compiler's fix.",
+        .capabilities = {Capability::Filesystem, Capability::Build},
+        .effect = command::Effect::Read,
+        .params = std::move(no_params),
+        .handler = build_check,
     });
 
     json::Value check_params;

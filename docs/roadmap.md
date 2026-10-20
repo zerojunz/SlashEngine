@@ -469,7 +469,7 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
 - [x] Imported scripts as C++ skeletons: `project.import` writes a component for each script's
       exported variables, events for its signals and a system with its functions for the agent
       to fill in, beside the storyboard task (GDScript, Godot's C# and Unity's C#)
-- [ ] `build.check`: compiles only the changed gameplay files and returns errors as data (file,
+- [x] `build.check`: compiles only the changed gameplay files and returns errors as data (file,
       line, message and the compiler's suggested fix), with no build log to read
 - [ ] Job system, so systems run in parallel before the 3D work in milestone 7 needs it
 - [ ] Profiling: Tracy, per-system timings in `perf.stats` (which reports frame pacing since
@@ -764,7 +764,7 @@ calls and tokens ([design section 6](design.md#6-cheap-for-agents-to-use)).
 | Verified examples for every feature, built and run in CI | 5 | Done |
 | `run.until`: run headless until a condition holds instead of polling | 5 | Done |
 | `replay.seek`: query any earlier tick of a recorded run | 5 | Done |
-| `build.check`: C++ compile errors as data from an incremental build | 6 | Planned |
+| `build.check`: C++ compile errors as data from an incremental build | 6 | Done |
 | `api.search`: real signatures and examples instead of guessed function names | 6 | Planned |
 | `playtest.run`: many headless bot runs and tuning sweeps in one call | 6 | Planned |
 | `audio.analyze`: tempo, key, loudness and loop seams as data instead of listening | 6 | Planned |

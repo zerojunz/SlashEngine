@@ -195,7 +195,9 @@ A game's **gameplay code** is C++ in the folders `project.json`'s `gameplay.sour
 own components and systems, registered in one `SLASH_GAME_MODULE` function, as Godot's scripts
 add a game's own behavior. Exports compile it in. The tools build it into a library with
 `slash-cli build` or `gameplay.build` and load it, and when it is rebuilt they swap the new code
-into the running world, which keeps its entities and each field the code still has. See
+into the running world, which keeps its entities and each field the code still has.
+`build.check` compiles only the files that changed, with nothing linked, and returns errors and
+warnings as data with the compiler's suggested fixes. See
 [reference/project-format.md](reference/project-format.md#gameplay-code).
 
 An **export preset** is a named way to export, kept in the project's `export_presets.json` like

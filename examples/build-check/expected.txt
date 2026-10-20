@@ -1,0 +1,18 @@
+build.check {}
+{"checked":["src/bank.cpp","src/game.cpp"],"ok":true}
+build.check {}
+{"checked":[],"ok":true}
+build.check {}
+{"checked":["src/bank.cpp","src/game.cpp"],"ok":true}
+build.check {}
+{"checked":["src/game.cpp"],"errors":[{"column":53,"file":"src/game.cpp","fix":[{"column":53,"end_column":58,"line":18,"text":"income"}],"line":18}],"ok":false,"warnings":[{"column":15,"file":"src/game.cpp","line":24,"message":"unused variable 'limit' [-Wunused-variable]"}]}
+build.check {}
+{"checked":["src/game.cpp"],"ok":true}
+gameplay.build {}
+{"library":".slash/gameplay/game.so","log":".slash/gameplay/build.log","reload":{"added":["Wallet"]}}
+scene.open {"path":"scenes/main.scene.json"}
+{"entities":1,"path":"scenes/main.scene.json"}
+step {"ticks":3}
+{"tick":3,"ticks":3}
+world.query {"include":["Wallet"]}
+{"count":1,"entities":[{"components":{"Wallet":{"coins":209,"income":1}},"id":"player"}],"truncated":false}

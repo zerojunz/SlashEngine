@@ -82,7 +82,7 @@ as `entity.get`, reject it as an unknown param.
 | Display | [`display.list`](#displaylist), [`display.set`](#displayset), [`perf.stats`](#perfstats), [`debug.overlay`](#debugoverlay) |
 | Import | [`project.import`](#projectimport) |
 | Export | [`export.run`](#exportrun), [`sdk.check`](#sdkcheck), [`sdk.add`](#sdkadd), [`sdk.lock`](#sdklock) |
-| Gameplay code | [`gameplay.build`](#gameplaybuild) |
+| Gameplay code | [`gameplay.build`](#gameplaybuild), [`build.check`](#buildcheck) |
 
 
 ## Describe
@@ -3020,14 +3020,48 @@ system named like one of the engine's, no `SLASH_GAME_MODULE` function, or a lib
 against other engine headers or another compiler.
 
 Compiler errors fail with `-32002`, listing at most 20 in `data.errors`, each with `file`
-(relative to the project when inside it), `line`, `column` and `message`; `data.log` is the full
-build log. A project with no `gameplay.sources` fails with `-32002` and `data.step` `"options"`;
+(relative to the project when inside it), `line`, `column` and `message`, and `fix` and `notes`
+when the compiler gives them (as [`build.check`](#buildcheck) returns them); `data.log` is the
+full build log. Every file is compiled, past those that fail, so all their errors come back. A project with no `gameplay.sources` fails with `-32002` and `data.step` `"options"`;
 a build that fails without compiler errors, such as a link error, fails with `-32004` and the end
 of the log in `data.tail`.
 
 ```json
-{"code":-32002,"data":{"errors":[{"column":97,"file":"src/game.cpp","line":16,"message":"'struct {anonymous}::Wallet' has no member named 'bonsu'; did you mean 'bonus'?"}],"log":".slash/gameplay/build.log","step":"build"},"message":"the game's code has 1 error"}
+{"code":-32002,"data":{"errors":[{"column":97,"file":"src/game.cpp","fix":[{"column":97,"end_column":102,"line":16,"text":"bonus"}],"line":16,"message":"'struct {anonymous}::Wallet' has no member named 'bonsu'; did you mean 'bonus'?"}],"log":".slash/gameplay/build.log","step":"build"},"message":"the game's code has 1 error"}
 ```
+
+### build.check
+
+Compiles the gameplay sources that changed since the last check or build, and those including a
+header that changed, without linking or loading anything, and returns every error and warning as
+data. Use it after each edit to the game's code: it compiles only what changed, and the objects
+it compiles are the ones [`gameplay.build`](#gameplaybuild) links next. Registered by `slash-cli`
+and `slash-mcp`, on macOS and Linux.
+
+No params. Needs: `filesystem`, `build`.
+
+```json
+{}
+```
+
+```json
+{"checked":["src/game.cpp"],"errors":[{"column":32,"file":"src/game.cpp","fix":[{"column":32,"end_column":37,"line":18,"text":"income"}],"line":18,"message":"'struct {anonymous}::Wallet' has no member named 'incme'; did you mean 'income'?"}],"ok":false,"warnings":[{"column":15,"file":"src/game.cpp","line":25,"message":"unused variable 'limit' [-Wunused-variable]"}]}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `ok` | No errors |
+| `checked` | The files compiled, relative to the project; `[]` when nothing changed |
+| `errors`, `warnings` | At most 20 of each, left out when there are none: `file` (relative to the project when inside it), `line`, `column` and the compiler's `message` |
+| `fix` | The compiler's suggested fix, when it has one, as edits: replace from `line`:`column` up to, but not including, `end_column` with `text`. Columns count bytes from 1; `end_line` and `file` appear when the edit ends on another line or is in another file |
+| `notes` | At most three of the compiler's notes, such as where a name it suggests is declared: `file`, `line`, `column` and `message` |
+
+A file that fails is compiled again by the next check until it compiles; one that compiled is
+not, so its warnings come back only after it changes. An error repeated in each file that
+includes a header is listed once. Checks fail as `gameplay.build` does when they can't run: a
+project with no `gameplay.sources` with `-32002` and `data.step` `"options"`, a build that fails
+without compiler errors with `-32004`, the end of the log in `data.tail` and the log in
+`data.log` (`.slash/gameplay/check.log`).
 
 ## Adding a command
 
