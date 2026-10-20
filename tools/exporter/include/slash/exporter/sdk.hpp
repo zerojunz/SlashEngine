@@ -74,7 +74,9 @@ struct SdkBackends {
     std::vector<std::string> analytics;
     std::string purchases;
 
-    [[nodiscard]] bool empty() const { return ads.empty() && analytics.empty() && purchases.empty(); }
+    [[nodiscard]] bool empty() const {
+        return ads.empty() && analytics.empty() && purchases.empty();
+    }
 };
 
 // What a package adds to one platform's build. Paths are relative to the package's folder and
