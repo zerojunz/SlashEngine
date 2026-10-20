@@ -114,6 +114,7 @@ TEST_CASE("every command is listed as a tool") {
         if (name == "world_query") {
             saw_query = true;
             CHECK(annotations.find("readOnlyHint")->as_bool());
+            CHECK_FALSE(annotations.find("openWorldHint")->as_bool());
         }
         if (name == "entity_create") {
             saw_create = true;

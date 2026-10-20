@@ -2,6 +2,7 @@
 // Each line on stdin is one JSON-RPC message and each response is one line on stdout. Logs go to
 // stderr as JSON lines.
 
+#include "slash/ai/commands.hpp"
 #include "slash/command/builtin.hpp"
 #include "slash/command/command.hpp"
 #include "slash/command/mcp.hpp"
@@ -38,8 +39,8 @@ Usage:
   slash-mcp [options]
       --project <dir>        Project folder; scene paths are relative to it (default ".")
       --scene <file>         Open this scene at startup, or start a new one saved there
-      --allow <list>         Capabilities to grant: read, edit, run, filesystem, build or
-                             all (default all), e.g. --allow read,run
+      --allow <list>         Capabilities to grant: read, edit, run, filesystem, build,
+                             network or all (default all), e.g. --allow read,run
       --live                 Drive the game already running in the project ("slash-cli run
                              --serve" or "slash-cli serve") instead of an engine of its own
       --version              Print the engine version
@@ -135,6 +136,7 @@ int main(int argc, char** argv) {
     command::register_builtin_commands(commands);
     slash::exporter::register_export_commands(commands);
     slash::importer::register_import_commands(commands);
+    slash::ai::register_commands(commands);
     // The project's own C++ code, loaded again whenever gameplay.build rebuilds it.
     slash::gameplay::Host gameplay(components, slash::gameplay::library_path(options.project_root));
     options.gameplay = &gameplay;

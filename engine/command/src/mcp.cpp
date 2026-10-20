@@ -169,7 +169,7 @@ Reply Server::list_tools() const {
         const bool read_only =
             command->effect == Effect::Read && !has(*command, Capability::Edit) &&
             !has(*command, Capability::Run) && !has(*command, Capability::Filesystem) &&
-            !has(*command, Capability::Build);
+            !has(*command, Capability::Build) && !has(*command, Capability::Network);
         json::Value tool;
         tool["name"] = name;
         tool["description"] = command->description;
@@ -181,7 +181,8 @@ Reply Server::list_tools() const {
                                                      has(*command, Capability::Filesystem) ||
                                                      has(*command, Capability::Build);
         }
-        tool["annotations"]["openWorldHint"] = false;
+        // Only commands that reach the network, such as ai.complete, leave the project.
+        tool["annotations"]["openWorldHint"] = has(*command, Capability::Network);
         tools.push_back(std::move(tool));
     }
     json::Value result;
