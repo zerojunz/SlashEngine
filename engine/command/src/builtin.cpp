@@ -5,6 +5,7 @@
 #include "selection.hpp"
 
 #include "slash/animation/animation.hpp"
+#include "slash/audio/analysis.hpp"
 #include "slash/audio/audio.hpp"
 #include "slash/audio/effects.hpp"
 #include "slash/canvas/canvas.hpp"
@@ -2782,6 +2783,194 @@ Reply audio_capture(Session& session, const json::Value& params) {
     return Reply::success(std::move(result));
 }
 
+// Where a sound loops as its .audio.json file plays it (from the end, or after beat_count beats,
+// back to loop_offset; a .wav file's forward loop), or its whole length when it has no settings.
+std::optional<audio::LoopPoints> loop_points(const audio::Sound& sound,
+                                             const audio::StreamFile* settings) {
+    audio::LoopPoints loop{.start = 0, .end = sound.frames};
+    if (settings == nullptr) {
+        return loop;
+    }
+    if (sound.format == audio::Sound::Format::Wav) {
+        if (settings->loop_mode != audio::LoopMode::Forward) {
+            return std::nullopt;
+        }
+        loop.start = std::clamp<std::int64_t>(settings->loop_begin, 0, sound.frames);
+        loop.end =
+            settings->loop_end < 0 ? sound.frames : std::min(settings->loop_end, sound.frames);
+        return loop;
+    }
+    if (!settings->loop) {
+        return std::nullopt;
+    }
+    loop.start = static_cast<std::int64_t>(settings->loop_offset * sound.mix_rate);
+    if (settings->bpm > 0 && settings->beat_count > 0) {
+        loop.end = std::min<std::int64_t>(
+            sound.frames,
+            static_cast<std::int64_t>(settings->beat_count * sound.mix_rate * 60 / settings->bpm));
+        loop.crossfade = audio::kLoopCrossfade;
+    }
+    return loop;
+}
+
+json::Value optional_decibels(const std::optional<double>& db) {
+    return db ? decibels(*db) : json::Value(nullptr);
+}
+
+json::Value hundredths(double value) {
+    return short_number(std::round(value * 100.0) / 100.0);
+}
+
+json::Value thousandths(double value) {
+    return short_number(std::round(value * 1000.0) / 1000.0);
+}
+
+json::Value analysis_json(const audio::Analysis& analysis) {
+    json::Value out;
+    out["seconds"] = thousandths(analysis.seconds);
+    out["lufs"] = optional_decibels(analysis.lufs);
+    out["loudness_range"] = optional_decibels(analysis.loudness_range);
+    out["max_short_term_lufs"] = optional_decibels(analysis.max_short_term_lufs);
+    out["true_peak_db"] = optional_decibels(analysis.true_peak_db);
+    out["peak_db"] = optional_decibels(analysis.peak_db);
+    out["rms_db"] = optional_decibels(analysis.rms_db);
+    json::Array problems;
+    out["clips"] = analysis.clips;
+    if (analysis.clips > 0) {
+        out["first_clip"] = thousandths(analysis.first_clip);
+        problems.emplace_back("clips " + std::to_string(analysis.clips) +
+                              (analysis.clips == 1 ? " time" : " times") + ", first at " +
+                              json::write(thousandths(analysis.first_clip)) + " s");
+    }
+    constexpr double kMostTruePeak = -1.0; // EBU R 128's ceiling
+    if (analysis.true_peak_db && *analysis.true_peak_db > kMostTruePeak) {
+        problems.emplace_back("true peak " + json::write(decibels(*analysis.true_peak_db)) +
+                              " dBTP is above -1, so it may clip once encoded or resampled");
+    }
+    json::Value silence;
+    silence["start"] = thousandths(analysis.silence_start);
+    silence["end"] = thousandths(analysis.silence_end);
+    if (!analysis.gaps.empty()) {
+        json::Array gaps;
+        for (const auto& [from, to] : analysis.gaps) {
+            gaps.emplace_back(json::Array{thousandths(from), thousandths(to)});
+        }
+        silence["gaps"] = std::move(gaps);
+    }
+    out["silence"] = std::move(silence);
+    if (analysis.bpm) {
+        const double bpm = *analysis.bpm;
+        out["bpm"] = short_number(std::round(bpm * 10.0) / 10.0);
+        out["beat_offset"] = thousandths(analysis.beat_offset);
+        out["beats"] = hundredths(analysis.seconds * bpm / 60.0);
+        out["tempo_confidence"] = hundredths(analysis.tempo_confidence);
+    } else {
+        out["bpm"] = nullptr;
+    }
+    if (analysis.key) {
+        out["key"] = *analysis.key;
+        out["key_confidence"] = hundredths(analysis.key_confidence);
+    } else {
+        out["key"] = nullptr;
+    }
+    json::Array bands;
+    for (const std::optional<double>& band : analysis.bands_db) {
+        bands.push_back(optional_decibels(band));
+    }
+    out["bands_db"] = std::move(bands);
+    if (analysis.loop) {
+        const audio::Analysis::Loop& loop = *analysis.loop;
+        json::Value item;
+        item["seconds"] = thousandths(loop.seconds);
+        if (analysis.bpm) {
+            item["beats"] = hundredths(loop.seconds * *analysis.bpm / 60.0);
+        }
+        item["step_db"] = optional_decibels(loop.step_db);
+        item["level_change_db"] = decibels(loop.level_change_db);
+        item["clicks"] = loop.clicks;
+        if (loop.clicks) {
+            problems.emplace_back("the loop clicks where its end joins its start");
+        }
+        out["loop"] = std::move(item);
+    }
+    if (!analysis.peak_db) {
+        problems.emplace_back("silent");
+    }
+    if (!problems.empty()) {
+        out["problems"] = std::move(problems);
+    }
+    return out;
+}
+
+Reply audio_analyze(Session& session, const json::Value& params) {
+    const json::Value* path_value = params.find("path");
+    const json::Value* bus_value = params.find("bus");
+    const json::Value* loop_value = params.find("loop");
+    if ((path_value == nullptr) == (bus_value == nullptr)) {
+        return param_error(code::kInvalidParams, "",
+                           R"(name a sound or .audio.json file in "path", or a bus in "bus")");
+    }
+    std::vector<audio::Frame> frames;
+    int mix_rate = 0;
+    std::optional<audio::LoopPoints> loop;
+    if (path_value != nullptr) {
+        const std::string path = path_value->as_string();
+        std::string sound_path = path;
+        std::optional<asset::Handle<audio::StreamFile>> settings;
+        if (!audio::is_sound_path(path)) {
+            if (!path.ends_with(audio::kStreamSuffix)) {
+                return param_error(code::kInvalidArgument, "/path",
+                                   "expected a sound file (.wav, .ogg or .mp3) or a .audio.json "
+                                   "file");
+            }
+            auto file = session.assets().load<audio::StreamFile>(path);
+            if (!file) {
+                return param_error(file.error(), "/path");
+            }
+            if (file.value()->source.empty()) {
+                return param_error(code::kInvalidArgument, "/path",
+                                   quoted(path) +
+                                       " is not a sound with a \"source\"; play it and measure "
+                                       "its bus with \"bus\"");
+            }
+            sound_path = file.value()->source;
+            settings = std::move(file).value();
+        }
+        auto sound = session.assets().load<audio::Sound>(sound_path);
+        if (!sound) {
+            return param_error(sound.error(), "/path");
+        }
+        auto decoded = audio::decode_frames(*sound.value());
+        if (!decoded) {
+            return param_error(code::kInvalidArgument, "/path",
+                               quoted(sound_path) + ": " + decoded.error().message);
+        }
+        frames = std::move(decoded).value();
+        mix_rate = sound.value()->mix_rate;
+        const bool looped = loop_value != nullptr ? loop_value->as_bool() : settings.has_value();
+        if (looped) {
+            loop = loop_points(*sound.value(), settings ? settings->get() : nullptr);
+            if (!loop && loop_value != nullptr) {
+                loop = audio::LoopPoints{.start = 0, .end = sound.value()->frames};
+            }
+        }
+    } else {
+        if (loop_value != nullptr) {
+            return param_error(code::kInvalidArgument, "/loop", "only a file loops");
+        }
+        const json::Value* seconds = params.find("seconds");
+        auto captured =
+            audio::capture(session.world(), bus_value->as_string(),
+                           seconds != nullptr ? seconds->as_double() : kMaxCaptureSeconds, 0, true);
+        if (!captured) {
+            return param_error(captured.error(), "/bus");
+        }
+        frames = std::move(captured).value().frames;
+        mix_rate = audio_server(session).mix_rate();
+    }
+    return Reply::success(analysis_json(audio::analyze(frames, mix_rate, loop)));
+}
+
 // The index of the effect of a type on a bus: the "effect" asked for, or the first such.
 Result<int> find_effect(const audio::Server& server, int bus, const json::Value& params,
                         std::string_view type) {
@@ -2823,18 +3012,6 @@ Reply effect_error(const Error& error) {
     return param_error(error, "/bus");
 }
 
-// Octave bands around 31.5 Hz to 16 kHz, as sound level meters show them.
-constexpr std::array<std::array<double, 2>, 10> kOctaveBands{{{22, 44},
-                                                              {44, 88},
-                                                              {88, 177},
-                                                              {177, 355},
-                                                              {355, 710},
-                                                              {710, 1420},
-                                                              {1420, 2840},
-                                                              {2840, 5680},
-                                                              {5680, 11360},
-                                                              {11360, 22720}}};
-
 Reply audio_spectrum(Session& session, const json::Value& params) {
     audio::Server& server = audio_server(session);
     const std::string bus_name = params.find("bus") != nullptr ? text(params, "bus") : "Master";
@@ -2861,7 +3038,7 @@ Reply audio_spectrum(Session& session, const json::Value& params) {
             ranges.push_back({range.as_array()[0].as_double(), range.as_array()[1].as_double()});
         }
     } else {
-        ranges.assign(kOctaveBands.begin(), kOctaveBands.end());
+        ranges.assign(audio::kOctaveBands.begin(), audio::kOctaveBands.end());
     }
     json::Value result;
     if (asked == nullptr) {
@@ -5655,6 +5832,30 @@ void register_builtin_commands(Registry& registry) {
                                                        100, kDefaultCaptureSlices)},
                            {"path", property("string", "A .wav file to write the sound to.")}}),
         .handler = audio_capture,
+    });
+    json::Value analyze_seconds =
+        property("number", "With bus: how far back, in seconds. Default: 10, all that is kept.");
+    analyze_seconds["minimum"] = 0;
+    analyze_seconds["maximum"] = kMaxCaptureSeconds;
+    registry.add({
+        .name = "audio.analyze",
+        .description =
+            "Measures a sound so you can judge it without listening: loudness (LUFS, range, "
+            "loudest 3 s), true and sample peak, RMS, clipping, silence and gaps, tempo (bpm, "
+            "first beat, length in beats), key, each octave band's share of the energy (31.5 Hz "
+            "to 16 kHz, in dB) and, for a looping file, how cleanly the loop joins. Takes a sound "
+            "or a .audio.json sound (\"path\", looping as its settings say) or what a bus played.",
+        .capabilities = {Read},
+        .effect = Effect::Read,
+        .params = params_schema(
+            {{"path", property("string", "A sound file (.wav, .ogg, .mp3) or a .audio.json file "
+                                         "with a \"source\".")},
+             {"bus", id_property("Measure what this bus played instead, as audio.capture.")},
+             {"seconds", std::move(analyze_seconds)},
+             {"loop", property("boolean", "Measure the loop's join: true for a sound file to "
+                                          "loop end to start. Default: as a .audio.json file "
+                                          "loops.")}}),
+        .handler = audio_analyze,
     });
     json::Value play_from = property("number", "Seconds into the stream. Default: 0.");
     play_from["minimum"] = 0;
