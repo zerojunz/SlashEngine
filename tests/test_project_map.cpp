@@ -127,8 +127,19 @@ SLASH_GAME_MODULE(game) {
     CHECK(wallet->scope == "game");
     CHECK(wallet->line == 10);
     CHECK(wallet->doc == "Coins an entity holds. Never negative.");
-    CHECK(symbol(outline, "Mood")->kind == "enum");
+    REQUIRE(wallet->fields.size() == 1);
+    CHECK(wallet->fields[0].declaration == "int coins = 0");
+    CHECK(wallet->fields[0].access == "public");
+    CHECK(wallet->fields[0].line == 11);
+    CHECK(wallet->signature == "struct Wallet");
+    const command::CppSymbol* mood = symbol(outline, "Mood");
+    CHECK(mood->kind == "enum");
+    CHECK(mood->signature == "enum class Mood : int");
+    REQUIRE(mood->fields.size() == 2);
+    CHECK(mood->fields[0].declaration == "Calm");
+    CHECK(mood->fields[1].declaration == "Angry");
     CHECK(symbol(outline, "Purse")->kind == "alias");
+    CHECK(symbol(outline, "Purse")->signature == "using Purse = Wallet");
 
     const command::CppSymbol* move = symbol(outline, "move");
     REQUIRE(move != nullptr);
@@ -146,7 +157,14 @@ SLASH_GAME_MODULE(game) {
     CHECK(jump->scope == "game::Player");
     CHECK(jump->doc == "Starts a jump.");
     CHECK(jump->signature == "bool jump(int height = {}) const");
-    CHECK(symbol(outline, "Player")->kind == "class");
+    CHECK(jump->access == "public");
+    const command::CppSymbol* player = symbol(outline, "Player");
+    CHECK(player->kind == "class");
+    CHECK(player->signature == "class Player : public Base");
+    // Data members keep their access and initializer.
+    REQUIRE(player->fields.size() == 1);
+    CHECK(player->fields[0].declaration == "int speed_ = 0");
+    CHECK(player->fields[0].access == "private");
     CHECK(symbol(outline, "Player::jump")->definition);
     // A constructor's signature leaves out its member initializers.
     const auto constructor = std::ranges::find_if(outline.symbols, [](const auto& item) {
@@ -159,6 +177,10 @@ SLASH_GAME_MODULE(game) {
     CHECK(symbol(outline, "c_function") != nullptr);
     CHECK(symbol(outline, "kLambda") == nullptr);
     CHECK(symbol(outline, "x") == nullptr); // in the #define
+    REQUIRE(outline.defines.size() == 1);
+    CHECK(outline.defines[0].name == "HELPER");
+    CHECK(outline.defines[0].params == "(x)");
+    CHECK(outline.defines[0].line == 4);
 
     REQUIRE(outline.macros.size() == 2);
     CHECK(outline.macros[0].name == "SLASH_COMPONENT");
