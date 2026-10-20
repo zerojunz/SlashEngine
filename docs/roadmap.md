@@ -532,7 +532,7 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
         instruments, mood), a loudness target, and a cue sheet saying which cue plays in each
         scene, story beat and game state; `soundtrack.plan` drafts the cue sheet from the
         storyboard and the project's scenes
-  - [ ] Scores as text: `.score.json` tracks of notes in beats, with tempo, meter, key and named
+  - [x] Scores as text: `.score.json` tracks of notes in beats, with tempo, meter, key and named
         sections, plus MIDI import and export, so an agent can change one bar or one instrument
         exactly instead of making the whole piece again
   - [ ] `soundtrack.render`: scores played through a SoundFont synth (TinySoundFont) into one
@@ -727,7 +727,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Skeletal animation | Skinned meshes, blending, root motion | 7 | Planned |
 | Animation blending | Blend trees and state machines in text, two-bone and FABRIK IK | 7 | Planned |
 | Particles | CPU and GPU particles, particle graphs in text | 5 | In part: CPU particles and GPU particles with process materials are done; sub-emitters, trails, collision, turbulence, attractors and particle graphs in 5 |
-| Soundtracks | Music planned in the storyboard, written as scores or generated, arranged into interactive music and checked by analysis, all through commands | 6 | Planned |
+| Soundtracks | Music planned in the storyboard, written as scores or generated, arranged into interactive music and checked by analysis, all through commands | 6 | In part: scores, MIDI import and export and `audio.analyze` are done |
 | Audio | miniaudio: buses, effects, 3D spatial audio | 5, 7 | In part: 2D players, buses, effects, area bus overrides, interactive music, generated and polyphonic streams and microphone input are done; 3D audio in 7 |
 | Input | Rebindable action maps over SDL3, injectable by agents | 5 | Done |
 | Refresh rates and frame pacing | V-Sync modes, frame cap, display refresh rates, variable refresh rate, rendering interpolated between fixed ticks | 5 | Done |
