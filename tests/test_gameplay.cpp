@@ -2,6 +2,7 @@
 #include "slash/command/command.hpp"
 #include "slash/command/session.hpp"
 #include "slash/core/json.hpp"
+#include "slash/exporter/commands.hpp"
 #include "slash/exporter/gameplay.hpp"
 #include "slash/gameplay/host.hpp"
 #include "slash/platform/file.hpp"
@@ -587,4 +588,129 @@ TEST_CASE("compiler errors are read from a build log") {
     CHECK(failed.to_json() == parse(R"({"errors": [{"column": 5, "file": "src/game.cpp", "line": 12,
                                          "message": "use of undeclared identifier 'speed'"}],
                                         "log": ".slash/gameplay/build.log", "step": "build"})"));
+}
+
+TEST_CASE("errors, warnings, their notes and the compiler's fixes are read from a build log") {
+    const std::string log =
+        "[1/2] Building CXX object CMakeFiles/game_objects.dir/work/pong/src/game.cpp.o\n"
+        "/work/pong/src/game.cpp:16:28: error: no member named 'incme' in 'Wallet'; did you "
+        "mean 'income'?\n"
+        "   16 |     wallet.coins += wallet.incme;\n"
+        "      |                            ^~~~~\n"
+        "      |                            income\n"
+        "fix-it:\"/work/pong/src/game.cpp\":{16:28-16:33}:\"income\"\n"
+        "/work/pong/src/game.cpp:9:9: note: 'income' declared here\n"
+        "/work/pong/src/game.cpp:20:9: warning: unused variable 'spare' [-Wunused-variable]\n"
+        "/work/pong/src/game.cpp:24:12: warning: using the result of an assignment as a "
+        "condition without parentheses [-Wparentheses]\n"
+        "/work/pong/src/game.cpp:24:12: note: place parentheses around the assignment to "
+        "silence this warning\n"
+        "fix-it:\"/work/pong/src/game.cpp\":{24:9-24:9}:\"(\"\n"
+        "fix-it:\"/work/pong/src/game.cpp\":{24:16-24:16}:\")\"\n"
+        "/work/pong/src/game.cpp:24:12: note: use '==' to turn this assignment into an "
+        "equality comparison\n"
+        "/work/pong/src/util.hpp:3:2: error: expected ';' after struct\n"
+        "fix-it:\"/work/pong/src/util.hpp\":{3:2-3:2}:\";\"\n"
+        "In file included from /work/pong/src/bank.cpp:1:\n"
+        "/work/pong/src/util.hpp:3:2: error: expected ';' after struct\n"
+        "fix-it:\"/work/pong/src/util.hpp\":{3:2-3:2}:\";\"\n"
+        "/work/pong/src/bank.cpp:5:1: error: a made-up error\r\n"
+        "fix-it:\"/work/pong/src/bank.cpp\":{5:3-5:7}:\"say \\\"hi\\\"\\n\\011\"\r\n"
+        "fix-it:\"/work/pong/src/other.cpp\":{1:1-2:1}:\"\"\n"
+        "fix-it:\"/work/pong/src/bank.cpp\":{5:3-5:7}:\"unterminated\n"
+        "fix-it:\"/work/pong/src/bank.cpp\":{5:x-5:7}:\"bad\"\n"
+        "/work/pong/src/bank.cpp:9:1: error: noted\n"
+        "/work/pong/src/bank.cpp:9:1: note: one\n"
+        "/work/pong/src/bank.cpp:9:1: note: two\n"
+        "/work/pong/src/bank.cpp:9:1: note: three\n"
+        "/work/pong/src/bank.cpp:9:1: note: four\n";
+    const slash::exporter::CompileDiagnostics read =
+        slash::exporter::read_compile_diagnostics(log, "/work/pong");
+    REQUIRE(read.errors.size() == 4); // the header's error once, though two files include it
+    REQUIRE(read.warnings.size() == 2);
+
+    const slash::exporter::CompileError& member = read.errors[0];
+    CHECK(member.file == "src/game.cpp");
+    REQUIRE(member.fix.size() == 1);
+    CHECK(member.fix[0].file == "src/game.cpp");
+    CHECK(member.fix[0].line == 16);
+    CHECK(member.fix[0].column == 28);
+    CHECK(member.fix[0].end_line == 16);
+    CHECK(member.fix[0].end_column == 33);
+    CHECK(member.fix[0].text == "income");
+    REQUIRE(member.notes.size() == 1);
+    CHECK(member.notes[0].file == "src/game.cpp");
+    CHECK(member.notes[0].line == 9);
+    CHECK(member.notes[0].column == 9);
+    CHECK(member.notes[0].message == "'income' declared here");
+
+    CHECK(read.warnings[0].message == "unused variable 'spare' [-Wunused-variable]");
+    CHECK(read.warnings[0].fix.empty());
+    // A note's fix is one way to silence a warning, not the compiler's fix.
+    CHECK(read.warnings[1].fix.empty());
+    CHECK(read.warnings[1].notes.size() == 2);
+
+    CHECK(read.errors[1].file == "src/util.hpp");
+    CHECK(read.errors[1].fix.size() == 1);
+    // Escapes are read, a fix can reach other files and lines, and broken lines are left out.
+    REQUIRE(read.errors[2].fix.size() == 2);
+    CHECK(read.errors[2].fix[0].text == "say \"hi\"\n\t");
+    CHECK(read.errors[2].notes.empty());
+    CHECK(read.errors[3].notes.size() == slash::exporter::kMaxNotes);
+
+    slash::exporter::GameplayCheck checked;
+    checked.ran = true;
+    checked.checked = {"src/bank.cpp", "src/game.cpp"};
+    checked.diagnostics.errors = {read.errors[0], read.errors[2]};
+    checked.diagnostics.warnings = {read.warnings[0]};
+    CHECK(checked.to_json() == parse(R"({
+        "checked": ["src/bank.cpp", "src/game.cpp"],
+        "errors": [
+            {"column": 28, "file": "src/game.cpp", "line": 16,
+             "message": "no member named 'incme' in 'Wallet'; did you mean 'income'?",
+             "fix": [{"column": 28, "end_column": 33, "line": 16, "text": "income"}],
+             "notes": [{"column": 9, "file": "src/game.cpp", "line": 9,
+                        "message": "'income' declared here"}]},
+            {"column": 1, "file": "src/bank.cpp", "line": 5, "message": "a made-up error",
+             "fix": [{"column": 3, "end_column": 7, "line": 5, "text": "say \"hi\"\n\t"},
+                     {"column": 1, "end_column": 1, "end_line": 2, "file": "src/other.cpp",
+                      "line": 1, "text": ""}]}
+        ],
+        "ok": false,
+        "warnings": [{"column": 9, "file": "src/game.cpp", "line": 20,
+                      "message": "unused variable 'spare' [-Wunused-variable]"}]
+    })"));
+    checked.diagnostics = {};
+    CHECK(checked.to_json() ==
+          parse(R"({"checked": ["src/bank.cpp", "src/game.cpp"], "ok": true})"));
+
+    const slash::exporter::CompileDiagnostics first =
+        slash::exporter::read_compile_diagnostics(log, "/work/pong", 1);
+    CHECK(first.errors.size() == 1);
+    CHECK(first.warnings.size() == 1);
+}
+
+TEST_CASE("build.check fails before compiling when the project has no gameplay code") {
+    const fs::path dir = "build_check_project";
+    fs::remove_all(dir);
+    fs::create_directories(dir);
+    REQUIRE(slash::platform::write_file(
+        (dir / "project.json").string(),
+        R"({"format": 1, "main_scene": "main.scene.json", "name": "No Code"})"));
+    world::ComponentRegistry components = builtin_components();
+    command::Registry commands;
+    slash::exporter::register_export_commands(commands);
+    command::SessionOptions options;
+    options.project_root = dir.string();
+    command::Session session(components, commands, options);
+    const command::Reply reply = session.call("build.check", json::Object{});
+    CHECK_FALSE(reply.ok);
+    CHECK(reply.code == command::code::kInvalidArgument);
+    CHECK(contains(reply.message, "no gameplay sources"));
+    CHECK(reply.data == parse(R"({"step": "options"})"));
+
+    options.capabilities = {command::Capability::Read, command::Capability::Filesystem};
+    command::Session limited(components, commands, options);
+    CHECK(limited.call("build.check", json::Object{}).code == command::code::kPermissionDenied);
+    fs::remove_all(dir);
 }

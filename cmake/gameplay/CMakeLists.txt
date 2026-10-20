@@ -8,6 +8,8 @@
 #                           their subfolders) and files (.cpp files are compiled; the folders of
 #                           headers are searched for includes)
 #
+# build.check builds the game_objects target alone: each changed file compiled, nothing linked.
+#
 # The library is linked with the engine's functions left unresolved: the program loading it has
 # them. It lands in <project>/.slash/gameplay/game.so, replaced in one step so a program polling
 # the file never reads half of it.
@@ -46,15 +48,22 @@ if(NOT sources)
     message(FATAL_ERROR "the gameplay sources have no .cpp files")
 endif()
 
-add_library(game MODULE ${sources})
-set_target_properties(game PROPERTIES PREFIX "" OUTPUT_NAME game SUFFIX ".so")
+# The objects first, so build.check can compile the files that changed without linking; the
+# compile commands tell it which source each object is.
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+add_library(game_objects OBJECT ${sources})
+set_target_properties(game_objects PROPERTIES POSITION_INDEPENDENT_CODE ON)
 # Includes are found next to the file, from each source folder, and in the engine.
-target_include_directories(game PRIVATE ${folders} ${SLASH_SDK_INCLUDE_DIRECTORIES})
-target_compile_definitions(game PRIVATE ${SLASH_SDK_COMPILE_DEFINITIONS})
+target_include_directories(game_objects PRIVATE ${folders} ${SLASH_SDK_INCLUDE_DIRECTORIES})
+target_compile_definitions(game_objects PRIVATE ${SLASH_SDK_COMPILE_DEFINITIONS})
 # As the engine is built: no exceptions or RTTI. GCC's unique symbols would tie each rebuilt
-# library to the statics of the first one loaded.
-target_compile_options(game PRIVATE -fno-exceptions -fno-rtti -Wall -Wextra
-    $<$<CXX_COMPILER_ID:GNU>:-fno-gnu-unique>)
+# library to the statics of the first one loaded. Suggested fixes are printed as data
+# ("fix-it:"file":{line:column-line:column}:"text""), which build.check returns.
+target_compile_options(game_objects PRIVATE -fno-exceptions -fno-rtti -Wall -Wextra
+    -fdiagnostics-parseable-fixits $<$<CXX_COMPILER_ID:GNU>:-fno-gnu-unique>)
+
+add_library(game MODULE $<TARGET_OBJECTS:game_objects>)
+set_target_properties(game PROPERTIES PREFIX "" OUTPUT_NAME game SUFFIX ".so")
 if(APPLE)
     target_link_options(game PRIVATE -undefined dynamic_lookup)
 endif()
