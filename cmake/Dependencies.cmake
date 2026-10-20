@@ -75,6 +75,20 @@ slash_add_dependency(box2d
         "BOX2D_AVX2 OFF"
         ${_slash_box2d_simd})
 
+# The Tracy profiler's client, in builds configured with SLASH_PROFILER=tracy (see
+# slash/core/profile.hpp). It collects only while a profiler is connected, listens on the loopback
+# interface only and doesn't announce itself on the network.
+if(SLASH_PROFILER STREQUAL "tracy")
+    slash_add_dependency(tracy
+        SYSTEM TRUE
+        OPTIONS
+            "TRACY_ENABLE ON"
+            "TRACY_ON_DEMAND ON"
+            "TRACY_ONLY_LOCALHOST ON"
+            "TRACY_NO_BROADCAST ON"
+            "TRACY_STATIC ON")
+endif()
+
 # HTTP server and client for the localhost REST mirror and MCP over HTTP. Header-only, used
 # without TLS, compression or exceptions, and only inside slash_server.
 slash_add_dependency(httplib DOWNLOAD_ONLY TRUE)

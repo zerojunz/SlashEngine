@@ -3,6 +3,7 @@
 
 #include "slash/canvas/canvas.hpp"
 #include "slash/command/builtin.hpp"
+#include "slash/command/perf.hpp"
 #include "slash/command/session.hpp"
 #include "slash/core/assert.hpp"
 #include "slash/core/text.hpp"
@@ -175,9 +176,13 @@ Reply display_set(const LiveGame& game, Session& session, const json::Value& par
     return Reply::success(frame_settings(game, session));
 }
 
-Reply perf_stats(const LiveGame& game, const Session& session, const json::Value& /*params*/) {
+Reply perf_stats(const LiveGame& game, const Session& session, const json::Value& params) {
     const platform::FrameStats frames = game.loop->frame_stats();
-    json::Value out = frame_settings(game, session);
+    json::Value out = world_perf_stats(session, params);
+    json::Value settings = frame_settings(game, session);
+    for (auto& [key, value] : settings.as_object()) {
+        out[key] = std::move(value);
+    }
     out["fps"] = round2(frames.fps);
     json::Value frame_ms;
     frame_ms["avg"] = round2(frames.frame_ms_avg);
@@ -248,16 +253,18 @@ void register_live_commands(Registry& registry, const LiveGame& game) {
         .handler = [game](Session& session,
                           const json::Value& params) { return display_set(game, session, params); },
     });
-    registry.add({
-        .name = "perf.stats",
-        .description = "Frame pacing over the last 120 frames: fps, frame times and catch-up "
-                       "frames, with the V-Sync mode, frame cap and render scale.",
-        .capabilities = {Read},
-        .effect = Effect::Read,
-        .params = params_schema(),
-        .handler = [game](Session& session,
-                          const json::Value& params) { return perf_stats(game, session, params); },
-    });
+    // The world's perf.stats, with frame pacing.
+    if (registry.find("perf.stats") == nullptr) {
+        register_perf_commands(registry);
+    }
+    Command stats = *registry.find("perf.stats");
+    stats.description = "Frame pacing over the last 120 frames (fps, frame times in ms and "
+                        "catch-up frames), tick and system times over the last 120 ticks, the "
+                        "slowest systems first, and the V-Sync mode, frame cap and render scale.";
+    stats.handler = [game](Session& session, const json::Value& params) {
+        return perf_stats(game, session, params);
+    };
+    registry.replace(std::move(stats));
 }
 
 } // namespace slash::command

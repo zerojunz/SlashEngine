@@ -21,6 +21,11 @@ option(SLASH_BUILD_TESTS "Build the unit and smoke tests" ${PROJECT_IS_TOP_LEVEL
 option(SLASH_BUILD_EXAMPLES "Build the examples and test them (needs tools and tests)"
     ${PROJECT_IS_TOP_LEVEL})
 option(SLASH_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
+set(SLASH_PROFILER "" CACHE STRING "The profiler the engine reports to: none (\"\") or tracy")
+set_property(CACHE SLASH_PROFILER PROPERTY STRINGS "" tracy)
+if(NOT SLASH_PROFILER STREQUAL "" AND NOT SLASH_PROFILER STREQUAL "tracy")
+    message(FATAL_ERROR "SLASH_PROFILER is \"${SLASH_PROFILER}\"; use \"\" or tracy")
+endif()
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(CompilerOptions)

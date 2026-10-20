@@ -3,6 +3,7 @@
 #include "polygon.hpp"
 
 #include "slash/core/log.hpp"
+#include "slash/core/profile.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -1467,8 +1468,11 @@ void Space::step(world::World& world, float seconds) {
     }
     impulses_.clear();
 
-    b2World_Step(world_, seconds, kSubSteps);
-    tasks_.groups.clear();
+    {
+        SLASH_PROFILE_ZONE("Box2D step");
+        b2World_Step(world_, seconds, kSubSteps);
+        tasks_.groups.clear();
+    }
     for (const Body* body : carriers) {
         b2Body_SetTransform(body->id, to_b2(body->position), b2MakeRot(body->rotation));
     }

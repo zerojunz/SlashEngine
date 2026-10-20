@@ -1,9 +1,11 @@
 #include "slash/core/jobs.hpp"
 
 #include "slash/core/assert.hpp"
+#include "slash/core/profile.hpp"
 
 #include <algorithm>
 #include <atomic>
+#include <string>
 #include <utility>
 
 namespace slash::jobs {
@@ -74,6 +76,7 @@ int Pool::thread_index() const noexcept {
 void Pool::work(int index) {
     t_pool = this;
     t_index = index;
+    SLASH_PROFILE_THREAD(("worker " + std::to_string(index)).c_str());
     std::unique_lock lock(mutex_);
     while (true) {
         queued_.wait(lock, [&] { return stopping_ || !queue_.empty(); });

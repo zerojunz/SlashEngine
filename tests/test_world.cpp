@@ -6,6 +6,7 @@
 #include <doctest/doctest.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cstddef>
 #include <string>
 #include <string_view>
@@ -328,4 +329,70 @@ TEST_CASE("threaded systems run the same ticks with any number of threads") {
     const std::vector<std::string> tick_four(spark - 2, spark + 3);
     CHECK(tick_four == std::vector<std::string>{"4 hot e19", "4 hot e18", "4 entity.created spark",
                                                 "4 charged", "4 count 21"});
+}
+
+namespace {
+
+// Keeps the thread busy for at least this long.
+void spin(std::chrono::microseconds duration) {
+    const auto until = std::chrono::steady_clock::now() + duration;
+    while (std::chrono::steady_clock::now() < until) {
+    }
+}
+
+const slash::world::SystemInfo& system_named(const std::vector<slash::world::SystemInfo>& systems,
+                                             std::string_view name) {
+    const auto found = std::ranges::find(systems, name, &slash::world::SystemInfo::name);
+    REQUIRE(found != systems.end());
+    return *found;
+}
+
+} // namespace
+
+TEST_CASE("the world times each tick and system over the last 120 ticks") {
+    const ComponentRegistry registry;
+    slash::jobs::Pool pool(2);
+    World world(registry);
+    world.set_pool(pool);
+    CHECK(world.tick_timing().avg_ms == 0.0);
+    // Slow for the first ten ticks, then quick: the window keeps only the last 120.
+    world.add_system("burst", [](World& w, double /*dt*/) {
+        if (w.tick() < 10) {
+            spin(std::chrono::milliseconds(20));
+        }
+    });
+    world.add_system("busy",
+                     [](World& /*w*/, double /*dt*/) { spin(std::chrono::microseconds(300)); },
+                     {.priority = 1});
+    // Threaded systems are timed on the threads that run them, with what they defer.
+    world.add_system("left",
+                     [](World& w, double /*dt*/) {
+                         spin(std::chrono::microseconds(200));
+                         w.defer([](World& /*later*/) { spin(std::chrono::microseconds(200)); });
+                     },
+                     {.priority = 2, .threaded = true, .writes = {"left"}});
+    world.add_system("right", [](World& /*w*/, double /*dt*/) {},
+                     {.priority = 2, .threaded = true, .writes = {"right"}});
+    CHECK(system_named(world.systems(), "busy").timing.max_ms == 0.0);
+
+    for (int tick = 0; tick < 10; ++tick) {
+        world.step(1.0 / 60.0);
+    }
+    CHECK(system_named(world.systems(), "burst").timing.max_ms >= 20.0);
+    for (int tick = 10; tick < 130; ++tick) {
+        world.step(1.0 / 60.0);
+    }
+    const std::vector<slash::world::SystemInfo> systems = world.systems();
+    const slash::world::Timing burst = system_named(systems, "burst").timing;
+    CHECK(burst.max_ms < 10.0);
+    const slash::world::Timing busy = system_named(systems, "busy").timing;
+    CHECK(busy.last_ms >= 0.3);
+    CHECK(busy.avg_ms >= 0.3);
+    CHECK(busy.max_ms >= busy.avg_ms);
+    const slash::world::Timing left = system_named(systems, "left").timing;
+    CHECK(left.avg_ms >= 0.4);
+    CHECK(system_named(systems, "right").timing.avg_ms < left.avg_ms);
+    const slash::world::Timing tick = world.tick_timing();
+    CHECK(tick.avg_ms >= busy.avg_ms + 0.4);
+    CHECK(tick.max_ms >= tick.avg_ms);
 }

@@ -47,7 +47,7 @@ The code follows the same split, one CMake library per module under `engine/`:
 
 | Module | Holds |
 | --- | --- |
-| `core` | `Result<T>`, JSON logging, JSON parsing and schemas, reflection, math, the fixed-step clock and the job system |
+| `core` | `Result<T>`, JSON logging, JSON parsing and schemas, reflection, math, the fixed-step clock, the job system and profiler zones |
 | `platform` | The SDL3 window, the run loop and file access |
 | `render` | The render device: SDL3's GPU API (Vulkan, Metal, Direct3D 12), OpenGL ES 3.0 (WebGL 2 on the web), the software device that draws on the CPU, or the null device for headless runs |
 | `asset` | Asset handles, loaders and hot reload |
@@ -123,6 +123,12 @@ them writes `"physics2d"`. Any system can also share its own work out with
 `world.pool().parallel_for`, as `cpu_particles_2d` does with its emitters; `cpu_particles_2d` and
 `gpu_particles_2d` are threaded and share a stage, and Box2D steps physics on the same threads.
 `project.json`'s `threading.max_threads` sets how many there are.
+
+The world times each tick and each system, and `perf.stats` reports the averages and slowest
+times over the last 120 ticks, the slowest systems first, in any session: the first place to look
+when a game runs slowly. Built with the `tracy` CMake preset, the engine also reports to the
+[Tracy](https://github.com/wolfpld/tracy) profiler, as Godot's `profiler=tracy` builds do, which
+draws every thread's systems, commands, physics steps and drawing on one timeline.
 
 ## Scenes
 

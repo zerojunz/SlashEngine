@@ -1,9 +1,11 @@
 #include "slash/world/world.hpp"
 
 #include "slash/core/jobs.hpp"
+#include "slash/core/profile.hpp"
 #include "slash/world/component_registry.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <functional>
 #include <utility>
 
@@ -32,6 +34,12 @@ struct Running {
     bool threaded = false;
 };
 thread_local Running t_running;
+
+using Clock = std::chrono::steady_clock;
+
+double milliseconds_since(Clock::time_point start) {
+    return std::chrono::duration<double, std::milli>(Clock::now() - start).count();
+}
 
 // Sets the thread's running system for as long as it lives.
 class RunningScope {
@@ -173,7 +181,7 @@ void World::add_system(std::string name, System system, SystemOptions options) {
     const auto position =
         std::ranges::upper_bound(systems_, options.priority, std::less<>(),
                                  [](const NamedSystem& added) { return added.options.priority; });
-    systems_.insert(position, {std::move(name), std::move(system), std::move(options)});
+    systems_.insert(position, {std::move(name), std::move(system), std::move(options), {}});
     plan_stages();
 }
 
@@ -218,7 +226,8 @@ std::vector<SystemInfo> World::systems() const {
                            .threaded = options.threaded,
                            .reads = options.reads,
                            .writes = options.writes,
-                           .stage = stage});
+                           .stage = stage,
+                           .timing = systems_[i].samples.timing()});
         }
     }
     return out;
@@ -233,7 +242,30 @@ std::vector<std::string_view> World::system_names() const {
     return out;
 }
 
+void World::Samples::add(double milliseconds) noexcept {
+    ms.at(count % ms.size()) = static_cast<float>(milliseconds);
+    ++count;
+}
+
+Timing World::Samples::timing() const noexcept {
+    const std::size_t kept = std::min(count, ms.size());
+    if (kept == 0) {
+        return {};
+    }
+    Timing out;
+    out.last_ms = ms.at((count - 1) % ms.size());
+    double sum = 0.0;
+    for (std::size_t i = 0; i < kept; ++i) {
+        sum += ms.at(i);
+        out.max_ms = std::max(out.max_ms, static_cast<double>(ms.at(i)));
+    }
+    out.avg_ms = sum / static_cast<double>(kept);
+    return out;
+}
+
 void World::step(double tick_seconds) {
+    SLASH_PROFILE_ZONE("World::step");
+    const Clock::time_point start = Clock::now();
     events_ = std::move(next_events_);
     next_events_.clear();
     if (step_listener_) {
@@ -250,13 +282,17 @@ void World::step(double tick_seconds) {
     }
     stepping_ = false;
     ++tick_;
+    tick_samples_.add(milliseconds_since(start));
 }
 
-void World::run_system(const NamedSystem& system, double tick_seconds) {
+void World::run_system(NamedSystem& system, double tick_seconds) {
+    SLASH_PROFILE_ZONE_NAMED(system.name);
+    const Clock::time_point start = Clock::now();
     detail::SystemRun run;
     const RunningScope scope({.world = this, .run = &run, .threaded = false});
     system.run(*this, tick_seconds);
     flush(run);
+    system.samples.add(milliseconds_since(start));
 }
 
 void World::run_stage(const Stage& stage, double tick_seconds) {
@@ -275,9 +311,14 @@ void World::run_stage(const Stage& stage, double tick_seconds) {
     // system runs alone just as a stage of several does, and the stage's events and deferred
     // calls are delivered in system order once it is done.
     std::vector<detail::SystemRun> runs(stage.end - stage.begin);
+    std::vector<double> milliseconds(runs.size(), 0.0);
     const auto run_one = [&](std::size_t k) {
+        const NamedSystem& system = systems_[stage.begin + k];
+        SLASH_PROFILE_ZONE_NAMED(system.name);
+        const Clock::time_point start = Clock::now();
         const RunningScope scope({.world = this, .run = &runs[k], .threaded = true});
-        systems_[stage.begin + k].run(*this, tick_seconds);
+        system.run(*this, tick_seconds);
+        milliseconds[k] = milliseconds_since(start);
     };
     staging_ = true;
     if (runs.size() == 1) {
@@ -286,9 +327,11 @@ void World::run_stage(const Stage& stage, double tick_seconds) {
         pool().parallel_for(runs.size(), run_one);
     }
     staging_ = false;
-    for (detail::SystemRun& run : runs) {
-        const RunningScope scope({.world = this, .run = &run, .threaded = false});
-        flush(run);
+    for (std::size_t k = 0; k < runs.size(); ++k) {
+        const Clock::time_point start = Clock::now();
+        const RunningScope scope({.world = this, .run = &runs[k], .threaded = false});
+        flush(runs[k]);
+        systems_[stage.begin + k].samples.add(milliseconds[k] + milliseconds_since(start));
     }
 }
 

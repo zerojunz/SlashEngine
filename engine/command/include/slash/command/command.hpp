@@ -103,6 +103,9 @@ class Registry {
 public:
     // Adds a command. Names must be unique, and params must be an object schema.
     void add(Command command);
+    // Adds a command in place of the one with its name, if there is one, as a running game
+    // replaces perf.stats with a version that adds frame pacing.
+    void replace(Command command);
 
     // The command with this name, or nullptr.
     [[nodiscard]] const Command* find(std::string_view name) const;
