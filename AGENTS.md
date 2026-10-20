@@ -164,7 +164,7 @@ and `elevenlabs-sound` (`src/adapters.cpp`, through `ai::post_with_retries`, wit
 to the size asked for by `fit_image`), and the built-in `test` generator, which draws
 placeholders with integer math only, so they are the same bytes everywhere. `asset.search`, `asset.generate` (an exact repeat
 calls no generator, close matches come back as candidates), `asset.refine`, `asset.info`,
-`asset.use`, `asset.add`, `asset.feedback` and `asset.check` are in `slash_library_commands`, registered by
+`asset.use`, `asset.add`, `asset.feedback`, `asset.check` and `asset.sync` are in `slash_library_commands`, registered by
 slash-cli and slash-mcp; using an asset copies it into the project, records its source and
 license in the project's `library.json` and checks an image against the storyboard's palettes and
 budgets. Feedback (accepted or rejected, and why) ranks search results, keeps rejected assets out
@@ -174,6 +174,15 @@ project, records feedback by itself: it opens each scene that draws a library fi
 what `canvas::summarize` sees with `SummaryOptions::contrast` (the edge contrast of each thing
 in the frame `canvas::capture` draws, `Shown::contrast`) and how small each file is drawn, from
 the texture paths on `FramePiece`s.
+
+A team shares a library it hosts (`slash/library/team.hpp`): `providers.json`'s `library`, or
+`SLASH_LIBRARY_TEAM`, names a folder every teammate reaches or a library server
+(`slash-cli library serve`, `library::TeamServer`, answering `POST /v1/library/<op>` with a
+bearer token through `answer_team_request`). `library::Team` is the one interface over both;
+the commands open it through `Libraries` in `src/commands.cpp` when they first need it, search
+and answer exact repeats from it, bring assets the machine lacks from it, put what they make
+and the feedback they record there, and report a team that can't be used as `team_error`
+while working on the machine's library alone. `asset.sync` shares what was made before.
 
 ## Commands, MCP and JSON-RPC
 

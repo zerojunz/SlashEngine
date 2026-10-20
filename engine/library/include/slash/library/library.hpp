@@ -70,6 +70,9 @@ inline constexpr std::size_t kMaxFeedback = 20;
 void add_feedback(Record& record, Feedback feedback);
 // How many times the asset was accepted, less how many times it was rejected.
 [[nodiscard]] int net_feedback(const Record& record) noexcept;
+// Whether the record's last feedback from the feedback's source says the same, so a check run
+// again adds nothing new.
+[[nodiscard]] bool repeats_last(const Record& record, const Feedback& feedback);
 
 [[nodiscard]] json::Value to_json(const Record& record);
 [[nodiscard]] Result<Record> record_from_json(const json::Value& value);
@@ -102,6 +105,8 @@ public:
     // The asset an exact request made, by the request's key (request_key).
     [[nodiscard]] std::optional<std::string> find_request(std::string_view key) const;
     [[nodiscard]] Result<void> remember_request(std::string_view key, std::string_view id) const;
+    // The keys of the requests that made the asset, sorted, to share it with them.
+    [[nodiscard]] std::vector<std::string> requests_for(std::string_view id) const;
 
 private:
     [[nodiscard]] std::string file_path(const Record& record) const;

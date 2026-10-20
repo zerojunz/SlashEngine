@@ -84,7 +84,7 @@ as `entity.get`, reject it as an unknown param.
 | Export | [`export.run`](#exportrun), [`sdk.check`](#sdkcheck), [`sdk.add`](#sdkadd), [`sdk.lock`](#sdklock) |
 | Gameplay code | [`gameplay.build`](#gameplaybuild), [`build.check`](#buildcheck), [`api.search`](#apisearch) |
 | AI | [`ai.providers`](#aiproviders), [`ai.complete`](#aicomplete) |
-| Asset library | [`asset.search`](#assetsearch), [`asset.generate`](#assetgenerate), [`asset.refine`](#assetrefine), [`asset.info`](#assetinfo), [`asset.use`](#assetuse), [`asset.add`](#assetadd), [`asset.feedback`](#assetfeedback), [`asset.check`](#assetcheck) |
+| Asset library | [`asset.search`](#assetsearch), [`asset.generate`](#assetgenerate), [`asset.refine`](#assetrefine), [`asset.info`](#assetinfo), [`asset.use`](#assetuse), [`asset.add`](#assetadd), [`asset.feedback`](#assetfeedback), [`asset.check`](#assetcheck), [`asset.sync`](#assetsync) |
 
 
 ## Describe
@@ -3468,6 +3468,31 @@ ElevenLabs' sound effects. The built-in `test` generator makes placeholders with
 to the library. Registered by `slash-cli` and `slash-mcp`, running games included.
 [examples/asset-library](../../examples/asset-library/) has two projects sharing one library.
 
+#### Team sharing
+
+A team can share a library it hosts, named in [`providers.json`'s `library`](providers.md#team-library)
+(or `SLASH_LIBRARY_TEAM` on one machine): a folder every teammate reaches, such as a network
+share or a synced folder, or a library server that
+[`slash-cli library serve`](cli.md#library-serve) runs. Each machine keeps its own library, and
+the commands use the team's beside it:
+
+- `asset.generate` and `asset.refine` answer an exact repeat from the team's library when this
+  machine has none (the reply says `"reused": true, "team": true`), offer the team's close
+  matches as candidates, and put what they make there, with the request that made it.
+  `asset.add` puts the file there too.
+- `asset.search` covers the team's assets, ranked by the team's copy of their feedback, which
+  holds every teammate's.
+- `asset.use`, `asset.info`, `asset.refine` and `asset.feedback` bring an asset the machine lacks
+  from the team's library; `asset.info` shows the team's feedback and `shared`, whether
+  teammates can find it.
+- Feedback, from agents and checks, goes to the team's copy too.
+- [`asset.sync`](#assetsync) shares what was made before the team was set up.
+
+A library server needs the `network` capability. When the team's library can't be used (the
+share isn't mounted, the server is down or refuses the token, or the session has no `network`),
+commands work on the machine's library alone and their replies say why in `team_error`.
+[examples/team-library](../../examples/team-library/) has three teammates sharing one.
+
 ### asset.search
 
 Finds assets by words, tags and type. Words match descriptions, prompts and tags, a plural
@@ -3697,6 +3722,28 @@ outline on a night level:
 
 ```json
 {"checked":3,"problems":[{"entity":"red_slime","id":"833c6cd1f6e5","message":"hard to see: its edge has 1.2:1 contrast with the darker colors around it","path":"art/slime_red.png","scene":"levels/night.scene.json"}],"scenes":1}
+```
+
+### asset.sync
+
+Puts the assets the project's `library.json` names in the [team's library](#team-sharing)
+where it lacks them, with the versions they were refined from and the requests that made them,
+so teammates find them. Generated, refined and added assets go there by themselves; this is for
+those made before the team was set up. Fails with `-32001` when no team is named. Needs: `read`,
+`filesystem` (and `network` for a library server).
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `all` | boolean | `false` | Every asset in the machine's library instead |
+
+The reply names the `team` and lists the IDs `shared`:
+
+```json
+{}
+```
+
+```json
+{"shared":["9d1bc8586210"],"team":"team"}
 ```
 
 ## Adding a command
