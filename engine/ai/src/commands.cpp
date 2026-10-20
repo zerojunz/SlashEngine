@@ -1,5 +1,7 @@
 #include "slash/ai/commands.hpp"
 
+#include "commands_internal.hpp"
+
 #include "slash/ai/adapters.hpp"
 #include "slash/ai/config.hpp"
 #include "slash/command/mcp.hpp"
@@ -16,7 +18,35 @@
 #include <vector>
 
 namespace slash::ai {
+
+namespace detail {
+
+std::string_view media_type(std::string_view path) {
+    const std::size_t dot = path.rfind('.');
+    std::string extension(dot == std::string_view::npos ? std::string_view() : path.substr(dot));
+    for (char& c : extension) {
+        c = static_cast<char>(c >= 'A' && c <= 'Z' ? c - 'A' + 'a' : c);
+    }
+    if (extension == ".png") {
+        return "image/png";
+    }
+    if (extension == ".jpg" || extension == ".jpeg") {
+        return "image/jpeg";
+    }
+    if (extension == ".gif") {
+        return "image/gif";
+    }
+    if (extension == ".webp") {
+        return "image/webp";
+    }
+    return {};
+}
+
+} // namespace detail
+
 namespace {
+
+using detail::media_type;
 
 using command::Capability;
 using command::Reply;
@@ -74,28 +104,6 @@ json::Value message_schema() {
     });
     schema["required"] = json::Array{"role"};
     return schema;
-}
-
-// The media type of an image file, from its extension.
-std::string_view media_type(std::string_view path) {
-    const std::size_t dot = path.rfind('.');
-    std::string extension(dot == std::string_view::npos ? std::string_view() : path.substr(dot));
-    for (char& c : extension) {
-        c = static_cast<char>(c >= 'A' && c <= 'Z' ? c - 'A' + 'a' : c);
-    }
-    if (extension == ".png") {
-        return "image/png";
-    }
-    if (extension == ".jpg" || extension == ".jpeg") {
-        return "image/jpeg";
-    }
-    if (extension == ".gif") {
-        return "image/gif";
-    }
-    if (extension == ".webp") {
-        return "image/webp";
-    }
-    return {};
 }
 
 Reply failure_at(const Error& error, std::string path) {
@@ -369,6 +377,7 @@ void register_commands(command::Registry& registry) {
         }),
         .handler = ai_complete,
     });
+    detail::register_review(registry);
 }
 
 } // namespace slash::ai

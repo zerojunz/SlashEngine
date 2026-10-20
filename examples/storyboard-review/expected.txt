@@ -1,0 +1,37 @@
+storyboard.check {"valid":true}
+
+storyboard.review {"paths":["scenes/tavern.scene.json","dialogue/act1.txt"]}
+{
+  "advisory": true,
+  "facts": 4,
+  "findings": [
+    {
+      "confidence": "high",
+      "entry": "character/oren",
+      "path": "/entities/greeting/components/Label/text",
+      "problem": "Oren is Mira's brother, not her sister.",
+      "quote": "My sister Oren",
+      "source": "scenes/tavern.scene.json"
+    },
+    {
+      "confidence": "high",
+      "entry": "character/mira",
+      "problem": "Mira has never left Lowtown.",
+      "quote": "I took the ferry up to Hightown",
+      "source": "dialogue/act1.txt"
+    }
+  ],
+  "items": 2,
+  "model": "llama3.2",
+  "unverified": 1,
+  "usage": {
+    "input_tokens": 420,
+    "output_tokens": 96
+  }
+}
+
+the model read:
+  facts: character/mira, character/oren, tone/voice
+  entries they name: place/lowtown
+  [1] scenes/tavern.scene.json /entities/greeting/components/Label/text
+  [2] dialogue/act1.txt
