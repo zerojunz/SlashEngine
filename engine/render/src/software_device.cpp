@@ -1,11 +1,13 @@
 // The software device: draws frames on the CPU into render-target textures, as the GPU device's
-// shaders would, with their CPU twins (run_program, shade, distance_field_coverage and
-// sample_image). Triangles are rasterized as GPUs do: vertices snapped to 1/256 of a pixel,
-// pixels covered at their centers by the top-left rule, and attributes interpolated linearly, so
-// edges fall on the same pixels as on a GPU.
+// shaders would, with their CPU twins (run_program, shade, shade_mesh, distance_field_coverage
+// and sample_image). Triangles are rasterized as GPUs do: vertices snapped to 1/256 of a pixel,
+// pixels covered at their centers by the top-left rule, and attributes interpolated linearly (or,
+// for meshes, perspective-correct, after clipping to the near and far planes), so edges fall on
+// the same pixels as on a GPU.
 
 #include "checks.hpp"
 #include "cpu_particles.hpp"
+#include "mesh_shading.hpp"
 
 #include "slash/render/device.hpp"
 #include "slash/render/image.hpp"
@@ -20,6 +22,7 @@
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <numeric>
 #include <optional>
 #include <unordered_map>
 #include <utility>
@@ -58,6 +61,24 @@ struct ScreenVertex {
     // u, v, r, g, b, a, then the position lights are placed by.
     std::array<double, 8> varying{};
 };
+
+// A mesh on the CPU: its vertices, every three indices a triangle, and the box around it.
+struct SoftwareMesh {
+    std::vector<Vertex3D> vertices;
+    std::vector<std::uint32_t> indices;
+    detail::Bounds bounds;
+};
+
+// A mesh corner in clip space, with what the fragment stage reads from it: world position,
+// normal, tangent, binormal, texture coordinate and color.
+struct ClipVertex {
+    Float4 clip{};
+    std::array<float, 18> varying{};
+};
+
+// The 3D corners are clipped to x and y within this many times w, where GPUs would use their
+// guard band, so that every corner lands near enough the target for edge() not to overflow.
+constexpr float kGuardBand = 256.0F;
 
 // A vertex as the vertex stage leaves it: a game's vertex() may move it and change its texture
 // coordinate and color.
@@ -268,6 +289,35 @@ public:
         return particles_.read(particles);
     }
 
+    Result<MeshId> create_mesh(std::span<const Vertex3D> vertices,
+                               std::span<const std::uint32_t> indices) override {
+        if (auto checked = detail::check_mesh(vertices, indices); !checked) {
+            return checked.error();
+        }
+        SoftwareMesh mesh{.vertices = {vertices.begin(), vertices.end()},
+                          .indices = {indices.begin(), indices.end()},
+                          .bounds = detail::mesh_bounds(vertices)};
+        if (mesh.indices.empty()) {
+            mesh.indices.resize(vertices.size());
+            std::iota(mesh.indices.begin(), mesh.indices.end(), 0U);
+        }
+        const auto id = static_cast<MeshId>(next_mesh_++);
+        meshes_[id] = std::move(mesh);
+        return id;
+    }
+
+    void destroy_mesh(MeshId mesh) override {
+        const auto it = meshes_.find(mesh);
+        if (it == meshes_.end()) {
+            return;
+        }
+        // The frame being built may draw it still.
+        if (in_frame_) {
+            retired_meshes_[mesh] = std::move(it->second);
+        }
+        meshes_.erase(it);
+    }
+
     Result<bool> begin_frame(const Frame& frame) override {
         if (in_frame_) {
             return detail::frame_in_progress("begin_frame");
@@ -276,6 +326,11 @@ public:
             return make_error(ErrorCode::InvalidArgument,
                               "the software device has no window; draw to a render-target "
                               "texture");
+        }
+        if (frame.scene) {
+            if (auto checked = detail::check_scene(*frame.scene); !checked) {
+                return checked.error();
+            }
         }
         const auto it = textures_.find(frame.target);
         if (it == textures_.end()) {
@@ -297,7 +352,27 @@ public:
         in_frame_ = true;
         vertices_.clear();
         batches_.clear();
+        mesh_draws_.clear();
         return true;
+    }
+
+    Result<void> draw_mesh(MeshId mesh, const Mat4& transform, const Material3D& material,
+                           std::uint32_t layers) override {
+        if (!in_frame_) {
+            return detail::no_frame("draw_mesh");
+        }
+        const auto it = meshes_.find(mesh);
+        if (auto checked = detail::check_mesh_draw(
+                frame_.scene.has_value(), it != meshes_.end(), mesh, transform, material,
+                frame_.target, [&](TextureId id) { return textures_.contains(id); });
+            !checked) {
+            return checked;
+        }
+        mesh_draws_.push_back(
+            {.mesh = mesh, .transform = transform, .material = material, .layers = layers});
+        ++stats_.draws;
+        stats_.triangles += it->second.indices.size() / 3;
+        return {};
     }
 
     Result<void> draw(TextureId texture, std::span<const Vertex2D> vertices,
@@ -353,6 +428,9 @@ public:
             std::copy(clear.begin(), clear.end(),
                       target.pixels.begin() + static_cast<std::ptrdiff_t>(i));
         }
+        if (frame_.scene && !mesh_draws_.empty()) {
+            draw_meshes(*frame_.scene, target);
+        }
         const Mat4 view = frame_.view.value_or(
             pixel_projection(static_cast<float>(target.width), static_cast<float>(target.height)));
         for (const Batch& batch : batches_) {
@@ -362,6 +440,8 @@ public:
         }
         retired_.clear();
         retired_shaders_.clear();
+        retired_meshes_.clear();
+        mesh_draws_.clear();
         return {};
     }
 
@@ -934,9 +1014,285 @@ private:
             });
     }
 
+    // A live mesh, or one destroyed during this frame.
+    const SoftwareMesh& find_mesh(MeshId mesh) const {
+        if (const auto it = meshes_.find(mesh); it != meshes_.end()) {
+            return it->second;
+        }
+        return retired_meshes_.at(mesh);
+    }
+
+    // What one mesh draw's pixels are shaded with.
+    struct MeshShader {
+        const Material3D* material = nullptr;
+        detail::MeshSurfaceUniforms surface;
+        const detail::MeshSceneUniforms* scene = nullptr;
+        Bound albedo;
+        Bound metallic;
+        Bound roughness;
+        Bound emission;
+        Bound normal;
+    };
+
+    // The frame's meshes, in the order mesh_draw_order gives, over a depth buffer cleared to 0,
+    // the far plane: each pixel is drawn where it is nearer, as the GPU's GREATER depth test.
+    void draw_meshes(const Scene3D& scene, Image& target) {
+        std::vector<float> depth(std::size_t{target.width} * target.height, 0.0F);
+        const detail::MeshCameraUniforms camera = detail::mesh_camera_uniforms(scene);
+        const auto lights =
+            std::make_unique<detail::MeshSceneUniforms>(detail::mesh_scene_uniforms(scene));
+        const std::vector<std::size_t> order = detail::mesh_draw_order(
+            std::span<const detail::MeshDraw>(mesh_draws_), scene,
+            [&](std::size_t i) { return find_mesh(mesh_draws_[i].mesh).bounds; });
+        std::vector<ClipVertex> corners;
+        for (const std::size_t index : order) {
+            const detail::MeshDraw& draw = mesh_draws_[index];
+            const Material3D& material = draw.material;
+            const SoftwareMesh& mesh = find_mesh(draw.mesh);
+            const MeshShader shader{
+                .material = &material,
+                .surface = detail::mesh_surface_uniforms(material, draw.layers),
+                .scene = lights.get(),
+                .albedo = bound(material.albedo_texture.texture, material.albedo_texture.repeat),
+                .metallic =
+                    bound(material.metallic_texture.texture, material.metallic_texture.repeat),
+                .roughness =
+                    bound(material.roughness_texture.texture, material.roughness_texture.repeat),
+                .emission =
+                    bound(material.emission_texture.texture, material.emission_texture.repeat),
+                .normal = bound(material.normal_texture.texture, material.normal_texture.repeat)};
+            const detail::MeshInstanceUniforms instance =
+                detail::mesh_instance_uniforms(draw.transform, material);
+            corners.clear();
+            for (const Vertex3D& vertex : mesh.vertices) {
+                const detail::MeshCorner corner = detail::mesh_vertex(camera, instance, vertex);
+                ClipVertex& out = corners.emplace_back();
+                out.clip = corner.clip;
+                std::size_t at = 0;
+                const auto put = [&](std::span<const float> values) {
+                    for (const float value : values) {
+                        out.varying.at(at++) = value;
+                    }
+                };
+                put(corner.world);
+                put(corner.normal);
+                put(corner.tangent);
+                put(corner.binormal);
+                put(corner.uv);
+                put(corner.color);
+            }
+            for (std::size_t i = 0; i + 2 < mesh.indices.size(); i += 3) {
+                clip_and_draw({corners[mesh.indices[i]], corners[mesh.indices[i + 1]],
+                               corners[mesh.indices[i + 2]]},
+                              shader, target, depth);
+            }
+        }
+    }
+
+    // Clips a triangle to the near plane (z <= w), the far plane (z >= 0) and the guard band,
+    // as GPUs clip, and draws what is left as a fan of triangles.
+    void clip_and_draw(const std::array<ClipVertex, 3>& triangle, const MeshShader& shader,
+                       Image& target, std::vector<float>& depth) const {
+        std::vector<ClipVertex> polygon(triangle.begin(), triangle.end());
+        std::vector<ClipVertex> clipped;
+        // Each plane as how far inside a corner is, 0 or more inside.
+        const std::array<float (*)(const Float4&), 6> planes{
+            [](const Float4& c) { return c[3] - c[2]; },
+            [](const Float4& c) { return c[2]; },
+            [](const Float4& c) { return (kGuardBand * c[3]) - c[0]; },
+            [](const Float4& c) { return (kGuardBand * c[3]) + c[0]; },
+            [](const Float4& c) { return (kGuardBand * c[3]) - c[1]; },
+            [](const Float4& c) { return (kGuardBand * c[3]) + c[1]; }};
+        for (const auto inside : planes) {
+            if (std::ranges::all_of(polygon,
+                                    [&](const ClipVertex& v) { return inside(v.clip) >= 0.0F; })) {
+                continue;
+            }
+            clipped.clear();
+            for (std::size_t i = 0; i < polygon.size(); ++i) {
+                const ClipVertex& a = polygon[i];
+                const ClipVertex& b = polygon[(i + 1) % polygon.size()];
+                const float da = inside(a.clip);
+                const float db = inside(b.clip);
+                if (da >= 0.0F) {
+                    clipped.push_back(a);
+                }
+                if ((da >= 0.0F) != (db >= 0.0F)) {
+                    const float t = da / (da - db);
+                    ClipVertex& mid = clipped.emplace_back();
+                    for (std::size_t k = 0; k < 4; ++k) {
+                        mid.clip.at(k) = a.clip.at(k) + ((b.clip.at(k) - a.clip.at(k)) * t);
+                    }
+                    for (std::size_t k = 0; k < a.varying.size(); ++k) {
+                        mid.varying.at(k) =
+                            a.varying.at(k) + ((b.varying.at(k) - a.varying.at(k)) * t);
+                    }
+                }
+            }
+            polygon.swap(clipped);
+            if (polygon.size() < 3) {
+                return;
+            }
+        }
+        for (std::size_t i = 1; i + 1 < polygon.size(); ++i) {
+            rasterize_mesh(polygon[0], polygon[i], polygon[i + 1], shader, target, depth);
+        }
+    }
+
+    // A clipped corner on the target: where it lands in 1/256 pixels, its depth, and 1 / w for
+    // perspective-correct interpolation.
+    struct MeshScreenVertex {
+        ScreenVertex at;
+        float z = 0.0F;
+        double inv_w = 0.0;
+        const ClipVertex* source = nullptr;
+    };
+
+    static MeshScreenVertex to_mesh_screen(const ClipVertex& vertex, const Image& target) {
+        const float inv_w = 1.0F / vertex.clip[3];
+        const double sx = (static_cast<double>(vertex.clip[0] * inv_w) + 1.0) * 0.5 * target.width;
+        const double sy = (1.0 - static_cast<double>(vertex.clip[1] * inv_w)) * 0.5 * target.height;
+        MeshScreenVertex out;
+        out.at.x = std::llround(sx * kSubpixel);
+        out.at.y = std::llround(sy * kSubpixel);
+        out.z = vertex.clip[2] * inv_w;
+        out.inv_w = static_cast<double>(inv_w);
+        out.source = &vertex;
+        return out;
+    }
+
+    void rasterize_mesh(const ClipVertex& va, const ClipVertex& vb, const ClipVertex& vc,
+                        const MeshShader& shader, Image& target, std::vector<float>& depth) const {
+        const MeshScreenVertex a = to_mesh_screen(va, target);
+        MeshScreenVertex b = to_mesh_screen(vb, target);
+        MeshScreenVertex c = to_mesh_screen(vc, target);
+        std::int64_t area = edge(a.at, b.at, c.at.x, c.at.y);
+        if (area == 0) {
+            return;
+        }
+        // Clockwise on the target, which is positive area on a y-down target, faces the camera.
+        const bool front = area > 0;
+        const Material3D& material = *shader.material;
+        if ((material.cull == CullMode::Back && !front) ||
+            (material.cull == CullMode::Front && front)) {
+            return;
+        }
+        if (!front) {
+            std::swap(b, c);
+            area = -area;
+        }
+        const std::int64_t half = kSubpixel / 2;
+        const auto first = [&](std::int64_t low, std::uint32_t size) {
+            return std::clamp<std::int64_t>((low - half + kSubpixel - 1) / kSubpixel, 0,
+                                            static_cast<std::int64_t>(size));
+        };
+        const auto last = [&](std::int64_t high, std::uint32_t size) {
+            return std::clamp<std::int64_t>(((high - half) / kSubpixel), -1,
+                                            static_cast<std::int64_t>(size) - 1);
+        };
+        const std::int64_t x0 = first(std::min({a.at.x, b.at.x, c.at.x}), target.width);
+        const std::int64_t x1 = last(std::max({a.at.x, b.at.x, c.at.x}), target.width);
+        const std::int64_t y0 = first(std::min({a.at.y, b.at.y, c.at.y}), target.height);
+        const std::int64_t y1 = last(std::max({a.at.y, b.at.y, c.at.y}), target.height);
+        const bool top_left_a = top_left(b.at, c.at);
+        const bool top_left_b = top_left(c.at, a.at);
+        const bool top_left_c = top_left(a.at, b.at);
+        const bool blended = material.transparency == Transparency::Alpha;
+        for (std::int64_t py = y0; py <= y1; ++py) {
+            for (std::int64_t px = x0; px <= x1; ++px) {
+                const std::int64_t cx = (px * kSubpixel) + half;
+                const std::int64_t cy = (py * kSubpixel) + half;
+                const std::int64_t wa = edge(b.at, c.at, cx, cy);
+                const std::int64_t wb = edge(c.at, a.at, cx, cy);
+                const std::int64_t wc = edge(a.at, b.at, cx, cy);
+                if (wa < 0 || wb < 0 || wc < 0 || (wa == 0 && !top_left_a) ||
+                    (wb == 0 && !top_left_b) || (wc == 0 && !top_left_c)) {
+                    continue;
+                }
+                const double ba = static_cast<double>(wa) / static_cast<double>(area);
+                const double bb = static_cast<double>(wb) / static_cast<double>(area);
+                const double bc = static_cast<double>(wc) / static_cast<double>(area);
+                const auto z = static_cast<float>((ba * a.z) + (bb * b.z) + (bc * c.z));
+                const std::size_t at =
+                    (static_cast<std::size_t>(py) * target.width) + static_cast<std::size_t>(px);
+                if (!(z > depth[at])) {
+                    continue;
+                }
+                // Perspective-correct: each corner's share over its w.
+                const double qa = ba * a.inv_w;
+                const double qb = bb * b.inv_w;
+                const double qc = bc * c.inv_w;
+                const double total = qa + qb + qc;
+                std::array<float, 18> varying{};
+                for (std::size_t k = 0; k < varying.size(); ++k) {
+                    varying.at(k) = static_cast<float>(((qa * a.source->varying.at(k)) +
+                                                        (qb * b.source->varying.at(k)) +
+                                                        (qc * c.source->varying.at(k))) /
+                                                       total);
+                }
+                const auto color = shade_mesh_pixel(shader, varying, front);
+                if (!color) {
+                    continue; // discarded, as by the alpha scissor
+                }
+                write_mesh_pixel(material, blended, *color, target, at);
+                if (!blended) {
+                    depth[at] = z;
+                }
+            }
+        }
+    }
+
+    // fs_main in shaders/mesh.hlsl, through its CPU twin.
+    static std::optional<Float4>
+    shade_mesh_pixel(const MeshShader& shader, const std::array<float, 18>& varying, bool front) {
+        const auto take3 = [&](std::size_t at) {
+            return detail::Float3{varying.at(at), varying.at(at + 1), varying.at(at + 2)};
+        };
+        const float u = varying[12];
+        const float v = varying[13];
+        const auto rgb = [](const Float4& texel) {
+            return detail::Float3{texel[0], texel[1], texel[2]};
+        };
+        const detail::MeshPixel pixel{.world = take3(0),
+                                      .normal = take3(3),
+                                      .tangent = take3(6),
+                                      .binormal = take3(9),
+                                      .color = {varying[14], varying[15], varying[16], varying[17]},
+                                      .front = front,
+                                      .albedo_texel = shader.albedo.sample(u, v),
+                                      .metallic_texel = shader.metallic.sample(u, v),
+                                      .roughness_texel = shader.roughness.sample(u, v),
+                                      .emission_texel = rgb(shader.emission.sample(u, v)),
+                                      .normal_texel = rgb(shader.normal.sample(u, v))};
+        return detail::shade_mesh(shader.surface, *shader.scene, pixel);
+    }
+
+    // Writes a mesh pixel as the GPU device's mesh pipelines do: opaque ones replace the pixel,
+    // alpha ones blend into it.
+    static void write_mesh_pixel(const Material3D& material, bool blended, const Float4& color,
+                                 Image& target, std::size_t at) {
+        const Float4 src{clamp01(color[0]), clamp01(color[1]), clamp01(color[2]),
+                         clamp01(color[3])};
+        Float4 out = src;
+        if (blended) {
+            Float4 dst{};
+            for (std::size_t i = 0; i < 4; ++i) {
+                dst.at(i) = static_cast<float>(target.pixels[(at * 4) + i]) / 255.0F;
+            }
+            out = blend(material.blend, src, dst);
+        }
+        for (std::size_t i = 0; i < 4; ++i) {
+            target.pixels[(at * 4) + i] = to_byte(out.at(i));
+        }
+    }
+
     std::unordered_map<TextureId, Texture> textures_;
     std::unordered_map<TextureId, Texture> retired_;
     std::uint32_t next_texture_ = 1;
+    std::unordered_map<MeshId, SoftwareMesh> meshes_;
+    std::unordered_map<MeshId, SoftwareMesh> retired_meshes_;
+    std::uint32_t next_mesh_ = 1;
+    std::vector<detail::MeshDraw> mesh_draws_;
     std::unordered_map<ShaderId, std::shared_ptr<SoftwareShader>> shaders_;
     std::unordered_map<ShaderId, std::shared_ptr<SoftwareShader>> retired_shaders_;
     std::uint32_t next_shader_ = 1;

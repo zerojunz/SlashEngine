@@ -5,6 +5,7 @@ if(EMSCRIPTEN)
         test_main.cpp
         test_gpu_particles.cpp
         test_light.cpp
+        test_mesh.cpp
         test_render.cpp
         test_upscaler.cpp)
     target_link_libraries(slash_web_tests PRIVATE slash::core slash::platform slash::render
@@ -70,6 +71,7 @@ add_executable(slash_tests
     test_log.cpp
     test_material.cpp
     test_mcp.cpp
+    test_mesh.cpp
     test_particle_graphs.cpp
     test_particles.cpp
     test_physics.cpp
@@ -159,7 +161,7 @@ add_test(NAME unit COMMAND slash_tests WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_
 
 # The compiled shaders committed in engine/render/src match their HLSL; see
 # cmake/compile_shaders.cmake.
-foreach(shader IN ITEMS sprite material particles_process particles_emit particles_draw)
+foreach(shader IN ITEMS sprite material mesh particles_process particles_emit particles_draw)
     add_test(NAME shaders_up_to_date_${shader}
         COMMAND ${CMAKE_COMMAND} -DSOURCE=${PROJECT_SOURCE_DIR}/engine/render/shaders/${shader}.hlsl
             -DOUTPUT=${PROJECT_SOURCE_DIR}/engine/render/src/${shader}_shaders.hpp -DCHECK=ON

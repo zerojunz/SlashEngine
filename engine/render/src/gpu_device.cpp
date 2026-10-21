@@ -3,6 +3,8 @@
 #include "checks.hpp"
 #include "hlsl_compiler.hpp"
 #include "material_shaders.hpp"
+#include "mesh_shaders.hpp"
+#include "mesh_shading.hpp"
 #include "particle_layout.hpp"
 #include "particles_draw_shaders.hpp"
 #include "particles_emit_shaders.hpp"
@@ -20,6 +22,7 @@
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <numeric>
 #include <optional>
 #include <span>
 #include <string>
@@ -201,6 +204,15 @@ public:
         for (const Pipeline& pipeline : pipelines_) {
             SDL_ReleaseGPUGraphicsPipeline(device_, pipeline.pipeline);
         }
+        for (const MeshPipeline& pipeline : mesh_pipelines_) {
+            SDL_ReleaseGPUGraphicsPipeline(device_, pipeline.pipeline);
+        }
+        for (const auto& [id, mesh] : meshes_) {
+            release_mesh(mesh);
+        }
+        if (depth_ != nullptr) {
+            SDL_ReleaseGPUTexture(device_, depth_);
+        }
         for (SDL_GPUComputePipeline* pipeline : compute_pipelines_) {
             if (pipeline != nullptr) {
                 SDL_ReleaseGPUComputePipeline(device_, pipeline);
@@ -228,6 +240,11 @@ public:
             SDL_ReleaseGPUTransferBuffer(device_, vertex_transfer_);
         }
         for (SDL_GPUShader* shader : shaders_) {
+            if (shader != nullptr) {
+                SDL_ReleaseGPUShader(device_, shader);
+            }
+        }
+        for (SDL_GPUShader* shader : mesh_shaders_) {
             if (shader != nullptr) {
                 SDL_ReleaseGPUShader(device_, shader);
             }
@@ -634,9 +651,87 @@ public:
         return out;
     }
 
+    Result<MeshId> create_mesh(std::span<const Vertex3D> vertices,
+                               std::span<const std::uint32_t> indices) override {
+        if (auto checked = check_mesh(vertices, indices); !checked) {
+            return checked.error();
+        }
+        std::vector<std::uint32_t> implicit;
+        if (indices.empty()) {
+            implicit.resize(vertices.size());
+            std::iota(implicit.begin(), implicit.end(), 0U);
+            indices = implicit;
+        }
+        const auto vertex_bytes = static_cast<std::uint32_t>(vertices.size_bytes());
+        const auto index_bytes = static_cast<std::uint32_t>(indices.size_bytes());
+        Mesh mesh{.index_count = static_cast<std::uint32_t>(indices.size()),
+                  .bounds = mesh_bounds(vertices)};
+        SDL_GPUBufferCreateInfo info{};
+        info.usage = SDL_GPU_BUFFERUSAGE_VERTEX;
+        info.size = vertex_bytes;
+        mesh.vertices = SDL_CreateGPUBuffer(device_, &info);
+        info.usage = SDL_GPU_BUFFERUSAGE_INDEX;
+        info.size = index_bytes;
+        mesh.indices = SDL_CreateGPUBuffer(device_, &info);
+        const TransferBuffer transfer(device_, SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
+                                      vertex_bytes + index_bytes);
+        auto* mapped =
+            mesh.vertices == nullptr || mesh.indices == nullptr || transfer.get() == nullptr
+                ? nullptr
+                : static_cast<std::uint8_t*>(
+                      SDL_MapGPUTransferBuffer(device_, transfer.get(), false));
+        if (mapped == nullptr) {
+            release_mesh(mesh);
+            return sdl_error("making room for a mesh failed");
+        }
+        std::memcpy(mapped, vertices.data(), vertex_bytes);
+        std::memcpy(mapped + vertex_bytes, indices.data(), index_bytes);
+        SDL_UnmapGPUTransferBuffer(device_, transfer.get());
+        SDL_GPUCommandBuffer* commands = SDL_AcquireGPUCommandBuffer(device_);
+        if (commands == nullptr) {
+            release_mesh(mesh);
+            return sdl_error("uploading a mesh failed");
+        }
+        SDL_GPUCopyPass* copy = SDL_BeginGPUCopyPass(commands);
+        SDL_GPUTransferBufferLocation source{.transfer_buffer = transfer.get(), .offset = 0};
+        SDL_GPUBufferRegion destination{.buffer = mesh.vertices, .offset = 0, .size = vertex_bytes};
+        SDL_UploadToGPUBuffer(copy, &source, &destination, false);
+        source.offset = vertex_bytes;
+        destination = {.buffer = mesh.indices, .offset = 0, .size = index_bytes};
+        SDL_UploadToGPUBuffer(copy, &source, &destination, false);
+        SDL_EndGPUCopyPass(copy);
+        if (!SDL_SubmitGPUCommandBuffer(commands)) {
+            release_mesh(mesh);
+            return sdl_error("uploading a mesh failed");
+        }
+        const auto id = static_cast<MeshId>(next_mesh_++);
+        meshes_[id] = mesh;
+        return id;
+    }
+
+    void destroy_mesh(MeshId mesh) override {
+        const auto it = meshes_.find(mesh);
+        if (it == meshes_.end()) {
+            return;
+        }
+        if (in_frame_) {
+            // The frame's draws still read its buffers when it is sent.
+            pending_buffers_.push_back(it->second.vertices);
+            pending_buffers_.push_back(it->second.indices);
+        } else {
+            release_mesh(it->second);
+        }
+        meshes_.erase(it);
+    }
+
     Result<bool> begin_frame(const Frame& frame) override {
         if (in_frame_) {
             return frame_in_progress("begin_frame");
+        }
+        if (frame.scene) {
+            if (auto checked = check_scene(*frame.scene); !checked) {
+                return checked.error();
+            }
         }
         SDL_GPUTexture* target = nullptr;
         std::uint32_t width = 0;
@@ -728,6 +823,48 @@ public:
         return {};
     }
 
+    Result<void> draw_mesh(MeshId mesh, const Mat4& transform, const Material3D& material,
+                           std::uint32_t layers) override {
+        if (!in_frame_) {
+            return no_frame("draw_mesh");
+        }
+        const auto it = meshes_.find(mesh);
+        if (auto checked = check_mesh_draw(frame_.scene.has_value(), it != meshes_.end(), mesh,
+                                           transform, material, frame_.target,
+                                           [&](TextureId id) { return textures_.contains(id); });
+            !checked) {
+            return checked;
+        }
+        if (frame_commands_ == nullptr) {
+            return {}; // a skipped frame
+        }
+        // Made at the first draw that needs them, so a failure shows there.
+        if (auto depth = depth_target(frame_width_, frame_height_); !depth) {
+            return depth.error();
+        }
+        auto pipeline = mesh_pipeline_for(frame_format_, material);
+        if (!pipeline) {
+            return pipeline.error();
+        }
+        MeshBatch batch{.vertices = it->second.vertices,
+                        .indices = it->second.indices,
+                        .index_count = it->second.index_count,
+                        .bounds = it->second.bounds,
+                        .pipeline = pipeline.value()};
+        const std::array<const MaterialTexture*, kMeshTextures> slots{
+            &material.albedo_texture, &material.metallic_texture, &material.roughness_texture,
+            &material.emission_texture, &material.normal_texture};
+        for (std::size_t slot = 0; slot < kMeshTextures; ++slot) {
+            batch.samplers.at(slot) = binding(slots.at(slot)->texture, slots.at(slot)->repeat);
+        }
+        mesh_draws_.push_back(
+            {.mesh = mesh, .transform = transform, .material = material, .layers = layers});
+        mesh_batches_.push_back(batch);
+        ++stats_.draws;
+        stats_.triangles += it->second.index_count / 3;
+        return {};
+    }
+
     Result<void> end_frame() override {
         if (!in_frame_) {
             return no_frame("end_frame");
@@ -750,11 +887,17 @@ public:
         // Particles run and write their quads ahead of the render pass that draws them.
         const auto base = static_cast<std::uint32_t>(vertices_.size());
         dispatch_particle_jobs(commands, base, vertices_.empty());
+        // Meshes draw first, in a pass of their own, and the 2D draws go over them.
+        // Mesh draws need a scene, so a frame with them has one.
+        const bool meshes = frame_.scene && !mesh_draws_.empty();
+        if (meshes) {
+            draw_meshes(commands, *frame_.scene);
+        }
 
         SDL_GPUColorTargetInfo color{};
         color.texture = frame_texture_;
         color.clear_color = {frame_.clear.r, frame_.clear.g, frame_.clear.b, frame_.clear.a};
-        color.load_op = SDL_GPU_LOADOP_CLEAR;
+        color.load_op = meshes ? SDL_GPU_LOADOP_LOAD : SDL_GPU_LOADOP_CLEAR;
         color.store_op = SDL_GPU_STOREOP_STORE;
         SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(commands, &color, 1, nullptr);
         if (!batches_.empty()) {
@@ -930,6 +1073,32 @@ private:
         ShaderKind kind = ShaderKind::Sprite;
         BlendMode blend = BlendMode::Mix;
         ShaderId game = ShaderId::None; // a game's shader, drawn instead of the kind's
+        SDL_GPUGraphicsPipeline* pipeline = nullptr;
+    };
+
+    // A mesh's buffers; one without indices is given them in order.
+    struct Mesh {
+        SDL_GPUBuffer* vertices = nullptr;
+        SDL_GPUBuffer* indices = nullptr;
+        std::uint32_t index_count = 0;
+        Bounds bounds;
+    };
+
+    // What a mesh draw binds, found when it is made: its mesh may be destroyed before end_frame.
+    struct MeshBatch {
+        SDL_GPUBuffer* vertices = nullptr;
+        SDL_GPUBuffer* indices = nullptr;
+        std::uint32_t index_count = 0;
+        Bounds bounds;
+        SDL_GPUGraphicsPipeline* pipeline = nullptr;
+        std::array<SDL_GPUTextureSamplerBinding, kMeshTextures> samplers{};
+    };
+
+    struct MeshPipeline {
+        SDL_GPUTextureFormat format = SDL_GPU_TEXTUREFORMAT_INVALID;
+        CullMode cull = CullMode::Back;
+        bool blended = false;             // an Alpha material's, which writes no depth
+        BlendMode blend = BlendMode::Mix; // when blended
         SDL_GPUGraphicsPipeline* pipeline = nullptr;
     };
 
@@ -1322,6 +1491,209 @@ private:
         pending_buffers_.clear();
     }
 
+    void release_mesh(const Mesh& mesh) {
+        for (SDL_GPUBuffer* buffer : {mesh.vertices, mesh.indices}) {
+            if (buffer != nullptr) {
+                SDL_ReleaseGPUBuffer(device_, buffer);
+            }
+        }
+    }
+
+    // The depth buffer the frame's meshes draw over, made again when the target's size changes.
+    Result<SDL_GPUTexture*> depth_target(std::uint32_t width, std::uint32_t height) {
+        if (depth_ != nullptr && depth_width_ == width && depth_height_ == height) {
+            return depth_;
+        }
+        if (depth_ != nullptr) {
+            pending_release_.push_back(std::exchange(depth_, nullptr));
+        }
+        // 32-bit floats suit reversed depth best; every GPU without them has 24-bit depth.
+        SDL_GPUTextureCreateInfo info{};
+        info.type = SDL_GPU_TEXTURETYPE_2D;
+        info.format = SDL_GPU_TEXTUREFORMAT_D32_FLOAT;
+        if (!SDL_GPUTextureSupportsFormat(device_, info.format, info.type,
+                                          SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET)) {
+            info.format = SDL_GPU_TEXTUREFORMAT_D24_UNORM;
+        }
+        info.usage = SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET;
+        info.width = width;
+        info.height = height;
+        info.layer_count_or_depth = 1;
+        info.num_levels = 1;
+        depth_ = SDL_CreateGPUTexture(device_, &info);
+        if (depth_ == nullptr) {
+            return sdl_error("creating the depth buffer failed");
+        }
+        depth_format_ = info.format;
+        depth_width_ = width;
+        depth_height_ = height;
+        return depth_;
+    }
+
+    // The mesh shaders, unless they are made already.
+    Result<void> make_mesh_shaders() {
+        if (mesh_shaders_[0] != nullptr) {
+            return {};
+        }
+        const ShaderCode code{.vertex_spirv = shaders::kMeshVertexSpirv,
+                              .fragment_spirv = shaders::kMeshFragmentSpirv,
+                              .vertex_msl = shaders::kMeshVertexMsl,
+                              .fragment_msl = shaders::kMeshFragmentMsl,
+                              .hlsl = shaders::kMeshHlsl};
+        auto vertex = make_gpu_shader(SDL_GPU_SHADERSTAGE_VERTEX, code, 0, 2);
+        if (!vertex) {
+            return vertex.error();
+        }
+        auto fragment = make_gpu_shader(SDL_GPU_SHADERSTAGE_FRAGMENT, code,
+                                        static_cast<std::uint32_t>(kMeshTextures), 2);
+        if (!fragment) {
+            SDL_ReleaseGPUShader(device_, vertex.value());
+            return fragment.error();
+        }
+        mesh_shaders_ = {vertex.value(), fragment.value()};
+        return {};
+    }
+
+    // The pipeline drawing a material's meshes into a target format, made the first time a frame
+    // needs it: it culls as the material says, and an Alpha material's blends and writes no
+    // depth.
+    Result<SDL_GPUGraphicsPipeline*> mesh_pipeline_for(SDL_GPUTextureFormat format,
+                                                       const Material3D& material) {
+        const bool blended = material.transparency == Transparency::Alpha;
+        const BlendMode blend = blended ? material.blend : BlendMode::Mix;
+        for (const MeshPipeline& made : mesh_pipelines_) {
+            if (made.format == format && made.cull == material.cull && made.blended == blended &&
+                made.blend == blend) {
+                return made.pipeline;
+            }
+        }
+        if (auto made = make_mesh_shaders(); !made) {
+            return made.error();
+        }
+        SDL_GPUVertexBufferDescription buffer{};
+        buffer.slot = 0;
+        buffer.pitch = sizeof(Vertex3D);
+        buffer.input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX;
+        const std::array<SDL_GPUVertexAttribute, 5> attributes{{
+            {.location = 0,
+             .buffer_slot = 0,
+             .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3,
+             .offset = offsetof(Vertex3D, position)},
+            {.location = 1,
+             .buffer_slot = 0,
+             .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3,
+             .offset = offsetof(Vertex3D, normal)},
+            {.location = 2,
+             .buffer_slot = 0,
+             .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4,
+             .offset = offsetof(Vertex3D, tangent)},
+            {.location = 3,
+             .buffer_slot = 0,
+             .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2,
+             .offset = offsetof(Vertex3D, uv)},
+            {.location = 4,
+             .buffer_slot = 0,
+             .format = SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4_NORM,
+             .offset = offsetof(Vertex3D, rgba)},
+        }};
+        SDL_GPUColorTargetDescription color{};
+        color.format = format;
+        if (blended) {
+            color.blend_state = blend_state(blend);
+        }
+        SDL_GPUGraphicsPipelineCreateInfo info{};
+        info.vertex_shader = mesh_shaders_[0];
+        info.fragment_shader = mesh_shaders_[1];
+        info.vertex_input_state.vertex_buffer_descriptions = &buffer;
+        info.vertex_input_state.num_vertex_buffers = 1;
+        info.vertex_input_state.vertex_attributes = attributes.data();
+        info.vertex_input_state.num_vertex_attributes =
+            static_cast<std::uint32_t>(attributes.size());
+        info.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
+        info.rasterizer_state.fill_mode = SDL_GPU_FILLMODE_FILL;
+        switch (material.cull) {
+        case CullMode::Back:
+            info.rasterizer_state.cull_mode = SDL_GPU_CULLMODE_BACK;
+            break;
+        case CullMode::Front:
+            info.rasterizer_state.cull_mode = SDL_GPU_CULLMODE_FRONT;
+            break;
+        case CullMode::Disabled:
+            info.rasterizer_state.cull_mode = SDL_GPU_CULLMODE_NONE;
+            break;
+        }
+        info.rasterizer_state.front_face = SDL_GPU_FRONTFACE_CLOCKWISE;
+        // Reversed depth: nearer is greater.
+        info.depth_stencil_state.enable_depth_test = true;
+        info.depth_stencil_state.enable_depth_write = !blended;
+        info.depth_stencil_state.compare_op = SDL_GPU_COMPAREOP_GREATER;
+        info.target_info.color_target_descriptions = &color;
+        info.target_info.num_color_targets = 1;
+        info.target_info.has_depth_stencil_target = true;
+        info.target_info.depth_stencil_format = depth_format_;
+        SDL_GPUGraphicsPipeline* pipeline = SDL_CreateGPUGraphicsPipeline(device_, &info);
+        if (pipeline == nullptr) {
+            return sdl_error("creating the 3D pipeline failed");
+        }
+        mesh_pipelines_.push_back({.format = format,
+                                   .cull = material.cull,
+                                   .blended = blended,
+                                   .blend = blend,
+                                   .pipeline = pipeline});
+        return pipeline;
+    }
+
+    // The frame's meshes, in the order mesh_draw_order gives, in a pass that clears the target
+    // and a depth buffer to the far plane.
+    void draw_meshes(SDL_GPUCommandBuffer* commands, const Scene3D& scene) {
+        SDL_GPUColorTargetInfo color{};
+        color.texture = frame_texture_;
+        color.clear_color = {frame_.clear.r, frame_.clear.g, frame_.clear.b, frame_.clear.a};
+        color.load_op = SDL_GPU_LOADOP_CLEAR;
+        color.store_op = SDL_GPU_STOREOP_STORE;
+        SDL_GPUDepthStencilTargetInfo depth{};
+        depth.texture = depth_;
+        depth.clear_depth = 0.0F;
+        depth.load_op = SDL_GPU_LOADOP_CLEAR;
+        depth.store_op = SDL_GPU_STOREOP_DONT_CARE;
+        depth.stencil_load_op = SDL_GPU_LOADOP_DONT_CARE;
+        depth.stencil_store_op = SDL_GPU_STOREOP_DONT_CARE;
+        depth.cycle = true;
+        SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(commands, &color, 1, &depth);
+        const MeshCameraUniforms camera = mesh_camera_uniforms(scene);
+        SDL_PushGPUVertexUniformData(commands, 0, &camera,
+                                     static_cast<std::uint32_t>(sizeof(camera)));
+        const auto lights = std::make_unique<MeshSceneUniforms>(mesh_scene_uniforms(scene));
+        SDL_PushGPUFragmentUniformData(commands, 1, lights.get(),
+                                       static_cast<std::uint32_t>(sizeof(MeshSceneUniforms)));
+        SDL_GPUGraphicsPipeline* bound = nullptr;
+        for (const std::size_t i :
+             mesh_draw_order(std::span<const MeshDraw>(mesh_draws_), scene,
+                             [&](std::size_t at) { return mesh_batches_[at].bounds; })) {
+            const MeshDraw& draw = mesh_draws_[i];
+            const MeshBatch& batch = mesh_batches_[i];
+            if (batch.pipeline != bound) {
+                SDL_BindGPUGraphicsPipeline(pass, batch.pipeline);
+                bound = batch.pipeline;
+            }
+            const MeshInstanceUniforms instance =
+                mesh_instance_uniforms(draw.transform, draw.material);
+            SDL_PushGPUVertexUniformData(commands, 1, &instance,
+                                         static_cast<std::uint32_t>(sizeof(instance)));
+            const MeshSurfaceUniforms surface = mesh_surface_uniforms(draw.material, draw.layers);
+            SDL_PushGPUFragmentUniformData(commands, 0, &surface,
+                                           static_cast<std::uint32_t>(sizeof(surface)));
+            const SDL_GPUBufferBinding vertices{.buffer = batch.vertices, .offset = 0};
+            SDL_BindGPUVertexBuffers(pass, 0, &vertices, 1);
+            const SDL_GPUBufferBinding indices{.buffer = batch.indices, .offset = 0};
+            SDL_BindGPUIndexBuffer(pass, &indices, SDL_GPU_INDEXELEMENTSIZE_32BIT);
+            SDL_BindGPUFragmentSamplers(pass, 0, batch.samplers.data(),
+                                        static_cast<std::uint32_t>(batch.samplers.size()));
+            SDL_DrawGPUIndexedPrimitives(pass, batch.index_count, 1, 0, 0, 0);
+        }
+        SDL_EndGPURenderPass(pass);
+    }
+
     // Both of a kind's shaders, unless they are made already.
     Result<void> make_shaders(ShaderKind kind) {
         for (const SDL_GPUShaderStage stage :
@@ -1602,6 +1974,8 @@ private:
         frame_height_ = height;
         vertices_.clear();
         batches_.clear();
+        mesh_draws_.clear();
+        mesh_batches_.clear();
         particle_vertices_ = 0;
     }
 
@@ -1610,6 +1984,8 @@ private:
         frame_texture_ = nullptr;
         vertices_.clear();
         batches_.clear();
+        mesh_draws_.clear();
+        mesh_batches_.clear();
         particle_vertices_ = 0;
         clear_particle_jobs();
         release_pending();
@@ -1660,6 +2036,14 @@ private:
     // Bound where a process pass takes or writes no emissions.
     SDL_GPUBuffer* no_source_ = nullptr;
     SDL_GPUBuffer* no_target_ = nullptr;
+    std::unordered_map<MeshId, Mesh> meshes_;
+    std::uint32_t next_mesh_ = 1;
+    std::array<SDL_GPUShader*, 2> mesh_shaders_{}; // vertex, then fragment
+    std::vector<MeshPipeline> mesh_pipelines_;
+    SDL_GPUTexture* depth_ = nullptr;
+    SDL_GPUTextureFormat depth_format_ = SDL_GPU_TEXTUREFORMAT_D32_FLOAT;
+    std::uint32_t depth_width_ = 0;
+    std::uint32_t depth_height_ = 0;
 
     // The frame being built. A skipped frame has no command buffer.
     bool in_frame_ = false;
@@ -1671,6 +2055,9 @@ private:
     std::uint32_t frame_height_ = 0;
     std::vector<Vertex2D> vertices_;
     std::vector<Batch> batches_;
+    // The frame's mesh draws, and what each binds.
+    std::vector<MeshDraw> mesh_draws_;
+    std::vector<MeshBatch> mesh_batches_;
     std::uint32_t particle_vertices_ = 0;  // the particles' quads, after vertices_
     VsyncMode vsync_ = VsyncMode::Enabled; // SDL's default present mode
     Stats stats_;
