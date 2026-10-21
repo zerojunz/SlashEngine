@@ -1,6 +1,7 @@
 #include "slash/core/math.hpp"
 
 #include <cmath>
+#include <limits>
 #include <numbers>
 
 namespace slash {
@@ -77,6 +78,57 @@ float atan2(float y, float x) {
         angle = std::numbers::pi - angle;
     }
     return static_cast<float>(std::copysign(angle, dy));
+}
+
+float exp(float x) {
+    if (std::isnan(x)) {
+        return x;
+    }
+    constexpr double kMax = 89.0;   // e^89 is past the largest float
+    constexpr double kMin = -104.0; // e^-104 is below the smallest
+    const double dx = x;
+    if (dx > kMax) {
+        return std::numeric_limits<float>::infinity();
+    }
+    if (dx < kMin) {
+        return 0.0F;
+    }
+    // x = k ln 2 + r with r from -ln 2 / 2 to ln 2 / 2, then a Taylor series for e^r and an
+    // exact scaling by 2^k: only IEEE operations, good to well past a float's last bit.
+    const double k = std::nearbyint(dx / std::numbers::ln2);
+    const double r = dx - (k * std::numbers::ln2);
+    double series = 1.0;
+    for (int n = 14; n >= 1; --n) {
+        series = 1.0 + (r * series / static_cast<double>(n));
+    }
+    return static_cast<float>(std::ldexp(series, static_cast<int>(k)));
+}
+
+float ln(float x) {
+    if (std::isnan(x) || x < 0.0F) {
+        return std::numeric_limits<float>::quiet_NaN();
+    }
+    if (x == 0.0F) {
+        return -std::numeric_limits<float>::infinity();
+    }
+    if (std::isinf(x)) {
+        return x;
+    }
+    // x = m 2^e with m from sqrt(1/2) to sqrt(2), then ln m = 2 atanh(s) for s = (m - 1) / (m +
+    // 1), whose series in s^2 converges fast as |s| is below 0.18.
+    int e = 0;
+    double m = std::frexp(static_cast<double>(x), &e);
+    if (m < std::numbers::sqrt2 / 2.0) {
+        m *= 2.0;
+        --e;
+    }
+    const double s = (m - 1.0) / (m + 1.0);
+    const double s2 = s * s;
+    double series = 1.0 / 25.0;
+    for (int k = 23; k >= 1; k -= 2) {
+        series = (1.0 / static_cast<double>(k)) + (s2 * series);
+    }
+    return static_cast<float>((2.0 * s * series) + (static_cast<double>(e) * std::numbers::ln2));
 }
 
 } // namespace slash

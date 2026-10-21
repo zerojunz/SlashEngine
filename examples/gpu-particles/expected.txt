@@ -1,7 +1,7 @@
 wrote dot.png: 8x8
 wrote streak.png: 8x32
 scene.open {"path":"main.scene.json"}
-{"entities":9,"path":"main.scene.json"}
+{"entities":10,"path":"main.scene.json"}
 particles.eval {"id":"fire","time":0.5}
 {"alive":24,"bounds":[74.5837,113.1188,14.8968,37.7536]}
 events.subscribe {"kinds":["finished"]}
@@ -36,6 +36,8 @@ particles.eval {"id":"burst"}
 {"alive":48,"bounds":[0.9724,83.7272,35.6393,41.8458]}
 particles.eval {"id":"comets","list":true,"max_results":1}
 {"alive":4,"bounds":[58.7956,26.9748,146.1592,27.8562],"particles":[{"age":1.5,"color":[0.699,0.899,1,1],"position":[204.9548,54.831],"rotation":0,"scale":1,"trail":{"copies":12,"end":[159.7436,43.139],"length":46.7045}}],"trail_bounds":[24.3106,24.2416,180.6442,30.5893],"trails":4}
+particles.eval {"id":"fireflies","list":true,"max_results":2}
+{"alive":10,"bounds":[219.9319,20.0921,47.796,53.6587],"particles":[{"age":1.5,"color":[1,0.9,0.4,0.415],"position":[238.1317,25.7652],"rotation":0,"scale":0.5914},{"age":1.3333,"color":[1,0.9,0.4,0.3326],"position":[260.0377,27.561],"rotation":0,"scale":0.5028}]}
 component.set {"components":{"GPUParticles2D":{"process_material":"broken.process_material.json"}},"id":"fire"}
 {"changed":{"GPUParticles2D":{"process_material":"broken.process_material.json"}},"id":"fire"}
 particles.eval {"id":"fire"}
@@ -43,5 +45,5 @@ particles.eval {"id":"fire"}
 undo {}
 {"can_redo":1,"can_undo":4,"undone":"component.set"}
 frame.capture {"points":[[80,140],[130,140]]}
-{"colors":[[1,0.843,0.361,1],[0.051,0.051,0.122,1]],"drawn":{"particles":254},"height":180,"width":320}
-particles drawn: 254, GPU draws: 8
+{"colors":[[1,0.843,0.361,1],[0.051,0.051,0.122,1]],"drawn":{"particles":278},"height":180,"width":320}
+particles drawn: 278, GPU draws: 9

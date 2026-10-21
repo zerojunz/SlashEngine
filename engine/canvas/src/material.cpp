@@ -1,5 +1,7 @@
 #include "slash/canvas/material.hpp"
 
+#include "graph.hpp"
+
 #include "slash/core/text.hpp"
 #include "slash/render/image.hpp"
 
@@ -10,8 +12,10 @@
 #include <memory>
 #include <optional>
 #include <set>
+#include <span>
 #include <sstream>
 #include <string>
+#include <tuple>
 #include <utility>
 
 namespace slash::canvas {
@@ -159,29 +163,164 @@ std::vector<std::string_view> op_names() {
     return names;
 }
 
-// Inputs, as Godot's canvas_item shaders name them, lowercased.
+// Where an operand's value comes from.
+enum class Source : std::uint8_t { Register, Literal, Param, Time, Node, Texture };
+
+// A particle graph's stages, as Godot's particle shaders' start() and process().
+constexpr std::uint32_t kStartStage = 1;
+constexpr std::uint32_t kProcessStage = 2;
+
+// An input: its kind, and where it is.
 struct Input {
     std::string_view name;
     Kind kind;
-    std::uint32_t register_index; // unused for time and texture
+    Source source;
+    std::uint32_t register_index; // for Source::Register
+    render::Swizzle swizzle;      // the components of the register it is
+    std::uint32_t stages;         // the particle graph stages that have it; 0 for all
 };
+
+constexpr Input register_input(std::string_view name, Kind kind, std::uint32_t index,
+                               const render::Swizzle& swizzle = render::kIdentitySwizzle,
+                               std::uint32_t stages = 0) {
+    return {.name = name,
+            .kind = kind,
+            .source = Source::Register,
+            .register_index = index,
+            .swizzle = swizzle,
+            .stages = stages};
+}
+
+// A float kept in one component of a register.
+constexpr render::Swizzle lane(std::uint8_t component) {
+    return {component, component, component, component};
+}
+
+// The zw half of a register, as a vec2.
+constexpr render::Swizzle kZw{2, 3, 3, 3};
+
+// Inputs, as Godot's canvas_item shaders name them, lowercased.
 constexpr std::array<Input, 6> kInputs{{
-    {.name = "uv", .kind = Kind::Vec2, .register_index = render::kUvRegister},
-    {.name = "color", .kind = Kind::Vec4, .register_index = render::kColorRegister},
-    {.name = "fragcoord", .kind = Kind::Vec2, .register_index = render::kFragCoordRegister},
-    {.name = "texture_pixel_size", .kind = Kind::Vec2, .register_index = render::kTexelRegister},
-    {.name = "time", .kind = Kind::Float, .register_index = 0},
-    {.name = "texture", .kind = Kind::Texture, .register_index = 0},
+    register_input("uv", Kind::Vec2, render::kUvRegister),
+    register_input("color", Kind::Vec4, render::kColorRegister),
+    register_input("fragcoord", Kind::Vec2, render::kFragCoordRegister),
+    register_input("texture_pixel_size", Kind::Vec2, render::kTexelRegister),
+    {.name = "time",
+     .kind = Kind::Float,
+     .source = Source::Time,
+     .register_index = 0,
+     .swizzle = render::kIdentitySwizzle,
+     .stages = 0},
+    {.name = "texture",
+     .kind = Kind::Texture,
+     .source = Source::Texture,
+     .register_index = 0,
+     .swizzle = render::kIdentitySwizzle,
+     .stages = 0},
 }};
 
-const Input* find_input(std::string_view name) {
-    for (const Input& input : kInputs) {
-        if (input.name == name) {
-            return &input;
-        }
-    }
-    return nullptr;
-}
+// A particle graph's inputs, in the registers render/particles.hpp lays out; Godot's particle
+// shaders' built-ins, lowercased, where it has them.
+constexpr std::array<Input, 20> kParticleInputs{{
+    register_input("position", Kind::Vec2, render::kParticleMotionRegister),
+    register_input("velocity", Kind::Vec2, render::kParticleMotionRegister, kZw),
+    register_input("color", Kind::Vec4, render::kParticleColorRegister),
+    register_input("angle", Kind::Float, render::kParticleLookRegister, lane(0), kProcessStage),
+    register_input("scale", Kind::Float, render::kParticleLookRegister, lane(1), kProcessStage),
+    register_input("frame", Kind::Float, render::kParticleLookRegister, lane(2), kProcessStage),
+    register_input("age", Kind::Float, render::kParticleLifeRegister, lane(0), kProcessStage),
+    register_input("life", Kind::Float, render::kParticleLifeRegister, lane(1), kProcessStage),
+    register_input("lifetime", Kind::Float, render::kParticleLifeRegister, lane(2)),
+    register_input("delta", Kind::Float, render::kParticleLifeRegister, lane(3), kProcessStage),
+    register_input("time", Kind::Float, render::kParticleNumberRegister, lane(0)),
+    register_input("index", Kind::Float, render::kParticleNumberRegister, lane(1)),
+    register_input("number", Kind::Float, render::kParticleNumberRegister, lane(2)),
+    register_input("amount_ratio", Kind::Float, render::kParticleNumberRegister, lane(3)),
+    register_input("random", Kind::Vec4, render::kParticleRandomRegister),
+    register_input("emitter_position", Kind::Vec2, render::kParticleEmitterRegister),
+    register_input("emitter_velocity", Kind::Vec2, render::kParticleEmitterRegister, kZw),
+    register_input("collision_normal", Kind::Vec2, render::kParticleContactRegister,
+                   render::kIdentitySwizzle, kProcessStage),
+    register_input("collision_depth", Kind::Float, render::kParticleContactRegister, lane(2),
+                   kProcessStage),
+    register_input("collided", Kind::Float, render::kParticleContactRegister, lane(3),
+                   kProcessStage),
+}};
+
+// What a particle graph's stage can change: a part of the output registers.
+struct Output {
+    std::string_view name;
+    Kind kind;
+    std::uint32_t bit;            // render::kParticleOut*
+    std::uint32_t register_index; // where it goes
+    std::uint32_t component;      // its first component there
+    std::uint32_t stages;
+    std::string_view doc;
+};
+constexpr std::array<Output, 7> kParticleOutputs{{
+    {.name = "position",
+     .kind = Kind::Vec2,
+     .bit = render::kParticleOutPosition,
+     .register_index = render::kParticleOutRegister,
+     .component = 0,
+     .stages = kStartStage | kProcessStage,
+     .doc = "Where the particle is, in pixels; in process, where it ends the step instead of "
+            "moving by its velocity."},
+    {.name = "velocity",
+     .kind = Kind::Vec2,
+     .bit = render::kParticleOutVelocity,
+     .register_index = render::kParticleOutRegister,
+     .component = 2,
+     .stages = kStartStage | kProcessStage,
+     .doc = "Its velocity in pixels per second, which carries on into the next step."},
+    {.name = "color",
+     .kind = Kind::Vec4,
+     .bit = render::kParticleOutColor,
+     .register_index = render::kParticleOutRegister + 1,
+     .component = 0,
+     .stages = kProcessStage,
+     .doc = "Its color, multiplying the texture."},
+    {.name = "angle",
+     .kind = Kind::Float,
+     .bit = render::kParticleOutAngle,
+     .register_index = render::kParticleOutRegister + 2,
+     .component = 0,
+     .stages = kProcessStage,
+     .doc = "Its rotation, in radians."},
+    {.name = "scale",
+     .kind = Kind::Float,
+     .bit = render::kParticleOutScale,
+     .register_index = render::kParticleOutRegister + 2,
+     .component = 1,
+     .stages = kProcessStage,
+     .doc = "Its size, times the texture's."},
+    {.name = "frame",
+     .kind = Kind::Float,
+     .bit = render::kParticleOutFrame,
+     .register_index = render::kParticleOutRegister + 2,
+     .component = 2,
+     .stages = kProcessStage,
+     .doc = "Where it is in the sprite sheet, from 0 to 1."},
+    {.name = "active",
+     .kind = Kind::Float,
+     .bit = render::kParticleOutActive,
+     .register_index = render::kParticleOutRegister + 2,
+     .component = 3,
+     .stages = kStartStage | kProcessStage,
+     .doc = "Below 0.5, the particle dies."},
+}};
+
+// What a graph is compiled for: a canvas material's pixels or a particle graph's stage.
+struct GraphSpec {
+    std::span<const Input> inputs;
+    std::uint32_t first_free;
+    std::string_view noun; // what has the graph, for messages
+};
+constexpr GraphSpec kMaterialSpec{
+    .inputs = kInputs, .first_free = render::kFirstFreeRegister, .noun = "a material"};
+constexpr GraphSpec kParticleSpec{.inputs = kParticleInputs,
+                                  .first_free = render::kParticleFirstFreeRegister,
+                                  .noun = "a particle graph"};
 
 constexpr std::array<std::string_view, 6> kParamTypes = {"float", "vec2",  "vec3",
                                                          "vec4",  "color", "texture"};
@@ -238,9 +377,6 @@ std::string number_text(double value) {
     return json::write(json::Value(value), json::Style::Compact);
 }
 
-// Where an operand's value comes from.
-enum class Source : std::uint8_t { Register, Literal, Param, Time, Node, Texture };
-
 // A value an arg reads: its kind, where it comes from and which components.
 struct Ref {
     Kind kind = Kind::Bad;
@@ -269,13 +405,16 @@ json::Value text_schema(std::string_view description) {
     return schema;
 }
 
-json::Value schema(bool list_ops) {
+json::Value numbers_schema() {
     json::Value numbers;
     numbers["type"] = "array";
     numbers["items"]["type"] = "number";
     numbers["minItems"] = 2;
     numbers["maxItems"] = 4;
+    return numbers;
+}
 
+json::Value node_schema(bool list_ops) {
     json::Value node;
     node["type"] = "object";
     node["additionalProperties"] = false;
@@ -293,49 +432,76 @@ json::Value schema(bool list_ops) {
     node["properties"]["args"]["type"] = "array";
     node["properties"]["args"]["items"]["$ref"] = "#/$defs/arg";
     node["properties"]["args"]["description"] = "The op's inputs, in order.";
+    return node;
+}
 
+// An arg, with the inputs a graph has.
+json::Value arg_schema(std::span<const Input> inputs, json::Value node) {
+    std::string names;
+    for (const Input& input : inputs) {
+        names += (names.empty() ? "" : ", ") + std::string(input.name);
+    }
     json::Value arg;
     arg["description"] = "A number, an array of 2 to 4 numbers, a node, or the name of a node, "
-                         "param or input (uv, color, time, texture, texture_pixel_size, "
-                         "fragcoord), with components to pick after a dot, as \"base.rgb\".";
-    arg["anyOf"] =
-        json::Array{json::Value(json::Object{{"type", "number"}}), numbers,
-                    text_schema(R"(A node, param or input, as "tint" or "uv.x".)"), node};
+                         "param or input (" +
+                         names + "), with components to pick after a dot, as \"base.rgb\".";
+    arg["anyOf"] = json::Array{json::Value(json::Object{{"type", "number"}}), numbers_schema(),
+                               text_schema(R"(A node, param or input, as "tint" or "uv.x".)"),
+                               std::move(node)};
+    return arg;
+}
 
+// A param; particle graphs' have no textures.
+json::Value param_schema(bool textures) {
     json::Value param;
     param["type"] = "object";
     param["additionalProperties"] = false;
     param["required"] = json::Array{"type"};
     json::Array types;
     for (const std::string_view type : kParamTypes) {
-        types.emplace_back(type);
+        if (textures || type != "texture") {
+            types.emplace_back(type);
+        }
     }
     param["properties"]["type"]["enum"] = std::move(types);
     param["properties"]["type"]["description"] =
-        "float, vec2, vec3, vec4, color (a vec4 from 0 to 1) or texture.";
-    param["properties"]["value"]["anyOf"] =
-        json::Array{json::Value(json::Object{{"type", "number"}}), numbers,
-                    json::Value(json::Object{{"type", "string"}})};
+        textures ? "float, vec2, vec3, vec4, color (a vec4 from 0 to 1) or texture."
+                 : "float, vec2, vec3, vec4 or color (a vec4 from 0 to 1).";
+    json::Array values{json::Value(json::Object{{"type", "number"}}), numbers_schema()};
+    if (textures) {
+        values.emplace_back(json::Object{{"type", "string"}});
+    }
+    param["properties"]["value"]["anyOf"] = std::move(values);
     param["properties"]["value"]["description"] =
-        "The default: a number, an array of numbers, or a texture path (\"\" is white). Left "
-        "out: 0, or white for colors and textures.";
+        textures ? "The default: a number, an array of numbers, or a texture path (\"\" is "
+                   "white). Left out: 0, or white for colors and textures."
+                 : "A number or an array of numbers. Left out: 0, or white for colors.";
     param["properties"]["min"]["type"] = "number";
     param["properties"]["min"]["description"] = "Numbers: the smallest value allowed.";
     param["properties"]["max"]["type"] = "number";
     param["properties"]["max"]["description"] = "Numbers: the largest value allowed.";
-    param["properties"]["repeat"]["type"] = "boolean";
-    param["properties"]["repeat"]["default"] = false;
-    param["properties"]["repeat"]["description"] =
-        "Textures: tile past the edges instead of stretching them.";
-    json::Array filters;
-    for (const std::string_view filter : kFilters) {
-        filters.emplace_back(filter);
+    if (textures) {
+        param["properties"]["repeat"]["type"] = "boolean";
+        param["properties"]["repeat"]["default"] = false;
+        param["properties"]["repeat"]["description"] =
+            "Textures: tile past the edges instead of stretching them.";
+        json::Array filters;
+        for (const std::string_view filter : kFilters) {
+            filters.emplace_back(filter);
+        }
+        param["properties"]["filter"]["enum"] = std::move(filters);
+        param["properties"]["filter"]["default"] = "inherit";
+        param["properties"]["filter"]["description"] =
+            "Textures: how it is sampled; inherit uses the sprite's filter.";
     }
-    param["properties"]["filter"]["enum"] = std::move(filters);
-    param["properties"]["filter"]["default"] = "inherit";
-    param["properties"]["filter"]["description"] =
-        "Textures: how it is sampled; inherit uses the sprite's filter.";
     param["properties"]["doc"] = text_schema("What the param does, for whoever sets it.");
+    return param;
+}
+
+json::Value schema(bool list_ops) {
+    json::Value node = node_schema(list_ops);
+    json::Value arg = arg_schema(kInputs, node);
+    const json::Value param = param_schema(true);
 
     json::Value out;
     out["$schema"] = "https://json-schema.org/draft/2020-12/schema";
@@ -400,7 +566,10 @@ json::Value schema(bool list_ops) {
 // Compiles a validated document's graph, collecting every error it finds.
 class Compiler {
 public:
-    explicit Compiler(const json::Value& doc) : doc_(doc) {}
+    // A stage of 0 checks a particle graph's nodes with every stage's inputs.
+    explicit Compiler(const json::Value& doc, const GraphSpec& spec = kMaterialSpec,
+                      std::uint32_t stage = 0)
+        : doc_(doc), spec_(spec), stage_(stage) {}
 
     void run() {
         if (const json::Value* blend = doc_.find("blend"); blend != nullptr) {
@@ -420,20 +589,7 @@ public:
         if (doc_.find("compiled") != nullptr) {
             fail("/compiled", "only a material with a shader has compiled code");
         }
-        if (const json::Value* nodes = doc_.find("nodes"); nodes != nullptr) {
-            nodes_ = &nodes->as_object();
-            for (const auto& [name, node] : *nodes_) {
-                const std::string at = "/nodes/" + json::pointer_escape(name);
-                if (!valid_name(name)) {
-                    fail(at, kNameRule);
-                } else if (find_input(name) != nullptr) {
-                    fail(at, "\"" + name + "\" is an input; name the node something else");
-                } else if (material_.params.contains(name)) {
-                    fail(at, "\"" + name + "\" is also a param; names must differ");
-                }
-                (void)named(name, at);
-            }
-        }
+        read_nodes(true);
         const json::Value* color = doc_.find("color");
         if (color == nullptr) {
             return;
@@ -450,10 +606,103 @@ public:
 
     std::vector<json::ValidationError>& errors() { return errors_; }
     CanvasMaterial& material() { return material_; }
+    [[nodiscard]] std::uint32_t outputs() const { return outputs_; }
 
-private:
-    void fail(const std::string& path, std::string message) {
-        errors_.push_back({path, std::move(message)});
+    // The named nodes, checking their names; with compile_all, each is compiled, so every mistake
+    // in them is found, used or not.
+    void read_nodes(bool compile_all) {
+        const json::Value* nodes = doc_.find("nodes");
+        if (nodes == nullptr) {
+            return;
+        }
+        nodes_ = &nodes->as_object();
+        for (const auto& [name, node] : *nodes_) {
+            const std::string at = "/nodes/" + json::pointer_escape(name);
+            if (!valid_name(name)) {
+                fail(at, kNameRule);
+            } else if (input(name) != nullptr) {
+                fail(at, "\"" + name + "\" is an input; name the node something else");
+            } else if (material_.params.contains(name)) {
+                fail(at, "\"" + name + "\" is also a param; names must differ");
+            }
+            if (compile_all) {
+                (void)named(name, at);
+            }
+        }
+    }
+
+    // A particle graph stage's outputs (at), each of the output's kind.
+    std::vector<std::pair<const Output*, Ref>> read_outputs(const json::Value& stage,
+                                                            const std::string& at) {
+        std::vector<std::pair<const Output*, Ref>> out;
+        for (const Output& output : kParticleOutputs) {
+            const json::Value* value = stage.find(output.name);
+            if (value == nullptr) {
+                continue;
+            }
+            const std::string path = at + "/" + std::string(output.name);
+            const Ref ref = resolve(*value, path);
+            if (ref.kind == Kind::Bad) {
+                continue;
+            }
+            if (ref.kind != output.kind) {
+                std::string message = std::string(output.name) + " is " + kind_name(output.kind) +
+                                      ", not " + kind_name(ref.kind);
+                if (output.kind != Kind::Float && ref.kind == Kind::Float) {
+                    message += R"(; make one, as {"op": ")" + short_kind_name(output.kind) +
+                               R"(", "args": [x]})";
+                }
+                fail(path, std::move(message));
+                continue;
+            }
+            out.emplace_back(&output, ref);
+        }
+        return out;
+    }
+
+    // Compiles a particle graph stage: each output's value merged into its part of the output
+    // registers, which the graph reads none of.
+    void emit_outputs(const json::Value& stage, const std::string& at) {
+        const std::vector<std::pair<const Output*, Ref>> wanted = read_outputs(stage, at);
+        if (!errors_.empty()) {
+            return;
+        }
+        path_ = at;
+        for (std::uint32_t r = spec_.first_free; r < render::kRegisterCount; ++r) {
+            free_.insert(r);
+        }
+        for (const auto& [output, ref] : wanted) {
+            count_uses(ref);
+        }
+        std::vector<render::Instruction>& code = material_.program.code;
+        for (const auto& [output, ref] : wanted) {
+            if (ref.source == Source::Node && !emit(ref.index, false)) {
+                return;
+            }
+            const int size = size_of(output->kind);
+            if (size == 4) {
+                code.push_back(render::instruction(Op::Mov, output->register_index, operand(ref)));
+            } else {
+                // Its components moved into place, as a vecN's args are.
+                const auto offset = static_cast<int>(output->component);
+                Ref placed = ref;
+                std::uint32_t mask = 0;
+                for (int i = 0; i < 4; ++i) {
+                    const int from = std::clamp(i - offset, 0, size - 1);
+                    placed.swizzle.at(static_cast<std::size_t>(i)) =
+                        ref.swizzle.at(static_cast<std::size_t>(from));
+                    if (i >= offset && i < offset + size) {
+                        mask |= 1U << static_cast<std::uint32_t>(i);
+                    }
+                }
+                code.push_back(render::instruction(Op::Merge, output->register_index,
+                                                   render::operand(output->register_index),
+                                                   operand(placed), 0, mask));
+            }
+            release(ref);
+            outputs_ |= output->bit;
+        }
+        check_limits();
     }
 
     void read_params() {
@@ -468,7 +717,7 @@ private:
                 fail(at, kNameRule);
                 continue;
             }
-            if (find_input(name) != nullptr) {
+            if (input(name) != nullptr) {
                 fail(at, "\"" + name + "\" is an input; name the param something else");
                 continue;
             }
@@ -517,6 +766,20 @@ private:
             }
             material_.params.emplace(name, std::move(param));
         }
+    }
+
+private:
+    void fail(const std::string& path, std::string message) {
+        errors_.push_back({path, std::move(message)});
+    }
+
+    [[nodiscard]] const Input* input(std::string_view name) const {
+        for (const Input& each : spec_.inputs) {
+            if (each.name == name) {
+                return &each;
+            }
+        }
+        return nullptr;
     }
 
     // A game's shader: every param gets a slot, in name order, and the time the last constant.
@@ -626,10 +889,10 @@ private:
 
     [[nodiscard]] std::vector<std::string_view> known_names() const {
         std::vector<std::string_view> names;
-        names.reserve(kInputs.size() + material_.params.size() +
+        names.reserve(spec_.inputs.size() + material_.params.size() +
                       (nodes_ != nullptr ? nodes_->size() : 0));
-        for (const Input& input : kInputs) {
-            names.push_back(input.name);
+        for (const Input& each : spec_.inputs) {
+            names.push_back(each.name);
         }
         for (const auto& [name, param] : material_.params) {
             names.emplace_back(name);
@@ -710,14 +973,15 @@ private:
         const std::size_t dot = text.find('.');
         const std::string base = text.substr(0, dot);
         Ref ref;
-        if (const Input* input = find_input(base); input != nullptr) {
-            ref.kind = input->kind;
-            ref.index = input->register_index;
-            if (input->name == "time") {
-                ref.source = Source::Time;
-            } else if (input->kind == Kind::Texture) {
-                ref.source = Source::Texture;
+        if (const Input* found = input(base); found != nullptr) {
+            if (stage_ != 0 && found->stages != 0 && (found->stages & stage_) == 0) {
+                fail(at, "\"" + base + "\" is only known in process, not start");
+                return {};
             }
+            ref.kind = found->kind;
+            ref.source = found->source;
+            ref.index = found->register_index;
+            ref.swizzle = found->swizzle;
         } else if (const auto param = material_.params.find(base);
                    param != material_.params.end()) {
             ref.kind = param_kind(param->second.type);
@@ -999,7 +1263,7 @@ private:
             return;
         }
         Node& node = nodes_list_.at(ref.index);
-        if (--node.uses == 0 && node.register_index >= render::kFirstFreeRegister) {
+        if (--node.uses == 0 && node.register_index >= spec_.first_free) {
             free_.insert(node.register_index);
         }
     }
@@ -1089,14 +1353,30 @@ private:
     }
 
     bool out_of_registers() {
-        fail("/color", "the graph needs more than " +
-                           std::to_string(render::kRegisterCount - render::kFirstFreeRegister) +
-                           " values at once; compute fewer things side by side");
+        fail(path_, "the graph needs more than " +
+                        std::to_string(render::kRegisterCount - spec_.first_free) +
+                        " values at once; compute fewer things side by side");
         return false;
     }
 
+    void check_limits() {
+        const std::size_t instructions = material_.program.code.size();
+        if (instructions > render::kMaxInstructions) {
+            fail(path_, "the graph makes " + std::to_string(instructions) + " instructions; " +
+                            std::string(spec_.noun) + " runs at most " +
+                            std::to_string(render::kMaxInstructions) +
+                            ". Name values used more than once, so they are computed once");
+        }
+        const std::size_t constants = material_.program.constants.size();
+        if (constants > render::kMaxConstants) {
+            fail(path_, "the graph uses " + std::to_string(constants) + " constants and params; " +
+                            std::string(spec_.noun) + " holds at most " +
+                            std::to_string(render::kMaxConstants));
+        }
+    }
+
     void emit_program(const Ref& root) {
-        for (std::uint32_t r = render::kFirstFreeRegister; r < render::kRegisterCount; ++r) {
+        for (std::uint32_t r = spec_.first_free; r < render::kRegisterCount; ++r) {
             free_.insert(r);
         }
         count_uses(root);
@@ -1109,22 +1389,14 @@ private:
             material_.program.code.push_back(
                 render::instruction(Op::Mov, render::kUvRegister, operand(root)));
         }
-        const std::size_t instructions = material_.program.code.size();
-        if (instructions > render::kMaxInstructions) {
-            fail("/color", "the graph makes " + std::to_string(instructions) +
-                               " instructions; a material runs at most " +
-                               std::to_string(render::kMaxInstructions) +
-                               ". Name values used more than once, so they are computed once");
-        }
-        const std::size_t constants = material_.program.constants.size();
-        if (constants > render::kMaxConstants) {
-            fail("/color", "the graph uses " + std::to_string(constants) +
-                               " constants and params; a material holds at most " +
-                               std::to_string(render::kMaxConstants));
-        }
+        check_limits();
     }
 
     const json::Value& doc_;
+    const GraphSpec& spec_;
+    std::uint32_t stage_ = 0;
+    std::string path_ = "/color"; // where errors about the whole program go
+    std::uint32_t outputs_ = 0;
     const json::Object* nodes_ = nullptr;
     CanvasMaterial material_;
     std::vector<json::ValidationError> errors_;
@@ -1137,8 +1409,10 @@ private:
 };
 
 // Graphs the schema check would recurse into too deeply, or with more nodes than the shader
-// runs instructions, fail first, which also bounds the compiler's recursion.
-std::optional<json::ValidationError> check_size(const json::Value& doc) {
+// runs instructions, fail first, which also bounds the compiler's recursion. The graph's roots
+// are the nodes and roots' values.
+std::optional<json::ValidationError>
+check_size(const json::Value& doc, std::span<const std::string_view> roots, std::string_view noun) {
     constexpr int kMaxNesting = 16;
     std::size_t count = 0;
     std::optional<json::ValidationError> error;
@@ -1153,7 +1427,8 @@ std::optional<json::ValidationError> check_size(const json::Value& doc) {
             return;
         }
         if (++count > render::kMaxInstructions) {
-            error = {at, "a material has at most " + std::to_string(render::kMaxInstructions) +
+            error = {at, std::string(noun) + " has at most " +
+                             std::to_string(render::kMaxInstructions) +
                              " nodes, since each runs at least one instruction"};
             return;
         }
@@ -1173,15 +1448,29 @@ std::optional<json::ValidationError> check_size(const json::Value& doc) {
             walk(walk, node, "/nodes/" + json::pointer_escape(name), 1);
         }
     }
-    if (const json::Value* color = doc.find("color"); color != nullptr) {
-        walk(walk, *color, "/color", 1);
+    for (const std::string_view root : roots) {
+        const json::Value* value = doc.find(root);
+        if (value == nullptr) {
+            continue;
+        }
+        const std::string at = "/" + std::string(root);
+        if (root == "color") {
+            walk(walk, *value, at, 1);
+        } else if (value->is_object()) {
+            for (const auto& [name, output] : value->as_object()) {
+                walk(walk, output, at + "/" + json::pointer_escape(name), 1);
+            }
+        }
     }
     return error;
 }
 
+constexpr std::array<std::string_view, 1> kMaterialRoots{"color"};
+constexpr std::array<std::string_view, 2> kParticleRoots{"start", "process"};
+
 // Every error in a document; with none, the compiled material goes in out.
 std::vector<json::ValidationError> compile(const json::Value& doc, CanvasMaterial* out) {
-    if (auto error = check_size(doc)) {
+    if (auto error = check_size(doc, kMaterialRoots, "a material")) {
         return {*std::move(error)};
     }
     // Ops are checked by the compiler, which says "did you mean" instead of listing them all.
@@ -1198,6 +1487,89 @@ std::vector<json::ValidationError> compile(const json::Value& doc, CanvasMateria
 }
 
 } // namespace
+
+namespace detail {
+
+void add_particle_graph_schema(json::Value& schema, bool list_ops) {
+    json::Value node = node_schema(list_ops);
+    json::Value arg = arg_schema(kParticleInputs, node);
+    json::Value& properties = schema["properties"];
+    properties["params"]["type"] = "object";
+    properties["params"]["additionalProperties"] = param_schema(false);
+    properties["params"]["description"] =
+        "Named values the graphs read, as a particle shader's uniforms, by name.";
+    properties["nodes"]["type"] = "object";
+    properties["nodes"]["additionalProperties"]["$ref"] = "#/$defs/node";
+    properties["nodes"]["description"] =
+        "Named nodes the graphs share, for args that use a value more than once.";
+    for (const auto& [key, stage, what] :
+         {std::tuple{"start", kStartStage,
+                     "What each particle starts with, after the material places it, as a "
+                     "particle shader's start(): outputs by name, each an arg."},
+          std::tuple{"process", kProcessStage,
+                     "What changes each step, after the material works it out, as a particle "
+                     "shader's process(): outputs by name, each an arg."}}) {
+        json::Value outputs;
+        outputs["type"] = "object";
+        outputs["additionalProperties"] = false;
+        outputs["description"] = what;
+        for (const Output& output : kParticleOutputs) {
+            if ((output.stages & stage) == 0) {
+                continue;
+            }
+            json::Value value;
+            value["$ref"] = "#/$defs/arg";
+            value["description"] =
+                std::string(short_kind_name(output.kind)) + ": " + std::string(output.doc);
+            outputs["properties"][output.name] = std::move(value);
+        }
+        properties[key] = std::move(outputs);
+    }
+    schema["$defs"]["node"] = std::move(node);
+    schema["$defs"]["arg"] = std::move(arg);
+}
+
+std::optional<json::ValidationError> check_particle_graph_size(const json::Value& doc) {
+    return check_size(doc, kParticleRoots, "a process material's graphs");
+}
+
+std::vector<json::ValidationError> compile_particle_graphs(const json::Value& doc,
+                                                           render::ParticleProgram* start,
+                                                           render::ParticleProgram* process) {
+    // Every node and output with every stage's inputs first, so each mistake is found once.
+    Compiler check(doc, kParticleSpec);
+    check.read_params();
+    check.read_nodes(true);
+    for (const std::string_view key : kParticleRoots) {
+        if (const json::Value* stage = doc.find(key); stage != nullptr) {
+            (void)check.read_outputs(*stage, "/" + std::string(key));
+        }
+    }
+    if (!check.errors().empty()) {
+        return std::move(check.errors());
+    }
+    std::vector<json::ValidationError> errors;
+    for (const auto& [key, stage, out] :
+         {std::tuple{"start", kStartStage, start}, std::tuple{"process", kProcessStage, process}}) {
+        const json::Value* outputs = doc.find(key);
+        if (outputs == nullptr) {
+            continue;
+        }
+        Compiler compiler(doc, kParticleSpec, stage);
+        compiler.read_params();
+        compiler.read_nodes(false);
+        compiler.emit_outputs(*outputs, "/" + std::string(key));
+        if (!compiler.errors().empty()) {
+            errors.insert(errors.end(), compiler.errors().begin(), compiler.errors().end());
+        } else if (out != nullptr) {
+            out->program = std::move(compiler.material().program);
+            out->outputs = compiler.outputs();
+        }
+    }
+    return errors;
+}
+
+} // namespace detail
 
 json::Value material_schema() {
     return schema(true);
