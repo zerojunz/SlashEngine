@@ -5,6 +5,7 @@
 #include "material_shaders.hpp"
 #include "particle_layout.hpp"
 #include "particles_draw_shaders.hpp"
+#include "particles_emit_shaders.hpp"
 #include "particles_process_shaders.hpp"
 #include "sprite_shaders.hpp"
 #include "uniforms.hpp"
@@ -58,8 +59,9 @@ constexpr std::uint32_t kParticleThreads = 64;
 
 // The two shaders: plain sprites, and materials that run a program.
 enum class ShaderKind : std::uint8_t { Sprite, Material };
-// The compute shaders: running particle steps, and turning particles into quads.
-enum class ComputeKind : std::uint8_t { Process, Draw };
+// The compute shaders: running particle steps, turning particles into quads, and numbering what a
+// sub-emitter takes.
+enum class ComputeKind : std::uint8_t { Process, Draw, Emit };
 
 struct ShaderCode {
     std::span<const unsigned char> vertex_spirv;
@@ -170,7 +172,6 @@ private:
 class GpuDevice final : public RenderDevice {
 public:
     using RenderDevice::draw;
-    using RenderDevice::process_particles;
 
     GpuDevice(SDL_GPUDevice* device, SDL_Window* window, bool owns_video)
         : device_(device), window_(window), owns_video_(owns_video), backend_(backend_of(device)) {}
@@ -207,6 +208,14 @@ public:
         }
         for (const auto& [id, system] : particle_systems_) {
             SDL_ReleaseGPUBuffer(device_, system.buffer);
+            if (system.emissions != nullptr) {
+                SDL_ReleaseGPUBuffer(device_, system.emissions);
+            }
+        }
+        for (SDL_GPUBuffer* unbound : {no_source_, no_target_}) {
+            if (unbound != nullptr) {
+                SDL_ReleaseGPUBuffer(device_, unbound);
+            }
         }
         if (particle_data_ != nullptr) {
             SDL_ReleaseGPUBuffer(device_, particle_data_);
@@ -412,6 +421,9 @@ public:
         if (auto pipeline = compute_pipeline(ComputeKind::Process); !pipeline) {
             return pipeline.error();
         }
+        if (auto made = make_unbound_emissions(); !made) {
+            return made.error();
+        }
         SDL_GPUBufferCreateInfo info{};
         info.usage =
             SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ | SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE;
@@ -439,37 +451,98 @@ public:
             return;
         }
         // Jobs waiting for the frame may still use it, so it goes once they are sent.
-        if (particle_jobs_.empty()) {
-            SDL_ReleaseGPUBuffer(device_, it->second.buffer);
-        } else {
-            pending_buffers_.push_back(it->second.buffer);
+        for (SDL_GPUBuffer* buffer : {it->second.buffer, it->second.emissions}) {
+            if (buffer == nullptr) {
+                continue;
+            }
+            if (particle_jobs_.empty()) {
+                SDL_ReleaseGPUBuffer(device_, buffer);
+            } else {
+                pending_buffers_.push_back(buffer);
+            }
         }
         particle_systems_.erase(it);
     }
 
-    Result<void> process_particles(ParticlesId particles, const ParticleProcess& process,
-                                   std::span<const ParticleStep> steps,
-                                   std::span<const ParticleShape> shapes) override {
-        const auto it = particle_systems_.find(particles);
-        if (it == particle_systems_.end()) {
-            return unknown_particles(particles);
-        }
-        if (auto checked = check_particle_process(process, steps, shapes); !checked) {
+    Result<void> process_particle_chain(std::span<const ParticleRun> chain) override {
+        if (auto checked = check_particle_chain(
+                chain,
+                [this](ParticlesId particles) { return particle_systems_.contains(particles); });
+            !checked) {
             return checked;
         }
-        if (steps.empty()) {
+        if (chain.front().steps.empty()) {
             return {};
         }
-        ParticleJob job{.particles = it->second.buffer, .amount = it->second.amount};
-        job.material = material_words(process);
-        const std::vector<std::uint32_t> shape_at =
-            process.collision_mode == ParticleCollision::Disabled
-                ? std::vector<std::uint32_t>{}
-                : pack_particle_shapes(steps, shapes, particle_words_);
-        job.steps = static_cast<std::uint32_t>(particle_words_.size());
-        job.step_count = static_cast<std::uint32_t>(steps.size());
-        pack_particle_steps(steps, shape_at, particle_words_);
-        return queue_particle_job(job);
+        if (chain.size() > 1) {
+            if (auto pipeline = compute_pipeline(ComputeKind::Emit); !pipeline) {
+                return pipeline.error();
+            }
+        }
+        // Each system's process material, shapes and steps; a system before another writes what
+        // it starts there to its emission buffer.
+        std::vector<ParticleJob> links;
+        links.reserve(chain.size());
+        for (std::size_t k = 0; k < chain.size(); ++k) {
+            const ParticleRun& run = chain[k];
+            ParticleSystem& system = particle_systems_.at(run.particles);
+            if (k + 1 < chain.size() && system.emissions == nullptr) {
+                SDL_GPUBufferCreateInfo info{};
+                info.usage = SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ |
+                             SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE;
+                info.size = (1 + (system.amount * kEmissionWords)) *
+                            static_cast<std::uint32_t>(sizeof(Word));
+                system.emissions = SDL_CreateGPUBuffer(device_, &info);
+                if (system.emissions == nullptr) {
+                    return sdl_error("making room for what " + std::to_string(system.amount) +
+                                     " particles start failed");
+                }
+            }
+            ParticleJob job{.particles = system.buffer, .amount = system.amount};
+            job.material = material_words(*run.process);
+            const std::vector<std::uint32_t> shape_at =
+                run.process->collision_mode == ParticleCollision::Disabled
+                    ? std::vector<std::uint32_t>{}
+                    : pack_particle_shapes(run.steps, run.shapes, particle_words_);
+            job.steps = static_cast<std::uint32_t>(particle_words_.size());
+            job.step_count = static_cast<std::uint32_t>(run.steps.size());
+            pack_particle_steps(run.steps, shape_at, particle_words_);
+            if (k > 0) {
+                job.source = links.back().target;
+                job.chain |= kChainTakes;
+            }
+            if (k + 1 < chain.size()) {
+                job.target = system.emissions;
+                job.chain |= kChainEmits;
+            }
+            links.push_back(job);
+        }
+        if (links.size() == 1) {
+            particle_jobs_.push_back(links.front());
+        } else {
+            // A step of each system in turn, each in a pass of its own so it sees what the one
+            // before wrote, with the numbering of what a sub-emitter takes ahead of its step.
+            const std::size_t steps = chain.front().steps.size();
+            for (std::size_t i = 0; i < steps; ++i) {
+                for (std::size_t k = 0; k < links.size(); ++k) {
+                    if (k > 0) {
+                        const ParticleStep& step = chain[k].steps[i];
+                        particle_jobs_.push_back({.kind = ComputeKind::Emit,
+                                                  .particles = links[k].particles,
+                                                  .target = links[k].source,
+                                                  .emit = {.parents = links[k - 1].amount,
+                                                           .size = links[k].amount,
+                                                           .tag = step.cycle + 1U,
+                                                           .clear = step.clear ? 1U : 0U}});
+                    }
+                    ParticleJob job = links[k];
+                    job.steps += static_cast<std::uint32_t>(i) * kStepWords;
+                    job.step_count = 1;
+                    particle_jobs_.push_back(job);
+                }
+            }
+        }
+        return in_frame_ ? Result<void>{} : flush_particle_jobs();
     }
 
     Result<void> draw_particles(ParticlesId particles, TextureId texture, const ParticleDraw& look,
@@ -505,9 +578,9 @@ public:
         batches_.push_back(std::move(batch).value());
         ++stats_.draws;
         stats_.triangles += count / 3;
-        particle_jobs_.push_back({.particles = it->second.buffer,
+        particle_jobs_.push_back({.kind = ComputeKind::Draw,
+                                  .particles = it->second.buffer,
                                   .amount = amount,
-                                  .draw = true,
                                   .look = draw_uniforms(look, amount, particle_vertices_)});
         particle_vertices_ += count;
         return {};
@@ -863,18 +936,26 @@ private:
     struct ParticleSystem {
         SDL_GPUBuffer* buffer = nullptr;
         std::uint32_t amount = 0;
+        // What its particles start in the next system of a chain, made when it is in one.
+        SDL_GPUBuffer* emissions = nullptr;
     };
 
     // A compute pass for the GPU to run ahead of the frame's draws, in the order called: steps
-    // of a system, or a draw turning it into quads.
+    // of a system, numbering what a sub-emitter takes, or a draw turning a system into quads.
     struct ParticleJob {
+        ComputeKind kind = ComputeKind::Process;
         SDL_GPUBuffer* particles = nullptr;
         std::uint32_t amount = 0;
-        bool draw = false;
         bool reset = false;         // clears every particle first
         std::uint32_t material = 0; // where its process material is in particle_words_
         std::uint32_t steps = 0;    // and its steps
         std::uint32_t step_count = 0;
+        // The emissions a sub-emitter takes and those its particles make, in a chain; the
+        // emissions an Emit job numbers are its target.
+        SDL_GPUBuffer* source = nullptr;
+        SDL_GPUBuffer* target = nullptr;
+        std::uint32_t chain = 0; // kChainTakes and kChainEmits
+        EmitUniforms emit{};
         DrawUniforms look{}; // for a draw; its first vertex is in the particle quads
     };
 
@@ -978,30 +1059,49 @@ private:
         if (slot != nullptr) {
             return slot;
         }
-        const bool process = kind == ComputeKind::Process;
         SDL_GPUComputePipelineCreateInfo info{};
         info.entrypoint = "cs_main";
-        info.num_readonly_storage_buffers = 1;
-        info.num_readwrite_storage_buffers = 1;
         info.num_uniform_buffers = 1;
         info.threadcount_x = kParticleThreads;
         info.threadcount_y = 1;
         info.threadcount_z = 1;
+        std::span<const unsigned char> spirv;
+        std::span<const char* const> pieces;
+        std::string_view hlsl;
+        switch (kind) {
+        case ComputeKind::Process:
+            // The steps' words and a sub-emitter's source; the particles and what they start.
+            info.num_readonly_storage_buffers = 2;
+            info.num_readwrite_storage_buffers = 2;
+            spirv = shaders::kParticlesProcessComputeSpirv;
+            pieces = shaders::kParticlesProcessComputeMsl;
+            hlsl = shaders::kParticlesProcessHlsl;
+            break;
+        case ComputeKind::Draw:
+            info.num_readonly_storage_buffers = 1;
+            info.num_readwrite_storage_buffers = 1;
+            spirv = shaders::kParticlesDrawComputeSpirv;
+            pieces = shaders::kParticlesDrawComputeMsl;
+            hlsl = shaders::kParticlesDrawHlsl;
+            break;
+        case ComputeKind::Emit:
+            // The emissions, and the sub-emitter whose first particle keeps its count.
+            info.num_readwrite_storage_buffers = 2;
+            info.threadcount_x = kEmitThreads;
+            spirv = shaders::kParticlesEmitComputeSpirv;
+            pieces = shaders::kParticlesEmitComputeMsl;
+            hlsl = shaders::kParticlesEmitHlsl;
+            break;
+        }
         const SDL_GPUShaderFormat formats = SDL_GetGPUShaderFormats(device_);
         std::vector<std::uint8_t> compiled;
         std::string msl;
         if ((formats & SDL_GPU_SHADERFORMAT_SPIRV) != 0) {
-            const std::span<const unsigned char> spirv =
-                process ? std::span<const unsigned char>(shaders::kParticlesProcessComputeSpirv)
-                        : std::span<const unsigned char>(shaders::kParticlesDrawComputeSpirv);
             info.format = SDL_GPU_SHADERFORMAT_SPIRV;
             info.code = spirv.data();
             info.code_size = spirv.size();
         } else if ((formats & SDL_GPU_SHADERFORMAT_MSL) != 0) {
             // In pieces, since no string literal may be as long as the whole.
-            const std::span<const char* const> pieces =
-                process ? std::span<const char* const>(shaders::kParticlesProcessComputeMsl)
-                        : std::span<const char* const>(shaders::kParticlesDrawComputeMsl);
             for (const char* piece : pieces) {
                 msl += piece;
             }
@@ -1009,9 +1109,7 @@ private:
             info.code = reinterpret_cast<const std::uint8_t*>(msl.data());
             info.code_size = msl.size();
         } else if ((formats & SDL_GPU_SHADERFORMAT_DXBC) != 0) {
-            auto bytecode =
-                compile_hlsl(process ? shaders::kParticlesProcessHlsl : shaders::kParticlesDrawHlsl,
-                             "cs_main", "cs_5_1");
+            auto bytecode = compile_hlsl(hlsl, "cs_main", "cs_5_1");
             if (!bytecode) {
                 return bytecode.error();
             }
@@ -1040,6 +1138,26 @@ private:
         pack_particle_process(process, particle_words_);
         last_material_.emplace(process, at);
         return at;
+    }
+
+    // The buffers a process pass binds where it takes or writes no emissions, made once.
+    Result<void> make_unbound_emissions() {
+        for (SDL_GPUBuffer** unbound : {&no_source_, &no_target_}) {
+            if (*unbound != nullptr) {
+                continue;
+            }
+            SDL_GPUBufferCreateInfo info{};
+            info.usage = SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ;
+            if (unbound == &no_target_) {
+                info.usage |= SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE;
+            }
+            info.size = static_cast<std::uint32_t>(sizeof(Word));
+            *unbound = SDL_CreateGPUBuffer(device_, &info);
+            if (*unbound == nullptr) {
+                return sdl_error("creating the particle buffers failed");
+            }
+        }
+        return {};
     }
 
     // Queues a job, which runs at once outside a frame and with the frame inside one.
@@ -1126,31 +1244,53 @@ private:
     void dispatch_particle_jobs(SDL_GPUCommandBuffer* commands, std::uint32_t base,
                                 bool cycle_vertices) {
         for (const ParticleJob& job : particle_jobs_) {
-            const std::uint32_t groups = (job.amount + kParticleThreads - 1) / kParticleThreads;
-            SDL_GPUStorageBufferReadWriteBinding output{};
-            output.buffer = job.draw ? vertex_buffer_ : job.particles;
-            output.cycle = job.draw && cycle_vertices;
-            SDL_GPUComputePass* pass = SDL_BeginGPUComputePass(commands, nullptr, 0, &output, 1);
-            if (job.draw) {
+            std::uint32_t groups = (job.amount + kParticleThreads - 1) / kParticleThreads;
+            std::array<SDL_GPUStorageBufferReadWriteBinding, 2> outputs{};
+            std::uint32_t output_count = 1;
+            switch (job.kind) {
+            case ComputeKind::Draw:
+                outputs[0].buffer = vertex_buffer_;
+                outputs[0].cycle = cycle_vertices;
                 cycle_vertices = false;
-                SDL_BindGPUComputePipeline(
-                    pass, compute_pipelines_.at(static_cast<std::size_t>(ComputeKind::Draw)));
+                break;
+            case ComputeKind::Process:
+                // Passes that write nothing for another system still bind a buffer there.
+                outputs[0].buffer = job.particles;
+                outputs[1].buffer = job.target != nullptr ? job.target : no_target_;
+                output_count = 2;
+                break;
+            case ComputeKind::Emit:
+                outputs[0].buffer = job.target;
+                outputs[1].buffer = job.particles;
+                output_count = 2;
+                groups = 1;
+                break;
+            }
+            SDL_GPUComputePass* pass =
+                SDL_BeginGPUComputePass(commands, nullptr, 0, outputs.data(), output_count);
+            SDL_BindGPUComputePipeline(pass,
+                                       compute_pipelines_.at(static_cast<std::size_t>(job.kind)));
+            if (job.kind == ComputeKind::Draw) {
                 SDL_BindGPUComputeStorageBuffers(pass, 0, &job.particles, 1);
                 DrawUniforms uniforms = job.look;
                 uniforms.counts[3] += base;
                 SDL_PushGPUComputeUniformData(commands, 0, &uniforms,
                                               static_cast<std::uint32_t>(sizeof(uniforms)));
-            } else {
-                SDL_BindGPUComputePipeline(
-                    pass, compute_pipelines_.at(static_cast<std::size_t>(ComputeKind::Process)));
-                SDL_BindGPUComputeStorageBuffers(pass, 0, &particle_data_, 1);
+            } else if (job.kind == ComputeKind::Process) {
+                const std::array<SDL_GPUBuffer*, 2> inputs{
+                    particle_data_, job.source != nullptr ? job.source : no_source_};
+                SDL_BindGPUComputeStorageBuffers(pass, 0, inputs.data(), 2);
                 const ProcessUniforms uniforms{.amount = job.amount,
                                                .material = job.material,
                                                .steps = job.steps,
                                                .step_count = job.step_count,
-                                               .reset = job.reset ? 1U : 0U};
+                                               .reset = job.reset ? 1U : 0U,
+                                               .chain = job.chain};
                 SDL_PushGPUComputeUniformData(commands, 0, &uniforms,
                                               static_cast<std::uint32_t>(sizeof(uniforms)));
+            } else {
+                SDL_PushGPUComputeUniformData(commands, 0, &job.emit,
+                                              static_cast<std::uint32_t>(sizeof(job.emit)));
             }
             SDL_DispatchGPUCompute(pass, groups, 1, 1);
             SDL_EndGPUComputePass(pass);
@@ -1494,7 +1634,7 @@ private:
     std::unordered_map<ShaderId, GameShader> game_shaders_;
     std::uint32_t next_shader_ = 1;
     std::vector<SDL_GPUGraphicsPipeline*> pending_pipelines_;
-    std::array<SDL_GPUComputePipeline*, 2> compute_pipelines_{}; // by ComputeKind
+    std::array<SDL_GPUComputePipeline*, 3> compute_pipelines_{}; // by ComputeKind
     std::unordered_map<ParticlesId, ParticleSystem> particle_systems_;
     std::uint32_t next_particles_ = 1;
     std::vector<SDL_GPUBuffer*> pending_buffers_;
@@ -1505,6 +1645,9 @@ private:
     SDL_GPUBuffer* particle_data_ = nullptr;
     SDL_GPUTransferBuffer* particle_transfer_ = nullptr;
     std::uint32_t particle_capacity_ = 0;
+    // Bound where a process pass takes or writes no emissions.
+    SDL_GPUBuffer* no_source_ = nullptr;
+    SDL_GPUBuffer* no_target_ = nullptr;
 
     // The frame being built. A skipped frame has no command buffer.
     bool in_frame_ = false;

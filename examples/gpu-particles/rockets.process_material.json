@@ -1,0 +1,10 @@
+{
+  "color": [1, 0.9, 0.6, 1],
+  "direction": [0, -1],
+  "format": 1,
+  "initial_velocity_max": 130,
+  "initial_velocity_min": 110,
+  "spread": 8,
+  "sub_emitter_amount_at_end": 16,
+  "sub_emitter_mode": "at_end"
+}

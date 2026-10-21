@@ -462,6 +462,7 @@ Only `project.json`, `.scene.json`, `.prefab.json`, `.frames.json`, `.material.j
 and `.bmp` files ship in an export, and each is checked first: a texture SDL can't read or a
 font FreeType can't draw is an error, like a scene, material, process material, animation, tile
 set or font settings file that fails validation, a tile map layer whose legend or rows don't
-match its tile set, or controls that don't lay out as written. Components of the game's own code
+match its tile set, controls that don't lay out as written, or a sub-emitter that can't take
+part in a chain. Components of the game's own code
 are checked by the names and fields its sources declare. See
 [cli.md](cli.md#export) for `slash-cli export` and [scene-format.md](scene-format.md) for scenes.

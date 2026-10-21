@@ -79,6 +79,20 @@ void pack_particle_process(const ParticleProcess& process, std::vector<Word>& ou
     out.push_back({static_cast<std::uint32_t>(process.collision_mode),
                    bits(process.collision_friction), bits(process.collision_bounce),
                    process.collision_use_scale ? 1U : 0U});
+    // The mode, the seconds between Constant emissions as Godot passes them, the mode's amount and
+    // whether particles started keep the velocity.
+    std::uint32_t amount = 1;
+    if (process.sub_emitter_mode == SubEmitterMode::AtEnd) {
+        amount = process.sub_emitter_amount_at_end;
+    } else if (process.sub_emitter_mode == SubEmitterMode::AtCollision) {
+        amount = process.sub_emitter_amount_at_collision;
+    } else if (process.sub_emitter_mode == SubEmitterMode::AtStart) {
+        amount = process.sub_emitter_amount_at_start;
+    }
+    out.push_back(
+        {static_cast<std::uint32_t>(process.sub_emitter_mode),
+         bits(static_cast<float>(1.0 / static_cast<double>(process.sub_emitter_frequency))), amount,
+         process.sub_emitter_keep_velocity ? 1U : 0U});
 
     for (const ParticleCurve* curve : curves) {
         for (std::size_t word = 0; word < kCurveWords; ++word) {

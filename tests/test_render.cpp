@@ -15,6 +15,7 @@
 #include "../engine/render/src/hlsl_compiler.hpp"
 #include "../engine/render/src/material_shaders.hpp"
 #include "../engine/render/src/particles_draw_shaders.hpp"
+#include "../engine/render/src/particles_emit_shaders.hpp"
 #include "../engine/render/src/particles_process_shaders.hpp"
 #include "../engine/render/src/sprite_shaders.hpp"
 #endif
@@ -764,6 +765,7 @@ TEST_CASE("every shader compiles with Windows' HLSL compiler") {
         }
     }
     for (const auto& [name, hlsl] : {std::pair{"particles_process", shaders::kParticlesProcessHlsl},
+                                     std::pair{"particles_emit", shaders::kParticlesEmitHlsl},
                                      std::pair{"particles_draw", shaders::kParticlesDrawHlsl}}) {
         const auto compiled = slash::render::detail::compile_hlsl(hlsl, "cs_main", "cs_5_1");
         CHECK_MESSAGE(compiled.ok(), name, ": ",

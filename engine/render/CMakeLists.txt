@@ -77,7 +77,7 @@ find_program(SLASH_SPIRV_CROSS NAMES spirv-cross)
 set(slash_shader_headers "")
 # Each shader as file:Name, with the compute shaders after the vertex and fragment pairs.
 set(slash_shaders sprite:Sprite material:Material particles_process:ParticlesProcess:compute
-    particles_draw:ParticlesDraw:compute)
+    particles_emit:ParticlesEmit:compute particles_draw:ParticlesDraw:compute)
 foreach(entry IN LISTS slash_shaders)
     string(REPLACE ":" ";" parts ${entry})
     list(GET parts 0 shader)

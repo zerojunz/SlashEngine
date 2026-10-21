@@ -3599,12 +3599,12 @@ private:
         static constexpr std::array<std::string_view, 5> kVectors{
             "emission_shape_offset", "emission_shape_scale", "emission_box_extents", "direction",
             "velocity_pivot"};
-        static constexpr std::array<std::string_view, 9> kNumbers{
-            "emission_sphere_radius",       "emission_ring_radius",
-            "emission_ring_inner_radius",   "spread",
-            "inherit_velocity_ratio",       "lifetime_randomness",
-            "turbulence_noise_strength",    "turbulence_noise_scale",
-            "turbulence_noise_speed_random"};
+        static constexpr std::array<std::string_view, 10> kNumbers{
+            "emission_sphere_radius",        "emission_ring_radius",
+            "emission_ring_inner_radius",    "spread",
+            "inherit_velocity_ratio",        "lifetime_randomness",
+            "turbulence_noise_strength",     "turbulence_noise_scale",
+            "turbulence_noise_speed_random", "sub_emitter_frequency"};
         // What a 2D game can't see, or what particles do without.
         static constexpr std::array<std::string_view, 8> kIgnored{"resource_local_to_scene",
                                                                   "resource_name",
@@ -3616,6 +3616,8 @@ private:
                                                                   "attractor_interaction_enabled"};
         static constexpr std::array<std::string_view, 3> kCollisionModes{"disabled", "rigid",
                                                                          "hide_on_contact"};
+        static constexpr std::array<std::string_view, 5> kSubEmitterModes{
+            "disabled", "constant", "at_end", "at_collision", "at_start"};
         json::Value out;
         out["format"] = 1;
         bool disable_z = false;
@@ -3662,7 +3664,8 @@ private:
                 out[name] = kCollisionModes.at(static_cast<std::size_t>(value.integer));
             } else if ((name == "particle_flag_align_y" ||
                         name == "particle_flag_damping_as_friction" ||
-                        name == "turbulence_enabled" || name == "collision_use_scale") &&
+                        name == "turbulence_enabled" || name == "collision_use_scale" ||
+                        name == "sub_emitter_keep_velocity") &&
                        value.kind == Value::Kind::Bool) {
                 out[name] = value.boolean;
             } else if (name == "turbulence_noise_speed" && vector && vector->size() == 3) {
@@ -3704,11 +3707,14 @@ private:
                                   "points in a texture don't convert; list them as "
                                   "emission_points");
                 }
-            } else if (name == "sub_emitter_mode" && value.integer != 0) {
-                problems_.add("ParticleProcessMaterial." + name, where,
-                              "sub-emitters are on the roadmap");
-            } else if (name.starts_with("sub_emitter_")) {
-                continue; // their settings, with them off
+            } else if (name == "sub_emitter_mode" && value.kind == Value::Kind::Int &&
+                       value.integer >= 0 && value.integer < 5) {
+                out[name] = kSubEmitterModes.at(static_cast<std::size_t>(value.integer));
+            } else if ((name == "sub_emitter_amount_at_end" ||
+                        name == "sub_emitter_amount_at_collision" ||
+                        name == "sub_emitter_amount_at_start") &&
+                       value.kind == Value::Kind::Int) {
+                out[name] = std::max<std::int64_t>(value.integer, 1);
             } else {
                 problems_.add("ParticleProcessMaterial." + name, where);
             }
@@ -4181,11 +4187,10 @@ private:
                 }
                 return true;
             }
-            if (name.starts_with("trail_") || name == "sub_emitter") {
-                if ((name == "trail_enabled" && value.boolean) ||
-                    (name == "sub_emitter" && !value.string_argument().value_or("").empty())) {
+            if (name.starts_with("trail_")) {
+                if (name == "trail_enabled" && value.boolean) {
                     problems_.add("GPUParticles2D." + name, node.declared,
-                                  "trails and sub-emitters are on the roadmap");
+                                  "trails are on the roadmap");
                 }
                 return true;
             }
@@ -5209,6 +5214,9 @@ private:
             }
             if (errors.empty()) {
                 errors = animation::check_players(converted, reader);
+            }
+            if (errors.empty()) {
+                errors = canvas::check_sub_emitters(components_, converted, reader);
             }
             if (errors.empty()) {
                 break;

@@ -634,6 +634,7 @@ struct GPUParticles2D {
     int z_index = 0;
     bool z_as_relative = true; // as Sprite2D's
     int light_mask = 1;
+    entt::entity sub_emitter{entt::null}; // the GPUParticles2D its particles start particles in
     float amount_ratio = 1.0F;
     float lifetime = 1.0F;
     float interp_to_end = 0.0F;
@@ -653,11 +654,11 @@ struct GPUParticles2D {
 
     friend bool operator==(const GPUParticles2D&, const GPUParticles2D&) = default;
 };
-SLASH_COMPONENT(GPUParticles2D, emitting, amount, amount_ratio, process_material, texture, lifetime,
-                interp_to_end, one_shot, preprocess, speed_scale, explosiveness, randomness,
-                use_fixed_seed, seed, fixed_fps, interpolate, fract_delta, collision_base_size,
-                local_coords, draw_order, texture_filter, hframes, vframes, anim_loop, z_index,
-                z_as_relative, visible, material, material_params, light_mask)
+SLASH_COMPONENT(GPUParticles2D, emitting, amount, amount_ratio, sub_emitter, process_material,
+                texture, lifetime, interp_to_end, one_shot, preprocess, speed_scale, explosiveness,
+                randomness, use_fixed_seed, seed, fixed_fps, interpolate, fract_delta,
+                collision_base_size, local_coords, draw_order, texture_filter, hframes, vframes,
+                anim_loop, z_index, z_as_relative, visible, material, material_params, light_mask)
 
 // ---- Audio, as Godot's AudioStreamPlayer nodes.
 
