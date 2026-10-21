@@ -3,7 +3,9 @@
 #include "slash/platform/run.hpp"
 
 #include <SDL3/SDL_hints.h>
+#include <SDL3/SDL_init.h>
 #include <SDL3/SDL_stdinc.h>
+#include <SDL3/SDL_video.h>
 #include <doctest/doctest.h>
 
 #include <algorithm>
@@ -160,6 +162,22 @@ TEST_CASE("a platform starts the video drivers it is given unless SDL_VIDEO_DRIV
     SDL_ResetHint(SDL_HINT_VIDEO_DRIVER);
     REQUIRE_MESSAGE(platform.ok(), (platform.ok() ? std::string() : platform.error().message));
     CHECK(platform.value().video_driver() == "dummy");
+}
+
+TEST_CASE("choose_opengl decides, once video has started, whether the window is for OpenGL") {
+    SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "offscreen");
+    bool video_started = false;
+    auto platform = Platform::create(Config{.headless = false, .choose_opengl = [&] {
+                                                video_started = SDL_WasInit(SDL_INIT_VIDEO) != 0;
+                                                return true;
+                                            }});
+    SDL_ResetHint(SDL_HINT_VIDEO_DRIVER);
+    if (!platform.ok()) {
+        MESSAGE("no offscreen window here: " << platform.error().message);
+        return;
+    }
+    CHECK(video_started);
+    CHECK((SDL_GetWindowFlags(platform.value().window()) & SDL_WINDOW_OPENGL) != 0);
 }
 
 TEST_CASE("the running program's executable is found") {

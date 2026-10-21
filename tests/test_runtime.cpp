@@ -71,6 +71,7 @@ TEST_CASE("a minimal project gets the defaults") {
     CHECK(project.value().bundle_id() == "com.example.spacepong2");
     CHECK(project.value().clear_color == std::array<float, 4>{0.3F, 0.3F, 0.3F, 1.0F});
     CHECK(project.value().rendering_driver == "auto");
+    CHECK(project.value().fallback_to_opengl);
     CHECK(project.value().vsync_mode == "enabled");
     CHECK(project.value().linux_display_driver == "x11");
     CHECK(project.value().max_fps == 0);
@@ -80,7 +81,7 @@ TEST_CASE("a minimal project gets the defaults") {
         "main_scene": "a.scene.json", "window": {"width": 320, "vsync_mode": "mailbox",
         "linux_display_driver": "wayland"},
         "tick_hz": 30, "max_fps": 120, "rendering": {"clear_color": [0, 0.5, 1, 1],
-        "driver": "null"}, "gui": {"theme": "ui/game.theme.json"}})"));
+        "driver": "null", "fallback_to_opengl": false}, "gui": {"theme": "ui/game.theme.json"}})"));
     REQUIRE(project.ok());
     CHECK(project.value().gui_theme == "ui/game.theme.json");
     CHECK(project.value().vsync_mode == "mailbox");
@@ -88,6 +89,7 @@ TEST_CASE("a minimal project gets the defaults") {
     CHECK(project.value().max_fps == 120);
     CHECK(project.value().clear_color == std::array<float, 4>{0.0F, 0.5F, 1.0F, 1.0F});
     CHECK(project.value().rendering_driver == "null");
+    CHECK_FALSE(project.value().fallback_to_opengl);
     CHECK(project.value().binary_name() == "Game");
     CHECK(project.value().bundle_id() == "org.me.game");
     CHECK(project.value().window_width == 320);
@@ -122,6 +124,9 @@ TEST_CASE("project files are checked field by field") {
     CHECK(error_paths("{" + base + R"(, "rendering": {"driver": "webgl"}})") ==
           std::vector<std::string>{"/rendering/driver"});
     CHECK(error_paths("{" + base + R"(, "rendering": {"driver": "opengl"}})").empty());
+    CHECK(error_paths("{" + base + R"(, "rendering": {"driver": "opengl_es"}})").empty());
+    CHECK(error_paths("{" + base + R"(, "rendering": {"fallback_to_opengl": "yes"}})") ==
+          std::vector<std::string>{"/rendering/fallback_to_opengl"});
     CHECK(error_paths("{" + base + R"(, "gui": {"theme": "../game.theme.json"}})") ==
           std::vector<std::string>{"/gui/theme"});
     CHECK(error_paths("{" + base + R"(, "gui": {"theme": "game.json"}})") ==

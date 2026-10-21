@@ -234,6 +234,8 @@ common/physics_ticks_per_second=30
 
 textures/canvas_textures/default_texture_filter=3
 environment/defaults/default_clear_color=Color(0, 0, 0, 1)
+renderer/rendering_method="gl_compatibility"
+rendering_device/fallback_to_opengl3=false
 )";
 
 constexpr std::string_view kEnemy = R"([gd_scene load_steps=4 format=3 uid="uid://enemy0scene"]
@@ -759,6 +761,8 @@ TEST_CASE("importing a Godot project converts its settings and input map") {
     CHECK(settings.find("max_fps")->as_int() == 120);
     CHECK(settings.find("tick_hz")->as_double() == 30.0);
     CHECK(settings.find("rendering")->find("texture_filter")->as_string() == "linear");
+    CHECK(settings.find("rendering")->find("driver")->as_string() == "opengl");
+    CHECK_FALSE(settings.find("rendering")->find("fallback_to_opengl")->as_bool());
     CHECK(settings.find("physics_2d")->find("gravity")->as_double() == 490.0);
     CHECK(settings.find("physics_2d")->find("linear_damp")->as_double() == 0.5);
 
