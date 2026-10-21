@@ -41,6 +41,11 @@ inline constexpr std::uint32_t kMaxMeshVertices = 1U << 24U;
 inline constexpr std::uint32_t kMaxMeshIndices = 1U << 26U;
 inline constexpr std::size_t kMaxLights3D = 64;
 
+// The bits of a light's cull mask that count: Godot's 20 render layers. Shaders get them as a
+// whole number in a float, which holds it exactly, since bits stored in a float can come back
+// changed (Apple's OpenGL makes the NaN that 0xFFFFFFFF is canonical).
+inline constexpr std::uint32_t kRenderLayers = 0xFFFFFU;
+
 // Which faces a mesh hides, as Godot's cull_mode.
 enum class CullMode : std::uint8_t {
     Back,     // faces seen from behind, Godot's default
@@ -74,7 +79,7 @@ struct Light3D {
     float attenuation = 1.0F; // how light falls off with distance, omni and spot
     float spot_angle = 45.0F; // degrees from direction to the cone's edge
     float spot_attenuation = 1.0F;
-    // Lights the meshes whose layers share a bit with it.
+    // Lights the meshes whose layers share a bit with it, of the first kRenderLayers.
     std::uint32_t cull_mask = 0xFFFFFFFFU;
 
     bool operator==(const Light3D&) const = default;

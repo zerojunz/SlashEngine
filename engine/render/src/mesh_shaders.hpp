@@ -975,7 +975,7 @@ alignas(4) inline constexpr unsigned char kMeshFragmentSpirv[] = {
     0x02, 0x00, 0x00, 0x00, 0x51, 0x00, 0x05, 0x00, 0x34, 0x00, 0x00, 0x00,
     0x10, 0x04, 0x00, 0x00, 0x09, 0x04, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00,
     0x51, 0x00, 0x05, 0x00, 0x06, 0x00, 0x00, 0x00, 0x13, 0x04, 0x00, 0x00,
-    0x10, 0x04, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x7c, 0x00, 0x04, 0x00,
+    0x10, 0x04, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x6d, 0x00, 0x04, 0x00,
     0xf0, 0x00, 0x00, 0x00, 0x14, 0x04, 0x00, 0x00, 0x13, 0x04, 0x00, 0x00,
     0x41, 0x00, 0x06, 0x00, 0x58, 0x01, 0x00, 0x00, 0x15, 0x04, 0x00, 0x00,
     0x55, 0x01, 0x00, 0x00, 0x56, 0x01, 0x00, 0x00, 0x63, 0x01, 0x00, 0x00,
@@ -1524,7 +1524,7 @@ fragment fs_main_out fs_main(fs_main_in in [[stage_in]], constant Surface& _341 
         float3 _1747;
         for (uint _1714 = 0u; _1714 < _1024; _1716 = _1747, _1715 = _1746, _1714++)
         {
-            if ((as_type<uint>(_516.lights[_1714].params.w) & _341.options.z) == 0u)
+            if ((uint(_516.lights[_1714].params.w) & _341.options.z) == 0u)
             {
                 _1747 = _1716;
                 _1746 = _1715;
@@ -1759,7 +1759,7 @@ void main()
         highp vec3 _1747;
         for (uint _1714 = 0u; _1714 < _1024; _1716 = _1747, _1715 = _1746, _1714++)
         {
-            if ((floatBitsToUint(_516.lights[_1714].params.w) & _341.options.z) == 0u)
+            if ((uint(_516.lights[_1714].params.w) & _341.options.z) == 0u)
             {
                 _1747 = _1716;
                 _1746 = _1715;
@@ -2007,7 +2007,7 @@ fn fs_main_inner(v_3 : vec3<f32>, v_4 : vec3<f32>, v_5 : vec3<f32>, v_6 : vec3<f
             let v_59 = v_57.direction;
             let v_60 = v_57.color;
             let v_61 = v_57.params;
-            if (((bitcast<u32>(v_61.w) & v.options.z) == 0u)) {
+            if (((u32(v_61.w) & v.options.z) == 0u)) {
               v_52 = v_56;
               v_53 = v_55;
               continue;
@@ -2214,7 +2214,7 @@ struct Light {
     float4 position;  // xyz, then 1 / range
     float4 direction; // toward a directional light, the way a spot light shines; then the type
     float4 color;     // linear, times energy and pi; then the specular amount
-    float4 params;    // attenuation, the cone's cosine, 1 / spot attenuation, the cull mask's bits
+    float4 params;    // attenuation, the cone's cosine, 1 / spot attenuation, the cull mask
 };
 
 static const float kDirectional = 0.0;
@@ -2349,7 +2349,7 @@ float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
     uint count = (uint)camera.w;
     for (uint i = 0u; i < count; ++i) {
         Light light = lights[i];
-        if ((asuint(light.params.w) & options.z) == 0u) {
+        if (((uint)light.params.w & options.z) == 0u) {
             continue;
         }
         float type = light.direction.w;
