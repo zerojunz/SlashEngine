@@ -99,7 +99,8 @@ Usage:
       --hz <rate>                    Fixed tick rate in Hz (default 60)
       --vsync <mode>                 disabled, enabled (default), adaptive or mailbox
       --max-fps <n>                  Frames per second at most; 0 (default) means no cap
-      --driver <name>                auto (default), vulkan, metal, d3d12, opengl or null
+      --driver <name>                auto (default), vulkan, metal, d3d12, opengl, opengl_es
+                                     or null
       --scene <file>                 Load a .scene.json file before the first tick
       --save <file>                  Save the scene to this file after the last tick
       --record <file>                Record the run to a .replay.json file in the project,
@@ -496,10 +497,11 @@ int cmd_run(const std::vector<std::string>& args) {
             }
             options.max_fps = static_cast<int>(max_fps);
         } else if (arg == "--driver") {
-            constexpr std::array<std::string_view, 6> kDrivers{"auto",  "vulkan", "metal",
-                                                               "d3d12", "opengl", "null"};
+            constexpr std::array<std::string_view, 7> kDrivers{
+                "auto", "vulkan", "metal", "d3d12", "opengl", "opengl_es", "null"};
             if (!has_value || std::ranges::find(kDrivers, args[i + 1]) == kDrivers.end()) {
-                return usage_error("--driver needs auto, vulkan, metal, d3d12, opengl or null");
+                return usage_error(
+                    "--driver needs auto, vulkan, metal, d3d12, opengl, opengl_es or null");
             }
             driver = args[++i];
         } else if (arg == "--scene" || arg == "--save" || arg == "--record") {
@@ -569,7 +571,15 @@ int cmd_run(const std::vector<std::string>& args) {
         }
     }
 
-    config.opengl = driver == "opengl";
+    // As a game: the window is made for the driver, which falls back to OpenGL where its GPU
+    // backend doesn't work unless the project's rendering.fallback_to_opengl turns that off.
+    const auto project = slash::runtime::load_project(session_options.project_root);
+    config.opengl = slash::render::uses_opengl(driver);
+    config.opengl_es = driver == "opengl_es";
+    config.choose_opengl = [&driver, fallback = !project || project.value().fallback_to_opengl] {
+        driver = slash::render::choose_driver(driver, fallback);
+        return slash::render::uses_opengl(driver);
+    };
     auto platform = slash::platform::Platform::create(config);
     if (!platform) {
         return failure("could not start the platform", platform.error());
@@ -596,7 +606,6 @@ int cmd_run(const std::vector<std::string>& args) {
             {.get = [&] { return platform.value().clipboard_text(); },
              .set = [&](const std::string& text) { platform.value().set_clipboard_text(text); }});
         // The window shows the project's icon.
-        const auto project = slash::runtime::load_project(session_options.project_root);
         const slash::render::Image icon = slash::runtime::window_icon(
             project ? project.value().icon : std::string(), [&](std::string_view path) {
                 return slash::platform::read_file(

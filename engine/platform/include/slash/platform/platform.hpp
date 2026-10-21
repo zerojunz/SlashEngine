@@ -19,9 +19,15 @@ struct Config {
     int height = 720;
     // Run with no window or GPU: how agents and CI run games, tests and replays on a server.
     bool headless = false;
-    // Make the window for OpenGL ES, for the opengl render driver. Always on the web, where
-    // games draw with WebGL 2.
+    // Make the window for OpenGL, for the opengl and opengl_es render drivers: OpenGL 3.3, or
+    // OpenGL ES 3.0 with opengl_es and on Android and iOS. Always on the web, where games draw
+    // with WebGL 2.
     bool opengl = false;
+    bool opengl_es = false;
+    // When set, called once SDL's video has started and before the window is made: whether to
+    // make the window for OpenGL, in place of opengl. Games choose their render driver here
+    // (render::choose_driver), since asking whether a GPU backend works needs video started.
+    std::function<bool()> choose_opengl{}; // NOLINT(readability-redundant-member-init)
     // The SDL video drivers to try in order, such as "x11,wayland"; empty for SDL's own order.
     // The SDL_VIDEO_DRIVER environment variable, or that hint when already set, overrides it.
     std::string video_drivers{}; // NOLINT(readability-redundant-member-init): designated init

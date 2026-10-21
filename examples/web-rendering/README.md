@@ -2,9 +2,8 @@
 
 How a game draws in a browser. SDL3's GPU API has no web backend, so web exports draw with
 SlashEngine's OpenGL ES 3.0 device, which browsers call WebGL 2: `rendering.driver` `auto` picks
-it on the web. Elsewhere the `opengl` driver picks the same device where the system has OpenGL ES
-(Android, Linux), as Godot's compatibility renderer; macOS and Windows have none, so there
-`auto` keeps Metal, Direct3D 12 or Vulkan.
+it on the web. Elsewhere the `opengl_es` driver picks the same device where the system has OpenGL
+ES (Android, iOS, Linux), as Godot's `opengl3_es`; macOS has none, so there `auto` keeps Metal.
 
 [main.cpp](main.cpp) writes the textures, opens [main.scene.json](main.scene.json) and draws it
 into a texture on the OpenGL ES device, or on the software device where there is none, then
@@ -30,6 +29,7 @@ OpenGL ES and on macOS and Windows on the CPU.
   python3 -m http.server -d examples/web-rendering/build/export/web
   ```
 
-- `slash-cli run --driver opengl` draws a window with OpenGL ES on Linux, and `rendering.driver`
-  `"opengl"` in `project.json` makes an exported game do the same. A window must be made for
-  OpenGL (`platform::Config::opengl`), which both of those do for you.
+- `slash-cli run --driver opengl_es` draws a window with OpenGL ES on Linux, and
+  `rendering.driver` `"opengl_es"` in `project.json` makes an exported game do the same. A window
+  must be made for OpenGL (`platform::Config::opengl`), which both of those do for you. The
+  `opengl` driver is the same device over desktop OpenGL 3.3, with the same shaders.

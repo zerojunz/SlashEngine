@@ -535,11 +535,17 @@ GPU API (Metal, Direct3D 12 or Vulkan), and a null device for headless runs that
 call the same way but draws nothing. `create_device_or_null` falls back to it, with a warning,
 where no backend starts. `examples/draw-offscreen` draws into a texture and reads it back.
 
-`src/gl_device.cpp` is the same device over OpenGL ES 3.0 (the `opengl` driver, Godot's
-compatibility tier), which is WebGL 2 on the web, where `auto` picks it, since SDL3's GPU API has
-no web backend. It loads its GL functions through SDL (links WebGL's on the web), needs a window
-made with `platform::Config::opengl`, and draws every frame upside down into a texture so rows
-and `gl_FragCoord` match the other backends, then copies window frames over turned back.
+`src/gl_device.cpp` is the same device over OpenGL (Godot's compatibility tier): the `opengl`
+driver is OpenGL 3.3's core profile on Windows, macOS and Linux, falling back to OpenGL ES 3.0
+where that doesn't start, and `opengl_es` is OpenGL ES 3.0, which is all the web (WebGL 2, where
+`auto` picks it, since SDL3's GPU API has no web backend), Android and iOS have. Desktop OpenGL
+compiles the committed GLSL ES 3.00 as GLSL 3.30, so one set of shaders serves both. It loads
+its GL functions through SDL (links WebGL's on the web), needs a window made with
+`platform::Config::opengl`, and draws every frame upside down into a texture so rows and
+`gl_FragCoord` match the other backends, then copies window frames over turned back. As Godot's
+`fallback_to_opengl3`, games ask `render::choose_driver` before making the window (through
+`platform::Config::choose_opengl`, once video has started) and draw with `opengl` where the GPU
+backend doesn't work (`rendering.fallback_to_opengl`).
 `uniforms.hpp` fills the material shader's uniforms for both hardware devices; a change to how
 the GPU device draws goes in this one too.
 
@@ -675,9 +681,9 @@ cmake --build --preset dev --target shaders
 
 The GPU tests in `tests/test_render.cpp` skip when no backend starts; `tests/devices.hpp` gives
 them every device that works (`drawing_devices()`, `hardware_devices()`). On Linux, Mesa's
-software Vulkan (`mesa-vulkan-drivers`) and OpenGL ES (`libgles2`, `libegl-mesa0`,
-`libgl1-mesa-dri`) run them with no GPU, and `SDL_VIDEO_DRIVER=offscreen` draws the windowed
-path on them too. CI sets `SLASH_EXPECT_GPU=1` on Linux so they fail there instead of skipping.
+software Vulkan (`mesa-vulkan-drivers`), OpenGL and OpenGL ES (`libgl1`, `libgles2`,
+`libegl-mesa0`, `libgl1-mesa-dri`) run them with no GPU, and `SDL_VIDEO_DRIVER=offscreen` draws
+the windowed path on them too. CI sets `SLASH_EXPECT_GPU=1` on Linux so they fail there instead of skipping.
 
 V-Sync and the frame cap follow Godot: `window.vsync_mode` and `max_fps` in `project.json`,
 `--vsync` and `--max-fps` on `slash-cli run`, and `display.set` while a served game runs
@@ -1182,7 +1188,7 @@ CI rejects unformatted code and any clang-tidy finding.
   `kPascalCase` constants.
 - Headers live in `engine/<module>/include/slash/<module>/`, sources in `engine/<module>/src/`.
   Modules: `core` (Result, logging, JSON, reflection, math, the job system), `platform` (SDL3 window, run loop,
-  files and folder listings, child processes), `render` (the render device over SDL3's GPU API and OpenGL ES 3.0 / WebGL 2,
+  files and folder listings, child processes), `render` (the render device over SDL3's GPU API and OpenGL 3.3 / OpenGL ES 3.0 / WebGL 2,
   the software and null devices, HLSL shaders, material programs, 2D light shading and particles), `asset` (asset handles, loaders, hot reload),
   `world` (EnTT world, components, scenes and prefabs), `input` (input events, action maps,
   the input state and reading SDL's events), `audio` (sound files and streams, the mixer, buses
