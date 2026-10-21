@@ -121,11 +121,23 @@ Error unknown_particles(ParticlesId particles) {
                           std::to_string(static_cast<std::uint32_t>(particles)));
 }
 
-Result<void> check_particle_amount(std::uint32_t amount) {
+Result<void> check_particle_amount(std::uint32_t amount, std::uint32_t trail) {
     if (amount < 1 || amount > kMaxParticles) {
         return make_error(ErrorCode::InvalidArgument,
                           "a particle system has from 1 to " + std::to_string(kMaxParticles) +
                               " particles, not " + std::to_string(amount));
+    }
+    if (trail < 1 || trail > kMaxParticleTrail) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "a particle trail has from 2 to " + std::to_string(kMaxParticleTrail) +
+                              " particles, or 1 for none, not " + std::to_string(trail));
+    }
+    if (std::uint64_t{amount} * trail > kMaxParticles) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "a particle system with trails has at most " +
+                              std::to_string(kMaxParticles) + " particles with its trails; " +
+                              std::to_string(amount) + " with trails of " + std::to_string(trail) +
+                              " would make " + std::to_string(std::uint64_t{amount} * trail));
     }
     return {};
 }
@@ -196,6 +208,11 @@ Result<void> check_particle_process(const ParticleProcess& process,
             return make_error(ErrorCode::InvalidArgument,
                               "a particle step's collision size is 0 or more");
         }
+        if (step.trail_steps < 1 || step.trail_steps > kMaxParticleTrailSteps) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "a particle step's trail_steps is from 1 to " +
+                                  std::to_string(kMaxParticleTrailSteps));
+        }
         if (step.shape_count == 0) {
             continue;
         }
@@ -249,7 +266,14 @@ Result<void> check_particle_chain(std::span<const ParticleRun> chain,
                                       " twice");
             }
         }
-        if (run.steps.size() != chain.front().steps.size()) {
+        if (run.history > run.steps.size()) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "a particle run's history is " + std::to_string(run.history) +
+                                  " of its " + std::to_string(run.steps.size()) + " steps");
+        }
+        if (run.steps.size() - run.history !=
+            chain.front().steps.size() -
+                std::min(chain.front().history, chain.front().steps.size())) {
             return make_error(ErrorCode::InvalidArgument,
                               "a particle chain's systems run as many steps each");
         }
@@ -264,17 +288,29 @@ Result<void> check_particle_chain(std::span<const ParticleRun> chain,
 }
 
 Result<void> check_particle_draw(const ParticleDraw& look, std::uint32_t amount,
-                                 std::size_t in_frame) {
-    const std::size_t vertices = std::size_t{amount} * 6;
-    if (vertices > kMaxFrameVertices - std::min(in_frame, kMaxFrameVertices)) {
-        return make_error(ErrorCode::InvalidArgument,
-                          "a frame draws up to " + std::to_string(kMaxFrameVertices) +
-                              " vertices, six a particle; these " + std::to_string(amount) +
-                              " particles would make " + std::to_string(in_frame + vertices));
-    }
+                                 std::uint32_t trail, std::size_t in_frame) {
     if (look.hframes < 1 || look.vframes < 1) {
         return make_error(ErrorCode::InvalidArgument,
                           "particles' hframes and vframes are at least 1");
+    }
+    if (trail > 1 &&
+        (look.trail_subdivisions < 1 || look.trail_subdivisions > kMaxParticleTrailSubdivisions ||
+         look.trail_steps < 1 || look.trail_steps > kMaxParticleTrailSteps ||
+         !(look.step_delta >= 0.0F) || !std::isfinite(look.step_delta))) {
+        return make_error(
+            ErrorCode::InvalidArgument,
+            "particle trails have from 1 to " + std::to_string(kMaxParticleTrailSubdivisions) +
+                " subdivisions, trail_steps from 1 to " + std::to_string(kMaxParticleTrailSteps) +
+                " and a step_delta of 0 or more");
+    }
+    const std::uint32_t per = particle_vertex_count(trail, look);
+    const std::size_t vertices = std::size_t{amount} * per;
+    if (vertices > kMaxFrameVertices - std::min(in_frame, kMaxFrameVertices)) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "a frame draws up to " + std::to_string(kMaxFrameVertices) +
+                              " vertices, " + std::to_string(per) + " a particle; these " +
+                              std::to_string(amount) + " particles would make " +
+                              std::to_string(in_frame + vertices));
     }
     return {};
 }
@@ -357,12 +393,12 @@ public:
 
     void destroy_shader(ShaderId shader) override { shaders_.erase(shader); }
 
-    Result<ParticlesId> create_particles(std::uint32_t amount) override {
-        if (auto checked = detail::check_particle_amount(amount); !checked) {
+    Result<ParticlesId> create_particles(std::uint32_t amount, std::uint32_t trail) override {
+        if (auto checked = detail::check_particle_amount(amount, trail); !checked) {
             return checked.error();
         }
         const auto id = static_cast<ParticlesId>(next_particles_++);
-        particles_[id] = amount;
+        particles_[id] = {.amount = amount, .trail = trail};
         return id;
     }
 
@@ -382,7 +418,9 @@ public:
         if (it == particles_.end()) {
             return detail::unknown_particles(particles);
         }
-        if (auto checked = detail::check_particle_draw(look, it->second, frame_vertices_);
+        const Shape shape = it->second;
+        if (auto checked =
+                detail::check_particle_draw(look, shape.amount, shape.trail, frame_vertices_);
             !checked) {
             return checked;
         }
@@ -392,8 +430,10 @@ public:
         // As the GPU device, each draw of particles is a draw of its own.
         ++stats_.draws;
         last_texture_.reset();
-        frame_vertices_ += std::size_t{it->second} * 6;
-        stats_.triangles += std::uint64_t{it->second} * 2;
+        const std::size_t vertices =
+            std::size_t{shape.amount} * particle_vertex_count(shape.trail, look);
+        frame_vertices_ += vertices;
+        stats_.triangles += vertices / 3;
         return {};
     }
 
@@ -405,7 +445,7 @@ public:
         if (it == particles_.end()) {
             return detail::unknown_particles(particles);
         }
-        return std::vector<Particle>(it->second);
+        return std::vector<Particle>(std::size_t{it->second.amount} * it->second.trail);
     }
 
     Result<bool> begin_frame(const Frame& frame) override {
@@ -540,7 +580,12 @@ private:
     std::uint32_t next_texture_ = 1;
     std::unordered_set<ShaderId> shaders_;
     std::uint32_t next_shader_ = 1;
-    std::unordered_map<ParticlesId, std::uint32_t> particles_; // their amounts
+    // A particle system's amount and trail.
+    struct Shape {
+        std::uint32_t amount = 0;
+        std::uint32_t trail = 1;
+    };
+    std::unordered_map<ParticlesId, Shape> particles_;
     std::uint32_t next_particles_ = 1;
     bool in_frame_ = false;
     TextureId target_ = TextureId::None;

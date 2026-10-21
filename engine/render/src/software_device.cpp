@@ -235,8 +235,8 @@ public:
         shaders_.erase(it);
     }
 
-    Result<ParticlesId> create_particles(std::uint32_t amount) override {
-        return particles_.create(amount);
+    Result<ParticlesId> create_particles(std::uint32_t amount, std::uint32_t trail) override {
+        return particles_.create(amount, trail);
     }
 
     void destroy_particles(ParticlesId particles) override { particles_.destroy(particles); }

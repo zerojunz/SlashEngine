@@ -170,7 +170,7 @@ void pack_particle_steps(std::span<const ParticleStep> steps,
         out.push_back({step.cycle, step.seed, flags, bits(step.time)});
         const bool shaped = step.shape_count > 0 && step.shape_first < shape_at.size();
         out.push_back({shaped ? shape_at[step.shape_first] : 0U, shaped ? step.shape_count : 0U,
-                       bits(step.collision_size), 0U});
+                       bits(step.collision_size), step.trail_steps});
         out.push_back(
             floats(step.to_shapes[0], step.to_shapes[1], step.to_shapes[2], step.to_shapes[3]));
         out.push_back(floats(step.to_shapes[4], step.to_shapes[5], 0.0F, 0.0F));
@@ -179,7 +179,7 @@ void pack_particle_steps(std::span<const ParticleStep> steps,
     }
 }
 
-DrawUniforms draw_uniforms(const ParticleDraw& look, std::uint32_t amount,
+DrawUniforms draw_uniforms(const ParticleDraw& look, std::uint32_t amount, std::uint32_t trail,
                            std::uint32_t first_vertex) {
     const std::array<float, 6>& t = look.transform;
     return {.transform_a = {t[0], t[1], t[2], t[3]},
@@ -188,7 +188,8 @@ DrawUniforms draw_uniforms(const ParticleDraw& look, std::uint32_t amount,
             .look = {look.remainder, static_cast<float>(look.hframes),
                      static_cast<float>(look.vframes), look.anim_loop ? 1.0F : 0.0F},
             .counts = {amount, static_cast<std::uint32_t>(look.order), look.lifetime_split,
-                       first_vertex}};
+                       first_vertex},
+            .trail = {trail, look.trail_subdivisions, look.trail_steps, bits(look.step_delta)}};
 }
 
 } // namespace slash::render::detail

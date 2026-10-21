@@ -3,17 +3,19 @@
 Particles run on the GPU, as Godot's `GPUParticles2D`. In [main.scene.json](main.scene.json), a
 fire rises from a circle and fades from yellow to dark red, a one-shot burst of sparks goes off
 the same way each time, snow was already falling when the scene opened, smoke curls as it rises,
-rain lands on a ledge and rockets burst into sparks. How each one's particles start and move is a
-`.process_material.json` file, Godot's `ParticleProcessMaterial` in 2D:
+rain lands on a ledge, rockets burst into sparks and comets draw trails. How each one's particles
+start and move is a `.process_material.json` file, Godot's `ParticleProcessMaterial` in 2D:
 [fire.process_material.json](fire.process_material.json),
 [sparks.process_material.json](sparks.process_material.json),
 [snow.process_material.json](snow.process_material.json),
 [smoke.process_material.json](smoke.process_material.json),
 [rain.process_material.json](rain.process_material.json),
-[rockets.process_material.json](rockets.process_material.json) and
-[burst.process_material.json](burst.process_material.json). [main.cpp](main.cpp) makes the dot
-texture, checks the particles with `particles.eval` and `frame.capture`, hears the sparks finish
-and sets them off again, then draws the scene. [expected.txt](expected.txt) holds its output.
+[rockets.process_material.json](rockets.process_material.json),
+[burst.process_material.json](burst.process_material.json) and
+[comets.process_material.json](comets.process_material.json). [main.cpp](main.cpp) makes the dot
+and streak textures, checks the particles with `particles.eval` and `frame.capture`, hears the
+sparks finish and sets them off again, then draws the scene. [expected.txt](expected.txt) holds
+its output.
 
 ```text
 particles.eval {"id":"fire","time":0.5}
@@ -26,7 +28,8 @@ particles.eval {"id":"fire"}
 
 - The component holds what Godot's node holds: `amount`, `lifetime`, `one_shot`,
   `explosiveness`, `randomness`, `preprocess`, `speed_scale`, `fixed_fps`, `interpolate`,
-  `local_coords`, `draw_order`, `texture` and its `hframes` and `vframes` for animated particles.
+  `local_coords`, `draw_order`, `texture` and its `hframes` and `vframes` for animated particles,
+  and the `trail_` settings.
   The process material holds the rest, with Godot's property names: the `emission_shape`
   (`point`, `sphere`, `sphere_surface`, `box`, `points`, `directed_points`, `ring`),
   `direction`, `spread`, `gravity` (`[0, 98]` unless given, as in a 2D game made with Godot),
@@ -61,6 +64,16 @@ particles.eval {"id":"fire"}
   `slash-cli scene validate` reports a `sub_emitter` that can't take part: one naming its own
   emitter or an entity with no `GPUParticles2D`, a sub-emitter another emitter already has,
   and one that loops back or makes a chain too long.
+- With `trail_enabled`, each particle draws as Godot's trail ribbon: the texture, a frame wide,
+  stretched down the path the particle took over the last `trail_lifetime` seconds. As in Godot
+  the particle keeps `trail_sections` copies that start with it, wait, then follow its path that
+  much later, and the ribbon bends through them in `trail_section_subdivisions` segments between
+  each two. Trails step 60 times a second when `fixed_fps` is 0, as Godot's. Turn the particles
+  along their path (`particle_flag_align_y`), as Godot's trails want, so the ribbon's width runs
+  across it. When a particle dies its copies run on to the end of the same life, so the trail
+  shortens from the front. Each copy takes its particle's path exactly, collisions included;
+  Godot's run with the current step's time and collision field, and start particles in a
+  sub-emitter, which these don't.
 - Each tick the `gpu_particles_2d` system works out each emitter's steps as Godot does: one each
   1/`fixed_fps` seconds (or one a tick with `fixed_fps` 0), with preprocess and the one-shot
   timing. The renderer runs the steps on the device and draws the particles there. On Metal,
@@ -78,7 +91,7 @@ particles.eval {"id":"fire"}
 - `slash-cli scene validate` checks a `.process_material.json` file and reports every mistake
   with its JSON Pointer; exports check every process material.
 - Godot projects import with their `GPUParticles2D` nodes and `ParticleProcessMaterial`
-  resources (`slash-cli import`), turbulence, collisions and sub-emitters included; trails and
+  resources (`slash-cli import`), turbulence, collisions, sub-emitters and trails included;
   attractors are reported as not converted, since SlashEngine doesn't have them yet.
 - Particles are not saved in the scene. Snapshots, undo, dry runs and failed commands leave them
   as they are.
