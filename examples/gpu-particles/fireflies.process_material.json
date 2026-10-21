@@ -1,0 +1,166 @@
+{
+  "format": 1,
+  "gravity": [0, 0],
+  "nodes": {
+    "phase": {
+      "args": ["random.x", 6.2831855],
+      "op": "mul"
+    },
+    "reach": {
+      "args": [
+        "radius",
+        {
+          "args": ["random.z", 12],
+          "op": "mul"
+        }
+      ],
+      "op": "add"
+    },
+    "sway": {
+      "args": [
+        "reach",
+        {
+          "args": [
+            3,
+            {
+              "args": [
+                {
+                  "args": ["age", 2],
+                  "op": "mul"
+                }
+              ],
+              "op": "sin"
+            }
+          ],
+          "op": "mul"
+        }
+      ],
+      "op": "add"
+    },
+    "turn": {
+      "args": [
+        "phase",
+        {
+          "args": [
+            "age",
+            {
+              "args": [
+                "spin",
+                {
+                  "args": [1, "random.y"],
+                  "op": "add"
+                }
+              ],
+              "op": "mul"
+            }
+          ],
+          "op": "mul"
+        }
+      ],
+      "op": "add"
+    }
+  },
+  "params": {
+    "radius": {
+      "doc": "Pixels from the emitter, at least.",
+      "type": "float",
+      "value": 16
+    },
+    "spin": {
+      "doc": "Radians a second round the emitter, at least.",
+      "type": "float",
+      "value": 1.2
+    }
+  },
+  "process": {
+    "color": {
+      "args": [
+        1,
+        0.9,
+        0.4,
+        {
+          "args": [
+            0.55,
+            {
+              "args": [
+                0.45,
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": ["age", 7],
+                          "op": "mul"
+                        },
+                        "phase"
+                      ],
+                      "op": "add"
+                    }
+                  ],
+                  "op": "sin"
+                }
+              ],
+              "op": "mul"
+            }
+          ],
+          "op": "add"
+        }
+      ],
+      "op": "vec4"
+    },
+    "position": {
+      "args": [
+        "emitter_position",
+        {
+          "args": [
+            {
+              "args": [
+                {
+                  "args": ["turn"],
+                  "op": "cos"
+                },
+                {
+                  "args": ["turn"],
+                  "op": "sin"
+                }
+              ],
+              "op": "vec2"
+            },
+            "sway"
+          ],
+          "op": "mul"
+        }
+      ],
+      "op": "add"
+    }
+  },
+  "scale_max": 0.8,
+  "scale_min": 0.5,
+  "start": {
+    "position": {
+      "args": [
+        "emitter_position",
+        {
+          "args": [
+            {
+              "args": [
+                {
+                  "args": ["phase"],
+                  "op": "cos"
+                },
+                {
+                  "args": ["phase"],
+                  "op": "sin"
+                }
+              ],
+              "op": "vec2"
+            },
+            "reach"
+          ],
+          "op": "mul"
+        }
+      ],
+      "op": "add"
+    }
+  }
+}

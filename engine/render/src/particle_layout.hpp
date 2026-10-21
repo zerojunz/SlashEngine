@@ -15,7 +15,10 @@ namespace slash::render::detail {
 
 using Word = std::array<std::uint32_t, 4>;
 
-// A process material's words: a header, the curves, the gradients, then two words a point.
+// A process material's words: a header, the curves, the gradients, two words a point, then its
+// particle graphs, if it has any, where word 2's w says: a word of {start code, start constants,
+// process code, process constants} counts, one of {start outputs, process outputs, 0, 0}, then
+// each program's instructions, a word each, and constants, start's first.
 inline constexpr std::uint32_t kCurveWords = kMaxParticleCurvePoints / 2; // two points a word
 // The parameters' curves, then velocity_limit_curve, alpha_curve and emission_curve.
 inline constexpr std::uint32_t kCurves = kParticleParams + 3;
@@ -36,6 +39,8 @@ inline constexpr std::uint32_t kPointsAt = kGradientsAt + (2 * kGradientWords);
 static_assert(kCurveCountsAt == 15 && kGradientCountsAt == 20 && kTurbulenceAt == 21);
 static_assert(kCollisionAt == 23 && kSubEmitterAt == 24 && kCurvesAt == 25);
 static_assert(kGradientsAt == 313 && kPointsAt == 393);
+// The words before a process material's graphs' programs.
+inline constexpr std::uint32_t kGraphHeaderWords = 2;
 // A step's words.
 inline constexpr std::uint32_t kStepWords = 9;
 // A step's flags, in its last word.

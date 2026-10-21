@@ -37,6 +37,7 @@ add_executable(slash_tests
     test_log.cpp
     test_material.cpp
     test_mcp.cpp
+    test_particle_graphs.cpp
     test_particles.cpp
     test_physics.cpp
     test_playtest.cpp

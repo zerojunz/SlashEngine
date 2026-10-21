@@ -1,3 +1,5 @@
+#include "graph.hpp"
+
 #include "slash/canvas/gpu_particles.hpp"
 
 #include <algorithm>
@@ -163,9 +165,19 @@ std::string curve_name(std::size_t param) {
     return info.curve_name.empty() ? param_name(param, "_curve") : std::string(info.curve_name);
 }
 
+// The schema; list_ops lists the graphs' ops, which validation leaves to the compiler, so it can
+// say "did you mean".
+json::Value schema(bool list_ops);
+
 } // namespace
 
 json::Value process_material_schema() {
+    return schema(true);
+}
+
+namespace {
+
+json::Value schema(bool list_ops) {
     json::Value shape;
     shape["type"] = "string";
     json::Array shapes;
@@ -327,11 +339,17 @@ json::Value process_material_schema() {
     properties["sub_emitter_keep_velocity"]["description"] =
         "Particles started move as the particle starting them does, instead of as the "
         "sub-emitter's process material says.";
+    detail::add_particle_graph_schema(schema, list_ops);
     return schema;
 }
 
+} // namespace
+
 std::vector<json::ValidationError> validate_process_material(const json::Value& doc) {
-    std::vector<json::ValidationError> errors = json::validate(doc, process_material_schema());
+    if (auto error = detail::check_particle_graph_size(doc)) {
+        return {*std::move(error)};
+    }
+    std::vector<json::ValidationError> errors = json::validate(doc, schema(false));
     if (!errors.empty()) {
         return errors;
     }
@@ -371,6 +389,9 @@ std::vector<json::ValidationError> validate_process_material(const json::Value& 
                                                " emission_points; give none, or one per point"});
         }
     }
+    std::vector<json::ValidationError> graphs =
+        detail::compile_particle_graphs(doc, nullptr, nullptr);
+    errors.insert(errors.end(), graphs.begin(), graphs.end());
     return errors;
 }
 
@@ -499,6 +520,8 @@ Result<render::ParticleProcess> parse_process_material(const json::Value& doc) {
         }
     }
     flag("sub_emitter_keep_velocity", out.sub_emitter_keep_velocity);
+    // Validated above, so the graphs compile.
+    (void)detail::compile_particle_graphs(doc, &out.start_program, &out.process_program);
     return out;
 }
 

@@ -62,5 +62,11 @@ struct Quat {
 // The angle of the point [x, y] from the x axis, in radians from -pi to pi, as std::atan2 but
 // the same bits on every platform; 0 for [0, 0].
 [[nodiscard]] float atan2(float y, float x);
+// e to the power x, as std::exp but the same bits on every platform: infinity past what a float
+// holds and 0 below, NaN for NaN.
+[[nodiscard]] float exp(float x);
+// The natural logarithm of x, as std::log but the same bits on every platform: -infinity for 0,
+// NaN below 0 and for NaN.
+[[nodiscard]] float ln(float x);
 
 } // namespace slash

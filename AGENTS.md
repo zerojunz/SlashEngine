@@ -600,9 +600,10 @@ CPU and the file's `blocks`, which `CanvasRenderer` uploads where the device sam
 Materials are `.material.json` node graphs (`$cli schema material`) that `Sprite2D`'s `material`
 names and `material_params` sets. `engine/canvas/src/material.cpp` compiles a graph on load into
 a `render::MaterialProgram` (`engine/render/include/slash/render/material.hpp`): at most 64
-instructions over 32 registers, which `material.hlsl` interprets on the GPU and `run_program`
-runs on the CPU for `material.eval`. A new op goes in all three, with a case in the test that
-runs every op on both. `examples/materials` has three materials.
+instructions over 32 registers, which `material.hlsl` interprets on the GPU (its ops are in
+`material_ops.hlsl`, which particle graphs share) and `run_program` runs on the CPU for
+`material.eval`. A new op goes in all three, with a case in the test that runs every op on both.
+`examples/materials` has three materials.
 
 A material's `"shader"` names a game's own `.hlsl` file with Godot's `fragment()` and `vertex()`
 (the built-ins are in `docs/reference/scene-format.md`). `tools/shader_compiler` wraps it in
@@ -776,9 +777,16 @@ trail (`create_particles(amount, trail)`) keeps `trail - 1` copies of each parti
 which wait when it starts and then run the steps `trail_steps * j / trail` behind it, so a run
 starts with `history` steps it ran before (`ParticleRun::history`) for them to read;
 `particles_draw.hlsl` and `particle_vertices` draw each as Godot's ribbon. The steps kept and the
-emitter's idle time cover the copies running on after their particles. `particles.eval` runs
-the steps kept on the CPU (`canvas::gpu_particles`); `examples/gpu-particles` has a fire,
-sparks, snow, smoke, rain, fireworks and comets with trails.
+emitter's idle time cover the copies running on after their particles. Particle graphs are
+Godot's particle shaders as node graphs: a process material's `start` and `process` compile with
+the canvas material compiler (`canvas::detail::compile_particle_graphs` in
+`engine/canvas/src/material.cpp`) into `render::ParticleProgram`s, material programs over the
+registers `render/particles.hpp` lays out, which the compute shader runs through
+`material_ops.hlsl` (shared with the material shader) and the CPU twin through
+`run_instructions` with `portable` set (`slash::exp`, `slash::ln`, `cos_sin` and `atan2`, the
+same bits everywhere). `particles.eval` runs the steps kept on the CPU
+(`canvas::gpu_particles`); `examples/gpu-particles` has a fire, sparks, snow, smoke, rain,
+fireworks, comets with trails and fireflies that graphs move.
 
 ## Job system
 
