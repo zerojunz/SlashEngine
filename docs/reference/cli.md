@@ -585,7 +585,9 @@ and the game then installs [`ai::ask`](providers.md#gameplay); Android exports o
 platform: macOS and iOS with Xcode's command-line tools and SDKs, and Windows and Linux with the
 toolchains in [toolchain](#toolchain), which the first such export downloads. A Linux machine
 builds Linux and Windows the same way, and a Windows machine builds Windows with MSVC. Web
-exports need Emscripten (`EMSDK` set) on any host, and Android exports need the Android SDK
+exports build with an activated emsdk's Emscripten (`EMSDK` set) or, without one, with the
+Emscripten [toolchain](#toolchain) the first one downloads, on any host (Linux needs Python 3.10
+or newer as `python3` on `PATH`). Android exports need the Android SDK
 (build tools 35 or newer and the Android 36 platform), NDK r27 or newer and JDK 17 or newer on
 any host. An output folder that a previous export did not make is never replaced. Missing signing
 tools, identities, profiles or secrets are reported before anything is built; signing a Windows
@@ -664,18 +666,22 @@ slash-cli toolchain list
 slash-cli toolchain install [name|platform ...]
 ```
 
-Exports to Windows and Linux from a Mac or a Linux machine build with open-source toolchains
-that `slash-cli` downloads, pinned to exact versions and SHA-256 hashes:
+Exports to Windows and Linux from a Mac or a Linux machine, and web exports on any machine with
+no activated emsdk, build with open-source toolchains that `slash-cli` downloads, pinned to
+exact versions and SHA-256 hashes:
 
 | Toolchain | Used for | License |
 | --- | --- | --- |
 | `llvm-mingw` | Clang and LLD; mingw-w64 for Windows exports | Apache 2.0 with LLVM exception, ZPL, MIT and public domain |
 | `linux-sysroot-x86_64`, `linux-sysroot-arm64` | Debian 11's glibc 2.31, GCC 10's libstdc++ and the X11, ALSA and PulseAudio headers that Linux exports build against | Debian's: glibc under the LGPL and libstdc++ under the GPL with the GCC Runtime Library Exception, both used from the player's system; X11 under MIT |
+| `emscripten` | emsdk's release build of Emscripten 6.0.10, with its Clang and Binaryen, for web exports; on macOS, Linux and x86_64 Windows | MIT and University of Illinois/NCSA; Apache 2.0 with LLVM exception; Apache 2.0 |
+| `node` | Node.js 22.16.0, which Emscripten runs on and web exports' `--test` runs games on | MIT |
+| `python` | Python 3.13.3, which runs Emscripten's tools; on macOS and Windows (Linux uses its `python3`, 3.10 or newer) | Python Software Foundation License |
 | `assetripper` | [AssetRipper](https://github.com/AssetRipper/AssetRipper) 2.0.0, which [import](#import) runs to turn a Unity build back into a project; on every machine, Windows included | GPL 3.0, run as a program of its own and never linked |
 
 An export downloads what it needs the first time, so `toolchain install` is only needed to get
 them ahead of time, for example before going offline. With no names it installs every toolchain
-for this machine; a name can also be a platform (`windows`, `linux`), `linux-arm64` or
+for this machine; a name can also be a platform (`windows`, `linux`, `web`), `linux-arm64` or
 `assetripper`, which `import` installs the first time it unpacks a Unity build. Each
 download is checked against its pinned hash and deleted if it differs. They are installed in
 `SLASH_TOOLCHAINS_DIR`, else `~/.slash/toolchains`; delete a folder there to remove one.
@@ -685,7 +691,9 @@ download is checked against its pinned hash and deleted if it differs. They are 
 ```
 
 `install` returns the `installed` toolchains and those `already_installed`, each with its `path`.
-Windows machines have no toolchains to install, except `assetripper`.
+Windows machines install only the web toolchains and `assetripper`. A web export with the
+downloaded Emscripten writes its config, which `EM_CONFIG` names, into the export's work folder,
+and builds in a folder of its own, so it never mixes with an emsdk build.
 
 ### library serve
 

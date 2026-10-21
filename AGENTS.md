@@ -334,8 +334,9 @@ end of the log. A Mac builds every platform: macOS and iOS with Xcode's tools, W
 with llvm-mingw and a glibc 2.31 Debian sysroot that the first such export downloads
 (`$cli toolchain install` gets them ahead of time, into `SLASH_TOOLCHAINS_DIR` or
 `~/.slash/toolchains`). Linux machines build Linux and Windows the same way, and Windows machines
-build Windows with MSVC. Web exports need Emscripten (`EMSDK` set) and Android exports the Android
-SDK, NDK and a JDK on any host. CI exports and runs an empty game for macOS, Windows, Linux, web,
+build Windows with MSVC. Web exports use an activated emsdk (`EMSDK` set) or else download pinned
+Emscripten, Node.js and (on macOS and Windows) Python toolchains, and Android exports need the
+Android SDK, NDK and a JDK on any host. CI exports and runs an empty game for macOS, Windows, Linux, web,
 Android (on an emulator) and iOS (in the Simulator) on every PR, cross-exports Windows and Linux
 (x86_64 and arm64) from macOS and runs them on Windows and Ubuntu 20.04, and `slash-cli init` writes
 the per-platform workflow into new games.

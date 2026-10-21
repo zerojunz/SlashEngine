@@ -494,7 +494,7 @@ TEST_CASE("toolchains are pinned per host and chosen per platform") {
     }
 #if defined(_WIN32)
     // Windows exports build with MSVC, and Linux exports aren't built on Windows.
-    CHECK(toolchains.empty());
+    CHECK_FALSE(has("llvm-mingw"));
     CHECK(exporter::toolchains_for("windows").empty());
 #elif defined(__APPLE__) || (defined(__linux__) && defined(__x86_64__))
     CHECK(has("llvm-mingw"));
@@ -508,7 +508,52 @@ TEST_CASE("toolchains are pinned per host and chosen per platform") {
     }
 #endif
     CHECK(exporter::toolchains_for("macos").empty());
-    CHECK(exporter::toolchains_for("web").empty());
+
+    // Web exports with no emsdk download Emscripten, Node.js and, where the system has none to
+    // count on, Python.
+    const std::vector<std::string> web = exporter::toolchains_for("web");
+#if defined(__APPLE__) || defined(_WIN32)
+    CHECK(web == std::vector<std::string>{"emscripten", "node", "python"});
+#else
+    CHECK(web == std::vector<std::string>{"emscripten", "node"});
+#endif
+#if defined(__APPLE__) || defined(__linux__) || (defined(_WIN32) && defined(_M_X64))
+    for (const std::string& name : web) {
+        CHECK(has(name));
+    }
+    const auto emscripten =
+        std::find_if(toolchains.begin(), toolchains.end(),
+                     [](const exporter::Toolchain& t) { return t.name == "emscripten"; });
+    REQUIRE(emscripten != toolchains.end());
+    CHECK(emscripten->version == "6.0.10");
+    CHECK(emscripten->folder == "install");
+    CHECK(contains(emscripten->url, "storage.googleapis.com/webassembly/"));
+#endif
+}
+
+TEST_CASE("downloaded Emscripten gets a config naming its tools") {
+    const std::filesystem::path root = "/opt/toolchains";
+    const exporter::WebTools tools = exporter::web_tools(
+        {root / "emscripten-6.0.10", root / "node-22.16.0", root / "python-3.13.3"});
+    CHECK(tools.toolchain_file == root / "emscripten-6.0.10" / "emscripten" / "cmake" / "Modules" /
+                                      "Platform" / "Emscripten.cmake");
+#ifdef _WIN32
+    CHECK(tools.node == root / "node-22.16.0" / "bin" / "node.exe");
+    CHECK(tools.python == root / "python-3.13.3" / "python.exe");
+#else
+    CHECK(tools.node == root / "node-22.16.0" / "bin" / "node");
+    CHECK(tools.python == root / "python-3.13.3" / "bin" / "python3");
+#endif
+    CHECK(tools.config == "LLVM_ROOT = '" + (root / "emscripten-6.0.10" / "bin").generic_string() +
+                              "'\nBINARYEN_ROOT = '" +
+                              (root / "emscripten-6.0.10").generic_string() + "'\nNODE_JS = '" +
+                              tools.node.generic_string() + "'\n");
+
+    // Linux runs Emscripten with its own python3. Quotes in a path are escaped for Python.
+    const exporter::WebTools linux_tools =
+        exporter::web_tools({"/home/o'neil/emscripten", "/home/o'neil/node"});
+    CHECK(linux_tools.python.empty());
+    CHECK(contains(linux_tools.config, "BINARYEN_ROOT = '/home/o\\'neil/emscripten'\n"));
 }
 
 #ifndef _WIN32

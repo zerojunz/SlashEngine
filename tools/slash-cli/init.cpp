@@ -314,7 +314,6 @@ permissions:
 env:
   SLASHENGINE_REF: @ENGINE_REF@
   GAME_DIR: .
-  EMSDK_VERSION: 6.0.10
 
 jobs:
   export:
@@ -353,8 +352,8 @@ jobs:
           path: slashengine/.cpm-cache
           key: slashengine-${{ matrix.os }}-${{ env.SLASHENGINE_REF }}
 
-      - name: Cache the toolchains Linux exports download
-        if: matrix.platform == 'linux'
+      - name: Cache the toolchains Linux and web exports download
+        if: matrix.platform == 'linux' || matrix.platform == 'web'
         uses: actions/cache@v4
         with:
           path: ~/.slash/toolchains
@@ -379,14 +378,6 @@ jobs:
       - name: Set up MSVC (Windows)
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
-
-      - name: Install Emscripten
-        if: matrix.platform == 'web'
-        run: |
-          git clone --depth 1 --branch "$EMSDK_VERSION" https://github.com/emscripten-core/emsdk.git "$RUNNER_TEMP/emsdk"
-          "$RUNNER_TEMP/emsdk/emsdk" install "$EMSDK_VERSION"
-          "$RUNNER_TEMP/emsdk/emsdk" activate "$EMSDK_VERSION"
-          echo "EMSDK=$RUNNER_TEMP/emsdk" >> "$GITHUB_ENV"
 
       - name: Build slash-cli
         run: |

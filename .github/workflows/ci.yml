@@ -120,7 +120,6 @@ jobs:
           - platform: ios
             os: macos-14
     env:
-      EMSDK_VERSION: 6.0.10
       HELLO_APP_ID: ci # the key examples/sdk-package's stand-in SDK reads
     steps:
       - uses: actions/checkout@v4
@@ -131,8 +130,10 @@ jobs:
           path: .cpm-cache
           key: cpm-${{ matrix.os }}-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/dependencies.json') }}
 
+      # Linux exports' cross toolchains, and the Emscripten, Node.js and Python web exports
+      # download when no emsdk is activated.
       - name: Cache downloaded toolchains
-        if: matrix.platform == 'linux'
+        if: matrix.platform == 'linux' || matrix.platform == 'web'
         uses: actions/cache@v4
         with:
           path: ~/.slash/toolchains
@@ -153,14 +154,6 @@ jobs:
       - name: Set up MSVC (Windows)
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
-
-      - name: Install Emscripten
-        if: matrix.platform == 'web'
-        run: |
-          git clone --depth 1 --branch "$EMSDK_VERSION" https://github.com/emscripten-core/emsdk.git "$RUNNER_TEMP/emsdk"
-          "$RUNNER_TEMP/emsdk/emsdk" install "$EMSDK_VERSION"
-          "$RUNNER_TEMP/emsdk/emsdk" activate "$EMSDK_VERSION"
-          echo "EMSDK=$RUNNER_TEMP/emsdk" >> "$GITHUB_ENV"
 
       - name: Build slash-cli
         run: |
@@ -371,7 +364,7 @@ jobs:
           cmake --preset release
           cmake --build --preset release --target slash-cli
 
-      - name: Export Windows, Linux and Linux arm64 games
+      - name: Export Windows, Linux, Linux arm64 and web games
         run: |
           cli=./build/release/tools/slash-cli/slash-cli
           $cli toolchain install
@@ -381,13 +374,18 @@ jobs:
           cp .github/scripts/hello-sdk-check.cpp build/empty-game/src/
           echo '{"format": 1, "presets": {"linux-arm64": {"platform": "linux", "linux": {"arch": "arm64"}}}}' \
             > build/empty-game/export_presets.json
-          for preset in windows linux linux-arm64; do
+          for preset in windows linux linux-arm64 web; do
             if ! $cli export $preset --project build/empty-game --test > build/$preset.json; then
               cat build/$preset.json
               exit 1
             fi
             cat build/$preset.json
-            jq -e '.test.skipped' build/$preset.json
+            if [ $preset = web ]; then
+              # Built with the downloaded Emscripten and Python, and run on the downloaded Node.js.
+              jq -e '.test.passed' build/$preset.json
+            else
+              jq -e '.test.skipped' build/$preset.json
+            fi
           done
           # A tarball keeps the games' executable bits, which artifacts drop.
           tar -C build/empty-game/build/export -cf build/cross-exports.tar windows linux linux-arm64
