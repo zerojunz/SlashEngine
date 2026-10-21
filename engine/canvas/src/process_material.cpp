@@ -1,8 +1,10 @@
 #include "slash/canvas/gpu_particles.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <utility>
 
@@ -26,6 +28,14 @@ constexpr std::array<std::pair<std::string_view, render::ParticleCollision>, 3> 
     {"disabled", render::ParticleCollision::Disabled},
     {"rigid", render::ParticleCollision::Rigid},
     {"hide_on_contact", render::ParticleCollision::HideOnContact},
+}};
+
+constexpr std::array<std::pair<std::string_view, render::SubEmitterMode>, 5> kSubEmitterModes{{
+    {"disabled", render::SubEmitterMode::Disabled},
+    {"constant", render::SubEmitterMode::Constant},
+    {"at_end", render::SubEmitterMode::AtEnd},
+    {"at_collision", render::SubEmitterMode::AtCollision},
+    {"at_start", render::SubEmitterMode::AtStart},
 }};
 
 // Godot's names for the parameters, by ParticleParam, with what each is and its range.
@@ -288,6 +298,35 @@ json::Value process_material_schema() {
     properties["collision_use_scale"]["default"] = false;
     properties["collision_use_scale"]["description"] =
         "Multiply the emitter's collision_base_size by each particle's scale.";
+    json::Array sub_modes;
+    for (const auto& [name, value] : kSubEmitterModes) {
+        sub_modes.emplace_back(std::string(name));
+    }
+    properties["sub_emitter_mode"]["enum"] = std::move(sub_modes);
+    properties["sub_emitter_mode"]["default"] = "disabled";
+    properties["sub_emitter_mode"]["description"] =
+        "When each particle starts particles in the emitter's sub_emitter: constant, at_end of "
+        "its life, at_collision or at_start.";
+    properties["sub_emitter_frequency"]["type"] = "number";
+    properties["sub_emitter_frequency"]["exclusiveMinimum"] = 0.0;
+    properties["sub_emitter_frequency"]["default"] = defaults.sub_emitter_frequency;
+    properties["sub_emitter_frequency"]["description"] =
+        "For constant, particles started a second of each particle's life.";
+    for (const auto& [name, what] :
+         {std::pair{"sub_emitter_amount_at_end", "For at_end, particles started at its end."},
+          std::pair{"sub_emitter_amount_at_collision",
+                    "For at_collision, particles started each time it touches a shape."},
+          std::pair{"sub_emitter_amount_at_start", "For at_start, particles started."}}) {
+        properties[name]["type"] = "integer";
+        properties[name]["minimum"] = 1;
+        properties[name]["default"] = 1;
+        properties[name]["description"] = what;
+    }
+    properties["sub_emitter_keep_velocity"]["type"] = "boolean";
+    properties["sub_emitter_keep_velocity"]["default"] = false;
+    properties["sub_emitter_keep_velocity"]["description"] =
+        "Particles started move as the particle starting them does, instead of as the "
+        "sub-emitter's process material says.";
     return schema;
 }
 
@@ -442,6 +481,24 @@ Result<render::ParticleProcess> parse_process_material(const json::Value& doc) {
     real("collision_friction", out.collision_friction);
     real("collision_bounce", out.collision_bounce);
     flag("collision_use_scale", out.collision_use_scale);
+    if (const json::Value* mode = doc.find("sub_emitter_mode"); mode != nullptr) {
+        for (const auto& [name, value] : kSubEmitterModes) {
+            if (mode->as_string() == name) {
+                out.sub_emitter_mode = value;
+            }
+        }
+    }
+    real("sub_emitter_frequency", out.sub_emitter_frequency);
+    for (const auto& [key, field] :
+         {std::pair{"sub_emitter_amount_at_end", &out.sub_emitter_amount_at_end},
+          std::pair{"sub_emitter_amount_at_collision", &out.sub_emitter_amount_at_collision},
+          std::pair{"sub_emitter_amount_at_start", &out.sub_emitter_amount_at_start}}) {
+        if (const json::Value* value = doc.find(key); value != nullptr) {
+            *field = static_cast<std::uint32_t>(
+                std::min<std::int64_t>(value->as_int(), std::numeric_limits<std::uint32_t>::max()));
+        }
+    }
+    flag("sub_emitter_keep_velocity", out.sub_emitter_keep_velocity);
     return out;
 }
 

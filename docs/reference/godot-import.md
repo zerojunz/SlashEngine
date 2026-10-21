@@ -320,8 +320,13 @@ file that its `process_material` names:
   and `collision_bounce` are clamped to 0 to 1 as Godot's editor keeps them, and the node's
   `collision_base_size` is kept: particles [collide](scene-format.md#gpu-particle-collision)
   with `LightOccluder2D`s and tile occluders as Godot's do.
-- Sub-emitters, trails, points given as textures and rings that don't face the screen are
-  reported: SlashEngine doesn't have them yet.
+- `sub_emitter_mode` is named (`1` is `"constant"`, `2` `"at_end"`, `3` `"at_collision"`, `4`
+  `"at_start"`) with its frequency, amounts and `sub_emitter_keep_velocity`, and the node's
+  `sub_emitter` path becomes the entity it names: particles start particles in
+  [sub-emitters](scene-format.md#sub-emitters) as Godot's do. A sub-emitter that can't take part
+  (one naming itself, say) is reported and left out.
+- Trails, points given as textures and rings that don't face the screen are reported:
+  SlashEngine doesn't have them yet.
   `report.converted.process_materials` counts the files written.
 
 ## Project settings

@@ -29,17 +29,21 @@ public:
 
     void destroy(ParticlesId particles) { systems_.erase(particles); }
 
-    [[nodiscard]] Result<void> process(ParticlesId particles, const ParticleProcess& process,
-                                       std::span<const ParticleStep> steps,
-                                       std::span<const ParticleShape> shapes) {
-        const auto it = systems_.find(particles);
-        if (it == systems_.end()) {
-            return unknown_particles(particles);
-        }
-        if (auto checked = check_particle_process(process, steps, shapes); !checked) {
+    [[nodiscard]] Result<void> process(std::span<const ParticleRun> chain) {
+        if (auto checked = check_particle_chain(
+                chain, [this](ParticlesId particles) { return systems_.contains(particles); });
+            !checked) {
             return checked;
         }
-        process_particles(it->second, process, steps, shapes);
+        std::vector<ParticleChainLink> links;
+        links.reserve(chain.size());
+        for (const ParticleRun& run : chain) {
+            links.push_back({.particles = systems_.at(run.particles),
+                             .process = run.process,
+                             .steps = run.steps,
+                             .shapes = run.shapes});
+        }
+        process_particle_chain(links);
         return {};
     }
 

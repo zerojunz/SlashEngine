@@ -306,6 +306,7 @@ A reference must name an entity that exists in the same scene.
 | `GPUParticles2D` | `emitting` | `bool` | `true` | Emit new [particles on the GPU](#gpu-particles); setting it again restarts a `one_shot` |
 | | `amount` | `int` | `8` | Particles alive at most, 1 to 1000000: each cycle emits this many |
 | | `amount_ratio` | `float` | `1` | The share of `amount` it emits, 0 to 1 |
+| | `sub_emitter` | `entity` | `null` | Another `GPUParticles2D` its particles start particles in, as its process material's `sub_emitter_mode` says (see [sub-emitters](#sub-emitters)) |
 | | `process_material` | `std::string` | `""` | Project path of a [`.process_material.json`](#process-materials) file: how particles start and move; `""` emits still white pixels |
 | | `texture` | `std::string` | `""` | Project path of a PNG, BMP or KTX2 file each particle draws, centered on it; `""` draws a white pixel |
 | | `lifetime` | `float` | `1` | Seconds each particle lives and each cycle lasts, from 0.001 |
@@ -1805,7 +1806,7 @@ sparks and snow.
   it. Changing `amount` starts it over.
 - Particles are not saved: scenes, snapshots, [`undo`](commands.md#undo), dry runs and failed
   commands leave them as they are.
-- Sub-emitters, trails, collisions and attractors are on the [roadmap](../roadmap.md).
+- Trails and attractors are on the [roadmap](../roadmap.md).
 
 ### Process materials
 
@@ -1876,6 +1877,10 @@ names and Godot's defaults, except `gravity`: `[0, 98]`, as Godot gives a proces
 | `collision_friction` | `0` | For `rigid`, the fraction of its speed along the surface it loses, 0 to 1 |
 | `collision_bounce` | `0` | For `rigid`, the fraction of its speed into the surface sent back, 0 to 1 |
 | `collision_use_scale` | `false` | Multiply the emitter's collision size by the particle's scale |
+| `sub_emitter_mode` | `"disabled"` | When each particle starts particles in the emitter's [`sub_emitter`](#sub-emitters): `constant`, `at_end` (dying of age), `at_collision` or `at_start` |
+| `sub_emitter_frequency` | `4` | For `constant`, times a second of its life, more than 0 |
+| `sub_emitter_amount_at_end`, `_at_collision`, `_at_start` | `1` | Particles it starts each time, for that mode |
+| `sub_emitter_keep_velocity` | `false` | The particles it starts move on with its velocity too |
 
 Turbulence is Godot's: each step a particle's velocity, built up and controlled, turns towards
 the curl of 4D gradient noise at its position by its `turbulence_influence`, keeping its speed
@@ -1905,6 +1910,47 @@ and the CPU agree. They count everywhere, where Godot's field covers the screen 
 each step takes the nearest the emitter that fit in 1024 points between them. Particles in the
 emitter's coordinates (`local_coords`) reach them through its transform, and an emitter in a
 `CanvasLayer` through that layer's.
+
+### Sub-emitters
+
+A `GPUParticles2D`'s `sub_emitter` names another that its particles start particles in, as
+Godot's: its process material's `sub_emitter_mode` says when (`constant`, `at_end`,
+`at_collision` or `at_start`) and its `sub_emitter_amount_*` how many. Each starts where the
+particle is, turned and scaled as it is, moving as its own process material says, and with
+`sub_emitter_keep_velocity` adds the particle's velocity. An `at_end` particle starts them in
+the step it dies of age, as Godot's code finds it (in its last two or three), and an
+`at_collision` one in each step it touches a shape.
+
+```json
+"rockets": {
+  "components": {
+    "GPUParticles2D": {"amount": 4, "process_material": "rockets.process_material.json",
+                       "sub_emitter": "burst", "texture": "dot.png"},
+    "Transform2D": {"position": [30.0, 175.0]}
+  }
+},
+"burst": {
+  "components": {
+    "GPUParticles2D": {"amount": 64, "lifetime": 0.8,
+                       "process_material": "burst.process_material.json", "texture": "dot.png"},
+    "Transform2D": {}
+  }
+}
+```
+
+- A sub-emitter emits only the particles it is given: its `emitting`, `one_shot`, `fixed_fps`
+  and `preprocess` go unused, and it emits no `finished`. It steps with the emitter before it,
+  a step for each of that one's, as long as its `speed_scale` makes it, and sees the particles
+  started in that step. Godot steps each in its own time, so a sub-emitter there can take
+  particles from a frame before.
+- A sub-emitter takes particles into its slots in turn, carrying on from where the last step
+  left off. When they are all alive, new ones take the place of the oldest; Godot drops the new
+  ones.
+- A sub-emitter can name its own, up to 8 emitters in a chain, which step together. Where two
+  name the same one, the one whose ID sorts first has it; a `sub_emitter` naming its own entity
+  or one with no `GPUParticles2D`, or that would loop back or make a chain longer than 8, is
+  left out, and the emitter runs on its own. `slash-cli scene validate` and exports report each
+  one left out, with why.
 
 ## UI and text
 

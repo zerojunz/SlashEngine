@@ -96,6 +96,23 @@ std::vector<ParticleStep> run_steps(int count, float randomness, float explosive
     return steps;
 }
 
+// A sub-emitter's steps beside a system's: the same ticks with its own lifetime and seed, not
+// emitting, as GPUParticles2D runs a sub-emitter with its parent.
+std::vector<ParticleStep> sub_steps(std::span<const ParticleStep> steps, float lifetime) {
+    std::vector<ParticleStep> out(steps.begin(), steps.end());
+    for (ParticleStep& step : out) {
+        step.lifetime = lifetime;
+        step.seed = 99;
+        step.emitting = false;
+    }
+    return out;
+}
+
+std::size_t live_count(std::span<const Particle> particles) {
+    return static_cast<std::size_t>(std::count_if(particles.begin(), particles.end(),
+                                                  [](const Particle& p) { return p.active(); }));
+}
+
 std::string describe(const Particle& p) {
     return "flags " + std::to_string(p.flags) + " origin " + std::to_string(p.origin.x) + "," +
            std::to_string(p.origin.y) + " color " + std::to_string(p.color.x) + "," +
@@ -507,6 +524,253 @@ TEST_CASE("the GPU device collides particles with shapes as the CPU twin does") 
     }
 }
 
+TEST_CASE("sub-emitters start particles where their parents' particles are, as Godot's") {
+    using slash::render::ParticleChainLink;
+    using slash::render::SubEmitterMode;
+    // Parents fly right at 50 pixels a second from (50, 60), one a step; the particles their
+    // sub-emitter starts stay where they start, unless they keep their parent's velocity.
+    ParticleProcess parent;
+    parent.direction = {1.0F, 0.0F};
+    parent.spread = 0.0F;
+    parent.gravity = {};
+    set_param(parent, ParticleParam::InitialVelocity, 50.0F, 50.0F);
+    ParticleProcess sub;
+    sub.gravity = {};
+    const std::vector<ParticleStep> steps = run_steps(45, 0.0F, 0.0F);
+    std::vector<ParticleStep> subs = sub_steps(steps, 5.0F);
+    std::vector<Particle> parents;
+    std::vector<Particle> children;
+    const auto run = [&](std::size_t count, std::size_t sub_amount) {
+        parents.assign(30, Particle{});
+        children.assign(sub_amount, Particle{});
+        const std::array<ParticleChainLink, 2> chain{
+            ParticleChainLink{.particles = parents,
+                              .process = &parent,
+                              .steps = std::span(steps).first(count),
+                              .shapes = {}},
+            ParticleChainLink{.particles = children,
+                              .process = &sub,
+                              .steps = std::span(subs).first(count),
+                              .shapes = {}}};
+        slash::render::process_particle_chain(chain);
+    };
+
+    // A sub-emitter starts nothing of its own, and nothing while its parent's mode is disabled.
+    run(45, 100);
+    CHECK(live_count(parents) > 25);
+    CHECK(live_count(children) == 0);
+
+    // At start: as many as the amount where each parent is after its first step.
+    parent.sub_emitter_mode = SubEmitterMode::AtStart;
+    parent.sub_emitter_amount_at_start = 2;
+    run(10, 100);
+    CHECK(live_count(parents) > 5);
+    CHECK(live_count(children) == 2 * live_count(parents));
+    for (const Particle& child : children) {
+        if (child.active()) {
+            CHECK(child.origin.x >= 50.0F);
+            CHECK(child.origin.x <= 50.0F + (50.0F / 30.0F) + 0.01F);
+            CHECK(child.origin.y == doctest::Approx(60.0));
+            CHECK(child.velocity == Vec2{});
+        }
+    }
+    // Kept velocity carries on as the parent went.
+    parent.sub_emitter_keep_velocity = true;
+    run(10, 100);
+    int moving = 0;
+    for (const Particle& child : children) {
+        if (child.active()) {
+            CHECK(child.velocity.x == doctest::Approx(50.0));
+            moving += child.origin.x > 55.0F ? 1 : 0;
+        }
+    }
+    CHECK(moving > 3);
+    parent.sub_emitter_keep_velocity = false;
+
+    // At end: only where parents die, a second and 50 pixels on, in their last steps.
+    parent.sub_emitter_mode = SubEmitterMode::AtEnd;
+    parent.sub_emitter_amount_at_end = 3;
+    run(26, 100);
+    CHECK(live_count(children) == 0);
+    run(45, 100);
+    CHECK(live_count(children) > 10);
+    CHECK(live_count(children) % 3 == 0);
+    for (const Particle& child : children) {
+        if (child.active()) {
+            CHECK(child.origin.x > 96.0F);
+            CHECK(child.origin.x < 102.0F);
+        }
+    }
+
+    // Constant: one each tenth of a second of a parent's life, five pixels apart along its way
+    // (where it got to in the step that took it there).
+    parent.sub_emitter_mode = SubEmitterMode::Constant;
+    parent.sub_emitter_frequency = 10.0F;
+    run(30, 400);
+    CHECK(live_count(children) > 100);
+    for (const Particle& child : children) {
+        if (child.active()) {
+            CHECK(std::fmod(child.origin.x - 50.0F + 0.01F, 5.0F) < 1.7F);
+            CHECK(child.origin.x > 54.9F);
+        }
+    }
+
+    // At collision: where parents falling on a floor at 80 touch it.
+    parent.sub_emitter_mode = SubEmitterMode::AtCollision;
+    parent.sub_emitter_amount_at_collision = 1;
+    parent.direction = {0.0F, 1.0F};
+    parent.collision_mode = ParticleCollision::Rigid;
+    const std::vector<ParticleShape> floor{
+        {.points = {{-1000.0F, 80.0F}, {1000.0F, 80.0F}, {1000.0F, 200.0F}, {-1000.0F, 200.0F}},
+         .closed = true}};
+    std::vector<ParticleStep> falling = steps;
+    for (ParticleStep& step : falling) {
+        step.shape_count = 1;
+    }
+    parents.assign(30, Particle{});
+    children.assign(300, Particle{});
+    const std::array<ParticleChainLink, 2> chain{
+        ParticleChainLink{
+            .particles = parents, .process = &parent, .steps = falling, .shapes = floor},
+        ParticleChainLink{.particles = children, .process = &sub, .steps = subs, .shapes = {}}};
+    slash::render::process_particle_chain(chain);
+    CHECK(live_count(children) > 10);
+    for (const Particle& child : children) {
+        if (child.active()) {
+            CHECK(child.origin.y > 76.0F);
+            CHECK(child.origin.y < 82.0F);
+        }
+    }
+}
+
+TEST_CASE("a sub-emitter takes particles in turn, alternating ends, the newest over live ones") {
+    using slash::render::ParticleChainLink;
+    using slash::render::SubEmitterMode;
+    ParticleProcess parent;
+    parent.sub_emitter_mode = SubEmitterMode::AtStart;
+    parent.sub_emitter_amount_at_start = 3;
+    ParticleProcess sub;
+    const std::vector<ParticleStep> steps = run_steps(3, 0.0F, 0.0F);
+    std::vector<ParticleStep> subs = sub_steps(steps, 5.0F);
+    std::vector<Particle> parents;
+    std::vector<Particle> children;
+    const auto run = [&](std::size_t count) {
+        parents.assign(30, Particle{});
+        children.assign(4, Particle{});
+        const std::array<ParticleChainLink, 2> chain{
+            ParticleChainLink{.particles = parents,
+                              .process = &parent,
+                              .steps = std::span(steps).first(count),
+                              .shapes = {}},
+            ParticleChainLink{.particles = children,
+                              .process = &sub,
+                              .steps = std::span(subs).first(count),
+                              .shapes = {}}};
+        slash::render::process_particle_chain(chain);
+    };
+    const auto active = [&] {
+        std::string out;
+        for (const Particle& child : children) {
+            out += child.active() ? '1' : '0';
+        }
+        return out;
+    };
+    // One parent starts in the first step: its three take the first slots, and the first particle
+    // keeps the count and the cycle (plus 1).
+    run(1);
+    CHECK(live_count(parents) == 1);
+    CHECK(active() == "1110");
+    CHECK(children[0].spare[0] == 3);
+    CHECK(children[0].spare[1] == 1);
+    // The next ones go on from there and round onto live ones; the count goes round with them.
+    run(2);
+    CHECK(active() == "1111");
+    CHECK(children[0].spare[0] == (3 + (3 * (live_count(parents) - 1))) % 4);
+    // An odd emission cycle takes them from the last slot down.
+    subs[0].cycle = 1;
+    run(1);
+    CHECK(active() == "0111");
+    CHECK(children[0].spare[1] == 2);
+    subs[0].cycle = 0;
+    // More than the slots in one step: all are taken, the count back where it started.
+    parent.sub_emitter_amount_at_start = 6;
+    run(1);
+    CHECK(active() == "1111");
+    CHECK(children[0].spare[0] == 0);
+}
+
+TEST_CASE("the GPU device runs chains of sub-emitters as the CPU twin does") {
+    using slash::render::ParticleChainLink;
+    using slash::render::ParticleRun;
+    using slash::render::SubEmitterMode;
+    auto device = slash::test::gpu_device();
+    if (device == nullptr) {
+        return;
+    }
+    // Sparks that each start two embers where they die, which trail smoke as they fall.
+    ParticleProcess sparks = busy_process();
+    sparks.sub_emitter_mode = SubEmitterMode::AtEnd;
+    sparks.sub_emitter_amount_at_end = 2;
+    ParticleProcess embers = busy_process();
+    embers.sub_emitter_mode = SubEmitterMode::Constant;
+    embers.sub_emitter_frequency = 7.0F;
+    embers.sub_emitter_keep_velocity = true;
+    ParticleProcess smoke = busy_process();
+    smoke.emission_shape = EmissionShape::Point;
+    const std::array<ParticleProcess*, 3> processes{&sparks, &embers, &smoke};
+    const std::array<std::uint32_t, 3> amounts{40, 120, 300};
+    std::vector<ParticleStep> steps = run_steps(60, 0.5F, 0.1F);
+    for (std::size_t i = 30; i < steps.size(); ++i) {
+        steps[i].emission = {0.0F, 2.0F, -1.0F, 0.0F, 70.0F, 40.0F};
+        steps[i].emitter_velocity = {30.0F, -10.0F};
+    }
+    std::array<std::vector<ParticleStep>, 3> link_steps{steps, sub_steps(steps, 0.7F),
+                                                        sub_steps(steps, 0.4F)};
+    // An emission cycle of the embers and smoke goes past every so often, as theirs would.
+    for (std::size_t k = 1; k < 3; ++k) {
+        for (std::size_t i = 0; i < steps.size(); ++i) {
+            link_steps[k][i].cycle = static_cast<std::uint32_t>(i / (10 * k));
+        }
+    }
+
+    std::array<std::vector<Particle>, 3> twin;
+    std::array<ParticleChainLink, 3> links;
+    std::array<ParticleRun, 3> runs;
+    std::array<ParticlesId, 3> systems{};
+    for (std::size_t k = 0; k < 3; ++k) {
+        twin[k].resize(amounts[k]);
+        links[k] = {
+            .particles = twin[k], .process = processes[k], .steps = link_steps[k], .shapes = {}};
+        auto system = device->create_particles(amounts[k]);
+        REQUIRE(system.ok());
+        systems[k] = system.value();
+    }
+    slash::render::process_particle_chain(links);
+    // In two calls, as a game's ticks would be.
+    for (const auto& [from, count] : {std::pair<std::size_t, std::size_t>{0, 20}, {20, 40}}) {
+        for (std::size_t k = 0; k < 3; ++k) {
+            runs[k] = {.particles = systems[k],
+                       .process = processes[k],
+                       .steps = std::span(link_steps[k]).subspan(from, count),
+                       .shapes = {}};
+        }
+        REQUIRE(device->process_particle_chain(runs).ok());
+    }
+    for (std::size_t k = 0; k < 3; ++k) {
+        CAPTURE(k);
+        auto read = device->read_particles(systems[k]);
+        REQUIRE(read.ok());
+        REQUIRE(read.value().size() == amounts[k]);
+        CHECK(live_count(twin[k]) > 10);
+        for (std::uint32_t i = 0; i < amounts[k]; ++i) {
+            CHECK_MESSAGE(close(read.value()[i], twin[k][i]), "particle ", i, ": GPU ",
+                          describe(read.value()[i]), ", twin ", describe(twin[k][i]));
+        }
+        CHECK(read.value()[0].spare == twin[k][0].spare);
+        device->destroy_particles(systems[k]);
+    }
+}
+
 TEST_CASE("every device refuses the same particle mistakes") {
     std::vector<std::unique_ptr<RenderDevice>> devices = slash::test::drawing_devices();
     devices.push_back(slash::render::create_null_device());
@@ -556,6 +820,32 @@ TEST_CASE("every device refuses the same particle mistakes") {
         CHECK(error_of(
                   device->draw_particles(system.value(), slash::render::TextureId::None, {}, {})) ==
               "draw_particles needs a frame; call begin_frame first");
+        using slash::render::ParticleRun;
+        CHECK(error_of(device->process_particle_chain({})) ==
+              "a particle chain has from 1 to 8 systems, not 0");
+        const ParticleProcess still;
+        const std::vector<ParticleRun> nine(
+            9,
+            ParticleRun{.particles = system.value(), .process = &still, .steps = {}, .shapes = {}});
+        CHECK(error_of(device->process_particle_chain(nine)) ==
+              "a particle chain has from 1 to 8 systems, not 9");
+        CHECK(error_of(device->process_particle_chain(std::span(nine).first(2))) ==
+              "a particle chain names system " +
+                  std::to_string(static_cast<std::uint32_t>(system.value())) + " twice");
+        auto other = device->create_particles(4);
+        REQUIRE(other.ok());
+        std::array<ParticleRun, 2> pair{
+            ParticleRun{.particles = system.value(), .process = &still, .steps = {}, .shapes = {}},
+            ParticleRun{
+                .particles = other.value(), .process = &still, .steps = {&step, 1}, .shapes = {}}};
+        CHECK(error_of(device->process_particle_chain(pair)) ==
+              "a particle chain's systems run as many steps each");
+        pair[1] = {.particles = other.value(), .process = nullptr, .steps = {}, .shapes = {}};
+        CHECK(error_of(device->process_particle_chain(pair)) ==
+              "a particle run has a process material");
+        pair[1] = {.particles = missing, .process = &still, .steps = {}, .shapes = {}};
+        CHECK(error_of(device->process_particle_chain(pair)) == "no particle system 99");
+        device->destroy_particles(other.value());
 
         auto target = device->create_texture({.width = 4,
                                               .height = 4,

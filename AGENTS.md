@@ -766,9 +766,14 @@ gradients from an integer hash so both make the same noise. Collision follows Go
 collision with its signed distance field, measured exactly instead: the system gathers the
 outlines of `LightOccluder2D`s and tile occluders with `sdf_collision` into each step's
 `render::ParticleShape`s, in the world canvas's coordinates, and `render::particle_contact` (and
-its twin in the shader) finds the way out and the depth. `particles.eval` runs the steps kept
-on the CPU (`canvas::gpu_particles`); `examples/gpu-particles` has a fire, sparks, snow and
-smoke.
+its twin in the shader) finds the way out and the depth. A `sub_emitter` chains emitters (up
+to `render::kMaxParticleChain`), which step together through
+`RenderDevice::process_particle_chain`: each link's step writes the particles it starts to an
+emission buffer, `particles_emit.hlsl` numbers what the next link takes (its twin is
+`take_emissions`), and that link's step starts them. `canvas::check_sub_emitters` reports the
+links left out, for `scene validate` and exports. `particles.eval` runs the steps kept on the
+CPU (`canvas::gpu_particles`); `examples/gpu-particles` has a fire, sparks, snow, smoke, rain
+and fireworks.
 
 ## Job system
 
