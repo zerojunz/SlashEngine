@@ -7,6 +7,7 @@
 #include "slash/gameplay/host.hpp"
 #include "slash/input/input.hpp"
 #include "slash/platform/file.hpp"
+#include "slash/runtime/icon.hpp"
 #include "slash/ui/ui.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/scene.hpp"
@@ -197,6 +198,12 @@ Game::Game(Project project, platform::Platform platform, const std::string& data
             world_,
             {.get = [this] { return platform_.clipboard_text(); },
              .set = [this](const std::string& text) { platform_.set_clipboard_text(text); }});
+#ifndef __APPLE__
+        // The window shows the game's icon. A Mac shows the app bundle's, which the export made.
+        const render::Image icon = window_icon(
+            project_.icon, [this](std::string_view path) { return assets_.read(path, "icon"); });
+        platform_.set_icon(icon.width, icon.height, icon.pixels);
+#endif
     }
 }
 

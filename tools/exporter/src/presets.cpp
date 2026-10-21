@@ -124,6 +124,15 @@ void improve(json::ValidationError& error, const json::Value& presets) {
     }
 }
 
+// "#rrggbb".
+bool valid_color(std::string_view text) {
+    constexpr std::size_t kLength = 7;
+    return text.size() == kLength && text[0] == '#' &&
+           std::ranges::all_of(text.substr(1), [](char c) {
+               return ascii_digit(c) || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+           });
+}
+
 bool valid_team_id(std::string_view team) {
     constexpr std::size_t kTeamIdLength = 10;
     return team.size() == kTeamIdLength && std::ranges::all_of(team, [](char c) {
@@ -147,6 +156,11 @@ void check_preset(const std::string& name, const json::Value& preset,
         output != nullptr && !runtime::is_project_path(output->as_string())) {
         errors.push_back({path + "/output", "expected a folder inside the project, separated by "
                                             "'/', with no \".\" or \"..\" parts"});
+    }
+    if (const json::Value* icon = preset.find("icon");
+        icon != nullptr && !runtime::is_project_path(icon->as_string())) {
+        errors.push_back({path + "/icon", "expected a file inside the project, separated by '/', "
+                                          "with no \".\" or \"..\" parts"});
     }
     for (const std::string_view section : {"macos", "windows", "linux", "android", "ios"}) {
         if (preset.find(section) != nullptr && platform != section) {
@@ -196,6 +210,23 @@ void check_preset(const std::string& name, const json::Value& preset,
                 errors.push_back({path + "/android/package", std::move(problem)});
             }
         }
+        if (const json::Value* foreground = android->find("icon_foreground");
+            foreground != nullptr && !runtime::is_project_path(foreground->as_string())) {
+            errors.push_back({path + "/android/icon_foreground",
+                              "expected a file inside the project, separated by '/', with no "
+                              "\".\" or \"..\" parts"});
+        }
+        if (const json::Value* background = android->find("icon_background");
+            background != nullptr && !background->as_string().starts_with('#') &&
+            !runtime::is_project_path(background->as_string())) {
+            errors.push_back({path + "/android/icon_background",
+                              "expected a color as \"#rrggbb\" or a file inside the project, "
+                              "separated by '/', with no \".\" or \"..\" parts"});
+        } else if (background != nullptr && background->as_string().starts_with('#') &&
+                   !valid_color(background->as_string())) {
+            errors.push_back({path + "/android/icon_background",
+                              R"(expected a color as "#rrggbb", e.g. "#1d2b53")"});
+        }
     }
     if (const json::Value* ios = preset.find("ios"); ios != nullptr) {
         // The schema's pattern says the same, for agents reading it.
@@ -219,6 +250,11 @@ void check_preset(const std::string& name, const json::Value& preset,
                 !problem.empty()) {
                 errors.push_back({path + "/ios/bundle_id", std::move(problem)});
             }
+        }
+        if (const json::Value* background = ios->find("icon_background");
+            background != nullptr && !valid_color(background->as_string())) {
+            errors.push_back({path + "/ios/icon_background",
+                              R"(expected a color as "#rrggbb", e.g. "#1d2b53")"});
         }
     }
 }
@@ -286,6 +322,14 @@ json::Value presets_schema() {
             {"package", property("string", "Application ID, e.g. \"com.example.pong\". "
                                            "Default: the project's id.")},
             {"version_code", std::move(version_code)},
+            {"icon_foreground",
+             property("string", "The adaptive icon's foreground: a square image relative to the "
+                                "project, full bleed at 432x432 pixels, of which launchers show "
+                                "the middle 288 through their mask. Default: the icon, filling "
+                                "that middle.")},
+            {"icon_background",
+             property("string", "The adaptive icon's background: a color as \"#rrggbb\" or a "
+                                "square image relative to the project. Default: \"#ffffff\".")},
         },
         "How to build the APK. Release builds are signed with the keystore in " +
             std::string(kAndroidKeystorePath) + " (password in " +
@@ -322,6 +366,9 @@ json::Value presets_schema() {
                                              "project's id.")},
             {"codesign_identity", std::move(ios_identity)},
             {"build_number", std::move(build_number)},
+            {"icon_background",
+             property("string", "The color behind the icon's transparent pixels, as \"#rrggbb\", "
+                                "since iOS icons are opaque. Default: \"#ffffff\".")},
         },
         "How to build the app. Device builds embed the provisioning profile in " +
             std::string(kIosProvisioningProfile) +
@@ -352,6 +399,9 @@ json::Value presets_schema() {
             {"output", property("string", "Output folder relative to the project. Default: "
                                           "build/export/<preset name>.")},
             {"debug", std::move(debug)},
+            {"icon", property("string", "A square image relative to the project that this "
+                                        "preset's icons are made from in place of project.json's "
+                                        "icon.")},
             {"sdks", std::move(sdks)},
             {"macos", std::move(macos)},
             {"windows", std::move(windows)},
@@ -421,6 +471,9 @@ Result<Presets> parse_presets(const json::Value& presets) {
         if (const json::Value* debug = value.find("debug"); debug != nullptr) {
             preset.debug = debug->as_bool();
         }
+        if (const json::Value* icon = value.find("icon"); icon != nullptr) {
+            preset.icon = icon->as_string();
+        }
         if (const json::Value* sdks = value.find("sdks"); sdks != nullptr) {
             preset.sdks.emplace();
             for (const json::Value& sdk : sdks->as_array()) {
@@ -461,6 +514,14 @@ Result<Presets> parse_presets(const json::Value& presets) {
             if (const json::Value* code = android->find("version_code"); code != nullptr) {
                 preset.android.version_code = code->as_int();
             }
+            if (const json::Value* foreground = android->find("icon_foreground");
+                foreground != nullptr) {
+                preset.android.icon_foreground = foreground->as_string();
+            }
+            if (const json::Value* background = android->find("icon_background");
+                background != nullptr) {
+                preset.android.icon_background = background->as_string();
+            }
         }
         if (const json::Value* linux_section = value.find("linux"); linux_section != nullptr) {
             if (const json::Value* arch = linux_section->find("arch"); arch != nullptr) {
@@ -483,6 +544,10 @@ Result<Presets> parse_presets(const json::Value& presets) {
             }
             if (const json::Value* build = ios->find("build_number"); build != nullptr) {
                 preset.ios.build_number = build->as_int();
+            }
+            if (const json::Value* background = ios->find("icon_background");
+                background != nullptr) {
+                preset.ios.icon_background = background->as_string();
             }
         }
         out.emplace(name, std::move(preset));

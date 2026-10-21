@@ -1,0 +1,38 @@
+--- macos, from art/coin.png
+AppIcon.icns ic10 1024x1024 ic09 512x512 ic14 512x512 ic08 256x256 ic13 256x256 ic07 128x128 ic12 64x64 ic11 32x32 il32 l8mk is32 s8mk
+--- windows, from art/coin.png
+icon.ico 6 images
+--- linux, from art/coin.png
+no files: the game's window shows the icon
+--- web, from art/coin.png
+favicon.png 192x192, corner 0,0,0,0, middle 250,200,60,255
+apple-touch-icon.png 180x180, corner 255,255,255,255, middle 250,200,60,255
+--- android, from art/coin.png
+res/mipmap-anydpi-v26/icon.xml:
+<?xml version="1.0" encoding="utf-8"?>
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/icon_background" />
+    <foreground android:drawable="@mipmap/icon_foreground" />
+</adaptive-icon>
+
+res/mipmap-mdpi/icon_foreground.png 108x108, corner 0,0,0,0, middle 250,200,60,255
+res/mipmap-hdpi/icon_foreground.png 162x162, corner 0,0,0,0, middle 250,200,60,255
+res/mipmap-xhdpi/icon_foreground.png 216x216, corner 0,0,0,0, middle 250,200,60,255
+res/mipmap-xxhdpi/icon_foreground.png 324x324, corner 0,0,0,0, middle 250,200,60,255
+res/mipmap-xxxhdpi/icon_foreground.png 432x432, corner 0,0,0,0, middle 250,200,60,255
+res/values/icon_background.xml:
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="icon_background">#1d2b53</color>
+</resources>
+
+--- ios, from art/coin.png
+Assets.xcassets/Contents.json:
+{"info": {"author": "xcode", "version": 1}}
+
+Assets.xcassets/AppIcon.appiconset/Contents.json:
+{"images": [{"filename": "icon.png", "idiom": "universal", "platform": "ios", "size": "1024x1024"}], "info": {"author": "xcode", "version": 1}}
+
+Assets.xcassets/AppIcon.appiconset/icon.png 1024x1024, corner 29,43,83,255, middle 250,200,60,255
+--- a wide icon
+project.json /icon: "art/wide.png" can't be an icon: icons are square, and this one is 128x32

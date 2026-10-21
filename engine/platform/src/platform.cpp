@@ -9,6 +9,7 @@
 #endif
 
 #include <algorithm>
+#include <cstddef>
 #include <utility>
 
 namespace slash::platform {
@@ -211,6 +212,25 @@ void Platform::set_clipboard_text(const std::string& text) const {
     if (!headless_ && !SDL_SetClipboardText(text.c_str())) {
         log::warn("the clipboard was not set", {{"error", SDL_GetError()}});
     }
+}
+
+void Platform::set_icon(std::uint32_t width, std::uint32_t height,
+                        const std::vector<std::uint8_t>& pixels) const {
+    if (headless_ || width == 0 || height == 0 ||
+        pixels.size() != static_cast<std::size_t>(width) * height * 4) {
+        return;
+    }
+    SDL_Surface* surface = SDL_CreateSurfaceFrom(
+        static_cast<int>(width), static_cast<int>(height), SDL_PIXELFORMAT_RGBA32,
+        const_cast<std::uint8_t*>(pixels.data()), static_cast<int>(width * 4));
+    if (surface == nullptr) {
+        return;
+    }
+    // Phones and the web have no window icons; SDL says so, which is nothing to report.
+    if (!SDL_SetWindowIcon(window_, surface)) {
+        log::debug("the window icon was not set", {{"error", SDL_GetError()}});
+    }
+    SDL_DestroySurface(surface);
 }
 
 std::string_view os_name() {

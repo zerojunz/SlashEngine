@@ -268,6 +268,10 @@ json::Value project_schema() {
     properties["main_scene"] =
         string_property("The scene loaded at startup, relative to the project folder, e.g. "
                         "\"scenes/main.scene.json\".");
+    properties["icon"] = string_property(
+        "A square image, 1024x1024 or larger, that every platform's icons are made from and the "
+        "window shows, relative to the project folder, as Godot's application/config/icon. "
+        "Default: the engine's icon.");
     properties["window"] = std::move(window);
     properties["tick_hz"] = std::move(tick_hz);
     properties["max_fps"] = std::move(max_fps);
@@ -352,6 +356,11 @@ std::vector<json::ValidationError> validate_project(const json::Value& project) 
                                          "by '/', with no \".\" or \"..\" parts"});
     } else if (!main_scene.ends_with(".scene.json")) {
         errors.push_back({"/main_scene", "expected a .scene.json file"});
+    }
+    if (const json::Value* icon = project.find("icon");
+        icon != nullptr && !icon->as_string().empty() && !is_project_path(icon->as_string())) {
+        errors.push_back({"/icon", "expected a path inside the project folder, separated by '/', "
+                                   "with no \".\" or \"..\" parts"});
     }
     if (const json::Value* gui = project.find("gui"); gui != nullptr) {
         if (const json::Value* theme = gui->find("theme");
@@ -452,6 +461,9 @@ Result<Project> parse_project(const json::Value& project) {
     }
     if (const json::Value* version = project.find("version"); version != nullptr) {
         out.version = version->as_string();
+    }
+    if (const json::Value* icon = project.find("icon"); icon != nullptr) {
+        out.icon = icon->as_string();
     }
     if (const json::Value* window = project.find("window"); window != nullptr) {
         if (const json::Value* width = window->find("width"); width != nullptr) {

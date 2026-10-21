@@ -41,6 +41,7 @@ add_library(slash_render
     src/material.cpp
     src/particle_layout.cpp
     src/particles.cpp
+    src/resize.cpp
     src/shader.cpp
     src/shader_vm.cpp
     src/software_device.cpp
@@ -65,7 +66,7 @@ if(slash_texture_encoders)
 endif()
 # The software device draws the same pixels on every platform: no fused multiply-adds, which
 # arm64 compilers would otherwise emit and x86-64 ones not.
-set_source_files_properties(src/device.cpp src/particles.cpp src/shader_vm.cpp
+set_source_files_properties(src/device.cpp src/particles.cpp src/resize.cpp src/shader_vm.cpp
     src/software_device.cpp src/upscaler.cpp PROPERTIES
     COMPILE_OPTIONS "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>")
 

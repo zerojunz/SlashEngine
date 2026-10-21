@@ -11,6 +11,7 @@
 
 #include <filesystem>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace slash::exporter::detail {
@@ -35,6 +36,12 @@ bool prepare_ios(const IosOptions& ios, const std::string& bundle_id, bool debug
 // CMake arguments that build export/CMakeLists.txt for a device or the Simulator.
 [[nodiscard]] std::vector<std::string> ios_configure_args(const IosOptions& ios, bool debug,
                                                           const std::string& bundle_id);
+
+// Compiles the app icon's asset catalog (slash/exporter/icons.hpp) into the app with Xcode's
+// actool, for a destination's iPhones and iPads, and adds the keys it names to Info.plist.
+bool compile_ios_icons(const std::filesystem::path& catalog, const std::filesystem::path& app,
+                       std::string_view destination, const std::filesystem::path& work,
+                       const platform::ProcessOptions& process, Failure& failure);
 
 // Signs the app in place, embedding the provisioning profile if there is one.
 bool sign_ios_app(const IosSigning& signing, const std::filesystem::path& app,

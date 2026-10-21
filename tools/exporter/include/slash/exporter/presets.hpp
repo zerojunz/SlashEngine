@@ -87,6 +87,10 @@ struct AndroidOptions {
     std::vector<std::string> abis = kDefaultAndroidAbis;
     std::string package;           // "" means the project's id
     std::int64_t version_code = 0; // 0 means derived from the project's version
+    // The adaptive icon's layers (slash/exporter/icons.hpp): a project-relative image for the
+    // foreground, "" for the icon; a "#rrggbb" color or an image for the background.
+    std::string icon_foreground;
+    std::string icon_background = "#ffffff";
 };
 
 struct IosOptions {
@@ -96,7 +100,8 @@ struct IosOptions {
     std::string bundle_id; // "" means the project's id
     // "" means the team's "Apple Development" or "Apple Distribution" identity; "-" signs ad hoc.
     std::string codesign_identity;
-    std::int64_t build_number = 0; // CFBundleVersion; 0 means the project's version
+    std::int64_t build_number = 0;           // CFBundleVersion; 0 means the project's version
+    std::string icon_background = "#ffffff"; // behind the icon's transparent pixels
 };
 
 struct Preset {
@@ -104,6 +109,7 @@ struct Preset {
     std::string platform;
     std::string output; // project-relative; "" means build/export/<name>
     bool debug = false;
+    std::string icon; // project-relative; "" means project.json's
     // The SDK packages it links, by name; nullopt means every one with a section for the
     // platform (slash/exporter/sdk.hpp).
     std::optional<std::vector<std::string>> sdks;
