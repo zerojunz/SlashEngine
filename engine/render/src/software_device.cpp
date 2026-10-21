@@ -8,6 +8,7 @@
 #include "checks.hpp"
 #include "cpu_particles.hpp"
 #include "mesh_shading.hpp"
+#include "post_shading.hpp"
 
 #include "slash/render/device.hpp"
 #include "slash/render/image.hpp"
@@ -331,6 +332,15 @@ public:
             if (auto checked = detail::check_scene(*frame.scene); !checked) {
                 return checked.error();
             }
+            if (auto checked = detail::check_post(
+                    frame.scene->post, [&](TextureId id) { return textures_.contains(id); },
+                    [&](TextureId id) {
+                        const TextureDesc& desc = textures_.at(id).desc;
+                        return std::pair{desc.width, desc.height};
+                    });
+                !checked) {
+                return checked.error();
+            }
         }
         const auto it = textures_.find(frame.target);
         if (it == textures_.end()) {
@@ -431,7 +441,15 @@ public:
             std::copy(clear.begin(), clear.end(),
                       target.pixels.begin() + static_cast<std::ptrdiff_t>(i));
         }
-        if (frame_.scene && !mesh_draws_.empty()) {
+        if (frame_.scene && detail::post_processes(frame_.scene->post)) {
+            // The meshes draw untonemapped over a copy of the cleared target, and the post
+            // passes draw that over the target.
+            Image world = target;
+            if (!mesh_draws_.empty()) {
+                draw_meshes(*frame_.scene, world);
+            }
+            post_process(frame_.scene->post, world, target);
+        } else if (frame_.scene && !mesh_draws_.empty()) {
             draw_meshes(*frame_.scene, target);
         }
         const Mat4 view = frame_.view.value_or(
@@ -1074,6 +1092,38 @@ private:
     // The frame's meshes: first into the shadow maps of the lights that cast shadows, then onto
     // the target in the order mesh_draw_order gives, over a depth buffer cleared to 0, the far
     // plane.
+    // post.hlsl's passes on the CPU: glow's filter, downsampling and upsampling through its four
+    // textures, then the post pass from world over target.
+    void post_process(const PostProcess& post, const Image& world, Image& target) {
+        const Image none;
+        const Image* lut = &none;
+        if (post.adjustments && post.color_correction != TextureId::None) {
+            lut = &find(post.color_correction)->image;
+        }
+        std::array<Image, detail::kGlowLevels> levels;
+        if (post.glow) {
+            const auto sizes = detail::glow_sizes(target.width, target.height);
+            for (std::size_t i = 0; i < levels.size(); ++i) {
+                levels.at(i).width = sizes.at(i).width;
+                levels.at(i).height = sizes.at(i).height;
+            }
+            const auto pass = [&](detail::PostPass kind, const Image& from, Image& to) {
+                detail::run_post_pass(detail::post_uniforms(post, kind, to.width, to.height), from,
+                                      none, none, to);
+            };
+            pass(detail::PostPass::GlowFilter, world, levels[0]);
+            for (std::size_t i = 1; i < levels.size(); ++i) {
+                pass(detail::PostPass::GlowDownsample, levels.at(i - 1), levels.at(i));
+            }
+            for (std::size_t i = levels.size() - 1; i-- > 0;) {
+                pass(detail::PostPass::GlowUpsample, levels.at(i + 1), levels.at(i));
+            }
+        }
+        detail::run_post_pass(detail::post_uniforms(post, detail::PostPass::Post, target.width,
+                                                    target.height, lut->width, lut->height),
+                              world, post.glow ? levels[0] : none, *lut, target);
+    }
+
     void draw_meshes(const Scene3D& scene, Image& target) {
         const detail::ShadowPlan plan = detail::plan_shadows(scene, kMaxTextureSize);
         std::vector<float> directional(std::size_t{plan.directional_size} * plan.directional_size,

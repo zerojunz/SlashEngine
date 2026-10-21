@@ -4,6 +4,7 @@
 
 #include "checks.hpp"
 #include "mesh_shading.hpp"
+#include "post_shading.hpp"
 
 #include "slash/core/math.hpp"
 
@@ -90,24 +91,6 @@ Float3 transform3(const Mat4& m, const Float3& v) {
 }
 
 // shaders/mesh.hlsl's helpers.
-Float3 srgb_to_linear(const Float3& c) {
-    Float3 out{};
-    for (std::size_t i = 0; i < 3; ++i) {
-        const float v = c.at(i);
-        out.at(i) = v * ((v * ((v * 0.305306011F) + 0.682171111F)) + 0.012522878F);
-    }
-    return out;
-}
-
-Float3 linear_to_srgb(const Float3& c) {
-    Float3 out{};
-    for (std::size_t i = 0; i < 3; ++i) {
-        out.at(i) =
-            std::max((1.055F * power(std::max(c.at(i), 0.0F), 0.416666667F)) - 0.055F, 0.0F);
-    }
-    return out;
-}
-
 float schlick_fresnel(float u) {
     const float m = 1.0F - u;
     const float m2 = m * m;
@@ -452,6 +435,8 @@ MeshSceneUniforms mesh_scene_uniforms(const Scene3D& scene) {
     out.ambient = {srgb_to_linear_exact(scene.ambient[0]) * energy,
                    srgb_to_linear_exact(scene.ambient[1]) * energy,
                    srgb_to_linear_exact(scene.ambient[2]) * energy, 0.0F};
+    out.tonemap = {scene.post.exposure, scene.post.white, static_cast<float>(scene.post.tonemapper),
+                   post_processes(scene.post) ? 0.0F : 1.0F};
     for (std::size_t i = 0; i < count; ++i) {
         const Light3D& light = scene.lights[i];
         MeshLightUniforms& packed = out.lights.at(i);
@@ -630,10 +615,20 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
         }
         alpha = 1.0F;
     }
+    // Times the exposure, tonemapped unless the post pass does it, and as sRGB.
+    const auto finish = [&](const Float3& lit) {
+        Float3 exposed = scale(lit, scene.tonemap[0]);
+        if (scene.tonemap[3] != 0.0F) {
+            exposed =
+                tonemap(exposed, scene.tonemap[1],
+                        static_cast<Tonemapper>(static_cast<std::uint32_t>(scene.tonemap[2])));
+        }
+        const Float3 out = linear_to_srgb(exposed);
+        return Float4{out[0], out[1], out[2], alpha};
+    };
     const Float3 base = srgb_to_linear({color[0], color[1], color[2]});
     if ((flags & kMeshUnshaded) != 0) {
-        const Float3 out = linear_to_srgb(base);
-        return Float4{out[0], out[1], out[2], alpha};
+        return finish(base);
     }
 
     const auto dot4 = [](const Float4& a, const Float4& b) {
@@ -720,8 +715,7 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
         scale(mul({scene.ambient[0], scene.ambient[1], scene.ambient[2]}, base), 1.0F - metallic);
     const Float3 diffuse_light = mul(light_sum.diffuse, scale(base, 1.0F - metallic));
     const Float3 lit = add(add(add(diffuse_light, light_sum.specular), emitted), ambient_light);
-    const Float3 out = linear_to_srgb(lit);
-    return Float4{out[0], out[1], out[2], alpha};
+    return finish(lit);
 }
 
 } // namespace slash::render::detail

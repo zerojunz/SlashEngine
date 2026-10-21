@@ -1,7 +1,8 @@
 // The 3D shader: meshes lit by a frame's lights as Godot's Compatibility renderer lights them
 // (drivers/gles3/shaders/scene.glsl), with a StandardMaterial3D's albedo, metallic, roughness,
 // specular, emission and normal map, and shadowed by the lights' shadow maps (shadow.hlsl draws
-// them). Colors are worked in linear and written as sRGB, with Godot's approximations of the two.
+// them). Colors are worked in linear, tonemapped (tonemap.hlsl) and written as sRGB, with Godot's
+// approximations of the two.
 // Keep it in step with shade_mesh in src/mesh.cpp, its CPU twin. Registers follow SDL's GPU
 // conventions: vertex uniforms in space1, fragment textures and samplers in space2, fragment
 // uniforms in space3.
@@ -99,6 +100,8 @@ static const float kPi = 3.14159265358979323;
 cbuffer Scene : register(b1, space3) {
     float4 camera;  // the camera's place, then how many lights
     float4 ambient; // linear
+    // Exposure, white, the tonemapper, and 1 to tonemap here (0 when post.hlsl does it after).
+    float4 tonemap;
     Light lights[64];
 };
 
@@ -127,13 +130,16 @@ cbuffer Shadows : register(b2, space3) {
     PositionalShadow positional_shadows[16];
 };
 
-// Godot's approximations (drivers/gles3/shaders/tonemap_inc.glsl).
-float3 srgb_to_linear(float3 color) {
-    return color * (color * (color * 0.305306011 + 0.682171111) + 0.012522878);
-}
+#include "tonemap.hlsl"
 
-float3 linear_to_srgb(float3 color) {
-    return max(1.055 * pow(max(color, 0.0), 0.416666667) - 0.055, 0.0);
+// A lit color, linear, as the frame's target takes it: times the exposure, tonemapped unless the
+// post pass does it, and as sRGB, as Godot's scene.glsl ends.
+float4 finish(float3 color, float alpha) {
+    color *= tonemap.x;
+    if (tonemap.w != 0.0) {
+        color = apply_tonemapping(color, tonemap.y, (uint)tonemap.z);
+    }
+    return float4(linear_to_srgb(color), alpha);
 }
 
 float schlick_fresnel(float u) {
@@ -361,7 +367,7 @@ float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
     }
     float3 base = srgb_to_linear(color.rgb);
     if ((flags & kUnshaded) != 0u) {
-        return float4(linear_to_srgb(base), alpha);
+        return finish(base, alpha);
     }
 
     float metallic = surface.x * dot(metallic_texel, metallic_channel);
@@ -426,5 +432,5 @@ float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
     float3 ambient_light = ambient.rgb * base * (1.0 - metallic);
     diffuse_light *= base * (1.0 - metallic);
     float3 lit = diffuse_light + specular_light + emitted + ambient_light;
-    return float4(linear_to_srgb(lit), alpha);
+    return finish(lit, alpha);
 }
