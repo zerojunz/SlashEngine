@@ -1170,6 +1170,15 @@ void register_particle_components(ComponentRegistry& registry) {
                   {.doc = "\"index\" draws in emission slots' order; \"lifetime\" draws the "
                           "youngest on top, \"reverse_lifetime\" the oldest.",
                    .choices = {"index", "lifetime", "reverse_lifetime"}})
+        .describe("trail_enabled",
+                  {.doc = "Draw each particle as a ribbon along the path it took, the texture "
+                          "running down it. Steps at 60 a second when fixed_fps is 0."})
+        .describe("trail_lifetime",
+                  {.doc = "Seconds of each particle's path its trail shows.", .min = 0.01})
+        .describe("trail_sections",
+                  {.doc = "Points along the path the ribbon bends at.", .min = 2, .max = 128})
+        .describe("trail_section_subdivisions",
+                  {.doc = "Segments each section's curve is drawn with.", .min = 1, .max = 1024})
         .describe("texture_filter",
                   {.doc = "As Sprite2D's.", .choices = {"inherit", "linear", "nearest"}})
         .describe("hframes", {.doc = "Columns of frames in the texture.", .min = 1, .max = 16384})

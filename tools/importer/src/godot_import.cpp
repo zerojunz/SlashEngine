@@ -4187,13 +4187,6 @@ private:
                 }
                 return true;
             }
-            if (name.starts_with("trail_")) {
-                if (name == "trail_enabled" && value.boolean) {
-                    problems_.add("GPUParticles2D." + name, node.declared,
-                                  "trails are on the roadmap");
-                }
-                return true;
-            }
         }
         if (name == "label_settings" && components.contains("Label")) {
             convert_label_settings(value, file, components["Control"], node);

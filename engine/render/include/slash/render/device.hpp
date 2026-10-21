@@ -232,12 +232,15 @@ struct Image {
 };
 
 // One system of a chain a device runs (RenderDevice::process_particle_chain): its steps, with its
-// process material, naming the shapes they collide with by their place in shapes.
+// process material, naming the shapes they collide with by their place in shapes. For a system
+// with trails, the steps start with history steps it ran already, which its copies run behind
+// (ParticleChainLink::history).
 struct ParticleRun {
     ParticlesId particles = ParticlesId::None;
     const ParticleProcess* process = nullptr;
     std::span<const ParticleStep> steps;
     std::span<const ParticleShape> shapes;
+    std::size_t history = 0;
 };
 
 struct Stats {
@@ -278,16 +281,19 @@ public:
     // A shader in use by the frame being built goes once the frame is sent.
     virtual void destroy_shader(ShaderId shader) = 0;
 
-    // A particle system of amount particles, from 1 to kMaxParticles, none of them live.
-    [[nodiscard]] virtual Result<ParticlesId> create_particles(std::uint32_t amount) = 0;
+    // A particle system of amount particles, from 1 to kMaxParticles, none of them live; with
+    // trails of trail particles each (particles.hpp), from 2 to kMaxParticleTrail, or 1 for
+    // none, and amount times trail at most kMaxParticles.
+    [[nodiscard]] virtual Result<ParticlesId> create_particles(std::uint32_t amount,
+                                                               std::uint32_t trail = 1) = 0;
     // A system in use by the frame being built goes once the frame is sent.
     virtual void destroy_particles(ParticlesId particles) = 0;
     // Runs a chain of systems, each a sub-emitter of the one before, as process_particle_chain
     // does: each its steps with its process material, in order after the steps before, the
     // links' steps in lockstep. The systems are different ones, at most kMaxParticleChain, with
-    // as many steps each. The GPU device runs them on the GPU: during a frame, when the frame is
-    // sent, ahead of its draws; outside one, at once. The null device keeps no particles and
-    // runs nothing.
+    // as many steps each after their history. The GPU device runs them on the GPU: during a frame,
+    // when the frame is sent, ahead of its draws; outside one, at once. The null device keeps no
+    // particles and runs nothing.
     [[nodiscard]] virtual Result<void>
     process_particle_chain(std::span<const ParticleRun> chain) = 0;
     // Runs steps on one system; each step names the shapes its particles collide with by their
@@ -301,12 +307,13 @@ public:
         return process_particle_chain({&run, 1});
     }
     // Draws a system's particles as they are after the steps run so far, as quads (ParticleDraw)
-    // with a texture and a material, as draw does: two triangles a particle.
+    // with a texture and a material, as draw does: two triangles a particle, or a ribbon each
+    // for a system with trails.
     [[nodiscard]] virtual Result<void> draw_particles(ParticlesId particles, TextureId texture,
                                                       const ParticleDraw& look,
                                                       const Material& material) = 0;
-    // Waits for the GPU, then returns a system's particles; not during a frame. The null
-    // device's are none live.
+    // Waits for the GPU, then returns a system's particles, its trails' copies after them; not
+    // during a frame. The null device's are none live.
     [[nodiscard]] virtual Result<std::vector<Particle>> read_particles(ParticlesId particles) = 0;
 
     // Starts a frame and clears its target. Returns false when there is nothing to draw to,

@@ -1863,6 +1863,9 @@ sub_emitter = NodePath("../Smoke")
 process_material = ExtResource("2_smoke")
 seed = 12
 trail_enabled = true
+trail_lifetime = 0.5
+trail_sections = 12
+trail_section_subdivisions = 2
 )");
     const importer::ImportPlan plan = plan_inside(project);
     const auto files = files_of(plan);
@@ -1914,9 +1917,10 @@ trail_enabled = true
         "seed": -294967296, "draw_order": "index", "collision_base_size": 3.0, "hframes": 4,
         "vframes": 2, "anim_loop": true, "sub_emitter": "smoke"})"));
     CHECK(*entity(files, level, "smoke").find("GPUParticles2D") ==
-          parse(R"({"process_material": "godot/smoke.process_material.json"})"));
-    CHECK(unsupported(plan.report, "GPUParticles2D.trail_enabled").find("why")->as_string() ==
-          "trails are on the roadmap");
+          parse(R"({"process_material": "godot/smoke.process_material.json",
+                    "trail_enabled": true, "trail_lifetime": 0.5, "trail_sections": 12,
+                    "trail_section_subdivisions": 2})"));
+    CHECK(unsupported(plan.report, "GPUParticles2D.trail_enabled").is_null());
     CHECK(unsupported(plan.report, "resource ParticleProcessMaterial").is_null());
     fs::remove_all(project);
 }

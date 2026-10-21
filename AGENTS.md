@@ -771,9 +771,14 @@ to `render::kMaxParticleChain`), which step together through
 `RenderDevice::process_particle_chain`: each link's step writes the particles it starts to an
 emission buffer, `particles_emit.hlsl` numbers what the next link takes (its twin is
 `take_emissions`), and that link's step starts them. `canvas::check_sub_emitters` reports the
-links left out, for `scene validate` and exports. `particles.eval` runs the steps kept on the
-CPU (`canvas::gpu_particles`); `examples/gpu-particles` has a fire, sparks, snow, smoke, rain
-and fireworks.
+links left out, for `scene validate` and exports. Trails are Godot's: a system made with a
+trail (`create_particles(amount, trail)`) keeps `trail - 1` copies of each particle after them,
+which wait when it starts and then run the steps `trail_steps * j / trail` behind it, so a run
+starts with `history` steps it ran before (`ParticleRun::history`) for them to read;
+`particles_draw.hlsl` and `particle_vertices` draw each as Godot's ribbon. The steps kept and the
+emitter's idle time cover the copies running on after their particles. `particles.eval` runs
+the steps kept on the CPU (`canvas::gpu_particles`); `examples/gpu-particles` has a fire,
+sparks, snow, smoke, rain, fireworks and comets with trails.
 
 ## Job system
 

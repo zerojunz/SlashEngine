@@ -1,6 +1,7 @@
 wrote dot.png: 8x8
+wrote streak.png: 8x32
 scene.open {"path":"main.scene.json"}
-{"entities":8,"path":"main.scene.json"}
+{"entities":9,"path":"main.scene.json"}
 particles.eval {"id":"fire","time":0.5}
 {"alive":24,"bounds":[74.5837,113.1188,14.8968,37.7536]}
 events.subscribe {"kinds":["finished"]}
@@ -33,6 +34,8 @@ particles.eval {"id":"rockets"}
 {"alive":4,"bounds":[23.543,112.2446,6.457,62.7554]}
 particles.eval {"id":"burst"}
 {"alive":48,"bounds":[0.9724,83.7272,35.6393,41.8458]}
+particles.eval {"id":"comets","list":true,"max_results":1}
+{"alive":4,"bounds":[58.7956,26.9748,146.1592,27.8562],"particles":[{"age":1.5,"color":[0.699,0.899,1,1],"position":[204.9548,54.831],"rotation":0,"scale":1,"trail":{"copies":12,"end":[159.7436,43.139],"length":46.7045}}],"trail_bounds":[24.3106,24.2416,180.6442,30.5893],"trails":4}
 component.set {"components":{"GPUParticles2D":{"process_material":"broken.process_material.json"}},"id":"fire"}
 {"changed":{"GPUParticles2D":{"process_material":"broken.process_material.json"}},"id":"fire"}
 particles.eval {"id":"fire"}
@@ -40,5 +43,5 @@ particles.eval {"id":"fire"}
 undo {}
 {"can_redo":1,"can_undo":4,"undone":"component.set"}
 frame.capture {"points":[[80,140],[130,140]]}
-{"colors":[[1,0.843,0.361,1],[0.051,0.051,0.122,1]],"drawn":{"particles":250},"height":180,"width":320}
-particles drawn: 250, GPU draws: 7
+{"colors":[[1,0.843,0.361,1],[0.051,0.051,0.122,1]],"drawn":{"particles":254},"height":180,"width":320}
+particles drawn: 254, GPU draws: 8

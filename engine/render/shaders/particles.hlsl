@@ -9,11 +9,12 @@ struct Particle {
     float4 color;
     float4 custom;
     float4 userdata;
-    uint4 flags; // .x; the rest is padding
+    uint4 flags; // .x; the rest is spare words
 };
 
 static const uint kParticleActive = 1u;
 static const uint kParticleStarted = 2u;
+static const uint kParticleTrailed = 4u;
 static const uint kParticleCycleShift = 16u;
 
 // SDL takes a compute shader's uniforms in space 2, what it reads in space 0 and writes in space

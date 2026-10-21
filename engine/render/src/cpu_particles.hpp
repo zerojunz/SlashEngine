@@ -18,12 +18,14 @@ namespace slash::render::detail {
 
 class CpuParticles {
 public:
-    [[nodiscard]] Result<ParticlesId> create(std::uint32_t amount) {
-        if (auto checked = check_particle_amount(amount); !checked) {
+    [[nodiscard]] Result<ParticlesId> create(std::uint32_t amount, std::uint32_t trail) {
+        if (auto checked = check_particle_amount(amount, trail); !checked) {
             return checked.error();
         }
         const auto id = static_cast<ParticlesId>(next_++);
-        systems_[id].resize(amount);
+        System& system = systems_[id];
+        system.particles.resize(std::size_t{amount} * trail);
+        system.trail = trail;
         return id;
     }
 
@@ -38,10 +40,13 @@ public:
         std::vector<ParticleChainLink> links;
         links.reserve(chain.size());
         for (const ParticleRun& run : chain) {
-            links.push_back({.particles = systems_.at(run.particles),
+            System& system = systems_.at(run.particles);
+            links.push_back({.particles = system.particles,
                              .process = run.process,
                              .steps = run.steps,
-                             .shapes = run.shapes});
+                             .shapes = run.shapes,
+                             .trail = system.trail,
+                             .history = run.history});
         }
         process_particle_chain(links);
         return {};
@@ -55,13 +60,13 @@ public:
         if (it == systems_.end()) {
             return unknown_particles(particles);
         }
-        if (auto checked =
-                check_particle_draw(look, static_cast<std::uint32_t>(it->second.size()), in_frame);
-            !checked) {
+        const System& system = it->second;
+        const auto amount = static_cast<std::uint32_t>(system.particles.size() / system.trail);
+        if (auto checked = check_particle_draw(look, amount, system.trail, in_frame); !checked) {
             return checked;
         }
         out.clear();
-        particle_vertices(it->second, look, out);
+        particle_vertices(system.particles, look, out, system.trail);
         return {};
     }
 
@@ -70,11 +75,15 @@ public:
         if (it == systems_.end()) {
             return unknown_particles(particles);
         }
-        return it->second;
+        return it->second.particles;
     }
 
 private:
-    std::unordered_map<ParticlesId, std::vector<Particle>> systems_;
+    struct System {
+        std::vector<Particle> particles; // the trails' copies after them
+        std::uint32_t trail = 1;
+    };
+    std::unordered_map<ParticlesId, System> systems_;
     std::uint32_t next_ = 1;
 };
 

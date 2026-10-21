@@ -816,6 +816,15 @@ alive. Each particle has its position in the world (particles in `local_coords` 
 the entity's `Transform2D`), its rotation in radians clockwise, its scale, its color as
 `[r, g, b, a]` and its age in seconds, in draw order. Numbers are rounded to four decimals.
 
+A `GPUParticles2D` with [trails](scene-format.md#gpu-particle-trails) also returns `trails`, how
+many draw (a particle's copies run on after it dies), and `trail_bounds`, the box round every
+live particle and copy they draw through. With `list`, each particle has its `trail`: how many
+of its copies are live, the `length` in pixels from it through them and where it `end`s.
+
+```json
+{"alive":4,"bounds":[58.7956,26.9748,146.1592,27.8562],"particles":[{"age":1.5,"color":[0.699,0.899,1,1],"position":[204.9548,54.831],"rotation":0,"scale":1,"trail":{"copies":12,"end":[159.7436,43.139],"length":46.7045}}],"trail_bounds":[24.3106,24.2416,180.6442,30.5893],"trails":4}
+```
+
 ## Lights
 
 ### light.sample

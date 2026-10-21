@@ -306,6 +306,7 @@ private:
         render::ParticlesId id = render::ParticlesId::None;
         std::uint64_t serial = 0;
         std::uint32_t amount = 0;
+        std::uint32_t trail = 1;
         std::uint64_t next = 0; // the next step to run
         std::vector<render::Particle> cpu;
         std::uint64_t cpu_serial = 0;
@@ -313,13 +314,15 @@ private:
         bool seen = false;
     };
     // Steps to run on a GPUParticles2D's system before it draws: the first one, made to clear
-    // the system for a system made anew, then the rest. A chain of sub-emitters' root's job runs
-    // with the next links - 1 jobs, its sub-emitters'.
+    // the system for a system made anew, then the rest, which start with history steps it ran
+    // already, for trails' copies to run behind. A chain of sub-emitters' root's job runs with
+    // the next links - 1 jobs, its sub-emitters'.
     struct ParticleJob {
         render::ParticlesId particles = render::ParticlesId::None;
         const render::ParticleProcess* process = nullptr;
         std::optional<render::ParticleStep> first;
         std::span<const render::ParticleStep> rest;
+        std::size_t history = 0;
         std::span<const render::ParticleShape> shapes; // that the steps name
         std::size_t links = 1;
     };

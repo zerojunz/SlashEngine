@@ -6,6 +6,10 @@
 // In a chain of sub-emitters it runs one step of one system: what the particles start in the
 // next system goes to target, and a sub-emitter takes what the system before started from
 // source, after particles_emit.hlsl has numbered it.
+//
+// A system with trails keeps its trails' copies after its particles; the thread that runs a
+// particle runs its copies after it, each step, each running the step its place in the trail
+// puts it behind. The steps start with history steps the particles ran already.
 
 #include "particles.hlsl"
 
@@ -27,8 +31,10 @@ cbuffer Params : UNIFORMS {
     uint material_offset; // in words
     uint steps_offset;
     uint step_count;
-    uint reset; // clears every particle first
-    uint chain; // kChainTakes and kChainEmits
+    uint reset;   // clears every particle first
+    uint chain;   // kChainTakes and kChainEmits
+    uint trail;   // particles a trail
+    uint history; // steps before the first to run
 };
 
 StructuredBuffer<uint4> data : READ_ONLY_DATA;
@@ -115,6 +121,7 @@ struct Step {
     float4 from_shapes;
     uint cycle;
     uint seed;
+    uint trail_steps;
     bool emitting;
     bool fractional_delta;
     bool clear;
@@ -1006,10 +1013,55 @@ Step read_step(uint at) {
     step.shapes = shapes.x;
     step.shape_count = shapes.y;
     step.collision_size = asfloat(shapes.z);
+    step.trail_steps = shapes.w;
     step.to_shapes_a = asfloat(data[at + 6u]);
     step.to_shapes_b = asfloat(data[at + 7u]).xy;
     step.from_shapes = asfloat(data[at + 8u]);
     return step;
+}
+
+// step_copy in the CPU twin: copy j of a trail after its particle (head) ran the step at.
+void step_copy(inout Particle copy, Particle head, uint j, uint index, uint at, Step step) {
+    if (step.clear) {
+        copy = empty_particle();
+    }
+    uint cycle_bits = head.flags.x & (0xFFFFFFFFu << kParticleCycleShift);
+    uint lag = (j * step.trail_steps) / trail;
+    bool copied = false;
+    if ((head.flags.x & kParticleStarted) != 0u) {
+        copy = head;
+        copy.flags = uint4(kParticleTrailed | cycle_bits, lag, 0u, 0u);
+        copied = true;
+    }
+    if ((copy.flags.x & kParticleTrailed) != 0u) {
+        if (!copied && copy.flags.y > 0u) {
+            copy.flags.y -= 1u;
+        }
+        if (copy.flags.y == 0u) {
+            copy.flags.x = kParticleActive | (copy.flags.x & (0xFFFFFFFFu << kParticleCycleShift));
+        }
+        return;
+    }
+    if ((copy.flags.x & kParticleActive) == 0u || lag > at) {
+        return;
+    }
+    Step behind = read_step(steps_offset + ((at - lag) * kStepWords));
+    bool active = true;
+    uint number = ((copy.flags.x >> kParticleCycleShift) * amount) + index;
+    Contact contact;
+    contact.collided = false;
+    contact.normal = float2(0.0, 0.0);
+    contact.depth = 0.0;
+    if (collision_mode() != 0u && behind.shape_count > 0u) {
+        contact = shape_contact(copy.origin_velocity.xy, collision_size(copy, behind, false),
+                                behind);
+    }
+    uint emitted = 0u;
+    process(copy, behind, number, behind.delta, contact, emitted, active);
+    copy.flags.x &= ~kParticleActive;
+    if (active) {
+        copy.flags.x |= kParticleActive;
+    }
 }
 
 [numthreads(64, 1, 1)]
@@ -1019,11 +1071,22 @@ void cs_main(uint3 id : SV_DispatchThreadID) {
         return;
     }
     Particle particle = particles[index];
+    uint copies = amount + (index * (trail - 1u));
     if (reset != 0u) {
         particle = empty_particle();
+        for (uint c = 1u; c < trail; ++c) {
+            particles[copies + c - 1u] = empty_particle();
+        }
     }
     for (uint i = 0u; i < step_count; ++i) {
-        step_particle(particle, index, amount, read_step(steps_offset + (i * kStepWords)));
+        uint at = history + i;
+        Step step = read_step(steps_offset + (at * kStepWords));
+        step_particle(particle, index, amount, step);
+        for (uint j = 1u; j < trail; ++j) {
+            Particle copy = particles[copies + j - 1u];
+            step_copy(copy, particle, j, index, at, step);
+            particles[copies + j - 1u] = copy;
+        }
     }
     particles[index] = particle;
 }

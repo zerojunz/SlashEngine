@@ -1,12 +1,12 @@
 // GPU particles, as Godot's GPUParticles2D: main.scene.json has a fire, a one-shot burst of sparks
 // that bursts the same way each time, snow that was already falling when the scene opened, smoke
-// that curls in turbulence, rain that lands on a ledge and fireworks, rockets that burst into
-// sparks in a sub-emitter.
+// that curls in turbulence, rain that lands on a ledge, fireworks, rockets that burst into
+// sparks in a sub-emitter, and comets that draw trails.
 // How each one's particles start and move is a .process_material.json file, Godot's
 // ParticleProcessMaterial in 2D.
 //
-// This program makes the dot texture, checks the particles with particles.eval as an agent
-// would, with no screenshot, hears the sparks finish and sets them off again, then draws the
+// This program makes the dot and streak textures, checks the particles with particles.eval as an
+// agent would, with no screenshot, hears the sparks finish and sets them off again, then draws the
 // scene, where the device runs the particles.
 
 #include "slash/canvas/canvas.hpp"
@@ -61,6 +61,26 @@ void write_dot() {
     std::puts("wrote dot.png: 8x8");
 }
 
+// A streak for the comets' trails, 8 pixels across and 32 down, that a trail ribbon stretches
+// from its particle down its length: bright in the middle of its width, fading toward its end.
+void write_streak() {
+    constexpr std::uint32_t kWidth = 8;
+    constexpr std::uint32_t kHeight = 32;
+    render::Image image{.width = kWidth, .height = kHeight, .pixels = {}};
+    for (std::uint32_t y = 0; y < kHeight; ++y) {
+        for (std::uint32_t x = 0; x < kWidth; ++x) {
+            const int dx = (static_cast<int>(x) * 2) - 7; // -7 to 7
+            const int across = 255 - (dx * dx * 5);
+            const int alpha = std::clamp(
+                across * static_cast<int>(kHeight - y) / static_cast<int>(kHeight), 0, 255);
+            image.pixels.insert(image.pixels.end(),
+                                {255, 255, 255, static_cast<std::uint8_t>(alpha)});
+        }
+    }
+    check(slash::platform::write_file("streak.png", render::encode_png(image).value()));
+    std::puts("wrote streak.png: 8x32");
+}
+
 // Prints the call as an agent would make it, then the reply.
 json::Value call(command::Session& session, std::string_view name, std::string_view params) {
     const json::Value value = json::parse(params).value();
@@ -84,6 +104,7 @@ int main() {
     command::Session session(components, commands, options);
 
     write_dot();
+    write_streak();
     call(session, "scene.open", R"({"path": "main.scene.json"})");
 
     // What will the fire look like half a second in? A time runs its settings from the start, on
@@ -127,6 +148,13 @@ int main() {
     // burst so far, 16 sparks each.
     call(session, "particles.eval", R"({"id": "rockets"})");
     call(session, "particles.eval", R"({"id": "burst"})");
+
+    // Comets: with trail_enabled each draws as Godot's trail ribbon, the streak stretched down
+    // the path it took over the last trail_lifetime (0.4 s), through trail_sections (12) copies
+    // of it that follow that path behind it. Their process material's particle_flag_align_y
+    // turns each along its velocity, so the ribbon is as wide as the streak across the path.
+    // particles.eval gives the trails' bounds and, for each comet, how far its trail reaches.
+    call(session, "particles.eval", R"({"id": "comets", "list": true, "max_results": 1})");
 
     // A process material with a mistake is refused with the JSON Pointer of the bad value.
     // "slash-cli scene validate" finds the same mistake in the file before anything runs it, and
