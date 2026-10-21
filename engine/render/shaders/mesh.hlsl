@@ -1,9 +1,10 @@
 // The 3D shader: meshes lit by a frame's lights as Godot's Compatibility renderer lights them
 // (drivers/gles3/shaders/scene.glsl), with a StandardMaterial3D's albedo, metallic, roughness,
-// specular, emission and normal map. Colors are worked in linear and written as sRGB, with
-// Godot's approximations of the two. Keep it in step with shade_mesh in src/mesh.cpp, its CPU
-// twin. Registers follow SDL's GPU conventions: vertex uniforms in space1, fragment textures and
-// samplers in space2, fragment uniforms in space3.
+// specular, emission and normal map, and shadowed by the lights' shadow maps (shadow.hlsl draws
+// them). Colors are worked in linear and written as sRGB, with Godot's approximations of the two.
+// Keep it in step with shade_mesh in src/mesh.cpp, its CPU twin. Registers follow SDL's GPU
+// conventions: vertex uniforms in space1, fragment textures and samplers in space2, fragment
+// uniforms in space3.
 
 cbuffer Camera : register(b0, space1) {
     float4x4 view_projection; // world to clip space
@@ -58,6 +59,11 @@ SamplerState metallic_sampler : register(s1, space2);
 SamplerState roughness_sampler : register(s2, space2);
 SamplerState emission_sampler : register(s3, space2);
 SamplerState normal_sampler : register(s4, space2);
+// The shadow atlases, depths compared with GREATER_OR_EQUAL and filtered linearly.
+Texture2D directional_atlas : register(t5, space2);
+Texture2D positional_atlas : register(t6, space2);
+SamplerComparisonState directional_sampler : register(s5, space2);
+SamplerComparisonState positional_sampler : register(s6, space2);
 
 static const uint kUnshaded = 1u;
 static const uint kVertexColorAlbedo = 2u;
@@ -82,6 +88,7 @@ struct Light {
     float4 direction; // toward a directional light, the way a spot light shines; then the type
     float4 color;     // linear, times energy and pi; then the specular amount
     float4 params;    // attenuation, the cone's cosine, 1 / spot attenuation, the cull mask
+    float4 shadow;    // its slot in directional_shadows or positional_shadows, or -1
 };
 
 static const float kDirectional = 0.0;
@@ -93,6 +100,31 @@ cbuffer Scene : register(b1, space3) {
     float4 camera;  // the camera's place, then how many lights
     float4 ambient; // linear
     Light lights[64];
+};
+
+// Matrices take a point in the world to its shadow atlas: x and y its texture coordinate there, z
+// the depth to compare.
+struct DirectionalShadow {
+    float4x4 matrices[4]; // one a cascade
+    float4 splits;        // the view depth each cascade reaches
+    float4 normal_bias;   // each cascade's, in world units
+    float4 params;        // fade from and to (view z), opacity, how many cascades
+    float4 options;       // 1 blends cascades, an atlas texel
+};
+
+struct PositionalShadow {
+    float4x4 light;    // the world to the light's own space, for an omni light's faces
+    float4x4 faces[6]; // one a cube face for an omni light; a spot light's first
+    float4 rects[6];   // each face's tile, its texture coordinates' low and high
+    float4 params;     // normal bias over distance, opacity, an atlas texel, how many faces
+    float4 position;   // the light's place
+};
+
+cbuffer Shadows : register(b2, space3) {
+    float4 camera_z; // the camera matrix's z row
+    float4 filters;  // samples a directional and a spot shadow takes: 1, 5 or 13
+    DirectionalShadow directional_shadows[4];
+    PositionalShadow positional_shadows[16];
 };
 
 // Godot's approximations (drivers/gles3/shaders/tonemap_inc.glsl).
@@ -158,6 +190,128 @@ float omni_attenuation(float distance, float inv_range, float decay) {
     return nd * pow(max(distance, 0.0001), -decay);
 }
 
+// smoothstep, written out, since its result is undefined for edges in falling order (the fade's)
+// in some shading languages.
+float smooth(float edge0, float edge1, float x) {
+    if (edge0 == edge1) {
+        return x < edge0 ? 0.0 : 1.0;
+    }
+    float t = saturate((x - edge0) / (edge1 - edge0));
+    return t * t * (3.0 - 2.0 * t);
+}
+
+// One sample of an atlas, as Godot's textureProjLod of a sampler2DShadow.
+float compare_atlas(bool positional, float2 uv, float reference) {
+    if (positional) {
+        return positional_atlas.SampleCmpLevelZero(positional_sampler, uv, reference);
+    }
+    return directional_atlas.SampleCmpLevelZero(directional_sampler, uv, reference);
+}
+
+// Godot's sample_shadow: the shadow at a point through a matrix into an atlas, from 1, 5 or 13
+// samples a texel apart, each kept within clamp_rect's low and high corners.
+float sample_shadow(bool positional, float4x4 to_atlas, float3 p, float texel, float taps,
+                    float4 clamp_rect) {
+    float4 at = mul(to_atlas, float4(p, 1.0));
+    float2 uv = at.xy / at.w;
+    float reference = saturate(at.z / at.w);
+    float sum = compare_atlas(positional, clamp(uv, clamp_rect.xy, clamp_rect.zw), reference);
+    if (taps > 12.0) {
+        sum += compare_atlas(positional, clamp(uv + float2(2.0, 0.0) * texel, clamp_rect.xy, clamp_rect.zw), reference);
+        sum += compare_atlas(positional, clamp(uv + float2(-2.0, 0.0) * texel, clamp_rect.xy, clamp_rect.zw), reference);
+        sum += compare_atlas(positional, clamp(uv + float2(0.0, 2.0) * texel, clamp_rect.xy, clamp_rect.zw), reference);
+        sum += compare_atlas(positional, clamp(uv + float2(0.0, -2.0) * texel, clamp_rect.xy, clamp_rect.zw), reference);
+        // Godot stops early where the far samples agree.
+        if (sum <= 0.000001) {
+            return 0.0;
+        }
+        if (sum >= 4.999999) {
+            return 1.0;
+        }
+        sum += compare_atlas(positional, clamp(uv + float2(1.0, 0.0) * texel, clamp_rect.xy, clamp_rect.zw), reference);
+        sum += compare_atlas(positional, clamp(uv + float2(-1.0, 0.0) * texel, clamp_rect.xy, clamp_rect.zw), reference);
+        sum += compare_atlas(positional, clamp(uv + float2(0.0, 1.0) * texel, clamp_rect.xy, clamp_rect.zw), reference);
+        sum += compare_atlas(positional, clamp(uv + float2(0.0, -1.0) * texel, clamp_rect.xy, clamp_rect.zw), reference);
+        sum += compare_atlas(positional, clamp(uv + float2(1.0, 1.0) * texel, clamp_rect.xy, clamp_rect.zw), reference);
+        sum += compare_atlas(positional, clamp(uv + float2(-1.0, 1.0) * texel, clamp_rect.xy, clamp_rect.zw), reference);
+        sum += compare_atlas(positional, clamp(uv + float2(1.0, -1.0) * texel, clamp_rect.xy, clamp_rect.zw), reference);
+        sum += compare_atlas(positional, clamp(uv + float2(-1.0, -1.0) * texel, clamp_rect.xy, clamp_rect.zw), reference);
+        return sum * (1.0 / 13.0);
+    }
+    if (taps > 4.0) {
+        sum += compare_atlas(positional, clamp(uv + float2(1.0, 0.0) * texel, clamp_rect.xy, clamp_rect.zw), reference);
+        sum += compare_atlas(positional, clamp(uv + float2(-1.0, 0.0) * texel, clamp_rect.xy, clamp_rect.zw), reference);
+        sum += compare_atlas(positional, clamp(uv + float2(0.0, 1.0) * texel, clamp_rect.xy, clamp_rect.zw), reference);
+        sum += compare_atlas(positional, clamp(uv + float2(0.0, -1.0) * texel, clamp_rect.xy, clamp_rect.zw), reference);
+        return sum * (1.0 / 5.0);
+    }
+    return sum;
+}
+
+// Directional cascades aren't clamped, as Godot's aren't.
+static const float4 kNoClamp = float4(-2.0, -2.0, 3.0, 3.0);
+
+float directional_cascade(uint slot, uint i, float3 world, float3 base_bias) {
+    return sample_shadow(false, directional_shadows[slot].matrices[i],
+                         world + base_bias * directional_shadows[slot].normal_bias[i],
+                         directional_shadows[slot].options.y, filters.x, kNoClamp);
+}
+
+// A directional light's shadow at a pixel, its cascade picked by view depth as Godot's
+// scene.glsl picks it, offset along the vertex normal by the cascade's normal bias.
+float directional_shadow(uint slot, float3 world, float3 normal, float3 toward_light) {
+    float view_z = dot(world, camera_z.xyz) + camera_z.w;
+    float3 base_bias = normal * (1.0 - max(0.0, -dot(toward_light, normal)));
+    float4 splits = directional_shadows[slot].splits;
+    float4 params = directional_shadows[slot].params;
+    uint count = (uint)params.w;
+    float depth_z = -view_z;
+    float shadow = 1.0;
+    if (count <= 1u) {
+        shadow = directional_cascade(slot, 0u, world, base_bias);
+    } else if (depth_z < splits[count - 1u]) {
+        uint i = 0u;
+        while (i + 1u < count && !(depth_z < splits[i])) {
+            ++i;
+        }
+        shadow = directional_cascade(slot, i, world, base_bias);
+        if (directional_shadows[slot].options.x != 0.0 && i + 1u < count) {
+            float from = i == 0u ? 0.0 : splits[i - 1u];
+            shadow = lerp(shadow, directional_cascade(slot, i + 1u, world, base_bias),
+                          smooth(from, splits[i], depth_z));
+        }
+    }
+    shadow = lerp(shadow, 1.0, smooth(params.x, params.y, view_z));
+    return lerp(1.0, shadow, params.z);
+}
+
+// An omni or spot light's shadow at a pixel, through the cube face its ray from the light leaves
+// by for an omni light, offset along the vertex normal as Godot offsets it.
+float positional_shadow(uint slot, float3 world, float3 normal) {
+    float4 params = positional_shadows[slot].params;
+    float3 to_light = positional_shadows[slot].position.xyz - world;
+    float light_length = length(to_light);
+    float a_n_dot_l = abs(dot(normal, to_light / light_length));
+    float3 p = world + normal * ((1.0 - a_n_dot_l) * params.x * light_length);
+    uint face = 0u;
+    float taps = filters.y;
+    if (params.w > 1.5) {
+        float3 local = mul(positional_shadows[slot].light, float4(p, 1.0)).xyz;
+        float3 a = abs(local);
+        if (a.x >= a.y && a.x >= a.z) {
+            face = local.x > 0.0 ? 0u : 1u;
+        } else if (a.y >= a.z) {
+            face = local.y < 0.0 ? 2u : 3u;
+        } else {
+            face = local.z > 0.0 ? 4u : 5u;
+        }
+        taps = 1.0; // Godot samples an omni light's cube once
+    }
+    float shadow = sample_shadow(true, positional_shadows[slot].faces[face], p, params.z, taps,
+                                 positional_shadows[slot].rects[face]);
+    return lerp(1.0, shadow, params.y);
+}
+
 float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
     // Every texture is sampled first, while control flow is uniform, as WGSL requires.
     float4 texel = albedo_texture.Sample(albedo_sampler, input.uv);
@@ -211,6 +365,8 @@ float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
     float3 view = normalize(camera.xyz - input.world);
     float3 f0 = lerp((float3)(0.16 * specular * specular), base, metallic);
 
+    // Shadows offset the point they sample along the vertex normal, as Godot's normal_interp.
+    float3 geometry = normalize(input.normal);
     float3 diffuse_light = (float3)0.0;
     float3 specular_light = (float3)0.0;
     uint count = (uint)camera.w;
@@ -220,9 +376,13 @@ float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
             continue;
         }
         float type = light.direction.w;
+        float slot = light.shadow.x;
         if (type == kDirectional) {
-            light_compute(normal, normalize(light.direction.xyz), view, light.color.rgb, 1.0, f0,
-                          roughness, metallic, light.color.w, diffuse_light, specular_light);
+            float3 toward = normalize(light.direction.xyz);
+            float shadow = slot >= 0.0 ? directional_shadow((uint)slot, input.world, geometry, toward)
+                                       : 1.0;
+            light_compute(normal, toward, view, light.color.rgb, shadow, f0, roughness, metallic,
+                          light.color.w, diffuse_light, specular_light);
             continue;
         }
         float3 to_light = light.position.xyz - input.world;
@@ -233,6 +393,9 @@ float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
             float scos = max(dot(-normalize(to_light), light.direction.xyz), cone);
             float rim = max(0.0001, (1.0 - scos) / (1.0 - cone));
             attenuation *= 1.0 - pow(rim, light.params.z);
+        }
+        if (slot >= 0.0) {
+            attenuation *= positional_shadow((uint)slot, input.world, geometry);
         }
         light_compute(normal, normalize(to_light), view, light.color.rgb, attenuation, f0,
                       roughness, metallic, light.color.w, diffuse_light, specular_light);

@@ -7,6 +7,7 @@
 #include "slash/render/device.hpp"
 #include "slash/render/image.hpp"
 #include "slash/render/mesh.hpp"
+#include "slash/runtime/project.hpp"
 #include "slash/scene3d/primitive.hpp"
 #include "slash/scene3d/scene3d.hpp"
 #include "slash/ui/ui.hpp"
@@ -339,16 +340,77 @@ TEST_CASE("meshes of equal settings share one on the device, and unused meshes g
     (void)renderer.prepare(scene.world, 64.0F, 64.0F, 1.0, {});
     CHECK(renderer.meshes_kept() == 2);
 
-    // Hidden, or on a layer the camera doesn't see: not drawn, and its mesh goes.
+    // Hidden, or on a layer the camera doesn't see and casting no shadow: not drawn, and its
+    // mesh goes.
     scene.transform(a).visible = false;
     (void)renderer.prepare(scene.world, 64.0F, 64.0F, 1.0, {});
     CHECK(renderer.meshes() == 1);
     CHECK(renderer.meshes_kept() == 1);
     scene.transform(a).visible = true;
-    scene.world.ecs().get<world::MeshInstance3D>(a).layers = 1U << 21U;
+    auto& instance = scene.world.ecs().get<world::MeshInstance3D>(a);
+    instance.layers = 1U << 21U;
+    instance.cast_shadow = "off";
     (void)renderer.prepare(scene.world, 64.0F, 64.0F, 1.0, {});
     CHECK(renderer.meshes() == 1);
     CHECK(renderer.meshes_kept() == 1);
+}
+
+TEST_CASE("lights cast shadows and meshes cast them as their fields say") {
+    Scene scene;
+    scene.create("sun", R"({"Transform3D": {"rotation": [-0.7853982, 0, 0]},
+                            "DirectionalLight3D": {"shadow_enabled": true, "shadow_opacity": 0.5,
+                                "shadow_caster_mask": 3, "directional_shadow_mode": "orthogonal",
+                                "directional_shadow_split_1": 0.2,
+                                "directional_shadow_max_distance": 40,
+                                "directional_shadow_blend_splits": true}})");
+    scene.create("lamp", R"({"Transform3D": {}, "OmniLight3D": {"shadow_enabled": true,
+                             "shadow_reverse_cull_face": true}})");
+    scene.create("spot", R"({"Transform3D": {}, "SpotLight3D": {}})");
+    world::Tree3D tree(scene.world);
+    const auto lights = scene3d::lights(scene.world, tree,
+                                        [&](entt::entity entity) { return tree.global(entity); });
+    REQUIRE(lights.size() == 3);
+    CHECK(lights[0].shadow);
+    CHECK(lights[0].shadow_opacity == 0.5F);
+    CHECK(lights[0].shadow_caster_mask == 3);
+    CHECK(lights[0].shadow_normal_bias == 2.0F);
+    CHECK(lights[0].shadow_mode == render::DirectionalShadowMode::Orthogonal);
+    CHECK(lights[0].shadow_splits[0] == 0.2F);
+    CHECK(lights[0].shadow_max_distance == 40.0F);
+    CHECK(lights[0].shadow_blend_splits);
+    // Turned down by 45 degrees, its +Y leans the other way.
+    CHECK(near(vec(lights[0].up), {0.0F, 0.70710677F, -0.70710677F}));
+    CHECK(lights[1].shadow);
+    CHECK(lights[1].shadow_reverse_cull_face);
+    CHECK(lights[1].shadow_bias == doctest::Approx(0.1));
+    CHECK_FALSE(lights[2].shadow);
+    CHECK(lights[2].shadow_bias == doctest::Approx(0.03));
+
+    // Meshes the camera doesn't see still cast, as shadows-only draws; ones that cast nothing
+    // aren't drawn.
+    scene.create("camera", R"({"Transform3D": {"position": [0, 0, 3]},
+                               "Camera3D": {"cull_mask": 1}})");
+    scene.create("seen", R"({"Transform3D": {}, "MeshInstance3D": {}, "BoxMesh": {}})");
+    scene.create("unseen", R"({"Transform3D": {}, "MeshInstance3D": {"layers": 2},
+                               "BoxMesh": {}})");
+    scene.create("ghost", R"({"Transform3D": {}, "MeshInstance3D": {"layers": 2,
+                              "cast_shadow": "off"}, "BoxMesh": {}})");
+    const auto device = render::create_software_device();
+    scene3d::Renderer renderer(*device, nullptr);
+    const render::ShadowSettings shadows{.directional_size = 1024};
+    const auto frame = renderer.prepare(scene.world, 16.0F, 16.0F, 1.0, {}, shadows);
+    REQUIRE(frame.has_value());
+    CHECK(frame->scene.shadows == shadows);
+    CHECK(renderer.meshes() == 2);
+    auto target = device->create_texture({.width = 16, .height = 16, .render_target = true});
+    REQUIRE(target.ok());
+    REQUIRE(
+        device->begin_frame({.target = target.value(), .clear = {}, .scene = frame->scene}).ok());
+    REQUIRE(renderer.draw().ok());
+    REQUIRE(device->end_frame().ok());
+    // Both draws reach the device, which counts them.
+    CHECK(device->stats().draws == 2);
+    device->destroy_texture(target.value());
 }
 
 TEST_CASE("meshes that can't draw are reported, in the world and in scene files") {
@@ -442,4 +504,31 @@ TEST_CASE("the 3D world draws under the canvas, on the software device and every
         }
         device->destroy_texture(target.value());
     }
+}
+
+TEST_CASE("project.json's rendering.lights_and_shadows is read and checked") {
+    json::Value project = parse(R"({"format": 1, "name": "Shadows", "version": "1.0.0",
+        "main_scene": "main.scene.json",
+        "rendering": {"lights_and_shadows": {
+            "directional_shadow": {"size": 2048, "soft_shadow_filter_quality": "soft_high"},
+            "positional_shadow": {"atlas_size": 8192}}}})");
+    CHECK(slash::runtime::validate_project(project).empty());
+    const slash::runtime::Project parsed = slash::runtime::parse_project(project).value();
+    CHECK(parsed.shadows ==
+          render::ShadowSettings{.directional_size = 2048,
+                                 .directional_quality = render::ShadowQuality::SoftHigh,
+                                 .positional_size = 8192});
+    const auto first_error = [&](std::string_view settings) {
+        project["rendering"]["lights_and_shadows"] = parse(settings);
+        const auto errors = slash::runtime::validate_project(project);
+        REQUIRE_FALSE(errors.empty());
+        return errors.front().path;
+    };
+    CHECK(first_error(R"({"directional_shadow": {"size": 1000}})") ==
+          "/rendering/lights_and_shadows/directional_shadow/size");
+    CHECK(first_error(R"({"positional_shadow": {"atlas_size": 128}})") ==
+          "/rendering/lights_and_shadows/positional_shadow/atlas_size");
+    CHECK(first_error(R"({"positional_shadow": {"soft_shadow_filter_quality": "soft"}})") ==
+          "/rendering/lights_and_shadows/positional_shadow/soft_shadow_filter_quality");
+    CHECK(first_error(R"({"omni_shadow": {}})") == "/rendering/lights_and_shadows/omni_shadow");
 }

@@ -1,8 +1,11 @@
 #pragma once
 
+#include "slash/core/json.hpp"
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <string_view>
 #include <vector>
 
 // 3D meshes and what a frame sees them from and lights them by, as Godot's Compatibility
@@ -20,6 +23,11 @@
 // Space is Godot's: Y up, X right, and a camera looks down its -Z. Front faces wind clockwise as
 // seen on the target, as Godot's do. Depth is reversed: projections map the near plane to 1 and
 // the far plane to 0, and nearer pixels win.
+//
+// A light with shadow set casts shadows, as the Compatibility renderer casts them: each frame
+// draws the meshes into shadow maps first, a directional light's into up to four cascades of one
+// atlas and an omni or spot light's into tiles of another (six for an omni light, a cube's faces),
+// and the forward pass compares each pixel with them, with Godot's biases and filters.
 namespace slash::render {
 
 // A mesh on the device. NOLINTNEXTLINE(performance-enum-size): ids count up, past 255
@@ -40,6 +48,10 @@ struct Vertex3D {
 inline constexpr std::uint32_t kMaxMeshVertices = 1U << 24U;
 inline constexpr std::uint32_t kMaxMeshIndices = 1U << 26U;
 inline constexpr std::size_t kMaxLights3D = 64;
+// The most lights whose shadows a frame draws: directional ones, then omni and spot ones. Lights
+// past these shine without shadows.
+inline constexpr std::size_t kMaxDirectionalShadows = 4;
+inline constexpr std::size_t kMaxPositionalShadows = 16;
 
 // The bits of a light's cull mask that count: Godot's 20 render layers. Shaders get them as a
 // whole number in a float, which holds it exactly, since bits stored in a float can come back
@@ -65,6 +77,34 @@ enum class TextureChannel : std::uint8_t { Red, Green, Blue, Alpha, Gray };
 
 enum class LightType : std::uint8_t { Directional, Omni, Spot };
 
+// Which shadow maps a mesh is drawn into, as Godot's GeometryInstance3D.cast_shadow.
+enum class ShadowCasting : std::uint8_t {
+    Off,         // none
+    On,          // every light's whose shadow_caster_mask shares a bit with its layers, culled as
+                 // its material culls
+    DoubleSided, // the same, with no faces culled
+    ShadowsOnly, // the same as On, and it isn't drawn in the frame: it casts but isn't seen
+};
+
+// How a directional light's shadow map covers what the camera sees, as Godot's
+// DirectionalLight3D.directional_shadow_mode: in one piece, or in cascades split by distance.
+enum class DirectionalShadowMode : std::uint8_t { Orthogonal, Parallel2Splits, Parallel4Splits };
+
+// How soft shadows' edges are, as Godot's soft_shadow_filter_quality in the Compatibility
+// renderer: hard and very low take one sample of the shadow map, low and medium five, high and
+// ultra thirteen. Every sample filters four texels. An omni light's shadow takes one sample.
+enum class ShadowQuality : std::uint8_t {
+    Hard,
+    SoftVeryLow,
+    SoftLow,
+    SoftMedium,
+    SoftHigh,
+    SoftUltra
+};
+// Their names in project.json, in order: "hard", "soft_very_low" and so on.
+inline constexpr std::array<std::string_view, 6> kShadowQualityNames{
+    "hard", "soft_very_low", "soft_low", "soft_medium", "soft_high", "soft_ultra"};
+
 // A light in a frame's scene, with Godot's Light3D parameters and defaults.
 struct Light3D {
     LightType type = LightType::Directional;
@@ -81,9 +121,49 @@ struct Light3D {
     float spot_attenuation = 1.0F;
     // Lights the meshes whose layers share a bit with it, of the first kRenderLayers.
     std::uint32_t cull_mask = 0xFFFFFFFFU;
+    // Its node's +Y, square to direction: how its shadow maps are turned.
+    std::array<float, 3> up{0.0F, 1.0F, 0.0F};
+
+    // Shadows, with Light3D's defaults (a DirectionalLight3D's normal bias is 2 and a
+    // SpotLight3D's bias 0.03).
+    bool shadow = false;
+    float shadow_bias = 0.1F;              // pushes depths away from the light, against acne
+    float shadow_normal_bias = 1.0F;       // moves pixels along their normals, in shadow map texels
+    float shadow_opacity = 1.0F;           // 0 casts no shadow, 1 a full one
+    bool shadow_reverse_cull_face = false; // draws the faces meshes cull, and culls the rest
+    // Meshes whose layers share a bit with it cast its shadows.
+    std::uint32_t shadow_caster_mask = 0xFFFFFFFFU;
+    // Directional lights: how the shadow map covers the view, where the cascades split as
+    // fractions of the distance shadows reach (max_distance, or the camera's far plane if
+    // nearer), whether neighboring cascades blend, where shadows start fading out (a fraction of
+    // that distance), and how far behind the view casters still cast (pancake size).
+    DirectionalShadowMode shadow_mode = DirectionalShadowMode::Parallel4Splits;
+    std::array<float, 3> shadow_splits{0.1F, 0.2F, 0.5F};
+    bool shadow_blend_splits = false;
+    float shadow_fade_start = 0.8F;
+    float shadow_max_distance = 100.0F;
+    float shadow_pancake_size = 20.0F;
 
     bool operator==(const Light3D&) const = default;
 };
+
+// The shadow atlases' sizes in texels, powers of two from 256 to 16384, and their filters, as
+// Godot's rendering/lights_and_shadows/directional_shadow and positional_shadow settings. A
+// device draws an atlas at most as large as its largest texture.
+struct ShadowSettings {
+    std::uint32_t directional_size = 4096;
+    ShadowQuality directional_quality = ShadowQuality::SoftLow;
+    std::uint32_t positional_size = 4096;
+    ShadowQuality positional_quality = ShadowQuality::SoftLow;
+
+    bool operator==(const ShadowSettings&) const = default;
+};
+// Reads project.json's rendering.lights_and_shadows: {"directional_shadow": {"size",
+// "soft_shadow_filter_quality"}, "positional_shadow": {"atlas_size",
+// "soft_shadow_filter_quality"}}. What is missing or not valid keeps its default.
+[[nodiscard]] ShadowSettings shadow_settings_from_json(const json::Value& value);
+// Whether size is an atlas size: a power of two from 256 to 16384.
+[[nodiscard]] bool valid_shadow_atlas_size(std::uint32_t size);
 
 // What a frame's meshes are seen from and lit by. Matrices are column-major, as Mat4.
 struct Scene3D {
@@ -96,6 +176,7 @@ struct Scene3D {
     std::array<float, 3> ambient{0.0F, 0.0F, 0.0F};
     float ambient_energy = 1.0F;
     std::vector<Light3D> lights; // up to kMaxLights3D
+    ShadowSettings shadows;
 
     // Godot's default Camera3D: 75 degrees across a square target, from 0.05 to 4000.
     static std::array<float, 16> perspective_default();

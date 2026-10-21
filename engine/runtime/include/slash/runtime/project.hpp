@@ -7,6 +7,7 @@
 #include "slash/core/text.hpp"
 #include "slash/input/input.hpp"
 #include "slash/physics2d/physics2d.hpp"
+#include "slash/render/mesh.hpp"
 #include "slash/render/upscaler.hpp"
 #include "slash/services/services.hpp"
 #include "slash/world/scene.hpp"
@@ -31,7 +32,7 @@
 // ("major.minor.patch"), "window" ({"width", "height", "vsync_mode",
 // "linux_display_driver"}), "tick_hz", "max_fps",
 // "rendering" ({"clear_color", "driver", "texture_filter", "interpolation", "scaling",
-// "textures"}),
+// "lights_and_shadows", "textures"}),
 // "physics_2d",
 // "gui" ({"theme"}), "input" (actions by name), "input_devices" ({"pointing"}), "audio"
 // ({"bus_layout", "mix_rate", "output_latency", "panning_strength_2d"}), "services" (ad
@@ -85,6 +86,8 @@ struct Project {
     bool fallback_to_opengl = true;
     // The render scale and how the world scales to the screen, as Godot's scaling_3d.
     render::Scaling scaling;
+    // The 3D shadow atlases' sizes and filters, as Godot's rendering/lights_and_shadows.
+    render::ShadowSettings shadows;
     // How exports ship textures.
     TextureImport texture_import;
     // Gravity and default damping for 2D physics.

@@ -121,6 +121,50 @@ json::Value scaling_schema() {
     return scaling;
 }
 
+// rendering.lights_and_shadows, as Godot's rendering/lights_and_shadows settings.
+json::Value lights_and_shadows_schema() {
+    const render::ShadowSettings defaults;
+    json::Array qualities;
+    for (const std::string_view name : render::kShadowQualityNames) {
+        qualities.emplace_back(std::string(name));
+    }
+    const auto atlas = [&](std::string_view size_key, std::uint32_t size,
+                           render::ShadowQuality quality, std::string description) {
+        json::Value texels;
+        texels["type"] = "integer";
+        texels["minimum"] = 256;
+        texels["maximum"] = 16384;
+        texels["default"] = size;
+        texels["description"] =
+            "The atlas's width and height in texels, a power of two; devices draw it at most as "
+            "large as their largest texture.";
+        json::Value filter;
+        filter["enum"] = qualities;
+        filter["default"] =
+            std::string(render::kShadowQualityNames.at(static_cast<std::size_t>(quality)));
+        filter["description"] =
+            "How shadow edges are filtered: hard takes one sample, the soft ones more.";
+        json::Value out;
+        out["type"] = "object";
+        out["additionalProperties"] = false;
+        out["description"] = std::move(description);
+        out["properties"][std::string(size_key)] = std::move(texels);
+        out["properties"]["soft_shadow_filter_quality"] = std::move(filter);
+        return out;
+    };
+    json::Value out;
+    out["type"] = "object";
+    out["additionalProperties"] = false;
+    out["description"] = "The 3D shadow maps, as Godot's lights_and_shadows settings.";
+    out["properties"]["directional_shadow"] =
+        atlas("size", defaults.directional_size, defaults.directional_quality,
+              "The atlas directional lights' shadow cascades share.");
+    out["properties"]["positional_shadow"] =
+        atlas("atlas_size", defaults.positional_size, defaults.positional_quality,
+              "The atlas omni and spot lights' shadow maps share.");
+    return out;
+}
+
 } // namespace
 
 std::string Project::binary_name() const {
@@ -241,6 +285,7 @@ json::Value project_schema() {
         "display refreshes faster than the game ticks.";
     rendering["properties"]["interpolation"] = std::move(interpolation);
     rendering["properties"]["scaling"] = scaling_schema();
+    rendering["properties"]["lights_and_shadows"] = lights_and_shadows_schema();
     json::Value compress_mode;
     compress_mode["enum"] = json::Array{"lossless", "vram_compressed", "vram_uncompressed"};
     compress_mode["description"] =
@@ -424,6 +469,21 @@ std::vector<json::ValidationError> validate_project(const json::Value& project) 
                                   "render::add_upscaler names upscalers"});
             }
         }
+        if (const json::Value* shadows = rendering->find("lights_and_shadows");
+            shadows != nullptr) {
+            const std::array<std::pair<std::string_view, std::string_view>, 2> atlases{
+                {{"directional_shadow", "size"}, {"positional_shadow", "atlas_size"}}};
+            for (const auto& [atlas, key] : atlases) {
+                const json::Value* settings = shadows->find(atlas);
+                const json::Value* size = settings != nullptr ? settings->find(key) : nullptr;
+                if (size != nullptr &&
+                    !render::valid_shadow_atlas_size(static_cast<std::uint32_t>(size->as_int()))) {
+                    errors.push_back({"/rendering/lights_and_shadows/" + std::string(atlas) + "/" +
+                                          std::string(key),
+                                      "expected a power of two from 256 to 16384"});
+                }
+            }
+        }
     }
     if (const json::Value* gameplay = project.find("gameplay"); gameplay != nullptr) {
         const json::Array& sources = gameplay->find("sources")->as_array();
@@ -526,6 +586,10 @@ Result<Project> parse_project(const json::Value& project) {
         }
         if (const json::Value* scaling = rendering->find("scaling"); scaling != nullptr) {
             out.scaling = render::scaling_from_json(*scaling);
+        }
+        if (const json::Value* shadows = rendering->find("lights_and_shadows");
+            shadows != nullptr) {
+            out.shadows = render::shadow_settings_from_json(*shadows);
         }
         if (const json::Value* textures = rendering->find("textures"); textures != nullptr) {
             if (const json::Value* mode = textures->find("compress_mode"); mode != nullptr) {

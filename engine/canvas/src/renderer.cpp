@@ -1081,7 +1081,8 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
                               : ui::settings(world).viewport;
     // The 3D world, seen through its current Camera3D, which fills the viewport.
     const std::optional<scene3d::Frame3D> scene =
-        scene3d_.prepare(world, viewport.x, viewport.y, options.interpolation, options.clear);
+        scene3d_.prepare(world, viewport.x, viewport.y, options.interpolation, options.clear,
+                         settings(world).shadows);
     for (const scene3d::Problem& unseen : scene3d_.problems()) {
         problem(unseen.entity, unseen.path, unseen.message);
         warn_once(name_of(unseen.entity), unseen.message, "id", "a mesh can't draw");

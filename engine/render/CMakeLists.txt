@@ -45,6 +45,7 @@ add_library(slash_render
     src/resize.cpp
     src/shader.cpp
     src/shader_vm.cpp
+    src/shadow.cpp
     src/software_device.cpp
     src/texture_codec.cpp
     src/uniforms.cpp
@@ -79,7 +80,8 @@ endif()
 # every platform: no fused multiply-adds, which arm64 compilers would otherwise emit and x86-64
 # ones not.
 set_source_files_properties(src/device.cpp src/material.cpp src/mesh.cpp src/particles.cpp
-    src/resize.cpp src/shader_vm.cpp src/software_device.cpp src/upscaler.cpp PROPERTIES
+    src/resize.cpp src/shader_vm.cpp src/shadow.cpp src/software_device.cpp src/upscaler.cpp
+    PROPERTIES
     COMPILE_OPTIONS "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>")
 
 # Regenerates src/*_shaders.hpp from shaders/*.hlsl. The headers are committed, so only someone
@@ -88,9 +90,10 @@ find_program(SLASH_GLSLANG NAMES glslangValidator glslang)
 find_program(SLASH_SPIRV_CROSS NAMES spirv-cross)
 find_program(SLASH_TINT NAMES tint)
 set(slash_shader_headers "")
-# Each shader as file:Name, then compute for compute shaders and 3d for the mesh shader, whose
-# varyings GLSL names apart from the canvas shaders' and whose depth it maps to OpenGL's.
-set(slash_shaders sprite:Sprite material:Material mesh:Mesh:3d
+# Each shader as file:Name, then compute for compute shaders, and 3d for the mesh shader and
+# depth for the shadow pass shader, whose varyings GLSL names apart from the canvas shaders' and
+# whose depth it maps to OpenGL's.
+set(slash_shaders sprite:Sprite material:Material mesh:Mesh:3d shadow:Shadow:depth
     particles_process:ParticlesProcess:compute particles_emit:ParticlesEmit:compute
     particles_draw:ParticlesDraw:compute)
 foreach(entry IN LISTS slash_shaders)
@@ -107,6 +110,10 @@ foreach(entry IN LISTS slash_shaders)
         if(kind STREQUAL "compute")
             set(compute ON)
             set(include particles)
+        elseif(kind STREQUAL "depth")
+            set(include shadow)
+            set(interface v_uv,v_color)
+            set(fixup ON)
         else()
             set(include mesh)
             set(interface v_world,v_normal,v_tangent,v_binormal,v_uv,v_color)
