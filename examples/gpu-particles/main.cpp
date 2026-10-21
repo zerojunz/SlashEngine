@@ -1,6 +1,6 @@
 // GPU particles, as Godot's GPUParticles2D: main.scene.json has a fire, a one-shot burst of sparks
-// that bursts the same way each time, snow that was already falling when the scene opened and
-// smoke that curls in turbulence.
+// that bursts the same way each time, snow that was already falling when the scene opened, smoke
+// that curls in turbulence and rain that lands on a ledge.
 // How each one's particles start and move is a .process_material.json file, Godot's
 // ParticleProcessMaterial in 2D.
 //
@@ -114,6 +114,11 @@ int main() {
          R"({"id": "sparks", "components": {"GPUParticles2D": {"emitting": true}}})");
     call(session, "step", R"({"ticks": 30})");
     call(session, "particles.eval", R"({"id": "sparks", "list": true, "max_results": 2})");
+
+    // The rain has landed on the ledge, a LightOccluder2D 40 pixels wide whose top is at y 100:
+    // its process material's collision_mode "rigid" stops particles at LightOccluder2D outlines,
+    // as Godot's, so the oldest rest on it, half the dot's average side (4 pixels) above it.
+    call(session, "particles.eval", R"({"id": "rain", "list": true, "max_results": 3})");
 
     // A process material with a mistake is refused with the JSON Pointer of the bad value.
     // "slash-cli scene validate" finds the same mistake in the file before anything runs it, and

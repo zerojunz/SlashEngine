@@ -205,6 +205,10 @@ json::Value schema() {
     occlusion_layer["properties"]["light_mask"]["minimum"] = 0;
     occlusion_layer["properties"]["light_mask"]["maximum"] = std::int64_t{UINT32_MAX};
     occlusion_layer["properties"]["light_mask"]["default"] = 1;
+    occlusion_layer["properties"]["sdf_collision"] =
+        property("boolean", "GPU particles whose process material collides bounce off its "
+                            "occluders or die.");
+    occlusion_layer["properties"]["sdf_collision"]["default"] = false;
 
     json::Value custom_data_layer;
     custom_data_layer["type"] = "object";
@@ -1619,6 +1623,9 @@ Result<TileSet> parse_tileset(const json::Value& doc) {
             OcclusionLayer layer;
             if (const json::Value* value = json_layer.find("light_mask"); value != nullptr) {
                 layer.light_mask = static_cast<std::uint32_t>(value->as_int());
+            }
+            if (const json::Value* value = json_layer.find("sdf_collision"); value != nullptr) {
+                layer.sdf_collision = value->as_bool();
             }
             set.occlusion_layers.push_back(layer);
         }

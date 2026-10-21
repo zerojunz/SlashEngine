@@ -21,10 +21,13 @@ static const float kDegreesToRadians = kPi / 180.0;
 
 // Where the process material's parts are, in words (src/particle_layout.hpp).
 static const uint kCurveWords = 16u;
-static const uint kCurvesAt = 23u;
-static const uint kGradientsAt = 311u;
+static const uint kCollisionAt = 23u;
+static const uint kCurvesAt = 24u;
+static const uint kGradientsAt = 312u;
 static const uint kGradientWords = 40u;
-static const uint kPointsAt = 391u;
+static const uint kPointsAt = 392u;
+// A step's words.
+static const uint kStepWords = 9u;
 // Curves after the parameters'.
 static const uint kVelocityLimitCurve = 15u;
 static const uint kAlphaCurve = 16u;
@@ -53,6 +56,9 @@ static const uint kAnimOffset = 11u;
 static const uint kRadialVelocity = 12u;
 static const uint kTurbulenceInfluence = 13u;
 static const uint kTurbulenceDisplacement = 14u;
+// ParticleCollision.
+static const uint kCollisionRigid = 1u;
+static const uint kCollisionHideOnContact = 2u;
 
 struct Step {
     float4 emission_a; // emission[0..3]
@@ -67,6 +73,12 @@ struct Step {
     float amount_ratio;
     float interp_to_end;
     float time;
+    uint shapes; // where its first shape's words are
+    uint shape_count;
+    float collision_size;
+    float4 to_shapes_a; // to_shapes[0..3]
+    float2 to_shapes_b; // to_shapes[4..5]
+    float4 from_shapes;
     uint cycle;
     uint seed;
     bool emitting;
@@ -98,6 +110,13 @@ struct Physical {
     float radial_accel;
     float tangent_accel;
     float damping;
+};
+
+// ParticleContact.
+struct Contact {
+    bool collided;
+    float2 normal;
+    float depth;
 };
 
 float4 word(uint at) {
@@ -538,7 +557,107 @@ float2 radial_displacement(Dynamics dynamics, float life, inout uint seed, Parti
     return result;
 }
 
-void process(inout Particle particle, Step step, uint number, float delta, inout bool active) {
+// ---- Collision: particle_contact against the step's shapes.
+
+uint collision_mode() {
+    return word_uint(kCollisionAt, 0u);
+}
+
+// A shape's point: a header word, then two points a word.
+float2 shape_point(uint at, uint i) {
+    float4 pair = asfloat(data[at + 1u + (i >> 1u)]);
+    return (i & 1u) != 0u ? pair.zw : pair.xy;
+}
+
+Contact particle_contact(float2 p, float size, Step step) {
+    float nearest_squared = asfloat(0x7f7fffffu); // the largest float
+    float2 from_nearest = float2(0.0, 0.0);
+    float2 along = float2(0.0, 0.0);
+    bool inside = false;
+    uint at = step.shapes;
+    for (uint s = 0u; s < step.shape_count; ++s) {
+        uint4 header = data[at];
+        uint count = header.x;
+        bool solid = header.y != 0u && count > 2u;
+        uint edges = solid ? count : (count > 0u ? count - 1u : 0u);
+        bool odd = false;
+        for (uint i = 0u; i < edges; ++i) {
+            float2 a = shape_point(at, i);
+            float2 b = shape_point(at, (i + 1u) % count);
+            float2 ab = b - a;
+            float2 ap = p - a;
+            float length_squared = dot(ab, ab);
+            float t = length_squared > 0.0 ? dot(ap, ab) / length_squared : 0.0;
+            float2 away = ap;
+            if (t >= 1.0) {
+                away = p - b;
+            } else if (t > 0.0) {
+                float cross_ab = (ab.x * ap.y) - (ab.y * ap.x);
+                away = float2(-ab.y, ab.x) * (cross_ab / length_squared);
+            }
+            float distance_squared = dot(away, away);
+            if (distance_squared < nearest_squared) {
+                nearest_squared = distance_squared;
+                from_nearest = away;
+                along = ab;
+            }
+            if (solid && ((a.y > p.y) != (b.y > p.y)) &&
+                p.x < a.x + (((p.y - a.y) * (b.x - a.x)) / (b.y - a.y))) {
+                odd = !odd;
+            }
+        }
+        inside = inside || odd;
+        at += 1u + ((count + 1u) / 2u);
+    }
+    Contact contact;
+    contact.collided = false;
+    contact.normal = float2(0.0, 0.0);
+    contact.depth = 0.0;
+    float distance = sqrt(nearest_squared);
+    float signed_distance = inside ? -distance : distance;
+    if (nearest_squared != asfloat(0x7f7fffffu) && signed_distance - size < 0.0) {
+        contact.collided = true;
+        contact.depth = size - signed_distance;
+        if (distance > 0.0) {
+            contact.normal = (inside ? -from_nearest : from_nearest) / distance;
+        } else {
+            contact.normal = length(along) > 0.0 ? safe_normalize(float2(along.y, -along.x))
+                                                 : float2(0.0, -1.0);
+        }
+    }
+    return contact;
+}
+
+// shape_contact in the CPU twin.
+Contact shape_contact(float2 origin, float size, Step step) {
+    float2 at = float2((step.to_shapes_a.x * origin.x) + (step.to_shapes_a.z * origin.y) +
+                           step.to_shapes_b.x,
+                       (step.to_shapes_a.y * origin.x) + (step.to_shapes_a.w * origin.y) +
+                           step.to_shapes_b.y);
+    Contact contact = particle_contact(at, size * length(step.to_shapes_a.zw), step);
+    if (contact.collided) {
+        float2 away = contact.normal * contact.depth;
+        float2 back = float2((step.from_shapes.x * away.x) + (step.from_shapes.z * away.y),
+                             (step.from_shapes.y * away.x) + (step.from_shapes.w * away.y));
+        contact.depth = length(back);
+        contact.normal = contact.depth > 0.0 ? back / contact.depth : float2(0.0, -1.0);
+    }
+    return contact;
+}
+
+// collision_size in the CPU twin.
+float collision_size(Particle particle, Step step, bool started) {
+    if (word_uint(kCollisionAt, 3u) == 0u) {
+        return step.collision_size;
+    }
+    float x = length(particle.basis.xy);
+    float y = length(particle.basis.zw);
+    float z = started ? 1.0 : (x + y) * 0.5;
+    return step.collision_size * ((x + y + z) * 0.33333333333);
+}
+
+void process(inout Particle particle, Step step, uint number, float delta, Contact contact,
+             inout bool active) {
     uint seed = hash(number + 1u + step.seed);
     Display display;
     Dynamics dynamics;
@@ -584,9 +703,25 @@ void process(inout Particle particle, Step step, uint number, float delta, inout
         built = v < 0.0 ? float3(0.0, 0.0, 0.0) : safe_normalize(built) * v;
     }
 
-    // Turbulence before limiting.
+    // A rigid particle is pushed out of the shape, loses its speed into it and bounces back.
+    float4 collision = word(kCollisionAt);
+    bool collided = contact.collided && collision_mode() != 0u;
+    if (collided && collision_mode() == kCollisionRigid) {
+        float3 normal = float3(contact.normal, 0.0);
+        float response = dot(normal, built);
+        float bounces = abs(response) >= 2.0 / clamp(collision.z + 1.0, 1.0, 2.0) ? 1.0 : 0.0;
+        particle.origin_velocity.xy =
+            particle.origin_velocity.xy + (contact.normal * contact.depth);
+        built = built - (normal * response);
+        built = mix(built, float3(0.0, 0.0, 0.0), clamp(collision.y, 0.0, 1.0));
+        built = built - (normal * (response * (collision.z * bounces)));
+    } else if (collided && collision_mode() == kCollisionHideOnContact) {
+        active = false;
+    }
+
+    // Turbulence before limiting, but not for a particle bouncing off a shape.
     float3 controlled3 = float3(controlled, 0.0);
-    if (turbulence_enabled()) {
+    if (turbulence_enabled() && !(collided && collision_mode() == kCollisionRigid)) {
         float influence = sample_curve(kTurbulenceInfluence, life, 1.0);
         float3 direction = safe_normalize(noise_direction(step, particle.origin_velocity.xy));
         float amount = clamp(dynamics.turbulence_influence * influence, 0.0, 1.0) *
@@ -704,8 +839,16 @@ void step_particle(inout Particle particle, uint index, uint total, Step step) {
     if (restart && active) {
         start(particle, step, number, active);
     }
+    Contact contact;
+    contact.collided = false;
+    contact.normal = float2(0.0, 0.0);
+    contact.depth = 0.0;
+    if (active && collision_mode() != 0u && step.shape_count > 0u) {
+        contact = shape_contact(particle.origin_velocity.xy,
+                                collision_size(particle, step, restart), step);
+    }
     if (active) {
-        process(particle, step, number, delta, active);
+        process(particle, step, number, delta, contact, active);
     }
     particle.flags.x &= ~kParticleActive;
     if (active) {
@@ -736,6 +879,13 @@ Step read_step(uint at) {
     step.emitting = (counts.z & 1u) != 0u;
     step.fractional_delta = (counts.z & 2u) != 0u;
     step.clear = (counts.z & 4u) != 0u;
+    uint4 shapes = data[at + 5u];
+    step.shapes = shapes.x;
+    step.shape_count = shapes.y;
+    step.collision_size = asfloat(shapes.z);
+    step.to_shapes_a = asfloat(data[at + 6u]);
+    step.to_shapes_b = asfloat(data[at + 7u]).xy;
+    step.from_shapes = asfloat(data[at + 8u]);
     return step;
 }
 
@@ -750,7 +900,7 @@ void cs_main(uint3 id : SV_DispatchThreadID) {
         particle = empty_particle();
     }
     for (uint i = 0u; i < step_count; ++i) {
-        step_particle(particle, index, amount, read_step(steps_offset + (i * 5u)));
+        step_particle(particle, index, amount, read_step(steps_offset + (i * kStepWords)));
     }
     particles[index] = particle;
 }

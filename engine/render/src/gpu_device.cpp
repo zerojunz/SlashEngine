@@ -170,6 +170,7 @@ private:
 class GpuDevice final : public RenderDevice {
 public:
     using RenderDevice::draw;
+    using RenderDevice::process_particles;
 
     GpuDevice(SDL_GPUDevice* device, SDL_Window* window, bool owns_video)
         : device_(device), window_(window), owns_video_(owns_video), backend_(backend_of(device)) {}
@@ -447,12 +448,13 @@ public:
     }
 
     Result<void> process_particles(ParticlesId particles, const ParticleProcess& process,
-                                   std::span<const ParticleStep> steps) override {
+                                   std::span<const ParticleStep> steps,
+                                   std::span<const ParticleShape> shapes) override {
         const auto it = particle_systems_.find(particles);
         if (it == particle_systems_.end()) {
             return unknown_particles(particles);
         }
-        if (auto checked = check_particle_process(process, steps); !checked) {
+        if (auto checked = check_particle_process(process, steps, shapes); !checked) {
             return checked;
         }
         if (steps.empty()) {
@@ -460,9 +462,13 @@ public:
         }
         ParticleJob job{.particles = it->second.buffer, .amount = it->second.amount};
         job.material = material_words(process);
+        const std::vector<std::uint32_t> shape_at =
+            process.collision_mode == ParticleCollision::Disabled
+                ? std::vector<std::uint32_t>{}
+                : pack_particle_shapes(steps, shapes, particle_words_);
         job.steps = static_cast<std::uint32_t>(particle_words_.size());
         job.step_count = static_cast<std::uint32_t>(steps.size());
-        pack_particle_steps(steps, particle_words_);
+        pack_particle_steps(steps, shape_at, particle_words_);
         return queue_particle_job(job);
     }
 

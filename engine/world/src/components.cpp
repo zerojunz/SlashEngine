@@ -1155,6 +1155,11 @@ void register_particle_components(ComponentRegistry& registry) {
         .describe("interpolate", {.doc = "Draw particles where they are between steps."})
         .describe("fract_delta", {.doc = "A particle emitted partway through a step moves for "
                                          "that part only, so emission is smooth."})
+        .describe("collision_base_size",
+                  {.doc = "How near, in pixels, a particle comes to a LightOccluder2D before it "
+                          "collides, when its process material collides; times half the "
+                          "texture's average side.",
+                   .min = 0.0})
         .describe("local_coords", {.doc = "Particles move with the entity; false leaves them "
                                           "where they were emitted."})
         .describe("draw_order",
@@ -1482,6 +1487,8 @@ void register_builtin_components(ComponentRegistry& registry) {
                           "light, as seen on screen. For a polygon wound clockwise, "
                           "counter_clockwise lets light into it, lighting its own sprite.",
                    .choices = {"disabled", "clockwise", "counter_clockwise"}})
+        .describe("sdf_collision",
+                  {.doc = "GPU particles whose process material collides bounce off it or die."})
         .describe("occluder_light_mask",
                   {.doc = "Casts shadows from lights whose shadow_item_cull_mask shares a bit.",
                    .min = 0,

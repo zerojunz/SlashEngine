@@ -762,7 +762,11 @@ renderer catches up from the steps kept. `engine/render/shaders/particles_proces
 compute shader and `render::process_particles` (`engine/render/src/particles.cpp`) its CPU twin,
 which the software and OpenGL ES devices run; a test holds them to the same particles, so a
 change to the particle math goes in both. Turbulence is Godot's curl noise, with lattice
-gradients from an integer hash so both make the same noise. `particles.eval` runs the steps kept
+gradients from an integer hash so both make the same noise. Collision follows Godot's 2D
+collision with its signed distance field, measured exactly instead: the system gathers the
+outlines of `LightOccluder2D`s and tile occluders with `sdf_collision` into each step's
+`render::ParticleShape`s, in the world canvas's coordinates, and `render::particle_contact` (and
+its twin in the shader) finds the way out and the depth. `particles.eval` runs the steps kept
 on the CPU (`canvas::gpu_particles`); `examples/gpu-particles` has a fire, sparks, snow and
 smoke.
 

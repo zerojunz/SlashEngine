@@ -192,11 +192,11 @@ occlusion layers, occluders, custom data and alternative tiles:
 - Each physics layer keeps its collision layer and mask, and its physics material's friction and
   bounce. A tile's polygons on it become its
   [`collision`](scene-format.md#tile-collision), with `one_way` and `one_way_margin`.
-- Each occlusion layer keeps its `light_mask`. A tile's `OccluderPolygon2D`s on it
+- Each occlusion layer keeps its `light_mask` and `sdf_collision`. A tile's `OccluderPolygon2D`s on it
   (`occlusion_layer_0/polygon_0/polygon`, or `occlusion_layer_0/polygon` before Godot 4.4)
   become its [`occlusion`](scene-format.md#tile-occluders-and-custom-data), with `closed` and
   `cull_mode`. Polygons on a layer the tile set lacks go, as Godot drops them, and so do closed
-  ones of fewer than three points, which cast no shadow. `sdf_collision` is reported.
+  ones of fewer than three points, which cast no shadow.
 - Each custom data layer of type `bool`, `int`, `float`, `String`, `StringName`, `Vector2`,
   `Vector2i` or `Color` keeps its name and becomes a layer of that type (`StringName` is
   `string`). Other types, such as `Dictionary`, or `Any`, are left out and reported. A tile's
@@ -316,8 +316,12 @@ file that its `process_material` names:
   `particles_anim_v_frames` and `particles_anim_loop` become `hframes`, `vframes` and
   `anim_loop`. Its `blend_mode` and `light_mode` are reported: write a `.material.json` for them.
 - `seed` is kept only with `use_fixed_seed`, since Godot picks another at random otherwise.
-- Collisions, sub-emitters, trails, points given as textures and rings that don't face the
-  screen are reported: SlashEngine doesn't have them yet.
+- `collision_mode` is named (`1` is `"rigid"`, `2` `"hide_on_contact"`), `collision_friction`
+  and `collision_bounce` are clamped to 0 to 1 as Godot's editor keeps them, and the node's
+  `collision_base_size` is kept: particles [collide](scene-format.md#gpu-particle-collision)
+  with `LightOccluder2D`s and tile occluders as Godot's do.
+- Sub-emitters, trails, points given as textures and rings that don't face the screen are
+  reported: SlashEngine doesn't have them yet.
   `report.converted.process_materials` counts the files written.
 
 ## Project settings
@@ -433,7 +437,7 @@ The report lists each of these once per kind, with how many and where it was fir
 | Bezier handles, the capture update mode, blend times and markers | A bezier track plays cubic through its keys, a capture track as continuous, and animations switch without blending |
 | Tracks on a control's `position` or `size` | Animate its offsets instead |
 | Animation libraries no `AnimationPlayer` plays | A track's fields depend on the node it animates |
-| Tile navigation layers, custom data of other types, the occlusion SDF, and tiles' constant velocities | Navigation comes with 2D navigation; custom data holds the types listed above; move a layer rather than give its tiles a velocity |
+| Tile navigation layers, custom data of other types, and tiles' constant velocities | Navigation comes with 2D navigation; custom data holds the types listed above; move a layer rather than give its tiles a velocity |
 | Tiles' other properties, such as `z_index` and `y_sort_origin`, a base tile's flips and `modulate`, and scene collection sources | Tiles keep their texture origin, collision, occluders and custom data, and alternatives their flips and color too; place scenes as entities |
 | Y-sorting tile map layers | Layers draw in order, by `z_index` |
 | `gui/theme/custom_font` | Set `default_font` in the project's theme |

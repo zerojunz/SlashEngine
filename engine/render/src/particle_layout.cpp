@@ -1,5 +1,6 @@
 #include "particle_layout.hpp"
 
+#include <algorithm>
 #include <cstring>
 
 namespace slash::render::detail {
@@ -75,6 +76,9 @@ void pack_particle_process(const ParticleProcess& process, std::vector<Word>& ou
                    process.turbulence_enabled ? 1U : 0U});
     out.push_back(floats(process.turbulence_noise_speed.x, process.turbulence_noise_speed.y,
                          process.turbulence_noise_speed.z, 0.0F));
+    out.push_back({static_cast<std::uint32_t>(process.collision_mode),
+                   bits(process.collision_friction), bits(process.collision_bounce),
+                   process.collision_use_scale ? 1U : 0U});
 
     for (const ParticleCurve* curve : curves) {
         for (std::size_t word = 0; word < kCurveWords; ++word) {
@@ -108,7 +112,35 @@ void pack_particle_process(const ParticleProcess& process, std::vector<Word>& ou
     }
 }
 
-void pack_particle_steps(std::span<const ParticleStep> steps, std::vector<Word>& out) {
+std::vector<std::uint32_t> pack_particle_shapes(std::span<const ParticleStep> steps,
+                                                std::span<const ParticleShape> shapes,
+                                                std::vector<Word>& out) {
+    // Only the shapes the steps name, which are together when the steps name them in order.
+    std::size_t first = shapes.size();
+    std::size_t end = 0;
+    for (const ParticleStep& step : steps) {
+        if (step.shape_count > 0) {
+            first = std::min<std::size_t>(first, step.shape_first);
+            end = std::max<std::size_t>(end, step.shape_first + step.shape_count);
+        }
+    }
+    std::vector<std::uint32_t> at(shapes.size(), 0U);
+    for (std::size_t i = first; i < end && i < shapes.size(); ++i) {
+        const ParticleShape& shape = shapes[i];
+        at[i] = static_cast<std::uint32_t>(out.size());
+        out.push_back(
+            {static_cast<std::uint32_t>(shape.points.size()), shape.closed ? 1U : 0U, 0U, 0U});
+        for (std::size_t point = 0; point < shape.points.size(); point += 2) {
+            const Vec2 a = shape.points[point];
+            const Vec2 b = point + 1 < shape.points.size() ? shape.points[point + 1] : Vec2{};
+            out.push_back(floats(a.x, a.y, b.x, b.y));
+        }
+    }
+    return at;
+}
+
+void pack_particle_steps(std::span<const ParticleStep> steps,
+                         std::span<const std::uint32_t> shape_at, std::vector<Word>& out) {
     out.reserve(out.size() + (steps.size() * kStepWords));
     for (const ParticleStep& step : steps) {
         out.push_back(
@@ -122,6 +154,14 @@ void pack_particle_steps(std::span<const ParticleStep> steps, std::vector<Word>&
                                     (step.fractional_delta ? kStepFractionalDelta : 0U) |
                                     (step.clear ? kStepClear : 0U);
         out.push_back({step.cycle, step.seed, flags, bits(step.time)});
+        const bool shaped = step.shape_count > 0 && step.shape_first < shape_at.size();
+        out.push_back({shaped ? shape_at[step.shape_first] : 0U, shaped ? step.shape_count : 0U,
+                       bits(step.collision_size), 0U});
+        out.push_back(
+            floats(step.to_shapes[0], step.to_shapes[1], step.to_shapes[2], step.to_shapes[3]));
+        out.push_back(floats(step.to_shapes[4], step.to_shapes[5], 0.0F, 0.0F));
+        out.push_back(floats(step.from_shapes[0], step.from_shapes[1], step.from_shapes[2],
+                             step.from_shapes[3]));
     }
 }
 

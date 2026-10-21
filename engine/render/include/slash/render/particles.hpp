@@ -60,6 +60,13 @@ enum class ParticleParam : std::uint8_t {
 };
 inline constexpr std::size_t kParticleParams = static_cast<std::size_t>(ParticleParam::Count);
 
+// What a particle does when it touches a shape, as Godot's ParticleProcessMaterial::CollisionMode.
+enum class ParticleCollision : std::uint8_t {
+    Disabled,
+    Rigid,         // bounces off by collision_bounce and slides with collision_friction
+    HideOnContact, // dies
+};
+
 // A curve over a particle's life: points [offset, value], offsets from 0 to 1 in order, joined by
 // straight lines and flat past the ends. No points is no curve.
 using ParticleCurve = std::vector<Vec2>;
@@ -113,9 +120,25 @@ struct ParticleProcess {
     float turbulence_noise_scale = 9.0F;        // Godot's slider: higher is larger swirls
     Vec3 turbulence_noise_speed;                // how the noise moves per second of particle time
     float turbulence_noise_speed_random = 0.2F; // how fast the noise changes as it moves
+    // Collision with the steps' shapes (ParticleShape), as Godot's with LightOccluder2D nodes.
+    ParticleCollision collision_mode = ParticleCollision::Disabled;
+    float collision_friction = 0.0F;  // of the speed along the surface lost, 0 to 1
+    float collision_bounce = 0.0F;    // of the speed into the surface sent back, 0 to 1
+    bool collision_use_scale = false; // the particle's scale multiplies its collision size
 
     bool operator==(const ParticleProcess&) const = default;
 };
+
+// A shape particles collide with, as a LightOccluder2D's outline in the signed distance field
+// Godot's particles collide with: a closed one is solid, an open one a line.
+struct ParticleShape {
+    std::vector<Vec2> points; // pixels
+    bool closed = true;
+
+    bool operator==(const ParticleShape&) const = default;
+};
+// The most points the shapes one step collides with have between them.
+inline constexpr std::size_t kMaxParticleShapePoints = 1024;
 
 // One step of a system, as Godot's ParticlesFrameParams with the process call's push constants.
 // Steps run in order; each restarts the particles whose turn comes between prev_system_phase and
@@ -136,6 +159,16 @@ struct ParticleStep {
     // Seconds of particle time since the system started over after the step, back to 0 every
     // hour, as Godot's TIME rolls over: what turbulence moves with.
     float time = 0.0F;
+    // The shapes particles collide with during the step: shape_count of the shapes the steps run
+    // with, from shape_first. A particle collides where it comes within collision_size pixels
+    // of one, as Godot's collision_base_size, measured where the shapes are: to_shapes takes
+    // particle coordinates there, as emission does, and from_shapes is the inverse of its first
+    // four, x' = [0] x + [2] y, y' = [1] x + [3] y, which bring the way out back.
+    std::uint32_t shape_first = 0;
+    std::uint32_t shape_count = 0;
+    float collision_size = 1.0F;
+    std::array<float, 6> to_shapes{1.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F};
+    std::array<float, 4> from_shapes{1.0F, 0.0F, 0.0F, 1.0F};
     std::uint32_t cycle = 0; // emission cycles before this one
     std::uint32_t seed = 0;
     bool emitting = true;
@@ -198,9 +231,22 @@ struct ParticleDraw {
     bool operator==(const ParticleDraw&) const = default;
 };
 
-// Runs steps on particles, a system of particles.size(), as the GPU does.
+// Runs steps on particles, a system of particles.size(), as the GPU does; the steps name the
+// shapes they collide with by their place in shapes.
 void process_particles(std::span<Particle> particles, const ParticleProcess& process,
-                       std::span<const ParticleStep> steps);
+                       std::span<const ParticleStep> steps,
+                       std::span<const ParticleShape> shapes = {});
+
+// Where a point is against shapes, as particles collide, all in the shapes' coordinates: the
+// depth it is inside them by, less size, and the way out, along which moving it by depth leaves
+// it size away. No collision when the point is further than size from every shape.
+struct ParticleContact {
+    bool collided = false;
+    Vec2 normal;
+    float depth = 0.0F;
+};
+[[nodiscard]] ParticleContact particle_contact(Vec2 point, float size,
+                                               std::span<const ParticleShape> shapes);
 
 // Appends particles' quads to out, as the GPU draws them: six vertices each, in draw order.
 void particle_vertices(std::span<const Particle> particles, const ParticleDraw& draw,
