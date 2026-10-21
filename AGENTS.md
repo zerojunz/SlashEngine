@@ -731,6 +731,17 @@ shared by both shaders. `src/post_shading.hpp` holds the uniforms, the checks an
 (`tonemap`, `run_post_pass`) the software device draws with; `tests/test_post.cpp` holds every
 device to its pixels. `examples/post-processing-3d` is a lantern glowing at night.
 
+Skies and fog are the Compatibility renderer's too. `Scene3D::sky` (`render::Sky3D`: a color,
+procedural, physical or panorama sky, from a `"sky"` background and the sky material on the
+`WorldEnvironment`'s entity) draws before the meshes, as one triangle over the target with no
+depth test: `shaders/sky.hlsl` works out each pixel's view direction and shades it as Godot's sky
+shaders do, with the suns of up to four `DirectionalLight3D`s. `Scene3D::fog` (`render::Fog3D`)
+fades meshes in `mesh.hlsl`'s `fog_process` and the sky by its `sky_affect`; fog over a color
+background draws that color as a sky, as Godot's fog sky does. `src/sky_shading.hpp` holds the
+uniforms, the checks and the CPU twins (`sky_ray`, `shade_sky`) the software device draws with;
+`tests/test_sky.cpp` holds every device to its pixels. `examples/sky-3d` is a valley under three
+skies.
+
 Shaders are HLSL in `engine/render/shaders/`. Their SPIR-V, MSL, GLSL ES and WGSL are committed
 in `engine/render/src/*_shaders.hpp`, so only someone changing a shader needs glslang,
 SPIRV-Cross (`glslang-tools` and `spirv-cross` on Debian and Ubuntu, `glslang` and `spirv-cross`

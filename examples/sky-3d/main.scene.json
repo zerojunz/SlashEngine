@@ -1,0 +1,136 @@
+{
+  "entities": {
+    "camera": {
+      "components": {
+        "Camera3D": {
+          "current": true,
+          "fov": 60.0
+        },
+        "Transform3D": {
+          "position": [0.0, 1.6, 6.0],
+          "rotation": [-0.05, 0.0, 0.0]
+        }
+      }
+    },
+    "environment": {
+      "components": {
+        "ProceduralSkyMaterial": {
+          "sky_horizon_color": [0.72, 0.8, 0.9, 1.0],
+          "sky_top_color": [0.22, 0.42, 0.78, 1.0],
+          "sun_angle_max": 20.0
+        },
+        "WorldEnvironment": {
+          "ambient_light_color": [0.55, 0.62, 0.75, 1.0],
+          "ambient_light_energy": 0.5,
+          "background_mode": "sky",
+          "fog_depth_begin": 8.0,
+          "fog_depth_end": 60.0,
+          "fog_enabled": true,
+          "fog_light_color": [0.72, 0.8, 0.9, 1.0],
+          "fog_mode": "depth",
+          "fog_sky_affect": 0.0
+        }
+      }
+    },
+    "ground": {
+      "components": {
+        "MeshInstance3D": {},
+        "PlaneMesh": {
+          "size": [200.0, 200.0]
+        },
+        "StandardMaterial3D": {
+          "albedo_color": [0.32, 0.5, 0.24, 1.0]
+        },
+        "Transform3D": {}
+      }
+    },
+    "hill_left": {
+      "components": {
+        "MeshInstance3D": {},
+        "SphereMesh": {
+          "height": 16.0,
+          "radius": 8.0
+        },
+        "StandardMaterial3D": {
+          "albedo_color": [0.3, 0.45, 0.25, 1.0]
+        },
+        "Transform3D": {
+          "position": [-14.0, -3.0, -30.0]
+        }
+      }
+    },
+    "hill_right": {
+      "components": {
+        "MeshInstance3D": {},
+        "SphereMesh": {
+          "height": 24.0,
+          "radius": 12.0
+        },
+        "StandardMaterial3D": {
+          "albedo_color": [0.3, 0.45, 0.25, 1.0]
+        },
+        "Transform3D": {
+          "position": [16.0, -5.0, -50.0]
+        }
+      }
+    },
+    "rock": {
+      "components": {
+        "BoxMesh": {},
+        "MeshInstance3D": {},
+        "StandardMaterial3D": {
+          "albedo_color": [0.55, 0.52, 0.5, 1.0],
+          "roughness": 0.8
+        },
+        "Transform3D": {
+          "position": [-1.6, 0.4, 2.0],
+          "rotation": [0.0, 0.6, 0.0],
+          "scale": [1.0, 0.8, 1.0]
+        }
+      }
+    },
+    "sun": {
+      "components": {
+        "DirectionalLight3D": {
+          "light_angular_distance": 2.0,
+          "light_energy": 1.2
+        },
+        "Transform3D": {
+          "rotation": [-0.35, 2.74, 0.0]
+        }
+      }
+    },
+    "tree_canopy": {
+      "components": {
+        "MeshInstance3D": {},
+        "SphereMesh": {
+          "height": 2.0,
+          "radius": 1.0
+        },
+        "StandardMaterial3D": {
+          "albedo_color": [0.2, 0.42, 0.18, 1.0]
+        },
+        "Transform3D": {
+          "position": [2.2, 2.4, 0.5]
+        }
+      }
+    },
+    "tree_trunk": {
+      "components": {
+        "CylinderMesh": {
+          "bottom_radius": 0.18,
+          "height": 1.6,
+          "top_radius": 0.14
+        },
+        "MeshInstance3D": {},
+        "StandardMaterial3D": {
+          "albedo_color": [0.4, 0.27, 0.16, 1.0]
+        },
+        "Transform3D": {
+          "position": [2.2, 0.8, 0.5]
+        }
+      }
+    }
+  },
+  "format": 1
+}

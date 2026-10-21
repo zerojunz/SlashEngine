@@ -1403,11 +1403,11 @@ void register_3d_components(ComponentRegistry& registry) {
                   {.doc = "A normal map with green up, as OpenGL's. " + texture.doc})
         .describe("uv1_scale", {.doc = "Repeats textures this many times, as [x, y, z]."})
         .describe("uv1_offset", {.doc = "Moves textures by this much, as [x, y, z]."})
-        .describe(
-            "texture_filter",
-            {.doc = "How textures are sampled. Textures have no mipmaps yet, so the "
-                    "mipmap filters sample as the plain ones.",
-             .choices = {"nearest", "linear", "nearest_with_mipmaps", "linear_with_mipmaps"}});
+        .describe("texture_filter",
+                  {.doc = "How textures are sampled. Textures have no mipmaps yet, so the "
+                          "mipmap filters sample as the plain ones.",
+                   .choices = {"nearest", "linear", "nearest_with_mipmaps", "linear_with_mipmaps"}})
+        .describe("disable_fog", {.doc = "The WorldEnvironment's fog leaves it alone."});
 
     registry.add<Camera3D>()
         .set_doc("What the 3D world is seen through, as Godot's Camera3D, looking down the "
@@ -1463,7 +1463,13 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe("directional_shadow_pancake_size",
                   {.doc = "How far behind the view, toward the light, meshes still cast; 0 "
                           "casts only from inside the view.",
-                   .min = 0});
+                   .min = 0})
+        .describe("light_angular_distance",
+                  {.doc = "Degrees across its sun's radius in a sky.", .min = 0, .max = 90})
+        .describe("sky_mode",
+                  {.doc = "Whether it lights meshes and shows as a sun in the sky, only lights, "
+                          "or only shows.",
+                   .choices = {"light_and_sky", "light_only", "sky_only"}});
     registry.add<OmniLight3D>()
         .set_doc("Light from the entity in every direction, such as a lamp, as Godot's "
                  "OmniLight3D.")
@@ -1501,16 +1507,73 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe("shadow_opacity", shadow_opacity)
         .describe("shadow_caster_mask", shadow_caster_mask);
 
+    const FieldMeta curve{
+        .doc = "How sharply it changes; smaller is sharper.", .min = 0.001, .max = 1};
+    const FieldMeta debanding{.doc = "Adds a little noise so smooth gradients show no bands."};
+    registry.add<ProceduralSkyMaterial>()
+        .set_doc("A sky from its top through the horizon to the ground, with each "
+                 "DirectionalLight3D's sun on it, as Godot's ProceduralSkyMaterial. It goes on a "
+                 "WorldEnvironment's entity, whose background_mode is \"sky\".")
+        .describe("sky_top_color", color)
+        .describe("sky_horizon_color", color)
+        .describe("sky_curve", curve)
+        .describe("sky_energy_multiplier", energy)
+        .describe("sky_cover", {.doc = "A panorama over the sky, such as clouds. " + texture.doc})
+        .describe("sky_cover_modulate", color)
+        .describe("ground_bottom_color", color)
+        .describe("ground_horizon_color", color)
+        .describe("ground_curve", curve)
+        .describe("ground_energy_multiplier", energy)
+        .describe("sun_angle_max",
+                  {.doc = "Degrees from a sun's edge its glow reaches.", .min = 0, .max = 360})
+        .describe("sun_curve", curve)
+        .describe("use_debanding", debanding)
+        .describe("energy_multiplier", energy);
+    registry.add<PhysicalSkyMaterial>()
+        .set_doc("A sky of the first DirectionalLight3D's light scattered by the air, as Godot's "
+                 "PhysicalSkyMaterial. It goes on a WorldEnvironment's entity, whose "
+                 "background_mode is \"sky\".")
+        .describe("rayleigh_coefficient",
+                  {.doc = "How much the air scatters, which colors the sky.", .min = 0, .max = 64})
+        .describe("rayleigh_color", color)
+        .describe(
+            "mie_coefficient",
+            {.doc = "How much haze scatters, which glows around the sun.", .min = 0, .max = 1})
+        .describe("mie_eccentricity",
+                  {.doc = "How much of the haze's light goes toward the sun's direction.",
+                   .min = -1,
+                   .max = 1})
+        .describe("mie_color", color)
+        .describe("turbidity", {.doc = "How hazy the air is.", .min = 0, .max = 1000})
+        .describe("sun_disk_scale", {.doc = "Times the sun's size.", .min = 0, .max = 360})
+        .describe("ground_color", color)
+        .describe("energy_multiplier", energy)
+        .describe("use_debanding", debanding)
+        .describe("night_sky", {.doc = "A panorama behind the sky, such as stars. " + texture.doc});
+    registry.add<PanoramaSkyMaterial>()
+        .set_doc("A sky of an equirectangular texture all round, as Godot's "
+                 "PanoramaSkyMaterial. It goes on a WorldEnvironment's entity, whose "
+                 "background_mode is \"sky\".")
+        .describe("panorama", texture)
+        .describe("filter", {.doc = "Samples it smoothly; false takes its nearest texel."})
+        .describe("energy_multiplier", energy);
+
     registry.add<WorldEnvironment>()
-        .set_doc("The 3D world's background, ambient light, tonemap, glow and adjustments, as "
-                 "Godot's WorldEnvironment. The first one applies; with none, the background is "
-                 "the clear color, there is no ambient light and colors stay as they are.")
-        .describe("background_mode", {.doc = "\"clear_color\" is the project's "
-                                             "rendering.clear_color; \"color\" is "
-                                             "background_color.",
-                                      .choices = {"clear_color", "color"}})
+        .set_doc("The 3D world's background, ambient light, tonemap, glow, fog and adjustments, "
+                 "as Godot's WorldEnvironment. The first one applies; with none, the background "
+                 "is the clear color, there is no ambient light and colors stay as they are.")
+        .describe("background_mode",
+                  {.doc = "\"clear_color\" is the project's rendering.clear_color; \"color\" is "
+                          "background_color; \"sky\" is the entity's sky material, or a "
+                          "default ProceduralSkyMaterial.",
+                   .choices = {"clear_color", "color", "sky"}})
         .describe("background_color", color)
         .describe("background_energy_multiplier", energy)
+        .describe(
+            "sky_custom_fov",
+            {.doc = "Degrees the sky is seen across; 0 for the camera's.", .min = 0, .max = 180})
+        .describe("sky_rotation",
+                  {.doc = "Turns the sky, in radians about x, y and z, as Transform3D's rotation."})
         .describe("ambient_light_source",
                   {.doc = "Light every lit surface gets: the background's color, none, or "
                           "ambient_light_color.",
@@ -1533,6 +1596,32 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe("glow_hdr_scale",
                   {.doc = "How far above the threshold colors reach full glow.", .min = 0})
         .describe("glow_hdr_luminance_cap", {.doc = "The brightest glow.", .min = 0})
+        .describe("fog_enabled",
+                  {.doc = "Meshes fade toward the fog's color with distance, and the sky by "
+                          "fog_sky_affect."})
+        .describe("fog_mode", {.doc = "\"exponential\" thickens with distance by fog_density; "
+                                      "\"depth\" from fog_depth_begin to fog_depth_end.",
+                               .choices = {"exponential", "depth"}})
+        .describe("fog_light_color", color)
+        .describe("fog_light_energy", energy)
+        .describe("fog_sun_scatter",
+                  {.doc = "How much directional lights brighten fog the camera looks toward them "
+                          "through.",
+                   .min = 0})
+        .describe("fog_density", {.doc = "How thick the fog is.", .min = 0})
+        .describe("fog_aerial_perspective",
+                  {.doc = "How much the sky colors fog in front of it.", .min = 0, .max = 1})
+        .describe("fog_sky_affect", {.doc = "How much fog covers the sky.", .min = 0, .max = 1})
+        .describe("fog_height", {.doc = "Fog thickens below this height, in meters."})
+        .describe("fog_height_density",
+                  {.doc = "How fast fog thickens below fog_height; 0 for none, negative above "
+                          "it."})
+        .describe("fog_depth_curve",
+                  {.doc = "Depth fog's curve from begin to end; 1 is even.", .min = 0.001})
+        .describe("fog_depth_begin", {.doc = "Where depth fog starts, in meters.", .min = 0})
+        .describe(
+            "fog_depth_end",
+            {.doc = "Where depth fog is thickest, in meters; 0 for the camera's far.", .min = 0})
         .describe("adjustment_enabled",
                   {.doc = "Brightness, contrast, saturation and color correction apply."})
         .describe("adjustment_brightness", {.doc = "Multiplies colors.", .min = 0})

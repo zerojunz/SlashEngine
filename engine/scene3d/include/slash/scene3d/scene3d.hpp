@@ -48,24 +48,46 @@ struct CameraView {
 [[nodiscard]] CameraView camera_view(const world::Camera3D& camera, const world::Affine3D& global,
                                      float aspect);
 
-// The background a frame clears to, the light every lit pixel gets and what happens to colors
-// after, from the first WorldEnvironment made (WorldEnvironment's docs); clear is the project's
-// clear color.
+// Something that couldn't draw, such as a mesh whose texture is missing: path is the JSON
+// Pointer of the bad value in the entity, e.g. "/components/StandardMaterial3D/albedo_texture".
+struct Problem {
+    entt::entity entity = entt::null;
+    std::string path;
+    std::string message;
+};
+
+// The background a frame clears to, the sky and fog, the light every lit pixel gets and what
+// happens to colors after, from the first WorldEnvironment made (WorldEnvironment's docs); clear
+// is the project's clear color.
 struct Environment {
     render::Color background;
+    render::Sky3D sky; // with no texture made yet and no lights
+    render::Fog3D fog;
     std::array<float, 3> ambient{0.0F, 0.0F, 0.0F}; // sRGB
     float ambient_energy = 1.0F;
-    render::PostProcess post;         // with no color correction texture made yet
-    std::string color_correction;     // its project path, or ""
+    render::PostProcess post;     // with no color correction texture made yet
+    std::string color_correction; // its project path, or ""
+    // The texture the sky material samples: its project path, or "", how it filters and the
+    // field that names it, e.g. "/components/PanoramaSkyMaterial/panorama".
+    std::string sky_texture;
+    render::Filter sky_filter = render::Filter::Linear;
+    std::string sky_texture_field;
     entt::entity entity = entt::null; // the WorldEnvironment, if there is one
+    std::vector<Problem> problems;    // such as more than one sky material
 };
 [[nodiscard]] Environment environment(const world::World& world, render::Color clear);
 
 // The lights of the world that shine, in tree order, as a frame's lights: those visible in the
-// tree, placed by global, at most render::kMaxLights3D.
+// tree whose sky_mode isn't "sky_only", placed by global, at most render::kMaxLights3D.
 [[nodiscard]] std::vector<render::Light3D>
 lights(const world::World& world, const world::Tree3D& tree,
        const std::function<world::Affine3D(entt::entity)>& global);
+
+// The suns a sky shows, as Godot's: the DirectionalLight3Ds visible in the tree whose sky_mode
+// isn't "light_only", in tree order, at most render::kMaxSkyLights.
+[[nodiscard]] std::vector<render::SkyLight>
+sky_lights(const world::World& world, const world::Tree3D& tree,
+           const std::function<world::Affine3D(entt::entity)>& global);
 
 // A texture made on the device, and its size.
 struct SourceTexture {
@@ -76,14 +98,6 @@ struct SourceTexture {
 // Textures a material or the environment samples, made on the device by project path and filter.
 using TextureSource =
     std::function<Result<SourceTexture>(const std::string& path, render::Filter filter)>;
-
-// Something that couldn't draw, such as a mesh whose texture is missing: path is the JSON
-// Pointer of the bad value in the entity, e.g. "/components/StandardMaterial3D/albedo_texture".
-struct Problem {
-    entt::entity entity = entt::null;
-    std::string path;
-    std::string message;
-};
 
 // The meshes of a world that can't draw, in the order their entities were made: an entity with
 // more than one primitive mesh, a MeshInstance3D with none, and settings Godot refuses (a torus

@@ -11,7 +11,10 @@
 #include "particles_process_shaders.hpp"
 #include "post_shaders.hpp"
 #include "post_shading.hpp"
+#include "shader_code.hpp"
 #include "shadow_shaders.hpp"
+#include "sky_shaders.hpp"
+#include "sky_shading.hpp"
 #include "sprite_shaders.hpp"
 #include "uniforms.hpp"
 
@@ -280,6 +283,14 @@ public:
             SDL_ReleaseGPUGraphicsPipeline(device_, pipeline);
         }
         release_post_targets();
+        for (SDL_GPUShader* shader : sky_shaders_) {
+            if (shader != nullptr) {
+                SDL_ReleaseGPUShader(device_, shader);
+            }
+        }
+        for (const auto& [format, pipeline] : sky_pipelines_) {
+            SDL_ReleaseGPUGraphicsPipeline(device_, pipeline);
+        }
         for (const auto& [id, game] : game_shaders_) {
             SDL_ReleaseGPUShader(device_, game.vertex);
             SDL_ReleaseGPUShader(device_, game.fragment);
@@ -772,6 +783,11 @@ public:
                 !checked) {
                 return checked.error();
             }
+            if (auto checked =
+                    check_sky(*frame.scene, [&](TextureId id) { return textures_.contains(id); });
+                !checked) {
+                return checked.error();
+            }
         }
         SDL_GPUTexture* target = nullptr;
         std::uint32_t width = 0;
@@ -829,6 +845,15 @@ public:
         }
         if (frame.scene && post_processes(frame.scene->post)) {
             if (auto ready = prepare_post(format, width, height); !ready) {
+                SDL_CancelGPUCommandBuffer(commands);
+                return ready.error();
+            }
+        }
+        if (frame.scene && sky_draws(*frame.scene)) {
+            // The sky draws where the meshes do: into the post passes' texture with them.
+            const SDL_GPUTextureFormat world =
+                post_processes(frame.scene->post) ? kTextureFormat : format;
+            if (auto ready = prepare_sky(world, width, height); !ready) {
                 SDL_CancelGPUCommandBuffer(commands);
                 return ready.error();
             }
@@ -941,21 +966,22 @@ public:
         // Particles run and write their quads ahead of the render pass that draws them.
         const auto base = static_cast<std::uint32_t>(vertices_.size());
         dispatch_particle_jobs(commands, base, vertices_.empty());
-        // Meshes draw first, in a pass of their own, and the 2D draws go over them.
+        // The sky and meshes draw first, in a pass of their own, and the 2D draws go over them.
         // Mesh draws need a scene, so a frame with them has one.
         const bool meshes = frame_.scene && shadow_plan_ && !mesh_draws_.empty();
+        const bool world = meshes || (frame_.scene && sky_draws(*frame_.scene));
         const bool post = frame_.scene && post_processes(frame_.scene->post);
-        if (meshes) {
-            draw_meshes(commands, *frame_.scene, *shadow_plan_);
+        if (world) {
+            draw_meshes(commands, *frame_.scene, meshes ? &*shadow_plan_ : nullptr);
         }
         if (post) {
-            draw_post(commands, frame_.scene->post, !meshes);
+            draw_post(commands, frame_.scene->post, !world);
         }
 
         SDL_GPUColorTargetInfo color{};
         color.texture = frame_texture_;
         color.clear_color = {frame_.clear.r, frame_.clear.g, frame_.clear.b, frame_.clear.a};
-        color.load_op = meshes || post ? SDL_GPU_LOADOP_LOAD : SDL_GPU_LOADOP_CLEAR;
+        color.load_op = world || post ? SDL_GPU_LOADOP_LOAD : SDL_GPU_LOADOP_CLEAR;
         color.store_op = SDL_GPU_STOREOP_STORE;
         SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(commands, &color, 1, nullptr);
         if (!batches_.empty()) {
@@ -1343,10 +1369,7 @@ private:
             info.code = spirv.data();
             info.code_size = spirv.size();
         } else if ((formats & SDL_GPU_SHADERFORMAT_MSL) != 0) {
-            // In pieces, since no string literal may be as long as the whole.
-            for (const char* piece : pieces) {
-                msl += piece;
-            }
+            msl = joined(pieces);
             info.format = SDL_GPU_SHADERFORMAT_MSL;
             info.code = reinterpret_cast<const std::uint8_t*>(msl.data());
             info.code_size = msl.size();
@@ -1599,10 +1622,12 @@ private:
         if (mesh_shaders_[0] != nullptr) {
             return {};
         }
+        const std::string vertex_msl = joined(shaders::kMeshVertexMsl);
+        const std::string fragment_msl = joined(shaders::kMeshFragmentMsl);
         const ShaderCode code{.vertex_spirv = shaders::kMeshVertexSpirv,
                               .fragment_spirv = shaders::kMeshFragmentSpirv,
-                              .vertex_msl = shaders::kMeshVertexMsl,
-                              .fragment_msl = shaders::kMeshFragmentMsl,
+                              .vertex_msl = vertex_msl,
+                              .fragment_msl = fragment_msl,
                               .hlsl = shaders::kMeshHlsl};
         auto vertex = make_gpu_shader(SDL_GPU_SHADERSTAGE_VERTEX, code, 0, 2);
         if (!vertex) {
@@ -1934,8 +1959,11 @@ private:
 
     // The frame's meshes: first into the shadow atlases, then in the order mesh_draw_order gives,
     // in a pass that clears the target and a depth buffer to the far plane.
-    void draw_meshes(SDL_GPUCommandBuffer* commands, const Scene3D& scene, const ShadowPlan& plan) {
-        draw_shadows(commands, plan);
+    // The scene's sky, then its meshes with their shadows planned by plan (null with no meshes).
+    void draw_meshes(SDL_GPUCommandBuffer* commands, const Scene3D& scene, const ShadowPlan* plan) {
+        if (plan != nullptr) {
+            draw_shadows(commands, *plan);
+        }
         SDL_GPUColorTargetInfo color{};
         color.texture = post_processes(scene.post) ? post_targets_.world : frame_texture_;
         color.clear_color = {frame_.clear.r, frame_.clear.g, frame_.clear.b, frame_.clear.a};
@@ -1950,18 +1978,33 @@ private:
         depth.stencil_store_op = SDL_GPU_STOREOP_DONT_CARE;
         depth.cycle = true;
         SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(commands, &color, 1, &depth);
+        if (sky_draws(scene)) {
+            const SDL_GPUTextureFormat format =
+                post_processes(scene.post) ? kTextureFormat : frame_format_;
+            const SkyUniforms sky = sky_uniforms(scene, frame_width_, frame_height_);
+            SDL_PushGPUFragmentUniformData(commands, 0, &sky,
+                                           static_cast<std::uint32_t>(sizeof(sky)));
+            const SDL_GPUTextureSamplerBinding texture = binding(sky_texture(scene.sky), true);
+            SDL_BindGPUGraphicsPipeline(pass, sky_pipeline(format));
+            SDL_BindGPUFragmentSamplers(pass, 0, &texture, 1);
+            SDL_DrawGPUPrimitives(pass, 3, 1, 0, 0);
+        }
+        if (plan == nullptr) {
+            SDL_EndGPURenderPass(pass);
+            return;
+        }
         const MeshCameraUniforms camera = mesh_camera_uniforms(scene);
         SDL_PushGPUVertexUniformData(commands, 0, &camera,
                                      static_cast<std::uint32_t>(sizeof(camera)));
         const auto lights = std::make_unique<MeshSceneUniforms>(mesh_scene_uniforms(scene));
         SDL_PushGPUFragmentUniformData(commands, 1, lights.get(),
                                        static_cast<std::uint32_t>(sizeof(MeshSceneUniforms)));
-        SDL_PushGPUFragmentUniformData(commands, 2, plan.uniforms.get(),
+        SDL_PushGPUFragmentUniformData(commands, 2, plan->uniforms.get(),
                                        static_cast<std::uint32_t>(sizeof(MeshShadowUniforms)));
         std::array<SDL_GPUTextureSamplerBinding, kMeshTextures + 2> samplers{};
         for (std::size_t atlas = 0; atlas < 2; ++atlas) {
             const ShadowAtlasTexture& made = shadow_atlases_.at(atlas);
-            const bool drawn = (atlas == 0 ? plan.directional_size : plan.positional_size) != 0;
+            const bool drawn = (atlas == 0 ? plan->directional_size : plan->positional_size) != 0;
             samplers.at(kMeshTextures + atlas) = {.texture = drawn ? made.texture : no_shadows_,
                                                   .sampler = shadow_sampler_};
         }
@@ -2049,6 +2092,64 @@ private:
         post_targets_.width = width;
         post_targets_.height = height;
         return {};
+    }
+
+    // The sky's shaders, its pipeline for a target format and the depth buffer its pass has, made
+    // at the start of a frame with a sky so a failure shows there.
+    Result<void> prepare_sky(SDL_GPUTextureFormat format, std::uint32_t width,
+                             std::uint32_t height) {
+        if (auto depth = depth_target(width, height); !depth) {
+            return depth.error();
+        }
+        if (sky_shaders_[0] == nullptr) {
+            const ShaderCode code{.vertex_spirv = shaders::kSkyVertexSpirv,
+                                  .fragment_spirv = shaders::kSkyFragmentSpirv,
+                                  .vertex_msl = shaders::kSkyVertexMsl,
+                                  .fragment_msl = shaders::kSkyFragmentMsl,
+                                  .hlsl = shaders::kSkyHlsl};
+            auto vertex = make_gpu_shader(SDL_GPU_SHADERSTAGE_VERTEX, code, 0, 0);
+            if (!vertex) {
+                return vertex.error();
+            }
+            auto fragment = make_gpu_shader(SDL_GPU_SHADERSTAGE_FRAGMENT, code, 1, 1);
+            if (!fragment) {
+                SDL_ReleaseGPUShader(device_, vertex.value());
+                return fragment.error();
+            }
+            sky_shaders_ = {vertex.value(), fragment.value()};
+        }
+        if (sky_pipeline(format) != nullptr) {
+            return {};
+        }
+        SDL_GPUColorTargetDescription color{};
+        color.format = format;
+        SDL_GPUGraphicsPipelineCreateInfo info{};
+        info.vertex_shader = sky_shaders_[0];
+        info.fragment_shader = sky_shaders_[1];
+        info.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
+        info.rasterizer_state.fill_mode = SDL_GPU_FILLMODE_FILL;
+        info.rasterizer_state.cull_mode = SDL_GPU_CULLMODE_NONE;
+        // Behind everything: it neither tests nor writes depth.
+        info.target_info.color_target_descriptions = &color;
+        info.target_info.num_color_targets = 1;
+        info.target_info.has_depth_stencil_target = true;
+        info.target_info.depth_stencil_format = depth_format_;
+        SDL_GPUGraphicsPipeline* pipeline = SDL_CreateGPUGraphicsPipeline(device_, &info);
+        if (pipeline == nullptr) {
+            return sdl_error("creating the sky pipeline failed");
+        }
+        sky_pipelines_.emplace_back(format, pipeline);
+        return {};
+    }
+
+    // The sky's pipeline for a target format, or null before prepare_sky made it.
+    SDL_GPUGraphicsPipeline* sky_pipeline(SDL_GPUTextureFormat format) const {
+        for (const auto& [made, pipeline] : sky_pipelines_) {
+            if (made == format) {
+                return pipeline;
+            }
+        }
+        return nullptr;
     }
 
     Result<SDL_GPUGraphicsPipeline*> post_pipeline(SDL_GPUTextureFormat format) {
@@ -2526,7 +2627,9 @@ private:
         std::uint32_t height = 0;
     };
     std::array<SDL_GPUShader*, 2> post_shaders_{}; // vertex, then fragment
+    std::array<SDL_GPUShader*, 2> sky_shaders_{};  // vertex, then fragment
     std::vector<std::pair<SDL_GPUTextureFormat, SDL_GPUGraphicsPipeline*>> post_pipelines_;
+    std::vector<std::pair<SDL_GPUTextureFormat, SDL_GPUGraphicsPipeline*>> sky_pipelines_;
     PostTargets post_targets_;
 
     // The frame being built. A skipped frame has no command buffer.

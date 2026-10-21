@@ -9,6 +9,7 @@
 #include "cpu_particles.hpp"
 #include "mesh_shading.hpp"
 #include "post_shading.hpp"
+#include "sky_shading.hpp"
 
 #include "slash/render/device.hpp"
 #include "slash/render/image.hpp"
@@ -341,6 +342,11 @@ public:
                 !checked) {
                 return checked.error();
             }
+            if (auto checked = detail::check_sky(
+                    *frame.scene, [&](TextureId id) { return textures_.contains(id); });
+                !checked) {
+                return checked.error();
+            }
         }
         const auto it = textures_.find(frame.target);
         if (it == textures_.end()) {
@@ -442,15 +448,19 @@ public:
                       target.pixels.begin() + static_cast<std::ptrdiff_t>(i));
         }
         if (frame_.scene && detail::post_processes(frame_.scene->post)) {
-            // The meshes draw untonemapped over a copy of the cleared target, and the post
-            // passes draw that over the target.
+            // The sky and meshes draw untonemapped over a copy of the cleared target, and the
+            // post passes draw that over the target.
             Image world = target;
+            draw_sky(*frame_.scene, world);
             if (!mesh_draws_.empty()) {
                 draw_meshes(*frame_.scene, world);
             }
             post_process(frame_.scene->post, world, target);
-        } else if (frame_.scene && !mesh_draws_.empty()) {
-            draw_meshes(*frame_.scene, target);
+        } else if (frame_.scene) {
+            draw_sky(*frame_.scene, target);
+            if (!mesh_draws_.empty()) {
+                draw_meshes(*frame_.scene, target);
+            }
         }
         const Mat4 view = frame_.view.value_or(
             pixel_projection(static_cast<float>(target.width), static_cast<float>(target.height)));
@@ -1122,6 +1132,39 @@ private:
         detail::run_post_pass(detail::post_uniforms(post, detail::PostPass::Post, target.width,
                                                     target.height, lut->width, lut->height),
                               world, post.glow ? levels[0] : none, *lut, target);
+    }
+
+    // sky.hlsl on the CPU: every pixel of the target, from its view direction, before the
+    // meshes. Colors are rounded to bytes as a GPU writes them.
+    void draw_sky(const Scene3D& scene, Image& target) {
+        if (!detail::sky_draws(scene)) {
+            return;
+        }
+        const detail::SkyUniforms uniforms =
+            detail::sky_uniforms(scene, target.width, target.height);
+        const Texture* texture = nullptr;
+        if (const TextureId id = detail::sky_texture(scene.sky); id != TextureId::None) {
+            texture = find(id);
+        }
+        const auto to_byte = [](float value) {
+            return static_cast<std::uint8_t>(std::lround(std::clamp(value, 0.0F, 1.0F) * 255.0F));
+        };
+        for (std::uint32_t y = 0; y < target.height; ++y) {
+            for (std::uint32_t x = 0; x < target.width; ++x) {
+                const float px = static_cast<float>(x) + 0.5F;
+                const float py = static_cast<float>(y) + 0.5F;
+                const detail::SkyRay ray = detail::sky_ray(uniforms, px, py);
+                const Float4 texel = texture == nullptr
+                                         ? Float4{1.0F, 1.0F, 1.0F, 1.0F}
+                                         : sample_image(texture->image, texture->desc.filter, true,
+                                                        ray.coords[0], ray.coords[1]);
+                const Float4 color = detail::shade_sky(uniforms, ray, texel, px, py);
+                const std::size_t at = ((std::size_t{y} * target.width) + x) * 4;
+                for (std::size_t i = 0; i < 4; ++i) {
+                    target.pixels[at + i] = to_byte(color.at(i));
+                }
+            }
+        }
     }
 
     void draw_meshes(const Scene3D& scene, Image& target) {
