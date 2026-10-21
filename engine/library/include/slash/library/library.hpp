@@ -42,9 +42,15 @@ struct Feedback {
     std::string source;  // who said so: "agent", or a check such as "storyboard.check"
 };
 
+// One part of a music track, such as its drums, kept as an asset of its own.
+struct Stem {
+    std::string name; // such as "drums"
+    std::string id;   // the stem's asset
+};
+
 struct Record {
     std::string id;     // the SHA-256 of the bytes, 64 hex digits
-    std::string type;   // "image" or "sound"
+    std::string type;   // "image", "sound" or "music"
     std::string format; // the file's extension without the dot: "png", "bmp", "wav", "ogg", "mp3"
     std::int64_t bytes = 0;
     int width = 0; // images
@@ -62,6 +68,14 @@ struct Record {
     std::string author;             // who made an added file
     std::string parent;             // the asset this one was refined from
     std::vector<Feedback> feedback; // oldest first; the last kMaxFeedback are kept
+    // Music: its tempo, length in beats, beats per bar and key, measured or as its author gave
+    // them, and the stems it was mixed from; 0 or "" when unknown.
+    double bpm = 0.0;
+    int beat_count = 0;
+    int bar_beats = 0;
+    std::string key; // such as "D minor"
+    std::vector<Stem> stems;
+    std::string track; // for a stem: the track it is part of
 };
 
 inline constexpr std::size_t kMaxFeedback = 20;
@@ -78,7 +92,10 @@ void add_feedback(Record& record, Feedback feedback);
 [[nodiscard]] Result<Record> record_from_json(const json::Value& value);
 
 // "image" or "sound" for a file extension such as ".png", or "" for one the library doesn't keep.
+// Music is kept in sound files.
 [[nodiscard]] std::string_view type_of(std::string_view extension);
+// Whether a file of the extension can be an asset of the type.
+[[nodiscard]] bool holds(std::string_view type, std::string_view extension);
 
 // Fills in a record's type, format, size, image size or sound length from the file's bytes, and
 // checks they are a file of that format. path names the file, for its extension.
@@ -92,7 +109,7 @@ public:
     [[nodiscard]] const std::string& dir() const noexcept { return dir_; }
 
     // Stores the bytes and the record, its ID set from them. Bytes the library already holds keep
-    // their record, with the new record's tags added.
+    // their record, with the new record's tags added, and the music facts and stems it lacked.
     [[nodiscard]] Result<Record> put(std::string_view data, Record record) const;
     // Replaces the record of an asset the library holds.
     [[nodiscard]] Result<void> update(const Record& record) const;

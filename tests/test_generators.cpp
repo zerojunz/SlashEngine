@@ -388,6 +388,85 @@ TEST_CASE("openai-speech speaks the prompt and elevenlabs-sound makes effects") 
     CHECK(mp3->body().find("duration_seconds") == nullptr);
 }
 
+TEST_CASE("elevenlabs-music and stability-audio make music, asked its tempo and key in words") {
+    library::GenerateRequest asked = request("music", "A tense boss fight with low strings.");
+    asked.bpm = 140;
+    asked.key = "D minor";
+    asked.bar_beats = 3;
+    asked.loop = true;
+    const std::string details = "A tense boss fight with low strings.\n\nTempo: 140 BPM. Meter: "
+                                "3/4. Key: D minor. It loops seamlessly: its end leads straight "
+                                "back into its start.";
+
+    // ElevenLabs: JSON, instrumental, 30 seconds unless asked; output_format in the URL.
+    auto eleven = std::make_shared<ScriptedTransport>(
+        std::vector<ScriptedTransport::Reply>{{200, std::string(1600, '\x02')}});
+    const library::OpenedGenerator composer =
+        open(R"({"type": "elevenlabs-music", "api_key_env": "TEST_KEY",
+                 "options": {"output_format": "pcm_8000"}})",
+             eleven, "music");
+    CHECK(composer.generator->capabilities().music);
+    CHECK_FALSE(composer.generator->capabilities().sounds);
+    CHECK(composer.model == "music_v1");
+    auto made = composer.generator->generate(asked);
+    REQUIRE_MESSAGE(made.ok(), made.error().message);
+    CHECK(eleven->requests[0].url == "https://api.elevenlabs.io/v1/music?output_format=pcm_8000");
+    CHECK(eleven->header("xi-api-key") == "key");
+    json::Value body = eleven->body();
+    CHECK(body["prompt"].as_string() == details);
+    body.as_object().erase("prompt");
+    CHECK(json::write(body, json::Style::Compact) ==
+          R"({"force_instrumental":true,"model_id":"music_v1","music_length_ms":30000})");
+    // Raw samples are stereo.
+    library::Record record;
+    REQUIRE(library::describe_file(made.value().data, "boss.wav", record).ok());
+    CHECK(record.channels == 2);
+    CHECK(record.seconds == doctest::Approx(0.05));
+
+    // A length is kept to what the service makes: 3 seconds to 10 minutes.
+    asked.seconds = 1.0;
+    REQUIRE(composer.generator->generate(asked).ok());
+    CHECK(eleven->body(1)["music_length_ms"].as_int() == 3000);
+
+    // Stable Audio: a form, the audio back as it is, the seed kept.
+    auto stability = std::make_shared<ScriptedTransport>(
+        std::vector<ScriptedTransport::Reply>{{200, std::string("ID3\x04\x00", 5)}});
+    const library::OpenedGenerator stable =
+        open(R"({"type": "stability-audio", "api_key_env": "TEST_KEY", "options": {"steps": 6}})",
+             stability, "music");
+    CHECK(stable.model == "stable-audio-2.5");
+    asked.seconds = 12.4;
+    asked.seed = 7;
+    auto played = stable.generator->generate(asked);
+    REQUIRE_MESSAGE(played.ok(), played.error().message);
+    CHECK(played.value().format == "mp3");
+    CHECK(played.value().seed == 7);
+    const slash::ai::HttpRequest& sent = stability->requests[0];
+    CHECK(sent.url == "https://api.stability.ai/v2beta/audio/stable-audio-2/text-to-audio");
+    CHECK(sent.content_type.starts_with("multipart/form-data; boundary=slash-"));
+    CHECK(stability->header("Authorization") == "Bearer key");
+    CHECK(stability->header("Accept") == "audio/*");
+    const auto field = [&sent](std::string_view name, std::string_view value) {
+        return has_text(sent.body,
+                        "name=\"" + std::string(name) + "\"\r\n\r\n" + std::string(value) + "\r\n");
+    };
+    CHECK(field("prompt", details) != "(missing)");
+    CHECK(field("model", "stable-audio-2.5") != "(missing)");
+    CHECK(field("duration", "12") != "(missing)");
+    CHECK(field("seed", "7") != "(missing)");
+    CHECK(field("steps", "6") != "(missing)");
+    CHECK(field("output_format", "mp3") != "(missing)");
+
+    // Neither makes images or sounds, nor refines music.
+    auto config =
+        slash::ai::parse_config(parse(R"({"generators": {"g": {"type": "stability-audio"}}})"));
+    REQUIRE(config.ok());
+    auto wrong = library::open_generator(config.value(), "g", "sound");
+    REQUIRE_FALSE(wrong.ok());
+    CHECK(wrong.error().message == R"(the generator "g" makes no sounds)");
+    CHECK_FALSE(library::refines(stable.generator->capabilities(), "music"));
+}
+
 TEST_CASE("generators retry rate limits and report errors with the service's message") {
     const std::string made = png(4, 4, {1, 2, 3});
     auto transport = std::make_shared<ScriptedTransport>(std::vector<ScriptedTransport::Reply>{

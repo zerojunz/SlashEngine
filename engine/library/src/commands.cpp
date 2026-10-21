@@ -4,8 +4,10 @@
 #include "slash/canvas/canvas.hpp"
 #include "slash/command/session.hpp"
 #include "slash/core/sha256.hpp"
+#include "slash/core/text.hpp"
 #include "slash/library/generator.hpp"
 #include "slash/library/library.hpp"
+#include "slash/library/music.hpp"
 #include "slash/library/team.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/render/image.hpp"
@@ -16,6 +18,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <initializer_list>
 #include <map>
 #include <memory>
 #include <optional>
@@ -380,6 +383,23 @@ json::Value summary(const Record& record) {
     if (record.sample_rate > 0) {
         out["seconds"] = record.seconds;
     }
+    if (record.bpm > 0.0) {
+        out["bpm"] = bpm_json(record.bpm);
+        out["beat_count"] = record.beat_count;
+    }
+    if (record.bar_beats > 0) {
+        out["bar_beats"] = record.bar_beats;
+    }
+    if (!record.key.empty()) {
+        out["key"] = record.key;
+    }
+    if (!record.stems.empty()) {
+        json::Array stems;
+        for (const Stem& stem : record.stems) {
+            stems.emplace_back(stem.name);
+        }
+        out["stems"] = std::move(stems);
+    }
     int accepted = 0;
     int rejected = 0;
     for (const Feedback& item : record.feedback) {
@@ -475,6 +495,105 @@ Result<std::string> copy_into_project(Session& session, const Library& library,
         return written.error();
     }
     return data;
+}
+
+// A file's path without its extension, where its settings and stems go.
+std::string base_of(std::string_view path) {
+    const std::size_t slash = path.rfind('/');
+    const std::size_t dot = path.rfind('.');
+    if (dot == std::string_view::npos || (slash != std::string_view::npos && dot < slash)) {
+        return std::string(path);
+    }
+    return std::string(path.substr(0, dot));
+}
+
+// Writes the .audio.json settings that play a music file as its record says: its tempo, beats
+// and beats per bar, and a loop if asked. Settings already there for a sound keep the fields
+// these don't set.
+Result<void> write_settings(Session& session, const Record& record, const std::string& sound,
+                            const std::string& settings, bool loop) {
+    auto full = session.resolve_path(settings);
+    if (!full) {
+        return full.error();
+    }
+    json::Value out = json::Object{};
+    if (platform::exists(full.value())) {
+        if (auto existing = platform::read_file(full.value()); existing) {
+            auto parsed = json::parse(existing.value());
+            if (parsed && parsed.value().is_object() && parsed.value().find("source") != nullptr) {
+                out = std::move(parsed).value();
+            }
+        }
+    }
+    out["format"] = 1;
+    out["source"] = sound;
+    if (record.bpm > 0.0) {
+        out["bpm"] = bpm_json(record.bpm);
+        if (record.beat_count > 0) {
+            out["beat_count"] = record.beat_count;
+        }
+    }
+    if (record.bar_beats > 0 && record.bar_beats != 4) {
+        out["bar_beats"] = record.bar_beats;
+    }
+    if (loop) {
+        if (record.format == "wav") {
+            out["loop_mode"] = "forward";
+        } else {
+            out["loop"] = true;
+        }
+    }
+    return session.write_file(full.value(), json::write(out) + "\n");
+}
+
+// Puts music in the project beside the file at path: the settings that play it
+// (music/theme.ogg's are music/theme.audio.json) and, with stems, each stem in a folder named
+// after the file (music/theme/drums.ogg) with its own settings, the settings beside the file then
+// playing the stems together as layers. Returns the files written.
+Result<json::Array> place_music(Session& session, Libraries& libs, const Record& record,
+                                const std::string& path, bool loop, bool with_stems) {
+    json::Array written;
+    const std::string base = base_of(path);
+    const std::string settings = base + ".audio.json";
+    if (!with_stems) {
+        if (auto wrote = write_settings(session, record, path, settings, loop); !wrote) {
+            return wrote.error();
+        }
+        written.emplace_back(settings);
+        return written;
+    }
+    json::Array layers;
+    for (const Stem& stem : record.stems) {
+        auto part = find_asset(session, libs, stem.id);
+        if (!part) {
+            return part.error();
+        }
+        const std::string file = base + "/" + stem.name + "." + part.value().format;
+        const std::string file_settings = base + "/" + stem.name + ".audio.json";
+        if (auto copied = copy_into_project(session, libs.local(), part.value(), file); !copied) {
+            return copied.error();
+        }
+        if (auto wrote = write_settings(session, part.value(), file, file_settings, loop); !wrote) {
+            return wrote.error();
+        }
+        written.emplace_back(file);
+        written.emplace_back(file_settings);
+        json::Value layer;
+        layer["stream"] = file_settings;
+        layers.push_back(std::move(layer));
+    }
+    auto full = session.resolve_path(settings);
+    if (!full) {
+        return full.error();
+    }
+    json::Value synchronized;
+    synchronized["format"] = 1;
+    synchronized["synchronized"] = std::move(layers);
+    if (auto wrote = session.write_file(full.value(), json::write(synchronized) + "\n"); !wrote) {
+        return wrote.error();
+    }
+    written.emplace_back(settings);
+    return written;
 }
 
 // The problems the storyboard's palettes and budgets that cover a project path find in an image
@@ -613,6 +732,13 @@ Reply finish(Session& session, Libraries& libs, const Record& record, const Aske
             !problems.empty()) {
             out["problems"] = std::move(problems);
         }
+        if (record.type == "music") {
+            auto placed = place_music(session, libs, record, asked.path, asked.request.loop, false);
+            if (!placed) {
+                return failure_at(placed.error(), "/path");
+            }
+            out["files"] = std::move(placed).value();
+        }
     }
     return libs.noted(Reply::success(std::move(out)));
 }
@@ -741,11 +867,11 @@ Reply run_generator(Session& session, const json::Value& params, Asked asked,
     }
     const OpenedGenerator& generator = opened.value();
     const GeneratorCapabilities& can = generator.generator->capabilities();
-    if (parent != nullptr &&
-        !(asked.request.type == "image" ? can.refines_images : can.refines_sounds)) {
-        return Reply::failure(command::code::kInvalidArgument, "the generator \"" + generator.name +
-                                                                   "\" can't refine " +
-                                                                   asked.request.type + "s");
+    if (parent != nullptr && !refines(can, asked.request.type)) {
+        return Reply::failure(
+            command::code::kInvalidArgument,
+            "the generator \"" + generator.name + "\" can't refine " +
+                (asked.request.type == "music" ? std::string("music") : asked.request.type + "s"));
     }
 
     const std::string key = request_key(generator.type, generator.model, asked.keyed);
@@ -830,12 +956,36 @@ Reply run_generator(Session& session, const json::Value& params, Asked asked,
         record.parent = parent->id;
     }
     const std::string& data = generated.value().data;
-    if (auto described = describe_file(data, "generated." + generated.value().format, record);
-        !described) {
+    const std::string file = "generated." + generated.value().format;
+    if (auto described = describe_file(data, file, record); !described) {
         return Reply::failure(
             command::code::kPlatformFailure,
             "the generator \"" + generator.name +
                 "\" returned a file the library can't read: " + described.error().message);
+    }
+    json::Array notes;
+    if (asked.request.type == "music") {
+        if (record.type != "sound") {
+            return Reply::failure(command::code::kPlatformFailure,
+                                  "the generator \"" + generator.name +
+                                      "\" returned an image, not music");
+        }
+        // What the generator says it made, else what was asked for.
+        const Generated& made = generated.value();
+        const MusicFacts facts{.bpm = made.bpm > 0.0 ? made.bpm : asked.request.bpm,
+                               .beat_count = 0,
+                               .bar_beats = asked.request.bar_beats,
+                               .key = made.key.empty() ? asked.request.key : made.key};
+        auto measured = describe_music(data, file, facts, false, record);
+        if (!measured) {
+            return Reply::failure(
+                command::code::kPlatformFailure,
+                "the generator \"" + generator.name +
+                    "\" returned music the library can't read: " + measured.error().message);
+        }
+        for (std::string& note : measured.value()) {
+            notes.emplace_back(std::move(note));
+        }
     }
     auto stored = libs.local().put(data, std::move(record));
     if (!stored) {
@@ -845,7 +995,17 @@ Reply run_generator(Session& session, const json::Value& params, Asked asked,
         return Reply::failure(remembered.error());
     }
     share(libs, stored.value(), data, key);
-    return finish(session, libs, stored.value(), asked, false);
+    Reply reply = finish(session, libs, stored.value(), asked, false);
+    if (reply.ok && !notes.empty()) {
+        json::Value& problems = reply.value["problems"];
+        if (!problems.is_array()) {
+            problems = json::Array{};
+        }
+        for (json::Value& note : notes) {
+            problems.push_back(std::move(note));
+        }
+    }
+    return reply;
 }
 
 // The params generate and refine share: size or length, seed, description, tags and path.
@@ -869,9 +1029,11 @@ Reply read_shared(const json::Value& params, Asked& asked) {
                               "/seconds: images have a width and height, not seconds",
                               json::Value(json::Object{{"path", "/seconds"}}));
     }
-    if (request.type == "sound" && sized) {
+    if (request.type != "image" && sized) {
         return Reply::failure(command::code::kInvalidParams,
-                              "/width: sounds have seconds, not a width and height",
+                              std::string("/width: ") +
+                                  (request.type == "music" ? "music has" : "sounds have") +
+                                  " seconds, not a width and height",
                               json::Value(json::Object{{"path", "/width"}}));
     }
     if (const json::Value* seed = params.find("seed"); seed != nullptr) {
@@ -883,9 +1045,8 @@ Reply read_shared(const json::Value& params, Asked& asked) {
     asked.path = text(params, "path");
     if (!asked.path.empty()) {
         const std::size_t dot = asked.path.rfind('.');
-        const std::string_view type =
-            type_of(dot == std::string::npos ? std::string_view() : asked.path.substr(dot));
-        if (type != request.type) {
+        if (!holds(request.type,
+                   dot == std::string::npos ? std::string_view() : asked.path.substr(dot))) {
             return Reply::failure(
                 command::code::kInvalidParams,
                 "/path: \"" + asked.path + "\" is not " +
@@ -896,18 +1057,159 @@ Reply read_shared(const json::Value& params, Asked& asked) {
     return Reply::success({});
 }
 
+Reply invalid_at(std::string_view path, const std::string& message) {
+    return Reply::failure(command::code::kInvalidParams, std::string(path) + ": " + message,
+                          json::Value(json::Object{{"path", path}}));
+}
+
+// The tempo, beats per bar, length in beats and key the params give music.
+Reply read_music(const json::Value& params, MusicFacts& facts) {
+    if (const json::Value* bpm = params.find("bpm"); bpm != nullptr) {
+        facts.bpm = bpm->as_double();
+    }
+    if (const json::Value* bar_beats = params.find("bar_beats"); bar_beats != nullptr) {
+        facts.bar_beats = static_cast<int>(bar_beats->as_int());
+    }
+    if (const json::Value* beat_count = params.find("beat_count"); beat_count != nullptr) {
+        facts.beat_count = static_cast<int>(beat_count->as_int());
+    }
+    if (const json::Value* key = params.find("key"); key != nullptr) {
+        const std::optional<Key> parsed = parse_key(key->as_string());
+        if (!parsed) {
+            return invalid_at("/key", "\"" + key->as_string() +
+                                          "\" is not a key; name one such as \"D minor\" or "
+                                          "\"F# major\"");
+        }
+        facts.key = key_name(*parsed);
+    }
+    return Reply::success({});
+}
+
+// Params only music takes: an error at the first one given for another type.
+Reply music_only(const json::Value& params, std::string_view type,
+                 std::initializer_list<std::string_view> names) {
+    if (type == "music") {
+        return Reply::success({});
+    }
+    for (const std::string_view name : names) {
+        if (params.find(name) != nullptr) {
+            return invalid_at("/" + std::string(name),
+                              "only music takes " + std::string(name) + "; set type \"music\"");
+        }
+    }
+    return Reply::success({});
+}
+
+std::string listed(const json::Value* list) {
+    std::vector<std::string> items;
+    if (list != nullptr && list->is_array()) {
+        for (const json::Value& item : list->as_array()) {
+            if (item.is_string()) {
+                items.push_back(item.as_string());
+            }
+        }
+    }
+    return joined(items, ", ");
+}
+
+// Fills in music's request from a storyboard theme: the theme's key, tempo and beats per bar where
+// the params give none, its instruments and mood in the prompt, and its ID in the tags.
+Reply apply_theme(Session& session, const std::string& id, Asked& asked) {
+    const json::Object entries = storyboard_entries(session);
+    const auto found = entries.find(id);
+    const storyboard::Kind* kind = storyboard::kind_of(id);
+    if (found == entries.end() || kind == nullptr || kind->name != "theme") {
+        std::vector<std::string> themes;
+        for (const auto& [name, entry] : entries) {
+            if (const storyboard::Kind* each = storyboard::kind_of(name);
+                each != nullptr && each->name == "theme") {
+                themes.push_back(name);
+            }
+        }
+        std::string message = "no theme \"" + id + "\" in the storyboard";
+        if (const std::string_view hint = closest_match(id, themes); !hint.empty()) {
+            message += "; did you mean \"" + std::string(hint) + "\"?";
+        }
+        return invalid_at("/theme", message);
+    }
+    const json::Value& theme = found->second;
+    GenerateRequest& request = asked.request;
+    if (request.key.empty()) {
+        if (const std::optional<Key> key = parse_key(field_text(theme, "key")); key) {
+            request.key = key_name(*key);
+        }
+    }
+    if (const json::Value* tempo = theme.find("tempo");
+        request.bpm <= 0.0 && tempo != nullptr && tempo->is_number()) {
+        request.bpm = tempo->as_double();
+    }
+    if (const json::Value* bar_beats = theme.find("bar_beats");
+        request.bar_beats <= 0 && bar_beats != nullptr && bar_beats->is_number()) {
+        request.bar_beats = static_cast<int>(bar_beats->as_int());
+    }
+    std::string details;
+    if (const std::string instruments = listed(theme.find("instruments")); !instruments.empty()) {
+        details += " Instruments: " + instruments + ".";
+    }
+    if (const std::string mood = listed(theme.find("mood")); !mood.empty()) {
+        details += " Mood: " + mood + ".";
+    }
+    if (!details.empty()) {
+        request.prompt += "\n\n" + details.substr(1);
+    }
+    if (std::ranges::find(asked.tags, id) == asked.tags.end()) {
+        asked.tags.push_back(id);
+    }
+    return Reply::success({});
+}
+
 Reply asset_generate(Session& session, const json::Value& params) {
     Asked asked;
     asked.request.prompt = text(params, "prompt");
     asked.request.type = params.find("type") != nullptr ? text(params, "type") : "image";
     asked.keyed["type"] = asked.request.type;
-    asked.keyed["prompt"] = asked.request.prompt;
     if (Reply shared = read_shared(params, asked); !shared.ok) {
         return shared;
     }
     if (asked.description.empty()) {
         asked.description = asked.request.prompt;
     }
+    if (Reply only =
+            music_only(params, asked.request.type, {"bpm", "key", "bar_beats", "loop", "theme"});
+        !only.ok) {
+        return only;
+    }
+    if (asked.request.type == "music") {
+        MusicFacts facts;
+        if (Reply music = read_music(params, facts); !music.ok) {
+            return music;
+        }
+        asked.request.bpm = facts.bpm;
+        asked.request.bar_beats = facts.bar_beats;
+        asked.request.key = facts.key;
+        if (const json::Value* loop = params.find("loop"); loop != nullptr) {
+            asked.request.loop = loop->as_bool();
+        }
+        if (const json::Value* theme = params.find("theme"); theme != nullptr) {
+            if (Reply themed = apply_theme(session, theme->as_string(), asked); !themed.ok) {
+                return themed;
+            }
+            asked.keyed["theme"] = theme->as_string();
+        }
+        if (asked.request.bpm > 0.0) {
+            asked.keyed["bpm"] = asked.request.bpm;
+        }
+        if (asked.request.bar_beats > 0) {
+            asked.keyed["bar_beats"] = asked.request.bar_beats;
+        }
+        if (!asked.request.key.empty()) {
+            asked.keyed["key"] = asked.request.key;
+        }
+        if (asked.request.loop) {
+            asked.keyed["loop"] = true;
+        }
+    }
+    asked.keyed["prompt"] = asked.request.prompt;
     return run_generator(session, params, std::move(asked), nullptr);
 }
 
@@ -946,6 +1248,17 @@ Reply asset_refine(Session& session, const json::Value& params) {
     if (params.find("tags") == nullptr) {
         asked.tags = parent.value().tags;
     }
+    if (asked.request.type != "music" && params.find("loop") != nullptr) {
+        return invalid_at("/loop", "only music takes loop; the asset is " +
+                                       std::string(asked.request.type == "image" ? "an " : "a ") +
+                                       asked.request.type);
+    }
+    // A version of music keeps its meter; its tempo and key are what it measures.
+    asked.request.bar_beats = parent.value().bar_beats;
+    if (const json::Value* loop = params.find("loop"); loop != nullptr && loop->as_bool()) {
+        asked.request.loop = true;
+        asked.keyed["loop"] = true;
+    }
     return run_generator(session, params, std::move(asked), &parent.value());
 }
 
@@ -974,6 +1287,14 @@ Reply asset_info(Session& session, const json::Value& params) {
     }
     json::Value out = to_json(record.value());
     out["id"] = short_id(record.value().id);
+    if (json::Value* stems = out.find("stems"); stems != nullptr) {
+        for (json::Value& stem : stems->as_array()) {
+            stem["id"] = short_id(stem["id"].as_string());
+        }
+    }
+    if (!record.value().track.empty()) {
+        out["track"] = short_id(record.value().track);
+    }
     if (json::Value* request = out.find("request"); request != nullptr) {
         if (const json::Value* parent = request->find("parent"); parent != nullptr) {
             (*request)["parent"] = short_id(parent->as_string());
@@ -1019,6 +1340,14 @@ Reply asset_use(Session& session, const json::Value& params) {
     if (!record) {
         return failure_at(record.error(), "/id");
     }
+    if (Reply only = music_only(params, record.value().type, {"loop", "stems"}); !only.ok) {
+        return only;
+    }
+    const json::Value* stems = params.find("stems");
+    const bool with_stems = stems != nullptr && stems->as_bool();
+    if (with_stems && record.value().stems.empty()) {
+        return invalid_at("/stems", "the music has no stems; asset.add takes them with the track");
+    }
     const std::string path = text(params, "path");
     auto copied = copy_into_project(session, libs.value().local(), record.value(), path);
     if (!copied) {
@@ -1030,6 +1359,15 @@ Reply asset_use(Session& session, const json::Value& params) {
             check_style(session, libs.value(), record.value(), path, copied.value());
         !problems.empty()) {
         out["problems"] = std::move(problems);
+    }
+    if (record.value().type == "music") {
+        const json::Value* loop = params.find("loop");
+        auto placed = place_music(session, libs.value(), record.value(), path,
+                                  loop != nullptr && loop->as_bool(), with_stems);
+        if (!placed) {
+            return failure_at(placed.error(), with_stems ? "/stems" : "/path");
+        }
+        out["files"] = std::move(placed).value();
     }
     return libs.value().noted(Reply::success(std::move(out)));
 }
@@ -1051,10 +1389,93 @@ Reply asset_add(Session& session, const json::Value& params) {
     if (auto described = describe_file(data.value(), path, record); !described) {
         return failure_at(described.error(), "/path");
     }
+    const json::Value* stems = params.find("stems");
+    std::string type = stems != nullptr ? "music" : record.type;
+    if (params.find("type") != nullptr) {
+        type = text(params, "type");
+    }
+    const std::size_t dot = path.rfind('.');
+    if (!holds(type, dot == std::string::npos ? std::string_view() : path.substr(dot))) {
+        return invalid_at("/type", "\"" + path + "\" is " +
+                                       (record.type == "image" ? "an image" : "a sound") +
+                                       ", not " + (type == "image" ? "an image" : type));
+    }
+    if (Reply only = music_only(params, type, {"bpm", "key", "bar_beats", "beat_count", "stems"});
+        !only.ok) {
+        return only;
+    }
     record.description = trimmed(text(params, "description"));
     record.tags = strings(params, "tags");
     record.license = text(params, "license");
     record.author = text(params, "author");
+    json::Array notes;
+    if (type == "music") {
+        MusicFacts facts;
+        if (Reply music = read_music(params, facts); !music.ok) {
+            return music;
+        }
+        auto measured = describe_music(data.value(), path, facts, true, record);
+        if (!measured) {
+            return failure_at(measured.error(), "/path");
+        }
+        for (std::string& note : measured.value()) {
+            notes.emplace_back(std::move(note));
+        }
+    }
+    // Each stem is music of its own, timed as the track, and goes in with it.
+    const std::string track = sha256_hex(data.value());
+    std::vector<std::pair<Record, std::string>> parts;
+    if (stems != nullptr) {
+        for (const auto& [name, stem_path_value] : stems->as_object()) {
+            const std::string at = "/stems/" + name;
+            if (name.empty() || !std::ranges::all_of(name, [](char c) {
+                    return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '-';
+                })) {
+                return invalid_at(at, "a stem's name is lowercase letters, digits, '_' and '-', "
+                                      "such as \"drums\"");
+            }
+            const std::string& stem_path = stem_path_value.as_string();
+            auto stem_data = platform::read_file_in(session.options().project_root, stem_path);
+            if (!stem_data) {
+                return failure_at(stem_data.error(), at);
+            }
+            Record part;
+            if (auto described = describe_file(stem_data.value(), stem_path, part); !described) {
+                return failure_at(described.error(), at);
+            }
+            if (part.type != "sound") {
+                return invalid_at(at, "\"" + stem_path + "\" is not a sound (.wav, .ogg or .mp3)");
+            }
+            if (std::abs(part.seconds - record.seconds) > 1.0) {
+                return invalid_at(
+                    at, "\"" + stem_path + "\" lasts " + json::write(json::Value(part.seconds)) +
+                            " s and the mix " + json::write(json::Value(record.seconds)) +
+                            " s; a track's stems are as long as its mix");
+            }
+            part.type = "music";
+            part.description = trimmed(record.description + " (" + name + " stem)");
+            part.tags = record.tags;
+            part.tags.emplace_back("stem");
+            part.license = record.license;
+            part.author = record.author;
+            part.bpm = record.bpm;
+            part.beat_count = record.beat_count;
+            part.bar_beats = record.bar_beats;
+            part.key = record.key;
+            part.track = track;
+            auto stored_part = libs.value().local().put(stem_data.value(), std::move(part));
+            if (!stored_part) {
+                return Reply::failure(stored_part.error());
+            }
+            record.stems.push_back({.name = name, .id = stored_part.value().id});
+            parts.emplace_back(std::move(stored_part).value(), std::move(stem_data).value());
+            if (auto copied =
+                    copy_into_project(session, libs.value().local(), parts.back().first, stem_path);
+                !copied) {
+                return failure_at(copied.error(), at);
+            }
+        }
+    }
     auto stored = libs.value().local().put(data.value(), std::move(record));
     if (!stored) {
         return Reply::failure(stored.error());
@@ -1063,10 +1484,16 @@ Reply asset_add(Session& session, const json::Value& params) {
         !copied) {
         return failure_at(copied.error(), "/path");
     }
+    for (const auto& [part, part_data] : parts) {
+        share(libs.value(), part, part_data, {});
+    }
     share(libs.value(), stored.value(), data.value(), {});
     json::Value out = summary(stored.value());
     out.as_object().erase("description");
     out.as_object().erase("tags");
+    if (!notes.empty()) {
+        out["problems"] = std::move(notes);
+    }
     return libs.value().noted(Reply::success(std::move(out)));
 }
 
@@ -1461,13 +1888,28 @@ Reply asset_sync(Session& session, const json::Value& params) {
 
 json::Value type_property(std::string_view description) {
     json::Value type = property("string", description);
-    type["enum"] = json::Array{"image", "sound"};
+    type["enum"] = json::Array{"image", "sound", "music"};
     return type;
+}
+
+json::Value bpm_property(std::string_view description) {
+    json::Value bpm = property("number", description);
+    bpm["minimum"] = 20;
+    bpm["maximum"] = 400;
+    return bpm;
+}
+
+json::Value stems_property() {
+    json::Value stems = property("object", "Music: its stems by name, such as {\"drums\": "
+                                           "\"music/boss/drums.ogg\"}; each as long as the mix.");
+    stems["additionalProperties"]["type"] = "string";
+    stems["maxProperties"] = 32;
+    return stems;
 }
 
 // The params generate and refine share.
 json::Object shared_properties() {
-    json::Value seconds = property("number", "A sound's length.");
+    json::Value seconds = property("number", "A sound's or music's length.");
     seconds["exclusiveMinimum"] = 0;
     seconds["maximum"] = 600;
     return {
@@ -1493,15 +1935,16 @@ void register_commands(command::Registry& registry) {
     json::Value limit = integer("Most results; default 10.", 1, 50);
     registry.add({
         .name = "asset.search",
-        .description = "Searches the machine's asset library (generated and added images and "
-                       "sounds, shared by every project) by words, tags and type. Returns IDs "
-                       "with descriptions, best first. Search before generating.",
+        .description = "Searches the machine's asset library (generated and added images, "
+                       "sounds and music, shared by every project) by words, tags and type. "
+                       "Returns IDs with descriptions, best first; music with its bpm and key. "
+                       "Search before generating.",
         .capabilities = {Capability::Read},
         .effect = command::Effect::Read,
         .params = params_schema({
             {"text", property("string", "Words to find in descriptions, prompts and tags.")},
             {"tags", string_array("Tags every result must have.")},
-            {"type", type_property("Only images or only sounds.")},
+            {"type", type_property("Only images, sounds or music.")},
             {"limit", std::move(limit)},
         }),
         .handler = asset_search,
@@ -1512,11 +1955,20 @@ void register_commands(command::Registry& registry) {
     generate.emplace("type", type_property("Default image."));
     generate.emplace("similar", property("boolean", "false: generate even when the library has "
                                                     "close matches."));
+    generate.emplace("bpm", bpm_property("Music: the tempo to ask for."));
+    generate.emplace("key", property("string", "Music: the key to ask for, such as \"D minor\"."));
+    generate.emplace("bar_beats", integer("Music: beats per bar.", 2, 32));
+    generate.emplace("loop", property("boolean", "Music: ask for a loop, and loop it in the "
+                                                 "settings beside path."));
+    generate.emplace("theme", property("string", "Music: a storyboard theme, such as "
+                                                 "\"theme/harbor\", whose key, tempo, "
+                                                 "instruments and mood it asks for."));
     registry.add({
         .name = "asset.generate",
-        .description = "Makes an image or sound with a generator and keeps it in the asset "
-                       "library. An exact repeat returns the stored asset with no model call; "
-                       "close matches come back as candidates instead of generating.",
+        .description = "Makes an image, sound or music with a generator and keeps it in the "
+                       "asset library; music comes back with its measured bpm, beats and key. "
+                       "An exact repeat returns the stored asset with no model call; close "
+                       "matches come back as candidates instead of generating.",
         .capabilities = {Capability::Read, Capability::Filesystem, Capability::Network},
         .effect = command::Effect::Read,
         .params = params_schema(std::move(generate), {"prompt"}),
@@ -1526,6 +1978,7 @@ void register_commands(command::Registry& registry) {
     json::Object refine = shared_properties();
     refine.emplace("id", property("string", "The asset to change."));
     refine.emplace("prompt", property("string", "What to change."));
+    refine.emplace("loop", property("boolean", "Music: loop it in its settings."));
     registry.add({
         .name = "asset.refine",
         .description = "Makes a new version of a library asset, changed as the prompt says and "
@@ -1550,12 +2003,18 @@ void register_commands(command::Registry& registry) {
     registry.add({
         .name = "asset.use",
         .description = "Copies a library asset into the project and records its source and "
-                       "license in library.json.",
+                       "license in library.json. Music gets .audio.json settings beside it "
+                       "with its bpm and beats.",
         .capabilities = {Capability::Read, Capability::Filesystem},
         .effect = command::Effect::Read,
-        .params = params_schema({{"id", property("string", "Its ID, or the start of it.")},
-                                 {"path", property("string", "Where in the project.")}},
-                                {"id", "path"}),
+        .params = params_schema(
+            {{"id", property("string", "Its ID, or the start of it.")},
+             {"path", property("string", "Where in the project.")},
+             {"loop", property("boolean", "Music: loop it in its settings.")},
+             {"stems", property("boolean", "Music: also copy its stems into a folder named "
+                                           "after path, and make the settings play them "
+                                           "together as layers.")}},
+            {"id", "path"}),
         .handler = asset_use,
     });
 
@@ -1609,18 +2068,27 @@ void register_commands(command::Registry& registry) {
 
     registry.add({
         .name = "asset.add",
-        .description = "Adds a project's image or sound file to the asset library, with its "
-                       "author and license, so other projects find it.",
+        .description = "Adds a project's image, sound or music file to the asset library, with "
+                       "its author and license, so other projects find it. A composer's track "
+                       "comes with its stems; music is measured for bpm and key.",
         .capabilities = {Capability::Read, Capability::Filesystem},
         .effect = command::Effect::Read,
         .params = params_schema(
             {
-                {"path", property("string", "A .png, .bmp, .wav, .ogg or .mp3 file.")},
+                {"path", property("string", "A .png, .bmp, .wav, .ogg or .mp3 file; a track's "
+                                            "full mix.")},
                 {"description", property("string", "A sentence for agents to read instead of "
                                                    "the file.")},
                 {"tags", string_array("Words to find it by.")},
                 {"license", property("string", "Its license, such as CC0-1.0.")},
                 {"author", property("string", "Who made it.")},
+                {"type", type_property("music for a track; default image or sound, by the "
+                                       "file.")},
+                {"bpm", bpm_property("Music: its tempo, as its author gives it.")},
+                {"key", property("string", "Music: its key, such as \"D minor\".")},
+                {"bar_beats", integer("Music: beats per bar.", 2, 32)},
+                {"beat_count", integer("Music: its length in beats.", 1, 100000)},
+                {"stems", stems_property()},
             },
             {"path", "description"}),
         .handler = asset_add,

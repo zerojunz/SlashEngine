@@ -167,7 +167,9 @@ the highest true peak, in dBTP, for the sounds in its `links`, or with no `links
 [`soundtrack.plan`](commands.md#soundtrackplan) drafts the cues a game is missing from its scenes
 and story, and `storyboard.brief` with a scene returns its cue with the cue's theme in full, so
 whoever writes the music starts from the plan. [`soundtrack.arrange`](commands.md#soundtrackarrange)
-turns the cues into interactive music once they have music.
+turns the cues into interactive music once they have music, and
+[`asset.generate`](commands.md#assetgenerate) with a `theme` asks a music generator for the
+theme's key, tempo, meter, instruments and mood.
 [examples/soundtrack-plan](../../examples/soundtrack-plan/) plans a small game's music, and
 [examples/soundtrack-arrange](../../examples/soundtrack-arrange/) arranges and plays one.
 

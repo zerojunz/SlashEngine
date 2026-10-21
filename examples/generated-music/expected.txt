@@ -1,0 +1,25 @@
+wrote game/delivery/boss.wav, boss_drums.wav and boss_pads.wav
+asset.generate {"generator":"test","loop":true,"path":"music/harbor.wav","prompt":"The harbor at dawn.","seconds":8,"theme":"theme/harbor","type":"music"}
+{"bar_beats":3,"beat_count":12,"bpm":96,"files":["music/harbor.audio.json"],"id":"9bcb8cd89a27","key":"G major","path":"music/harbor.wav","seconds":7.5}
+music/harbor.audio.json: {"bar_beats":3,"beat_count":12,"bpm":96,"format":1,"loop_mode":"forward","source":"music/harbor.wav"}
+asset.generate {"generator":"test","loop":true,"path":"music/harbor.wav","prompt":"The harbor at dawn.","seconds":8,"theme":"theme/harbor","type":"music"}
+{"bar_beats":3,"beat_count":12,"bpm":96,"files":["music/harbor.audio.json"],"id":"9bcb8cd89a27","key":"G major","path":"music/harbor.wav","reused":true,"seconds":7.5}
+asset.refine {"description":"The harbor at night.","id":"9bcb8cd89a27","loop":true,"path":"music/harbor_night.wav","prompt":"slower"}
+{"bar_beats":3,"beat_count":12,"bpm":76.8,"files":["music/harbor_night.audio.json"],"id":"519314a3e10e","key":"G major","parent":"9bcb8cd89a27","path":"music/harbor_night.wav","seconds":9.375}
+asset.generate {"generator":"test","prompt":"x","theme":"theme/harbour","type":"music"}
+"/theme: no theme \"theme/harbour\" in the storyboard; did you mean \"theme/harbor\"?"
+asset.add {"author":"Ana","bpm":140,"description":"Boss fight, drums and pads.","key":"E minor","license":"CC-BY-4.0","path":"delivery/boss.wav","stems":{"drums":"delivery/boss_drums.wav","pads":"delivery/boss_pads.wav"},"tags":["boss"]}
+{"beat_count":16,"bpm":140,"id":"bce0fcbcf493","key":"E minor","seconds":6.857,"stems":["drums","pads"],"type":"music"}
+asset.search {"tags":["boss"],"type":"music"}
+{"assets":[{"beat_count":16,"bpm":140,"description":"Boss fight, drums and pads. (drums stem)","id":"27a1f3a50c41","key":"E minor","seconds":6.857,"tags":["boss","stem"],"type":"music"},{"beat_count":16,"bpm":140,"description":"Boss fight, drums and pads. (pads stem)","id":"a1e0a6dafc70","key":"E minor","seconds":6.857,"tags":["boss","stem"],"type":"music"},{"beat_count":16,"bpm":140,"description":"Boss fight, drums and pads.","id":"bce0fcbcf493","key":"E minor","seconds":6.857,"stems":["drums","pads"],"tags":["boss"],"type":"music"}]}
+asset.use {"id":"bce0fcbcf493","loop":true,"path":"music/boss.wav","stems":true}
+{"files":["music/boss/drums.wav","music/boss/drums.audio.json","music/boss/pads.wav","music/boss/pads.audio.json","music/boss.audio.json"],"path":"music/boss.wav"}
+music/boss.audio.json: {"format":1,"synchronized":[{"stream":"music/boss/drums.audio.json"},{"stream":"music/boss/pads.audio.json"}]}
+music/boss/drums.audio.json: {"beat_count":16,"bpm":140,"format":1,"loop_mode":"forward","source":"music/boss/drums.wav"}
+entity.create {"components":{"AudioStreamPlayer":{"autoplay":true,"stream":"music/boss.audio.json"}},"id":"music"}
+{"id":"music"}
+step {"ticks":420}
+{"tick":420,"ticks":420}
+audio.analyze {"bus":"Master","seconds":6.857}
+{"bands_db":[-6.6,-4.3,-12.2,-8.5,-7.1,-24.5,-28.9,-38.7,-37.5,-30.7],"beat_offset":0.293,"beats":16,"bpm":140,"clips":0,"key":"G major","key_confidence":0.94,"loudness_range":0.1,"lufs":-16.8,"max_short_term_lufs":-16.7,"peak_db":-1.3,"rms_db":-17.3,"seconds":6.857,"silence":{"end":0,"start":0},"tempo_confidence":0.82,"true_peak_db":-1.3}
+library.json: {"assets":{"delivery/boss.wav":{"author":"Ana","id":"bce0fcbcf4938136b4a72dc04703eabed46acd1c7a6f40480b2493cca3919b0b","license":"CC-BY-4.0"},"delivery/boss_drums.wav":{"author":"Ana","id":"27a1f3a50c414d43e43cd03bd6a3ded8782079e76ed7bbe30da05f9f550245b9","license":"CC-BY-4.0"},"delivery/boss_pads.wav":{"author":"Ana","id":"a1e0a6dafc7087d2cb244a83d8e4e257d3470426395dd02a9e0b93b68e19eef8","license":"CC-BY-4.0"},"music/boss.wav":{"author":"Ana","id":"bce0fcbcf4938136b4a72dc04703eabed46acd1c7a6f40480b2493cca3919b0b","license":"CC-BY-4.0"},"music/boss/drums.wav":{"author":"Ana","id":"27a1f3a50c414d43e43cd03bd6a3ded8782079e76ed7bbe30da05f9f550245b9","license":"CC-BY-4.0"},"music/boss/pads.wav":{"author":"Ana","id":"a1e0a6dafc7087d2cb244a83d8e4e257d3470426395dd02a9e0b93b68e19eef8","license":"CC-BY-4.0"},"music/harbor.wav":{"generator":"test","id":"9bcb8cd89a27b36b410430bc1afbde39765ff749a339d3a3d5bc7bc24d8457cd","license":"CC0-1.0","model":"test"},"music/harbor_night.wav":{"generator":"test","id":"519314a3e10efcfb9badd4e3625e940fd8a7aac4f810f281ee5c5bbbb00032c1","license":"CC0-1.0","model":"test"}}}

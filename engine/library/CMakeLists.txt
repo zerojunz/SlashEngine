@@ -4,6 +4,7 @@ add_library(slash_library
     src/adapters.cpp
     src/generator.cpp
     src/library.cpp
+    src/music.cpp
     src/search.cpp
     src/team.cpp
     src/team_server.cpp)
