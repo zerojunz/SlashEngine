@@ -202,6 +202,7 @@ struct StandardMaterial3D {
     Vec3 uv1_offset;
     // "nearest", "linear", "nearest_with_mipmaps" or "linear_with_mipmaps"
     std::string texture_filter = "linear_with_mipmaps";
+    bool disable_fog = false; // the WorldEnvironment's fog leaves it alone
 
     friend bool operator==(const StandardMaterial3D&, const StandardMaterial3D&) = default;
 };
@@ -210,7 +211,7 @@ SLASH_COMPONENT(StandardMaterial3D, transparency, alpha_scissor_threshold, blend
                 metallic_specular, metallic_texture, metallic_texture_channel, roughness,
                 roughness_texture, roughness_texture_channel, emission_enabled, emission,
                 emission_energy_multiplier, emission_texture, normal_enabled, normal_scale,
-                normal_texture, uv1_scale, uv1_offset, texture_filter)
+                normal_texture, uv1_scale, uv1_offset, texture_filter, disable_fog)
 
 // What the 3D world is seen through, as Godot's Camera3D: it looks down its entity's -z. The
 // world is seen through the current camera: the first with current set, else the first one,
@@ -262,6 +263,11 @@ struct DirectionalLight3D {
     float directional_shadow_fade_start = 0.8F;
     float directional_shadow_max_distance = 100.0F;
     float directional_shadow_pancake_size = 20.0F;
+    // Its sun in a WorldEnvironment's sky: degrees across its radius there, and whether it lights
+    // meshes and shows in the sky ("light_and_sky"), only lights ("light_only") or only shows
+    // ("sky_only").
+    float light_angular_distance = 0.0F;
+    std::string sky_mode = "light_and_sky";
 
     friend bool operator==(const DirectionalLight3D&, const DirectionalLight3D&) = default;
 };
@@ -271,7 +277,7 @@ SLASH_COMPONENT(DirectionalLight3D, light_color, light_energy, light_specular, l
                 directional_shadow_mode, directional_shadow_split_1, directional_shadow_split_2,
                 directional_shadow_split_3, directional_shadow_blend_splits,
                 directional_shadow_fade_start, directional_shadow_max_distance,
-                directional_shadow_pancake_size)
+                directional_shadow_pancake_size, light_angular_distance, sky_mode)
 
 // Light from a point in every direction, as Godot's OmniLight3D, such as a lamp.
 struct OmniLight3D {
@@ -326,14 +332,77 @@ SLASH_COMPONENT(SpotLight3D, light_color, light_energy, light_specular, light_ne
                 shadow_enabled, shadow_bias, shadow_normal_bias, shadow_reverse_cull_face,
                 shadow_opacity, shadow_caster_mask)
 
-// The 3D world's background, ambient light, tonemap, glow and adjustments, as Godot's
+// Godot's ProceduralSkyMaterial, on a WorldEnvironment's entity: a sky from its top through the
+// horizon to the ground's bottom, with each DirectionalLight3D's sun on it. Colors are sRGB;
+// sky_cover is the project path of a panorama over the sky, or "".
+struct ProceduralSkyMaterial {
+    Vec4 sky_top_color{0.385F, 0.454F, 0.55F, 1.0F};
+    Vec4 sky_horizon_color{0.6463F, 0.6558F, 0.6708F, 1.0F};
+    float sky_curve = 0.15F;
+    float sky_energy_multiplier = 1.0F;
+    std::string sky_cover;
+    Vec4 sky_cover_modulate{1.0F, 1.0F, 1.0F, 1.0F};
+    Vec4 ground_bottom_color{0.2F, 0.169F, 0.133F, 1.0F};
+    Vec4 ground_horizon_color{0.6463F, 0.6558F, 0.6708F, 1.0F};
+    float ground_curve = 0.02F;
+    float ground_energy_multiplier = 1.0F;
+    float sun_angle_max = 30.0F; // degrees
+    float sun_curve = 0.15F;
+    bool use_debanding = true;
+    float energy_multiplier = 1.0F;
+
+    friend bool operator==(const ProceduralSkyMaterial&, const ProceduralSkyMaterial&) = default;
+};
+SLASH_COMPONENT(ProceduralSkyMaterial, sky_top_color, sky_horizon_color, sky_curve,
+                sky_energy_multiplier, sky_cover, sky_cover_modulate, ground_bottom_color,
+                ground_horizon_color, ground_curve, ground_energy_multiplier, sun_angle_max,
+                sun_curve, use_debanding, energy_multiplier)
+
+// Godot's PhysicalSkyMaterial, on a WorldEnvironment's entity: the first DirectionalLight3D's
+// light scattered through the air. Colors are sRGB; night_sky is the project path of a panorama
+// behind it, or "".
+struct PhysicalSkyMaterial {
+    float rayleigh_coefficient = 2.0F;
+    Vec4 rayleigh_color{0.3F, 0.405F, 0.6F, 1.0F};
+    float mie_coefficient = 0.005F;
+    float mie_eccentricity = 0.8F;
+    Vec4 mie_color{0.69F, 0.729F, 0.812F, 1.0F};
+    float turbidity = 10.0F;
+    float sun_disk_scale = 1.0F;
+    Vec4 ground_color{0.1F, 0.07F, 0.034F, 1.0F};
+    float energy_multiplier = 1.0F;
+    bool use_debanding = true;
+    std::string night_sky;
+
+    friend bool operator==(const PhysicalSkyMaterial&, const PhysicalSkyMaterial&) = default;
+};
+SLASH_COMPONENT(PhysicalSkyMaterial, rayleigh_coefficient, rayleigh_color, mie_coefficient,
+                mie_eccentricity, mie_color, turbidity, sun_disk_scale, ground_color,
+                energy_multiplier, use_debanding, night_sky)
+
+// Godot's PanoramaSkyMaterial, on a WorldEnvironment's entity: an equirectangular texture all
+// round, by its project path.
+struct PanoramaSkyMaterial {
+    std::string panorama;
+    bool filter = true; // samples it smoothly rather than by its nearest texel
+    float energy_multiplier = 1.0F;
+
+    friend bool operator==(const PanoramaSkyMaterial&, const PanoramaSkyMaterial&) = default;
+};
+SLASH_COMPONENT(PanoramaSkyMaterial, panorama, filter, energy_multiplier)
+
+// The 3D world's background, ambient light, tonemap, glow, fog and adjustments, as Godot's
 // WorldEnvironment and its Environment in the Compatibility renderer. The first one made applies;
 // without one the background is the project's clear color, there is no ambient light and colors
-// are left as they are.
+// are left as they are. A "sky" background is the sky material on the same entity: a
+// ProceduralSkyMaterial, PhysicalSkyMaterial or PanoramaSkyMaterial, or Godot's default
+// procedural sky with none.
 struct WorldEnvironment {
-    std::string background_mode = "clear_color"; // "clear_color" or "color"
+    std::string background_mode = "clear_color"; // "clear_color", "color" or "sky"
     Vec4 background_color{0.0F, 0.0F, 0.0F, 1.0F};
     float background_energy_multiplier = 1.0F;
+    float sky_custom_fov = 0.0F; // degrees the sky is seen across; 0 for the camera's
+    Vec3 sky_rotation;           // radians about x, y and z, turned as Transform3D's rotation
     // "background" (the background's color), "disabled" or "color" (ambient_light_color)
     std::string ambient_light_source = "background";
     Vec4 ambient_light_color{0.0F, 0.0F, 0.0F, 1.0F};
@@ -347,6 +416,19 @@ struct WorldEnvironment {
     float glow_hdr_threshold = 1.0F;
     float glow_hdr_scale = 2.0F;
     float glow_hdr_luminance_cap = 12.0F;
+    bool fog_enabled = false;
+    std::string fog_mode = "exponential"; // "exponential" or "depth"
+    Vec4 fog_light_color{0.518F, 0.553F, 0.608F, 1.0F};
+    float fog_light_energy = 1.0F;
+    float fog_sun_scatter = 0.0F;
+    float fog_density = 0.01F;
+    float fog_aerial_perspective = 0.0F;
+    float fog_sky_affect = 1.0F;
+    float fog_height = 0.0F;
+    float fog_height_density = 0.0F;
+    float fog_depth_curve = 1.0F;
+    float fog_depth_begin = 10.0F;
+    float fog_depth_end = 100.0F;
     bool adjustment_enabled = false;
     float adjustment_brightness = 1.0F;
     float adjustment_contrast = 1.0F;
@@ -356,11 +438,14 @@ struct WorldEnvironment {
     friend bool operator==(const WorldEnvironment&, const WorldEnvironment&) = default;
 };
 SLASH_COMPONENT(WorldEnvironment, background_mode, background_color, background_energy_multiplier,
-                ambient_light_source, ambient_light_color, ambient_light_energy, tonemap_mode,
-                tonemap_exposure, tonemap_white, glow_enabled, glow_intensity, glow_bloom,
-                glow_hdr_threshold, glow_hdr_scale, glow_hdr_luminance_cap, adjustment_enabled,
-                adjustment_brightness, adjustment_contrast, adjustment_saturation,
-                adjustment_color_correction)
+                sky_custom_fov, sky_rotation, ambient_light_source, ambient_light_color,
+                ambient_light_energy, tonemap_mode, tonemap_exposure, tonemap_white, glow_enabled,
+                glow_intensity, glow_bloom, glow_hdr_threshold, glow_hdr_scale,
+                glow_hdr_luminance_cap, fog_enabled, fog_mode, fog_light_color, fog_light_energy,
+                fog_sun_scatter, fog_density, fog_aerial_perspective, fog_sky_affect, fog_height,
+                fog_height_density, fog_depth_curve, fog_depth_begin, fog_depth_end,
+                adjustment_enabled, adjustment_brightness, adjustment_contrast,
+                adjustment_saturation, adjustment_color_correction)
 
 // Ties an entity to the storyboard entries it stands for, such as the character it plays or the
 // place it is, so a brief for the scene includes them and checks catch a misspelled ID.

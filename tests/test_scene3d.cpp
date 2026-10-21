@@ -573,6 +573,174 @@ TEST_CASE("the WorldEnvironment's tonemap, glow and adjustments post-process the
     CHECK(contents.problems.empty());
 }
 
+TEST_CASE("the WorldEnvironment's sky and fog, and the suns its sky shows") {
+    Scene scene;
+    const render::Color clear{.r = 0.1F, .g = 0.2F, .b = 0.3F, .a = 1.0F};
+    // A sky background with no sky material is Godot's default procedural sky. Ambient light from
+    // the background is ambient_light_color for now.
+    const entt::entity env = scene.create("env", R"({"WorldEnvironment": {
+        "background_mode": "sky", "background_energy_multiplier": 2, "sky_custom_fov": 50,
+        "sky_rotation": [0, 1.5707964, 0], "ambient_light_color": [0.2, 0.2, 0.2, 1],
+        "ambient_light_energy": 3}})");
+    scene3d::Environment read = scene3d::environment(scene.world, clear);
+    CHECK(read.sky.kind == render::SkyKind::Procedural);
+    CHECK(read.sky.procedural == render::ProceduralSky{});
+    CHECK(read.sky.energy == 2.0F);
+    CHECK(read.sky.custom_fov == 50.0F);
+    CHECK(read.ambient == std::array<float, 3>{0.2F, 0.2F, 0.2F});
+    CHECK(read.ambient_energy == 3.0F);
+    CHECK(read.sky_texture_field == "/components/ProceduralSkyMaterial/sky_cover");
+    CHECK(read.problems.empty());
+    // Turned a quarter about y, the sky's +x is where the world's -z is.
+    const auto& m = read.sky.orientation;
+    const Vec3 forward{-m[8], -m[9], -m[10]};
+    CHECK(near(forward, {1.0F, 0.0F, 0.0F}));
+
+    // The material on the entity, with its texture by path.
+    scene.create("unused", R"({"ProceduralSkyMaterial": {"sky_curve": 0.5}})");
+    world::ProceduralSkyMaterial procedural;
+    procedural.sky_top_color = {0.0F, 0.0F, 1.0F, 1.0F};
+    procedural.sun_curve = 0.3F;
+    procedural.sky_cover = "clouds.png";
+    procedural.use_debanding = false;
+    scene.world.ecs().emplace<world::ProceduralSkyMaterial>(env, procedural);
+    read = scene3d::environment(scene.world, clear);
+    CHECK(read.sky.procedural.sky_top_color == std::array<float, 3>{0.0F, 0.0F, 1.0F});
+    CHECK(read.sky.procedural.sun_curve == 0.3F);
+    CHECK(read.sky.procedural.sky_curve == 0.15F);
+    CHECK_FALSE(read.sky.procedural.use_debanding);
+    CHECK(read.sky_texture == "clouds.png");
+    CHECK(read.sky_filter == render::Filter::Linear);
+
+    // A second material draws nothing and is reported.
+    scene.world.ecs().emplace<world::PhysicalSkyMaterial>(
+        env, world::PhysicalSkyMaterial{.turbidity = 4.0F, .night_sky = "stars.png"});
+    read = scene3d::environment(scene.world, clear);
+    CHECK(read.sky.kind == render::SkyKind::Procedural);
+    REQUIRE(read.problems.size() == 1);
+    CHECK(read.problems[0].path == "/components/PhysicalSkyMaterial");
+    scene.world.ecs().remove<world::ProceduralSkyMaterial>(env);
+    read = scene3d::environment(scene.world, clear);
+    CHECK(read.problems.empty());
+    CHECK(read.sky.kind == render::SkyKind::Physical);
+    CHECK(read.sky.physical.turbidity == 4.0F);
+    CHECK(read.sky_texture == "stars.png");
+    CHECK(read.sky_texture_field == "/components/PhysicalSkyMaterial/night_sky");
+    scene.world.ecs().remove<world::PhysicalSkyMaterial>(env);
+    scene.world.ecs().emplace<world::PanoramaSkyMaterial>(
+        env, world::PanoramaSkyMaterial{
+                 .panorama = "view.png", .filter = false, .energy_multiplier = 0.5F});
+    read = scene3d::environment(scene.world, clear);
+    CHECK(read.sky.kind == render::SkyKind::Panorama);
+    CHECK(read.sky.panorama.energy_multiplier == 0.5F);
+    CHECK(read.sky_filter == render::Filter::Nearest);
+    CHECK(read.sky_texture_field == "/components/PanoramaSkyMaterial/panorama");
+
+    // Fog, as its fields say. Over a color background it is a sky of that color, which the
+    // background's energy multiplies twice, as Godot's.
+    auto& settings = scene.world.ecs().get<world::WorldEnvironment>(env);
+    CHECK_FALSE(read.fog.enabled);
+    settings.fog_enabled = true;
+    settings.fog_mode = "depth";
+    settings.fog_light_color = {1.0F, 0.0F, 0.0F, 1.0F};
+    settings.fog_density = 0.5F;
+    settings.fog_depth_end = 0.0F;
+    settings.fog_sky_affect = 0.25F;
+    read = scene3d::environment(scene.world, clear);
+    CHECK(read.fog == render::Fog3D{.enabled = true,
+                                    .depth = true,
+                                    .light_color = {1.0F, 0.0F, 0.0F},
+                                    .density = 0.5F,
+                                    .sky_affect = 0.25F,
+                                    .depth_end = 0.0F});
+    settings.background_mode = "color";
+    settings.background_color = {0.0F, 0.5F, 0.0F, 1.0F};
+    read = scene3d::environment(scene.world, clear);
+    CHECK(read.sky.kind == render::SkyKind::Color);
+    CHECK(read.sky.color == std::array<float, 3>{0.0F, 1.0F, 0.0F});
+    CHECK(read.sky.energy == 2.0F);
+    CHECK(read.sky_texture.empty());
+    settings.fog_enabled = false;
+    CHECK(scene3d::environment(scene.world, clear).sky.kind == render::SkyKind::None);
+
+    // A material's disable_fog.
+    std::vector<scene3d::Problem> problems;
+    world::StandardMaterial3D clear_of_fog;
+    clear_of_fog.disable_fog = true;
+    CHECK(scene3d::material(clear_of_fog, nullptr, problems).disable_fog);
+
+    // Suns: directional lights whose sky_mode isn't "light_only", in tree order, at most four.
+    // "sky_only" ones light no meshes.
+    Scene suns;
+    suns.create("sun", R"({"Transform3D": {"rotation": [-1.5707964, 0, 0]},
+        "DirectionalLight3D": {"light_color": [1, 0.5, 0, 1], "light_energy": 3,
+                               "light_angular_distance": 2, "sky_mode": "sky_only"}})");
+    suns.create("lamp", R"({"Transform3D": {}, "DirectionalLight3D": {"sky_mode": "light_only"}})");
+    suns.create("hidden", R"({"Transform3D": {"visible": false}, "DirectionalLight3D": {}})");
+    for (int i = 0; i < 4; ++i) {
+        suns.create("moon" + std::to_string(i),
+                    R"({"Transform3D": {}, "DirectionalLight3D": {"light_negative": true}})");
+    }
+    world::Tree3D tree(suns.world);
+    const auto global = [&](entt::entity entity) { return tree.global(entity); };
+    const auto shown = scene3d::sky_lights(suns.world, tree, global);
+    REQUIRE(shown.size() == render::kMaxSkyLights);
+    CHECK(near(vec(shown[0].direction), {0.0F, -1.0F, 0.0F}));
+    CHECK(shown[0].color == std::array<float, 3>{1.0F, 0.5F, 0.0F});
+    CHECK(shown[0].energy == 3.0F);
+    CHECK(shown[0].angular_distance == 2.0F);
+    CHECK(shown[1].energy == -1.0F);
+    const auto lit = scene3d::lights(suns.world, tree, global);
+    REQUIRE(lit.size() == 5);
+    CHECK(lit[0].direction == std::array<float, 3>{0.0F, 0.0F, -1.0F});
+}
+
+TEST_CASE("skies and fog draw behind and over the 3D world, their textures by path") {
+    Scene scene;
+    scene.create("camera", R"({"Transform3D": {"position": [0, 0, 3]}, "Camera3D": {}})");
+    const entt::entity env = scene.create("env", R"({"WorldEnvironment": {
+        "background_mode": "color", "background_color": [0, 0, 1, 1], "fog_enabled": true}})");
+    const auto device = render::create_software_device();
+    const auto draw = [&](canvas::FrameContents& contents) {
+        canvas::CanvasRenderer renderer(*device, scene.assets);
+        auto target = device->create_texture({.width = 64, .height = 64, .render_target = true});
+        REQUIRE(target.ok());
+        canvas::CanvasOptions options;
+        options.target = target.value();
+        options.width = 64.0F;
+        options.height = 64.0F;
+        options.contents = &contents;
+        REQUIRE(renderer.draw(scene.world, options).ok());
+        auto image = device->read_texture(target.value());
+        REQUIRE(image.ok());
+        device->destroy_texture(target.value());
+        return pixel(image.value(), 32, 32);
+    };
+    // With no meshes, the fogged background is all fog: its light color.
+    canvas::FrameContents contents;
+    Rgba middle = draw(contents);
+    CHECK(std::abs(int{middle[0]} - 132) <= 1);
+    CHECK(std::abs(int{middle[1]} - 141) <= 1);
+    CHECK(std::abs(int{middle[2]} - 155) <= 1);
+    CHECK(contents.problems.empty());
+
+    // A panorama that is missing is reported, and the sky is black; a green one is green.
+    auto& settings = scene.world.ecs().get<world::WorldEnvironment>(env);
+    settings.background_mode = "sky";
+    settings.fog_enabled = false;
+    scene.world.ecs().emplace<world::PanoramaSkyMaterial>(
+        env, world::PanoramaSkyMaterial{.panorama = "view.png"});
+    contents = {};
+    CHECK(draw(contents) == Rgba{0, 0, 0, 255});
+    REQUIRE(contents.problems.size() == 1);
+    CHECK(contents.problems[0].path == "/components/PanoramaSkyMaterial/panorama");
+    const render::Image green{.width = 2, .height = 1, .pixels = {0, 255, 0, 255, 0, 255, 0, 255}};
+    scene.files.files["view.png"] = render::encode_png(green).value();
+    contents = {};
+    CHECK(draw(contents) == Rgba{0, 255, 0, 255});
+    CHECK(contents.problems.empty());
+}
+
 TEST_CASE("project.json's rendering.lights_and_shadows is read and checked") {
     json::Value project = parse(R"({"format": 1, "name": "Shadows", "version": "1.0.0",
         "main_scene": "main.scene.json",

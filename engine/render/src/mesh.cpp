@@ -74,6 +74,46 @@ float power(float x, float y) {
     return slash::exp(y * slash::ln(x));
 }
 
+float smoothstep(float edge0, float edge1, float x) {
+    const float t = std::clamp((x - edge0) / (edge1 - edge0), 0.0F, 1.0F);
+    return t * t * (3.0F - (2.0F * t));
+}
+
+// fog_process in shaders/mesh.hlsl: the fog's color at a point and how much of it covers it.
+Float4 fog_process(const detail::MeshSceneUniforms& scene, const Float3& world) {
+    const Float3 to_point = sub(world, {scene.camera[0], scene.camera[1], scene.camera[2]});
+    const float distance = length(to_point);
+    Float3 color{scene.fog_color[0], scene.fog_color[1], scene.fog_color[2]};
+    const Float4& fog = scene.fog;
+    if (fog[1] > 0.001F) {
+        const Float3 view = distance > 0.0F ? scale(to_point, 1.0F / distance) : Float3{};
+        const auto count = static_cast<std::size_t>(scene.camera[3]);
+        for (std::size_t i = 0; i < count; ++i) {
+            const detail::MeshLightUniforms& light = scene.lights.at(i);
+            if (light.direction[3] == 0.0F) {
+                const float amount =
+                    power(std::max(dot3(view, normalize({light.direction[0], light.direction[1],
+                                                         light.direction[2]})),
+                                   0.0F),
+                          8.0F);
+                color = add(color, scale({light.color[0], light.color[1], light.color[2]},
+                                         amount * fog[1]));
+            }
+        }
+    }
+    float amount = 0.0F;
+    if (scene.fog_color[3] == 2.0F) {
+        const float z = smoothstep(scene.fog_depth[0], scene.fog_depth[1], distance);
+        amount = power(z, scene.fog_depth[2]) * fog[0];
+    } else {
+        amount = 1.0F - slash::exp(std::min(0.0F, -distance * fog[0]));
+    }
+    if (std::abs(fog[3]) >= 0.0001F) {
+        amount = std::max(amount, 1.0F - slash::exp(std::min(0.0F, (world[1] - fog[2]) * fog[3])));
+    }
+    return {color[0], color[1], color[2], amount};
+}
+
 // The matrix times a point or direction (w 1 or 0), column-major.
 Float4 transform(const Mat4& m, const Float4& v) {
     Float4 out{};
@@ -412,6 +452,9 @@ MeshSurfaceUniforms mesh_surface_uniforms(const Material3D& material, std::uint3
     if (material.transparency != Transparency::Disabled) {
         flags |= kMeshHasAlpha;
     }
+    if (material.disable_fog) {
+        flags |= kMeshDisableFog;
+    }
     out.options = {flags, same_bits<std::uint32_t>(material.alpha_scissor_threshold), layers, 0};
     return out;
 }
@@ -437,6 +480,19 @@ MeshSceneUniforms mesh_scene_uniforms(const Scene3D& scene) {
                    srgb_to_linear_exact(scene.ambient[2]) * energy, 0.0F};
     out.tonemap = {scene.post.exposure, scene.post.white, static_cast<float>(scene.post.tonemapper),
                    post_processes(scene.post) ? 0.0F : 1.0F};
+    if (const Fog3D& fog = scene.fog; fog.enabled) {
+        out.fog_color = {srgb_to_linear_exact(fog.light_color[0]) * fog.light_energy,
+                         srgb_to_linear_exact(fog.light_color[1]) * fog.light_energy,
+                         srgb_to_linear_exact(fog.light_color[2]) * fog.light_energy,
+                         fog.depth ? 2.0F : 1.0F};
+        out.fog = {fog.density, fog.sun_scatter, fog.height, fog.height_density};
+        // As Godot's: depth fog ends at the far plane when its end is 0 or less, and begins
+        // before it ends. Both projections put the far plane at [14] / [10].
+        const Mat4& p = scene.projection;
+        const float far = p[10] != 0.0F ? p[14] / p[10] : 4000.0F;
+        const float end = fog.depth_end > 0.0F ? fog.depth_end : far;
+        out.fog_depth = {std::min(fog.depth_begin, end - 0.001F), end, fog.depth_curve, 0.0F};
+    }
     for (std::size_t i = 0; i < count; ++i) {
         const Light3D& light = scene.lights[i];
         MeshLightUniforms& packed = out.lights.at(i);
@@ -615,8 +671,13 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
         }
         alpha = 1.0F;
     }
-    // Times the exposure, tonemapped unless the post pass does it, and as sRGB.
-    const auto finish = [&](const Float3& lit) {
+    // Fogged unless the material disables it, times the exposure, tonemapped unless the post pass
+    // does it, and as sRGB.
+    const auto finish = [&](Float3 lit) {
+        if (scene.fog_color[3] != 0.0F && (flags & kMeshDisableFog) == 0) {
+            const Float4 fogged = fog_process(scene, pixel.world);
+            lit = lerp3(lit, {fogged[0], fogged[1], fogged[2]}, fogged[3]);
+        }
         Float3 exposed = scale(lit, scene.tonemap[0]);
         if (scene.tonemap[3] != 0.0F) {
             exposed =

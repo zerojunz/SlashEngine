@@ -47,6 +47,7 @@ add_library(slash_render
     src/shader.cpp
     src/shader_vm.cpp
     src/shadow.cpp
+    src/sky.cpp
     src/software_device.cpp
     src/texture_codec.cpp
     src/uniforms.cpp
@@ -81,7 +82,8 @@ endif()
 # every platform: no fused multiply-adds, which arm64 compilers would otherwise emit and x86-64
 # ones not.
 set_source_files_properties(src/device.cpp src/material.cpp src/mesh.cpp src/particles.cpp
-    src/post.cpp src/resize.cpp src/shader_vm.cpp src/shadow.cpp src/software_device.cpp src/upscaler.cpp
+    src/post.cpp src/resize.cpp src/shader_vm.cpp src/shadow.cpp src/sky.cpp src/software_device.cpp
+    src/upscaler.cpp
     PROPERTIES
     COMPILE_OPTIONS "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>")
 
@@ -93,9 +95,10 @@ find_program(SLASH_TINT NAMES tint)
 set(slash_shader_headers "")
 # Each shader as file:Name, then compute for compute shaders, and 3d for the mesh shader and
 # depth for the shadow pass shader, whose varyings GLSL names apart from the canvas shaders' and
-# whose depth it maps to OpenGL's, and post for the post passes, which have no varyings.
+# whose depth it maps to OpenGL's, and post for the post passes and the sky, which have no
+# varyings. The mesh shader's code is long enough to come in pieces.
 set(slash_shaders sprite:Sprite material:Material mesh:Mesh:3d shadow:Shadow:depth post:Post:post
-    particles_process:ParticlesProcess:compute particles_emit:ParticlesEmit:compute
+    sky:Sky:post particles_process:ParticlesProcess:compute particles_emit:ParticlesEmit:compute
     particles_draw:ParticlesDraw:compute)
 foreach(entry IN LISTS slash_shaders)
     string(REPLACE ":" ";" parts ${entry})
@@ -106,6 +109,7 @@ foreach(entry IN LISTS slash_shaders)
     set(include canvas)
     set(interface v_uv,v_color,v_world)
     set(fixup OFF)
+    set(pieces OFF)
     if(count GREATER 2)
         list(GET parts 2 kind)
         if(kind STREQUAL "compute")
@@ -122,6 +126,7 @@ foreach(entry IN LISTS slash_shaders)
             set(include mesh)
             set(interface v_world,v_normal,v_tangent,v_binormal,v_uv,v_color)
             set(fixup ON)
+            set(pieces ON)
         endif()
     endif()
     set(header ${CMAKE_CURRENT_SOURCE_DIR}/src/${shader}_shaders.hpp)
@@ -131,7 +136,7 @@ foreach(entry IN LISTS slash_shaders)
         COMMAND ${CMAKE_COMMAND}
             -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/shaders/${shader}.hlsl -DOUTPUT=${header}
             -DNAME=${name} -DCOMPUTE=${compute} -DINTERFACE=${interface}
-            -DFIXUP_CLIPSPACE=${fixup} -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}/shaders
+            -DFIXUP_CLIPSPACE=${fixup} -DPIECES=${pieces} -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}/shaders
             -DGLSLANG=${SLASH_GLSLANG} -DSPIRV_CROSS=${SLASH_SPIRV_CROSS} -DTINT=${SLASH_TINT}
             -P ${PROJECT_SOURCE_DIR}/cmake/compile_shaders.cmake
         COMMAND ${CMAKE_COMMAND} -E touch ${stamp}

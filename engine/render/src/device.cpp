@@ -5,6 +5,7 @@
 #include "gpu_device.hpp"
 #include "mesh_shading.hpp"
 #include "post_shading.hpp"
+#include "sky_shading.hpp"
 #ifdef __EMSCRIPTEN__
 #include "webgpu_device.hpp"
 #endif
@@ -506,6 +507,11 @@ public:
                         const TextureDesc& desc = textures_.at(id).desc;
                         return std::pair{desc.width, desc.height};
                     });
+                !checked) {
+                return checked.error();
+            }
+            if (auto checked = detail::check_sky(
+                    *frame.scene, [&](TextureId id) { return textures_.contains(id); });
                 !checked) {
                 return checked.error();
             }
