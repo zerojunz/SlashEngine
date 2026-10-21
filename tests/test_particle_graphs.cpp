@@ -112,6 +112,17 @@ bool close(const Particle& a, const Particle& b) {
            near({a.custom.x, a.custom.z}, {b.custom.x, b.custom.z});
 }
 
+// A particle's fields, for a failed check to show.
+std::string describe(const Particle& p) {
+    std::string out = "flags " + std::to_string(p.flags);
+    for (const float value :
+         {p.origin.x, p.origin.y, p.velocity.x, p.velocity.y, p.color.x, p.color.y, p.color.z,
+          p.color.w, p.basis.x, p.basis.y, p.custom.x, p.custom.z}) {
+        out += " " + std::to_string(value);
+    }
+    return out;
+}
+
 } // namespace
 
 TEST_CASE("portable exp and ln agree with the C library's to the last few bits") {
@@ -319,7 +330,8 @@ TEST_CASE("the GPU device runs particle graphs as the CPU twin does") {
     int live = 0;
     for (std::uint32_t i = 0; i < kAmount; ++i) {
         live += twin[i].active() ? 1 : 0;
-        CHECK_MESSAGE(close(read.value()[i], twin[i]), "particle ", i);
+        CHECK_MESSAGE(close(read.value()[i], twin[i]), "particle ", i, ": ",
+                      describe(read.value()[i]), " on the GPU, ", describe(twin[i]), " on the CPU");
     }
     CHECK(live > 20);
     device->destroy_particles(system.value());
