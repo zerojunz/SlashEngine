@@ -417,11 +417,11 @@ std::span<const std::string_view> instrument_names() {
 }
 
 std::optional<int> instrument_program(std::string_view name) {
-    const auto* found = std::ranges::find(kInstruments, name);
-    if (found == kInstruments.end()) {
+    const auto index = std::ranges::find(kInstruments, name) - kInstruments.begin();
+    if (index == std::ssize(kInstruments)) {
         return std::nullopt;
     }
-    return static_cast<int>(found - kInstruments.begin());
+    return static_cast<int>(index);
 }
 
 std::span<const std::string_view> drum_names() {
@@ -462,8 +462,9 @@ std::optional<int> parse_pitch(std::string_view name, bool drums) {
         return pitch;
     }
     if (drums) {
-        if (const auto* found = std::ranges::find(kDrums, name); found != kDrums.end()) {
-            return kFirstDrum + static_cast<int>(found - kDrums.begin());
+        if (const auto index = std::ranges::find(kDrums, name) - kDrums.begin();
+            index != std::ssize(kDrums)) {
+            return kFirstDrum + static_cast<int>(index);
         }
     }
     return std::nullopt;
