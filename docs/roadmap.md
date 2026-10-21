@@ -171,7 +171,11 @@ rendering on top.
 - [x] Desktop OpenGL 3.3 for the `opengl` driver on Windows, macOS and Linux (`opengl_es` keeps
       OpenGL ES 3.0, as Godot's `opengl3_es`), and falling back to it where no Vulkan, Metal or
       Direct3D 12 starts, as Godot's `fallback_to_opengl3`
-- [ ] WebGPU on the web where browsers have it, with WebGL 2 kept for the rest
+- [x] WebGPU on the web where browsers have it, with WebGL 2 kept for the rest (`auto` picks
+      WebGPU when the browser has it); its WGSL is compiled from the same HLSL with Tint and
+      committed, and tests hold it to the software device's pixels on Dawn over Mesa
+- [ ] Game shaders and FSR on WebGPU, with Tint in the shader tools (until then a web export
+      that uses either keeps to WebGL 2)
 - [x] Refresh rates and frame pacing, following Godot's settings: the displays, their modes and
       refresh rates as data (`display.list`); V-Sync modes (disabled, enabled, adaptive,
       mailbox) and a frame cap (`max_fps`, 0 for none) in `project.json`, changeable while the

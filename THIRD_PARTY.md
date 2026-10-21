@@ -50,8 +50,8 @@ file, as its license asks:
 | smbPitchShift and smbFft, by Stephan M. Bernsee (1999-2015), as Godot uses them | Wide Open License: use, copy and change it if the notice stays in the source | The `pitch_shift` and `spectrum_analyzer` audio effects | `engine/audio/src/effects.cpp` |
 | [FidelityFX Super Resolution 1](https://github.com/GPUOpen-Effects/FidelityFX-FSR) (`ffx_fsr1.h`), by Advanced Micro Devices (2021), as Godot uses it | MIT | The `fsr` render scale mode: EASU and RCAS | `engine/render/shaders/fsr_easu.hlsl` and `fsr_rcas.hlsl`, compiled into `engine/render/src/fsr_shaders.hpp` |
 
-The renderer's own shaders are compiled ahead of time with two command-line tools whose output is
-committed in `engine/render/src/*_shaders.hpp`, so building the engine needs neither;
+The renderer's own shaders are compiled ahead of time with three command-line tools whose output
+is committed in `engine/render/src/*_shaders.hpp`, so building the engine needs none of them;
 `fsr_shaders.hpp` is written by `slash-shader-header`, built on the same projects' libraries. (A
 game's own shaders are compiled by slash-cli, slash-mcp and exports with those libraries, listed
 above; games get the compiled code, never the compilers.)
@@ -60,6 +60,7 @@ above; games get the compiled code, never the compilers.)
 | --- | --- | --- |
 | [glslang](https://github.com/KhronosGroup/glslang) | BSD-3-Clause, with parts under BSD-2-Clause, MIT and Apache 2.0 | HLSL to SPIR-V for Vulkan |
 | [SPIRV-Cross](https://github.com/KhronosGroup/SPIRV-Cross) | Apache 2.0 | SPIR-V to MSL for Metal and GLSL ES for OpenGL ES and WebGL 2 |
+| [Tint](https://github.com/google/dawn), in Dawn | BSD-3-Clause | SPIR-V to WGSL for WebGPU |
 
 On Windows, Direct3D 12 compiles the HLSL at startup with `d3dcompiler_47.dll`, which comes with
 Windows; the engine loads it at run time and ships no copy.
@@ -76,7 +77,10 @@ install` downloads, pinned in `tools/exporter/src/toolchains.cpp`:
 Windows exports on Windows use MSVC, and macOS and iOS exports use Apple's command-line tools.
 Web exports use [Emscripten](https://github.com/emscripten-core/emscripten) 6.0.10 in CI (MIT or
 University of Illinois/NCSA), whose JavaScript runtime and C/C++ libraries are compiled into the
-game.
+game, with its `emdawnwebgpu` port (Dawn's WebGPU bindings for the web: BSD 3-Clause, and
+Emscripten's license) for the WebGPU device. The web drawing tests run on Dawn in Node through
+the [webgpu](https://github.com/dawn-gpu/node-webgpu) npm package 0.6.2 (MIT, with Dawn's BSD
+3-Clause code inside), which nothing ships.
 
 Importing a Unity build runs one program that slash-cli and slash-mcp download on first use (or
 `slash-cli toolchain install assetripper`), pinned in `tools/exporter/src/toolchains.cpp`. It runs

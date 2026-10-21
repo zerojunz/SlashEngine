@@ -56,6 +56,16 @@ target_link_libraries(slash_render
     PRIVATE slash_astcenc slash_bc7 SDL3::SDL3-static)
 slash_engine_target(slash_render)
 
+# Web builds draw with WebGPU where the browser has it, through Dawn's webgpu.h for Emscripten
+# (emdawnwebgpu), which Emscripten fetches as a port pinned to its version. web/webgpu.js asks the
+# browser for the device before main() runs.
+if(EMSCRIPTEN)
+    target_sources(slash_render PRIVATE src/webgpu_device.cpp)
+    target_compile_options(slash_render PRIVATE --use-port=emdawnwebgpu)
+    target_link_options(slash_render INTERFACE --use-port=emdawnwebgpu
+        "SHELL:--pre-js ${CMAKE_CURRENT_SOURCE_DIR}/web/webgpu.js")
+endif()
+
 if(slash_texture_encoders)
     add_library(slash_texture_encoder STATIC src/texture_encoder.cpp)
     add_library(slash::texture_encoder ALIAS slash_texture_encoder)
@@ -72,9 +82,10 @@ set_source_files_properties(src/device.cpp src/material.cpp src/particles.cpp sr
     COMPILE_OPTIONS "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>")
 
 # Regenerates src/*_shaders.hpp from shaders/*.hlsl. The headers are committed, so only someone
-# changing a shader needs glslang and SPIRV-Cross.
+# changing a shader needs glslang, SPIRV-Cross and Tint.
 find_program(SLASH_GLSLANG NAMES glslangValidator glslang)
 find_program(SLASH_SPIRV_CROSS NAMES spirv-cross)
+find_program(SLASH_TINT NAMES tint)
 set(slash_shader_headers "")
 # Each shader as file:Name, with the compute shaders after the vertex and fragment pairs.
 set(slash_shaders sprite:Sprite material:Material particles_process:ParticlesProcess:compute
@@ -97,7 +108,7 @@ foreach(entry IN LISTS slash_shaders)
         COMMAND ${CMAKE_COMMAND}
             -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/shaders/${shader}.hlsl -DOUTPUT=${header}
             -DNAME=${name} -DCOMPUTE=${compute} -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}/shaders
-            -DGLSLANG=${SLASH_GLSLANG} -DSPIRV_CROSS=${SLASH_SPIRV_CROSS}
+            -DGLSLANG=${SLASH_GLSLANG} -DSPIRV_CROSS=${SLASH_SPIRV_CROSS} -DTINT=${SLASH_TINT}
             -P ${PROJECT_SOURCE_DIR}/cmake/compile_shaders.cmake
         COMMAND ${CMAKE_COMMAND} -E touch ${stamp}
         DEPENDS shaders/${shader}.hlsl shaders/${include}.hlsl shaders/material_ops.hlsl

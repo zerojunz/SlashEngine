@@ -436,6 +436,140 @@ kernel void cs_main(constant Params& _21 [[buffer(0)]], device emissions& emissi
 
 )msl"};
 
+inline constexpr const char* kParticlesEmitComputeWgsl[] = {
+R"wgsl(struct Params {
+  parents : u32,
+  size : u32,
+  tag : u32,
+  clear : u32,
+}
+
+@group(2u) @binding(0u) var<uniform> v : Params;
+
+struct emissions {
+  m : array<vec4<u32>>,
+}
+
+@group(1u) @binding(0u) var<storage, read_write> emissions_1 : emissions;
+
+var<workgroup> sums : array<u32, 256u>;
+
+var<workgroup> total : u32;
+
+struct Particle {
+  basis : vec4<f32>,
+  origin_velocity : vec4<f32>,
+  color : vec4<f32>,
+  custom : vec4<f32>,
+  userdata : vec4<f32>,
+  flags : vec4<u32>,
+}
+
+struct particles {
+  m_1 : array<Particle>,
+}
+
+@group(1u) @binding(1u) var<storage, read_write> particles_1 : particles;
+
+@compute @workgroup_size(256u, 1u, 1u)
+fn cs_main(@builtin(local_invocation_id) id : vec3<u32>) {
+  let v_1 = id.x;
+  let v_2 = ((v.parents + 255u) / 256u);
+  let v_3 = min((v_1 * v_2), v.parents);
+  let v_4 = min((v_3 + v_2), v.parents);
+  var v_5 : u32;
+  {
+    var v_6 : u32;
+    v_6 = 0u;
+    var v_7 : u32;
+    v_7 = v_3;
+    loop {
+      let v_8 = v_7;
+      let v_9 = v_6;
+      if ((v_8 < v_4)) {
+        continue;
+      } else {
+        v_5 = v_9;
+        break;
+      }
+
+      continuing {
+        let v_10 = min((v_9 + min(emissions_1.m[(1u + (v_8 * 3u))].x, v.size)), v.size);
+        let v_11 = (v_8 + bitcast<u32>(1i));
+        v_6 = v_10;
+        v_7 = v_11;
+      }
+    }
+  }
+  sums[v_1] = v_5;
+  workgroupBarrier();
+  if ((v_1 == 0u)) {
+    var v_12 : u32;
+    {
+      var v_13 : u32;
+      v_13 = 0u;
+      var v_14 : u32;
+      v_14 = 0u;
+      loop {
+        let v_15 = v_14;
+        let v_16 = v_13;
+        if ((v_15 < 256u)) {
+          continue;
+        } else {
+          v_12 = v_16;
+          break;
+        }
+
+        continuing {
+          let v_17 = sums[v_15];
+          sums[v_15] = v_16;
+          let v_18 = min((v_16 + v_17), v.size);
+          let v_19 = (v_15 + bitcast<u32>(1i));
+          v_13 = v_18;
+          v_14 = v_19;
+        }
+      }
+    }
+    total = v_12;
+  }
+  workgroupBarrier();
+  let v_20 = sums[v_1];
+  {
+    var v_21 : u32;
+    v_21 = v_20;
+    var v_22 : u32;
+    v_22 = v_3;
+    loop {
+      let v_23 = v_22;
+      let v_24 = v_21;
+      if ((v_23 < v_4)) {
+        continue;
+      } else {
+        break;
+      }
+
+      continuing {
+        let v_25 = (1u + (v_23 * 3u));
+        let v_26 = emissions_1.m[v_25];
+        var v_27 : vec4<u32> = v_26;
+        v_27.y = v_24;
+        emissions_1.m[v_25] = v_27;
+        let v_28 = min((v_24 + min(v_26.x, v.size)), v.size);
+        let v_29 = (v_23 + bitcast<u32>(1i));
+        v_21 = v_28;
+        v_22 = v_29;
+      }
+    }
+  }
+  if ((v_1 == 0u)) {
+    let v_30 = particles_1.m_1[0i].flags;
+    let v_31 = select(v_30.y, 0u, ((v.clear != 0u) | (v_30.z != v.tag)));
+    particles_1.m_1[0i].flags = vec4<u32>(v_30.x, ((v_31 + total) % v.size), v.tag, v_30.w);
+    emissions_1.m[0i] = vec4<u32>(v_31, total, ((v.tag - 1u) % 2u), v.parents);
+  }
+}
+)wgsl"};
+
 inline constexpr char kParticlesEmitHlsl[] = R"hlsl(// Numbers what a sub-emitter takes in a step from the particles the system before started, which
 // particles_process.hlsl wrote to the emission buffer: each particle's first emission's place,
 // adding at most the sub-emitter's size each and stopping there, then the header the

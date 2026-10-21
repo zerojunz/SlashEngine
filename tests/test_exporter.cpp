@@ -1035,6 +1035,14 @@ TEST_CASE("exports compile each material's shader into its file, and check the s
     std::filesystem::remove_all(folder);
 }
 
+TEST_CASE("web exports keep to WebGL 2 for game shaders and FSR, which WebGPU can't draw yet") {
+    CHECK(exporter::web_driver("auto", false, "bilinear") == "auto");
+    CHECK(exporter::web_driver("auto", true, "bilinear") == "opengl_es");
+    CHECK(exporter::web_driver("auto", false, "fsr") == "opengl_es");
+    CHECK(exporter::web_driver("webgpu", true, "bilinear") == "webgpu");
+    CHECK(exporter::web_driver("opengl_es", false, "bilinear") == "opengl_es");
+}
+
 TEST_CASE("exports ship fonts and themes and check them, and the controls of scenes, first") {
     const std::filesystem::path folder = "exporter_fonts_project";
     std::filesystem::remove_all(folder);

@@ -103,7 +103,7 @@ FrameStats Loop::frame_stats() const {
     // The first frame has no frame before it to measure from.
     stats.frames = frame_start_ >= 0.0 ? frames_ + 1 : 0;
     stats.catch_up_frames = catch_up_frames_;
-    const std::size_t count = std::min<std::size_t>(frames_, frame_ms_.size());
+    const auto count = static_cast<std::size_t>(std::min<std::uint64_t>(frames_, frame_ms_.size()));
     if (count == 0) {
         return stats;
     }

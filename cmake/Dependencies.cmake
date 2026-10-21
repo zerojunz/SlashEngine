@@ -208,8 +208,8 @@ slash_add_dependency(astc-encoder DOWNLOAD_ONLY TRUE)
 # Reading exported games back into projects (tools/importer): libwebp decodes the WebP images
 # Godot stores imported textures as, zstd the compressed GDScript tokens and resources, and brotli
 # Unity's compressed web builds. Tools only, decoders only: games never link them. The tests link
-# the tools' libraries too.
-if(SLASH_BUILD_TOOLS OR SLASH_BUILD_TESTS)
+# the tools' libraries too, except in a web build, which has only the drawing tests.
+if((SLASH_BUILD_TOOLS OR SLASH_BUILD_TESTS) AND NOT EMSCRIPTEN)
     slash_add_dependency(libwebp
         SYSTEM TRUE
         EXCLUDE_FROM_ALL TRUE
@@ -336,7 +336,7 @@ endif()
 # headers only fit protocol code from a wayland-scanner as old, and macOS has none at all. So the
 # tools build Wayland 1.18's scanner, on expat, into slash-cli and slash-mcp, which run it as
 # "slash-cli wayland-scanner" (tools/exporter). Windows machines don't build Linux games.
-if((SLASH_BUILD_TOOLS OR SLASH_BUILD_TESTS) AND NOT WIN32)
+if((SLASH_BUILD_TOOLS OR SLASH_BUILD_TESTS) AND NOT WIN32 AND NOT EMSCRIPTEN)
     slash_add_dependency(expat DOWNLOAD_ONLY TRUE)
     slash_add_dependency(wayland DOWNLOAD_ONLY TRUE)
     if(expat_ADDED AND wayland_ADDED)
