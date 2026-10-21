@@ -28,6 +28,13 @@
       "repository": "https://github.com/Tehreer/SheenBidi.git",
       "tag": "v3.0.0"
     },
+    "TinySoundFont": {
+      "license": "MIT",
+      "license_file": "LICENSE",
+      "license_sha256": "ef10cb839de73fb6d5d32ea7151979e87809a6df70dc7e7ee8457ae1c9e7aa7e",
+      "repository": "https://github.com/schellingb/TinySoundFont.git",
+      "tag": "853a0a171759f1ddba0de1442133a75912bbeffa"
+    },
     "box2d": {
       "license": "MIT",
       "license_file": "LICENSE",
@@ -83,6 +90,20 @@
       "license_sha256": "d6b4754bb67bdd08b97d5d11b2d7434997a371585a78fe77007149df3af8d09c",
       "repository": "https://github.com/jiixyj/libebur128.git",
       "tag": "v1.2.6"
+    },
+    "libogg": {
+      "license": "BSD-3-Clause",
+      "license_file": "COPYING",
+      "license_sha256": "d2ab5758336489da61c12cc5bb757da5339c4ae9001f9bb0562b4370249af814",
+      "repository": "https://github.com/xiph/ogg.git",
+      "tag": "v1.3.6"
+    },
+    "libvorbis": {
+      "license": "BSD-3-Clause",
+      "license_file": "COPYING",
+      "license_sha256": "ec1815db59fcd302846df949d7424876cb2e2dc5ed1606c5fb0b36787b1cf43a",
+      "repository": "https://github.com/xiph/vorbis.git",
+      "tag": "v1.3.7"
     },
     "libwebp": {
       "license": "BSD-3-Clause",

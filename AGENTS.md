@@ -968,8 +968,14 @@ by its spectrum and recorded, and `examples/interactive-music` a score that foll
 General MIDI instruments or drums, each bar a line of notes such as `"D2:4 ; D3 F3 A3 D4@110"`;
 `decode_bar` reads a line and `encode_bars` writes notes back as the shortest line that plays
 them. `score.export` and `score.import` (`src/midi.cpp`) write and read Standard MIDI Files.
-Scores are a game's source, not its data, so exports leave them out. `examples/music-scores`
-sends a piece through MIDI and back.
+`soundtrack.render` (`src/render.cpp`) plays a score through TinySoundFont into an `.ogg` or
+`.wav` stem per track, each with a `.audio.json` file giving its `bpm` and `beat_count`, and a
+synchronized `.audio.json` file that plays them together; looping stems are the score's exact
+length, with what rings past the end added onto the start. Its instruments are a SoundFont 2
+file or the engine's own (`src/sound_bank.cpp`: a voice per General MIDI family and a drum kit,
+synthesized without libm). TinySoundFont and libvorbis are fetched for the tools only. Scores
+are a game's source, not its data, so exports leave them out. `examples/music-scores` sends a
+piece through MIDI and back, and `examples/soundtrack-render` renders a loop and measures it.
 
 ## Ads, analytics, purchases and achievements
 
@@ -1099,7 +1105,7 @@ CI rejects unformatted code and any clang-tidy finding.
   animations and the system that plays them),
   `physics2d` (2D bodies, areas, joints and queries on Box2D), `library` (the asset library, its
   generators and commands), `storyboard` (storyboard kinds, files, versions,
-  queries, edits, briefs and checks), `soundtrack` (`.score.json` scores and MIDI files),
+  queries, edits, briefs and checks), `soundtrack` (`.score.json` scores, MIDI files and rendering stems),
   `command` (commands, sessions with undo, JSON-RPC and MCP),
   `debug` (the debug overlay over a running game), `server` (localhost HTTP over a session),
   `ai` (language model providers, their adapters, `providers.json`, replay and the `ai.*`
