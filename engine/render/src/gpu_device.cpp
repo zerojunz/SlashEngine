@@ -465,10 +465,9 @@ public:
     }
 
     Result<void> process_particle_chain(std::span<const ParticleRun> chain) override {
-        if (auto checked = check_particle_chain(chain,
-                                                [this](ParticlesId particles) {
-                                                    return particle_systems_.contains(particles);
-                                                });
+        if (auto checked = check_particle_chain(
+                chain,
+                [this](ParticlesId particles) { return particle_systems_.contains(particles); });
             !checked) {
             return checked;
         }
@@ -528,14 +527,13 @@ public:
                 for (std::size_t k = 0; k < links.size(); ++k) {
                     if (k > 0) {
                         const ParticleStep& step = chain[k].steps[i];
-                        particle_jobs_.push_back(
-                            {.kind = ComputeKind::Emit,
-                             .particles = links[k].particles,
-                             .target = links[k].source,
-                             .emit = {.parents = links[k - 1].amount,
-                                      .size = links[k].amount,
-                                      .tag = step.cycle + 1U,
-                                      .clear = step.clear ? 1U : 0U}});
+                        particle_jobs_.push_back({.kind = ComputeKind::Emit,
+                                                  .particles = links[k].particles,
+                                                  .target = links[k].source,
+                                                  .emit = {.parents = links[k - 1].amount,
+                                                           .size = links[k].amount,
+                                                           .tag = step.cycle + 1U,
+                                                           .clear = step.clear ? 1U : 0U}});
                     }
                     ParticleJob job = links[k];
                     job.steps += static_cast<std::uint32_t>(i) * kStepWords;
