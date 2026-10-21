@@ -11,6 +11,7 @@
 #include <cmath>
 #include <cstddef>
 #include <string>
+#include <tuple>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -191,6 +192,24 @@ Result<void> check_particle_process(const ParticleProcess& process,
     if (process.sub_emitter_mode == SubEmitterMode::Constant &&
         (!(process.sub_emitter_frequency > 0.0F) || !finite(process.sub_emitter_frequency))) {
         return make_error(ErrorCode::InvalidArgument, "sub_emitter_frequency is more than 0");
+    }
+    for (const auto& [what, graph, outputs, parts] :
+         {std::tuple{"the start graph", &process.start_program, kParticleStartOutputs,
+                     "position, velocity and active"},
+          std::tuple{"the process graph", &process.process_program, kParticleProcessOutputs,
+                     "position, velocity, color, angle, scale, frame and active"}}) {
+        if (graph->outputs == 0) {
+            continue;
+        }
+        if ((graph->outputs & ~outputs) != 0) {
+            return make_error(ErrorCode::InvalidArgument,
+                              std::string(what) + " changes only " + parts);
+        }
+        if (auto checked = check_program(graph->program, kParticleFirstFreeRegister, false);
+            !checked) {
+            return make_error(ErrorCode::InvalidArgument,
+                              std::string(what) + ": " + checked.error().message);
+        }
     }
     constexpr std::size_t kMaxPoints = 65536;
     if (process.emission_points.size() > kMaxPoints) {

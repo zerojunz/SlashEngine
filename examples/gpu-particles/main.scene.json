@@ -40,6 +40,19 @@
         }
       }
     },
+    "fireflies": {
+      "components": {
+        "GPUParticles2D": {
+          "amount": 24,
+          "lifetime": 4.0,
+          "process_material": "fireflies.process_material.json",
+          "texture": "dot.png"
+        },
+        "Transform2D": {
+          "position": [250.0, 50.0]
+        }
+      }
+    },
     "ledge": {
       "components": {
         "LightOccluder2D": {

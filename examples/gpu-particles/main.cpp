@@ -1,7 +1,7 @@
 // GPU particles, as Godot's GPUParticles2D: main.scene.json has a fire, a one-shot burst of sparks
 // that bursts the same way each time, snow that was already falling when the scene opened, smoke
 // that curls in turbulence, rain that lands on a ledge, fireworks, rockets that burst into
-// sparks in a sub-emitter, and comets that draw trails.
+// sparks in a sub-emitter, comets that draw trails, and fireflies that circle their emitter.
 // How each one's particles start and move is a .process_material.json file, Godot's
 // ParticleProcessMaterial in 2D.
 //
@@ -155,6 +155,12 @@ int main() {
     // turns each along its velocity, so the ribbon is as wide as the streak across the path.
     // particles.eval gives the trails' bounds and, for each comet, how far its trail reaches.
     call(session, "particles.eval", R"({"id": "comets", "list": true, "max_results": 1})");
+
+    // Fireflies: their process material has particle graphs, Godot's particle shaders as node
+    // graphs. "start" puts each on a circle round the emitter, "process" turns it round at a speed
+    // of its own each step, swaying in and out, and makes it twinkle; the material alone could
+    // only send it off in a line. The CPU here runs the graphs as the GPU's compute shader does.
+    call(session, "particles.eval", R"({"id": "fireflies", "list": true, "max_results": 2})");
 
     // A process material with a mistake is refused with the JSON Pointer of the bad value.
     // "slash-cli scene validate" finds the same mistake in the file before anything runs it, and

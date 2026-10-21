@@ -35,14 +35,25 @@ void pack_sixteen(std::span<const float> values, std::vector<Word>& out) {
 } // namespace
 
 void pack_particle_process(const ParticleProcess& process, std::vector<Word>& out) {
-    out.reserve(out.size() + kPointsAt + (process.emission_points.size() * 2));
+    const ParticleProgram& start = process.start_program;
+    const ParticleProgram& step = process.process_program;
+    const auto graph_words = [](const ParticleProgram& graph) {
+        return graph.outputs == 0 ? std::size_t{0}
+                                  : graph.program.code.size() + graph.program.constants.size();
+    };
+    const bool graphs = start.outputs != 0 || step.outputs != 0;
+    const auto points_end =
+        static_cast<std::uint32_t>(kPointsAt + (process.emission_points.size() * 2));
+    out.reserve(out.size() + points_end + (graphs ? kGraphHeaderWords : 0) + graph_words(start) +
+                graph_words(step));
     out.push_back({static_cast<std::uint32_t>(process.emission_shape),
                    bits(process.emission_sphere_radius), bits(process.emission_ring_radius),
                    bits(process.emission_ring_inner_radius)});
     out.push_back(floats(process.emission_shape_offset.x, process.emission_shape_offset.y,
                          process.emission_shape_scale.x, process.emission_shape_scale.y));
     out.push_back({bits(process.emission_box_extents.x), bits(process.emission_box_extents.y),
-                   static_cast<std::uint32_t>(process.emission_points.size()), 0U});
+                   static_cast<std::uint32_t>(process.emission_points.size()),
+                   graphs ? points_end : 0U});
     out.push_back(floats(process.direction.x, process.direction.y, process.spread,
                          process.inherit_velocity_ratio));
     out.push_back(floats(process.velocity_pivot.x, process.velocity_pivot.y, process.gravity.x,
@@ -123,6 +134,28 @@ void pack_particle_process(const ParticleProcess& process, std::vector<Word>& ou
         out.push_back(floats(point.x, point.y, normal.x, normal.y));
         out.push_back(floats(i < process.emission_colors.size() ? process.emission_colors[i]
                                                                 : Vec4{1.0F, 1.0F, 1.0F, 1.0F}));
+    }
+    if (!graphs) {
+        return;
+    }
+    // A program without outputs runs nothing.
+    const auto count = [](const ParticleProgram& graph, std::size_t size) {
+        return graph.outputs == 0 ? 0U : static_cast<std::uint32_t>(size);
+    };
+    out.push_back(
+        {count(start, start.program.code.size()), count(start, start.program.constants.size()),
+         count(step, step.program.code.size()), count(step, step.program.constants.size())});
+    out.push_back({start.outputs, step.outputs, 0U, 0U});
+    for (const ParticleProgram* graph : {&start, &step}) {
+        if (graph->outputs == 0) {
+            continue;
+        }
+        for (const Instruction& instruction : graph->program.code) {
+            out.push_back({instruction.head, instruction.a, instruction.b, instruction.c});
+        }
+        for (const std::array<float, 4>& constant : graph->program.constants) {
+            out.push_back(floats(constant[0], constant[1], constant[2], constant[3]));
+        }
     }
 }
 

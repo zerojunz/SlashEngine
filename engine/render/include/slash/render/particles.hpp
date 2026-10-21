@@ -1,6 +1,7 @@
 #pragma once
 
 #include "slash/core/math.hpp"
+#include "slash/render/material.hpp"
 
 #include <array>
 #include <cstddef>
@@ -22,6 +23,10 @@
 // steps behind, with that step's delta, transform and shapes, so it takes the same path. A copy
 // never restarts and starts nothing in a sub-emitter; it runs on after its particle has gone,
 // until its own lifetime ends or the particle starts again.
+//
+// A process material can carry particle graphs, as Godot's particle shaders: material programs
+// (material.hpp) that run after its generated start() and in its process() and change what they
+// worked out (ParticleProgram).
 namespace slash::render {
 
 struct Vertex2D; // device.hpp
@@ -102,6 +107,51 @@ struct GradientStop {
 // Colors at offsets from 0 to 1, in order, blended in between. No stops is no gradient.
 using ParticleGradient = std::vector<GradientStop>;
 
+// A particle graph's registers. A program reads registers 0 to 7 and leaves what it changes in 8
+// to 10, which start as copies of 0 to 2; ParticleProgram::outputs says which parts to take. In
+// start() the look, life's age and the contact are 0 and only position, velocity and active are
+// taken.
+inline constexpr std::uint32_t kParticleMotionRegister = 0; // position xy, velocity zw
+inline constexpr std::uint32_t kParticleColorRegister = 1;  // color
+inline constexpr std::uint32_t kParticleLookRegister = 2;   // angle (radians), scale, frame, 1
+inline constexpr std::uint32_t kParticleLifeRegister = 3;   // age (s), life 0 to 1, lifetime, delta
+inline constexpr std::uint32_t kParticleNumberRegister = 4; // time, index, number, amount_ratio
+inline constexpr std::uint32_t kParticleRandomRegister = 5; // four from 0 to 1, fixed for a life
+inline constexpr std::uint32_t kParticleEmitterRegister = 6; // emitter origin xy, velocity zw
+inline constexpr std::uint32_t kParticleContactRegister = 7; // normal xy, depth, collided
+inline constexpr std::uint32_t kParticleOutRegister = 8;     // 8 to 10: what it changes
+inline constexpr std::uint32_t kParticleFirstFreeRegister = 11;
+
+// The parts of a particle a graph changes: kParticleOutRegister's xy, zw, the next register, and
+// the x, y, z and w of the one after.
+inline constexpr std::uint32_t kParticleOutPosition = 1U;
+inline constexpr std::uint32_t kParticleOutVelocity = 2U;
+inline constexpr std::uint32_t kParticleOutColor = 4U;
+inline constexpr std::uint32_t kParticleOutAngle = 8U;
+inline constexpr std::uint32_t kParticleOutScale = 16U;
+inline constexpr std::uint32_t kParticleOutFrame = 32U;
+inline constexpr std::uint32_t kParticleOutActive = 64U; // below a half, the particle dies
+// What start() takes.
+inline constexpr std::uint32_t kParticleStartOutputs =
+    kParticleOutPosition | kParticleOutVelocity | kParticleOutActive;
+inline constexpr std::uint32_t kParticleProcessOutputs = 127U;
+
+// A particle graph: a program with no textures, and the parts it changes. No outputs is no graph.
+//
+// The start graph runs after start() has placed a particle: position, velocity and active it
+// gives replace what start() worked out. The process graph runs in process() after it has worked
+// out the step's velocity, color, angle, scale and frame, with position where the particle was
+// at the start of the step: a velocity it gives replaces the step's, and carries on into the next
+// step as the forces' does; the particle then moves by the velocity, unless the graph gives the
+// position it ends the step at. Its angle and scale turn and size the particle (along its
+// velocity instead with particle_flag_align_y, when it gives no angle).
+struct ParticleProgram {
+    MaterialProgram program;
+    std::uint32_t outputs = 0;
+
+    bool operator==(const ParticleProgram&) const = default;
+};
+
 // How particles start and move: Godot's ParticleProcessMaterial with particle_flag_disable_z, as
 // its generated shader runs it. Angles are in degrees.
 struct ParticleProcess {
@@ -155,6 +205,9 @@ struct ParticleProcess {
     std::uint32_t sub_emitter_amount_at_collision = 1;
     std::uint32_t sub_emitter_amount_at_start = 1;
     bool sub_emitter_keep_velocity = false;
+    // Particle graphs, as Godot's particle shaders' start() and process().
+    ParticleProgram start_program;
+    ParticleProgram process_program;
 
     bool operator==(const ParticleProcess&) const = default;
 };

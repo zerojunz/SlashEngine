@@ -1,7 +1,10 @@
 #include "slash/render/material.hpp"
 
+#include "slash/core/math.hpp"
+
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <string>
 
 namespace slash::render {
@@ -73,6 +76,30 @@ Float4 hsv_to_rgb(const Float4& c) {
     return rgb;
 }
 
+// a to the power b, a below 0 counting as 0, as the shader's pow(max(a, 0), b); portable gives
+// the same bits everywhere, with 0 to the power 0 as 1.
+float power(float a, float b, bool portable) {
+    const float x = std::max(a, 0.0F);
+    if (!portable) {
+        return std::pow(x, b);
+    }
+    if (x == 0.0F) {
+        if (b == 0.0F) {
+            return 1.0F;
+        }
+        return b > 0.0F ? 0.0F : std::numeric_limits<float>::infinity();
+    }
+    return slash::exp(b * slash::ln(x));
+}
+
+// asin and acos as the angle of (x, y), NaN where x is outside -1 to 1.
+float arc(float y, float x, float of) {
+    if (!(std::abs(of) <= 1.0F)) {
+        return std::numeric_limits<float>::quiet_NaN();
+    }
+    return slash::atan2(y, x);
+}
+
 } // namespace
 
 std::string_view blend_mode_name(BlendMode mode) {
@@ -113,7 +140,7 @@ int op_arity(Op op) {
     }
 }
 
-Result<void> check_program(const MaterialProgram& program) {
+Result<void> check_program(const MaterialProgram& program, std::uint32_t filled, bool textures) {
     if (program.code.size() > kMaxInstructions) {
         return make_error(ErrorCode::InvalidArgument,
                           "a material program has at most " + std::to_string(kMaxInstructions) +
@@ -125,7 +152,7 @@ Result<void> check_program(const MaterialProgram& program) {
                               " constants, not " + std::to_string(program.constants.size()));
     }
     std::array<bool, kRegisterCount> written{};
-    for (std::uint32_t r = 0; r < kFirstFreeRegister; ++r) {
+    for (std::uint32_t r = 0; r < std::min(filled, kRegisterCount); ++r) {
         written.at(r) = true;
     }
     for (std::size_t i = 0; i < program.code.size(); ++i) {
@@ -160,6 +187,9 @@ Result<void> check_program(const MaterialProgram& program) {
         if (counts && (aux < 1 || aux > 4)) {
             return bad_instruction(i, "uses " + std::to_string(aux) + " components; use 1 to 4");
         }
+        if (op == Op::Sample && !textures) {
+            return bad_instruction(i, "samples a texture, which this program has none of");
+        }
         if (op == Op::Sample && aux >= kMaterialTextureSlots) {
             return bad_instruction(i, "samples texture slot " + std::to_string(aux) +
                                           "; slots are 0 to 3");
@@ -175,11 +205,17 @@ Result<void> check_program(const MaterialProgram& program) {
 
 Float4 run_program(const MaterialProgram& program, const PixelInput& input,
                    const TextureSampler& sample) {
-    std::array<Float4, kRegisterCount> registers{};
+    Registers registers{};
     registers.at(kUvRegister) = {input.uv[0], input.uv[1], 0.0F, 0.0F};
     registers.at(kColorRegister) = input.color;
     registers.at(kFragCoordRegister) = {input.frag_coord[0], input.frag_coord[1], 0.0F, 0.0F};
     registers.at(kTexelRegister) = {input.texel[0], input.texel[1], 0.0F, 0.0F};
+    run_instructions(program, registers, &sample, false);
+    return registers.at(kUvRegister);
+}
+
+void run_instructions(const MaterialProgram& program, Registers& registers,
+                      const TextureSampler* sample, bool portable) {
     const auto fetch = [&](std::uint32_t operand) {
         const std::uint32_t index = operand & 0xFFU;
         const Float4& value = index < kConstantOperand
@@ -217,7 +253,7 @@ Float4 run_program(const MaterialProgram& program, const PixelInput& input,
             out = each(a, b, [](float x, float y) { return x - (y * std::floor(x / y)); });
             break;
         case Op::Pow:
-            out = each(a, b, [](float x, float y) { return std::pow(std::max(x, 0.0F), y); });
+            out = each(a, b, [portable](float x, float y) { return power(x, y, portable); });
             break;
         case Op::Min:
             out = each(a, b, [](float x, float y) { return std::min(x, y); });
@@ -229,7 +265,9 @@ Float4 run_program(const MaterialProgram& program, const PixelInput& input,
             out = each(a, b, [](float edge, float x) { return x >= edge ? 1.0F : 0.0F; });
             break;
         case Op::Atan2:
-            out = each(a, b, [](float y, float x) { return std::atan2(y, x); });
+            out = each(a, b, [portable](float y, float x) {
+                return portable ? slash::atan2(y, x) : std::atan2(y, x);
+            });
             break;
         case Op::Abs:
             out = each(a, [](float x) { return std::abs(x); });
@@ -258,28 +296,39 @@ Float4 run_program(const MaterialProgram& program, const PixelInput& input,
             out = each(a, [](float x) { return std::sqrt(x); });
             break;
         case Op::Sin:
-            out = each(a, [](float x) { return std::sin(x); });
+            out = each(a, [portable](float x) { return portable ? cos_sin(x).y : std::sin(x); });
             break;
         case Op::Cos:
-            out = each(a, [](float x) { return std::cos(x); });
+            out = each(a, [portable](float x) { return portable ? cos_sin(x).x : std::cos(x); });
             break;
         case Op::Tan:
-            out = each(a, [](float x) { return std::tan(x); });
+            out = each(a, [portable](float x) {
+                if (!portable) {
+                    return std::tan(x);
+                }
+                const Vec2 turn = cos_sin(x);
+                return turn.y / turn.x;
+            });
             break;
         case Op::Asin:
-            out = each(a, [](float x) { return std::asin(x); });
+            out = each(a, [portable](float x) {
+                return portable ? arc(x, std::sqrt(1.0F - (x * x)), x) : std::asin(x);
+            });
             break;
         case Op::Acos:
-            out = each(a, [](float x) { return std::acos(x); });
+            out = each(a, [portable](float x) {
+                return portable ? arc(std::sqrt(1.0F - (x * x)), x, x) : std::acos(x);
+            });
             break;
         case Op::Atan:
-            out = each(a, [](float x) { return std::atan(x); });
+            out = each(
+                a, [portable](float x) { return portable ? slash::atan2(x, 1.0F) : std::atan(x); });
             break;
         case Op::Exp:
-            out = each(a, [](float x) { return std::exp(x); });
+            out = each(a, [portable](float x) { return portable ? slash::exp(x) : std::exp(x); });
             break;
         case Op::Log:
-            out = each(a, [](float x) { return std::log(x); });
+            out = each(a, [portable](float x) { return portable ? slash::ln(x) : std::log(x); });
             break;
         case Op::Saturate:
             out = each(a, saturate);
@@ -328,7 +377,7 @@ Float4 run_program(const MaterialProgram& program, const PixelInput& input,
             }
             break;
         case Op::Sample:
-            out = sample(aux, a[0], a[1]);
+            out = sample != nullptr ? (*sample)(aux, a[0], a[1]) : Float4{};
             break;
         case Op::RgbToHsv:
             out = rgb_to_hsv(a);
@@ -339,7 +388,6 @@ Float4 run_program(const MaterialProgram& program, const PixelInput& input,
         }
         registers.at((instruction.head >> 8U) & 31U) = out;
     }
-    return registers.at(kUvRegister);
 }
 
 } // namespace slash::render

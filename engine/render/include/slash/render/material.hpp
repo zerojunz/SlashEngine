@@ -145,8 +145,11 @@ struct MaterialProgram {
 
 // Whether a program is one the shader can run: at most kMaxInstructions instructions and
 // kMaxConstants constants, known ops, registers written before they are read, and operands,
-// texture slots and component counts in range. The error names the instruction.
-[[nodiscard]] Result<void> check_program(const MaterialProgram& program);
+// texture slots and component counts in range. The error names the instruction. Registers below
+// filled start written; a program without textures (a particle graph's) may not sample.
+[[nodiscard]] Result<void> check_program(const MaterialProgram& program,
+                                         std::uint32_t filled = kFirstFreeRegister,
+                                         bool textures = true);
 
 // What a pixel starts with: see the registers above.
 struct PixelInput {
@@ -164,5 +167,13 @@ using TextureSampler = std::function<std::array<float, 4>(std::uint32_t slot, fl
 // bits.
 [[nodiscard]] std::array<float, 4>
 run_program(const MaterialProgram& program, const PixelInput& input, const TextureSampler& sample);
+
+using Registers = std::array<std::array<float, 4>, kRegisterCount>;
+
+// Runs a program that passes check_program on registers filled as its kind needs. A program that
+// samples needs sample. With portable, sin, cos, tan and their inverses, exp, log and pow give the
+// same bits on every platform, as particles need; otherwise they are the C library's.
+void run_instructions(const MaterialProgram& program, Registers& registers,
+                      const TextureSampler* sample, bool portable);
 
 } // namespace slash::render
