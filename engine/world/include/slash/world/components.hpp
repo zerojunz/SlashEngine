@@ -769,6 +769,10 @@ struct Control {
     float size_flags_stretch_ratio = 1.0F;
     int z_index = 0;
     bool z_as_relative = true; // z_index adds to its parent's; false makes it the whole of it
+    // Placed in the viewport instead of its parent's rect, as Godot's top_level: containers
+    // leave it out, it takes none of its parent's transform, modulate, z_index or clip, and it
+    // draws after its parent's tree, getting the pointer before it. Its parent still hides it.
+    bool top_level = false;
     // The controls focus moves to with ui_left, ui_up, ui_right and ui_down, and with
     // ui_focus_next and ui_focus_prev (Tab and Shift+Tab); null finds the closest one that way.
     entt::entity focus_neighbor_left = entt::null;
@@ -790,10 +794,10 @@ SLASH_COMPONENT(Control, children, anchor_left, anchor_top, anchor_right, anchor
                 size_flags_horizontal, size_flags_vertical, size_flags_stretch_ratio,
                 focus_neighbor_left, focus_neighbor_top, focus_neighbor_right,
                 focus_neighbor_bottom, focus_next, focus_previous, focus_mode, mouse_filter,
-                tooltip_text, layout_direction, visible, modulate, self_modulate, z_index,
-                z_as_relative, texture_filter, theme, theme_type_variation, theme_override_colors,
-                theme_override_constants, theme_override_fonts, theme_override_font_sizes,
-                theme_override_icons, theme_override_styles)
+                tooltip_text, layout_direction, visible, modulate, self_modulate, top_level,
+                z_index, z_as_relative, texture_filter, theme, theme_type_variation,
+                theme_override_colors, theme_override_constants, theme_override_fonts,
+                theme_override_font_sizes, theme_override_icons, theme_override_styles)
 
 // Lets a control be dragged and take what is dropped on it, as a Godot script's _get_drag_data,
 // _can_drop_data and _drop_data. Moving the mouse past the drag threshold with the left button

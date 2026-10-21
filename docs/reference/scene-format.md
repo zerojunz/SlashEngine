@@ -336,6 +336,7 @@ A reference must name an entity that exists in the same scene.
 | | `clip_contents` | `bool` | `false` | Cut off its drawing and its children's at its rect, and let the pointer reach only the part of its children inside it ([scrolling](#scrolling)); a `ScrollContainer` always does |
 | | `modulate` | `Vec4` | `[1, 1, 1, 1]` | Tints it and its children, as [r, g, b, a] |
 | | `self_modulate` | `Vec4` | `[1, 1, 1, 1]` | Tints it only |
+| | `top_level` | `bool` | `false` | Placed in the viewport instead of its parent's rect, left out by containers, with none of its parent's transform, `modulate`, `z_index` or clip, as Godot's `top_level`; it draws and takes the pointer after the rest of its parent's tree, and a hidden parent still hides it |
 | | `z_index` | `int` | `0` | Draws over controls with a lower one, added to its parent's; -4096 to 4096 |
 | | `z_as_relative` | `bool` | `true` | Add `z_index` to its parent's; `false` makes it the whole of it |
 | | `theme_override_colors` | `std::map<std::string, Vec4>` | `{}` | [Theme](#theme-items) colors by name, e.g. `{"font_color": [1, 0.8, 0.2, 1]}` |
@@ -605,7 +606,7 @@ cannon and a deck.
   transform. [`entity.destroy`](commands.md#entitydestroy) destroys the entity's `Transform2D` and
   `Control` children with it, as Godot frees a node's children, and takes destroyed entities out
   of the lists of parents that stay.
-- **Not yet.** Node2D and Control entities in one tree, and `top_level` on controls.
+- **Not yet.** Node2D and Control entities in one tree.
 
 ## Canonical form
 

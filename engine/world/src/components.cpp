@@ -310,6 +310,11 @@ void register_ui_components(ComponentRegistry& registry) {
                           "reaches only the part of them inside it."})
         .describe("modulate", {.doc = "Tints it and its children, as [r, g, b, a].", .min = 0})
         .describe("self_modulate", {.doc = "Tints it only.", .min = 0})
+        .describe("top_level",
+                  {.doc = "Placed in the viewport instead of its parent's rect, left out by "
+                          "containers, with none of its parent's transform, modulate, z_index "
+                          "or clip, and drawn after its parent's tree. A hidden parent still "
+                          "hides it."})
         .describe("z_index", {.doc = "Draws over controls with a lower one, added to its parent's.",
                               .min = -4096,
                               .max = 4096})
