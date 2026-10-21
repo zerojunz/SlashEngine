@@ -235,6 +235,10 @@ Result<std::vector<std::uint8_t>> decode_texels(TextureFormat format, std::uint3
     return std::vector<std::uint8_t>(texels.begin(), texels.end());
 }
 
+std::string texture_form_path(std::string_view texture, TextureFormat format) {
+    return std::string(texture) + "." + std::string(texture_format_name(format)) + ".ktx2";
+}
+
 bool is_ktx2(std::string_view bytes) {
     return bytes.size() >= kKtx2Identifier.size() &&
            std::memcmp(bytes.data(), kKtx2Identifier.data(), kKtx2Identifier.size()) == 0;

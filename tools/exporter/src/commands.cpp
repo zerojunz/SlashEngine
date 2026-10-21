@@ -1,13 +1,18 @@
 #include "slash/exporter/commands.hpp"
 
 #include "slash/command/session.hpp"
+#include "slash/core/text.hpp"
 #include "slash/exporter/export.hpp"
+#include "slash/exporter/forms.hpp"
 #include "slash/exporter/gameplay.hpp"
 #include "slash/exporter/sdk.hpp"
 #include "slash/gameplay/host.hpp"
+#include "slash/library/library.hpp"
 
+#include <cstddef>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace slash::exporter {
 namespace {
@@ -84,6 +89,44 @@ Reply build_check(command::Session& session, const json::Value& /*params*/) {
         return Reply::failure(code, checked.message, std::move(result));
     }
     return Reply::success(std::move(result));
+}
+
+std::vector<std::string> strings(const json::Value* value) {
+    std::vector<std::string> out;
+    if (value != nullptr) {
+        for (const json::Value& item : value->as_array()) {
+            out.push_back(item.as_string());
+        }
+    }
+    return out;
+}
+
+Reply texture_forms(command::Session& session, const json::Value& params) {
+    const std::vector<std::string> platforms = strings(params.find("platforms"));
+    const std::vector<std::string> paths = strings(params.find("paths"));
+    for (std::size_t i = 0; i < paths.size(); ++i) {
+        const std::string& path = paths[i];
+        if (!is_project_path(path.ends_with('/') ? path.substr(0, path.size() - 1) : path)) {
+            Reply reply = Reply::failure(command::code::kInvalidArgument,
+                                         "expected a file or a folder ending in '/' inside the "
+                                         "project, separated by '/', with no \".\" or \"..\" "
+                                         "parts");
+            reply.data["path"] = "/paths/" + std::to_string(i);
+            return reply;
+        }
+    }
+    // The cache is outside the project, which sessions that run tests never write to.
+    std::string library_dir;
+    if (session.options().write_files) {
+        library_dir = session.options().library_dir.empty() ? library::default_dir()
+                                                            : session.options().library_dir;
+    }
+    auto result =
+        describe_texture_forms(session.options().project_root, platforms, paths, library_dir);
+    if (!result) {
+        return Reply::failure(result.error());
+    }
+    return Reply::success(std::move(result).value());
 }
 
 Reply needs_build(std::string_view what, std::string_view pointer) {
@@ -213,6 +256,29 @@ void register_export_commands(command::Registry& registry) {
         .effect = command::Effect::Read,
         .params = std::move(no_params),
         .handler = build_check,
+    });
+
+    json::Value forms_params;
+    forms_params["type"] = "object";
+    forms_params["additionalProperties"] = false;
+    forms_params["properties"]["platforms"]["type"] = "array";
+    forms_params["properties"]["platforms"]["items"]["enum"] =
+        json::Array{"macos", "windows", "linux", "web", "android", "ios"};
+    forms_params["properties"]["platforms"]["description"] = "Platforms to ship for; default all.";
+    forms_params["properties"]["paths"]["type"] = "array";
+    forms_params["properties"]["paths"]["items"]["type"] = "string";
+    forms_params["properties"]["paths"]["description"] =
+        "Textures, or folders ending in '/', to report; default every texture.";
+    registry.add({
+        .name = "texture.forms",
+        .description = "Makes the forms exports ship each texture as (project.json "
+                       "rendering.textures): BC7 or ASTC 4x4 blocks, or RGBA8, cached in the "
+                       "asset library. Returns each texture's forms with file and GPU bytes and "
+                       "PSNR, and each platform's totals.",
+        .capabilities = {Capability::Read, Capability::Filesystem},
+        .effect = command::Effect::Read,
+        .params = std::move(forms_params),
+        .handler = texture_forms,
     });
 
     json::Value check_params;

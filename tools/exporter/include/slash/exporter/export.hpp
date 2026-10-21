@@ -14,6 +14,8 @@ struct ExportOptions {
     std::string engine; // engine folder with export/CMakeLists.txt; default: found automatically
     bool debug = false; // Debug build even if the preset says Release
     bool test = false;  // run the exported game headless afterwards, where this machine can
+    // The asset library whose cache keeps textures' forms; default library::default_dir().
+    std::string library;
 };
 
 struct ExportResult {
@@ -26,9 +28,10 @@ struct ExportResult {
 };
 
 // Exports a game project: validates project.json, export_presets.json and every scene, prefab,
-// texture (.png, .bmp), .frames.json, .material.json, .anim.json and .tileset.json file, stages
-// them as the game's data, builds the engine and game for the platform with CMake, signs the
-// result and lays it out in the output folder. Progress goes to the log as JSON lines and the full
+// texture (.png, .bmp, .ktx2), .frames.json, .material.json, .anim.json and .tileset.json file,
+// stages them as the game's data (textures in the forms project.json's rendering.textures asks
+// for), builds the engine and game for the platform with CMake, signs the result and lays it out
+// in the output folder. Progress goes to the log as JSON lines and the full
 // build output to a log file.
 [[nodiscard]] ExportResult export_game(const ExportOptions& options);
 

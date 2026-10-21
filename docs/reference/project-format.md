@@ -35,6 +35,7 @@ checks it.
 | `rendering.driver` | No | `auto` | The GPU backend. `auto` takes the first that works: Metal on Apple platforms, Direct3D 12 then Vulkan on Windows, Vulkan on Linux and Android, and WebGL 2 on the web. `vulkan`, `metal` or `d3d12` asks for one; `opengl` is OpenGL ES 3.0, as Godot's compatibility renderer, which is WebGL 2 on the web and works where the system has OpenGL ES (Android, Linux; not macOS or Windows); `null` draws nothing. If none starts, the game logs a warning and runs with the null device |
 | `rendering.texture_filter` | No | `linear` | How sprites whose `texture_filter` is `inherit` are sampled when scaled: `linear` is smooth, `nearest` keeps pixel art sharp |
 | `rendering.scaling` | No | no scaling | Draw the world at another size and scale it to the window, under controls drawn at full size: see [Render scale](#render-scale) |
+| `rendering.textures` | No | `lossless` | How exports ship textures: as their files, or compressed for each platform's GPUs: see [Texture forms](#texture-forms) |
 | `rendering.interpolation` | No | `true` | Draw sprites part of the way between fixed ticks, from where they were before the last tick to where they are, so motion looks smooth when the display refreshes faster than the game ticks. Drawing lags the simulation by up to one tick; set `false` to draw exactly where things are |
 | `physics_2d.gravity` | No | `980` | Gravity's strength in pixels per second squared, as Godot's `physics/2d/default_gravity` |
 | `physics_2d.gravity_vector` | No | `[0, 1]` | Gravity's direction, as `[x, y]`; y points down |
@@ -104,6 +105,31 @@ made on the device. `render::UpscalerInfo::supports` says which devices one runs
 vendor's on its own GPUs. One that is `temporal` (DLSS, XeSS, FSR 2 and later) needs depth,
 motion vectors and a jittered camera, so `add_upscaler` refuses it until the 3D renderer makes
 them.
+
+## Texture forms
+
+`rendering.textures` says how exports ship textures, as Godot's texture import `compress/mode`.
+An export makes each texture's forms for its platform once, keeps them in the
+[asset library's](commands.md#asset-library) cache (`forms/` in `SLASH_LIBRARY_DIR` or
+`~/.slash/library`, keyed by the file's SHA-256 and the format) and ships them in place of the
+file, beside where it was: `sprites/hero.png` in BC7 is `sprites/hero.png.bc7.ktx2`. Scenes keep
+naming `sprites/hero.png`; the game reads the form its GPU samples.
+
+```json
+"rendering": {"textures": {"compress_mode": "vram_compressed", "paths": {"ui/": "lossless"}}}
+```
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `compress_mode` | `lossless` | `lossless` ships the file as it is, decoded when it loads, as Godot's default for 2D. `vram_compressed` ships blocks GPUs sample as they are, a quarter of the GPU memory of RGBA8: BC7 on macOS, Windows and Linux, ASTC 4x4 on Android and iOS, and both on the web, whose browsers have one or the other. `vram_uncompressed` ships RGBA8 texels, as big on disk as in memory but ready for the GPU |
+| `paths` | | Modes for folders (ending in `/`) and files, such as `{"ui/": "lossless", "ui/atlas.png": "vram_compressed"}`; the longest one that holds a texture wins |
+
+BC7 and ASTC are blocks of 4x4 texels, so a texture whose sides aren't multiples of 4 ships as it
+is, and the export logs a warning. Compressing keeps the colors close rather than exact, so pixel
+art and UI often stay `lossless`; [`texture.forms`](commands.md#textureforms) makes the forms
+ahead of an export and reports each one's size and PSNR, so an agent can choose. A device that
+doesn't sample a form's format decodes it when the texture loads, so every form draws everywhere.
+Mipmaps aren't made yet.
 
 ## Gameplay code
 

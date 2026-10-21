@@ -63,6 +63,7 @@ add_executable(slash_tests
     test_test_run.cpp
     test_text.cpp
     test_text_edit.cpp
+    test_texture_forms.cpp
     test_textures.cpp
     test_tilemap.cpp
     test_tree2d.cpp

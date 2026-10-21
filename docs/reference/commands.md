@@ -82,7 +82,7 @@ as `entity.get`, reject it as an unknown param.
 | Observe | [`events.subscribe`](#eventssubscribe), [`events.read`](#eventsread), [`events.unsubscribe`](#eventsunsubscribe), [`log.tail`](#logtail), [`frame.capture`](#framecapture), [`frame.summary`](#framesummary), [`canvas.convert`](#canvasconvert) |
 | Display | [`display.list`](#displaylist), [`display.set`](#displayset), [`perf.stats`](#perfstats), [`debug.overlay`](#debugoverlay) |
 | Import | [`project.import`](#projectimport) |
-| Export | [`export.run`](#exportrun), [`sdk.check`](#sdkcheck), [`sdk.add`](#sdkadd), [`sdk.lock`](#sdklock) |
+| Export | [`export.run`](#exportrun), [`texture.forms`](#textureforms), [`sdk.check`](#sdkcheck), [`sdk.add`](#sdkadd), [`sdk.lock`](#sdklock) |
 | Gameplay code | [`gameplay.build`](#gameplaybuild), [`build.check`](#buildcheck), [`api.search`](#apisearch) |
 | AI | [`ai.providers`](#aiproviders), [`ai.complete`](#aicomplete) |
 | Asset library | [`asset.search`](#assetsearch), [`asset.generate`](#assetgenerate), [`asset.refine`](#assetrefine), [`asset.info`](#assetinfo), [`asset.use`](#assetuse), [`asset.add`](#assetadd), [`asset.feedback`](#assetfeedback), [`asset.check`](#assetcheck), [`asset.sync`](#assetsync) |
@@ -3482,6 +3482,39 @@ path.
 ```json
 {"code":-32002,"data":{"step":"options"},"message":"no preset or platform called \"macso\"; did you mean \"macos\"?"}
 ```
+
+### texture.forms
+
+Makes the [forms](project-format.md#texture-forms) exports ship the project's textures as, as
+`project.json`'s `rendering.textures` says, and reports them: BC7 or ASTC 4x4 blocks, or RGBA8
+texels, each in a KTX2 file. Forms are made once and kept in the asset library's cache, where
+exports find them. Registered next to `export.run`.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `platforms` | array | every platform | Platforms to ship for: `macos`, `windows`, `linux`, `web`, `android`, `ios` |
+| `paths` | array | every texture | Textures, or folders ending in `/`, to report |
+
+Needs: `read`, `filesystem`. It changes no scene, so there is nothing to undo.
+
+```json
+{"platforms": ["linux", "android", "web"]}
+```
+
+```json
+{"made":2,"platforms":{"android":{"bytes":2100,"gpu_bytes":2192},"linux":{"bytes":2100,"gpu_bytes":2192},"web":{"bytes":3284,"gpu_bytes":2192}},"textures":[{"bytes":2882,"forms":[{"bytes":1184,"cached":false,"format":"bc7","gpu_bytes":1024,"psnr":39},{"bytes":1184,"cached":false,"format":"astc_4x4","gpu_bytes":1024,"psnr":40}],"mode":"vram_compressed","path":"sprites/hero.png","size":[32,32]},{"bytes":174,"forms":[],"mode":"vram_compressed","note":"its sides, 6x6, aren't multiples of 4, as BC7 and ASTC 4x4 blocks need, so it ships as it is","path":"sprites/spark.png","size":[6,6]},{"bytes":742,"forms":[],"mode":"lossless","path":"ui/icon.png","size":[16,16]}]}
+```
+
+Each texture has its compress `mode`, `size`, file `bytes` and its `forms`: each format's KTX2
+file `bytes`, what it takes on the GPU in `gpu_bytes`, how close its colors stay in `psnr`
+(decibels; left out when the texels are exact, and above about 40 is hard to tell apart) and
+whether it came from the cache. A texture that ships as it is has no forms; one whose sides
+aren't multiples of 4 says so in `note`, and a file that isn't an image has an `error`. Each
+platform's `bytes` and `gpu_bytes` total what it ships and what the textures take on its GPU,
+the files shipped as they are counted at 4 bytes a texel. `made` counts the forms made rather
+than read from the cache. A path outside the project fails with `-32002` and the JSON Pointer of
+the bad one in `data.path`. [examples/texture-forms](../../examples/texture-forms/) makes a
+project's forms and reads them as a game does.
 
 ### sdk.check
 

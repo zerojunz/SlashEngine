@@ -27,6 +27,10 @@ namespace slash::render {
 // not supercompressed.
 [[nodiscard]] Result<std::string> encode_ktx2(const Image& image);
 
+// The file an export ships in place of a texture, its texels in one format as a KTX2 file:
+// "ui/icon.png" in BC7 is "ui/icon.png.bc7.ktx2". Games read the form their GPU samples.
+[[nodiscard]] std::string texture_form_path(std::string_view texture, TextureFormat format);
+
 // Texels of a format decoded to straight-alpha RGBA, as GPUs decode them: BC7 and ASTC blocks
 // exactly as their formats specify, so the same on every machine; RGBA8 as it is.
 [[nodiscard]] Result<std::vector<std::uint8_t>> decode_texels(TextureFormat format,
