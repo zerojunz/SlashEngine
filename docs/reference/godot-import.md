@@ -346,6 +346,8 @@ file that its `process_material` names:
 | `physics/2d/default_gravity`, `default_gravity_vector`, `default_linear_damp`, `default_angular_damp` | `physics_2d` |
 | `rendering/environment/defaults/default_clear_color` | `rendering.clear_color` |
 | `rendering/textures/canvas_textures/default_texture_filter` | `rendering.texture_filter` |
+| `rendering/renderer/rendering_method` | `rendering.driver` `opengl` when it is `gl_compatibility`, or `opengl_es` when `rendering/gl_compatibility/driver` is `opengl3_es` |
+| `rendering/rendering_device/fallback_to_opengl3` | `rendering.fallback_to_opengl` |
 | `gui/theme/custom` | `gui.theme`, the theme's `.theme.json` file |
 | `audio/buses/default_bus_layout` | `audio.bus_layout`, the layout's `.bus_layout.json` file |
 | `audio/driver/mix_rate`, `audio/driver/output_latency` | `audio.mix_rate`, `audio.output_latency` |

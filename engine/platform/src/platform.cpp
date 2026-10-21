@@ -50,15 +50,23 @@ Result<Platform> Platform::create(const Config& config) {
         SDL_WindowFlags window_flags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY;
 #ifdef __EMSCRIPTEN__
         const bool opengl = true;
+        const bool opengl_es = true;
+#elif defined(__ANDROID__) || (defined(__APPLE__) && TARGET_OS_IPHONE)
+        const bool opengl = config.choose_opengl ? config.choose_opengl() : config.opengl;
+        const bool opengl_es = true;
 #else
-        const bool opengl = config.opengl;
+        const bool opengl = config.choose_opengl ? config.choose_opengl() : config.opengl;
+        const bool opengl_es = config.opengl_es;
 #endif
         if (opengl) {
-            // The OpenGL ES 3.0 context the render device makes, with nothing but color in the
-            // window's buffer. Some platforms pick a window's pixel format when it is made.
-            SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+            // The context the render device makes first, with nothing but color in the window's
+            // buffer: OpenGL 3.3's core profile, or OpenGL ES 3.0. Some platforms pick a
+            // window's pixel format, or EGL over GLX or WGL, when it is made.
+            SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, opengl_es
+                                                                 ? SDL_GL_CONTEXT_PROFILE_ES
+                                                                 : SDL_GL_CONTEXT_PROFILE_CORE);
             SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-            SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+            SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, opengl_es ? 0 : 3);
             SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 0);
             SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 0);
             SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 0);

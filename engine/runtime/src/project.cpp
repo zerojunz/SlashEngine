@@ -205,16 +205,23 @@ json::Value project_schema() {
     clear_color["description"] =
         "What the window shows behind everything, as [r, g, b, a] from 0 to 1.";
     json::Value driver;
-    driver["enum"] = json::Array{"auto", "vulkan", "metal", "d3d12", "opengl", "null"};
+    driver["enum"] = json::Array{"auto", "vulkan", "metal", "d3d12", "opengl", "opengl_es", "null"};
     driver["default"] = Project{}.rendering_driver;
     driver["description"] = "The GPU backend. auto picks the best one on each machine (WebGL 2 on "
-                            "the web); opengl is OpenGL ES 3.0; null draws nothing.";
+                            "the web); opengl is OpenGL 3.3, or OpenGL ES 3.0 where that is what "
+                            "the system has; opengl_es is OpenGL ES 3.0; null draws nothing.";
+    json::Value fallback;
+    fallback["type"] = "boolean";
+    fallback["default"] = Project{}.fallback_to_opengl;
+    fallback["description"] = "Draw with opengl where the driver's GPU backend (Vulkan, Metal or "
+                              "Direct3D 12) doesn't work, as Godot's fallback_to_opengl3.";
     json::Value rendering;
     rendering["type"] = "object";
     rendering["additionalProperties"] = false;
     rendering["description"] = "How the game draws.";
     rendering["properties"]["clear_color"] = std::move(clear_color);
     rendering["properties"]["driver"] = std::move(driver);
+    rendering["properties"]["fallback_to_opengl"] = std::move(fallback);
     json::Value texture_filter;
     texture_filter["enum"] = json::Array{"linear", "nearest"};
     texture_filter["default"] = Project{}.texture_filter;
@@ -501,6 +508,10 @@ Result<Project> parse_project(const json::Value& project) {
         }
         if (const json::Value* driver = rendering->find("driver"); driver != nullptr) {
             out.rendering_driver = driver->as_string();
+        }
+        if (const json::Value* fallback = rendering->find("fallback_to_opengl");
+            fallback != nullptr) {
+            out.fallback_to_opengl = fallback->as_bool();
         }
         if (const json::Value* filter = rendering->find("texture_filter"); filter != nullptr) {
             out.texture_filter = filter->as_string();
