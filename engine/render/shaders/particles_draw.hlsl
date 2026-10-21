@@ -130,16 +130,14 @@ void cs_main(uint3 id : SV_DispatchThreadID) {
                 return;
             }
         }
-        store_ring_vertex(address, index, segment, -1.0, u0, v0, v, half_size.x);
-        store_ring_vertex(address + kVertexBytes, index, segment, 1.0, u1, v0, v, half_size.x);
-        store_ring_vertex(address + (2u * kVertexBytes), index, segment + 1u, -1.0, u0, v0, v,
-                          half_size.x);
-        store_ring_vertex(address + (3u * kVertexBytes), index, segment, 1.0, u1, v0, v,
-                          half_size.x);
-        store_ring_vertex(address + (4u * kVertexBytes), index, segment + 1u, 1.0, u1, v0, v,
-                          half_size.x);
-        store_ring_vertex(address + (5u * kVertexBytes), index, segment + 1u, -1.0, u0, v0, v,
-                          half_size.x);
+        // The quad's two triangles, in a loop so the shader holds one copy of the vertex code:
+        // vertices 2, 4 and 5 are on the far ring, and 1, 3 and 4 on the right side.
+        [loop]
+        for (uint k = 0u; k < 6u; ++k) {
+            bool right = ((0x1Au >> k) & 1u) != 0u;
+            store_ring_vertex(address + (k * kVertexBytes), index, segment + ((0x34u >> k) & 1u),
+                              right ? 1.0 : -1.0, right ? u1 : u0, v0, v, half_size.x);
+        }
         return;
     }
     uint rgba = rgba_of(particle.color);
