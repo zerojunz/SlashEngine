@@ -64,10 +64,11 @@ if(slash_texture_encoders)
     set_source_files_properties(src/texture_encoder.cpp PROPERTIES
         COMPILE_OPTIONS "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>")
 endif()
-# The software device draws the same pixels on every platform: no fused multiply-adds, which
-# arm64 compilers would otherwise emit and x86-64 ones not.
-set_source_files_properties(src/device.cpp src/particles.cpp src/resize.cpp src/shader_vm.cpp
-    src/software_device.cpp src/upscaler.cpp PROPERTIES
+# The software device draws the same pixels, and particles and their graphs move the same, on
+# every platform: no fused multiply-adds, which arm64 compilers would otherwise emit and x86-64
+# ones not.
+set_source_files_properties(src/device.cpp src/material.cpp src/particles.cpp src/resize.cpp
+    src/shader_vm.cpp src/software_device.cpp src/upscaler.cpp PROPERTIES
     COMPILE_OPTIONS "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>")
 
 # Regenerates src/*_shaders.hpp from shaders/*.hlsl. The headers are committed, so only someone
@@ -99,7 +100,7 @@ foreach(entry IN LISTS slash_shaders)
             -DGLSLANG=${SLASH_GLSLANG} -DSPIRV_CROSS=${SLASH_SPIRV_CROSS}
             -P ${PROJECT_SOURCE_DIR}/cmake/compile_shaders.cmake
         COMMAND ${CMAKE_COMMAND} -E touch ${stamp}
-        DEPENDS shaders/${shader}.hlsl shaders/${include}.hlsl
+        DEPENDS shaders/${shader}.hlsl shaders/${include}.hlsl shaders/material_ops.hlsl
             ${PROJECT_SOURCE_DIR}/cmake/compile_shaders.cmake
         COMMENT "Compiling ${shader}.hlsl"
         VERBATIM)

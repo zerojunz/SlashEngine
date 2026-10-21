@@ -1,21 +1,22 @@
 # GPU particles
 
-Particles run on the GPU, as Godot's `GPUParticles2D`. In [main.scene.json](main.scene.json), a
-fire rises from a circle and fades from yellow to dark red, a one-shot burst of sparks goes off
-the same way each time, snow was already falling when the scene opened, smoke curls as it rises,
-rain lands on a ledge, rockets burst into sparks and comets draw trails. How each one's particles
-start and move is a `.process_material.json` file, Godot's `ParticleProcessMaterial` in 2D:
-[fire.process_material.json](fire.process_material.json),
+Particles run on the GPU, as Godot's `GPUParticles2D`. In [main.scene.json](main.scene.json), a fire
+rises from a circle and fades from yellow to dark red, a one-shot burst of sparks goes off the same
+way each time, snow was already falling when the scene opened, smoke curls as it rises, rain lands
+on a ledge, rockets burst into sparks, comets draw trails and fireflies circle their emitter. How
+each one's particles start and move is a `.process_material.json` file, Godot's
+`ParticleProcessMaterial` in 2D: [fire.process_material.json](fire.process_material.json),
 [sparks.process_material.json](sparks.process_material.json),
 [snow.process_material.json](snow.process_material.json),
 [smoke.process_material.json](smoke.process_material.json),
 [rain.process_material.json](rain.process_material.json),
 [rockets.process_material.json](rockets.process_material.json),
-[burst.process_material.json](burst.process_material.json) and
-[comets.process_material.json](comets.process_material.json). [main.cpp](main.cpp) makes the dot
-and streak textures, checks the particles with `particles.eval` and `frame.capture`, hears the
-sparks finish and sets them off again, then draws the scene. [expected.txt](expected.txt) holds
-its output.
+[burst.process_material.json](burst.process_material.json),
+[comets.process_material.json](comets.process_material.json) and
+[fireflies.process_material.json](fireflies.process_material.json). [main.cpp](main.cpp) makes the
+dot and streak textures, checks the particles with `particles.eval` and `frame.capture`, hears the
+sparks finish and sets them off again, then draws the scene. [expected.txt](expected.txt) holds its
+output.
 
 ```text
 particles.eval {"id":"fire","time":0.5}
@@ -74,6 +75,14 @@ particles.eval {"id":"fire"}
   shortens from the front. Each copy takes its particle's path exactly, collisions included;
   Godot's run with the current step's time and collision field, and start particles in a
   sub-emitter, which these don't.
+- A process material's particle graphs are Godot's particle shaders, as node graphs written as
+  [materials'](../../docs/reference/scene-format.md#materials) are: `start` changes where a
+  particle starts and how it sets off, and `process` changes what each step makes of it, its
+  position, velocity, color, angle, scale, frame or whether it lives on. The fireflies' graphs
+  read each one's `random` numbers and `age` to put it on a circle round the emitter and turn it
+  round at a speed of its own, twinkling. The GPU runs graphs in its compute shader and the CPU
+  the same way; a mistake in one is refused with its JSON Pointer and the closest name, as a
+  material's is. See [Particle graphs](../../docs/reference/scene-format.md#particle-graphs).
 - Each tick the `gpu_particles_2d` system works out each emitter's steps as Godot does: one each
   1/`fixed_fps` seconds (or one a tick with `fixed_fps` 0), with preprocess and the one-shot
   timing. The renderer runs the steps on the device and draws the particles there. On Metal,

@@ -1885,6 +1885,7 @@ names and Godot's defaults, except `gravity`: `[0, 98]`, as Godot gives a proces
 | `sub_emitter_frequency` | `4` | For `constant`, times a second of its life, more than 0 |
 | `sub_emitter_amount_at_end`, `_at_collision`, `_at_start` | `1` | Particles it starts each time, for that mode |
 | `sub_emitter_keep_velocity` | `false` | The particles it starts move on with its velocity too |
+| `params`, `nodes`, `start`, `process` | | [Particle graphs](#particle-graphs) that change what the material works out |
 
 Turbulence is Godot's: each step a particle's velocity, built up and controlled, turns towards
 the curl of 4D gradient noise at its position by its `turbulence_influence`, keeping its speed
@@ -1994,6 +1995,81 @@ particle started, so it grows out behind it.
   [`particles.eval`](commands.md#particleseval) reports `trails` and `trail_bounds`, and with
   `list` each particle's `trail`.
 
+### Particle graphs
+
+A process material can carry particle graphs, as Godot's particle shaders: node graphs, written
+as [materials](#materials)' are, that change what the material works out for each particle.
+`start` runs after the material places a particle, as a particle shader's `start()`, and
+`process` each step after the material has worked the step out, as its `process()`. Each names
+the parts of the particle it changes and leaves the rest to the material, as a process material
+converted to a shader in Godot and then edited would.
+
+```json
+{
+  "format": 1,
+  "gravity": [0, 0],
+  "initial_velocity_min": 30,
+  "initial_velocity_max": 30,
+  "params": {"swirl": {"type": "float", "value": 120, "doc": "Pixels per second squared round the emitter."}},
+  "nodes": {
+    "out": {"op": "sub", "args": ["position", "emitter_position"]},
+    "round": {"op": "normalize", "args": [{"op": "vec2", "args": [{"op": "negate", "args": ["out.y"]}, "out.x"]}]}
+  },
+  "start": {"active": {"op": "step", "args": [0.25, "random.x"]}},
+  "process": {
+    "velocity": {"op": "add", "args": ["velocity", {"op": "mul", "args": ["round", {"op": "mul", "args": ["swirl", "delta"]}]}]},
+    "color": {"op": "vec4", "args": [{"op": "hsv_to_rgb", "args": [{"op": "vec3", "args": ["life", 0.7, 1]}]}, {"op": "one_minus", "args": ["life"]}]}
+  }
+}
+```
+
+| Output | Type | In | What it changes |
+| --- | --- | --- | --- |
+| `position` | vec2 | both | Where the particle is, in pixels. In `process`, where it ends the step instead of moving by its velocity |
+| `velocity` | vec2 | both | Its velocity in pixels per second. A change in `process` carries on into the next step, as the forces' velocity does |
+| `color` | vec4 | `process` | Its color, multiplying the texture |
+| `angle` | float | `process` | Its rotation in radians; with `particle_flag_align_y` it turns the particle instead of its velocity |
+| `scale` | float | `process` | Its size, times the texture's |
+| `frame` | float | `process` | Where it is in the sprite sheet, from 0 to 1 |
+| `active` | float | both | Below 0.5 the particle dies; in `start` it never shows |
+
+| Input | Type | In | Godot's | Value |
+| --- | --- | --- | --- | --- |
+| `position` | vec2 | both | `TRANSFORM[3].xy` | Where the particle is: in `start` where the material placed it, in `process` where it was at the start of the step |
+| `velocity` | vec2 | both | `VELOCITY` | Its velocity, as the material worked it out |
+| `color` | vec4 | both | `COLOR` | Its color, as the material worked it out |
+| `angle`, `scale` | float | `process` | | Its rotation in radians and its size, as the material worked them out |
+| `frame` | float | `process` | `CUSTOM.z` | Where it is in the sprite sheet, from 0 to 1 |
+| `age` | float | `process` | `CUSTOM.y * LIFETIME` | Seconds since it started |
+| `life` | float | `process` | | How far through its life it is, from 0 to 1, as the material's curves take it |
+| `lifetime` | float | both | | Seconds it lives, shortened by `lifetime_randomness` |
+| `delta` | float | `process` | `DELTA` | Seconds the step lasts |
+| `time` | float | both | `TIME` | Seconds since the emitter started over, back to 0 every hour |
+| `index` | float | both | `INDEX` | Its slot, from 0 to `amount` - 1 |
+| `number` | float | both | `NUMBER` | The emitter's emission cycle times `amount`, plus `index`: different for each particle a slot starts |
+| `amount_ratio` | float | both | `AMOUNT_RATIO` | The emitter's `amount_ratio` |
+| `random` | vec4 | both | | Four random numbers from 0 to 1, the same for the whole of its life |
+| `emitter_position`, `emitter_velocity` | vec2 | both | `EMISSION_TRANSFORM[3].xy` | Where the emitter is, in the coordinates the particles move in (`[0, 0]` with `local_coords`), and its velocity |
+| `collided` | float | `process` | `COLLIDED` | 1 in a step it touches a shape (with a `collision_mode`), else 0 |
+| `collision_normal`, `collision_depth` | vec2, float | `process` | `COLLISION_NORMAL`, `COLLISION_DEPTH` | The way out of the shape and how far in it is |
+
+- The ops, args and names are a material's, with no textures: `params` are numbers (`float`,
+  `vec2`, `vec3`, `vec4` or `color`) the graphs read, set in the file as a particle shader's
+  uniforms are set on its material. `nodes` are shared by both stages.
+- Each stage runs as one program of at most 64 instructions and 32 constants, with 21 values
+  alive at once, and the file has at most 64 nodes. A mistake fails when the file loads, with
+  its JSON Pointer and the closest name, as a material's do; `start` reading what only
+  `process` knows is one.
+- The GPU runs graphs in the particle compute shader, and the CPU (the software and OpenGL ES
+  devices, and [`particles.eval`](commands.md#particleseval)) runs them the same way, with
+  functions such as `sin` and `exp` that give the same bits on every platform and can differ
+  from a GPU's in the last ones.
+- A trail's copies run `process` as their particle does, so they keep to its path, and a
+  [sub-emitter](#sub-emitters) takes the place and velocity a graph leaves.
+- Godot's particle shaders can also keep values of their own in `CUSTOM` and `USERDATA`, start
+  particles in a sub-emitter with `emit_subparticle` and restart particles; graphs can't yet.
+
+## UI and text
 ## UI and text
 
 UI follows Godot's `Control` nodes. A `Control` places a rect in its parent's rect, or a

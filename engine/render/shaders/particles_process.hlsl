@@ -10,8 +10,12 @@
 // A system with trails keeps its trails' copies after its particles; the thread that runs a
 // particle runs its copies after it, each step, each running the step its place in the trail
 // puts it behind. The steps start with history steps the particles ran already.
+//
+// A process material's particle graphs run as the material shader runs its programs
+// (material_ops.hlsl): the start graph after start(), the process graph in process().
 
 #include "particles.hlsl"
+#include "material_ops.hlsl"
 
 // Two buffers read and two written, so Metal's indexes follow on from the uniforms'.
 #ifdef SLASH_MSL
@@ -35,6 +39,10 @@ cbuffer Params : UNIFORMS {
     uint chain;   // kChainTakes and kChainEmits
     uint trail;   // particles a trail
     uint history; // steps before the first to run
+    float phase_step; // 1 / amount, divided on the CPU: Metal's fast division rounds otherwise
+    uint pad0;
+    uint pad1;
+    uint pad2;
 };
 
 StructuredBuffer<uint4> data : READ_ONLY_DATA;
@@ -54,6 +62,8 @@ static const uint kCurvesAt = 25u;
 static const uint kGradientsAt = 313u;
 static const uint kGradientWords = 40u;
 static const uint kPointsAt = 393u;
+// The words before a process material's graphs' programs.
+static const uint kGraphHeaderWords = 2u;
 // A step's words.
 static const uint kStepWords = 9u;
 // Curves after the parameters'.
@@ -241,6 +251,74 @@ float rand_from_seed(inout uint seed) {
 
 float rand_m1_p1(inout uint seed) {
     return (rand_from_seed(seed) * 2.0) - 1.0;
+}
+
+// ---- Particle graphs.
+
+// The parts of a particle a graph changes (ParticleProgram::outputs).
+static const uint kOutPosition = 1u;
+static const uint kOutVelocity = 2u;
+static const uint kOutColor = 4u;
+static const uint kOutAngle = 8u;
+static const uint kOutScale = 16u;
+static const uint kOutFrame = 32u;
+static const uint kOutActive = 64u;
+
+static float4 graph_registers[32];
+
+// Where the graphs are, in words from the process material's start; 0 for none.
+uint graphs_at() {
+    return word_uint(2u, 3u);
+}
+
+// The start graph's outputs (lane 0) and the process graph's (lane 1).
+uint graph_outputs(uint lane) {
+    return graphs_at() == 0u ? 0u : word_uint(graphs_at() + 1u, lane);
+}
+
+// The four random numbers the CPU twin's graph_random makes.
+float4 graph_random(uint number, uint seed) {
+    uint base = hash(number + 1u + seed) ^ 0x68E31DA4u;
+    return float4(float(hash(base) >> 8u), float(hash(base + 1u) >> 8u),
+                  float(hash(base + 2u) >> 8u), float(hash(base + 3u) >> 8u)) *
+           (1.0 / 16777216.0);
+}
+
+void fill_graph(Step step, uint index, uint number) {
+    graph_registers[4] = float4(step.time, float(index), float(number), step.amount_ratio);
+    graph_registers[5] = graph_random(number, step.seed);
+    graph_registers[6] = float4(step.emission_b, step.emitter_velocity);
+}
+
+// An operand: a register, or a constant of the graph whose constants start at the word constants.
+float4 graph_fetch(uint operand, uint constants) {
+    uint index = operand & 0xFFu;
+    float4 value;
+    if (index < 32u) {
+        value = graph_registers[index];
+    } else {
+        value = asfloat(data[constants + ((index - 32u) & 31u)]);
+    }
+    uint pick = operand >> 8u;
+    return float4(value[pick & 3u], value[(pick >> 2u) & 3u], value[(pick >> 4u) & 3u],
+                  value[(pick >> 6u) & 3u]);
+}
+
+// Runs the graph whose count instructions are at the word code, its constants after them, on
+// registers 0 to 7, leaving what it changes in the three after.
+void run_graph(uint code, uint count) {
+    graph_registers[8] = graph_registers[0];
+    graph_registers[9] = graph_registers[1];
+    graph_registers[10] = graph_registers[2];
+    uint constants = code + count;
+    [loop] for (uint i = 0u; i < count; ++i) {
+        uint4 instruction = data[code + i];
+        float4 o = material_op(instruction.x & 0xFFu, (instruction.x >> 16u) & 0xFFu,
+                               graph_fetch(instruction.y, constants),
+                               graph_fetch(instruction.z, constants),
+                               graph_fetch(instruction.w, constants));
+        graph_registers[(instruction.x >> 8u) & 31u] = o;
+    }
 }
 
 // ---- Turbulence: the noise ParticleProcessMaterial generates for it. The CPU twin says how its
@@ -532,7 +610,7 @@ float2 initial_position(Display display, inout uint seed) {
 
 // A sub-emitter's particle starts where the particle that started it is, whose words in source
 // start at from.
-void start(inout Particle particle, Step step, uint number, bool taken, uint from,
+void start(inout Particle particle, Step step, uint index, uint number, bool taken, uint from,
            inout bool active) {
     uint seed = hash(number + 1u + step.seed);
     Display display;
@@ -575,6 +653,27 @@ void start(inout Particle particle, Step step, uint number, bool taken, uint fro
     velocity = velocity + (step.emitter_velocity * word(3u).w);
     particle.origin_velocity.xy = origin;
     particle.userdata.xyz = float3(velocity, 0.0);
+
+    uint outputs = graph_outputs(0u);
+    if (outputs != 0u) {
+        uint4 counts = data[material_offset + graphs_at()];
+        graph_registers[0] = float4(origin, velocity);
+        graph_registers[1] = particle.color;
+        graph_registers[2] = float4(0.0, 0.0, 0.0, 1.0);
+        graph_registers[3] = float4(0.0, 0.0, particle.custom.w * step.lifetime, 0.0);
+        graph_registers[7] = float4(0.0, 0.0, 0.0, 0.0);
+        fill_graph(step, index, number);
+        run_graph(material_offset + graphs_at() + kGraphHeaderWords, counts.x);
+        if ((outputs & kOutPosition) != 0u) {
+            particle.origin_velocity.xy = graph_registers[8].xy;
+        }
+        if ((outputs & kOutVelocity) != 0u) {
+            particle.userdata.xy = graph_registers[8].zw;
+        }
+        if ((outputs & kOutActive) != 0u && !(graph_registers[10].w >= 0.5)) {
+            active = false;
+        }
+    }
 }
 
 float2 orbit_displacement(Dynamics dynamics, float life, Particle particle, Step step,
@@ -741,8 +840,8 @@ uint emission_count(Step step, float delta, float before, Particle particle, boo
     return 0u;
 }
 
-void process(inout Particle particle, Step step, uint number, float delta, Contact contact,
-             inout uint emitted, inout bool active) {
+void process(inout Particle particle, Step step, uint index, uint number, float delta,
+             Contact contact, inout uint emitted, inout bool active) {
     uint seed = hash(number + 1u + step.seed);
     Display display;
     Dynamics dynamics;
@@ -825,8 +924,6 @@ void process(inout Particle particle, Step step, uint number, float delta, Conta
             safe_normalize(final_velocity) * min(abs(length(final_velocity)), limit);
     }
     float2 velocity = final_velocity.xy;
-    particle.origin_velocity.zw = velocity;
-    particle.origin_velocity.xy = particle.origin_velocity.xy + (velocity * delta);
 
     display_at(display, life);
 
@@ -840,10 +937,62 @@ void process(inout Particle particle, Step step, uint number, float delta, Conta
         particle.custom.x = base_angle * kDegreesToRadians;
     }
     particle.color = display.color;
+    float scale = max(abs(display.scale), 0.001);
+    if (first_frame && display.scale < 0.0) {
+        scale = -scale;
+    }
+    particle.custom.z = display.animation_offset + (life * display.animation_speed);
+
+    // The graph sees the step worked out, and the particle where it was.
+    uint outputs = graph_outputs(1u);
+    bool placed = false;
+    if (outputs != 0u) {
+        uint4 counts = data[material_offset + graphs_at()];
+        graph_registers[0] = float4(particle.origin_velocity.xy, velocity);
+        graph_registers[1] = particle.color;
+        graph_registers[2] = float4(particle.custom.x, scale, particle.custom.z, 1.0);
+        graph_registers[3] = float4(particle.custom.y * step.lifetime, life,
+                                    particle.custom.w * step.lifetime, delta);
+        graph_registers[7] = float4(contact.normal, contact.depth, collided ? 1.0 : 0.0);
+        fill_graph(step, index, number);
+        run_graph(material_offset + graphs_at() + kGraphHeaderWords + counts.x + counts.y,
+                  counts.z);
+        float4 motion = graph_registers[8];
+        float4 look = graph_registers[10];
+        if ((outputs & kOutVelocity) != 0u) {
+            // The forces carry the change on.
+            particle.userdata.xy = particle.userdata.xy + (motion.zw - velocity);
+            velocity = motion.zw;
+        }
+        if ((outputs & kOutPosition) != 0u) {
+            particle.origin_velocity.xy = motion.xy;
+            placed = true;
+        }
+        if ((outputs & kOutColor) != 0u) {
+            particle.color = graph_registers[9];
+        }
+        if ((outputs & kOutAngle) != 0u) {
+            particle.custom.x = look.x;
+        }
+        if ((outputs & kOutScale) != 0u) {
+            float size = max(0.001, abs(look.y));
+            scale = look.y < 0.0 ? -size : size;
+        }
+        if ((outputs & kOutFrame) != 0u) {
+            particle.custom.z = look.z;
+        }
+        if ((outputs & kOutActive) != 0u && !(look.w >= 0.5)) {
+            active = false;
+        }
+    }
+    particle.origin_velocity.zw = velocity;
+    if (!placed) {
+        particle.origin_velocity.xy = particle.origin_velocity.xy + (velocity * delta);
+    }
 
     float2 x_axis;
     float2 y_axis;
-    if (word_uint(6u, 1u) != 0u) {
+    if (word_uint(6u, 1u) != 0u && (outputs & kOutAngle) == 0u) {
         y_axis = length(velocity) > 0.0 ? safe_normalize(velocity)
                                         : safe_normalize(particle.basis.zw);
         x_axis = safe_normalize(float2(y_axis.y, -y_axis.x));
@@ -853,12 +1002,7 @@ void process(inout Particle particle, Step step, uint number, float delta, Conta
         x_axis = float2(c, -s);
         y_axis = float2(s, c);
     }
-    float scale = max(abs(display.scale), 0.001);
-    if (first_frame && display.scale < 0.0) {
-        scale = -scale;
-    }
     particle.basis = float4(x_axis * scale, y_axis * scale);
-    particle.custom.z = display.animation_offset + (life * display.animation_speed);
     if ((chain & kChainEmits) != 0u) {
         emitted = emission_count(step, delta, before, particle, collided);
     }
@@ -965,7 +1109,9 @@ void step_unit(inout Particle unit, Particle head, uint j, uint index, uint at, 
                     kParticleActive | kParticleStarted | (step.cycle << kParticleCycleShift);
             }
         } else if (step.emitting) {
-            float restart_phase = float(index) / float(amount);
+            // A product, and precise: Metal's fast math divides and fuses operations off the
+            // CPU twin's rounding, which moves a particle that starts at a step's edge.
+            precise float restart_phase = float(index) * phase_step;
             if (step.randomness > 0.0) {
                 uint seed = step.cycle;
                 if (restart_phase >= step.system_phase) {
@@ -973,8 +1119,8 @@ void step_unit(inout Particle unit, Particle head, uint j, uint index, uint at, 
                 }
                 seed *= amount;
                 seed += index;
-                float random = float(hash(seed) % 65536u) / 65536.0;
-                restart_phase += step.randomness * random * 1.0 / float(amount);
+                float random = float(hash(seed) % 65536u) * (1.0 / 65536.0);
+                restart_phase += step.randomness * random * phase_step;
             }
             restart_phase *= 1.0 - step.explosiveness;
             if (step.system_phase > step.prev_system_phase) {
@@ -1005,7 +1151,7 @@ void step_unit(inout Particle unit, Particle head, uint j, uint index, uint at, 
         active = (unit.flags.x & kParticleActive) != 0u;
         number = ((unit.flags.x >> kParticleCycleShift) * amount) + index;
         if (restart && active) {
-            start(unit, step, number, taken, from, active);
+            start(unit, step, index, number, taken, from, active);
         }
     } else {
         uint cycle_bits = head.flags.x & (0xFFFFFFFFu << kParticleCycleShift);
@@ -1042,7 +1188,7 @@ void step_unit(inout Particle unit, Particle head, uint j, uint index, uint at, 
     }
     uint emitted = 0u;
     if (active) {
-        process(unit, run, number, delta, contact, emitted, active);
+        process(unit, run, index, number, delta, contact, emitted, active);
     }
     unit.flags.x &= ~kParticleActive;
     if (active) {

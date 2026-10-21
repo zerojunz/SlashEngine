@@ -1,5 +1,7 @@
 #include "slash/render/particles.hpp"
 
+#include "particle_layout.hpp"
+
 #include "slash/render/device.hpp"
 
 #include <algorithm>
@@ -119,6 +121,46 @@ float rand_from_seed(std::uint32_t& seed) {
 
 float rand_m1_p1(std::uint32_t& seed) {
     return (rand_from_seed(seed) * 2.0F) - 1.0F;
+}
+
+// ---- Particle graphs.
+
+// A particle graph's four random numbers, from 0 to 1 and the same for the whole of a particle's
+// life: 24 bits of a hash each, so exact on every device.
+Vec4 graph_random(std::uint32_t number, std::uint32_t seed) {
+    const std::uint32_t base = hash(number + 1U + seed) ^ 0x68E31DA4U;
+    const auto unit = [&](std::uint32_t i) {
+        return static_cast<float>(hash(base + i) >> 8U) * (1.0F / 16777216.0F);
+    };
+    return {unit(0), unit(1), unit(2), unit(3)};
+}
+
+std::array<float, 4> lanes(Vec4 v) {
+    return {v.x, v.y, v.z, v.w};
+}
+
+// The registers a graph reads that start() and process() fill alike.
+void fill_graph(Registers& registers, const ParticleStep& step, std::uint32_t index,
+                std::uint32_t number) {
+    registers.at(kParticleNumberRegister) = {step.time, static_cast<float>(index),
+                                             static_cast<float>(number), step.amount_ratio};
+    registers.at(kParticleRandomRegister) = lanes(graph_random(number, step.seed));
+    registers.at(kParticleEmitterRegister) = {step.emission[4], step.emission[5],
+                                              step.emitter_velocity.x, step.emitter_velocity.y};
+}
+
+// Runs a graph on registers 0 to 7, which leaves what it changes in the three after.
+void run_graph(const ParticleProgram& graph, Registers& registers) {
+    for (std::uint32_t r = 0; r < 3; ++r) {
+        registers.at(kParticleOutRegister + r) = registers.at(r);
+    }
+    run_instructions(graph.program, registers, nullptr, true);
+}
+
+// A particle a graph says is active stays so.
+bool graph_active(const ParticleProgram& graph, const Registers& registers) {
+    return (graph.outputs & kParticleOutActive) == 0 ||
+           registers.at(kParticleOutRegister + 2)[3] >= 0.5F;
 }
 
 // ---- Turbulence: the noise ParticleProcessMaterial generates for it.
@@ -482,7 +524,7 @@ Intake take_emissions(std::span<const Emitted> emitted, std::vector<std::uint32_
 // sub-emitter's, where the particle that started it is, as Godot's does without RESTART_POSITION
 // and RESTART_ROT_SCALE, and moving as it moves without RESTART_VELOCITY.
 void start(Particle& particle, const ParticleProcess& p, const ParticleStep& step,
-           std::uint32_t number, const Emitted* from, bool& active) {
+           std::uint32_t index, std::uint32_t number, const Emitted* from, bool& active) {
     std::uint32_t seed = hash(number + 1U + step.seed);
     Display display;
     Dynamics dynamics;
@@ -528,6 +570,30 @@ void start(Particle& particle, const ParticleProcess& p, const ParticleStep& ste
     particle.userdata.x = velocity.x;
     particle.userdata.y = velocity.y;
     particle.userdata.z = 0.0F;
+
+    const ParticleProgram& graph = p.start_program;
+    if (graph.outputs == 0) {
+        return;
+    }
+    Registers registers{};
+    registers.at(kParticleMotionRegister) = {particle.origin.x, particle.origin.y, velocity.x,
+                                             velocity.y};
+    registers.at(kParticleColorRegister) = lanes(particle.color);
+    registers.at(kParticleLookRegister) = {0.0F, 0.0F, 0.0F, 1.0F};
+    registers.at(kParticleLifeRegister) = {0.0F, 0.0F, particle.custom.w * step.lifetime, 0.0F};
+    fill_graph(registers, step, index, number);
+    run_graph(graph, registers);
+    const std::array<float, 4>& motion = registers.at(kParticleOutRegister);
+    if ((graph.outputs & kParticleOutPosition) != 0) {
+        particle.origin = {motion[0], motion[1]};
+    }
+    if ((graph.outputs & kParticleOutVelocity) != 0) {
+        particle.userdata.x = motion[2];
+        particle.userdata.y = motion[3];
+    }
+    if (!graph_active(graph, registers)) {
+        active = false;
+    }
 }
 
 // process_orbit_displacement for 2D.
@@ -610,8 +676,8 @@ std::uint32_t emission_count(const ParticleProcess& p, const ParticleStep& step,
 // The generated process(): one step of a live particle's life, after it touched a shape or not,
 // noting in out what it starts in the next system of a chain.
 void process(Particle& particle, const ParticleProcess& p, const ParticleStep& step,
-             std::uint32_t number, float delta, const ParticleContact& contact, Emitted* out,
-             bool& active) {
+             std::uint32_t index, std::uint32_t number, float delta, const ParticleContact& contact,
+             Emitted* out, bool& active) {
     std::uint32_t seed = hash(number + 1U + step.seed);
     Display display;
     Dynamics dynamics;
@@ -699,9 +765,7 @@ void process(Particle& particle, const ParticleProcess& p, const ParticleStep& s
         final_velocity =
             normalize(final_velocity) * std::min(std::abs(length(final_velocity)), limit);
     }
-    const Vec2 velocity{final_velocity.x, final_velocity.y};
-    particle.velocity = velocity;
-    particle.origin = particle.origin + (velocity * delta);
+    Vec2 velocity{final_velocity.x, final_velocity.y};
 
     display_at(p, display, life);
 
@@ -715,10 +779,68 @@ void process(Particle& particle, const ParticleProcess& p, const ParticleStep& s
         particle.custom.x = base_angle * kDegreesToRadians;
     }
     particle.color = display.color;
+    float scale = std::max(std::abs(display.scale), 0.001F);
+    if (first_frame && display.scale < 0.0F) {
+        scale = -scale;
+    }
+    particle.custom.z = display.animation_offset + (life * display.animation_speed);
+
+    // The graph sees the step worked out, and the particle where it was.
+    const ParticleProgram& graph = p.process_program;
+    bool placed = false;
+    if (graph.outputs != 0) {
+        Registers registers{};
+        registers.at(kParticleMotionRegister) = {particle.origin.x, particle.origin.y, velocity.x,
+                                                 velocity.y};
+        registers.at(kParticleColorRegister) = lanes(particle.color);
+        registers.at(kParticleLookRegister) = {particle.custom.x, scale, particle.custom.z, 1.0F};
+        registers.at(kParticleLifeRegister) = {particle.custom.y * step.lifetime, life,
+                                               particle.custom.w * step.lifetime, delta};
+        registers.at(kParticleContactRegister) = {contact.normal.x, contact.normal.y, contact.depth,
+                                                  collided ? 1.0F : 0.0F};
+        fill_graph(registers, step, index, number);
+        run_graph(graph, registers);
+        const std::array<float, 4>& motion = registers.at(kParticleOutRegister);
+        const std::array<float, 4>& look = registers.at(kParticleOutRegister + 2);
+        if ((graph.outputs & kParticleOutVelocity) != 0) {
+            // The forces carry the change on.
+            const Vec2 changed{motion[2], motion[3]};
+            particle.userdata.x = particle.userdata.x + (changed.x - velocity.x);
+            particle.userdata.y = particle.userdata.y + (changed.y - velocity.y);
+            velocity = changed;
+        }
+        if ((graph.outputs & kParticleOutPosition) != 0) {
+            particle.origin = {motion[0], motion[1]};
+            placed = true;
+        }
+        if ((graph.outputs & kParticleOutColor) != 0) {
+            particle.color = {registers.at(kParticleOutRegister + 1)[0],
+                              registers.at(kParticleOutRegister + 1)[1],
+                              registers.at(kParticleOutRegister + 1)[2],
+                              registers.at(kParticleOutRegister + 1)[3]};
+        }
+        if ((graph.outputs & kParticleOutAngle) != 0) {
+            particle.custom.x = look[0];
+        }
+        if ((graph.outputs & kParticleOutScale) != 0) {
+            const float size = std::max(0.001F, std::abs(look[1]));
+            scale = look[1] < 0.0F ? -size : size;
+        }
+        if ((graph.outputs & kParticleOutFrame) != 0) {
+            particle.custom.z = look[2];
+        }
+        if (!graph_active(graph, registers)) {
+            active = false;
+        }
+    }
+    particle.velocity = velocity;
+    if (!placed) {
+        particle.origin = particle.origin + (velocity * delta);
+    }
 
     Vec2 x_axis;
     Vec2 y_axis;
-    if (p.align_y) {
+    if (p.align_y && (graph.outputs & kParticleOutAngle) == 0) {
         y_axis = length(velocity) > 0.0F ? normalize(velocity)
                                          : normalize(Vec2{particle.basis.z, particle.basis.w});
         x_axis = normalize(Vec2{y_axis.y, -y_axis.x});
@@ -727,18 +849,13 @@ void process(Particle& particle, const ParticleProcess& p, const ParticleStep& s
         x_axis = {turn.x, -turn.y};
         y_axis = {turn.y, turn.x};
     }
-    float scale = std::max(std::abs(display.scale), 0.001F);
-    if (first_frame && display.scale < 0.0F) {
-        scale = -scale;
-    }
     particle.basis = {x_axis.x * scale, x_axis.y * scale, y_axis.x * scale, y_axis.y * scale};
-    particle.custom.z = display.animation_offset + (life * display.animation_speed);
     if (out != nullptr) {
         // emit_subparticle(TRANSFORM, VELOCITY, ...) with Godot's emission flags.
         out->count = emission_count(p, step, delta, before, particle, collided);
         out->keep_velocity = p.sub_emitter_keep_velocity;
         out->origin = particle.origin;
-        out->velocity = velocity;
+        out->velocity = particle.velocity;
         out->basis = particle.basis;
     }
     if (particle.custom.y > particle.custom.w) {
@@ -806,7 +923,8 @@ void step_particle(Particle& particle, std::uint32_t index, std::uint32_t total,
                 kParticleActive | kParticleStarted | (step.cycle << kParticleCycleShift);
         }
     } else if (step.emitting) {
-        float restart_phase = static_cast<float>(index) / static_cast<float>(total);
+        const float phase_step = detail::particle_phase_step(total);
+        float restart_phase = static_cast<float>(index) * phase_step;
         if (step.randomness > 0.0F) {
             std::uint32_t seed = step.cycle;
             if (restart_phase >= step.system_phase) {
@@ -815,7 +933,7 @@ void step_particle(Particle& particle, std::uint32_t index, std::uint32_t total,
             seed *= total;
             seed += index;
             const float random = static_cast<float>(hash(seed) % 65536U) / 65536.0F;
-            restart_phase += step.randomness * random * 1.0F / static_cast<float>(total);
+            restart_phase += step.randomness * random * phase_step;
         }
         restart_phase *= 1.0F - step.explosiveness;
         if (step.system_phase > step.prev_system_phase) {
@@ -847,7 +965,7 @@ void step_particle(Particle& particle, std::uint32_t index, std::uint32_t total,
     bool active = particle.active();
     const std::uint32_t number = ((particle.flags >> kParticleCycleShift) * total) + index;
     if (restart && active) {
-        start(particle, p, step, number, from, active);
+        start(particle, p, step, index, number, from, active);
     }
     // Where it is against the step's shapes before it moves, as Godot's particles storage works
     // out against its signed distance field.
@@ -858,7 +976,7 @@ void step_particle(Particle& particle, std::uint32_t index, std::uint32_t total,
                                 shapes.subspan(step.shape_first, step.shape_count));
     }
     if (active) {
-        process(particle, p, step, number, delta, contact, out, active);
+        process(particle, p, step, index, number, delta, contact, out, active);
     }
     particle.flags &= ~kParticleActive;
     if (active) {
@@ -909,7 +1027,7 @@ void step_copy(Particle& copy, const Particle& head, std::uint32_t j, std::uint3
         contact = shape_contact(copy.origin, collision_size(copy, p, behind, false), behind,
                                 shapes.subspan(behind.shape_first, behind.shape_count));
     }
-    process(copy, p, behind, number, behind.delta, contact, nullptr, active);
+    process(copy, p, behind, index, number, behind.delta, contact, nullptr, active);
     copy.flags &= ~kParticleActive;
     if (active) {
         copy.flags |= kParticleActive;
