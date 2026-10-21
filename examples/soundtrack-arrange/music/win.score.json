@@ -1,0 +1,12 @@
+{
+  "bpm": 132,
+  "format": 1,
+  "key": "G major",
+  "tracks": [
+    {
+      "bars": ["G4:0.5 B4 D5 G5:2.5"],
+      "instrument": "trumpet",
+      "name": "trumpet"
+    }
+  ]
+}

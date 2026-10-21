@@ -772,12 +772,15 @@ private:
                 auto_advance_to = next_clip;
             }
         }
+        // Godot records the hold after this check, so a hold_previous transition straight into a
+        // return_to_hold clip went back to an older hold, or nowhere; recording it first lets a
+        // one-clip sting return to the clip it interrupted.
+        if (transition.hold_previous) {
+            return_memory_ = playback_current_;
+        }
         if (return_memory_ != -1 && to.auto_advance == AutoAdvance::ReturnToHold) {
             auto_advance_to = return_memory_;
             return_memory_ = -1;
-        }
-        if (transition.hold_previous) {
-            return_memory_ = playback_current_;
         }
 
         const bool fade_in =

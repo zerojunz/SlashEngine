@@ -1,0 +1,11 @@
+{
+  "bpm": 96,
+  "format": 1,
+  "tracks": [
+    {
+      "bars": ["E5:4"],
+      "instrument": "tubular_bells",
+      "name": "bell"
+    }
+  ]
+}
