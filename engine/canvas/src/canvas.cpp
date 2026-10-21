@@ -317,7 +317,7 @@ void add_systems(world::World& world, asset::Assets& assets) {
     world::add_parallax_system(world,
                                [](const world::World& w) { return ui::settings(w).viewport; });
     add_particles_system(world);
-    add_gpu_particles_system(world);
+    add_gpu_particles_system(world, &assets);
 }
 
 void install(world::World& world, asset::Assets& assets) {

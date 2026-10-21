@@ -6,6 +6,7 @@
 #include "slash/canvas/particles.hpp"
 #include "slash/core/json.hpp"
 #include "slash/render/device.hpp"
+#include "slash/render/image.hpp"
 #include "slash/render/particles.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
@@ -14,6 +15,7 @@
 #include <doctest/doctest.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -224,6 +226,18 @@ TEST_CASE("process material files are Godot's ParticleProcessMaterial in 2D") {
     CHECK(render::ParticleProcess{}.param_min.at(turbulence) == 0.1F);
     CHECK(canvas::parse_process_material(parse(R"({"format": 1})")).value() ==
           render::ParticleProcess{});
+    auto collides = canvas::parse_process_material(
+        parse(R"({"format": 1, "collision_mode": "hide_on_contact", "collision_friction": 0.3,
+                  "collision_bounce": 0.6, "collision_use_scale": true})"));
+    REQUIRE(collides.ok());
+    CHECK(collides.value().collision_mode == render::ParticleCollision::HideOnContact);
+    CHECK(collides.value().collision_friction == 0.3F);
+    CHECK(collides.value().collision_bounce == 0.6F);
+    CHECK(collides.value().collision_use_scale);
+    CHECK(render::ParticleProcess{}.collision_mode == render::ParticleCollision::Disabled);
+    CHECK(
+        first_error(R"({"format": 1, "collision_mode": "solid"})").starts_with("/collision_mode"));
+    CHECK(first_error(R"({"format": 1, "collision_bounce": 2})").starts_with("/collision_bounce"));
 
     CHECK(first_error(R"({"format": 1, "emission_shape": "box"})") == "(valid)");
     CHECK(first_error(R"({"emission_shape": "box"})").starts_with(": "));
@@ -590,4 +604,117 @@ TEST_CASE("the canvas runs and draws GPU particles the same on every device") {
         }
         CHECK(different < (lit / 4) + 8);
     }
+}
+
+TEST_CASE("GPU particles collide with LightOccluder2D outlines and tile occluders") {
+    Scene scene;
+    scene.files.files["rain.process_material.json"] =
+        R"({"format": 1, "direction": [0, 1], "spread": 0, "gravity": [0, 200],
+            "initial_velocity_min": 50, "initial_velocity_max": 50, "collision_mode": "rigid"})";
+    scene.files.files["drift.process_material.json"] =
+        R"({"format": 1, "direction": [0, 1], "spread": 0, "gravity": [0, 200],
+            "initial_velocity_min": 50, "initial_velocity_max": 50})";
+    render::Image drop;
+    drop.width = 6;
+    drop.height = 10;
+    drop.pixels.assign(std::size_t{6} * 10 * 4, 255);
+    scene.files.files["drop.png"] = render::encode_png(drop).value();
+    const entt::entity floor = scene.create("floor", R"({"Transform2D": {"position": [0, 80]},
+        "LightOccluder2D": {"polygon": [[-100, 0], [100, 0], [100, 40], [-100, 40]]}})");
+    const entt::entity rain = scene.create("rain", R"({"Transform2D": {},
+        "GPUParticles2D": {"amount": 30, "collision_base_size": 2,
+                           "process_material": "rain.process_material.json"}})");
+    const entt::entity drift = scene.create("drift", R"({"Transform2D": {},
+        "GPUParticles2D": {"amount": 30, "process_material": "drift.process_material.json"}})");
+    const entt::entity spout = scene.create("spout", R"({"Transform2D": {"position": [10, 20],
+        "scale": [2, 2]}, "GPUParticles2D": {"amount": 30, "texture": "drop.png",
+        "local_coords": true, "process_material": "rain.process_material.json"}})");
+    scene.step(60);
+
+    // The floor where it is in the world, the same set for every step, and the emitter's size.
+    const canvas::ParticleSteps kept = scene.steps(rain);
+    REQUIRE(kept.shapes.size() == 1);
+    CHECK(
+        kept.shapes[0].points ==
+        std::vector<Vec2>{{-100.0F, 80.0F}, {100.0F, 80.0F}, {100.0F, 120.0F}, {-100.0F, 120.0F}});
+    CHECK(kept.shapes[0].closed);
+    for (const render::ParticleStep& step : kept.steps) {
+        CHECK(step.shape_first == 0);
+        CHECK(step.shape_count == 1);
+        CHECK(step.collision_size == 2.0F);
+        CHECK(step.to_shapes == std::array<float, 6>{1.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F});
+    }
+    // Its particles come to rest on the floor, a collision size above it, those reaching it in it
+    // by up to a step's fall until their next step pushes them out.
+    const auto rests_on = [](const render::Particle& particle, float rest, float arriving) {
+        return particle.origin.y < rest ||
+               (particle.velocity.y > arriving && particle.origin.y < rest + (arriving / 10.0F));
+    };
+    auto live = canvas::gpu_particles(scene.world, rain, scene.assets);
+    REQUIRE(live.ok());
+    int resting = 0;
+    for (const render::Particle& particle : live.value()) {
+        CHECK(rests_on(particle, 78.3F, 100.0F));
+        resting += particle.origin.y > 77.5F && particle.origin.y < 78.3F ? 1 : 0;
+    }
+    CHECK(resting > 5);
+    // A process material that doesn't collide carries no shapes, and falls through.
+    CHECK(scene.steps(drift).shapes.empty());
+    CHECK(std::ranges::all_of(scene.steps(drift).steps, [](const render::ParticleStep& step) {
+        return step.shape_count == 0;
+    }));
+    live = canvas::gpu_particles(scene.world, drift, scene.assets);
+    REQUIRE(live.ok());
+    CHECK(std::ranges::any_of(
+        live.value(), [](const render::Particle& particle) { return particle.origin.y > 90; }));
+    // Particles in the emitter's coordinates reach the floor through its transform, and a
+    // texture's half average side scales the size: 1 times (6 + 10) / 4.
+    const canvas::ParticleSteps spouted = scene.steps(spout);
+    const render::ParticleStep& local = spouted.steps.back();
+    CHECK(local.to_shapes == std::array<float, 6>{2.0F, 0.0F, 0.0F, 2.0F, 10.0F, 20.0F});
+    CHECK(local.from_shapes == std::array<float, 4>{0.5F, 0.0F, 0.0F, 0.5F});
+    CHECK(local.collision_size == 4.0F);
+    live = canvas::gpu_particles(scene.world, spout, scene.assets);
+    REQUIRE(live.ok());
+    for (const render::Particle& particle : live.value()) {
+        // The floor is 30 of their pixels down, less 4 of size.
+        CHECK(rests_on(particle, 26.3F, 50.0F));
+    }
+
+    // A moving floor adds a set of shapes each tick, and the old ones go with the steps that
+    // named them.
+    for (int i = 0; i < 120; ++i) {
+        scene.world.ecs().get<world::Transform2D>(floor).position.y =
+            80.0F + static_cast<float>(i % 7);
+        scene.step();
+    }
+    CHECK(scene.steps(rain).shapes.size() <= 64);
+    // With sdf_collision off, the floor is no shape.
+    scene.world.ecs().get<world::LightOccluder2D>(floor).sdf_collision = false;
+    scene.step(2); // a step every other tick, at 30 steps a second
+    CHECK(scene.steps(rain).steps.back().shape_count == 0);
+
+    // Tile occluders collide where their occlusion layer has sdf_collision.
+    render::Image white;
+    white.width = 16;
+    white.height = 16;
+    white.pixels.assign(std::size_t{16} * 16 * 4, 255);
+    scene.files.files["white.png"] = render::encode_png(white).value();
+    scene.files.files["walls.tileset.json"] = R"({"format": 1,
+        "occlusion_layers": [{"sdf_collision": true}, {}],
+        "sources": {"white": {"texture": "white.png", "tiles": {
+            "0,0": {"name": "wall",
+                    "occlusion": [{"points": [[-8, -8], [8, -8], [8, 8], [-8, 8]]},
+                                  {"layer": 1, "points": [[-8, 0], [8, 0]], "closed": false}]}}}}})";
+    scene.create("walls", R"({"Transform2D": {"position": [0, 100]},
+        "TileMapLayer": {"tile_set": "walls.tileset.json", "legend": {"w": "wall"},
+                         "rows": ["w.w"]}})");
+    scene.step(2);
+    const canvas::ParticleSteps tiled = scene.steps(rain);
+    const render::ParticleStep& last = tiled.steps.back();
+    REQUIRE(last.shape_count == 2);
+    CHECK(tiled.shapes[last.shape_first].points ==
+          std::vector<Vec2>{{0.0F, 100.0F}, {16.0F, 100.0F}, {16.0F, 116.0F}, {0.0F, 116.0F}});
+    CHECK(tiled.shapes[last.shape_first + 1].points ==
+          std::vector<Vec2>{{32.0F, 100.0F}, {48.0F, 100.0F}, {48.0F, 116.0F}, {32.0F, 116.0F}});
 }

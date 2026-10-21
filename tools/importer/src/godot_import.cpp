@@ -2275,6 +2275,7 @@ private:
         std::map<std::pair<std::int64_t, std::int64_t>, std::string> terrains;
         std::map<std::int64_t, json::Value> physics;    // physics layers by index
         std::map<std::int64_t, std::int64_t> occlusion; // occlusion layers' light masks by index
+        std::set<std::int64_t> sdf_collision;           // occlusion layers particles collide with
         // Custom data layers' names and Variant types by index.
         std::map<std::int64_t, std::pair<std::string, std::int64_t>> data;
         std::vector<std::pair<std::int64_t, const Value*>> sources;
@@ -2362,9 +2363,7 @@ private:
                 } else if (index && *index >= 0 && field == "sdf_collision") {
                     occlusion.try_emplace(*index, 1);
                     if (value.boolean) {
-                        problems_.add("tile set occlusion SDF collision", where,
-                                      "there is no signed distance field; occluders only cast "
-                                      "shadows");
+                        sdf_collision.insert(*index);
                     }
                 } else {
                     problems_.add("TileSet." + name, where);
@@ -2406,6 +2405,9 @@ private:
                 json::Value layer = json::Object{};
                 if (found != occlusion.end() && found->second != 1) {
                     layer["light_mask"] = found->second;
+                }
+                if (sdf_collision.contains(index)) {
+                    layer["sdf_collision"] = true;
                 }
                 out_layers.push_back(std::move(layer));
             }
@@ -3604,15 +3606,16 @@ private:
             "turbulence_noise_strength",    "turbulence_noise_scale",
             "turbulence_noise_speed_random"};
         // What a 2D game can't see, or what particles do without.
-        static constexpr std::array<std::string_view, 9> kIgnored{"resource_local_to_scene",
+        static constexpr std::array<std::string_view, 8> kIgnored{"resource_local_to_scene",
                                                                   "resource_name",
                                                                   "particle_flag_disable_z",
                                                                   "particle_flag_rotate_y",
                                                                   "flatness",
                                                                   "emission_ring_height",
                                                                   "emission_ring_cone_angle",
-                                                                  "attractor_interaction_enabled",
-                                                                  "collision_use_scale"};
+                                                                  "attractor_interaction_enabled"};
+        static constexpr std::array<std::string_view, 3> kCollisionModes{"disabled", "rigid",
+                                                                         "hide_on_contact"};
         json::Value out;
         out["format"] = 1;
         bool disable_z = false;
@@ -3651,9 +3654,15 @@ private:
                                             })) &&
                        value.is_number()) {
                 out[name] = value.number();
+            } else if ((name == "collision_friction" || name == "collision_bounce") &&
+                       value.is_number()) {
+                out[name] = std::clamp(value.number(), 0.0, 1.0);
+            } else if (name == "collision_mode" && value.kind == Value::Kind::Int &&
+                       value.integer >= 0 && value.integer < 3) {
+                out[name] = kCollisionModes.at(static_cast<std::size_t>(value.integer));
             } else if ((name == "particle_flag_align_y" ||
                         name == "particle_flag_damping_as_friction" ||
-                        name == "turbulence_enabled") &&
+                        name == "turbulence_enabled" || name == "collision_use_scale") &&
                        value.kind == Value::Kind::Bool) {
                 out[name] = value.boolean;
             } else if (name == "turbulence_noise_speed" && vector && vector->size() == 3) {
@@ -3695,11 +3704,10 @@ private:
                                   "points in a texture don't convert; list them as "
                                   "emission_points");
                 }
-            } else if ((name == "collision_mode" && value.integer != 0) ||
-                       (name == "sub_emitter_mode" && value.integer != 0)) {
+            } else if (name == "sub_emitter_mode" && value.integer != 0) {
                 problems_.add("ParticleProcessMaterial." + name, where,
-                              "collisions and sub-emitters are on the roadmap");
-            } else if (name.starts_with("collision_") || name.starts_with("sub_emitter_")) {
+                              "sub-emitters are on the roadmap");
+            } else if (name.starts_with("sub_emitter_")) {
                 continue; // their settings, with them off
             } else {
                 problems_.add("ParticleProcessMaterial." + name, where);
@@ -4160,8 +4168,8 @@ private:
             return true;
         }
         if (particles != nullptr && std::string_view(particles) == "GPUParticles2D") {
-            // visibility_rect only culls, and collision_base_size goes with collisions.
-            if (name == "visibility_rect" || name == "collision_base_size") {
+            // visibility_rect only culls.
+            if (name == "visibility_rect") {
                 return true;
             }
             if (name == "seed") {

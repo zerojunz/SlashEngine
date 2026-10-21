@@ -319,6 +319,7 @@ private:
         const render::ParticleProcess* process = nullptr;
         std::optional<render::ParticleStep> first;
         std::span<const render::ParticleStep> rest;
+        std::span<const render::ParticleShape> shapes; // that the steps name
     };
     // The steps a GPUParticles2D's system hasn't run, none if it has run them all. The system is
     // made again when the emitter started over or this renderer missed steps no longer kept;

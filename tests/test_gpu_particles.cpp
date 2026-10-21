@@ -19,10 +19,13 @@ using slash::Vec2;
 using slash::Vec4;
 using slash::render::EmissionShape;
 using slash::render::Particle;
+using slash::render::ParticleCollision;
+using slash::render::ParticleContact;
 using slash::render::ParticleDraw;
 using slash::render::ParticleOrder;
 using slash::render::ParticleParam;
 using slash::render::ParticleProcess;
+using slash::render::ParticleShape;
 using slash::render::ParticlesId;
 using slash::render::ParticleStep;
 using slash::render::RenderDevice;
@@ -324,6 +327,186 @@ TEST_CASE("turbulence turns particles along Godot's curl noise") {
     CHECK(displaced > 5);
 }
 
+TEST_CASE("particles collide with shapes as Godot's do with its distance field") {
+    using slash::render::particle_contact;
+    using slash::render::process_particles;
+    // A solid box from (0, 0) to (100, 20).
+    const std::vector<ParticleShape> box{
+        {.points = {{0.0F, 0.0F}, {100.0F, 0.0F}, {100.0F, 20.0F}, {0.0F, 20.0F}}, .closed = true}};
+    CHECK_FALSE(particle_contact({50.0F, -10.0F}, 4.0F, box).collided);
+    // Nearer the top than its size: out upwards by the size less the distance.
+    const ParticleContact above = particle_contact({50.0F, -3.0F}, 4.0F, box);
+    CHECK(above.collided);
+    CHECK(above.normal == Vec2{0.0F, -1.0F});
+    CHECK(above.depth == doctest::Approx(1.0));
+    // Inside, nearest the bottom: out through it by the distance and the size.
+    const ParticleContact inside = particle_contact({30.0F, 15.0F}, 2.0F, box);
+    CHECK(inside.collided);
+    CHECK(inside.normal == Vec2{0.0F, 1.0F});
+    CHECK(inside.depth == doctest::Approx(7.0));
+    // Past a corner: out along the way from it.
+    const ParticleContact corner = particle_contact({103.0F, -4.0F}, 6.0F, box);
+    CHECK(corner.collided);
+    CHECK(corner.normal.x == doctest::Approx(0.6));
+    CHECK(corner.normal.y == doctest::Approx(-0.8));
+    CHECK(corner.depth == doctest::Approx(1.0));
+    // An open outline is a line, solid on neither side.
+    const std::vector<ParticleShape> line{
+        {.points = {{0.0F, 0.0F}, {100.0F, 0.0F}}, .closed = false}};
+    const ParticleContact under = particle_contact({50.0F, 3.0F}, 4.0F, line);
+    CHECK(under.collided);
+    CHECK(under.normal == Vec2{0.0F, 1.0F});
+    CHECK(under.depth == doctest::Approx(1.0));
+    CHECK_FALSE(particle_contact({50.0F, 5.0F}, 4.0F, line).collided);
+    // On it: out to the left of the way it runs.
+    CHECK(particle_contact({50.0F, 0.0F}, 1.0F, line).normal == Vec2{0.0F, -1.0F});
+
+    // Particles falling from (50, 60) onto a floor at 80.
+    ParticleProcess process;
+    process.direction = {0.0F, 1.0F};
+    process.spread = 0.0F;
+    process.gravity = {0.0F, 200.0F};
+    set_param(process, ParticleParam::InitialVelocity, 50.0F, 50.0F);
+    const std::vector<ParticleShape> floor{
+        {.points = {{-1000.0F, 80.0F}, {1000.0F, 80.0F}, {1000.0F, 200.0F}, {-1000.0F, 200.0F}},
+         .closed = true}};
+    std::vector<ParticleStep> steps = run_steps(40, 0.0F, 0.0F);
+    for (ParticleStep& step : steps) {
+        step.shape_count = 1;
+        step.collision_size = 2.0F;
+    }
+    const auto run = [&](const ParticleProcess& with, std::span<const ParticleStep> run_steps) {
+        std::vector<Particle> particles(30);
+        process_particles(particles, with, run_steps, floor);
+        return particles;
+    };
+    // Without collision they fall through, and the shapes change nothing.
+    int below = 0;
+    for (const Particle& particle : run(process, steps)) {
+        below += particle.active() && particle.origin.y > 100.0F ? 1 : 0;
+    }
+    CHECK(below > 5);
+    // Rigid ones with no bounce come to rest two pixels above it, gravity pulling them back in by
+    // a step's fall at most. One that has just reached it is in it by up to a step's fall at full
+    // speed, as Godot's are until their next step pushes them out.
+    const auto rests_on = [](const Particle& particle, float rest, float arriving) {
+        return particle.origin.y < rest ||
+               (particle.velocity.y > arriving && particle.origin.y < rest + (arriving / 10.0F));
+    };
+    process.collision_mode = ParticleCollision::Rigid;
+    int resting = 0;
+    for (const Particle& particle : run(process, steps)) {
+        if (particle.active()) {
+            CHECK(rests_on(particle, 78.3F, 90.0F));
+            resting += particle.origin.y > 77.5F && particle.origin.y < 78.3F ? 1 : 0;
+        }
+    }
+    CHECK(resting > 5);
+    // Bouncing ones go back up.
+    process.collision_bounce = 1.0F;
+    int rising = 0;
+    for (const Particle& particle : run(process, steps)) {
+        rising += particle.active() && particle.velocity.y < -20.0F ? 1 : 0;
+    }
+    CHECK(rising > 3);
+    // Those that hide die on touching it.
+    process.collision_mode = ParticleCollision::HideOnContact;
+    int live = 0;
+    for (const Particle& particle : run(process, steps)) {
+        if (particle.active()) {
+            ++live;
+            CHECK(rests_on(particle, 78.3F, 90.0F));
+        }
+    }
+    CHECK(live > 3);
+    CHECK(live < 15);
+
+    // Particles in the emitter's coordinates reach the shapes through to_shapes: emitted at the
+    // origin and moved by it to (50, 60), twice the size, they rest where a particle of size 1
+    // in shape pixels is half a pixel from the floor in theirs.
+    process.collision_mode = ParticleCollision::Rigid;
+    process.collision_bounce = 0.0F;
+    for (ParticleStep& step : steps) {
+        step.emission = {1.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F};
+        step.to_shapes = {2.0F, 0.0F, 0.0F, 2.0F, 50.0F, 60.0F};
+        step.from_shapes = {0.5F, 0.0F, 0.0F, 0.5F};
+        step.collision_size = 1.0F;
+    }
+    resting = 0;
+    for (const Particle& particle : run(process, steps)) {
+        if (particle.active()) {
+            CHECK(rests_on(particle, 9.3F, 40.0F));
+            resting += particle.origin.y > 8.5F && particle.origin.y < 9.3F ? 1 : 0;
+        }
+    }
+    CHECK(resting > 5);
+}
+
+TEST_CASE("the GPU device collides particles with shapes as the CPU twin does") {
+    auto device = slash::test::gpu_device();
+    if (device == nullptr) {
+        return;
+    }
+    // A floor, a slope and a line, then the same shapes seen through a turned and scaled
+    // transform, as for particles in an emitter's coordinates.
+    const std::vector<ParticleShape> shapes{
+        {.points = {{-100.0F, 90.0F}, {200.0F, 90.0F}, {200.0F, 120.0F}, {-100.0F, 120.0F}},
+         .closed = true},
+        {.points = {{20.0F, 30.0F}, {60.0F, 50.0F}, {20.0F, 50.0F}}, .closed = true},
+        {.points = {{70.0F, 40.0F}, {90.0F, 30.0F}, {110.0F, 45.0F}}, .closed = false}};
+    constexpr std::uint32_t kAmount = 100;
+    std::vector<ParticleStep> steps = run_steps(45, 0.5F, 0.1F);
+    for (std::size_t i = 0; i < steps.size(); ++i) {
+        steps[i].shape_first = i < 30 ? 0 : 1;
+        steps[i].shape_count = i < 30 ? 3 : 2;
+        steps[i].collision_size = 3.0F;
+        if (i >= 30) {
+            steps[i].to_shapes = {0.0F, 2.0F, -2.0F, 0.0F, 10.0F, 5.0F};
+            steps[i].from_shapes = {0.0F, -0.5F, 0.5F, 0.0F};
+        }
+    }
+    std::vector<ParticleProcess> processes;
+    ParticleProcess rigid = busy_process();
+    rigid.direction = {0.0F, 1.0F};
+    rigid.collision_mode = ParticleCollision::Rigid;
+    rigid.collision_bounce = 0.5F;
+    rigid.collision_friction = 0.2F;
+    processes.push_back(rigid);
+    ParticleProcess scaled = rigid;
+    scaled.collision_use_scale = true;
+    scaled.collision_bounce = 1.0F;
+    processes.push_back(scaled);
+    ParticleProcess hiding = busy_process();
+    hiding.direction = {0.0F, 1.0F};
+    hiding.collision_mode = ParticleCollision::HideOnContact;
+    processes.push_back(hiding);
+    int which = 0;
+    for (const ParticleProcess& process : processes) {
+        const int index = which++;
+        CAPTURE(index);
+        std::vector<Particle> twin(kAmount);
+        slash::render::process_particles(twin, process, steps, shapes);
+        auto system = device->create_particles(kAmount);
+        REQUIRE(system.ok());
+        REQUIRE(
+            device->process_particles(system.value(), process, std::span(steps).first(20), shapes)
+                .ok());
+        REQUIRE(
+            device->process_particles(system.value(), process, std::span(steps).subspan(20), shapes)
+                .ok());
+        auto read = device->read_particles(system.value());
+        REQUIRE(read.ok());
+        int live = 0;
+        for (std::uint32_t i = 0; i < kAmount; ++i) {
+            live += twin[i].active() ? 1 : 0;
+            CHECK_MESSAGE(close(read.value()[i], twin[i]), "particle ", i, ": GPU ",
+                          describe(read.value()[i]), ", twin ", describe(twin[i]));
+        }
+        CHECK(live > 10);
+        device->destroy_particles(system.value());
+    }
+}
+
 TEST_CASE("every device refuses the same particle mistakes") {
     std::vector<std::unique_ptr<RenderDevice>> devices = slash::test::drawing_devices();
     devices.push_back(slash::render::create_null_device());
@@ -352,6 +535,24 @@ TEST_CASE("every device refuses the same particle mistakes") {
         step.lifetime = 0.0F;
         CHECK(error_of(device->process_particles(system.value(), {}, std::span(&step, 1))) ==
               "a particle step's lifetime is more than 0 and its delta 0 or more");
+        step = ParticleStep{};
+        step.shape_first = 1;
+        step.shape_count = 2;
+        const std::vector<ParticleShape> one{{.points = {{0.0F, 0.0F}}, .closed = true}};
+        CHECK(error_of(device->process_particles(system.value(), {}, std::span(&step, 1), one)) ==
+              "a particle step names shapes 1 to 2 of 1");
+        step.shape_first = 0;
+        step.shape_count = 1;
+        std::vector<ParticleShape> many{{.points = std::vector<Vec2>(1025), .closed = true}};
+        CHECK(error_of(device->process_particles(system.value(), {}, std::span(&step, 1), many)) ==
+              "a particle step's shapes have at most 1024 points");
+        many[0].points = {{0.0F, std::nanf("")}};
+        CHECK(error_of(device->process_particles(system.value(), {}, std::span(&step, 1), many)) ==
+              "a particle shape's points are numbers");
+        many[0].points = {{0.0F, 0.0F}};
+        step.collision_size = -1.0F;
+        CHECK(error_of(device->process_particles(system.value(), {}, std::span(&step, 1), many)) ==
+              "a particle step's collision size is 0 or more");
         CHECK(error_of(
                   device->draw_particles(system.value(), slash::render::TextureId::None, {}, {})) ==
               "draw_particles needs a frame; call begin_frame first");
