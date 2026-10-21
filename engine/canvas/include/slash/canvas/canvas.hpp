@@ -19,6 +19,7 @@
 
 #include <array>
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <memory>
 #include <optional>
@@ -36,10 +37,19 @@
 // Camera2D (camera2d.hpp) and shaded by 2D lights (light.hpp).
 namespace slash::canvas {
 
-// Asset types: "texture" (.png and .bmp files as render::Image), "sprite_frames" (.frames.json
-// files as SpriteFrames), "material" (.material.json files as CanvasMaterial) and "tile_set"
+// Asset types: "texture" (.png, .bmp and .ktx2 files as render::Image), "sprite_frames"
+// (.frames.json files as SpriteFrames), "material" (.material.json files as CanvasMaterial) and
+// "tile_set"
 // (.tileset.json files as TileSet).
 void add_asset_types(asset::Assets& assets);
+
+// Files as an exported game reads them. An export ships a compressed texture as one KTX2 file a
+// format beside where it was (render::texture_form_path: "a.png" as "a.png.bc7.ktx2"), so a
+// texture that isn't there as it was is read from its form in a format the device samples
+// (samples), else its RGBA8 form, else any (decoded when it loads).
+[[nodiscard]] asset::FileSource
+with_texture_forms(const asset::FileSource& files,
+                   std::function<bool(render::TextureFormat)> samples);
 
 // The "animated_sprite_2d" system, which plays each AnimatedSprite2D on its Sprite2D, the
 // "camera_2d" and "parallax_2d" systems (camera2d.hpp, canvas_layer.hpp), for a screen of
@@ -260,6 +270,7 @@ private:
         std::uint64_t version = 0;
         std::uint32_t width = 0;
         std::uint32_t height = 0;
+        render::TextureFormat format = render::TextureFormat::Rgba8; // as made on the device
 
         [[nodiscard]] const render::Image& pixels() const {
             return builtin != nullptr ? *builtin : *image;

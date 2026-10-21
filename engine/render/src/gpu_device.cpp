@@ -10,6 +10,7 @@
 #include "uniforms.hpp"
 
 #include "slash/core/log.hpp"
+#include "slash/render/image.hpp"
 
 #include <SDL3/SDL.h>
 
@@ -29,8 +30,21 @@
 namespace slash::render::detail {
 namespace {
 
-// Textures are 8-bit RGBA, the one color format every backend can sample, draw into and read.
+// Textures are 8-bit RGBA, the one color format every backend can sample, draw into and read,
+// or the compressed formats the GPU samples.
 constexpr SDL_GPUTextureFormat kTextureFormat = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
+
+constexpr SDL_GPUTextureFormat gpu_format(TextureFormat format) {
+    switch (format) {
+    case TextureFormat::Bc7:
+        return SDL_GPU_TEXTUREFORMAT_BC7_RGBA_UNORM;
+    case TextureFormat::Astc4x4:
+        return SDL_GPU_TEXTUREFORMAT_ASTC_4x4_UNORM;
+    case TextureFormat::Rgba8:
+        break;
+    }
+    return kTextureFormat;
+}
 // Direct3D 12 takes DXBC compiled from the HLSL at startup, which only Windows can do.
 #ifdef _WIN32
 constexpr SDL_GPUShaderFormat kHlslFormats = SDL_GPU_SHADERFORMAT_DXBC;
@@ -231,6 +245,10 @@ public:
         if (auto made = make_shaders(ShaderKind::Sprite); !made) {
             return made;
         }
+        for (const TextureFormat format : {TextureFormat::Bc7, TextureFormat::Astc4x4}) {
+            sampled_.at(static_cast<std::size_t>(format)) = SDL_GPUTextureSupportsFormat(
+                device_, gpu_format(format), SDL_GPU_TEXTURETYPE_2D, SDL_GPU_TEXTUREUSAGE_SAMPLER);
+        }
         for (const Filter filter : {Filter::Linear, Filter::Nearest}) {
             for (const bool repeat : {false, true}) {
                 SDL_GPUSamplerCreateInfo info{};
@@ -262,46 +280,58 @@ public:
 
     [[nodiscard]] Backend backend() const override { return backend_; }
 
+    [[nodiscard]] bool supports(TextureFormat format) const override {
+        return sampled_.at(static_cast<std::size_t>(format));
+    }
+
     Result<TextureId> create_texture(const TextureDesc& desc,
-                                     std::span<const std::uint8_t> rgba) override {
+                                     std::span<const std::uint8_t> texels) override {
         if (auto checked = check_texture_desc(desc); !checked) {
             return checked.error();
         }
-        if (auto checked = check_pixels(desc, rgba, true); !checked) {
+        if (auto checked = check_pixels(desc, texels, true); !checked) {
             return checked.error();
         }
-        auto gpu = create_gpu_texture(desc);
+        // A format the GPU doesn't sample is kept as RGBA8.
+        TextureDesc stored = desc;
+        if (!supports(desc.format)) {
+            stored.format = TextureFormat::Rgba8;
+        }
+        auto gpu = create_gpu_texture(stored);
         if (!gpu) {
             return gpu.error();
         }
         // New GPU memory holds whatever was there before, so it starts as transparent black.
         Result<void> filled;
-        if (!rgba.empty()) {
-            filled = upload(gpu.value(), desc, rgba);
+        if (!texels.empty()) {
+            filled = upload_texels(gpu.value(), desc, stored, texels);
         } else if (desc.render_target) {
             filled = clear(gpu.value());
         } else {
-            const std::vector<std::uint8_t> zeros(std::size_t{desc.width} * desc.height * 4);
-            filled = upload(gpu.value(), desc, zeros);
+            const std::vector<std::uint8_t> zeros(texture_bytes(stored));
+            filled = upload(gpu.value(), stored, zeros);
         }
         if (!filled) {
             SDL_ReleaseGPUTexture(device_, gpu.value());
             return filled.error();
         }
         const auto id = static_cast<TextureId>(next_texture_++);
-        textures_[id] = Texture{.gpu = gpu.value(), .desc = desc};
+        textures_[id] = Texture{.gpu = gpu.value(), .desc = desc, .stored = stored.format};
         return id;
     }
 
-    Result<void> update_texture(TextureId texture, std::span<const std::uint8_t> rgba) override {
+    Result<void> update_texture(TextureId texture, std::span<const std::uint8_t> texels) override {
         const auto it = textures_.find(texture);
         if (it == textures_.end()) {
             return unknown_texture(texture);
         }
-        if (auto checked = check_pixels(it->second.desc, rgba, false); !checked) {
+        const TextureDesc& desc = it->second.desc;
+        if (auto checked = check_pixels(desc, texels, false); !checked) {
             return checked;
         }
-        return upload(it->second.gpu, it->second.desc, rgba);
+        TextureDesc stored = desc;
+        stored.format = it->second.stored;
+        return upload_texels(it->second.gpu, desc, stored, texels);
     }
 
     void destroy_texture(TextureId texture) override {
@@ -778,7 +808,9 @@ public:
         Stats stats = stats_;
         stats.textures = static_cast<std::uint32_t>(textures_.size());
         for (const auto& [id, texture] : textures_) {
-            stats.texture_bytes += texture_bytes(texture.desc);
+            TextureDesc stored = texture.desc;
+            stored.format = texture.stored;
+            stats.texture_bytes += texture_bytes(stored);
         }
         return stats;
     }
@@ -786,7 +818,10 @@ public:
 private:
     struct Texture {
         SDL_GPUTexture* gpu = nullptr;
+        // As it was made, in the format update_texture takes.
         TextureDesc desc;
+        // The format on the GPU: desc's, or RGBA8 where the GPU doesn't sample that.
+        TextureFormat stored = TextureFormat::Rgba8;
     };
 
     // Draws in a row with the same texture and material, sent as one GPU draw.
@@ -1265,7 +1300,7 @@ private:
     Result<SDL_GPUTexture*> create_gpu_texture(const TextureDesc& desc) {
         SDL_GPUTextureCreateInfo info{};
         info.type = SDL_GPU_TEXTURETYPE_2D;
-        info.format = kTextureFormat;
+        info.format = gpu_format(desc.format);
         info.usage = SDL_GPU_TEXTUREUSAGE_SAMPLER;
         if (desc.render_target) {
             info.usage |= SDL_GPU_TEXTUREUSAGE_COLOR_TARGET;
@@ -1282,12 +1317,26 @@ private:
         return texture;
     }
 
-    // Replaces every pixel. It runs ahead of the frame being built, whose draws are sent at
-    // end_frame, so they all see the new pixels.
+    // Uploads texels given in desc's format to a texture stored in stored's, decoding them
+    // when the two differ.
+    Result<void> upload_texels(SDL_GPUTexture* texture, const TextureDesc& desc,
+                               const TextureDesc& stored, std::span<const std::uint8_t> texels) {
+        if (stored.format == desc.format) {
+            return upload(texture, stored, texels);
+        }
+        auto pixels = decode_texels(desc.format, desc.width, desc.height, texels);
+        if (!pixels) {
+            return pixels.error();
+        }
+        return upload(texture, stored, pixels.value());
+    }
+
+    // Replaces every texel, given in desc's format. It runs ahead of the frame being built,
+    // whose draws are sent at end_frame, so they all see the new texels.
     Result<void> upload(SDL_GPUTexture* texture, const TextureDesc& desc,
-                        std::span<const std::uint8_t> rgba) {
+                        std::span<const std::uint8_t> texels) {
         const TransferBuffer transfer(device_, SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
-                                      static_cast<std::uint32_t>(rgba.size()));
+                                      static_cast<std::uint32_t>(texels.size()));
         if (transfer.get() == nullptr) {
             return sdl_error("making room to upload the texture failed");
         }
@@ -1295,7 +1344,7 @@ private:
         if (mapped == nullptr) {
             return sdl_error("uploading the texture failed");
         }
-        std::memcpy(mapped, rgba.data(), rgba.size());
+        std::memcpy(mapped, texels.data(), texels.size());
         SDL_UnmapGPUTransferBuffer(device_, transfer.get());
         SDL_GPUCommandBuffer* commands = SDL_AcquireGPUCommandBuffer(device_);
         if (commands == nullptr) {
@@ -1428,6 +1477,8 @@ private:
     std::vector<Pipeline> pipelines_;
     std::array<SDL_GPUSampler*, 4> samplers_{}; // by sampler_index
     SDL_GPUTexture* white_ = nullptr;
+    // Which formats the GPU samples, by TextureFormat.
+    std::array<bool, 3> sampled_{true, false, false};
     SDL_GPUBuffer* vertex_buffer_ = nullptr;
     SDL_GPUTransferBuffer* vertex_transfer_ = nullptr;
     std::uint32_t vertex_capacity_ = 0;

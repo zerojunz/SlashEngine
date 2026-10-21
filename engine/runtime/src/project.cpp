@@ -133,6 +133,19 @@ std::string Project::binary_name() const {
     return binary.empty() ? std::string("Game") : binary;
 }
 
+std::string_view TextureImport::mode_for(std::string_view path) const {
+    std::string_view mode = compress_mode;
+    std::size_t matched = 0;
+    for (const auto& [prefix, prefix_mode] : paths) {
+        const bool holds = prefix.ends_with('/') ? path.starts_with(prefix) : path == prefix;
+        if (holds && prefix.size() > matched) {
+            mode = prefix_mode;
+            matched = prefix.size();
+        }
+    }
+    return mode;
+}
+
 std::string Project::bundle_id() const {
     if (!id.empty()) {
         return id;
@@ -210,6 +223,24 @@ json::Value project_schema() {
         "display refreshes faster than the game ticks.";
     rendering["properties"]["interpolation"] = std::move(interpolation);
     rendering["properties"]["scaling"] = scaling_schema();
+    json::Value compress_mode;
+    compress_mode["enum"] = json::Array{"lossless", "vram_compressed", "vram_uncompressed"};
+    compress_mode["description"] =
+        "How exports ship textures, as Godot's compress/mode: lossless as the file is; "
+        "vram_compressed as BC7 (desktop, web) or ASTC 4x4 (phones, web) blocks, a quarter of the "
+        "GPU memory; vram_uncompressed as RGBA8 texels ready for the GPU.";
+    json::Value textures;
+    textures["type"] = "object";
+    textures["additionalProperties"] = false;
+    textures["description"] = "How exports ship textures.";
+    textures["properties"]["compress_mode"] = compress_mode;
+    textures["properties"]["compress_mode"]["default"] = TextureImport{}.compress_mode;
+    textures["properties"]["paths"]["type"] = "object";
+    textures["properties"]["paths"]["additionalProperties"] = std::move(compress_mode);
+    textures["properties"]["paths"]["description"] =
+        "Modes for folders (\"ui/\") and files, e.g. {\"ui/\": \"lossless\"}; the longest match "
+        "wins.";
+    rendering["properties"]["textures"] = std::move(textures);
 
     json::Value name = string_property("The game's name, shown in its title bar. Exported files "
                                        "use it with only letters and digits kept.");
@@ -334,6 +365,21 @@ std::vector<json::ValidationError> validate_project(const json::Value& project) 
         }
     }
     if (const json::Value* rendering = project.find("rendering"); rendering != nullptr) {
+        if (const json::Value* textures = rendering->find("textures"); textures != nullptr) {
+            if (const json::Value* paths = textures->find("paths"); paths != nullptr) {
+                for (const auto& [path, mode] : paths->as_object()) {
+                    const std::string_view folder =
+                        path.ends_with('/') ? std::string_view(path).substr(0, path.size() - 1)
+                                            : std::string_view(path);
+                    if (!is_project_path(folder)) {
+                        errors.push_back({"/rendering/textures/paths/" + json::pointer_escape(path),
+                                          "expected a folder ending in '/' or a file inside the "
+                                          "project, separated by '/', with no \".\" or \"..\" "
+                                          "parts"});
+                    }
+                }
+            }
+        }
         if (const json::Value* scaling = rendering->find("scaling"); scaling != nullptr) {
             if (const json::Value* mode = scaling->find("mode"); mode != nullptr) {
                 if (std::string problem = render::scaling_mode_problem(mode->as_string());
@@ -443,6 +489,16 @@ Result<Project> parse_project(const json::Value& project) {
         }
         if (const json::Value* scaling = rendering->find("scaling"); scaling != nullptr) {
             out.scaling = render::scaling_from_json(*scaling);
+        }
+        if (const json::Value* textures = rendering->find("textures"); textures != nullptr) {
+            if (const json::Value* mode = textures->find("compress_mode"); mode != nullptr) {
+                out.texture_import.compress_mode = mode->as_string();
+            }
+            if (const json::Value* paths = textures->find("paths"); paths != nullptr) {
+                for (const auto& [path, mode] : paths->as_object()) {
+                    out.texture_import.paths.emplace(path, mode.as_string());
+                }
+            }
         }
     }
     if (const json::Value* physics = project.find("physics_2d"); physics != nullptr) {

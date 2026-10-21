@@ -52,7 +52,7 @@ SLASH_COMPONENT(StoryRef, ids)
 // lights shade them, with normal and specular maps laid out as the texture, as a CanvasTexture's
 // in Godot.
 struct Sprite2D {
-    std::string texture; // project path of a PNG or BMP file; "" draws nothing
+    std::string texture; // project path of a PNG, BMP or KTX2 file; "" draws nothing
     bool centered = true;
     Vec2 offset;
     bool flip_h = false;
@@ -139,7 +139,7 @@ SLASH_COMPONENT(TileMapLayer, tile_set, origin, legend, rows, z_index, z_as_rela
 // screen.
 struct PointLight2D {
     bool enabled = true;
-    std::string texture; // project path of a PNG or BMP file; "" is a soft round light
+    std::string texture; // project path of a PNG, BMP or KTX2 file; "" is a soft round light
     float texture_scale = 1.0F;
     Vec2 offset; // moves the texture from the light, in pixels
     Vec4 color{1.0F, 1.0F, 1.0F, 1.0F};
@@ -533,7 +533,7 @@ struct CPUParticles2D {
     std::vector<GradientPoint> color_ramp;
     std::vector<GradientPoint> color_initial_ramp;
     std::string draw_order = "index"; // "index" or "lifetime"
-    std::string texture;              // project path of a PNG or BMP file; "" draws pixels
+    std::string texture;              // project path of a PNG, BMP or KTX2 file; "" draws pixels
     std::string texture_filter = "inherit";
     std::string material;
     // "point", "sphere", "sphere_surface", "rectangle", "ring", "points" or "directed_points"
@@ -620,7 +620,7 @@ struct GPUParticles2D {
     // Fields are grouped by type so the struct packs tightly; SLASH_COMPONENT lists them as
     // Godot groups them.
     std::string process_material; // project path of a .process_material.json file
-    std::string texture;          // project path of a PNG or BMP file; "" draws pixels
+    std::string texture;          // project path of a PNG, BMP or KTX2 file; "" draws pixels
     std::string texture_filter = "inherit";
     std::string material;
     std::string draw_order = "lifetime"; // "index", "lifetime" or "reverse_lifetime"
@@ -858,7 +858,7 @@ SLASH_COMPONENT(Panel)
 
 // A texture in the control's rect, as Godot's TextureRect.
 struct TextureRect {
-    std::string texture;                   // project path of a PNG or BMP file; "" draws nothing
+    std::string texture; // project path of a PNG, BMP or KTX2 file; "" draws nothing
     std::string expand_mode = "keep_size"; // how the texture sets the minimum size
     std::string stretch_mode = "scale";    // how the texture fills the rect
     bool flip_h = false;
@@ -962,7 +962,7 @@ struct Button {
     std::vector<std::string> button_mask{"left"}; // mouse buttons that press it
     std::vector<json::Value> shortcut;            // bindings or actions that press it
     std::string text;
-    std::string icon;                 // project path of a PNG or BMP file; "" for none
+    std::string icon;                 // project path of a PNG, BMP or KTX2 file; "" for none
     std::string alignment = "center"; // the text's: "left", "center" or "right"
     std::string text_overrun_behavior = "no_trimming";
     std::string autowrap_mode = "off";
@@ -1024,7 +1024,7 @@ SLASH_COMPONENT(CheckButton, text, icon, flat, alignment, text_overrun_behavior,
 // check box or radio button beside it, or a separator line.
 struct PopupMenuItem {
     std::string text;
-    std::string icon;               // project path of a PNG or BMP file; "" for none
+    std::string icon;               // project path of a PNG, BMP or KTX2 file; "" for none
     std::string checkable = "none"; // "none", "check" (a check box) or "radio" (a radio button)
     std::string tooltip;            // shown once the pointer rests on the item
     int id = -1;                    // what id_pressed reports; -1 for the item's index
@@ -1041,7 +1041,7 @@ SLASH_REFLECT(PopupMenuItem, text, icon, checkable, checked, id, disabled, separ
 // One option of an OptionButton, as Godot's OptionButton items.
 struct OptionButtonItem {
     std::string text;
-    std::string icon;    // project path of a PNG or BMP file; "" for none
+    std::string icon;    // project path of a PNG, BMP or KTX2 file; "" for none
     std::string tooltip; // shown once the pointer rests on the option in the list
     int id = -1;         // what the option is known by; -1 for its index
     bool disabled = false;
@@ -1122,7 +1122,7 @@ SLASH_COMPONENT(MenuButton, items, switch_on_hover, text, icon, flat, alignment,
 struct TextureButton {
     std::vector<std::string> button_mask{"left"};
     std::vector<json::Value> shortcut;
-    std::string texture_normal; // project paths of PNG or BMP files; "" for none
+    std::string texture_normal; // project paths of PNG, BMP or KTX2 files; "" for none
     std::string texture_pressed;
     std::string texture_hover;
     std::string texture_disabled;
@@ -1165,7 +1165,7 @@ struct LineEdit {
     bool selecting_enabled = true;
     bool deselect_on_focus_loss_enabled = true;
     bool drag_and_drop_selection_enabled = true; // the selection can be dragged elsewhere
-    std::string right_icon;                      // project path of a PNG or BMP file; "" for none
+    std::string right_icon; // project path of a PNG, BMP or KTX2 file; "" for none
     std::string icon_expand_mode = "original_size";
     float right_icon_scale = 1.0F;
     bool flat = false;
@@ -1196,7 +1196,7 @@ SLASH_COMPONENT(LineEdit, text, placeholder_text, alignment, max_length, editabl
 struct TextEditGutterLine {
     int line = 0;
     std::string text; // what a "string" gutter shows on the line
-    std::string icon; // what an "icon" gutter shows: a PNG or BMP file, or a built-in icon
+    std::string icon; // what an "icon" gutter shows: a PNG, BMP or KTX2 file, or a built-in icon
     Vec4 color{1.0F, 1.0F, 1.0F, 1.0F};
 
     friend bool operator==(const TextEditGutterLine&, const TextEditGutterLine&) = default;

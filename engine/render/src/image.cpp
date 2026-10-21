@@ -35,6 +35,9 @@ std::uint32_t texel_index(float texel, std::uint32_t size, bool repeat) {
 } // namespace
 
 Result<Image> decode_image(std::string_view bytes) {
+    if (is_ktx2(bytes)) {
+        return decode_ktx2(bytes);
+    }
     SDL_IOStream* stream = SDL_IOFromConstMem(bytes.data(), bytes.size());
     if (stream == nullptr) {
         return make_error(ErrorCode::PlatformFailure,
@@ -44,7 +47,7 @@ Result<Image> decode_image(std::string_view bytes) {
     const SurfacePtr loaded(SDL_LoadSurface_IO(stream, true));
     if (loaded == nullptr) {
         return make_error(ErrorCode::InvalidArgument,
-                          std::string("not a PNG or BMP image SDL can read: ") + SDL_GetError());
+                          std::string("not a PNG, BMP or KTX2 image: ") + SDL_GetError());
     }
     if (loaded->w > static_cast<int>(detail::kMaxTextureSize) ||
         loaded->h > static_cast<int>(detail::kMaxTextureSize)) {

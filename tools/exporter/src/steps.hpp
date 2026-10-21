@@ -60,4 +60,7 @@ void add_summary(json::Value& test, const json::Value& summary);
 // The total size of the files in a folder.
 [[nodiscard]] std::uint64_t folder_bytes(const std::filesystem::path& folder);
 
+// Folders an export must never ship: hidden ones (.git, .slash), build output and game sources.
+[[nodiscard]] bool skipped_folder(const std::filesystem::path& name);
+
 } // namespace slash::exporter::detail

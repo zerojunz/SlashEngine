@@ -16,10 +16,12 @@
 #include "slash/core/text.hpp"
 #include "slash/exporter/android.hpp"
 #include "slash/exporter/android_library.hpp"
+#include "slash/exporter/forms.hpp"
 #include "slash/exporter/maven.hpp"
 #include "slash/exporter/presets.hpp"
 #include "slash/exporter/sdk.hpp"
 #include "slash/exporter/toolchains.hpp"
+#include "slash/library/library.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/platform/process.hpp"
 #include "slash/render/image.hpp"
@@ -63,6 +65,7 @@ using detail::find_summary;
 using detail::folder_bytes;
 using detail::kTestTicks;
 using detail::program_runs;
+using detail::skipped_folder;
 using detail::step;
 
 constexpr std::string_view kMacosDeploymentTarget = "11.0";
@@ -140,13 +143,6 @@ std::optional<fs::path> find_emscripten_toolchain() {
     return std::nullopt;
 }
 
-// Skips folders an export must never ship: hidden ones (.git, .slash), build output and game
-// sources.
-bool skipped_folder(const fs::path& name) {
-    const std::string text = name.string();
-    return text.starts_with(".") || text == "build" || text == "game";
-}
-
 // The files a game reads at run time: scenes, prefabs, the assets sprites draw, animations, tile
 // sets, particle process materials, fonts and sounds.
 enum class DataFile : std::uint8_t {
@@ -189,7 +185,7 @@ DataFile data_file(std::string_view name) {
     if (name.ends_with(canvas::kTileSetSuffix)) {
         return DataFile::TileSet;
     }
-    if (name.ends_with(".png") || name.ends_with(".bmp")) {
+    if (name.ends_with(".png") || name.ends_with(".bmp") || name.ends_with(".ktx2")) {
         return DataFile::Texture;
     }
     if (name.ends_with(text::kFontSuffix)) {
@@ -322,12 +318,57 @@ std::optional<std::string> with_compiled_shader(std::string_view text,
     return json::write(doc.value());
 }
 
+// How many texture forms an export made, read from the library's cache and left out.
+struct FormCounts {
+    std::int64_t made = 0;
+    std::int64_t cached = 0;
+    std::int64_t as_is = 0; // textures their mode would compress, shipped as they are
+};
+
+// Writes a texture's forms for the platform in place of its file, beside where it would be
+// (render::texture_form_path), as project.json's rendering.textures says. False when the texture
+// ships as it is: a lossless one, or one whose sides don't fit the platform's blocks.
+Result<bool> stage_texture_forms(std::string_view file, std::string_view bytes,
+                                 const runtime::TextureImport& import, std::string_view platform,
+                                 const fs::path& data, const std::string& library_dir,
+                                 FormCounts& counts) {
+    const std::vector<render::TextureFormat> formats =
+        shipped_formats(import.mode_for(file), platform);
+    if (formats.empty()) {
+        return false;
+    }
+    auto image = render::decode_image(bytes);
+    if (!image) {
+        return image.error();
+    }
+    for (const render::TextureFormat format : formats) {
+        if (std::string problem = form_problem(image.value(), format); !problem.empty()) {
+            log::warn("texture ships as it is", {{"file", file}, {"reason", problem}});
+            ++counts.as_is;
+            return false;
+        }
+    }
+    for (const render::TextureFormat format : formats) {
+        auto form = texture_form(bytes, image.value(), format, library_dir);
+        if (!form) {
+            return form.error();
+        }
+        ++(form.value().cached ? counts.cached : counts.made);
+        const std::string path = (data / render::texture_form_path(file, format)).string();
+        if (auto written = platform::write_file(path, form.value().ktx2); !written) {
+            return written.error();
+        }
+    }
+    return true;
+}
+
 // Copies project.json, providers.json and every scene, prefab, texture, .frames.json,
 // .material.json, .anim.json, .tileset.json, font, .theme.json, sound, .audio.json and
 // .bus_layout.json file into data, checking each on the way. Materials take their shaders compiled
-// for the platform.
+// for the platform, and textures ship in the forms project.json's rendering.textures asks for,
+// kept in library_dir's cache.
 bool stage_data(const fs::path& project_dir, const runtime::Project& project, const fs::path& data,
-                std::string_view target, Failure& failure) {
+                std::string_view target, const std::string& library_dir, Failure& failure) {
     std::error_code error;
     fs::remove_all(data, error);
     fs::create_directories(data, error);
@@ -348,6 +389,7 @@ bool stage_data(const fs::path& project_dir, const runtime::Project& project, co
     const world::FileReader reader = runtime::folder_reader(project_dir.string());
     json::Array problems;
     bool found_main = false;
+    FormCounts forms;
     auto it = fs::recursive_directory_iterator(project_dir, error);
     for (; !error && it != fs::recursive_directory_iterator(); it.increment(error)) {
         const fs::directory_entry& entry = *it;
@@ -388,6 +430,18 @@ bool stage_data(const fs::path& project_dir, const runtime::Project& project, co
             }
             continue;
         }
+        if (kind == DataFile::Texture && errors.empty()) {
+            auto staged = stage_texture_forms(file, text.value(), project.texture_import, target,
+                                              data, library_dir, forms);
+            if (!staged) {
+                failure = {
+                    "stage", "could not make " + file + "'s forms: " + staged.error().message, {}};
+                return false;
+            }
+            if (staged.value()) {
+                continue;
+            }
+        }
         fs::copy_file(entry.path(), data / relative, fs::copy_options::overwrite_existing, error);
         if (error) {
             failure = {"stage", "could not copy " + file + ": " + error.message(), {}};
@@ -397,6 +451,10 @@ bool stage_data(const fs::path& project_dir, const runtime::Project& project, co
     if (error) {
         failure = {"stage", "could not list the project folder: " + error.message(), {}};
         return false;
+    }
+    if (forms.made + forms.cached + forms.as_is > 0) {
+        log::info("texture forms",
+                  {{"made", forms.made}, {"cached", forms.cached}, {"as_is", forms.as_is}});
     }
     // providers.json, for a game that calls language models, without its replay settings: a
     // game calls the models it names, as the project asked when it was made.
@@ -1059,7 +1117,9 @@ ExportResult export_game(const ExportOptions& options) {
         shader_compiler::install(); // games get their materials' shaders compiled
     }
     const fs::path data = fs::absolute(work / "data", error);
-    if (!stage_data(project_dir, project.value(), data, platform, failure)) {
+    const std::string library_dir =
+        options.library.empty() ? library::default_dir() : options.library;
+    if (!stage_data(project_dir, project.value(), data, platform, library_dir, failure)) {
         return fail(failure, log_path);
     }
     if (!linked.empty()) {

@@ -129,4 +129,9 @@ std::uint64_t folder_bytes(const fs::path& folder) {
     return total;
 }
 
+bool skipped_folder(const fs::path& name) {
+    const std::string text = name.string();
+    return text.starts_with(".") || text == "build" || text == "game";
+}
+
 } // namespace slash::exporter::detail

@@ -121,6 +121,21 @@ void check_refusals(RenderDevice& device) {
     const std::vector<std::uint8_t> short_pixels(15);
     CHECK(error_of(device.create_texture(target_desc(2), short_pixels)) ==
           "a 2x2 texture takes 16 bytes of RGBA, not 15");
+    // Compressed textures are whole blocks, are never drawn into and start with their blocks.
+    TextureDesc bc7{.width = 6,
+                    .height = 4,
+                    .filter = Filter::Linear,
+                    .render_target = false,
+                    .format = slash::render::TextureFormat::Bc7};
+    CHECK(error_of(device.create_texture(bc7, std::vector<std::uint8_t>(24))) ==
+          "a bc7 texture is whole 4x4 blocks, so its sides are multiples of 4, not 6x4");
+    bc7.width = 8;
+    CHECK(error_of(device.create_texture(bc7)) ==
+          "a 8x4 texture takes 32 bytes of bc7 blocks, not 0");
+    TextureDesc astc = target_desc(4);
+    astc.format = slash::render::TextureFormat::Astc4x4;
+    CHECK(error_of(device.create_texture(astc, std::vector<std::uint8_t>(16))) ==
+          "only RGBA8 textures are render targets, not astc_4x4 ones");
 
     auto plain = device.create_texture(
         {.width = 2, .height = 2, .filter = Filter::Nearest, .render_target = false});

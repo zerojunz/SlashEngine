@@ -1,6 +1,7 @@
 #include "slash/core/text.hpp"
 #include "slash/ui/ui.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
@@ -30,7 +31,7 @@ constexpr std::array<std::pair<std::string_view, StyleBox::Stretch>, 3> kStretch
     {"tile", StyleBox::Stretch::Tile},
     {"tile_fit", StyleBox::Stretch::TileFit},
 }};
-constexpr std::array<std::string_view, 2> kTextureSuffixes{".png", ".bmp"};
+constexpr std::array<std::string_view, 3> kTextureSuffixes{".png", ".bmp", ".ktx2"};
 
 // Which types a property applies to.
 enum Applies : std::uint8_t { kAll = 15, kFlat = 1, kTexture = 2, kFlatAndTexture = 3, kLine = 8 };
@@ -171,7 +172,7 @@ const std::vector<Property>& properties() {
             {"anti_aliasing_size", kFlat, number("Pixels the smoothing fades over.", 0.01, 10.0)});
         json::Value texture;
         texture["type"] = "string";
-        texture["description"] = "Project path of a PNG or BMP file.";
+        texture["description"] = "Project path of a PNG, BMP or KTX2 file.";
         out.push_back({"texture", kTexture, std::move(texture)});
         out.push_back({"region_rect", kTexture,
                        numbers("The part of the texture used, [x, y, width, height] in pixels; a "
@@ -373,8 +374,10 @@ std::vector<json::ValidationError> validate_style_box(const json::Value& doc) {
         } else if (const std::string& path = texture->as_string(); !is_project_path(path)) {
             errors.push_back({"/texture", "expected a path inside the project folder, separated "
                                           "by '/', with no \".\" or \"..\" parts"});
-        } else if (!path.ends_with(kTextureSuffixes[0]) && !path.ends_with(kTextureSuffixes[1])) {
-            errors.push_back({"/texture", "expected a .png or .bmp file"});
+        } else if (std::ranges::none_of(kTextureSuffixes, [&](std::string_view suffix) {
+                       return path.ends_with(suffix);
+                   })) {
+            errors.push_back({"/texture", "expected a .png, .bmp or .ktx2 file"});
         }
     }
     return errors;

@@ -8,6 +8,7 @@
 #include "uniforms.hpp"
 
 #include "slash/core/log.hpp"
+#include "slash/render/image.hpp"
 
 #include <SDL3/SDL.h>
 
@@ -73,6 +74,7 @@ constexpr GLenum kFloat = 0x1406;
 constexpr GLenum kRgba = 0x1908;
 constexpr GLenum kRenderer = 0x1F01;
 constexpr GLenum kVersion = 0x1F02;
+constexpr GLenum kExtensions = 0x1F03;
 constexpr GLenum kNearest = 0x2600;
 constexpr GLenum kLinear = 0x2601;
 constexpr GLenum kTextureMagFilter = 0x2800;
@@ -83,6 +85,7 @@ constexpr GLenum kRepeat = 0x2901;
 constexpr GLbitfield kColorBufferBit = 0x4000;
 constexpr GLenum kRgba8 = 0x8058;
 constexpr GLenum kClampToEdge = 0x812F;
+constexpr GLenum kNumExtensions = 0x821D;
 constexpr GLenum kTexture0 = 0x84C0;
 constexpr GLenum kArrayBuffer = 0x8892;
 constexpr GLenum kStreamDraw = 0x88E0;
@@ -98,6 +101,8 @@ constexpr GLenum kDrawFramebuffer = 0x8CA9;
 constexpr GLenum kFramebufferComplete = 0x8CD5;
 constexpr GLenum kColorAttachment0 = 0x8CE0;
 constexpr GLenum kFramebuffer = 0x8D40;
+constexpr GLenum kCompressedRgbaBptcUnorm = 0x8E8C; // EXT_texture_compression_bptc
+constexpr GLenum kCompressedRgbaAstc4x4 = 0x93B0;   // KHR_texture_compression_astc_ldr
 constexpr GLuint kInvalidIndex = 0xFFFFFFFF;
 } // namespace gl
 
@@ -121,6 +126,10 @@ constexpr GLuint kInvalidIndex = 0xFFFFFFFF;
     X(Clear, clear, void, (GLbitfield))                                                            \
     X(ClearColor, clear_color, void, (GLfloat, GLfloat, GLfloat, GLfloat))                         \
     X(CompileShader, compile_shader, void, (GLuint))                                               \
+    X(CompressedTexImage2D, compressed_tex_image_2d, void,                                         \
+      (GLenum, GLint, GLenum, GLsizei, GLsizei, GLint, GLsizei, const void*))                      \
+    X(CompressedTexSubImage2D, compressed_tex_sub_image_2d, void,                                  \
+      (GLenum, GLint, GLint, GLint, GLsizei, GLsizei, GLenum, GLsizei, const void*))               \
     X(CreateProgram, create_program, GLuint, ())                                                   \
     X(CreateShader, create_shader, GLuint, (GLenum))                                               \
     X(DeleteBuffers, delete_buffers, void, (GLsizei, const GLuint*))                               \
@@ -147,6 +156,7 @@ constexpr GLuint kInvalidIndex = 0xFFFFFFFF;
     X(GetShaderInfoLog, get_shader_info_log, void, (GLuint, GLsizei, GLsizei*, GLchar*))           \
     X(GetShaderiv, get_shaderiv, void, (GLuint, GLenum, GLint*))                                   \
     X(GetString, get_string, const GLubyte*, (GLenum))                                             \
+    X(GetStringi, get_stringi, const GLubyte*, (GLenum, GLuint))                                   \
     X(GetUniformBlockIndex, get_uniform_block_index, GLuint, (GLuint, const GLchar*))              \
     X(GetUniformLocation, get_uniform_location, GLint, (GLuint, const GLchar*))                    \
     X(LinkProgram, link_program, void, (GLuint))                                                   \
@@ -303,6 +313,7 @@ public:
         const auto* renderer = reinterpret_cast<const char*>(gl_.get_string(gl::kRenderer));
         renderer_ = renderer != nullptr ? renderer : "";
         gl_.get_integerv(gl::kMaxTextureSize, &max_texture_size_);
+        find_compressed_formats();
         gl_.get_integerv(gl::kUniformBufferOffsetAlignment, &uniform_alignment_);
         uniform_alignment_ = std::max(uniform_alignment_, 16);
 
@@ -363,38 +374,72 @@ public:
     [[nodiscard]] Backend backend() const override { return Backend::OpenGl; }
     [[nodiscard]] const std::string& renderer() const { return renderer_; }
 
+    [[nodiscard]] bool supports(TextureFormat format) const override {
+        return sampled_.at(static_cast<std::size_t>(format));
+    }
+
     Result<TextureId> create_texture(const TextureDesc& desc,
-                                     std::span<const std::uint8_t> rgba) override {
+                                     std::span<const std::uint8_t> texels) override {
         if (auto checked = check_texture_desc(desc); !checked) {
             return checked.error();
         }
-        if (auto checked = check_pixels(desc, rgba, true); !checked) {
+        if (auto checked = check_pixels(desc, texels, true); !checked) {
             return checked.error();
         }
+        // A format the GPU doesn't sample is kept as RGBA8.
+        TextureDesc stored = desc;
+        std::vector<std::uint8_t> decoded;
+        if (!supports(desc.format)) {
+            stored.format = TextureFormat::Rgba8;
+            auto pixels = decode_texels(desc.format, desc.width, desc.height, texels);
+            if (!pixels) {
+                return pixels.error();
+            }
+            decoded = std::move(pixels.value());
+            texels = decoded;
+        }
         make_current();
-        auto gl_texture = create_gl_texture(desc, rgba);
+        auto gl_texture = create_gl_texture(stored, texels);
         if (!gl_texture) {
             return gl_texture.error();
         }
         const auto id = static_cast<TextureId>(next_texture_++);
-        textures_[id] = Texture{.gl = gl_texture.value(), .framebuffer = 0, .desc = desc};
+        textures_[id] = Texture{
+            .gl = gl_texture.value(), .framebuffer = 0, .desc = desc, .stored = stored.format};
         return id;
     }
 
-    Result<void> update_texture(TextureId texture, std::span<const std::uint8_t> rgba) override {
+    Result<void> update_texture(TextureId texture, std::span<const std::uint8_t> texels) override {
         const auto it = textures_.find(texture);
         if (it == textures_.end()) {
             return unknown_texture(texture);
         }
-        if (auto checked = check_pixels(it->second.desc, rgba, false); !checked) {
+        const TextureDesc& desc = it->second.desc;
+        if (auto checked = check_pixels(desc, texels, false); !checked) {
             return checked;
+        }
+        std::vector<std::uint8_t> decoded;
+        if (it->second.stored != desc.format) {
+            auto pixels = decode_texels(desc.format, desc.width, desc.height, texels);
+            if (!pixels) {
+                return pixels.error();
+            }
+            decoded = std::move(pixels.value());
+            texels = decoded;
         }
         make_current();
         // Draws are sent at end_frame, so every draw of the frame being built sees the new pixels.
         gl_.bind_texture(gl::kTexture2D, it->second.gl);
-        gl_.tex_sub_image_2d(gl::kTexture2D, 0, 0, 0, static_cast<GLsizei>(it->second.desc.width),
-                             static_cast<GLsizei>(it->second.desc.height), gl::kRgba,
-                             gl::kUnsignedByte, rgba.data());
+        const auto width = static_cast<GLsizei>(desc.width);
+        const auto height = static_cast<GLsizei>(desc.height);
+        if (is_compressed(it->second.stored)) {
+            gl_.compressed_tex_sub_image_2d(gl::kTexture2D, 0, 0, 0, width, height,
+                                            gl_format(it->second.stored),
+                                            static_cast<GLsizei>(texels.size()), texels.data());
+        } else {
+            gl_.tex_sub_image_2d(gl::kTexture2D, 0, 0, 0, width, height, gl::kRgba,
+                                 gl::kUnsignedByte, texels.data());
+        }
         return check_errors("updating a texture");
     }
 
@@ -707,7 +752,9 @@ public:
         Stats stats = stats_;
         stats.textures = static_cast<std::uint32_t>(textures_.size());
         for (const auto& [id, texture] : textures_) {
-            stats.texture_bytes += texture_bytes(texture.desc);
+            TextureDesc stored = texture.desc;
+            stored.format = texture.stored;
+            stats.texture_bytes += texture_bytes(stored);
         }
         return stats;
     }
@@ -716,8 +763,43 @@ private:
     struct Texture {
         GLuint gl = 0;
         GLuint framebuffer = 0; // made the first time a frame draws into it
+        // As it was made, in the format update_texture takes.
         TextureDesc desc;
+        // The format on the GPU: desc's, or RGBA8 where the GPU doesn't sample that.
+        TextureFormat stored = TextureFormat::Rgba8;
     };
+
+    static GLenum gl_format(TextureFormat format) {
+        return format == TextureFormat::Bc7 ? gl::kCompressedRgbaBptcUnorm
+                                            : gl::kCompressedRgbaAstc4x4;
+    }
+
+    // Which compressed formats the context samples, by its extensions: OpenGL ES's names, or
+    // WebGL's, which Emscripten lists with and without "GL_" in front.
+    void find_compressed_formats() {
+        GLint count = 0;
+        gl_.get_integerv(gl::kNumExtensions, &count);
+        for (GLint i = 0; i < count; ++i) {
+            const auto* name = reinterpret_cast<const char*>(
+                gl_.get_stringi(gl::kExtensions, static_cast<GLuint>(i)));
+            if (name == nullptr) {
+                continue;
+            }
+            std::string_view extension(name);
+            if (extension.starts_with("GL_")) {
+                extension.remove_prefix(3);
+            }
+            if (extension == "EXT_texture_compression_bptc") {
+                sampled_.at(static_cast<std::size_t>(TextureFormat::Bc7)) = true;
+            }
+            if (extension == "KHR_texture_compression_astc_ldr" ||
+                extension == "WEBGL_compressed_texture_astc") {
+                sampled_.at(static_cast<std::size_t>(TextureFormat::Astc4x4)) = true;
+            }
+        }
+        // Reading past the list leaves an error the next check would report.
+        (void)gl_.get_error();
+    }
 
     struct Unit {
         GLuint texture = 0;
@@ -776,7 +858,9 @@ private:
                 .sampler = samplers_.at(sampler_index(found.desc.filter, repeat))};
     }
 
-    Result<GLuint> create_gl_texture(const TextureDesc& desc, std::span<const std::uint8_t> rgba) {
+    // A texture of desc's format, filled with texels in it or, for RGBA8, transparent black.
+    Result<GLuint> create_gl_texture(const TextureDesc& desc,
+                                     std::span<const std::uint8_t> texels) {
         const auto limit = static_cast<std::uint32_t>(std::max(max_texture_size_, 1));
         if (desc.width > limit || desc.height > limit) {
             return make_error(ErrorCode::InvalidArgument,
@@ -786,9 +870,9 @@ private:
         }
         // New GPU memory holds whatever was there before, so it starts as transparent black.
         std::vector<std::uint8_t> zeros;
-        if (rgba.empty()) {
-            zeros.resize(std::size_t{desc.width} * desc.height * 4);
-            rgba = zeros;
+        if (texels.empty()) {
+            zeros.resize(texture_bytes(desc));
+            texels = zeros;
         }
         GLuint texture = 0;
         gl_.gen_textures(1, &texture);
@@ -799,9 +883,15 @@ private:
         gl_.tex_parameteri(gl::kTexture2D, gl::kTextureMagFilter, filter);
         gl_.tex_parameteri(gl::kTexture2D, gl::kTextureWrapS, static_cast<GLint>(gl::kClampToEdge));
         gl_.tex_parameteri(gl::kTexture2D, gl::kTextureWrapT, static_cast<GLint>(gl::kClampToEdge));
-        gl_.tex_image_2d(gl::kTexture2D, 0, static_cast<GLint>(gl::kRgba8),
-                         static_cast<GLsizei>(desc.width), static_cast<GLsizei>(desc.height), 0,
-                         gl::kRgba, gl::kUnsignedByte, rgba.data());
+        const auto width = static_cast<GLsizei>(desc.width);
+        const auto height = static_cast<GLsizei>(desc.height);
+        if (is_compressed(desc.format)) {
+            gl_.compressed_tex_image_2d(gl::kTexture2D, 0, gl_format(desc.format), width, height, 0,
+                                        static_cast<GLsizei>(texels.size()), texels.data());
+        } else {
+            gl_.tex_image_2d(gl::kTexture2D, 0, static_cast<GLint>(gl::kRgba8), width, height, 0,
+                             gl::kRgba, gl::kUnsignedByte, texels.data());
+        }
         if (auto checked = check_errors("creating a " + std::to_string(desc.width) + "x" +
                                         std::to_string(desc.height) + " texture");
             !checked) {
@@ -1112,6 +1202,8 @@ private:
     Gl gl_;
     std::string renderer_;
     GLint max_texture_size_ = 0;
+    // Which formats the context samples, by TextureFormat.
+    std::array<bool, 3> sampled_{true, false, false};
     GLint uniform_alignment_ = 256;
     std::array<GLuint, 2> programs_{}; // by ShaderKind
     std::array<GLuint, 4> samplers_{}; // by sampler_index
