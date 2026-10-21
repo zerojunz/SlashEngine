@@ -73,17 +73,40 @@ enum class Filter : std::uint8_t {
     Nearest, // sharp texels, for pixel art
 };
 
+// How a texture's texels are stored. The compressed formats are blocks of 4x4 texels in 16 bytes,
+// which GPUs sample as they are, so they take a quarter of RGBA8's memory: BC7 on desktop GPUs,
+// ASTC on phones' and Apple's. Their textures are 4, 8, 12... texels wide and high.
+enum class TextureFormat : std::uint8_t {
+    Rgba8,   // straight-alpha RGBA, 4 bytes a texel
+    Bc7,     // BC7 (BPTC), RGBA
+    Astc4x4, // ASTC LDR, RGBA, in 4x4 blocks
+};
+
+// "rgba8", "bc7" or "astc_4x4".
+[[nodiscard]] std::string_view texture_format_name(TextureFormat format);
+// The format with this name, or nullopt.
+[[nodiscard]] std::optional<TextureFormat> parse_texture_format(std::string_view name);
+
+[[nodiscard]] constexpr bool is_compressed(TextureFormat format) noexcept {
+    return format != TextureFormat::Rgba8;
+}
+
 struct TextureDesc {
     std::uint32_t width = 0;
     std::uint32_t height = 0;
     Filter filter = Filter::Linear;
-    // Frames can draw into it and read_texture can read it back.
+    // Frames can draw into it and read_texture can read it back. Only RGBA8 textures can.
     bool render_target = false;
+    // The texels create_texture and update_texture take. A device that can't sample a
+    // compressed format (supports) decodes it, and keeps the texture as RGBA8.
+    TextureFormat format = TextureFormat::Rgba8;
 };
 
-// The bytes a texture's texels take: textures are RGBA8, with no mipmaps.
+// The bytes a texture's texels take: 4 a texel in RGBA8, 1 in the compressed formats. Textures
+// have no mipmaps.
 [[nodiscard]] constexpr std::uint64_t texture_bytes(const TextureDesc& desc) noexcept {
-    return std::uint64_t{desc.width} * desc.height * 4;
+    const std::uint64_t texels = std::uint64_t{desc.width} * desc.height;
+    return is_compressed(desc.format) ? texels : texels * 4;
 }
 
 // A texture a material samples in slot 1, 2 or 3.
@@ -200,6 +223,12 @@ struct Image {
     std::uint32_t width = 0;
     std::uint32_t height = 0;
     std::vector<std::uint8_t> pixels;
+    // The same texels compressed, when the file held them so (a .ktx2 file): blocks in
+    // block_format, which renderers upload in place of pixels where the device samples it.
+    // pixels holds them decoded, for everything else.
+    TextureFormat block_format = TextureFormat::Rgba8;
+    std::vector<std::uint8_t>
+        blocks{}; // NOLINT(readability-redundant-member-init): may be left out
 };
 
 struct Stats {
@@ -221,13 +250,17 @@ public:
 
     [[nodiscard]] virtual Backend backend() const = 0;
 
-    // A texture of desc's size, filled with rgba (width * height * 4 bytes) or transparent black.
+    // Whether the device samples textures of a format as they are. Every device takes every
+    // format; one it doesn't sample, it decodes to RGBA8 when the texture is made.
+    [[nodiscard]] virtual bool supports(TextureFormat format) const = 0;
+    // A texture of desc's size, filled with texels in desc's format (texture_bytes of them) or,
+    // for RGBA8, transparent black.
     [[nodiscard]] virtual Result<TextureId>
-    create_texture(const TextureDesc& desc, std::span<const std::uint8_t> rgba = {}) = 0;
-    // Replaces every pixel. Draws are sent at end_frame, so an update during a frame shows in
-    // all of that frame's draws, as in Godot.
+    create_texture(const TextureDesc& desc, std::span<const std::uint8_t> texels = {}) = 0;
+    // Replaces every texel, given in the texture's format. Draws are sent at end_frame, so an
+    // update during a frame shows in all of that frame's draws, as in Godot.
     [[nodiscard]] virtual Result<void> update_texture(TextureId texture,
-                                                      std::span<const std::uint8_t> rgba) = 0;
+                                                      std::span<const std::uint8_t> texels) = 0;
     virtual void destroy_texture(TextureId texture) = 0;
 
     // A game's shader for materials to draw with. Fails when the shader has no code for this

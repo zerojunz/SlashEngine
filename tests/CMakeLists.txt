@@ -63,6 +63,8 @@ add_executable(slash_tests
     test_test_run.cpp
     test_text.cpp
     test_text_edit.cpp
+    test_texture_forms.cpp
+    test_textures.cpp
     test_tilemap.cpp
     test_tree2d.cpp
     test_ui.cpp
@@ -76,7 +78,7 @@ add_executable(slash_tests
     test_world.cpp)
 target_link_libraries(slash_tests PRIVATE
     slash::ai slash::ai_commands slash::animation slash::asset slash::audio slash::bench slash::canvas slash::command slash::core slash::debug slash::exporter slash::importer slash::input slash::library slash::library_commands slash::physics2d
-    slash::platform slash::render slash::runtime slash::server slash::services slash::shader_compiler slash::soundtrack slash::soundtrack_commands slash::storyboard slash::text slash::ui slash::world doctest::doctest SDL3::SDL3-static
+    slash::platform slash::render slash::runtime slash::server slash::services slash::shader_compiler slash::soundtrack slash::soundtrack_commands slash::storyboard slash::text slash::texture_encoder slash::ui slash::world doctest::doctest SDL3::SDL3-static
     slash_httplib # a stand-in model server for the AI provider tests
     webp) # WebP textures for the Godot unpacking tests
 # doctest forward-declares std::ostream by default, which breaks string_view checks on recent

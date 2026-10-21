@@ -138,7 +138,13 @@ Result<std::unique_ptr<Game>> Game::start(const GameOptions& options) {
 }
 
 Game::Game(Project project, platform::Platform platform, const std::string& data_dir)
-    : project_(std::move(project)), data_dir_(data_dir), assets_(asset::folder_source(data_dir)),
+    : project_(std::move(project)), data_dir_(data_dir),
+      // An export ships textures as forms for its platform's GPUs: read the one this one samples.
+      assets_(canvas::with_texture_forms(asset::folder_source(data_dir),
+                                         [this](render::TextureFormat format) {
+                                             return renderer_ != nullptr &&
+                                                    renderer_->supports(format);
+                                         })),
       world_(components_), platform_(std::move(platform)) {
     // Before anything uses the job system's threads: physics makes its Box2D world on them.
     if (!jobs::configure(project_.max_threads)) {

@@ -429,7 +429,7 @@ rendering on top.
 
 Exit: an agent builds `samples/pong` end to end and exports it to all six platforms.
 
-### Milestone 6: Hot reload, AI and profiling (In progress)
+### Milestone 6: Hot reload, AI and profiling (Done)
 
 - [x] Gameplay as a C++ shared library that reloads on rebuild and keeps world state: a game's
       code in `project.json`'s `gameplay.sources`, registered with `SLASH_GAME_MODULE`, linked
@@ -503,7 +503,7 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
 - [x] Playtests and tuning sweeps: `playtest.run` runs many headless copies of a game at once,
       driven by simple scripted bots and each with different values (jump height, enemy speed),
       and returns a summary of the results per value
-- [ ] Asset library and generator, so agents reuse generated assets instead of making them again
+- [x] Asset library and generator, so agents reuse generated assets instead of making them again
       ([design](design.md#asset-library-and-generation))
   - [x] A library shared by every project on the machine: each asset stored once by content
         hash, with the request that made it, its generator, model, seed, license, tags and a short
@@ -514,7 +514,7 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
         request returns the stored asset with no model call
   - [x] Iteration: `asset.refine` makes a new version linked to its parent, so every asset keeps
         its history and can be rolled back
-  - [ ] Ready-to-use forms: imported and compressed for each platform once, then cached
+  - [x] Ready-to-use forms: imported and compressed for each platform once, then cached
   - [x] Feedback: agents record results with `asset.feedback`, by hand or automatically from
         the storyboard's palette and budget checks; feedback ranks search results, picks between
         candidates and is passed back into later prompts, with the storyboard's style
@@ -552,7 +552,7 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
   - [x] A music timeline: `run.until` and `playtest.run` report which clip played when and
         every transition, so agents can check the music follows the game
 
-### Milestone 7: 3D feature set (Planned)
+### Milestone 7: 3D feature set (Next)
 
 - [ ] Clustered forward+ renderer with PBR materials, plus a low-end path for web and mobile
 - [ ] Cascaded, omni and spot shadows
@@ -736,7 +736,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Navigation | Recast and Detour, 2D and 3D, avoidance | 7 | Planned |
 | Asset import | glTF 2.0, FBX, OBJ, PNG, JPG, KTX2, WAV, OGG, MP3, and `.blend` through the artist's own Blender | 7 | Planned |
 | Profiling | Tracy, plus `perf.stats` over the command API | 5, 6 | Done: Tracy, and `perf.stats` reports frame pacing, tick and system times and memory by part of the engine |
-| Asset generation and library | Generated assets saved once and shared by every project and teammate, searched before generating, ranked by agent feedback; 3D models as parametric recipes, cleaned-up generated meshes or imported files, combined into complex assets with variants, reviewed automatically | 6, 7 | In progress: the library, search, refining, hosted and test generators, feedback and team sharing done; ready-to-use forms next, 3D in 7 |
+| Asset generation and library | Generated assets saved once and shared by every project and teammate, searched before generating, ranked by agent feedback; 3D models as parametric recipes, cleaned-up generated meshes or imported files, combined into complex assets with variants, reviewed automatically | 6, 7 | In progress: the library, search, refining, hosted and test generators, feedback, team sharing and ready-to-use texture forms done; 3D in 7 |
 | Global illumination | Baked lightmaps and probe-based GI | 7 | Planned |
 | Ray tracing | Acceleration structures and ray queries in the render device on Vulkan, Direct3D 12 and Metal: ray-traced shadows, reflections, AO and GI, with raster and probe fallbacks | 7 | Planned |
 | Path tracing | A GPU path tracer for baked lightmaps and progressive reference stills | 7 | Planned |

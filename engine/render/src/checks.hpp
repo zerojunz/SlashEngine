@@ -17,10 +17,11 @@ using render::kMaxTextureSize;
 // The most vertices one frame can draw: 1.4 million triangles.
 inline constexpr std::size_t kMaxFrameVertices = std::size_t{1} << 22;
 
+// A size every GPU takes, and for a compressed format whole blocks and no render target.
 [[nodiscard]] Result<void> check_texture_desc(const TextureDesc& desc);
-// rgba must be empty (when allow_empty) or exactly width * height * 4 bytes.
-[[nodiscard]] Result<void> check_pixels(const TextureDesc& desc, std::span<const std::uint8_t> rgba,
-                                        bool allow_empty);
+// texels must be exactly texture_bytes(desc), or empty for an RGBA8 texture when allow_empty.
+[[nodiscard]] Result<void> check_pixels(const TextureDesc& desc,
+                                        std::span<const std::uint8_t> texels, bool allow_empty);
 // in_frame is how many vertices the frame has drawn so far.
 [[nodiscard]] Result<void> check_vertices(std::span<const Vertex2D> vertices, std::size_t in_frame);
 [[nodiscard]] Error unknown_texture(TextureId texture);

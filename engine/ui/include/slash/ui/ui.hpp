@@ -71,7 +71,7 @@ struct Settings {
 // wrong type keeps its value.
 void read_settings(const json::Value& gui, Settings& settings);
 
-// Asset types "theme" (.theme.json files as Theme) and "texture" (.png and .bmp files as
+// Asset types "theme" (.theme.json files as Theme) and "texture" (.png, .bmp and .ktx2 files as
 // render::Image), plus the font types (text::add_asset_types).
 void add_asset_types(asset::Assets& assets);
 
@@ -531,7 +531,7 @@ struct ThemeItems {
     std::map<std::string, int, std::less<>> constants;
     std::map<std::string, std::string, std::less<>> fonts; // "" is the default font
     std::map<std::string, int, std::less<>> font_sizes;
-    // A PNG or BMP file, a built-in icon ("builtin:checked"), or "" for none.
+    // A PNG, BMP or KTX2 file, a built-in icon ("builtin:checked"), or "" for none.
     std::map<std::string, std::string, std::less<>> icons;
     std::map<std::string, StyleBox, std::less<>> styles;
 };

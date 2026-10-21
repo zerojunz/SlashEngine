@@ -1,3 +1,4 @@
+#include "blocks.hpp"
 #include "devices.hpp"
 
 #include "slash/asset/assets.hpp"
@@ -145,7 +146,7 @@ TEST_CASE("images round-trip through PNG, and other bytes are refused") {
 
     auto bad = render::decode_image("GIF89a not really");
     REQUIRE_FALSE(bad.ok());
-    CHECK(bad.error().message.find("not a PNG or BMP image") != std::string::npos);
+    CHECK(bad.error().message.find("not a PNG, BMP or KTX2 image") != std::string::npos);
     CHECK_FALSE(render::encode_png(render::Image{}).ok());
 }
 
@@ -594,6 +595,64 @@ TEST_CASE("sprites draw where Godot would put them, in z order, on the software 
         CHECK(pixel(image.value(), 15, 44) == Rgba{0, 0, 255, 255}); // spans 8..16 at x = 12
         CHECK(pixel(image.value(), 17, 44) == Rgba{0, 0, 0, 255});
         CHECK(pixel(image.value(), 7, 44) == Rgba{0, 0, 0, 255});
+    }
+}
+
+TEST_CASE("sprites draw from KTX2 files, compressed where the device samples their blocks") {
+    // The drawing devices decode what they don't sample; the null device samples everything.
+    std::vector<std::unique_ptr<render::RenderDevice>> devices = drawing_devices();
+    devices.push_back(render::create_null_device());
+    const std::array<Rgba, 4> colors{
+        {{255, 1, 1, 255}, {1, 255, 1, 255}, {1, 1, 255, 255}, {201, 101, 51, 255}}};
+    for (const auto& device : devices) {
+        for (const render::TextureFormat format :
+             {render::TextureFormat::Bc7, render::TextureFormat::Astc4x4}) {
+            CAPTURE(slash::render::backend_name(device->backend()));
+            CAPTURE(render::texture_format_name(format));
+            Scene scene;
+            render::Image tile{.width = 8, .height = 8, .pixels = {}};
+            tile.block_format = format;
+            tile.blocks = slash::test::quadrant_blocks(format, colors);
+            scene.files.write("tile.ktx2", render::encode_ktx2(tile).value());
+            scene.create("tile", R"({"Transform2D": {"position": [8, 8]},
+                                 "Sprite2D": {"texture": "tile.ktx2",
+                                              "texture_filter": "nearest"}})");
+            auto target = device->create_texture({.width = 16,
+                                                  .height = 16,
+                                                  .filter = render::Filter::Nearest,
+                                                  .render_target = true});
+            REQUIRE(target.ok());
+            const std::uint64_t before = device->stats().texture_bytes;
+            canvas::CanvasRenderer renderer(*device, scene.assets);
+            canvas::CanvasOptions options;
+            options.target = target.value();
+            REQUIRE(renderer.draw(scene.world, options).ok());
+            CHECK(renderer.sprites_drawn() == 1);
+            CHECK(device->stats().texture_bytes - before == (device->supports(format) ? 64 : 256));
+            if (device->backend() != render::Backend::Null) {
+                auto image = device->read_texture(target.value());
+                REQUIRE(image.ok());
+                CHECK(pixel(image.value(), 5, 5) == colors[0]);
+                CHECK(pixel(image.value(), 10, 5) == colors[1]);
+                CHECK(pixel(image.value(), 5, 10) == colors[2]);
+                CHECK(pixel(image.value(), 10, 10) == colors[3]);
+            }
+
+            // The file changed to RGBA8 texels: the texture is made again, in that format.
+            render::Image plain{.width = 8, .height = 8, .pixels = {}};
+            for (std::size_t i = 0; i < 64; ++i) {
+                plain.pixels.insert(plain.pixels.end(), {0, 0, 0, 255});
+            }
+            scene.files.write("tile.ktx2", render::encode_ktx2(plain).value());
+            REQUIRE(scene.assets.poll().size() == 1);
+            REQUIRE(renderer.draw(scene.world, options).ok());
+            CHECK(device->stats().texture_bytes - before == 256);
+            if (device->backend() != render::Backend::Null) {
+                auto image = device->read_texture(target.value());
+                REQUIRE(image.ok());
+                CHECK(pixel(image.value(), 10, 10) == Rgba{0, 0, 0, 255});
+            }
+        }
     }
 }
 

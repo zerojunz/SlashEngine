@@ -198,6 +198,13 @@ slash_add_dependency(miniaudio DOWNLOAD_ONLY TRUE)
 # its one source file with the BSD queue.h it carries, the same on every platform.
 slash_add_dependency(libebur128 DOWNLOAD_ONLY TRUE)
 
+# Compressed textures, BC7 and ASTC 4x4, which GPUs sample as they are: engine/render builds the
+# decoders, bc7enc_rdo's bc7decomp.cpp and astc-encoder without its compressor, for devices that
+# can't sample a format (the software device, or a GPU without it). Tools and tests also build
+# the encoders, bc7enc.cpp and astc-encoder's compressor (slash::texture_encoder).
+slash_add_dependency(bc7enc_rdo DOWNLOAD_ONLY TRUE)
+slash_add_dependency(astc-encoder DOWNLOAD_ONLY TRUE)
+
 # Reading exported games back into projects (tools/importer): libwebp decodes the WebP images
 # Godot stores imported textures as, zstd the compressed GDScript tokens and resources, and brotli
 # Unity's compressed web builds. Tools only, decoders only: games never link them. The tests link

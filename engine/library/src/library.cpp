@@ -62,6 +62,17 @@ std::string temporary_name(const std::string& path) {
            std::to_string(stamp ^ thread) + "." + std::to_string(counter++) + ".tmp";
 }
 
+double rounded(double value) {
+    return std::round(value * 1000.0) / 1000.0;
+}
+
+std::string text_of(const json::Value& value, std::string_view key) {
+    const json::Value* member = value.find(key);
+    return member != nullptr && member->is_string() ? member->as_string() : std::string();
+}
+
+} // namespace
+
 Result<void> write_whole(const std::string& path, std::string_view contents) {
     const std::size_t slash = path.find_last_of('/');
     if (auto made = platform::create_directories(path.substr(0, slash)); !made) {
@@ -77,17 +88,6 @@ Result<void> write_whole(const std::string& path, std::string_view contents) {
     }
     return {};
 }
-
-double rounded(double value) {
-    return std::round(value * 1000.0) / 1000.0;
-}
-
-std::string text_of(const json::Value& value, std::string_view key) {
-    const json::Value* member = value.find(key);
-    return member != nullptr && member->is_string() ? member->as_string() : std::string();
-}
-
-} // namespace
 
 std::string default_dir() {
     if (std::string dir = platform::environment_variable(std::string(kDirVariable)); !dir.empty()) {

@@ -31,6 +31,10 @@ inline constexpr std::string_view kDirVariable = "SLASH_LIBRARY_DIR";
 // SLASH_LIBRARY_DIR, or ~/.slash/library; "" if neither the variable nor a home folder is set.
 [[nodiscard]] std::string default_dir();
 
+// Writes a file whole or not at all, making its folder: written beside it under a name no other
+// writer uses, then moved into place, so a reader sharing the library never sees half of one.
+[[nodiscard]] Result<void> write_whole(const std::string& path, std::string_view contents);
+
 // IDs in replies are the hash's first 12 hex digits; any unique prefix of 6 or more finds one.
 inline constexpr std::size_t kShortId = 12;
 inline constexpr std::size_t kMinIdPrefix = 6;

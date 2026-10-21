@@ -86,7 +86,7 @@ A reference must name an entity that exists in the same scene.
 | | `rotation` | `Quat` | `[0, 0, 0, 1]` | Unit quaternion [x, y, z, w]; each element from -1 to 1 |
 | | `scale` | `Vec3` | `[1, 1, 1]` | Scale factor on each axis |
 | `StoryRef` | `ids` | `std::vector<std::string>` | `[]` | The [storyboard](storyboard-format.md) entries this entity stands for, e.g. `["character/mira"]` |
-| `Sprite2D` | `texture` | `std::string` | `""` | Project path of a PNG or BMP file; `""` draws nothing |
+| `Sprite2D` | `texture` | `std::string` | `""` | Project path of a PNG, BMP or KTX2 file; `""` draws nothing |
 | | `centered` | `bool` | `true` | Center the texture on the position; `false` puts its top left corner there |
 | | `offset` | `Vec2` | `[0, 0]` | Moves the texture from the position, in pixels |
 | | `flip_h`, `flip_v` | `bool` | `false` | Mirror the texture left to right, or top to bottom, in place |
@@ -131,7 +131,7 @@ A reference must name an entity that exists in the same scene.
 | | `collision_enabled` | `bool` | `true` | Its tiles' [collision polygons](#tile-collision) make it a static body in 2D physics |
 | | `occlusion_enabled` | `bool` | `true` | Its tiles' [occluders](#tile-occluders-and-custom-data) cast shadows |
 | `PointLight2D` | `enabled` | `bool` | `true` | Shine |
-| | `texture` | `std::string` | `""` | Project path of a PNG or BMP file whose color and alpha shape the light; `""` is a soft round light 256 pixels across |
+| | `texture` | `std::string` | `""` | Project path of a PNG, BMP or KTX2 file whose color and alpha shape the light; `""` is a soft round light 256 pixels across |
 | | `texture_scale` | `float` | `1` | Scales the texture |
 | | `offset` | `Vec2` | `[0, 0]` | Moves the texture from the light, in pixels |
 | | `color` | `Vec4` | `[1, 1, 1, 1]` | The light's color, as [r, g, b, a] from 0 to 1 |
@@ -271,7 +271,7 @@ A reference must name an entity that exists in the same scene.
 | | `seed` | `int` | `0` | Varies the random values; the same seed and entity ID give the same particles |
 | | `local_coords` | `bool` | `false` | Particles live in the entity's coordinates and move with it; `false` leaves them where they were emitted |
 | | `draw_order` | `std::string` | `"index"` | `index` draws in emission slot order; `lifetime` draws the oldest first, so the youngest are on top |
-| | `texture` | `std::string` | `""` | Project path of a PNG or BMP file each particle draws, centered on it; `""` draws a white pixel |
+| | `texture` | `std::string` | `""` | Project path of a PNG, BMP or KTX2 file each particle draws, centered on it; `""` draws a white pixel |
 | | `texture_filter`, `z_index`, `z_as_relative`, `visible`, `material`, `material_params`, `light_mask` | | | As `Sprite2D`'s |
 | | `hframes`, `vframes` | `int` | `1` | Columns and rows of frames in the texture, for `anim_speed` and `anim_offset` |
 | | `anim_loop` | `bool` | `false` | Frames past the last start again from the first; `false` stays on the last |
@@ -306,7 +306,7 @@ A reference must name an entity that exists in the same scene.
 | | `amount` | `int` | `8` | Particles alive at most, 1 to 1000000: each cycle emits this many |
 | | `amount_ratio` | `float` | `1` | The share of `amount` it emits, 0 to 1 |
 | | `process_material` | `std::string` | `""` | Project path of a [`.process_material.json`](#process-materials) file: how particles start and move; `""` emits still white pixels |
-| | `texture` | `std::string` | `""` | Project path of a PNG or BMP file each particle draws, centered on it; `""` draws a white pixel |
+| | `texture` | `std::string` | `""` | Project path of a PNG, BMP or KTX2 file each particle draws, centered on it; `""` draws a white pixel |
 | | `lifetime` | `float` | `1` | Seconds each particle lives and each cycle lasts, from 0.001 |
 | | `interp_to_end` | `float` | `0` | Ages every particle toward the end of its life, 0 to 1 |
 | | `one_shot` | `bool` | `false` | Emit one cycle, then set `emitting` to false |
@@ -342,7 +342,7 @@ A reference must name an entity that exists in the same scene.
 | | `theme_override_constants` | `std::map<std::string, int>` | `{}` | Theme constants by name, e.g. `{"outline_size": 4}` |
 | | `theme_override_fonts` | `std::map<std::string, std::string>` | `{}` | Theme fonts by name: a `.ttf`, `.otf` or [`.font.json`](#fonts) file, e.g. `{"font": "fonts/title.ttf"}` |
 | | `theme_override_font_sizes` | `std::map<std::string, int>` | `{}` | Theme font sizes in pixels by name, 1 to 1024, e.g. `{"font_size": 32}` |
-| | `theme_override_icons` | `std::map<std::string, std::string>` | `{}` | Theme icons by name: a PNG or BMP file, a [built-in icon](#theme-items) such as `"builtin:checked"`, or `""` for none, e.g. `{"checked": "ui/tick.png"}` |
+| | `theme_override_icons` | `std::map<std::string, std::string>` | `{}` | Theme icons by name: a PNG, BMP or KTX2 file, a [built-in icon](#theme-items) such as `"builtin:checked"`, or `""` for none, e.g. `{"checked": "ui/tick.png"}` |
 | | `theme_override_styles` | `std::map<std::string, json>` | `{}` | Theme [style boxes](#style-boxes) by name, e.g. `{"panel": {"bg_color": [0.1, 0.1, 0.2, 1], "corner_radius": 8}}` |
 | | `theme` | `std::string` | `""` | A [`.theme.json`](#themes) file whose items it and its children use before the project's theme |
 | | `theme_type_variation` | `std::string` | `""` | A theme type to look its items up in before its own: a variation with a `base_type`, e.g. `"Header"` |
@@ -374,11 +374,11 @@ A reference must name an entity that exists in the same scene.
 | | `language` | `std::string` | `""` | The text's language as a BCP 47 tag, such as `"ar"`, `"ja"` or `"zh-Hant"`, which picks [fallback fonts](#fonts) and the glyphs a font has for it |
 | `ColorRect` | `color` | `Vec4` | `[1, 1, 1, 1]` | Fills the control's rect, as [r, g, b, a] from 0 to 1 |
 | `Panel` | | | | Draws the theme's `panel` style box in the control's rect |
-| `TextureRect` | `texture` | `std::string` | `""` | Project path of a PNG or BMP file drawn in the rect |
+| `TextureRect` | `texture` | `std::string` | `""` | Project path of a PNG, BMP or KTX2 file drawn in the rect |
 | | `expand_mode` | `std::string` | `"keep_size"` | Its minimum size: `keep_size` (the texture's), `ignore_size` (none), `fit_width` (the rect's height as its width), `fit_height` (its width as its height), or `fit_width_proportional` / `fit_height_proportional`, keeping the texture's aspect |
 | | `stretch_mode` | `std::string` | `"scale"` | How the texture fills the rect: `scale`, `tile`, `keep` (its own size), `keep_centered`, `keep_aspect` (scaled to fit inside), `keep_aspect_centered` or `keep_aspect_covered` (scaled to cover it, cut to the rect) |
 | | `flip_h`, `flip_v` | `bool` | `false` | Draw it mirrored left to right, or upside down |
-| `NinePatchRect` | `texture` | `std::string` | `""` | Project path of a PNG or BMP file, cut into nine parts |
+| `NinePatchRect` | `texture` | `std::string` | `""` | Project path of a PNG, BMP or KTX2 file, cut into nine parts |
 | | `region_rect` | `Vec4` | `[0, 0, 0, 0]` | The part of the texture to use, [x, y, width, height] in pixels; a zero size uses the whole texture |
 | | `patch_margin_left`, `_top`, `_right`, `_bottom` | `int` | `0` | Pixels of the texture on each side that keep their size; the sides stretch along, the middle both ways |
 | | `axis_stretch_horizontal`, `axis_stretch_vertical` | `std::string` | `"stretch"` | How the middle parts fill: `stretch`, `tile`, or `tile_fit` (tiles stretched to fit a whole number) |
@@ -409,7 +409,7 @@ A reference must name an entity that exists in the same scene.
 | | `rounded`, `allow_greater`, `allow_lesser` | `bool` | `false` | As `Slider`'s |
 | | `vertical` | `bool` | `false` | Godot's `VScrollBar`; otherwise an `HScrollBar` |
 | `Button` | `text` | `std::string` | `""` | The [button](#buttons)'s text; lines break at `"\n"` |
-| | `icon` | `std::string` | `""` | Project path of a PNG or BMP file drawn beside the text |
+| | `icon` | `std::string` | `""` | Project path of a PNG, BMP or KTX2 file drawn beside the text |
 | | `flat` | `bool` | `false` | Draw no style box, only the text and icon |
 | | `alignment` | `std::string` | `"center"` | The text's place across the button: `left`, `center` or `right` |
 | | `text_overrun_behavior` | `std::string` | `"no_trimming"` | Cut text wider than the button, as `Label`'s |
@@ -428,7 +428,7 @@ A reference must name an entity that exists in the same scene.
 | | `shortcut` | `std::vector<json>` | `[]` | What else presses it: [bindings](project-format.md#input-actions) such as `{"type": "key", "key": "S", "ctrl": true}`, or actions such as `{"type": "action", "action": "ui_cancel"}` |
 | | `shortcut_feedback` | `bool` | `true` | Draw it `hover_pressed` for 0.2 seconds when its shortcut presses it |
 | | `text_direction`, `language` | `std::string` | `"auto"`, `""` | As `Label`'s |
-| `TextureButton` | `texture_normal` | `std::string` | `""` | Project path of the PNG or BMP file it draws; its size is the button's minimum size |
+| `TextureButton` | `texture_normal` | `std::string` | `""` | Project path of the PNG, BMP or KTX2 file it draws; its size is the button's minimum size |
 | | `texture_pressed`, `texture_hover`, `texture_disabled` | `std::string` | `""` | Drawn instead in those states, when set |
 | | `texture_focused` | `std::string` | `""` | Drawn over the others while it shows focus |
 | | `ignore_texture_size` | `bool` | `false` | Need no space for the texture |
@@ -468,7 +468,7 @@ A reference must name an entity that exists in the same scene.
 | | `selecting_enabled` | `bool` | `true` | Text can be selected |
 | | `deselect_on_focus_loss_enabled` | `bool` | `true` | Losing focus drops the selection |
 | | `drag_and_drop_selection_enabled` | `bool` | `true` | The selection can be [dragged](#tooltips-and-drag-and-drop) elsewhere in the field or to another |
-| | `right_icon` | `std::string` | `""` | Project path of a PNG or BMP file drawn at the end |
+| | `right_icon` | `std::string` | `""` | Project path of a PNG, BMP or KTX2 file drawn at the end |
 | | `icon_expand_mode` | `std::string` | `"original_size"` | The right icon's size: `original_size`, `fit_to_text` (the font's height) or `fit_to_line_edit` (the field's height times `right_icon_scale`) |
 | | `right_icon_scale` | `float` | `1` | For `fit_to_line_edit` |
 | | `flat` | `bool` | `false` | Draw no style box |
@@ -805,6 +805,20 @@ inside the scene follow them, so `hero`'s `Transform2D` `children` are `hero/spr
   not a scene, and `prefab.save` refuses an instance of a scene.
 - Only a scene with a `"root"` can be instanced. The root must be an entity of its own, not one
   an instanced scene brings.
+
+## Textures
+
+Fields that name a texture take a PNG, BMP or KTX2 file. PNG and BMP files are RGBA8 texels. A
+KTX2 file holds texels the way GPUs take them: RGBA8 (Vulkan format 37 or 43), BC7 (145 or 146)
+or ASTC 4x4 (157 or 158), in one 2D level that is not supercompressed; only the first mip level
+is read. BC7 and ASTC take a byte a texel, a quarter of RGBA8's memory, in blocks of 4x4 texels,
+so their sides are multiples of 4.
+
+A device that samples a file's format gets its blocks as they are: BC7 on most desktop GPUs, and
+ASTC on phones, Apple GPUs and browsers with `WEBGL_compressed_texture_astc`. Any other device
+gets the texels decoded, exactly as the format specifies, so a texture looks the same everywhere;
+the software device behind `frame.capture` always decodes. `perf.stats` counts each texture's
+bytes in the form the device keeps it.
 
 ## Sprite frames
 
@@ -1169,7 +1183,7 @@ its tiles. `slash-cli schema tileset` prints the schema, `slash-cli scene valida
 | `occlusion_layers/<n>/light_mask` | No | Lights whose `shadow_item_cull_mask` shares a bit take shadows from its occluders; default `1` |
 | `custom_data_layers` | No | Values every tile has, as Godot's custom data layers, each with a `name` (unique in the file) and a `type`: `bool`, `int`, `float`, `string`, `vector2`, `vector2i` or `color` |
 | `sources` | Yes | Atlas sources by name, at least one |
-| `sources/<name>/texture` | Yes | Project path of a PNG or BMP file |
+| `sources/<name>/texture` | Yes | Project path of a PNG, BMP or KTX2 file |
 | `sources/<name>/normal_texture` | No | Project path of a normal map laid out as the texture, which [2D lights](#2d-lights) shade its tiles with, as a Godot `CanvasTexture`'s |
 | `sources/<name>/specular_texture` | No | Project path of a specular map laid out as the texture: highlight color and, in alpha, shininess. Needs a `normal_texture` |
 | `sources/<name>/specular_color` | No | Multiplies the specular map's color, as [r, g, b, a] from 0 to 1; default `[1, 1, 1, 1]` |
@@ -2664,7 +2678,7 @@ an object with a `type` and Godot's property names:
 | `shadow_color`, `shadow_size`, `shadow_offset` | flat | `[0, 0, 0, 0.6]`, `0`, `[0, 0]` | A shadow that fades out over `shadow_size` pixels |
 | `skew` | flat | `[0, 0]` | Slants it: an x of 1 moves the top edge right by half the height and the bottom edge left, a y of 1 the left edge down and the right edge up |
 | `anti_aliasing`, `anti_aliasing_size` | flat | `true`, `1` | Smooth the edges of rounded or skewed boxes over this many pixels |
-| `texture` | texture | | Project path of a PNG or BMP file |
+| `texture` | texture | | Project path of a PNG, BMP or KTX2 file |
 | `region_rect` | texture | `[0, 0, 0, 0]` | The part of the texture to use; a zero size uses all of it |
 | `texture_margin_left`, `_top`, `_right`, `_bottom` | texture | `0` | Pixels on each side that keep their size, as `NinePatchRect`'s |
 | `axis_stretch_horizontal`, `axis_stretch_vertical` | texture | `"stretch"` | `stretch`, `tile` or `tile_fit` |
