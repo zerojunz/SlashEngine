@@ -154,14 +154,14 @@ a lock.
 
 ## Asset library
 
-`engine/library` keeps generated and added images and sounds once per machine
+`engine/library` keeps generated and added images, sounds and music once per machine
 (`~/.slash/library`, or `SLASH_LIBRARY_DIR`; `SessionOptions::library_dir` in tests), stored by
 the SHA-256 of their bytes (`slash/core/sha256.hpp`) with a record of how each was made: request,
 generator, model, seed, license, tags, a short description and the parent it was refined from.
 Files are written whole and moved into place (`platform::rename_file`), so agents can share a
 library. Generators are `library::Generator` adapters named in `providers.json`'s `generators`,
-as models are `ai::Provider`s: `openai-image`, `gemini-image`, `automatic1111`, `openai-speech`
-and `elevenlabs-sound` (`src/adapters.cpp`, through `ai::post_with_retries`, with images fitted
+as models are `ai::Provider`s: `openai-image`, `gemini-image`, `automatic1111`, `openai-speech`,
+`elevenlabs-sound`, `elevenlabs-music` and `stability-audio` (`src/adapters.cpp`, through `ai::post_with_retries`, with images fitted
 to the size asked for by `fit_image`), and the built-in `test` generator, which draws
 placeholders with integer math only, so they are the same bytes everywhere. `asset.search`, `asset.generate` (an exact repeat
 calls no generator, close matches come back as candidates), `asset.refine`, `asset.info`,
@@ -184,6 +184,17 @@ the commands open it through `Libraries` in `src/commands.cpp` when they first n
 and answer exact repeats from it, bring assets the machine lacks from it, put what they make
 and the feedback they record there, and report a team that can't be used as `team_error`
 while working on the machine's library alone. `asset.sync` shares what was made before.
+
+Music is type `music`, a sound kept with its `bpm`, `beat_count`, `bar_beats` and `key`
+(`slash/library/music.hpp`): `describe_music` measures it with `audio::analyze`, keeping a
+composer's own facts and a generator's measured ones, and sets a tempo whose beats nearly fill
+the sound so whole beats do. `asset.generate` takes `bpm`, `key`, `bar_beats`, `loop` and a
+storyboard `theme` (its key, tempo, meter, instruments and mood); music services hear them in
+words added to the prompt, and the `test` generator plays a chord progression in whole bars with
+integer math. `asset.add` takes a composer's track with its `stems`, each a music record linked
+by `track`; using music writes its `.audio.json` settings beside it, and `asset.use` with
+`stems` lays the stems out with a synchronized stream, as `soundtrack.render` does.
+`examples/generated-music` generates a theme's music and adds a track with stems.
 
 ## Commands, MCP and JSON-RPC
 

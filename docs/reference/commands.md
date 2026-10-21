@@ -3784,8 +3784,8 @@ unknown model and `-32004` for the rest).
 
 ## Asset library
 
-Images and sounds kept once on the machine, so agents reuse them instead of generating them
-again. The library is `~/.slash/library`, or `SLASH_LIBRARY_DIR`; every project on the machine
+Images, sounds and music kept once on the machine, so agents reuse them instead of generating
+them again. The library is `~/.slash/library`, or `SLASH_LIBRARY_DIR`; every project on the machine
 searches the same one. Each asset is stored by the SHA-256 of its bytes, with how it was made (the
 request, generator, model and seed), its license, tags and a short description agents read
 instead of the file. IDs in replies are the hash's first 12 hex digits, and any unique start of 6
@@ -3801,10 +3801,44 @@ library, and records where it came from in the project's `library.json`:
 ```
 
 Generators come from the project's [`providers.json`](providers.md#generators): OpenAI and
-Gemini image models, a Stable Diffusion web UI on the machine, OpenAI's text to speech and
-ElevenLabs' sound effects. The built-in `test` generator makes placeholders with no model or key. Sessions that run tests write nothing
+Gemini image models, a Stable Diffusion web UI on the machine, OpenAI's text to speech,
+ElevenLabs' sound effects and music, and Stable Audio's music. The built-in `test` generator makes
+placeholders with no model or key. Sessions that run tests write nothing
 to the library. Registered by `slash-cli` and `slash-mcp`, running games included.
 [examples/asset-library](../../examples/asset-library/) has two projects sharing one library.
+
+#### Music
+
+Music is an asset of type `music`, a `.wav`, `.ogg` or `.mp3` file kept with its `bpm`,
+`beat_count`, `bar_beats` and `key`, so agents find a theme by its tempo and key and games time
+transitions by its beats. The library measures each piece with [`audio.analyze`](#audioanalyze):
+
+- Music a generator made keeps what it measures, and the tempo and key asked for only where it
+  measures none, or where its tempo is twice or half the one asked for. A reply's `problems`
+  says where they disagree, such as `"it measures 140 bpm, not the 100 bpm asked for"`.
+- A composer's track added with [`asset.add`](#assetadd) keeps the `bpm`, `key` and
+  `beat_count` its author gave, and `problems` says where the sound measures otherwise.
+- A tempo whose beats nearly fill the sound is set so whole beats fill it, so the music loops on
+  the beat.
+
+Copied into a project, music gets the [`.audio.json`](scene-format.md#audio-streams) settings
+that play it beside it (`music/harbor.wav` gets `music/harbor.audio.json`): its `source`, `bpm`,
+`beat_count`, `bar_beats` when not 4, and with `loop`, `"loop_mode": "forward"` for a `.wav`
+file or `"loop": true` for an `.ogg` or `.mp3` one. A settings file already there for the same
+source keeps its other fields. The reply lists the files written in `files`.
+
+A track can have stems, each music of its own as long as the mix, with the track's timing,
+author and license, the tag `stem` and `track`, the mix's ID. [`asset.use`](#assetuse) with
+`"stems": true` copies them into a folder named after the track (`music/boss/drums.wav` and
+its settings), and the track's settings become a stream that plays them together, as
+[`soundtrack.render`](#soundtrackrender) writes its stems:
+
+```json
+{"format": 1, "synchronized": [{"stream": "music/boss/drums.audio.json"}, {"stream": "music/boss/pads.audio.json"}]}
+```
+
+[examples/generated-music](../../examples/generated-music/) generates a theme's music and adds a
+composer's track with its stems.
 
 #### Team sharing
 
@@ -3844,7 +3878,7 @@ no `text`, every asset with the tags and type matches. Needs: `read`.
 | --- | --- | --- | --- |
 | `text` | string | | Words to find |
 | `tags` | string[] | | Tags every result must have |
-| `type` | string | both | `image` or `sound` |
+| `type` | string | every type | `image`, `sound` or `music` |
 | `limit` | integer | 10 | Most results, up to 50 |
 
 ```json
@@ -3855,9 +3889,12 @@ no `text`, every asset with the tags and type matches. Needs: `read`.
 {"assets":[{"description":"Red heart icon, 8x8","height":8,"id":"19b7f428aefb","score":1.0,"tags":["ui","health"],"type":"image","width":8}]}
 ```
 
+Music results have their `seconds`, `bpm`, `beat_count`, `bar_beats` and `key`, and a track the
+names of its `stems`.
+
 ### asset.generate
 
-Makes an image or a sound with a generator and keeps it. An exact repeat of an earlier request
+Makes an image, a sound or music with a generator and keeps it. An exact repeat of an earlier request
 (the same generator, model and params, apart from `description`, `tags`, `path`, `similar` and
 `context`) returns the stored asset with `"reused": true` and calls no model. Otherwise, when the
 library has assets of the type that score at least 0.75 for the prompt and were not rejected
@@ -3876,10 +3913,15 @@ result is recorded as the asset's feedback (source `storyboard.check`).
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `prompt` | string | required | What to make |
-| `type` | string | `image` | `image` or `sound` |
+| `type` | string | `image` | `image`, `sound` or `music` |
 | `generator` | string | the one that makes the type | A generator in `providers.json`, or `test` |
 | `width`, `height` | integer | the generator's | An image's size, 1 to 4096 pixels; one alone makes a square. What a service makes at another size is fitted to it |
-| `seconds` | number | the generator's | A sound's length |
+| `seconds` | number | the generator's | A sound's or music's length, up to 600 |
+| `bpm` | number | | Music: the tempo to ask for, 20 to 400 |
+| `key` | string | | Music: the key to ask for, such as `"D minor"`, `"F# major"` or `"Bbm"` |
+| `bar_beats` | integer | 4 | Music: beats per bar, 2 to 32 |
+| `loop` | boolean | false | Music: ask for a loop, and loop it in the settings written beside `path` |
+| `theme` | string | | Music: a storyboard [theme](storyboard-format.md#music), such as `"theme/harbor"`: its `key`, `tempo` and `bar_beats` where these params give none, its `instruments` and `mood` added to the prompt, and its ID added to the tags |
 | `seed` | integer | | For a repeatable result, where the generator takes one |
 | `description` | string | the prompt | A sentence for agents to read instead of the file |
 | `tags` | string[] | | Words to find it by |
@@ -3888,7 +3930,8 @@ result is recorded as the asset's feedback (source `storyboard.check`).
 | `context` | boolean | true | `false` sends the prompt alone, without the storyboard's style and notes from feedback |
 
 The reply has the `id`, the image's `width` and `height` or the sound's `seconds`, and `path`
-when it was copied:
+when it was copied; music's has its `bpm`, `beat_count`, `bar_beats` and `key`, and the
+settings file in `files` (see [music](#music)):
 
 ```json
 {"prompt": "green slime sprite", "generator": "test", "width": 32, "tags": ["enemy"], "path": "art/slime.png"}
@@ -3908,10 +3951,26 @@ A close request, from another project:
 {"candidates":[{"description":"green slime sprite","height":32,"id":"0b2fd1b5cf5a","score":1.0,"tags":["enemy"],"type":"image","width":32}]}
 ```
 
+Music in a storyboard theme (G major, 96 bpm, three beats to a bar):
+
+```json
+{"type": "music", "prompt": "The harbor at dawn.", "generator": "test", "theme": "theme/harbor", "seconds": 8, "path": "music/harbor.wav", "loop": true}
+```
+
+```json
+{"bar_beats":3,"beat_count":12,"bpm":96,"files":["music/harbor.audio.json"],"id":"9bcb8cd89a27","key":"G major","path":"music/harbor.wav","seconds":7.5}
+```
+
+Music services take the tempo, meter, key and loop in words added to the prompt (see
+[generators](providers.md#generators)).
+
 The `test` generator draws a box, or a circle or triangle when the prompt names something round
 or pointed, in the colors the prompt names, on a transparent background for a sprite, icon or
-cutout; its sounds are tones whose pitch, wave and sweep follow the prompt's words. Its license is
-`CC0-1.0`.
+cutout; its sounds are tones whose pitch, wave and sweep follow the prompt's words. Its music is a
+chord progression with a bass line, in the key asked for (A minor when the prompt has a word
+such as "dark", "sad", "tense" or "boss", C major otherwise), at the tempo asked for (120 bpm by
+default), in the whole bars nearest `seconds` (four by default), which loop on the beat. Its
+license is `CC0-1.0`.
 
 ### asset.refine
 
@@ -3925,6 +3984,7 @@ prompt. A repeat is reused as with `asset.generate`. The parent's generator is u
 | --- | --- | --- | --- |
 | `id` | string | required | The asset to change |
 | `prompt` | string | required | What to change |
+| `loop` | boolean | false | Music: loop it in the settings written beside `path` |
 
 ```json
 {"id": "0b2fd1b5", "prompt": "make it red", "description": "Red slime sprite", "path": "art/slime_red.png"}
@@ -3935,15 +3995,19 @@ prompt. A repeat is reused as with `asset.generate`. The parent's generator is u
 ```
 
 The `test` generator recolors an image to a color the prompt names, mirrors, darkens or lightens
-it, and makes a sound higher, lower, shorter, longer, louder, quieter or reversed; a prompt it
+it, and makes a sound higher, lower, shorter, longer, louder, quieter or reversed. Its own music
+it makes faster or slower (by a quarter), higher or lower (by a whole tone) and longer or shorter
+(twice or half the bars), keeping the meter; the music services don't refine music. A prompt it
 understands none of makes a variation.
 
 ### asset.info
 
 Returns an asset's whole record: `type`, `format`, `bytes`, size or length (`seconds`,
 `channels` and `sample_rate`), `description`, `tags`, the `request` its generator was asked,
-`generator`, `model`, `seed`, `license`, `author` and `parent`; then `versions`, every version
-before it, oldest first, and `children`, the versions made from it. Needs: `read`.
+`generator`, `model`, `seed`, `license`, `author` and `parent`; music's `bpm`, `beat_count`,
+`bar_beats` and `key`, a track's `stems` (`name` and `id` each) and a stem's `track`; then
+`versions`, every version before it, oldest first, and `children`, the versions made from it.
+Needs: `read`.
 
 ```json
 {"id": "833c6cd1"}
@@ -3958,7 +4022,15 @@ before it, oldest first, and `children`, the versions made from it. Needs: `read
 Copies an asset into the project and records it in `library.json`. The path keeps the asset's
 format: a `.png` stays a `.png`. An image is checked against the storyboard's palettes and
 budgets that cover the path, as with `asset.generate`'s `path`, and the reply lists any
-`problems`. Needs: `read`, `filesystem`.
+`problems`. Music gets its settings beside it, and with `stems` its stems as layers (see
+[music](#music)). Needs: `read`, `filesystem`.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `id` | string | required | The asset, or the start of its ID |
+| `path` | string | required | Where in the project |
+| `loop` | boolean | false | Music: loop it in its settings |
+| `stems` | boolean | false | Music: also copy its stems into a folder named after `path`, and make the settings play them together |
 
 ```json
 {"id": "19b7f428", "path": "ui/heart.png"}
@@ -3968,12 +4040,35 @@ budgets that cover the path, as with `asset.generate`'s `path`, and the reply li
 {"path":"ui/heart.png"}
 ```
 
+```json
+{"id": "bce0fcbc", "path": "music/boss.wav", "stems": true, "loop": true}
+```
+
+```json
+{"files":["music/boss/drums.wav","music/boss/drums.audio.json","music/boss/pads.wav","music/boss/pads.audio.json","music/boss.audio.json"],"path":"music/boss.wav"}
+```
+
 ### asset.add
 
 Adds a project's `.png`, `.bmp`, `.wav`, `.ogg` or `.mp3` file to the library, with its
 `description` (required), `tags`, `license` and `author`, and records it in `library.json`. A
-file the library already holds keeps its record, with the new tags added. Needs: `read`,
-`filesystem`.
+file the library already holds keeps its record, with the new tags added; a sound added again
+as music becomes music. Music is measured, keeping the facts its author gives (see
+[music](#music)), and a track comes with its stems. Needs: `read`, `filesystem`.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `path` | string | required | The file; a track's full mix |
+| `description` | string | required | A sentence for agents to read instead of the file |
+| `tags` | string[] | | Words to find it by |
+| `license` | string | | Its license, such as `CC0-1.0` |
+| `author` | string | | Who made it |
+| `type` | string | by the file | `music` for a track; `stems`, `bpm` and the rest imply it |
+| `bpm` | number | measured | Music: its tempo, as its author gives it |
+| `key` | string | measured | Music: its key, such as `"D minor"` |
+| `bar_beats` | integer | 4 | Music: beats per bar |
+| `beat_count` | integer | the whole beats in it | Music: its length in beats |
+| `stems` | object | | Music: its stems by name (lowercase letters, digits, `_` and `-`), each a sound file within a second of the mix's length, such as `{"drums": "music/stems/drums.wav"}`; up to 32 |
 
 ```json
 {"path": "ui/heart.png", "description": "Red heart icon, 8x8", "tags": ["ui", "health"], "license": "CC-BY-4.0", "author": "Mira"}
@@ -3981,6 +4076,14 @@ file the library already holds keeps its record, with the new tags added. Needs:
 
 ```json
 {"height":8,"id":"19b7f428aefb","type":"image","width":8}
+```
+
+```json
+{"path": "delivery/boss.wav", "description": "Boss fight, drums and pads.", "author": "Ana", "license": "CC-BY-4.0", "bpm": 140, "key": "E minor", "stems": {"drums": "delivery/boss_drums.wav", "pads": "delivery/boss_pads.wav"}}
+```
+
+```json
+{"beat_count":16,"bpm":140,"id":"bce0fcbcf493","key":"E minor","seconds":6.857,"stems":["drums","pads"],"type":"music"}
 ```
 
 ### asset.feedback
