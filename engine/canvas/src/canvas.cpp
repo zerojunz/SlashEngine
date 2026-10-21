@@ -12,12 +12,15 @@
 #include "slash/ui/ui.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <memory>
 #include <set>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -149,6 +152,45 @@ struct AnimationState {
 };
 
 } // namespace
+
+asset::FileSource with_texture_forms(const asset::FileSource& files,
+                                     std::function<bool(render::TextureFormat)> samples) {
+    using render::TextureFormat;
+    // The form to read in place of path, or "" to read path itself.
+    auto form_of = [files, samples = std::move(samples)](std::string_view path) -> std::string {
+        if ((!path.ends_with(".png") && !path.ends_with(".bmp") && !path.ends_with(".ktx2")) ||
+            files.stamp(path)) {
+            return {};
+        }
+        constexpr std::array<TextureFormat, 2> kCompressed{TextureFormat::Bc7,
+                                                           TextureFormat::Astc4x4};
+        std::vector<TextureFormat> order;
+        for (const TextureFormat format : kCompressed) {
+            if (samples(format)) {
+                order.push_back(format);
+            }
+        }
+        order.push_back(TextureFormat::Rgba8);
+        order.insert(order.end(), kCompressed.begin(), kCompressed.end());
+        for (const TextureFormat format : order) {
+            std::string form = render::texture_form_path(path, format);
+            if (files.stamp(form)) {
+                return form;
+            }
+        }
+        return {};
+    };
+    return {
+        .read = [files, form_of](std::string_view path) -> Result<std::string> {
+            const std::string form = form_of(path);
+            return files.read(form.empty() ? path : form);
+        },
+        .stamp = [files, form_of](std::string_view path) -> std::optional<asset::FileStamp> {
+            const std::string form = form_of(path);
+            return files.stamp(form.empty() ? path : form);
+        },
+    };
+}
 
 void add_asset_types(asset::Assets& assets) {
     // A texture's decoded texels; renderers keep a copy on the GPU too (perf.stats' gpu).

@@ -41,7 +41,7 @@ foreach(name IN LISTS examples)
     if(EXISTS ${dir}/main.cpp)
         add_executable(example-${name} ${name}/main.cpp)
         target_link_libraries(example-${name} PRIVATE
-            slash::ai slash::ai_commands slash::animation slash::audio slash::canvas slash::command slash::core slash::debug slash::gameplay slash::importer slash::input slash::library_commands
+            slash::ai slash::ai_commands slash::animation slash::audio slash::canvas slash::command slash::core slash::debug slash::exporter slash::gameplay slash::importer slash::input slash::library_commands
             slash::physics2d slash::platform slash::render slash::services slash::shader_compiler slash::text slash::ui slash::world
             slash_httplib) # stand-in servers, such as ai-provider's model
         # The same output on every platform: no fused multiply-adds, which arm64 compilers
@@ -50,7 +50,6 @@ foreach(name IN LISTS examples)
             $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>)
         slash_target_warnings(example-${name})
         if(gameplay)
-            target_link_libraries(example-${name} PRIVATE slash::exporter)
             slash_gameplay_host(example-${name})
         endif()
         set(program -DPROGRAM=$<TARGET_FILE:example-${name}>)

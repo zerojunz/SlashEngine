@@ -13,6 +13,8 @@
 
 #include <array>
 #include <cstdint>
+#include <functional>
+#include <map>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -27,7 +29,8 @@
 //
 // Optional fields: "id" (reverse-DNS identifier for bundles and stores), "version"
 // ("major.minor.patch"), "window" ({"width", "height", "vsync_mode"}), "tick_hz", "max_fps",
-// "rendering" ({"clear_color", "driver", "texture_filter", "interpolation", "scaling"}),
+// "rendering" ({"clear_color", "driver", "texture_filter", "interpolation", "scaling",
+// "textures"}),
 // "physics_2d",
 // "gui" ({"theme"}), "input" (actions by name), "input_devices" ({"pointing"}), "audio"
 // ({"bus_layout", "mix_rate", "output_latency", "panning_strength_2d"}), "services" (ad
@@ -37,6 +40,18 @@ namespace slash::runtime {
 
 inline constexpr std::string_view kProjectFile = "project.json";
 inline constexpr std::int64_t kProjectFormat = 1;
+
+// How exports ship textures, as Godot's texture import compress/mode: "lossless" as the file is,
+// "vram_compressed" as BC7 or ASTC 4x4 blocks for each platform's GPUs, or "vram_uncompressed" as
+// RGBA8 texels ready for the GPU.
+struct TextureImport {
+    std::string compress_mode = "lossless";
+    // Modes for folders ("ui/") and files, the longest that holds a texture winning.
+    std::map<std::string, std::string, std::less<>> paths;
+
+    // The mode for a texture's project path.
+    [[nodiscard]] std::string_view mode_for(std::string_view path) const;
+};
 
 struct Project {
     std::string name;
@@ -60,6 +75,8 @@ struct Project {
     std::string rendering_driver = "auto";
     // The render scale and how the world scales to the screen, as Godot's scaling_3d.
     render::Scaling scaling;
+    // How exports ship textures.
+    TextureImport texture_import;
     // Gravity and default damping for 2D physics.
     physics2d::Settings physics_2d;
     // A .theme.json file every control uses after its own themes, as Godot's gui/theme/custom;

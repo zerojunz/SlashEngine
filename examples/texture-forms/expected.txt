@@ -1,0 +1,10 @@
+--- the forms a desktop, a phone and the web ship, made and cached
+texture.forms {"platforms":["linux","android","web"]}
+{"made":2,"platforms":{"android":{"bytes":2100,"gpu_bytes":2192},"linux":{"bytes":2100,"gpu_bytes":2192},"web":{"bytes":3284,"gpu_bytes":2192}},"textures":[{"bytes":2882,"forms":[{"bytes":1184,"cached":false,"format":"bc7","gpu_bytes":1024,"psnr":39},{"bytes":1184,"cached":false,"format":"astc_4x4","gpu_bytes":1024,"psnr":40}],"mode":"vram_compressed","path":"sprites/hero.png","size":[32,32]},{"bytes":174,"forms":[],"mode":"vram_compressed","note":"its sides, 6x6, aren't multiples of 4, as BC7 and ASTC 4x4 blocks need, so it ships as it is","path":"sprites/spark.png","size":[6,6]},{"bytes":742,"forms":[],"mode":"lossless","path":"ui/icon.png","size":[16,16]}]}
+--- the next time, read from the cache
+texture.forms {"paths":["sprites/hero.png"],"platforms":["web"]}
+{"made":0,"platforms":{"web":{"bytes":2368,"gpu_bytes":1024}},"textures":[{"bytes":2882,"forms":[{"bytes":1184,"cached":true,"format":"bc7","gpu_bytes":1024,"psnr":39},{"bytes":1184,"cached":true,"format":"astc_4x4","gpu_bytes":1024,"psnr":40}],"mode":"vram_compressed","path":"sprites/hero.png","size":[32,32]}]}
+--- a game reads the form its GPU samples
+a desktop GPU reads sprites/hero.png as bc7 blocks
+a phone GPU reads sprites/hero.png as astc_4x4 blocks
+a GPU with neither reads sprites/hero.png as bc7 blocks
