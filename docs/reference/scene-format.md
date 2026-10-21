@@ -1802,8 +1802,7 @@ sparks and snow.
   it. Changing `amount` starts it over.
 - Particles are not saved: scenes, snapshots, [`undo`](commands.md#undo), dry runs and failed
   commands leave them as they are.
-- Sub-emitters, trails, collisions, turbulence and attractors are on the
-  [roadmap](../roadmap.md).
+- Sub-emitters, trails, collisions and attractors are on the [roadmap](../roadmap.md).
 
 ### Process materials
 
@@ -1853,7 +1852,9 @@ names and Godot's defaults, except `gravity`: `[0, 98]`, as Godot gives a proces
 | `hue_variation_min`, `_max` | `0` | Turns its hue by this fraction of the color wheel, -1 to 1 |
 | `anim_speed_min`, `_max` | `0` | Times its frames play over its life, from 0 |
 | `anim_offset_min`, `_max` | `0` | The frame it starts on, as a fraction of the frames, 0 to 1 |
-| `*_curve` | `[]` | Each parameter but `initial_velocity` has one: points `[offset, value]` that multiply it over each particle's life (`anim_offset_curve` adds), offsets from 0 to 1 in order, joined by straight lines |
+| `turbulence_influence_min`, `_max` | `0.1` | How far turbulence turns its velocity, 0 to 1 |
+| `turbulence_initial_displacement_min`, `_max` | `0` | Pixels turbulence moves it where it starts, times the noise direction's length (a tenth of `turbulence_noise_strength`, as Godot's) |
+| `*_curve` | `[]` | Each parameter but `initial_velocity` and `turbulence_initial_displacement` has one (`turbulence_influence_over_life` for turbulence): points `[offset, value]` that multiply it over each particle's life (`anim_offset_curve` adds), offsets from 0 to 1 in order, joined by straight lines |
 | `velocity_limit_curve` | `[]` | The fastest a particle moves over its life, in pixels per second |
 | `alpha_curve` | `[]` | Multiplies alpha over its life |
 | `emission_curve` | `[]` | Brightens it over its life: its color times 1 plus this |
@@ -1863,6 +1864,18 @@ names and Godot's defaults, except `gravity`: `[0, 98]`, as Godot gives a proces
 | `lifetime_randomness` | `0` | Shortens each particle's life by up to this fraction, 0 to 1 |
 | `particle_flag_align_y` | `false` | Turn each particle so its y axis points along its velocity |
 | `particle_flag_damping_as_friction` | `false` | Damping grows with speed, as friction |
+| `turbulence_enabled` | `false` | Turn particles along moving curl noise, as Godot's turbulence |
+| `turbulence_noise_strength` | `1` | How sharply the noise turns, 0 to 20 |
+| `turbulence_noise_scale` | `9` | The noise's size, Godot's slider: swirls about 1 / (4 - scale^0.25 × 2.249) pixels across, so 9 makes them 10 pixels and 9.8 about 50; 10 has none |
+| `turbulence_noise_speed` | `[0, 0, 0]` | How the noise moves per second, as `[x, y, z]` |
+| `turbulence_noise_speed_random` | `0.2` | How fast the noise changes as it moves, 0 to 4 |
+
+Turbulence is Godot's: each step a particle's velocity, built up and controlled, turns towards
+the curl of 4D gradient noise at its position by its `turbulence_influence`, keeping its speed
+(the part turned out of the screen still counts toward it). The noise moves with the time since
+the emitter started over, back to 0 every hour, where Godot's moves with the engine's clock;
+its lattice gradients come from an integer hash of each point rather than Godot's fractions of
+float products, so every device and the CPU make the same noise.
 
 ## UI and text
 

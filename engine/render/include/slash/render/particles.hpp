@@ -54,6 +54,8 @@ enum class ParticleParam : std::uint8_t {
     AnimSpeed,    // sprite sheet frames per lifetime
     AnimOffset,   // where in the sheet it starts, from 0 to 1; its curve adds instead
     RadialVelocity,
+    TurbulenceInfluence,    // how far turbulence turns its velocity, from 0 to 1
+    TurbulenceDisplacement, // pixels turbulence moves it at the start; no curve
     Count
 };
 inline constexpr std::size_t kParticleParams = static_cast<std::size_t>(ParticleParam::Count);
@@ -89,9 +91,9 @@ struct ParticleProcess {
     float inherit_velocity_ratio = 0.0F; // of the emitter's velocity, added at the start
     Vec2 velocity_pivot;                 // what radial velocity pushes away from
     Vec2 gravity{0.0F, 98.0F};
-    // By ParticleParam. Scale is 1, the rest 0.
-    std::array<float, kParticleParams> param_min{0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0};
-    std::array<float, kParticleParams> param_max{0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0};
+    // By ParticleParam. Scale is 1 and TurbulenceInfluence 0.1, the rest 0.
+    std::array<float, kParticleParams> param_min{0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0.1F, 0};
+    std::array<float, kParticleParams> param_max{0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0.1F, 0};
     // Each multiplies its parameter over the particle's life; InitialVelocity's is unused.
     std::array<ParticleCurve, kParticleParams> param_curve;
     ParticleCurve velocity_limit_curve; // the fastest a particle moves
@@ -103,6 +105,14 @@ struct ParticleProcess {
     float lifetime_randomness = 0.0F;    // shortens lifetimes by up to this fraction
     bool align_y = false;                // the particle's y axis along its velocity
     bool damping_as_friction = false;    // damping grows with the speed squared
+    // Turbulence, as Godot's: curl noise that turns each particle's velocity by its
+    // TurbulenceInfluence and moves it by its TurbulenceDisplacement at the start. Godot's
+    // noise, with its lattice gradients from an integer hash so every device makes the same.
+    bool turbulence_enabled = false;
+    float turbulence_noise_strength = 1.0F;     // how sharply the noise turns, 0 to 20
+    float turbulence_noise_scale = 9.0F;        // Godot's slider: higher is larger swirls
+    Vec3 turbulence_noise_speed;                // how the noise moves per second of particle time
+    float turbulence_noise_speed_random = 0.2F; // how fast the noise changes as it moves
 
     bool operator==(const ParticleProcess&) const = default;
 };
@@ -123,6 +133,9 @@ struct ParticleStep {
     float randomness = 0.0F;
     float amount_ratio = 1.0F;
     float interp_to_end = 0.0F;
+    // Seconds of particle time since the system started over after the step, back to 0 every
+    // hour, as Godot's TIME rolls over: what turbulence moves with.
+    float time = 0.0F;
     std::uint32_t cycle = 0; // emission cycles before this one
     std::uint32_t seed = 0;
     bool emitting = true;
@@ -147,8 +160,9 @@ struct Particle {
     // Godot's CUSTOM: its angle in radians, its age as a fraction of the system's lifetime, its
     // sprite sheet frame from 0 to 1, and its own lifetime as a fraction of the system's.
     Vec4 custom;
-    // Godot's USERDATA1: the velocity its forces built up [x, y], unused, and the angle its
-    // angular velocity built up.
+    // Godot's USERDATA1: the velocity its forces built up [x, y, z] (turbulence turns it out of
+    // the screen's plane, where it keeps pulling on its speed), and the angle its angular
+    // velocity built up.
     Vec4 userdata;
     std::uint32_t flags = 0;
     std::array<std::uint32_t, 3> padding{};
@@ -195,6 +209,10 @@ void particle_vertices(std::span<const Particle> particles, const ParticleDraw& 
 // The slot the oldest particle is in, for drawing in lifetime order, when the emission cycle is at
 // phase, as Godot's particles storage works it out.
 [[nodiscard]] std::uint32_t particle_lifetime_split(std::uint32_t amount, double phase);
+
+// The noise frequency a turbulence_noise_scale gives, as Godot's set_turbulence_noise_scale
+// works it out, with square roots for its fourth roots so every machine gets the same.
+[[nodiscard]] float turbulence_frequency(float noise_scale);
 
 // The value of a curve at an offset, or fallback when it has no points.
 [[nodiscard]] float sample_curve(const ParticleCurve& curve, float offset, float fallback);

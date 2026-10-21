@@ -3578,26 +3578,31 @@ private:
         const std::string where = resource_where(material, file);
         static constexpr std::array<std::string_view, 7> kShapes{
             "point", "sphere", "sphere_surface", "box", "points", "directed_points", "ring"};
-        static constexpr std::array<std::string_view, 13> kParams{"initial_velocity",
-                                                                  "angular_velocity",
-                                                                  "orbit_velocity",
-                                                                  "radial_velocity",
-                                                                  "linear_accel",
-                                                                  "radial_accel",
-                                                                  "tangential_accel",
-                                                                  "damping",
-                                                                  "angle",
-                                                                  "scale",
-                                                                  "hue_variation",
-                                                                  "anim_speed",
-                                                                  "anim_offset"};
+        static constexpr std::array<std::string_view, 15> kParams{
+            "initial_velocity",
+            "angular_velocity",
+            "orbit_velocity",
+            "radial_velocity",
+            "linear_accel",
+            "radial_accel",
+            "tangential_accel",
+            "damping",
+            "angle",
+            "scale",
+            "hue_variation",
+            "anim_speed",
+            "anim_offset",
+            "turbulence_influence",
+            "turbulence_initial_displacement"};
         static constexpr std::array<std::string_view, 5> kVectors{
             "emission_shape_offset", "emission_shape_scale", "emission_box_extents", "direction",
             "velocity_pivot"};
-        static constexpr std::array<std::string_view, 6> kNumbers{
-            "emission_sphere_radius",     "emission_ring_radius",
-            "emission_ring_inner_radius", "spread",
-            "inherit_velocity_ratio",     "lifetime_randomness"};
+        static constexpr std::array<std::string_view, 9> kNumbers{
+            "emission_sphere_radius",       "emission_ring_radius",
+            "emission_ring_inner_radius",   "spread",
+            "inherit_velocity_ratio",       "lifetime_randomness",
+            "turbulence_noise_strength",    "turbulence_noise_scale",
+            "turbulence_noise_speed_random"};
         // What a 2D game can't see, or what particles do without.
         static constexpr std::array<std::string_view, 9> kIgnored{"resource_local_to_scene",
                                                                   "resource_name",
@@ -3647,18 +3652,23 @@ private:
                        value.is_number()) {
                 out[name] = value.number();
             } else if ((name == "particle_flag_align_y" ||
-                        name == "particle_flag_damping_as_friction") &&
+                        name == "particle_flag_damping_as_friction" ||
+                        name == "turbulence_enabled") &&
                        value.kind == Value::Kind::Bool) {
                 out[name] = value.boolean;
+            } else if (name == "turbulence_noise_speed" && vector && vector->size() == 3) {
+                out[name] = json::Array{vector->at(0), vector->at(1), vector->at(2)};
             } else if (name == "color" && vector && vector->size() == 4) {
                 out[name] = json::Array{vector->at(0), vector->at(1), vector->at(2), vector->at(3)};
-            } else if (name.ends_with("_curve") &&
-                       (name == "velocity_limit_curve" || name == "alpha_curve" ||
-                        name == "emission_curve" ||
-                        std::ranges::any_of(kParams, [&](std::string_view param) {
-                            return param != "initial_velocity" &&
-                                   name == std::string(param) + "_curve";
-                        }))) {
+            } else if (name == "turbulence_influence_over_life" ||
+                       (name.ends_with("_curve") &&
+                        (name == "velocity_limit_curve" || name == "alpha_curve" ||
+                         name == "emission_curve" ||
+                         std::ranges::any_of(kParams, [&](std::string_view param) {
+                             return param != "initial_velocity" &&
+                                    !param.starts_with("turbulence_") &&
+                                    name == std::string(param) + "_curve";
+                         })))) {
                 const Value* curve = texture_resource(value, "CurveTexture", "curve");
                 if (curve == nullptr) {
                     problems_.add("ParticleProcessMaterial." + name, where,
@@ -3685,13 +3695,11 @@ private:
                                   "points in a texture don't convert; list them as "
                                   "emission_points");
                 }
-            } else if ((name == "turbulence_enabled" && value.boolean) ||
-                       (name == "collision_mode" && value.integer != 0) ||
+            } else if ((name == "collision_mode" && value.integer != 0) ||
                        (name == "sub_emitter_mode" && value.integer != 0)) {
                 problems_.add("ParticleProcessMaterial." + name, where,
-                              "turbulence, collisions and sub-emitters are on the roadmap");
-            } else if (name.starts_with("turbulence_") || name.starts_with("collision_") ||
-                       name.starts_with("sub_emitter_")) {
+                              "collisions and sub-emitters are on the roadmap");
+            } else if (name.starts_with("collision_") || name.starts_with("sub_emitter_")) {
                 continue; // their settings, with them off
             } else {
                 problems_.add("ParticleProcessMaterial." + name, where);

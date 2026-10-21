@@ -21,14 +21,14 @@ static const float kDegreesToRadians = kPi / 180.0;
 
 // Where the process material's parts are, in words (src/particle_layout.hpp).
 static const uint kCurveWords = 16u;
-static const uint kCurvesAt = 20u;
-static const uint kGradientsAt = 276u;
+static const uint kCurvesAt = 23u;
+static const uint kGradientsAt = 311u;
 static const uint kGradientWords = 40u;
-static const uint kPointsAt = 356u;
+static const uint kPointsAt = 391u;
 // Curves after the parameters'.
-static const uint kVelocityLimitCurve = 13u;
-static const uint kAlphaCurve = 14u;
-static const uint kEmissionCurve = 15u;
+static const uint kVelocityLimitCurve = 15u;
+static const uint kAlphaCurve = 16u;
+static const uint kEmissionCurve = 17u;
 
 // EmissionShape and ParticleParam.
 static const uint kShapePoint = 0u;
@@ -51,6 +51,8 @@ static const uint kHueVariation = 9u;
 static const uint kAnimSpeed = 10u;
 static const uint kAnimOffset = 11u;
 static const uint kRadialVelocity = 12u;
+static const uint kTurbulenceInfluence = 13u;
+static const uint kTurbulenceDisplacement = 14u;
 
 struct Step {
     float4 emission_a; // emission[0..3]
@@ -64,6 +66,7 @@ struct Step {
     float randomness;
     float amount_ratio;
     float interp_to_end;
+    float time;
     uint cycle;
     uint seed;
     bool emitting;
@@ -87,6 +90,7 @@ struct Dynamics {
     float initial_velocity;
     float radial_velocity;
     float orbit_velocity;
+    float turbulence_influence;
 };
 
 struct Physical {
@@ -116,10 +120,27 @@ float mix(float a, float b, float t) {
     return (a * (1.0 - t)) + (b * t);
 }
 
+float2 mix(float2 a, float2 b, float t) {
+    return (a * (1.0 - t)) + (b * t);
+}
+
+float3 mix(float3 a, float3 b, float t) {
+    return (a * (1.0 - t)) + (b * t);
+}
+
+float4 mix(float4 a, float4 b, float t) {
+    return (a * (1.0 - t)) + (b * t);
+}
+
 // v made a unit vector, or zero for zero.
 float2 safe_normalize(float2 v) {
     float l = sqrt(dot(v, v));
     return l > 0.0 ? v / l : float2(0.0, 0.0);
+}
+
+float3 safe_normalize(float3 v) {
+    float l = sqrt(dot(v, v));
+    return l > 0.0 ? v / l : float3(0.0, 0.0, 0.0);
 }
 
 float2 transform_point(Step step, float2 p) {
@@ -155,6 +176,82 @@ float rand_from_seed(inout uint seed) {
 
 float rand_m1_p1(inout uint seed) {
     return (rand_from_seed(seed) * 2.0) - 1.0;
+}
+
+// ---- Turbulence: the noise ParticleProcessMaterial generates for it. The CPU twin says how its
+// gradients differ from Godot's.
+
+bool turbulence_enabled() {
+    return word_uint(21u, 3u) != 0u;
+}
+
+// 16 bits as a number from -1 to 1, exactly on every device.
+float unit_of(uint bits) {
+    return (float(bits & 0xFFFFu) * (1.0 / 32768.0)) - 1.0;
+}
+
+// Godot's grad, from the lattice point's integer coordinates.
+float4 grad(int4 cell, uint channel) {
+    uint h = hash(uint(cell.x) + (channel * 0x632BE59Bu) + 0x9E3779B9u);
+    h = hash(h + uint(cell.y));
+    h = hash(h + uint(cell.z));
+    h = hash(h + uint(cell.w));
+    uint g = hash(h + 1u);
+    return float4(unit_of(h), unit_of(h >> 16u), unit_of(g), unit_of(g >> 16u));
+}
+
+// Godot's noise: 4D gradient noise, its domain turned to improve the look of slices. The
+// corners go in a loop, so the hash isn't copied sixteen times over.
+float noise(float4 coord, uint channel) {
+    float shift = dot(coord, float4(-0.1666667, -0.1666667, -0.1666667, -0.5));
+    coord = float4(coord.xyz + shift, dot(coord, float4(0.5, 0.5, 0.5, 0.5)));
+    float4 floored = floor(coord);
+    int4 base = int4(floored);
+    float4 delta = coord - floored;
+    float4 fade = delta * delta * delta * (10.0 + (delta * (-15.0 + (delta * 6.0))));
+    float result = 0.0;
+    for (uint corner = 0u; corner < 16u; ++corner) {
+        float4 at = float4(uint4(corner, corner >> 1u, corner >> 2u, corner >> 3u) & 1u);
+        float4 weights = ((1.0 - at) * (1.0 - fade)) + (at * fade);
+        float weight = weights.x * weights.y * weights.z * weights.w;
+        result += weight * dot(delta - at, grad(base + int4(at), channel));
+    }
+    return result;
+}
+
+// Godot's curl_3d: the curl of three noises, from differences epsilon either side, the terms as
+// the CPU twin takes them.
+float3 curl_3d(float4 p, float c) {
+    float epsilon = 0.001 + c;
+    float3 curl = float3(0.0, 0.0, 0.0);
+    for (uint term = 0u; term < 6u; ++term) {
+        uint component = term / 2u;
+        uint odd = term % 2u;
+        uint axis = (component + 1u + odd) % 3u;
+        uint channel = (component + 2u - odd) % 3u;
+        float4 apart =
+            float4(float(axis == 0u), float(axis == 1u), float(axis == 2u), 0.0) * epsilon;
+        float difference = noise(p + apart, channel) - noise(p - apart, channel);
+        float3 into =
+            float3(float(component == 0u), float(component == 1u), float(component == 2u));
+        curl += into * (odd != 0u ? -difference : difference);
+    }
+    return safe_normalize(curl);
+}
+
+// Godot's get_noise_direction, at a point on the screen.
+float3 noise_direction(Step step, float2 pos) {
+    float4 turbulence = word(21u); // strength, frequency, speed_random
+    float4 speed = word(22u);
+    float contrast = max(turbulence.x - 1.0, 0.0) * 70.0;
+    // precise: no fused multiply-adds, so the place is the CPU's to the bit and the close
+    // differences the curl takes don't magnify a rounding.
+    precise float4 at = float4((pos.x * turbulence.y) + (step.time * speed.x),
+                       (pos.y * turbulence.y) + (step.time * speed.y),
+                       (0.0 * turbulence.y) + (step.time * speed.z),
+                       0.0 + (step.time * turbulence.z));
+    float3 direction = curl_3d(at, contrast);
+    return mix(direction * 0.9, direction, turbulence.x - 9.0);
 }
 
 float4 rotate_hue(float4 color, float angle) {
@@ -224,7 +321,7 @@ float sample_curve(uint curve, float offset, float fallback) {
 }
 
 uint gradient_count(uint gradient) {
-    return word_uint(19u, gradient);
+    return word_uint(20u, gradient);
 }
 
 float gradient_offset(uint gradient, uint i) {
@@ -298,6 +395,10 @@ void initial_params(inout uint seed, out Display display, out Dynamics dynamics,
     rand_from_seed(seed); // directional velocity, which 2D doesn't use
     dynamics.radial_velocity = random_param(kRadialVelocity, seed);
     dynamics.orbit_velocity = random_param(kOrbitVelocity, seed);
+    dynamics.turbulence_influence = 0.0;
+    if (turbulence_enabled()) {
+        dynamics.turbulence_influence = random_param(kTurbulenceInfluence, seed);
+    }
 
     physical.linear_accel = random_param(kLinearAccel, seed);
     physical.radial_accel = random_param(kRadialAccel, seed);
@@ -378,6 +479,11 @@ void start(inout Particle particle, Step step, uint number, inout bool active) {
     particle.userdata.w = 0.0;
     particle.color = display.color;
     float2 origin = initial_position(display, seed);
+    if (turbulence_enabled()) {
+        float displacement = random_param(kTurbulenceDisplacement, seed);
+        float3 direction = noise_direction(step, origin);
+        origin = origin + (direction.xy * displacement);
+    }
     particle.basis = step.emission_a;
     origin = transform_point(step, origin);
     float2 velocity = random_direction(seed, word(3u).z) * dynamics.initial_velocity;
@@ -455,10 +561,10 @@ void process(inout Particle particle, Step step, uint number, float delta, inout
     physical.tangent_accel *= sample_curve(kTangentialAccel, life, 1.0);
     physical.damping *= sample_curve(kDamping, life, 1.0);
 
-    float2 built = particle.userdata.xy;
+    float3 built = particle.userdata.xyz;
     float2 force = word(4u).zw;
     if (length(built) > 0.0) {
-        force = force + (safe_normalize(built) * physical.linear_accel);
+        force = force + (safe_normalize(built).xy * physical.linear_accel);
     }
     float2 diff = particle.origin_velocity.xy - step.emission_b;
     if (length(diff) > 0.0) {
@@ -467,7 +573,7 @@ void process(inout Particle particle, Step step, uint number, float delta, inout
     if (length(diff) > 0.0) {
         force = force + (safe_normalize(float2(-diff.y, diff.x)) * physical.tangent_accel);
     }
-    built = built + (force * delta);
+    built = built + float3(force * delta, 0.0);
     if (physical.damping > 0.0) {
         float v = length(built);
         if (word_uint(6u, 2u) == 0u) {
@@ -475,15 +581,29 @@ void process(inout Particle particle, Step step, uint number, float delta, inout
         } else if (v > 0.001) {
             v -= v * v * physical.damping * 0.05 * delta;
         }
-        built = v < 0.0 ? float2(0.0, 0.0) : safe_normalize(built) * v;
+        built = v < 0.0 ? float3(0.0, 0.0, 0.0) : safe_normalize(built) * v;
     }
-    particle.userdata.xy = built;
 
-    float2 velocity = controlled + built;
-    if (curve_count(kVelocityLimitCurve) > 0u && length(velocity) > 0.001) {
-        float limit = abs(sample_curve(kVelocityLimitCurve, life, 0.0));
-        velocity = safe_normalize(velocity) * min(abs(length(velocity)), limit);
+    // Turbulence before limiting.
+    float3 controlled3 = float3(controlled, 0.0);
+    if (turbulence_enabled()) {
+        float influence = sample_curve(kTurbulenceInfluence, life, 1.0);
+        float3 direction = safe_normalize(noise_direction(step, particle.origin_velocity.xy));
+        float amount = clamp(dynamics.turbulence_influence * influence, 0.0, 1.0) *
+                       (delta <= 0.0 ? 0.0 : 1.0);
+        float boost = 1.0 + ((1.0 - amount) * 0.2);
+        built = mix(built, direction * (length(built) * boost), amount);
+        controlled3 = mix(controlled3, direction * (length(controlled3) * boost), amount);
     }
+    particle.userdata.xyz = built;
+
+    float3 final_velocity = controlled3 + built;
+    if (curve_count(kVelocityLimitCurve) > 0u && length(final_velocity) > 0.001) {
+        float limit = abs(sample_curve(kVelocityLimitCurve, life, 0.0));
+        final_velocity =
+            safe_normalize(final_velocity) * min(abs(length(final_velocity)), limit);
+    }
+    float2 velocity = final_velocity.xy;
     particle.origin_velocity.zw = velocity;
     particle.origin_velocity.xy = particle.origin_velocity.xy + (velocity * delta);
 
@@ -609,6 +729,7 @@ Step read_step(uint at) {
     step.randomness = mixes.y;
     step.amount_ratio = mixes.z;
     step.interp_to_end = mixes.w;
+    step.time = asfloat(data[at + 4u].w);
     uint4 counts = data[at + 4u];
     step.cycle = counts.x;
     step.seed = counts.y;
