@@ -1,0 +1,31 @@
+{
+  "entries": {
+    "cue/menu": {
+      "name": "Menu",
+      "scenes": ["scenes/menu.scene.json"],
+      "theme": "theme/sea"
+    },
+    "loudness/music": {
+      "lufs": -16,
+      "name": "Music",
+      "true_peak": -1
+    },
+    "theme/keeper": {
+      "instruments": ["accordion"],
+      "key": "A minor",
+      "mood": ["patient"],
+      "name": "The Keeper",
+      "subjects": ["character/keeper"],
+      "tempo": 72
+    },
+    "theme/sea": {
+      "instruments": ["cello", "harp", "string_ensemble_1"],
+      "key": "E minor",
+      "mood": ["wide", "uneasy"],
+      "name": "The sea",
+      "subjects": ["place/harbor"],
+      "tempo": 84
+    }
+  },
+  "format": 1
+}

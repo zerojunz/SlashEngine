@@ -1,0 +1,28 @@
+{
+  "entries": {
+    "character/ada": {
+      "home": "place/harbor",
+      "name": "Ada",
+      "summary": "A harbor pilot who has never left the bay."
+    },
+    "character/keeper": {
+      "home": "place/lighthouse",
+      "name": "The Keeper",
+      "summary": "Tends the light and knows the reef."
+    },
+    "place/harbor": {
+      "name": "The Harbor",
+      "summary": "Gulls, rope and tar; where every voyage starts."
+    },
+    "place/lighthouse": {
+      "name": "The Lighthouse",
+      "region": "place/harbor",
+      "summary": "The last light before open sea."
+    },
+    "place/reef": {
+      "name": "The Reef",
+      "summary": "Where ships go down."
+    }
+  },
+  "format": 1
+}

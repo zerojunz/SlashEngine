@@ -1,0 +1,12 @@
+{
+  "entities": {
+    "storm": {
+      "components": {
+        "StoryRef": {
+          "ids": ["beat/storm"]
+        }
+      }
+    }
+  },
+  "format": 1
+}
