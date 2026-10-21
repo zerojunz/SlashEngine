@@ -16,12 +16,14 @@
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
 
+#include <SDL3/SDL_stdinc.h>
 #include <doctest/doctest.h>
 
 #include <algorithm>
 #include <cstdint>
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -277,6 +279,8 @@ TEST_CASE("android exports find the newest stable SDK tools, an NDK and a JDK") 
     auto no_sdk = exporter::find_android_tools(search);
     REQUIRE_FALSE(no_sdk.ok());
     CHECK(contains(no_sdk.error().message, "ANDROID_HOME"));
+    CHECK(contains(no_sdk.error().message,
+                   "slash-cli toolchain install android --accept-android-sdk-license"));
     std::filesystem::remove_all(root);
 }
 
@@ -494,7 +498,7 @@ TEST_CASE("toolchains are pinned per host and chosen per platform") {
     }
 #if defined(_WIN32)
     // Windows exports build with MSVC, and Linux exports aren't built on Windows.
-    CHECK(toolchains.empty());
+    CHECK_FALSE(has("llvm-mingw"));
     CHECK(exporter::toolchains_for("windows").empty());
 #elif defined(__APPLE__) || (defined(__linux__) && defined(__x86_64__))
     CHECK(has("llvm-mingw"));
@@ -508,7 +512,91 @@ TEST_CASE("toolchains are pinned per host and chosen per platform") {
     }
 #endif
     CHECK(exporter::toolchains_for("macos").empty());
-    CHECK(exporter::toolchains_for("web").empty());
+
+    // Web exports with no emsdk download Emscripten, Node.js and, where the system has none to
+    // count on, Python.
+    const std::vector<std::string> web = exporter::toolchains_for("web");
+#if defined(__APPLE__) || defined(_WIN32)
+    CHECK(web == std::vector<std::string>{"emscripten", "node", "python"});
+#else
+    CHECK(web == std::vector<std::string>{"emscripten", "node"});
+#endif
+#if defined(__APPLE__) || defined(__linux__) || (defined(_WIN32) && defined(_M_X64))
+    for (const std::string& name : web) {
+        CHECK(has(name));
+    }
+    const auto emscripten =
+        std::find_if(toolchains.begin(), toolchains.end(),
+                     [](const exporter::Toolchain& t) { return t.name == "emscripten"; });
+    REQUIRE(emscripten != toolchains.end());
+    CHECK(emscripten->version == "6.0.10");
+    CHECK(emscripten->folder == "install");
+    CHECK(contains(emscripten->url, "storage.googleapis.com/webassembly/"));
+#endif
+}
+
+TEST_CASE("the Android SDK installs from a pinned JDK and command-line tools") {
+    const std::optional<exporter::AndroidInstall> install = exporter::android_install();
+#if defined(__APPLE__) || (defined(__linux__) && defined(__x86_64__)) ||                           \
+    (defined(_WIN32) && defined(_M_X64))
+    REQUIRE(install.has_value());
+    for (const exporter::Toolchain* toolchain : {&install->jdk, &install->command_line_tools}) {
+        CAPTURE(toolchain->name);
+        CHECK(toolchain->sha256.size() == 64);
+        CHECK(toolchain->sha256.find_first_not_of("0123456789abcdef") == std::string::npos);
+        CHECK_FALSE(toolchain->description.empty());
+    }
+    CHECK(install->jdk.name == "jdk");
+    CHECK(install->jdk.version == "21.0.12.1+1");
+    CHECK(install->jdk.folder == "jdk-21.0.12.1+1");
+    CHECK(install->jdk.url.starts_with(
+        "https://github.com/adoptium/temurin21-binaries/releases/download/"));
+    CHECK(install->command_line_tools.name == "android-cmdline-tools");
+    CHECK(install->command_line_tools.folder == "cmdline-tools");
+    CHECK(install->command_line_tools.url.starts_with("https://dl.google.com/android/repository/"));
+    CHECK(install->command_line_tools.url.ends_with("15859902_latest.zip"));
+    // What exports check for: build tools 35 or later, the android-36 platform and NDK r27.
+    CHECK(install->packages == std::vector<std::string>{"platform-tools", "build-tools;36.0.0",
+                                                        "platforms;android-36", "ndk;27.3.13750724",
+                                                        "cmake;3.31.6"});
+#else
+    CHECK_FALSE(install.has_value()); // Google builds no SDK for this host
+#endif
+
+    // Nothing is installed until the license is accepted.
+    if (install) {
+        const std::filesystem::path dir = std::filesystem::absolute("exporter_android_refused");
+        std::filesystem::remove_all(dir);
+        auto refused = exporter::install_android(*install, dir, false);
+        REQUIRE_FALSE(refused.ok());
+        CHECK(contains(refused.error().message, "https://developer.android.com/studio/terms"));
+        CHECK_FALSE(std::filesystem::exists(dir));
+    }
+}
+
+TEST_CASE("downloaded Emscripten gets a config naming its tools") {
+    const std::filesystem::path root = "/opt/toolchains";
+    const exporter::WebTools tools = exporter::web_tools(
+        {root / "emscripten-6.0.10", root / "node-22.16.0", root / "python-3.13.3"});
+    CHECK(tools.toolchain_file == root / "emscripten-6.0.10" / "emscripten" / "cmake" / "Modules" /
+                                      "Platform" / "Emscripten.cmake");
+#ifdef _WIN32
+    CHECK(tools.node == root / "node-22.16.0" / "bin" / "node.exe");
+    CHECK(tools.python == root / "python-3.13.3" / "python.exe");
+#else
+    CHECK(tools.node == root / "node-22.16.0" / "bin" / "node");
+    CHECK(tools.python == root / "python-3.13.3" / "bin" / "python3");
+#endif
+    CHECK(tools.config == "LLVM_ROOT = '" + (root / "emscripten-6.0.10" / "bin").generic_string() +
+                              "'\nBINARYEN_ROOT = '" +
+                              (root / "emscripten-6.0.10").generic_string() + "'\nNODE_JS = '" +
+                              tools.node.generic_string() + "'\n");
+
+    // Linux runs Emscripten with its own python3. Quotes in a path are escaped for Python.
+    const exporter::WebTools linux_tools =
+        exporter::web_tools({"/home/o'neil/emscripten", "/home/o'neil/node"});
+    CHECK(linux_tools.python.empty());
+    CHECK(contains(linux_tools.config, "BINARYEN_ROOT = '/home/o\\'neil/emscripten'\n"));
 }
 
 #ifndef _WIN32
@@ -565,6 +653,190 @@ TEST_CASE("toolchains install from a checked archive") {
     auto failed = exporter::install_toolchain(missing, dir);
     REQUIRE_FALSE(failed.ok());
     CHECK(contains(failed.error().message, "could not download kit"));
+    std::filesystem::remove_all(folder);
+}
+#endif
+
+#ifndef _WIN32
+namespace {
+
+// Sets an environment variable, or unsets it for an empty value, and puts it back on scope exit.
+class ScopedVariable {
+public:
+    ScopedVariable(std::string name, const std::string& value) : name_(std::move(name)) {
+        if (const char* old = SDL_getenv_unsafe(name_.c_str())) {
+            old_ = old;
+        }
+        if (value.empty()) {
+            SDL_unsetenv_unsafe(name_.c_str());
+        } else {
+            SDL_setenv_unsafe(name_.c_str(), value.c_str(), 1);
+        }
+    }
+    ~ScopedVariable() {
+        if (old_) {
+            SDL_setenv_unsafe(name_.c_str(), old_->c_str(), 1);
+        } else {
+            SDL_unsetenv_unsafe(name_.c_str());
+        }
+    }
+    ScopedVariable(const ScopedVariable&) = delete;
+    ScopedVariable& operator=(const ScopedVariable&) = delete;
+    ScopedVariable(ScopedVariable&&) = delete;
+    ScopedVariable& operator=(ScopedVariable&&) = delete;
+
+private:
+    std::string name_;
+    std::optional<std::string> old_;
+};
+
+// A .tar.gz (or, by extension, .zip) of folder/name, for a file:// toolchain.
+exporter::Toolchain pack_toolchain(const std::filesystem::path& folder, const std::string& name,
+                                   const std::string& archive_name) {
+    const std::filesystem::path archive = folder / archive_name;
+    slash::platform::ProcessOptions in_folder;
+    in_folder.working_directory = folder.string();
+    auto packed = archive_name.ends_with(".zip")
+                      ? slash::platform::run_process({SLASH_TEST_CMAKE, "-E", "tar", "cf",
+                                                      archive.string(), "--format=zip", name},
+                                                     in_folder)
+                      : slash::platform::run_process(
+                            {"tar", "-czf", archive.string(), "-C", folder.string(), name}, {});
+    REQUIRE(packed.ok());
+    REQUIRE(packed.value().exit_code == 0);
+    auto bytes = slash::platform::read_file(archive.string());
+    REQUIRE(bytes.ok());
+    return {.name = name,
+            .version = "1",
+            .description = "A test toolchain",
+            .url = "file://" + archive.generic_string(),
+            .sha256 = exporter::sha256_hex(bytes.value()),
+            .folder = name};
+}
+
+} // namespace
+
+TEST_CASE("the Android SDK installs with sdkmanager and exports find it") {
+    const std::filesystem::path folder = std::filesystem::absolute("exporter_android_install");
+    std::filesystem::remove_all(folder);
+    const std::filesystem::path src = folder / "src";
+
+    // A JDK, laid out as on this host.
+#ifdef __APPLE__
+    const std::filesystem::path jdk_home = src / "jdk-test" / "Contents" / "Home";
+#else
+    const std::filesystem::path jdk_home = src / "jdk-test";
+#endif
+    for (const char* tool : {"javac", "jar", "keytool"}) {
+        touch(jdk_home / "bin" / tool);
+    }
+    touch(jdk_home / "release", "JAVA_VERSION=\"21.0.12\"\n");
+
+    // Google's command-line tools, whose sdkmanager stands in here: it notes how it was run, and
+    // installs the packages only if told yes.
+    const std::filesystem::path sdkmanager = src / "cmdline-tools" / "bin" / "sdkmanager";
+    touch(sdkmanager, R"(#!/bin/sh
+tools="$(dirname "$0")/.."
+echo "run with JAVA_HOME=$JAVA_HOME $*" >> "$tools/calls.txt"
+read answer
+[ "$answer" = y ] || { echo "The following packages can not be installed since their licenses were not accepted"; exit 1; }
+for arg in "$@"; do
+  case "$arg" in
+    --sdk_root=*) root="${arg#--sdk_root=}" ;;
+    --package_file=*) cp "${arg#--package_file=}" "$tools/packages.txt" ;;
+  esac
+done
+mkdir -p "$root/build-tools/36.0.0" "$root/platforms/android-36" "$root/ndk/27.3.13750724/build/cmake"
+touch "$root/build-tools/36.0.0/aapt2" "$root/platforms/android-36/android.jar" "$root/ndk/27.3.13750724/build/cmake/android.toolchain.cmake"
+echo "Pkg.Revision = 27.3.13750724" > "$root/ndk/27.3.13750724/source.properties"
+)");
+    std::filesystem::permissions(sdkmanager, std::filesystem::perms::owner_exec,
+                                 std::filesystem::perm_options::add);
+
+    exporter::AndroidInstall install;
+    install.jdk = pack_toolchain(src, "jdk-test", "jdk.tar.gz");
+    install.jdk.name = "jdk";
+    const std::optional<exporter::AndroidInstall> pinned = exporter::android_install();
+    if (pinned) {
+        install.jdk.version = pinned->jdk.version; // so exports look for it here
+    }
+    install.command_line_tools = pack_toolchain(src, "cmdline-tools", "tools.zip");
+    install.command_line_tools.name = "android-cmdline-tools";
+    install.packages = {"platform-tools", "build-tools;36.0.0", "platforms;android-36",
+                        "ndk;27.3.13750724"};
+    const std::filesystem::path dir = folder / "toolchains";
+
+    exporter::AndroidFolders none = exporter::installed_android(install, dir);
+    CHECK(none.sdk.empty());
+    CHECK(none.java_home.empty());
+
+    auto installed = exporter::install_android(install, dir, true);
+    REQUIRE_MESSAGE(installed.ok(), (installed.ok() ? std::string() : installed.error().message));
+    CHECK(installed.value().sdk == dir / "android-sdk");
+#ifdef __APPLE__
+    CHECK(installed.value().java_home ==
+          dir / ("jdk-" + install.jdk.version) / "Contents" / "Home");
+#else
+    CHECK(installed.value().java_home == dir / ("jdk-" + install.jdk.version));
+#endif
+    const std::filesystem::path tools = dir / "android-cmdline-tools-1";
+    auto calls = slash::platform::read_file((tools / "calls.txt").string());
+    REQUIRE(calls.ok());
+    CHECK(calls.value() ==
+          "run with JAVA_HOME=" + installed.value().java_home.string() +
+              " --sdk_root=" + installed.value().sdk.string() +
+              " --package_file=" + (installed.value().sdk / ".slash-packages.txt").string() + "\n");
+    auto packages = slash::platform::read_file((tools / "packages.txt").string());
+    REQUIRE(packages.ok());
+    CHECK(packages.value() ==
+          "platform-tools\nbuild-tools;36.0.0\nplatforms;android-36\nndk;27.3.13750724\n");
+    CHECK_FALSE(std::filesystem::exists(installed.value().sdk / ".slash-packages.txt"));
+
+    exporter::AndroidFolders found = exporter::installed_android(install, dir);
+    CHECK(found.sdk == installed.value().sdk);
+    CHECK(found.java_home == installed.value().java_home);
+
+    // Installed packages aren't installed again, but a package added since is.
+    auto again = exporter::install_android(install, dir, true);
+    REQUIRE(again.ok());
+    calls = slash::platform::read_file((tools / "calls.txt").string());
+    REQUIRE(calls.ok());
+    CHECK(std::ranges::count(calls.value(), '\n') == 1);
+    install.packages.emplace_back("cmake;3.31.6");
+    CHECK(exporter::installed_android(install, dir).sdk.empty());
+    REQUIRE(exporter::install_android(install, dir, true).ok());
+    calls = slash::platform::read_file((tools / "calls.txt").string());
+    REQUIRE(calls.ok());
+    CHECK(std::ranges::count(calls.value(), '\n') == 2);
+
+    // With no ANDROID_HOME or JAVA_HOME, exports use what slash-cli installed.
+    if (pinned) {
+        const ScopedVariable toolchains(std::string(exporter::kToolchainsDirVariable),
+                                        dir.string());
+        std::vector<std::unique_ptr<ScopedVariable>> unset;
+        for (const char* name : {"ANDROID_HOME", "ANDROID_SDK_ROOT", "ANDROID_NDK_HOME",
+                                 "ANDROID_NDK_ROOT", "ANDROID_NDK", "JAVA_HOME"}) {
+            unset.push_back(std::make_unique<ScopedVariable>(name, ""));
+        }
+        auto tools_found = exporter::find_android_tools();
+        REQUIRE_MESSAGE(tools_found.ok(),
+                        (tools_found.ok() ? std::string() : tools_found.error().message));
+        CHECK(tools_found.value().sdk == installed.value().sdk.string());
+        CHECK(tools_found.value().java_home == installed.value().java_home.string());
+        CHECK(tools_found.value().ndk ==
+              (installed.value().sdk / "ndk" / "27.3.13750724").string());
+    }
+
+    // A refused license fails the install with what sdkmanager said.
+    touch(dir / "android-sdk" / ".slash-android-sdk.json", "{}");
+    const std::filesystem::path stubborn = tools / "bin" / "sdkmanager";
+    touch(stubborn, "#!/bin/sh\necho 'Accept? (y/N): '\nexit 1\n");
+    std::filesystem::permissions(stubborn, std::filesystem::perms::owner_exec,
+                                 std::filesystem::perm_options::add);
+    auto failed = exporter::install_android(install, dir, true);
+    REQUIRE_FALSE(failed.ok());
+    CHECK(contains(failed.error().message, "sdkmanager could not install the Android SDK"));
+    CHECK(contains(failed.error().message, "Accept? (y/N)"));
     std::filesystem::remove_all(folder);
 }
 #endif

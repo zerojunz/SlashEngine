@@ -384,6 +384,42 @@ std::vector<std::string> ios_configure_args(const IosOptions& ios, bool debug,
     };
 }
 
+bool compile_ios_icons(const fs::path& catalog, const fs::path& app, std::string_view destination,
+                       const fs::path& work, const platform::ProcessOptions& process,
+                       Failure& failure) {
+    std::error_code error;
+    // actool writes Assets.car and the icons older iOS versions read, and the Info.plist keys
+    // that name them, which PlistBuddy merges in.
+    const std::string partial = fs::absolute(work / "icons.plist", error).string();
+    return step("icons",
+                {"xcrun",
+                 "actool",
+                 fs::absolute(catalog, error).string(),
+                 "--compile",
+                 fs::absolute(app, error).string(),
+                 "--platform",
+                 destination == kIosDevice ? "iphoneos" : "iphonesimulator",
+                 "--minimum-deployment-target",
+                 std::string(kIosDeploymentTarget),
+                 "--app-icon",
+                 "AppIcon",
+                 "--target-device",
+                 "iphone",
+                 "--target-device",
+                 "ipad",
+                 "--output-partial-info-plist",
+                 partial,
+                 "--errors",
+                 "--warnings",
+                 "--output-format",
+                 "human-readable-text"},
+                process, failure) &&
+           step("icons",
+                {"/usr/libexec/PlistBuddy", "-c", "Merge " + partial,
+                 fs::absolute(app / "Info.plist", error).string()},
+                process, failure);
+}
+
 bool sign_ios_app(const IosSigning& signing, const fs::path& app,
                   const platform::ProcessOptions& process, Failure& failure) {
     std::error_code error;

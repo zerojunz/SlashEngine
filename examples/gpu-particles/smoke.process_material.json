@@ -1,0 +1,31 @@
+{
+  "alpha_curve": [
+    [0, 0],
+    [0.2, 1],
+    [1, 0]
+  ],
+  "color": [0.6, 0.6, 0.65, 0.5],
+  "direction": [0, -1],
+  "format": 1,
+  "gravity": [0, -10],
+  "initial_velocity_max": 30,
+  "initial_velocity_min": 20,
+  "scale_curve": [
+    [0, 0.5],
+    [1, 2]
+  ],
+  "scale_max": 2,
+  "scale_min": 1,
+  "spread": 10,
+  "turbulence_enabled": true,
+  "turbulence_influence_max": 0.1,
+  "turbulence_influence_min": 0.05,
+  "turbulence_initial_displacement_max": 3,
+  "turbulence_initial_displacement_min": -3,
+  "turbulence_noise_scale": 9.8,
+  "turbulence_noise_speed": [0, -0.5, 0],
+  "velocity_limit_curve": [
+    [0, 40],
+    [1, 25]
+  ]
+}

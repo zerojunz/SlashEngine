@@ -7,6 +7,7 @@
 #include "slash/gameplay/host.hpp"
 #include "slash/input/input.hpp"
 #include "slash/platform/file.hpp"
+#include "slash/runtime/icon.hpp"
 #include "slash/ui/ui.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/scene.hpp"
@@ -77,6 +78,11 @@ Result<std::unique_ptr<Game>> Game::start(const GameOptions& options) {
     config.height = project.value().window_height;
     config.headless = options.headless;
     config.opengl = project.value().rendering_driver == "opengl";
+#if defined(__linux__) && !defined(__ANDROID__)
+    // The project's display server first, then the other, as Godot's driver.linuxbsd.
+    config.video_drivers =
+        project.value().linux_display_driver == "wayland" ? "wayland,x11" : "x11,wayland";
+#endif
     auto platform = platform::Platform::create(config);
     if (!platform) {
         return platform.error();
@@ -197,6 +203,12 @@ Game::Game(Project project, platform::Platform platform, const std::string& data
             world_,
             {.get = [this] { return platform_.clipboard_text(); },
              .set = [this](const std::string& text) { platform_.set_clipboard_text(text); }});
+#ifndef __APPLE__
+        // The window shows the game's icon. A Mac shows the app bundle's, which the export made.
+        const render::Image icon = window_icon(
+            project_.icon, [this](std::string_view path) { return assets_.read(path, "icon"); });
+        platform_.set_icon(icon.width, icon.height, icon.pixels);
+#endif
     }
 }
 

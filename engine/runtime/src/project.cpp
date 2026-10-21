@@ -161,7 +161,7 @@ json::Value project_schema() {
     json::Value window;
     window["type"] = "object";
     window["additionalProperties"] = false;
-    window["description"] = "Initial window size in pixels.";
+    window["description"] = "The window: its initial size in pixels and how it is shown.";
     window["properties"]["width"] = integer_property("Window width.", Project{}.window_width);
     window["properties"]["height"] = integer_property("Window height.", Project{}.window_height);
     json::Value vsync_mode;
@@ -172,6 +172,13 @@ json::Value project_schema() {
         "once and may tear; mailbox shows the newest frame each refresh; adaptive waits unless "
         "a frame is late. Unsupported modes fall back to enabled.";
     window["properties"]["vsync_mode"] = std::move(vsync_mode);
+    json::Value linux_display_driver;
+    linux_display_driver["enum"] = json::Array{"x11", "wayland"};
+    linux_display_driver["default"] = Project{}.linux_display_driver;
+    linux_display_driver["description"] =
+        "The display server a game tries first on Linux, falling back to the other, as Godot's "
+        "driver.linuxbsd: x11 (through XWayland on Wayland desktops) or wayland.";
+    window["properties"]["linux_display_driver"] = std::move(linux_display_driver);
 
     json::Value tick_hz;
     tick_hz["type"] = "number";
@@ -268,6 +275,10 @@ json::Value project_schema() {
     properties["main_scene"] =
         string_property("The scene loaded at startup, relative to the project folder, e.g. "
                         "\"scenes/main.scene.json\".");
+    properties["icon"] = string_property(
+        "A square image, 1024x1024 or larger, that every platform's icons are made from and the "
+        "window shows, relative to the project folder, as Godot's application/config/icon. "
+        "Default: the engine's icon.");
     properties["window"] = std::move(window);
     properties["tick_hz"] = std::move(tick_hz);
     properties["max_fps"] = std::move(max_fps);
@@ -352,6 +363,11 @@ std::vector<json::ValidationError> validate_project(const json::Value& project) 
                                          "by '/', with no \".\" or \"..\" parts"});
     } else if (!main_scene.ends_with(".scene.json")) {
         errors.push_back({"/main_scene", "expected a .scene.json file"});
+    }
+    if (const json::Value* icon = project.find("icon");
+        icon != nullptr && !icon->as_string().empty() && !is_project_path(icon->as_string())) {
+        errors.push_back({"/icon", "expected a path inside the project folder, separated by '/', "
+                                   "with no \".\" or \"..\" parts"});
     }
     if (const json::Value* gui = project.find("gui"); gui != nullptr) {
         if (const json::Value* theme = gui->find("theme");
@@ -453,6 +469,9 @@ Result<Project> parse_project(const json::Value& project) {
     if (const json::Value* version = project.find("version"); version != nullptr) {
         out.version = version->as_string();
     }
+    if (const json::Value* icon = project.find("icon"); icon != nullptr) {
+        out.icon = icon->as_string();
+    }
     if (const json::Value* window = project.find("window"); window != nullptr) {
         if (const json::Value* width = window->find("width"); width != nullptr) {
             out.window_width = static_cast<int>(width->as_int());
@@ -462,6 +481,9 @@ Result<Project> parse_project(const json::Value& project) {
         }
         if (const json::Value* vsync = window->find("vsync_mode"); vsync != nullptr) {
             out.vsync_mode = vsync->as_string();
+        }
+        if (const json::Value* driver = window->find("linux_display_driver"); driver != nullptr) {
+            out.linux_display_driver = driver->as_string();
         }
     }
     if (const json::Value* tick_hz = project.find("tick_hz"); tick_hz != nullptr) {

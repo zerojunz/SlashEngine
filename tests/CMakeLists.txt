@@ -24,6 +24,7 @@ add_executable(slash_tests
     test_import_godot.cpp
     test_import_unity.cpp
     test_gui.cpp
+    test_icons.cpp
     test_input.cpp
     test_jobs.cpp
     test_json.cpp
@@ -519,6 +520,20 @@ if(SLASH_BUILD_TOOLS)
         COMMAND ${CMAKE_COMMAND} -DPROGRAM=$<TARGET_FILE:slash-mcp> "-DARGS=--live|--project|."
             -DINPUT=${scenes}/mcp_live_offline.jsonl -DEXPECT=${scenes}/mcp_live_offline.expected
             -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}/live_project -P ${run_stdio})
+
+    # The wayland-scanner Linux exports run through slash-cli and slash-mcp is Wayland 1.18's.
+    if(TARGET slash_wayland_scanner)
+        add_test(NAME cli_wayland_scanner_version COMMAND slash-cli wayland-scanner --version)
+        set_tests_properties(cli_wayland_scanner_version PROPERTIES
+            PASS_REGULAR_EXPRESSION "wayland-scanner 1[.]18[.]0")
+        foreach(program slash-cli slash-mcp)
+            add_test(NAME ${program}_wayland_scanner_code
+                COMMAND ${CMAKE_COMMAND} -DPROGRAM=$<TARGET_FILE:${program}>
+                    -DDATA=${scenes}/wayland
+                    -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}/wayland_${program}
+                    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_wayland_scanner.cmake)
+        endforeach()
+    endif()
 
     # A headless run can serve its world over HTTP while it ticks.
     add_test(NAME cli_run_serve

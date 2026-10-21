@@ -53,6 +53,8 @@ struct Emitter {
     float remainder = 0.0F;
     double phase = 0.0;
     std::uint32_t cycle = 0;
+    // Seconds since the storage started over, back to 0 every hour: the steps' time.
+    double particle_time = 0.0;
     // The steps kept are steps[start] on, the first of them step number first.
     std::vector<render::ParticleStep> steps;
     std::size_t start = 0;
@@ -158,6 +160,7 @@ public:
         const double new_phase = std::fmod(e.phase + (delta / lifetime_of(s_)), 1.0);
         if (e.clear) {
             e.cycle = 0;
+            e.particle_time = 0.0;
         } else if (new_phase < e.phase) {
             if (s_.one_shot) {
                 e.storage_emitting = false;
@@ -179,6 +182,8 @@ public:
         step.randomness = std::clamp(s_.randomness, 0.0F, 1.0F);
         step.amount_ratio = std::clamp(s_.amount_ratio, 0.0F, 1.0F);
         step.interp_to_end = std::clamp(s_.interp_to_end, 0.0F, 1.0F);
+        e.particle_time = std::fmod(e.particle_time + delta, 3600.0);
+        step.time = static_cast<float>(e.particle_time);
         step.cycle = e.cycle;
         step.seed = seed_;
         step.fractional_delta = s_.fract_delta;

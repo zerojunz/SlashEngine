@@ -41,6 +41,23 @@ float mix(float a, float b, float t) {
     return (a * (1.0F - t)) + (b * t);
 }
 
+float dot(Vec3 a, Vec3 b) {
+    return (a.x * b.x) + (a.y * b.y) + (a.z * b.z);
+}
+
+float length(Vec3 v) {
+    return std::sqrt(dot(v, v));
+}
+
+Vec3 normalize(Vec3 v) {
+    const float l = length(v);
+    return l > 0.0F ? Vec3{v.x / l, v.y / l, v.z / l} : Vec3{};
+}
+
+Vec3 mix(Vec3 a, Vec3 b, float t) {
+    return {mix(a.x, b.x, t), mix(a.y, b.y, t), mix(a.z, b.z, t)};
+}
+
 float sign(float v) {
     if (v > 0.0F) {
         return 1.0F;
@@ -86,6 +103,103 @@ float rand_from_seed(std::uint32_t& seed) {
 
 float rand_m1_p1(std::uint32_t& seed) {
     return (rand_from_seed(seed) * 2.0F) - 1.0F;
+}
+
+// ---- Turbulence: the noise ParticleProcessMaterial generates for it.
+
+using Coord = std::array<float, 4>;
+
+float dot4(const Coord& a, const Coord& b) {
+    return (a[0] * b[0]) + (a[1] * b[1]) + (a[2] * b[2]) + (a[3] * b[3]);
+}
+
+// 16 bits as a number from -1 to 1, exactly on every device.
+float unit_of(std::uint32_t bits) {
+    return (static_cast<float>(bits & 0xFFFFU) * (1.0F / 32768.0F)) - 1.0F;
+}
+
+// Godot's grad: a lattice point's gradient. Godot hashes the point with fractions of float
+// products, which round differently on different GPUs; this hashes its integer coordinates, and
+// channel tells apart the three noises curl_3d samples, which Godot moves far apart instead.
+Coord grad(const std::array<std::int32_t, 4>& cell, std::uint32_t channel) {
+    std::uint32_t h =
+        hash(static_cast<std::uint32_t>(cell[0]) + (channel * 0x632BE59BU) + 0x9E3779B9U);
+    h = hash(h + static_cast<std::uint32_t>(cell[1]));
+    h = hash(h + static_cast<std::uint32_t>(cell[2]));
+    h = hash(h + static_cast<std::uint32_t>(cell[3]));
+    const std::uint32_t g = hash(h + 1U);
+    return {unit_of(h), unit_of(h >> 16U), unit_of(g), unit_of(g >> 16U)};
+}
+
+// Godot's noise: 4D gradient noise, its domain turned to improve the look of slices.
+float noise(Coord coord, std::uint32_t channel) {
+    constexpr float kSixth = -0.1666667F;
+    const float shift = dot4(coord, {kSixth, kSixth, kSixth, -0.5F});
+    coord = {coord[0] + shift, coord[1] + shift, coord[2] + shift,
+             dot4(coord, {0.5F, 0.5F, 0.5F, 0.5F})};
+    std::array<std::int32_t, 4> base{};
+    Coord delta{};
+    Coord fade{};
+    for (std::size_t i = 0; i < 4; ++i) {
+        const float floored = std::floor(coord.at(i));
+        base.at(i) = static_cast<std::int32_t>(floored);
+        const float d = coord.at(i) - floored;
+        delta.at(i) = d;
+        fade.at(i) = d * d * d * (10.0F + (d * (-15.0F + (d * 6.0F))));
+    }
+    // Each corner's dot with its gradient, weighted by the fade along each axis: Godot's mixes
+    // over w, z, y and x as one sum, which the compute shader runs as a loop rather than as
+    // sixteen copies of the hash.
+    float result = 0.0F;
+    for (std::uint32_t corner = 0; corner < 16; ++corner) {
+        std::array<std::int32_t, 4> cell = base;
+        Coord offset = delta;
+        float weight = 1.0F;
+        for (std::size_t axis = 0; axis < 4; ++axis) {
+            if ((corner & (1U << axis)) != 0) {
+                cell.at(axis) += 1;
+                offset.at(axis) -= 1.0F;
+                weight *= fade.at(axis);
+            } else {
+                weight *= 1.0F - fade.at(axis);
+            }
+        }
+        result += weight * dot4(offset, grad(cell, channel));
+    }
+    return result;
+}
+
+// Godot's curl_3d: the curl of three noises, from differences epsilon either side. Godot samples
+// each noise at all six places; the curl uses two at each, taken here in the order its sums take
+// them: term i adds to component i / 2, plus for even i and minus for odd.
+Vec3 curl_3d(const Coord& p, float c) {
+    const float epsilon = 0.001F + c;
+    std::array<float, 3> curl{};
+    for (std::uint32_t term = 0; term < 6; ++term) {
+        const std::uint32_t component = term / 2;
+        const std::uint32_t odd = term % 2;
+        const std::size_t axis = (component + 1 + odd) % 3;
+        const std::uint32_t channel = (component + 2 - odd) % 3;
+        Coord ahead = p;
+        Coord behind = p;
+        ahead.at(axis) += epsilon;
+        behind.at(axis) -= epsilon;
+        const float difference = noise(ahead, channel) - noise(behind, channel);
+        curl.at(component) += odd != 0 ? -difference : difference;
+    }
+    return normalize(Vec3{curl[0], curl[1], curl[2]});
+}
+
+// Godot's get_noise_direction, at a point on the screen.
+Vec3 noise_direction(const ParticleProcess& p, const ParticleStep& step, Vec2 pos) {
+    const float contrast = std::max(p.turbulence_noise_strength - 1.0F, 0.0F) * 70.0F;
+    const float frequency = turbulence_frequency(p.turbulence_noise_scale);
+    const Coord at{(pos.x * frequency) + (step.time * p.turbulence_noise_speed.x),
+                   (pos.y * frequency) + (step.time * p.turbulence_noise_speed.y),
+                   (0.0F * frequency) + (step.time * p.turbulence_noise_speed.z),
+                   0.0F + (step.time * p.turbulence_noise_speed_random)};
+    const Vec3 direction = curl_3d(at, contrast);
+    return mix(direction * 0.9F, direction, p.turbulence_noise_strength - 9.0F);
 }
 
 // Godot's rotate_hue: a turn of the color about the gray axis.
@@ -146,6 +260,7 @@ struct Dynamics {
     float initial_velocity = 0.0F;
     float radial_velocity = 0.0F;
     float orbit_velocity = 0.0F;
+    float turbulence_influence = 0.0F;
 };
 
 struct Physical {
@@ -202,6 +317,9 @@ void initial_params(const ParticleProcess& p, std::uint32_t& seed, Display& disp
     (void)rand_from_seed(seed); // directional velocity, which 2D doesn't use
     dynamics.radial_velocity = random_param(p, ParticleParam::RadialVelocity, seed);
     dynamics.orbit_velocity = random_param(p, ParticleParam::OrbitVelocity, seed);
+    if (p.turbulence_enabled) {
+        dynamics.turbulence_influence = random_param(p, ParticleParam::TurbulenceInfluence, seed);
+    }
 
     physical.linear_accel = random_param(p, ParticleParam::LinearAccel, seed);
     physical.radial_accel = random_param(p, ParticleParam::RadialAccel, seed);
@@ -300,6 +418,11 @@ void start(Particle& particle, const ParticleProcess& p, const ParticleStep& ste
     particle.userdata.w = 0.0F;
     particle.color = display.color;
     particle.origin = initial_position(p, display, seed);
+    if (p.turbulence_enabled) {
+        const float displacement = random_param(p, ParticleParam::TurbulenceDisplacement, seed);
+        const Vec3 direction = noise_direction(p, step, particle.origin);
+        particle.origin = particle.origin + (Vec2{direction.x, direction.y} * displacement);
+    }
     // TRANSFORM = EMISSION_TRANSFORM * TRANSFORM, from an identity basis.
     particle.basis = {step.emission[0], step.emission[1], step.emission[2], step.emission[3]};
     particle.origin = transform_point(step.emission, particle.origin);
@@ -386,10 +509,11 @@ void process(Particle& particle, const ParticleProcess& p, const ParticleStep& s
     physical.tangent_accel *= sample_curve(curve(p, ParticleParam::TangentialAccel), life, 1.0F);
     physical.damping *= sample_curve(curve(p, ParticleParam::Damping), life, 1.0F);
 
-    Vec2 built{particle.userdata.x, particle.userdata.y};
+    Vec3 built{particle.userdata.x, particle.userdata.y, particle.userdata.z};
     Vec2 force = p.gravity;
     if (length(built) > 0.0F) {
-        force = force + (normalize(built) * physical.linear_accel);
+        const Vec3 along = normalize(built);
+        force = force + (Vec2{along.x, along.y} * physical.linear_accel);
     }
     const Vec2 diff = particle.origin - Vec2{step.emission[4], step.emission[5]};
     if (length(diff) > 0.0F) {
@@ -398,7 +522,7 @@ void process(Particle& particle, const ParticleProcess& p, const ParticleStep& s
     if (length(diff) > 0.0F) {
         force = force + (normalize(Vec2{-diff.y, diff.x}) * physical.tangent_accel);
     }
-    built = built + (force * delta);
+    built = built + Vec3{force.x * delta, force.y * delta, 0.0F};
     if (physical.damping > 0.0F) {
         float v = length(built);
         if (!p.damping_as_friction) {
@@ -407,16 +531,32 @@ void process(Particle& particle, const ParticleProcess& p, const ParticleStep& s
             // Godot's friction, for a particle of 0.05 kg.
             v -= v * v * physical.damping * 0.05F * delta;
         }
-        built = v < 0.0F ? Vec2{} : normalize(built) * v;
+        built = v < 0.0F ? Vec3{} : normalize(built) * v;
+    }
+
+    // Turbulence before limiting.
+    Vec3 controlled3{controlled.x, controlled.y, 0.0F};
+    if (p.turbulence_enabled) {
+        const float influence =
+            sample_curve(curve(p, ParticleParam::TurbulenceInfluence), life, 1.0F);
+        const Vec3 direction = normalize(noise_direction(p, step, particle.origin));
+        const float amount = std::clamp(dynamics.turbulence_influence * influence, 0.0F, 1.0F) *
+                             (delta <= 0.0F ? 0.0F : 1.0F);
+        const float boost = 1.0F + ((1.0F - amount) * 0.2F);
+        built = mix(built, direction * (length(built) * boost), amount);
+        controlled3 = mix(controlled3, direction * (length(controlled3) * boost), amount);
     }
     particle.userdata.x = built.x;
     particle.userdata.y = built.y;
+    particle.userdata.z = built.z;
 
-    Vec2 velocity = controlled + built;
-    if (!p.velocity_limit_curve.empty() && length(velocity) > 0.001F) {
+    Vec3 final_velocity = controlled3 + built;
+    if (!p.velocity_limit_curve.empty() && length(final_velocity) > 0.001F) {
         const float limit = std::abs(sample_curve(p.velocity_limit_curve, life, 0.0F));
-        velocity = normalize(velocity) * std::min(std::abs(length(velocity)), limit);
+        final_velocity =
+            normalize(final_velocity) * std::min(std::abs(length(final_velocity)), limit);
     }
+    const Vec2 velocity{final_velocity.x, final_velocity.y};
     particle.velocity = velocity;
     particle.origin = particle.origin + (velocity * delta);
 
@@ -526,6 +666,13 @@ float mod(float x, float y) {
 }
 
 } // namespace
+
+float turbulence_frequency(float noise_scale) {
+    // Godot's slider runs from 0 to 10: a frequency of -4 at 0, 0 at 10.
+    constexpr float kAtZero = 4.0F;
+    const float rescale = kAtZero / std::sqrt(std::sqrt(10.0F));
+    return (std::sqrt(std::sqrt(std::max(noise_scale, 0.0F))) * rescale) - kAtZero;
+}
 
 float sample_curve(const ParticleCurve& curve, float offset, float fallback) {
     if (curve.empty()) {

@@ -29,23 +29,32 @@ struct ParamInfo {
     std::optional<double> min;
     std::optional<double> max;
     bool curve = true;
+    std::string_view curve_name; // its curve's name, when not name + "_curve"
 };
 constexpr std::array<ParamInfo, render::kParticleParams> kParams{{
     {"initial_velocity", "Starting speed in pixels per second along the spread direction",
-     std::nullopt, std::nullopt, false},
-    {"angular_velocity", "Degrees per second it turns", std::nullopt, std::nullopt},
-    {"orbit_velocity", "Turns per second round the emitter", std::nullopt, std::nullopt},
-    {"linear_accel", "Pixels per second squared along its velocity", std::nullopt, std::nullopt},
-    {"radial_accel", "Pixels per second squared away from the emitter", std::nullopt, std::nullopt},
-    {"tangential_accel", "Pixels per second squared round the emitter", std::nullopt, std::nullopt},
-    {"damping", "Pixels per second squared it slows by", 0.0, std::nullopt},
-    {"angle", "Rotation in degrees", std::nullopt, std::nullopt},
-    {"scale", "Size, times the texture's", std::nullopt, std::nullopt},
-    {"hue_variation", "Turns its hue, as a fraction of the color wheel", -1.0, 1.0},
-    {"anim_speed", "Times its frames play over its life", 0.0, std::nullopt},
-    {"anim_offset", "The frame it starts on, as a fraction of the frames; its curve adds", 0.0,
-     1.0},
-    {"radial_velocity", "Pixels per second away from velocity_pivot", std::nullopt, std::nullopt},
+     std::nullopt, std::nullopt, false, ""},
+    {"angular_velocity", "Degrees per second it turns", std::nullopt, std::nullopt, true, ""},
+    {"orbit_velocity", "Turns per second round the emitter", std::nullopt, std::nullopt, true, ""},
+    {"linear_accel", "Pixels per second squared along its velocity", std::nullopt, std::nullopt,
+     true, ""},
+    {"radial_accel", "Pixels per second squared away from the emitter", std::nullopt, std::nullopt,
+     true, ""},
+    {"tangential_accel", "Pixels per second squared round the emitter", std::nullopt, std::nullopt,
+     true, ""},
+    {"damping", "Pixels per second squared it slows by", 0.0, std::nullopt, true, ""},
+    {"angle", "Rotation in degrees", std::nullopt, std::nullopt, true, ""},
+    {"scale", "Size, times the texture's", std::nullopt, std::nullopt, true, ""},
+    {"hue_variation", "Turns its hue, as a fraction of the color wheel", -1.0, 1.0, true, ""},
+    {"anim_speed", "Times its frames play over its life", 0.0, std::nullopt, true, ""},
+    {"anim_offset", "The frame it starts on, as a fraction of the frames; its curve adds", 0.0, 1.0,
+     true, ""},
+    {"radial_velocity", "Pixels per second away from velocity_pivot", std::nullopt, std::nullopt,
+     true, ""},
+    {"turbulence_influence", "How far turbulence turns its velocity, from 0 to 1", 0.0, 1.0, true,
+     "turbulence_influence_over_life"},
+    {"turbulence_initial_displacement", "Pixels turbulence moves it at the start", std::nullopt,
+     std::nullopt, false, ""},
 }};
 
 json::Value number(std::string_view description, double fallback,
@@ -133,6 +142,11 @@ std::string param_name(std::size_t param, std::string_view end) {
     return std::string(kParams.at(param).name) + std::string(end);
 }
 
+std::string curve_name(std::size_t param) {
+    const ParamInfo& info = kParams.at(param);
+    return info.curve_name.empty() ? param_name(param, "_curve") : std::string(info.curve_name);
+}
+
 } // namespace
 
 json::Value process_material_schema() {
@@ -217,7 +231,7 @@ json::Value process_material_schema() {
         properties[param_name(i, "_max")] =
             number(what + ", at most.", defaults.param_max.at(i), info.min, info.max);
         if (info.curve) {
-            properties[param_name(i, "_curve")] =
+            properties[curve_name(i)] =
                 curve_schema(i == static_cast<std::size_t>(ParticleParam::AnimOffset)
                                  ? "Adds to it over each particle's life: points [offset, value]."
                                  : "Multiplies it over each particle's life: points [offset, "
@@ -235,6 +249,22 @@ json::Value process_material_schema() {
         "Colors over each particle's life, multiplying color: stops {offset, color}, in order.");
     properties["color_initial_ramp"] = gradient_schema(
         "Each particle multiplies its color by one picked at random from this gradient.");
+    properties["turbulence_enabled"]["type"] = "boolean";
+    properties["turbulence_enabled"]["default"] = false;
+    properties["turbulence_enabled"]["description"] =
+        "Turn particles with moving curl noise, by turbulence_influence.";
+    properties["turbulence_noise_strength"] =
+        number("How sharply the noise turns.", defaults.turbulence_noise_strength, 0.0, 20.0);
+    properties["turbulence_noise_scale"] =
+        number("The noise's size: higher is larger swirls, 10 the largest Godot's slider gives.",
+               defaults.turbulence_noise_scale, 0.0);
+    properties["turbulence_noise_speed"] = numbers(3);
+    properties["turbulence_noise_speed"]["default"] = json::Array{0, 0, 0};
+    properties["turbulence_noise_speed"]["description"] =
+        "How the noise moves, per second, as [x, y, z].";
+    properties["turbulence_noise_speed_random"] =
+        number("How fast the noise changes as it moves.", defaults.turbulence_noise_speed_random,
+               0.0, 4.0);
     return schema;
 }
 
@@ -245,7 +275,7 @@ std::vector<json::ValidationError> validate_process_material(const json::Value& 
     }
     // Curves and gradients go along their offsets.
     for (const auto& [name, value] : doc.as_object()) {
-        const bool curve = name.ends_with("_curve");
+        const bool curve = name.ends_with("_curve") || name == "turbulence_influence_over_life";
         const bool gradient = name == "color_ramp" || name == "color_initial_ramp";
         if (!curve && !gradient) {
             continue;
@@ -355,7 +385,7 @@ Result<render::ParticleProcess> parse_process_material(const json::Value& doc) {
         real(param_name(i, "_min"), out.param_min.at(i));
         real(param_name(i, "_max"), out.param_max.at(i));
         if (kParams.at(i).curve) {
-            curve(param_name(i, "_curve"), out.param_curve.at(i));
+            curve(curve_name(i), out.param_curve.at(i));
         }
     }
     curve("velocity_limit_curve", out.velocity_limit_curve);
@@ -369,6 +399,16 @@ Result<render::ParticleProcess> parse_process_material(const json::Value& doc) {
     real("lifetime_randomness", out.lifetime_randomness);
     flag("particle_flag_align_y", out.align_y);
     flag("particle_flag_damping_as_friction", out.damping_as_friction);
+    flag("turbulence_enabled", out.turbulence_enabled);
+    real("turbulence_noise_strength", out.turbulence_noise_strength);
+    real("turbulence_noise_scale", out.turbulence_noise_scale);
+    if (const json::Value* speed = doc.find("turbulence_noise_speed"); speed != nullptr) {
+        const json::Array& items = speed->as_array();
+        out.turbulence_noise_speed = {static_cast<float>(items[0].as_double()),
+                                      static_cast<float>(items[1].as_double()),
+                                      static_cast<float>(items[2].as_double())};
+    }
+    real("turbulence_noise_speed_random", out.turbulence_noise_speed_random);
     return out;
 }
 

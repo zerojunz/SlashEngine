@@ -62,9 +62,47 @@ std::string linux_toolchain(const fs::path& llvm, const fs::path& sysroot,
            std::string(kFindModes);
 }
 
+// A script that runs this program as wayland-scanner, or empty where it has none.
+fs::path wayland_scanner_script(const fs::path& work) {
+    const std::string program = platform::executable_path();
+    if (!has_wayland_scanner() || program.empty()) {
+        return {};
+    }
+    std::string quoted = "'";
+    for (const char c : program) {
+        quoted += c == '\'' ? std::string("'\\''") : std::string(1, c);
+    }
+    quoted += "'";
+    std::error_code error;
+    const fs::path script = fs::absolute(work / kWaylandScanner, error);
+    const std::string text =
+        "#!/bin/sh\nexec " + quoted + " " + std::string(kWaylandScanner) + " \"$@\"\n";
+    if (!platform::write_file(script.string(), text)) {
+        return {};
+    }
+    fs::permissions(script, fs::perms::owner_all | fs::perms::group_read | fs::perms::group_exec,
+                    error);
+    return error ? fs::path() : script;
+}
+
 std::string no_toolchain(const std::string& platform, const std::string& name) {
     return platform + " games can't be built on this machine yet: there is no " + name +
            " toolchain for it";
+}
+
+// xkbcommon's pkg-config file as it is on Ubuntu 20.04, the oldest Linux games support, naming the
+// sysroot's files.
+std::string old_xkbcommon(const std::string& triple) {
+    return "prefix=/usr\n"
+           "libdir=${prefix}/lib/" +
+           triple +
+           "\n"
+           "includedir=${prefix}/include\n\n"
+           "Name: xkbcommon\n"
+           "Description: XKB API common to servers and clients\n"
+           "Version: 0.10.0\n"
+           "Libs: -L${libdir} -lxkbcommon\n"
+           "Cflags: -I${includedir}\n";
 }
 
 } // namespace
@@ -83,6 +121,10 @@ bool prepare_cross(const std::string& platform, const std::string& arch, const f
         const auto toolchain = std::ranges::find(available, name, &Toolchain::name);
         if (toolchain == available.end()) {
             failure = {"options", no_toolchain(platform, name), {}};
+            if (platform == "web") {
+                failure.message += "; install emsdk and activate it (source emsdk_env.sh) so "
+                                   "EMSDK is set";
+            }
             return false;
         }
         if (!installed_toolchain(*toolchain, dir)) {
@@ -97,6 +139,25 @@ bool prepare_cross(const std::string& platform, const std::string& arch, const f
         cross.build_name += (cross.build_name.empty() ? "" : "-") + toolchain->version;
     }
 
+    std::error_code error;
+    if (platform == "web") {
+        // Emscripten's own CMake toolchain file, and a config naming its tools.
+        const WebTools tools = web_tools(folders);
+        cross.toolchain_file = tools.toolchain_file;
+        cross.build_name = "emscripten-" + cross.build_name;
+        cross.node = tools.node;
+        cross.python = tools.python;
+        const fs::path config = fs::absolute(work / "emscripten.config", error);
+        if (auto written = platform::write_file(config.string(), tools.config); !written) {
+            failure = {"toolchain", written.error().message, {}};
+            return false;
+        }
+        cross.environment = {{"EM_CONFIG", config.string()}};
+        if (!tools.python.empty()) {
+            cross.environment.emplace_back("EMSDK_PYTHON", tools.python.string());
+        }
+        return true;
+    }
     std::string text;
     if (platform == "windows") {
         text = windows_toolchain(folders.at(0));
@@ -107,19 +168,46 @@ bool prepare_cross(const std::string& platform, const std::string& arch, const f
         const fs::path& sysroot = folders.at(1);
         text = linux_toolchain(folders.at(0), sysroot, triple, arm64 ? "aarch64" : "x86_64");
         cross.build_name = "linux-" + arch + "-" + cross.build_name;
+        // SDL's Wayland code is written by the scanner built into this program, Wayland 1.18's
+        // like the sysroot's headers. Without it, or without pkg-config to find the sysroot's
+        // Wayland, games get X11 only.
+        const fs::path scanner = wayland_scanner_script(work);
+        if (!scanner.empty()) {
+            text += "set(WAYLAND_SCANNER " + cmake_path(scanner) +
+                    " CACHE FILEPATH \"Wayland 1.18's wayland-scanner\" FORCE)\n";
+        }
+        if (scanner.empty()) {
+            log::warn("this build of the tools has no wayland-scanner, so Linux games built "
+                      "with it run on X11 only");
+        }
+        if (find_on_path("pkg-config").empty()) {
+            log::warn("Linux games built without pkg-config run on X11 only, with no Wayland, "
+                      "PulseAudio or PipeWire: install it (brew install pkgconf on macOS)");
+        }
+        // SDL's Wayland code calls what the xkbcommon it is built against has, and the sysroot's
+        // 1.0 has more than Ubuntu 20.04's 0.10, so pkg-config finds one saying 0.10 first: the
+        // sysroot's headers and library, used as that version, as Godot builds against old
+        // headers it keeps.
+        const fs::path packages = fs::absolute(work / "pkgconfig", error);
+        fs::create_directories(packages, error);
+        if (auto written =
+                platform::write_file((packages / "xkbcommon.pc").string(), old_xkbcommon(triple));
+            !written) {
+            failure = {"toolchain", written.error().message, {}};
+            return false;
+        }
         // pkg-config must read the sysroot's packages, never the host's. Chromium's sysroots
         // keep most of them in usr/lib/pkgconfig.
         const std::string separator = ":";
         cross.environment = {
-            {"PKG_CONFIG_LIBDIR", (sysroot / "usr" / "lib" / "pkgconfig").string() + separator +
-                                      (sysroot / "usr" / "lib" / triple / "pkgconfig").string() +
-                                      separator +
-                                      (sysroot / "usr" / "share" / "pkgconfig").string()},
+            {"PKG_CONFIG_LIBDIR",
+             packages.string() + separator + (sysroot / "usr" / "lib" / "pkgconfig").string() +
+                 separator + (sysroot / "usr" / "lib" / triple / "pkgconfig").string() + separator +
+                 (sysroot / "usr" / "share" / "pkgconfig").string()},
             {"PKG_CONFIG_SYSROOT_DIR", sysroot.string()},
             {"PKG_CONFIG_PATH", ""},
         };
     }
-    std::error_code error;
     cross.toolchain_file = fs::absolute(work / (cross.build_name + ".cmake"), error);
     if (auto written = platform::write_file(cross.toolchain_file.string(), text); !written) {
         failure = {"toolchain", written.error().message, {}};

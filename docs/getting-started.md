@@ -15,7 +15,8 @@ iOS.
 You need CMake 3.25 or newer, Ninja and a C++20 compiler (Apple Clang, Clang 16+, GCC 12+ or MSVC
 19.3x). Everything else is downloaded by CMake at pinned versions. On Linux, SDL3 also needs the
 X11 and Wayland development packages listed under `LINUX_SDL_DEPS` in
-[.github/workflows/ci.yml](../.github/workflows/ci.yml).
+[.github/workflows/ci.yml](../.github/workflows/ci.yml). Exporting Linux games needs
+`pkg-config` too (`brew install pkgconf` on a Mac).
 
 ```bash
 cmake --preset dev               # configure; the first run fetches the dependencies
@@ -210,7 +211,11 @@ $cli export linux --project mygame --test
 ```
 
 `--test` runs the exported game headless and reports whether it worked. Use `macos` or `windows`
-on those machines, or `web` anywhere Emscripten is installed. To export every platform at once,
+on those machines, or `web` anywhere: the first web export downloads Emscripten unless an emsdk
+is activated. Android exports use Android Studio's SDK, or the JDK and SDK that
+`$cli toolchain install android --accept-android-sdk-license` downloads once you have read
+[Google's Android SDK license](https://developer.android.com/studio/terms), which that flag
+accepts. To export every platform at once,
 push the game to GitHub: `init` wrote `.github/workflows/export.yml`, which builds and tests each
 one on its own runner. Presets in `export_presets.json` name output folders and signing settings;
 see [reference/cli.md](reference/cli.md#export).

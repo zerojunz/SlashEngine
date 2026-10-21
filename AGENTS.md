@@ -333,12 +333,29 @@ and full build log are in `<project>/.slash/export/<preset>/`; a failure reports
 end of the log. A Mac builds every platform: macOS and iOS with Xcode's tools, Windows and Linux
 with llvm-mingw and a glibc 2.31 Debian sysroot that the first such export downloads
 (`$cli toolchain install` gets them ahead of time, into `SLASH_TOOLCHAINS_DIR` or
-`~/.slash/toolchains`). Linux machines build Linux and Windows the same way, and Windows machines
-build Windows with MSVC. Web exports need Emscripten (`EMSDK` set) and Android exports the Android
-SDK, NDK and a JDK on any host. CI exports and runs an empty game for macOS, Windows, Linux, web,
+`~/.slash/toolchains`). Linux games run on X11 or Wayland (X11 first unless
+`window.linux_display_driver` says `wayland`); SDL's Wayland code comes from Wayland 1.18's
+scanner, built into slash-cli and slash-mcp (`slash-cli wayland-scanner`) to fit the sysroot's
+headers, and pkg-config must be installed. Linux machines build Linux and Windows the same way,
+and Windows machines build Windows with MSVC. Web exports use an activated emsdk (`EMSDK` set) or else download pinned
+Emscripten, Node.js and (on macOS and Windows) Python toolchains. Android exports, on any host,
+use the Android SDK, NDK and JDK in `ANDROID_HOME` and `JAVA_HOME` or the ones
+`$cli toolchain install android --accept-android-sdk-license` installs (it accepts Google's
+Android SDK license, so an agent asks its person first). CI exports and runs an empty game for macOS, Windows, Linux, web,
 Android (on an emulator) and iOS (in the Simulator) on every PR, cross-exports Windows and Linux
-(x86_64 and arm64) from macOS and runs them on Windows and Ubuntu 20.04, and `slash-cli init` writes
+(x86_64 and arm64) from macOS and runs them on Windows and Ubuntu 20.04 (on X11 and Wayland
+compositors there), and `slash-cli init` writes
 the per-platform workflow into new games.
+
+App icons come from one square image, `project.json`'s `icon` (Godot's
+`application/config/icon`), or the engine's own drawn in code (`runtime::default_icon`).
+`tools/exporter/src/icons.cpp` resizes it with `render::resize_image` (Lanczos, as Godot's) into
+each platform's files: an `.icns` (macOS, an opaque icon drawn into Apple's rounded square), an
+`.ico` resource (Windows), an adaptive icon (Android, `android.icon_foreground` and
+`icon_background` in presets), an asset catalog compiled with `actool` (iOS, flattened onto
+`ios.icon_background`) and a favicon (web). A preset's `icon` replaces the project's;
+`check_icons` backs exports and `$cli project validate`. Windowed games and `slash-cli run` show
+it with `Platform::set_icon`. `examples/app-icons` prints every platform's files.
 
 Closed vendor SDKs (ads, stores, Steamworks) come in as SDK packages, as Godot's Android and
 iOS plugins: a folder with an `sdk.json` (`$cli schema sdk`; `tools/exporter/src/sdk.cpp`) naming
@@ -744,8 +761,10 @@ hasn't with `RenderDevice::process_particles` and draws with `draw_particles`, s
 renderer catches up from the steps kept. `engine/render/shaders/particles_process.hlsl` is the
 compute shader and `render::process_particles` (`engine/render/src/particles.cpp`) its CPU twin,
 which the software and OpenGL ES devices run; a test holds them to the same particles, so a
-change to the particle math goes in both. `particles.eval` runs the steps kept on the CPU
-(`canvas::gpu_particles`); `examples/gpu-particles` has a fire, sparks and snow.
+change to the particle math goes in both. Turbulence is Godot's curl noise, with lattice
+gradients from an integer hash so both make the same noise. `particles.eval` runs the steps kept
+on the CPU (`canvas::gpu_particles`); `examples/gpu-particles` has a fire, sparks, snow and
+smoke.
 
 ## Job system
 

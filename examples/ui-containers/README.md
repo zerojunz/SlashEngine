@@ -4,7 +4,8 @@ Containers, themes and the controls that draw boxes and textures, as Godot's.
 [main.scene.json](main.scene.json) is an inventory screen: a `CenterContainer` keeps a
 `PanelContainer` in the middle of the window, and in it a `BoxContainer` stacks a title, a
 `ProgressBar`, a `GridContainer` of item slots holding `TextureRect` icons, a `FlowContainer` of
-tags and a hint. A `NinePatchRect` tooltip in the corner holds a `MarginContainer`.
+tags and a hint. The first slot's tooltip, a `NinePatchRect` holding a `MarginContainer`, is
+`top_level`, so it sits in the corner of the window rather than in the slot.
 [ui/game.theme.json](ui/game.theme.json), the project's theme, styles all of it.
 [main.cpp](main.cpp) writes the two textures, checks the screen with `ui.layout` and `ui.theme`,
 changes the bar and the grid, catches a misspelled style override, then draws the screen into a
@@ -31,6 +32,9 @@ ui.theme {"id":"slot_0","items":["styles"]}
   and style boxes (`$cli schema theme`). A control uses its `theme_override_*` items, then the
   themes in its own and its parents' `Control.theme`, then the project's `gui.theme`, then
   Godot's default theme. `ui.theme` says which one each item came from.
+- A `top_level` control is placed in the window by its own anchors and offsets, as Godot's: the
+  slot's container leaves the tooltip out and goes on placing the gem, and the tooltip takes none
+  of the slot's transform, tint, `z_index` or clip. It draws after the rest of the screen.
 - A type with a `base_type` is a variation: controls whose `theme_type_variation` names it use
   its items first. The title is a `Header`, a bigger, gold `Label`; the slots are `Slot`s, smaller
   panels than the frame's.

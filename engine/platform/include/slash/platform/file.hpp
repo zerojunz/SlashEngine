@@ -67,4 +67,8 @@ list_files(std::string_view folder,
 // "/" on the web. Empty if the platform can't tell.
 [[nodiscard]] std::string base_path();
 
+// The running program's executable as an absolute path, with symbolic links resolved. Empty where
+// the platform can't tell, such as the web, iOS and Android.
+[[nodiscard]] std::string executable_path();
+
 } // namespace slash::platform

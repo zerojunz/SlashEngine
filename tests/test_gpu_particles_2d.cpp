@@ -177,7 +177,17 @@ TEST_CASE("process material files are Godot's ParticleProcessMaterial in 2D") {
         "radial_velocity_max": 3,
         "scale_curve": [[0, 1], [1, 0]],
         "color_ramp": [{"offset": 0, "color": [1, 0.8, 0.2, 1]}, {"offset": 1, "color": [1, 0.2, 0, 0]}],
-        "particle_flag_align_y": true
+        "particle_flag_align_y": true,
+        "turbulence_enabled": true,
+        "turbulence_noise_strength": 3,
+        "turbulence_noise_scale": 4.5,
+        "turbulence_noise_speed": [1, 0.5, 0],
+        "turbulence_noise_speed_random": 0.5,
+        "turbulence_influence_min": 0.2,
+        "turbulence_influence_max": 0.6,
+        "turbulence_influence_over_life": [[0, 0], [1, 1]],
+        "turbulence_initial_displacement_min": -4,
+        "turbulence_initial_displacement_max": 4
     })"));
     REQUIRE(process.ok());
     const render::ParticleProcess& p = process.value();
@@ -194,9 +204,24 @@ TEST_CASE("process material files are Godot's ParticleProcessMaterial in 2D") {
     CHECK(p.color_ramp.size() == 2);
     CHECK(p.color_ramp[1].color.w == 0.0F);
     CHECK(p.align_y);
+    CHECK(p.turbulence_enabled);
+    CHECK(p.turbulence_noise_strength == 3.0F);
+    CHECK(p.turbulence_noise_scale == 4.5F);
+    CHECK(p.turbulence_noise_speed == slash::Vec3{1.0F, 0.5F, 0.0F});
+    CHECK(p.turbulence_noise_speed_random == 0.5F);
+    const auto turbulence = static_cast<std::size_t>(render::ParticleParam::TurbulenceInfluence);
+    CHECK(p.param_min.at(turbulence) == 0.2F);
+    CHECK(p.param_max.at(turbulence) == 0.6F);
+    CHECK(p.param_curve.at(turbulence) == render::ParticleCurve{{0.0F, 0.0F}, {1.0F, 1.0F}});
+    const auto displacement =
+        static_cast<std::size_t>(render::ParticleParam::TurbulenceDisplacement);
+    CHECK(p.param_min.at(displacement) == -4.0F);
+    CHECK(p.param_max.at(displacement) == 4.0F);
     // Left out, gravity is a 2D ParticleProcessMaterial's, and scale 1.
     CHECK(p.gravity == Vec2{0.0F, 98.0F});
     CHECK(p.param_min.at(static_cast<std::size_t>(render::ParticleParam::Scale)) == 1.0F);
+    CHECK_FALSE(render::ParticleProcess{}.turbulence_enabled);
+    CHECK(render::ParticleProcess{}.param_min.at(turbulence) == 0.1F);
     CHECK(canvas::parse_process_material(parse(R"({"format": 1})")).value() ==
           render::ParticleProcess{});
 
@@ -210,6 +235,14 @@ TEST_CASE("process material files are Godot's ParticleProcessMaterial in 2D") {
     CHECK(first_error(R"({"format": 1, "color_ramp": [{"offset": 1, "color": [1, 1, 1, 1]},
                                                       {"offset": 0, "color": [1, 1, 1, 1]}]})") ==
           "/color_ramp/1/offset: offsets go in order: 0 comes after 1");
+    CHECK(first_error(R"({"format": 1, "turbulence_influence_over_life": [[0.5, 1], [0.2, 0]]})") ==
+          "/turbulence_influence_over_life/1/0: offsets go in order: 0.2 comes after 0.5");
+    CHECK(first_error(R"({"format": 1, "turbulence_noise_strength": 25})")
+              .starts_with("/turbulence_noise_strength"));
+    CHECK(first_error(R"({"format": 1, "turbulence_noise_speed": [1, 0]})")
+              .starts_with("/turbulence_noise_speed"));
+    CHECK(first_error(R"({"format": 1, "turbulence_initial_displacement_curve": []})")
+              .starts_with("/turbulence_initial_displacement_curve"));
     CHECK(first_error(R"({"format": 1, "scale_curve": [[2, 1]]})").starts_with("/scale_curve/0/0"));
     CHECK(first_error(R"({"format": 1, "emission_shape": "points"})") ==
           "/emission_shape: \"points\" needs emission_points to start particles at");
@@ -248,6 +281,7 @@ TEST_CASE("a GPUParticles2D steps its cycle as Godot's particles storage does") 
     CHECK(first.cycle == 0);
     CHECK(first.emission == std::array<float, 6>{1.0F, 0.0F, 0.0F, 1.0F, 10.0F, 20.0F});
     CHECK(first.seed == canvas::particle_seed("fountain", 0));
+    CHECK(first.time == doctest::Approx(1.0 / 30.0));
     CHECK(kept.remainder == doctest::Approx(-1.0 / 60.0));
 
     // Then a step of 1/30 s each time 1/30 s of ticks has built up; the cycle counts up as the
@@ -263,6 +297,7 @@ TEST_CASE("a GPUParticles2D steps its cycle as Godot's particles storage does") 
         CHECK_FALSE(step.clear);
         CHECK(step.delta == doctest::Approx(1.0 / 30.0));
         CHECK(step.prev_system_phase == kept.steps[i - 1].system_phase);
+        CHECK(step.time == doctest::Approx(kept.steps[i - 1].time + step.delta));
         if (step.system_phase < step.prev_system_phase) {
             ++cycle;
         }
@@ -290,6 +325,7 @@ TEST_CASE("a GPUParticles2D steps its cycle as Godot's particles storage does") 
     REQUIRE(kept.steps.size() == 1);
     CHECK(kept.steps.front().clear);
     CHECK(kept.steps.front().cycle == 0);
+    CHECK(kept.steps.front().time == doctest::Approx(kept.steps.front().delta));
 
     // In local coordinates particles start in the emitter's own space.
     scene.emitter(fountain).local_coords = true;

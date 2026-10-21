@@ -23,9 +23,11 @@ struct AndroidTools {
     std::string java_home;   // a JDK with javac, jar and keytool in bin
 };
 
-// Where to look. Empty fields mean the usual places: ANDROID_HOME or ANDROID_SDK_ROOT and then
-// Android Studio's default SDK folder; ANDROID_NDK_HOME, ANDROID_NDK_ROOT or ANDROID_NDK and then
-// the newest NDK in the SDK; JAVA_HOME, Android Studio's bundled JDK and then javac on PATH.
+// Where to look. Empty fields mean the usual places: ANDROID_HOME or ANDROID_SDK_ROOT, the SDK
+// slash-cli toolchain install android installed (install_android) and then Android Studio's
+// default SDK folder; ANDROID_NDK_HOME, ANDROID_NDK_ROOT or ANDROID_NDK and then the newest NDK
+// in the SDK; JAVA_HOME, the JDK slash-cli installed, Android Studio's bundled JDK and then javac
+// on PATH.
 struct AndroidSearch {
     std::string sdk;
     std::string ndk;

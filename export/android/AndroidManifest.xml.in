@@ -13,6 +13,7 @@
     @SLASH_SDK_ANDROID_MANIFEST@
     <application
         android:label="@SLASH_ANDROID_LABEL@"
+        android:icon="@mipmap/icon"
         android:allowBackup="true"
         android:appCategory="game"
         android:enableOnBackInvokedCallback="false"

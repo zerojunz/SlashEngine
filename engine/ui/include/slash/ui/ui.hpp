@@ -490,12 +490,13 @@ struct Layout {
     // sprites.
     std::vector<world::Canvas> canvases;
     // Every control, in drawing order: by canvas, then z, then parents before children and
-    // children in order, roots in the order their entities were made.
+    // children in order, roots in the order their entities were made, and a top_level control
+    // after the rest of its tree.
     std::vector<Placed> controls;
     std::unordered_map<entt::entity, std::size_t> index; // entity to its place in controls
     // Every control in tree order, as Godot's scene tree: by canvas, then parents before
     // children and children in order, roots in the order their entities were made. Pointers hit
-    // the last first.
+    // the last root first, a top_level control being a root of its own.
     std::vector<entt::entity> tree;
     std::vector<Problem> problems;
     std::map<entt::entity, LabelText> labels;       // each Label's text
