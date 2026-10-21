@@ -89,9 +89,10 @@ void pack_particle_process(const ParticleProcess& process, std::vector<Word>& ou
     } else if (process.sub_emitter_mode == SubEmitterMode::AtStart) {
         amount = process.sub_emitter_amount_at_start;
     }
-    out.push_back({static_cast<std::uint32_t>(process.sub_emitter_mode),
-                   bits(static_cast<float>(1.0 / static_cast<double>(process.sub_emitter_frequency))),
-                   amount, process.sub_emitter_keep_velocity ? 1U : 0U});
+    out.push_back(
+        {static_cast<std::uint32_t>(process.sub_emitter_mode),
+         bits(static_cast<float>(1.0 / static_cast<double>(process.sub_emitter_frequency))), amount,
+         process.sub_emitter_keep_velocity ? 1U : 0U});
 
     for (const ParticleCurve* curve : curves) {
         for (std::size_t word = 0; word < kCurveWords; ++word) {

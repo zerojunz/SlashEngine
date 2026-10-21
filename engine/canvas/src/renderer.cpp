@@ -500,10 +500,11 @@ void CanvasRenderer::mirror_chain(std::span<const ParticleChainMember> chain,
         std::vector<render::ParticleChainLink> links;
         for (std::size_t k = 0; k < chain.size(); ++k) {
             const ParticleSteps& kept = chain[k].steps;
-            links.push_back({.particles = systems[k]->cpu,
-                             .process = processes[k],
-                             .steps = kept.steps.subspan(static_cast<std::size_t>(next - kept.first)),
-                             .shapes = kept.shapes});
+            links.push_back(
+                {.particles = systems[k]->cpu,
+                 .process = processes[k],
+                 .steps = kept.steps.subspan(static_cast<std::size_t>(next - kept.first)),
+                 .shapes = kept.shapes});
         }
         render::process_particle_chain(links);
     }
@@ -1332,9 +1333,8 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             gpu_systems_[member.entity].seen = true;
         }
         if (chain.empty() || kept->steps.empty() ||
-            std::ranges::none_of(chain, [&](const ParticleChainMember& member) {
-                return shown(member.entity);
-            })) {
+            std::ranges::none_of(
+                chain, [&](const ParticleChainMember& member) { return shown(member.entity); })) {
             continue;
         }
         std::vector<const render::ParticleProcess*> processes;

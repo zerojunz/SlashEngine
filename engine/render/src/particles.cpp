@@ -493,8 +493,7 @@ void start(Particle& particle, const ParticleProcess& p, const ParticleStep& ste
     } else {
         particle.origin = initial_position(p, display, seed);
         if (p.turbulence_enabled) {
-            const float displacement =
-                random_param(p, ParticleParam::TurbulenceDisplacement, seed);
+            const float displacement = random_param(p, ParticleParam::TurbulenceDisplacement, seed);
             const Vec3 direction = noise_direction(p, step, particle.origin);
             particle.origin = particle.origin + (Vec2{direction.x, direction.y} * displacement);
         }
