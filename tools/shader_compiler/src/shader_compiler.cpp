@@ -431,7 +431,11 @@ std::string to_wgsl(const std::vector<std::uint32_t>& spirv, const std::string& 
         errors.push_back(path + ": Tint can't read it: " + module.Failure().reason);
         return {};
     }
-    auto wgsl = tint::wgsl::writer::WgslFromIR(module.Get(), {});
+    // HLSL, GLSL and MSL take derivatives anywhere, after a discard too; WGSL refuses them in
+    // control flow that can differ between pixels unless told not to check.
+    tint::wgsl::writer::Options options;
+    options.allow_non_uniform_derivatives = true;
+    auto wgsl = tint::wgsl::writer::WgslFromIR(module.Get(), options);
     if (wgsl != tint::Success) {
         errors.push_back(path + ": Tint can't write it as WGSL: " + wgsl.Failure().reason);
         return {};

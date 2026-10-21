@@ -325,15 +325,27 @@ TEST_CASE("param names the code around a shader takes are reserved, and the rest
     }
 }
 
+// A shader that takes a derivative after discarding some pixels, as HLSL allows.
+render::CompiledShader sway() {
+    return compiled({.path = "shaders/sway.hlsl",
+                     .code = "void vertex() {\n    VERTEX.x += offset;\n}\n"
+                             "void fragment() {\n    if (UV.x > 0.5) {\n        discard;\n    }\n"
+                             "    COLOR = texture(ramp, UV) * ddx(UV.x) * TIME;\n}\n",
+                     .params = {{.name = "offset", .components = 1, .slot = 0},
+                                {.name = "ramp", .components = 0, .slot = 1}}});
+}
+
+TEST_CASE("WGSL takes derivatives where HLSL does") {
+    // WGSL refuses derivatives in control flow that can differ between pixels, such as after a
+    // discard, unless the check is off.
+    const render::CompiledShader shader = sway();
+    CHECK(shader.wgsl_fragment.find("diagnostic(off, derivative_uniformity)") != std::string::npos);
+    CHECK(shader.wgsl_fragment.find("dpdx") != std::string::npos);
+}
+
 #if defined(_WIN32)
 TEST_CASE("a game's shader compiles with Windows' HLSL compiler") {
-    const render::CompiledShader shader =
-        compiled({.path = "shaders/sway.hlsl",
-                  .code = "void vertex() {\n    VERTEX.x += offset;\n}\n"
-                          "void fragment() {\n    if (UV.x > 0.5) {\n        discard;\n    }\n"
-                          "    COLOR = texture(ramp, UV) * ddx(UV.x) * TIME;\n}\n",
-                  .params = {{.name = "offset", .components = 1, .slot = 0},
-                             {.name = "ramp", .components = 0, .slot = 1}}});
+    const render::CompiledShader shader = sway();
     for (const auto& [entry, target] : {std::pair{"vs_main", "vs_5_1"}, {"fs_main", "ps_5_1"}}) {
         const auto result = render::detail::compile_hlsl(shader.hlsl, entry, target);
         CHECK_MESSAGE(result.ok(), entry, ": ", (result.ok() ? "" : result.error().message));

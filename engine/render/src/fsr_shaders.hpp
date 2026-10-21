@@ -2401,7 +2401,9 @@ void main()
 };
 
 inline constexpr const char* kFsrEasuWgslVertex[] = {
-R"slash(var<private> TIME : f32;
+R"slash(diagnostic(off, derivative_uniformity);
+
+var<private> TIME : f32;
 
 struct VertexProgram {
   vertex_constants : array<vec4<f32>, 32u>,
@@ -2551,7 +2553,9 @@ fn vs_main(@location(0u) v_13 : vec2<f32>, @location(1u) v_14 : vec2<f32>, @loca
 };
 
 inline constexpr const char* kFsrEasuWgslFragment[] = {
-R"slash(@group(2u) @binding(7u) var shadow_map : texture_2d<f32>;
+R"slash(diagnostic(off, derivative_uniformity);
+
+@group(2u) @binding(7u) var shadow_map : texture_2d<f32>;
 
 struct Program {
   code : array<vec4<u32>, 64u>,
@@ -2942,9 +2946,9 @@ fn v_37(pixel : ptr<function, CanvasPixel>, base : ptr<function, vec4<f32>>, nor
       let v_40 = (((*(pixel)).world_dy * (*(pixel)).uv_dx.x) - ((*(pixel)).world_dx * (*(pixel)).uv_dy.x));
       let v_41 = det;
       along_v = (v_40 / vec2<f32>(v_41, v_41));
-      if (((dot(along_u, along_u) > 0.0f) & (dot(along_v, along_v) > 0.0f))) {
 )slash",
-R"slash(        u_axis = normalize(along_u);
+R"slash(      if (((dot(along_u, along_u) > 0.0f) & (dot(along_v, along_v) > 0.0f))) {
+        u_axis = normalize(along_u);
         v_axis = normalize(along_v);
       }
     }
@@ -3382,11 +3386,11 @@ fn v_60() {
   v_54(&(param_73), &(param_74), &(param_75), &(param_76), &(param_77), &(param_78), &(param_79), &(param_80));
   color = param_73;
   weight = param_74;
-  let v_72 = (vec2<f32>(1.0f, -1.0f) - pp);
+)slash",
+R"slash(  let v_72 = (vec2<f32>(1.0f, -1.0f) - pp);
   param_81 = color;
   param_82 = weight;
-)slash",
-R"slash(  param_83 = v_72;
+  param_83 = v_72;
   param_84 = dir;
   param_85 = len2;
   param_86 = lob;
@@ -6080,7 +6084,9 @@ void main()
 };
 
 inline constexpr const char* kFsrRcasWgslVertex[] = {
-R"slash(var<private> sharpness : f32;
+R"slash(diagnostic(off, derivative_uniformity);
+
+var<private> sharpness : f32;
 
 struct VertexProgram {
   vertex_constants : array<vec4<f32>, 32u>,
@@ -6233,7 +6239,9 @@ fn vs_main(@location(0u) v_13 : vec2<f32>, @location(1u) v_14 : vec2<f32>, @loca
 };
 
 inline constexpr const char* kFsrRcasWgslFragment[] = {
-R"slash(@group(2u) @binding(7u) var shadow_map : texture_2d<f32>;
+R"slash(diagnostic(off, derivative_uniformity);
+
+@group(2u) @binding(7u) var shadow_map : texture_2d<f32>;
 
 struct Program {
   code : array<vec4<u32>, 64u>,
@@ -6626,9 +6634,9 @@ fn v_36(pixel : ptr<function, CanvasPixel>, base : ptr<function, vec4<f32>>, nor
       let v_39 = (((*(pixel)).world_dy * (*(pixel)).uv_dx.x) - ((*(pixel)).world_dx * (*(pixel)).uv_dy.x));
       let v_40 = det;
       along_v = (v_39 / vec2<f32>(v_40, v_40));
-      if (((dot(along_u, along_u) > 0.0f) & (dot(along_v, along_v) > 0.0f))) {
 )slash",
-R"slash(        u_axis = normalize(along_u);
+R"slash(      if (((dot(along_u, along_u) > 0.0f) & (dot(along_v, along_v) > 0.0f))) {
+        u_axis = normalize(along_u);
         v_axis = normalize(along_v);
       }
     }
