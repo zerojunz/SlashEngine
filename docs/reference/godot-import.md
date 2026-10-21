@@ -325,8 +325,11 @@ file that its `process_material` names:
   `sub_emitter` path becomes the entity it names: particles start particles in
   [sub-emitters](scene-format.md#sub-emitters) as Godot's do. A sub-emitter that can't take part
   (one naming itself, say) is reported and left out.
-- Trails, points given as textures and rings that don't face the screen are reported:
-  SlashEngine doesn't have them yet.
+- The node's `trail_enabled`, `trail_lifetime`, `trail_sections` and
+  `trail_section_subdivisions` are kept: particles draw [trails](scene-format.md#gpu-particle-trails)
+  as Godot's do, on every renderer (Godot's Compatibility renderer has none).
+- Points given as textures and rings that don't face the screen are reported: SlashEngine
+  doesn't have them yet.
   `report.converted.process_materials` counts the files written.
 
 ## Project settings

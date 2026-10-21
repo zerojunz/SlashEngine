@@ -318,7 +318,7 @@ A reference must name an entity that exists in the same scene.
 | | `randomness` | `float` | `0` | Randomizes when each particle is emitted, 0 to 1 |
 | | `use_fixed_seed` | `bool` | `false` | Use `seed` as it is, so every run and restart repeats; otherwise `seed` and the entity's ID vary the particles, and each `one_shot` restart differs |
 | | `seed` | `int` | `0` | The random seed |
-| | `fixed_fps` | `int` | `30` | Steps per second the particles move in, 0 to 1000; 0 steps once a tick |
+| | `fixed_fps` | `int` | `30` | Steps per second the particles move in, 0 to 1000; 0 steps once a tick (60 a second with trails) |
 | | `interpolate` | `bool` | `true` | Draw particles where they are between steps |
 | | `fract_delta` | `bool` | `true` | A particle emitted partway through a step moves for that part only, so emission is smooth |
 | | `collision_base_size` | `float` | `1` | How near, in pixels, a particle comes to a shape before it [collides](#gpu-particle-collision); times half the texture's average side, `(width + height) / 4`, when it has one |
@@ -326,6 +326,10 @@ A reference must name an entity that exists in the same scene.
 | | `draw_order` | `std::string` | `"lifetime"` | `index` draws in emission slot order; `lifetime` draws the youngest on top, `reverse_lifetime` the oldest |
 | | `hframes`, `vframes` | `int` | `1` | Columns and rows of frames in the texture, for the process material's `anim_speed` and `anim_offset` |
 | | `anim_loop` | `bool` | `false` | Frames past the last start again from the first; `false` stays on the last |
+| | `trail_enabled` | `bool` | `false` | Draw each particle as a ribbon along where it has been, its [trail](#gpu-particle-trails) |
+| | `trail_lifetime` | `float` | `0.3` | Seconds of travel the trail covers, from 0.01 |
+| | `trail_sections` | `int` | `8` | Copies of the particle down the trail, 2 to 128 |
+| | `trail_section_subdivisions` | `int` | `4` | Segments the ribbon bends in between two copies, 1 to 1024 |
 | | `texture_filter`, `z_index`, `z_as_relative`, `visible`, `material`, `material_params`, `light_mask` | | | As `Sprite2D`'s |
 | `Control` | `children` | `std::vector<entity>` | `[]` | [Controls](#ui-and-text) placed in its rect and drawn over it, in this order; each control has one parent at most |
 | | `anchor_left`, `anchor_top`, `anchor_right`, `anchor_bottom` | `float` | `0` | Where each edge is anchored in the parent's rect (or the viewport's): 0 at its left or top, 1 at its right or bottom, and past them outside 0 to 1, as Godot allows |
@@ -1803,10 +1807,10 @@ sparks and snow.
   had time to die, as Godot's. Setting `emitting` to true starts a new cycle at once, as Godot's
   `restart` does (Godot's renderer waits for the last cycle's phase to come round, so a burst set
   off from `finished` can emit nothing there). Turning `one_shot` off while it emits restarts
-  it. Changing `amount` starts it over.
+  it. Changing `amount`, or turning trails on or off or changing `trail_sections`, starts it over.
 - Particles are not saved: scenes, snapshots, [`undo`](commands.md#undo), dry runs and failed
   commands leave them as they are.
-- Trails and attractors are on the [roadmap](../roadmap.md).
+- Attractors are on the [roadmap](../roadmap.md).
 
 ### Process materials
 
@@ -1951,6 +1955,44 @@ the step it dies of age, as Godot's code finds it (in its last two or three), an
   or one with no `GPUParticles2D`, or that would loop back or make a chain longer than 8, is
   left out, and the emitter runs on its own. `slash-cli scene validate` and exports report each
   one left out, with why.
+
+### GPU particle trails
+
+With `trail_enabled`, each particle draws as Godot's trail ribbon: a strip as wide as a frame of
+its texture, from the particle back along the path it took over the last `trail_lifetime`
+seconds, with the frame running down its length. As in Godot, the particle keeps
+`trail_sections` copies of itself; when it starts, each copy starts with it and waits, then
+follows its path that much later (copy `j` of `trail_sections` `j` / `trail_sections` of the
+way back), and the ribbon bends through them in `trail_section_subdivisions` segments between
+each two, blending their places and colors. A trail that waits is drawn back to where its
+particle started, so it grows out behind it.
+
+```json
+"comets": {
+  "components": {
+    "GPUParticles2D": {"amount": 4, "lifetime": 1.6,
+                       "process_material": "comets.process_material.json",
+                       "texture": "streak.png", "trail_enabled": true, "trail_lifetime": 0.4,
+                       "trail_section_subdivisions": 2, "trail_sections": 12},
+    "Transform2D": {"position": [20.0, 24.0]}
+  }
+}
+```
+
+- Trails step 60 times a second when `fixed_fps` is 0, as Godot's, since a copy runs a whole
+  number of steps behind its particle. Each draws back along its velocity by the part of a step
+  its place rounded off.
+- When a particle dies its copies run on until they reach the end of the same life, so the
+  ribbon shortens from the front and goes; a particle that starts again takes its copies with it.
+  An emitter that stops emitting steps until its trails have run out too; Godot stops drawing
+  one 1.2 lifetimes after it stops, cutting off trails longer than a fifth of a lifetime.
+- A copy takes exactly its particle's path: each runs the step it is behind, with that step's
+  time, transform and shapes, so it collides where its particle did. Godot's copies run with the
+  current step's time and collision field, so theirs can drift from it. A copy starts nothing in
+  a [sub-emitter](#sub-emitters); Godot's start particles as their particle did.
+- Godot's Compatibility renderer draws no trails; every SlashEngine device does, the same.
+  [`particles.eval`](commands.md#particleseval) reports `trails` and `trail_bounds`, and with
+  `list` each particle's `trail`.
 
 ## UI and text
 

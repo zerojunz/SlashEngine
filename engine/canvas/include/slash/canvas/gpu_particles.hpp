@@ -69,6 +69,9 @@ struct ParticleSteps {
     // seeing a new serial makes the system again.
     std::uint64_t serial = 0;
     std::uint32_t amount = 1;
+    // The particles each trail has, the particle and its copies (trail_sections + 1), or 1 for an
+    // emitter without trails: the system holds amount * trail.
+    std::uint32_t trail = 1;
     // The number of steps[0] among every step the emitter has made: a renderer that has run up
     // to before it runs the steps kept from a new system, the first one clearing it.
     std::uint64_t first = 0;
@@ -143,45 +146,60 @@ check_sub_emitters(const world::ComponentRegistry& components, const json::Value
 // How a GPUParticles2D's draw_order draws.
 [[nodiscard]] render::ParticleOrder particle_order(std::string_view draw_order);
 
-// Runs steps on a system of amount particles from the start on the CPU, as every device does,
-// colliding with the shapes they name.
+// Runs steps on a system of amount particles, each with trail - 1 copies after them for trails,
+// from the start on the CPU, as every device does, colliding with the shapes they name.
 [[nodiscard]] std::vector<render::Particle>
 run_steps(std::uint32_t amount, const render::ParticleProcess& process,
           std::span<const render::ParticleStep> steps,
-          std::span<const render::ParticleShape> shapes = {});
+          std::span<const render::ParticleShape> shapes = {}, std::uint32_t trail = 1);
 
 // One emitter of a chain run on the CPU (run_chain): its amount, its process material (nullptr
-// for one that moves nothing), its steps and the shapes they name.
+// for one that moves nothing), its steps, the shapes they name and its trail.
 struct ChainRun {
     std::uint32_t amount = 1;
     const render::ParticleProcess* process = nullptr;
     std::span<const render::ParticleStep> steps;
     std::span<const render::ParticleShape> shapes;
+    std::uint32_t trail = 1;
 };
 
 // Runs a chain of sub-emitters' steps from the start on the CPU, as every device does, the first
 // step clearing each, and returns each one's particles.
 [[nodiscard]] std::vector<std::vector<render::Particle>> run_chain(std::span<const ChainRun> chain);
 
+// A trail that draws: its particle, live or gone (its copies run on after it), and its copies
+// that are live or wait to follow it, newest first.
+struct ParticleTrail {
+    render::Particle particle;
+    std::vector<render::Particle> copies;
+};
+
 // The particles an entity's GPUParticles2D has after the last tick, run on the CPU from the
 // steps kept with its process material (and its chain's, for one in a chain of sub-emitters), in
-// draw order, live ones only; none if it has none. Fails if a process material doesn't load.
+// draw order, live ones only; none if it has none. With trails, trails gets the trails that draw,
+// in the same order. Fails if a process material doesn't load.
 [[nodiscard]] Result<std::vector<render::Particle>>
-gpu_particles(const world::World& world, entt::entity entity, asset::Assets& assets);
+gpu_particles(const world::World& world, entt::entity entity, asset::Assets& assets,
+              std::vector<ParticleTrail>* trails = nullptr);
 
 // Runs a GPUParticles2D's settings from the start for seconds, in ticks of tick_seconds, from a
 // transform that stays put, apart from any world, and returns the live particles in draw order:
-// what it would have after that long.
-[[nodiscard]] std::vector<render::Particle> simulate(const world::GPUParticles2D& settings,
-                                                     const render::ParticleProcess& process,
-                                                     const world::Transform2D& transform,
-                                                     std::string_view id, double seconds,
-                                                     double tick_seconds);
+// what it would have after that long. With trails, trails gets the trails that draw.
+[[nodiscard]] std::vector<render::Particle>
+simulate(const world::GPUParticles2D& settings, const render::ParticleProcess& process,
+         const world::Transform2D& transform, std::string_view id, double seconds,
+         double tick_seconds, std::vector<ParticleTrail>* trails = nullptr);
 
-// The live particles of a system, in the order a draw_order draws them, as the device draws them
-// for phase (render::particle_lifetime_split).
+// The live particles of a system with trails of trail particles (1 without), in the order a
+// draw_order draws them, as the device draws them for phase (render::particle_lifetime_split).
 [[nodiscard]] std::vector<render::Particle>
 live_particles(std::span<const render::Particle> particles, render::ParticleOrder order,
-               double phase);
+               double phase, std::uint32_t trail = 1);
+
+// The trails of such a system that draw, in the same order: those whose particle or a copy is
+// live or waits to follow it.
+[[nodiscard]] std::vector<ParticleTrail> live_trails(std::span<const render::Particle> particles,
+                                                     render::ParticleOrder order, double phase,
+                                                     std::uint32_t trail);
 
 } // namespace slash::canvas

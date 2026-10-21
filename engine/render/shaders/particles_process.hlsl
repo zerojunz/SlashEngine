@@ -6,6 +6,10 @@
 // In a chain of sub-emitters it runs one step of one system: what the particles start in the
 // next system goes to target, and a sub-emitter takes what the system before started from
 // source, after particles_emit.hlsl has numbered it.
+//
+// A system with trails keeps its trails' copies after its particles; the thread that runs a
+// particle runs its copies after it, each step, each running the step its place in the trail
+// puts it behind. The steps start with history steps the particles ran already.
 
 #include "particles.hlsl"
 
@@ -27,8 +31,10 @@ cbuffer Params : UNIFORMS {
     uint material_offset; // in words
     uint steps_offset;
     uint step_count;
-    uint reset; // clears every particle first
-    uint chain; // kChainTakes and kChainEmits
+    uint reset;   // clears every particle first
+    uint chain;   // kChainTakes and kChainEmits
+    uint trail;   // particles a trail
+    uint history; // steps before the first to run
 };
 
 StructuredBuffer<uint4> data : READ_ONLY_DATA;
@@ -115,6 +121,7 @@ struct Step {
     float4 from_shapes;
     uint cycle;
     uint seed;
+    uint trail_steps;
     bool emitting;
     bool fractional_delta;
     bool clear;
@@ -887,98 +894,6 @@ uint emitter_of(uint rank) {
     return low;
 }
 
-void step_particle(inout Particle particle, uint index, uint total, Step step) {
-    if (step.clear) {
-        // The count a sub-emitter keeps in its spare words stays: it was set for this step.
-        uint3 spare = particle.flags.yzw;
-        particle = empty_particle();
-        particle.flags.yzw = spare;
-    }
-    particle.flags.x &= ~kParticleStarted;
-    float delta = step.delta;
-    bool restart = false;
-    bool taken = false;
-    uint from = 0u;
-    if ((chain & kChainTakes) != 0u) {
-        // The emission numbered as this slot is in the cycle's order, taken even by a live one.
-        uint4 header = source[0];
-        uint turn = header.z != 0u ? total - 1u - index : index;
-        uint rank = (turn + total - header.x) % total;
-        if (rank < header.y) {
-            taken = true;
-            from = 1u + (emitter_of(rank) * kEmissionWords);
-            restart = true;
-            particle.flags.x =
-                kParticleActive | kParticleStarted | (step.cycle << kParticleCycleShift);
-        }
-    } else if (step.emitting) {
-        float restart_phase = float(index) / float(total);
-        if (step.randomness > 0.0) {
-            uint seed = step.cycle;
-            if (restart_phase >= step.system_phase) {
-                seed -= 1u;
-            }
-            seed *= total;
-            seed += index;
-            float random = float(hash(seed) % 65536u) / 65536.0;
-            restart_phase += step.randomness * random * 1.0 / float(total);
-        }
-        restart_phase *= 1.0 - step.explosiveness;
-        if (step.system_phase > step.prev_system_phase) {
-            if (restart_phase >= step.prev_system_phase && restart_phase < step.system_phase) {
-                restart = true;
-                if (step.fractional_delta) {
-                    delta = (step.system_phase - restart_phase) * step.lifetime;
-                }
-            }
-        } else if (step.delta > 0.0) {
-            if (restart_phase >= step.prev_system_phase) {
-                restart = true;
-                if (step.fractional_delta) {
-                    delta = (1.0 - restart_phase + step.system_phase) * step.lifetime;
-                }
-            } else if (restart_phase < step.system_phase) {
-                restart = true;
-                if (step.fractional_delta) {
-                    delta = (step.system_phase - restart_phase) * step.lifetime;
-                }
-            }
-        }
-        if (restart) {
-            particle.flags.x =
-                kParticleActive | kParticleStarted | (step.cycle << kParticleCycleShift);
-        }
-    }
-    bool active = (particle.flags.x & kParticleActive) != 0u;
-    uint number = ((particle.flags.x >> kParticleCycleShift) * total) + index;
-    if (restart && active) {
-        start(particle, step, number, taken, from, active);
-    }
-    Contact contact;
-    contact.collided = false;
-    contact.normal = float2(0.0, 0.0);
-    contact.depth = 0.0;
-    if (active && collision_mode() != 0u && step.shape_count > 0u) {
-        contact = shape_contact(particle.origin_velocity.xy,
-                                collision_size(particle, step, restart), step);
-    }
-    uint emitted = 0u;
-    if (active) {
-        process(particle, step, number, delta, contact, emitted, active);
-    }
-    particle.flags.x &= ~kParticleActive;
-    if (active) {
-        particle.flags.x |= kParticleActive;
-    }
-    if ((chain & kChainEmits) != 0u) {
-        // emit_subparticle(TRANSFORM, VELOCITY, ...) with Godot's emission flags.
-        uint at = 1u + (index * kEmissionWords);
-        target[at] = uint4(emitted, 0u, data[material_offset + kSubEmitterAt].w, 0u);
-        target[at + 1u] = asuint(particle.origin_velocity);
-        target[at + 2u] = asuint(particle.basis);
-    }
-}
-
 Step read_step(uint at) {
     Step step;
     step.emission_a = asfloat(data[at]);
@@ -1006,10 +921,140 @@ Step read_step(uint at) {
     step.shapes = shapes.x;
     step.shape_count = shapes.y;
     step.collision_size = asfloat(shapes.z);
+    step.trail_steps = shapes.w;
     step.to_shapes_a = asfloat(data[at + 6u]);
     step.to_shapes_b = asfloat(data[at + 7u]).xy;
     step.from_shapes = asfloat(data[at + 8u]);
     return step;
+}
+
+// One step of the particle (j 0), or of copy j of its trail after the particle (head) ran the
+// step at: step_particle and step_copy in the CPU twin. They share one body so the shader holds
+// one copy of process(), which compilers inline at every call: with two, Direct3D 12 lost its
+// device running it on CI.
+void step_unit(inout Particle unit, Particle head, uint j, uint index, uint at, Step step) {
+    if (step.clear) {
+        // The count a sub-emitter keeps in a particle's spare words stays: it was set for this
+        // step.
+        uint3 spare = unit.flags.yzw;
+        unit = empty_particle();
+        if (j == 0u) {
+            unit.flags.yzw = spare;
+        }
+    }
+    Step run = step;
+    float delta = step.delta;
+    bool restart = false;
+    bool active = true;
+    uint number = 0u;
+    if (j == 0u) {
+        unit.flags.x &= ~kParticleStarted;
+        bool taken = false;
+        uint from = 0u;
+        if ((chain & kChainTakes) != 0u) {
+            // The emission numbered as this slot is in the cycle's order, taken even by a live
+            // one.
+            uint4 header = source[0];
+            uint turn = header.z != 0u ? amount - 1u - index : index;
+            uint rank = (turn + amount - header.x) % amount;
+            if (rank < header.y) {
+                taken = true;
+                from = 1u + (emitter_of(rank) * kEmissionWords);
+                restart = true;
+                unit.flags.x =
+                    kParticleActive | kParticleStarted | (step.cycle << kParticleCycleShift);
+            }
+        } else if (step.emitting) {
+            float restart_phase = float(index) / float(amount);
+            if (step.randomness > 0.0) {
+                uint seed = step.cycle;
+                if (restart_phase >= step.system_phase) {
+                    seed -= 1u;
+                }
+                seed *= amount;
+                seed += index;
+                float random = float(hash(seed) % 65536u) / 65536.0;
+                restart_phase += step.randomness * random * 1.0 / float(amount);
+            }
+            restart_phase *= 1.0 - step.explosiveness;
+            if (step.system_phase > step.prev_system_phase) {
+                if (restart_phase >= step.prev_system_phase && restart_phase < step.system_phase) {
+                    restart = true;
+                    if (step.fractional_delta) {
+                        delta = (step.system_phase - restart_phase) * step.lifetime;
+                    }
+                }
+            } else if (step.delta > 0.0) {
+                if (restart_phase >= step.prev_system_phase) {
+                    restart = true;
+                    if (step.fractional_delta) {
+                        delta = (1.0 - restart_phase + step.system_phase) * step.lifetime;
+                    }
+                } else if (restart_phase < step.system_phase) {
+                    restart = true;
+                    if (step.fractional_delta) {
+                        delta = (step.system_phase - restart_phase) * step.lifetime;
+                    }
+                }
+            }
+            if (restart) {
+                unit.flags.x =
+                    kParticleActive | kParticleStarted | (step.cycle << kParticleCycleShift);
+            }
+        }
+        active = (unit.flags.x & kParticleActive) != 0u;
+        number = ((unit.flags.x >> kParticleCycleShift) * amount) + index;
+        if (restart && active) {
+            start(unit, step, number, taken, from, active);
+        }
+    } else {
+        uint cycle_bits = head.flags.x & (0xFFFFFFFFu << kParticleCycleShift);
+        uint lag = (j * step.trail_steps) / trail;
+        bool copied = false;
+        if ((head.flags.x & kParticleStarted) != 0u) {
+            unit = head;
+            unit.flags = uint4(kParticleTrailed | cycle_bits, lag, 0u, 0u);
+            copied = true;
+        }
+        if ((unit.flags.x & kParticleTrailed) != 0u) {
+            if (!copied && unit.flags.y > 0u) {
+                unit.flags.y -= 1u;
+            }
+            if (unit.flags.y == 0u) {
+                unit.flags.x =
+                    kParticleActive | (unit.flags.x & (0xFFFFFFFFu << kParticleCycleShift));
+            }
+            return;
+        }
+        if ((unit.flags.x & kParticleActive) == 0u || lag > at) {
+            return;
+        }
+        run = read_step(steps_offset + ((at - lag) * kStepWords));
+        delta = run.delta;
+        number = ((unit.flags.x >> kParticleCycleShift) * amount) + index;
+    }
+    Contact contact;
+    contact.collided = false;
+    contact.normal = float2(0.0, 0.0);
+    contact.depth = 0.0;
+    if (active && collision_mode() != 0u && run.shape_count > 0u) {
+        contact = shape_contact(unit.origin_velocity.xy, collision_size(unit, run, restart), run);
+    }
+    uint emitted = 0u;
+    if (active) {
+        process(unit, run, number, delta, contact, emitted, active);
+    }
+    unit.flags.x &= ~kParticleActive;
+    if (active) {
+        unit.flags.x |= kParticleActive;
+    }
+    if (j == 0u && (chain & kChainEmits) != 0u) {
+        // emit_subparticle(TRANSFORM, VELOCITY, ...) with Godot's emission flags.
+        uint target_at = 1u + (index * kEmissionWords);
+        target[target_at] = uint4(emitted, 0u, data[material_offset + kSubEmitterAt].w, 0u);
+        target[target_at + 1u] = asuint(unit.origin_velocity);
+        target[target_at + 2u] = asuint(unit.basis);
+    }
 }
 
 [numthreads(64, 1, 1)]
@@ -1019,11 +1064,29 @@ void cs_main(uint3 id : SV_DispatchThreadID) {
         return;
     }
     Particle particle = particles[index];
+    uint copies = amount + (index * (trail - 1u));
     if (reset != 0u) {
         particle = empty_particle();
+        for (uint c = 1u; c < trail; ++c) {
+            particles[copies + c - 1u] = empty_particle();
+        }
     }
     for (uint i = 0u; i < step_count; ++i) {
-        step_particle(particle, index, amount, read_step(steps_offset + (i * kStepWords)));
+        uint at = history + i;
+        Step step = read_step(steps_offset + (at * kStepWords));
+        // The particle, then its trail's copies, which take it up where it starts.
+        for (uint j = 0u; j < trail; ++j) {
+            Particle unit = particle;
+            if (j > 0u) {
+                unit = particles[copies + j - 1u];
+            }
+            step_unit(unit, particle, j, index, at, step);
+            if (j == 0u) {
+                particle = unit;
+            } else {
+                particles[copies + j - 1u] = unit;
+            }
+        }
     }
     particles[index] = particle;
 }

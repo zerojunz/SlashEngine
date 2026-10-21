@@ -634,6 +634,8 @@ struct GPUParticles2D {
     int z_index = 0;
     bool z_as_relative = true; // as Sprite2D's
     int light_mask = 1;
+    int trail_sections = 8; // a trail draws as a ribbon through this many sections
+    int trail_section_subdivisions = 4;
     entt::entity sub_emitter{entt::null}; // the GPUParticles2D its particles start particles in
     float amount_ratio = 1.0F;
     float lifetime = 1.0F;
@@ -643,6 +645,7 @@ struct GPUParticles2D {
     float explosiveness = 0.0F;
     float randomness = 0.0F;
     float collision_base_size = 1.0F;
+    float trail_lifetime = 0.3F; // seconds of each particle's path its trail shows
     bool emitting = true;
     bool one_shot = false;
     bool use_fixed_seed = false;
@@ -651,13 +654,15 @@ struct GPUParticles2D {
     bool local_coords = false;
     bool anim_loop = false;
     bool visible = true;
+    bool trail_enabled = false;
 
     friend bool operator==(const GPUParticles2D&, const GPUParticles2D&) = default;
 };
 SLASH_COMPONENT(GPUParticles2D, emitting, amount, amount_ratio, sub_emitter, process_material,
                 texture, lifetime, interp_to_end, one_shot, preprocess, speed_scale, explosiveness,
                 randomness, use_fixed_seed, seed, fixed_fps, interpolate, fract_delta,
-                collision_base_size, local_coords, draw_order, texture_filter, hframes, vframes,
+                collision_base_size, local_coords, draw_order, trail_enabled, trail_lifetime,
+                trail_sections, trail_section_subdivisions, texture_filter, hframes, vframes,
                 anim_loop, z_index, z_as_relative, visible, material, material_params, light_mask)
 
 // ---- Audio, as Godot's AudioStreamPlayer nodes.
