@@ -557,6 +557,32 @@ TEST_CASE("mouse_filter decides which control a click reaches") {
           "mouse_entered ok, mouse_entered caption, button_down ok, pressed ok, button_up ok");
 }
 
+TEST_CASE("a top-level control takes clicks over its parent's tree and outside its clip") {
+    Gui gui;
+    gui.button("pop", {150, 100, 100, 40});
+    gui.button("cover", {100, 80, 200, 100});
+    gui.create("menu", R"({"Control": {"offset_right": 100, "offset_bottom": 100,
+                                       "children": ["pop", "cover"]}})");
+    // As one of menu's children, pop is under cover, the one after it.
+    CHECK(gui.send({click(200, 120, true), click(200, 120, false)}) ==
+          "mouse_entered cover, focus_entered cover, button_down cover, pressed cover, "
+          "button_up cover");
+
+    // A top-level control comes after the rest of its tree, as Godot's top_level.
+    gui.set("pop", R"({"Control": {"top_level": true}})");
+    CHECK(gui.send({click(200, 120, true), click(200, 120, false)}) ==
+          "mouse_exited cover, mouse_entered pop, focus_exited cover, focus_entered pop, "
+          "button_down pop, pressed pop, button_up pop");
+
+    // When menu clips, the pointer reaches neither of its children there, but pop isn't clipped.
+    gui.set("menu", R"({"Control": {"clip_contents": true}})");
+    gui.set("pop", R"({"Control": {"top_level": false}})");
+    CHECK(gui.send({click(200, 120, true), click(200, 120, false)}) == "mouse_exited pop");
+    gui.set("pop", R"({"Control": {"top_level": true}})");
+    CHECK(gui.send({click(200, 120, true), click(200, 120, false)}) ==
+          "mouse_entered pop, button_down pop, pressed pop, button_up pop");
+}
+
 TEST_CASE("a TextureButton draws the texture for its state and is as big as its texture") {
     Gui gui;
     for (const std::string_view name : {"normal", "hover", "pressed", "focused"}) {

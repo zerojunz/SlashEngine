@@ -2,6 +2,7 @@
 
 #include "slash/core/log.hpp"
 #include "slash/exporter/presets.hpp"
+#include "slash/exporter/toolchains.hpp"
 #include "slash/platform/file.hpp"
 
 #include <algorithm>
@@ -194,6 +195,12 @@ Result<std::string> find_java(const AndroidSearch& search) {
         if (const std::string home = environment("JAVA_HOME"); !home.empty()) {
             candidates.emplace_back(home);
         }
+        if (const auto install = android_install()) {
+            if (fs::path home = installed_android(*install, toolchains_dir()).java_home;
+                !home.empty()) {
+                candidates.push_back(std::move(home));
+            }
+        }
         for (fs::path& folder : default_java_homes()) {
             candidates.push_back(std::move(folder));
         }
@@ -222,7 +229,8 @@ Result<std::string> find_java(const AndroidSearch& search) {
     if (!too_old.empty()) {
         message += " (found Java " + too_old + ")";
     }
-    message += "; install one, or Android Studio, and set JAVA_HOME";
+    message += "; install one with slash-cli toolchain install jdk, or install Android Studio or "
+               "another JDK and set JAVA_HOME";
     return make_error(ErrorCode::NotFound, std::move(message));
 }
 
@@ -368,6 +376,7 @@ Result<AndroidTools> find_android_tools(const AndroidSearch& search) {
                 sdks.emplace_back(value);
             }
         }
+        sdks.push_back(toolchains_dir() / kAndroidSdk); // slash-cli toolchain install android
         for (fs::path& folder : default_sdk_folders()) {
             sdks.push_back(std::move(folder));
         }
@@ -377,8 +386,11 @@ Result<AndroidTools> find_android_tools(const AndroidSearch& search) {
     });
     if (sdk == sdks.end()) {
         return make_error(ErrorCode::NotFound,
-                          "Android exports need the Android SDK; install Android Studio or its "
-                          "command-line tools and set ANDROID_HOME");
+                          "Android exports need the Android SDK; install it with slash-cli "
+                          "toolchain install android --accept-android-sdk-license, which accepts "
+                          "Google's Android SDK License Agreement (" +
+                              std::string(kAndroidSdkLicense) +
+                              "), or install Android Studio and set ANDROID_HOME");
     }
     tools.sdk = sdk->string();
 
@@ -559,6 +571,18 @@ bool package_apk(const AndroidTools& tools, const AndroidKey& key, const ApkInfo
     if (info.debug) {
         link.emplace_back("--debug-mode");
     }
+    // The game's own resources, its icon, which the libraries' overlay.
+    if (const fs::path res = tree / "res"; fs::is_directory(res, error)) {
+        const std::string flat = (compiled / "game.zip").string();
+        if (!detail::step("package",
+                          {tool(tools, "aapt2", kExe), "compile", "--dir",
+                           fs::absolute(res, error).string(), "-o", flat},
+                          process, failure)) {
+            return false;
+        }
+        link.push_back(flat);
+    }
+    error.clear();
     // Library resources, compiled one folder at a time and linked as overlays: aapt2 lets the
     // last one win, so the highest priority goes last. Their packages get R classes, which the
     // libraries' code reads its resource IDs from.

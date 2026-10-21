@@ -22,6 +22,9 @@ struct Config {
     // Make the window for OpenGL ES, for the opengl render driver. Always on the web, where
     // games draw with WebGL 2.
     bool opengl = false;
+    // The SDL video drivers to try in order, such as "x11,wayland"; empty for SDL's own order.
+    // The SDL_VIDEO_DRIVER environment variable, or that hint when already set, overrides it.
+    std::string video_drivers{}; // NOLINT(readability-redundant-member-init): designated init
 };
 
 struct Events {
@@ -96,6 +99,12 @@ public:
     // Headless, there is no clipboard: it reads empty and setting it does nothing.
     [[nodiscard]] std::string clipboard_text() const;
     void set_clipboard_text(const std::string& text) const;
+
+    // Shows width by height straight-alpha RGBA pixels as the window's icon, in its title bar
+    // and task bar, as Godot's DisplayServer::set_icon. Headless, and where the system draws
+    // apps' icons itself (phones and the web), it does nothing.
+    void set_icon(std::uint32_t width, std::uint32_t height,
+                  const std::vector<std::uint8_t>& pixels) const;
 
 private:
     Platform(SDL_Window* window, bool headless) noexcept;

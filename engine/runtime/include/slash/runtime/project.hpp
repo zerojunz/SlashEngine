@@ -28,7 +28,8 @@
 //   }
 //
 // Optional fields: "id" (reverse-DNS identifier for bundles and stores), "version"
-// ("major.minor.patch"), "window" ({"width", "height", "vsync_mode"}), "tick_hz", "max_fps",
+// ("major.minor.patch"), "window" ({"width", "height", "vsync_mode",
+// "linux_display_driver"}), "tick_hz", "max_fps",
 // "rendering" ({"clear_color", "driver", "texture_filter", "interpolation", "scaling",
 // "textures"}),
 // "physics_2d",
@@ -58,10 +59,15 @@ struct Project {
     std::string id; // empty means com.example.<binary name, lowercased>
     std::string version = "0.1.0";
     std::string main_scene;
+    // A square image every platform's icons are made from, as Godot's application/config/icon;
+    // empty for the engine's own (icon.hpp).
+    std::string icon;
     int window_width = 1280;
     int window_height = 720;
     // "disabled", "enabled", "adaptive" or "mailbox", as in Godot.
     std::string vsync_mode = "enabled";
+    // The display server Linux games try first, "x11" or "wayland", falling back to the other.
+    std::string linux_display_driver = "x11";
     double tick_hz = 60.0;
     // Frames per second at most; 0 means no cap.
     int max_fps = 0;

@@ -6,9 +6,12 @@
 #include <doctest/doctest.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
+#include <initializer_list>
 #include <memory>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -84,6 +87,7 @@ std::vector<ParticleStep> run_steps(int count, float randomness, float explosive
         step.explosiveness = explosiveness;
         step.emission = {1.0F, 0.0F, 0.0F, 1.0F, 50.0F, 60.0F};
         step.clear = i == 0;
+        step.time = static_cast<float>(i + 1) * step.delta;
         steps.push_back(step);
     }
     return steps;
@@ -93,10 +97,15 @@ std::string describe(const Particle& p) {
     return "flags " + std::to_string(p.flags) + " origin " + std::to_string(p.origin.x) + "," +
            std::to_string(p.origin.y) + " color " + std::to_string(p.color.x) + "," +
            std::to_string(p.color.w) + " custom " + std::to_string(p.custom.x) + "," +
-           std::to_string(p.custom.y);
+           std::to_string(p.custom.y) + " velocity " + std::to_string(p.velocity.x) + "," +
+           std::to_string(p.velocity.y) + " userdata " + std::to_string(p.userdata.x) + "," +
+           std::to_string(p.userdata.y) + "," + std::to_string(p.userdata.z) + " basis " +
+           std::to_string(p.basis.x) + "," + std::to_string(p.basis.y);
 }
 
-// Whether two particles agree to within what different float units give.
+// Whether two particles agree to within what different float units give: each vector within 2%
+// of its length (or of 1), so turbulence turning a fast particle may move its small components
+// a little more than 2% of themselves.
 bool close(const Particle& a, const Particle& b) {
     if (a.flags != b.flags) {
         return false;
@@ -104,25 +113,26 @@ bool close(const Particle& a, const Particle& b) {
     if (!a.active()) {
         return true;
     }
-    const auto near = [](float x, float y) {
-        return std::abs(x - y) <= 0.02F * std::max(1.0F, std::abs(x));
-    };
-    const std::array<float, 20> fa{a.basis.x,    a.basis.y,    a.basis.z,    a.basis.w,
-                                   a.origin.x,   a.origin.y,   a.velocity.x, a.velocity.y,
-                                   a.color.x,    a.color.y,    a.color.z,    a.color.w,
-                                   a.custom.x,   a.custom.y,   a.custom.z,   a.custom.w,
-                                   a.userdata.x, a.userdata.y, a.userdata.z, a.userdata.w};
-    const std::array<float, 20> fb{b.basis.x,    b.basis.y,    b.basis.z,    b.basis.w,
-                                   b.origin.x,   b.origin.y,   b.velocity.x, b.velocity.y,
-                                   b.color.x,    b.color.y,    b.color.z,    b.color.w,
-                                   b.custom.x,   b.custom.y,   b.custom.z,   b.custom.w,
-                                   b.userdata.x, b.userdata.y, b.userdata.z, b.userdata.w};
-    for (std::size_t i = 0; i < fa.size(); ++i) {
-        if (!near(fa.at(i), fb.at(i))) {
-            return false;
+    const auto near = [](std::initializer_list<float> x, std::initializer_list<float> y) {
+        float apart = 0.0F;
+        float size = 0.0F;
+        for (auto i = x.begin(), j = y.begin(); i != x.end(); ++i, ++j) {
+            apart += (*i - *j) * (*i - *j);
+            size += *i * *i;
         }
-    }
-    return true;
+        return std::sqrt(apart) <= 0.02F * std::max(1.0F, std::sqrt(size));
+    };
+    return near({a.basis.x, a.basis.y}, {b.basis.x, b.basis.y}) &&
+           near({a.basis.z, a.basis.w}, {b.basis.z, b.basis.w}) &&
+           near({a.origin.x, a.origin.y}, {b.origin.x, b.origin.y}) &&
+           near({a.velocity.x, a.velocity.y}, {b.velocity.x, b.velocity.y}) &&
+           near({a.color.x, a.color.y, a.color.z, a.color.w},
+                {b.color.x, b.color.y, b.color.z, b.color.w}) &&
+           near({a.custom.x}, {b.custom.x}) && near({a.custom.y}, {b.custom.y}) &&
+           near({a.custom.z}, {b.custom.z}) && near({a.custom.w}, {b.custom.w}) &&
+           near({a.userdata.x, a.userdata.y, a.userdata.z},
+                {b.userdata.x, b.userdata.y, b.userdata.z}) &&
+           near({a.userdata.w}, {b.userdata.w});
 }
 
 // Process materials that between them use every shape and option.
@@ -158,6 +168,23 @@ std::vector<ParticleProcess> varied_processes() {
     set_param(ring, ParticleParam::RadialVelocity, -20.0F, -10.0F);
     set_param(ring, ParticleParam::Scale, -1.0F, 1.0F);
     processes.push_back(ring);
+    // Turbulence, with Godot's strength (a curl from close differences) and a stronger one. Strong
+    // turbulence at a high frequency is chaotic, and an influence near a half all but stops a
+    // particle the noise points against, so a GPU's rounding grows step by step there; these stay
+    // where it doesn't.
+    ParticleProcess turbulent = busy_process();
+    turbulent.turbulence_enabled = true;
+    turbulent.turbulence_noise_speed = {0.5F, -0.25F, 0.1F};
+    set_param(turbulent, ParticleParam::TurbulenceInfluence, 0.1F, 0.3F);
+    set_param(turbulent, ParticleParam::TurbulenceDisplacement, -4.0F, 4.0F);
+    turbulent.param_curve.at(static_cast<std::size_t>(ParticleParam::TurbulenceInfluence)) = {
+        {0.0F, 0.5F}, {1.0F, 1.0F}};
+    processes.push_back(turbulent);
+    ParticleProcess stormy = turbulent;
+    stormy.turbulence_noise_strength = 12.0F;
+    stormy.turbulence_noise_speed_random = 1.0F;
+    stormy.velocity_limit_curve = {{0.0F, 70.0F}, {1.0F, 30.0F}};
+    processes.push_back(stormy);
     return processes;
 }
 
@@ -177,7 +204,10 @@ TEST_CASE("the GPU device runs particles as the CPU twin does") {
         steps[i].interp_to_end = i > 40 ? 0.25F : 0.0F;
         steps[i].amount_ratio = 0.7F;
     }
+    int which = 0;
     for (const ParticleProcess& process : varied_processes()) {
+        const int index = which++;
+        CAPTURE(index);
         CAPTURE(static_cast<int>(process.emission_shape));
         std::vector<Particle> twin(kAmount);
         slash::render::process_particles(twin, process, steps);
@@ -201,6 +231,97 @@ TEST_CASE("the GPU device runs particles as the CPU twin does") {
         CHECK(live > 20);
         device->destroy_particles(system.value());
     }
+}
+
+TEST_CASE("turbulence turns particles along Godot's curl noise") {
+    using slash::render::process_particles;
+    using slash::render::turbulence_frequency;
+    // Godot's noise scale slider: a frequency of -4 at 0, 0 at 10, by fourth roots between.
+    CHECK(turbulence_frequency(0.0F) == doctest::Approx(-4.0));
+    CHECK(turbulence_frequency(10.0F) == doctest::Approx(0.0).epsilon(1e-6));
+    CHECK(turbulence_frequency(9.0F) ==
+          doctest::Approx((std::pow(9.0, 0.25) * 4.0 / std::pow(10.0, 0.25)) - 4.0));
+
+    // Particles at 50 pixels a second to the right, with nothing else pulling on them.
+    ParticleProcess process;
+    process.direction = {1.0F, 0.0F};
+    process.spread = 0.0F;
+    process.gravity = {};
+    set_param(process, ParticleParam::InitialVelocity, 50.0F, 50.0F);
+    process.turbulence_enabled = true;
+    process.turbulence_noise_speed = {0.0F, 1.0F, 0.0F};
+    const std::vector<ParticleStep> steps = run_steps(20, 0.0F, 0.0F);
+    const auto run = [&](const ParticleProcess& with, std::span<const ParticleStep> run_steps) {
+        std::vector<Particle> particles(30);
+        process_particles(particles, with, run_steps);
+        return particles;
+    };
+
+    // With no influence they go straight.
+    set_param(process, ParticleParam::TurbulenceInfluence, 0.0F, 0.0F);
+    for (const Particle& particle : run(process, steps)) {
+        if (particle.active()) {
+            // (50 to 50 at random can round to 50.000004.)
+            CHECK(particle.velocity.x == doctest::Approx(50.0));
+            CHECK(particle.velocity.y == 0.0F);
+            CHECK(particle.origin.y == 60.0F);
+        }
+    }
+    // With all of it they go the noise's way at the same speed, counting the speed it turned
+    // out of the screen, and the noise differs from place to place.
+    set_param(process, ParticleParam::TurbulenceInfluence, 1.0F, 1.0F);
+    const std::vector<Particle> turned = run(process, steps);
+    int live = 0;
+    float lowest = 0.0F;
+    float highest = 0.0F;
+    for (const Particle& particle : turned) {
+        if (!particle.active()) {
+            continue;
+        }
+        ++live;
+        const Vec4 built = particle.userdata;
+        CHECK(std::sqrt((built.x * built.x) + (built.y * built.y) + (built.z * built.z)) ==
+              doctest::Approx(50.0).epsilon(1e-4));
+        CHECK(particle.velocity == Vec2{built.x, built.y});
+        lowest = std::min(lowest, particle.velocity.y);
+        highest = std::max(highest, particle.velocity.y);
+    }
+    CHECK(live > 10);
+    CHECK(highest - lowest > 10.0F);
+    // The noise moves with the steps' time.
+    std::vector<ParticleStep> later = steps;
+    for (ParticleStep& step : later) {
+        step.time += 100.0F;
+    }
+    const std::vector<Particle> moved = run(process, later);
+    int differ = 0;
+    for (std::size_t i = 0; i < turned.size(); ++i) {
+        if (turned[i].active() && std::abs(moved[i].velocity.y - turned[i].velocity.y) > 1.0F) {
+            ++differ;
+        }
+    }
+    CHECK(differ > 5);
+    // The same steps make the same particles.
+    const std::vector<Particle> again = run(process, steps);
+    for (std::size_t i = 0; i < turned.size(); ++i) {
+        CHECK(again[i].flags == turned[i].flags);
+        CHECK(again[i].origin == turned[i].origin);
+        CHECK(again[i].userdata == turned[i].userdata);
+    }
+
+    // The displacement moves particles where they start, by up to the noise direction's length:
+    // 0.9 at a strength of 9, as Godot's.
+    set_param(process, ParticleParam::TurbulenceInfluence, 0.0F, 0.0F);
+    set_param(process, ParticleParam::TurbulenceDisplacement, 10.0F, 10.0F);
+    process.turbulence_noise_strength = 9.0F;
+    int displaced = 0;
+    for (const Particle& particle : run(process, steps)) {
+        if (particle.active()) {
+            CHECK(std::abs(particle.origin.y - 60.0F) <= 9.001F);
+            displaced += std::abs(particle.origin.y - 60.0F) > 0.5F ? 1 : 0;
+        }
+    }
+    CHECK(displaced > 5);
 }
 
 TEST_CASE("every device refuses the same particle mistakes") {

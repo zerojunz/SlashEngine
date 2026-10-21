@@ -8,13 +8,14 @@ command an agent can call over MCP. It is model agnostic and works with Claude C
 or any other MCP client. [docs/](docs/README.md) has a getting-started guide, reference pages and
 the [roadmap](docs/roadmap.md); [docs/design.md](docs/design.md) is the full design.
 
-**Status:** milestone 4 (exports). The engine runs an EnTT world on a fixed-timestep loop,
+**Status:** milestones 1 to 4 and 6 are done, and milestone 5 (the 2D feature set) is nearly
+done; see the [roadmap](docs/roadmap.md). The engine runs an EnTT world on a fixed-timestep loop,
 headless or in an SDL3 window, and loads and saves JSON scenes validated against a schema it
 generates from its own components. Agents drive it through a command API with undo, served over
 MCP (`slash-mcp`), JSON-RPC, a localhost REST API with an OpenAPI document, and the command line,
 including while the game runs. `slash-cli export` builds and signs a game for macOS, Windows,
-Linux, the web, Android or iOS in one command, using presets in `export_presets.json`. A Mac
-builds Windows and Linux games too, with toolchains `slash-cli` downloads.
+Linux, the web, Android or iOS in one command, using presets in `export_presets.json`. One Mac
+builds every platform, with toolchains `slash-cli` downloads.
 
 ## Quick start
 

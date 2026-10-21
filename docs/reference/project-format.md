@@ -26,10 +26,12 @@ checks it.
 | `main_scene` | Yes | | The scene loaded at startup, relative to the project folder |
 | `id` | No | `com.example.<name>` | Reverse-DNS identifier for bundles and app stores, e.g. `com.example.pong`. Android also needs each part to start with a letter and use no `-`, and iOS allows only letters, digits and `-` in each part |
 | `version` | No | `0.1.0` | Version as major.minor.patch |
+| `icon` | No | the engine's icon | A square image that every platform's icons are made from and the window shows, relative to the project folder: see [Icons](#icons) |
 | `tick_hz` | No | `60` | Fixed simulation ticks per second, above 0 and at most 1000 |
 | `window.width` | No | `1280` | Initial window width in pixels, 1 to 16384 |
 | `window.height` | No | `720` | Initial window height in pixels, 1 to 16384. [Controls](scene-format.md#ui-and-text) lay out in the window as it is; `ui.layout` and `scene validate` use this size |
 | `window.vsync_mode` | No | `enabled` | How frames wait for the display, as in Godot. `enabled` waits for each refresh, so nothing tears. `disabled` presents at once: the lowest latency, but it may tear. `mailbox` shows the newest finished frame at each refresh: low latency with no tearing. `adaptive` waits unless a frame is late. A mode the GPU or window lacks falls back to `enabled`; SDL's GPU API has no adaptive mode yet, so `adaptive` always does |
+| `window.linux_display_driver` | No | `x11` | The display server a Linux game tries first, as Godot's `display_server/driver.linuxbsd`: `x11`, which Wayland desktops run through XWayland, or `wayland`. If it can't start, the game tries the other. The `SDL_VIDEO_DRIVER` environment variable, such as `SDL_VIDEO_DRIVER=wayland`, overrides it. On Wayland the compositor draws the window's title bar, which GNOME doesn't do; that is why `x11` comes first |
 | `max_fps` | No | `0` | Frames per second at most, 0 to 1000, e.g. 30, 60, 120 or 240. `0` means no cap, so V-Sync alone paces frames. Headless runs ignore it |
 | `rendering.clear_color` | No | `[0.3, 0.3, 0.3, 1]` | What the window shows behind everything, as `[r, g, b, a]` from 0 to 1. The default is Godot's gray |
 | `rendering.driver` | No | `auto` | The GPU backend. `auto` takes the first that works: Metal on Apple platforms, Direct3D 12 then Vulkan on Windows, Vulkan on Linux and Android, and WebGL 2 on the web. `vulkan`, `metal` or `d3d12` asks for one; `opengl` is OpenGL ES 3.0, as Godot's compatibility renderer, which is WebGL 2 on the web and works where the system has OpenGL ES (Android, Linux; not macOS or Windows); `null` draws nothing. If none starts, the game logs a warning and runs with the null device |
@@ -130,6 +132,27 @@ art and UI often stay `lossless`; [`texture.forms`](commands.md#textureforms) ma
 ahead of an export and reports each one's size and PSNR, so an agent can choose. A device that
 doesn't sample a form's format decodes it when the texture loads, so every form draws everywhere.
 Mipmaps aren't made yet.
+
+## Icons
+
+`icon` names a square image, as Godot's `application/config/icon`. Give it 1024x1024 pixels:
+the App Store asks for that size, and smaller images are scaled up. Exports make each
+platform's icons from it, resized with a Lanczos filter:
+
+| Platform | What the export ships |
+| --- | --- |
+| macOS | `AppIcon.icns` in the bundle's `Resources`, as Godot writes one: PNG images from 1024 to 32 pixels, and 32 and 16 pixel ones run-length encoded with masks. An opaque icon is drawn into Apple's rounded square, 824 of 1024 pixels with corners rounded 185, as macOS 11 icons are; one with transparent pixels has its own shape and stays as it is |
+| Windows | `icon.ico`, PNG images from 16 to 256 pixels, compiled into the executable as its first icon resource, which Explorer and the window show |
+| Linux | Nothing beside the executable: the window shows the icon |
+| Web | `favicon.png` (192 pixels) and `apple-touch-icon.png` (180, opaque), linked from `index.html` |
+| Android | An adaptive icon (`res/mipmap-anydpi-v26/icon.xml`): the icon fills the middle 72 of the foreground layer's 108 dp, which every launcher's mask shows, over the background color. `android.icon_foreground` and `android.icon_background` in a preset change the layers |
+| iOS | An asset catalog with one 1024-pixel image, which Xcode's `actool` compiles into the app with every size older iOS versions read. iOS icons are opaque, so transparent pixels become `ios.icon_background` |
+
+Without `icon`, games get the engine's: a white slash on a dark blue square, drawn in code. A
+preset's `icon` replaces the project's for that preset. Exports and `slash-cli project validate`
+report an icon that is missing, isn't an image or isn't square, with the JSON Pointer of the
+setting that names it. Windowed games, and `slash-cli run`, show the icon in their window's
+title bar and task bar, except on a Mac, which shows the bundle's.
 
 ## Gameplay code
 
@@ -367,6 +390,7 @@ that platform's defaults, so `slash-cli export windows` above signs.
 | `platform` | required | `macos`, `windows`, `linux`, `web`, `android` or `ios` |
 | `output` | `build/export/<preset>` | Output folder, inside the project |
 | `debug` | `false` | Debug build instead of Release |
+| `icon` | `project.json`'s `icon` | A square image inside the project that this preset's [icons](#icons) are made from |
 | `macos.codesign_identity` | `"-"` | Keychain identity to sign with; `"-"` signs ad hoc |
 | `macos.entitlements` | none | Entitlements `.plist` to sign with, inside the project |
 | `macos.notarize` | `false` | Notarize with Apple and staple the ticket; needs a Developer ID identity |
@@ -376,11 +400,14 @@ that platform's defaults, so `slash-cli export windows` above signs.
 | `android.abis` | `["arm64-v8a", "x86_64"]` | CPU architectures to build: `arm64-v8a`, `armeabi-v7a`, `x86_64`, `x86` |
 | `android.package` | the project's `id` | Application ID; parts start with a letter and use letters, digits and `_` |
 | `android.version_code` | from `version` | versionCode; by default major × 1000000 + minor × 1000 + patch, so `1.2.3` is `1002003` |
+| `android.icon_foreground` | the icon, filling the middle 72 dp | The adaptive icon's foreground: a square image inside the project, full bleed at 432x432 pixels (108 dp), of which launchers show the middle 288 through their mask |
+| `android.icon_background` | `"#ffffff"` | The adaptive icon's background: a color as `"#rrggbb"`, or a square image inside the project |
 | `ios.team_id` | none | Apple Developer team ID, 10 capital letters and digits (developer.apple.com shows it under Membership) |
 | `ios.destination` | `device` with a `team_id`, else `simulator` | `device` builds an `.ipa` for iPhones and iPads; `simulator` builds an `.app` for the iOS Simulator |
 | `ios.bundle_id` | the project's `id` | Bundle ID; parts use letters, digits and `-` |
 | `ios.codesign_identity` | the team's `Apple Development` identity (debug) or `Apple Distribution` (release) | Keychain identity for device builds, by name or SHA-1; `"-"` signs ad hoc with no profile, so it needs no team but the `.ipa` installs nowhere until re-signed |
 | `ios.build_number` | from `version` | CFBundleVersion, which must grow with each upload of the same version to App Store Connect |
+| `ios.icon_background` | `"#ffffff"` | The color behind the icon's transparent pixels, as `"#rrggbb"`, since iOS icons are opaque |
 | `sdks` | every package with a section for the platform | The [SDK packages](sdk-format.md#in-projectjson-and-presets) to link, by name, such as an ad network only in store builds; `[]` links none |
 
 A `macos`, `windows`, `linux`, `android` or `ios` section is allowed only in a preset for that

@@ -1,5 +1,7 @@
 #include "slash/platform/process.hpp"
 
+#include "slash/core/log.hpp"
+
 #include <SDL3/SDL.h>
 
 #include <algorithm>
@@ -7,6 +9,8 @@
 #include <atomic>
 #include <cstddef>
 #include <mutex>
+#include <string>
+#include <string_view>
 #include <thread>
 
 namespace slash::platform {
@@ -65,7 +69,33 @@ private:
     std::string text_;
 };
 
-// Starts a program with its stdout and stderr in one pipe this process reads.
+// Writes a process's input and closes it, so the process reads to its end. A write can fall short
+// while the process hasn't read yet, so it waits for room; one that fails stops early.
+void write_input(SDL_Process* process, std::string_view input) {
+    SDL_IOStream* stream = SDL_GetProcessInput(process);
+    if (stream == nullptr) {
+        return;
+    }
+    std::size_t written = 0;
+    while (written < input.size()) {
+        const std::size_t wrote =
+            SDL_WriteIO(stream, input.data() + written, input.size() - written);
+        written += wrote;
+        if (wrote == 0) {
+            if (SDL_GetIOStatus(stream) != SDL_IO_STATUS_NOT_READY) {
+                log::warn(
+                    "could not write a process's input",
+                    {{"written", written}, {"size", input.size()}, {"error", SDL_GetError()}});
+                break;
+            }
+            SDL_Delay(1);
+        }
+    }
+    SDL_CloseIO(stream); // also clears it from the process's properties
+}
+
+// Starts a program with its stdout and stderr in one pipe this process reads, and its stdin
+// given the options' input, if any.
 Result<SDL_Process*> create_process(const std::vector<std::string>& args,
                                     const ProcessOptions& options) {
     if (args.empty()) {
@@ -96,7 +126,8 @@ Result<SDL_Process*> create_process(const std::vector<std::string>& args,
         SDL_SetStringProperty(props, SDL_PROP_PROCESS_CREATE_WORKING_DIRECTORY_STRING,
                               options.working_directory.c_str());
     }
-    SDL_SetNumberProperty(props, SDL_PROP_PROCESS_CREATE_STDIN_NUMBER, SDL_PROCESS_STDIO_NULL);
+    SDL_SetNumberProperty(props, SDL_PROP_PROCESS_CREATE_STDIN_NUMBER,
+                          options.input.empty() ? SDL_PROCESS_STDIO_NULL : SDL_PROCESS_STDIO_APP);
     SDL_SetNumberProperty(props, SDL_PROP_PROCESS_CREATE_STDOUT_NUMBER, SDL_PROCESS_STDIO_APP);
     SDL_SetBooleanProperty(props, SDL_PROP_PROCESS_CREATE_STDERR_TO_STDOUT_BOOLEAN, true);
     SDL_Process* process = SDL_CreateProcessWithProperties(props);
@@ -105,6 +136,9 @@ Result<SDL_Process*> create_process(const std::vector<std::string>& args,
     if (process == nullptr) {
         return make_error(ErrorCode::PlatformFailure,
                           "could not start \"" + args[0] + "\": " + SDL_GetError());
+    }
+    if (!options.input.empty()) {
+        write_input(process, options.input);
     }
     return process;
 }

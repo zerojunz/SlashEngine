@@ -98,7 +98,7 @@
     "slot_0": {
       "components": {
         "Control": {
-          "children": ["icon_0"],
+          "children": ["icon_0", "tooltip"],
           "custom_minimum_size": [64.0, 64.0],
           "theme_type_variation": "Slot"
         },
@@ -288,7 +288,8 @@
           "offset_bottom": 52.0,
           "offset_left": 16.0,
           "offset_right": 216.0,
-          "offset_top": 16.0
+          "offset_top": 16.0,
+          "top_level": true
         },
         "NinePatchRect": {
           "patch_margin_bottom": 6,

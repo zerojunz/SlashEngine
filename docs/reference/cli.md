@@ -262,7 +262,8 @@ slash-cli schema bench
 ### project validate
 
 Checks a folder's `project.json`, its `export_presets.json` if there is one, the theme its
-`gui.theme` names, the bus layout its `audio.bus_layout` names, its storyboard with [`storyboard.check`](commands.md#storyboardcheck), and
+`gui.theme` names, the bus layout its `audio.bus_layout` names, the [icons](project-format.md#icons)
+it and its presets name (each must be a square image), its storyboard with [`storyboard.check`](commands.md#storyboardcheck), and
 its [SDK packages](sdk-format.md#sdk-check) (their `sdk.json` files, the presets' `sdks` and the
 files in the packages, not keys or downloads) and its [`providers.json`](providers.md) if
 there is one, and lists every error with its file and JSON
@@ -575,16 +576,21 @@ ship), builds the game with CMake, signs it and installs it into the output fold
 material's [shader](scene-format.md#shaders) is compiled for the platform into its staged file,
 since games can't compile shaders, and the `.hlsl` files stay behind. Textures ship in the
 forms `project.json`'s [`rendering.textures`](project-format.md#texture-forms) asks for, made
-once and cached in the asset library. A project's
+once and cached in the asset library. Every platform's [icons](project-format.md#icons) are
+made from `project.json`'s `icon`, or the engine's, and the result's `icon` names which. A
+project's
 [`providers.json`](providers.md#gameplay) is checked and staged without its `replay` settings,
 and the game then installs [`ai::ask`](providers.md#gameplay); Android exports of it get the
 `INTERNET` permission. A Mac builds every
 platform: macOS and iOS with Xcode's command-line tools and SDKs, and Windows and Linux with the
 toolchains in [toolchain](#toolchain), which the first such export downloads. A Linux machine
 builds Linux and Windows the same way, and a Windows machine builds Windows with MSVC. Web
-exports need Emscripten (`EMSDK` set) on any host, and Android exports need the Android SDK
+exports build with an activated emsdk's Emscripten (`EMSDK` set) or, without one, with the
+Emscripten [toolchain](#toolchain) the first one downloads, on any host (Linux needs Python 3.10
+or newer as `python3` on `PATH`). Android exports need the Android SDK
 (build tools 35 or newer and the Android 36 platform), NDK r27 or newer and JDK 17 or newer on
-any host. An output folder that a previous export did not make is never replaced. Missing signing
+any host: those in `ANDROID_HOME` and `JAVA_HOME`, then the ones
+[`toolchain install android`](#toolchain) installed, then Android Studio's. An output folder that a previous export did not make is never replaced. Missing signing
 tools, identities, profiles or secrets are reported before anything is built; signing a Windows
 export needs signtool, so only a Windows machine does it.
 
@@ -592,7 +598,7 @@ export needs signtool, so only a Windows machine does it.
 | --- | --- |
 | `macos` | A universal app bundle (Apple silicon and Intel), always signed: ad hoc unless the preset names a `codesign_identity` |
 | `windows` | An executable plus a `data` folder, with the C++ runtime linked in |
-| `linux` | An executable plus a `data` folder, for x86_64 or arm64 (`linux.arch`). Built against glibc 2.31 and GCC 10's libstdc++, so it runs on Ubuntu 20.04, Debian 11 and newer. It uses X11, which Wayland desktops run through XWayland |
+| `linux` | An executable plus a `data` folder, for x86_64 or arm64 (`linux.arch`). Built against glibc 2.31 and GCC 10's libstdc++, so it runs on Ubuntu 20.04, Debian 11 and newer. It runs on X11 or Wayland: it tries X11 first (XWayland on a Wayland desktop) and then Wayland, as Godot's games do, unless the project's [`window.linux_display_driver`](project-format.md) asks for Wayland first; `SDL_VIDEO_DRIVER` overrides both. On Wayland the compositor draws the window's title bar, which GNOME doesn't do. Building one needs `pkg-config` (`brew install pkgconf` on a Mac): without it the game has X11 only, with no Wayland, PulseAudio or PipeWire |
 | `web` | `index.html` plus the script, WebAssembly and data files |
 | `android` | `<binary>.apk` for arm64-v8a and x86_64, signed with the release keystore from the environment or else the debug keystore |
 | `ios` | For the Simulator, `<binary>.app` (Apple silicon and Intel), signed ad hoc. For devices, `<binary>.ipa` (arm64), signed with the team's identity and provisioning profile |
@@ -602,7 +608,7 @@ slash-cli export linux --project my-game --test
 ```
 
 ```json
-{"bytes":5335403,"executable":"my-game/build/export/linux/mygame","linux":{"arch":"x86_64"},"log":"my-game/.slash/export/linux/export.log","output":"my-game/build/export/linux","platform":"linux","preset":"linux","seconds":66.6,"test":{"entities":0,"passed":true,"ticks":60}}
+{"bytes":5335403,"executable":"my-game/build/export/linux/mygame","icon":"default","linux":{"arch":"x86_64"},"log":"my-game/.slash/export/linux/export.log","output":"my-game/build/export/linux","platform":"linux","preset":"linux","seconds":66.6,"test":{"entities":0,"passed":true,"ticks":60}}
 ```
 
 An export that links [SDK packages](sdk-format.md) lists them in `sdks`, each with its `name`,
@@ -618,7 +624,7 @@ the one with the newest iOS and shuts it down afterwards, runs the game headless
 summary; device builds and Macs with no Simulator skip the test and say so.
 
 The full build log is at `log`. A failure names the step that failed (`options`, `validate`,
-`toolchain`, `stage`, `sdks`, `configure`, `build`, `install`, `package`, `sign`, `notarize` or `publish`; Android
+`toolchain`, `stage`, `icons`, `sdks`, `configure`, `build`, `install`, `package`, `sign`, `notarize` or `publish`; Android
 build failures also name the `abi`) and ends with the last lines of
 the log in `tail`, so the log rarely needs opening. A step of `options` means the request itself
 was wrong, and exits with 2:
@@ -658,22 +664,39 @@ slash-cli sdk add ~/Downloads/hello-sdk --project my-game
 
 ```bash
 slash-cli toolchain list
-slash-cli toolchain install [name|platform ...]
+slash-cli toolchain install [name|platform ...] [--accept-android-sdk-license]
 ```
 
-Exports to Windows and Linux from a Mac or a Linux machine build with open-source toolchains
-that `slash-cli` downloads, pinned to exact versions and SHA-256 hashes:
+Exports to Windows and Linux from a Mac or a Linux machine, and web exports on any machine with
+no activated emsdk, build with open-source toolchains that `slash-cli` downloads, pinned to
+exact versions and SHA-256 hashes:
 
 | Toolchain | Used for | License |
 | --- | --- | --- |
 | `llvm-mingw` | Clang and LLD; mingw-w64 for Windows exports | Apache 2.0 with LLVM exception, ZPL, MIT and public domain |
-| `linux-sysroot-x86_64`, `linux-sysroot-arm64` | Debian 11's glibc 2.31, GCC 10's libstdc++ and the X11, ALSA and PulseAudio headers that Linux exports build against | Debian's: glibc under the LGPL and libstdc++ under the GPL with the GCC Runtime Library Exception, both used from the player's system; X11 under MIT |
+| `linux-sysroot-x86_64`, `linux-sysroot-arm64` | Debian 11's glibc 2.31, GCC 10's libstdc++ and the X11, Wayland, ALSA, PulseAudio and PipeWire headers that Linux exports build against. SDL's Wayland code for them is written by Wayland 1.18's `wayland-scanner`, which is built into `slash-cli` and `slash-mcp` and runs as `slash-cli wayland-scanner`, since a newer one writes code those headers can't compile | Debian's: glibc under the LGPL and libstdc++ under the GPL with the GCC Runtime Library Exception, both used from the player's system; X11 under MIT |
+| `emscripten` | emsdk's release build of Emscripten 6.0.10, with its Clang and Binaryen, for web exports; on macOS, Linux and x86_64 Windows | MIT and University of Illinois/NCSA; Apache 2.0 with LLVM exception; Apache 2.0 |
+| `node` | Node.js 22.16.0, which Emscripten runs on and web exports' `--test` runs games on | MIT |
+| `python` | Python 3.13.3, which runs Emscripten's tools; on macOS and Windows (Linux uses its `python3`, 3.10 or newer) | Python Software Foundation License |
 | `assetripper` | [AssetRipper](https://github.com/AssetRipper/AssetRipper) 2.0.0, which [import](#import) runs to turn a Unity build back into a project; on every machine, Windows included | GPL 3.0, run as a program of its own and never linked |
+| `jdk` | Eclipse Temurin's JDK 21.0.12, for Android exports; on macOS, x86_64 Linux and x86_64 Windows | GPL 2.0 with the Classpath Exception, run as a program of its own |
+| `android-cmdline-tools` | Google's Android command-line tools (build 15859902), whose `sdkmanager` installs the Android SDK | Google's [Android Software Development Kit License Agreement](https://developer.android.com/studio/terms) |
+| `android-sdk` | The SDK packages Android exports need, which `sdkmanager` installs into `android-sdk`: `platform-tools`, `build-tools;36.0.0`, `platforms;android-36`, `ndk;27.3.13750724` and `cmake;3.31.6` (for Ninja) | Google's Android Software Development Kit License Agreement |
 
 An export downloads what it needs the first time, so `toolchain install` is only needed to get
 them ahead of time, for example before going offline. With no names it installs every toolchain
-for this machine; a name can also be a platform (`windows`, `linux`), `linux-arm64` or
-`assetripper`, which `import` installs the first time it unpacks a Unity build. Each
+for this machine; a name can also be a platform (`windows`, `linux`, `web`, `android`),
+`linux-arm64`, `jdk` or `assetripper`, which `import` installs the first time it unpacks a Unity
+build.
+
+The Android SDK is the exception: Google's command-line tools and SDK packages are under its
+Android Software Development Kit License Agreement, so nothing installs them until the person who
+will use them has read it and passes `--accept-android-sdk-license` (an agent asks its person
+before passing it). `toolchain install android --accept-android-sdk-license` installs the `jdk`,
+the `android-cmdline-tools` and the `android-sdk` packages, answering yes to the licenses
+`sdkmanager` asks about; with the flag, installing everything includes them, and without it the
+result lists the Android SDK as `skipped`. Android exports then find them when `ANDROID_HOME` and
+`JAVA_HOME` name nothing. Each
 download is checked against its pinned hash and deleted if it differs. They are installed in
 `SLASH_TOOLCHAINS_DIR`, else `~/.slash/toolchains`; delete a folder there to remove one.
 
@@ -681,8 +704,11 @@ download is checked against its pinned hash and deleted if it differs. They are 
 {"dir":"/Users/me/.slash/toolchains","toolchains":[{"description":"Clang and LLD with mingw-w64, for Windows and Linux exports","installed":true,"name":"llvm-mingw","version":"20260922"},{"description":"Debian 11 sysroot (glibc 2.31) for x86_64 Linux exports","installed":false,"name":"linux-sysroot-x86_64","version":"bullseye"},{"description":"Debian 11 sysroot (glibc 2.31) for arm64 Linux exports","installed":false,"name":"linux-sysroot-arm64","version":"bullseye"}]}
 ```
 
-`install` returns the `installed` toolchains and those `already_installed`, each with its `path`.
-Windows machines have no toolchains to install, except `assetripper`.
+`install` returns the `installed` toolchains and those `already_installed`, each with its `path`
+(the Android SDK's entry also lists its `packages` and `license`). Windows machines install only
+the web toolchains, `assetripper` and the Android ones. A web export with the
+downloaded Emscripten writes its config, which `EM_CONFIG` names, into the export's work folder,
+and builds in a folder of its own, so it never mixes with an emsdk build.
 
 ### library serve
 
@@ -807,6 +833,6 @@ drawn, but the sprites are still checked and counted, so a test can see that the
 | `SLASH_WINDOWS_CERTIFICATE_PATH`, `SLASH_WINDOWS_CERTIFICATE_PASSWORD` | A `.pfx` code-signing certificate and its password for signing Windows exports |
 | `SLASH_ANDROID_KEYSTORE_PATH`, `SLASH_ANDROID_KEYSTORE_PASSWORD`, `SLASH_ANDROID_KEY_ALIAS`, `SLASH_ANDROID_KEY_PASSWORD` | The keystore, its password, the key's alias and the key's password (default: the keystore's) for signing release Android exports |
 | `SLASH_IOS_PROVISIONING_PROFILE` | The `.mobileprovision` file iOS device exports embed (default: the newest installed one for the team and bundle ID) |
-| `ANDROID_HOME`, `ANDROID_NDK_HOME`, `JAVA_HOME` | Where Android exports find the SDK, the NDK and the JDK when they aren't in Android Studio's default places |
+| `ANDROID_HOME`, `ANDROID_NDK_HOME`, `JAVA_HOME` | Where Android exports find the SDK, the NDK and the JDK, before the ones [`toolchain install android`](#toolchain) installed and Android Studio's |
 | `ANDROID_USER_HOME` | The folder holding `debug.keystore` (default `~/.android`) |
 | `ANDROID_SERIAL` | The device or emulator `export --test` uses when several are connected |

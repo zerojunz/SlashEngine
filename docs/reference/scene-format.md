@@ -336,6 +336,7 @@ A reference must name an entity that exists in the same scene.
 | | `clip_contents` | `bool` | `false` | Cut off its drawing and its children's at its rect, and let the pointer reach only the part of its children inside it ([scrolling](#scrolling)); a `ScrollContainer` always does |
 | | `modulate` | `Vec4` | `[1, 1, 1, 1]` | Tints it and its children, as [r, g, b, a] |
 | | `self_modulate` | `Vec4` | `[1, 1, 1, 1]` | Tints it only |
+| | `top_level` | `bool` | `false` | Placed in the viewport instead of its parent's rect, left out by containers, with none of its parent's transform, `modulate`, `z_index` or clip, as Godot's `top_level`; it draws and takes the pointer after the rest of its parent's tree, and a hidden parent still hides it |
 | | `z_index` | `int` | `0` | Draws over controls with a lower one, added to its parent's; -4096 to 4096 |
 | | `z_as_relative` | `bool` | `true` | Add `z_index` to its parent's; `false` makes it the whole of it |
 | | `theme_override_colors` | `std::map<std::string, Vec4>` | `{}` | [Theme](#theme-items) colors by name, e.g. `{"font_color": [1, 0.8, 0.2, 1]}` |
@@ -605,7 +606,7 @@ cannon and a deck.
   transform. [`entity.destroy`](commands.md#entitydestroy) destroys the entity's `Transform2D` and
   `Control` children with it, as Godot frees a node's children, and takes destroyed entities out
   of the lists of parents that stay.
-- **Not yet.** Node2D and Control entities in one tree, and `top_level` on controls.
+- **Not yet.** Node2D and Control entities in one tree.
 
 ## Canonical form
 
@@ -1801,8 +1802,7 @@ sparks and snow.
   it. Changing `amount` starts it over.
 - Particles are not saved: scenes, snapshots, [`undo`](commands.md#undo), dry runs and failed
   commands leave them as they are.
-- Sub-emitters, trails, collisions, turbulence and attractors are on the
-  [roadmap](../roadmap.md).
+- Sub-emitters, trails, collisions and attractors are on the [roadmap](../roadmap.md).
 
 ### Process materials
 
@@ -1852,7 +1852,9 @@ names and Godot's defaults, except `gravity`: `[0, 98]`, as Godot gives a proces
 | `hue_variation_min`, `_max` | `0` | Turns its hue by this fraction of the color wheel, -1 to 1 |
 | `anim_speed_min`, `_max` | `0` | Times its frames play over its life, from 0 |
 | `anim_offset_min`, `_max` | `0` | The frame it starts on, as a fraction of the frames, 0 to 1 |
-| `*_curve` | `[]` | Each parameter but `initial_velocity` has one: points `[offset, value]` that multiply it over each particle's life (`anim_offset_curve` adds), offsets from 0 to 1 in order, joined by straight lines |
+| `turbulence_influence_min`, `_max` | `0.1` | How far turbulence turns its velocity, 0 to 1 |
+| `turbulence_initial_displacement_min`, `_max` | `0` | Pixels turbulence moves it where it starts, times the noise direction's length (a tenth of `turbulence_noise_strength`, as Godot's) |
+| `*_curve` | `[]` | Each parameter but `initial_velocity` and `turbulence_initial_displacement` has one (`turbulence_influence_over_life` for turbulence): points `[offset, value]` that multiply it over each particle's life (`anim_offset_curve` adds), offsets from 0 to 1 in order, joined by straight lines |
 | `velocity_limit_curve` | `[]` | The fastest a particle moves over its life, in pixels per second |
 | `alpha_curve` | `[]` | Multiplies alpha over its life |
 | `emission_curve` | `[]` | Brightens it over its life: its color times 1 plus this |
@@ -1862,6 +1864,18 @@ names and Godot's defaults, except `gravity`: `[0, 98]`, as Godot gives a proces
 | `lifetime_randomness` | `0` | Shortens each particle's life by up to this fraction, 0 to 1 |
 | `particle_flag_align_y` | `false` | Turn each particle so its y axis points along its velocity |
 | `particle_flag_damping_as_friction` | `false` | Damping grows with speed, as friction |
+| `turbulence_enabled` | `false` | Turn particles along moving curl noise, as Godot's turbulence |
+| `turbulence_noise_strength` | `1` | How sharply the noise turns, 0 to 20 |
+| `turbulence_noise_scale` | `9` | The noise's size, Godot's slider: swirls about 1 / (4 - scale^0.25 × 2.249) pixels across, so 9 makes them 10 pixels and 9.8 about 50; 10 has none |
+| `turbulence_noise_speed` | `[0, 0, 0]` | How the noise moves per second, as `[x, y, z]` |
+| `turbulence_noise_speed_random` | `0.2` | How fast the noise changes as it moves, 0 to 4 |
+
+Turbulence is Godot's: each step a particle's velocity, built up and controlled, turns towards
+the curl of 4D gradient noise at its position by its `turbulence_influence`, keeping its speed
+(the part turned out of the screen still counts toward it). The noise moves with the time since
+the emitter started over, back to 0 every hour, where Godot's moves with the engine's clock;
+its lattice gradients come from an integer hash of each point rather than Godot's fractions of
+float products, so every device and the CPU make the same noise.
 
 ## UI and text
 

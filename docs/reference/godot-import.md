@@ -118,8 +118,8 @@ above the world.
 | `TileMap` | `Transform2D` and `TileMapLayer`, and an entity per layer (see [tile maps](#tile-sets-and-tile-maps)) |
 
 Each property goes to the field of the same name: `position`, `rotation`, `scale`, `skew` and
-`top_level` to `Transform2D`, `offset_left` to `Control`, `texture` and `z_as_relative` to
-`Sprite2D`. Values convert by the field's type:
+`top_level` to `Transform2D` (or `Control` on a control), `offset_left` to `Control`, `texture`
+and `z_as_relative` to `Sprite2D`. Values convert by the field's type:
 
 - Enums are stored as numbers in Godot and names here, so `horizontal_alignment = 1` is
   `"center"` and `size_flags_horizontal = 3` is `"expand_fill"`.
@@ -305,7 +305,8 @@ A `CPUParticles2D` keeps its settings in its component. A `GPUParticles2D` keeps
 its `ParticleProcessMaterial` becomes a [`.process_material.json`](scene-format.md#process-materials)
 file that its `process_material` names:
 
-- Vectors lose their z: `direction = Vector3(0, -1, 0)` is `[0, -1]`. `emission_shape` is named
+- Vectors lose their z: `direction = Vector3(0, -1, 0)` is `[0, -1]`, except
+  `turbulence_noise_speed`, which moves 4D noise and keeps all three. `emission_shape` is named
   (`1` is `"sphere"`), and the rest keep their names and values.
 - A `CurveTexture`'s curve becomes the `_curve`'s points, and a `GradientTexture1D`'s gradient the
   ramp's stops.
@@ -315,8 +316,8 @@ file that its `process_material` names:
   `particles_anim_v_frames` and `particles_anim_loop` become `hframes`, `vframes` and
   `anim_loop`. Its `blend_mode` and `light_mode` are reported: write a `.material.json` for them.
 - `seed` is kept only with `use_fixed_seed`, since Godot picks another at random otherwise.
-- Turbulence, collisions, sub-emitters, trails, points given as textures and rings that don't
-  face the screen are reported: SlashEngine doesn't have them yet.
+- Collisions, sub-emitters, trails, points given as textures and rings that don't face the
+  screen are reported: SlashEngine doesn't have them yet.
   `report.converted.process_materials` counts the files written.
 
 ## Project settings
@@ -328,6 +329,7 @@ file that its `process_material` names:
 | `application/run/max_fps` | `max_fps` |
 | `display/window/size/viewport_width`, `viewport_height` | `window.width`, `window.height` |
 | `display/window/vsync/vsync_mode` | `window.vsync_mode` |
+| `display/display_server/driver.linuxbsd` | `window.linux_display_driver` when it is `wayland` |
 | `physics/common/physics_ticks_per_second` | `tick_hz` |
 | `physics/2d/default_gravity`, `default_gravity_vector`, `default_linear_damp`, `default_angular_damp` | `physics_2d` |
 | `rendering/environment/defaults/default_clear_color` | `rendering.clear_color` |

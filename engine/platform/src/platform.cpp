@@ -9,6 +9,7 @@
 #endif
 
 #include <algorithm>
+#include <cstddef>
 #include <utility>
 
 namespace slash::platform {
@@ -26,9 +27,20 @@ Result<Platform> Platform::create(const Config& config) {
         return make_error(ErrorCode::InvalidArgument, "window width and height must be positive");
     }
 
+    // The drivers apply while SDL starts its video, unless SDL_VIDEO_DRIVER (the environment
+    // variable, or a hint set before) names others.
+    const bool drivers_hint =
+        !config.video_drivers.empty() && SDL_GetHint(SDL_HINT_VIDEO_DRIVER) == nullptr;
+    if (drivers_hint) {
+        SDL_SetHint(SDL_HINT_VIDEO_DRIVER, config.video_drivers.c_str());
+    }
     const SDL_InitFlags flags =
         config.headless ? SDL_INIT_EVENTS : SDL_INIT_VIDEO | SDL_INIT_EVENTS;
-    if (!SDL_Init(flags)) {
+    const bool started = SDL_Init(flags);
+    if (drivers_hint) {
+        SDL_ResetHint(SDL_HINT_VIDEO_DRIVER);
+    }
+    if (!started) {
         return make_error(ErrorCode::PlatformFailure,
                           std::string("SDL_Init failed: ") + SDL_GetError());
     }
@@ -211,6 +223,25 @@ void Platform::set_clipboard_text(const std::string& text) const {
     if (!headless_ && !SDL_SetClipboardText(text.c_str())) {
         log::warn("the clipboard was not set", {{"error", SDL_GetError()}});
     }
+}
+
+void Platform::set_icon(std::uint32_t width, std::uint32_t height,
+                        const std::vector<std::uint8_t>& pixels) const {
+    if (headless_ || width == 0 || height == 0 ||
+        pixels.size() != static_cast<std::size_t>(width) * height * 4) {
+        return;
+    }
+    SDL_Surface* surface = SDL_CreateSurfaceFrom(
+        static_cast<int>(width), static_cast<int>(height), SDL_PIXELFORMAT_RGBA32,
+        const_cast<std::uint8_t*>(pixels.data()), static_cast<int>(width * 4));
+    if (surface == nullptr) {
+        return;
+    }
+    // Phones and the web have no window icons; SDL says so, which is nothing to report.
+    if (!SDL_SetWindowIcon(window_, surface)) {
+        log::debug("the window icon was not set", {{"error", SDL_GetError()}});
+    }
+    SDL_DestroySurface(surface);
 }
 
 std::string_view os_name() {

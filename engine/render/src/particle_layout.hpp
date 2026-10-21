@@ -21,9 +21,17 @@ inline constexpr std::uint32_t kCurveWords = kMaxParticleCurvePoints / 2; // two
 inline constexpr std::uint32_t kCurves = kParticleParams + 3;
 inline constexpr std::uint32_t kGradientWords =
     (kMaxParticleCurvePoints / 4) + kMaxParticleCurvePoints;
-inline constexpr std::uint32_t kCurvesAt = 20;
+// Words 0 to 6 hold the settings, 7 to 14 the parameters' ranges, then a word for every four
+// curves' point counts, one for the gradients' stop counts and two for turbulence.
+inline constexpr std::uint32_t kCurveCountsAt = 15;
+inline constexpr std::uint32_t kGradientCountsAt = kCurveCountsAt + ((kCurves + 3) / 4);
+inline constexpr std::uint32_t kTurbulenceAt = kGradientCountsAt + 1;
+inline constexpr std::uint32_t kCurvesAt = kTurbulenceAt + 2;
 inline constexpr std::uint32_t kGradientsAt = kCurvesAt + (kCurves * kCurveWords);
 inline constexpr std::uint32_t kPointsAt = kGradientsAt + (2 * kGradientWords);
+// The places particles_process.hlsl reads them at.
+static_assert(kCurveCountsAt == 15 && kGradientCountsAt == 20 && kTurbulenceAt == 21);
+static_assert(kCurvesAt == 23 && kGradientsAt == 311 && kPointsAt == 391);
 // A step's words.
 inline constexpr std::uint32_t kStepWords = 5;
 // A step's flags, in its last word.

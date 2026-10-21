@@ -17,13 +17,13 @@ order is the plan, and each item carries a status instead. It is drawn from the 
 
 ## Where things stand
 
-Milestones 1 to 3 and the first half of milestone 4 are done. The engine builds on macOS, Linux and Windows, runs an EnTT world on
+Milestones 1 to 4 and 6 are done, and milestone 5 is nearly done. The engine builds on macOS, Linux and Windows, runs an EnTT world on
 a fixed-timestep loop headless or in an SDL3 window, loads and saves JSON scenes checked against a
 schema it generates from its own components, and serves every engine action as a command over
 MCP, JSON-RPC, a localhost REST API and the command line, including while a game runs. A game is
 a folder with a `project.json`, and `slash-cli export` builds it for macOS, Windows, Linux, the
-web, Android or iOS, signs it and can test the result headless. The rest of milestone 4, now in
-progress, builds every platform from one Mac. Games draw sprites and flipbook animations through
+web, Android or iOS, from one Mac with toolchains it downloads, signs it and can test the result
+headless. Games draw sprites and flipbook animations through
 a GPU render device, smoothly between fixed ticks and with Godot's V-Sync modes and frame cap,
 color them with material graphs, animate any component field with keyframes and draw tile maps
 that autotile terrain; the rest of the 2D renderer follows in milestone 5.
@@ -64,7 +64,7 @@ work.
 - [ ] Exit check: Claude Code, Codex and Cursor each open, edit and save a scene over MCP. The
       tools are built and tested; a recorded run with each agent is still to do.
 
-### Milestone 4: Export pipeline (In progress)
+### Milestone 4: Export pipeline (Done)
 
 Built in two halves.
 
@@ -79,20 +79,25 @@ Built in two halves.
 - [x] A CI job that exports an empty game for macOS, Windows, Linux and web and runs each one,
       with Emscripten pinned
 
-**4b: mobile, signing and one-Mac builds (In progress)**
+**4b: mobile, signing and one-Mac builds (Done)**
 
 - [x] Android exports: APKs for arm64-v8a and x86_64 with no Gradle, tested on an Android 11
       emulator in CI
 - [x] iOS exports: an `.app` for the Simulator, tested there in CI, and an `.ipa` for devices
       signed with the team's identity and provisioning profile
-- [ ] App icons from one image for every platform, which the App Store and Google Play require
+- [x] App icons from one image for every platform, which the App Store and Google Play require:
+      `project.json`'s `icon` becomes an `.icns`, an `.ico` resource, an Android adaptive icon,
+      an iOS asset catalog and a favicon, and the window's icon
 - [x] `slash-cli toolchain install`: pinned open-source cross toolchains (llvm-mingw and Debian
       11 sysroots with glibc 2.31), so one Mac builds Windows and Linux x86_64 and arm64 games,
       tested in CI by running them on Windows and Ubuntu 20.04
-- [ ] `slash-cli toolchain install` for Emscripten and the Android SDK, NDK and JDK, so web and
-      Android exports need nothing installed by hand either
-- [ ] Wayland in Linux exports (they use X11, which Wayland desktops run through XWayland,
-      because the glibc 2.31 sysroot's Wayland is too old for SDL's generated protocol code)
+- [x] `slash-cli toolchain install` for Emscripten, with Node.js and Python, so web exports need
+      nothing installed by hand either
+- [x] `slash-cli toolchain install` for the Android SDK, NDK and JDK, so Android exports need
+      nothing installed by hand either (once the person accepts Google's Android SDK license)
+- [x] Wayland in Linux exports, with Wayland 1.18's scanner built into `slash-cli` for the
+      glibc 2.31 sysroot's Wayland; games try X11 first and fall back to Wayland, as Godot's do,
+      unless `window.linux_display_driver` asks for Wayland first
 - [x] `export_presets.json`, with signing secrets read from environment variables: macOS
       codesigning (ad hoc by default) and notarization, Windows signtool
 - [x] A throwaway Android debug keystore, and release keystores from environment variables
@@ -124,7 +129,7 @@ rendering on top.
       and tint; physics, lights, particles and sound use global transforms; loops and second
       parents are refused; `entity.destroy` takes children along
   - [x] A body's shapes in child entities, as Godot's `CollisionShape2D` nodes
-  - [x] `top_level` and `z_as_relative` off
+  - [x] `top_level` and `z_as_relative` off, on Node2D entities and controls
 - [x] Asset handles with reference counting and hot reload, and an `asset.list` command
 - [x] Storyboard: the game's style, world, story, design rules, names, decisions and open work
       as typed files in the project, so every agent works from the same facts
@@ -266,8 +271,8 @@ rendering on top.
       thousands of particles; the same steps make the same particles on every device and on
       the CPU, where `particles.eval` lists them. Godot's `GPUParticles2D` nodes and
       `ParticleProcessMaterial` resources import
-- [ ] Sub-emitters, trails, collision with the scene, turbulence and attractors for GPU
-      particles, and particle graphs in text (Godot's particle shaders)
+- [ ] Sub-emitters, trails, collision with the scene and attractors for GPU particles, and
+      particle graphs in text (Godot's particle shaders); turbulence is done
 - [x] Text with FreeType, HarfBuzz and MSDF fonts, and Godot's `Control`, `Label` and
       `ColorRect`: anchors, offsets and grow directions, rotation, scale and modulate, labels
       that wrap, align, trim with an ellipsis and draw outlines and shadows, theme overrides and
@@ -726,7 +731,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Keyframe animation | Keyframe tracks on any reflected property | 5 | Done |
 | Skeletal animation | Skinned meshes, blending, root motion | 7 | Planned |
 | Animation blending | Blend trees and state machines in text, two-bone and FABRIK IK | 7 | Planned |
-| Particles | CPU and GPU particles, particle graphs in text | 5 | In part: CPU particles and GPU particles with process materials are done; sub-emitters, trails, collision, turbulence, attractors and particle graphs in 5 |
+| Particles | CPU and GPU particles, particle graphs in text | 5 | In part: CPU particles and GPU particles with process materials and turbulence are done; sub-emitters, trails, collision, attractors and particle graphs in 5 |
 | Soundtracks | Music planned in the storyboard, written as scores or generated, arranged into interactive music and checked by analysis, all through commands | 6 | Done |
 | Audio | miniaudio: buses, effects, 3D spatial audio | 5, 7 | In part: 2D players, buses, effects, area bus overrides, interactive music, generated and polyphonic streams and microphone input are done; 3D audio in 7 |
 | Input | Rebindable action maps over SDL3, injectable by agents | 5 | Done |
@@ -805,8 +810,11 @@ calls and tokens ([design section 6](design.md#6-cheap-for-agents-to-use)).
 
 A Mac builds every platform: macOS and iOS with Xcode's tools, and Windows and Linux with the
 toolchains `slash-cli toolchain install` downloads. Linux machines build Linux and Windows the
-same way, and Windows machines build Windows with MSVC. Web exports build on any host with
-Emscripten, and Android exports on any host with the Android SDK, NDK and a JDK.
+same way, and Windows machines build Windows with MSVC. Web exports build on any host, with the
+Emscripten that `slash-cli toolchain install web` downloads or an activated emsdk, and Android
+exports on any host with the Android SDK, NDK and JDK that
+`slash-cli toolchain install android --accept-android-sdk-license` installs, or an Android Studio
+install.
 
 SlashEngine supports operating system versions released in 2020 or later, and nothing older. Each
 minimum above is the first release of its OS from 2020. SDL3's GPU API needs less than this on

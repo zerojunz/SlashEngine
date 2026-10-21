@@ -1925,11 +1925,12 @@ struct Builder {
         node.percent_height = shaped ? shaped.value().metrics.height() : 0.0F;
     }
 
-    // The visible children a container places.
+    // The children a container places, as Container::as_sortable_control: the visible ones
+    // that aren't top_level.
     [[nodiscard]] std::vector<std::size_t> sorted(const Node& node) const {
         std::vector<std::size_t> visible;
         for (const std::size_t kid : node.kids) {
-            if (nodes[kid].control->visible) {
+            if (nodes[kid].control->visible && !nodes[kid].control->top_level) {
                 visible.push_back(kid);
             }
         }
@@ -2796,7 +2797,11 @@ struct Builder {
 
     void place(Node& node) {
         const world::Control& control = *node.control;
-        const Node* parent = node.parent != kNone ? &nodes[node.parent] : nullptr;
+        const Node* up = node.parent != kNone ? &nodes[node.parent] : nullptr;
+        // A top_level control hangs from its canvas, as Godot's get_parent_item: it is placed in
+        // the viewport and takes none of its parent's transform, tint, z_index, texture filter
+        // or clip. Its parent still hides it.
+        const Node* parent = control.top_level ? nullptr : up;
         const Vec2 area = parent != nullptr ? parent->placed.size : out.viewport;
         float left = 0.0F;
         float top = 0.0F;
@@ -2863,7 +2868,7 @@ struct Builder {
             placed.transform = local;
         }
         placed.visible = (control.visible || previewing) &&
-                         (parent != nullptr ? parent->placed.visible : canvas_visible(node.canvas));
+                         (up != nullptr ? up->placed.visible : canvas_visible(node.canvas));
         placed.modulate =
             parent != nullptr ? times(parent->placed.modulate, control.modulate) : control.modulate;
         placed.z = std::clamp(
@@ -4209,13 +4214,15 @@ std::vector<entt::entity> all_controls(const world::World& world) {
 }
 
 // Links the controls into trees and makes a node for each, parents before children, with the
-// themes each one uses.
+// themes each one uses, and the layout's tree. Nodes are in tree order by canvas, except that a
+// top_level control hangs from its canvas, as Godot's: it and its subtree come after the rest of
+// its tree and before the roots after that tree, so it draws over the rest of its tree, as
+// Godot orders a canvas's root items in tree order.
 void build(Builder& builder, const std::vector<entt::entity>& controls) {
     builder.link(controls);
     builder.break_loops(controls);
     const ThemeLink* project = builder.project_theme();
     builder.project_link = project;
-    std::vector<std::pair<entt::entity, std::size_t>> stack;
     // The roots by canvas, then in the order they were made.
     std::vector<entt::entity> roots;
     for (const entt::entity entity : controls) {
@@ -4225,23 +4232,63 @@ void build(Builder& builder, const std::vector<entt::entity>& controls) {
     }
     std::ranges::stable_sort(roots, {},
                              [&](entt::entity entity) { return builder.canvas_of_root(entity); });
+    struct Entry {
+        entt::entity entity = entt::null;
+        entt::entity parent = entt::null;
+        std::size_t canvas = 0;
+        // Its root's or top_level control's place among the roots and top_level controls in
+        // tree order.
+        std::size_t group = 0;
+    };
+    std::vector<std::pair<entt::entity, entt::entity>> stack;
     for (const entt::entity entity : std::views::reverse(roots)) {
-        stack.emplace_back(entity, kNone);
+        stack.emplace_back(entity, entt::null);
     }
     // A drag's preview comes last, over the other roots, as set_drag_preview's move_to_front.
     if (builder.preview != entt::null && !builder.parents.contains(builder.preview) &&
         std::ranges::find(controls, builder.preview) != controls.end()) {
-        stack.emplace(stack.begin(), builder.preview, kNone);
+        stack.emplace(stack.begin(), builder.preview, entt::null);
     }
+    std::vector<Entry> order;
+    std::unordered_map<entt::entity, std::size_t> place;
+    std::size_t groups = 0;
     while (!stack.empty()) {
         const auto [entity, parent] = stack.back();
         stack.pop_back();
+        Entry entry{.entity = entity, .parent = parent};
+        if (parent == entt::null) {
+            entry.canvas = builder.canvas_of_root(entity);
+            entry.group = groups++;
+        } else {
+            const Entry& up = order[place.at(parent)];
+            entry.canvas = up.canvas;
+            entry.group = builder.control_of(entity).top_level ? groups++ : up.group;
+        }
+        place.emplace(entity, order.size());
+        order.push_back(entry);
+        if (const auto found = builder.children.find(entity); found != builder.children.end()) {
+            for (const entt::entity child : std::views::reverse(found->second)) {
+                stack.emplace_back(child, entity);
+            }
+        }
+    }
+    for (const Entry& entry : order) {
+        builder.out.tree.push_back(entry.entity);
+    }
+    std::ranges::stable_sort(order, [](const Entry& a, const Entry& b) {
+        return a.canvas != b.canvas ? a.canvas < b.canvas : a.group < b.group;
+    });
+
+    std::unordered_map<entt::entity, std::size_t> index_of;
+    for (const Entry& entry : order) {
+        const entt::entity entity = entry.entity;
+        const std::size_t parent = entry.parent != entt::null ? index_of.at(entry.parent) : kNone;
         const std::size_t index = builder.nodes.size();
+        index_of.emplace(entity, index);
         Node& node = builder.nodes.emplace_back();
         node.entity = entity;
         node.parent = parent;
-        node.canvas =
-            parent != kNone ? builder.nodes[parent].canvas : builder.canvas_of_root(entity);
+        node.canvas = entry.canvas;
         node.control = &builder.control_of(entity);
         const ThemeLink* themes = parent != kNone ? builder.nodes[parent].themes : project;
         if (const std::string& path = node.control->theme; !path.empty()) {
@@ -4260,11 +4307,6 @@ void build(Builder& builder, const std::vector<entt::entity>& controls) {
                                        : direction == "rtl";
         if (parent != kNone) {
             builder.nodes[parent].kids.push_back(index);
-        }
-        if (const auto found = builder.children.find(entity); found != builder.children.end()) {
-            for (const entt::entity child : std::views::reverse(found->second)) {
-                stack.emplace_back(child, index);
-            }
         }
     }
 }
@@ -4288,7 +4330,6 @@ Layout layout(const world::World& world, text::Fonts& fonts, Vec2 viewport) {
     std::vector<Node>& nodes = builder.nodes;
     for (Node& node : nodes) {
         builder.start(node);
-        out.tree.push_back(node.entity);
     }
 
     for (int pass = 0; pass < kMaxPasses; ++pass) {

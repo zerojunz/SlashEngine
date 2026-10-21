@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol name="slash_board">
+  <copyright>
+    Copyright 2026 The SlashEngine Authors. Licensed under the Apache License, Version 2.0.
+  </copyright>
+  <interface name="slash_board" version="2">
+    <description summary="a board of tiles">
+      A test protocol for the built-in wayland-scanner.
+    </description>
+    <request name="make_tile">
+      <arg name="id" type="new_id" interface="slash_tile"/>
+      <arg name="x" type="int"/>
+      <arg name="label" type="string" allow-null="true"/>
+    </request>
+    <event name="ready" since="2">
+      <arg name="count" type="uint"/>
+    </event>
+  </interface>
+  <interface name="slash_tile" version="1">
+    <request name="destroy" type="destructor"/>
+  </interface>
+</protocol>

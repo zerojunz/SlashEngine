@@ -202,6 +202,7 @@ general/2d_panning_strength=0.8
 
 [display]
 
+display_server/driver.linuxbsd="wayland"
 window/size/viewport_width=640
 window/size/viewport_height=360
 window/vsync/vsync_mode=2
@@ -754,6 +755,7 @@ TEST_CASE("importing a Godot project converts its settings and input map") {
     CHECK(settings.find("window")->find("width")->as_int() == 640);
     CHECK(settings.find("window")->find("height")->as_int() == 360);
     CHECK(settings.find("window")->find("vsync_mode")->as_string() == "adaptive");
+    CHECK(settings.find("window")->find("linux_display_driver")->as_string() == "wayland");
     CHECK(settings.find("max_fps")->as_int() == 120);
     CHECK(settings.find("tick_hz")->as_double() == 30.0);
     CHECK(settings.find("rendering")->find("texture_filter")->as_string() == "linear");
@@ -1722,6 +1724,9 @@ z_as_relative = false
 
 [node name="Hud" type="Label" parent="."]
 z_as_relative = false
+
+[node name="Tip" type="Label" parent="Hud"]
+top_level = true
 )");
     const importer::ImportPlan plan = plan_inside(project);
     const auto files = files_of(plan);
@@ -1731,7 +1736,9 @@ z_as_relative = false
           parse(R"({"position": [40.0, 10.0], "top_level": true})"));
     CHECK(*entity(files, level, "wake").find("Sprite2D") ==
           parse(R"({"z_index": -1, "z_as_relative": false})"));
-    CHECK(*entity(files, level, "hud").find("Control") == parse(R"({"z_as_relative": false})"));
+    CHECK(*entity(files, level, "hud").find("Control") ==
+          parse(R"({"children": ["tip"], "z_as_relative": false})"));
+    CHECK(*entity(files, level, "tip").find("Control") == parse(R"({"top_level": true})"));
     for (const json::Value& item : plan.report.find("unsupported")->as_array()) {
         const std::string& what = item.find("what")->as_string();
         CHECK_MESSAGE(what.find("top_level") == std::string::npos, what);
@@ -1816,6 +1823,14 @@ gravity = Vector3(0, 98, 0)
 scale_curve = SubResource("CurveTexture_1")
 color_ramp = SubResource("GradientTexture1D_1")
 turbulence_enabled = true
+turbulence_noise_strength = 2.5
+turbulence_noise_speed = Vector3(0.5, 0, 0.25)
+turbulence_influence_min = 0.2
+turbulence_influence_max = 0.4
+turbulence_influence_over_life = SubResource("CurveTexture_1")
+turbulence_initial_displacement_max = 5.0
+collision_mode = 1
+collision_bounce = 0.5
 
 [sub_resource type="CanvasItemMaterial" id="CanvasItemMaterial_1"]
 particles_animation = true
@@ -1861,10 +1876,18 @@ trail_enabled = true
         "gravity": [0.0, 98.0],
         "scale_curve": [[0.0, 1.0], [1.0, 0.0]],
         "color_ramp": [{"offset": 0.0, "color": [1.0, 0.8, 0.2, 1.0]},
-                       {"offset": 1.0, "color": [1.0, 0.2, 0.0, 0.0]}]})"));
-    CHECK(unsupported(plan.report, "ParticleProcessMaterial.turbulence_enabled")
+                       {"offset": 1.0, "color": [1.0, 0.2, 0.0, 0.0]}],
+        "turbulence_enabled": true,
+        "turbulence_noise_strength": 2.5,
+        "turbulence_noise_speed": [0.5, 0.0, 0.25],
+        "turbulence_influence_min": 0.2,
+        "turbulence_influence_max": 0.4,
+        "turbulence_influence_over_life": [[0.0, 1.0], [1.0, 0.0]],
+        "turbulence_initial_displacement_max": 5.0})"));
+    CHECK(unsupported(plan.report, "ParticleProcessMaterial.collision_mode")
               .find("why")
-              ->as_string() == "turbulence, collisions and sub-emitters are on the roadmap");
+              ->as_string() == "collisions and sub-emitters are on the roadmap");
+    CHECK(unsupported(plan.report, "ParticleProcessMaterial.collision_bounce").is_null());
     CHECK(parse(files.at("godot/smoke.process_material.json")) ==
           parse(R"({"format": 1, "spread": 180.0, "initial_velocity_max": 10.0,
                     "gravity": [0.0, 98.0]})"));

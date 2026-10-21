@@ -6,6 +6,25 @@
 
 #include <algorithm>
 
+#if defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#elif defined(__APPLE__)
+#include <TargetConditionals.h>
+#include <climits>
+#include <cstdint>
+#include <cstdlib>
+#include <mach-o/dyld.h>
+#elif defined(__linux__) && !defined(__ANDROID__)
+#include <climits>
+#include <unistd.h>
+#endif
+
 namespace slash::platform {
 namespace {
 
@@ -196,6 +215,48 @@ Result<std::vector<std::string>> list_files(std::string_view folder,
 std::string base_path() {
     const char* path = SDL_GetBasePath();
     return path == nullptr ? std::string() : std::string(path);
+}
+
+std::string executable_path() {
+#if defined(_WIN32)
+    std::wstring path(MAX_PATH, L'\0');
+    for (;;) {
+        const DWORD length =
+            GetModuleFileNameW(nullptr, path.data(), static_cast<DWORD>(path.size()));
+        if (length == 0) {
+            return {};
+        }
+        if (length < path.size()) {
+            path.resize(length);
+            break;
+        }
+        path.resize(path.size() * 2);
+    }
+    const int bytes = WideCharToMultiByte(CP_UTF8, 0, path.data(), static_cast<int>(path.size()),
+                                          nullptr, 0, nullptr, nullptr);
+    std::string utf8(static_cast<std::size_t>(bytes), '\0');
+    WideCharToMultiByte(CP_UTF8, 0, path.data(), static_cast<int>(path.size()), utf8.data(), bytes,
+                        nullptr, nullptr);
+    return utf8;
+#elif defined(__APPLE__) && TARGET_OS_OSX
+    std::uint32_t size = 0;
+    _NSGetExecutablePath(nullptr, &size);
+    std::string path(size, '\0');
+    if (_NSGetExecutablePath(path.data(), &size) != 0) {
+        return {};
+    }
+    char resolved[PATH_MAX];
+    return realpath(path.c_str(), resolved) == nullptr ? std::string() : std::string(resolved);
+#elif defined(__linux__) && !defined(__ANDROID__)
+    char path[PATH_MAX];
+    const ssize_t length = readlink("/proc/self/exe", path, sizeof(path));
+    if (length <= 0 || static_cast<std::size_t>(length) >= sizeof(path)) {
+        return {};
+    }
+    return {path, static_cast<std::size_t>(length)};
+#else
+    return {};
+#endif
 }
 
 } // namespace slash::platform

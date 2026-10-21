@@ -27,6 +27,7 @@
 #include "slash/exporter/commands.hpp"
 #include "slash/exporter/export.hpp"
 #include "slash/exporter/gameplay.hpp"
+#include "slash/exporter/icons.hpp"
 #include "slash/exporter/presets.hpp"
 #include "slash/exporter/sdk.hpp"
 #include "slash/exporter/toolchains.hpp"
@@ -42,6 +43,7 @@
 #include "slash/platform/run.hpp"
 #include "slash/render/device.hpp"
 #include "slash/runtime/gameplay.hpp"
+#include "slash/runtime/icon.hpp"
 #include "slash/runtime/project.hpp"
 #include "slash/server/server.hpp"
 #include "slash/shader_compiler/shader_compiler.hpp"
@@ -222,9 +224,12 @@ Usage:
                                      install
   slash-cli toolchain install [name] Download the toolchains exports use to build other
                                      platforms (default: all); also takes a platform name
-                                     (windows, linux), linux-arm64 or assetripper (imports
-                                     Unity builds); folder: SLASH_TOOLCHAINS_DIR, else
-                                     ~/.slash/toolchains
+                                     (windows, linux, web, android), linux-arm64, jdk or
+                                     assetripper (imports Unity builds); folder:
+                                     SLASH_TOOLCHAINS_DIR, else ~/.slash/toolchains
+      --accept-android-sdk-license   Accept Google's Android SDK License Agreement
+                                     (developer.android.com/studio/terms), which installing
+                                     the Android SDK needs; read it first
   slash-cli library serve            Serve a folder's asset library to the team over HTTP
                                      until stopped; teammates put its URL in providers.json's
                                      "library": {"team": ...} and its token in
@@ -590,6 +595,14 @@ int cmd_run(const std::vector<std::string>& args) {
             game,
             {.get = [&] { return platform.value().clipboard_text(); },
              .set = [&](const std::string& text) { platform.value().set_clipboard_text(text); }});
+        // The window shows the project's icon.
+        const auto project = slash::runtime::load_project(session_options.project_root);
+        const slash::render::Image icon = slash::runtime::window_icon(
+            project ? project.value().icon : std::string(), [&](std::string_view path) {
+                return slash::platform::read_file(
+                    slash::runtime::join_path(session_options.project_root, path));
+            });
+        platform.value().set_icon(icon.width, icon.height, icon.pixels);
     }
     // Sound out of the speakers, made after the platform so it closes before SDL quits.
     std::unique_ptr<slash::audio::SdlOutput> audio_output;
@@ -1189,6 +1202,22 @@ int cmd_project(const std::vector<std::string>& args) {
         check(project.value().gui_theme, "/gui/theme", slash::ui::validate_theme);
         check(project.value().audio.bus_layout, "/audio/bus_layout",
               slash::audio::validate_bus_layout);
+        // The icons project.json and the presets name.
+        const auto presets = slash::exporter::load_presets(folder);
+        std::vector<const slash::exporter::Preset*> preset_list;
+        if (presets) {
+            for (const auto& [name, preset] : presets.value()) {
+                preset_list.push_back(&preset);
+            }
+        }
+        for (const slash::exporter::IconProblem& problem :
+             slash::exporter::check_icons(folder, project.value(), preset_list)) {
+            json::Value item;
+            item["file"] = problem.file;
+            item["path"] = problem.path;
+            item["message"] = problem.message;
+            errors.push_back(std::move(item));
+        }
         // SDK packages: their sdk.json files, the presets' "sdks" and the files in the packages.
         // Keys and downloads belong to the machine that exports, which sdk check looks at.
         const json::Value sdks = slash::exporter::check_sdks(folder, "", false, false);
@@ -1798,13 +1827,30 @@ json::Value toolchain_json(const slash::exporter::Toolchain& toolchain) {
     return item;
 }
 
-// The export toolchains this host can install, then AssetRipper, which imports Unity builds.
+// The export toolchains this host can install, AssetRipper, which imports Unity builds, and the
+// JDK and command-line tools that install the Android SDK.
 std::vector<slash::exporter::Toolchain> installable_tools() {
     std::vector<slash::exporter::Toolchain> tools = slash::exporter::host_toolchains();
     if (auto assetripper = slash::exporter::assetripper()) {
         tools.push_back(std::move(*assetripper));
     }
+    if (auto android = slash::exporter::android_install()) {
+        tools.push_back(std::move(android->jdk));
+        tools.push_back(std::move(android->command_line_tools));
+    }
     return tools;
+}
+
+// The Android SDK's entry in toolchain list and install results.
+json::Value android_sdk_json(const slash::exporter::AndroidInstall& install) {
+    json::Value item;
+    item["name"] = std::string(slash::exporter::kAndroidSdk);
+    json::Array packages;
+    for (const std::string& package : install.packages) {
+        packages.emplace_back(package);
+    }
+    item["packages"] = std::move(packages);
+    return item;
 }
 
 int cmd_toolchain_list() {
@@ -1817,6 +1863,14 @@ int cmd_toolchain_list() {
         item["installed"] = exporter::installed_toolchain(toolchain, dir).has_value();
         toolchains.push_back(std::move(item));
     }
+    if (const auto android = exporter::android_install()) {
+        json::Value item = android_sdk_json(*android);
+        item["description"] = "The Android SDK packages Android exports need, installed by "
+                              "sdkmanager; needs --accept-android-sdk-license";
+        item["license"] = std::string(exporter::kAndroidSdkLicense);
+        item["installed"] = !exporter::installed_android(*android, dir).sdk.empty();
+        toolchains.push_back(std::move(item));
+    }
     json::Value result;
     result["dir"] = dir.generic_string();
     result["toolchains"] = std::move(toolchains);
@@ -1824,13 +1878,21 @@ int cmd_toolchain_list() {
     return kExitOk;
 }
 
-int cmd_toolchain_install(const std::vector<std::string>& names) {
+int cmd_toolchain_install(const std::vector<std::string>& names, bool accept_android_license) {
     namespace exporter = slash::exporter;
     const std::vector<exporter::Toolchain> available = installable_tools();
+    const std::optional<exporter::AndroidInstall> android = exporter::android_install();
     if (available.empty()) {
         return usage_error("this machine builds every platform it can with its own compilers; "
                            "there are no toolchains to install");
     }
+    const std::string android_license_hint =
+        "Google's Android command-line tools and SDK are under its Android Software Development "
+        "Kit License Agreement (" +
+        std::string(exporter::kAndroidSdkLicense) +
+        "); once you have read and accepted it, pass --accept-android-sdk-license";
+    bool want_android_sdk = false;
+    json::Array skipped;
     // Each name is a toolchain, a platform whose toolchains to install, or "all".
     std::vector<std::string> wanted;
     const auto want = [&wanted](const std::string& name) {
@@ -1843,11 +1905,30 @@ int cmd_toolchain_install(const std::vector<std::string>& names) {
             std::any_of(available.begin(), available.end(),
                         [&name](const exporter::Toolchain& t) { return t.name == name; });
         std::vector<std::string> expanded;
+        if (name == exporter::kAndroidCommandLineTools && !accept_android_license) {
+            return usage_error(android_license_hint);
+        }
         if (is_toolchain) {
             expanded = {name};
+        } else if (name == "android" || name == exporter::kAndroidSdk) {
+            if (!android) {
+                return usage_error("Google has no Android SDK for this machine; export Android "
+                                   "games from macOS, x86_64 Linux or x86_64 Windows");
+            }
+            if (!accept_android_license) {
+                return usage_error(android_license_hint);
+            }
+            want_android_sdk = true;
         } else if (name == "all") {
             for (const exporter::Toolchain& toolchain : exporter::host_toolchains()) {
                 expanded.push_back(toolchain.name);
+            }
+            if (android && accept_android_license) {
+                want_android_sdk = true;
+            } else if (android) {
+                json::Value item = android_sdk_json(*android);
+                item["reason"] = android_license_hint;
+                skipped.push_back(std::move(item));
             }
         } else if (name == "linux-arm64") {
             expanded = exporter::toolchains_for("linux", exporter::kLinuxArm64);
@@ -1883,9 +1964,47 @@ int cmd_toolchain_install(const std::vector<std::string>& names) {
         item["path"] = folder.value().generic_string();
         installed.push_back(std::move(item));
     }
+    if (want_android_sdk) {
+        // The JDK and command-line tools first, then the packages sdkmanager installs.
+        for (const exporter::Toolchain* toolchain : {&android->jdk, &android->command_line_tools}) {
+            if (std::find(wanted.begin(), wanted.end(), toolchain->name) != wanted.end()) {
+                continue; // reported above
+            }
+            json::Value item = toolchain_json(*toolchain);
+            if (const auto folder = exporter::installed_toolchain(*toolchain, dir)) {
+                item["path"] = folder->generic_string();
+                already.push_back(std::move(item));
+                continue;
+            }
+            slash::log::info("installing toolchain",
+                             {{"name", toolchain->name}, {"version", toolchain->version}});
+            auto folder = exporter::install_toolchain(*toolchain, dir);
+            if (!folder) {
+                return failure("could not install toolchain", folder.error());
+            }
+            item["path"] = folder.value().generic_string();
+            installed.push_back(std::move(item));
+        }
+        json::Value item = android_sdk_json(*android);
+        item["license"] = std::string(exporter::kAndroidSdkLicense);
+        const bool had_sdk = !exporter::installed_android(*android, dir).sdk.empty();
+        if (!had_sdk) {
+            slash::log::info("installing the Android SDK",
+                             {{"path", (dir / exporter::kAndroidSdk).generic_string()}});
+        }
+        auto folders = exporter::install_android(*android, dir, true);
+        if (!folders) {
+            return failure("could not install the Android SDK", folders.error());
+        }
+        item["path"] = folders.value().sdk.generic_string();
+        (had_sdk ? already : installed).push_back(std::move(item));
+    }
     json::Value result;
     result["installed"] = std::move(installed);
     result["already_installed"] = std::move(already);
+    if (!skipped.empty()) {
+        result["skipped"] = std::move(skipped);
+    }
     print(result);
     return kExitOk;
 }
@@ -1894,10 +2013,15 @@ int cmd_toolchain(const std::vector<std::string>& args) {
     if (args.empty() || (args[0] != "list" && args[0] != "install")) {
         return usage_error("toolchain needs an action: list or install");
     }
-    const std::vector<std::string> rest(args.begin() + 1, args.end());
-    for (const std::string& arg : rest) {
-        if (arg.starts_with("--")) {
-            return usage_error("unexpected argument for toolchain: " + arg);
+    std::vector<std::string> rest;
+    bool accept_android_license = false;
+    for (std::size_t i = 1; i < args.size(); ++i) {
+        if (args[i] == "--accept-android-sdk-license" && args[0] == "install") {
+            accept_android_license = true;
+        } else if (args[i].starts_with("--")) {
+            return usage_error("unexpected argument for toolchain: " + args[i]);
+        } else {
+            rest.push_back(args[i]);
         }
     }
     if (args[0] == "list") {
@@ -1906,7 +2030,7 @@ int cmd_toolchain(const std::vector<std::string>& args) {
         }
         return cmd_toolchain_list();
     }
-    return cmd_toolchain_install(rest);
+    return cmd_toolchain_install(rest, accept_android_license);
 }
 
 int cmd_library(const std::vector<std::string>& args) {
@@ -1993,6 +2117,10 @@ int cmd_init(const std::vector<std::string>& args) {
 } // namespace
 
 int main(int argc, char** argv) {
+    // Linux exports run this program as their wayland-scanner (tools/exporter).
+    if (argc > 1 && std::string_view(argv[1]) == slash::exporter::kWaylandScanner) {
+        return slash::exporter::run_wayland_scanner(argc - 1, argv + 1);
+    }
     // Materials with a game's own shader compile when they first draw or validate.
     slash::shader_compiler::install();
     std::vector<std::string> args(argv + 1, argv + argc);

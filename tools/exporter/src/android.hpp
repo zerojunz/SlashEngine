@@ -49,9 +49,9 @@ struct ApkInfo {
     bool debug = false;
 };
 
-// Links tree's manifest, assets and the libraries' resources, compiles the Java sources in
-// tree/java with the libraries' R classes, then aligns and signs them with tree's libraries and
-// code into apk. Scratch files go in work.
+// Links tree's manifest, assets and resources (tree/res: the game's icon) and the libraries'
+// resources, compiles the Java sources in tree/java with the libraries' R classes, then aligns
+// and signs them with tree's libraries and code into apk. Scratch files go in work.
 bool package_apk(const AndroidTools& tools, const AndroidKey& key, const ApkInfo& info,
                  const std::filesystem::path& tree, const AndroidResources& resources,
                  const std::filesystem::path& work, const std::filesystem::path& apk,

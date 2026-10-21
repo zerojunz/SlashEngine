@@ -17,6 +17,7 @@
 #include "slash/exporter/android.hpp"
 #include "slash/exporter/android_library.hpp"
 #include "slash/exporter/forms.hpp"
+#include "slash/exporter/icons.hpp"
 #include "slash/exporter/maven.hpp"
 #include "slash/exporter/presets.hpp"
 #include "slash/exporter/sdk.hpp"
@@ -543,16 +544,17 @@ bool publish(const fs::path& package, const fs::path& output, const fs::path& re
     return true;
 }
 
+// node is the Node.js web games run on: the downloaded one, or empty for node on PATH.
 json::Value run_test(const std::string& platform, const std::string& arch, const fs::path& output,
-                     const fs::path& program, const fs::path& log_path) {
+                     const fs::path& program, const fs::path& log_path, const fs::path& node) {
     json::Value test;
     std::vector<std::string> args;
     if (platform == "web") {
-        if (!program_runs("node")) {
+        if (node.empty() && !program_runs("node")) {
             test["skipped"] = "Node.js is not on PATH";
             return test;
         }
-        args = {"node", program.string()};
+        args = {node.empty() ? std::string("node") : node.string(), program.string()};
     } else if (platform == host_name() && (platform != "linux" || arch == kHostArch)) {
         args = {program.string()};
     } else if (platform == "linux" && platform == host_name()) {
@@ -1010,16 +1012,10 @@ ExportResult export_game(const ExportOptions& options) {
                      {}},
                     {});
     }
+    // An activated emsdk's Emscripten; without one, web exports download their own below.
     std::optional<fs::path> toolchain;
     if (platform == "web") {
         toolchain = find_emscripten_toolchain();
-        if (!toolchain) {
-            return fail({"options",
-                         "web exports need Emscripten; install emsdk and activate it (source "
-                         "emsdk_env.sh) so EMSDK is set",
-                         {}},
-                        {});
-        }
     }
     if (!program_runs("cmake")) {
         return fail({"options", "exports need CMake 3.25 or newer on PATH", {}}, {});
@@ -1050,6 +1046,9 @@ ExportResult export_game(const ExportOptions& options) {
             return fail({"options", tools.error().message, {}}, {});
         }
         android = std::move(tools).value();
+        log::info(
+            "android tools",
+            {{"sdk", android->sdk}, {"ndk", android->ndk}, {"java_home", android->java_home}});
         apk_info.package =
             preset.android.package.empty() ? project.value().bundle_id() : preset.android.package;
         if (const std::string problem = android_package_problem(apk_info.package);
@@ -1121,6 +1120,44 @@ ExportResult export_game(const ExportOptions& options) {
         options.library.empty() ? library::default_dir() : options.library;
     if (!stage_data(project_dir, project.value(), data, platform, library_dir, failure)) {
         return fail(failure, log_path);
+    }
+    // The platform's icons, made from the preset's icon, the project's or the engine's.
+    if (const std::vector<IconProblem> problems =
+            check_icons(project_dir, project.value(), {&preset});
+        !problems.empty()) {
+        json::Array errors;
+        for (const IconProblem& problem : problems) {
+            json::Value item;
+            item["file"] = problem.file;
+            item["path"] = problem.path;
+            item["message"] = problem.message;
+            errors.push_back(std::move(item));
+        }
+        Failure icon_failure{"validate",
+                             std::to_string(errors.size()) + " problem" +
+                                 (errors.size() == 1 ? "" : "s") + " in the project",
+                             {}};
+        icon_failure.details["errors"] = std::move(errors);
+        return fail(icon_failure, log_path);
+    }
+    auto icon_images = preset_icons(project_dir, project.value(), preset);
+    auto icon_files = icon_images ? platform_icons(platform, icon_images.value().settings)
+                                  : Result<std::vector<IconFile>>(icon_images.error());
+    const fs::path icons = fs::absolute(work / "icons", error);
+    fs::remove_all(icons, error);
+    if (icon_files) {
+        for (const IconFile& file : icon_files.value()) {
+            fs::create_directories((icons / file.path).parent_path(), error);
+            if (auto written = platform::write_file((icons / file.path).string(), file.bytes);
+                !written) {
+                icon_files = written.error();
+                break;
+            }
+        }
+    }
+    if (!icon_files) {
+        return fail({"icons", "could not make the icons: " + icon_files.error().message, {}},
+                    log_path);
     }
     if (!linked.empty()) {
         // Each download once, kept in sdks_dir() for every project and export after this one.
@@ -1207,6 +1244,7 @@ ExportResult export_game(const ExportOptions& options) {
         sources += fs::absolute(project_dir / source, error).lexically_normal().generic_string();
     }
     configure.push_back("-DSLASH_GAME_SOURCES=" + sources);
+    configure.push_back("-DSLASH_GAME_ICONS=" + icons.generic_string());
     // Arguments that pick the compilers and targets, shared with SDK packages' CMake projects.
     std::vector<std::string> toolchain_args;
     // Games with a providers.json call language models: main() installs engine/ai, and Android
@@ -1246,9 +1284,26 @@ ExportResult export_game(const ExportOptions& options) {
                 : fs::absolute(work / ".." / "cpm-cache", error).lexically_normal().string());
     }
 
-    // Windows and Linux builds on other hosts, and every Linux build, use downloaded toolchains.
+    // Windows and Linux builds on other hosts, every Linux build and web builds with no emsdk use
+    // downloaded toolchains.
     detail::CrossBuild cross;
-    if (!detail::prepare_cross(platform, arch, work, log_path.string(), cross, failure)) {
+    if (platform == "web" && !toolchain) {
+        // Linux runs Emscripten's tools with its own Python, which must be 3.10 or newer.
+        const std::vector<std::string> web = toolchains_for("web");
+        if (std::ranges::find(web, std::string(kPython)) == web.end()) {
+            auto python = platform::run_process(
+                {"python3", "-c", "import sys; sys.exit(sys.version_info < (3, 10))"});
+            if (!python || python.value().exit_code != 0) {
+                return fail({"options",
+                             "web exports need Python 3.10 or newer on PATH (python3) to run "
+                             "Emscripten",
+                             {}},
+                            log_path);
+            }
+        }
+    }
+    if (!toolchain &&
+        !detail::prepare_cross(platform, arch, work, log_path.string(), cross, failure)) {
         return fail(failure, log_path);
     }
     process.environment.insert(process.environment.end(), cross.environment.begin(),
@@ -1420,6 +1475,13 @@ ExportResult export_game(const ExportOptions& options) {
                 return fail(failure, log_path);
             }
         }
+        // The game's own resources: its adaptive icon.
+        fs::copy(icons / "res", tree / "res",
+                 fs::copy_options::recursive | fs::copy_options::overwrite_existing, error);
+        if (error) {
+            return fail({"icons", "could not add the icon to the APK: " + error.message(), {}},
+                        log_path);
+        }
         AndroidResources resources;
         if (!android_libraries.empty()) {
             auto added =
@@ -1442,6 +1504,10 @@ ExportResult export_game(const ExportOptions& options) {
         if (!build_into(work / ("build-" + preset.ios.destination),
                         detail::ios_configure_args(preset.ios, debug, ios_bundle_id), package,
                         !debug, preset.ios.destination)) {
+            return fail(failure, log_path);
+        }
+        if (!detail::compile_ios_icons(icons / "Assets.xcassets", app, preset.ios.destination, work,
+                                       process, failure)) {
             return fail(failure, log_path);
         }
         // A device build's entitlements are its profile's, which must grant what SDKs need.
@@ -1522,6 +1588,9 @@ ExportResult export_game(const ExportOptions& options) {
     out["executable"] = display(executable);
     out["bytes"] = folder_bytes(output);
     out["log"] = display(log_path);
+    // The image the icons were made from: the project's file, or the engine's icon.
+    out["icon"] =
+        icon_images.value().source.empty() ? std::string("default") : icon_images.value().source;
     if (!signed_with.is_null()) {
         out["signed"] = std::move(signed_with);
     }
@@ -1567,7 +1636,7 @@ ExportResult export_game(const ExportOptions& options) {
                                     fs::absolute(work, error), log_path);
         } else {
             test = run_test(platform, arch, fs::absolute(output, error),
-                            fs::absolute(program, error), log_path);
+                            fs::absolute(program, error), log_path, cross.node);
         }
         if (const json::Value* passed = test.find("passed");
             passed != nullptr && !passed->as_bool()) {

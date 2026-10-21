@@ -331,3 +331,51 @@ if(SLASH_BUILD_TOOLS OR SLASH_BUILD_TESTS)
         endif()
     endif()
 endif()
+
+# Linux exports build SDL's Wayland support against the glibc 2.31 sysroot's Wayland 1.18, whose
+# headers only fit protocol code from a wayland-scanner as old, and macOS has none at all. So the
+# tools build Wayland 1.18's scanner, on expat, into slash-cli and slash-mcp, which run it as
+# "slash-cli wayland-scanner" (tools/exporter). Windows machines don't build Linux games.
+if((SLASH_BUILD_TOOLS OR SLASH_BUILD_TESTS) AND NOT WIN32)
+    slash_add_dependency(expat DOWNLOAD_ONLY TRUE)
+    slash_add_dependency(wayland DOWNLOAD_ONLY TRUE)
+    if(expat_ADDED AND wayland_ADDED)
+        # What expat's and Wayland's configure steps would write.
+        set(_slash_scanner_config ${CMAKE_BINARY_DIR}/_deps/wayland-scanner-config)
+        if(APPLE)
+            set(_slash_expat_entropy "#define HAVE_ARC4RANDOM_BUF 1\n")
+            set(_slash_expat_random random_arc4random_buf.c)
+        else()
+            set(_slash_expat_entropy "#define XML_DEV_URANDOM 1\n")
+            set(_slash_expat_random random_dev_urandom.c)
+        endif()
+        file(WRITE ${_slash_scanner_config}/expat_config.h.new
+            "#ifndef EXPAT_CONFIG_H\n#define EXPAT_CONFIG_H 1\n"
+            "#define BYTEORDER 1234\n#define HAVE_STDINT_H 1\n#define HAVE_STDLIB_H 1\n"
+            "#define HAVE_STRING_H 1\n#define HAVE_UNISTD_H 1\n#define HAVE_FCNTL_H 1\n"
+            "#define PACKAGE \"expat\"\n#define XML_CONTEXT_BYTES 1024\n#define XML_DTD 1\n"
+            "#define XML_GE 1\n#define XML_NS 1\n${_slash_expat_entropy}#endif\n")
+        file(WRITE ${_slash_scanner_config}/wayland-version.h.new
+            "#ifndef WAYLAND_VERSION_H\n#define WAYLAND_VERSION_H\n"
+            "#define WAYLAND_VERSION_MAJOR 1\n#define WAYLAND_VERSION_MINOR 18\n"
+            "#define WAYLAND_VERSION_MICRO 0\n#define WAYLAND_VERSION \"1.18.0\"\n#endif\n")
+        foreach(_slash_header IN ITEMS expat_config.h wayland-version.h)
+            file(COPY_FILE ${_slash_scanner_config}/${_slash_header}.new
+                ${_slash_scanner_config}/${_slash_header} ONLY_IF_DIFFERENT)
+        endforeach()
+        set(_slash_expat ${expat_SOURCE_DIR}/expat/lib)
+        add_library(slash_wayland_scanner STATIC
+            ${_slash_expat}/xmlparse.c
+            ${_slash_expat}/xmlrole.c
+            ${_slash_expat}/xmltok.c
+            ${_slash_expat}/${_slash_expat_random}
+            ${wayland_SOURCE_DIR}/src/scanner.c
+            ${wayland_SOURCE_DIR}/src/wayland-util.c)
+        target_include_directories(slash_wayland_scanner BEFORE PRIVATE ${_slash_scanner_config}
+            ${_slash_expat} ${wayland_SOURCE_DIR}/src)
+        # The scanner's main() becomes a function slash-cli calls.
+        target_compile_definitions(slash_wayland_scanner PRIVATE HAVE_EXPAT_CONFIG_H XML_STATIC
+            HAVE_LIBXML=0 HAVE_STRNDUP=1 main=slash_wayland_scanner_main)
+        target_compile_options(slash_wayland_scanner PRIVATE -w)
+    endif()
+endif()
