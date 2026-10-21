@@ -77,6 +77,13 @@
       "repository": "https://github.com/yhirose/cpp-httplib.git",
       "tag": "v0.58.0"
     },
+    "libebur128": {
+      "license": "MIT AND BSD-3-Clause",
+      "license_file": "COPYING",
+      "license_sha256": "d6b4754bb67bdd08b97d5d11b2d7434997a371585a78fe77007149df3af8d09c",
+      "repository": "https://github.com/jiixyj/libebur128.git",
+      "tag": "v1.2.6"
+    },
     "libwebp": {
       "license": "BSD-3-Clause",
       "license_file": "COPYING",

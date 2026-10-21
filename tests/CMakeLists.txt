@@ -6,6 +6,7 @@ add_executable(slash_tests
     test_api_search.cpp
     test_asset.cpp
     test_audio.cpp
+    test_audio_analysis.cpp
     test_bench.cpp
     test_camera2d.cpp
     test_canvas_layer.cpp
