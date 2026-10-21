@@ -3,6 +3,7 @@
 #include "slash/platform/run.hpp"
 
 #include <SDL3/SDL_hints.h>
+#include <SDL3/SDL_stdinc.h>
 #include <doctest/doctest.h>
 
 #include <algorithm>
@@ -142,6 +143,31 @@ TEST_CASE("a frame cap spaces windowed frames out") {
     CHECK(frames.frame_ms_avg >= 4.5);
     CHECK(loop.value().interpolation() >= 0.0);
     CHECK(loop.value().interpolation() < 1.0);
+}
+
+TEST_CASE("a platform starts the video drivers it is given unless SDL_VIDEO_DRIVER names others") {
+    // The environment variable, which CI may set, wins over the drivers.
+    if (SDL_getenv("SDL_VIDEO_DRIVER") == nullptr) {
+        auto platform = Platform::create(Config{.headless = false, .video_drivers = "dummy"});
+        REQUIRE_MESSAGE(platform.ok(), (platform.ok() ? std::string() : platform.error().message));
+        CHECK(platform.value().video_driver() == "dummy");
+        // Only while SDL started.
+        CHECK(SDL_GetHint(SDL_HINT_VIDEO_DRIVER) == nullptr);
+    }
+    SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "dummy");
+    auto platform = Platform::create(Config{.headless = false, .video_drivers = "no-such-driver"});
+    CHECK(std::string_view(SDL_GetHint(SDL_HINT_VIDEO_DRIVER)) == "dummy");
+    SDL_ResetHint(SDL_HINT_VIDEO_DRIVER);
+    REQUIRE_MESSAGE(platform.ok(), (platform.ok() ? std::string() : platform.error().message));
+    CHECK(platform.value().video_driver() == "dummy");
+}
+
+TEST_CASE("the running program's executable is found") {
+    const std::string path = slash::platform::executable_path();
+    REQUIRE_FALSE(path.empty());
+    CHECK(std::filesystem::path(path).is_absolute());
+    CHECK(std::filesystem::path(path).stem() == "slash_tests");
+    CHECK(std::filesystem::is_regular_file(path));
 }
 
 TEST_CASE("files round-trip through write_file and read_file") {

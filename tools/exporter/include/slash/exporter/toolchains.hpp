@@ -91,6 +91,16 @@ inline constexpr std::string_view kAssetRipper = "assetripper";
 // Its program in its installed folder.
 [[nodiscard]] std::string_view assetripper_program();
 
+// Wayland 1.18's wayland-scanner, built into slash-cli and slash-mcp on macOS and Linux, where
+// Linux exports run it to write SDL's Wayland protocol code for the glibc 2.31 sysroot's Wayland
+// headers. "slash-cli wayland-scanner client-header in.xml out.h" runs it as wayland-scanner.
+inline constexpr std::string_view kWaylandScanner = "wayland-scanner";
+inline constexpr std::string_view kWaylandScannerVersion = "1.18.0";
+// Whether this build has it (Windows builds, which don't export Linux games, don't).
+[[nodiscard]] bool has_wayland_scanner();
+// Runs it with argv as wayland-scanner's own argv, argv[0] its name. Returns its exit status.
+int run_wayland_scanner(int argc, char** argv);
+
 // The names of the toolchains an export for platform needs on this host, or none when the
 // host's own compilers build it. arch matters only for Linux. Web exports need these only when no
 // emsdk is activated.

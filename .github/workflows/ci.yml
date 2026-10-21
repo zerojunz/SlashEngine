@@ -379,8 +379,9 @@ jobs:
           path: ~/.slash/toolchains
           key: toolchains-macos-14-${{ hashFiles('tools/exporter/src/toolchains.cpp') }}
 
+      # pkg-config finds the sysroot's Wayland, PulseAudio and PipeWire for Linux games.
       - name: Install tools
-        run: brew install ninja
+        run: brew install ninja pkgconf
 
       - name: Build slash-cli
         run: |

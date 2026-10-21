@@ -333,14 +333,18 @@ and full build log are in `<project>/.slash/export/<preset>/`; a failure reports
 end of the log. A Mac builds every platform: macOS and iOS with Xcode's tools, Windows and Linux
 with llvm-mingw and a glibc 2.31 Debian sysroot that the first such export downloads
 (`$cli toolchain install` gets them ahead of time, into `SLASH_TOOLCHAINS_DIR` or
-`~/.slash/toolchains`). Linux machines build Linux and Windows the same way, and Windows machines
-build Windows with MSVC. Web exports use an activated emsdk (`EMSDK` set) or else download pinned
+`~/.slash/toolchains`). Linux games run on X11 or Wayland (X11 first unless
+`window.linux_display_driver` says `wayland`); SDL's Wayland code comes from Wayland 1.18's
+scanner, built into slash-cli and slash-mcp (`slash-cli wayland-scanner`) to fit the sysroot's
+headers, and pkg-config must be installed. Linux machines build Linux and Windows the same way,
+and Windows machines build Windows with MSVC. Web exports use an activated emsdk (`EMSDK` set) or else download pinned
 Emscripten, Node.js and (on macOS and Windows) Python toolchains. Android exports, on any host,
 use the Android SDK, NDK and JDK in `ANDROID_HOME` and `JAVA_HOME` or the ones
 `$cli toolchain install android --accept-android-sdk-license` installs (it accepts Google's
 Android SDK license, so an agent asks its person first). CI exports and runs an empty game for macOS, Windows, Linux, web,
 Android (on an emulator) and iOS (in the Simulator) on every PR, cross-exports Windows and Linux
-(x86_64 and arm64) from macOS and runs them on Windows and Ubuntu 20.04, and `slash-cli init` writes
+(x86_64 and arm64) from macOS and runs them on Windows and Ubuntu 20.04 (on X11 and Wayland
+compositors there), and `slash-cli init` writes
 the per-platform workflow into new games.
 
 App icons come from one square image, `project.json`'s `icon` (Godot's

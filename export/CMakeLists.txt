@@ -87,11 +87,16 @@ if(SLASH_GAME_MICROPHONE)
         "<uses-permission android:name=\"android.permission.RECORD_AUDIO\" />")
 endif()
 
-# Linux builds use a glibc 2.31 sysroot (see tools/exporter), whose Wayland headers are older than
-# the code any host's wayland-scanner writes. So Linux games use X11, which Wayland desktops run
-# through XWayland, as Godot does by default.
+# Linux builds use a glibc 2.31 sysroot (see tools/exporter), whose Wayland 1.18 headers fit only
+# code from Wayland 1.18's wayland-scanner, which the exporter names in WAYLAND_SCANNER (built
+# into slash-cli). Without one, Linux games have X11 only, which Wayland desktops run through
+# XWayland.
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_SYSROOT)
-    set(SDL_WAYLAND OFF CACHE BOOL "" FORCE)
+    if(WAYLAND_SCANNER)
+        set(SDL_WAYLAND ON CACHE BOOL "" FORCE)
+    else()
+        set(SDL_WAYLAND OFF CACHE BOOL "" FORCE)
+    endif()
 endif()
 
 # Only the targets the game links are built; tools and tests stay off outside the engine repo.

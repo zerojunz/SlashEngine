@@ -328,6 +328,7 @@ file that its `process_material` names:
 | `application/run/max_fps` | `max_fps` |
 | `display/window/size/viewport_width`, `viewport_height` | `window.width`, `window.height` |
 | `display/window/vsync/vsync_mode` | `window.vsync_mode` |
+| `display/display_server/driver.linuxbsd` | `window.linux_display_driver` when it is `wayland` |
 | `physics/common/physics_ticks_per_second` | `tick_hz` |
 | `physics/2d/default_gravity`, `default_gravity_vector`, `default_linear_damp`, `default_angular_damp` | `physics_2d` |
 | `rendering/environment/defaults/default_clear_color` | `rendering.clear_color` |

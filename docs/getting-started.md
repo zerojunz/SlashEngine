@@ -15,7 +15,8 @@ iOS.
 You need CMake 3.25 or newer, Ninja and a C++20 compiler (Apple Clang, Clang 16+, GCC 12+ or MSVC
 19.3x). Everything else is downloaded by CMake at pinned versions. On Linux, SDL3 also needs the
 X11 and Wayland development packages listed under `LINUX_SDL_DEPS` in
-[.github/workflows/ci.yml](../.github/workflows/ci.yml).
+[.github/workflows/ci.yml](../.github/workflows/ci.yml). Exporting Linux games needs
+`pkg-config` too (`brew install pkgconf` on a Mac).
 
 ```bash
 cmake --preset dev               # configure; the first run fetches the dependencies

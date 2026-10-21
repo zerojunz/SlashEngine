@@ -78,6 +78,11 @@ Result<std::unique_ptr<Game>> Game::start(const GameOptions& options) {
     config.height = project.value().window_height;
     config.headless = options.headless;
     config.opengl = project.value().rendering_driver == "opengl";
+#if defined(__linux__) && !defined(__ANDROID__)
+    // The project's display server first, then the other, as Godot's driver.linuxbsd.
+    config.video_drivers =
+        project.value().linux_display_driver == "wayland" ? "wayland,x11" : "x11,wayland";
+#endif
     auto platform = platform::Platform::create(config);
     if (!platform) {
         return platform.error();

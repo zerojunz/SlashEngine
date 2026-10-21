@@ -10,6 +10,7 @@
 #include "slash/core/log.hpp"
 #include "slash/core/version.hpp"
 #include "slash/exporter/commands.hpp"
+#include "slash/exporter/toolchains.hpp"
 #include "slash/gameplay/host.hpp"
 #include "slash/importer/commands.hpp"
 #include "slash/library/commands.hpp"
@@ -67,6 +68,10 @@ void send(const std::string& line) {
 } // namespace
 
 int main(int argc, char** argv) {
+    // export.run's Linux exports run this program as their wayland-scanner (tools/exporter).
+    if (argc > 1 && std::string_view(argv[1]) == slash::exporter::kWaylandScanner) {
+        return slash::exporter::run_wayland_scanner(argc - 1, argv + 1);
+    }
     slash::shader_compiler::install(); // for materials with a game's own shader
     const std::vector<std::string> args(argv + 1, argv + argc);
     command::SessionOptions options;

@@ -161,7 +161,7 @@ json::Value project_schema() {
     json::Value window;
     window["type"] = "object";
     window["additionalProperties"] = false;
-    window["description"] = "Initial window size in pixels.";
+    window["description"] = "The window: its initial size in pixels and how it is shown.";
     window["properties"]["width"] = integer_property("Window width.", Project{}.window_width);
     window["properties"]["height"] = integer_property("Window height.", Project{}.window_height);
     json::Value vsync_mode;
@@ -172,6 +172,13 @@ json::Value project_schema() {
         "once and may tear; mailbox shows the newest frame each refresh; adaptive waits unless "
         "a frame is late. Unsupported modes fall back to enabled.";
     window["properties"]["vsync_mode"] = std::move(vsync_mode);
+    json::Value linux_display_driver;
+    linux_display_driver["enum"] = json::Array{"x11", "wayland"};
+    linux_display_driver["default"] = Project{}.linux_display_driver;
+    linux_display_driver["description"] =
+        "The display server a game tries first on Linux, falling back to the other, as Godot's "
+        "driver.linuxbsd: x11 (through XWayland on Wayland desktops) or wayland.";
+    window["properties"]["linux_display_driver"] = std::move(linux_display_driver);
 
     json::Value tick_hz;
     tick_hz["type"] = "number";
@@ -474,6 +481,9 @@ Result<Project> parse_project(const json::Value& project) {
         }
         if (const json::Value* vsync = window->find("vsync_mode"); vsync != nullptr) {
             out.vsync_mode = vsync->as_string();
+        }
+        if (const json::Value* driver = window->find("linux_display_driver"); driver != nullptr) {
+            out.linux_display_driver = driver->as_string();
         }
     }
     if (const json::Value* tick_hz = project.find("tick_hz"); tick_hz != nullptr) {
