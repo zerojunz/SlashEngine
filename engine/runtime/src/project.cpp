@@ -205,16 +205,20 @@ json::Value project_schema() {
     clear_color["description"] =
         "What the window shows behind everything, as [r, g, b, a] from 0 to 1.";
     json::Value driver;
-    driver["enum"] = json::Array{"auto", "vulkan", "metal", "d3d12", "opengl", "opengl_es", "null"};
+    driver["enum"] =
+        json::Array{"auto", "vulkan", "metal", "d3d12", "opengl", "opengl_es", "webgpu", "null"};
     driver["default"] = Project{}.rendering_driver;
-    driver["description"] = "The GPU backend. auto picks the best one on each machine (WebGL 2 on "
-                            "the web); opengl is OpenGL 3.3, or OpenGL ES 3.0 where that is what "
-                            "the system has; opengl_es is OpenGL ES 3.0; null draws nothing.";
+    driver["description"] =
+        "The GPU backend. auto picks the best one on each machine (on the web, WebGPU where the "
+        "browser has it, else WebGL 2); opengl is OpenGL 3.3, or OpenGL ES 3.0 where that is what "
+        "the system has; opengl_es is OpenGL ES 3.0; webgpu is the browser's WebGPU, on the web "
+        "only; null draws nothing.";
     json::Value fallback;
     fallback["type"] = "boolean";
     fallback["default"] = Project{}.fallback_to_opengl;
-    fallback["description"] = "Draw with opengl where the driver's GPU backend (Vulkan, Metal or "
-                              "Direct3D 12) doesn't work, as Godot's fallback_to_opengl3.";
+    fallback["description"] = "Draw with opengl where the driver's GPU backend (Vulkan, Metal, "
+                              "Direct3D 12 or WebGPU) doesn't work, as Godot's "
+                              "fallback_to_opengl3.";
     json::Value rendering;
     rendering["type"] = "object";
     rendering["additionalProperties"] = false;

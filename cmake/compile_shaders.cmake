@@ -1,17 +1,24 @@
 # Compiles an HLSL shader with vs_main and fs_main entry points into the forms the render devices
 # take, and writes them to a C++ header: SPIR-V for Vulkan (glslang), MSL for Metal and GLSL ES
 # 3.00 for OpenGL ES and WebGL 2 (SPIRV-Cross), and the HLSL source itself, which Direct3D 12
-# compiles at startup with Windows' own d3dcompiler. The headers are committed, so building the
+# compiles at startup with Windows' own d3dcompiler, and WGSL for WebGPU (Tint, from SPIR-V with
+# separate textures and samplers, as WGSL has them). The headers are committed, so building the
 # engine needs no shader tools.
 #
 #   cmake -DSOURCE=<shader.hlsl> -DOUTPUT=<header> -DNAME=<Sprite> -DWORKDIR=<dir>
-#         -DGLSLANG=<glslangValidator> -DSPIRV_CROSS=<spirv-cross> -P compile_shaders.cmake
+#         -DGLSLANG=<glslangValidator> -DSPIRV_CROSS=<spirv-cross> -DTINT=<tint>
+#         -P compile_shaders.cmake
 #   cmake -DSOURCE=<shader.hlsl> -DOUTPUT=<header> -DCHECK=ON -P compile_shaders.cmake
 #
 # With COMPUTE, the shader is a compute shader with a cs_main entry point instead, and there is no
 # GLSL ES (OpenGL ES runs particles on the CPU). Its MSL comes from SPIR-V compiled with
-# SLASH_MSL defined, since Metal numbers buffers in one list where the others use three, and is
-# an array of pieces to join.
+# SLASH_MSL defined, since Metal numbers buffers in one list where the others use three; it and
+# the WGSL are arrays of pieces to join.
+#
+# WGSL keeps SDL's bind groups, which the HLSL's register spaces name: a vertex stage's uniforms in
+# group 1, a fragment stage's textures in group 2 with their samplers 8 bindings after them
+# (glslang's --shift-sampler-binding) and its uniforms in group 3; a compute shader's read-only
+# buffers in group 0, read-write ones in 1 and uniforms in 2.
 #
 # With CHECK, nothing is compiled: it fails if the HLSL in OUTPUT differs from SOURCE, which means
 # the shader changed and the header wasn't regenerated. It needs no shader tools, so every build
@@ -107,6 +114,20 @@ if(NOT EXISTS "${GLSLANG}" OR NOT EXISTS "${SPIRV_CROSS}")
     message(FATAL_ERROR "compiling shaders needs glslangValidator and spirv-cross: install "
                         "glslang-tools and spirv-cross (apt) or glslang and spirv-cross (brew)")
 endif()
+if(NOT EXISTS "${TINT}")
+    message(FATAL_ERROR "compiling shaders needs Tint's tint tool for WGSL: build Dawn's "
+                        "(github.com/google/dawn) with TINT_BUILD_CMD_TOOLS and pass "
+                        "-DSLASH_TINT=<path to tint> to CMake")
+endif()
+
+# A WGSL file as raw string literals, in pieces for the device to join, since a compute shader's
+# can be longer than Clang takes in one literal.
+function(wgsl_pieces file out)
+    file(READ "${file}" text)
+    raw_literals("${text}" wgsl literals)
+    string(REPLACE ")wgsl\"\nR\"wgsl(" ")wgsl\",\nR\"wgsl(" literals "${literals}")
+    set(${out} "${literals}" PARENT_SCOPE)
+endfunction()
 file(MAKE_DIRECTORY "${WORKDIR}")
 get_filename_component(base "${SOURCE}" NAME_WE)
 read_with_includes(hlsl_text)
@@ -123,15 +144,19 @@ if(COMPUTE)
         -o "${msl_spirv}")
     run(spirv-cross "${SPIRV_CROSS}" --msl --msl-version 20100 --msl-decoration-binding
         --stage comp --entry cs_main "${msl_spirv}" --output "${msl}")
+    set(wgsl "${WORKDIR}/${base}.comp.wgsl")
+    run(tint "${TINT}" --input-format spirv --format wgsl "${spirv}" -o "${wgsl}")
     hex_array("${spirv}" bytes)
     file(READ "${msl}" msl_text)
     raw_literals("${msl_text}" msl msl_literals)
     # Clang refuses a string literal over 65536 bytes, which a compute shader's MSL can be, so its
     # pieces stay apart for the device to join.
     string(REPLACE ")msl\"\nR\"msl(" ")msl\",\nR\"msl(" msl_literals "${msl_literals}")
+    wgsl_pieces("${wgsl}" wgsl_literals)
     string(APPEND body
         "alignas(4) inline constexpr unsigned char k${NAME}ComputeSpirv[] = {\n${bytes}};\n\n"
-        "inline constexpr const char* k${NAME}ComputeMsl[] = {\n${msl_literals}};\n\n")
+        "inline constexpr const char* k${NAME}ComputeMsl[] = {\n${msl_literals}};\n\n"
+        "inline constexpr const char* k${NAME}ComputeWgsl[] = {\n${wgsl_literals}};\n\n")
 else()
     set(stages vert frag)
 endif()
@@ -161,16 +186,24 @@ foreach(stage IN LISTS stages)
     run(spirv-cross "${SPIRV_CROSS}" --es --version 300 --stage ${stage} --entry ${entry}
         --rename-interface-variable ${io} 0 v_uv --rename-interface-variable ${io} 1 v_color
         --rename-interface-variable ${io} 2 v_world "${spirv}" --output "${glsl}")
+    set(wgsl_spirv "${WORKDIR}/${base}.${stage}.wgsl.spv")
+    set(wgsl "${WORKDIR}/${base}.${stage}.wgsl")
+    run(glslang "${GLSLANG}" -D -V -S ${stage} -e ${entry} --shift-sampler-binding 8
+        "${standalone}" -o "${wgsl_spirv}")
+    run(tint "${TINT}" --input-format spirv --format wgsl "${wgsl_spirv}" -o "${wgsl}")
     hex_array("${spirv}" bytes)
     file(READ "${msl}" msl_text)
     raw_literals("${msl_text}" msl msl_literals)
     file(READ "${glsl}" glsl_text)
     string(REPLACE "precision mediump float;" "precision highp float;" glsl_text "${glsl_text}")
     raw_literals("${glsl_text}" glsl glsl_literals)
+    file(READ "${wgsl}" wgsl_text)
+    raw_literals("${wgsl_text}" wgsl wgsl_literals)
     string(APPEND body
         "alignas(4) inline constexpr unsigned char k${NAME}${label}Spirv[] = {\n${bytes}};\n\n"
         "inline constexpr char k${NAME}${label}Msl[] = ${msl_literals};\n\n"
-        "inline constexpr char k${NAME}${label}Glsl[] = ${glsl_literals};\n\n")
+        "inline constexpr char k${NAME}${label}Glsl[] = ${glsl_literals};\n\n"
+        "inline constexpr char k${NAME}${label}Wgsl[] = ${wgsl_literals};\n\n")
 endforeach()
 raw_literals("${hlsl_text}" hlsl hlsl_literals)
 get_filename_component(source_name "${SOURCE}" NAME)

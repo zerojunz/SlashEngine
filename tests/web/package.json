@@ -1,0 +1,10 @@
+{
+  "name": "slash-web-tests",
+  "private": true,
+  "description": "Dawn's WebGPU for Node, which run.mjs runs the web build of the drawing tests on.",
+  "license": "MIT",
+  "type": "module",
+  "dependencies": {
+    "webgpu": "0.6.2"
+  }
+}

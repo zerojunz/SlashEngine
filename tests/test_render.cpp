@@ -478,14 +478,18 @@ TEST_CASE("create_device knows its drivers") {
     auto device = create_device({.window = nullptr, .driver = "vulkn", .debug = false});
     REQUIRE_FALSE(device.ok());
     CHECK(device.error().message ==
-          "no render driver \"vulkn\"; use auto, null, vulkan, metal, d3d12, opengl or opengl_es; "
-          "did you mean \"vulkan\"?");
+          "no render driver \"vulkn\"; use auto, null, vulkan, metal, d3d12, opengl, opengl_es or "
+          "webgpu; did you mean \"vulkan\"?");
     CHECK(error_of(create_device({.window = nullptr, .driver = "gles", .debug = false}))
               .starts_with("no render driver \"gles\""));
 
     auto null = create_device({.window = nullptr, .driver = "null", .debug = false});
     REQUIRE(null.ok());
     CHECK(null.value()->backend() == slash::render::Backend::Null);
+#ifndef __EMSCRIPTEN__
+    CHECK(error_of(create_device({.window = nullptr, .driver = "webgpu", .debug = false})) ==
+          "the webgpu driver is the browser's, so only web builds have it");
+#endif
 }
 
 TEST_CASE("the null device keeps textures, counts batched draws and reads back its clear color") {
@@ -835,6 +839,16 @@ TEST_CASE("a GPU driver falls back to OpenGL where its backend doesn't work, as 
     }
     CHECK(slash::render::uses_opengl("opengl_es"));
     CHECK_FALSE(slash::render::uses_opengl("vulkan"));
+    CHECK_FALSE(slash::render::uses_opengl("webgpu"));
+#ifdef __EMSCRIPTEN__
+    // WebGPU, where the browser has it, needs no fallback; auto is WebGL 2 where it doesn't.
+    if (gpu_device() != nullptr) {
+        CHECK(choose_driver("webgpu", true) == "webgpu");
+        CHECK_FALSE(slash::render::uses_opengl("auto"));
+    }
+#else
+    CHECK(choose_driver("webgpu", true) == "opengl");
+#endif
 }
 
 TEST_CASE("the software device refuses the same mistakes as the null device") {
@@ -930,6 +944,8 @@ TEST_CASE("a device with no window records the V-Sync mode it is given") {
     }
 }
 
+// Windows need a page to draw in, which the web build, run in Node, has none of.
+#ifndef __EMSCRIPTEN__
 // A window on SDL's offscreen video driver, which can make a Vulkan surface: Linux CI runs this
 // on software Vulkan. Elsewhere, or with no Vulkan driver, it is skipped.
 TEST_CASE("a window's V-Sync mode changes its present mode, falling back to enabled") {
@@ -1045,3 +1061,4 @@ TEST_CASE("the OpenGL device needs a window made for OpenGL") {
     CHECK(error_of(device) ==
           "the window wasn't made for OpenGL; create it with SDL_WINDOW_OPENGL");
 }
+#endif

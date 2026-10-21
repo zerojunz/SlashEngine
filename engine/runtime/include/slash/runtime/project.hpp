@@ -75,8 +75,8 @@ struct Project {
     std::array<float, 4> clear_color{0.3F, 0.3F, 0.3F, 1.0F};
     // How sprites that inherit their filter are sampled: "linear" or "nearest".
     std::string texture_filter = "linear";
-    // The GPU backend: "auto", "vulkan", "metal", "d3d12", "opengl", "opengl_es" or "null"
-    // (draws nothing).
+    // The GPU backend: "auto", "vulkan", "metal", "d3d12", "opengl", "opengl_es", "webgpu" or
+    // "null" (draws nothing).
     std::string rendering_driver = "auto";
     // Draw sprites between fixed ticks, interpolated.
     bool interpolation = true;

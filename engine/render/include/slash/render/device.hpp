@@ -32,9 +32,19 @@ struct SDL_Window;
 namespace slash::render {
 
 // OpenGl is desktop OpenGL 3.3, and OpenGlEs is OpenGL ES 3.0, which is WebGL 2 on the web.
-enum class Backend : std::uint8_t { Null, Vulkan, Metal, D3D12, Software, OpenGl, OpenGlEs };
+// WebGpu is the browser's WebGPU, in web builds.
+enum class Backend : std::uint8_t {
+    Null,
+    Vulkan,
+    Metal,
+    D3D12,
+    Software,
+    OpenGl,
+    OpenGlEs,
+    WebGpu
+};
 
-// "null", "vulkan", "metal", "d3d12", "software", "opengl" or "opengl_es".
+// "null", "vulkan", "metal", "d3d12", "software", "opengl", "opengl_es" or "webgpu".
 [[nodiscard]] std::string_view backend_name(Backend backend);
 
 // Straight (not premultiplied) RGBA, each from 0 to 1.
@@ -347,12 +357,13 @@ public:
 struct DeviceOptions {
     // The window to draw to. Without one, only render-target textures can be drawn to.
     SDL_Window* window = nullptr;
-    // "auto" picks the GPU backend SDL finds best, or OpenGL ES on the web; "null", "vulkan",
-    // "metal", "d3d12", "opengl" or "opengl_es" asks for one. The OpenGL drivers are Godot's
-    // compatibility renderer, drawing to a window made with SDL_WINDOW_OPENGL: "opengl" is
-    // OpenGL 3.3 on Windows, macOS and Linux, falling back to OpenGL ES 3.0 where that doesn't
-    // start, and "opengl_es" is OpenGL ES 3.0, which is all the web (WebGL 2), Android and iOS
-    // have.
+    // "auto" picks the GPU backend SDL finds best, or on the web WebGPU where the browser has
+    // it and WebGL 2 elsewhere; "null", "vulkan", "metal", "d3d12", "opengl", "opengl_es" or
+    // "webgpu" asks for one. The OpenGL drivers are Godot's compatibility renderer, drawing to a
+    // window made with SDL_WINDOW_OPENGL: "opengl" is OpenGL 3.3 on Windows, macOS and Linux,
+    // falling back to OpenGL ES 3.0 where that doesn't start, and "opengl_es" is OpenGL ES 3.0,
+    // which is all Android and iOS have, and WebGL 2 on the web. "webgpu" is the browser's
+    // WebGPU, which only web builds have; web/webgpu.js asks for its device before main() runs.
     std::string driver = "auto";
     // Turns on the GPU API's validation, which is slow.
     bool debug = false;
@@ -374,10 +385,11 @@ struct DeviceOptions {
 [[nodiscard]] bool uses_opengl(std::string_view driver);
 
 // The driver to make the window for and create the device with, as Godot's
-// rendering_device/fallback_to_opengl3: "opengl" for "auto", "vulkan", "metal" or "d3d12" when
-// fallback_to_opengl is set, that GPU backend doesn't work here and the video driver has OpenGL
-// (Godot falls back the same way before it makes the window), and the driver itself otherwise.
-// Asks SDL whether the backend works, starting its video if nothing has.
+// rendering_device/fallback_to_opengl3: "opengl" for "auto", "vulkan", "metal", "d3d12" or
+// "webgpu" when fallback_to_opengl is set, that GPU backend doesn't work here and the video
+// driver has OpenGL (Godot falls back the same way before it makes the window), and the driver
+// itself otherwise. Asks SDL whether the backend works, starting its video if nothing has. On
+// the web, "auto" needs no fallback: it is WebGL 2 where there is no WebGPU.
 [[nodiscard]] std::string choose_driver(const std::string& driver, bool fallback_to_opengl);
 
 // The null device: it keeps textures and counts frames and triangles but draws nothing. Reading a

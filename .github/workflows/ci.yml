@@ -215,6 +215,26 @@ jobs:
           jq -e '.test.passed' build/export-ai.json
           grep '"msg":"heard","text":"Honey cakes, still warm."' build/empty-game/.slash/export/web/export.log
 
+      # The renderer's tests built for the web, with the Emscripten the export downloaded, and run
+      # in Node.js on Dawn's WebGPU (the webgpu npm package) over Mesa's software Vulkan, so the
+      # WebGPU device is held to the same pixels as the others.
+      - name: Test the WebGPU device
+        if: matrix.platform == 'web'
+        run: |
+          sudo apt-get install -y mesa-vulkan-drivers
+          toolchains=$HOME/.slash/toolchains
+          emscripten=$(ls -d $toolchains/emscripten-* | head -n 1)
+          node=$(ls -d $toolchains/node-* | head -n 1)
+          printf "LLVM_ROOT = '%s/bin'\nBINARYEN_ROOT = '%s'\nNODE_JS = '%s/bin/node'\n" \
+            "$emscripten" "$emscripten" "$node" > build/emscripten.config
+          export EM_CONFIG=$PWD/build/emscripten.config PATH=$node/bin:$emscripten/emscripten:$PATH
+          npm ci --prefix tests/web
+          emcmake cmake -S . -B build/web -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DSLASH_BUILD_TOOLS=OFF -DSLASH_BUILD_TESTS=ON -DSLASH_BUILD_EXAMPLES=OFF \
+            -DSLASH_WARNINGS_AS_ERRORS=ON -DCPM_SOURCE_CACHE=$PWD/.cpm-cache
+          cmake --build build/web --target slash_web_tests
+          SLASH_EXPECT_GPU=1 ctest --test-dir build/web --output-on-failure
+
       - name: Check the signature and minimum macOS
         if: matrix.platform == 'macos'
         run: |

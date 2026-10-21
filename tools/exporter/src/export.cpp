@@ -393,6 +393,7 @@ bool stage_data(const fs::path& project_dir, const runtime::Project& project, co
     const world::FileReader reader = runtime::folder_reader(project_dir.string());
     json::Array problems;
     bool found_main = false;
+    bool game_shaders = false;
     FormCounts forms;
     auto it = fs::recursive_directory_iterator(project_dir, error);
     for (; !error && it != fs::recursive_directory_iterator(); it.increment(error)) {
@@ -427,6 +428,7 @@ bool stage_data(const fs::path& project_dir, const runtime::Project& project, co
             compiled = with_compiled_shader(text.value(), reader, target);
         }
         if (compiled) {
+            game_shaders = true;
             if (auto written = platform::write_file((data / relative).string(), *compiled);
                 !written) {
                 failure = {"stage", "could not write " + file + ": " + written.error().message, {}};
@@ -484,6 +486,34 @@ bool stage_data(const fs::path& project_dir, const runtime::Project& project, co
                     "stage", "could not write providers.json: " + written.error().message, {}};
                 return false;
             }
+        }
+    }
+    if (target == "web") {
+        const std::string& asked = project.rendering_driver;
+        const std::string driver = web_driver(asked, game_shaders, project.scaling.mode);
+        if (driver == "webgpu" && (game_shaders || project.scaling.mode == "fsr")) {
+            json::Value item;
+            item["file"] = std::string(runtime::kProjectFile);
+            item["path"] = "/rendering/driver";
+            item["message"] =
+                "game shaders and FSR don't draw on WebGPU yet; use auto or opengl_es";
+            problems.push_back(std::move(item));
+        } else if (driver != asked) {
+            const std::string staged = (data / runtime::kProjectFile).string();
+            auto text = platform::read_file(staged);
+            auto document = text ? json::parse(text.value()) : Result<json::Value>(text.error());
+            if (!document) {
+                failure = {"stage", "could not read project.json: " + document.error().message, {}};
+                return false;
+            }
+            document.value()["rendering"]["driver"] = driver;
+            if (auto written = platform::write_file(staged, json::write(document.value()));
+                !written) {
+                failure = {"stage", "could not write project.json: " + written.error().message, {}};
+                return false;
+            }
+            log::info("the game draws with WebGL 2: its game shaders or FSR have no WGSL yet",
+                      {{"driver", driver}});
         }
     }
     if (!found_main) {
@@ -929,6 +959,13 @@ bool sign(const Preset& preset, const Signing& signing, const fs::path& package,
 }
 
 } // namespace
+
+std::string web_driver(std::string_view driver, bool game_shaders, std::string_view scaling) {
+    if (driver == "auto" && (game_shaders || scaling == "fsr")) {
+        return "opengl_es";
+    }
+    return std::string(driver);
+}
 
 std::optional<std::string> find_engine(const std::string& engine) {
     std::error_code error;
