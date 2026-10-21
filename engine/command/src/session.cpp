@@ -159,6 +159,10 @@ canvas::Settings canvas_settings(const json::Value& project) {
         if (const json::Value* scaling = rendering->find("scaling"); scaling != nullptr) {
             settings.scaling = render::scaling_from_json(*scaling);
         }
+        if (const json::Value* shadows = rendering->find("lights_and_shadows");
+            shadows != nullptr) {
+            settings.shadows = render::shadow_settings_from_json(*shadows);
+        }
     }
     const json::Value* tick_hz = project.find("tick_hz");
     if (tick_hz != nullptr && tick_hz->is_number() && tick_hz->as_double() > 0.0) {

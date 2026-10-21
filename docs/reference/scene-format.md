@@ -640,14 +640,22 @@ they were to where they are, as sprites are. `frame.capture`'s `drawn` counts `m
 }}
 ```
 
-[examples/scene-3d](../../examples/scene-3d/) is a lit table with a crate, a ball and a ring.
+[examples/scene-3d](../../examples/scene-3d/) is a lit table with a crate, a ball and a ring, and
+[examples/shadows-3d](../../examples/shadows-3d/) a courtyard where the sun, a lamp and a
+flashlight cast shadows.
 
 ### Meshes
 
 `MeshInstance3D` draws its entity's primitive mesh, colored by its `StandardMaterial3D` or, with
 none, Godot's default material (white, rough and lit). Its `layers` (default `1`) are render
 layers: a camera whose `cull_mask` and a light whose `light_cull_mask` share a bit with them see
-it and light it.
+it and light it, and a light whose `shadow_caster_mask` shares one gets its shadow.
+
+Its `cast_shadow` (default `"on"`) is Godot's `GeometryInstance3D.cast_shadow`: `"on"` casts
+shadows, culling faces as its material does; `"double_sided"` casts from both sides of every
+face; `"shadows_only"` casts but isn't drawn; `"off"` casts none. A mesh on layers the camera
+doesn't see still casts, as in Godot. Alpha-blended meshes cast no shadow, and alpha scissor
+ones cast only where their pixels are kept.
 
 The primitive meshes are Godot's, made as Godot makes them: the same corners, normals, tangents
 and texture coordinates, so a texture wraps them as it does in Godot. An entity has at most one.
@@ -724,8 +732,24 @@ Up to 64 lights shine at once, in tree order, and hidden ones don't. Their field
 | `omni_range`, `omni_attenuation` | `5`, `1` | omni | How far it reaches, in meters, and how it falls off |
 | `spot_range`, `spot_attenuation` | `5`, `1` | spot | The same for a spot light |
 | `spot_angle`, `spot_angle_attenuation` | `45`, `1` | spot | Degrees from its axis to the cone's edge, and how it fades to it |
+| `shadow_enabled` | `false` | all | Casts shadows |
+| `shadow_bias` | `0.1` (spot `0.03`) | all | Pushes shadow map depths away from the light, against shadow acne |
+| `shadow_normal_bias` | `1` (directional `2`) | all | Moves lit points along their normals, in shadow map texels, against acne |
+| `shadow_reverse_cull_face` | `false` | all | Shadow maps draw the faces meshes cull, and cull the rest |
+| `shadow_opacity` | `1` | all | How dark its shadows are: `0` casts none, `1` a full one |
+| `shadow_caster_mask` | `4294967295` | all | The render layers whose meshes cast its shadows |
+| `directional_shadow_mode` | `"parallel_4_splits"` | directional | `"orthogonal"` covers the view with one shadow map; `"parallel_2_splits"` and `"parallel_4_splits"` with cascades, sharper near the camera |
+| `directional_shadow_split_1`, `_2`, `_3` | `0.1`, `0.2`, `0.5` | directional | Where the cascades end, as fractions of the shadows' reach |
+| `directional_shadow_blend_splits` | `false` | directional | Blends each cascade into the next, so their seams don't show |
+| `directional_shadow_fade_start` | `0.8` | directional | Where shadows start fading out, as a fraction of their reach |
+| `directional_shadow_max_distance` | `100` | directional | How far from the camera shadows reach, in meters (the camera's `far` if nearer) |
+| `directional_shadow_pancake_size` | `20` | directional | How far behind each cascade casters still cast, in meters |
 
-Shadows come later in milestone 7.
+Shadows are Godot's Compatibility renderer's shadow maps, drawn on every device and by
+`frame.capture`. A directional light's cascades share the directional atlas with the other
+directional lights that cast (up to 4); omni and spot lights (up to 16) share the positional
+atlas, an omni light's cube taking six tiles and a spot light's one. Edges are filtered by the
+project's `rendering.lights_and_shadows` ([project-format.md](project-format.md#shadows)).
 
 ### WorldEnvironment
 

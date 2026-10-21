@@ -1,0 +1,108 @@
+{
+  "entities": {
+    "camera": {
+      "components": {
+        "Camera3D": {
+          "current": true,
+          "fov": 60.0
+        },
+        "Transform3D": {
+          "position": [0.0, 3.0, 6.0],
+          "rotation": [-0.45, 0.0, 0.0]
+        }
+      }
+    },
+    "crate": {
+      "components": {
+        "BoxMesh": {},
+        "MeshInstance3D": {},
+        "StandardMaterial3D": {
+          "albedo_color": [0.8, 0.45, 0.2, 1.0]
+        },
+        "Transform3D": {
+          "position": [-1.5, 0.5, 0.5],
+          "rotation": [0.0, 0.4, 0.0]
+        }
+      }
+    },
+    "environment": {
+      "components": {
+        "WorldEnvironment": {
+          "ambient_light_color": [0.5, 0.6, 0.8, 1.0],
+          "ambient_light_energy": 0.3,
+          "ambient_light_source": "color",
+          "background_color": [0.4, 0.6, 0.9, 1.0],
+          "background_mode": "color"
+        }
+      }
+    },
+    "ground": {
+      "components": {
+        "MeshInstance3D": {},
+        "PlaneMesh": {
+          "size": [16.0, 16.0]
+        },
+        "StandardMaterial3D": {
+          "albedo_color": [0.75, 0.72, 0.65, 1.0]
+        },
+        "Transform3D": {}
+      }
+    },
+    "lamp": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [1.0, 0.7, 0.4, 1.0],
+          "light_energy": 2.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [2.2, 1.6, 0.8]
+        }
+      }
+    },
+    "pillar": {
+      "components": {
+        "CylinderMesh": {
+          "bottom_radius": 0.35,
+          "height": 2.4,
+          "top_radius": 0.3
+        },
+        "MeshInstance3D": {},
+        "StandardMaterial3D": {
+          "albedo_color": [0.85, 0.85, 0.8, 1.0]
+        },
+        "Transform3D": {
+          "position": [0.0, 1.2, -1.0]
+        }
+      }
+    },
+    "sphere": {
+      "components": {
+        "MeshInstance3D": {},
+        "SphereMesh": {
+          "height": 0.8,
+          "radius": 0.4
+        },
+        "StandardMaterial3D": {
+          "albedo_color": [0.3, 0.5, 0.9, 1.0],
+          "roughness": 0.4
+        },
+        "Transform3D": {
+          "position": [1.4, 0.4, 1.4]
+        }
+      }
+    },
+    "sun": {
+      "components": {
+        "DirectionalLight3D": {
+          "light_color": [1.0, 0.95, 0.85, 1.0],
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "rotation": [-0.8, -0.7, 0.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

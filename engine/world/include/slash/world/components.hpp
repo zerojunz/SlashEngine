@@ -57,10 +57,13 @@ struct MeshInstance3D {
     // The render layers it is on: cameras whose cull_mask and lights whose light_cull_mask share
     // a bit with them see it and light it.
     std::uint32_t layers = 1;
+    // Which lights' shadows it casts, as Godot's GeometryInstance3D.cast_shadow: "off", "on",
+    // "double_sided" (with no faces culled) or "shadows_only" (it casts but isn't seen).
+    std::string cast_shadow = "on";
 
     friend bool operator==(const MeshInstance3D&, const MeshInstance3D&) = default;
 };
-SLASH_COMPONENT(MeshInstance3D, layers)
+SLASH_COMPONENT(MeshInstance3D, layers, cast_shadow)
 
 // Godot's BoxMesh: a box of size centered on the entity, each face cut into subdivisions + 1
 // strips along each axis.
@@ -237,11 +240,38 @@ struct DirectionalLight3D {
     float light_specular = 0.5F;
     bool light_negative = false;                 // takes light away instead
     std::uint32_t light_cull_mask = 0xFFFFFFFFU; // the render layers it lights
+    // Shadows, as Godot's Light3D: what pushes depths away from the light and moves pixels along
+    // their normals against acne, whether shadow maps draw the faces meshes cull instead, how
+    // dark the shadow is, and the render layers that cast it.
+    bool shadow_enabled = false;
+    float shadow_bias = 0.1F;
+    float shadow_normal_bias = 2.0F;
+    bool shadow_reverse_cull_face = false;
+    float shadow_opacity = 1.0F;
+    std::uint32_t shadow_caster_mask = 0xFFFFFFFFU;
+    // How its shadow map covers the view: "orthogonal" in one piece, or "parallel_2_splits" and
+    // "parallel_4_splits" in cascades, which split where the splits say, as fractions of
+    // max_distance (or the camera's far plane, if nearer). Shadows fade out from fade_start of
+    // that distance, neighboring cascades blend when blend_splits is set, and casters up to
+    // pancake_size behind the view still cast.
+    std::string directional_shadow_mode = "parallel_4_splits";
+    float directional_shadow_split_1 = 0.1F;
+    float directional_shadow_split_2 = 0.2F;
+    float directional_shadow_split_3 = 0.5F;
+    bool directional_shadow_blend_splits = false;
+    float directional_shadow_fade_start = 0.8F;
+    float directional_shadow_max_distance = 100.0F;
+    float directional_shadow_pancake_size = 20.0F;
 
     friend bool operator==(const DirectionalLight3D&, const DirectionalLight3D&) = default;
 };
 SLASH_COMPONENT(DirectionalLight3D, light_color, light_energy, light_specular, light_negative,
-                light_cull_mask)
+                light_cull_mask, shadow_enabled, shadow_bias, shadow_normal_bias,
+                shadow_reverse_cull_face, shadow_opacity, shadow_caster_mask,
+                directional_shadow_mode, directional_shadow_split_1, directional_shadow_split_2,
+                directional_shadow_split_3, directional_shadow_blend_splits,
+                directional_shadow_fade_start, directional_shadow_max_distance,
+                directional_shadow_pancake_size)
 
 // Light from a point in every direction, as Godot's OmniLight3D, such as a lamp.
 struct OmniLight3D {
@@ -252,11 +282,21 @@ struct OmniLight3D {
     std::uint32_t light_cull_mask = 0xFFFFFFFFU;
     float omni_range = 5.0F;       // meters
     float omni_attenuation = 1.0F; // how it falls off with distance
+    // Shadows, as Godot's Light3D: what pushes depths away from the light and moves pixels along
+    // their normals against acne, whether shadow maps draw the faces meshes cull instead, how
+    // dark the shadow is, and the render layers that cast it.
+    bool shadow_enabled = false;
+    float shadow_bias = 0.1F;
+    float shadow_normal_bias = 1.0F;
+    bool shadow_reverse_cull_face = false;
+    float shadow_opacity = 1.0F;
+    std::uint32_t shadow_caster_mask = 0xFFFFFFFFU;
 
     friend bool operator==(const OmniLight3D&, const OmniLight3D&) = default;
 };
 SLASH_COMPONENT(OmniLight3D, light_color, light_energy, light_specular, light_negative,
-                light_cull_mask, omni_range, omni_attenuation)
+                light_cull_mask, omni_range, omni_attenuation, shadow_enabled, shadow_bias,
+                shadow_normal_bias, shadow_reverse_cull_face, shadow_opacity, shadow_caster_mask)
 
 // Light from a point in a cone down its entity's -z, as Godot's SpotLight3D, such as a torch.
 struct SpotLight3D {
@@ -269,11 +309,22 @@ struct SpotLight3D {
     float spot_attenuation = 1.0F;
     float spot_angle = 45.0F; // degrees from its axis to the cone's edge
     float spot_angle_attenuation = 1.0F;
+    // Shadows, as Godot's Light3D: what pushes depths away from the light and moves pixels along
+    // their normals against acne, whether shadow maps draw the faces meshes cull instead, how
+    // dark the shadow is, and the render layers that cast it.
+    bool shadow_enabled = false;
+    float shadow_bias = 0.03F;
+    float shadow_normal_bias = 1.0F;
+    bool shadow_reverse_cull_face = false;
+    float shadow_opacity = 1.0F;
+    std::uint32_t shadow_caster_mask = 0xFFFFFFFFU;
 
     friend bool operator==(const SpotLight3D&, const SpotLight3D&) = default;
 };
 SLASH_COMPONENT(SpotLight3D, light_color, light_energy, light_specular, light_negative,
-                light_cull_mask, spot_range, spot_attenuation, spot_angle, spot_angle_attenuation)
+                light_cull_mask, spot_range, spot_attenuation, spot_angle, spot_angle_attenuation,
+                shadow_enabled, shadow_bias, shadow_normal_bias, shadow_reverse_cull_face,
+                shadow_opacity, shadow_caster_mask)
 
 // The 3D world's background and ambient light, as Godot's WorldEnvironment and its Environment.
 // The first one made applies; without one the background is the project's clear color and there

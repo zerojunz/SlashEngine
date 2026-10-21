@@ -1,0 +1,10 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"frame.capture","params":{"points":[[87,37],[72,46],[95,57],[95,63],[37,75]]}}
+{"jsonrpc":"2.0","id":3,"method":"component.set","params":{"id":"sun","components":{"DirectionalLight3D":{"shadow_opacity":0.5}}}}
+{"jsonrpc":"2.0","id":4,"method":"frame.capture","params":{"points":[[87,37],[72,46]]}}
+{"jsonrpc":"2.0","id":5,"method":"component.set","params":{"id":"crate","components":{"MeshInstance3D":{"cast_shadow":"shadows_only"}}}}
+{"jsonrpc":"2.0","id":6,"method":"frame.capture","params":{"points":[[60,44],[72,46]]}}
+{"jsonrpc":"2.0","id":7,"method":"component.set","params":{"id":"lamp","components":{"OmniLight3D":{"shadow_enabled":false}}}}
+{"jsonrpc":"2.0","id":8,"method":"frame.capture","params":{"points":[[95,57],[95,63]]}}
+{"jsonrpc":"2.0","id":9,"method":"entity.create","params":{"id":"flashlight","components":{"Transform3D":{"position":[-3,1.5,2.5],"rotation":[-0.2,-0.709,0]},"SpotLight3D":{"light_color":[0.8,0.9,1,1],"light_energy":4,"spot_range":10,"spot_angle":35,"shadow_enabled":true}}}}
+{"jsonrpc":"2.0","id":10,"method":"frame.capture","params":{"points":[[80,39],[79,25]],"path":"shots/courtyard.png"}}

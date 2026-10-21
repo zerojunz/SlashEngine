@@ -9,6 +9,7 @@
 #include "particles_draw_shaders.hpp"
 #include "particles_emit_shaders.hpp"
 #include "particles_process_shaders.hpp"
+#include "shadow_shaders.hpp"
 #include "sprite_shaders.hpp"
 #include "uniforms.hpp"
 
@@ -213,6 +214,20 @@ public:
         if (depth_ != nullptr) {
             SDL_ReleaseGPUTexture(device_, depth_);
         }
+        for (SDL_GPUTexture* atlas :
+             {shadow_atlases_[0].texture, shadow_atlases_[1].texture, no_shadows_}) {
+            if (atlas != nullptr) {
+                SDL_ReleaseGPUTexture(device_, atlas);
+            }
+        }
+        if (shadow_sampler_ != nullptr) {
+            SDL_ReleaseGPUSampler(device_, shadow_sampler_);
+        }
+        for (SDL_GPUGraphicsPipeline* pipeline : shadow_pipelines_) {
+            if (pipeline != nullptr) {
+                SDL_ReleaseGPUGraphicsPipeline(device_, pipeline);
+            }
+        }
         for (SDL_GPUComputePipeline* pipeline : compute_pipelines_) {
             if (pipeline != nullptr) {
                 SDL_ReleaseGPUComputePipeline(device_, pipeline);
@@ -245,6 +260,11 @@ public:
             }
         }
         for (SDL_GPUShader* shader : mesh_shaders_) {
+            if (shader != nullptr) {
+                SDL_ReleaseGPUShader(device_, shader);
+            }
+        }
+        for (SDL_GPUShader* shader : shadow_shaders_) {
             if (shader != nullptr) {
                 SDL_ReleaseGPUShader(device_, shader);
             }
@@ -824,7 +844,7 @@ public:
     }
 
     Result<void> draw_mesh(MeshId mesh, const Mat4& transform, const Material3D& material,
-                           std::uint32_t layers) override {
+                           std::uint32_t layers, ShadowCasting shadows) override {
         if (!in_frame_) {
             return no_frame("draw_mesh");
         }
@@ -835,12 +855,15 @@ public:
             !checked) {
             return checked;
         }
-        if (frame_commands_ == nullptr) {
-            return {}; // a skipped frame
+        if (frame_commands_ == nullptr || !frame_.scene) {
+            return {}; // a skipped frame (check_mesh_draw refused one with no scene)
         }
         // Made at the first draw that needs them, so a failure shows there.
         if (auto depth = depth_target(frame_width_, frame_height_); !depth) {
             return depth.error();
+        }
+        if (auto ready = prepare_shadows(*frame_.scene); !ready) {
+            return ready;
         }
         auto pipeline = mesh_pipeline_for(frame_format_, material);
         if (!pipeline) {
@@ -857,8 +880,11 @@ public:
         for (std::size_t slot = 0; slot < kMeshTextures; ++slot) {
             batch.samplers.at(slot) = binding(slots.at(slot)->texture, slots.at(slot)->repeat);
         }
-        mesh_draws_.push_back(
-            {.mesh = mesh, .transform = transform, .material = material, .layers = layers});
+        mesh_draws_.push_back({.mesh = mesh,
+                               .transform = transform,
+                               .material = material,
+                               .layers = layers,
+                               .shadows = shadows});
         mesh_batches_.push_back(batch);
         ++stats_.draws;
         stats_.triangles += it->second.index_count / 3;
@@ -889,9 +915,9 @@ public:
         dispatch_particle_jobs(commands, base, vertices_.empty());
         // Meshes draw first, in a pass of their own, and the 2D draws go over them.
         // Mesh draws need a scene, so a frame with them has one.
-        const bool meshes = frame_.scene && !mesh_draws_.empty();
+        const bool meshes = frame_.scene && shadow_plan_ && !mesh_draws_.empty();
         if (meshes) {
-            draw_meshes(commands, *frame_.scene);
+            draw_meshes(commands, *frame_.scene, *shadow_plan_);
         }
 
         SDL_GPUColorTargetInfo color{};
@@ -1092,6 +1118,12 @@ private:
         Bounds bounds;
         SDL_GPUGraphicsPipeline* pipeline = nullptr;
         std::array<SDL_GPUTextureSamplerBinding, kMeshTextures> samplers{};
+    };
+
+    // A shadow atlas: a depth texture the shadow passes draw into and the mesh pass samples.
+    struct ShadowAtlasTexture {
+        SDL_GPUTexture* texture = nullptr;
+        std::uint32_t size = 0;
     };
 
     struct MeshPipeline {
@@ -1545,13 +1577,51 @@ private:
             return vertex.error();
         }
         auto fragment = make_gpu_shader(SDL_GPU_SHADERSTAGE_FRAGMENT, code,
-                                        static_cast<std::uint32_t>(kMeshTextures), 2);
+                                        static_cast<std::uint32_t>(kMeshTextures) + 2, 3);
         if (!fragment) {
             SDL_ReleaseGPUShader(device_, vertex.value());
             return fragment.error();
         }
         mesh_shaders_ = {vertex.value(), fragment.value()};
         return {};
+    }
+
+    // Vertex3D's fields as the mesh and shadow shaders' inputs.
+    static std::array<SDL_GPUVertexAttribute, 5> mesh_attributes() {
+        return {{
+            {.location = 0,
+             .buffer_slot = 0,
+             .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3,
+             .offset = offsetof(Vertex3D, position)},
+            {.location = 1,
+             .buffer_slot = 0,
+             .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3,
+             .offset = offsetof(Vertex3D, normal)},
+            {.location = 2,
+             .buffer_slot = 0,
+             .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4,
+             .offset = offsetof(Vertex3D, tangent)},
+            {.location = 3,
+             .buffer_slot = 0,
+             .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2,
+             .offset = offsetof(Vertex3D, uv)},
+            {.location = 4,
+             .buffer_slot = 0,
+             .format = SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4_NORM,
+             .offset = offsetof(Vertex3D, rgba)},
+        }};
+    }
+
+    static SDL_GPUCullMode gpu_cull(CullMode cull) {
+        switch (cull) {
+        case CullMode::Back:
+            return SDL_GPU_CULLMODE_BACK;
+        case CullMode::Front:
+            return SDL_GPU_CULLMODE_FRONT;
+        case CullMode::Disabled:
+            break;
+        }
+        return SDL_GPU_CULLMODE_NONE;
     }
 
     // The pipeline drawing a material's meshes into a target format, made the first time a frame
@@ -1574,28 +1644,7 @@ private:
         buffer.slot = 0;
         buffer.pitch = sizeof(Vertex3D);
         buffer.input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX;
-        const std::array<SDL_GPUVertexAttribute, 5> attributes{{
-            {.location = 0,
-             .buffer_slot = 0,
-             .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3,
-             .offset = offsetof(Vertex3D, position)},
-            {.location = 1,
-             .buffer_slot = 0,
-             .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3,
-             .offset = offsetof(Vertex3D, normal)},
-            {.location = 2,
-             .buffer_slot = 0,
-             .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4,
-             .offset = offsetof(Vertex3D, tangent)},
-            {.location = 3,
-             .buffer_slot = 0,
-             .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2,
-             .offset = offsetof(Vertex3D, uv)},
-            {.location = 4,
-             .buffer_slot = 0,
-             .format = SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4_NORM,
-             .offset = offsetof(Vertex3D, rgba)},
-        }};
+        const std::array<SDL_GPUVertexAttribute, 5> attributes = mesh_attributes();
         SDL_GPUColorTargetDescription color{};
         color.format = format;
         if (blended) {
@@ -1611,17 +1660,7 @@ private:
             static_cast<std::uint32_t>(attributes.size());
         info.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
         info.rasterizer_state.fill_mode = SDL_GPU_FILLMODE_FILL;
-        switch (material.cull) {
-        case CullMode::Back:
-            info.rasterizer_state.cull_mode = SDL_GPU_CULLMODE_BACK;
-            break;
-        case CullMode::Front:
-            info.rasterizer_state.cull_mode = SDL_GPU_CULLMODE_FRONT;
-            break;
-        case CullMode::Disabled:
-            info.rasterizer_state.cull_mode = SDL_GPU_CULLMODE_NONE;
-            break;
-        }
+        info.rasterizer_state.cull_mode = gpu_cull(material.cull);
         info.rasterizer_state.front_face = SDL_GPU_FRONTFACE_CLOCKWISE;
         // Reversed depth: nearer is greater.
         info.depth_stencil_state.enable_depth_test = true;
@@ -1643,9 +1682,228 @@ private:
         return pipeline;
     }
 
-    // The frame's meshes, in the order mesh_draw_order gives, in a pass that clears the target
-    // and a depth buffer to the far plane.
-    void draw_meshes(SDL_GPUCommandBuffer* commands, const Scene3D& scene) {
+    // The frame's shadow plan, and the atlases, sampler and pipelines it draws with, made at the
+    // frame's first mesh draw so a failure shows there.
+    Result<void> prepare_shadows(const Scene3D& scene) {
+        if (shadow_plan_) {
+            return {};
+        }
+        if (shadow_format_ == SDL_GPU_TEXTUREFORMAT_INVALID) {
+            // 32-bit floats keep the depths the software device keeps; 16 bits are the fallback.
+            shadow_format_ = SDL_GPU_TEXTUREFORMAT_D32_FLOAT;
+            if (!SDL_GPUTextureSupportsFormat(device_, shadow_format_, SDL_GPU_TEXTURETYPE_2D,
+                                              SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET |
+                                                  SDL_GPU_TEXTUREUSAGE_SAMPLER)) {
+                shadow_format_ = SDL_GPU_TEXTUREFORMAT_D16_UNORM;
+            }
+        }
+        if (shadow_sampler_ == nullptr) {
+            // Each tap compares four texels and blends the results, as Godot's shadow sampler.
+            SDL_GPUSamplerCreateInfo info{};
+            info.min_filter = SDL_GPU_FILTER_LINEAR;
+            info.mag_filter = SDL_GPU_FILTER_LINEAR;
+            info.mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_NEAREST;
+            info.address_mode_u = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
+            info.address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
+            info.address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
+            info.enable_compare = true;
+            info.compare_op = SDL_GPU_COMPAREOP_GREATER_OR_EQUAL;
+            shadow_sampler_ = SDL_CreateGPUSampler(device_, &info);
+            if (shadow_sampler_ == nullptr) {
+                return sdl_error("creating the shadow sampler failed");
+            }
+        }
+        if (no_shadows_ == nullptr) {
+            auto made = make_shadow_atlas(1);
+            if (!made) {
+                return made.error();
+            }
+            no_shadows_ = made.value();
+            // Cleared once, so that it is never read uninitialized.
+            SDL_GPUCommandBuffer* commands = SDL_AcquireGPUCommandBuffer(device_);
+            if (commands == nullptr) {
+                return sdl_error("acquiring a command buffer failed");
+            }
+            const SDL_GPUDepthStencilTargetInfo depth = shadow_target(no_shadows_);
+            SDL_EndGPURenderPass(SDL_BeginGPURenderPass(commands, nullptr, 0, &depth));
+            SDL_SubmitGPUCommandBuffer(commands);
+        }
+        ShadowPlan plan = plan_shadows(scene, kMaxTextureSize);
+        const std::array<std::uint32_t, 2> sizes{plan.directional_size, plan.positional_size};
+        for (std::size_t i = 0; i < 2; ++i) {
+            ShadowAtlasTexture& atlas = shadow_atlases_.at(i);
+            if (sizes.at(i) == 0 || atlas.size == sizes.at(i)) {
+                continue;
+            }
+            if (atlas.texture != nullptr) {
+                pending_release_.push_back(std::exchange(atlas.texture, nullptr));
+                atlas.size = 0;
+            }
+            auto made = make_shadow_atlas(sizes.at(i));
+            if (!made) {
+                return made.error();
+            }
+            atlas = {.texture = made.value(), .size = sizes.at(i)};
+        }
+        if (!plan.passes.empty()) {
+            if (auto made = make_shadow_pipelines(); !made) {
+                return made;
+            }
+        }
+        shadow_plan_ = std::move(plan);
+        return {};
+    }
+
+    Result<SDL_GPUTexture*> make_shadow_atlas(std::uint32_t size) {
+        SDL_GPUTextureCreateInfo info{};
+        info.type = SDL_GPU_TEXTURETYPE_2D;
+        info.format = shadow_format_;
+        info.usage = SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER;
+        info.width = size;
+        info.height = size;
+        info.layer_count_or_depth = 1;
+        info.num_levels = 1;
+        SDL_GPUTexture* texture = SDL_CreateGPUTexture(device_, &info);
+        if (texture == nullptr) {
+            return sdl_error("creating a shadow atlas failed");
+        }
+        return texture;
+    }
+
+    // A shadow atlas as a pass's depth target, cleared to the far plane and kept.
+    static SDL_GPUDepthStencilTargetInfo shadow_target(SDL_GPUTexture* texture) {
+        SDL_GPUDepthStencilTargetInfo depth{};
+        depth.texture = texture;
+        depth.clear_depth = 0.0F;
+        depth.load_op = SDL_GPU_LOADOP_CLEAR;
+        depth.store_op = SDL_GPU_STOREOP_STORE;
+        depth.stencil_load_op = SDL_GPU_LOADOP_DONT_CARE;
+        depth.stencil_store_op = SDL_GPU_STOREOP_DONT_CARE;
+        depth.cycle = true;
+        return depth;
+    }
+
+    // The shadow passes' pipelines, one a cull mode: shaders/shadow.hlsl, depth only.
+    Result<void> make_shadow_pipelines() {
+        if (shadow_pipelines_[0] != nullptr) {
+            return {};
+        }
+        if (shadow_shaders_[0] == nullptr) {
+            const ShaderCode code{.vertex_spirv = shaders::kShadowVertexSpirv,
+                                  .fragment_spirv = shaders::kShadowFragmentSpirv,
+                                  .vertex_msl = shaders::kShadowVertexMsl,
+                                  .fragment_msl = shaders::kShadowFragmentMsl,
+                                  .hlsl = shaders::kShadowHlsl};
+            auto vertex = make_gpu_shader(SDL_GPU_SHADERSTAGE_VERTEX, code, 0, 2);
+            if (!vertex) {
+                return vertex.error();
+            }
+            auto fragment = make_gpu_shader(SDL_GPU_SHADERSTAGE_FRAGMENT, code, 1, 1);
+            if (!fragment) {
+                SDL_ReleaseGPUShader(device_, vertex.value());
+                return fragment.error();
+            }
+            shadow_shaders_ = {vertex.value(), fragment.value()};
+        }
+        const std::array<SDL_GPUVertexAttribute, 5> attributes = mesh_attributes();
+        SDL_GPUVertexBufferDescription buffer{};
+        buffer.slot = 0;
+        buffer.pitch = sizeof(Vertex3D);
+        buffer.input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX;
+        for (std::size_t i = 0; i < shadow_pipelines_.size(); ++i) {
+            SDL_GPUGraphicsPipelineCreateInfo info{};
+            info.vertex_shader = shadow_shaders_[0];
+            info.fragment_shader = shadow_shaders_[1];
+            info.vertex_input_state.vertex_buffer_descriptions = &buffer;
+            info.vertex_input_state.num_vertex_buffers = 1;
+            info.vertex_input_state.vertex_attributes = attributes.data();
+            info.vertex_input_state.num_vertex_attributes =
+                static_cast<std::uint32_t>(attributes.size());
+            info.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
+            info.rasterizer_state.fill_mode = SDL_GPU_FILLMODE_FILL;
+            info.rasterizer_state.cull_mode = gpu_cull(static_cast<CullMode>(i));
+            info.rasterizer_state.front_face = SDL_GPU_FRONTFACE_CLOCKWISE;
+            info.depth_stencil_state.enable_depth_test = true;
+            info.depth_stencil_state.enable_depth_write = true;
+            info.depth_stencil_state.compare_op = SDL_GPU_COMPAREOP_GREATER;
+            info.target_info.has_depth_stencil_target = true;
+            info.target_info.depth_stencil_format = shadow_format_;
+            shadow_pipelines_.at(i) = SDL_CreateGPUGraphicsPipeline(device_, &info);
+            if (shadow_pipelines_.at(i) == nullptr) {
+                return sdl_error("creating the shadow pipeline failed");
+            }
+        }
+        return {};
+    }
+
+    // The frame's shadow passes: each atlas in a pass of its own, each light's view drawn into
+    // its rect.
+    void draw_shadows(SDL_GPUCommandBuffer* commands, const ShadowPlan& plan) {
+        for (std::size_t atlas = 0; atlas < 2; ++atlas) {
+            const bool positional = atlas == 1;
+            if (std::ranges::none_of(plan.passes, [&](const ShadowPass& pass) {
+                    return pass.positional == positional;
+                })) {
+                continue;
+            }
+            const SDL_GPUDepthStencilTargetInfo depth =
+                shadow_target(shadow_atlases_.at(atlas).texture);
+            SDL_GPURenderPass* render = SDL_BeginGPURenderPass(commands, nullptr, 0, &depth);
+            SDL_GPUGraphicsPipeline* bound = nullptr;
+            for (const ShadowPass& pass : plan.passes) {
+                if (pass.positional != positional) {
+                    continue;
+                }
+                const SDL_GPUViewport viewport{.x = static_cast<float>(pass.rect.x),
+                                               .y = static_cast<float>(pass.rect.y),
+                                               .w = static_cast<float>(pass.rect.width),
+                                               .h = static_cast<float>(pass.rect.height),
+                                               .min_depth = 0.0F,
+                                               .max_depth = 1.0F};
+                SDL_SetGPUViewport(render, &viewport);
+                const SDL_Rect scissor{.x = static_cast<int>(pass.rect.x),
+                                       .y = static_cast<int>(pass.rect.y),
+                                       .w = static_cast<int>(pass.rect.width),
+                                       .h = static_cast<int>(pass.rect.height)};
+                SDL_SetGPUScissor(render, &scissor);
+                SDL_PushGPUVertexUniformData(commands, 0, &pass.uniforms,
+                                             static_cast<std::uint32_t>(sizeof(pass.uniforms)));
+                for (std::size_t i = 0; i < mesh_draws_.size(); ++i) {
+                    const MeshDraw& draw = mesh_draws_[i];
+                    const MeshBatch& batch = mesh_batches_[i];
+                    if (!shadow_pass_draws(pass, draw, batch.bounds)) {
+                        continue;
+                    }
+                    SDL_GPUGraphicsPipeline* pipeline =
+                        shadow_pipelines_.at(static_cast<std::size_t>(shadow_cull(pass, draw)));
+                    if (pipeline != bound) {
+                        SDL_BindGPUGraphicsPipeline(render, pipeline);
+                        bound = pipeline;
+                    }
+                    const MeshInstanceUniforms instance =
+                        mesh_instance_uniforms(draw.transform, draw.material);
+                    SDL_PushGPUVertexUniformData(commands, 1, &instance,
+                                                 static_cast<std::uint32_t>(sizeof(instance)));
+                    const MeshSurfaceUniforms surface =
+                        mesh_surface_uniforms(draw.material, draw.layers);
+                    SDL_PushGPUFragmentUniformData(commands, 0, &surface,
+                                                   static_cast<std::uint32_t>(sizeof(surface)));
+                    const SDL_GPUBufferBinding vertices{.buffer = batch.vertices, .offset = 0};
+                    SDL_BindGPUVertexBuffers(render, 0, &vertices, 1);
+                    const SDL_GPUBufferBinding indices{.buffer = batch.indices, .offset = 0};
+                    SDL_BindGPUIndexBuffer(render, &indices, SDL_GPU_INDEXELEMENTSIZE_32BIT);
+                    SDL_BindGPUFragmentSamplers(render, 0, batch.samplers.data(), 1);
+                    SDL_DrawGPUIndexedPrimitives(render, batch.index_count, 1, 0, 0, 0);
+                }
+            }
+            SDL_EndGPURenderPass(render);
+        }
+    }
+
+    // The frame's meshes: first into the shadow atlases, then in the order mesh_draw_order gives,
+    // in a pass that clears the target and a depth buffer to the far plane.
+    void draw_meshes(SDL_GPUCommandBuffer* commands, const Scene3D& scene, const ShadowPlan& plan) {
+        draw_shadows(commands, plan);
         SDL_GPUColorTargetInfo color{};
         color.texture = frame_texture_;
         color.clear_color = {frame_.clear.r, frame_.clear.g, frame_.clear.b, frame_.clear.a};
@@ -1666,12 +1924,24 @@ private:
         const auto lights = std::make_unique<MeshSceneUniforms>(mesh_scene_uniforms(scene));
         SDL_PushGPUFragmentUniformData(commands, 1, lights.get(),
                                        static_cast<std::uint32_t>(sizeof(MeshSceneUniforms)));
+        SDL_PushGPUFragmentUniformData(commands, 2, plan.uniforms.get(),
+                                       static_cast<std::uint32_t>(sizeof(MeshShadowUniforms)));
+        std::array<SDL_GPUTextureSamplerBinding, kMeshTextures + 2> samplers{};
+        for (std::size_t atlas = 0; atlas < 2; ++atlas) {
+            const ShadowAtlasTexture& made = shadow_atlases_.at(atlas);
+            const bool drawn = (atlas == 0 ? plan.directional_size : plan.positional_size) != 0;
+            samplers.at(kMeshTextures + atlas) = {.texture = drawn ? made.texture : no_shadows_,
+                                                  .sampler = shadow_sampler_};
+        }
         SDL_GPUGraphicsPipeline* bound = nullptr;
         for (const std::size_t i :
              mesh_draw_order(std::span<const MeshDraw>(mesh_draws_), scene,
                              [&](std::size_t at) { return mesh_batches_[at].bounds; })) {
             const MeshDraw& draw = mesh_draws_[i];
             const MeshBatch& batch = mesh_batches_[i];
+            if (draw.shadows == ShadowCasting::ShadowsOnly) {
+                continue;
+            }
             if (batch.pipeline != bound) {
                 SDL_BindGPUGraphicsPipeline(pass, batch.pipeline);
                 bound = batch.pipeline;
@@ -1687,8 +1957,9 @@ private:
             SDL_BindGPUVertexBuffers(pass, 0, &vertices, 1);
             const SDL_GPUBufferBinding indices{.buffer = batch.indices, .offset = 0};
             SDL_BindGPUIndexBuffer(pass, &indices, SDL_GPU_INDEXELEMENTSIZE_32BIT);
-            SDL_BindGPUFragmentSamplers(pass, 0, batch.samplers.data(),
-                                        static_cast<std::uint32_t>(batch.samplers.size()));
+            std::copy(batch.samplers.begin(), batch.samplers.end(), samplers.begin());
+            SDL_BindGPUFragmentSamplers(pass, 0, samplers.data(),
+                                        static_cast<std::uint32_t>(samplers.size()));
             SDL_DrawGPUIndexedPrimitives(pass, batch.index_count, 1, 0, 0, 0);
         }
         SDL_EndGPURenderPass(pass);
@@ -1976,6 +2247,7 @@ private:
         batches_.clear();
         mesh_draws_.clear();
         mesh_batches_.clear();
+        shadow_plan_.reset();
         particle_vertices_ = 0;
     }
 
@@ -1986,6 +2258,7 @@ private:
         batches_.clear();
         mesh_draws_.clear();
         mesh_batches_.clear();
+        shadow_plan_.reset();
         particle_vertices_ = 0;
         clear_particle_jobs();
         release_pending();
@@ -2042,6 +2315,14 @@ private:
     std::vector<MeshPipeline> mesh_pipelines_;
     SDL_GPUTexture* depth_ = nullptr;
     SDL_GPUTextureFormat depth_format_ = SDL_GPU_TEXTUREFORMAT_D32_FLOAT;
+    // The frame's shadow plan, made at its first mesh draw, and what its passes draw with.
+    std::optional<ShadowPlan> shadow_plan_;
+    std::array<ShadowAtlasTexture, 2> shadow_atlases_{}; // directional, then positional
+    SDL_GPUTexture* no_shadows_ = nullptr; // bound for an atlas the frame doesn't draw
+    SDL_GPUTextureFormat shadow_format_ = SDL_GPU_TEXTUREFORMAT_INVALID;
+    SDL_GPUSampler* shadow_sampler_ = nullptr;
+    std::array<SDL_GPUShader*, 2> shadow_shaders_{};             // vertex, then fragment
+    std::array<SDL_GPUGraphicsPipeline*, 3> shadow_pipelines_{}; // by CullMode
     std::uint32_t depth_width_ = 0;
     std::uint32_t depth_height_ = 0;
 
