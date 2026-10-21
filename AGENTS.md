@@ -761,8 +761,10 @@ hasn't with `RenderDevice::process_particles` and draws with `draw_particles`, s
 renderer catches up from the steps kept. `engine/render/shaders/particles_process.hlsl` is the
 compute shader and `render::process_particles` (`engine/render/src/particles.cpp`) its CPU twin,
 which the software and OpenGL ES devices run; a test holds them to the same particles, so a
-change to the particle math goes in both. `particles.eval` runs the steps kept on the CPU
-(`canvas::gpu_particles`); `examples/gpu-particles` has a fire, sparks and snow.
+change to the particle math goes in both. Turbulence is Godot's curl noise, with lattice
+gradients from an integer hash so both make the same noise. `particles.eval` runs the steps kept
+on the CPU (`canvas::gpu_particles`); `examples/gpu-particles` has a fire, sparks, snow and
+smoke.
 
 ## Job system
 

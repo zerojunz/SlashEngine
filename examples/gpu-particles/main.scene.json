@@ -12,6 +12,19 @@
         }
       }
     },
+    "smoke": {
+      "components": {
+        "GPUParticles2D": {
+          "amount": 30,
+          "lifetime": 3.0,
+          "process_material": "smoke.process_material.json",
+          "texture": "dot.png"
+        },
+        "Transform2D": {
+          "position": [270.0, 160.0]
+        }
+      }
+    },
     "snow": {
       "components": {
         "GPUParticles2D": {

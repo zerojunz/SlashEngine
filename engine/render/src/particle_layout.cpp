@@ -59,15 +59,22 @@ void pack_particle_process(const ParticleProcess& process, std::vector<Word>& ou
     curves.at(kParticleParams) = &process.velocity_limit_curve;
     curves.at(kParticleParams + 1) = &process.alpha_curve;
     curves.at(kParticleParams + 2) = &process.emission_curve;
-    for (std::size_t word = 0; word < kCurves / 4; ++word) {
+    for (std::size_t word = 0; word < kGradientCountsAt - kCurveCountsAt; ++word) {
         Word counts{};
         for (std::size_t lane = 0; lane < 4; ++lane) {
-            counts.at(lane) = static_cast<std::uint32_t>(curves.at((word * 4) + lane)->size());
+            const std::size_t at = (word * 4) + lane;
+            counts.at(lane) = at < kCurves ? static_cast<std::uint32_t>(curves.at(at)->size()) : 0U;
         }
         out.push_back(counts);
     }
     out.push_back({static_cast<std::uint32_t>(process.color_ramp.size()),
                    static_cast<std::uint32_t>(process.color_initial_ramp.size()), 0U, 0U});
+    out.push_back({bits(process.turbulence_noise_strength),
+                   bits(turbulence_frequency(process.turbulence_noise_scale)),
+                   bits(process.turbulence_noise_speed_random),
+                   process.turbulence_enabled ? 1U : 0U});
+    out.push_back(floats(process.turbulence_noise_speed.x, process.turbulence_noise_speed.y,
+                         process.turbulence_noise_speed.z, 0.0F));
 
     for (const ParticleCurve* curve : curves) {
         for (std::size_t word = 0; word < kCurveWords; ++word) {
@@ -114,7 +121,7 @@ void pack_particle_steps(std::span<const ParticleStep> steps, std::vector<Word>&
         const std::uint32_t flags = (step.emitting ? kStepEmitting : 0U) |
                                     (step.fractional_delta ? kStepFractionalDelta : 0U) |
                                     (step.clear ? kStepClear : 0U);
-        out.push_back({step.cycle, step.seed, flags, 0U});
+        out.push_back({step.cycle, step.seed, flags, bits(step.time)});
     }
 }
 

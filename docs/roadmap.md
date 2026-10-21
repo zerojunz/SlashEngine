@@ -271,8 +271,8 @@ rendering on top.
       thousands of particles; the same steps make the same particles on every device and on
       the CPU, where `particles.eval` lists them. Godot's `GPUParticles2D` nodes and
       `ParticleProcessMaterial` resources import
-- [ ] Sub-emitters, trails, collision with the scene, turbulence and attractors for GPU
-      particles, and particle graphs in text (Godot's particle shaders)
+- [ ] Sub-emitters, trails, collision with the scene and attractors for GPU particles, and
+      particle graphs in text (Godot's particle shaders); turbulence is done
 - [x] Text with FreeType, HarfBuzz and MSDF fonts, and Godot's `Control`, `Label` and
       `ColorRect`: anchors, offsets and grow directions, rotation, scale and modulate, labels
       that wrap, align, trim with an ellipsis and draw outlines and shadows, theme overrides and
@@ -731,7 +731,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Keyframe animation | Keyframe tracks on any reflected property | 5 | Done |
 | Skeletal animation | Skinned meshes, blending, root motion | 7 | Planned |
 | Animation blending | Blend trees and state machines in text, two-bone and FABRIK IK | 7 | Planned |
-| Particles | CPU and GPU particles, particle graphs in text | 5 | In part: CPU particles and GPU particles with process materials are done; sub-emitters, trails, collision, turbulence, attractors and particle graphs in 5 |
+| Particles | CPU and GPU particles, particle graphs in text | 5 | In part: CPU particles and GPU particles with process materials and turbulence are done; sub-emitters, trails, collision, attractors and particle graphs in 5 |
 | Soundtracks | Music planned in the storyboard, written as scores or generated, arranged into interactive music and checked by analysis, all through commands | 6 | Done |
 | Audio | miniaudio: buses, effects, 3D spatial audio | 5, 7 | In part: 2D players, buses, effects, area bus overrides, interactive music, generated and polyphonic streams and microphone input are done; 3D audio in 7 |
 | Input | Rebindable action maps over SDL3, injectable by agents | 5 | Done |

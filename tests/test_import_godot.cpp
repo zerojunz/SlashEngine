@@ -1823,6 +1823,14 @@ gravity = Vector3(0, 98, 0)
 scale_curve = SubResource("CurveTexture_1")
 color_ramp = SubResource("GradientTexture1D_1")
 turbulence_enabled = true
+turbulence_noise_strength = 2.5
+turbulence_noise_speed = Vector3(0.5, 0, 0.25)
+turbulence_influence_min = 0.2
+turbulence_influence_max = 0.4
+turbulence_influence_over_life = SubResource("CurveTexture_1")
+turbulence_initial_displacement_max = 5.0
+collision_mode = 1
+collision_bounce = 0.5
 
 [sub_resource type="CanvasItemMaterial" id="CanvasItemMaterial_1"]
 particles_animation = true
@@ -1868,10 +1876,18 @@ trail_enabled = true
         "gravity": [0.0, 98.0],
         "scale_curve": [[0.0, 1.0], [1.0, 0.0]],
         "color_ramp": [{"offset": 0.0, "color": [1.0, 0.8, 0.2, 1.0]},
-                       {"offset": 1.0, "color": [1.0, 0.2, 0.0, 0.0]}]})"));
-    CHECK(unsupported(plan.report, "ParticleProcessMaterial.turbulence_enabled")
+                       {"offset": 1.0, "color": [1.0, 0.2, 0.0, 0.0]}],
+        "turbulence_enabled": true,
+        "turbulence_noise_strength": 2.5,
+        "turbulence_noise_speed": [0.5, 0.0, 0.25],
+        "turbulence_influence_min": 0.2,
+        "turbulence_influence_max": 0.4,
+        "turbulence_influence_over_life": [[0.0, 1.0], [1.0, 0.0]],
+        "turbulence_initial_displacement_max": 5.0})"));
+    CHECK(unsupported(plan.report, "ParticleProcessMaterial.collision_mode")
               .find("why")
-              ->as_string() == "turbulence, collisions and sub-emitters are on the roadmap");
+              ->as_string() == "collisions and sub-emitters are on the roadmap");
+    CHECK(unsupported(plan.report, "ParticleProcessMaterial.collision_bounce").is_null());
     CHECK(parse(files.at("godot/smoke.process_material.json")) ==
           parse(R"({"format": 1, "spread": 180.0, "initial_velocity_max": 10.0,
                     "gravity": [0.0, 98.0]})"));

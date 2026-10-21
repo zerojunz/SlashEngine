@@ -1,5 +1,6 @@
 // GPU particles, as Godot's GPUParticles2D: main.scene.json has a fire, a one-shot burst of sparks
-// that bursts the same way each time, and snow that was already falling when the scene opened.
+// that bursts the same way each time, snow that was already falling when the scene opened and
+// smoke that curls in turbulence.
 // How each one's particles start and move is a .process_material.json file, Godot's
 // ParticleProcessMaterial in 2D.
 //
@@ -98,6 +99,9 @@ int main() {
     call(session, "particles.eval", R"({"id": "sparks", "list": true, "max_results": 2})");
     // The snow ran 6 seconds of preprocess before its first tick, so it was already falling.
     call(session, "particles.eval", R"({"id": "snow"})");
+    // The smoke curls as it rises: turbulence turns each particle's velocity along curl noise
+    // that drifts up, by its turbulence_influence, as Godot's.
+    call(session, "particles.eval", R"({"id": "smoke", "list": true, "max_results": 2})");
 
     // A one_shot stops emitting when its cycle ends and says "finished" once its particles have
     // had time to die, as Godot's: lifetime times 2 - explosiveness after it started. Setting
