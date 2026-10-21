@@ -291,13 +291,13 @@ if((SLASH_BUILD_TOOLS OR SLASH_BUILD_TESTS) AND NOT EMSCRIPTEN)
                 "${CMAKE_${lang}_FLAGS_${config}}")
         endforeach()
     endforeach()
-    # Xcode 15's clang needs a deduction guide in Tint (cmake/patches). A patch is applied once,
-    # when the source is fetched, so changing one needs a fresh fetch.
+    # Xcode 15's clang needs a deduction guide in Tint (cmake/patches).
     slash_add_dependency(dawn
         SYSTEM TRUE
         EXCLUDE_FROM_ALL TRUE
         GIT_SUBMODULES "CMakeLists.txt"
-        PATCHES ${CMAKE_CURRENT_LIST_DIR}/patches/dawn-overloaded-deduction-guide.patch
+        PATCH_COMMAND ${CMAKE_COMMAND} -P
+            ${CMAKE_CURRENT_LIST_DIR}/patches/dawn-overloaded-deduction-guide.cmake
         OPTIONS
             "DAWN_ABSEIL_DIR ${abseil-cpp_SOURCE_DIR}"
             "DAWN_SPIRV_HEADERS_DIR ${SPIRV-Headers_SOURCE_DIR}"
