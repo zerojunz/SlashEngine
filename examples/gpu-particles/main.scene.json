@@ -12,6 +12,34 @@
         }
       }
     },
+    "ledge": {
+      "components": {
+        "LightOccluder2D": {
+          "polygon": [
+            [-20.0, 0.0],
+            [20.0, 0.0],
+            [20.0, 20.0],
+            [-20.0, 20.0]
+          ]
+        },
+        "Transform2D": {
+          "position": [130.0, 100.0]
+        }
+      }
+    },
+    "rain": {
+      "components": {
+        "GPUParticles2D": {
+          "amount": 40,
+          "lifetime": 1.2,
+          "process_material": "rain.process_material.json",
+          "texture": "dot.png"
+        },
+        "Transform2D": {
+          "position": [130.0, 20.0]
+        }
+      }
+    },
     "smoke": {
       "components": {
         "GPUParticles2D": {

@@ -397,13 +397,15 @@ CanvasRenderer::particle_job(GpuSystem& system, const ParticleSteps& kept,
         job = ParticleJob{.particles = system.id,
                           .process = process,
                           .first = first,
-                          .rest = kept.steps.subspan(1)};
+                          .rest = kept.steps.subspan(1),
+                          .shapes = kept.shapes};
     } else if (system.next < end) {
         job = ParticleJob{
             .particles = system.id,
             .process = process,
             .first = std::nullopt,
-            .rest = kept.steps.subspan(static_cast<std::size_t>(system.next - kept.first))};
+            .rest = kept.steps.subspan(static_cast<std::size_t>(system.next - kept.first)),
+            .shapes = kept.shapes};
     }
     system.next = end;
     return job;
@@ -414,11 +416,12 @@ std::size_t CanvasRenderer::mirror(GpuSystem& system, const ParticleSteps& kept,
     const std::uint64_t end = kept.first + kept.steps.size();
     if (system.cpu.size() != kept.amount || system.cpu_serial != kept.serial ||
         system.cpu_next < kept.first) {
-        system.cpu = run_steps(kept.amount, process, kept.steps);
+        system.cpu = run_steps(kept.amount, process, kept.steps, kept.shapes);
     } else if (system.cpu_next < end) {
         render::process_particles(
             system.cpu, process,
-            kept.steps.subspan(static_cast<std::size_t>(system.cpu_next - kept.first)));
+            kept.steps.subspan(static_cast<std::size_t>(system.cpu_next - kept.first)),
+            kept.shapes);
     }
     system.cpu_serial = kept.serial;
     system.cpu_next = end;
@@ -430,10 +433,11 @@ Result<void> CanvasRenderer::run_particle_jobs(std::span<const ParticleJob> jobs
     for (const ParticleJob& job : jobs) {
         Result<void> ran;
         if (job.first) {
-            ran = device_->process_particles(job.particles, *job.process, {&*job.first, 1});
+            ran = device_->process_particles(job.particles, *job.process, {&*job.first, 1},
+                                             job.shapes);
         }
         if (ran && !job.rest.empty()) {
-            ran = device_->process_particles(job.particles, *job.process, job.rest);
+            ran = device_->process_particles(job.particles, *job.process, job.rest, job.shapes);
         }
         if (!ran) {
             for (auto& [entity, system] : gpu_systems_) {

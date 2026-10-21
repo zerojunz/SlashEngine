@@ -22,6 +22,12 @@ constexpr std::array<std::pair<std::string_view, EmissionShape>, 7> kShapes{{
     {"ring", EmissionShape::Ring},
 }};
 
+constexpr std::array<std::pair<std::string_view, render::ParticleCollision>, 3> kCollisionModes{{
+    {"disabled", render::ParticleCollision::Disabled},
+    {"rigid", render::ParticleCollision::Rigid},
+    {"hide_on_contact", render::ParticleCollision::HideOnContact},
+}};
+
 // Godot's names for the parameters, by ParticleParam, with what each is and its range.
 struct ParamInfo {
     std::string_view name;
@@ -265,6 +271,23 @@ json::Value process_material_schema() {
     properties["turbulence_noise_speed_random"] =
         number("How fast the noise changes as it moves.", defaults.turbulence_noise_speed_random,
                0.0, 4.0);
+    json::Array modes;
+    for (const auto& [name, value] : kCollisionModes) {
+        modes.emplace_back(std::string(name));
+    }
+    properties["collision_mode"]["enum"] = std::move(modes);
+    properties["collision_mode"]["default"] = "disabled";
+    properties["collision_mode"]["description"] =
+        "What particles do on touching a LightOccluder2D with sdf_collision: bounce off "
+        "(rigid) or die (hide_on_contact).";
+    properties["collision_friction"] =
+        number("For rigid, the fraction of the speed along the surface lost.", 0.0, 0.0, 1.0);
+    properties["collision_bounce"] =
+        number("For rigid, the fraction of the speed into the surface sent back.", 0.0, 0.0, 1.0);
+    properties["collision_use_scale"]["type"] = "boolean";
+    properties["collision_use_scale"]["default"] = false;
+    properties["collision_use_scale"]["description"] =
+        "Multiply the emitter's collision_base_size by each particle's scale.";
     return schema;
 }
 
@@ -409,6 +432,16 @@ Result<render::ParticleProcess> parse_process_material(const json::Value& doc) {
                                       static_cast<float>(items[2].as_double())};
     }
     real("turbulence_noise_speed_random", out.turbulence_noise_speed_random);
+    if (const json::Value* mode = doc.find("collision_mode"); mode != nullptr) {
+        for (const auto& [name, value] : kCollisionModes) {
+            if (mode->as_string() == name) {
+                out.collision_mode = value;
+            }
+        }
+    }
+    real("collision_friction", out.collision_friction);
+    real("collision_bounce", out.collision_bounce);
+    flag("collision_use_scale", out.collision_use_scale);
     return out;
 }
 

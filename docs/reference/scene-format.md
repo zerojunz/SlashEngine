@@ -153,6 +153,7 @@ A reference must name an entity that exists in the same scene.
 | `LightOccluder2D` | `polygon` | `std::vector<Vec2>` | `[]` | Points as [x, y] in pixels, placed by the entity's `Transform2D` |
 | | `closed` | `bool` | `true` | Join the last point to the first |
 | | `cull_mode` | `std::string` | `"disabled"` | `clockwise` or `counter_clockwise` leaves out edges that run that way around the light, as seen on screen |
+| | `sdf_collision` | `bool` | `true` | [GPU particles](#gpu-particle-collision) whose process material has a `collision_mode` collide with it |
 | | `occluder_light_mask` | `int` | `1` | Casts shadows from lights whose `shadow_item_cull_mask` shares a bit |
 | `CanvasModulate` | `color` | `Vec4` | `[1, 1, 1, 1]` | Tints everything lit in its canvas (the world's, or the `CanvasLayer`'s that holds it): the light it has where no light reaches. One per canvas |
 | `Camera2D` | `enabled` | `bool` | `true` | Can be the [current camera](#2d-camera): the first enabled one in drawing order |
@@ -319,6 +320,7 @@ A reference must name an entity that exists in the same scene.
 | | `fixed_fps` | `int` | `30` | Steps per second the particles move in, 0 to 1000; 0 steps once a tick |
 | | `interpolate` | `bool` | `true` | Draw particles where they are between steps |
 | | `fract_delta` | `bool` | `true` | A particle emitted partway through a step moves for that part only, so emission is smooth |
+| | `collision_base_size` | `float` | `1` | How near, in pixels, a particle comes to a shape before it [collides](#gpu-particle-collision); times half the texture's average side, `(width + height) / 4`, when it has one |
 | | `local_coords` | `bool` | `false` | Particles live in the entity's coordinates and move with it; `false` leaves them where they were emitted |
 | | `draw_order` | `std::string` | `"lifetime"` | `index` draws in emission slot order; `lifetime` draws the youngest on top, `reverse_lifetime` the oldest |
 | | `hframes`, `vframes` | `int` | `1` | Columns and rows of frames in the texture, for the process material's `anim_speed` and `anim_offset` |
@@ -1182,6 +1184,7 @@ its tiles. `slash-cli schema tileset` prints the schema, `slash-cli scene valida
 | `physics_layers/<n>/friction`, `bounce` | No | Its physics material, as Godot's `PhysicsMaterial`: friction from 0 (default `1`) and bounce from 0 to 1 (default `0`) |
 | `occlusion_layers` | No | Occlusion layers, as Godot's: each tile's [occluders](#tile-occluders-and-custom-data) are on one, by index from 0 |
 | `occlusion_layers/<n>/light_mask` | No | Lights whose `shadow_item_cull_mask` shares a bit take shadows from its occluders; default `1` |
+| `occlusion_layers/<n>/sdf_collision` | No | [GPU particles](#gpu-particle-collision) collide with its occluders; default `false` |
 | `custom_data_layers` | No | Values every tile has, as Godot's custom data layers, each with a `name` (unique in the file) and a `type`: `bool`, `int`, `float`, `string`, `vector2`, `vector2i` or `color` |
 | `sources` | Yes | Atlas sources by name, at least one |
 | `sources/<name>/texture` | Yes | Project path of a PNG, BMP or KTX2 file |
@@ -1869,6 +1872,10 @@ names and Godot's defaults, except `gravity`: `[0, 98]`, as Godot gives a proces
 | `turbulence_noise_scale` | `9` | The noise's size, Godot's slider: swirls about 1 / (4 - scale^0.25 × 2.249) pixels across, so 9 makes them 10 pixels and 9.8 about 50; 10 has none |
 | `turbulence_noise_speed` | `[0, 0, 0]` | How the noise moves per second, as `[x, y, z]` |
 | `turbulence_noise_speed_random` | `0.2` | How fast the noise changes as it moves, 0 to 4 |
+| `collision_mode` | `"disabled"` | What a particle does on touching a shape: `rigid` bounces off it, `hide_on_contact` dies |
+| `collision_friction` | `0` | For `rigid`, the fraction of its speed along the surface it loses, 0 to 1 |
+| `collision_bounce` | `0` | For `rigid`, the fraction of its speed into the surface sent back, 0 to 1 |
+| `collision_use_scale` | `false` | Multiply the emitter's collision size by the particle's scale |
 
 Turbulence is Godot's: each step a particle's velocity, built up and controlled, turns towards
 the curl of 4D gradient noise at its position by its `turbulence_influence`, keeping its speed
@@ -1876,6 +1883,28 @@ the curl of 4D gradient noise at its position by its `turbulence_influence`, kee
 the emitter started over, back to 0 every hour, where Godot's moves with the engine's clock;
 its lattice gradients come from an integer hash of each point rather than Godot's fractions of
 float products, so every device and the CPU make the same noise.
+
+### GPU particle collision
+
+A process material with a `collision_mode` collides with the outlines of `LightOccluder2D`s
+whose `sdf_collision` is on and with tile occluders on occlusion layers whose `sdf_collision` is
+on, in every visible canvas, as Godot's particles collide with the signed distance field its
+viewport draws from them. A closed outline of three or more points is solid; an open one is a
+line, solid on neither side. A particle collides where it comes nearer to an outline than its
+collision size (the emitter's `collision_base_size`, through its texture and, with
+`collision_use_scale`, its scale), or is inside a solid one. Then a `rigid` one is pushed out to
+that distance, loses its speed into the outline, slides with `collision_friction` and bounces
+back by `collision_bounce` (only when it hits at least 2 / (1 + bounce) pixels a second, as
+Godot's), and turbulence leaves it alone that step; a `hide_on_contact` one dies. A particle is
+measured where it is at the start of each step, so one that has just reached a shape is in it
+until its next step, and one that moves past the middle of a shape in a step comes out the far
+side, as in Godot: give fast particles shapes thicker than twice a step's travel.
+
+The shapes are measured exactly, where Godot samples a field drawn on the GPU, so every device
+and the CPU agree. They count everywhere, where Godot's field covers the screen and a margin, and
+each step takes the nearest the emitter that fit in 1024 points between them. Particles in the
+emitter's coordinates (`local_coords`) reach them through its transform, and an emitter in a
+`CanvasLayer` through that layer's.
 
 ## UI and text
 

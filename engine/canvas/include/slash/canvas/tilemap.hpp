@@ -232,9 +232,11 @@ struct PhysicsLayer {
 };
 
 // A tile set's occlusion layer, as Godot's: the lights its tiles' occluders cast shadows from
-// are those whose shadow_item_cull_mask shares a bit with light_mask.
+// are those whose shadow_item_cull_mask shares a bit with light_mask, and GPU particles collide
+// with them with sdf_collision.
 struct OcclusionLayer {
     std::uint32_t light_mask = 1;
+    bool sdf_collision = false;
 };
 
 struct AtlasSource {

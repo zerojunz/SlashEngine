@@ -1210,7 +1210,7 @@ occlusion_enabled = false
     CHECK(slash::canvas::validate_tileset(parse(files.at(tileset))).empty());
     CHECK(parse(files.at(tileset)) == parse(R"({
         "format": 1,
-        "occlusion_layers": [{}, {"light_mask": 6}],
+        "occlusion_layers": [{}, {"light_mask": 6, "sdf_collision": true}],
         "custom_data_layers": [{"name": "damage", "type": "int"},
                                {"name": "kind", "type": "string"},
                                {"name": "push", "type": "vector2"},
@@ -1226,7 +1226,7 @@ occlusion_enabled = false
                     "custom_data": {"damage": 5, "kind": "lava", "push": [1.5, 0],
                                     "tint": [1, 0.5, 0, 1], "hot": true}},
             "2,0": {}}}}})"));
-    CHECK(unsupported(plan.report, "tile set occlusion SDF collision").find("where") != nullptr);
+    CHECK(unsupported(plan.report, "tile set occlusion SDF collision").is_null());
     const auto why = [&](std::string_view what) {
         const json::Value item = unsupported(plan.report, what);
         REQUIRE_MESSAGE(item.is_object(), what);
@@ -1831,6 +1831,9 @@ turbulence_influence_over_life = SubResource("CurveTexture_1")
 turbulence_initial_displacement_max = 5.0
 collision_mode = 1
 collision_bounce = 0.5
+collision_friction = 1.5
+collision_use_scale = true
+sub_emitter_mode = 1
 
 [sub_resource type="CanvasItemMaterial" id="CanvasItemMaterial_1"]
 particles_animation = true
@@ -1849,6 +1852,7 @@ lifetime = 0.8
 use_fixed_seed = true
 seed = 4000000000
 draw_order = 0
+collision_base_size = 3.0
 visibility_rect = Rect2(-50, -50, 100, 100)
 
 [node name="Smoke" type="GPUParticles2D" parent="."]
@@ -1883,11 +1887,15 @@ trail_enabled = true
         "turbulence_influence_min": 0.2,
         "turbulence_influence_max": 0.4,
         "turbulence_influence_over_life": [[0.0, 1.0], [1.0, 0.0]],
-        "turbulence_initial_displacement_max": 5.0})"));
-    CHECK(unsupported(plan.report, "ParticleProcessMaterial.collision_mode")
+        "turbulence_initial_displacement_max": 5.0,
+        "collision_mode": "rigid",
+        "collision_bounce": 0.5,
+        "collision_friction": 1.0,
+        "collision_use_scale": true})"));
+    CHECK(unsupported(plan.report, "ParticleProcessMaterial.collision_mode").is_null());
+    CHECK(unsupported(plan.report, "ParticleProcessMaterial.sub_emitter_mode")
               .find("why")
-              ->as_string() == "collisions and sub-emitters are on the roadmap");
-    CHECK(unsupported(plan.report, "ParticleProcessMaterial.collision_bounce").is_null());
+              ->as_string() == "sub-emitters are on the roadmap");
     CHECK(parse(files.at("godot/smoke.process_material.json")) ==
           parse(R"({"format": 1, "spread": 180.0, "initial_velocity_max": 10.0,
                     "gravity": [0.0, 98.0]})"));
@@ -1897,8 +1905,8 @@ trail_enabled = true
     CHECK(*entity(files, level, "fire").find("GPUParticles2D") == parse(R"({
         "amount": 32, "process_material": "godot/level_particle_process_material_1.process_material.json",
         "texture": "godot/spark.png", "lifetime": 0.8, "use_fixed_seed": true,
-        "seed": -294967296, "draw_order": "index", "hframes": 4, "vframes": 2,
-        "anim_loop": true})"));
+        "seed": -294967296, "draw_order": "index", "collision_base_size": 3.0, "hframes": 4,
+        "vframes": 2, "anim_loop": true})"));
     CHECK(*entity(files, level, "smoke").find("GPUParticles2D") ==
           parse(R"({"process_material": "godot/smoke.process_material.json"})"));
     CHECK(unsupported(plan.report, "GPUParticles2D.trail_enabled").find("why")->as_string() ==

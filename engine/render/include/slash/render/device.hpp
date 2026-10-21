@@ -273,12 +273,20 @@ public:
     [[nodiscard]] virtual Result<ParticlesId> create_particles(std::uint32_t amount) = 0;
     // A system in use by the frame being built goes once the frame is sent.
     virtual void destroy_particles(ParticlesId particles) = 0;
-    // Runs steps on a system with a process material, in order after the steps before. The GPU
-    // device runs them on the GPU: during a frame, when the frame is sent, ahead of its draws;
-    // outside one, at once. The null device keeps no particles and runs nothing.
+    // Runs steps on a system with a process material, in order after the steps before; each step
+    // names the shapes its particles collide with by their place in shapes. The GPU device runs
+    // them on the GPU: during a frame, when the frame is sent, ahead of its draws; outside one, at
+    // once. The null device keeps no particles and runs nothing.
     [[nodiscard]] virtual Result<void> process_particles(ParticlesId particles,
                                                          const ParticleProcess& process,
-                                                         std::span<const ParticleStep> steps) = 0;
+                                                         std::span<const ParticleStep> steps,
+                                                         std::span<const ParticleShape> shapes) = 0;
+    // Runs steps that collide with nothing.
+    [[nodiscard]] Result<void> process_particles(ParticlesId particles,
+                                                 const ParticleProcess& process,
+                                                 std::span<const ParticleStep> steps) {
+        return process_particles(particles, process, steps, {});
+    }
     // Draws a system's particles as they are after the steps run so far, as quads (ParticleDraw)
     // with a texture and a material, as draw does: two triangles a particle.
     [[nodiscard]] virtual Result<void> draw_particles(ParticlesId particles, TextureId texture,
