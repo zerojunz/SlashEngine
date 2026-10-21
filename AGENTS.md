@@ -335,8 +335,10 @@ with llvm-mingw and a glibc 2.31 Debian sysroot that the first such export downl
 (`$cli toolchain install` gets them ahead of time, into `SLASH_TOOLCHAINS_DIR` or
 `~/.slash/toolchains`). Linux machines build Linux and Windows the same way, and Windows machines
 build Windows with MSVC. Web exports use an activated emsdk (`EMSDK` set) or else download pinned
-Emscripten, Node.js and (on macOS and Windows) Python toolchains, and Android exports need the
-Android SDK, NDK and a JDK on any host. CI exports and runs an empty game for macOS, Windows, Linux, web,
+Emscripten, Node.js and (on macOS and Windows) Python toolchains. Android exports, on any host,
+use the Android SDK, NDK and JDK in `ANDROID_HOME` and `JAVA_HOME` or the ones
+`$cli toolchain install android --accept-android-sdk-license` installs (it accepts Google's
+Android SDK license, so an agent asks its person first). CI exports and runs an empty game for macOS, Windows, Linux, web,
 Android (on an emulator) and iOS (in the Simulator) on every PR, cross-exports Windows and Linux
 (x86_64 and arm64) from macOS and runs them on Windows and Ubuntu 20.04, and `slash-cli init` writes
 the per-platform workflow into new games.

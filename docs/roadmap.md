@@ -93,8 +93,8 @@ Built in two halves.
       tested in CI by running them on Windows and Ubuntu 20.04
 - [x] `slash-cli toolchain install` for Emscripten, with Node.js and Python, so web exports need
       nothing installed by hand either
-- [ ] `slash-cli toolchain install` for the Android SDK, NDK and JDK, so Android exports need
-      nothing installed by hand either
+- [x] `slash-cli toolchain install` for the Android SDK, NDK and JDK, so Android exports need
+      nothing installed by hand either (once the person accepts Google's Android SDK license)
 - [ ] Wayland in Linux exports (they use X11, which Wayland desktops run through XWayland,
       because the glibc 2.31 sysroot's Wayland is too old for SDL's generated protocol code)
 - [x] `export_presets.json`, with signing secrets read from environment variables: macOS
@@ -811,7 +811,9 @@ A Mac builds every platform: macOS and iOS with Xcode's tools, and Windows and L
 toolchains `slash-cli toolchain install` downloads. Linux machines build Linux and Windows the
 same way, and Windows machines build Windows with MSVC. Web exports build on any host, with the
 Emscripten that `slash-cli toolchain install web` downloads or an activated emsdk, and Android
-exports on any host with the Android SDK, NDK and a JDK.
+exports on any host with the Android SDK, NDK and JDK that
+`slash-cli toolchain install android --accept-android-sdk-license` installs, or an Android Studio
+install.
 
 SlashEngine supports operating system versions released in 2020 or later, and nothing older. Each
 minimum above is the first release of its OS from 2020. SDL3's GPU API needs less than this on

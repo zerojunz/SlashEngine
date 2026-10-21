@@ -178,7 +178,19 @@ jobs:
             $cli sdk lock --project build/empty-game
             cat build/empty-game/sdks/androidx/sdk.lock.json
           fi
-          $cli export ${{ matrix.platform }} --project build/empty-game --test > build/export.json || { cat build/export.json; exit 1; }
+          if [ "${{ matrix.platform }}" = android ]; then
+            # The first export uses the JDK and SDK slash-cli installs, not the runner's.
+            $cli toolchain install android --accept-android-sdk-license
+            env -u ANDROID_HOME -u ANDROID_SDK_ROOT -u ANDROID_NDK_HOME -u ANDROID_NDK_ROOT \
+              -u ANDROID_NDK -u JAVA_HOME \
+              $cli export android --project build/empty-game --test > build/export.json 2> build/export.err \
+              || { cat build/export.json build/export.err; exit 1; }
+            grep '"msg":"android tools"' build/export.err \
+              | jq -e --arg dir "$HOME/.slash/toolchains" \
+                  '(.sdk | startswith($dir + "/android-sdk")) and (.java_home | startswith($dir + "/jdk-"))'
+          else
+            $cli export ${{ matrix.platform }} --project build/empty-game --test > build/export.json || { cat build/export.json; exit 1; }
+          fi
           cat build/export.json
           jq -e '.sdks[0].name == "hello"' build/export.json
           # The package's glue code registered its analytics backends: C++ everywhere, and
@@ -242,6 +254,17 @@ jobs:
           codesign --verify --strict --verbose=2 "$app"
           test "$(plutil -extract DTPlatformName raw "$app/Info.plist")" = "iphoneos"
           test "$(lipo -archs "$app/$(plutil -extract CFBundleExecutable raw "$app/Info.plist")")" = "arm64"
+
+      - name: Install the Android SDK with slash-cli
+        if: matrix.platform == 'windows'
+        shell: bash
+        run: |
+          ./build/release/tools/slash-cli/slash-cli toolchain install android --accept-android-sdk-license
+          sdk="$USERPROFILE/.slash/toolchains/android-sdk"
+          test -f "$sdk/ndk/27.3.13750724/build/cmake/android.toolchain.cmake"
+          test -f "$sdk/build-tools/36.0.0/aapt2.exe"
+          test -f "$sdk/platforms/android-36/android.jar"
+          test -f "$sdk/cmake/3.31.6/bin/ninja.exe"
 
       - name: Check the minimum Windows version and sign with a preset
         if: matrix.platform == 'windows'
@@ -389,6 +412,23 @@ jobs:
           done
           # A tarball keeps the games' executable bits, which artifacts drop.
           tar -C build/empty-game/build/export -cf build/cross-exports.tar windows linux linux-arm64
+
+      # Not cached: the SDK is too big to keep, and installing it is what this checks.
+      - name: Export an Android game with the JDK and SDK slash-cli installs
+        env:
+          SLASH_TOOLCHAINS_DIR: ${{ runner.temp }}/android-toolchains
+        run: |
+          cli=./build/release/tools/slash-cli/slash-cli
+          $cli toolchain install android --accept-android-sdk-license
+          env -u ANDROID_HOME -u ANDROID_SDK_ROOT -u ANDROID_NDK_HOME -u ANDROID_NDK_ROOT \
+            -u ANDROID_NDK -u JAVA_HOME \
+            $cli export android --project build/empty-game --test > build/android.json 2> build/android.err \
+            || { cat build/android.json build/android.err; exit 1; }
+          cat build/android.json
+          jq -e '.test.skipped' build/android.json
+          grep '"msg":"android tools"' build/android.err \
+            | jq -e --arg dir "$SLASH_TOOLCHAINS_DIR" \
+                '(.sdk | startswith($dir + "/android-sdk")) and (.java_home | endswith("/Contents/Home"))'
 
       - uses: actions/upload-artifact@v4
         with:

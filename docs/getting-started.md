@@ -211,7 +211,10 @@ $cli export linux --project mygame --test
 
 `--test` runs the exported game headless and reports whether it worked. Use `macos` or `windows`
 on those machines, or `web` anywhere: the first web export downloads Emscripten unless an emsdk
-is activated. To export every platform at once,
+is activated. Android exports use Android Studio's SDK, or the JDK and SDK that
+`$cli toolchain install android --accept-android-sdk-license` downloads once you have read
+[Google's Android SDK license](https://developer.android.com/studio/terms), which that flag
+accepts. To export every platform at once,
 push the game to GitHub: `init` wrote `.github/workflows/export.yml`, which builds and tests each
 one on its own runner. Presets in `export_presets.json` name output folders and signing settings;
 see [reference/cli.md](reference/cli.md#export).

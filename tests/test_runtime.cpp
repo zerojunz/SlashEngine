@@ -359,6 +359,25 @@ TEST_CASE("processes run with their output logged") {
     CHECK_FALSE(platform::run_process({}).ok());
 }
 
+TEST_CASE("processes read the input they are given to its end") {
+    platform::ProcessOptions options;
+    options.input = "b\na\n";
+#ifdef _WIN32
+    auto result = platform::run_process({"sort"}, options);
+    REQUIRE(result.ok());
+    CHECK(result.value().exit_code == 0);
+    CHECK(result.value().tail.find('a') < result.value().tail.find('b'));
+#else
+    // The second read sees the end of the input, so the child doesn't wait for more.
+    auto result = platform::run_process(
+        {"sh", "-c", "read first; read second; read third || echo \"got $first $second\""},
+        options);
+    REQUIRE(result.ok());
+    CHECK(result.value().exit_code == 0);
+    CHECK(result.value().tail == "got b a");
+#endif
+}
+
 TEST_CASE("a program started beside this one prints as it goes and stops when asked") {
     const std::string log = "process_test.log";
     std::remove(log.c_str());

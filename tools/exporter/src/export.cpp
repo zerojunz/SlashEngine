@@ -1046,6 +1046,9 @@ ExportResult export_game(const ExportOptions& options) {
             return fail({"options", tools.error().message, {}}, {});
         }
         android = std::move(tools).value();
+        log::info(
+            "android tools",
+            {{"sdk", android->sdk}, {"ndk", android->ndk}, {"java_home", android->java_home}});
         apk_info.package =
             preset.android.package.empty() ? project.value().bundle_id() : preset.android.package;
         if (const std::string problem = android_package_problem(apk_info.package);
