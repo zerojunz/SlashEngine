@@ -262,7 +262,8 @@ slash-cli schema bench
 ### project validate
 
 Checks a folder's `project.json`, its `export_presets.json` if there is one, the theme its
-`gui.theme` names, the bus layout its `audio.bus_layout` names, its storyboard with [`storyboard.check`](commands.md#storyboardcheck), and
+`gui.theme` names, the bus layout its `audio.bus_layout` names, the [icons](project-format.md#icons)
+it and its presets name (each must be a square image), its storyboard with [`storyboard.check`](commands.md#storyboardcheck), and
 its [SDK packages](sdk-format.md#sdk-check) (their `sdk.json` files, the presets' `sdks` and the
 files in the packages, not keys or downloads) and its [`providers.json`](providers.md) if
 there is one, and lists every error with its file and JSON
@@ -575,7 +576,9 @@ ship), builds the game with CMake, signs it and installs it into the output fold
 material's [shader](scene-format.md#shaders) is compiled for the platform into its staged file,
 since games can't compile shaders, and the `.hlsl` files stay behind. Textures ship in the
 forms `project.json`'s [`rendering.textures`](project-format.md#texture-forms) asks for, made
-once and cached in the asset library. A project's
+once and cached in the asset library. Every platform's [icons](project-format.md#icons) are
+made from `project.json`'s `icon`, or the engine's, and the result's `icon` names which. A
+project's
 [`providers.json`](providers.md#gameplay) is checked and staged without its `replay` settings,
 and the game then installs [`ai::ask`](providers.md#gameplay); Android exports of it get the
 `INTERNET` permission. A Mac builds every
@@ -602,7 +605,7 @@ slash-cli export linux --project my-game --test
 ```
 
 ```json
-{"bytes":5335403,"executable":"my-game/build/export/linux/mygame","linux":{"arch":"x86_64"},"log":"my-game/.slash/export/linux/export.log","output":"my-game/build/export/linux","platform":"linux","preset":"linux","seconds":66.6,"test":{"entities":0,"passed":true,"ticks":60}}
+{"bytes":5335403,"executable":"my-game/build/export/linux/mygame","icon":"default","linux":{"arch":"x86_64"},"log":"my-game/.slash/export/linux/export.log","output":"my-game/build/export/linux","platform":"linux","preset":"linux","seconds":66.6,"test":{"entities":0,"passed":true,"ticks":60}}
 ```
 
 An export that links [SDK packages](sdk-format.md) lists them in `sdks`, each with its `name`,
@@ -618,7 +621,7 @@ the one with the newest iOS and shuts it down afterwards, runs the game headless
 summary; device builds and Macs with no Simulator skip the test and say so.
 
 The full build log is at `log`. A failure names the step that failed (`options`, `validate`,
-`toolchain`, `stage`, `sdks`, `configure`, `build`, `install`, `package`, `sign`, `notarize` or `publish`; Android
+`toolchain`, `stage`, `icons`, `sdks`, `configure`, `build`, `install`, `package`, `sign`, `notarize` or `publish`; Android
 build failures also name the `abi`) and ends with the last lines of
 the log in `tail`, so the log rarely needs opening. A step of `options` means the request itself
 was wrong, and exits with 2:

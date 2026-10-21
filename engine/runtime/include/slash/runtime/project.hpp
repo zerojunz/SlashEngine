@@ -58,6 +58,9 @@ struct Project {
     std::string id; // empty means com.example.<binary name, lowercased>
     std::string version = "0.1.0";
     std::string main_scene;
+    // A square image every platform's icons are made from, as Godot's application/config/icon;
+    // empty for the engine's own (icon.hpp).
+    std::string icon;
     int window_width = 1280;
     int window_height = 720;
     // "disabled", "enabled", "adaptive" or "mailbox", as in Godot.

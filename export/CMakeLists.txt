@@ -17,6 +17,9 @@
 #                       links, and slash_game_sdk_register() for the C++ file that registers
 #                       their services backends, written per build by slash-cli export
 #                       (tools/exporter/src/sdk.cpp)
+#   SLASH_GAME_ICONS    the folder of icons slash-cli export made for the platform: AppIcon.icns
+#                       on macOS, icon.ico on Windows, favicon.png and apple-touch-icon.png on
+#                       the web (tools/exporter/src/icons.cpp); Android's and iOS's it adds itself
 #
 # `cmake --install <build> --component game --prefix <out>` lays the game out for its platform:
 # <out>/<binary>.app on macOS, <out>/<binary>[.exe] with <out>/data on Windows and Linux, and
@@ -268,6 +271,13 @@ if(EMSCRIPTEN)
         "SHELL:--pre-js ${CMAKE_CURRENT_LIST_DIR}/web/node.js")
     set_property(TARGET game APPEND PROPERTY LINK_DEPENDS
         ${SLASH_GAME_DATA}/project.json ${CMAKE_CURRENT_LIST_DIR}/web/node.js)
+    set(SLASH_WEB_ICONS "")
+    if(SLASH_GAME_ICONS)
+        set(SLASH_WEB_ICONS "<link rel=\"icon\" type=\"image/png\" href=\"favicon.png\">
+<link rel=\"apple-touch-icon\" href=\"apple-touch-icon.png\">")
+        install(FILES ${SLASH_GAME_ICONS}/favicon.png ${SLASH_GAME_ICONS}/apple-touch-icon.png
+            DESTINATION . COMPONENT game)
+    endif()
     configure_file(web/index.html.in index.html @ONLY)
     install(FILES
         $<TARGET_FILE:game>
@@ -343,6 +353,13 @@ elseif(IOS)
     install(DIRECTORY ${SLASH_GAME_DATA}/
         DESTINATION ${SLASH_GAME_BINARY}.app/data COMPONENT game)
 elseif(APPLE)
+    # The icon, in the bundle's Resources, named by Info.plist's CFBundleIconFile.
+    if(SLASH_GAME_ICONS)
+        target_sources(game PRIVATE ${SLASH_GAME_ICONS}/AppIcon.icns)
+        set_source_files_properties(${SLASH_GAME_ICONS}/AppIcon.icns PROPERTIES
+            MACOSX_PACKAGE_LOCATION Resources)
+        set_target_properties(game PROPERTIES MACOSX_BUNDLE_ICON_FILE AppIcon.icns)
+    endif()
     set_target_properties(game PROPERTIES
         MACOSX_BUNDLE TRUE
         MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_LIST_DIR}/macos/Info.plist.in
@@ -356,6 +373,14 @@ elseif(APPLE)
 else()
     if(WIN32)
         set_target_properties(game PROPERTIES WIN32_EXECUTABLE TRUE)
+    endif()
+    # The icon, as the executable's first icon resource: Explorer shows it, and SDL gives it to
+    # the window.
+    if(WIN32 AND SLASH_GAME_ICONS)
+        enable_language(RC)
+        file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/icon.rc
+            "SLASH_ICON ICON \"${SLASH_GAME_ICONS}/icon.ico\"\n")
+        target_sources(game PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/icon.rc)
     endif()
     if(WIN32 AND NOT MSVC)
         # llvm-mingw: link libc++, libunwind and winpthreads in, so there are no DLLs to ship.

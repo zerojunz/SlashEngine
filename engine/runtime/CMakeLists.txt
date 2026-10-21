@@ -1,6 +1,7 @@
 add_library(slash_runtime
     src/game.cpp
     src/gameplay.cpp
+    src/icon.cpp
     src/project.cpp)
 add_library(slash::runtime ALIAS slash_runtime)
 
@@ -10,6 +11,9 @@ target_link_libraries(slash_runtime
            slash::services slash::ui slash::world
     PRIVATE SDL3::SDL3-static)
 slash_engine_target(slash_runtime)
+# The engine's icon is the same pixels on every machine.
+set_source_files_properties(src/icon.cpp PROPERTIES
+    COMPILE_OPTIONS "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>")
 
 # The main() of a game executable, through SDL's main callbacks. It is compiled into each game
 # rather than into a library, because a linker would drop the callbacks from a static library.

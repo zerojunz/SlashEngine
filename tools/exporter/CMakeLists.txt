@@ -1,4 +1,4 @@
-# Exports games: presets, texture forms, building with export/CMakeLists.txt, signing, and the
+# Exports games: presets, texture forms, icons, building with export/CMakeLists.txt, signing, and the
 # export.run and texture.forms commands; builds and checks gameplay code, and searches the
 # engine's API. Used by slash-cli and slash-mcp; games never link it.
 add_library(slash_exporter
@@ -10,6 +10,7 @@ add_library(slash_exporter
     src/export.cpp
     src/forms.cpp
     src/gameplay.cpp
+    src/icons.cpp
     src/ios.cpp
     src/maven.cpp
     src/presets.cpp
@@ -21,8 +22,8 @@ add_library(slash::exporter ALIAS slash_exporter)
 
 target_include_directories(slash_exporter PUBLIC include)
 target_link_libraries(slash_exporter
-    PUBLIC slash::command slash::core slash::render
-    PRIVATE slash::ai slash::animation slash::audio slash::canvas slash::library slash::platform slash::runtime slash::shader_compiler slash::text
+    PUBLIC slash::command slash::core slash::render slash::runtime
+    PRIVATE slash::ai slash::animation slash::audio slash::canvas slash::library slash::platform slash::shader_compiler slash::text
             slash::texture_encoder slash::ui slash::world)
 # Where exports find the engine sources when SLASH_ENGINE_DIR and an installed copy are absent.
 target_compile_definitions(slash_exporter PRIVATE SLASH_ENGINE_SOURCE_DIR="${PROJECT_SOURCE_DIR}")

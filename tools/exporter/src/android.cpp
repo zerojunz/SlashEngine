@@ -559,6 +559,18 @@ bool package_apk(const AndroidTools& tools, const AndroidKey& key, const ApkInfo
     if (info.debug) {
         link.emplace_back("--debug-mode");
     }
+    // The game's own resources, its icon, which the libraries' overlay.
+    if (const fs::path res = tree / "res"; fs::is_directory(res, error)) {
+        const std::string flat = (compiled / "game.zip").string();
+        if (!detail::step("package",
+                          {tool(tools, "aapt2", kExe), "compile", "--dir",
+                           fs::absolute(res, error).string(), "-o", flat},
+                          process, failure)) {
+            return false;
+        }
+        link.push_back(flat);
+    }
+    error.clear();
     // Library resources, compiled one folder at a time and linked as overlays: aapt2 lets the
     // last one win, so the highest priority goes last. Their packages get R classes, which the
     // libraries' code reads its resource IDs from.

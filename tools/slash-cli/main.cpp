@@ -27,6 +27,7 @@
 #include "slash/exporter/commands.hpp"
 #include "slash/exporter/export.hpp"
 #include "slash/exporter/gameplay.hpp"
+#include "slash/exporter/icons.hpp"
 #include "slash/exporter/presets.hpp"
 #include "slash/exporter/sdk.hpp"
 #include "slash/exporter/toolchains.hpp"
@@ -42,6 +43,7 @@
 #include "slash/platform/run.hpp"
 #include "slash/render/device.hpp"
 #include "slash/runtime/gameplay.hpp"
+#include "slash/runtime/icon.hpp"
 #include "slash/runtime/project.hpp"
 #include "slash/server/server.hpp"
 #include "slash/shader_compiler/shader_compiler.hpp"
@@ -590,6 +592,14 @@ int cmd_run(const std::vector<std::string>& args) {
             game,
             {.get = [&] { return platform.value().clipboard_text(); },
              .set = [&](const std::string& text) { platform.value().set_clipboard_text(text); }});
+        // The window shows the project's icon.
+        const auto project = slash::runtime::load_project(session_options.project_root);
+        const slash::render::Image icon = slash::runtime::window_icon(
+            project ? project.value().icon : std::string(), [&](std::string_view path) {
+                return slash::platform::read_file(
+                    slash::runtime::join_path(session_options.project_root, path));
+            });
+        platform.value().set_icon(icon.width, icon.height, icon.pixels);
     }
     // Sound out of the speakers, made after the platform so it closes before SDL quits.
     std::unique_ptr<slash::audio::SdlOutput> audio_output;
@@ -1189,6 +1199,22 @@ int cmd_project(const std::vector<std::string>& args) {
         check(project.value().gui_theme, "/gui/theme", slash::ui::validate_theme);
         check(project.value().audio.bus_layout, "/audio/bus_layout",
               slash::audio::validate_bus_layout);
+        // The icons project.json and the presets name.
+        const auto presets = slash::exporter::load_presets(folder);
+        std::vector<const slash::exporter::Preset*> preset_list;
+        if (presets) {
+            for (const auto& [name, preset] : presets.value()) {
+                preset_list.push_back(&preset);
+            }
+        }
+        for (const slash::exporter::IconProblem& problem :
+             slash::exporter::check_icons(folder, project.value(), preset_list)) {
+            json::Value item;
+            item["file"] = problem.file;
+            item["path"] = problem.path;
+            item["message"] = problem.message;
+            errors.push_back(std::move(item));
+        }
         // SDK packages: their sdk.json files, the presets' "sdks" and the files in the packages.
         // Keys and downloads belong to the machine that exports, which sdk check looks at.
         const json::Value sdks = slash::exporter::check_sdks(folder, "", false, false);

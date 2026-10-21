@@ -17,6 +17,7 @@
 #include "slash/exporter/android.hpp"
 #include "slash/exporter/android_library.hpp"
 #include "slash/exporter/forms.hpp"
+#include "slash/exporter/icons.hpp"
 #include "slash/exporter/maven.hpp"
 #include "slash/exporter/presets.hpp"
 #include "slash/exporter/sdk.hpp"
@@ -1122,6 +1123,44 @@ ExportResult export_game(const ExportOptions& options) {
     if (!stage_data(project_dir, project.value(), data, platform, library_dir, failure)) {
         return fail(failure, log_path);
     }
+    // The platform's icons, made from the preset's icon, the project's or the engine's.
+    if (const std::vector<IconProblem> problems =
+            check_icons(project_dir, project.value(), {&preset});
+        !problems.empty()) {
+        json::Array errors;
+        for (const IconProblem& problem : problems) {
+            json::Value item;
+            item["file"] = problem.file;
+            item["path"] = problem.path;
+            item["message"] = problem.message;
+            errors.push_back(std::move(item));
+        }
+        Failure icon_failure{"validate",
+                             std::to_string(errors.size()) + " problem" +
+                                 (errors.size() == 1 ? "" : "s") + " in the project",
+                             {}};
+        icon_failure.details["errors"] = std::move(errors);
+        return fail(icon_failure, log_path);
+    }
+    auto icon_images = preset_icons(project_dir, project.value(), preset);
+    auto icon_files = icon_images ? platform_icons(platform, icon_images.value().settings)
+                                  : Result<std::vector<IconFile>>(icon_images.error());
+    const fs::path icons = fs::absolute(work / "icons", error);
+    fs::remove_all(icons, error);
+    if (icon_files) {
+        for (const IconFile& file : icon_files.value()) {
+            fs::create_directories((icons / file.path).parent_path(), error);
+            if (auto written = platform::write_file((icons / file.path).string(), file.bytes);
+                !written) {
+                icon_files = written.error();
+                break;
+            }
+        }
+    }
+    if (!icon_files) {
+        return fail({"icons", "could not make the icons: " + icon_files.error().message, {}},
+                    log_path);
+    }
     if (!linked.empty()) {
         // Each download once, kept in sdks_dir() for every project and export after this one.
         log::info("export step", {{"step", "sdks"}});
@@ -1207,6 +1246,7 @@ ExportResult export_game(const ExportOptions& options) {
         sources += fs::absolute(project_dir / source, error).lexically_normal().generic_string();
     }
     configure.push_back("-DSLASH_GAME_SOURCES=" + sources);
+    configure.push_back("-DSLASH_GAME_ICONS=" + icons.generic_string());
     // Arguments that pick the compilers and targets, shared with SDK packages' CMake projects.
     std::vector<std::string> toolchain_args;
     // Games with a providers.json call language models: main() installs engine/ai, and Android
@@ -1420,6 +1460,13 @@ ExportResult export_game(const ExportOptions& options) {
                 return fail(failure, log_path);
             }
         }
+        // The game's own resources: its adaptive icon.
+        fs::copy(icons / "res", tree / "res",
+                 fs::copy_options::recursive | fs::copy_options::overwrite_existing, error);
+        if (error) {
+            return fail({"icons", "could not add the icon to the APK: " + error.message(), {}},
+                        log_path);
+        }
         AndroidResources resources;
         if (!android_libraries.empty()) {
             auto added =
@@ -1442,6 +1489,10 @@ ExportResult export_game(const ExportOptions& options) {
         if (!build_into(work / ("build-" + preset.ios.destination),
                         detail::ios_configure_args(preset.ios, debug, ios_bundle_id), package,
                         !debug, preset.ios.destination)) {
+            return fail(failure, log_path);
+        }
+        if (!detail::compile_ios_icons(icons / "Assets.xcassets", app, preset.ios.destination, work,
+                                       process, failure)) {
             return fail(failure, log_path);
         }
         // A device build's entitlements are its profile's, which must grant what SDKs need.
@@ -1522,6 +1573,9 @@ ExportResult export_game(const ExportOptions& options) {
     out["executable"] = display(executable);
     out["bytes"] = folder_bytes(output);
     out["log"] = display(log_path);
+    // The image the icons were made from: the project's file, or the engine's icon.
+    out["icon"] =
+        icon_images.value().source.empty() ? std::string("default") : icon_images.value().source;
     if (!signed_with.is_null()) {
         out["signed"] = std::move(signed_with);
     }

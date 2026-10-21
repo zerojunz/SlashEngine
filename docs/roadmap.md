@@ -85,7 +85,9 @@ Built in two halves.
       emulator in CI
 - [x] iOS exports: an `.app` for the Simulator, tested there in CI, and an `.ipa` for devices
       signed with the team's identity and provisioning profile
-- [ ] App icons from one image for every platform, which the App Store and Google Play require
+- [x] App icons from one image for every platform, which the App Store and Google Play require:
+      `project.json`'s `icon` becomes an `.icns`, an `.ico` resource, an Android adaptive icon,
+      an iOS asset catalog and a favicon, and the window's icon
 - [x] `slash-cli toolchain install`: pinned open-source cross toolchains (llvm-mingw and Debian
       11 sysroots with glibc 2.31), so one Mac builds Windows and Linux x86_64 and arm64 games,
       tested in CI by running them on Windows and Ubuntu 20.04

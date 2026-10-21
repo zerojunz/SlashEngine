@@ -340,6 +340,16 @@ Android (on an emulator) and iOS (in the Simulator) on every PR, cross-exports W
 (x86_64 and arm64) from macOS and runs them on Windows and Ubuntu 20.04, and `slash-cli init` writes
 the per-platform workflow into new games.
 
+App icons come from one square image, `project.json`'s `icon` (Godot's
+`application/config/icon`), or the engine's own drawn in code (`runtime::default_icon`).
+`tools/exporter/src/icons.cpp` resizes it with `render::resize_image` (Lanczos, as Godot's) into
+each platform's files: an `.icns` (macOS, an opaque icon drawn into Apple's rounded square), an
+`.ico` resource (Windows), an adaptive icon (Android, `android.icon_foreground` and
+`icon_background` in presets), an asset catalog compiled with `actool` (iOS, flattened onto
+`ios.icon_background`) and a favicon (web). A preset's `icon` replaces the project's;
+`check_icons` backs exports and `$cli project validate`. Windowed games and `slash-cli run` show
+it with `Platform::set_icon`. `examples/app-icons` prints every platform's files.
+
 Closed vendor SDKs (ads, stores, Steamworks) come in as SDK packages, as Godot's Android and
 iOS plugins: a folder with an `sdk.json` (`$cli schema sdk`; `tools/exporter/src/sdk.cpp`) naming
 per platform the libraries, frameworks, defines, files, Info.plist, entitlement and Android

@@ -38,6 +38,11 @@ namespace slash::render {
                                                               std::uint32_t height,
                                                               std::span<const std::uint8_t> texels);
 
+// The image resized to width by height pixels with a Lanczos filter of three lobes, as Godot's
+// Image::resize with INTERPOLATE_LANCZOS, with colors weighted by alpha so transparent pixels
+// don't darken the edges. The same pixels on every machine. Blocks are left out.
+[[nodiscard]] Image resize_image(const Image& image, std::uint32_t width, std::uint32_t height);
+
 // Encodes an image as a PNG file's bytes.
 [[nodiscard]] Result<std::string> encode_png(const Image& image);
 
