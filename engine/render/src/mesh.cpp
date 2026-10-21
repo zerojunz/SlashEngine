@@ -370,7 +370,7 @@ MeshSceneUniforms mesh_scene_uniforms(const Scene3D& scene) {
                         srgb_to_linear_exact(light.color[2]) * scaled, specular};
         const Vec2 cone = slash::cos_sin(light.spot_angle * (kPi / 180.0F));
         packed.params = {light.attenuation, cone.x, 1.0F / light.spot_attenuation,
-                         same_bits<float>(light.cull_mask)};
+                         static_cast<float>(light.cull_mask & kRenderLayers)};
     }
     return out;
 }
@@ -560,7 +560,7 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
     const auto count = static_cast<std::size_t>(scene.camera[3]);
     for (std::size_t i = 0; i < count && i < kMaxLights3D; ++i) {
         const MeshLightUniforms& light = scene.lights.at(i);
-        if ((same_bits<std::uint32_t>(light.params[3]) & surface.options[2]) == 0) {
+        if ((static_cast<std::uint32_t>(light.params[3]) & surface.options[2]) == 0) {
             continue;
         }
         const float type = light.direction[3];

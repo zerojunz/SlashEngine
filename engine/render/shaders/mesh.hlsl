@@ -81,7 +81,7 @@ struct Light {
     float4 position;  // xyz, then 1 / range
     float4 direction; // toward a directional light, the way a spot light shines; then the type
     float4 color;     // linear, times energy and pi; then the specular amount
-    float4 params;    // attenuation, the cone's cosine, 1 / spot attenuation, the cull mask's bits
+    float4 params;    // attenuation, the cone's cosine, 1 / spot attenuation, the cull mask
 };
 
 static const float kDirectional = 0.0;
@@ -216,7 +216,7 @@ float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
     uint count = (uint)camera.w;
     for (uint i = 0u; i < count; ++i) {
         Light light = lights[i];
-        if ((asuint(light.params.w) & options.z) == 0u) {
+        if (((uint)light.params.w & options.z) == 0u) {
             continue;
         }
         float type = light.direction.w;
