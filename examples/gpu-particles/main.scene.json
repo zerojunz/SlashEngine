@@ -1,5 +1,16 @@
 {
   "entities": {
+    "burst": {
+      "components": {
+        "GPUParticles2D": {
+          "amount": 64,
+          "lifetime": 0.8,
+          "process_material": "burst.process_material.json",
+          "texture": "dot.png"
+        },
+        "Transform2D": {}
+      }
+    },
     "fire": {
       "components": {
         "GPUParticles2D": {
@@ -37,6 +48,19 @@
         },
         "Transform2D": {
           "position": [130.0, 20.0]
+        }
+      }
+    },
+    "rockets": {
+      "components": {
+        "GPUParticles2D": {
+          "amount": 4,
+          "process_material": "rockets.process_material.json",
+          "sub_emitter": "burst",
+          "texture": "dot.png"
+        },
+        "Transform2D": {
+          "position": [30.0, 175.0]
         }
       }
     },

@@ -884,6 +884,10 @@ int cmd_scene_validate(const std::string& path) {
         if (errors.empty() && !prefab) {
             errors = slash::ui::check_scene(registry, parsed.value(), prefab_reader(path));
         }
+        if (errors.empty() && !prefab) {
+            errors =
+                slash::canvas::check_sub_emitters(registry, parsed.value(), prefab_reader(path));
+        }
     }
     if (parsed && !frames && !material && !process && !animation && !tileset && !font && !theme &&
         !stream && !buses && !replay && !test && !score) {

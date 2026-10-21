@@ -1,0 +1,21 @@
+{
+  "color_ramp": [
+    {
+      "color": [1, 0.8, 0.95, 1],
+      "offset": 0
+    },
+    {
+      "color": [0.6, 0.2, 1, 0],
+      "offset": 1
+    }
+  ],
+  "damping_max": 30,
+  "damping_min": 20,
+  "format": 1,
+  "gravity": [0, 40],
+  "initial_velocity_max": 50,
+  "initial_velocity_min": 30,
+  "scale_max": 1.5,
+  "scale_min": 1,
+  "spread": 180
+}

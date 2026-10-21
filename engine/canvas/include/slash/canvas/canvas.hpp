@@ -313,23 +313,34 @@ private:
         bool seen = false;
     };
     // Steps to run on a GPUParticles2D's system before it draws: the first one, made to clear
-    // the system for a system made anew, then the rest.
+    // the system for a system made anew, then the rest. A chain of sub-emitters' root's job runs
+    // with the next links - 1 jobs, its sub-emitters'.
     struct ParticleJob {
         render::ParticlesId particles = render::ParticlesId::None;
         const render::ParticleProcess* process = nullptr;
         std::optional<render::ParticleStep> first;
         std::span<const render::ParticleStep> rest;
         std::span<const render::ParticleShape> shapes; // that the steps name
+        std::size_t links = 1;
     };
     // The steps a GPUParticles2D's system hasn't run, none if it has run them all. The system is
     // made again when the emitter started over or this renderer missed steps no longer kept;
     // then it runs every step kept, the first clearing it. Fails if it can't be made.
     Result<std::optional<ParticleJob>> particle_job(GpuSystem& system, const ParticleSteps& kept,
                                                     const render::ParticleProcess* process);
+    // The jobs of a chain of sub-emitters (particle_chain), each with its process material, as
+    // particle_job makes one emitter's: the systems are all made again if any is. Fails if one
+    // can't be made.
+    Result<void> chain_jobs(std::span<const ParticleChainMember> chain,
+                            std::span<const render::ParticleProcess* const> processes,
+                            std::vector<ParticleJob>& jobs);
     // Brings a system's CPU copy up to its steps kept, as the device runs them, and returns how
     // many of its particles are live.
     static std::size_t mirror(GpuSystem& system, const ParticleSteps& kept,
                               const render::ParticleProcess& process);
+    // Brings a chain's CPU copies up to their steps kept, as mirror does one system's.
+    void mirror_chain(std::span<const ParticleChainMember> chain,
+                      std::span<const render::ParticleProcess* const> processes);
     // Runs the steps, before the systems draw. If they can't run, the systems are made again
     // next frame.
     Result<void> run_particle_jobs(std::span<const ParticleJob> jobs);

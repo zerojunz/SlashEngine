@@ -158,6 +158,31 @@ constexpr std::string_view kBusy = R"({
     "inherit_velocity_ratio": 0.5
 })";
 
+// Rockets that fly up and burst into their sub-emitter's particles where they end.
+constexpr std::string_view kRocket = R"({
+    "format": 1,
+    "direction": [0, -1],
+    "spread": 20,
+    "gravity": [0, 30],
+    "initial_velocity_min": 50,
+    "initial_velocity_max": 70,
+    "lifetime_randomness": 0.2,
+    "sub_emitter_mode": "at_end",
+    "sub_emitter_amount_at_end": 6
+})";
+
+// Sparks that go every way from where they start.
+constexpr std::string_view kSpark = R"({
+    "format": 1,
+    "spread": 180,
+    "gravity": [0, 40],
+    "initial_velocity_min": 20,
+    "initial_velocity_max": 40,
+    "scale_min": 2,
+    "scale_max": 3,
+    "color": [1, 0.8, 0.3, 1]
+})";
+
 std::string first_error(std::string_view text) {
     const auto errors = canvas::validate_process_material(parse(text));
     return errors.empty() ? "(valid)" : errors.front().path + ": " + errors.front().message;
@@ -601,6 +626,275 @@ TEST_CASE("the canvas runs and draws GPU particles the same on every device") {
         std::size_t different = 0;
         for (std::size_t i = 0; i < image.pixels.size(); ++i) {
             different += std::abs(int{image.pixels[i]} - int{expected.pixels[i]}) > 12 ? 1U : 0U;
+        }
+        CHECK(different < (lit / 4) + 8);
+    }
+}
+
+TEST_CASE("a GPUParticles2D's sub_emitter takes the particles it starts, stepping with it") {
+    auto process = canvas::parse_process_material(
+        parse(R"({"format": 1, "sub_emitter_mode": "at_end", "sub_emitter_frequency": 6,
+                  "sub_emitter_amount_at_end": 5, "sub_emitter_amount_at_collision": 2,
+                  "sub_emitter_amount_at_start": 3, "sub_emitter_keep_velocity": true})"));
+    REQUIRE(process.ok());
+    CHECK(process.value().sub_emitter_mode == render::SubEmitterMode::AtEnd);
+    CHECK(process.value().sub_emitter_frequency == 6.0F);
+    CHECK(process.value().sub_emitter_amount_at_end == 5);
+    CHECK(process.value().sub_emitter_amount_at_collision == 2);
+    CHECK(process.value().sub_emitter_amount_at_start == 3);
+    CHECK(process.value().sub_emitter_keep_velocity);
+    CHECK(render::ParticleProcess{}.sub_emitter_mode == render::SubEmitterMode::Disabled);
+    CHECK(first_error(R"({"format": 1, "sub_emitter_mode": "sometimes"})")
+              .starts_with("/sub_emitter_mode"));
+    CHECK(first_error(R"({"format": 1, "sub_emitter_frequency": 0})")
+              .starts_with("/sub_emitter_frequency"));
+    CHECK(first_error(R"({"format": 1, "sub_emitter_amount_at_end": 0})")
+              .starts_with("/sub_emitter_amount_at_end"));
+
+    Scene scene;
+    const entt::entity sparks = scene.create("sparks", R"({"Transform2D": {"position": [500, 0]},
+        "GPUParticles2D": {"amount": 64, "lifetime": 0.5, "speed_scale": 2,
+                           "one_shot": true}})");
+    const entt::entity rockets = scene.create("rockets", R"({"Transform2D": {"position": [50, 50]},
+        "GPUParticles2D": {"amount": 8, "lifetime": 1, "sub_emitter": "sparks"}})");
+    // Another naming the same sub-emitter after the first, by ID, runs on its own.
+    const entt::entity zebra = scene.create("zebra", R"({"Transform2D": {},
+        "GPUParticles2D": {"amount": 4, "sub_emitter": "sparks"}})");
+    scene.step(3);
+    const std::vector<canvas::ParticleChainMember> chain =
+        canvas::particle_chain(scene.world, sparks);
+    REQUIRE(chain.size() == 2);
+    CHECK(chain[0].entity == rockets);
+    CHECK(chain[1].entity == sparks);
+    CHECK(chain[0].steps.link == 0);
+    CHECK(chain[1].steps.link == 1);
+    CHECK(chain[1].steps.links == 2);
+    CHECK(scene.steps(sparks).links == 2);
+    CHECK(scene.steps(zebra).links == 1);
+    CHECK(canvas::particle_chain(scene.world, zebra).empty());
+    REQUIRE(chain[0].steps.steps.size() == chain[1].steps.steps.size());
+    CHECK(chain[0].steps.first == chain[1].steps.first);
+    // A step of the rockets is one of the sparks, at its speed against theirs, emitting only
+    // what the rockets start: its own emitting and one_shot go unused.
+    for (std::size_t i = 0; i < chain[0].steps.steps.size(); ++i) {
+        const render::ParticleStep& rocket = chain[0].steps.steps[i];
+        const render::ParticleStep& spark = chain[1].steps.steps[i];
+        CHECK(spark.delta == doctest::Approx(rocket.delta * 2.0));
+        CHECK(spark.lifetime == 0.5F);
+        CHECK(spark.clear == rocket.clear);
+        CHECK_FALSE(spark.emitting);
+    }
+    scene.step(120);
+    CHECK(scene.count("finished") == 0);
+    CHECK(scene.steps(sparks).steps.back().delta ==
+          doctest::Approx(2.0 * scene.steps(rockets).steps.back().delta));
+
+    // The link that would close a loop is left out.
+    const entt::entity loop_a = scene.create("loop_a", R"({"GPUParticles2D": {}})");
+    const entt::entity loop_b =
+        scene.create("loop_b", R"({"GPUParticles2D": {"sub_emitter": "loop_a"}})");
+    scene.emitter(loop_a).sub_emitter = loop_b;
+    // Eight in a chain at most: the ninth runs on its own.
+    std::vector<entt::entity> line;
+    for (int i = 9; i >= 1; --i) {
+        const std::string id = "line" + std::to_string(i);
+        const std::string sub =
+            i == 9 ? "" : R"("sub_emitter": "line)" + std::to_string(i + 1) + "\"";
+        line.insert(line.begin(), scene.create(id, R"({"GPUParticles2D": {)" + sub + "}}"));
+    }
+    scene.step();
+    CHECK(canvas::particle_chain(scene.world, loop_b).size() == 2);
+    CHECK(scene.steps(loop_a).link == 0);
+    CHECK(scene.steps(loop_b).link == 1);
+    CHECK(scene.steps(line[0]).links == 8);
+    CHECK(scene.steps(line[7]).link == 7);
+    CHECK(scene.steps(line[8]).links == 1);
+
+    // Each sub_emitter left out, and why.
+    const entt::entity self = scene.create("self", R"({"GPUParticles2D": {}})");
+    scene.emitter(self).sub_emitter = self;
+    scene.create("rock", R"({"Transform2D": {}})");
+    scene.create("pebbles", R"({"GPUParticles2D": {"sub_emitter": "rock"}})");
+    const std::vector<canvas::SubEmitterProblem> problems = canvas::check_sub_emitters(scene.world);
+    REQUIRE(problems.size() == 5);
+    CHECK(problems[0].id == "line8");
+    CHECK(problems[0].message == "a chain of sub-emitters has at most 8 emitters");
+    CHECK(problems[1].id == "loop_b");
+    CHECK(problems[1].message == "\"loop_a\" leads back to this emitter through its sub-emitters");
+    CHECK(problems[2].id == "pebbles");
+    CHECK(problems[2].message == "\"rock\" has no GPUParticles2D");
+    CHECK(problems[3].id == "self");
+    CHECK(problems[3].message == "an emitter can't be its own sub-emitter");
+    CHECK(problems[4].id == "zebra");
+    CHECK(problems[4].message == "\"sparks\" is already the sub-emitter of \"rockets\"");
+
+    // In a scene file, at the field.
+    const json::Value file = parse(R"({"format": 1, "entities": {
+        "a": {"components": {"GPUParticles2D": {"sub_emitter": "c"}}},
+        "b": {"components": {"GPUParticles2D": {"sub_emitter": "c"}}},
+        "c": {"components": {"GPUParticles2D": {}}}}})");
+    const std::vector<json::ValidationError> errors =
+        canvas::check_sub_emitters(scene.components, file, nullptr);
+    REQUIRE(errors.size() == 1);
+    CHECK(errors[0].path == "/entities/b/components/GPUParticles2D/sub_emitter");
+    CHECK(errors[0].message == "\"c\" is already the sub-emitter of \"a\"");
+    CHECK(canvas::check_sub_emitters(scene.components, parse(R"({"format": 1, "entities": {}})"),
+                                     nullptr)
+              .empty());
+}
+
+TEST_CASE("the steps a chain of sub-emitters keeps make what running every step makes") {
+    Scene scene;
+    const auto rocket = canvas::parse_process_material(parse(kRocket));
+    const auto spark = canvas::parse_process_material(parse(kBusy));
+    REQUIRE(rocket.ok());
+    REQUIRE(spark.ok());
+    const entt::entity sparks = scene.create("sparks", R"({"Transform2D": {},
+        "GPUParticles2D": {"amount": 40, "lifetime": 0.4, "speed_scale": 1.3,
+                           "randomness": 0.3}})");
+    const entt::entity rockets = scene.create("rockets", R"({"Transform2D": {"position": [50, 50]},
+        "GPUParticles2D": {"amount": 6, "lifetime": 0.9, "randomness": 0.5,
+                           "sub_emitter": "sparks"}})");
+    const std::array<const render::ParticleProcess*, 2> processes{&rocket.value(), &spark.value()};
+    std::array<std::vector<render::Particle>, 2> every;
+    std::uint64_t next = 0;
+    std::uint64_t serial = 0;
+    for (int tick = 0; tick < 300; ++tick) {
+        // It moves, stops emitting for a while and speeds up, and so do its sparks.
+        scene.world.ecs().get<world::Transform2D>(rockets).position.x =
+            50.0F + static_cast<float>(tick % 37);
+        if (tick == 100) {
+            scene.emitter(rockets).emitting = false;
+        }
+        if (tick == 130) {
+            scene.emitter(rockets).emitting = true;
+        }
+        if (tick == 200) {
+            scene.emitter(rockets).speed_scale = 1.7F;
+            scene.emitter(sparks).speed_scale = 0.8F;
+        }
+        scene.step();
+        const std::vector<canvas::ParticleChainMember> chain =
+            canvas::particle_chain(scene.world, rockets);
+        REQUIRE(chain.size() == 2);
+        const canvas::ParticleSteps& root = chain[0].steps;
+        std::array<canvas::ChainRun, 2> runs;
+        for (std::size_t k = 0; k < 2; ++k) {
+            runs[k] = {.amount = chain[k].steps.amount,
+                       .process = processes[k],
+                       .steps = chain[k].steps.steps,
+                       .shapes = {}};
+        }
+        if (root.serial != serial || next < root.first) {
+            CHECK((tick == 0 || tick > 100));
+            auto all = canvas::run_chain(runs);
+            every[0] = std::move(all[0]);
+            every[1] = std::move(all[1]);
+            serial = root.serial;
+        } else {
+            std::array<render::ParticleChainLink, 2> links;
+            for (std::size_t k = 0; k < 2; ++k) {
+                links[k] = {.particles = every[k],
+                            .process = processes[k],
+                            .steps = chain[k].steps.steps.subspan(
+                                static_cast<std::size_t>(next - root.first)),
+                            .shapes = {}};
+            }
+            render::process_particle_chain(links);
+        }
+        next = root.first + root.steps.size();
+        if (tick % 25 == 24) {
+            CAPTURE(tick);
+            const auto replayed = canvas::run_chain(runs);
+            CHECK(live_bytes(replayed[0]) == live_bytes(every[0]));
+            CHECK(live_bytes(replayed[1]) == live_bytes(every[1]));
+        }
+    }
+    CHECK(std::ranges::any_of(every[1], [](const render::Particle& p) { return p.active(); }));
+    // gpu_particles runs a sub-emitter with its chain.
+    scene.files.files["rocket.process_material.json"] = std::string(kRocket);
+    scene.files.files["busy.process_material.json"] = std::string(kBusy);
+    scene.emitter(rockets).process_material = "rocket.process_material.json";
+    scene.emitter(sparks).process_material = "busy.process_material.json";
+    auto live = canvas::gpu_particles(scene.world, sparks, scene.assets);
+    REQUIRE(live.ok());
+    CHECK(live.value().size() ==
+          static_cast<std::size_t>(std::ranges::count_if(
+              every[1], [](const render::Particle& p) { return p.active(); })));
+    scene.emitter(rockets).process_material = "missing.process_material.json";
+    CHECK_FALSE(canvas::gpu_particles(scene.world, sparks, scene.assets).ok());
+}
+
+TEST_CASE("the canvas draws chains of sub-emitters the same however late it starts") {
+    Scene scene;
+    scene.files.files["rocket.process_material.json"] = std::string(kRocket);
+    scene.files.files["spark.process_material.json"] = std::string(kSpark);
+    scene.create("sparks", R"({"Transform2D": {},
+                               "GPUParticles2D": {"amount": 48, "lifetime": 0.5,
+                                                  "process_material": "spark.process_material.json"}})");
+    scene.create("rockets", R"({"Transform2D": {"position": [24, 44]},
+                                "GPUParticles2D": {"amount": 4, "lifetime": 0.6,
+                                                   "sub_emitter": "sparks",
+                                                   "process_material": "rocket.process_material.json"}})");
+    constexpr std::uint32_t kSize = 48;
+    const auto draw_with = [&](canvas::CanvasRenderer& renderer, render::RenderDevice& device,
+                               canvas::FrameContents* contents) {
+        auto target = device.create_texture({.width = kSize,
+                                             .height = kSize,
+                                             .filter = render::Filter::Nearest,
+                                             .render_target = true});
+        REQUIRE(target.ok());
+        canvas::CanvasOptions options;
+        options.target = target.value();
+        options.width = static_cast<float>(kSize);
+        options.height = static_cast<float>(kSize);
+        options.contents = contents;
+        REQUIRE(renderer.draw(scene.world, options).ok());
+        auto image = device.read_texture(target.value());
+        REQUIRE(image.ok());
+        device.destroy_texture(target.value());
+        return std::move(image).value();
+    };
+    auto software = render::create_software_device();
+    canvas::CanvasRenderer steady(*software, scene.assets);
+    for (int i = 0; i < 70; ++i) {
+        scene.step();
+        (void)draw_with(steady, *software, nullptr);
+    }
+    canvas::FrameContents contents;
+    const render::Image expected = draw_with(steady, *software, &contents);
+    std::map<std::string, std::size_t> counts;
+    for (const canvas::FrameItem& item : contents.items) {
+        counts[std::string(scene.world.id_of(item.entity))] = item.count;
+    }
+    CHECK(counts["rockets"] > 0);
+    CHECK(counts["sparks"] > 6);
+    CHECK(steady.particles_drawn() == 52);
+    auto late_device = render::create_software_device();
+    canvas::CanvasRenderer late(*late_device, scene.assets);
+    CHECK(draw_with(late, *late_device, nullptr).pixels == expected.pixels);
+
+    // Hidden, the sparks still take the rockets' particles, and show them once shown again.
+    scene.emitter(scene.world.find("sparks")).visible = false;
+    for (int i = 0; i < 20; ++i) {
+        scene.step();
+        (void)draw_with(steady, *software, nullptr);
+    }
+    scene.emitter(scene.world.find("sparks")).visible = true;
+    const render::Image shown = draw_with(steady, *software, nullptr);
+    auto fresh_device = render::create_software_device();
+    canvas::CanvasRenderer fresh(*fresh_device, scene.assets);
+    CHECK(draw_with(fresh, *fresh_device, nullptr).pixels == shown.pixels);
+
+    for (auto& device : slash::test::hardware_devices()) {
+        CAPTURE(render::backend_name(device->backend()));
+        canvas::CanvasRenderer renderer(*device, scene.assets);
+        const render::Image image = draw_with(renderer, *device, nullptr);
+        std::size_t different = 0;
+        std::size_t lit = 0;
+        for (std::size_t i = 0; i < image.pixels.size(); ++i) {
+            different += std::abs(int{image.pixels[i]} - int{shown.pixels[i]}) > 12 ? 1U : 0U;
+            lit += shown.pixels[i] > 60 ? 1U : 0U;
         }
         CHECK(different < (lit / 4) + 8);
     }

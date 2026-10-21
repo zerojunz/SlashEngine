@@ -1833,7 +1833,10 @@ collision_mode = 1
 collision_bounce = 0.5
 collision_friction = 1.5
 collision_use_scale = true
-sub_emitter_mode = 1
+sub_emitter_mode = 2
+sub_emitter_frequency = 6.0
+sub_emitter_amount_at_end = 5
+sub_emitter_keep_velocity = true
 
 [sub_resource type="CanvasItemMaterial" id="CanvasItemMaterial_1"]
 particles_animation = true
@@ -1854,6 +1857,7 @@ seed = 4000000000
 draw_order = 0
 collision_base_size = 3.0
 visibility_rect = Rect2(-50, -50, 100, 100)
+sub_emitter = NodePath("../Smoke")
 
 [node name="Smoke" type="GPUParticles2D" parent="."]
 process_material = ExtResource("2_smoke")
@@ -1891,11 +1895,13 @@ trail_enabled = true
         "collision_mode": "rigid",
         "collision_bounce": 0.5,
         "collision_friction": 1.0,
-        "collision_use_scale": true})"));
+        "collision_use_scale": true,
+        "sub_emitter_mode": "at_end",
+        "sub_emitter_frequency": 6.0,
+        "sub_emitter_amount_at_end": 5,
+        "sub_emitter_keep_velocity": true})"));
     CHECK(unsupported(plan.report, "ParticleProcessMaterial.collision_mode").is_null());
-    CHECK(unsupported(plan.report, "ParticleProcessMaterial.sub_emitter_mode")
-              .find("why")
-              ->as_string() == "sub-emitters are on the roadmap");
+    CHECK(unsupported(plan.report, "ParticleProcessMaterial.sub_emitter_mode").is_null());
     CHECK(parse(files.at("godot/smoke.process_material.json")) ==
           parse(R"({"format": 1, "spread": 180.0, "initial_velocity_max": 10.0,
                     "gravity": [0.0, 98.0]})"));
@@ -1906,11 +1912,11 @@ trail_enabled = true
         "amount": 32, "process_material": "godot/level_particle_process_material_1.process_material.json",
         "texture": "godot/spark.png", "lifetime": 0.8, "use_fixed_seed": true,
         "seed": -294967296, "draw_order": "index", "collision_base_size": 3.0, "hframes": 4,
-        "vframes": 2, "anim_loop": true})"));
+        "vframes": 2, "anim_loop": true, "sub_emitter": "smoke"})"));
     CHECK(*entity(files, level, "smoke").find("GPUParticles2D") ==
           parse(R"({"process_material": "godot/smoke.process_material.json"})"));
     CHECK(unsupported(plan.report, "GPUParticles2D.trail_enabled").find("why")->as_string() ==
-          "trails and sub-emitters are on the roadmap");
+          "trails are on the roadmap");
     CHECK(unsupported(plan.report, "resource ParticleProcessMaterial").is_null());
     fs::remove_all(project);
 }

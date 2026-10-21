@@ -179,6 +179,14 @@ valid, and themes, theme type variations, fonts and textures load:
 {"errors":[{"message":"a control can't be its own child","path":"/entities/body/components/Control/children/0"},{"message":"Label has no colors item \"font_colour\"; did you mean \"font_color\"?","path":"/entities/hint/components/Control/theme_override_colors/font_colour"}],"valid":false}
 ```
 
+Each `GPUParticles2D`'s [`sub_emitter`](scene-format.md#sub-emitters) must name another emitter
+that no emitter whose ID sorts first already has, without looping back or making a chain of more
+than 8:
+
+```json
+{"errors":[{"message":"\"sparks\" is already the sub-emitter of \"rockets\"","path":"/entities/zebra/components/GPUParticles2D/sub_emitter"}],"valid":false}
+```
+
 A theme file's types must be control types or variations of them, with the items those types
 have:
 

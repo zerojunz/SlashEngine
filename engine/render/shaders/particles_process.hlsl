@@ -1,9 +1,26 @@
 // Runs steps on a particle system, a thread a particle: Godot's particles shader and the code
-// ParticleProcessMaterial generates for 2D. Its CPU twin is process_particles in
+// ParticleProcessMaterial generates for 2D. Its CPU twin is process_particle_chain in
 // src/particles.cpp, which this follows line for line; a change to one goes in the other. The
 // process material and steps are words laid out as src/particle_layout.hpp says.
+//
+// In a chain of sub-emitters it runs one step of one system: what the particles start in the
+// next system goes to target, and a sub-emitter takes what the system before started from
+// source, after particles_emit.hlsl has numbered it.
 
 #include "particles.hlsl"
+
+// Two buffers read and two written, so Metal's indexes follow on from the uniforms'.
+#ifdef SLASH_MSL
+#define READ_ONLY_DATA register(t1)
+#define READ_ONLY_SOURCE register(t2)
+#define READ_WRITE_PARTICLES register(u3)
+#define READ_WRITE_TARGET register(u4)
+#else
+#define READ_ONLY_DATA register(t0, space0)
+#define READ_ONLY_SOURCE register(t1, space0)
+#define READ_WRITE_PARTICLES register(u0, space1)
+#define READ_WRITE_TARGET register(u1, space1)
+#endif
 
 cbuffer Params : UNIFORMS {
     uint amount;
@@ -11,10 +28,14 @@ cbuffer Params : UNIFORMS {
     uint steps_offset;
     uint step_count;
     uint reset; // clears every particle first
+    uint chain; // kChainTakes and kChainEmits
 };
 
-StructuredBuffer<uint4> data : READ_ONLY;
-RWStructuredBuffer<Particle> particles : READ_WRITE;
+StructuredBuffer<uint4> data : READ_ONLY_DATA;
+// The emissions of the system before, for a sub-emitter, and of this system, for the next.
+StructuredBuffer<uint4> source : READ_ONLY_SOURCE;
+RWStructuredBuffer<Particle> particles : READ_WRITE_PARTICLES;
+RWStructuredBuffer<uint4> target : READ_WRITE_TARGET;
 
 static const float kPi = 3.14159;
 static const float kDegreesToRadians = kPi / 180.0;
@@ -22,10 +43,11 @@ static const float kDegreesToRadians = kPi / 180.0;
 // Where the process material's parts are, in words (src/particle_layout.hpp).
 static const uint kCurveWords = 16u;
 static const uint kCollisionAt = 23u;
-static const uint kCurvesAt = 24u;
-static const uint kGradientsAt = 312u;
+static const uint kSubEmitterAt = 24u;
+static const uint kCurvesAt = 25u;
+static const uint kGradientsAt = 313u;
 static const uint kGradientWords = 40u;
-static const uint kPointsAt = 392u;
+static const uint kPointsAt = 393u;
 // A step's words.
 static const uint kStepWords = 9u;
 // Curves after the parameters'.
@@ -59,6 +81,18 @@ static const uint kTurbulenceDisplacement = 14u;
 // ParticleCollision.
 static const uint kCollisionRigid = 1u;
 static const uint kCollisionHideOnContact = 2u;
+// SubEmitterMode.
+static const uint kSubEmitterConstant = 1u;
+static const uint kSubEmitterAtEnd = 2u;
+static const uint kSubEmitterAtCollision = 3u;
+static const uint kSubEmitterAtStart = 4u;
+// What a chain's step does: a sub-emitter takes from source, a system before another emits to
+// target. An emission buffer is a header {base, count, odd, particles}, then three words a
+// particle of the system that wrote it: {count, offset, keep_velocity, 0}, {origin, velocity}
+// and its basis (src/particle_layout.hpp).
+static const uint kChainTakes = 1u;
+static const uint kChainEmits = 2u;
+static const uint kEmissionWords = 3u;
 
 struct Step {
     float4 emission_a; // emission[0..3]
@@ -137,6 +171,11 @@ uint point_count() {
 
 float mix(float a, float b, float t) {
     return (a * (1.0 - t)) + (b * t);
+}
+
+// GLSL's mod: x - y * floor(x / y).
+float mod(float x, float y) {
+    return x - (y * floor(x / y));
 }
 
 float2 mix(float2 a, float2 b, float t) {
@@ -484,7 +523,10 @@ float2 initial_position(Display display, inout uint seed) {
                   (pos.y * offset_scale.w) + offset_scale.y);
 }
 
-void start(inout Particle particle, Step step, uint number, inout bool active) {
+// A sub-emitter's particle starts where the particle that started it is, whose words in source
+// start at from.
+void start(inout Particle particle, Step step, uint number, bool taken, uint from,
+           inout bool active) {
     uint seed = hash(number + 1u + step.seed);
     Display display;
     Dynamics dynamics;
@@ -497,19 +539,30 @@ void start(inout Particle particle, Step step, uint number, inout bool active) {
     particle.custom = float4(dynamics.angle, 0.0, 0.0, display.lifetime);
     particle.userdata.w = 0.0;
     particle.color = display.color;
-    float2 origin = initial_position(display, seed);
-    if (turbulence_enabled()) {
-        float displacement = random_param(kTurbulenceDisplacement, seed);
-        float3 direction = noise_direction(step, origin);
-        origin = origin + (direction.xy * displacement);
+    float2 origin;
+    if (taken) {
+        origin = asfloat(source[from + 1u]).xy;
+        particle.basis = asfloat(source[from + 2u]);
+    } else {
+        origin = initial_position(display, seed);
+        if (turbulence_enabled()) {
+            float displacement = random_param(kTurbulenceDisplacement, seed);
+            float3 direction = noise_direction(step, origin);
+            origin = origin + (direction.xy * displacement);
+        }
+        particle.basis = step.emission_a;
+        origin = transform_point(step, origin);
     }
-    particle.basis = step.emission_a;
-    origin = transform_point(step, origin);
-    float2 velocity = random_direction(seed, word(3u).z) * dynamics.initial_velocity;
-    if (shape() == kShapeDirectedPoints && from_points()) {
-        float2 normal = word(kPointsAt + (emission_point(display) * 2u)).zw;
-        velocity = float2((velocity.x * normal.x) + (velocity.y * normal.y),
-                          (velocity.x * normal.y) - (velocity.y * normal.x));
+    float2 velocity;
+    if (taken && source[from].z != 0u) {
+        velocity = asfloat(source[from + 1u]).zw;
+    } else {
+        velocity = random_direction(seed, word(3u).z) * dynamics.initial_velocity;
+        if (shape() == kShapeDirectedPoints && from_points()) {
+            float2 normal = word(kPointsAt + (emission_point(display) * 2u)).zw;
+            velocity = float2((velocity.x * normal.x) + (velocity.y * normal.y),
+                              (velocity.x * normal.y) - (velocity.y * normal.x));
+        }
     }
     velocity = transform_vector(step, velocity);
     velocity = velocity + (step.emitter_velocity * word(3u).w);
@@ -656,15 +709,41 @@ float collision_size(Particle particle, Step step, bool started) {
     return step.collision_size * ((x + y + z) * 0.33333333333);
 }
 
+// How many particles a particle starts in the next system of a chain in a step, as the code
+// Godot generates for each sub_emitter_mode, with its age before the step and after.
+uint emission_count(Step step, float delta, float before, Particle particle, bool collided) {
+    uint4 sub = data[material_offset + kSubEmitterAt];
+    if (sub.x == kSubEmitterConstant) {
+        float interval = asfloat(sub.y);
+        float from = step.interp_to_end == 0.0 ? before * step.lifetime
+                                               : (particle.custom.y * step.lifetime) - delta;
+        float rem = interval - mod(from, interval);
+        return delta >= rem ? 1u : 0u;
+    }
+    if (sub.x == kSubEmitterAtEnd) {
+        return (particle.custom.y / particle.custom.w * step.lifetime) > step.lifetime - delta
+                   ? sub.z
+                   : 0u;
+    }
+    if (sub.x == kSubEmitterAtCollision) {
+        return collided ? sub.z : 0u;
+    }
+    if (sub.x == kSubEmitterAtStart) {
+        return before == 0.0 ? sub.z : 0u;
+    }
+    return 0u;
+}
+
 void process(inout Particle particle, Step step, uint number, float delta, Contact contact,
-             inout bool active) {
+             inout uint emitted, inout bool active) {
     uint seed = hash(number + 1u + step.seed);
     Display display;
     Dynamics dynamics;
     Physical physical;
     initial_params(seed, display, dynamics, physical);
 
-    bool first_frame = particle.custom.y == 0.0;
+    float before = particle.custom.y;
+    bool first_frame = before == 0.0;
     particle.custom.y += delta / step.lifetime;
     particle.custom.y = mix(particle.custom.y, 1.0, step.interp_to_end);
     float life = particle.custom.y / display.lifetime;
@@ -773,6 +852,9 @@ void process(inout Particle particle, Step step, uint number, float delta, Conta
     }
     particle.basis = float4(x_axis * scale, y_axis * scale);
     particle.custom.z = display.animation_offset + (life * display.animation_speed);
+    if ((chain & kChainEmits) != 0u) {
+        emitted = emission_count(step, delta, before, particle, collided);
+    }
     if (particle.custom.y > particle.custom.w) {
         active = false;
     }
@@ -789,14 +871,47 @@ Particle empty_particle() {
     return particle;
 }
 
+// The particle of the system before whose emissions include the one numbered rank: the last whose
+// first is at or before it.
+uint emitter_of(uint rank) {
+    uint low = 0u;
+    uint high = source[0].w;
+    while (high - low > 1u) {
+        uint mid = (low + high) / 2u;
+        if (source[1u + (mid * kEmissionWords)].y <= rank) {
+            low = mid;
+        } else {
+            high = mid;
+        }
+    }
+    return low;
+}
+
 void step_particle(inout Particle particle, uint index, uint total, Step step) {
     if (step.clear) {
+        // The count a sub-emitter keeps in its spare words stays: it was set for this step.
+        uint3 spare = particle.flags.yzw;
         particle = empty_particle();
+        particle.flags.yzw = spare;
     }
     particle.flags.x &= ~kParticleStarted;
     float delta = step.delta;
     bool restart = false;
-    if (step.emitting) {
+    bool taken = false;
+    uint from = 0u;
+    if ((chain & kChainTakes) != 0u) {
+        // The emission numbered as this slot is in the cycle's order, taken even by a live one.
+        uint4 header = source[0];
+        uint turn = header.z != 0u ? total - 1u - index : index;
+        uint rank = (turn + total - header.x) % total;
+        if (rank < header.y) {
+            taken = true;
+            from = 1u + (emitter_of(rank) * kEmissionWords);
+            restart = true;
+            particle.flags.x =
+                kParticleActive | kParticleStarted | (step.cycle << kParticleCycleShift);
+        }
+    } else if (step.emitting) {
         float restart_phase = float(index) / float(total);
         if (step.randomness > 0.0) {
             uint seed = step.cycle;
@@ -837,7 +952,7 @@ void step_particle(inout Particle particle, uint index, uint total, Step step) {
     bool active = (particle.flags.x & kParticleActive) != 0u;
     uint number = ((particle.flags.x >> kParticleCycleShift) * total) + index;
     if (restart && active) {
-        start(particle, step, number, active);
+        start(particle, step, number, taken, from, active);
     }
     Contact contact;
     contact.collided = false;
@@ -847,12 +962,20 @@ void step_particle(inout Particle particle, uint index, uint total, Step step) {
         contact = shape_contact(particle.origin_velocity.xy,
                                 collision_size(particle, step, restart), step);
     }
+    uint emitted = 0u;
     if (active) {
-        process(particle, step, number, delta, contact, active);
+        process(particle, step, number, delta, contact, emitted, active);
     }
     particle.flags.x &= ~kParticleActive;
     if (active) {
         particle.flags.x |= kParticleActive;
+    }
+    if ((chain & kChainEmits) != 0u) {
+        // emit_subparticle(TRANSFORM, VELOCITY, ...) with Godot's emission flags.
+        uint at = 1u + (index * kEmissionWords);
+        target[at] = uint4(emitted, 0u, data[material_offset + kSubEmitterAt].w, 0u);
+        target[at + 1u] = asuint(particle.origin_velocity);
+        target[at + 2u] = asuint(particle.basis);
     }
 }
 

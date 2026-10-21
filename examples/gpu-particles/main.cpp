@@ -1,6 +1,7 @@
 // GPU particles, as Godot's GPUParticles2D: main.scene.json has a fire, a one-shot burst of sparks
 // that bursts the same way each time, snow that was already falling when the scene opened, smoke
-// that curls in turbulence and rain that lands on a ledge.
+// that curls in turbulence, rain that lands on a ledge and fireworks, rockets that burst into
+// sparks in a sub-emitter.
 // How each one's particles start and move is a .process_material.json file, Godot's
 // ParticleProcessMaterial in 2D.
 //
@@ -119,6 +120,13 @@ int main() {
     // its process material's collision_mode "rigid" stops particles at LightOccluder2D outlines,
     // as Godot's, so the oldest rest on it, half the dot's average side (4 pixels) above it.
     call(session, "particles.eval", R"({"id": "rain", "list": true, "max_results": 3})");
+
+    // Fireworks: the rockets' sub_emitter is the burst, and their process material's
+    // sub_emitter_mode "at_end" starts 16 of its particles where each rocket dies of age, as
+    // Godot's. The burst emits nothing on its own and steps with the rockets; three rockets have
+    // burst so far, 16 sparks each.
+    call(session, "particles.eval", R"({"id": "rockets"})");
+    call(session, "particles.eval", R"({"id": "burst"})");
 
     // A process material with a mistake is refused with the JSON Pointer of the bad value.
     // "slash-cli scene validate" finds the same mistake in the file before anything runs it, and

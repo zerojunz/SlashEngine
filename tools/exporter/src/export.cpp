@@ -269,8 +269,8 @@ std::vector<json::ValidationError> check_data_file(DataFile kind, std::string_vi
         break;
     }
     // Each tile map layer's cells must name tiles in its tile set, each AnimationPlayer's
-    // animation and track targets must be in its library and targets, and controls must lay
-    // out.
+    // animation and track targets must be in its library and targets, controls must lay out and
+    // each sub-emitter must take part in a chain.
     if (errors.empty()) {
         errors = canvas::check_tile_layers(parsed.value(), reader);
     }
@@ -279,6 +279,9 @@ std::vector<json::ValidationError> check_data_file(DataFile kind, std::string_vi
     }
     if (errors.empty() && kind == DataFile::Scene) {
         errors = ui::check_scene(components, parsed.value(), reader);
+    }
+    if (errors.empty() && kind == DataFile::Scene) {
+        errors = canvas::check_sub_emitters(components, parsed.value(), reader);
     }
     return errors;
 }

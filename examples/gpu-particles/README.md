@@ -2,13 +2,16 @@
 
 Particles run on the GPU, as Godot's `GPUParticles2D`. In [main.scene.json](main.scene.json), a
 fire rises from a circle and fades from yellow to dark red, a one-shot burst of sparks goes off
-the same way each time, snow was already falling when the scene opened, smoke curls as it rises
-and rain lands on a ledge. How each one's particles start and move is a `.process_material.json`
-file, Godot's `ParticleProcessMaterial` in 2D: [fire.process_material.json](fire.process_material.json),
+the same way each time, snow was already falling when the scene opened, smoke curls as it rises,
+rain lands on a ledge and rockets burst into sparks. How each one's particles start and move is a
+`.process_material.json` file, Godot's `ParticleProcessMaterial` in 2D:
+[fire.process_material.json](fire.process_material.json),
 [sparks.process_material.json](sparks.process_material.json),
 [snow.process_material.json](snow.process_material.json),
-[smoke.process_material.json](smoke.process_material.json) and
-[rain.process_material.json](rain.process_material.json). [main.cpp](main.cpp) makes the dot
+[smoke.process_material.json](smoke.process_material.json),
+[rain.process_material.json](rain.process_material.json),
+[rockets.process_material.json](rockets.process_material.json) and
+[burst.process_material.json](burst.process_material.json). [main.cpp](main.cpp) makes the dot
 texture, checks the particles with `particles.eval` and `frame.capture`, hears the sparks finish
 and sets them off again, then draws the scene. [expected.txt](expected.txt) holds its output.
 
@@ -45,6 +48,19 @@ particles.eval {"id":"fire"}
   texture's average side: 4 pixels for the rain's 8-pixel dot. The shapes are measured exactly,
   so every device and the CPU agree; `particles.eval` with a `time` runs apart from the world, with
   nothing to collide with.
+- An emitter's `sub_emitter` names another `GPUParticles2D` that its particles start particles
+  in, as its process material's `sub_emitter_mode` says: `constant` (`sub_emitter_frequency`
+  times a second), `at_end` (when one dies of age), `at_collision` (each step it touches a shape)
+  or `at_start`, with `sub_emitter_amount_at_end`, `_at_collision` and `_at_start` particles and
+  `sub_emitter_keep_velocity`, as Godot's. The sub-emitter's particles start where those
+  particles are, turned and scaled as they are. It emits only what it is given, so its own
+  `emitting`, `one_shot`, `fixed_fps` and `preprocess` go unused, and it steps with the emitter
+  before it, in the same step, where Godot's may see that emitter's particles from a frame
+  before. A sub-emitter can have its own, up to 8 emitters in a chain. When a sub-emitter's
+  particles are all alive, new ones take the place of the oldest; Godot drops the new ones.
+  `slash-cli scene validate` reports a `sub_emitter` that can't take part: one naming its own
+  emitter or an entity with no `GPUParticles2D`, a sub-emitter another emitter already has,
+  and one that loops back or makes a chain too long.
 - Each tick the `gpu_particles_2d` system works out each emitter's steps as Godot does: one each
   1/`fixed_fps` seconds (or one a tick with `fixed_fps` 0), with preprocess and the one-shot
   timing. The renderer runs the steps on the device and draws the particles there. On Metal,
@@ -62,7 +78,7 @@ particles.eval {"id":"fire"}
 - `slash-cli scene validate` checks a `.process_material.json` file and reports every mistake
   with its JSON Pointer; exports check every process material.
 - Godot projects import with their `GPUParticles2D` nodes and `ParticleProcessMaterial`
-  resources (`slash-cli import`), turbulence and collisions included; sub-emitters, trails and
+  resources (`slash-cli import`), turbulence, collisions and sub-emitters included; trails and
   attractors are reported as not converted, since SlashEngine doesn't have them yet.
 - Particles are not saved in the scene. Snapshots, undo, dry runs and failed commands leave them
   as they are.
