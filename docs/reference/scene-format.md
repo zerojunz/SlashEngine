@@ -1030,8 +1030,8 @@ void fragment() {
   `fragment()` gets those, interpolated. Lights shade the color `fragment()` leaves, as the
   material's `light_mode` says; writing `NORMAL_MAP` or `SPECULAR_SHININESS` makes lights use
   them even when the sprite has no normal or specular texture, as in Godot.
-- `slash-cli` and `slash-mcp` compile shaders with glslang and SPIRV-Cross when they first draw,
-  for Vulkan, Metal, Direct3D 12, OpenGL ES and WebGL 2, and the CPU, which the software device
+- `slash-cli` and `slash-mcp` compile shaders with glslang, SPIRV-Cross and Tint when they first
+  draw, for Vulkan, Metal, Direct3D 12, OpenGL ES, WebGL 2 and WebGPU, and the CPU, which the software device
   ([`frame.capture`](commands.md#framecapture)) and `material.eval` run. Games can't compile
   shaders, so `slash-cli export` writes each material's shader, compiled for the platform, into
   the staged material file as `compiled`, and leaves the `.hlsl` files out.

@@ -124,6 +124,7 @@ struct ShaderTargets {
     bool spirv = true; // Vulkan
     bool msl = true;   // Metal
     bool glsl = true;  // OpenGL ES and WebGL 2
+    bool wgsl = true;  // WebGPU
     bool hlsl = true;  // Direct3D 12
 };
 

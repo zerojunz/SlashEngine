@@ -554,9 +554,9 @@ emdawnwebgpu port, which `auto` picks on the web where the browser has it (the `
 driver; web builds only). `web/webgpu.js` asks for the device before `main` runs, and the
 device reports WebGPU's errors through error scopes when a read waits on the GPU. It draws
 with the committed WGSL, which Tint compiles from the HLSL's SPIR-V; Tint drops SPIR-V's row
-major matrices, so the view matrix is uploaded turned. Game shaders and FSR have no WGSL yet,
-so web exports that use them keep to WebGL 2 under `auto` (`exporter::web_driver`). A change to
-how the GPU device draws goes in this one too. `tests/CMakeLists.txt` builds the drawing tests
+major matrices, so the view matrix is uploaded turned. Game shaders, and FSR, draw with the
+WGSL `tools/shader_compiler` writes with Tint. A change to how the GPU device draws goes in this
+one too. `tests/CMakeLists.txt` builds the drawing tests
 for the web as `slash_web_tests`, which `tests/web/run.mjs` runs in Node.js on Dawn's WebGPU
 (the `webgpu` npm package, `npm ci --prefix tests/web`) over Mesa's software Vulkan; CI's web
 export job runs them.
@@ -625,8 +625,8 @@ instructions over 32 registers, which `material.hlsl` interprets on the GPU (its
 
 A material's `"shader"` names a game's own `.hlsl` file with Godot's `fragment()` and `vertex()`
 (the built-ins are in `docs/reference/scene-format.md`). `tools/shader_compiler` wraps it in
-`engine/render/shaders/canvas.hlsl`'s entry points and compiles it with glslang and SPIRV-Cross
-for every backend and for `render::ShaderVm`, which the software device and `material.eval`
+`engine/render/shaders/canvas.hlsl`'s entry points and compiles it with glslang, SPIRV-Cross
+and Tint (from Dawn, built with only its SPIR-V reader and WGSL writer) for every backend and for `render::ShaderVm`, which the software device and `material.eval`
 run. slash-cli, slash-mcp and exports link it and install it with `render::set_shader_compiler`;
 games never do, and draw the `"compiled"` code their export wrote into each material file.
 Renderers recompile a shader when its file changes. `examples/custom-shaders` has a dissolve and
