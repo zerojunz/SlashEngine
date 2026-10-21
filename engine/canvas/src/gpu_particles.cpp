@@ -50,6 +50,7 @@ struct Emitter {
     bool emitting = false;
     bool one_shot = false;
     std::uint32_t amount = 1;
+    std::uint32_t trail = 1;    // particles a trail, 1 for none
     std::uint32_t restarts = 0; // one_shot restarts, which vary the seed
     Vec2 previous_position;
     bool active = false;
@@ -146,7 +147,8 @@ struct Emitter {
 
     // Keeps a step and as many before it as can still have made a live particle: a particle
     // lives at most a lifetime, so a step more than a lifetime of steps before the last made
-    // none that live (with a hundredth to spare for rounding).
+    // none that live (with a hundredth to spare for rounding). A trail's copies live as long,
+    // up to trail_steps - 1 steps behind it, so with trails those steps come on top.
     void keep(const render::ParticleStep& step) {
         // A step that moves nothing changes nothing.
         if (step.delta <= 0.0F && !step.clear) {
@@ -159,9 +161,15 @@ struct Emitter {
             covered += step.delta / step.lifetime;
         }
         steps.push_back(step);
+        double behind = 0.0;
+        const std::size_t lag =
+            std::min<std::size_t>(step.trail_steps - 1, steps.size() - start - 1);
+        for (std::size_t i = steps.size() - lag; i < steps.size(); ++i) {
+            behind += steps[i].delta / steps[i].lifetime;
+        }
         while (steps.size() - start > 1) {
             const render::ParticleStep& next = steps[start + 1];
-            if (covered - (next.delta / next.lifetime) < 1.01 &&
+            if (covered - behind - (next.delta / next.lifetime) < 1.01 &&
                 steps.size() - start <= kMaxParticleSteps) {
                 break;
             }
@@ -185,7 +193,9 @@ struct Emitter {
 // it takes particles in turn through its slots from where its emission cycle started, so its
 // steps go back two of its lifetimes (with a hundredth to spare), to the start of the cycle
 // before; the system before it must be right from there, and so on to the root, which goes
-// back one lifetime as an emitter on its own does. The emitters keep as many steps each.
+// back one lifetime as an emitter on its own does. A link with trails also goes back that far
+// from trail_steps - 1 steps before the newest, for its copies. The emitters keep as many
+// steps each.
 void keep_chain(std::span<Emitter* const> links, std::span<const render::ParticleStep> steps) {
     const Emitter& root = *links.front();
     if (steps.front().delta <= 0.0F && !steps.front().clear) {
@@ -197,25 +207,30 @@ void keep_chain(std::span<Emitter* const> links, std::span<const render::Particl
         }
         links[k]->steps.push_back(steps[k]);
     }
-    // Walk back from the newest step, through each link's lifetimes from the last link's.
-    std::size_t from = root.steps.size();
-    std::size_t link = links.size() - 1;
-    double need = 2.02;
-    double covered = 0.0;
-    bool met = false;
-    while (from > root.start) {
-        --from;
-        const render::ParticleStep& step = links[link]->steps[from];
-        covered += step.delta / step.lifetime;
-        if (covered >= need) {
-            if (link == 0) {
-                met = true;
-                break;
+    // Where a link's steps, walked back from before step from, cover need of its lifetimes:
+    // that step, or root.start if they don't.
+    bool met = true;
+    const auto walk = [&](std::size_t link, std::size_t from, double need) {
+        double covered = 0.0;
+        while (from > root.start) {
+            --from;
+            const render::ParticleStep& step = links[link]->steps[from];
+            covered += step.delta / step.lifetime;
+            if (covered >= need) {
+                return from;
             }
-            --link;
-            covered = 0.0;
-            need = link == 0 ? 1.01 : 2.02;
         }
+        met = false;
+        return from;
+    };
+    // From the last link back to the root, each from where the one after it must be right.
+    std::size_t from = root.steps.size();
+    for (std::size_t link = links.size(); link-- > 0;) {
+        const double need = link == 0 ? 1.01 : 2.02;
+        const std::size_t lag =
+            std::min<std::size_t>(steps[link].trail_steps - 1, root.steps.size() - root.start);
+        from = std::min(walk(link, from, need),
+                        lag > 0 ? walk(link, root.steps.size() - lag, need) : from);
     }
     // One step more, as an emitter on its own keeps, since the first step kept clears.
     std::size_t keep_from = met && from > root.start ? from - 1 : root.start;
@@ -232,6 +247,34 @@ void keep_chain(std::span<Emitter* const> links, std::span<const render::Particl
 std::uint32_t amount_of(const GPUParticles2D& settings) {
     return static_cast<std::uint32_t>(
         std::clamp(settings.amount, 1, static_cast<int>(render::kMaxParticles)));
+}
+
+// The particles of each trail: the particle and a copy for each section, or 1 for none.
+std::uint32_t trail_of(const GPUParticles2D& settings) {
+    if (!settings.trail_enabled) {
+        return 1;
+    }
+    return static_cast<std::uint32_t>(
+        std::clamp(settings.trail_sections, 2, static_cast<int>(render::kMaxParticleTrail) - 1) +
+        1);
+}
+
+// The steps a second an emitter takes, 0 for one a tick: fixed_fps, or 60 for trails, as
+// Godot's particles storage.
+int fixed_fps_of(const GPUParticles2D& settings) {
+    const int fixed_fps = std::clamp(settings.fixed_fps, 0, 1000);
+    return fixed_fps == 0 && settings.trail_enabled ? 60 : fixed_fps;
+}
+
+// The steps a trail spans: Godot's trail_lifetime times its fixed rate, rounded down.
+std::uint32_t trail_steps_of(const GPUParticles2D& settings) {
+    if (!settings.trail_enabled) {
+        return 1;
+    }
+    const auto steps =
+        static_cast<double>(settings.trail_lifetime * static_cast<float>(fixed_fps_of(settings)));
+    return static_cast<std::uint32_t>(
+        std::clamp(steps, 1.0, static_cast<double>(render::kMaxParticleTrailSteps)));
 }
 
 double lifetime_of(const GPUParticles2D& settings) {
@@ -278,17 +321,26 @@ struct SubLink {
     std::optional<Collision> collision;
 };
 
+// The seconds an emitter's particles may live after it stops: 1.2 lifetimes, as Godot's
+// storage waits, and its trails' copies run on behind them. Godot stops drawing then, cutting
+// off longer trails; here they run out.
+double idle_of(const GPUParticles2D& settings) {
+    return (lifetime_of(settings) * 1.2) +
+           (settings.trail_enabled ? static_cast<double>(std::max(settings.trail_lifetime, 0.0F))
+                                   : 0.0);
+}
+
 // How long an emitter stays active once it stops emitting, in its own seconds: until its last
 // particles have had time to die, and those its sub-emitters started from them.
 double idle_limit(const GPUParticles2D& settings, std::span<const SubLink> subs) {
-    double limit = lifetime_of(settings) * 1.2;
+    double limit = idle_of(settings);
     for (const SubLink& sub : subs) {
-        double lifetime = lifetime_of(*sub.settings);
+        double idle = idle_of(*sub.settings);
         if (sub.settings->speed_scale > 0.0F) {
-            lifetime *= static_cast<double>(std::max(settings.speed_scale, 0.0F)) /
-                        static_cast<double>(sub.settings->speed_scale);
+            idle *= static_cast<double>(std::max(settings.speed_scale, 0.0F)) /
+                    static_cast<double>(sub.settings->speed_scale);
         }
-        limit += lifetime * 1.2;
+        limit += idle;
     }
     return limit;
 }
@@ -332,6 +384,7 @@ public:
         step.cycle = e.cycle;
         step.seed = seed_;
         step.fractional_delta = s_.fract_delta;
+        step.trail_steps = trail_steps_of(s_);
         if (collision_ != nullptr && !collision_->shapes.empty()) {
             step.shape_first = e.add_shapes(collision_->shapes);
             step.shape_count = static_cast<std::uint32_t>(collision_->shapes.size());
@@ -395,6 +448,13 @@ public:
         step.cycle = e.cycle;
         step.seed = sub.seed;
         step.fractional_delta = settings.fract_delta;
+        // A sub-emitter steps as its root does, so its trail spans its own seconds' worth.
+        step.trail_steps = 1;
+        if (settings.trail_enabled && own > 0.0) {
+            step.trail_steps = static_cast<std::uint32_t>(
+                std::clamp((static_cast<double>(settings.trail_lifetime) / own) + 1e-9, 1.0,
+                           static_cast<double>(render::kMaxParticleTrailSteps)));
+        }
         if (sub.collision && !sub.collision->shapes.empty()) {
             step.shape_first = e.add_shapes(sub.collision->shapes);
             step.shape_count = static_cast<std::uint32_t>(sub.collision->shapes.size());
@@ -432,7 +492,7 @@ public:
                 return;
             }
         }
-        const int fixed_fps = std::clamp(s_.fixed_fps, 0, 1000);
+        const int fixed_fps = fixed_fps_of(s_);
         if (e.clear && s_.preprocess > 0.0F) {
             const float frame_time = 1.0F / static_cast<float>(fixed_fps > 0 ? fixed_fps : 30);
             float todo = s_.preprocess;
@@ -480,17 +540,20 @@ bool tick(Emitter& e, GPUParticles2D& settings, const world::Transform2D& transf
           std::string_view id, double seconds, const Collision* collision = nullptr,
           std::span<SubLink> subs = {}) {
     const std::uint32_t amount = amount_of(settings);
+    const std::uint32_t trail = trail_of(settings);
     if (!e.seen) {
         // As a node made with these properties: emitting set last.
         e.seen = true;
         e.amount = amount;
+        e.trail = trail;
         e.one_shot = settings.one_shot;
         e.previous_position = transform.position;
         set_emitting(e, settings, settings.emitting, true);
     } else {
-        if (amount != e.amount) {
-            // ParticlesStorage::particles_set_amount: the particles go.
+        if (amount != e.amount || trail != e.trail) {
+            // ParticlesStorage::particles_set_amount, or new trails: the particles go.
             e.amount = amount;
+            e.trail = trail;
             e.drop_all();
             e.phase = 0.0;
             e.clear = true;
@@ -862,16 +925,18 @@ struct GpuParticleSystem {
     }
 
     // A tick of a chain of sub-emitters: the root's, stepping the rest with it. The chain starts
-    // over when its emitters or their amounts change.
+    // over when its emitters, their amounts or their trails change.
     void run_chain(world::World& world, const world::Tree2D& tree, Colliders& colliders,
                    std::span<const entt::entity> chain, double tick_seconds) {
         auto& ecs = world.ecs();
         std::vector<std::string> keys;
         std::string signature;
         for (const entt::entity entity : chain) {
+            const auto& settings = ecs.get<GPUParticles2D>(entity);
             keys.push_back(key_of(world, entity));
             signature += (signature.empty() ? "" : ">") + keys.back() + ":" +
-                         std::to_string(amount_of(ecs.get<GPUParticles2D>(entity)));
+                         std::to_string(amount_of(settings)) + "/" +
+                         std::to_string(trail_of(settings));
         }
         std::vector<SubLink> subs(chain.size() - 1);
         for (std::size_t k = 0; k < chain.size(); ++k) {
@@ -893,6 +958,7 @@ struct GpuParticleSystem {
             if (!e.seen) {
                 e.seen = true;
                 e.amount = amount_of(settings);
+                e.trail = trail_of(settings);
                 e.previous_position = global.position;
             }
             sub.velocity =
@@ -981,6 +1047,7 @@ std::optional<ParticleSteps> particle_steps(const world::World& world, entt::ent
     const Emitter& e = found->second;
     return ParticleSteps{.serial = e.serial,
                          .amount = e.amount,
+                         .trail = e.trail,
                          .first = e.first,
                          .steps = e.kept(),
                          .shapes = e.shapes,
@@ -1026,16 +1093,11 @@ std::vector<ParticleChainMember> particle_chain(const world::World& world, entt:
 std::vector<render::Particle> run_steps(std::uint32_t amount,
                                         const render::ParticleProcess& process,
                                         std::span<const render::ParticleStep> steps,
-                                        std::span<const render::ParticleShape> shapes) {
-    std::vector<render::Particle> particles(amount);
-    if (!steps.empty()) {
-        // The first step kept starts from nothing, as it would after a gap.
-        render::ParticleStep first = steps.front();
-        first.clear = true;
-        render::process_particles(particles, process, {&first, 1}, shapes);
-        render::process_particles(particles, process, steps.subspan(1), shapes);
-    }
-    return particles;
+                                        std::span<const render::ParticleShape> shapes,
+                                        std::uint32_t trail) {
+    const ChainRun run{
+        .amount = amount, .process = &process, .steps = steps, .shapes = shapes, .trail = trail};
+    return std::move(run_chain({&run, 1}).front());
 }
 
 std::vector<std::vector<render::Particle>> run_chain(std::span<const ChainRun> chain) {
@@ -1046,7 +1108,7 @@ std::vector<std::vector<render::Particle>> run_chain(std::span<const ChainRun> c
     const std::size_t count = std::min(chain.size(), render::kMaxParticleChain);
     bool empty = false;
     for (std::size_t k = 0; k < count; ++k) {
-        particles.emplace_back(chain[k].amount);
+        particles.emplace_back(std::size_t{chain[k].amount} * std::max(chain[k].trail, 1U));
         empty = empty || chain[k].steps.empty();
     }
     if (empty) {
@@ -1059,11 +1121,14 @@ std::vector<std::vector<render::Particle>> run_chain(std::span<const ChainRun> c
         links[k] = {.particles = particles[k],
                     .process = chain[k].process,
                     .steps = {&firsts[k], 1},
-                    .shapes = chain[k].shapes};
+                    .shapes = chain[k].shapes,
+                    .trail = std::max(chain[k].trail, 1U)};
     }
     render::process_particle_chain({links.data(), count});
+    // The rest, after it: trails' copies run behind on the steps before.
     for (std::size_t k = 0; k < count; ++k) {
-        links[k].steps = chain[k].steps.subspan(1);
+        links[k].steps = chain[k].steps;
+        links[k].history = 1;
     }
     render::process_particle_chain({links.data(), count});
     return particles;
@@ -1092,22 +1157,36 @@ std::vector<json::ValidationError> check_sub_emitters(const world::ComponentRegi
     return errors;
 }
 
-std::vector<render::Particle> live_particles(std::span<const render::Particle> particles,
-                                             render::ParticleOrder order, double phase) {
-    std::vector<render::Particle> out;
-    const auto amount = static_cast<std::uint32_t>(particles.size());
+namespace {
+
+// The particle each slot of a system of amount particles draws, as particles_draw.hlsl picks it.
+std::vector<std::uint32_t> draw_slots(std::uint32_t amount, render::ParticleOrder order,
+                                      double phase) {
+    std::vector<std::uint32_t> out(amount);
     const std::uint32_t split =
         order == render::ParticleOrder::Index ? 0 : render::particle_lifetime_split(amount, phase);
+    const std::uint32_t limit = amount - std::min(split, amount);
     for (std::uint32_t slot = 0; slot < amount; ++slot) {
-        // As particles_draw.hlsl picks each slot's particle.
         std::uint32_t index = slot;
         if (order != render::ParticleOrder::Index) {
-            const std::uint32_t limit = amount - std::min(split, amount);
             if (order == render::ParticleOrder::ReverseLifetime) {
                 index = amount - index - 1;
             }
             index = index < limit ? split + index : index - limit;
         }
+        out[slot] = index;
+    }
+    return out;
+}
+
+} // namespace
+
+std::vector<render::Particle> live_particles(std::span<const render::Particle> particles,
+                                             render::ParticleOrder order, double phase,
+                                             std::uint32_t trail) {
+    std::vector<render::Particle> out;
+    const auto amount = static_cast<std::uint32_t>(particles.size() / std::max(trail, 1U));
+    for (const std::uint32_t index : draw_slots(amount, order, phase)) {
         if (particles[index].active()) {
             out.push_back(particles[index]);
         }
@@ -1115,8 +1194,36 @@ std::vector<render::Particle> live_particles(std::span<const render::Particle> p
     return out;
 }
 
+std::vector<ParticleTrail> live_trails(std::span<const render::Particle> particles,
+                                       render::ParticleOrder order, double phase,
+                                       std::uint32_t trail) {
+    std::vector<ParticleTrail> out;
+    if (trail < 2) {
+        return out;
+    }
+    const auto amount = static_cast<std::uint32_t>(particles.size() / trail);
+    const auto live = [](const render::Particle& particle) {
+        return (particle.flags & (render::kParticleActive | render::kParticleTrailed)) != 0;
+    };
+    for (const std::uint32_t index : draw_slots(amount, order, phase)) {
+        ParticleTrail item{.particle = particles[index], .copies = {}};
+        for (std::uint32_t j = 1; j < trail; ++j) {
+            const render::Particle& copy =
+                particles[amount + (std::size_t{index} * (trail - 1)) + j - 1];
+            if (live(copy)) {
+                item.copies.push_back(copy);
+            }
+        }
+        if (item.particle.active() || !item.copies.empty()) {
+            out.push_back(std::move(item));
+        }
+    }
+    return out;
+}
+
 Result<std::vector<render::Particle>> gpu_particles(const world::World& world, entt::entity entity,
-                                                    asset::Assets& assets) {
+                                                    asset::Assets& assets,
+                                                    std::vector<ParticleTrail>* trails) {
     const std::optional<ParticleSteps> kept = particle_steps(world, entity);
     if (!kept || kept->steps.empty()) {
         return std::vector<render::Particle>{};
@@ -1133,6 +1240,14 @@ Result<std::vector<render::Particle>> gpu_particles(const world::World& world, e
         }
         return loaded.value().share();
     };
+    const render::ParticleOrder order = particle_order(settings.draw_order);
+    const double phase = kept->steps.back().system_phase;
+    const auto live = [&](std::span<const render::Particle> all) {
+        if (trails != nullptr) {
+            *trails = live_trails(all, order, phase, kept->trail);
+        }
+        return live_particles(all, order, phase, kept->trail);
+    };
     const std::vector<ParticleChainMember> chain = particle_chain(world, entity);
     if (!chain.empty()) {
         std::vector<std::shared_ptr<const render::ParticleProcess>> processes;
@@ -1146,26 +1261,26 @@ Result<std::vector<render::Particle>> gpu_particles(const world::World& world, e
             runs.push_back({.amount = member.steps.amount,
                             .process = processes.back().get(),
                             .steps = member.steps.steps,
-                            .shapes = member.steps.shapes});
+                            .shapes = member.steps.shapes,
+                            .trail = member.steps.trail});
         }
-        const std::vector<std::vector<render::Particle>> all = run_chain(runs);
-        return live_particles(all[kept->link], particle_order(settings.draw_order),
-                              kept->steps.back().system_phase);
+        return live(run_chain(runs)[kept->link]);
     }
     auto process = process_of(settings);
     if (!process) {
         return process.error();
     }
-    const std::vector<render::Particle> all =
-        run_steps(kept->amount, *process.value(), kept->steps, kept->shapes);
-    return live_particles(all, particle_order(settings.draw_order),
-                          kept->steps.back().system_phase);
+    return live(run_steps(kept->amount, *process.value(), kept->steps, kept->shapes, kept->trail));
 }
 
 std::vector<render::Particle> simulate(const GPUParticles2D& settings,
                                        const render::ParticleProcess& process,
                                        const world::Transform2D& transform, std::string_view id,
-                                       double seconds, double tick_seconds) {
+                                       double seconds, double tick_seconds,
+                                       std::vector<ParticleTrail>* trails) {
+    if (trails != nullptr) {
+        trails->clear();
+    }
     if (tick_seconds <= 0.0) {
         return {};
     }
@@ -1179,8 +1294,14 @@ std::vector<render::Particle> simulate(const GPUParticles2D& settings,
     if (emitter.kept().empty()) {
         return {};
     }
-    const std::vector<render::Particle> all = run_steps(emitter.amount, process, emitter.kept());
-    return live_particles(all, particle_order(copy.draw_order), emitter.kept().back().system_phase);
+    const std::vector<render::Particle> all =
+        run_steps(emitter.amount, process, emitter.kept(), {}, emitter.trail);
+    const render::ParticleOrder order = particle_order(copy.draw_order);
+    const double phase = emitter.kept().back().system_phase;
+    if (trails != nullptr) {
+        *trails = live_trails(all, order, phase, emitter.trail);
+    }
+    return live_particles(all, order, phase, emitter.trail);
 }
 
 } // namespace slash::canvas

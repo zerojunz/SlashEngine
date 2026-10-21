@@ -11,9 +11,17 @@
 // GPU particles' device side, as Godot's particles storage and ParticleProcessMaterial in 2D. A
 // particle system is a buffer of particles that steps run: each step restarts the particles whose
 // turn in the emission cycle has come and moves every live one, by the process material's rules.
-// It draws as one quad per particle. The GPU device runs both in compute shaders
-// (shaders/particles_process.hlsl and particles_draw.hlsl); process_particles and
+// It draws as one quad per particle, or a ribbon along its trail. The GPU device runs both in
+// compute shaders (shaders/particles_process.hlsl and particles_draw.hlsl); process_particles and
 // particle_vertices are their CPU twins, which the other devices run, the same on every platform.
+//
+// Trails are Godot's: a system made with a trail of n particles (RenderDevice::create_particles)
+// keeps n - 1 copies of each of its amount particles after them, copy j of particle i at
+// amount + i * (n - 1) + j - 1. When a particle starts, each copy takes its place and waits
+// (kParticleTrailed); trail_steps * j / n steps later it follows, running each step that many
+// steps behind, with that step's delta, transform and shapes, so it takes the same path. A copy
+// never restarts and starts nothing in a sub-emitter; it runs on after its particle has gone,
+// until its own lifetime ends or the particle starts again.
 namespace slash::render {
 
 struct Vertex2D; // device.hpp
@@ -26,6 +34,10 @@ enum class ParticlesId : std::uint32_t { None = 0 };
 inline constexpr std::uint32_t kMaxParticles = 1000000;
 // The most points a curve or a gradient of a ParticleProcess has.
 inline constexpr std::size_t kMaxParticleCurvePoints = 32;
+// The most particles a trail has: a particle and a copy for each of Godot's 128 trail_sections.
+inline constexpr std::uint32_t kMaxParticleTrail = 129;
+// The most steps a trail spans (ParticleStep::trail_steps).
+inline constexpr std::uint32_t kMaxParticleTrailSteps = 65536;
 
 // Where particles start, as Godot's ParticleProcessMaterial::EmissionShape.
 enum class EmissionShape : std::uint8_t {
@@ -189,6 +201,9 @@ struct ParticleStep {
     std::array<float, 4> from_shapes{1.0F, 0.0F, 0.0F, 1.0F};
     std::uint32_t cycle = 0; // emission cycles before this one
     std::uint32_t seed = 0;
+    // The steps a trail spans, as Godot's trail_lifetime times its fixed rate: copy j of n runs
+    // trail_steps * j / n steps behind its particle. From 1 to kMaxParticleTrailSteps.
+    std::uint32_t trail_steps = 1;
     bool emitting = true;
     bool fractional_delta = true; // a restarted particle moves for the part of delta since its turn
     bool clear = false;           // resets every particle first
@@ -199,11 +214,14 @@ struct ParticleStep {
 // A particle's flags, as Godot's.
 inline constexpr std::uint32_t kParticleActive = 1U;
 inline constexpr std::uint32_t kParticleStarted = 2U;
+// A trail's copy that took its particle's place and waits to follow it.
+inline constexpr std::uint32_t kParticleTrailed = 4U;
 // The emission cycle it started in is in the flags' top 16 bits.
 inline constexpr std::uint32_t kParticleCycleShift = 16U;
 
 // One particle, laid out as the GPU keeps it (96 bytes). A sub-emitter's first particle keeps in
-// its spare words how many particles its emission cycle has taken so far, and the cycle.
+// its spare words how many particles its emission cycle has taken so far, and the cycle; a
+// trail's waiting copy keeps the steps left until it follows.
 struct Particle {
     Vec4 basis{1.0F, 0.0F, 0.0F, 1.0F}; // its x axis [x, y] then its y axis [z, w], scaled
     Vec2 origin;                        // pixels
@@ -234,6 +252,13 @@ enum class ParticleOrder : std::uint8_t {
 // its basis, colored by its color times modulate and showing the sprite sheet frame its custom
 // says, as Godot's GPUParticles2D with a CanvasItemMaterial's particle animation. Each particle
 // takes six vertices in draw order, two triangles; a particle not live has no area.
+//
+// A system with trails draws each particle as Godot's trail ribbon instead: size.x wide, through
+// the particle and its copies, the newest first, in (n - 1) * trail_subdivisions segments of six
+// vertices. Each section between two copies blends from one to the next, place and color,
+// across along each one's x axis; the texture runs down the ribbon, in the frame the particle's
+// own custom says. A segment through a particle or copy not live has no area, so the ribbon
+// shortens from the front when the particle goes and its copies run on.
 struct ParticleDraw {
     ParticleOrder order = ParticleOrder::Index;
     std::uint32_t lifetime_split = 0; // particle_lifetime_split for the system's phase
@@ -246,9 +271,18 @@ struct ParticleDraw {
     // coordinates.
     std::array<float, 6> transform{1.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F};
     Vec4 modulate{1.0F, 1.0F, 1.0F, 1.0F};
+    // Trails: segments a section, from 1 to 1024; the steps the trail spans
+    // (ParticleStep::trail_steps), and the seconds a step lasts. As copy j of n is
+    // trail_steps * j / n steps behind, rounded down, each draws back along its velocity by the
+    // part of a step it rounded off, as Godot's.
+    std::uint32_t trail_subdivisions = 1;
+    std::uint32_t trail_steps = 1;
+    float step_delta = 0.0F;
 
     bool operator==(const ParticleDraw&) const = default;
 };
+// The most segments a section of a trail has.
+inline constexpr std::uint32_t kMaxParticleTrailSubdivisions = 1024;
 
 // Runs steps on particles, a system of particles.size(), as the GPU does; the steps name the
 // shapes they collide with by their place in shapes.
@@ -257,23 +291,28 @@ void process_particles(std::span<Particle> particles, const ParticleProcess& pro
                        std::span<const ParticleShape> shapes = {});
 
 // One system of a chain of sub-emitters: its particles, its process material and the steps it
-// runs, which name the shapes they collide with by their place in shapes.
+// runs, which name the shapes they collide with by their place in shapes. A system with trails
+// has trail particles for each of its particles.size() / trail; its steps start with history
+// steps already run, which its copies read to run behind (at least the trail_steps before the
+// first to run, or all since the system cleared).
 struct ParticleChainLink {
     std::span<Particle> particles;
     const ParticleProcess* process = nullptr;
     std::span<const ParticleStep> steps;
     std::span<const ParticleShape> shapes;
+    std::uint32_t trail = 1;
+    std::size_t history = 0;
 };
 // The most systems a chain has.
 inline constexpr std::size_t kMaxParticleChain = 8;
 
 // Runs a chain of systems, each a sub-emitter of the one before, as the GPU does. The links' steps
 // run in lockstep, each link's step i after the link before's, as many as the link with the
-// fewest has. A link's particles start particles in the next link (its process material's
-// sub_emitter_mode); the next link takes them in turn through its slots, from the first in even
-// emission cycles and from the last in odd ones, so they rarely land on particles still live, and
-// when there are more than its slots the newest take the place of live ones. Only the first
-// link emits as its steps say; the others start only the particles they take.
+// fewest has after its history. A link's particles start particles in the next link (its process
+// material's sub_emitter_mode); the next link takes them in turn through its slots, from the first
+// in even emission cycles and from the last in odd ones, so they rarely land on particles still
+// live, and when there are more than its slots the newest take the place of live ones. Only the
+// first link emits as its steps say; the others start only the particles they take.
 void process_particle_chain(std::span<const ParticleChainLink> links);
 
 // Where a point is against shapes, as particles collide, all in the shapes' coordinates: the
@@ -287,9 +326,13 @@ struct ParticleContact {
 [[nodiscard]] ParticleContact particle_contact(Vec2 point, float size,
                                                std::span<const ParticleShape> shapes);
 
-// Appends particles' quads to out, as the GPU draws them: six vertices each, in draw order.
+// Appends particles' quads to out, as the GPU draws them: six vertices each, in draw order; or,
+// for a system with trails of trail particles, their ribbons.
 void particle_vertices(std::span<const Particle> particles, const ParticleDraw& draw,
-                       std::vector<Vertex2D>& out);
+                       std::vector<Vertex2D>& out, std::uint32_t trail = 1);
+
+// The vertices a particle of a system with trails of trail particles draws.
+[[nodiscard]] std::uint32_t particle_vertex_count(std::uint32_t trail, const ParticleDraw& draw);
 
 // The slot the oldest particle is in, for drawing in lifetime order, when the emission cycle is at
 // phase, as Godot's particles storage works it out.

@@ -1563,8 +1563,23 @@ struct EvalParticle {
     float rotation = 0.0F;
     float scale = 1.0F;
     Vec4 color;
-    float age = 0.0F; // seconds
+    float age = 0.0F;        // seconds
+    std::vector<Vec2> trail; // its trail's live copies, newest first, in the world
 };
+
+// The [x, y, w, h] around points, or null for none.
+json::Value bounds_value(std::span<const Vec2> points) {
+    if (points.empty()) {
+        return nullptr;
+    }
+    Vec2 low = points.front();
+    Vec2 high = low;
+    for (const Vec2 point : points) {
+        low = {std::min(low.x, point.x), std::min(low.y, point.y)};
+        high = {std::max(high.x, point.x), std::max(high.y, point.y)};
+    }
+    return rounded(json::Array{low.x, low.y, high.x - low.x, high.y - low.y});
+}
 
 Reply particles_eval(Session& session, const json::Value& params) {
     const world::World& world = session.world();
@@ -1585,6 +1600,8 @@ Reply particles_eval(Session& session, const json::Value& params) {
     const json::Value* seconds = params.find("tick_seconds");
     const double tick_seconds = seconds != nullptr ? seconds->as_double() : kDefaultTickSeconds;
     std::vector<EvalParticle> live;
+    std::vector<Vec2> trail_points; // every point a trail draws through
+    std::size_t trail_count = 0;
     if (emitter != nullptr) {
         const std::vector<canvas::Particle> particles =
             time != nullptr
@@ -1598,10 +1615,13 @@ Reply particles_eval(Session& session, const json::Value& params) {
                      particle.rotation + (emitter->local_coords ? transform.rotation : 0.0F),
                  .scale = particle.scale,
                  .color = particle.color,
-                 .age = particle.age});
+                 .age = particle.age,
+                 .trail = {}});
         }
     } else {
         std::vector<render::Particle> particles;
+        std::vector<canvas::ParticleTrail> trails;
+        std::vector<canvas::ParticleTrail>* want = gpu->trail_enabled ? &trails : nullptr;
         if (time != nullptr) {
             render::ParticleProcess process;
             if (!gpu->process_material.empty()) {
@@ -1611,10 +1631,10 @@ Reply particles_eval(Session& session, const json::Value& params) {
                 }
                 process = *loaded.value();
             }
-            particles =
-                canvas::simulate(*gpu, process, transform, id, time->as_double(), tick_seconds);
+            particles = canvas::simulate(*gpu, process, transform, id, time->as_double(),
+                                         tick_seconds, want);
         } else {
-            auto ran = canvas::gpu_particles(world, entity, session.assets());
+            auto ran = canvas::gpu_particles(world, entity, session.assets(), want);
             if (!ran) {
                 return Reply::failure(code::kInvalidArgument, ran.error().message);
             }
@@ -1629,21 +1649,38 @@ Reply particles_eval(Session& session, const json::Value& params) {
                  .scale = std::sqrt((particle.basis.x * particle.basis.x) +
                                     (particle.basis.y * particle.basis.y)),
                  .color = particle.color,
-                 .age = particle.custom.y * gpu->lifetime});
+                 .age = particle.custom.y * gpu->lifetime,
+                 .trail = {}});
         }
+        // Trails come in the same order, those of live particles among them.
+        std::size_t next = 0;
+        for (const canvas::ParticleTrail& trail : trails) {
+            std::vector<Vec2> points;
+            points.reserve(trail.copies.size());
+            for (const render::Particle& copy : trail.copies) {
+                points.push_back(placed.apply(copy.origin));
+            }
+            if (trail.particle.active()) {
+                trail_points.push_back(placed.apply(trail.particle.origin));
+                if (next < live.size()) {
+                    live[next++].trail = points;
+                }
+            }
+            trail_points.insert(trail_points.end(), points.begin(), points.end());
+        }
+        trail_count = trails.size();
     }
     json::Value result;
     result["alive"] = static_cast<std::int64_t>(live.size());
-    if (live.empty()) {
-        result["bounds"] = nullptr;
-    } else {
-        Vec2 low = live.front().position;
-        Vec2 high = low;
-        for (const EvalParticle& particle : live) {
-            low = {std::min(low.x, particle.position.x), std::min(low.y, particle.position.y)};
-            high = {std::max(high.x, particle.position.x), std::max(high.y, particle.position.y)};
-        }
-        result["bounds"] = rounded(json::Array{low.x, low.y, high.x - low.x, high.y - low.y});
+    std::vector<Vec2> positions;
+    positions.reserve(live.size());
+    for (const EvalParticle& particle : live) {
+        positions.push_back(particle.position);
+    }
+    result["bounds"] = bounds_value(positions);
+    if (gpu != nullptr && gpu->trail_enabled) {
+        result["trails"] = static_cast<std::int64_t>(trail_count);
+        result["trail_bounds"] = bounds_value(trail_points);
     }
     if (flag(params, "list")) {
         const auto max_results = static_cast<std::size_t>(integer(params, "max_results", 32));
@@ -1657,6 +1694,21 @@ Reply particles_eval(Session& session, const json::Value& params) {
             item["color"] = rounded(json::Array{particle.color.x, particle.color.y,
                                                 particle.color.z, particle.color.w});
             item["age"] = rounded(particle.age);
+            if (gpu != nullptr && gpu->trail_enabled) {
+                // How far its trail reaches back through its copies, and where it ends.
+                float length = 0.0F;
+                Vec2 from = particle.position;
+                for (const Vec2 point : particle.trail) {
+                    const Vec2 step = point - from;
+                    length += std::sqrt((step.x * step.x) + (step.y * step.y));
+                    from = point;
+                }
+                json::Value trail;
+                trail["copies"] = static_cast<std::int64_t>(particle.trail.size());
+                trail["length"] = rounded(length);
+                trail["end"] = point_value(from);
+                item["trail"] = std::move(trail);
+            }
             items.push_back(std::move(item));
         }
         result["particles"] = std::move(items);
@@ -5577,8 +5629,8 @@ void register_builtin_commands(Registry& registry) {
     registry.add({
         .name = "particles.eval",
         .description = "Returns a CPUParticles2D's or GPUParticles2D's live particles: how many, "
-                       "their bounds [x, y, w, h] in the world and, with list, each one. A check "
-                       "without a screenshot.",
+                       "their bounds [x, y, w, h] in the world (and their trails') and, with list, "
+                       "each one. A check without a screenshot.",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema(

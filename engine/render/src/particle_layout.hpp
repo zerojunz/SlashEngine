@@ -70,9 +70,10 @@ struct ProcessUniforms {
     std::uint32_t material = 0;
     std::uint32_t steps = 0;
     std::uint32_t step_count = 0;
-    std::uint32_t reset = 0; // clears every particle first
-    std::uint32_t chain = 0; // kChainTakes and kChainEmits
-    std::array<std::uint32_t, 2> padding{};
+    std::uint32_t reset = 0;   // clears every particle first
+    std::uint32_t chain = 0;   // kChainTakes and kChainEmits
+    std::uint32_t trail = 1;   // particles a trail
+    std::uint32_t history = 0; // steps before the first to run, which only copies run
 };
 
 // particles_emit.hlsl's uniforms.
@@ -90,9 +91,10 @@ struct DrawUniforms {
     std::array<float, 4> modulate{};
     std::array<float, 4> look{};           // remainder, hframes, vframes, anim_loop
     std::array<std::uint32_t, 4> counts{}; // amount, order, lifetime_split, first vertex
+    std::array<std::uint32_t, 4> trail{};  // trail, subdivisions, trail_steps, step_delta
 };
 
 [[nodiscard]] DrawUniforms draw_uniforms(const ParticleDraw& look, std::uint32_t amount,
-                                         std::uint32_t first_vertex);
+                                         std::uint32_t trail, std::uint32_t first_vertex);
 
 } // namespace slash::render::detail

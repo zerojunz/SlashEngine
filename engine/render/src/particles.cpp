@@ -72,6 +72,14 @@ Vec4 times(Vec4 a, Vec4 b) {
     return {a.x * b.x, a.y * b.y, a.z * b.z, a.w * b.w};
 }
 
+Vec4 times(Vec4 a, float s) {
+    return {a.x * s, a.y * s, a.z * s, a.w * s};
+}
+
+Vec4 plus(Vec4 a, Vec4 b) {
+    return {a.x + b.x, a.y + b.y, a.z + b.z, a.w + b.w};
+}
+
 // GLSL's mod: x - y * floor(x / y).
 float mod(float x, float y) {
     return x - (y * std::floor(x / y));
@@ -858,6 +866,56 @@ void step_particle(Particle& particle, std::uint32_t index, std::uint32_t total,
     }
 }
 
+// One step of a trail's copy j of trail, after its particle (head) ran steps[at]: Godot's trail
+// pass. When the particle starts, the copy takes its place and waits lag steps, then follows,
+// running each step lag behind with the particle's number; it goes when the particle does.
+void step_copy(Particle& copy, const Particle& head, std::uint32_t j, std::uint32_t trail,
+               std::uint32_t index, std::uint32_t total, const ParticleProcess& p,
+               std::span<const ParticleStep> steps, std::size_t at,
+               std::span<const ParticleShape> shapes) {
+    const ParticleStep& step = steps[at];
+    if (step.clear) {
+        copy = Particle{};
+    }
+    constexpr std::uint32_t kCycleBits = ~0U << kParticleCycleShift;
+    const std::uint32_t lag = (j * step.trail_steps) / trail;
+    bool copied = false;
+    if ((head.flags & kParticleStarted) != 0) {
+        copy = head;
+        copy.flags = kParticleTrailed | (head.flags & kCycleBits);
+        copy.spare = {lag, 0, 0};
+        copied = true;
+    }
+    // A copy waits out its lag, then runs on, after its particle has gone too, as Godot's.
+    if ((copy.flags & kParticleTrailed) != 0) {
+        if (!copied && copy.spare[0] > 0) {
+            --copy.spare[0];
+        }
+        if (copy.spare[0] == 0) {
+            copy.flags = kParticleActive | (copy.flags & kCycleBits);
+        }
+        return;
+    }
+    // A copy whose step behind was not given stays where it is.
+    if (!copy.active() || lag > at) {
+        return;
+    }
+    const ParticleStep& behind = steps[at - lag];
+    bool active = true;
+    const std::uint32_t number = ((copy.flags >> kParticleCycleShift) * total) + index;
+    ParticleContact contact;
+    if (p.collision_mode != ParticleCollision::Disabled && behind.shape_count > 0 &&
+        static_cast<std::size_t>(behind.shape_first) + behind.shape_count <= shapes.size()) {
+        contact = shape_contact(copy.origin, collision_size(copy, p, behind, false), behind,
+                                shapes.subspan(behind.shape_first, behind.shape_count));
+    }
+    process(copy, p, behind, number, behind.delta, contact, nullptr, active);
+    copy.flags &= ~kParticleActive;
+    if (active) {
+        copy.flags |= kParticleActive;
+    }
+}
+
 std::uint8_t to_byte(float channel) {
     return static_cast<std::uint8_t>(std::floor((std::clamp(channel, 0.0F, 1.0F) * 255.0F) + 0.5F));
 }
@@ -920,32 +978,44 @@ void process_particle_chain(std::span<const ParticleChainLink> links) {
     if (links.empty()) {
         return;
     }
-    std::size_t steps = links.front().steps.size();
+    std::size_t steps = std::numeric_limits<std::size_t>::max();
     for (const ParticleChainLink& link : links) {
-        steps = std::min(steps, link.steps.size());
+        steps = std::min(steps, link.steps.size() - std::min(link.history, link.steps.size()));
     }
+    // A link's particles, its copies after them.
+    const auto heads = [](const ParticleChainLink& link) {
+        return link.particles.first(link.particles.size() / std::max(link.trail, 1U));
+    };
     // What each link's particles start in the next, one record a particle, as the GPU keeps it
     // in the link's emission buffer.
     std::vector<std::vector<Emitted>> emitted(links.size() - 1);
     for (std::size_t k = 0; k + 1 < links.size(); ++k) {
-        emitted[k].resize(links[k].particles.size());
+        emitted[k].resize(heads(links[k]).size());
     }
     const ParticleProcess still;
     std::vector<std::uint32_t> offsets;
     for (std::size_t i = 0; i < steps; ++i) {
         for (std::size_t k = 0; k < links.size(); ++k) {
             const ParticleChainLink& link = links[k];
-            const ParticleStep& step = link.steps[i];
-            const auto total = static_cast<std::uint32_t>(link.particles.size());
+            const std::size_t at = link.history + i;
+            const ParticleStep& step = link.steps[at];
+            const std::span<Particle> particles = heads(link);
+            const auto total = static_cast<std::uint32_t>(particles.size());
+            const std::uint32_t trail = std::max(link.trail, 1U);
             std::optional<Intake> intake;
             if (k > 0 && total > 0) {
-                intake = take_emissions(emitted[k - 1], offsets, link.particles, step);
+                intake = take_emissions(emitted[k - 1], offsets, particles, step);
             }
             Emitted* out = k + 1 < links.size() ? emitted[k].data() : nullptr;
             const ParticleProcess& process = link.process != nullptr ? *link.process : still;
             for (std::uint32_t index = 0; index < total; ++index) {
-                step_particle(link.particles[index], index, total, process, step, link.shapes,
+                step_particle(particles[index], index, total, process, step, link.shapes,
                               intake ? &*intake : nullptr, out != nullptr ? out + index : nullptr);
+                for (std::uint32_t j = 1; j < trail; ++j) {
+                    step_copy(link.particles[total + (std::size_t{index} * (trail - 1)) + j - 1],
+                              particles[index], j, trail, index, total, process, link.steps, at,
+                              link.shapes);
+                }
             }
         }
     }
@@ -1027,14 +1097,29 @@ std::uint32_t particle_lifetime_split(std::uint32_t amount, double phase) {
         (std::min(oldest, static_cast<std::int64_t>(amount) - 1) + 1) % amount);
 }
 
+std::uint32_t particle_vertex_count(std::uint32_t trail, const ParticleDraw& draw) {
+    if (trail <= 1) {
+        return 6;
+    }
+    return (trail - 1) * std::max(draw.trail_subdivisions, 1U) * 6;
+}
+
 void particle_vertices(std::span<const Particle> particles, const ParticleDraw& draw,
-                       std::vector<Vertex2D>& out) {
-    const auto amount = static_cast<std::uint32_t>(particles.size());
-    out.reserve(out.size() + (std::size_t{amount} * 6));
+                       std::vector<Vertex2D>& out, std::uint32_t trail) {
+    trail = std::max(trail, 1U);
+    const auto amount = static_cast<std::uint32_t>(particles.size() / trail);
+    const std::uint32_t per = particle_vertex_count(trail, draw);
+    out.reserve(out.size() + (std::size_t{amount} * per));
     const auto h = static_cast<float>(std::max(draw.hframes, 1U));
     const auto v = static_cast<float>(std::max(draw.vframes, 1U));
     const float total = h * v;
     const Vec2 half = draw.size * 0.5F;
+    const Vertex2D none{.x = 0.0F, .y = 0.0F, .u = 0.0F, .v = 0.0F, .rgba = {0, 0, 0, 0}};
+    const auto rgba_of = [&](Vec4 color) {
+        color = times(color, draw.modulate);
+        return std::array<std::uint8_t, 4>{to_byte(color.x), to_byte(color.y), to_byte(color.z),
+                                           to_byte(color.w)};
+    };
     for (std::uint32_t slot = 0; slot < amount; ++slot) {
         std::uint32_t index = slot;
         if (draw.order != ParticleOrder::Index) {
@@ -1045,9 +1130,8 @@ void particle_vertices(std::span<const Particle> particles, const ParticleDraw& 
             index = index < limit ? draw.lifetime_split + index : index - limit;
         }
         const Particle& particle = particles[index];
-        if (!particle.active()) {
-            out.insert(out.end(), 6,
-                       Vertex2D{.x = 0.0F, .y = 0.0F, .u = 0.0F, .v = 0.0F, .rgba = {0, 0, 0, 0}});
+        if (trail == 1 && !particle.active()) {
+            out.insert(out.end(), per, none);
             continue;
         }
         float frame = std::floor(particle.custom.z * total);
@@ -1056,23 +1140,81 @@ void particle_vertices(std::span<const Particle> particles, const ParticleDraw& 
         const float v0 = std::floor((frame + 0.5F) / h) / v;
         const float u1 = u0 + (1.0F / h);
         const float v1 = v0 + (1.0F / v);
-        const Vec4 color = times(particle.color, draw.modulate);
-        const std::array<std::uint8_t, 4> rgba{to_byte(color.x), to_byte(color.y), to_byte(color.z),
-                                               to_byte(color.w)};
-        const Vec2 at = particle.origin + (particle.velocity * draw.remainder);
-        const Vec2 x_axis{particle.basis.x, particle.basis.y};
-        const Vec2 y_axis{particle.basis.z, particle.basis.w};
-        const auto corner = [&](float sx, float sy, float u, float tv) {
-            const Vec2 point = transform_point(draw.transform, at + (x_axis * (sx * half.x)) +
-                                                                   (y_axis * (sy * half.y)));
-            return Vertex2D{.x = point.x, .y = point.y, .u = u, .v = tv, .rgba = rgba};
+        if (trail == 1) {
+            const std::array<std::uint8_t, 4> rgba = rgba_of(particle.color);
+            const Vec2 at = particle.origin + (particle.velocity * draw.remainder);
+            const Vec2 x_axis{particle.basis.x, particle.basis.y};
+            const Vec2 y_axis{particle.basis.z, particle.basis.w};
+            const auto corner = [&](float sx, float sy, float u, float tv) {
+                const Vec2 point = transform_point(draw.transform, at + (x_axis * (sx * half.x)) +
+                                                                       (y_axis * (sy * half.y)));
+                return Vertex2D{.x = point.x, .y = point.y, .u = u, .v = tv, .rgba = rgba};
+            };
+            const Vertex2D top_left = corner(-1.0F, -1.0F, u0, v0);
+            const Vertex2D top_right = corner(1.0F, -1.0F, u1, v0);
+            const Vertex2D bottom_left = corner(-1.0F, 1.0F, u0, v1);
+            const Vertex2D bottom_right = corner(1.0F, 1.0F, u1, v1);
+            out.insert(out.end(),
+                       {top_left, top_right, bottom_left, top_right, bottom_right, bottom_left});
+            continue;
+        }
+        // Godot's trail ribbon: rings of two vertices down the trail, each blending two copies
+        // (bones), the particle itself first. A segment draws while the bones it bends with are
+        // live, so the copies' part goes on after the particle has gone.
+        const std::uint32_t sections = trail - 1;
+        const std::uint32_t subdivisions = std::max(draw.trail_subdivisions, 1U);
+        const std::uint32_t segments = sections * subdivisions;
+        const auto bone = [&](std::uint32_t b) -> const Particle& {
+            return b == 0 ? particle : particles[amount + (std::size_t{index} * sections) + b - 1];
         };
-        const Vertex2D top_left = corner(-1.0F, -1.0F, u0, v0);
-        const Vertex2D top_right = corner(1.0F, -1.0F, u1, v0);
-        const Vertex2D bottom_left = corner(-1.0F, 1.0F, u0, v1);
-        const Vertex2D bottom_right = corner(1.0F, 1.0F, u1, v1);
-        out.insert(out.end(),
-                   {top_left, top_right, bottom_left, top_right, bottom_right, bottom_left});
+        // The bones a ring blends: the first, and the last (the same when it takes only one).
+        const auto ring_bones = [&](std::uint32_t r) {
+            const std::uint32_t b = r / subdivisions;
+            return std::array<std::uint32_t, 2>{b, r % subdivisions != 0 ? std::min(sections, b + 1)
+                                                                         : b};
+        };
+        // Where a bone draws its side of the ribbon: on by remainder and back by the part of a
+        // step its place in the trail rounded off.
+        const auto place = [&](std::uint32_t b, float side) {
+            const Particle& c = bone(b);
+            const float behind = static_cast<float>((b * draw.trail_steps) % trail) /
+                                 static_cast<float>(trail) * draw.step_delta;
+            const Vec2 at = c.origin - (c.velocity * behind) + (c.velocity * draw.remainder);
+            return at + (Vec2{c.basis.x, c.basis.y} * (side * half.x));
+        };
+        const auto ring_vertex = [&](std::uint32_t r, float side, float u) {
+            const auto [first, second] = ring_bones(r);
+            const float blend =
+                1.0F - (static_cast<float>(r % subdivisions) / static_cast<float>(subdivisions));
+            Vec2 point = place(first, side) * blend;
+            Vec4 color = times(bone(first).color, blend);
+            if (first != second) {
+                point = point + (place(second, side) * (1.0F - blend));
+                color = plus(color, times(bone(second).color, 1.0F - blend));
+            }
+            point = transform_point(draw.transform, point);
+            const float tv = v0 + ((static_cast<float>(r) / static_cast<float>(segments)) / v);
+            return Vertex2D{.x = point.x, .y = point.y, .u = u, .v = tv, .rgba = rgba_of(color)};
+        };
+        const auto live = [](const Particle& c) {
+            return (c.flags & (kParticleActive | kParticleTrailed)) != 0;
+        };
+        for (std::uint32_t segment = 0; segment < segments; ++segment) {
+            bool shown = true;
+            for (std::uint32_t b = ring_bones(segment)[0]; b <= ring_bones(segment + 1)[1]; ++b) {
+                shown = shown && live(bone(b));
+            }
+            if (!shown) {
+                out.insert(out.end(), 6, none);
+                continue;
+            }
+            const Vertex2D top_left = ring_vertex(segment, -1.0F, u0);
+            const Vertex2D top_right = ring_vertex(segment, 1.0F, u1);
+            const Vertex2D bottom_left = ring_vertex(segment + 1, -1.0F, u0);
+            const Vertex2D bottom_right = ring_vertex(segment + 1, 1.0F, u1);
+            out.insert(out.end(),
+                       {top_left, top_right, bottom_left, top_right, bottom_right, bottom_left});
+        }
     }
 }
 

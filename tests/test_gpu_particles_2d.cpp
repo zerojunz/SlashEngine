@@ -1012,3 +1012,282 @@ TEST_CASE("GPU particles collide with LightOccluder2D outlines and tile occluder
     CHECK(tiled.shapes[last.shape_first + 1].points ==
           std::vector<Vec2>{{32.0F, 100.0F}, {48.0F, 100.0F}, {48.0F, 116.0F}, {32.0F, 116.0F}});
 }
+
+namespace {
+
+// The bytes of the particles and copies that draw (live, or waiting to follow), and whether each
+// does.
+std::vector<std::uint8_t> drawn_bytes(const std::vector<render::Particle>& particles) {
+    std::vector<std::uint8_t> out;
+    for (const render::Particle& particle : particles) {
+        const bool drawn =
+            (particle.flags & (render::kParticleActive | render::kParticleTrailed)) != 0;
+        out.push_back(drawn ? 1 : 0);
+        if (drawn) {
+            const auto* bytes = reinterpret_cast<const std::uint8_t*>(&particle);
+            out.insert(out.end(), bytes, bytes + sizeof(render::Particle));
+        }
+    }
+    return out;
+}
+
+// Comets that fly off to the right, turned along their path, as trails want them.
+constexpr std::string_view kComet = R"({
+    "format": 1,
+    "direction": [1, -0.3],
+    "spread": 15,
+    "gravity": [0, 30],
+    "initial_velocity_min": 40,
+    "initial_velocity_max": 60,
+    "particle_flag_align_y": true,
+    "lifetime_randomness": 0.3,
+    "color_ramp": [{"offset": 0, "color": [1, 1, 1, 1]}, {"offset": 1, "color": [0.2, 0.4, 1, 1]}]
+})";
+
+} // namespace
+
+TEST_CASE("a GPUParticles2D with trails keeps copies that step 60 times a second") {
+    Scene scene;
+    const entt::entity comet =
+        scene.create("comet", R"({"Transform2D": {}, "GPUParticles2D": {"amount": 4}})");
+    scene.step();
+    CHECK(scene.steps(comet).trail == 1);
+    CHECK(scene.steps(comet).steps.back().trail_steps == 1);
+
+    // Turning trails on starts over with a copy for each section, and the steps' trails span
+    // trail_lifetime of them; fixed_fps 0 steps 60 times a second, as Godot's.
+    world::GPUParticles2D& settings = scene.emitter(comet);
+    settings.trail_enabled = true;
+    settings.fixed_fps = 0;
+    scene.step();
+    canvas::ParticleSteps kept = scene.steps(comet);
+    CHECK(kept.trail == 9);
+    REQUIRE(kept.steps.size() == 1);
+    CHECK(kept.steps.front().clear);
+    CHECK(kept.steps.front().delta == doctest::Approx(1.0 / 60.0));
+    CHECK(kept.steps.front().trail_steps == 18); // 0.3 s
+    settings.trail_lifetime = 0.5F;
+    settings.fixed_fps = 24;
+    scene.step(5);
+    kept = scene.steps(comet);
+    CHECK(kept.steps.back().delta == doctest::Approx(1.0 / 24.0));
+    CHECK(kept.steps.back().trail_steps == 12);
+    CHECK(kept.steps.size() > 1); // the trail's lifetime doesn't start it over
+    // More sections than Godot allows are 128; a new number starts over.
+    settings.trail_sections = 500;
+    scene.step();
+    kept = scene.steps(comet);
+    CHECK(kept.trail == 129);
+    CHECK(kept.steps.front().clear);
+    settings.trail_lifetime = 0.001F;
+    scene.step(3);
+    CHECK(scene.steps(comet).steps.back().trail_steps == 1);
+}
+
+TEST_CASE("the steps kept with trails make what running every step makes") {
+    Scene scene;
+    const auto process = canvas::parse_process_material(parse(kComet));
+    REQUIRE(process.ok());
+    const entt::entity comet = scene.create("comet", R"({"Transform2D": {"position": [20, 50]},
+                                  "GPUParticles2D": {"amount": 12, "lifetime": 0.7,
+                                                     "randomness": 0.4, "trail_enabled": true,
+                                                     "trail_lifetime": 0.4,
+                                                     "trail_sections": 6}})");
+    std::vector<render::Particle> every;
+    std::uint64_t next = 0;
+    std::uint64_t serial = 0;
+    std::size_t draining = 0; // checks made with copies running on after their particles
+    for (int tick = 0; tick < 240; ++tick) {
+        // It moves and stops emitting for a while, so the trails run on after the particles.
+        scene.world.ecs().get<world::Transform2D>(comet).position.y =
+            50.0F + static_cast<float>(tick % 23);
+        if (tick == 60) {
+            scene.emitter(comet).emitting = false;
+        }
+        if (tick == 130) {
+            scene.emitter(comet).emitting = true;
+        }
+        scene.step();
+        const canvas::ParticleSteps kept = scene.steps(comet);
+        REQUIRE(kept.trail == 7);
+        if (kept.serial != serial || next < kept.first) {
+            CHECK((tick == 0 || tick > 60));
+            every = canvas::run_steps(kept.amount, process.value(), kept.steps, {}, kept.trail);
+            serial = kept.serial;
+        } else {
+            // As a renderer runs them: the new steps after those their copies run behind.
+            const auto from = static_cast<std::size_t>(next - kept.first);
+            const std::size_t history =
+                std::min<std::size_t>(from, kept.steps.back().trail_steps - 1);
+            const render::ParticleChainLink link{.particles = every,
+                                                 .process = &process.value(),
+                                                 .steps = kept.steps.subspan(from - history),
+                                                 .shapes = {},
+                                                 .trail = kept.trail,
+                                                 .history = history};
+            render::process_particle_chain({&link, 1});
+        }
+        next = kept.first + kept.steps.size();
+        const std::span<const render::Particle> heads = std::span(every).first(kept.amount);
+        const bool heads_live =
+            std::ranges::any_of(heads, [](const render::Particle& p) { return p.active(); });
+        const bool copies_live =
+            std::ranges::any_of(std::span(every).subspan(kept.amount),
+                                [](const render::Particle& p) { return p.active(); });
+        if (tick % 7 == 6 || (copies_live && !heads_live)) {
+            CAPTURE(tick);
+            const std::vector<render::Particle> replayed =
+                canvas::run_steps(kept.amount, process.value(), kept.steps, {}, kept.trail);
+            CHECK(drawn_bytes(replayed) == drawn_bytes(every));
+            draining += copies_live && !heads_live ? 1 : 0;
+        }
+    }
+    CHECK(draining > 0);
+
+    // gpu_particles returns the particles and the trails that draw, as simulate does.
+    scene.files.files["comet.process_material.json"] = std::string(kComet);
+    scene.emitter(comet).process_material = "comet.process_material.json";
+    std::vector<canvas::ParticleTrail> trails;
+    auto live = canvas::gpu_particles(scene.world, comet, scene.assets, &trails);
+    REQUIRE(live.ok());
+    CHECK(live.value().size() ==
+          canvas::live_particles(every, render::ParticleOrder::Lifetime,
+                                 scene.steps(comet).steps.back().system_phase, 7)
+              .size());
+    REQUIRE(trails.size() >= live.value().size());
+    std::size_t at = 0;
+    for (const canvas::ParticleTrail& trail : trails) {
+        CHECK(trail.copies.size() <= 6);
+        if (trail.particle.active()) {
+            REQUIRE(at < live.value().size());
+            CHECK(trail.particle.origin.x == live.value()[at++].origin.x);
+        }
+    }
+    CHECK(at == live.value().size());
+}
+
+TEST_CASE("simulate runs trails as stepping does") {
+    Scene scene;
+    const auto process = canvas::parse_process_material(parse(kComet));
+    REQUIRE(process.ok());
+    scene.files.files["comet.process_material.json"] = std::string(kComet);
+    const entt::entity comet = scene.create("comet", R"({"Transform2D": {"position": [5, 5]},
+                                  "GPUParticles2D": {"amount": 6, "trail_enabled": true,
+                                                     "process_material": "comet.process_material.json"}})");
+    scene.step(50);
+    std::vector<canvas::ParticleTrail> stepped_trails;
+    auto stepped = canvas::gpu_particles(scene.world, comet, scene.assets, &stepped_trails);
+    REQUIRE(stepped.ok());
+    std::vector<canvas::ParticleTrail> simulated_trails;
+    const std::vector<render::Particle> simulated = canvas::simulate(
+        scene.emitter(comet), process.value(), scene.world.ecs().get<world::Transform2D>(comet),
+        "comet", 50.0 / 60.0, kTick, &simulated_trails);
+    CHECK(live_bytes(simulated) == live_bytes(stepped.value()));
+    REQUIRE(simulated_trails.size() == stepped_trails.size());
+    for (std::size_t i = 0; i < simulated_trails.size(); ++i) {
+        CHECK(drawn_bytes(simulated_trails[i].copies) == drawn_bytes(stepped_trails[i].copies));
+    }
+    // Each trail's copies are behind its particle, along its path to the right.
+    std::size_t copies = 0;
+    for (const canvas::ParticleTrail& trail : simulated_trails) {
+        float x = trail.particle.origin.x;
+        for (const render::Particle& copy : trail.copies) {
+            if (copy.active()) {
+                CHECK(copy.origin.x <= x);
+                x = copy.origin.x;
+                ++copies;
+            }
+        }
+    }
+    CHECK(copies > 20);
+}
+
+TEST_CASE("the canvas draws trails the same however late it starts") {
+    Scene scene;
+    scene.files.files["rocket.process_material.json"] = std::string(kRocket);
+    scene.files.files["spark.process_material.json"] = std::string(kSpark);
+    scene.files.files["comet.process_material.json"] = std::string(kComet);
+    // Comets on their own, and rockets with trails bursting into sparks with trails.
+    scene.create("comets", R"({"Transform2D": {"position": [4, 30]},
+                               "GPUParticles2D": {"amount": 5, "lifetime": 0.8,
+                                                  "trail_enabled": true, "trail_sections": 10,
+                                                  "trail_section_subdivisions": 2,
+                                                  "process_material": "comet.process_material.json"}})");
+    scene.create("sparks", R"({"Transform2D": {},
+                               "GPUParticles2D": {"amount": 24, "lifetime": 0.5,
+                                                  "trail_enabled": true, "trail_lifetime": 0.2,
+                                                  "trail_sections": 3,
+                                                  "process_material": "spark.process_material.json"}})");
+    scene.create("rockets", R"({"Transform2D": {"position": [36, 44]},
+                                "GPUParticles2D": {"amount": 3, "lifetime": 0.6,
+                                                   "sub_emitter": "sparks", "trail_enabled": true,
+                                                   "process_material": "rocket.process_material.json"}})");
+    constexpr std::uint32_t kSize = 48;
+    const auto draw_with = [&](canvas::CanvasRenderer& renderer, render::RenderDevice& device,
+                               canvas::FrameContents* contents) {
+        auto target = device.create_texture({.width = kSize,
+                                             .height = kSize,
+                                             .filter = render::Filter::Nearest,
+                                             .render_target = true});
+        REQUIRE(target.ok());
+        canvas::CanvasOptions options;
+        options.target = target.value();
+        options.width = static_cast<float>(kSize);
+        options.height = static_cast<float>(kSize);
+        options.contents = contents;
+        REQUIRE(renderer.draw(scene.world, options).ok());
+        auto image = device.read_texture(target.value());
+        REQUIRE(image.ok());
+        device.destroy_texture(target.value());
+        return std::move(image).value();
+    };
+    auto software = render::create_software_device();
+    canvas::CanvasRenderer steady(*software, scene.assets);
+    for (int i = 0; i < 80; ++i) {
+        scene.step();
+        (void)draw_with(steady, *software, nullptr);
+    }
+    canvas::FrameContents contents;
+    const render::Image expected = draw_with(steady, *software, &contents);
+    std::map<std::string, std::size_t> counts;
+    for (const canvas::FrameItem& item : contents.items) {
+        // The live particles drawn, their copies not counted.
+        counts[std::string(scene.world.id_of(item.entity))] = item.count;
+    }
+    CHECK(counts["comets"] == 5);
+    CHECK(counts["rockets"] > 0);
+    CHECK(counts["sparks"] > 0);
+    CHECK(steady.particles_drawn() == 32);
+    std::size_t lit = 0;
+    for (std::size_t i = 0; i < expected.pixels.size(); i += 4) {
+        lit += expected.pixels[i] > 60 ? 1U : 0U;
+    }
+    CHECK(lit > 40);
+    auto late_device = render::create_software_device();
+    canvas::CanvasRenderer late(*late_device, scene.assets);
+    CHECK(draw_with(late, *late_device, nullptr).pixels == expected.pixels);
+
+    // Stopped, the comets' trails run on after them and draw the same late too.
+    scene.emitter(scene.world.find("comets")).emitting = false;
+    for (int i = 0; i < 50; ++i) {
+        scene.step();
+        (void)draw_with(steady, *software, nullptr);
+    }
+    const render::Image stopped = draw_with(steady, *software, nullptr);
+    auto fresh_device = render::create_software_device();
+    canvas::CanvasRenderer fresh(*fresh_device, scene.assets);
+    CHECK(draw_with(fresh, *fresh_device, nullptr).pixels == stopped.pixels);
+
+    for (auto& device : slash::test::hardware_devices()) {
+        CAPTURE(render::backend_name(device->backend()));
+        canvas::CanvasRenderer renderer(*device, scene.assets);
+        const render::Image image = draw_with(renderer, *device, nullptr);
+        std::size_t different = 0;
+        std::size_t shown = 0;
+        for (std::size_t i = 0; i < image.pixels.size(); ++i) {
+            different += std::abs(int{image.pixels[i]} - int{stopped.pixels[i]}) > 12 ? 1U : 0U;
+            shown += stopped.pixels[i] > 60 ? 1U : 0U;
+        }
+        CHECK(different < (shown / 4) + 8);
+    }
+}

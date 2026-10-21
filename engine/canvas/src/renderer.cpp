@@ -80,12 +80,19 @@ std::vector<Vec2> repeat_offsets(const world::Parallax2D& parallax, const world:
     return out;
 }
 
-// Adds a GPUParticles2D's live particles' quads, as the device draws them: one not live has no
-// area.
+// The live particles of a system with trails of trail particles (1 without), copies not counted.
+std::size_t live_count(std::span<const render::Particle> particles, std::uint32_t trail) {
+    return static_cast<std::size_t>(
+        std::ranges::count_if(particles.first(particles.size() / std::max(trail, 1U)),
+                              [](const render::Particle& p) { return p.active(); }));
+}
+
+// Adds a GPUParticles2D's live particles' quads, or its trails' segments, as the device draws
+// them: one not live has no area.
 void append_live_quads(std::span<const render::Particle> particles, const render::ParticleDraw& at,
-                       std::vector<render::Vertex2D>& vertices) {
+                       std::uint32_t trail, std::vector<render::Vertex2D>& vertices) {
     std::vector<render::Vertex2D> quads;
-    render::particle_vertices(particles, at, quads);
+    render::particle_vertices(particles, at, quads, trail);
     for (std::size_t q = 0; q + 6 <= quads.size(); q += 6) {
         const auto quad = std::span(quads).subspan(q, 6);
         if (std::ranges::any_of(quad, [](const render::Vertex2D& v) {
@@ -375,38 +382,56 @@ Result<const render::ParticleProcess*> CanvasRenderer::process_material(const st
     return it->second.get();
 }
 
+namespace {
+
+// The steps before steps[from] that a system runs again with those after, for its trails' copies
+// to run behind: as many as the trails of the steps after span, or all there are.
+std::size_t trail_history(std::span<const render::ParticleStep> steps, std::size_t from) {
+    std::uint32_t span = 1;
+    for (std::size_t i = from; i < steps.size(); ++i) {
+        span = std::max(span, steps[i].trail_steps);
+    }
+    return std::min<std::size_t>(from, span - 1);
+}
+
+} // namespace
+
 Result<std::optional<CanvasRenderer::ParticleJob>>
 CanvasRenderer::particle_job(GpuSystem& system, const ParticleSteps& kept,
                              const render::ParticleProcess* process) {
     const std::uint64_t end = kept.first + kept.steps.size();
     std::optional<ParticleJob> job;
     if (system.id == render::ParticlesId::None || system.serial != kept.serial ||
-        system.amount != kept.amount || system.next < kept.first) {
+        system.amount != kept.amount || system.trail != kept.trail || system.next < kept.first) {
         if (system.id != render::ParticlesId::None) {
             device_->destroy_particles(system.id);
             system.id = render::ParticlesId::None;
         }
-        auto made = device_->create_particles(kept.amount);
+        auto made = device_->create_particles(kept.amount, kept.trail);
         if (!made) {
             return made.error();
         }
         system.id = made.value();
         system.serial = kept.serial;
         system.amount = kept.amount;
+        system.trail = kept.trail;
         render::ParticleStep first = kept.steps.front();
         first.clear = true;
         job = ParticleJob{.particles = system.id,
                           .process = process,
                           .first = first,
-                          .rest = kept.steps.subspan(1),
+                          .rest = kept.steps,
+                          .history = 1,
                           .shapes = kept.shapes};
     } else if (system.next < end) {
-        job = ParticleJob{
-            .particles = system.id,
-            .process = process,
-            .first = std::nullopt,
-            .rest = kept.steps.subspan(static_cast<std::size_t>(system.next - kept.first)),
-            .shapes = kept.shapes};
+        const auto from = static_cast<std::size_t>(system.next - kept.first);
+        const std::size_t history = trail_history(kept.steps, from);
+        job = ParticleJob{.particles = system.id,
+                          .process = process,
+                          .first = std::nullopt,
+                          .rest = kept.steps.subspan(from - history),
+                          .history = history,
+                          .shapes = kept.shapes};
     }
     system.next = end;
     return job;
@@ -425,8 +450,8 @@ Result<void> CanvasRenderer::chain_jobs(std::span<const ParticleChainMember> cha
     const bool remake = std::ranges::any_of(chain, [&](const ParticleChainMember& member) {
         const GpuSystem& system = gpu_systems_[member.entity];
         return system.id == render::ParticlesId::None || system.serial != member.steps.serial ||
-               system.amount != member.steps.amount || system.next < root.first ||
-               system.next != next;
+               system.amount != member.steps.amount || system.trail != member.steps.trail ||
+               system.next < root.first || system.next != next;
     });
     if (remake) {
         for (std::size_t k = 0; k < chain.size(); ++k) {
@@ -435,30 +460,40 @@ Result<void> CanvasRenderer::chain_jobs(std::span<const ParticleChainMember> cha
                 device_->destroy_particles(system.id);
                 system.id = render::ParticlesId::None;
             }
-            auto made = device_->create_particles(chain[k].steps.amount);
+            auto made = device_->create_particles(chain[k].steps.amount, chain[k].steps.trail);
             if (!made) {
                 return made.error();
             }
             system.id = made.value();
             system.serial = chain[k].steps.serial;
             system.amount = chain[k].steps.amount;
+            system.trail = chain[k].steps.trail;
         }
     }
     if (remake || next < end) {
+        // The links run as many steps each, after as much history as any needs.
+        const auto from = static_cast<std::size_t>(next - root.first);
+        std::size_t history = 1;
+        if (!remake) {
+            history = 0;
+            for (const ParticleChainMember& member : chain) {
+                history = std::max(history, trail_history(member.steps.steps, from));
+            }
+        }
         for (std::size_t k = 0; k < chain.size(); ++k) {
             const ParticleSteps& kept = chain[k].steps;
             ParticleJob job{.particles = systems[k]->id,
                             .process = processes[k],
                             .first = std::nullopt,
-                            .rest = {},
+                            .rest = kept.steps,
+                            .history = history,
                             .shapes = kept.shapes,
                             .links = k == 0 ? chain.size() : 1};
             if (remake) {
                 job.first = kept.steps.front();
                 job.first->clear = true;
-                job.rest = kept.steps.subspan(1);
             } else {
-                job.rest = kept.steps.subspan(static_cast<std::size_t>(next - kept.first));
+                job.rest = kept.steps.subspan(from - history);
             }
             jobs.push_back(job);
         }
@@ -480,7 +515,7 @@ void CanvasRenderer::mirror_chain(std::span<const ParticleChainMember> chain,
     const std::uint64_t next = systems.front()->cpu_next;
     const bool stale = std::ranges::any_of(chain, [&](const ParticleChainMember& member) {
         const GpuSystem& system = gpu_systems_[member.entity];
-        return system.cpu.size() != member.steps.amount ||
+        return system.cpu.size() != std::size_t{member.steps.amount} * member.steps.trail ||
                system.cpu_serial != member.steps.serial || system.cpu_next < root.first ||
                system.cpu_next != next;
     });
@@ -490,21 +525,29 @@ void CanvasRenderer::mirror_chain(std::span<const ParticleChainMember> chain,
             runs.push_back({.amount = chain[k].steps.amount,
                             .process = processes[k],
                             .steps = chain[k].steps.steps,
-                            .shapes = chain[k].steps.shapes});
+                            .shapes = chain[k].steps.shapes,
+                            .trail = chain[k].steps.trail});
         }
         std::vector<std::vector<render::Particle>> all = run_chain(runs);
         for (std::size_t k = 0; k < chain.size(); ++k) {
             systems[k]->cpu = std::move(all[k]);
         }
     } else if (next < end) {
+        // As chain_jobs runs them on the device.
+        const auto from = static_cast<std::size_t>(next - root.first);
+        std::size_t history = 0;
+        for (const ParticleChainMember& member : chain) {
+            history = std::max(history, trail_history(member.steps.steps, from));
+        }
         std::vector<render::ParticleChainLink> links;
         for (std::size_t k = 0; k < chain.size(); ++k) {
             const ParticleSteps& kept = chain[k].steps;
-            links.push_back(
-                {.particles = systems[k]->cpu,
-                 .process = processes[k],
-                 .steps = kept.steps.subspan(static_cast<std::size_t>(next - kept.first)),
-                 .shapes = kept.shapes});
+            links.push_back({.particles = systems[k]->cpu,
+                             .process = processes[k],
+                             .steps = kept.steps.subspan(from - history),
+                             .shapes = kept.shapes,
+                             .trail = kept.trail,
+                             .history = history});
         }
         render::process_particle_chain(links);
     }
@@ -517,19 +560,24 @@ void CanvasRenderer::mirror_chain(std::span<const ParticleChainMember> chain,
 std::size_t CanvasRenderer::mirror(GpuSystem& system, const ParticleSteps& kept,
                                    const render::ParticleProcess& process) {
     const std::uint64_t end = kept.first + kept.steps.size();
-    if (system.cpu.size() != kept.amount || system.cpu_serial != kept.serial ||
-        system.cpu_next < kept.first) {
-        system.cpu = run_steps(kept.amount, process, kept.steps, kept.shapes);
+    if (system.cpu.size() != std::size_t{kept.amount} * kept.trail ||
+        system.cpu_serial != kept.serial || system.cpu_next < kept.first) {
+        system.cpu = run_steps(kept.amount, process, kept.steps, kept.shapes, kept.trail);
     } else if (system.cpu_next < end) {
-        render::process_particles(
-            system.cpu, process,
-            kept.steps.subspan(static_cast<std::size_t>(system.cpu_next - kept.first)),
-            kept.shapes);
+        // As particle_job runs them on the device.
+        const auto from = static_cast<std::size_t>(system.cpu_next - kept.first);
+        const std::size_t history = trail_history(kept.steps, from);
+        const render::ParticleChainLink link{.particles = system.cpu,
+                                             .process = &process,
+                                             .steps = kept.steps.subspan(from - history),
+                                             .shapes = kept.shapes,
+                                             .trail = kept.trail,
+                                             .history = history};
+        render::process_particle_chain({&link, 1});
     }
     system.cpu_serial = kept.serial;
     system.cpu_next = end;
-    return static_cast<std::size_t>(
-        std::ranges::count_if(system.cpu, [](const render::Particle& p) { return p.active(); }));
+    return live_count(system.cpu, kept.trail);
 }
 
 Result<void> CanvasRenderer::run_particle_jobs(std::span<const ParticleJob> jobs) {
@@ -544,7 +592,8 @@ Result<void> CanvasRenderer::run_particle_jobs(std::span<const ParticleJob> jobs
                               .process = job.process,
                               .steps = first ? std::span<const render::ParticleStep>{&*job.first, 1}
                                              : job.rest,
-                              .shapes = job.shapes};
+                              .shapes = job.shapes,
+                              .history = first ? 0 : job.history};
             }
             return device_->process_particle_chain({runs.data(), links});
         };
@@ -552,7 +601,7 @@ Result<void> CanvasRenderer::run_particle_jobs(std::span<const ParticleJob> jobs
         if (jobs[i].first) {
             ran = run(true);
         }
-        if (ran && !jobs[i].rest.empty()) {
+        if (ran && jobs[i].rest.size() > jobs[i].history) {
             ran = run(false);
         }
         if (!ran) {
@@ -1433,6 +1482,13 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         }
         look.anim_loop = emitter.anim_loop;
         look.modulate = from_parents.modulate;
+        if (kept->trail > 1) {
+            look.trail_subdivisions = static_cast<std::uint32_t>(
+                std::clamp(emitter.trail_section_subdivisions, 1,
+                           static_cast<int>(render::kMaxParticleTrailSubdivisions)));
+            look.trail_steps = kept->steps.back().trail_steps;
+            look.step_delta = kept->steps.back().delta;
+        }
         if (emitter.interpolate) {
             // Drawn between ticks, as the rest of the world is: where they were that much
             // before the tick ended.
@@ -1448,9 +1504,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         // FrameContents gets the particles run on the CPU, as the device runs them.
         std::size_t live = 0;
         if (contents != nullptr) {
-            live = in_chain ? static_cast<std::size_t>(std::ranges::count_if(
-                                  cached.cpu, [](const render::Particle& p) { return p.active(); }))
-                            : mirror(cached, *kept, *process);
+            live = in_chain ? live_count(cached.cpu, kept->trail) : mirror(cached, *kept, *process);
         }
         // Again at each repeat of the Parallax2D it is under.
         const entt::entity source = repeat_source(entity);
@@ -1466,7 +1520,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
                             placed.origin.y + offsets[r].y};
             const std::size_t first = vertices.size();
             if (contents != nullptr) {
-                append_live_quads(cached.cpu, at, vertices);
+                append_live_quads(cached.cpu, at, kept->trail, vertices);
             }
             items.push_back({.canvas = canvas,
                              .z_index = z,

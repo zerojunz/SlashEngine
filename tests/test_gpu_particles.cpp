@@ -9,6 +9,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <initializer_list>
 #include <memory>
 #include <span>
@@ -771,6 +772,254 @@ TEST_CASE("the GPU device runs chains of sub-emitters as the CPU twin does") {
     }
 }
 
+namespace {
+
+// Whether two particles are the same to the bit, as the CPU twin makes them from the same steps.
+bool same(const Particle& a, const Particle& b) {
+    return std::memcmp(&a, &b, sizeof(Particle)) == 0;
+}
+
+} // namespace
+
+TEST_CASE("trail copies follow their particle's path, as Godot's") {
+    using slash::render::kParticleCycleShift;
+    using slash::render::kParticleStarted;
+    using slash::render::kParticleTrailed;
+    using slash::render::ParticleChainLink;
+    // Particles thrown up and pulled down, so each step's place differs from the last.
+    ParticleProcess process;
+    process.direction = {1.0F, -1.0F};
+    process.spread = 10.0F;
+    process.gravity = {0.0F, 60.0F};
+    set_param(process, ParticleParam::InitialVelocity, 40.0F, 60.0F);
+    set_param(process, ParticleParam::AngularVelocity, -90.0F, 90.0F);
+    constexpr std::uint32_t kAmount = 6;
+    constexpr std::uint32_t kTrail = 5; // four copies
+    constexpr std::uint32_t kSpan = 8;  // copy j runs 8 * j / 5 steps behind: 1, 3, 4 and 6
+    std::vector<ParticleStep> steps = run_steps(80, 0.2F, 0.0F);
+    for (std::size_t i = 0; i < steps.size(); ++i) {
+        steps[i].trail_steps = kSpan;
+        steps[i].emitting = i < 30; // then the particles go, a second later
+    }
+    const auto copy_of = [](std::span<const Particle> all, std::uint32_t index, std::uint32_t j) {
+        return all[kAmount + (index * (kTrail - 1)) + j - 1];
+    };
+
+    // Step by step, each with the steps before it its copies need, as a renderer's frames run
+    // them, keeping what each step left.
+    std::vector<Particle> trailed(kAmount * kTrail);
+    std::vector<std::vector<Particle>> after;
+    for (std::size_t i = 0; i < steps.size(); ++i) {
+        const std::size_t history = std::min<std::size_t>(i, kSpan - 1);
+        const ParticleChainLink link{.particles = trailed,
+                                     .process = &process,
+                                     .steps = std::span(steps).subspan(i - history, history + 1),
+                                     .shapes = {},
+                                     .trail = kTrail,
+                                     .history = history};
+        slash::render::process_particle_chain({&link, 1});
+        after.push_back(trailed);
+    }
+    // All at once makes the same, and the particles are those a system without trails has.
+    std::vector<Particle> once(kAmount * kTrail);
+    const ParticleChainLink all{.particles = once,
+                                .process = &process,
+                                .steps = steps,
+                                .shapes = {},
+                                .trail = kTrail,
+                                .history = 0};
+    slash::render::process_particle_chain({&all, 1});
+    for (std::size_t i = 0; i < once.size(); ++i) {
+        CAPTURE(i);
+        CHECK(same(once[i], trailed[i]));
+    }
+    std::vector<Particle> alone(kAmount);
+    slash::render::process_particles(alone, process, std::span(steps).first(40));
+    for (std::uint32_t i = 0; i < kAmount; ++i) {
+        CAPTURE(i);
+        CHECK(same(alone[i], after[39][i]));
+    }
+
+    // Each copy waits where its particle started, then takes its place lag steps behind.
+    std::size_t waited = 0;
+    std::size_t followed = 0;
+    for (std::size_t i = 0; i < steps.size(); ++i) {
+        for (std::uint32_t index = 0; index < kAmount; ++index) {
+            const Particle& head = after[i][index];
+            for (std::uint32_t j = 1; j < kTrail; ++j) {
+                CAPTURE(i);
+                CAPTURE(index);
+                CAPTURE(j);
+                const std::uint32_t lag = (j * kSpan) / kTrail;
+                const Particle& copy = copy_of(after[i], index, j);
+                if ((head.flags & kParticleStarted) != 0) {
+                    CHECK(copy.flags ==
+                          (kParticleTrailed |
+                           (head.flags >> kParticleCycleShift << kParticleCycleShift)));
+                    CHECK(copy.spare[0] == lag);
+                    CHECK(copy.origin.x == head.origin.x);
+                    CHECK(copy.origin.y == head.origin.y);
+                    ++waited;
+                }
+                if (!copy.active() || i < lag) {
+                    continue;
+                }
+                const Particle& then = after[i - lag][index];
+                if ((then.flags >> kParticleCycleShift) != (copy.flags >> kParticleCycleShift)) {
+                    continue;
+                }
+                CHECK(then.active());
+                CHECK(copy.origin.x == then.origin.x);
+                CHECK(copy.origin.y == then.origin.y);
+                CHECK(copy.velocity.x == then.velocity.x);
+                CHECK(copy.custom.y == then.custom.y);
+                ++followed;
+            }
+        }
+    }
+    CHECK(waited > 20);
+    CHECK(followed > 300);
+
+    // Once the particles stop starting, each dies of age and its copies run on to the end of
+    // the same life, the last six steps after it.
+    std::size_t last = 0;
+    for (std::size_t i = 0; i < steps.size(); ++i) {
+        if (live_count(std::span(after[i]).first(kAmount)) > 0) {
+            last = i;
+        }
+    }
+    REQUIRE(last + 7 < steps.size());
+    CHECK(live_count(std::span(after[last + 1]).subspan(kAmount)) > 0);
+    CHECK(live_count(std::span(after[last + 6]).subspan(kAmount)) > 0);
+    CHECK(live_count(std::span(after[last + 7]).subspan(kAmount)) == 0);
+}
+
+TEST_CASE("the GPU device runs trails as the CPU twin does") {
+    using slash::render::ParticleChainLink;
+    using slash::render::ParticleRun;
+    auto device = slash::test::gpu_device();
+    if (device == nullptr) {
+        return;
+    }
+    constexpr std::uint32_t kAmount = 40;
+    constexpr std::uint32_t kTrail = 9;
+    std::vector<ParticleStep> steps = run_steps(50, 0.5F, 0.1F);
+    for (std::size_t i = 0; i < steps.size(); ++i) {
+        steps[i].trail_steps = 12;
+        if (i >= 30) {
+            steps[i].emission = {0.0F, 2.0F, -1.0F, 0.0F, 70.0F, 40.0F};
+            steps[i].emitter_velocity = {30.0F, -10.0F};
+        }
+    }
+    int which = 0;
+    for (const ParticleProcess& process : varied_processes()) {
+        const int index = which++;
+        CAPTURE(index);
+        std::vector<Particle> twin(kAmount * kTrail);
+        const ParticleChainLink link{.particles = twin,
+                                     .process = &process,
+                                     .steps = steps,
+                                     .shapes = {},
+                                     .trail = kTrail,
+                                     .history = 0};
+        slash::render::process_particle_chain({&link, 1});
+        auto system = device->create_particles(kAmount, kTrail);
+        REQUIRE(system.ok());
+        // In two calls, as a game's ticks would be: the second starts with the steps before it
+        // that its copies run behind.
+        REQUIRE(
+            device->process_particles(system.value(), process, std::span(steps).first(20)).ok());
+        const std::array<ParticleRun, 1> rest{ParticleRun{.particles = system.value(),
+                                                          .process = &process,
+                                                          .steps = std::span(steps).subspan(9),
+                                                          .shapes = {},
+                                                          .history = 11}};
+        REQUIRE(device->process_particle_chain(rest).ok());
+        auto read = device->read_particles(system.value());
+        REQUIRE(read.ok());
+        REQUIRE(read.value().size() == twin.size());
+        for (std::size_t i = 0; i < twin.size(); ++i) {
+            CHECK_MESSAGE(close(read.value()[i], twin[i]), "particle ", i, ": GPU ",
+                          describe(read.value()[i]), ", twin ", describe(twin[i]));
+            CHECK(read.value()[i].spare == twin[i].spare);
+        }
+        CHECK(live_count(std::span(twin).subspan(kAmount)) > 100);
+        device->destroy_particles(system.value());
+    }
+}
+
+TEST_CASE("trails draw as Godot's ribbon through a particle and its copies") {
+    using slash::render::kParticleActive;
+    using slash::render::kParticleTrailed;
+    // A particle moving right with its x axis down, so the ribbon is as wide as a frame across
+    // its path; a copy behind it, and one waiting further back.
+    std::vector<Particle> particles(3);
+    const std::array<Vec2, 3> places{{{20.0F, 0.0F}, {10.0F, 0.0F}, {0.0F, 0.0F}}};
+    const std::array<Vec4, 3> colors{
+        {{1.0F, 0.0F, 0.0F, 1.0F}, {0.0F, 1.0F, 0.0F, 1.0F}, {0.0F, 0.0F, 1.0F, 1.0F}}};
+    for (std::size_t i = 0; i < 3; ++i) {
+        particles[i].flags = i == 2 ? kParticleTrailed : kParticleActive;
+        particles[i].origin = places.at(i);
+        particles[i].velocity = {10.0F, 0.0F};
+        particles[i].basis = {0.0F, 1.0F, -1.0F, 0.0F};
+        particles[i].color = colors.at(i);
+    }
+    ParticleDraw look;
+    look.size = {4.0F, 4.0F};
+    look.trail_subdivisions = 2;
+    // Copy j of 3 is 4 * j / 3 steps behind, so copy 1 rounded off a third of a step and copy
+    // 2 two thirds: each draws back that much along its velocity.
+    look.trail_steps = 4;
+    look.step_delta = 0.1F;
+    CHECK(slash::render::particle_vertex_count(1, look) == 6);
+    CHECK(slash::render::particle_vertex_count(3, look) == 24);
+    std::vector<Vertex2D> vertices;
+    slash::render::particle_vertices(particles, look, vertices, 3);
+    REQUIRE(vertices.size() == 24);
+    // Rings down the ribbon: at the particle, halfway to copy 1, at copy 1, halfway to copy 2,
+    // at copy 2. Segment s is rings s and s + 1: top left, top right, bottom left, then top
+    // right, bottom right, bottom left.
+    const std::array<float, 5> ring_x{20.0F, 14.8333F, 9.6667F, 4.5F, -0.6667F};
+    const std::array<std::array<std::uint8_t, 4>, 5> ring_rgba{{{255, 0, 0, 255},
+                                                                {128, 128, 0, 255},
+                                                                {0, 255, 0, 255},
+                                                                {0, 128, 128, 255},
+                                                                {0, 0, 255, 255}}};
+    for (std::size_t segment = 0; segment < 4; ++segment) {
+        CAPTURE(segment);
+        const auto quad = std::span(vertices).subspan(segment * 6, 6);
+        const std::array<std::size_t, 6> ring{segment, segment,     segment + 1,
+                                              segment, segment + 1, segment + 1};
+        const std::array<float, 6> side{-2.0F, 2.0F, -2.0F, 2.0F, 2.0F, -2.0F};
+        for (std::size_t v = 0; v < 6; ++v) {
+            CAPTURE(v);
+            CHECK(quad[v].x == doctest::Approx(ring_x.at(ring.at(v))).epsilon(1e-4));
+            CHECK(quad[v].y == doctest::Approx(side.at(v)));
+            CHECK(quad[v].u == doctest::Approx(side.at(v) < 0.0F ? 0.0F : 1.0F));
+            CHECK(quad[v].v == doctest::Approx(static_cast<float>(ring.at(v)) / 4.0F));
+            CHECK(quad[v].rgba == ring_rgba.at(ring.at(v)));
+        }
+    }
+    // When the particle goes, the segments it bends have no area and the copies' part draws on;
+    // a segment through a copy that isn't live has none either.
+    particles[0].flags = 0;
+    vertices.clear();
+    slash::render::particle_vertices(particles, look, vertices, 3);
+    const auto empty = [&](std::size_t segment) {
+        return std::ranges::all_of(std::span(vertices).subspan(segment * 6, 6),
+                                   [](const Vertex2D& v) { return v.rgba[3] == 0; });
+    };
+    CHECK(empty(0));
+    CHECK(empty(1));
+    CHECK_FALSE(empty(2));
+    CHECK_FALSE(empty(3));
+    particles[2].flags = 0;
+    vertices.clear();
+    slash::render::particle_vertices(particles, look, vertices, 3);
+    CHECK(empty(2));
+    CHECK(empty(3));
+}
+
 TEST_CASE("every device refuses the same particle mistakes") {
     std::vector<std::unique_ptr<RenderDevice>> devices = slash::test::drawing_devices();
     devices.push_back(slash::render::create_null_device());
@@ -846,6 +1095,31 @@ TEST_CASE("every device refuses the same particle mistakes") {
         pair[1] = {.particles = missing, .process = &still, .steps = {}, .shapes = {}};
         CHECK(error_of(device->process_particle_chain(pair)) == "no particle system 99");
         device->destroy_particles(other.value());
+        // Trails.
+        CHECK(error_of(device->create_particles(4, 0)) ==
+              "a particle trail has from 2 to 129 particles, or 1 for none, not 0");
+        CHECK(error_of(device->create_particles(4, 130)) ==
+              "a particle trail has from 2 to 129 particles, or 1 for none, not 130");
+        CHECK(error_of(device->create_particles(10000, 101)) ==
+              "a particle system with trails has at most 1000000 particles with its trails; "
+              "10000 with trails of 101 would make 1010000");
+        step = ParticleStep{};
+        step.trail_steps = 0;
+        CHECK(error_of(device->process_particles(system.value(), {}, std::span(&step, 1))) ==
+              "a particle step's trail_steps is from 1 to 65536");
+        step.trail_steps = 1;
+        const std::array<ParticleRun, 1> behind{ParticleRun{.particles = system.value(),
+                                                            .process = &still,
+                                                            .steps = {&step, 1},
+                                                            .shapes = {},
+                                                            .history = 2}};
+        CHECK(error_of(device->process_particle_chain(behind)) ==
+              "a particle run's history is 2 of its 1 steps");
+        auto trailed = device->create_particles(4, 9);
+        REQUIRE(trailed.ok());
+        auto read_trailed = device->read_particles(trailed.value());
+        REQUIRE(read_trailed.ok());
+        CHECK(read_trailed.value().size() == 36);
 
         auto target = device->create_texture({.width = 4,
                                               .height = 4,
@@ -864,14 +1138,32 @@ TEST_CASE("every device refuses the same particle mistakes") {
               "particles' hframes and vframes are at least 1");
         CHECK(error_of(device->draw_particles(system.value(), target.value(), {}, {})) ==
               "texture 1 is this frame's target, so it can't be drawn with until the frame ends");
+        look = ParticleDraw{};
+        look.trail_subdivisions = 8;
+        auto long_trails = device->create_particles(1000, 129);
+        REQUIRE(long_trails.ok());
+        CHECK(error_of(device->draw_particles(long_trails.value(), slash::render::TextureId::None,
+                                              look, {})) ==
+              "a frame draws up to 4194304 vertices, 6144 a particle; these 1000 particles "
+              "would make 6144000");
+        look.trail_subdivisions = 0;
+        CHECK(error_of(device->draw_particles(trailed.value(), slash::render::TextureId::None, look,
+                                              {})) ==
+              "particle trails have from 1 to 1024 subdivisions, trail_steps from 1 to 65536 "
+              "and a step_delta of 0 or more");
         auto big = device->create_particles(700000);
         REQUIRE(big.ok());
         CHECK(
             error_of(device->draw_particles(big.value(), slash::render::TextureId::None, {}, {})) ==
-            "a frame draws up to 4194304 vertices, six a particle; these 700000 particles "
+            "a frame draws up to 4194304 vertices, 6 a particle; these 700000 particles "
             "would make 4200000");
+        // A system without trails has none to divide.
+        CHECK(error_of(device->draw_particles(system.value(), slash::render::TextureId::None, look,
+                                              {})) == "(succeeded)");
         REQUIRE(device->end_frame().ok());
         device->destroy_particles(big.value());
+        device->destroy_particles(long_trails.value());
+        device->destroy_particles(trailed.value());
         device->destroy_particles(system.value());
         CHECK(error_of(device->read_particles(system.value())) == "no particle system 1");
     }
@@ -926,6 +1218,72 @@ TEST_CASE("particles draw as quads in lifetime order, live ones only") {
     CHECK(slash::render::particle_lifetime_split(8, 0.0) == 1);
     CHECK(slash::render::particle_lifetime_split(8, 0.5) == 5);
     CHECK(slash::render::particle_lifetime_split(8, 0.99) == 0);
+}
+
+TEST_CASE("every device draws trails as the software device does") {
+    using slash::render::ParticleRun;
+    ParticleProcess process = busy_process();
+    process.align_y = true;
+    std::vector<ParticleStep> steps = run_steps(40, 0.3F, 0.0F);
+    for (ParticleStep& step : steps) {
+        step.trail_steps = 9;
+    }
+    constexpr std::uint32_t kSize = 96;
+    constexpr std::uint32_t kAmount = 32;
+    constexpr std::uint32_t kTrail = 6;
+    ParticleDraw look;
+    look.size = {3.0F, 3.0F};
+    look.order = ParticleOrder::Lifetime;
+    look.lifetime_split =
+        slash::render::particle_lifetime_split(kAmount, steps.back().system_phase);
+    look.remainder = 0.01F;
+    look.trail_subdivisions = 3;
+    look.trail_steps = 9;
+    look.step_delta = steps.back().delta;
+    const auto draw = [&](RenderDevice& device) {
+        auto system = device.create_particles(kAmount, kTrail);
+        REQUIRE(system.ok());
+        REQUIRE(device.process_particles(system.value(), process, steps).ok());
+        auto target = device.create_texture({.width = kSize,
+                                             .height = kSize,
+                                             .filter = slash::render::Filter::Linear,
+                                             .render_target = true});
+        REQUIRE(target.ok());
+        REQUIRE(device
+                    .begin_frame(
+                        {.target = target.value(), .clear = {0.0F, 0.0F, 0.0F, 1.0F}, .view = {}})
+                    .ok());
+        slash::render::Material additive;
+        additive.blend = slash::render::BlendMode::Add;
+        REQUIRE(
+            device.draw_particles(system.value(), slash::render::TextureId::None, look, additive)
+                .ok());
+        REQUIRE(device.end_frame().ok());
+        // Five sections of three segments, two triangles each, for every particle.
+        CHECK(device.stats().triangles == kAmount * 30);
+        auto image = device.read_texture(target.value());
+        REQUIRE(image.ok());
+        return std::move(image).value();
+    };
+    auto software = slash::render::create_software_device();
+    const slash::render::Image expected = draw(*software);
+    std::size_t lit = 0;
+    for (std::size_t i = 0; i < expected.pixels.size(); i += 4) {
+        lit += expected.pixels[i] > 0 ? 1U : 0U;
+    }
+    CHECK(lit > 300);
+    // The null device checks and counts the same.
+    auto null = slash::render::create_null_device();
+    (void)draw(*null);
+    for (auto& device : slash::test::hardware_devices()) {
+        CAPTURE(slash::render::backend_name(device->backend()));
+        const slash::render::Image image = draw(*device);
+        std::size_t different = 0;
+        for (std::size_t i = 0; i < image.pixels.size(); ++i) {
+            different += std::abs(int{image.pixels[i]} - int{expected.pixels[i]}) > 12 ? 1U : 0U;
+        }
+        CHECK(different < lit / 10);
+    }
 }
 
 TEST_CASE("every device draws particles as the software device does") {

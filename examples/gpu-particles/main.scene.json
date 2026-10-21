@@ -11,6 +11,23 @@
         "Transform2D": {}
       }
     },
+    "comets": {
+      "components": {
+        "GPUParticles2D": {
+          "amount": 4,
+          "lifetime": 1.6,
+          "process_material": "comets.process_material.json",
+          "texture": "streak.png",
+          "trail_enabled": true,
+          "trail_lifetime": 0.4,
+          "trail_section_subdivisions": 2,
+          "trail_sections": 12
+        },
+        "Transform2D": {
+          "position": [20.0, 24.0]
+        }
+      }
+    },
     "fire": {
       "components": {
         "GPUParticles2D": {

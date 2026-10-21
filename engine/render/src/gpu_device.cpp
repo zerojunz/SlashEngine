@@ -414,8 +414,8 @@ public:
         game_shaders_.erase(it);
     }
 
-    Result<ParticlesId> create_particles(std::uint32_t amount) override {
-        if (auto checked = check_particle_amount(amount); !checked) {
+    Result<ParticlesId> create_particles(std::uint32_t amount, std::uint32_t trail) override {
+        if (auto checked = check_particle_amount(amount, trail); !checked) {
             return checked.error();
         }
         if (auto pipeline = compute_pipeline(ComputeKind::Process); !pipeline) {
@@ -427,21 +427,21 @@ public:
         SDL_GPUBufferCreateInfo info{};
         info.usage =
             SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ | SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE;
-        info.size = amount * static_cast<std::uint32_t>(sizeof(Particle));
+        info.size = amount * trail * static_cast<std::uint32_t>(sizeof(Particle));
         SDL_GPUBuffer* buffer = SDL_CreateGPUBuffer(device_, &info);
         if (buffer == nullptr) {
-            return sdl_error("creating a system of " + std::to_string(amount) +
+            return sdl_error("creating a system of " + std::to_string(amount * trail) +
                              " particles failed");
         }
         // New GPU memory holds whatever was there before, so the system starts by clearing it.
-        if (auto queued =
-                queue_particle_job({.particles = buffer, .amount = amount, .reset = true});
+        if (auto queued = queue_particle_job(
+                {.particles = buffer, .amount = amount, .trail = trail, .reset = true});
             !queued) {
             SDL_ReleaseGPUBuffer(device_, buffer);
             return queued.error();
         }
         const auto id = static_cast<ParticlesId>(next_particles_++);
-        particle_systems_[id] = {.buffer = buffer, .amount = amount};
+        particle_systems_[id] = {.buffer = buffer, .amount = amount, .trail = trail};
         return id;
     }
 
@@ -471,7 +471,8 @@ public:
             !checked) {
             return checked;
         }
-        if (chain.front().steps.empty()) {
+        const std::size_t steps = chain.front().steps.size() - chain.front().history;
+        if (steps == 0) {
             return {};
         }
         if (chain.size() > 1) {
@@ -498,14 +499,16 @@ public:
                                      " particles start failed");
                 }
             }
-            ParticleJob job{.particles = system.buffer, .amount = system.amount};
+            ParticleJob job{
+                .particles = system.buffer, .amount = system.amount, .trail = system.trail};
             job.material = material_words(*run.process);
             const std::vector<std::uint32_t> shape_at =
                 run.process->collision_mode == ParticleCollision::Disabled
                     ? std::vector<std::uint32_t>{}
                     : pack_particle_shapes(run.steps, run.shapes, particle_words_);
             job.steps = static_cast<std::uint32_t>(particle_words_.size());
-            job.step_count = static_cast<std::uint32_t>(run.steps.size());
+            job.history = static_cast<std::uint32_t>(run.history);
+            job.step_count = static_cast<std::uint32_t>(run.steps.size() - run.history);
             pack_particle_steps(run.steps, shape_at, particle_words_);
             if (k > 0) {
                 job.source = links.back().target;
@@ -522,11 +525,10 @@ public:
         } else {
             // A step of each system in turn, each in a pass of its own so it sees what the one
             // before wrote, with the numbering of what a sub-emitter takes ahead of its step.
-            const std::size_t steps = chain.front().steps.size();
             for (std::size_t i = 0; i < steps; ++i) {
                 for (std::size_t k = 0; k < links.size(); ++k) {
                     if (k > 0) {
-                        const ParticleStep& step = chain[k].steps[i];
+                        const ParticleStep& step = chain[k].steps[chain[k].history + i];
                         particle_jobs_.push_back({.kind = ComputeKind::Emit,
                                                   .particles = links[k].particles,
                                                   .target = links[k].source,
@@ -536,7 +538,7 @@ public:
                                                            .clear = step.clear ? 1U : 0U}});
                     }
                     ParticleJob job = links[k];
-                    job.steps += static_cast<std::uint32_t>(i) * kStepWords;
+                    job.history += static_cast<std::uint32_t>(i);
                     job.step_count = 1;
                     particle_jobs_.push_back(job);
                 }
@@ -555,7 +557,9 @@ public:
             return unknown_particles(particles);
         }
         const std::uint32_t amount = it->second.amount;
-        if (auto checked = check_particle_draw(look, amount, frame_vertex_count()); !checked) {
+        const std::uint32_t trail = it->second.trail;
+        if (auto checked = check_particle_draw(look, amount, trail, frame_vertex_count());
+            !checked) {
             return checked;
         }
         if (auto checked = check_draw(texture, material); !checked) {
@@ -572,16 +576,17 @@ public:
         if (!batch) {
             return batch.error();
         }
-        const std::uint32_t count = amount * 6;
+        const std::uint32_t count = amount * particle_vertex_count(trail, look);
         batch.value().particles = true;
         batch.value().count = count;
         batches_.push_back(std::move(batch).value());
         ++stats_.draws;
         stats_.triangles += count / 3;
+        // A thread a quad: a particle's, or a segment of its ribbon.
         particle_jobs_.push_back({.kind = ComputeKind::Draw,
                                   .particles = it->second.buffer,
-                                  .amount = amount,
-                                  .look = draw_uniforms(look, amount, particle_vertices_)});
+                                  .amount = count / 6,
+                                  .look = draw_uniforms(look, amount, trail, particle_vertices_)});
         particle_vertices_ += count;
         return {};
     }
@@ -594,7 +599,8 @@ public:
         if (it == particle_systems_.end()) {
             return unknown_particles(particles);
         }
-        const std::uint32_t size = it->second.amount * static_cast<std::uint32_t>(sizeof(Particle));
+        const std::uint32_t count = it->second.amount * it->second.trail;
+        const std::uint32_t size = count * static_cast<std::uint32_t>(sizeof(Particle));
         const TransferBuffer transfer(device_, SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD, size);
         if (transfer.get() == nullptr) {
             return sdl_error("making room to read the particles failed");
@@ -622,7 +628,7 @@ public:
         if (mapped == nullptr) {
             return sdl_error("reading the particles failed");
         }
-        std::vector<Particle> out(it->second.amount);
+        std::vector<Particle> out(count);
         std::memcpy(out.data(), mapped, size);
         SDL_UnmapGPUTransferBuffer(device_, transfer.get());
         return out;
@@ -934,8 +940,9 @@ private:
     };
 
     struct ParticleSystem {
-        SDL_GPUBuffer* buffer = nullptr;
+        SDL_GPUBuffer* buffer = nullptr; // its particles, then its trails' copies
         std::uint32_t amount = 0;
+        std::uint32_t trail = 1;
         // What its particles start in the next system of a chain, made when it is in one.
         SDL_GPUBuffer* emissions = nullptr;
     };
@@ -945,10 +952,12 @@ private:
     struct ParticleJob {
         ComputeKind kind = ComputeKind::Process;
         SDL_GPUBuffer* particles = nullptr;
-        std::uint32_t amount = 0;
+        std::uint32_t amount = 0; // threads: particles, or a draw's quads
+        std::uint32_t trail = 1;
         bool reset = false;         // clears every particle first
         std::uint32_t material = 0; // where its process material is in particle_words_
-        std::uint32_t steps = 0;    // and its steps
+        std::uint32_t steps = 0;    // and its steps, from those already run
+        std::uint32_t history = 0;  // how many of them were
         std::uint32_t step_count = 0;
         // The emissions a sub-emitter takes and those its particles make, in a chain; the
         // emissions an Emit job numbers are its target.
@@ -1285,7 +1294,9 @@ private:
                                                .steps = job.steps,
                                                .step_count = job.step_count,
                                                .reset = job.reset ? 1U : 0U,
-                                               .chain = job.chain};
+                                               .chain = job.chain,
+                                               .trail = job.trail,
+                                               .history = job.history};
                 SDL_PushGPUComputeUniformData(commands, 0, &uniforms,
                                               static_cast<std::uint32_t>(sizeof(uniforms)));
             } else {
