@@ -1,8 +1,8 @@
 // The 3D shader: meshes lit by a frame's lights as Godot's Compatibility renderer lights them
 // (drivers/gles3/shaders/scene.glsl), with a StandardMaterial3D's albedo, metallic, roughness,
 // specular, emission and normal map, and shadowed by the lights' shadow maps (shadow.hlsl draws
-// them). Colors are worked in linear, tonemapped (tonemap.hlsl) and written as sRGB, with Godot's
-// approximations of the two.
+// them), then fogged. Colors are worked in linear, tonemapped (tonemap.hlsl) and written as sRGB,
+// with Godot's approximations of the two.
 // Keep it in step with shade_mesh in src/mesh.cpp, its CPU twin. Registers follow SDL's GPU
 // conventions: vertex uniforms in space1, fragment textures and samplers in space2, fragment
 // uniforms in space3.
@@ -73,6 +73,7 @@ static const uint kEmissionTexture = 8u;
 static const uint kNormalMap = 16u;
 static const uint kSideCheck = 32u;
 static const uint kHasAlpha = 64u;
+static const uint kDisableFog = 128u;
 
 cbuffer Surface : register(b0, space3) {
     float4 albedo;            // sRGB, and alpha
@@ -102,6 +103,9 @@ cbuffer Scene : register(b1, space3) {
     float4 ambient; // linear
     // Exposure, white, the tonemapper, and 1 to tonemap here (0 when post.hlsl does it after).
     float4 tonemap;
+    float4 fog_color; // linear, times its energy; then 0 for no fog, 1 exponential, 2 depth
+    float4 fog;       // density, sun scatter, height, height density
+    float4 fog_depth; // depth fog's begin, end and curve
     Light lights[64];
 };
 
@@ -132,9 +136,43 @@ cbuffer Shadows : register(b2, space3) {
 
 #include "tonemap.hlsl"
 
-// A lit color, linear, as the frame's target takes it: times the exposure, tonemapped unless the
-// post pass does it, and as sRGB, as Godot's scene.glsl ends.
-float4 finish(float3 color, float alpha) {
+// Godot's fog_process: the fog's color at a point in the world, brightened by the directional
+// lights the camera looks toward through it, and how much of it covers the point.
+float4 fog_process(float3 world) {
+    float3 to_point = world - camera.xyz;
+    float distance = length(to_point);
+    float3 color = fog_color.rgb;
+    if (fog.y > 0.001) {
+        float3 view = distance > 0.0 ? to_point / distance : (float3)0.0;
+        uint count = (uint)camera.w;
+        for (uint i = 0u; i < count; ++i) {
+            if (lights[i].direction.w == kDirectional) {
+                float amount = pow(max(dot(view, normalize(lights[i].direction.xyz)), 0.0), 8.0);
+                color += lights[i].color.rgb * amount * fog.y;
+            }
+        }
+    }
+    float amount;
+    if (fog_color.w == 2.0) {
+        float z = smoothstep(fog_depth.x, fog_depth.y, distance);
+        amount = pow(z, fog_depth.z) * fog.x;
+    } else {
+        amount = 1.0 - exp(min(0.0, -distance * fog.x));
+    }
+    if (abs(fog.w) >= 0.0001) {
+        amount = max(amount, 1.0 - exp(min(0.0, (world.y - fog.z) * fog.w)));
+    }
+    return float4(color, amount);
+}
+
+// A lit color at a point in the world, linear, as the frame's target takes it: fogged unless the
+// material disables it, times the exposure, tonemapped unless the post pass does it, and as sRGB,
+// as Godot's scene.glsl ends.
+float4 finish(float3 color, float alpha, float3 world) {
+    if (fog_color.w != 0.0 && (options.x & kDisableFog) == 0u) {
+        float4 fogged = fog_process(world);
+        color = lerp(color, fogged.rgb, fogged.a);
+    }
     color *= tonemap.x;
     [branch] if (tonemap.w != 0.0) {
         color = apply_tonemapping(color, tonemap.y, (uint)tonemap.z);
@@ -439,5 +477,5 @@ float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
                         mapped);
     }
     // One call, so the tonemappers are inlined once and the shader stays small.
-    return finish(lit, alpha);
+    return finish(lit, alpha, input.world);
 }

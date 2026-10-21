@@ -694,6 +694,7 @@ do in 3D.
 | `blend_mode` | `"mix"` | How alpha meshes blend: `"mix"`, `"add"`, `"sub"`, `"mul"` or `"premul_alpha"` |
 | `cull_mode` | `"back"` | Faces not drawn: `"back"`, `"front"` or `"disabled"` (both sides drawn) |
 | `uv1_scale`, `uv1_offset` | `[1, 1, 1]`, `[0, 0, 0]` | Texture coordinates are scaled, then moved (x and y are used) |
+| `disable_fog` | `false` | The environment's fog leaves it alone |
 | `texture_filter` | `"linear_with_mipmaps"` | `"nearest"` and `"nearest_with_mipmaps"` keep texels sharp |
 
 Opaque and alpha scissor meshes draw nearest first, then alpha meshes farthest first, as Godot
@@ -728,7 +729,7 @@ Up to 64 lights shine at once, in tree order, and hidden ones don't. Their field
 | `light_energy` | `1` | all | Brightness |
 | `light_specular` | `0.5` | all | How strong its highlights are |
 | `light_negative` | `false` | all | Takes light away instead |
-| `light_cull_mask` | `4294967295` | all | The render layers it lights |
+| `light_cull_mask` | `4294967295` | all | The render layers it lights (layers 1 to 20) |
 | `omni_range`, `omni_attenuation` | `5`, `1` | omni | How far it reaches, in meters, and how it falls off |
 | `spot_range`, `spot_attenuation` | `5`, `1` | spot | The same for a spot light |
 | `spot_angle`, `spot_angle_attenuation` | `45`, `1` | spot | Degrees from its axis to the cone's edge, and how it fades to it |
@@ -744,6 +745,8 @@ Up to 64 lights shine at once, in tree order, and hidden ones don't. Their field
 | `directional_shadow_fade_start` | `0.8` | directional | Where shadows start fading out, as a fraction of their reach |
 | `directional_shadow_max_distance` | `100` | directional | How far from the camera shadows reach, in meters (the camera's `far` if nearer) |
 | `directional_shadow_pancake_size` | `20` | directional | How far behind each cascade casters still cast, in meters |
+| `light_angular_distance` | `0` | directional | Degrees across its sun's radius in the [sky](#skies), 0 to 90 |
+| `sky_mode` | `"light_and_sky"` | directional | `"light_only"` lights meshes and shows no sun in the sky; `"sky_only"` shows a sun and lights nothing |
 
 Shadows are Godot's Compatibility renderer's shadow maps, drawn on every device and by
 `frame.capture`. A directional light's cascades share the directional atlas with the other
@@ -753,17 +756,19 @@ project's `rendering.lights_and_shadows` ([project-format.md](project-format.md#
 
 ### WorldEnvironment
 
-The first `WorldEnvironment` made sets the background a 3D frame clears to, the ambient light
-every lit surface gets and what happens to colors after, as Godot's `Environment` in its
-Compatibility renderer. Without one, the background is the project's `rendering.clear_color`,
-there is no ambient light and colors stay as they are.
+The first `WorldEnvironment` made sets the background a 3D frame clears to or the sky behind
+its meshes, the fog, the ambient light every lit surface gets and what happens to colors after,
+as Godot's `Environment` in its Compatibility renderer. Without one, the background is the
+project's `rendering.clear_color`, there is no ambient light and colors stay as they are.
 
 | Field | Default | Meaning |
 | --- | --- | --- |
-| `background_mode` | `"clear_color"` | `"clear_color"` (the project's) or `"color"` |
+| `background_mode` | `"clear_color"` | `"clear_color"` (the project's), `"color"` or `"sky"` (the entity's [sky material](#skies)) |
 | `background_color` | `[0, 0, 0, 1]` | The background for `"color"` |
-| `background_energy_multiplier` | `1` | Brightens the background |
-| `ambient_light_source` | `"background"` | `"background"` (its color and energy), `"color"` or `"disabled"` |
+| `background_energy_multiplier` | `1` | Brightens the background or sky |
+| `sky_custom_fov` | `0` | Degrees across the target's height the sky is seen with; `0` for the camera's |
+| `sky_rotation` | `[0, 0, 0]` | Turns the sky, in radians about x, y and z, as `Transform3D`'s rotation |
+| `ambient_light_source` | `"background"` | `"background"` (its color and energy; with a sky, `ambient_light_color` for now), `"color"` or `"disabled"` |
 | `ambient_light_color`, `ambient_light_energy` | `[0, 0, 0, 1]`, `1` | The ambient light for `"color"` |
 | `tonemap_mode` | `"linear"` | `"linear"`, `"reinhard"`, `"filmic"`, `"aces"` or `"agx"` |
 | `tonemap_exposure` | `1` | Multiplies lit colors before they are tonemapped |
@@ -776,6 +781,15 @@ there is no ambient light and colors stay as they are.
 | `adjustment_enabled` | `false` | Brightness, contrast, saturation and color correction apply |
 | `adjustment_brightness`, `adjustment_contrast`, `adjustment_saturation` | `1`, `1`, `1` | Multiply colors; contrast 0 is flat gray, saturation 0 gray |
 | `adjustment_color_correction` | `""` | A lookup texture colors pass through: 1 pixel tall, or as wide as its height squared |
+| `fog_enabled` | `false` | [Fog](#fog) fades what is far away, or low down, into its color |
+| `fog_mode` | `"exponential"` | `"exponential"` thickens with distance by `fog_density`; `"depth"` from `fog_depth_begin` to `fog_depth_end` |
+| `fog_light_color`, `fog_light_energy` | `[0.518, 0.553, 0.608, 1]`, `1` | The fog's color, sRGB, and how bright it is |
+| `fog_sun_scatter` | `0` | How much directional lights brighten the fog looked through toward them |
+| `fog_density` | `0.01` | How thick exponential fog is |
+| `fog_aerial_perspective` | `0` | How much the sky colors the fog in front of it, from 0 to 1 (over the sky only, for now) |
+| `fog_sky_affect` | `1` | How much fog covers the sky or background, from 0 to 1 |
+| `fog_height`, `fog_height_density` | `0`, `0` | Fog thickens below this height, by this much; `0` for none |
+| `fog_depth_curve`, `fog_depth_begin`, `fog_depth_end` | `1`, `10`, `100` | How depth fog grows, where it begins and where it is thickest; an end of `0` or less is the camera's `far` |
 
 Without glow or adjustments, meshes are exposed and tonemapped as they draw, and the background
 is left alone. With either, the meshes draw exposed but not tonemapped into a texture of the
@@ -790,6 +804,66 @@ LUTs (a `GradientTexture1D`) do. One as wide as its height squared is a 3D LUT: 
 height by height pixels side by side, blue choosing the slice and red and green the pixel in it,
 as Godot imports a `Texture3D` from horizontal slices. A texture of another shape, or one that
 can't load, is reported and left out.
+
+### Skies
+
+A `"sky"` background draws the sky material on the `WorldEnvironment`'s entity behind the meshes,
+worked out for each pixel's view direction as Godot's sky shaders do: a
+`ProceduralSkyMaterial`, a `PhysicalSkyMaterial` or a `PanoramaSkyMaterial`. An entity with none
+has Godot's default procedural sky; one with two is reported, and the first of those three
+draws. Colors are sRGB and textures project paths, and `background_energy_multiplier` brightens
+the sky.
+
+The sky shows the sun of each `DirectionalLight3D` whose `sky_mode` isn't `"light_only"`, up to
+four in tree order, where the light shines from, in its `light_color` and `light_energy`, sized
+by its `light_angular_distance`. `sky_rotation` turns the sky and `sky_custom_fov` sees it
+through another field of view. The sky's own light doesn't reach meshes yet.
+
+`ProceduralSkyMaterial` is a gradient from the horizon up to the sky's top and down to the
+ground's bottom, with each sun on it:
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `sky_top_color`, `sky_horizon_color` | `[0.385, 0.454, 0.55, 1]`, `[0.6463, 0.6558, 0.6708, 1]` | The sky straight up and at the horizon |
+| `sky_curve` | `0.15` | How quickly the sky turns from the horizon's color to the top's |
+| `sky_energy_multiplier` | `1` | Brightens the sky above the horizon |
+| `sky_cover`, `sky_cover_modulate` | `""`, `[1, 1, 1, 1]` | A panorama over the sky, such as clouds, tinted; its alpha says how much shows |
+| `ground_bottom_color`, `ground_horizon_color` | `[0.2, 0.169, 0.133, 1]`, `[0.6463, 0.6558, 0.6708, 1]` | The ground straight down and at the horizon |
+| `ground_curve`, `ground_energy_multiplier` | `0.02`, `1` | The same for the ground |
+| `sun_angle_max`, `sun_curve` | `30`, `0.15` | Degrees from a sun's edge its glow reaches, and how it fades |
+| `use_debanding` | `true` | A little noise, so gradients don't band |
+| `energy_multiplier` | `1` | Brightens all of it |
+
+`PhysicalSkyMaterial` scatters the first sun's light through the air, after Preetham:
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `rayleigh_coefficient`, `rayleigh_color` | `2`, `[0.3, 0.405, 0.6, 1]` | How much the air scatters light, and the color it scatters |
+| `mie_coefficient`, `mie_eccentricity`, `mie_color` | `0.005`, `0.8`, `[0.69, 0.729, 0.812, 1]` | How much haze scatters, how much of it toward the sun, and its color |
+| `turbidity` | `10` | How hazy the air is |
+| `sun_disk_scale` | `1` | Scales the sun's disk |
+| `ground_color` | `[0.1, 0.07, 0.034, 1]` | Below the horizon |
+| `energy_multiplier` | `1` | Brightens it |
+| `use_debanding` | `true` | As the procedural sky's |
+| `night_sky` | `""` | A panorama behind the sky, such as stars |
+
+`PanoramaSkyMaterial` is an equirectangular texture all round, x once round the horizon and y
+from straight up to straight down, as Godot's:
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `panorama` | `""` | The texture; with none the sky is black |
+| `filter` | `true` | Samples it smoothly; `false` takes its nearest texel |
+| `energy_multiplier` | `1` | Brightens it |
+
+### Fog
+
+Fog is the Compatibility renderer's. After lighting and before exposure, each mesh fades toward
+the fog's color by distance (exponential fog, or depth fog between its begin and end) and below
+`fog_height`, and directional lights brighten the fog toward them by `fog_sun_scatter`. The sky
+fades by `fog_sky_affect`, after `fog_aerial_perspective` mixes its colors into the fog's. A
+`"color"` or `"clear_color"` background is fogged as a sky of that color, which the background's
+energy multiplies twice, as Godot's does. A material's `disable_fog` leaves it clear.
 
 ### Checks
 

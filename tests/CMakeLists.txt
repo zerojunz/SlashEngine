@@ -9,6 +9,7 @@ if(EMSCRIPTEN)
         test_post.cpp
         test_render.cpp
         test_shadow.cpp
+        test_sky.cpp
         test_upscaler.cpp)
     target_link_libraries(slash_web_tests PRIVATE slash::core slash::platform slash::render
         doctest::doctest SDL3::SDL3-static)
@@ -100,6 +101,7 @@ add_executable(slash_tests
     test_services.cpp
     test_shader.cpp
     test_shadow.cpp
+    test_sky.cpp
     test_storyboard.cpp
     test_syntax_highlighter.cpp
     test_test_run.cpp
@@ -183,7 +185,7 @@ add_test(NAME unit_${unit_index} COMMAND slash_tests --source-file-exclude=${uni
 
 # The compiled shaders committed in engine/render/src match their HLSL; see
 # cmake/compile_shaders.cmake.
-foreach(shader IN ITEMS sprite material mesh shadow post particles_process particles_emit
+foreach(shader IN ITEMS sprite material mesh shadow post sky particles_process particles_emit
         particles_draw)
     add_test(NAME shaders_up_to_date_${shader}
         COMMAND ${CMAKE_COMMAND} -DSOURCE=${PROJECT_SOURCE_DIR}/engine/render/shaders/${shader}.hlsl

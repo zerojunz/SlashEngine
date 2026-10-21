@@ -228,6 +228,7 @@ struct Material3D {
     CullMode cull = CullMode::Back;
     std::array<float, 2> uv1_scale{1.0F, 1.0F};
     std::array<float, 2> uv1_offset{0.0F, 0.0F};
+    bool disable_fog = false; // the scene's fog leaves it alone
 
     bool operator==(const Material3D&) const = default;
 };

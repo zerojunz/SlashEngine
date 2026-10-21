@@ -19,6 +19,9 @@
 # SLASH_MSL defined, since Metal numbers buffers in one list where the others use three; it and
 # the WGSL are arrays of pieces to join.
 #
+# With PIECES, each stage's MSL, GLSL ES and WGSL are arrays of pieces to join too, for a shader
+# whose code is longer than a string literal may be (the mesh shader's).
+#
 # WGSL keeps SDL's bind groups, which the HLSL's register spaces name: a vertex stage's uniforms in
 # group 1, a fragment stage's textures in group 2 with their samplers 8 bindings after them
 # (glslang's --shift-sampler-binding) and its uniforms in group 3; a compute shader's read-only
@@ -124,13 +127,21 @@ if(NOT EXISTS "${TINT}")
                         "-DSLASH_TINT=<path to tint> to CMake")
 endif()
 
-# A WGSL file as raw string literals, in pieces for the device to join, since a compute shader's
-# can be longer than Clang takes in one literal.
-function(wgsl_pieces file out)
-    file(READ "${file}" text)
-    raw_literals("${text}" wgsl literals)
-    string(REPLACE ")wgsl\"\nR\"wgsl(" ")wgsl\",\nR\"wgsl(" literals "${literals}")
+# Raw string literals in a row as the items of an array, for the device to join, since Clang and
+# MSVC take no string literal, even one joined from several, over 65536 bytes.
+function(as_pieces literals tag out)
+    string(REPLACE ")${tag}\"\nR\"${tag}(" ")${tag}\",\nR\"${tag}(" literals "${literals}")
     set(${out} "${literals}" PARENT_SCOPE)
+endfunction()
+
+# A declaration of code as one string, or as an array of pieces when PIECES says to.
+function(declare_code name literals tag out)
+    if(PIECES)
+        as_pieces("${literals}" ${tag} pieces)
+        set(${out} "inline constexpr const char* ${name}[] = {\n${pieces}};\n\n" PARENT_SCOPE)
+    else()
+        set(${out} "inline constexpr char ${name}[] = ${literals};\n\n" PARENT_SCOPE)
+    endif()
 endfunction()
 file(MAKE_DIRECTORY "${WORKDIR}")
 get_filename_component(base "${SOURCE}" NAME_WE)
@@ -153,10 +164,11 @@ if(COMPUTE)
     hex_array("${spirv}" bytes)
     file(READ "${msl}" msl_text)
     raw_literals("${msl_text}" msl msl_literals)
-    # Clang refuses a string literal over 65536 bytes, which a compute shader's MSL can be, so its
-    # pieces stay apart for the device to join.
-    string(REPLACE ")msl\"\nR\"msl(" ")msl\",\nR\"msl(" msl_literals "${msl_literals}")
-    wgsl_pieces("${wgsl}" wgsl_literals)
+    # A compute shader's MSL and WGSL are always in pieces, since they are often too long for one.
+    as_pieces("${msl_literals}" msl msl_literals)
+    file(READ "${wgsl}" wgsl_text)
+    raw_literals("${wgsl_text}" wgsl wgsl_literals)
+    as_pieces("${wgsl_literals}" wgsl wgsl_literals)
     string(APPEND body
         "alignas(4) inline constexpr unsigned char k${NAME}ComputeSpirv[] = {\n${bytes}};\n\n"
         "inline constexpr const char* k${NAME}ComputeMsl[] = {\n${msl_literals}};\n\n"
@@ -216,11 +228,12 @@ foreach(stage IN LISTS stages)
     raw_literals("${glsl_text}" glsl glsl_literals)
     file(READ "${wgsl}" wgsl_text)
     raw_literals("${wgsl_text}" wgsl wgsl_literals)
+    declare_code(k${NAME}${label}Msl "${msl_literals}" msl msl_code)
+    declare_code(k${NAME}${label}Glsl "${glsl_literals}" glsl glsl_code)
+    declare_code(k${NAME}${label}Wgsl "${wgsl_literals}" wgsl wgsl_code)
     string(APPEND body
         "alignas(4) inline constexpr unsigned char k${NAME}${label}Spirv[] = {\n${bytes}};\n\n"
-        "inline constexpr char k${NAME}${label}Msl[] = ${msl_literals};\n\n"
-        "inline constexpr char k${NAME}${label}Glsl[] = ${glsl_literals};\n\n"
-        "inline constexpr char k${NAME}${label}Wgsl[] = ${wgsl_literals};\n\n")
+        "${msl_code}${glsl_code}${wgsl_code}")
 endforeach()
 raw_literals("${hlsl_text}" hlsl hlsl_literals)
 get_filename_component(source_name "${SOURCE}" NAME)
