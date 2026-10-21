@@ -1,6 +1,7 @@
 #include "devices.hpp"
 
 #include "slash/core/math.hpp"
+#include "slash/core/text.hpp"
 #include "slash/render/device.hpp"
 #include "slash/render/image.hpp"
 #include "slash/render/mesh.hpp"
@@ -517,5 +518,14 @@ TEST_CASE("GPUs draw meshes as the software device does") {
         CAPTURE(first);
         CAPTURE(worst);
         CHECK(differing <= 20);
+        if (differing > 20) {
+            // Both pictures, to see what differs where only the test's output reaches (CI).
+            auto drawn = render::encode_png(image);
+            auto wanted = render::encode_png(expected);
+            REQUIRE(drawn.ok());
+            REQUIRE(wanted.ok());
+            MESSAGE("drawn, as a base64 PNG: " << slash::base64_encode(drawn.value()));
+            MESSAGE("expected, as a base64 PNG: " << slash::base64_encode(wanted.value()));
+        }
     }
 }
