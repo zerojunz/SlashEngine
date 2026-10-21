@@ -45,10 +45,24 @@ if [ "$arch" = amd64 ]; then
         test -S "$XDG_RUNTIME_DIR/wayland-1" && test -S /tmp/.X11-unix/X1 && break
         sleep 0.1
       done
+      if ! test -S "$XDG_RUNTIME_DIR/wayland-1" || ! test -S /tmp/.X11-unix/X1; then
+        echo "Weston or Xvfb did not start" >&2
+        tail -n 20 /tmp/weston.log /tmp/xvfb.log >&2
+        exit 1
+      fi
       cp -r /game /tmp/game
       cd /tmp/game
+      # A failure shows the game, then the symbols SDL looked up most often without finding them:
+      # it tries each in every X11 or Wayland library it loads, so those missing from all of them
+      # come first, and one SDL needs that this system lacks is the likely cause.
       driver() {
-        output=$(env "$@" "./$GAME" --ticks 30 2>&1) || { echo "$output" >&2; return 1; }
+        output=$(env "$@" "./$GAME" --ticks 30 2>&1) || {
+          echo "$output" >&2
+          env "$@" LD_DEBUG=libs "./$GAME" --ticks 1 2>&1 |
+            sed -nE "s/.*undefined symbol: _?([A-Za-z0-9_]+).*/missing \1/p" |
+            sort | uniq -c | sort -rn | head -n 5 >&2 || true
+          return 1
+        }
         grep -o "\"video_driver\":\"[a-z0-9]*\"" <<< "$output" | cut -d\" -f4
       }
       test "$(driver DISPLAY=:1 WAYLAND_DISPLAY=wayland-1)" = x11

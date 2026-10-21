@@ -90,6 +90,21 @@ std::string no_toolchain(const std::string& platform, const std::string& name) {
            " toolchain for it";
 }
 
+// xkbcommon's pkg-config file as it is on Ubuntu 20.04, the oldest Linux games support, naming the
+// sysroot's files.
+std::string old_xkbcommon(const std::string& triple) {
+    return "prefix=/usr\n"
+           "libdir=${prefix}/lib/" +
+           triple +
+           "\n"
+           "includedir=${prefix}/include\n\n"
+           "Name: xkbcommon\n"
+           "Description: XKB API common to servers and clients\n"
+           "Version: 0.10.0\n"
+           "Libs: -L${libdir} -lxkbcommon\n"
+           "Cflags: -I${includedir}\n";
+}
+
 } // namespace
 
 bool prepare_cross(const std::string& platform, const std::string& arch, const fs::path& work,
@@ -169,14 +184,26 @@ bool prepare_cross(const std::string& platform, const std::string& arch, const f
             log::warn("Linux games built without pkg-config run on X11 only, with no Wayland, "
                       "PulseAudio or PipeWire: install it (brew install pkgconf on macOS)");
         }
+        // SDL's Wayland code calls what the xkbcommon it is built against has, and the sysroot's
+        // 1.0 has more than Ubuntu 20.04's 0.10, so pkg-config finds one saying 0.10 first: the
+        // sysroot's headers and library, used as that version, as Godot builds against old
+        // headers it keeps.
+        const fs::path packages = fs::absolute(work / "pkgconfig", error);
+        fs::create_directories(packages, error);
+        if (auto written =
+                platform::write_file((packages / "xkbcommon.pc").string(), old_xkbcommon(triple));
+            !written) {
+            failure = {"toolchain", written.error().message, {}};
+            return false;
+        }
         // pkg-config must read the sysroot's packages, never the host's. Chromium's sysroots
         // keep most of them in usr/lib/pkgconfig.
         const std::string separator = ":";
         cross.environment = {
-            {"PKG_CONFIG_LIBDIR", (sysroot / "usr" / "lib" / "pkgconfig").string() + separator +
-                                      (sysroot / "usr" / "lib" / triple / "pkgconfig").string() +
-                                      separator +
-                                      (sysroot / "usr" / "share" / "pkgconfig").string()},
+            {"PKG_CONFIG_LIBDIR",
+             packages.string() + separator + (sysroot / "usr" / "lib" / "pkgconfig").string() +
+                 separator + (sysroot / "usr" / "lib" / triple / "pkgconfig").string() + separator +
+                 (sysroot / "usr" / "share" / "pkgconfig").string()},
             {"PKG_CONFIG_SYSROOT_DIR", sysroot.string()},
             {"PKG_CONFIG_PATH", ""},
         };

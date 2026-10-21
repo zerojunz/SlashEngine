@@ -368,10 +368,14 @@ TEST_CASE("processes read the input they are given to its end") {
     platform::ProcessOptions options;
     options.input = "b\na\n";
 #ifdef _WIN32
-    auto result = platform::run_process({"sort"}, options);
+    // findstr numbers every line. (sort guesses whether input this short is UTF-16, and "b\na\n"
+    // reads as two Gurmukhi letters.)
+    auto result = platform::run_process({"findstr", "/n", "^"}, options);
     REQUIRE(result.ok());
+    INFO("output: ", result.value().tail);
     CHECK(result.value().exit_code == 0);
-    CHECK(result.value().tail.find('a') < result.value().tail.find('b'));
+    CHECK(result.value().tail.find("1:b") != std::string::npos);
+    CHECK(result.value().tail.find("2:a") != std::string::npos);
 #else
     // The second read sees the end of the input, so the child doesn't wait for more.
     auto result = platform::run_process(
