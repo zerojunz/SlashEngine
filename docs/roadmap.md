@@ -174,8 +174,7 @@ rendering on top.
 - [x] WebGPU on the web where browsers have it, with WebGL 2 kept for the rest (`auto` picks
       WebGPU when the browser has it); its WGSL is compiled from the same HLSL with Tint and
       committed, and tests hold it to the software device's pixels on Dawn over Mesa
-- [ ] Game shaders and FSR on WebGPU, with Tint in the shader tools (until then a web export
-      that uses either keeps to WebGL 2)
+- [x] Game shaders and FSR on WebGPU, with Tint in the shader tools
 - [x] Refresh rates and frame pacing, following Godot's settings: the displays, their modes and
       refresh rates as data (`display.list`); V-Sync modes (disabled, enabled, adaptive,
       mailbox) and a frame cap (`max_fps`, 0 for none) in `project.json`, changeable while the

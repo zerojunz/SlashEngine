@@ -203,6 +203,12 @@ void fragment() {
     // The GL device binds textures and varyings by these names.
     CHECK(shader.glsl_fragment.find("texture1") != std::string::npos);
     CHECK(shader.glsl_vertex.find("v_uv") != std::string::npos);
+    // WebGPU's WGSL keeps SDL's bind groups, with each sampler 8 bindings after its texture.
+    CHECK(shader.wgsl_vertex.find("@vertex") != std::string::npos);
+    CHECK(shader.wgsl_vertex.find("@group(1u) @binding(1u)") != std::string::npos);
+    CHECK(shader.wgsl_fragment.find("@fragment") != std::string::npos);
+    CHECK(shader.wgsl_fragment.find("@group(2u) @binding(1u) var") != std::string::npos);
+    CHECK(shader.wgsl_fragment.find("@group(2u) @binding(9u) var") != std::string::npos);
     // Direct3D 12's HLSL names the game's file in its line directives.
     CHECK(shader.hlsl.find("#line 1 \"shaders/sway.hlsl\"") != std::string::npos);
     CHECK_FALSE(shader.cpu_vertex.empty());
@@ -319,15 +325,27 @@ TEST_CASE("param names the code around a shader takes are reserved, and the rest
     }
 }
 
+// A shader that takes a derivative after discarding some pixels, as HLSL allows.
+render::CompiledShader sway() {
+    return compiled({.path = "shaders/sway.hlsl",
+                     .code = "void vertex() {\n    VERTEX.x += offset;\n}\n"
+                             "void fragment() {\n    if (UV.x > 0.5) {\n        discard;\n    }\n"
+                             "    COLOR = texture(ramp, UV) * ddx(UV.x) * TIME;\n}\n",
+                     .params = {{.name = "offset", .components = 1, .slot = 0},
+                                {.name = "ramp", .components = 0, .slot = 1}}});
+}
+
+TEST_CASE("WGSL takes derivatives where HLSL does") {
+    // WGSL refuses derivatives in control flow that can differ between pixels, such as after a
+    // discard, unless the check is off.
+    const render::CompiledShader shader = sway();
+    CHECK(shader.wgsl_fragment.find("diagnostic(off, derivative_uniformity)") != std::string::npos);
+    CHECK(shader.wgsl_fragment.find("dpdx") != std::string::npos);
+}
+
 #if defined(_WIN32)
 TEST_CASE("a game's shader compiles with Windows' HLSL compiler") {
-    const render::CompiledShader shader =
-        compiled({.path = "shaders/sway.hlsl",
-                  .code = "void vertex() {\n    VERTEX.x += offset;\n}\n"
-                          "void fragment() {\n    if (UV.x > 0.5) {\n        discard;\n    }\n"
-                          "    COLOR = texture(ramp, UV) * ddx(UV.x) * TIME;\n}\n",
-                  .params = {{.name = "offset", .components = 1, .slot = 0},
-                             {.name = "ramp", .components = 0, .slot = 1}}});
+    const render::CompiledShader shader = sway();
     for (const auto& [entry, target] : {std::pair{"vs_main", "vs_5_1"}, {"fs_main", "ps_5_1"}}) {
         const auto result = render::detail::compile_hlsl(shader.hlsl, entry, target);
         CHECK_MESSAGE(result.ok(), entry, ": ", (result.ok() ? "" : result.error().message));

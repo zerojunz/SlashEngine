@@ -21,6 +21,20 @@
       "repository": "https://github.com/KhronosGroup/SPIRV-Cross.git",
       "tag": "vulkan-sdk-1.4.363.0"
     },
+    "SPIRV-Headers": {
+      "license": "MIT-Khronos-old",
+      "license_file": "LICENSE",
+      "license_sha256": "ea43b1de38a6f90c488800d66dec1ed671e68cda530266bc96951fb5b6307613",
+      "repository": "https://github.com/KhronosGroup/SPIRV-Headers.git",
+      "tag": "vulkan-sdk-1.4.350.0"
+    },
+    "SPIRV-Tools": {
+      "license": "Apache-2.0",
+      "license_file": "LICENSE",
+      "license_sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+      "repository": "https://github.com/KhronosGroup/SPIRV-Tools.git",
+      "tag": "vulkan-sdk-1.4.350.0"
+    },
     "SheenBidi": {
       "license": "Apache-2.0",
       "license_file": "LICENSE",
@@ -34,6 +48,13 @@
       "license_sha256": "ef10cb839de73fb6d5d32ea7151979e87809a6df70dc7e7ee8457ae1c9e7aa7e",
       "repository": "https://github.com/schellingb/TinySoundFont.git",
       "tag": "853a0a171759f1ddba0de1442133a75912bbeffa"
+    },
+    "abseil-cpp": {
+      "license": "Apache-2.0",
+      "license_file": "LICENSE",
+      "license_sha256": "c79a7fea0e3cac04cd43f20e7b648e5a0ff8fa5344e644b0ee09ca1162b62747",
+      "repository": "https://github.com/abseil/abseil-cpp.git",
+      "tag": "20250512.1"
     },
     "astc-encoder": {
       "license": "Apache-2.0",
@@ -62,6 +83,13 @@
       "license_sha256": "3d180008e36922a4e8daec11c34c7af264fed5962d07924aea928c38e8663c94",
       "repository": "https://github.com/google/brotli.git",
       "tag": "v1.1.0"
+    },
+    "dawn": {
+      "license": "BSD-3-Clause",
+      "license_file": "LICENSE",
+      "license_sha256": "e2908f7576fb12be5bdb8480cddb0be62badb498cadb821d043aeaf01b0b0899",
+      "repository": "https://github.com/google/dawn.git",
+      "tag": "v20260423.175430"
     },
     "doctest": {
       "license": "MIT",

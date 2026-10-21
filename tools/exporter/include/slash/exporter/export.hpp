@@ -4,7 +4,6 @@
 
 #include <optional>
 #include <string>
-#include <string_view>
 
 namespace slash::exporter {
 
@@ -39,11 +38,5 @@ struct ExportResult {
 // The engine folder exports build from: engine if given and valid, else SLASH_ENGINE_DIR, an
 // installed copy next to the running program, or the checkout the tools were built from.
 [[nodiscard]] std::optional<std::string> find_engine(const std::string& engine = {});
-
-// The driver a web export runs with, given project.json's rendering.driver: game shaders and FSR
-// have no WGSL yet, so a game that uses either keeps to WebGL 2 ("opengl_es") where "auto" would
-// pick WebGPU.
-[[nodiscard]] std::string web_driver(std::string_view driver, bool game_shaders,
-                                     std::string_view scaling);
 
 } // namespace slash::exporter

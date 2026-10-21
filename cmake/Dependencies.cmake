@@ -276,6 +276,73 @@ if((SLASH_BUILD_TOOLS OR SLASH_BUILD_TESTS) AND NOT EMSCRIPTEN)
             "SPIRV_CROSS_SHARED OFF"
             "SPIRV_CROSS_SKIP_INSTALL ON")
 
+    # WGSL for WebGPU: Tint, from Dawn, reads the same SPIR-V and writes WGSL. Dawn's CMake builds
+    # only Tint with every backend off, on its pinned Abseil (Tint's number parsing) and
+    # SPIRV-Tools (its SPIR-V reader); its own submodules aren't fetched ("CMakeLists.txt" names
+    # no submodule, and an empty list never reaches git through CPM).
+    slash_add_dependency(SPIRV-Headers DOWNLOAD_ONLY TRUE)
+    slash_add_dependency(SPIRV-Tools DOWNLOAD_ONLY TRUE)
+    slash_add_dependency(abseil-cpp DOWNLOAD_ONLY TRUE)
+    # Without debug info: Tint's would add hundreds of megabytes to each tool and example.
+    foreach(lang C CXX)
+        foreach(config DEBUG RELWITHDEBINFO)
+            set(slash_flags_${lang}_${config} "${CMAKE_${lang}_FLAGS_${config}}")
+            string(REGEX REPLACE "(^| )[-/](g|Zi|Z7)[^ ]*" "" CMAKE_${lang}_FLAGS_${config}
+                "${CMAKE_${lang}_FLAGS_${config}}")
+        endforeach()
+    endforeach()
+    # Xcode 15's clang needs a deduction guide in Tint (cmake/patches).
+    slash_add_dependency(dawn
+        SYSTEM TRUE
+        EXCLUDE_FROM_ALL TRUE
+        GIT_SUBMODULES "CMakeLists.txt"
+        PATCH_COMMAND ${CMAKE_COMMAND} -P
+            ${CMAKE_CURRENT_LIST_DIR}/patches/dawn-overloaded-deduction-guide.cmake
+        OPTIONS
+            "DAWN_ABSEIL_DIR ${abseil-cpp_SOURCE_DIR}"
+            "DAWN_SPIRV_HEADERS_DIR ${SPIRV-Headers_SOURCE_DIR}"
+            "DAWN_SPIRV_TOOLS_DIR ${SPIRV-Tools_SOURCE_DIR}"
+            "DAWN_FETCH_DEPENDENCIES OFF"
+            "DAWN_ENABLE_D3D11 OFF"
+            "DAWN_ENABLE_D3D12 OFF"
+            "DAWN_ENABLE_METAL OFF"
+            "DAWN_ENABLE_NULL OFF"
+            "DAWN_ENABLE_WEBGPU_ON_WEBGPU OFF"
+            "DAWN_ENABLE_DESKTOP_GL OFF"
+            "DAWN_ENABLE_OPENGLES OFF"
+            "DAWN_ENABLE_VULKAN OFF"
+            "DAWN_ENABLE_SPIRV_VALIDATION OFF"
+            "DAWN_USE_WAYLAND OFF"
+            "DAWN_USE_X11 OFF"
+            "DAWN_USE_GLFW OFF"
+            "DAWN_USE_WINDOWS_UI OFF"
+            "DAWN_BUILD_SAMPLES OFF"
+            "DAWN_BUILD_TESTS OFF"
+            "DAWN_BUILD_BENCHMARKS OFF"
+            "DAWN_BUILD_FUZZERS OFF"
+            "DAWN_BUILD_PROTOBUF OFF"
+            "DAWN_BUILD_NODE_BINDINGS OFF"
+            "TINT_BUILD_CMD_TOOLS OFF"
+            "TINT_BUILD_SPV_READER ON"
+            "TINT_BUILD_WGSL_READER ON"
+            "TINT_BUILD_WGSL_WRITER ON"
+            "TINT_BUILD_GLSL_WRITER OFF"
+            "TINT_BUILD_GLSL_VALIDATOR OFF"
+            "TINT_BUILD_HLSL_WRITER OFF"
+            "TINT_BUILD_MSL_WRITER OFF"
+            "TINT_BUILD_SPV_WRITER OFF"
+            "TINT_BUILD_NULL_WRITER OFF"
+            "TINT_BUILD_IR_BINARY OFF"
+            "TINT_BUILD_TESTS OFF"
+            "TINT_BUILD_BENCHMARKS OFF"
+            "TINT_BUILD_FUZZERS OFF"
+            "TINT_BUILD_TINTD OFF")
+    foreach(lang C CXX)
+        foreach(config DEBUG RELWITHDEBINFO)
+            set(CMAKE_${lang}_FLAGS_${config} "${slash_flags_${lang}_${config}}")
+        endforeach()
+    endforeach()
+
     # Playing scores into stems (soundtrack.render): TinySoundFont plays SoundFont 2 instruments
     # (engine/soundtrack builds it), and libvorbis, on libogg, encodes the stems as Ogg Vorbis,
     # built here from their sources without their own CMake, which looks for an installed libogg.
